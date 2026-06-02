@@ -17,7 +17,62 @@ Wird aktualisiert wenn Flows geändert werden.
 
 **Trigger:** Neuer Eintrag in DEX_IDReorder
 **Zweck:** TeilnehmerIDs neu vergeben (Aktive + Warteliste lückenlos sortiert) + Nachrücken von Warteliste (seit v6.7 inkl. typ-bewusster Promotion für B2Run-Split-Wartelisten; seit v10.20 mit optionalem Shared-Waitlist-Modus)
-**Letztes Update:** 2026-05-06 (v10.20 — Shared-Waitlist)
+**Letztes Update:** 2026-06-02 (v18.66 — OrgNachruecker-Mail + Paginierung as-implemented; siehe offene Korrektur unten)
+
+### ✅ GELÖST 2026-06-02 (v18.66) — leeres `from` + unquoted `Warteliste` + Self-Reference
+
+> **Status: umgesetzt & verifiziert.** Alle drei unten beschriebenen Fehler
+> sind im Tenant behoben (Filter-`from` → `variables('AllParticipants')`,
+> `'Warteliste'` gequotet, `Merge_Pages`-Compose gegen die Self-Reference).
+> Der finale Flow-JSON steht weiter unten im json-Block. Der folgende Abschnitt
+> bleibt als Fehlerbild-Doku stehen.
+
+Beim Review des as-implemented Flow-Exports (nach dem Paginierungs-Umbau)
+sind **zwei Fehler** in den **Filter-array-Actions** (Query) aufgefallen.
+Beide entstehen dadurch, dass diese Actions vor dem Umbau auf
+`@body('Get_Enrolled_Participants')?['value']` zeigten — beim Löschen dieser
+Quelle wurde die `from`-Bindung geleert und in der Paginierungs-Anleitung
+**nicht** auf `AllParticipants` umgebogen.
+
+**Betroffene Actions:** `Filter_Non_Waitlist`, `Filter_Active`,
+`Filter_Waitlist`, `Filter_Active_Durchstarter`, `Filter_Active_Funstarter`.
+
+1. **Leeres `From` (kritisch).** Alle fünf Filter-Actions haben aktuell
+   `from = ""` → sie filtern ein **leeres** Array. Folge:
+   - `Count_Active` (= `length(Filter_Non_Waitlist)`) ist immer **0**.
+   - Damit ist `Check_Nachrücken` (`Count_Active < MaxParticipants`) **immer
+     wahr** → der Flow rückt bei **jeder** Abmeldung jemanden nach,
+     **auch wenn das Event voll ist** → schleichende Überbuchung.
+   - Im Split-Pfad analog: `Count_Active_Durchstarter` / `_Funstarter` = 0 →
+     `Check_*_Free` immer wahr → Überbuchung pro Gruppe.
+   - Die reine **ID-Neuvergabe** ist NICHT betroffen (sie liest
+     `GenerateSPData` direkt aus `variables('AllParticipants')`).
+   - **Fix:** In jeder der fünf Actions das **From**-Feld auf den
+     fx-Ausdruck `variables('AllParticipants')` setzen.
+2. **`Warteliste` ohne Anführungszeichen** (in den drei Nicht-Split-Filtern
+   `Filter_Non_Waitlist`, `Filter_Active`, `Filter_Waitlist`). Die Where-
+   Bedingung lautet z. B. `@not(equals(item()?['Status'],Warteliste))` —
+   der Vergleichswert `Warteliste` ist ein **String** und muss in
+   einfache Anführungszeichen: `'Warteliste'`. Am einfachsten über den
+   **Basismodus** der Filter-array-Action neu eintippen (Status / *is not
+   equal to* / `Warteliste`) — Power Automate quotet den Wert dann selbst.
+   Die Split-Filter (`Filter_Active_Durchstarter` / `_Funstarter`) haben die
+   Anführungszeichen bereits korrekt.
+3. **Self-reference in `Append_Page`** (Paginierungs-Schleife). Die
+   `Set variable AllParticipants`-Action darf `variables('AllParticipants')`
+   nicht im eigenen Set-Wert referenzieren (Fehler beim Speichern:
+   `WorkflowRunActionInputsInvalidProperty` — „Self reference is not
+   supported…"). **Fix:** einen **Compose** `Merge_Pages` =
+   `concat(variables('AllParticipants'), body('Get_Page')?['value'])` zwischen
+   `Get_Page` und `Append_Page` einschieben, und `Append_Page` auf
+   `outputs('Merge_Pages')` setzen. Siehe Schritt b/c in der
+   Paginierungs-Anleitung unten.
+
+**Verifikation nach dem Fix:** Event mit Cap = 2, 2 Aktiven, 1 Wartelistler;
+eine **dritte** Person zusätzlich auf die Warteliste setzen; jetzt eine
+Abmeldung auslösen → es darf **genau eine** Person nachrücken (auf den frei
+gewordenen Platz), nicht zwei. `Count_Active` muss nach dem Lauf der echten
+Aktiven-Zahl entsprechen, nicht 0.
 
 ### UI-Anleitung 2026-06-02 (v18.63) — Organizer-Mail bei Abmeldung mit Nachrücker
 
@@ -143,13 +198,33 @@ deshalb bewusst **NICHT** auf den „Get items"-Connector wechseln (der liefert
         - Method: **GET**
         - Uri (fx): `variables('NextPageUri')`
         - Headers: `Accept` = `application/json;odata=nometadata`
-     b. **Set variable** `AllParticipants` (fx):
+     b. **Compose** `Merge_Pages` (fx):
         `concat(variables('AllParticipants'), body('Get_Page')?['value'])`
         — runAfter `Get_Page` Succeeded.
-     c. **Set variable** `NextPageUri` (fx):
-        `if(empty(body('Get_Page')?['@odata.nextLink']), '', replace(body('Get_Page')?['@odata.nextLink'], concat(outputs('Settings')?['siteAddress'], '/'), ''))`
-        — runAfter Schritt b Succeeded. (Wandelt den absoluten nextLink in den
-        relativen `_api/…`-Pfad; bei letzter Seite → leerer String → Schleife endet.)
+        **WICHTIG (v18.66):** dieser Compose-Zwischenschritt ist Pflicht. Eine
+        **Set variable**-Action darf die eigene Variable **nicht** im Set-Wert
+        referenzieren (Power Automate: „Self reference is not supported when
+        updating the value of variable 'AllParticipants'" →
+        `WorkflowRunActionInputsInvalidProperty`). Compose darf die Variable
+        lesen, Set variable liest danach nur den Compose-Output.
+     c. **Set variable** `AllParticipants` (fx): `outputs('Merge_Pages')`
+        — runAfter `Merge_Pages` Succeeded.
+     d. **Set variable** `NextPageUri` (fx):
+        `if(empty(coalesce(body('Get_Page')?['@odata.nextLink'], body('Get_Page')?['odata.nextLink'])), '', concat('_api', last(split(coalesce(body('Get_Page')?['@odata.nextLink'], body('Get_Page')?['odata.nextLink']), '_api'))))`
+        — runAfter Schritt c Succeeded. (Schneidet den relativen Pfad **ab `_api`**
+        aus dem nextLink heraus; bei letzter Seite → leerer String → Schleife endet.)
+        **WICHTIG (v18.67) — Endlosschleifen-Fix:** die frühere Variante baute
+        den relativen Pfad per `replace(nextLink, siteAddress + '/', '')`. Bei
+        `$filter`/`$orderby` auf **nicht-indizierten** Spalten (hier `Status` /
+        `RegistrationDate`) macht SharePoint ein **Listen-Scan-Paging** und
+        liefert einen `nextLink` mit `$skiptoken` — **auch bei winzigen Listen**.
+        Passte `SubsiteUrl` nicht **zeichengenau** auf das nextLink-Präfix
+        (Groß-/Kleinschreibung, Slash), blieb die URI **absolut** → `Get_Page`
+        holte dieselbe Seite erneut → der `$skiptoken` advancte nie →
+        **Endlosschleife** bis count 400 / Timeout 3 h. Der `split('_api')`-Ansatz
+        ist robust gegen Host/Casing/Slash und deckt zusätzlich beide
+        nextLink-Schreibweisen ab (`@odata.nextLink` bzw. `odata.nextLink` unter
+        `odata=nometadata`).
 3. **Alte Action entfernen:** `Get_Enrolled_Participants` **löschen**. Die Action,
    die bisher danach lief (`Count_Active`), per **Configure run after** auf
    **`Load_All_Pages` Succeeded** setzen.
@@ -369,6 +444,14 @@ aber lesbarer.
    BodyHtml raw verwendet. Client-Code erkennt pre-wrapped Templates in
    `buildEmailFromTemplate()` und skippt den zweiten Wrap. App-seitig v5.33.0+ nötig.
 
+> **Stand v18.66 (umgesetzt & verifiziert 2026-06-02):** Der folgende JSON-Block ist
+> der **finale** Flow inklusive Paginierung (`Init_AllParticipants` /
+> `Init_NextPageUri` / `Load_All_Pages` mit `Merge_Pages`-Compose gegen die
+> Self-Reference), gefixten Filter-Actions (`from = variables('AllParticipants')`,
+> `'Warteliste'` gequotet) und den `OrgNachruecker`-Mail-Actions je
+> Nachrück-Zweig (`Get_Org_Template_N/_D/_F` + `Queue_Org_Email_N/_D/_F`,
+> `{{CancelledName}}` direkt aus `triggerOutputs()?['body/CancelledName']`).
+
 ```json
 TRIGGER:
 {
@@ -389,282 +472,109 @@ TRIGGER:
   "splitOn": "@triggerOutputs()?['body/value']"
 }
 
-UPDATE_ITEM:
-{
-  "type": "OpenApiConnection",
-  "inputs": {
-    "parameters": {
-      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
-      "table": "9d46ff77-5fe2-4e1d-9b93-14b9dca1a360",
-      "id": "@triggerBody()?['ID']",
-      "item/Title": "@triggerBody()?['Title']",
-      "item/Status/Value": "Processing"
-    },
-    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PatchItem" }
-  },
-  "runAfter": {}
-}
+ACTIONS (Reihenfolge laut runAfter):
 
-SETTINGS:
-{
-  "type": "Compose",
-  "inputs": {
-    "siteAddress": "@{triggerOutputs()?['body/SubsiteUrl']}",
-    "listName": "Teilnehmer",
-    "batchSize": 250
-  },
-  "runAfter": { "Update_item": ["Succeeded"] }
-}
+Update_item (PatchItem → Status=Processing)
+Settings (Compose: siteAddress/listName/batchSize=250)
+Get_ListItemType (HTTP GET ListItemEntityTypeFullName)
 
-GET_LISTITEMTYPE:
-{
-  "type": "OpenApiConnection",
-  "inputs": {
-    "parameters": {
-      "dataset": "@outputs('Settings')?['siteAddress']",
-      "parameters/method": "GET",
-      "parameters/uri": "_api/web/lists/getbytitle('@{outputs('Settings')?['listName']}')?$select=ListItemEntityTypeFullName"
-    },
-    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
-  },
-  "runAfter": { "Settings": ["Succeeded"] }
-}
+Init_AllParticipants (InitializeVariable, Array)  runAfter Get_ListItemType
+Init_NextPageUri (InitializeVariable, String):
+  @concat('_api/web/lists/getbytitle(''', outputs('Settings')?['listName'], ''')/items?$select=Id,TeilnehmerID,Status,RegistrationDate&$filter=Status ne ''Abgemeldet''&$orderby=RegistrationDate asc&$top=5000')
+  runAfter Init_AllParticipants
 
-GET_ENROLLED_PARTICIPANTS:
-{
-  "type": "OpenApiConnection",
-  "inputs": {
-    "parameters": {
-      "dataset": "@outputs('Settings')?['siteAddress']",
-      "parameters/method": "GET",
-      "parameters/uri": "@concat('_api/web/lists/getbytitle(''', outputs('Settings')?['listName'], ''')/items?$select=Id,TeilnehmerID,Status,RegistrationDate&$filter=Status ne ''Abgemeldet''&$orderby=RegistrationDate asc&$top=5000')",
-      "parameters/headers": { "Accept": "application/json;odata=nometadata" }
-    },
-    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
-  },
-  "runAfter": { "Get_ListItemType": ["Succeeded"] }
-}
+Load_All_Pages (Until @equals(variables('NextPageUri'),''), count 400, timeout PT3H)  runAfter Init_NextPageUri
+  Get_Page (HTTP GET @variables('NextPageUri'), Accept nometadata)
+  Merge_Pages (Compose): @concat(variables('AllParticipants'), body('Get_Page')?['value'])   runAfter Get_Page
+  Append_Page (SetVariable AllParticipants): @outputs('Merge_Pages')                          runAfter Merge_Pages
+  Set_NextPageUri (SetVariable NextPageUri):
+    @if(empty(coalesce(body('Get_Page')?['@odata.nextLink'], body('Get_Page')?['odata.nextLink'])), '', concat('_api', last(split(coalesce(body('Get_Page')?['@odata.nextLink'], body('Get_Page')?['odata.nextLink']), '_api'))))  runAfter Append_Page
 
-COUNT_ACTIVE:
-{
-  "type": "Compose",
-  "inputs": "@length(filter(body('Get_Enrolled_Participants')?['value'], not(equals(item()?['Status'], 'Warteliste'))))",
-  "runAfter": { "Get_Enrolled_Participants": ["Succeeded"] }
-}
+Filter_Non_Waitlist (Query)  runAfter Load_All_Pages
+  from:  @variables('AllParticipants')
+  where: @not(equals(item()?['Status'], 'Warteliste'))
+Count_Active (Compose: @length(body('Filter_Non_Waitlist')))  runAfter Filter_Non_Waitlist
+Filter_Active (Query)  runAfter Count_Active
+  from:  @variables('AllParticipants')
+  where: @not(equals(item()?['Status'], 'Warteliste'))
+Filter_Waitlist (Query)  runAfter Filter_Active
+  from:  @variables('AllParticipants')
+  where: @equals(item()?['Status'], 'Warteliste')
+Sort_ByStatusPriority (Compose: @union(body('Filter_Active'), body('Filter_Waitlist')))  runAfter Filter_Waitlist
+Generate_Indices (Compose: @range(0, length(variables('AllParticipants'))))  runAfter Sort_ByStatusPriority
+GenerateSPData (Select)  runAfter Generate_Indices
+  from: @outputs('Generate_Indices')
+  select: { "ID": "@variables('AllParticipants')[item()]?['Id']", "TeilnehmerID": "@add(item(), 1)" }
+BatchGuids (Compose: batchGUID/changeSetGUID)  runAfter GenerateSPData
+batchTemplate (Compose: PATCH-Changeset-Template)  runAfter BatchGuids
 
-GENERATE_INDICES:
-{
-  "type": "Compose",
-  "inputs": "@range(0, length(body('Get_Enrolled_Participants')?['value']))",
-  "runAfter": { "Count_Active": ["Succeeded"] }
-}
+Process_Batch_Scope (Scope)  runAfter batchTemplate
+  Loop_Batches (Foreach @chunk(body('GenerateSPData'), outputs('Settings')?['batchSize']), repetitions 1)
+    Select_map → batchData → SendBatch (_api/$batch)
+  Get_EventDetails (GetItems DEX_Events, $filter ID eq EventId)  runAfter Loop_Batches
+  Is_B2RunSplit (If: DurchstarterCapacity>0 AND FunstarterCapacity>0)  runAfter Get_EventDetails
+    [JA — Split]
+      Filter_Active_Durchstarter (Query)
+        from:  @variables('AllParticipants')
+        where: @and(equals(item()?['StarterType'], 'Durchstarter'), not(equals(item()?['Status'], 'Warteliste')))
+      Count_Active_Durchstarter (Compose @length(body('Filter_Active_Durchstarter')))
+      Check_Durchstarter_Free (If Count<DurchstarterCapacity)
+        Get_Waitlist_First_Durchstarter (HTTP GET Status=Warteliste & PreferredStarterType=Durchstarter, $orderby TeilnehmerID asc top 1)
+        Has_Durchstarter_Waitlist (If results>0)
+          Promote_Durchstarter (MERGE Status=Angemeldet, StarterType=Durchstarter)
+          Get_Email_Template_Durchstarter (GET Nachruecken-Template)  runAfter Promote_Durchstarter
+          Queue_Email_Durchstarter (DEX_Emails, EmailType Nachruecken)  runAfter Get_Email_Template_Durchstarter
+          Get_Org_Template_D (GET OrgNachruecker-Template, Accept verbose)  runAfter Queue_Email_Durchstarter
+          Queue_Org_Email_D (DEX_Emails, EmailType OrgNachruecker, Recipient OrganizerEmail,
+            Body replace {{EventTitle}}/{{PromotedName}}/{{CancelledName}})  runAfter Get_Org_Template_D
+          Queue_Outlook_Durchstarter (DEX_Outlook Einladen)  runAfter Queue_Org_Email_D
+      Filter_Active_Funstarter (Query)  runAfter Check_Durchstarter_Free
+        from:  @variables('AllParticipants')
+        where: @and(equals(item()?['StarterType'], 'Funstarter'), not(equals(item()?['Status'], 'Warteliste')))
+      Count_Active_Funstarter (Compose @length(body('Filter_Active_Funstarter')))
+      Check_Funstarter_Free (If Count<FunstarterCapacity)
+        Get_Waitlist_First_Funstarter (HTTP GET Status=Warteliste & PreferredStarterType=Funstarter, $orderby TeilnehmerID asc top 1)
+        Has_Funstarter_Waitlist (If results>0)
+          Promote_Funstarter (MERGE Status=Angemeldet, StarterType=Funstarter)
+          Get_Email_Template_Funstarter (GET Nachruecken-Template)  runAfter Promote_Funstarter
+          Queue_Email_Funstarter (DEX_Emails, EmailType Nachruecken)  runAfter Get_Email_Template_Funstarter
+          Get_Org_Template_F (GET OrgNachruecker-Template, Accept verbose)  runAfter Queue_Email_Funstarter
+          Queue_Org_Email_F (DEX_Emails, EmailType OrgNachruecker, Recipient OrganizerEmail,
+            Body replace {{EventTitle}}/{{PromotedName}}/{{CancelledName}})  runAfter Get_Org_Template_F
+          Queue_Outlook_Funstarter (DEX_Outlook Einladen)  runAfter Queue_Org_Email_F
+    [NEIN — kein Split]
+      Check_Nachrücken (If Count_Active<MaxParticipants AND MaxParticipants>0)
+        Get_Waitlist_First (HTTP GET Status=Warteliste, $orderby TeilnehmerID asc top 1)
+        Condition_1 (If results>0)
+          Promote_Waitlist (MERGE Status=Angemeldet)
+          Get_Email_Template (GET Nachruecken-Template)  runAfter Promote_Waitlist
+          Queue_Email (DEX_Emails, EmailType Nachruecken)  runAfter Get_Email_Template
+          Get_Org_Template_N (GET OrgNachruecker-Template, Accept verbose)  runAfter Queue_Email
+          Queue_Org_Email_N (DEX_Emails, EmailType OrgNachruecker, Recipient OrganizerEmail,
+            Body replace {{EventTitle}}/{{PromotedName}}/{{CancelledName}})  runAfter Get_Org_Template_N
+          Queue_Outlook (DEX_Outlook Einladen)  runAfter Queue_Org_Email_N
+  DEX_IDReorder (PatchItem → Status=Done)  runAfter Is_B2RunSplit
+  Error_Handler (Scope: Set_Failed → Status=Failed)  runAfter DEX_IDReorder [Failed]
 
-GENERATESPDATA:
-{
-  "type": "Select",
-  "inputs": {
-    "from": "@outputs('Generate_Indices')",
-    "select": {
-      "ID": "@body('Get_Enrolled_Participants')?['value'][item()]?['Id']",
-      "TeilnehmerID": "@add(item(), 1)"
-    }
-  },
-  "runAfter": { "Generate_Indices": ["Succeeded"] }
-}
-
-BATCHGUIDS:
-{
-  "type": "Compose",
-  "inputs": { "batchGUID": "@{guid()}", "changeSetGUID": "@{guid()}" },
-  "runAfter": { "GenerateSPData": ["Succeeded"] }
-}
-
-BATCHTEMPLATE:
-{
-  "type": "Compose",
-  "inputs": "--changeset_@{outputs('BatchGuids')?['changeSetGUID']}\nContent-Type: application/http\nContent-Transfer-Encoding: binary\n\nPATCH @{outputs('Settings')?['siteAddress']}/_api/web/lists/getByTitle('@{outputs('Settings')?['listName']}')/items(|ID|) HTTP/1.1\nContent-Type: application/json;odata=verbose\nAccept: application/json;odata=verbose\nIf-Match: *\n\n{\"__metadata\":{\"type\":\"@{body('Get_ListItemType')?['d']?['ListItemEntityTypeFullName']}\"},\"TeilnehmerID\":|TID|}\n",
-  "runAfter": { "BatchGuids": ["Succeeded"] }
-}
-
-PROCESS_BATCH_SCOPE:
-{
-  "type": "Scope",
-  "actions": {
-    "Loop_Batches": {
-      "type": "Foreach",
-      "foreach": "@chunk(body('GenerateSPData'), outputs('Settings')?['batchSize'])",
-      "actions": {
-        "Select_map": {
-          "type": "Select",
-          "inputs": {
-            "from": "@items('Loop_Batches')",
-            "select": "@replace(replace(outputs('batchTemplate'), '|ID|', string(item()?['ID'])), '|TID|', string(item()?['TeilnehmerID']))"
-          }
-        },
-        "batchData": {
-          "type": "Compose",
-          "inputs": "@join(body('Select_map'), decodeUriComponent('%0A'))",
-          "runAfter": { "Select_map": ["Succeeded"] }
-        },
-        "SendBatch": {
-          "type": "OpenApiConnection",
-          "inputs": {
-            "parameters": {
-              "dataset": "@outputs('Settings')?['siteAddress']",
-              "parameters/method": "POST",
-              "parameters/uri": "_api/$batch",
-              "parameters/headers": { "Content-Type": "multipart/mixed;boundary=batch_@{outputs('BatchGuids')?['batchGUID']}" },
-              "parameters/body": "--batch_@{outputs('BatchGuids')?['batchGUID']}\nContent-Type: multipart/mixed; boundary=\"changeset_@{outputs('BatchGuids')?['changeSetGUID']}\"\nContent-Length: @{length(outputs('batchData'))}\nContent-Transfer-Encoding: binary\n\n@{outputs('batchData')}\n--changeset_@{outputs('BatchGuids')?['changeSetGUID']}--\n\n--batch_@{outputs('BatchGuids')?['batchGUID']}--\n"
-            },
-            "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
-          },
-          "runAfter": { "batchData": ["Succeeded"] }
-        }
-      },
-      "runtimeConfiguration": { "concurrency": { "repetitions": 1 } }
-    },
-    "Get_EventDetails": {
-      "type": "OpenApiConnection",
-      "inputs": {
-        "parameters": {
-          "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
-          "table": "28457815-1163-4e92-8b08-3ae43f477d9e",
-          "$filter": "ID eq '@{triggerOutputs()?['body/EventId']}'",
-          "$top": 1
-        },
-        "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "GetItems" }
-      },
-      "runAfter": { "Loop_Batches": ["Succeeded"] }
-    },
-    "Check_Nachrücken": {
-      "type": "If",
-      "expression": {
-        "and": [
-          { "less": ["@outputs('Count_Active')", "@first(outputs('Get_EventDetails')?['body/value'])?['MaxParticipants']"] },
-          { "greater": ["@first(outputs('Get_EventDetails')?['body/value'])?['MaxParticipants']", 0] }
-        ]
-      },
-      "actions": {
-        "Get_Waitlist_First": {
-          "type": "OpenApiConnection",
-          "inputs": {
-            "parameters": {
-              "dataset": "@outputs('Settings')?['siteAddress']",
-              "parameters/method": "GET",
-              "parameters/uri": "_api/web/lists/getbytitle('@{outputs('Settings')?['listName']}')/items?$select=Id,Vorname,Nachname,ParticipantName,ParticipantEmail&$filter=Status eq 'Warteliste'&$orderby=TeilnehmerID asc&$top=1"
-            },
-            "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
-          }
-        },
-        "Condition_1": {
-          "type": "If",
-          "expression": { "and": [{ "greater": ["@length(coalesce(body('Get_Waitlist_First')?['d']?['results'], json('[]')))", 0] }] },
-          "actions": {
-            "Promote_Waitlist": {
-              "type": "OpenApiConnection",
-              "inputs": {
-                "parameters": {
-                  "dataset": "@outputs('Settings')?['siteAddress']",
-                  "parameters/method": "POST",
-                  "parameters/uri": "_api/web/lists/getbytitle('@{outputs('Settings')?['listName']}')/items(@{first(body('Get_Waitlist_First')?['d']?['results'])?['Id']})",
-                  "parameters/headers": { "Content-Type": "application/json;odata=verbose", "IF-MATCH": "*", "X-HTTP-Method": "MERGE", "Accept": "application/json;odata=verbose" },
-                  "parameters/body": "{\"__metadata\":{\"type\":\"SP.Data.TeilnehmerListItem\"},\"Status\":\"Angemeldet\"}"
-                },
-                "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
-              }
-            },
-            "Get_Email_Template": {
-              "type": "OpenApiConnection",
-              "inputs": {
-                "parameters": {
-                  "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
-                  "parameters/method": "GET",
-                  "parameters/uri": "@concat('_api/web/lists/getbytitle(''DEX_EmailTemplates'')/items?$filter=TemplateType eq ''Nachruecken'' and Language eq ''', coalesce(first(outputs('Get_EventDetails')?['body/value'])?['EmailLanguage'], 'EN'), '''&$select=Subject,BodyHtml&$top=1')"
-                },
-                "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
-              },
-              "runAfter": { "Promote_Waitlist": ["Succeeded"] }
-            },
-            "Queue_Email": {
-              "type": "OpenApiConnection",
-              "inputs": {
-                "parameters": {
-                  "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
-                  "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
-                  "item/Title": "@replace(replace(coalesce(first(body('Get_Email_Template')?['d']?['results'])?['Subject'], concat('Spot available: ', first(outputs('Get_EventDetails')?['body/value'])?['Title'])), '{{Name}}', first(body('Get_Waitlist_First')?['d']?['results'])?['Vorname']), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title'])",
-                  "item/Recipient": "@first(body('Get_Waitlist_First')?['d']?['results'])?['ParticipantEmail']",
-                  "item/RecipientName": "@first(body('Get_Waitlist_First')?['d']?['results'])?['Vorname']",
-                  "item/EmailType/Value": "Nachruecken",
-                  "item/EventTitle": "@first(outputs('Get_EventDetails')?['body/value'])?['Title']",
-                  "item/Status/Value": "Pending",
-                  "item/Body": "@replace(replace(coalesce(first(body('Get_Email_Template')?['d']?['results'])?['BodyHtml'], ''), '{{Name}}', first(body('Get_Waitlist_First')?['d']?['results'])?['Vorname']), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title'])",
-                  "item/EventId": "@triggerOutputs()?['body/EventId']"
-                },
-                "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
-              },
-              "runAfter": { "Get_Email_Template": ["SUCCEEDED"] }
-            },
-            "Queue_Outlook": {
-              "type": "OpenApiConnection",
-              "inputs": {
-                "parameters": {
-                  "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
-                  "table": "d794655b-c950-416c-a478-5dbae285e46d",
-                  "item/Title": "Einladen: @{first(outputs('Get_EventDetails')?['body/value'])?['Title']}",
-                  "item/Attendee": "@first(body('Get_Waitlist_First')?['d']?['results'])?['ParticipantEmail']",
-                  "item/EventId": "@triggerOutputs()?['body/EventId']",
-                  "item/ActionType/Value": "Einladen",
-                  "item/Status/Value": "Pending"
-                },
-                "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
-              },
-              "runAfter": { "Queue_Email": ["Succeeded"] }
-            }
-          },
-          "else": { "actions": {} },
-          "runAfter": { "Get_Waitlist_First": ["Succeeded"] }
-        }
-      },
-      "else": { "actions": {} },
-      "runAfter": { "Get_EventDetails": ["Succeeded"] }
-    },
-    "DEX_IDReorder": {
-      "type": "OpenApiConnection",
-      "inputs": {
-        "parameters": {
-          "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
-          "table": "9d46ff77-5fe2-4e1d-9b93-14b9dca1a360",
-          "id": "@triggerBody()?['ID']",
-          "item/Title": "@triggerBody()?['Title']",
-          "item/Status/Value": "Done"
-        },
-        "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PatchItem" }
-      },
-      "runAfter": { "Check_Nachrücken": ["Succeeded"] }
-    },
-    "Error_Handler": {
-      "type": "Scope",
-      "actions": {
-        "Set_Failed": {
-          "type": "OpenApiConnection",
-          "inputs": {
-            "parameters": {
-              "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
-              "table": "9d46ff77-5fe2-4e1d-9b93-14b9dca1a360",
-              "id": "@triggerBody()?['ID']",
-              "item/Title": "@triggerBody()?['Title']",
-              "item/Status/Value": "Failed"
-            },
-            "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PatchItem" }
-          }
-        }
-      },
-      "runAfter": { "DEX_IDReorder": ["Failed"] }
-    }
-  },
-  "runAfter": { "batchTemplate": ["Succeeded"] }
-}
+Get_Counter_Item (HTTP GET DEX_TeilnehmerCounter items(1))  runAfter Batch_Update*
+Get_Max_TeilnehmerID (HTTP GET Teilnehmer $orderby TeilnehmerID desc top 1)  runAfter Get_Counter_Item
+Compute_MaxValue (Compose max TeilnehmerID)  runAfter Get_Max_TeilnehmerID
+Compute_CurrentCounter (Compose @coalesce(body('Get_Counter_Item')?['NextValue'],0))  runAfter Compute_MaxValue
+If_Counter_Stale (If Current != Max)  runAfter Compute_CurrentCounter
+  Patch_Counter (MERGE DEX_TeilnehmerCounter NextValue=Compute_MaxValue, retry exp 3)
 ```
+
+> *(\*) `Batch_Update` ist der Anzeigename des `Process_Batch_Scope` im Tenant —
+> die drei Counter-Reconcile-Actions laufen nach Abschluss des Scopes.*
+
+> **Wichtige Ausdrücke verbatim** (für Copy-Paste in den fx-Tab):
+>
+> - **Init_NextPageUri:** `concat('_api/web/lists/getbytitle(''', outputs('Settings')?['listName'], ''')/items?$select=Id,TeilnehmerID,Status,RegistrationDate&$filter=Status ne ''Abgemeldet''&$orderby=RegistrationDate asc&$top=5000')`
+> - **Merge_Pages:** `concat(variables('AllParticipants'), body('Get_Page')?['value'])`
+> - **Append_Page (Wert):** `outputs('Merge_Pages')`
+> - **Set_NextPageUri (v18.67, Endlosschleifen-Fix):** `if(empty(coalesce(body('Get_Page')?['@odata.nextLink'], body('Get_Page')?['odata.nextLink'])), '', concat('_api', last(split(coalesce(body('Get_Page')?['@odata.nextLink'], body('Get_Page')?['odata.nextLink']), '_api'))))`
+> - **Org-Template-URI (alle drei Zweige):** `concat('_api/web/lists/getbytitle(''DEX_EmailTemplates'')/items?$filter=TemplateType eq ''OrgNachruecker'' and Language eq ''', coalesce(first(outputs('Get_EventDetails')?['body/value'])?['EmailLanguage'], 'EN'), '''&$select=Subject,BodyHtml&$top=1')` — Header `Accept: application/json;odata=verbose`
+> - **Org-Mail Body (Beispiel Zweig N):** `replace(replace(replace(coalesce(first(body('Get_Org_Template_N')?['d']?['results'])?['BodyHtml'], ''), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title']), '{{PromotedName}}', concat(first(body('Get_Waitlist_First')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Waitlist_First')?['d']?['results'])?['Nachname'])), '{{CancelledName}}', coalesce(triggerOutputs()?['body/CancelledName'], 'eine Person'))`
 
 ---
 

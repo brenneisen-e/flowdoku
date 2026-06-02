@@ -221,7 +221,7 @@ interface EventContextType {
   childEventsOf: (parentEventId: string) => DeloitteEvent[];
   isEventsLoading: boolean;
   createEvent: (event: CreateEventInput) => Promise<number | null>;
-  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string }) => Promise<boolean>;
+  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' }>;
   /** v11.82: Team-Anmeldung — Lead + N-1 Mitglieder gleichzeitig anmelden.
    *  Reserviert N Plaetze atomar; bei Vollbelegung geht das ganze Team auf
    *  die Warteliste (keine Teil-Anmeldungen aus Kapazitaetsmangel). */
@@ -985,13 +985,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // sind übergreifend und gelten für die Sub-Events — also müssen die
     // Sub-Event-Bestätigungsmails ebenfalls an die Assistenz auf CC gehen.
     opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string }
-  ): Promise<boolean> {
+  ): Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' }> {
     // v17.25: Demo-Showcase-Event → No-Op, kein SP-Roundtrip. Die Register-
     // Seite blockt den Submit ohnehin mit einem Demo-Hinweis; dieser Guard
     // ist die zweite Verteidigungslinie.
-    if (isDemoShowcaseId(eventId)) return true;
+    if (isDemoShowcaseId(eventId)) return { ok: true, status: 'Angemeldet' };
     const subsiteUrl = subsiteMap.current[eventId];
-    if (!subsiteUrl) return false;
+    if (!subsiteUrl) return { ok: false, status: 'Warteliste' };
 
     // Vorname/Nachname aus displayName extrahieren falls nicht uebergeben.
     // Deloitte-Profile liefern den Namen typischerweise als "Nachname, Vorname"
@@ -1019,11 +1019,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
 
     // Pruefen ob schon registriert
     const existing = await eventService.getMyRegistration(subsiteUrl, emailToUse);
-    if (existing && existing.Status !== 'Abgemeldet') return false;
+    if (existing && existing.Status !== 'Abgemeldet') return { ok: false, status: 'Warteliste' };
 
     // Pruefen ob Platz frei oder Waitlist
     const event = events.find(e => e.id === eventId);
-    let status = 'Angemeldet';
+    let status: 'Angemeldet' | 'Warteliste' = 'Angemeldet';
     let effectiveStarterType: string | undefined = preferredStarterType;
 
     // B2Run Split-Capacity Logik (seit v6.5): getrennte Wartelisten pro StarterType.
@@ -1322,7 +1322,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       }
       await loadEvents();
     }
-    return success;
+    // v18.67: echten Status zurueckgeben (Angemeldet/Warteliste), damit die
+    // RegistrationPage das Ergebnis-Modal nicht mehr aus der gecachten
+    // currentParticipants-Schaetzung (isFull) ableiten muss — die war nach
+    // Cancel/Re-Register veraltet und zeigte faelschlich "Warteliste".
+    return { ok: success, status };
   }
 
   /**

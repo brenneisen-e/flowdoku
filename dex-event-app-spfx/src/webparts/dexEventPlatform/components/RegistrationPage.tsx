@@ -290,6 +290,11 @@ export default function RegistrationPage(): React.ReactElement {
   const [sessionMeta, setSessionMeta] = React.useState<Record<string, { count: number; wasRegistered: boolean }>>({});
   const [myParentReg, setMyParentReg] = React.useState<{ Status?: string } | null>(null);
   const [sessionsOnlySubmitted, setSessionsOnlySubmitted] = React.useState(false);
+  // v18.67: echtes Anmelde-Ergebnis (Angemeldet/Warteliste) aus der
+  // Haupt-Registrierung — das Ergebnis-Modal nutzt das statt der gecachten
+  // isFull-Schaetzung, die nach Cancel/Re-Register veraltet sein konnte und
+  // faelschlich „Warteliste" zeigte, obwohl der User angemeldet wurde.
+  const [submittedAsWaitlist, setSubmittedAsWaitlist] = React.useState(false);
 
   // v11.82: Team-Anmeldung — UI-State.
   // - isTeamMode: User hat den Toggle „Ich melde mich + mein Team an" angehakt.
@@ -1002,7 +1007,7 @@ export default function RegistrationPage(): React.ReactElement {
       if (willRegisterParent || registerForOther || shouldShadowRegisterParent) {
         setSubmitProgress(30);
         setSubmitProgressLabel(locale === 'de' ? 'Haupt-Event wird angemeldet…' : 'Registering for main event…');
-        parentOk = await registerForEvent(
+        const parentResult = await registerForEvent(
           selectedEventId!,
           customData,
           firstTrim,
@@ -1010,7 +1015,12 @@ export default function RegistrationPage(): React.ReactElement {
           participantEmail,
           starterTypeToUse || undefined
         );
-        if (parentOk) anySuccess = true;
+        parentOk = parentResult.ok;
+        if (parentOk) {
+          anySuccess = true;
+          // v18.67: echten Status fuers Ergebnis-Modal merken (nicht isFull).
+          setSubmittedAsWaitlist(parentResult.status === 'Warteliste');
+        }
         else setError(t('reg.error'));
         setSubmitProgress(50);
       } else if (isSubOnlyMode && parentAlreadyHasRow && sessionsBeingAdded && !registerForOther) {
@@ -1074,7 +1084,7 @@ export default function RegistrationPage(): React.ReactElement {
           // jetzt in der Schatten-Parent-Registrierung (s.o.) — die Sub-
           // Events bekommen nur ihre eigenen CFs aus dem Modal-Flow.
           const seFieldValues = { salutation, ...(sessionFieldValues[ce.id] || {}) };
-          const ok = await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType, crossCutCc ? { extraCc: crossCutCc } : undefined);
+          const ok = (await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType, crossCutCc ? { extraCc: crossCutCc } : undefined)).ok;
           if (ok) anySuccess = true;
           subOpsDone++;
           setSubmitProgress(50 + Math.floor((subOpsDone / Math.max(subOps, 1)) * 40));
@@ -1238,7 +1248,7 @@ export default function RegistrationPage(): React.ReactElement {
       const r = toRegister[i];
       setMassImportProgress(`${i + 1} / ${toRegister.length} — ${r.email}`);
       try {
-        const success = await registerForEvent(event.id, {}, r.firstName, r.lastName, r.email, undefined, { suppressMail, suppressOutlook });
+        const success = (await registerForEvent(event.id, {}, r.firstName, r.lastName, r.email, undefined, { suppressMail, suppressOutlook })).ok;
         if (success) ok++; else failed.push(r.email);
       } catch { failed.push(r.email); }
     }
@@ -1275,7 +1285,7 @@ export default function RegistrationPage(): React.ReactElement {
       ? (childTermPlural
           ? (locale === 'de' ? `Für ${childTermPlural} angemeldet` : `Registered for ${childTermPlural}`)
           : (t('reg.success.sessionsonly.title') || 'Für Sessions angemeldet'))
-      : (isFull ? t('reg.waitlisttitle') : t('reg.success'));
+      : (submittedAsWaitlist ? t('reg.waitlisttitle') : t('reg.success'));
     const successBody = sessionsOnlyHint
       ? (event.subEventsOnlyMode
           ? (childTermSingular
@@ -1290,7 +1300,7 @@ export default function RegistrationPage(): React.ReactElement {
                   ? `Du hast dich ausschließlich für die ausgewählten ${childTermPlural} angemeldet — NICHT für das Haupt-Event „${event.title}". Du bekommst pro ${childTermSingular} eine separate Bestätigungsmail und einen eigenen Outlook-Kalendereintrag.`
                   : `You registered exclusively for the selected ${childTermPlural} — NOT for the main event "${event.title}". You will receive a separate confirmation email and Outlook calendar entry per ${childTermSingular}.`)
               : (t('reg.success.sessionsonly.msg') || 'Du hast dich ausschließlich für die ausgewählten Sessions angemeldet — NICHT für das Haupt-Event "{title}". Du bekommst pro Session eine separate Bestätigungsmail und einen eigenen Outlook-Kalendereintrag.').replace('{title}', event.title)))
-      : (isFull
+      : (submittedAsWaitlist
           ? (registerForOther
               ? t('reg.waitlistmsg.other').replace('{name}', `${firstName} ${surname}`.trim()).replace('{title}', event.title).replace('{email}', email)
               : t('reg.waitlistmsg').replace('{title}', event.title))
