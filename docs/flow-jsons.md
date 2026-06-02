@@ -709,6 +709,31 @@ SET_FAILED (Email-Versand fehlgeschlagen):
 **Zweck:** Outlook-Kalendereintrag im Deloitte-Design erstellen (Logo + Event-Bild aus DEX_EmailTemplates) und iCalUId zurückschreiben
 **Letztes Update:** 2026-04-09
 
+### UI-Anleitung 2026-06-02 (v18.42) — Betreff bearbeitbar (eigener Termin-Titel)
+
+**Hintergrund:** Bisher war der Betreff des Outlook-Termins fest der Event-Titel
+(`item/subject` ← `Title`). Mit v18.42 kann der Organizer im Outlook-Body-Editor
+einen eigenen **Betreff** setzen (neue Spalte `OutlookSubject`). Leer = weiter
+Event-Titel. Der Flow soll `OutlookSubject` nehmen und nur bei leer auf `Title`
+zurückfallen.
+
+**Schritte:**
+
+1. Flow `DEX_CreateOutlookEvent` → **Bearbeiten** → Aktion **„Create event (V4)"**.
+2. Feld **Subject** anklicken → bestehenden `Title`-Token entfernen → **fx /
+   Expression** → eintragen:
+   ```
+   coalesce(triggerBody()?['OutlookSubject'], triggerBody()?['Title'])
+   ```
+   → **OK** → **Speichern**.
+3. Für **Aktualisierungen** zusätzlich im Flow `DEX_Outlook_Einladungen`, Compose
+   **`Build_Update_Body`**, die `"subject"`-Zeile auf denselben Fallback umstellen:
+   ```
+   "subject": "@{coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookSubject'], first(outputs('Get_Event_Details')?['body/value'])?['Title'])}"
+   ```
+
+Danach den aktuellen Flow-JSON hier einpflegen.
+
 ### UI-Anleitung 2026-06-02 (v18.34) — Ort in den Outlook-Termin übernehmen
 
 **Hintergrund:** Das „Ort"-Feld des Outlook-Termins blieb bisher leer, weil

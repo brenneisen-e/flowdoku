@@ -76,6 +76,8 @@ export interface DeloitteEvent {
   imageUrl?: string;
   subsiteUrl?: string;
   outlookBody: string;
+  /** v18.42: Betreff des Outlook-Termins. Leer = Event-Titel (Flow-Fallback). */
+  outlookSubject?: string;
   /** v18.34/v18.40: Ort für das Location-Feld des Outlook-Termins. Standard =
    *  Veranstaltungsort + Adresse (automatisch gebaut), im Wizard überschreibbar. */
   outlookLocation?: string;

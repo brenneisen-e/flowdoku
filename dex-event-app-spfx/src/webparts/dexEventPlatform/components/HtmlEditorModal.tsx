@@ -59,6 +59,12 @@ export interface HtmlEditorModalProps {
   /** Outlook-Termin: editierbare Unter-Ueberschrift (<h2>) */
   outlookSubheading?: string;
   onOutlookSubheadingChange?: (s: string) => void;
+  /** v18.42: Betreff (Titel des Outlook-Termins) — bearbeitbar. Leer = Event-Titel. */
+  outlookSubject?: string;
+  onOutlookSubjectChange?: (s: string) => void;
+  /** v18.42: read-only Kontext im Outlook-Editor — „wird übernommen". */
+  outlookTimeLabel?: string;
+  outlookLocationLabel?: string;
   previewVars?: Record<string, string>;
   insertableVars?: Array<{ key: string; label: string }>;
   logoBase64?: string;
@@ -162,6 +168,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     onEmailSubheadingColorChange, onEmailSubheadingFontSizeChange, onEmailSubheadingBoldChange, onEmailSubheadingItalicChange,
     outlookHeading, onOutlookHeadingChange,
     outlookSubheading, onOutlookSubheadingChange,
+    outlookSubject, onOutlookSubjectChange, outlookTimeLabel, outlookLocationLabel,
     previewVars = {}, insertableVars = [],
     logoBase64 = '', imageBase64 = '',
     extraAction,
@@ -437,7 +444,10 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
         display: 'flex', alignItems: 'stretch', justifyContent: 'center',
         padding: '32px 24px',
       }}
-      onClick={onClose}
+      // v18.43: KEIN Schließen per Backdrop-Klick mehr — der Editor enthält
+      // viel Arbeit (Body, Betreff, Logos) und wurde durch einen Fehlklick
+      // neben das Modal zu leicht geschlossen. Schließen nur noch aktiv über
+      // das X oben rechts (oder „Fertig").
     >
       <div
         className="card"
@@ -446,7 +456,6 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
           display: 'flex', flexDirection: 'column',
           background: '#fff', borderRadius: 'var(--dex-radius)', overflow: 'hidden',
         }}
-        onClick={e => e.stopPropagation()}
       >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px', borderBottom: '1px solid var(--dex-gray-200)' }}>
           <h3 style={{ margin: 0, fontSize: '1.05rem' }}>{title}</h3>
@@ -572,8 +581,32 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
 
               {previewMode === 'outlook' && (
                 <>
+                  {/* v18.42: Outlook-Übersicht — Betreff (bearbeitbar) + Termin/Ort (read-only). */}
+                  <div style={{ background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200, #eee)', borderRadius: 8, padding: '12px 14px', marginBottom: 6 }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)', letterSpacing: 0.4, marginBottom: 8 }}>
+                      OUTLOOK-TERMIN
+                    </div>
+                    {onOutlookSubjectChange && (
+                      <div style={{ marginBottom: 10 }}>
+                        <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', display: 'block', marginBottom: 4 }}>
+                          Betreff <span style={{ color: 'var(--dex-gray-400)', fontWeight: 400 }}>(Titel des Termins im Kalender — leer = Event-Titel)</span>
+                        </label>
+                        <input
+                          className="form-input"
+                          value={outlookSubject || ''}
+                          onChange={e => onOutlookSubjectChange(e.target.value)}
+                          placeholder={previewVars.EventTitle || 'Event-Titel'}
+                          style={{ fontSize: '0.85rem' }}
+                        />
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 18px', fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                      <div><strong style={{ color: 'var(--dex-gray-700)' }}>Termin:</strong> {outlookTimeLabel || '—'} <span style={{ color: 'var(--dex-gray-400)' }}>(wird übernommen)</span></div>
+                      <div><strong style={{ color: 'var(--dex-gray-700)' }}>Ort:</strong> {outlookLocationLabel || '—'} <span style={{ color: 'var(--dex-gray-400)' }}>(wird übernommen)</span></div>
+                    </div>
+                  </div>
                   <div>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', display: 'block', marginBottom: 4 }}>Überschrift (grün)</label>
+                    <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', display: 'block', marginBottom: 4 }}>Überschrift (grün) <span style={{ color: 'var(--dex-gray-400)', fontWeight: 400 }}>(große Zeile IM Termin-Text)</span></label>
                     <input
                       className="form-input"
                       value={outlookHeading || ''}
