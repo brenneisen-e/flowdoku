@@ -3888,7 +3888,13 @@ export default function EventCreationPage(): React.ReactElement {
     // Yellow-Hint in Schritt 1 wird nie aufgelöst.
     const hasItemForEvent = (id: string): boolean => items.some(it => it.eventId === id);
     // Hauptevent
-    if (editEvent.outlookDirty && !disableOutlook
+    // v18.50 BUG-FIX: auch im Dirty-Marker-Pfad das Top-Level-DisableOutlook
+    // prüfen (nicht das rohe `disableOutlook`, das beim Speichern auf einem
+    // Sub-Event-Tab den Sub-Wert hält) — sonst taucht das Hauptevent im
+    // Update-Modal als „Frühere Änderung nicht synchronisiert" auf, obwohl
+    // dort Outlook deaktiviert ist (Event mit Outlook nur auf Sub-Event-Ebene).
+    // Gleiche Falle wie v18.45 im Changed-Fields-Pfad oben.
+    if (editEvent.outlookDirty && !topDisableOutlook
         && (editEvent.outlookEventId || editEvent.calendarLink)
         && !hasItemForEvent(editEvent.id)) {
       items.push({
