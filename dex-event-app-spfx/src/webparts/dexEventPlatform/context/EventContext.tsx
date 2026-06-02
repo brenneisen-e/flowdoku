@@ -539,6 +539,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         safeRun('ensureIDReorderList', () => eventService.ensureIDReorderList(), parallelMarks),
         safeRun('ensureChangeLogList', () => eventService.ensureChangeLogList(), parallelMarks),
         safeRun('ensureTeamJoinRequestsList', () => eventService.ensureTeamJoinRequestsList(), parallelMarks),
+        safeRun('ensureOutlookLocksList', () => eventService.ensureOutlookLocksList(), parallelMarks),
         safeRun('ensureAssetsFolders', () => eventService.ensureAssetsFolders(), parallelMarks),
         safeRun('ensureLogosInConfig', () => eventService.ensureLogosInConfig(), parallelMarks),
       ]);
