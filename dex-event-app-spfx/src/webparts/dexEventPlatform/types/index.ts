@@ -78,6 +78,10 @@ export interface DeloitteEvent {
   outlookBody: string;
   /** v18.42: Betreff des Outlook-Termins. Leer = Event-Titel (Flow-Fallback). */
   outlookSubject?: string;
+  /** v18.44: abweichende Start-/End-Zeit des Outlook-Termins (ISO). Leer =
+   *  Event-Start/-Ende (Flow-Fallback). */
+  outlookStart?: string;
+  outlookEnd?: string;
   /** v18.34/v18.40: Ort für das Location-Feld des Outlook-Termins. Standard =
    *  Veranstaltungsort + Adresse (automatisch gebaut), im Wizard überschreibbar. */
   outlookLocation?: string;

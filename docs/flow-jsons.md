@@ -709,6 +709,31 @@ SET_FAILED (Email-Versand fehlgeschlagen):
 **Zweck:** Outlook-Kalendereintrag im Deloitte-Design erstellen (Logo + Event-Bild aus DEX_EmailTemplates) und iCalUId zurückschreiben
 **Letztes Update:** 2026-04-09
 
+### UI-Anleitung 2026-06-02 (v18.44) — Abweichendes Outlook-Datum (Start/Ende)
+
+**Hintergrund:** Der Organizer kann im Outlook-Editor (und im Reiter „Ort &
+Programm" für den Ort) ein vom Event abweichendes **Outlook-Datum** setzen
+(neue Spalten `OutlookStart` / `OutlookEnd`, DateTime). Leer = der Termin nutzt
+weiter `StartDate` / `EndDate` des Events. Der Flow soll bevorzugt
+`OutlookStart`/`OutlookEnd` nehmen und nur bei leer auf `StartDate`/`EndDate`
+zurückfallen.
+
+**`DEX_CreateOutlookEvent` → „Create event (V4)":**
+- Feld **Start time** → fx:
+  ```
+  convertFromUtc(coalesce(triggerBody()?['OutlookStart'], triggerBody()?['StartDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')
+  ```
+- Feld **End time** → fx:
+  ```
+  convertFromUtc(coalesce(triggerBody()?['OutlookEnd'], triggerBody()?['EndDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')
+  ```
+
+**`DEX_Outlook_Einladungen` → Compose `Build_Update_Body`:** die `start.dateTime`
+und `end.dateTime` analog auf `coalesce(...OutlookStart, ...StartDate)` bzw.
+`coalesce(...OutlookEnd, ...EndDate)` umstellen (jeweils `first(outputs('Get_Event_Details')?['body/value'])?['…']`).
+
+Danach den aktuellen Flow-JSON hier einpflegen.
+
 ### UI-Anleitung 2026-06-02 (v18.42) — Betreff bearbeitbar (eigener Termin-Titel)
 
 **Hintergrund:** Bisher war der Betreff des Outlook-Termins fest der Event-Titel
@@ -834,18 +859,19 @@ COMPOSE_IMAGE (Event-Bild oder Default-Bild):
   "runAfter": { "Compose_Logo": ["SUCCEEDED"] }
 }
 
-CREATE_EVENT_V4 (Outlook-Termin mit Deloitte-Design Body):
+CREATE_EVENT_V4 (Outlook-Termin mit Deloitte-Design Body) — Stand 2026-06-02 (v18.42/v18.44):
 {
   "type": "OpenApiConnection",
   "inputs": {
     "parameters": {
       "table": "AAMkADU5YjlkMDBiLWU2MDktNGViMy1iNGIwLTI0YWFkNDkyN2VjMABGAAAAAABjJcNB5xJWS7D2nCeePixeBwAbtMj6YVUGQJroN6O--ImBAAAAAAEGAAAbtMj6YVUGQJroN6O--ImBAAKF4fCpAAA=",
-      "item/subject": "@triggerBody()?['Title']",
-      "item/start": "@convertFromUtc(triggerBody()?['StartDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')",
-      "item/end": "@convertFromUtc(triggerBody()?['EndDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')",
+      "item/subject": "@coalesce(triggerBody()?['OutlookSubject'], triggerBody()?['Title'])",
+      "item/start": "@convertFromUtc(coalesce(triggerBody()?['OutlookStart'], triggerBody()?['StartDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')",
+      "item/end": "@convertFromUtc(coalesce(triggerBody()?['OutlookEnd'], triggerBody()?['EndDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')",
       "item/timeZone": "(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna",
       "item/requiredAttendees": "@last(split(replace(coalesce(triggerBody()?['OrganizerEmail'], ''), '</div>', ''), '\">'))",
       "item/body": "<p class=\"editor-paragraph\">@{replace(replace(coalesce(triggerBody()?['OutlookBody'], ''), '{{LOGO_URL}}', outputs('Compose_Logo')), '{{ORB_URL}}', outputs('Compose_Image'))}</p>",
+      "item/location": "@triggerBody()?['OutlookLocation']",
       "item/showAs": "busy",
       "item/responseRequested": false,
       "item/sensitivity": "private"
@@ -1008,16 +1034,18 @@ robust genug fuer beliebige HTML-Inhalte (Quotes/Newlines/Sonderzeichen brechen
 das Parsing). Stattdessen wird der Body via Compose-Action vorgebaut und im
 HTTP-PATCH referenziert — Logic Apps escaped die `@{...}`-Tokens automatisch.
 
-**Compose `Build_Update_Body`** (vor `Send_an_HTTP_request` ausfuehren):
+**Compose `Build_Update_Body`** (vor `Send_an_HTTP_request` ausfuehren) — Stand
+2026-06-02 (v18.42/v18.44, im Tenant verifiziert): Betreff/Start/Ende/Ort nutzen
+`coalesce(Outlook<X>, <Original>)` — leerer Override ⇒ Event-Wert:
 ```json
 {
-  "subject": "@{first(outputs('Get_Event_Details')?['body/value'])?['Title']}",
+  "subject": "@{coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookSubject'], first(outputs('Get_Event_Details')?['body/value'])?['Title'])}",
   "start": {
-    "dateTime": "@{convertFromUtc(first(outputs('Get_Event_Details')?['body/value'])?['StartDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')}",
+    "dateTime": "@{convertFromUtc(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookStart'], first(outputs('Get_Event_Details')?['body/value'])?['StartDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')}",
     "timeZone": "W. Europe Standard Time"
   },
   "end": {
-    "dateTime": "@{convertFromUtc(first(outputs('Get_Event_Details')?['body/value'])?['EndDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')}",
+    "dateTime": "@{convertFromUtc(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookEnd'], first(outputs('Get_Event_Details')?['body/value'])?['EndDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')}",
     "timeZone": "W. Europe Standard Time"
   },
   "showAs": "busy",

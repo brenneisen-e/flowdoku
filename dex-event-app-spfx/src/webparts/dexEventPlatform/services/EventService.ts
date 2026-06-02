@@ -447,6 +447,8 @@ export interface SPEvent {
   CalendarLink: string;
   OutlookBody: string; // Text fuer den Outlook-Kalendereintrag
   OutlookSubject?: string; // v18.42: Betreff des Outlook-Termins (leer = Event-Titel)
+  OutlookStart?: string; // v18.44: abweichende Start-Zeit des Outlook-Termins (ISO, leer = Event-Start)
+  OutlookEnd?: string;   // v18.44: abweichende End-Zeit des Outlook-Termins (ISO, leer = Event-Ende)
   OutlookLocation?: string; // v18.34: lesbarer Ort fuer das Location-Feld des Outlook-Termins
   EmailLanguage: string; // DE oder EN
   RegistrationLanguage?: string; // v18.35: erzwungene Sprache der Anmeldeseite ('de' | 'en' | '')
@@ -2661,6 +2663,8 @@ export class EventService {
       { title: 'CalendarLink', type: 2 },
       { title: 'OutlookBody', type: 3 }, // Multiline - Text fuer Outlook-Termin
       { title: 'OutlookSubject', type: 2 }, // v18.42: Single line - Betreff des Outlook-Termins (leer = Titel)
+      { title: 'OutlookStart', type: 4 }, // v18.44: DateTime - abweichende Start-Zeit (leer = Event-Start)
+      { title: 'OutlookEnd', type: 4 },   // v18.44: DateTime - abweichende End-Zeit (leer = Event-Ende)
       { title: 'OutlookLocation', type: 2 }, // v18.34: Single line - lesbarer Ort fuer den Outlook-Termin
       { title: 'EmailLanguage', type: 2 }, // DE oder EN
       { title: 'RegistrationLanguage', type: 2 }, // v18.35: erzwungene Anmeldeseiten-Sprache ('de'|'en'|'')
@@ -3070,7 +3074,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,OutlookSubject,OutlookLocation,EmailLanguage,RegistrationLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,SelfCheckInEnabled,SelfCheckInToken,SelfCheckInFrom,SelfCheckInTo,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,OutlookSubject,OutlookStart,OutlookEnd,OutlookLocation,EmailLanguage,RegistrationLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,SelfCheckInEnabled,SelfCheckInToken,SelfCheckInFrom,SelfCheckInTo,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
 
   /**
    * Strip SharePoint-Note-Field-Wrapper.
@@ -3225,6 +3229,8 @@ export class EventService {
     location: string;
     locationAddress?: string; // JSON-String: { street, houseNo, zip, city }
     outlookSubject?: string; // v18.42: Betreff des Outlook-Termins (leer = Titel)
+    outlookStart?: string; // v18.44: abweichende Start-Zeit (ISO, leer = Event-Start)
+    outlookEnd?: string;   // v18.44: abweichende End-Zeit (ISO, leer = Event-Ende)
     outlookLocation?: string; // v18.40: manueller Outlook-Ort (leer = Auto aus Ort + Adresse)
     locationFilter: string;
     audience: string;
@@ -3423,6 +3429,9 @@ export class EventService {
         'LocationAddress': event.locationAddress || '',
         // v18.42: Outlook-Betreff (leer = Flow fällt auf Titel zurück via coalesce).
         'OutlookSubject': (event.outlookSubject && event.outlookSubject.trim()) ? event.outlookSubject.trim() : '',
+        // v18.44: abweichendes Outlook-Datum (leer = Flow nutzt StartDate/EndDate).
+        'OutlookStart': event.outlookStart || null,
+        'OutlookEnd': event.outlookEnd || null,
         // v18.34/v18.40: Outlook-Ort = manuelle Überschreibung, sonst
         // automatisch aus Veranstaltungsort + Adresse. Flow mappt OutlookLocation 1:1.
         'OutlookLocation': (event.outlookLocation && event.outlookLocation.trim())

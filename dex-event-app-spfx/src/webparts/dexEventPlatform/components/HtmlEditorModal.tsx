@@ -62,9 +62,13 @@ export interface HtmlEditorModalProps {
   /** v18.42: Betreff (Titel des Outlook-Termins) — bearbeitbar. Leer = Event-Titel. */
   outlookSubject?: string;
   onOutlookSubjectChange?: (s: string) => void;
-  /** v18.42: read-only Kontext im Outlook-Editor — „wird übernommen". */
-  outlookTimeLabel?: string;
-  outlookLocationLabel?: string;
+  /** v18.44: Termin-Datum-Editor (zwei DatePicker, vom Parent gerendert mit der
+   *  gleichen UI wie der Wizard). Leer-Werte zeigen das übernommene Event-Datum. */
+  outlookDateEditor?: React.ReactNode;
+  /** v18.44: Outlook-Ort — überschreibbar. Leer = aus „Ort & Programm" übernommen. */
+  outlookLocationValue?: string;
+  onOutlookLocationChange?: (s: string) => void;
+  outlookLocationAuto?: string;
   previewVars?: Record<string, string>;
   insertableVars?: Array<{ key: string; label: string }>;
   logoBase64?: string;
@@ -168,7 +172,8 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     onEmailSubheadingColorChange, onEmailSubheadingFontSizeChange, onEmailSubheadingBoldChange, onEmailSubheadingItalicChange,
     outlookHeading, onOutlookHeadingChange,
     outlookSubheading, onOutlookSubheadingChange,
-    outlookSubject, onOutlookSubjectChange, outlookTimeLabel, outlookLocationLabel,
+    outlookSubject, onOutlookSubjectChange,
+    outlookDateEditor, outlookLocationValue, onOutlookLocationChange, outlookLocationAuto,
     previewVars = {}, insertableVars = [],
     logoBase64 = '', imageBase64 = '',
     extraAction,
@@ -600,10 +605,30 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                         />
                       </div>
                     )}
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 18px', fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
-                      <div><strong style={{ color: 'var(--dex-gray-700)' }}>Termin:</strong> {outlookTimeLabel || '—'} <span style={{ color: 'var(--dex-gray-400)' }}>(wird übernommen)</span></div>
-                      <div><strong style={{ color: 'var(--dex-gray-700)' }}>Ort:</strong> {outlookLocationLabel || '—'} <span style={{ color: 'var(--dex-gray-400)' }}>(wird übernommen)</span></div>
-                    </div>
+                    {/* v18.44: Termin (Datum) überschreibbar — DatePicker vom Parent. */}
+                    {outlookDateEditor && (
+                      <div style={{ marginBottom: 10 }}>
+                        <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', display: 'block', marginBottom: 4 }}>
+                          Termin <span style={{ color: 'var(--dex-gray-400)', fontWeight: 400 }}>(leer = aus Schritt &bdquo;Grundlagen&ldquo; bzw. Sub-Event-Datum übernommen)</span>
+                        </label>
+                        {outlookDateEditor}
+                      </div>
+                    )}
+                    {/* v18.44: Ort überschreibbar. */}
+                    {onOutlookLocationChange && (
+                      <div>
+                        <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', display: 'block', marginBottom: 4 }}>
+                          Ort <span style={{ color: 'var(--dex-gray-400)', fontWeight: 400 }}>(leer = aus Reiter &bdquo;Ort &amp; Programm&ldquo; übernommen)</span>
+                        </label>
+                        <input
+                          className="form-input"
+                          value={outlookLocationValue || ''}
+                          onChange={e => onOutlookLocationChange(e.target.value)}
+                          placeholder={outlookLocationAuto || 'Ort'}
+                          style={{ fontSize: '0.85rem' }}
+                        />
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', display: 'block', marginBottom: 4 }}>Überschrift (grün) <span style={{ color: 'var(--dex-gray-400)', fontWeight: 400 }}>(große Zeile IM Termin-Text)</span></label>

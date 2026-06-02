@@ -380,6 +380,9 @@ export interface CreateEventInput {
   outlookLocation?: string;
   /** v18.42: Betreff des Outlook-Termins; leer = Event-Titel. */
   outlookSubject?: string;
+  /** v18.44: abweichende Outlook-Start/-Ende (ISO); leer = Event-Datum. */
+  outlookStart?: string;
+  outlookEnd?: string;
   emailTemplateOverrides?: string;
   disableEmails?: boolean;
   disableOutlook?: boolean;
@@ -725,6 +728,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       subsiteUrl: e.SubsiteUrl || '',
       outlookBody: e.OutlookBody || '',
       outlookSubject: e.OutlookSubject || undefined,
+      outlookStart: e.OutlookStart || undefined,
+      outlookEnd: e.OutlookEnd || undefined,
       outlookLocation: e.OutlookLocation || undefined,
       outlookEventId: e.OutlookEventId || '',
       // v11.61: CalendarLink (iCalUId) muss in den Event-Type, weil der
