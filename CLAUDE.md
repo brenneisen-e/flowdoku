@@ -899,6 +899,18 @@ Die Datei `docs/flow-jsons.md` enthält die vollständigen Flow-Definitionen all
     siehe `docs/flow-jsons.md`, UI-Anleitung v18.42). Eine reine Betreff-
     Änderung gilt als Outlook-relevant (öffnet das Update-Modal). Der Editor
     zeigt zusätzlich **Termin + Ort read-only** („wird übernommen").
+  - **Abweichendes Datum (v18.44):** Neue Spalten `OutlookStart` / `OutlookEnd`
+    (DateTime) auf `DEX_Events` — optional abweichende Termin-Zeit (leer =
+    Event-`StartDate`/`EndDate`). Im Outlook-Body-Editor (Schritt 6) mit
+    **denselben DatePickern wie der Wizard** bearbeitbar (Parent rendert den
+    Picker-Node, Modal nimmt `outlookDateEditor`-Prop). Per-Tab (Top +
+    Sub-Events), als ISO gespeichert; Override-Werte werden direkt im aktiven
+    Tab gelesen/geschrieben (kein Comm-Mirror nötig). Flow: `item/start` ←
+    `coalesce(OutlookStart, StartDate)`, `item/end` analog (Create + Update,
+    siehe `docs/flow-jsons.md` v18.44). Override-Änderung gilt als Termin-
+    Änderung (öffnet Update-Modal). Der **Ort** (`OutlookLocation`) ist seit
+    v18.44 ebenfalls pro Sub-Event im Reiter „Ort & Programm" UND im
+    Outlook-Editor überschreibbar (leer = Auto aus Veranstaltungsort + Adresse).
   - **Ort im Termin (v18.34):** Neue Spalte `OutlookLocation` (Single line text)
     auf `DEX_Events` — lesbarer Ort (Veranstaltungsort + Adresse), gebaut von
     `utils/eventFormat.ts → buildOutlookLocation()`. Geschrieben beim Anlegen

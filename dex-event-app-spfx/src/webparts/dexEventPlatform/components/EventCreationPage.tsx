@@ -870,6 +870,10 @@ export default function EventCreationPage(): React.ReactElement {
   // v18.42: Betreff des Outlook-Termins (leer = Event-Titel). Per-Tab gespiegelt
   // wie outlookHeading; persistiert in der DEX_Events-Spalte OutlookSubject.
   const [outlookSubject, setOutlookSubject] = React.useState<string>(editEvent?.outlookSubject || '');
+  // v18.44: abweichendes Outlook-Datum (Top-Level). Leer = Event-Start/-Ende.
+  // Als ISO gespeichert (wie Sub-Event-Datum); DatePicker konvertiert via isoToLocal.
+  const [outlookStartOverride, setOutlookStartOverride] = React.useState<string>(editEvent?.outlookStart || '');
+  const [outlookEndOverride, setOutlookEndOverride] = React.useState<string>(editEvent?.outlookEnd || '');
   // Modal-State fuer den HTML-Editor (Outlook-Body + E-Mail-Templates)
   const [htmlEditorOpen, setHtmlEditorOpen] = React.useState(false);
   const [htmlEditorMode, setHtmlEditorMode] = React.useState<'outlook' | 'email' | 'description'>('outlook');
@@ -1105,6 +1109,10 @@ export default function EventCreationPage(): React.ReactElement {
     outlookSubheading?: string;
     /** v18.42: Betreff des Sub-Event-Outlook-Termins (leer = Sub-Event-Titel). */
     outlookSubject?: string;
+    /** v18.44: abweichendes Outlook-Datum/-Ort des Sub-Events (ISO/Text). Leer = übernommen. */
+    outlookStart?: string;
+    outlookEnd?: string;
+    outlookLocation?: string;
     /** v14.4: Pro-Sub-Event Mail-Text-Overrides (Anmeldung / Warteliste /
      *  Abmeldung / Nachruecken). Erlaubt es, jedem Sub-Event eigene Subjects,
      *  Headings und Bodies zu geben — Frage von 2026-05 (3 Sub-Events sollen
@@ -1233,6 +1241,9 @@ export default function EventCreationPage(): React.ReactElement {
       outlookHeading: parsedHeads.heading || k.title || '',
       outlookSubheading: parsedHeads.subheading && parsedHeads.subheading !== 'Event Details' ? parsedHeads.subheading : '',
       outlookSubject: k.outlookSubject || '',
+      outlookStart: k.outlookStart || '',
+      outlookEnd: k.outlookEnd || '',
+      outlookLocation: k.outlookLocation || '',
       // v11.57: Snapshot der initialen Outlook-relevanten Felder
       initialOutlookEventId: k.outlookEventId || '',
       // v11.61: CalendarLink (iCalUId) als Outlook-Existenz-Indikator. Der
@@ -1358,11 +1369,15 @@ export default function EventCreationPage(): React.ReactElement {
   // Werten verglichen — Aenderung loest das Update-Confirm-Modal aus.
   // Im Ref, weil wir das einmal beim Mount fixieren und nicht bei Re-Renders
   // neu setzen wollen.
-  const initialOutlookSnapshot = React.useRef<{ title: string; startDate: string; endDate: string; outlookBody: string; outlookLocation: string; outlookSubject: string }>({
+  const initialOutlookSnapshot = React.useRef<{ title: string; startDate: string; endDate: string; outlookBody: string; outlookLocation: string; outlookSubject: string; outlookStart: string; outlookEnd: string }>({
     title: editEvent?.title || '',
     startDate: editEvent?.startDate || '',
     endDate: editEvent?.endDate || '',
     outlookBody: editEvent?.outlookBody || '',
+    // v18.44: abweichendes Outlook-Datum in den Snapshot — eine Override-Änderung
+    // soll das Update-Modal öffnen.
+    outlookStart: editEvent?.outlookStart || '',
+    outlookEnd: editEvent?.outlookEnd || '',
     // v18.34/v18.40: effektiver Ort in den Snapshot (gespeicherte Override ODER
     // Auto). Eine reine Ort-Aenderung soll das Outlook-Update-Modal oeffnen.
     outlookLocation: editEvent?.outlookLocation || buildOutlookLocation(editEvent?.location, editEvent?.locationAddress),
@@ -2382,6 +2397,9 @@ export default function EventCreationPage(): React.ReactElement {
         outlookEventId: '',
         outlookBody: wrappedSubOutlookBody,
         outlookSubject: subOutlookSubject || undefined,
+        outlookStart: (draft.outlookStart || '') || undefined,
+        outlookEnd: (draft.outlookEnd || '') || undefined,
+        outlookLocation: (draft.outlookLocation || '') || undefined,
         agenda: draftAgendaJson,
         transfers: draftTransfersJson,
         documents: '[]',
@@ -2532,6 +2550,9 @@ export default function EventCreationPage(): React.ReactElement {
           'DisableEmails': childPayload.disableEmails,
           'DisableOutlook': childPayload.disableOutlook,
           'OutlookSubject': subOutlookSubject,
+          'OutlookStart': (draft.outlookStart || '') || null,
+          'OutlookEnd': (draft.outlookEnd || '') || null,
+          'OutlookLocation': (draft.outlookLocation || '') || '',
           'EmailLanguage': childPayload.emailLanguage,
           'OutlookBody': childPayload.outlookBody,
           'EmailTemplateOverrides': childPayload.emailTemplateOverrides,
@@ -2931,6 +2952,9 @@ export default function EventCreationPage(): React.ReactElement {
       updates['OutlookBody'] = wrappedOutlook.replace(/\{\{ORB_URL\}\}/g, effOutlookLogo || getCachedOrbBase64() || '');
       // v18.42: Betreff des Outlook-Termins mit-persistieren (leer = Titel via Flow-Fallback).
       updates['OutlookSubject'] = effOutlookSubject.trim();
+      // v18.44: abweichendes Outlook-Datum mit-persistieren (leer = Event-Datum via Flow-Fallback).
+      updates['OutlookStart'] = outlookStartOverride || null;
+      updates['OutlookEnd'] = outlookEndOverride || null;
       updates['Agenda'] = JSON.stringify(agenda);
       updates['Transfers'] = JSON.stringify(transferTimes);
       updates['FunZone'] = JSON.stringify(quiz);
@@ -3408,6 +3432,8 @@ export default function EventCreationPage(): React.ReactElement {
         // v18.40: manueller Outlook-Ort (leer = Auto in createEvent).
         outlookLocation: outlookLocationOverride.trim() || undefined,
         outlookSubject: effOutlookSubject.trim() || undefined,
+        outlookStart: outlookStartOverride || undefined,
+        outlookEnd: outlookEndOverride || undefined,
         locationFilter,
         audience,
         audienceResolvedEmails: audienceResolved,
@@ -3776,6 +3802,9 @@ export default function EventCreationPage(): React.ReactElement {
     if (currentTopLocation !== (snap.outlookLocation || '')) topChangedFields.push('location');
     // v18.42: reine Betreff-Aenderung gilt ebenfalls als Outlook-relevant.
     if (currentTopSubject !== (snap.outlookSubject || '').trim()) topChangedFields.push('subject');
+    // v18.44: abweichendes Outlook-Datum (Override) gilt als Termin-Aenderung.
+    if ((outlookStartOverride || '') !== (snap.outlookStart || '') && topChangedFields.indexOf('startDate') < 0) topChangedFields.push('startDate');
+    if ((outlookEndOverride || '') !== (snap.outlookEnd || '') && topChangedFields.indexOf('endDate') < 0) topChangedFields.push('endDate');
     // v11.61: Beide Pointer pruefen — DEX_CreateOutlookEvent setzt nur
     // CalendarLink auf Erfolg, OutlookEventId bleibt leer. Wer beides
     // leer hat, hatte nie einen Outlook-Termin.
@@ -6330,6 +6359,23 @@ export default function EventCreationPage(): React.ReactElement {
                         <input className="form-input" value={seAddr.zip} onChange={e => updateSub({ locationAddress: { ...seAddr, zip: e.target.value } })} placeholder="PLZ" />
                         <input className="form-input" value={seAddr.city} onChange={e => updateSub({ locationAddress: { ...seAddr, city: e.target.value } })} placeholder="Ort" />
                       </div>
+                    </div>
+                    {/* v18.44: Outlook-Ort pro Sub-Event überschreibbar (auch hier, nicht nur im Outlook-Editor). */}
+                    <div className="form-group" style={{ marginTop: 16 }}>
+                      <label className="form-label">
+                        {isDe ? 'Ort im Outlook-Termin' : 'Location in the Outlook event'}
+                      </label>
+                      <input
+                        className="form-input"
+                        value={se.outlookLocation || ''}
+                        onChange={e => updateSub({ outlookLocation: e.target.value })}
+                        placeholder={buildOutlookLocation(se.location, seAddr) || (isDe ? 'z.B. Mezzomar, Harffstraße 110a, Düsseldorf' : 'e.g. Mezzomar, Harffstraße 110a, Düsseldorf')}
+                      />
+                      <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                        {isDe
+                          ? 'Leer lassen = automatisch aus Veranstaltungsort + Adresse dieses Sub-Events.'
+                          : 'Leave empty = automatic from this sub-event\'s venue + address.'}
+                      </span>
                     </div>
                     <div className="form-group" style={{ marginTop: 24 }}>
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
@@ -11932,10 +11978,55 @@ export default function EventCreationPage(): React.ReactElement {
           if (!d) return '';
           try { return new Date(d).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return ''; }
         };
-        const outlookTimeLabel = olStart ? `${olFmt(olStart)}${olEnd ? ' – ' + olFmt(olEnd) : ''}` : '';
-        const outlookLocationLabel = olActiveSub
+        // v18.44: Auto-Ort (= „würde übernommen") als Platzhalter.
+        const outlookLocationAuto = olActiveSub
           ? (buildOutlookLocation(olActiveSub.location, olActiveSub.locationAddress) || olActiveSub.location || '')
-          : (outlookLocationOverride.trim() || buildOutlookLocation(location, { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity }));
+          : (buildOutlookLocation(location, { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity }));
+        // v18.44: aktuelle Override-Werte des aktiven Tabs (leer = übernommen).
+        const olLocationOverrideVal = olActiveSub ? (olActiveSub.outlookLocation || '') : outlookLocationOverride;
+        const olStartOverrideVal = olActiveSub ? (olActiveSub.outlookStart || '') : outlookStartOverride;
+        const olEndOverrideVal = olActiveSub ? (olActiveSub.outlookEnd || '') : outlookEndOverride;
+        const setOlLocation = (v: string): void => {
+          if (olActiveSub) { const fi = activeCommTabIdx - 1; setSubEvents(prev => prev.map((s, i) => i === fi ? { ...s, outlookLocation: v } : s)); }
+          else setOutlookLocationOverride(v);
+        };
+        const setOlStart = (iso: string): void => {
+          if (olActiveSub) { const fi = activeCommTabIdx - 1; setSubEvents(prev => prev.map((s, i) => i === fi ? { ...s, outlookStart: iso } : s)); }
+          else setOutlookStartOverride(iso);
+        };
+        const setOlEnd = (iso: string): void => {
+          if (olActiveSub) { const fi = activeCommTabIdx - 1; setSubEvents(prev => prev.map((s, i) => i === fi ? { ...s, outlookEnd: iso } : s)); }
+          else setOutlookEndOverride(iso);
+        };
+        const pad2 = (n: number): string => String(n).padStart(2, '0');
+        const olIsoToDate = (iso?: string): Date | null => {
+          if (!iso) return null;
+          const loc = isoToLocal(iso); if (!loc) return null;
+          const [dp, tp] = loc.split('T'); const [y, mo, da] = dp.split('-').map(n => parseInt(n, 10)); const [h, mi] = (tp || '00:00').split(':').map(n => parseInt(n, 10));
+          return new Date(y, mo - 1, da, h, mi, 0, 0);
+        };
+        const olDateToIso = (d: Date | null): string => {
+          if (!d) return '';
+          return berlinLocalToUtcIso(`${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}T${pad2(d.getHours())}:${pad2(d.getMinutes())}`);
+        };
+        const dpCommon = {
+          showTimeSelect: true, timeFormat: 'HH:mm', timeIntervals: 15, timeCaption: 'Uhrzeit',
+          dateFormat: 'dd.MM.yyyy, HH:mm', locale: 'de', className: 'form-input',
+          wrapperClassName: 'dex-datepicker-wrapper', calendarClassName: 'dex-datepicker-calendar',
+          popperPlacement: 'bottom-start' as const, isClearable: true, autoComplete: 'off',
+        };
+        const outlookDateEditor = (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <label style={{ fontSize: '0.68rem', color: 'var(--dex-gray-400)' }}>Start</label>
+              <DatePicker {...dpCommon} selected={olIsoToDate(olStartOverrideVal)} onChange={(d: Date | null) => setOlStart(olDateToIso(d))} placeholderText={olStart ? olFmt(olStart) + ' (übernommen)' : 'Start'} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <label style={{ fontSize: '0.68rem', color: 'var(--dex-gray-400)' }}>Ende</label>
+              <DatePicker {...dpCommon} selected={olIsoToDate(olEndOverrideVal)} onChange={(d: Date | null) => setOlEnd(olDateToIso(d))} placeholderText={olEnd ? olFmt(olEnd) + ' (übernommen)' : 'Ende'} />
+            </div>
+          </div>
+        );
         return (
           <HtmlEditorModal
             open={htmlEditorOpen}
@@ -11982,8 +12073,10 @@ export default function EventCreationPage(): React.ReactElement {
             onOutlookSubheadingChange={isOutlook ? setOutlookSubheading : undefined}
             outlookSubject={isOutlook ? outlookSubject : undefined}
             onOutlookSubjectChange={isOutlook ? setOutlookSubject : undefined}
-            outlookTimeLabel={isOutlook ? outlookTimeLabel : undefined}
-            outlookLocationLabel={isOutlook ? outlookLocationLabel : undefined}
+            outlookDateEditor={isOutlook ? outlookDateEditor : undefined}
+            outlookLocationValue={isOutlook ? olLocationOverrideVal : undefined}
+            onOutlookLocationChange={isOutlook ? setOlLocation : undefined}
+            outlookLocationAuto={isOutlook ? outlookLocationAuto : undefined}
             previewVars={{
               // v17.5: Im Sub-Event-Kommunikations-Tab den Titel des
               // aktiven Sub-Events einsetzen, sonst den Hauptevent-Titel.

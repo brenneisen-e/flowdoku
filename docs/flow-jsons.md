@@ -709,6 +709,31 @@ SET_FAILED (Email-Versand fehlgeschlagen):
 **Zweck:** Outlook-Kalendereintrag im Deloitte-Design erstellen (Logo + Event-Bild aus DEX_EmailTemplates) und iCalUId zurückschreiben
 **Letztes Update:** 2026-04-09
 
+### UI-Anleitung 2026-06-02 (v18.44) — Abweichendes Outlook-Datum (Start/Ende)
+
+**Hintergrund:** Der Organizer kann im Outlook-Editor (und im Reiter „Ort &
+Programm" für den Ort) ein vom Event abweichendes **Outlook-Datum** setzen
+(neue Spalten `OutlookStart` / `OutlookEnd`, DateTime). Leer = der Termin nutzt
+weiter `StartDate` / `EndDate` des Events. Der Flow soll bevorzugt
+`OutlookStart`/`OutlookEnd` nehmen und nur bei leer auf `StartDate`/`EndDate`
+zurückfallen.
+
+**`DEX_CreateOutlookEvent` → „Create event (V4)":**
+- Feld **Start time** → fx:
+  ```
+  convertFromUtc(coalesce(triggerBody()?['OutlookStart'], triggerBody()?['StartDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')
+  ```
+- Feld **End time** → fx:
+  ```
+  convertFromUtc(coalesce(triggerBody()?['OutlookEnd'], triggerBody()?['EndDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')
+  ```
+
+**`DEX_Outlook_Einladungen` → Compose `Build_Update_Body`:** die `start.dateTime`
+und `end.dateTime` analog auf `coalesce(...OutlookStart, ...StartDate)` bzw.
+`coalesce(...OutlookEnd, ...EndDate)` umstellen (jeweils `first(outputs('Get_Event_Details')?['body/value'])?['…']`).
+
+Danach den aktuellen Flow-JSON hier einpflegen.
+
 ### UI-Anleitung 2026-06-02 (v18.42) — Betreff bearbeitbar (eigener Termin-Titel)
 
 **Hintergrund:** Bisher war der Betreff des Outlook-Termins fest der Event-Titel
