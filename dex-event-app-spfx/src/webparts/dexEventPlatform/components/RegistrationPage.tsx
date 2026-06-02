@@ -69,8 +69,22 @@ export default function RegistrationPage(): React.ReactElement {
   const { events, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers, searchUser, isAdmin } = useRoles();
-  const { t, locale } = useLanguage();
+  const { locale: appLocale } = useLanguage();
   const event = events.find(e => e.id === selectedEventId);
+
+  // v18.35: Erzwungene Anmeldesprache. Hat der Organizer für dieses Event eine
+  // feste Anmeldesprache gesetzt ('de'/'en'), wird die GESAMTE Anmeldeseite
+  // (App-Chrome, Form-Chrome, Inline-Texte UND Disclaimer) in dieser Sprache
+  // angezeigt — unabhängig von der App-Sprache des Teilnehmers. Wir
+  // überschreiben dazu `locale` und `t` lokal; alle bestehenden Verwendungen
+  // im Rest der Datei greifen damit automatisch auf die erzwungene Sprache zu.
+  const forcedRegLang: Locale | undefined =
+    (event?.registrationLanguage === 'de' || event?.registrationLanguage === 'en') ? event.registrationLanguage : undefined;
+  const locale: Locale = forcedRegLang || appLocale;
+  const t = React.useCallback(
+    (key: string): string => appTranslations[locale][key] || appTranslations['en'][key] || appTranslations['de'][key] || key,
+    [locale]
+  );
 
   // v11.56: tEvent() liefert Form-Chrome-Strings (Placeholder, Hints, Sub-Event-
   // Sektion) in der Event-Sprache statt der User-Locale. Wenn das Event auf
@@ -83,9 +97,11 @@ export default function RegistrationPage(): React.ReactElement {
   // Anmelde-Formular auf Englisch, auch wenn der Organizer die Mail-Sprache
   // auf DE belassen hat. `pickLocalized` weiter unten zieht zusätzlich für
   // jedes Custom-Field die EN-Variante, falls vorhanden.
-  const eventLocale: Locale = event?.bilingualFields
-    ? locale
-    : ((event?.emailLanguage === 'EN') ? 'en' : 'de');
+  const eventLocale: Locale = forcedRegLang
+    ? forcedRegLang
+    : (event?.bilingualFields
+      ? locale
+      : ((event?.emailLanguage === 'EN') ? 'en' : 'de'));
   const tEvent = React.useCallback((key: string): string => {
     return appTranslations[eventLocale][key] || appTranslations['en'][key] || appTranslations['de'][key] || t(key) || key;
   }, [eventLocale, t]);

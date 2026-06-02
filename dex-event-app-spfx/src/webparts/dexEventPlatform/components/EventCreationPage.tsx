@@ -1463,6 +1463,11 @@ export default function EventCreationPage(): React.ReactElement {
   const [askSalutation, setAskSalutation] = React.useState<boolean>(
     !!editEvent?.askSalutation
   );
+  // v18.35: Anmeldesprache vorgeben. '' = App-Sprache (Default), 'de' / 'en' =
+  // Anmeldeseite (inkl. Disclaimer) immer in dieser Sprache anzeigen.
+  const [registrationLanguage, setRegistrationLanguage] = React.useState<'' | 'de' | 'en'>(
+    editEvent?.registrationLanguage === 'de' || editEvent?.registrationLanguage === 'en' ? editEvent.registrationLanguage : ''
+  );
   // v18.33: Self-Check-in — Teilnehmer checken sich selbst per QR-Code ein.
   // Konfiguration in Schritt 3 (Kapazität & Sichtbarkeit). Beim Aktivieren
   // wird einmalig ein geheimer Token generiert (Schlüssel für statischen Link
@@ -2867,6 +2872,8 @@ export default function EventCreationPage(): React.ReactElement {
       updates['FunZone'] = JSON.stringify(quiz);
       updates['QuizClusterSize'] = Math.min(Math.max(1, quizClusterSize || 1), 4);
       updates['EmailLanguage'] = effEmailLanguage;
+      // v18.35: erzwungene Anmeldeseiten-Sprache mit-persistieren ('' = App-Sprache).
+      updates['RegistrationLanguage'] = registrationLanguage || '';
       // v6.15: B2Run-Config (Starter-Typ → Startblock, Leistungsnachweis-Pflicht)
       // wird in EmailTemplateOverrides._b2run piggyback gespeichert, damit keine
       // neue SP-Spalte nötig ist.
@@ -3389,6 +3396,7 @@ export default function EventCreationPage(): React.ReactElement {
         funZone: JSON.stringify(quiz),
         quizClusterSize: Math.min(Math.max(1, quizClusterSize || 1), 4),
         emailLanguage: effEmailLanguage,
+        registrationLanguage: registrationLanguage || undefined,
         emailTemplateOverrides: (() => {
           const b2runExtra = (durchstarterStartblock || funstarterStartblock || durchstarterRequiresProof)
             ? { _b2run: {
@@ -8826,6 +8834,44 @@ export default function EventCreationPage(): React.ReactElement {
                     </span>
                   </span>
                 </label>
+              </div>
+
+              {/* v18.35: Anmeldesprache vorgeben */}
+              <div style={{
+                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                padding: '12px 16px', marginBottom: 14,
+                border: '1px solid var(--dex-gray-200)',
+              }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                  {isDe ? 'Sprache des Anmeldeformulars' : 'Registration form language'}
+                  <InfoTooltip text={isDe
+                    ? <>
+                        <strong>Was du hier einstellst:</strong> in welcher Sprache die <strong>komplette Anmeldeseite</strong> (alle Texte, Buttons und der <strong>Datenschutz-Disclaimer</strong>) angezeigt wird.<br /><br />
+                        <strong>Anzeige in der App:</strong> bei <strong>Automatisch</strong> folgt die Anmeldeseite der App-Sprache des Teilnehmers. Wählst du <strong>Immer Deutsch</strong> oder <strong>Immer Englisch</strong>, wird die Anmeldeseite <strong>fest in dieser Sprache</strong> angezeigt — auch wenn der Teilnehmer die App z.&nbsp;B. auf Deutsch nutzt. Ein kleiner Hinweis im Kopfbereich zeigt das an.<br /><br />
+                        <strong>Auswirkung für Teilnehmer:</strong> bei einem englischsprachigen Event siehst du die Anmeldung samt Disclaimer auf Englisch, egal welche App-Sprache du eingestellt hast.
+                      </>
+                    : <>
+                        <strong>What you set here:</strong> the language in which the <strong>entire registration page</strong> (all texts, buttons and the <strong>privacy disclaimer</strong>) is shown.<br /><br />
+                        <strong>Where you see it:</strong> with <strong>Automatic</strong> the page follows the attendee&apos;s app language. Choosing <strong>Always German</strong> or <strong>Always English</strong> forces the registration page into that language — even if the attendee uses the app in another language. A small hint in the header indicates this.<br /><br />
+                        <strong>For attendees:</strong> for an English-language event you see the registration and disclaimer in English regardless of your app language.
+                      </>
+                  } />
+                </label>
+                <select
+                  className="form-input"
+                  value={registrationLanguage}
+                  onChange={e => setRegistrationLanguage(e.target.value as '' | 'de' | 'en')}
+                  style={{ maxWidth: 320 }}
+                >
+                  <option value="">{isDe ? 'Automatisch (App-Sprache des Teilnehmers)' : 'Automatic (attendee\'s app language)'}</option>
+                  <option value="de">{isDe ? 'Immer Deutsch' : 'Always German'}</option>
+                  <option value="en">{isDe ? 'Immer Englisch' : 'Always English'}</option>
+                </select>
+                <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 6 }}>
+                  {isDe
+                    ? 'Default: Automatisch. Bei fester Sprache wird die Anmeldeseite inkl. Disclaimer immer in dieser Sprache angezeigt.'
+                    : 'Default: Automatic. With a fixed language the registration page incl. disclaimer is always shown in that language.'}
+                </span>
               </div>
 
               {/* v17.20: Bilingual-Toggle — Organizer kann pro Custom-Field

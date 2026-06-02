@@ -226,6 +226,11 @@ export interface DeloitteEvent {
    *  Events brauchen keine Anrede. Gespeicherte Anrede ist in dem Fall
    *  ein leerer String. */
   askSalutation?: boolean;
+  /** v18.35: Anmeldesprache vorgeben. Wenn gesetzt ('de' | 'en'), wird die
+   *  komplette Registrierungsseite (inkl. Disclaimer) in dieser Sprache
+   *  angezeigt — unabhängig von der App-Sprache des Users. Leer/undefined =
+   *  Anmeldeseite folgt der App-Sprache (Default). */
+  registrationLanguage?: 'de' | 'en';
   /** v18.33: Self-Check-in. Wenn true, kann sich jeder angemeldete
    *  Teilnehmer selbst einchecken, indem er den event-spezifischen
    *  QR-Code scannt (statischer QR im PDF ODER rotierender Live-QR am

@@ -448,6 +448,29 @@ Item-Level-Security). Gegen „von zu Hause einchecken" wirken: Zeitfenster
 verfällt). Restrisiko des statischen PDFs ist bewusst akzeptiert (nur
 Anwesenheits-Schummeln, keine Fremd-Anmeldung).
 
+### Anmeldesprache vorgeben (v18.35)
+
+Pro Event kann der Organizer die **Sprache der Anmeldeseite** fest vorgeben —
+unabhängig von der App-Sprache des Teilnehmers. Use-Case: ein englisch-
+sprachiges Event soll die Anmeldung (inkl. Datenschutz-Disclaimer) **immer auf
+Englisch** zeigen, auch wenn der User die App auf Deutsch nutzt.
+
+- **Neue SP-Spalte `RegistrationLanguage`** (Single line text, `''`/`'de'`/`'en'`)
+  auf `DEX_Events`, via `getEventsFieldDefinitions()` (→ `ensureMissingFields`
+  auch auf Bestands-Tenants). `''`/undefined = Default „folgt App-Sprache".
+- **Wizard:** Dropdown „Sprache des Anmeldeformulars" in Schritt **Felder**
+  (`EventCreationPage.tsx`): Automatisch / Immer Deutsch / Immer Englisch.
+  Persistiert im create-Objekt UND im Edit-`updates`-Payload.
+- **`RegistrationPage.tsx`:** überschreibt lokal `locale` (und `t`, sowie
+  `eventLocale` für das Form-Chrome) mit der erzwungenen Sprache, sobald
+  `event.registrationLanguage` gesetzt ist. Dadurch greifen **alle**
+  bestehenden `t(...)`/`locale`-Verwendungen automatisch — inkl. Disclaimer
+  (`t('reg.privacy')`). Custom-Field-EN-Varianten greifen über das bestehende
+  `bilingualFields`-Verhalten.
+- **Header-Hinweis (`Header.tsx`):** auf der Registrierungsseite eines Events
+  mit fester Sprache zeigt der Header einen kleinen Chip **in der erzwungenen
+  Sprache** („Anmeldung auf Deutsch" / „Registration in English").
+
 ### Sub-Event-Tabs in Schritt 6 (v11.57, mit v11.80 renumbered von 5)
 
 Schritt 6 (Kommunikation) zeigt eine Tab-Leiste, sobald das Event

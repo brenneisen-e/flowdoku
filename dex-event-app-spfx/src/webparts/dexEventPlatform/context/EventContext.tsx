@@ -349,6 +349,8 @@ export interface CreateEventInput {
   /** Seit v6.4: wenn gesetzt, wird das Event als Sub-Event zum angegebenen Parent angelegt. */
   parentEventId?: string;
   emailLanguage?: string;
+  /** v18.35: erzwungene Anmeldeseiten-Sprache ('de' | 'en'); leer = App-Sprache. */
+  registrationLanguage?: 'de' | 'en';
   emailTemplateOverrides?: string;
   disableEmails?: boolean;
   disableOutlook?: boolean;
@@ -700,6 +702,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // und das Outlook-Update-Confirm-Modal kam deshalb nie.
       calendarLink: e.CalendarLink || '',
       emailLanguage: e.EmailLanguage || 'EN',
+      // v18.35: erzwungene Anmeldeseiten-Sprache (nur 'de'/'en' gültig, sonst undefined).
+      registrationLanguage: (e.RegistrationLanguage === 'de' || e.RegistrationLanguage === 'en') ? e.RegistrationLanguage : undefined,
       emailTemplateOverrides: e.EmailTemplateOverrides || '',
       disableEmails: !!e.DisableEmails,
       disableOutlook: !!e.DisableOutlook,

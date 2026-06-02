@@ -164,6 +164,9 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
                   <li>{isDe
                     ? 'Seit v11.80: oben im Step ein Toggle „Anrede abfragen?" (Default aus). Wenn aktiv, erscheint im Registrierungsformular ein Pflicht-Dropdown „Anrede" (Frau / Herr / Divers / Keine Angabe). Wenn aus, wird das Feld komplett ausgeblendet — viele Events brauchen die Anrede nicht.'
                     : 'Since v11.80: a toggle "Ask for salutation?" on top of the step (default off). When enabled, a required "Salutation" dropdown (Mrs / Mr / Diverse / Prefer not to say) appears in the registration form. When off, the field is hidden completely — many events do not need a salutation.'}</li>
+                  <li>{isDe
+                    ? 'Seit v18.35: Dropdown „Sprache des Anmeldeformulars". Default „Automatisch" = die Anmeldeseite folgt der App-Sprache des Teilnehmers. Mit „Immer Deutsch" oder „Immer Englisch" wird die komplette Anmeldeseite inkl. Datenschutz-Disclaimer fest in dieser Sprache angezeigt — auch wenn der Teilnehmer die App in einer anderen Sprache nutzt. Ein kleiner Hinweis im Kopfbereich zeigt das an. Ideal für rein englischsprachige Events.'
+                    : 'Since v18.35: a "Registration form language" dropdown. Default "Automatic" = the registration page follows the attendee\'s app language. With "Always German" or "Always English" the entire registration page incl. privacy disclaimer is shown in that fixed language — even if the attendee uses the app in another language. A small hint in the header indicates this. Ideal for English-only events.'}</li>
                 </ul>
                 {isDe
                   ? 'Datenschutz-Hinweis oben: Erhebe nur Daten die zwingend für das Event nötig sind — bei Unklarheiten ist immer Rücksprache mit dem Datenschutz durchzuführen.'
