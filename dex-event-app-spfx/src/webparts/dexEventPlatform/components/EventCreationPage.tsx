@@ -2733,6 +2733,28 @@ export default function EventCreationPage(): React.ReactElement {
     // v9.14: Beschreibung ist jetzt optional. Nur Title bleibt Pflicht.
     if (!title) return;
 
+    // v18.36: Harte Datums-Validierung als letzter Riegel — das Enddatum darf
+    // NIE vor (oder gleich) dem Startdatum liegen. Outlook lehnt solche Termine
+    // ab und der DEX_CreateOutlookEvent-Flow failt dann mit HTTP 400
+    // („At least one property failed validation"). Gilt fuer das Hauptevent UND
+    // jedes Sub-Event — Sub-Events liefen bisher ohne Datums-Pruefung durch.
+    const dateProblems: string[] = [];
+    if (startDate && endDate && new Date(endDate) <= new Date(startDate)) {
+      dateProblems.push(isDe ? 'Hauptevent' : 'Main event');
+    }
+    subEventsRef.current.forEach(s => {
+      if (s.title && s.title.trim() && s.startDate && s.endDate && new Date(s.endDate) <= new Date(s.startDate)) {
+        dateProblems.push(isDe ? `Sub-Event „${s.title}"` : `Sub-event „${s.title}"`);
+      }
+    });
+    if (dateProblems.length > 0) {
+      // eslint-disable-next-line no-alert
+      alert(isDe
+        ? `Das Enddatum darf nicht vor dem Startdatum liegen. Bitte korrigiere das Datum bei: ${dateProblems.join(', ')}.`
+        : `The end date must not be before the start date. Please fix the date for: ${dateProblems.join(', ')}.`);
+      return;
+    }
+
     // v11.93: Top-Level-Kommunikations-Werte sauber resolven (s. Helper-
     // Doku oben). Sonst würden, falls beim Speichern ein Sub-Event-Tab
     // aktiv ist, die Sub-Event-States (Logo, Outlook-Body, Headings,
@@ -4383,6 +4405,11 @@ export default function EventCreationPage(): React.ReactElement {
         // Schritt 2 (Sub-Events) ist ohne Pflicht-Validierung — der
         // Organizer kann den Schritt auch komplett leer lassen.
         // (v15.0: Sub-Events kommen jetzt VOR Ort & Programm.)
+        // v18.36: Aber WENN ein Sub-Event Datum hat, darf das Ende nicht vor
+        // dem Start liegen — sonst failt der Outlook-Create-Flow mit HTTP 400.
+        if (subEvents.some(s => s.title && s.title.trim() && s.startDate && s.endDate && new Date(s.endDate) <= new Date(s.startDate))) {
+          errors.push('subEventEndBeforeStart');
+        }
         break;
       case 2:
         // Schritt 3 (Ort & Programm) ist ohne Pflicht-Validierung —
@@ -7030,6 +7057,14 @@ export default function EventCreationPage(): React.ReactElement {
                               pro Sub-Event-Tab gepflegt (analog zur Kapazität
                               mit „vom Hauptevent übernehmen"-Toggle). */}
                         </div>
+                        {/* v18.36: Ende-vor-Start-Hinweis pro Sub-Event. */}
+                        {startDateObj && endDateObj && endDateObj <= startDateObj && (
+                          <p style={{ color: 'var(--dex-red, #c00)', fontSize: '0.8rem', margin: '-4px 0 8px' }}>
+                            {isDe
+                              ? 'Das Enddatum dieses Sub-Events liegt vor dem Startdatum — bitte korrigieren.'
+                              : 'The end date of this sub-event is before the start date — please correct it.'}
+                          </p>
+                        )}
 
                         {/* Beschreibung. v15.0: „Ort" entfaellt aus dieser
                             Karte — wird in Schritt 3 (Ort & Programm) pro
