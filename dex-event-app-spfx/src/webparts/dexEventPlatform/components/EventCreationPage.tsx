@@ -2936,10 +2936,10 @@ export default function EventCreationPage(): React.ReactElement {
       const APP_URL_OL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
       const defaultOutlookBody = effEmailLanguage === 'EN'
         ? `<p>You are registered for the event <strong>${escHtml(title)}</strong>.</p>`
-          + `<p>If you are unable to attend, please cancel your registration in time via the <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">Event Experience Platform</a> (&bdquo;My Events&ldquo;).</p>`
+          + `<p>If you are unable to attend, please cancel your registration in time via the <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;My Events&ldquo;).</p>`
           + `<p>For organizational questions please contact <strong>${escHtml(orgNames || 'the organizer')}</strong>.</p>`
         : `<p>Du bist für das Event <strong>${escHtml(title)}</strong> angemeldet.</p>`
-          + `<p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">Event Experience Platform</a> (&bdquo;Meine Events&ldquo;) ab.</p>`
+          + `<p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;Meine Events&ldquo;) ab.</p>`
           + `<p>Bei organisatorischen Fragen wende dich bitte an <strong>${escHtml(orgNames || 'den Organizer')}</strong>.</p>`;
       const resolvedBody = effOutlookBody
         ? replacePlaceholders(effOutlookBody, outlookVars)
@@ -3474,10 +3474,10 @@ export default function EventCreationPage(): React.ReactElement {
           const APP_URL_OL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
           const defaultBody = effEmailLanguage === 'EN'
             ? `<p>You are registered for the event <strong>${escHtml(title)}</strong>.</p>`
-              + `<p>If you are unable to attend, please cancel your registration in time via the <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">Event Experience Platform</a> (&bdquo;My Events&ldquo;).</p>`
+              + `<p>If you are unable to attend, please cancel your registration in time via the <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;My Events&ldquo;).</p>`
               + `<p>For organizational questions please contact <strong>${escHtml(orgNames || 'the organizer')}</strong>.</p>`
             : `<p>Du bist für das Event <strong>${escHtml(title)}</strong> angemeldet.</p>`
-              + `<p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">Event Experience Platform</a> (&bdquo;Meine Events&ldquo;) ab.</p>`
+              + `<p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;Meine Events&ldquo;) ab.</p>`
               + `<p>Bei organisatorischen Fragen wende dich bitte an <strong>${escHtml(orgNames || 'den Organizer')}</strong>.</p>`;
           const resolvedBody = effOutlookBody ? replacePlaceholders(effOutlookBody, vars) : defaultBody;
           const resolvedHeading = effOutlookHeading ? replacePlaceholders(effOutlookHeading, vars) : title;
@@ -12037,10 +12037,10 @@ export default function EventCreationPage(): React.ReactElement {
         // im Outlook-Editor — Sprache folgt der aktiven Mail-Sprache.
         const outlookDefaultBody = (emailLanguage === 'EN')
           ? '<p>You are registered for the event <strong>{{EventTitle}}</strong>.</p>'
-            + '<p>If you are unable to attend, please cancel your registration in time via the <a href="{{AppUrl}}" style="color:#86bc25;font-weight:600;">Event Experience Platform</a> („My Events").</p>'
+            + '<p>If you are unable to attend, please cancel your registration in time via the <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView" style="color:#86bc25;font-weight:600;">DEX App</a> („My Events").</p>'
             + '<p>For organizational questions please contact <strong>{{Organizer}}</strong>.</p>'
           : '<p>Du bist für das Event <strong>{{EventTitle}}</strong> angemeldet.</p>'
-            + '<p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="{{AppUrl}}" style="color:#86bc25;font-weight:600;">Event Experience Platform</a> („Meine Events") ab.</p>'
+            + '<p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView" style="color:#86bc25;font-weight:600;">DEX App</a> („Meine Events") ab.</p>'
             + '<p>Bei organisatorischen Fragen wende dich bitte an <strong>{{Organizer}}</strong>.</p>';
         return (
           <HtmlEditorModal
