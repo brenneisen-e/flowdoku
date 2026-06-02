@@ -1027,7 +1027,89 @@ Ablauf:
   enthaelt `CalendarLink` (iCalUId) direkt, weil das zugehoerige DEX_Events-Item
   bereits geloescht ist, wenn der Flow laeuft.
 
-**Concurrency:** 1 (sequentielle Verarbeitung, max 100 wartende Runs)
+**Concurrency:** 1 (sequentielle Verarbeitung, max 100 wartende Runs) —
+**mit v18.48 (Option B) auf 25 erhöht**, siehe UI-Anleitung unten.
+
+### UI-Anleitung 2026-06-02 (v18.48) — Option B: Pro-Event-Lock für parallele Outlook-Läufe
+
+**Problem:** Der Flow lief mit **Concurrency 1** streng seriell. Bei Grossevents
+patcht jeder Lauf die **komplette** Teilnehmerliste (bis zu 1500 Personen) an
+Graph — ein einzelner Lauf dauert dann 13–40 Minuten. Anmeldungen für völlig
+**unterschiedliche** Events stauten sich dahinter stundenlang in der Queue.
+
+**Lösung Option B:** Die Trigger-Concurrency wird hochgesetzt (25 parallele
+Läufe), damit Läufe für **verschiedene** Events gleichzeitig laufen. Ein
+**Pro-Event-Lock** verhindert, dass zwei Läufe für **dasselbe** Event
+gleichzeitig die Teilnehmerliste lesen-und-schreiben (sonst gehen Einträge
+verloren). Der Lock nutzt die neue SP-Liste **`DEX_OutlookLocks`** (wird von
+der App automatisch beim nächsten Laden angelegt — Spalte `EventId` mit
+„Eindeutige Werte erzwingen"). **Falls die Liste nicht automatisch erscheint:**
+manuell anlegen (Liste „DEX_OutlookLocks", Spalte `EventId` Einzeltext → in den
+Spalteneinstellungen „Eindeutige Werte erzwingen" = Ja).
+
+**So wird der Lock erworben:** Der Flow legt ein Lock-Item mit `EventId` an.
+Gelingt das → er hat den Lock. Schlägt es fehl (Eindeutigkeits-Prüfung, weil
+ein anderer Lauf für dasselbe Event schon ein Item hat) → kurz warten und
+erneut versuchen. Am Ende löscht der Flow das Lock-Item wieder.
+
+**Schritt 1 — Concurrency erhöhen:**
+1. Flow öffnen → Bearbeiten → auf den **Trigger** (Neues Item in DEX_Outlook)
+   klicken.
+2. Oben rechts auf die **drei Punkte (⋮)** → **Settings**.
+3. **Concurrency Control** auf **On** stellen, **Degree of Parallelism** auf
+   **25** setzen → **Done**.
+
+**Schritt 2 — Lock erwerben (ganz am Anfang, direkt nach dem Trigger,
+VOR `Is_DeleteEvent`):**
+1. **Variable initialisieren** „Init_LockAcquired": **+ Neuer Schritt** →
+   **Initialize variable** → Name `LockAcquired`, Typ **Boolean**, Wert `false`.
+   (Diese Action ans erste Position direkt nach dem Trigger ziehen.)
+2. **Do until** „Lock_erwerben" hinzufügen. Bedingung: Variable
+   `LockAcquired` **is equal to** `true`. Unter **Change limits**: Count `60`,
+   Timeout `PT30M`.
+3. **In** die Do-until-Schleife eine **Scope**-Action „Try_Claim_Lock" legen.
+   Darin eine **Create item**-Action (SharePoint) auf die Liste
+   **`DEX_OutlookLocks`**:
+   - `EventId` = im **Expression-Tab (fx)**: `triggerBody()?['EventId']`
+   - `Title` = im **fx**: `triggerBody()?['EventId']`
+   - `LockedAt` = im **fx**: `utcNow()`
+4. **Nach** der Scope (noch innerhalb Do until) eine **Set variable**-Action
+   „Set_Lock_Acquired": `LockAcquired` = `true`.
+   → Bei dieser Action über **⋮ → Configure run after** **nur** „Try_Claim_Lock
+   **is successful**" anhaken (die anderen Häkchen entfernen).
+5. **Daneben** (ebenfalls nach der Scope) eine **Delay**-Action
+   „Warte_und_Retry": **15 Sekunden**.
+   → Bei dieser Action über **⋮ → Configure run after** **nur** „Try_Claim_Lock
+   **has failed**" anhaken. (So wird nur gewartet, wenn der Lock gerade von
+   einem anderen Lauf desselben Events gehalten wird; danach läuft die Schleife
+   erneut, weil `LockAcquired` noch `false` ist.)
+
+**Schritt 3 — bestehende Logik anhängen:** Die erste bestehende Action
+(`Is_DeleteEvent`) über **⋮ → Configure run after** so setzen, dass sie nach
+**`Lock_erwerben` is successful** läuft (statt nach dem Trigger). Damit läuft
+die komplette bisherige Verarbeitung erst, **nachdem** der Lock erworben wurde.
+
+**Schritt 4 — Lock freigeben (ganz am Ende, IMMER ausführen):**
+1. Als **letzte** Action eine **Get items** „Find_Lock" auf
+   **`DEX_OutlookLocks`** mit Filter (Expression):
+   `EventId eq '@{triggerBody()?['EventId']}'`.
+2. Danach **Apply to each** über `Find_Lock` → darin **Delete item**
+   „Lock_freigeben" (Id = `ID` aus Find_Lock).
+3. **Wichtig:** Bei **`Find_Lock`** über **⋮ → Configure run after** **alle vier**
+   Häkchen setzen — **is successful, has failed, is skipped, has timed out** —
+   damit der Lock auch dann gelöscht wird, wenn die Verarbeitung mittendrin
+   fehlschlägt. Sonst bliebe ein „toter" Lock liegen und das Event wäre
+   dauerhaft blockiert.
+
+**Caveat:** Läufe für dasSELBE Event serialisieren weiterhin (per Lock) — das
+ist gewollt (Race-Schutz). Der Gewinn ist die **Parallelität über
+verschiedene Events hinweg**. Falls ein Lock durch einen Flow-Abbruch doch mal
+hängenbleibt, kann der Eintrag in `DEX_OutlookLocks` manuell gelöscht werden
+(die `LockedAt`-Spalte zeigt das Alter).
+
+**Bitte nach dem Umbau:** den aktuellen Flow-JSON (Code View → kopieren)
+schicken, damit der vollständige Stand hier in `docs/flow-jsons.md` eingepflegt
+werden kann.
 
 **UpdateEvent-Pattern** (seit 2026-04-17): String-Concat mit `json()` ist nicht
 robust genug fuer beliebige HTML-Inhalte (Quotes/Newlines/Sonderzeichen brechen

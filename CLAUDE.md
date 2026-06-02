@@ -958,6 +958,31 @@ Die Datei `docs/flow-jsons.md` enthält die vollständigen Flow-Definitionen all
 
 Diese Datei **MUSS immer aktuell** gehalten werden wenn Flows geändert werden. Sie dient als einzige Referenz für den aktuellen Stand der Flows.
 
+### Outlook-Flow-Parallelität — Option B Pro-Event-Lock (v18.48)
+
+Der `DEX_Outlook_Einladungen`-Flow lief mit **Concurrency 1** streng seriell.
+Bei Grossevents patcht jeder Lauf die **komplette** Teilnehmerliste (bis 1500
+Personen) an Graph → 13–40 Min pro Lauf. Anmeldungen für **andere** Events
+stauten sich dahinter. Mit v18.48 wird die Trigger-Concurrency auf **25**
+erhöht (Parallelität über verschiedene Events), abgesichert durch einen
+**Pro-Event-Lock**, damit zwei Läufe für **dasselbe** Event nicht gleichzeitig
+die Attendee-Liste lesen-und-schreiben (Race → verlorene Einträge).
+
+- **Neue SP-Liste `DEX_OutlookLocks`** (Site-Collection-Root, angelegt durch
+  `EventService.ensureOutlookLocksList()` in `initEvents`). Spalten: `EventId`
+  (Single line text, **indiziert + „Eindeutige Werte erzwingen"**) als
+  Lock-Schlüssel, `LockedAt` (DateTime, informativ). Schreibrechte via
+  `setQueueListPermissions` (analog DEX_Emails).
+- **Lock-Erwerb (im Flow):** Create-Item mit `EventId` → gelingt = Lock
+  erworben; schlägt fehl (Eindeutigkeit, weil ein anderer Lauf desselben Events
+  schon ein Item hält) = kurz warten + retry (Do-until). **Lock-Release:**
+  Delete-Item am Ende, mit Run-After **succeeded + failed + skipped + timed out**,
+  damit der Lock auch bei Abbruch immer freigegeben wird.
+- **Reiner Flow-Umbau** (keine App-Logik außer der Listen-Provisionierung) —
+  die vollständige UI-Schritt-für-Schritt-Anleitung steht in
+  `docs/flow-jsons.md` unter „UI-Anleitung 2026-06-02 (v18.48) — Option B:
+  Pro-Event-Lock für parallele Outlook-Läufe".
+
 ### Pflicht-Mitlaufende Artefakte bei App-Updates
 
 **WICHTIG (ab v6.9):** Bei jedem neuen Feature oder größerem Umbau müssen folgende Artefakte synchron aktualisiert werden, bevor ein Release gebaut wird. Das ist Review-Kriterium, nicht optional:

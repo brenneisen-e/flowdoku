@@ -4737,6 +4737,79 @@ export class EventService {
   }
 
   /**
+   * v18.48: Sperr-Liste fuer den Outlook-Einladungs-Flow (DEX_Outlook_Einladungen).
+   *
+   * Hintergrund: der Einladungs-Flow patcht pro Anmeldung/Abmeldung die
+   * KOMPLETTE Teilnehmerliste eines Outlook-Termins (bei Grossevents bis zu
+   * 1500 Personen) an Microsoft Graph. Lief der Flow seriell (Concurrency 1),
+   * standen Anmeldungen fuer voellig UNTERSCHIEDLICHE Events stundenlang in
+   * der Warteschlange. Loesung „Option B": die Trigger-Concurrency wird hoch-
+   * gesetzt (z.B. 25 parallele Laeufe), und ein Pro-Event-Lock verhindert,
+   * dass zwei Laeufe fuer dasSELBE Event gleichzeitig die Teilnehmerliste
+   * lesen-und-schreiben (Race -> verlorene Eintraege).
+   *
+   * Die Liste hat eine eindeutige (Enforce-Unique) Spalte `EventId`. Der Flow
+   * „erwirbt" den Lock per Create-Item: gelingt das Create, hat er den Lock;
+   * schlaegt es wegen der Eindeutigkeits-Pruefung fehl, haelt gerade ein
+   * anderer Lauf desselben Events den Lock -> kurz warten und erneut
+   * versuchen. Am Ende loescht der Flow das Lock-Item wieder (Release).
+   *
+   * Die UI-Schritt-fuer-Schritt-Anleitung steht in `docs/flow-jsons.md` unter
+   * „UI-Anleitung 2026-06-02 (v18.48) — Option B: Pro-Event-Lock fuer
+   * parallele Outlook-Laeufe".
+   */
+  public async ensureOutlookLocksList(): Promise<void> {
+    const listName = 'DEX_OutlookLocks';
+    const exists = await this.listExists(listName);
+    if (exists) return;
+
+    await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'Pro-Event-Sperre fuer den Outlook-Einladungs-Flow (v18.48) — verhindert gleichzeitige Laeufe fuer dasselbe Event.',
+      'BaseTemplate': 100,
+      'AllowContentTypes': false,
+    });
+
+    // EventId: der Lock-Schluessel. Muss eindeutig + indiziert sein, damit das
+    // Create-als-Lock-Erwerb-Muster funktioniert (zweiter gleichzeitiger
+    // Create fuer dieselbe EventId schlaegt fehl -> der Lauf wartet & retryt).
+    await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
+      '__metadata': { 'type': 'SP.Field' },
+      'Title': 'EventId',
+      'FieldTypeKind': 2,
+      'Required': false,
+    });
+    // LockedAt: rein informativ (Debugging haengengebliebener Locks).
+    await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
+      '__metadata': { 'type': 'SP.Field' },
+      'Title': 'LockedAt',
+      'FieldTypeKind': 4,
+      'Required': false,
+    });
+
+    // EventId indizieren und Eindeutigkeit erzwingen. Reihenfolge wichtig:
+    // erst Indexed, dann EnforceUniqueValues (SP verlangt eine indizierte
+    // Spalte fuer die Eindeutigkeits-Pruefung). Auf einer frischen, leeren
+    // Liste ist das unkritisch (keine Duplikate vorhanden).
+    const fieldUrl = `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('EventId')`;
+    try {
+      await this._merge(fieldUrl, { 'Indexed': true });
+      await this._merge(fieldUrl, { 'EnforceUniqueValues': true });
+    } catch (e) {
+      console.warn('[DEX] ensureOutlookLocksList: EnforceUniqueValues konnte nicht gesetzt werden:', e);
+    }
+
+    await this.configureDefaultView(listName, ['EventId', 'LockedAt']);
+
+    // Schreibrechte wie bei den anderen Queue-Listen (DEX_Emails etc.) —
+    // der Flow-Connection-Account muss Lock-Items anlegen/loeschen koennen.
+    try {
+      await this.setQueueListPermissions(listName);
+    } catch { /* best-effort */ }
+  }
+
+  /**
    * v11.83: Neue Team-Beitritts-Anfrage anlegen.
    */
   public async createTeamJoinRequest(args: {
