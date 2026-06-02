@@ -859,18 +859,19 @@ COMPOSE_IMAGE (Event-Bild oder Default-Bild):
   "runAfter": { "Compose_Logo": ["SUCCEEDED"] }
 }
 
-CREATE_EVENT_V4 (Outlook-Termin mit Deloitte-Design Body):
+CREATE_EVENT_V4 (Outlook-Termin mit Deloitte-Design Body) — Stand 2026-06-02 (v18.42/v18.44):
 {
   "type": "OpenApiConnection",
   "inputs": {
     "parameters": {
       "table": "AAMkADU5YjlkMDBiLWU2MDktNGViMy1iNGIwLTI0YWFkNDkyN2VjMABGAAAAAABjJcNB5xJWS7D2nCeePixeBwAbtMj6YVUGQJroN6O--ImBAAAAAAEGAAAbtMj6YVUGQJroN6O--ImBAAKF4fCpAAA=",
-      "item/subject": "@triggerBody()?['Title']",
-      "item/start": "@convertFromUtc(triggerBody()?['StartDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')",
-      "item/end": "@convertFromUtc(triggerBody()?['EndDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')",
+      "item/subject": "@coalesce(triggerBody()?['OutlookSubject'], triggerBody()?['Title'])",
+      "item/start": "@convertFromUtc(coalesce(triggerBody()?['OutlookStart'], triggerBody()?['StartDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')",
+      "item/end": "@convertFromUtc(coalesce(triggerBody()?['OutlookEnd'], triggerBody()?['EndDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')",
       "item/timeZone": "(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna",
       "item/requiredAttendees": "@last(split(replace(coalesce(triggerBody()?['OrganizerEmail'], ''), '</div>', ''), '\">'))",
       "item/body": "<p class=\"editor-paragraph\">@{replace(replace(coalesce(triggerBody()?['OutlookBody'], ''), '{{LOGO_URL}}', outputs('Compose_Logo')), '{{ORB_URL}}', outputs('Compose_Image'))}</p>",
+      "item/location": "@triggerBody()?['OutlookLocation']",
       "item/showAs": "busy",
       "item/responseRequested": false,
       "item/sensitivity": "private"

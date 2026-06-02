@@ -3809,7 +3809,13 @@ export default function EventCreationPage(): React.ReactElement {
     // CalendarLink auf Erfolg, OutlookEventId bleibt leer. Wer beides
     // leer hat, hatte nie einen Outlook-Termin.
     const topHasOutlook = !!editEvent.outlookEventId || !!editEvent.calendarLink;
-    if (topChangedFields.length > 0 && !disableOutlook && topHasOutlook) {
+    // v18.45 BUG-FIX: für das Hauptevent IMMER dessen Top-Level-DisableOutlook
+    // prüfen — nicht das rohe `disableOutlook` (das hält beim Speichern auf einem
+    // Sub-Event-Tab den Sub-Wert). Sonst wurde das Hauptevent fälschlich im
+    // Update-Modal gelistet, obwohl dort Outlook deaktiviert ist (z.B. Event mit
+    // Outlook nur auf Sub-Event-Ebene).
+    const topDisableOutlook = resolveTopLevelCommState().disableOutlook;
+    if (topChangedFields.length > 0 && !topDisableOutlook && topHasOutlook) {
       items.push({
         kind: 'top',
         eventId: editEvent.id,
