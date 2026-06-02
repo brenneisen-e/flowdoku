@@ -12389,7 +12389,7 @@ export default function EventCreationPage(): React.ReactElement {
         // left = Kachelmitte + halbe Kachelbreite + Abstand, geclamped damit er
         // auf schmalen Screens nicht aus dem Bild läuft. Panel öffnet absolut
         // darüber (right:0 = bündig zur Ball-rechten Kante, wächst nach links).
-        <div style={{ position: 'fixed', bottom: 40, left: 'min(calc(50vw + 566px), calc(100vw - 76px))', zIndex: 1400 }}>
+        <div style={{ position: 'fixed', bottom: 40, left: 'min(calc(50vw + 560px), calc(100vw - 230px))', zIndex: 1400 }}>
           {powerUserHelpOpen && (
             <div style={{
               position: 'absolute', bottom: 68, right: 0,
@@ -12457,23 +12457,26 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
             </div>
           )}
-          {/* Runder „?"-Ball — toggelt das Panel. */}
+          {/* v18.52: beschrifteter Pill-Button statt nur „?" — verständlicher. */}
           <button
             type="button"
             onClick={() => setPowerUserHelpOpen(o => !o)}
             aria-label={isDe ? 'Hilfe: Power User kontaktieren' : 'Help: contact power users'}
             aria-expanded={powerUserHelpOpen}
-            title={isDe ? 'Brauchst du Hilfe? Power User kontaktieren' : 'Need help? Contact power users'}
+            title={isDe ? 'Benötigst du Hilfe? Power User kontaktieren' : 'Need help? Contact power users'}
             style={{
-              width: 56, height: 56, borderRadius: '50%', flexShrink: 0,
+              height: 48, borderRadius: 24, flexShrink: 0,
+              padding: '0 18px',
               background: 'var(--dex-blue, #0076a8)', color: '#fff',
-              border: 'none', cursor: 'pointer', alignSelf: 'flex-end',
+              border: 'none', cursor: 'pointer',
               boxShadow: '0 6px 20px rgba(0,0,0,0.25)',
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '1.6rem', fontWeight: 700, lineHeight: 1,
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              fontSize: '0.9rem', fontWeight: 600, lineHeight: 1, whiteSpace: 'nowrap',
             }}
           >
-            {powerUserHelpOpen ? <X size={24} /> : '?'}
+            {powerUserHelpOpen
+              ? <><X size={18} /> {isDe ? 'Schließen' : 'Close'}</>
+              : <><Icon iconName="Help" style={{ fontSize: 18 }} /> {isDe ? 'Benötigst du Hilfe?' : 'Need help?'}</>}
           </button>
         </div>
       )}
