@@ -1034,16 +1034,18 @@ robust genug fuer beliebige HTML-Inhalte (Quotes/Newlines/Sonderzeichen brechen
 das Parsing). Stattdessen wird der Body via Compose-Action vorgebaut und im
 HTTP-PATCH referenziert — Logic Apps escaped die `@{...}`-Tokens automatisch.
 
-**Compose `Build_Update_Body`** (vor `Send_an_HTTP_request` ausfuehren):
+**Compose `Build_Update_Body`** (vor `Send_an_HTTP_request` ausfuehren) — Stand
+2026-06-02 (v18.42/v18.44, im Tenant verifiziert): Betreff/Start/Ende/Ort nutzen
+`coalesce(Outlook<X>, <Original>)` — leerer Override ⇒ Event-Wert:
 ```json
 {
-  "subject": "@{first(outputs('Get_Event_Details')?['body/value'])?['Title']}",
+  "subject": "@{coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookSubject'], first(outputs('Get_Event_Details')?['body/value'])?['Title'])}",
   "start": {
-    "dateTime": "@{convertFromUtc(first(outputs('Get_Event_Details')?['body/value'])?['StartDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')}",
+    "dateTime": "@{convertFromUtc(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookStart'], first(outputs('Get_Event_Details')?['body/value'])?['StartDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')}",
     "timeZone": "W. Europe Standard Time"
   },
   "end": {
-    "dateTime": "@{convertFromUtc(first(outputs('Get_Event_Details')?['body/value'])?['EndDate'], 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')}",
+    "dateTime": "@{convertFromUtc(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookEnd'], first(outputs('Get_Event_Details')?['body/value'])?['EndDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')}",
     "timeZone": "W. Europe Standard Time"
   },
   "showAs": "busy",
