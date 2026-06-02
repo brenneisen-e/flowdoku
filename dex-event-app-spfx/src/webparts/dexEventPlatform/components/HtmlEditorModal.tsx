@@ -13,6 +13,7 @@
  */
 import * as React from 'react';
 import { X } from './Icons';
+import { Icon } from '@fluentui/react/lib/Icon';
 import { wrapTemplate, replacePlaceholders, replacePlaceholdersPlain, getCachedOrbBase64, getCachedLogoBase64 } from '../services/EmailTemplates';
 
 // v9.40: 'plain' = nur HTML rendern, kein Mail-/Outlook-Wrapper. Wird für die
@@ -232,6 +233,68 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
   const exec = (cmd: string, arg?: string): void => {
     restoreSelection();
     try { document.execCommand(cmd, false, arg); } catch { /* ignore */ }
+    fireChange();
+  };
+
+  // v18.39: nächstgelegenes <a> der aktuellen Auswahl finden (für „Link
+  // bearbeiten" — URL vorbelegen / bestehenden Link erkennen).
+  const getSelectionAnchor = (): HTMLAnchorElement | null => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return null;
+    let node: Node | null = sel.getRangeAt(0).startContainer;
+    while (node && node !== editorRef.current) {
+      if (node.nodeType === 1 && (node as HTMLElement).tagName === 'A') return node as HTMLAnchorElement;
+      node = node.parentNode;
+    }
+    return null;
+  };
+
+  const escHtml = (s: string): string =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  // v18.39: Link einfügen / bearbeiten / entfernen — ohne Copy-Paste, damit
+  // beim Setzen eines Links keine fremde Formatierung (Zeilenabstand) mehr
+  // mit hineinkommt.
+  const insertLink = (): void => {
+    restoreSelection();
+    const existing = getSelectionAnchor();
+    // eslint-disable-next-line no-alert
+    const url = window.prompt('Link-Adresse (URL) — leer lassen, um den Link zu entfernen:', existing ? (existing.getAttribute('href') || '') : 'https://');
+    if (url === null) return; // Abbrechen
+    const sel = window.getSelection();
+    const collapsed = !sel || sel.rangeCount === 0 || sel.getRangeAt(0).collapsed;
+    if (url.trim() === '') {
+      try { document.execCommand('unlink'); } catch { /* ignore */ }
+      fireChange();
+      return;
+    }
+    if (existing) {
+      // Bestehender Link: nur die Ziel-URL aktualisieren, Anzeige-Text bleibt.
+      existing.setAttribute('href', url.trim());
+    } else if (collapsed) {
+      // Keine Auswahl: Anzeige-Text erfragen und sauberen Link einfügen.
+      // eslint-disable-next-line no-alert
+      const text = window.prompt('Anzeige-Text des Links:', url.trim()) || url.trim();
+      try { document.execCommand('insertHTML', false, `<a href="${url.trim()}">${escHtml(text)}</a>`); } catch { /* ignore */ }
+    } else {
+      // Markierten Text in einen Link verwandeln.
+      try { document.execCommand('createLink', false, url.trim()); } catch { /* ignore */ }
+    }
+    fireChange();
+  };
+
+  // v18.39: Einfügen IMMER als reiner Text (mit Zeilenumbrüchen als <br>).
+  // Verhindert, dass kopierte Inhalte Block-Markup (<div>/<p> mit Außen-
+  // abständen) mitbringen, das den Zeilenabstand „plötzlich größer" macht
+  // und sich danach nicht mehr korrigieren lässt.
+  const handlePaste = (e: React.ClipboardEvent<HTMLDivElement>): void => {
+    e.preventDefault();
+    const text = e.clipboardData?.getData('text/plain') || '';
+    if (!text) return;
+    const html = text.split(/\r\n|\r|\n/).map(line => escHtml(line)).join('<br>');
+    try { document.execCommand('insertHTML', false, html); } catch {
+      try { document.execCommand('insertText', false, text); } catch { /* ignore */ }
+    }
     fireChange();
   };
 
@@ -652,6 +715,13 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                   <span style={{ width: 1, height: 22, background: 'var(--dex-gray-300)', margin: '0 4px' }} />
                   <button type="button" style={tbBtn} title="Liste" onMouseDown={e => e.preventDefault()} onClick={() => exec('insertUnorderedList')}>•</button>
                   <button type="button" style={tbBtn} title="Nummerierte Liste" onMouseDown={e => e.preventDefault()} onClick={() => exec('insertOrderedList')}>1.</button>
+                  <span style={{ width: 1, height: 22, background: 'var(--dex-gray-300)', margin: '0 4px' }} />
+                  {/* v18.39: Link einfügen/bearbeiten — Text markieren + klicken,
+                      oder ohne Auswahl klicken für einen neuen Link. Bestehenden
+                      Link: Cursor hineinsetzen → URL ändern. Leere URL entfernt
+                      den Link. So muss kein Link mehr per Copy-Paste eingefügt
+                      werden (das brach den Zeilenabstand). */}
+                  <button type="button" style={tbBtn} title="Link einfügen / bearbeiten" onMouseDown={e => e.preventDefault()} onClick={insertLink}><Icon iconName="Link" style={{ fontSize: 13 }} /></button>
                   <button type="button" style={tbBtn} title="Formatierung entfernen" onMouseDown={e => e.preventDefault()} onClick={() => exec('removeFormat')}>⌫</button>
                 </div>
                 <div
@@ -659,6 +729,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                   contentEditable
                   suppressContentEditableWarning
                   onInput={fireChange}
+                  onPaste={handlePaste}
                   onBlur={() => { saveSelection(); fireChange(); }}
                   onMouseUp={syncSelection}
                   onKeyUp={syncSelection}
