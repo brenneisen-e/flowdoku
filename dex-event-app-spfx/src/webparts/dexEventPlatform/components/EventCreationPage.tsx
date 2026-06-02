@@ -3815,7 +3815,11 @@ export default function EventCreationPage(): React.ReactElement {
     // Update-Modal gelistet, obwohl dort Outlook deaktiviert ist (z.B. Event mit
     // Outlook nur auf Sub-Event-Ebene).
     const topDisableOutlook = resolveTopLevelCommState().disableOutlook;
-    if (topChangedFields.length > 0 && !topDisableOutlook && topHasOutlook) {
+    // v18.51: Im „Nur für Sub-Events"-Modus (subEventsOnlyMode) ist das
+    // Hauptevent von der Teilnehmer-Anmeldung ausgenommen — niemand meldet sich
+    // direkt fürs Hauptevent an. Ein Outlook-Update-Hinweis fürs Hauptevent ist
+    // dann sinnlos und wird unterdrückt (Sub-Events bekommen weiter ihre Hinweise).
+    if (topChangedFields.length > 0 && !topDisableOutlook && topHasOutlook && !subEventsOnlyMode) {
       items.push({
         kind: 'top',
         eventId: editEvent.id,
@@ -3894,7 +3898,7 @@ export default function EventCreationPage(): React.ReactElement {
     // Update-Modal als „Frühere Änderung nicht synchronisiert" auf, obwohl
     // dort Outlook deaktiviert ist (Event mit Outlook nur auf Sub-Event-Ebene).
     // Gleiche Falle wie v18.45 im Changed-Fields-Pfad oben.
-    if (editEvent.outlookDirty && !topDisableOutlook
+    if (editEvent.outlookDirty && !topDisableOutlook && !subEventsOnlyMode
         && (editEvent.outlookEventId || editEvent.calendarLink)
         && !hasItemForEvent(editEvent.id)) {
       items.push({
@@ -5098,7 +5102,8 @@ export default function EventCreationPage(): React.ReactElement {
                   wurde). Auf neuen Events nie. */}
               {(() => {
                 if (!editEvent) return null;
-                const topDirty = editEvent.outlookDirty === true && editEvent.disableOutlook !== true;
+                // v18.51: im „Nur für Sub-Events"-Modus kein Hauptevent-Dirty-Hinweis.
+                const topDirty = editEvent.outlookDirty === true && editEvent.disableOutlook !== true && !editEvent.subEventsOnlyMode;
                 const dirtySubs = childEventsOf(editEvent.id).filter(k => k.outlookDirty === true && k.disableOutlook !== true);
                 if (!topDirty && dirtySubs.length === 0) return null;
                 const subCount = dirtySubs.length;
@@ -12378,9 +12383,16 @@ export default function EventCreationPage(): React.ReactElement {
           das Panel mit dem Self-Service-Hinweis + den Power-User-Kontakten
           auf; X (oder erneuter Ball-Klick) klappt es wieder zu. */}
       {currentStep === 0 && powerUsers.length > 0 && (
-        <div style={{ position: 'fixed', right: 20, bottom: 20, zIndex: 1400, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 12 }}>
+        // v18.51: Ball in die rechte Lücke NEBEN der zentrierten Kachel
+        // (page-container max 1100px) verankern statt in die Viewport-Ecke —
+        // dort ging er bei breiten Screens/SPFx-Canvas unten rechts verloren.
+        // left = Kachelmitte + halbe Kachelbreite + Abstand, geclamped damit er
+        // auf schmalen Screens nicht aus dem Bild läuft. Panel öffnet absolut
+        // darüber (right:0 = bündig zur Ball-rechten Kante, wächst nach links).
+        <div style={{ position: 'fixed', bottom: 40, left: 'min(calc(50vw + 566px), calc(100vw - 76px))', zIndex: 1400 }}>
           {powerUserHelpOpen && (
             <div style={{
+              position: 'absolute', bottom: 68, right: 0,
               width: 'min(360px, calc(100vw - 40px))',
               background: '#fff', borderRadius: 'var(--dex-radius-lg, 16px)',
               boxShadow: '0 12px 40px rgba(0,0,0,0.22)',
