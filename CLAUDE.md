@@ -963,10 +963,11 @@ Diese Datei **MUSS immer aktuell** gehalten werden wenn Flows geändert werden. 
 Der `DEX_Outlook_Einladungen`-Flow lief mit **Concurrency 1** streng seriell.
 Bei Grossevents patcht jeder Lauf die **komplette** Teilnehmerliste (bis 1500
 Personen) an Graph → 13–40 Min pro Lauf. Anmeldungen für **andere** Events
-stauten sich dahinter. Mit v18.48 wird die Trigger-Concurrency auf **25**
-erhöht (Parallelität über verschiedene Events), abgesichert durch einen
-**Pro-Event-Lock**, damit zwei Läufe für **dasselbe** Event nicht gleichzeitig
-die Attendee-Liste lesen-und-schreiben (Race → verlorene Einträge).
+stauten sich dahinter. Mit v18.48 wird die Trigger-Concurrency erhöht
+(im Tenant auf **100** gesetzt; Parallelität über verschiedene Events),
+abgesichert durch einen **Pro-Event-Lock**, damit zwei Läufe für **dasselbe**
+Event nicht gleichzeitig die Attendee-Liste lesen-und-schreiben (Race →
+verlorene Einträge). Stand 2026-06-02: im Tenant umgesetzt und verifiziert.
 
 - **Neue SP-Liste `DEX_OutlookLocks`** (Site-Collection-Root, angelegt durch
   `EventService.ensureOutlookLocksList()` in `initEvents`). Spalten: `EventId`

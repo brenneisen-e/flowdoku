@@ -963,22 +963,27 @@ SET_FAILED (Outlook-Termin Erstellung fehlgeschlagen):
 
 ## 4. DEX_Outlook_Einladungen
 
-**Trigger:** Neuer Eintrag in DEX_Outlook (alle 5 Minuten, Concurrency 1)
+**Trigger:** Neuer Eintrag in DEX_Outlook (alle 5 Minuten, **Concurrency 100** seit v18.48, vorher 1)
 **Zweck:** Outlook-Termin verwalten: Teilnehmer einladen/ausladen, Event-Daten aktualisieren, Termin löschen (via Graph API).
-**Letztes Update:** 2026-04-22 (v6.4, production): Sub-Event-Sonderlogik komplett entfernt. Sub-Events sind seit v6.4 eigene DEX_Events-Items mit gesetztem `ParentEventId` — sie laufen durch denselben Einladen/Ausladen/Update/Delete-Pfad wie Top-Level-Events, **keine** Override-Felder, **kein** separater Branch. Flow-Struktur entspricht wieder der ursprünglichen v5.x-Version.
+**Letztes Update:** 2026-06-02 (v18.48, im Tenant verifiziert): **Option-B-Pro-Event-Lock** ergänzt — Trigger-Concurrency von 1 auf 100 erhöht (Parallelität über verschiedene Events), abgesichert durch einen Lock pro EventId via Liste `DEX_OutlookLocks` (Spalte `EventId` mit „Eindeutige Werte erzwingen"). Davor: 2026-04-22 (v6.4): Sub-Event-Sonderlogik komplett entfernt. Sub-Events sind seit v6.4 eigene DEX_Events-Items mit gesetztem `ParentEventId` — sie laufen durch denselben Einladen/Ausladen/Update/Delete-Pfad wie Top-Level-Events, **keine** Override-Felder, **kein** separater Branch.
 
-### Flow-Struktur (v6.4)
+### Flow-Struktur (v18.48 — mit Pro-Event-Lock)
 
 ```
-Trigger (DEX_Outlook, alle 5 Min, Concurrency 1)
-├── Is_DeleteEvent (ActionType == DeleteEvent, runAfter Trigger)
+Trigger (DEX_Outlook, alle 5 Min, Concurrency 100)
+├── Initialize_variable (LockAcquired = false, boolean)
+├── Lock_erwerben (Until: LockAcquired == true, Count 400 / Timeout PT3H)
+│   ├── Create_item (DEX_OutlookLocks, EventId = triggerBody EventId — Eindeutigkeit = atomarer Lock)
+│   ├── Set_Lock_Acquired (LockAcquired = true)        ← runAfter Create_item SUCCEEDED
+│   └── Warte_und_Retry (Wait 30 Sek)                  ← runAfter Create_item FAILED
+├── Is_DeleteEvent (ActionType == DeleteEvent)          ← runAfter Lock_erwerben SUCCEEDED
 │   └── TRUE: Find_Outlook_Event_For_Delete (Graph GET by CalendarLink)
 │             └── Outlook_Event_Found (length > 0)
 │                 └── TRUE: Delete_Outlook_Event (Graph DELETE) → Set_Sent_DeleteEvent (SP Status=Sent)
 ├── Get_Event_Details (SharePoint Get Items DEX_Events by EventId, runAfter Is_DeleteEvent)
 ├── Init_RealEventId (string)
 ├── Init_Attendees (array)
-└── Check_CalendarLink (Event.CalendarLink gesetzt?)
+├── Has_OutlookEventId / Check_CalendarLink (Event.CalendarLink gesetzt?)
     ├── TRUE: Find_Outlook_Event (Graph GET by iCalUId)
     │         → Set_variable (varRealEventId)
     │         → Check_EventFound (varRealEventId nicht leer?)
@@ -991,7 +996,89 @@ Trigger (DEX_Outlook, alle 5 Min, Concurrency 1)
     │           │         → Set_Sent (Status=Sent)
     │           └── FALSE: Set_Failed_1 (Event nicht in Outlook gefunden)
     └── FALSE: Set_Failed (kein CalendarLink im DEX_Events-Item)
+├── Find_Lock (Get items DEX_OutlookLocks, Filter EventId eq '…')   ← runAfter Has_OutlookEventId [SUCCEEDED, FAILED, SKIPPED, TIMEDOUT]
+└── Apply_to_each (über Find_Lock) → Delete_item (Lock IMMER freigeben)  ← runAfter Find_Lock SUCCEEDED
 ```
+
+### Pro-Event-Lock — finale Action-JSONs (v18.48, im Tenant verifiziert)
+
+Locks-Liste `DEX_OutlookLocks` (table `5682f015-49e1-4a8e-b269-2b98f9bcea54`),
+Spalte `EventId` = indiziert + „Eindeutige Werte erzwingen" (von der App
+provisioniert). Die vier neuen/Lock-Actions:
+
+```json
+"Initialize_variable": {
+  "type": "InitializeVariable",
+  "inputs": { "variables": [ { "name": "LockAcquired", "type": "boolean", "value": false } ] },
+  "runAfter": {}
+}
+
+"Lock_erwerben": {
+  "type": "Until",
+  "expression": "@equals(variables('LockAcquired'),true)",
+  "limit": { "count": 400, "timeout": "PT3H" },
+  "actions": {
+    "Create_item": {
+      "type": "OpenApiConnection",
+      "inputs": { "parameters": {
+        "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+        "table": "5682f015-49e1-4a8e-b269-2b98f9bcea54",
+        "item/Title": "@triggerBody()?['EventId']",
+        "item/EventId": "@triggerBody()?['EventId']",
+        "item/LockedAt": "@utcNow()"
+      }, "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" } }
+    },
+    "Set_Lock_Acquired": {
+      "type": "SetVariable",
+      "inputs": { "name": "LockAcquired", "value": true },
+      "runAfter": { "Create_item": [ "SUCCEEDED" ] }
+    },
+    "Warte_und_Retry": {
+      "type": "Wait",
+      "inputs": { "interval": { "count": 30, "unit": "Second" } },
+      "runAfter": { "Create_item": [ "FAILED" ] }
+    }
+  },
+  "runAfter": { "Initialize_variable": [ "SUCCEEDED" ] }
+}
+
+"Find_Lock": {
+  "type": "OpenApiConnection",
+  "inputs": { "parameters": {
+    "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+    "table": "5682f015-49e1-4a8e-b269-2b98f9bcea54",
+    "$filter": "EventId eq '@{triggerBody()?['EventId']}'"
+  }, "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "GetItems" } },
+  "runAfter": { "Has_OutlookEventId": [ "SUCCEEDED", "TIMEDOUT", "SKIPPED", "FAILED" ] }
+}
+
+"Apply_to_each_Lock": {
+  "type": "foreach",
+  "foreach": "@outputs('Find_Lock')?['body/value']",
+  "actions": {
+    "Delete_item": {
+      "type": "OpenApiConnection",
+      "inputs": { "parameters": {
+        "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+        "table": "5682f015-49e1-4a8e-b269-2b98f9bcea54",
+        "id": "@item()?['ID']"
+      }, "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "DeleteItem" } }
+    }
+  },
+  "runAfter": { "Find_Lock": [ "SUCCEEDED" ] }
+}
+```
+
+**Korrektheit (warum das atomar ist):** Der Lock-Erwerb ist **nicht** ein
+Get-dann-Create (das hätte eine Race-Lücke), sondern der `Create_item` selbst —
+nur **ein** Lauf kann die Zeile mit einer gegebenen `EventId` anlegen, alle
+anderen scheitern an der Eindeutigkeit (HTTP 4xx, nicht retrybar). `Warte_und_Retry`
+(runAfter **FAILED**) fängt den Fehlschlag ab, damit die `Until` weiterläuft statt
+abzubrechen — **ohne** diesen Zweig würde die Schleife beim ersten Konflikt mit
+Failed abbrechen, der Lauf die Verarbeitung überspringen und am Ende über
+`Find_Lock` sogar das Lock des aktiven Laufs löschen. `Find_Lock` läuft in **allen
+vier** Zuständen, damit der Lock auch bei Fehler/Skip/Timeout immer freigegeben
+wird (sonst bliebe das Event dauerhaft blockiert).
 
 ### ActionTypes
 
