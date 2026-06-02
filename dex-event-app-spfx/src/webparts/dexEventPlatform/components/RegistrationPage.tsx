@@ -2513,12 +2513,13 @@ export default function RegistrationPage(): React.ReactElement {
             </div>
 
             {/* v11.94/v11.97/v12.0: Zusätzliche read-only-Profildaten aus dem
-                SP-Profil — Job Title, Geschäftsbereich, Büro, Mobil.
+                SP-Profil — Job Title, Geschäftsbereich, Büro.
                 Self-Register: aus useCurrentUser(), nur Felder mit Wert.
-                For-other-Register: aus pickedUserProfile, ALLE vier Felder
+                For-other-Register: aus pickedUserProfile, alle Felder
                 rendern sobald jemand ausgewählt ist (auch leere — sonst
                 rätselt der Stellvertreter ob die App das Profil überhaupt
-                geladen hat). */}
+                geladen hat). v18.50: Mobil wird nicht mehr angezeigt — wird
+                bei der eigenen Anmeldung auch nicht abgefragt. */}
             {(() => {
               const profile = registerForOther ? pickedUserProfile : currentUser;
               // v15.22: Bei „Für andere registrieren" die Felder auch
@@ -2530,8 +2531,7 @@ export default function RegistrationPage(): React.ReactElement {
               const jt = profile ? ((profile as { jobTitle?: string }).jobTitle || '') : '';
               const dept = profile ? ((profile as { department?: string }).department || '') : '';
               const loc = profile ? ((profile as { location?: string }).location || '') : '';
-              const mob = profile ? ((profile as { mobilePhone?: string }).mobilePhone || '') : '';
-              if (!registerForOther && !jt && !dept && !loc && !mob) return null;
+              if (!registerForOther && !jt && !dept && !loc) return null;
               const placeholder = locale === 'de' ? 'aus SP-Profil — nicht hinterlegt' : 'from SP profile — not set';
               const renderField = (label: string, value: string): React.ReactElement => (
                 <div className="form-group">
@@ -2550,7 +2550,6 @@ export default function RegistrationPage(): React.ReactElement {
                   {(jt || registerForOther) && renderField(locale === 'de' ? 'Position' : 'Job Title', jt)}
                   {(dept || registerForOther) && renderField(locale === 'de' ? 'Geschäftsbereich' : 'Business Area', dept)}
                   {(loc || registerForOther) && renderField(locale === 'de' ? 'Büro' : 'Office', loc)}
-                  {(mob || registerForOther) && renderField(locale === 'de' ? 'Mobil' : 'Mobile', mob)}
                 </>
               );
             })()}
