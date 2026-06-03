@@ -6462,21 +6462,41 @@ export class EventService {
       if (items.length === 0) return { success: false };
 
       const firstWaiting = items[0];
+      // v18.71: Kern-Update (Status -> Angemeldet, ggf. StarterType) STRIKT
+      // getrennt von den optionalen Audit-Feldern. Hintergrund: bei Legacy-
+      // Teilnehmerlisten, die noch nie per „Spalten fixen" aktualisiert wurden,
+      // fehlt die Spalte PromotedDate (erst seit v17.15). Wenn PromotedDate im
+      // selben MERGE-Body steht, lehnt SharePoint den GESAMTEN Request mit
+      // HTTP 400 ab („The property 'PromotedDate' does not exist…") — der
+      // Nachrück-Status wird dann gar nicht gesetzt und der Button „macht
+      // nichts". Deshalb zuerst nur die Pflichtfelder schreiben.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mergeBody: Record<string, any> = { 'Status': 'Angemeldet' };
       if (inheritStarterType) {
         mergeBody['StarterType'] = inheritStarterType;
-      }
-      // v17.15: Nachrueck-Audit auf der promoteten Person mitschreiben.
-      mergeBody['PromotedDate'] = new Date().toISOString();
-      if (replacedByCancel && replacedByCancel.participantEmail) {
-        mergeBody['ReplacedParticipantEmail'] = replacedByCancel.participantEmail;
       }
       const mergeResp = await this._merge(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${firstWaiting.Id})`,
         mergeBody
       );
       if (!(mergeResp.ok || mergeResp.status === 406)) return { success: false };
+
+      // v17.15: Nachrueck-Audit auf der promoteten Person — best-effort, in
+      // einem SEPARATEN MERGE, damit eine fehlende Audit-Spalte (Legacy-Liste)
+      // den eigentlichen Promote oben nicht kaputtmacht.
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const auditBody: Record<string, any> = { 'PromotedDate': new Date().toISOString() };
+        if (replacedByCancel && replacedByCancel.participantEmail) {
+          auditBody['ReplacedParticipantEmail'] = replacedByCancel.participantEmail;
+        }
+        await this._merge(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${firstWaiting.Id})`,
+          auditBody
+        );
+      } catch (err) {
+        console.warn('[DEX] promoteFirstWaitlistItem: Nachrueck-Audit (PromotedDate) konnte nicht geschrieben werden — Spalte fehlt evtl. auf einer Legacy-Liste:', err);
+      }
 
       const vorname = firstWaiting.Vorname || '';
       const nachname = firstWaiting.Nachname || '';
