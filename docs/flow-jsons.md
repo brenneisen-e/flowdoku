@@ -17,7 +17,7 @@ Wird aktualisiert wenn Flows geändert werden.
 
 **Trigger:** Neuer Eintrag in DEX_IDReorder
 **Zweck:** TeilnehmerIDs neu vergeben (Aktive + Warteliste lückenlos sortiert) + Nachrücken von Warteliste (seit v6.7 inkl. typ-bewusster Promotion für B2Run-Split-Wartelisten; seit v10.20 mit optionalem Shared-Waitlist-Modus)
-**Letztes Update:** 2026-06-02 (v18.66 — OrgNachruecker-Mail + Paginierung as-implemented; siehe offene Korrektur unten)
+**Letztes Update:** 2026-06-03 (v18.71 — `Status`/`StarterType` als Objekt aus „Get items" → Filter auf `?['Value']`; siehe Anleitung unten)
 
 ### ✅ GELÖST 2026-06-02 (v18.66) — leeres `from` + unquoted `Warteliste` + Self-Reference
 
@@ -73,6 +73,57 @@ eine **dritte** Person zusätzlich auf die Warteliste setzen; jetzt eine
 Abmeldung auslösen → es darf **genau eine** Person nachrücken (auf den frei
 gewordenen Platz), nicht zwei. `Count_Active` muss nach dem Lauf der echten
 Aktiven-Zahl entsprechen, nicht 0.
+
+### UI-Anleitung 2026-06-03 (v18.71) — `Status`/`StarterType` als Objekt aus „Get items" (`?['Value']` statt direkt)
+
+**Status:** `Filter_Non_Waitlist` im Tenant bereits umgestellt und verifiziert
+(2026-06-03). Die beiden Split-Filter (`Filter_Active_Durchstarter` /
+`_Funstarter`) sind **noch offen** und nur für Split-/B2Run-Events relevant.
+
+**Fehlerbild:** Nach dem Umbau auf die Standard-Action **„Elemente abrufen"
+(Get items)** in der Renummerier-Schleife (v18.69) rückte der Flow bei einer
+Abmeldung **niemanden mehr nach** — obwohl ein Platz frei war. `Count_Active`
+zählte z. B. **487** statt **399** (= 399 Angemeldete **+** 88 Wartelistler),
+also war `Check_Nachrücken` (`Count_Active < MaxParticipants`) immer falsch.
+
+**Ursache:** Die Spalten `Status` **und** `StarterType` sind in der
+Teilnehmerliste **Auswahl-Spalten (Choice)**. Die alte rohe SharePoint-REST-
+Abfrage lieferte `Status` als reinen **Text** („Warteliste"). Die Action
+**„Elemente abrufen" (Get items)** liefert Choice-Spalten dagegen als
+**Objekt** zurück:
+
+```
+"Status": { "Id": 0, "Value": "Angemeldet" }   bzw.   { "Id": 2, "Value": "Warteliste" }
+```
+
+Dadurch vergleicht `@equals(item()?['Status'], 'Warteliste')` ein **Objekt**
+mit einem **Text** → ist **nie** gleich → der Warteliste-Ausschluss greift
+nicht → alle Einträge werden mitgezählt.
+
+**Fix (über den Expression-Tab / fx — UI-only):** In **allen** Query-Filtern,
+die über `variables('AllParticipants')` laufen, das Unter-Feld **`?['Value']`**
+ansprechen statt das Objekt:
+
+- **`Filter_Non_Waitlist`** (Nicht-Split, treibt `Count_Active`) — *erledigt:*
+  `@not(equals(item()?['Status']?['Value'], 'Warteliste'))`
+- **`Filter_Active_Durchstarter`** (Split, Ja-Zweig) — *noch offen:*
+  `@and(equals(item()?['StarterType']?['Value'], 'Durchstarter'), not(equals(item()?['Status']?['Value'], 'Warteliste')))`
+- **`Filter_Active_Funstarter`** (Split, Ja-Zweig) — *noch offen:*
+  `@and(equals(item()?['StarterType']?['Value'], 'Funstarter'), not(equals(item()?['Status']?['Value'], 'Warteliste')))`
+
+**Nicht betroffen:** Die `Get_Waitlist_First*`-Actions laufen über die **rohe
+SharePoint-REST-API** (`HttpRequest`, `$filter=Status eq 'Warteliste'`) — dort
+bleibt `Status` ein Text, keine Änderung nötig. Auch der `DEX_TeilnehmerID`-
+Diff (`GenerateSPData`) ist nicht betroffen (vergleicht nur die Zahlen-Spalte
+`TeilnehmerID`).
+
+**App-Begleitfix (v18.71):** Der manuelle Button **„Von Warteliste
+nachrücken"** im Admin Center schrieb `Status='Angemeldet'` zusammen mit dem
+Audit-Feld `PromotedDate` in **einem** Update. Auf Legacy-Teilnehmerlisten
+ohne diese Spalte (z. B. JP Morgan Corporate Challenge Firmenlauf) lehnte
+SharePoint den **gesamten** Update mit HTTP 400 ab → der Button „machte
+nichts". Seit v18.71 laufen Kern-Update (`Status`) und Audit (`PromotedDate`)
+in **getrennten** Schreibvorgängen; das Audit ist best-effort.
 
 ### UI-Anleitung 2026-06-03 (v18.69) — Renummerierung: Diff-Verfahren + selbst-prüfende Schleife (garantiert 1..N, keine Duplikate)
 
@@ -589,9 +640,9 @@ Load_All_Pages (Until @equals(variables('NextPageUri'),''), count 400, timeout P
   Set_NextPageUri (SetVariable NextPageUri):
     @if(empty(coalesce(body('Get_Page')?['@odata.nextLink'], body('Get_Page')?['odata.nextLink'])), '', concat('_api', last(split(coalesce(body('Get_Page')?['@odata.nextLink'], body('Get_Page')?['odata.nextLink']), '_api'))))  runAfter Append_Page
 
-Filter_Non_Waitlist (Query)  runAfter Load_All_Pages
+Filter_Non_Waitlist (Query)  runAfter Batch_Until_Clean
   from:  @variables('AllParticipants')
-  where: @not(equals(item()?['Status'], 'Warteliste'))
+  where: @not(equals(item()?['Status']?['Value'], 'Warteliste'))   ← v18.71: ?['Value'] (Get items liefert Choice als Objekt)
 Count_Active (Compose: @length(body('Filter_Non_Waitlist')))  runAfter Filter_Non_Waitlist
 Filter_Active (Query)  runAfter Count_Active
   from:  @variables('AllParticipants')
@@ -615,7 +666,7 @@ Process_Batch_Scope (Scope)  runAfter batchTemplate
     [JA — Split]
       Filter_Active_Durchstarter (Query)
         from:  @variables('AllParticipants')
-        where: @and(equals(item()?['StarterType'], 'Durchstarter'), not(equals(item()?['Status'], 'Warteliste')))
+        where: @and(equals(item()?['StarterType']?['Value'], 'Durchstarter'), not(equals(item()?['Status']?['Value'], 'Warteliste')))   ← v18.71: ?['Value'] (noch offen im Tenant)
       Count_Active_Durchstarter (Compose @length(body('Filter_Active_Durchstarter')))
       Check_Durchstarter_Free (If Count<DurchstarterCapacity)
         Get_Waitlist_First_Durchstarter (HTTP GET Status=Warteliste & PreferredStarterType=Durchstarter, $orderby TeilnehmerID asc top 1)
@@ -629,7 +680,7 @@ Process_Batch_Scope (Scope)  runAfter batchTemplate
           Queue_Outlook_Durchstarter (DEX_Outlook Einladen)  runAfter Queue_Org_Email_D
       Filter_Active_Funstarter (Query)  runAfter Check_Durchstarter_Free
         from:  @variables('AllParticipants')
-        where: @and(equals(item()?['StarterType'], 'Funstarter'), not(equals(item()?['Status'], 'Warteliste')))
+        where: @and(equals(item()?['StarterType']?['Value'], 'Funstarter'), not(equals(item()?['Status']?['Value'], 'Warteliste')))   ← v18.71: ?['Value'] (noch offen im Tenant)
       Count_Active_Funstarter (Compose @length(body('Filter_Active_Funstarter')))
       Check_Funstarter_Free (If Count<FunstarterCapacity)
         Get_Waitlist_First_Funstarter (HTTP GET Status=Warteliste & PreferredStarterType=Funstarter, $orderby TeilnehmerID asc top 1)
