@@ -772,6 +772,9 @@ export default function AdminPage(): React.ReactElement {
   const [cancelledSortAsc, setCancelledSortAsc] = React.useState(false);
   const [isReorderingIDs, setIsReorderingIDs] = React.useState(false);
   const [reorderResult, setReorderResult] = React.useState<string | null>(null);
+  // v18.70: Manueller Nachrück-Button (freien Platz mit erstem Wartelistler füllen)
+  const [isPromoting, setIsPromoting] = React.useState(false);
+  const [promoteResult, setPromoteResult] = React.useState<string | null>(null);
   const [isResettingCounter, setIsResettingCounter] = React.useState(false);
   const [resetCounterResult, setResetCounterResult] = React.useState<string | null>(null);
   const [isFixingColumns, setIsFixingColumns] = React.useState(false);
@@ -1268,6 +1271,79 @@ export default function AdminPage(): React.ReactElement {
     }
     setReorderProgress(null);
     setIsReorderingIDs(false);
+  };
+
+  // v18.70: Manuelles Nachrücken — füllt einen freien Platz mit dem ersten
+  // Wartelistler (nach TeilnehmerID). Nutzt dieselbe promoteFirstWaitlistItem-
+  // Logik + Mail/Outlook wie der Admin-Cancel-Pfad, nur ohne Cancel.
+  const runManualPromote = async (): Promise<void> => {
+    if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+    setIsPromoting(true);
+    setPromoteResult(null);
+    try {
+      // Bei getrennten Split-Wartelisten ist ohne konkreten Cancel nicht
+      // bekannt, welche Gruppe frei ist → ohne Typfilter den ersten
+      // Wartelistler nehmen. promoteFirstWaitlistItem prüft die Kapazität
+      // (maxParticipants) und rückt nur nach, wenn wirklich ein Platz frei ist.
+      const promoted = await eventServiceRef.promoteFirstWaitlistItem(
+        selectedEvent.subsiteUrl,
+        undefined,
+        selectedEvent.maxParticipants,
+        undefined,
+      );
+      if (promoted && promoted.success && promoted.email) {
+        setAdminToast({ kind: 'promoted', name: promoted.name || promoted.email, email: promoted.email });
+        if (!selectedEvent.disableEmails) {
+          try {
+            const lang = selectedEvent.emailLanguage || 'EN';
+            const promotedFirstName = (promoted.name || '').trim().split(/\s+/)[0] || '';
+            const promoteVars = {
+              Name: promotedFirstName,
+              EventTitle: selectedEvent.title,
+              Organizer: formatOrganizerList(selectedEvent.organizers, lang),
+              AppUrl: `${eventServiceRef.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+              WaitlistPosition: '',
+            };
+            let emailData: { subject: string; body: string };
+            const spTplRaw = await eventServiceRef.getEmailTemplate('Nachruecken', lang).catch(() => null);
+            const spTpl = applyEventTemplateOverride(spTplRaw, selectedEvent.emailTemplateOverrides, 'Nachruecken');
+            if (spTpl) {
+              emailData = buildEmailFromTemplate(spTpl, promoteVars);
+            } else {
+              emailData = promotionEmail(promotedFirstName, selectedEvent.title);
+            }
+            await eventServiceRef.queueEmail(
+              emailData.subject, promoted.email, promoted.name || '', emailData.body,
+              'Nachruecken', selectedEvent.title, selectedEvent.id
+            );
+          } catch (err) { console.warn('[DEX] manual promote-email failed:', err); }
+        }
+        if (!selectedEvent.disableOutlook) {
+          try {
+            await eventServiceRef.queueOutlookEvent(
+              promoted.email, selectedEvent.id, selectedEvent.title, 'Einladen'
+            );
+          } catch (err) { console.warn('[DEX] manual promote-outlook failed:', err); }
+        }
+        // IDs neu vergeben + Counter/Seat-Sync + Liste neu laden
+        await runIdReorder();
+        try {
+          const isSplit = typeof selectedEvent.durchstarterCapacity === 'number'
+            && typeof selectedEvent.funstarterCapacity === 'number'
+            && (selectedEvent.durchstarterCapacity > 0 || selectedEvent.funstarterCapacity > 0);
+          await eventServiceRef.syncSeatsToActiveCount(selectedEvent.subsiteUrl, { isSplit });
+        } catch { /* */ }
+        setPromoteResult(isDe ? `${promoted.name || promoted.email} ist nachgerückt.` : `${promoted.name || promoted.email} moved up.`);
+      } else if (promoted && promoted.skippedOverbooked) {
+        setPromoteResult(isDe ? 'Kein freier Platz — Event ist voll.' : 'No free seat — event is full.');
+      } else {
+        setPromoteResult(isDe ? 'Niemand auf der Warteliste.' : 'Nobody on the waitlist.');
+      }
+    } catch (err) {
+      console.warn('[DEX] runManualPromote failed:', err);
+      setPromoteResult(isDe ? 'Fehler beim Nachrücken.' : 'Error promoting.');
+    }
+    setIsPromoting(false);
   };
 
   // v11.70 / v11.71: Hinweis-Box „IDs sind ggf. nicht korrekt" wird jetzt
@@ -3688,6 +3764,32 @@ export default function AdminPage(): React.ReactElement {
                     ? 'TeilnehmerIDs neu vergeben (1, 2, 3, …)? Sortierung nach Erstellungsreihenfolge.\n\nNICHT ausführen, während gerade viele Anmeldungen laufen — bitte erst wenn die Anmeldewelle vorbei ist.'
                     : 'Reassign participant IDs (1, 2, 3, …)? Sorted by creation order.\n\nDo NOT run while many registrations are coming in — please wait until the registration wave is over.')) return;
                   await runIdReorder();
+                }}
+              />
+            )}
+
+            {/* 7a2. Nachrücken — Admin ODER Organizer des Events (v18.70).
+                Füllt einen freien Platz mit dem ersten Wartelistler (nach
+                TeilnehmerID), inkl. Nachrück-Mail + Outlook-Einladung, danach
+                IDs neu vergeben + Seat-Sync. */}
+            {(isAdmin || (!!selectedEvent && isOrganizerFor(selectedEvent))) && (
+              <ActionTile
+                icon={<Users size={18} />}
+                title={isPromoting ? (isDe ? 'Rückt nach…' : 'Promoting…') : (isDe ? 'Von Warteliste nachrücken' : 'Promote from waitlist')}
+                desc={isDe
+                  ? 'Rückt den ersten Teilnehmer von der Warteliste (nach TeilnehmerID) auf einen freien Platz nach. Die Person bekommt Status „Angemeldet", eine Nachrück-Mail und eine Outlook-Einladung; danach werden die IDs neu vergeben. Promotet nur, wenn tatsächlich ein Platz frei ist.'
+                  : 'Promotes the first person on the waitlist (by participant ID) into a free seat. The person gets status “Registered”, a promotion email and an Outlook invite; IDs are then reassigned. Only promotes if a seat is actually free.'}
+                badge="organizer"
+                busy={isPromoting}
+                disabled={!selectedEvent?.subsiteUrl || isPromoting || isReorderingIDs}
+                result={promoteResult}
+                resultIsError={!!promoteResult && (promoteResult.indexOf('Fehler') >= 0 || promoteResult.indexOf('Error') >= 0)}
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                  if (!confirm(isDe
+                    ? 'Den ersten Teilnehmer von der Warteliste auf einen freien Platz nachrücken?'
+                    : 'Promote the first waitlist participant into a free seat?')) return;
+                  await runManualPromote();
                 }}
               />
             )}
