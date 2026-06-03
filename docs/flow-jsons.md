@@ -76,9 +76,10 @@ Aktiven-Zahl entsprechen, nicht 0.
 
 ### UI-Anleitung 2026-06-03 (v18.71) — `Status`/`StarterType` als Objekt aus „Get items" (`?['Value']` statt direkt)
 
-**Status:** `Filter_Non_Waitlist` im Tenant bereits umgestellt und verifiziert
-(2026-06-03). Die beiden Split-Filter (`Filter_Active_Durchstarter` /
-`_Funstarter`) sind **noch offen** und nur für Split-/B2Run-Events relevant.
+**Status:** ✅ vollständig im Tenant umgestellt (2026-06-03). `Filter_Non_Waitlist`
+verifiziert (JP-Morgan-Event rückt wieder automatisch nach). Die beiden
+Split-Filter (`Filter_Active_Durchstarter` / `_Funstarter`) sind ebenfalls auf
+`?['Value']` umgestellt (nur für Split-/B2Run-Events relevant).
 
 **Fehlerbild:** Nach dem Umbau auf die Standard-Action **„Elemente abrufen"
 (Get items)** in der Renummerier-Schleife (v18.69) rückte der Flow bei einer
@@ -106,9 +107,9 @@ ansprechen statt das Objekt:
 
 - **`Filter_Non_Waitlist`** (Nicht-Split, treibt `Count_Active`) — *erledigt:*
   `@not(equals(item()?['Status']?['Value'], 'Warteliste'))`
-- **`Filter_Active_Durchstarter`** (Split, Ja-Zweig) — *noch offen:*
+- **`Filter_Active_Durchstarter`** (Split, Ja-Zweig) — *erledigt:*
   `@and(equals(item()?['StarterType']?['Value'], 'Durchstarter'), not(equals(item()?['Status']?['Value'], 'Warteliste')))`
-- **`Filter_Active_Funstarter`** (Split, Ja-Zweig) — *noch offen:*
+- **`Filter_Active_Funstarter`** (Split, Ja-Zweig) — *erledigt:*
   `@and(equals(item()?['StarterType']?['Value'], 'Funstarter'), not(equals(item()?['Status']?['Value'], 'Warteliste')))`
 
 **Nicht betroffen:** Die `Get_Waitlist_First*`-Actions laufen über die **rohe
@@ -666,7 +667,7 @@ Process_Batch_Scope (Scope)  runAfter batchTemplate
     [JA — Split]
       Filter_Active_Durchstarter (Query)
         from:  @variables('AllParticipants')
-        where: @and(equals(item()?['StarterType']?['Value'], 'Durchstarter'), not(equals(item()?['Status']?['Value'], 'Warteliste')))   ← v18.71: ?['Value'] (noch offen im Tenant)
+        where: @and(equals(item()?['StarterType']?['Value'], 'Durchstarter'), not(equals(item()?['Status']?['Value'], 'Warteliste')))   ← v18.71: ?['Value'] (im Tenant erledigt)
       Count_Active_Durchstarter (Compose @length(body('Filter_Active_Durchstarter')))
       Check_Durchstarter_Free (If Count<DurchstarterCapacity)
         Get_Waitlist_First_Durchstarter (HTTP GET Status=Warteliste & PreferredStarterType=Durchstarter, $orderby TeilnehmerID asc top 1)
@@ -680,7 +681,7 @@ Process_Batch_Scope (Scope)  runAfter batchTemplate
           Queue_Outlook_Durchstarter (DEX_Outlook Einladen)  runAfter Queue_Org_Email_D
       Filter_Active_Funstarter (Query)  runAfter Check_Durchstarter_Free
         from:  @variables('AllParticipants')
-        where: @and(equals(item()?['StarterType']?['Value'], 'Funstarter'), not(equals(item()?['Status']?['Value'], 'Warteliste')))   ← v18.71: ?['Value'] (noch offen im Tenant)
+        where: @and(equals(item()?['StarterType']?['Value'], 'Funstarter'), not(equals(item()?['Status']?['Value'], 'Warteliste')))   ← v18.71: ?['Value'] (im Tenant erledigt)
       Count_Active_Funstarter (Compose @length(body('Filter_Active_Funstarter')))
       Check_Funstarter_Free (If Count<FunstarterCapacity)
         Get_Waitlist_First_Funstarter (HTTP GET Status=Warteliste & PreferredStarterType=Funstarter, $orderby TeilnehmerID asc top 1)
