@@ -63,7 +63,7 @@ Quelle wurde die `from`-Bindung geleert und in der Paginierungs-Anleitung
    nicht im eigenen Set-Wert referenzieren (Fehler beim Speichern:
    `WorkflowRunActionInputsInvalidProperty` — „Self reference is not
    supported…"). **Fix:** einen **Compose** `Merge_Pages` =
-   `concat(variables('AllParticipants'), body('Get_Page')?['value'])` zwischen
+   `union(variables('AllParticipants'), body('Get_Page')?['value'])` zwischen
    `Get_Page` und `Append_Page` einschieben, und `Append_Page` auf
    `outputs('Merge_Pages')` setzen. Siehe Schritt b/c in der
    Paginierungs-Anleitung unten.
@@ -199,7 +199,7 @@ deshalb bewusst **NICHT** auf den „Get items"-Connector wechseln (der liefert
         - Uri (fx): `variables('NextPageUri')`
         - Headers: `Accept` = `application/json;odata=nometadata`
      b. **Compose** `Merge_Pages` (fx):
-        `concat(variables('AllParticipants'), body('Get_Page')?['value'])`
+        `union(variables('AllParticipants'), body('Get_Page')?['value'])`
         — runAfter `Get_Page` Succeeded.
         **WICHTIG (v18.66):** dieser Compose-Zwischenschritt ist Pflicht. Eine
         **Set variable**-Action darf die eigene Variable **nicht** im Set-Wert
@@ -207,6 +207,13 @@ deshalb bewusst **NICHT** auf den „Get items"-Connector wechseln (der liefert
         updating the value of variable 'AllParticipants'" →
         `WorkflowRunActionInputsInvalidProperty`). Compose darf die Variable
         lesen, Set variable liest danach nur den Compose-Output.
+        **WICHTIG (v18.67):** zum Zusammenführen `union(...)` benutzen, **nicht**
+        `concat(...)`. `concat` ist eine **String**-Funktion und klebt zwei
+        Arrays als Text zusammen → `Append_Page` schlägt mit
+        „The variable 'AllParticipants' of type 'Array' cannot be … updated
+        with value of type 'String'" fehl. `union` führt zwei Arrays zu einem
+        Array zusammen (Duplikate werden entfernt — bei Paginierung unkritisch,
+        da Seiten-Items unterschiedliche `Id` haben).
      c. **Set variable** `AllParticipants` (fx): `outputs('Merge_Pages')`
         — runAfter `Merge_Pages` Succeeded.
      d. **Set variable** `NextPageUri` (fx):
@@ -485,7 +492,7 @@ Init_NextPageUri (InitializeVariable, String):
 
 Load_All_Pages (Until @equals(variables('NextPageUri'),''), count 400, timeout PT3H)  runAfter Init_NextPageUri
   Get_Page (HTTP GET @variables('NextPageUri'), Accept nometadata)
-  Merge_Pages (Compose): @concat(variables('AllParticipants'), body('Get_Page')?['value'])   runAfter Get_Page
+  Merge_Pages (Compose): @union(variables('AllParticipants'), body('Get_Page')?['value'])   runAfter Get_Page
   Append_Page (SetVariable AllParticipants): @outputs('Merge_Pages')                          runAfter Merge_Pages
   Set_NextPageUri (SetVariable NextPageUri):
     @if(empty(coalesce(body('Get_Page')?['@odata.nextLink'], body('Get_Page')?['odata.nextLink'])), '', concat('_api', last(split(coalesce(body('Get_Page')?['@odata.nextLink'], body('Get_Page')?['odata.nextLink']), '_api'))))  runAfter Append_Page
@@ -570,7 +577,7 @@ If_Counter_Stale (If Current != Max)  runAfter Compute_CurrentCounter
 > **Wichtige Ausdrücke verbatim** (für Copy-Paste in den fx-Tab):
 >
 > - **Init_NextPageUri:** `concat('_api/web/lists/getbytitle(''', outputs('Settings')?['listName'], ''')/items?$select=Id,TeilnehmerID,Status,RegistrationDate&$filter=Status ne ''Abgemeldet''&$orderby=RegistrationDate asc&$top=5000')`
-> - **Merge_Pages:** `concat(variables('AllParticipants'), body('Get_Page')?['value'])`
+> - **Merge_Pages (v18.67):** `union(variables('AllParticipants'), body('Get_Page')?['value'])` — **nicht** `concat` (String-Funktion → Typfehler in Append_Page)
 > - **Append_Page (Wert):** `outputs('Merge_Pages')`
 > - **Set_NextPageUri (v18.67, Endlosschleifen-Fix):** `if(empty(coalesce(body('Get_Page')?['@odata.nextLink'], body('Get_Page')?['odata.nextLink'])), '', concat('_api', last(split(coalesce(body('Get_Page')?['@odata.nextLink'], body('Get_Page')?['odata.nextLink']), '_api'))))`
 > - **Org-Template-URI (alle drei Zweige):** `concat('_api/web/lists/getbytitle(''DEX_EmailTemplates'')/items?$filter=TemplateType eq ''OrgNachruecker'' and Language eq ''', coalesce(first(outputs('Get_EventDetails')?['body/value'])?['EmailLanguage'], 'EN'), '''&$select=Subject,BodyHtml&$top=1')` — Header `Accept: application/json;odata=verbose`
