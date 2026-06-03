@@ -152,7 +152,7 @@ async function compressImage(file: File, maxWidth: number = 1200, quality: numbe
 interface CustomFieldInput {
   id: string;
   label: string;
-  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate';
+  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'file';
   required: boolean;
   // Optionen als Array (incl. leerer Slots fuer "frisch hinzugefuegte" Eintraege)
   options: string[];
@@ -9271,6 +9271,7 @@ export default function EventCreationPage(): React.ReactElement {
                                   <option value="select">{isDe ? 'Dropdown' : 'Dropdown'}</option>
                                   <option value="number">{isDe ? 'Zahl' : 'Number'}</option>
                                   <option value="checkbox">{isDe ? 'Checkbox' : 'Checkbox'}</option>
+                                  <option value="file">{isDe ? 'Datei-Upload' : 'File upload'}</option>
                                 </select>
                                 <label
                                   style={{
@@ -9659,6 +9660,7 @@ export default function EventCreationPage(): React.ReactElement {
                         <option value="select">{isDe ? 'Dropdown' : 'Dropdown'}</option>
                         <option value="number">{isDe ? 'Zahl' : 'Number'}</option>
                         <option value="checkbox">{isDe ? 'Checkbox' : 'Checkbox'}</option>
+                        <option value="file">{isDe ? 'Datei-Upload' : 'File upload'}</option>
                         <option value="user">{isDe ? 'Person' : 'Person'}</option>
                         <option value="roommate">{isDe ? 'Roommate' : 'Roommate'}</option>
                       </select>
@@ -10449,6 +10451,7 @@ export default function EventCreationPage(): React.ReactElement {
                                       <option value="select">{isDe ? 'Dropdown' : 'Dropdown'}</option>
                                       <option value="number">{isDe ? 'Zahl' : 'Number'}</option>
                                       <option value="checkbox">{isDe ? 'Checkbox' : 'Checkbox'}</option>
+                                      <option value="file">{isDe ? 'Datei-Upload' : 'File upload'}</option>
                                     </select>
                                     <label
                                       style={{

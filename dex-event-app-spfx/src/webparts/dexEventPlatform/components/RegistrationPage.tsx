@@ -226,6 +226,13 @@ export default function RegistrationPage(): React.ReactElement {
     }
   }, [navIntent, canCreateEvents]);
   const [eventSpecific, setEventSpecific] = React.useState<Record<string, string>>({});
+  // v18.73: Datei-Upload-Felder (type === 'file'). Die ausgewählte Datei wird
+  // separat gehalten (Record<string,string> kann keine File-Objekte tragen);
+  // der Dateiname landet zusätzlich in eventSpecific[fieldId], damit die
+  // Pflichtfeld-Prüfung und die CustomData-/Listen-Spalte über den
+  // bestehenden String-Pfad funktionieren. Nach erfolgreicher Anmeldung wird
+  // die Datei als Attachment an die Teilnehmer-Zeile gehängt (siehe Submit).
+  const [fileUploads, setFileUploads] = React.useState<Record<string, File>>({});
   const [preferredStarterType, setPreferredStarterType] = React.useState<string>('');
   // Seit v6.5: Fallback-Dialog wenn B2Run-Wunschtyp voll, aber Alternative frei.
   const [fallbackDialog, setFallbackDialog] = React.useState<{ wunsch: string; alt: string; altFree: number } | null>(null);
@@ -1007,13 +1014,23 @@ export default function RegistrationPage(): React.ReactElement {
       if (willRegisterParent || registerForOther || shouldShadowRegisterParent) {
         setSubmitProgress(30);
         setSubmitProgressLabel(locale === 'de' ? 'Haupt-Event wird angemeldet…' : 'Registering for main event…');
+        // v18.73: Datei-Upload-Felder des Hauptevents einsammeln (Feld-Label +
+        // File). Werden nach erfolgreicher Anmeldung als Attachment an die
+        // Teilnehmer-Zeile gehängt.
+        const uploadFilesForParent = Object.keys(fileUploads)
+          .map(fid => {
+            const ff = event?.eventSpecificFields.find(x => x.id === fid);
+            return ff && ff.type === 'file' ? { label: pickFieldLabel(ff), file: fileUploads[fid] } : null;
+          })
+          .filter((x): x is { label: string; file: File } => !!x);
         const parentResult = await registerForEvent(
           selectedEventId!,
           customData,
           firstTrim,
           surnameTrim,
           participantEmail,
-          starterTypeToUse || undefined
+          starterTypeToUse || undefined,
+          uploadFilesForParent.length > 0 ? { uploadFiles: uploadFilesForParent } : undefined
         );
         parentOk = parentResult.ok;
         if (parentOk) {
@@ -1571,6 +1588,72 @@ export default function RegistrationPage(): React.ReactElement {
           </div>
         )}
       </>
+    ) : field.type === 'file' ? (
+      // v18.73: Datei-Upload-Feld. Die gewählte Datei wird in fileUploads
+      // gehalten; der Dateiname landet in vals[field.id], damit Pflichtfeld-
+      // Prüfung + CustomData über den String-Pfad greifen. Nach erfolgreicher
+      // Anmeldung wird die Datei als Attachment an die Teilnehmer-Zeile gehängt.
+      (() => {
+        const chosenName = (vals[field.id] || '').trim();
+        const isErr = !!(showErrors && field.required && !chosenName);
+        const inputId = `dex-file-${field.id}`;
+        const MAX_MB = 15;
+        return (
+          <div
+            style={{
+              display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+              padding: '10px 14px', borderRadius: 12,
+              border: isErr ? '1.5px solid var(--dex-red)' : '1.5px solid var(--dex-gray-200)',
+              background: chosenName ? 'rgba(134,188,37,0.08)' : 'var(--dex-white, #fff)',
+            }}
+          >
+            <input
+              id={inputId}
+              type="file"
+              accept="application/pdf,image/*,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv"
+              style={{ display: 'none' }}
+              onChange={e => {
+                const f = e.target.files && e.target.files[0];
+                if (!f) return;
+                if (f.size > MAX_MB * 1024 * 1024) {
+                  setError(locale === 'de'
+                    ? `Die Datei „${f.name}" ist zu groß (max. ${MAX_MB} MB).`
+                    : `The file "${f.name}" is too large (max. ${MAX_MB} MB).`);
+                  e.target.value = '';
+                  return;
+                }
+                setFileUploads(prev => ({ ...prev, [field.id]: f }));
+                setVals({ ...vals, [field.id]: f.name });
+              }}
+            />
+            <label htmlFor={inputId} className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              <Icon iconName="Upload" style={{ fontSize: 14 }} />
+              {chosenName ? (locale === 'de' ? 'Andere Datei wählen' : 'Choose different file') : (locale === 'de' ? 'Datei auswählen' : 'Choose file')}
+            </label>
+            {chosenName ? (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', color: 'var(--dex-gray-800)', maxWidth: '100%', overflow: 'hidden' }}>
+                <Icon iconName="Page" style={{ fontSize: 14, color: 'var(--dex-green-dark, #4a7c1f)', flexShrink: 0 }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{chosenName}</span>
+                <button
+                  type="button"
+                  title={locale === 'de' ? 'Entfernen' : 'Remove'}
+                  onClick={() => {
+                    setFileUploads(prev => { const next = { ...prev }; delete next[field.id]; return next; });
+                    setVals({ ...vals, [field.id]: '' });
+                  }}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red)', display: 'inline-flex', alignItems: 'center', padding: 0, flexShrink: 0 }}
+                >
+                  <X size={14} />
+                </button>
+              </span>
+            ) : (
+              <span style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
+                {locale === 'de' ? `Keine Datei gewählt (max. ${MAX_MB} MB)` : `No file selected (max. ${MAX_MB} MB)`}
+              </span>
+            )}
+          </div>
+        );
+      })()
     ) : (
       <input className="form-input" value={vals[field.id] || ''} onChange={e => setVals({ ...vals, [field.id]: e.target.value })} placeholder={displayLabel} style={showErrors && field.required && !vals[field.id]?.trim() ? errorBorder : {}} />
     )}

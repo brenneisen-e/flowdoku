@@ -221,7 +221,7 @@ interface EventContextType {
   childEventsOf: (parentEventId: string) => DeloitteEvent[];
   isEventsLoading: boolean;
   createEvent: (event: CreateEventInput) => Promise<number | null>;
-  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' }>;
+  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; uploadFiles?: Array<{ label: string; file: File }> }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' }>;
   /** v11.82: Team-Anmeldung — Lead + N-1 Mitglieder gleichzeitig anmelden.
    *  Reserviert N Plaetze atomar; bei Vollbelegung geht das ganze Team auf
    *  die Warteliste (keine Teil-Anmeldungen aus Kapazitaetsmangel). */
@@ -984,7 +984,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // „Hauptevent" ist dort nicht anmeldbar, die CC-Felder (z.B. Assistenz)
     // sind übergreifend und gelten für die Sub-Events — also müssen die
     // Sub-Event-Bestätigungsmails ebenfalls an die Assistenz auf CC gehen.
-    opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string }
+    // v18.73: uploadFiles — Dateien aus Custom-Fields vom Typ 'file', die nach
+    // erfolgreicher Anmeldung als Attachment an die Teilnehmer-Zeile gehängt
+    // werden (pro Feld eine Datei, mit Feld-Label als Dateinamen-Prefix).
+    opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; uploadFiles?: Array<{ label: string; file: File }> }
   ): Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' }> {
     // v17.25: Demo-Showcase-Event → No-Op, kein SP-Roundtrip. Die Register-
     // Seite blockt den Submit ohnehin mit einem Demo-Hinweis; dieser Guard
@@ -1095,6 +1098,29 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     }
 
     if (success && event) {
+      // v18.73: Datei-Upload-Felder — die im Formular gewählten Dateien an die
+      // (jetzt existierende) Teilnehmer-Zeile als Attachment hängen. Die Item-Id
+      // holen wir über getMyRegistration(email) — funktioniert für Self-Reg UND
+      // „für andere registrieren" (Organizer hat Leserecht auf der Subsite).
+      // Best-effort + awaited, damit die Bestätigung erst nach dem Upload kommt;
+      // ein fehlgeschlagener Upload bricht die (bereits erfolgreiche) Anmeldung
+      // nicht ab — der Organizer kann die Datei im Admin Center nachreichen.
+      if (opts?.uploadFiles && opts.uploadFiles.length > 0) {
+        try {
+          const createdReg = await eventService.getMyRegistration(subsiteUrl, emailToUse);
+          if (createdReg && createdReg.Id) {
+            for (const uf of opts.uploadFiles) {
+              if (!uf.file) continue;
+              await eventService.addRegistrationAttachment(subsiteUrl, createdReg.Id, uf.file, uf.label)
+                .catch(err => console.warn('[DEX] addRegistrationAttachment (file field) failed:', err));
+            }
+          } else {
+            console.warn('[DEX] Datei-Upload übersprungen: Teilnehmer-Zeile nach Anmeldung nicht gefunden.');
+          }
+        } catch (err) {
+          console.warn('[DEX] Datei-Upload nach Anmeldung fehlgeschlagen:', err);
+        }
+      }
       // v9.0: Audit-Log (fire-and-forget)
       eventService.writeChangeLog({
         action: existing ? 'ParticipantReactivated' : 'ParticipantRegistered',

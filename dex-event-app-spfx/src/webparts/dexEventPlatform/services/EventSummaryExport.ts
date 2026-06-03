@@ -385,6 +385,7 @@ export function buildSummaryHtml(d: SummaryData): string {
       case 'checkbox': return T('Checkbox', 'Checkbox');
       case 'user': return T('Personen-Picker', 'Person picker');
       case 'roommate': return T('Roommate', 'Roommate');
+      case 'file': return T('Datei-Upload', 'File upload');
       default: return t;
     }
   };

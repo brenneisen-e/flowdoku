@@ -473,6 +473,53 @@ automatisch in Kopie.
   CustomFields-Write, siehe Abschnitt oben) sowie im SP→Event-Parse
   (`eventSpecificFields.map`) durchgereicht.
 
+### Custom-Field-Typ „Datei-Upload" (v18.73)
+
+Neuer Custom-Field-Typ `'file'` — ein Dokument-Upload-Feld im
+Anmeldeformular, optional als Pflichtfeld. Der Teilnehmer wählt eine
+Datei (PDF/Bild/Office, Client-Limit **15 MB**); nach erfolgreicher
+Anmeldung wird sie als **SharePoint-Item-Attachment** an die
+Teilnehmer-Zeile gehängt.
+
+- **Typ-Union** ergänzt an 3 Stellen: `types/index.ts`
+  (`EventSpecificField.type`), `services/EventService.ts`
+  (`CustomField.type`), `components/EventCreationPage.tsx`
+  (`CustomFieldInput.type`). Plus `<option value="file">` in **allen
+  drei** Feldtyp-Dropdowns des Wizards (Haupt-Event, Sub-Event,
+  dritter Selector).
+- **Keine neue Custom-Field-Property** → der berüchtigte Zweit-Write
+  (`serializeCustomFields` + `cfForFix`) ist **nicht** betroffen
+  (Typ/Label/Required/Visible laufen bereits durch). Die SP-Spalte
+  entsteht als **Text-Spalte** (FieldTypeKind 2 über den `else`-Zweig
+  in `createRegistrationList`/`fixRegistrationListColumns`) und hält
+  den **Dateinamen**.
+- **RegistrationPage:** separater State `fileUploads:
+  Record<fieldId, File>` (Record<string,string> kann keine File-Objekte
+  tragen). Der Dateiname landet **zusätzlich** in
+  `eventSpecific[fieldId]` — dadurch greift die bestehende
+  Pflichtfeld-Prüfung (`!eventSpecific[f.id]?.trim()`) und die
+  CustomData-/Spalten-Persistenz über den String-Pfad. Render-Branch
+  `field.type === 'file'` in `renderRegField` (Datei-Auswahl-Button +
+  Dateiname + Entfernen-Button + 15-MB-Guard).
+- **Upload-Pipeline:** `EventContext.registerForEvent` nimmt
+  `opts.uploadFiles: Array<{ label; file }>`. Nach `success` wird die
+  Item-Id via `getMyRegistration(subsiteUrl, emailToUse)` geholt
+  (funktioniert für Self-Reg **und** „für andere") und pro Datei
+  `EventService.addRegistrationAttachment(..., labelPrefix)` aufgerufen
+  (best-effort, awaited — ein Upload-Fehler bricht die Anmeldung nicht
+  ab). `addRegistrationAttachment` hat dafür einen optionalen
+  `labelPrefix` (Feld-Label als Dateinamen-Prefix, da SP alle
+  Attachments flach am Item ablegt).
+- **Admin Center:** Der „Datei"-Button + das Attachment-Modal werden
+  jetzt auch dann gezeigt, wenn das Event ein `'file'`-Feld hat (nicht
+  mehr nur bei `allowAttendeeUpload`) — Bedingung erweitert in
+  `AdminPage` (Lade-Effect + Button-Gate).
+- **Scope v18.73:** greift bei der **normalen** Anmeldung
+  (`performRegistration`, inkl. „für andere"). **Noch nicht** aktiv:
+  Team-Anmeldung (`performTeamRegistration`/`registerTeam`) und
+  Sub-Event-eigene Felder — dort rendert das Feld zwar, der Upload ist
+  aber nicht verdrahtet (dokumentierte Limitation im Handbuch).
+
 ### Anmeldesprache vorgeben (v18.35)
 
 Pro Event kann der Organizer die **Sprache der Anmeldeseite** fest vorgeben —

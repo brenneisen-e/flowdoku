@@ -538,7 +538,7 @@ export interface SPEvent {
 export interface CustomField {
   id: string;
   label: string;
-  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate';
+  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'file';
   required: boolean;
   options?: string[]; // fuer select-Felder
   visible: boolean;
@@ -6561,13 +6561,19 @@ export class EventService {
     subsiteUrl: string,
     itemId: number,
     file: File,
+    // v18.73: Optionaler Label-Prefix — bei mehreren Datei-Upload-Feldern im
+    // Anmeldeformular wird so erkennbar, welches Feld welche Datei lieferte
+    // (z.B. „Lebenslauf_2026-06-03_…_cv.pdf"). SharePoint speichert alle
+    // Attachments flach am Item, daher ist der Prefix die einzige Zuordnung.
+    labelPrefix?: string,
   ): Promise<boolean> {
     try {
       const buf = await file.arrayBuffer();
       // Dateiname säubern + Timestamp-prefix für Eindeutigkeit
       const safeName = (file.name || 'upload.pdf').replace(/[^a-zA-Z0-9._-]+/g, '_');
       const ts = new Date().toISOString().replace(/[:.]/g, '-').replace(/T/, '_').slice(0, 19);
-      const finalName = `${ts}_${safeName}`;
+      const safePrefix = (labelPrefix || '').trim().replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
+      const finalName = safePrefix ? `${safePrefix}_${ts}_${safeName}` : `${ts}_${safeName}`;
       const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})/AttachmentFiles/add(FileName='${encodeURIComponent(finalName)}')`;
       const resp = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
         headers: { 'Accept': 'application/json;odata=nometadata' },

@@ -612,7 +612,14 @@ export default function AdminPage(): React.ReactElement {
   // Event ändern. Damit zeigt der „Anhang"-Button in der Action-Spalte
   // sofort die korrekte Anzahl.
   React.useEffect(() => {
-    if (!selectedEvent || !selectedEvent.allowAttendeeUpload || !eventServiceRef || !selectedEvent.subsiteUrl) {
+    // v18.73: Attachments laden, wenn der Teilnehmer-Upload erlaubt ist ODER das
+    // Event ein Custom-Field vom Typ 'file' hat (dann hängen die Anmelde-Uploads
+    // als Attachment an den Zeilen).
+    const eventHasUploads = !!selectedEvent && (
+      !!selectedEvent.allowAttendeeUpload
+      || (selectedEvent.eventSpecificFields || []).some(f => f.type === 'file')
+    );
+    if (!selectedEvent || !eventHasUploads || !eventServiceRef || !selectedEvent.subsiteUrl) {
       setAttachmentsByReg({});
       return;
     }
@@ -5984,7 +5991,7 @@ export default function AdminPage(): React.ReactElement {
                       {/* v11.0: Anhang-Button — nur wenn das Event den
                           Teilnehmer-Upload erlaubt hat. Zeigt Counter wenn
                           mind. eine Datei hochgeladen wurde. */}
-                      {selectedEvent?.allowAttendeeUpload && (
+                      {(selectedEvent?.allowAttendeeUpload || (selectedEvent?.eventSpecificFields || []).some(f => f.type === 'file')) && (
                         <button
                           className="btn btn-secondary"
                           style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
