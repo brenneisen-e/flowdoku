@@ -76,8 +76,9 @@ Aktiven-Zahl entsprechen, nicht 0.
 
 ### UI-Anleitung 2026-06-03 (v18.69) — Renummerierung: Diff-Verfahren + selbst-prüfende Schleife (garantiert 1..N, keine Duplikate)
 
-**Status:** UI-Anleitung erstellt, Umsetzung im Tenant ausstehend. Finaler
-Flow-JSON wird ergänzt, sobald der Export vorliegt.
+**Status:** Struktur im Tenant umgesetzt und Action-für-Action verifiziert
+(2026-06-03). Finaler Lauf-Test (sauberes 1..N nach Abmeldung) durch den
+Maintainer ausstehend; danach wird der finale JSON-Block hier ersetzt.
 
 **Ziel/Motivation:** Die bisherige Renummerierung schrieb **stur alle 1..N
 neu** (bei 576 Teilnehmern 576 Schreibvorgänge — egal wer sich abmeldet) und
