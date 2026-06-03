@@ -74,6 +74,97 @@ Abmeldung auslösen → es darf **genau eine** Person nachrücken (auf den frei
 gewordenen Platz), nicht zwei. `Count_Active` muss nach dem Lauf der echten
 Aktiven-Zahl entsprechen, nicht 0.
 
+### UI-Anleitung 2026-06-03 (v18.69) — Renummerierung: Diff-Verfahren + selbst-prüfende Schleife (garantiert 1..N, keine Duplikate)
+
+**Status:** UI-Anleitung erstellt, Umsetzung im Tenant ausstehend. Finaler
+Flow-JSON wird ergänzt, sobald der Export vorliegt.
+
+**Ziel/Motivation:** Die bisherige Renummerierung schrieb **stur alle 1..N
+neu** (bei 576 Teilnehmern 576 Schreibvorgänge — egal wer sich abmeldet) und
+prüfte sich über `max == N`, was bei gleichzeitigen Anmeldungen unzuverlässig
+ist und Duplikate aus stillen Batch-Teilfehlern nicht erkennt. Das neue
+Verfahren:
+
+- **Diff statt „alles neu":** Lade alle Teilnehmer sortiert nach
+  `TeilnehmerID asc`, berechne pro Position die Soll-ID (Position i → i+1) und
+  **schreibe nur, wo Soll ≠ Ist**. Meldet sich Nr. 123 ab, bleiben 1–122
+  unberührt, nur ab 123 wird verschoben (124→123, 125→124, …).
+- **Selbst-prüfende Schleife (garantiert lückenlos, ohne Duplikate):** Die
+  Renummerierung läuft in einer **Do-until**, die nach jedem Durchlauf **frisch
+  lädt** und stoppt, **sobald der Diff leer ist**. Ein Duplikat erzwingt
+  zwangsläufig einen Positions-Versatz → Diff nicht leer → die Schleife
+  korrigiert weiter (bis max. 5×). Sie **kann nicht aufhören**, solange
+  irgendwo eine Lücke/ein Duplikat ist.
+- **Manuelle Paginierung entfällt:** Statt der fragilen
+  `Load_All_Pages`-Schleife (nextLink/`union`/`$skiptoken`) lädt die Standard-
+  Action **„Elemente abrufen" (Get items)** mit eingebauter Paginierung. Die
+  ist **keine** Until-Action und darf daher in der Retry-Schleife stehen
+  (Do-until lässt sich nicht in Do-until schachteln). **Wichtig:** Get items
+  liefert das Item-Id-Feld als **`ID`** (groß), nicht `Id`.
+
+**Vorbereitung:** Falls eine Teilnehmerliste je **> 5.000** Einträge (inkl.
+Abgemeldete) hat, in den Listeneinstellungen die Spalte **`TeilnehmerID`**
+indizieren (sonst List-View-Threshold). Bei ~1.500 unkritisch.
+
+**Phase 1 — Obsolete Actions löschen:** `Init_NextPageUri`, `Load_All_Pages`,
+`Filter_Active`, `Filter_Waitlist`, `Sort_ByStatusPriority`, die **oberste**
+`Generate_Indices`, die **oberste** `GenerateSPData`, sowie `Verify_Max` (in
+`Batch_Until_Clean`). **Behalten:** `Update_item`, `Settings`,
+`Get_ListItemType`, `Init_AllParticipants`, `BatchGuids`, `batchTemplate`,
+`Filter_Non_Waitlist`, `Count_Active`, `Batch_Until_Clean` (mit `Loop_Batches`),
+`Get_EventDetails`/`Is_B2RunSplit`/`DEX_IDReorder`/`Error_Handler`, Counter-Abgleich.
+
+**Phase 2 — `Batch_Until_Clean` zur Renummerier-Schleife ausbauen** (alle
+Actions INNERHALB der Schleife, VOR `Loop_Batches`, in dieser Reihenfolge):
+
+1. **`Load_Participants`** (Elemente abrufen / Get items):
+   - Site Address (custom/fx): `outputs('Settings')?['siteAddress']`
+   - List Name (custom/fx): `outputs('Settings')?['listName']`
+   - Filter Query: `Status ne 'Abgemeldet'`
+   - Order By: `TeilnehmerID asc`
+   - Top Count: `5000`
+   - ⋮ → Settings → **Pagination: On**, Threshold **5000**
+2. **`Set_AllParticipants`** (Variable festlegen), runAfter `Load_Participants`:
+   - Name `AllParticipants`, Value (fx): `body('Load_Participants')?['value']`
+3. **`Generate_Indices`** (Compose), runAfter `Set_AllParticipants`:
+   `range(0, length(variables('AllParticipants')))`
+4. **`GenerateSPData_Full`** (Auswählen/Select), runAfter `Generate_Indices`:
+   - From (fx): `outputs('Generate_Indices')`
+   - Map: `ID` → `variables('AllParticipants')[item()]?['ID']` ·
+     `TeilnehmerID` → `add(item(), 1)` ·
+     `Old` → `variables('AllParticipants')[item()]?['TeilnehmerID']`
+5. **`GenerateSPData`** (Array filtern), runAfter `GenerateSPData_Full`:
+   - From (fx): `body('GenerateSPData_Full')`
+   - Bedingung (advanced): `@not(equals(item()?['TeilnehmerID'], item()?['Old']))`
+6. **`Loop_Batches`**: runAfter `GenerateSPData`. Inhalt unverändert
+   (`Select_map` → `batchData` → `SendBatch`); `Select_map` nutzt
+   `item()?['ID']` + `item()?['TeilnehmerID']` aus dem Diff.
+7. **Schleifen-Bedingung** (`Batch_Until_Clean` → Loop until, advanced):
+   `@equals(length(body('GenerateSPData')), 0)` · Count **5** · Timeout **PT30M**.
+
+**Phase 3 — `Count_Active` für die Nachrück-Logik:**
+- `Filter_Non_Waitlist`: runAfter **`Batch_Until_Clean` Succeeded** (From bleibt
+  `@variables('AllParticipants')`, where `@not(equals(item()?['Status'], 'Warteliste'))`).
+- `Count_Active`: runAfter `Filter_Non_Waitlist` (`@length(body('Filter_Non_Waitlist'))`).
+- `Get_EventDetails` (bzw. `Process_Batch_Scope`): runAfter **`Count_Active` Succeeded**.
+- Split-Filter `Filter_Active_Durchstarter`/`_Funstarter` lesen weiter
+  `@variables('AllParticipants')` — unverändert.
+
+**Ziel-Reihenfolge:**
+```
+Update_item → Settings → Get_ListItemType → Init_AllParticipants
+→ BatchGuids → batchTemplate
+→ Batch_Until_Clean (Load_Participants→Set_AllParticipants→Generate_Indices
+   →GenerateSPData_Full→GenerateSPData→Loop_Batches ; until Diff leer, 5×)
+→ Filter_Non_Waitlist → Count_Active
+→ Get_EventDetails → Is_B2RunSplit → DEX_IDReorder
+→ Counter-Abgleich
+```
+
+**Test:** Person abmelden → 1. Durchlauf: `GenerateSPData` = nur Schwanz ab der
+Lücke; 2. Durchlauf: `GenerateSPData` leer → Schleife endet. Liste muss
+lückenlos 1..N ohne Duplikate sein.
+
 ### UI-Anleitung 2026-06-02 (v18.63) — Organizer-Mail bei Abmeldung mit Nachrücker
 
 **Ziel:** Sobald der Flow nach einer Abmeldung jemanden von der Warteliste
