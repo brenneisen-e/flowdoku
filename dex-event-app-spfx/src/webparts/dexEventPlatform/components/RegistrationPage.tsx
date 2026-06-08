@@ -49,6 +49,30 @@ function formatDateRange(startIso: string, endIso: string): string {
   return `${start.toLocaleDateString('de-DE', dayFmt)} ${start.toLocaleTimeString('de-DE', timeFmt)} – ${end.toLocaleDateString('de-DE', dayFmt)} ${end.toLocaleTimeString('de-DE', timeFmt)}`;
 }
 
+// v18.74: Externe Adresse = kein Deloitte-Deutschland-Postfach (@deloitte.de).
+const isExternalEmailAddr = (e: string): boolean => {
+  const v = (e || '').trim();
+  return !!v && !/@(.*\.)?deloitte\.de$/i.test(v);
+};
+
+// v18.74: Strengere Plausibilitätsprüfung gegen Tippfehler bei externen
+// Adressen — fängt fehlende/zu kurze TLD, doppelte Punkte, mehrere @, führende/
+// abschließende Punkte und Whitespace/Kommas ab. Verifiziert NICHT die Existenz
+// des Postfachs (das geht clientseitig nicht), aber blockt offensichtliche
+// Vertipper.
+const isPlausibleEmail = (e: string): boolean => {
+  const v = (e || '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(v)) return false;
+  if ((v.match(/@/g) || []).length !== 1) return false;
+  if (v.indexOf('..') >= 0) return false;
+  if (/[\s,;]/.test(v)) return false;
+  const [local, domain] = v.split('@');
+  if (!local || !domain) return false;
+  if (local.startsWith('.') || local.endsWith('.')) return false;
+  if (domain.startsWith('.') || domain.endsWith('.') || domain.startsWith('-')) return false;
+  return true;
+};
+
 export default function RegistrationPage(): React.ReactElement {
   // v11.98: Beim Mount nach oben scrollen. Sonst behält der scrollende
   // .main-content-Container die Position aus der vorherigen Seite (z.B.
@@ -214,6 +238,12 @@ export default function RegistrationPage(): React.ReactElement {
   const [surname, setSurname] = React.useState(currentUser.surname);
   const [email, setEmail] = React.useState(currentUser.email);
   const [registerForOther, setRegisterForOther] = React.useState(false);
+  // v18.74: „Person außerhalb Deloitte" — explizit eine externe Person
+  // stellvertretend anmelden. Blendet den Deloitte-People-Picker aus und macht
+  // Vorname/Nachname/E-Mail frei eintragbar. Die Zustimmung ist hier SCHRIFTLICH
+  // einzuholen; es wird kein Outlook-Termin versendet (Bestätigungs-Mail mit
+  // Organizer auf CC).
+  const [externalPerson, setExternalPerson] = React.useState(false);
 
   // Wenn die Seite mit Intent 'register-other' geoeffnet wird (z.B. via "Register another person"
   // Button auf einer Karte, fuer die der Organizer/Admin schon selbst registriert ist),
@@ -326,8 +356,15 @@ export default function RegistrationPage(): React.ReactElement {
   // v11.83: Offene Teams (Slots-frei) + Beitritts-Flow.
   const [openTeams, setOpenTeams] = React.useState<Array<{ teamId: string; teamName: string; activeCount: number; teamSize: number; leadEmail: string; leadDisplayName: string }>>([]);
   const [openTeamsLoaded, setOpenTeamsLoaded] = React.useState(false);
-  const [joiningTeamId, setJoiningTeamId] = React.useState<string | null>(null);
-  const [joinFeedback, setJoinFeedback] = React.useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  // v18.73: Beitritt zu einem offenen Team wird nur VORGEMERKT — die eigentliche
+  // Anmeldung (inkl. der ausgefüllten persönlichen + event-spezifischen Felder)
+  // passiert erst beim Klick auf „Anmelden" unten (performJoinSelectedTeam).
+  // Vorher wurde der Beitritt sofort beim Klick committet, ohne dass der User
+  // seine event-spezifischen Infos angeben konnte.
+  const [pendingJoinTeam, setPendingJoinTeam] = React.useState<{ teamId: string; teamName: string } | null>(null);
+  // v18.73: Erfolgsscreen-Variante bei Team-Beitritt ('joined' = direkt
+  // angemeldet, 'requested' = Anfrage an den Team-Lead gesendet).
+  const [submittedJoinKind, setSubmittedJoinKind] = React.useState<null | 'joined' | 'requested'>(null);
   // Beim Aktivieren des Team-Modus: Member-Slots initialisieren (teamSize-1 Slots).
   React.useEffect(() => {
     if (isTeamMode && teamMembers.length !== Math.max(0, teamSize - 1)) {
@@ -393,6 +430,7 @@ export default function RegistrationPage(): React.ReactElement {
   React.useEffect(() => {
     setOpenTeamsLoaded(false);
     setOpenTeams([]);
+    setPendingJoinTeam(null); // v18.73: Vormerkung beim Event-/Modus-Wechsel zurücksetzen
     if (!event) return;
     if (!event.teamRegistrationEnabled || !event.teamOpenSlotsVisible) return;
     if (registerForOther) return; // Stellvertreter-Modus nicht unterstuetzt fuer Beitritt
@@ -408,56 +446,15 @@ export default function RegistrationPage(): React.ReactElement {
     })().catch(() => setOpenTeamsLoaded(true));
   }, [event?.id, event?.teamRegistrationEnabled, event?.teamOpenSlotsVisible, registerForOther, listOpenTeamsForEvent]);
 
-  const handleJoinTeam = async (teamId: string, teamName: string): Promise<void> => {
-    if (!event || joiningTeamId) return;
-    setJoiningTeamId(teamId);
-    setJoinFeedback(null);
-    try {
-      if (event.teamJoinRequiresApproval) {
-        const r = await createTeamJoinRequest(event.id, teamId);
-        if (!r.ok) {
-          setJoinFeedback({
-            kind: 'err',
-            text: r.reason === 'already-registered'
-              ? (locale === 'de' ? 'Du bist bereits beim Event angemeldet.' : 'You are already registered for the event.')
-              : (locale === 'de' ? 'Beitritts-Anfrage fehlgeschlagen.' : 'Join request failed.'),
-          });
-        } else {
-          setJoinFeedback({
-            kind: 'ok',
-            text: locale === 'de'
-              ? `Deine Anfrage zum Team „${teamName || 'Unbenannt'}" wurde gesendet. Der Team-Lead entscheidet darueber und du bekommst eine Mail mit dem Ergebnis.`
-              : `Your join request for team „${teamName || 'Unnamed'}" was sent. The team lead will decide and you will get a mail with the result.`,
-          });
-          // Teams neu laden, damit ggf. Plaetze aktualisiert sind.
-          try {
-            const list = await listOpenTeamsForEvent(event.id);
-            setOpenTeams(list);
-          } catch { /* ignore */ }
-        }
-      } else {
-        const r = await joinTeam(event.id, teamId, teamName);
-        if (!r.ok) {
-          setJoinFeedback({
-            kind: 'err',
-            text: r.reason && r.reason.startsWith('already-registered')
-              ? (locale === 'de' ? 'Du bist bereits beim Event angemeldet.' : 'You are already registered for the event.')
-              : r.reason === 'team-full'
-                ? (locale === 'de' ? 'Das Team ist inzwischen voll.' : 'The team has filled up in the meantime.')
-                : (locale === 'de' ? 'Beitritt fehlgeschlagen.' : 'Joining failed.'),
-          });
-        } else {
-          setJoinFeedback({
-            kind: 'ok',
-            text: locale === 'de'
-              ? `Du bist dem Team „${teamName || 'Unbenannt'}" beigetreten (Status: ${r.status === 'Warteliste' ? 'Warteliste' : 'Angemeldet'}). Schau in „Meine Events" fuer Details.`
-              : `You joined team „${teamName || 'Unnamed'}" (status: ${r.status === 'Warteliste' ? 'Waitlist' : 'Registered'}). Check „My Events" for details.`,
-          });
-        }
-      }
-    } finally {
-      setJoiningTeamId(null);
-    }
+  // v18.73: Team-Beitritt nur VORMERKEN (Toggle). Erneuter Klick auf dasselbe
+  // Team hebt die Vormerkung wieder auf. Gegenseitig exklusiv zum „Ich melde
+  // mich + mein Team an"-Modus (man kann nicht gleichzeitig ein neues Team
+  // anlegen und einem bestehenden beitreten). Die eigentliche Anmeldung läuft
+  // erst über den „Anmelden"-Button (performJoinSelectedTeam).
+  const togglePendingJoinTeam = (teamId: string, teamName: string): void => {
+    setError('');
+    setPendingJoinTeam(prev => (prev && prev.teamId === teamId) ? null : { teamId, teamName });
+    setIsTeamMode(false);
   };
 
   // Vorbelegen: Parent-Reg prüfen + Sessions-Meta laden (bereits-registrierte
@@ -682,6 +679,15 @@ export default function RegistrationPage(): React.ReactElement {
   // Bestaetigungsmail geht dann nicht an die externe Adresse, sondern an
   // den Organizer mit Datenschutz-Hinweis-Header.
   const [externalEmailWarning, setExternalEmailWarning] = React.useState(false);
+  // v18.75: Sicherheitshinweis vor dem Absenden (pro Event konfiguriert). Der
+  // Dialog erscheint nach dem „Anmelden"-Klick und vor der eigentlichen
+  // (Normal-)Anmeldung. confirmDraft* halten die — in der Auswahl-Übersicht
+  // editierbare — Auswahl, bis der User bestätigt.
+  const [confirmDialogOpen, setConfirmDialogOpen] = React.useState(false);
+  const [confirmDialogAck, setConfirmDialogAck] = React.useState(false);
+  const [confirmDraftParent, setConfirmDraftParent] = React.useState(true);
+  const [confirmDraftSessions, setConfirmDraftSessions] = React.useState<Set<string>>(new Set());
+  const confirmDialogConfirmedRef = React.useRef(false);
   const externalEmailConfirmedRef = React.useRef(false);
 
   const handleSubmit = async (): Promise<void> => {
@@ -698,7 +704,7 @@ export default function RegistrationPage(): React.ReactElement {
 
     // Wenn der Haupt-Event-Checkbox aus ist und keine Session ausgewählt ist,
     // gibt es nichts zu tun.
-    if (!willRegisterParent && !registerForOther && selectedSessions.size === 0) {
+    if (!willRegisterParent && !registerForOther && selectedSessions.size === 0 && !pendingJoinTeam) {
       setError(t('reg.nothing.selected') || 'Bitte wähle mindestens Haupt-Event oder eine Session aus.');
       return;
     }
@@ -724,17 +730,6 @@ export default function RegistrationPage(): React.ReactElement {
       return;
     }
 
-    // v9.22: Externe Email-Adresse bei "Für andere Person registrieren" —
-    // Warnung anzeigen bevor der Anmelde-Flow startet.
-    if (registerForOther && email && !externalEmailConfirmedRef.current) {
-      const emLow = email.trim().toLowerCase();
-      const isDel = /@(.*\.)?deloitte\.de$/.test(emLow);
-      if (!isDel) {
-        setExternalEmailWarning(true);
-        return; // Modal zeigen, User muss bestaetigen
-      }
-    }
-
     // Basis-Felder sind immer Pflicht (Name + Email), auch im Sessions-Only-Modus.
     if (!firstName.trim() || !surname.trim() || !email.trim()) {
       setError(t('reg.requiredfields'));
@@ -743,6 +738,24 @@ export default function RegistrationPage(): React.ReactElement {
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       setError(t('reg.invalidemail') || 'Ungültige E-Mail-Adresse');
       return;
+    }
+
+    // v18.74: Bei stellvertretender Anmeldung einer EXTERNEN Adresse zwei
+    // Stufen: (1) strengere Plausibilitätsprüfung gegen Tippfehler (fehlende
+    // TLD, doppelte Punkte, mehrere @, …) → harter Fehler; (2) ein
+    // Bestätigungs-Dialog, der die Adresse groß anzeigt und zum Gegenlesen
+    // auffordert (man kann an externe Adressen keinen Tippfehler korrigieren).
+    if (registerForOther && email.trim() && isExternalEmailAddr(email)) {
+      if (!isPlausibleEmail(email)) {
+        setError(locale === 'de'
+          ? 'Die externe E-Mail-Adresse sieht ungültig aus — bitte auf Tippfehler prüfen (z.B. fehlende Domain-Endung wie „.de" oder „.com").'
+          : 'The external email address looks invalid — please check for typos (e.g. a missing domain ending like „.de" or „.com").');
+        return;
+      }
+      if (!externalEmailConfirmedRef.current) {
+        setExternalEmailWarning(true);
+        return; // Bestätigungs-Dialog (Tippfehler-Gegenlesen) zeigen
+      }
     }
 
     // Nur wenn der User das Haupt-Event (neu) anmelden möchte, gelten
@@ -765,7 +778,12 @@ export default function RegistrationPage(): React.ReactElement {
     // Checkbox) werden in dem Modus IMMER angezeigt und müssen IMMER validiert
     // werden. KEIN `!myParentReg`, KEIN sessionMeta-Abhängigkeit mehr.
     const willCollectMainFields = willRegisterParent || registerForOther
-      || (isSubOnlyModeValidate && selectedSessions.size > 0 && !registerForOther);
+      || (isSubOnlyModeValidate && selectedSessions.size > 0 && !registerForOther)
+      // v18.73: Beim vorgemerkten Team-Beitritt gelten dieselben Pflichtfelder
+      // (Anrede + event-spezifische Felder) wie bei einer normalen Anmeldung —
+      // der ganze Sinn der Änderung ist, dass diese Infos nicht übersprungen
+      // werden können.
+      || !!pendingJoinTeam;
     if (willCollectMainFields) {
       // v11.80: Anrede ist nur dann Pflichtfeld, wenn das Event das
       // Anrede-Dropdown auch tatsaechlich abfragt (event.askSalutation === true).
@@ -814,8 +832,10 @@ export default function RegistrationPage(): React.ReactElement {
         return;
       }
 
-      // B2Run: Starter-Typ Pflichtfeld
-      if (isSplitGroup && !preferredStarterType) {
+      // B2Run: Starter-Typ Pflichtfeld. v18.73: Beim Team-Beitritt NICHT
+      // erzwingen — der Beitretende erbt die Gruppe des Teams (siehe
+      // addTeamMember), er wählt sie nicht selbst.
+      if (isSplitGroup && !preferredStarterType && !pendingJoinTeam) {
         // v11.7: generische Fehlermeldung — vorher hatte der Translation-Key
         // 'B2Run Starter-Typ' als Fallback. Bei generischen Split-Capacity-
         // Events mit eigenen Labels (z.B. 'Vormittag' / 'Nachmittag') passt
@@ -839,7 +859,7 @@ export default function RegistrationPage(): React.ReactElement {
     // Group-Selection-Block. Wenn das Event Split-Capacity hat und Sessions
     // ausgewählt sind, muss eine Gruppe gewählt sein — egal ob Parent dabei
     // ist oder nur Sessions registriert werden.
-    if (isSplitGroup && selectedSessions.size > 0 && !preferredStarterType) {
+    if (isSplitGroup && selectedSessions.size > 0 && !preferredStarterType && !pendingJoinTeam) {
       setError(locale === 'de'
         ? 'Bitte wähle eine Gruppe.'
         : 'Please pick a group.');
@@ -876,7 +896,7 @@ export default function RegistrationPage(): React.ReactElement {
     //   (b) auf die Warteliste für den gewünschten Typ.
     // Kein stiller Auto-Fallback mehr. Beide Typen voll → direkt auf Warteliste
     // (kein Dialog, Logik in EventContext setzt Status=Warteliste).
-    if ((willRegisterParent || registerForOther) && isSplitGroup && preferredStarterType) {
+    if ((willRegisterParent || registerForOther) && isSplitGroup && preferredStarterType && !pendingJoinTeam) {
       const durchFree = Math.max(0, durchCap - starterCounts.durch);
       const funFree = Math.max(0, funCap - starterCounts.fun);
       const wunschFree = preferredStarterType === 'Durchstarter' ? durchFree : funFree;
@@ -889,6 +909,15 @@ export default function RegistrationPage(): React.ReactElement {
       }
     }
 
+    // v18.73: Vorgemerkter Team-Beitritt — committet hier (mit den oben
+    // ausgefüllten persönlichen + event-spezifischen Feldern), statt einer
+    // normalen Einzel-Anmeldung. Steht vor dem Team-Anmelde-Pfad, weil beide
+    // sich gegenseitig ausschließen.
+    if (pendingJoinTeam) {
+      await performJoinSelectedTeam();
+      return;
+    }
+
     // v11.82: Team-Anmeldung — separater Submit-Pfad.
     if (isTeamMode) {
       if (!teamValidation.ok) {
@@ -896,6 +925,18 @@ export default function RegistrationPage(): React.ReactElement {
         return;
       }
       await performTeamRegistration(preferredStarterType);
+      return;
+    }
+
+    // v18.75: Sicherheitshinweis vor dem Absenden (nur normale Anmeldung —
+    // Team-/Beitritts-Pfade sind oben bereits abgehandelt). Beim ersten
+    // Submit öffnet sich der Dialog; nach Bestätigung läuft handleSubmit erneut
+    // (Ref gesetzt) und überspringt den Dialog.
+    if (event && event.confirmDialogEnabled && !confirmDialogConfirmedRef.current) {
+      setConfirmDraftParent(willRegisterParent || registerForOther);
+      setConfirmDraftSessions(new Set(selectedSessions));
+      setConfirmDialogAck(false);
+      setConfirmDialogOpen(true);
       return;
     }
 
@@ -961,6 +1002,53 @@ export default function RegistrationPage(): React.ReactElement {
     }
   };
 
+  // v18.73: Vorgemerkten Team-Beitritt absenden — committet erst hier (auf
+  // „Anmelden"), inkl. der ausgefüllten event-spezifischen Felder. Direkter
+  // Beitritt (joinTeam) bzw. Anfrage an den Lead (createTeamJoinRequest), je
+  // nach event.teamJoinRequiresApproval.
+  const performJoinSelectedTeam = async (): Promise<void> => {
+    if (!pendingJoinTeam || !event) return;
+    setError('');
+    setIsSubmitting(true);
+    setSubmitProgress(10);
+    setSubmitProgressLabel(locale === 'de' ? 'Beitritt wird verarbeitet…' : 'Processing your join…');
+    try {
+      // Event-spezifische Antworten des Beitretenden (wie bei der normalen
+      // Anmeldung) — werden an den Team-Beitritt durchgereicht.
+      const customData: Record<string, string> = { salutation, ...eventSpecific };
+      setSubmitProgress(50);
+      if (event.teamJoinRequiresApproval) {
+        const r = await createTeamJoinRequest(event.id, pendingJoinTeam.teamId, customData);
+        if (!r.ok) {
+          setError(r.reason === 'already-registered'
+            ? (locale === 'de' ? 'Du bist bereits beim Event angemeldet.' : 'You are already registered for this event.')
+            : (locale === 'de' ? 'Beitritts-Anfrage fehlgeschlagen.' : 'Join request failed.'));
+          return;
+        }
+        setSubmittedJoinKind('requested');
+        setSubmitted(true);
+      } else {
+        const r = await joinTeam(event.id, pendingJoinTeam.teamId, pendingJoinTeam.teamName, customData);
+        if (!r.ok) {
+          setError(r.reason && r.reason.startsWith('already-registered')
+            ? (locale === 'de' ? 'Du bist bereits beim Event angemeldet.' : 'You are already registered for this event.')
+            : r.reason === 'team-full'
+              ? (locale === 'de' ? 'Das Team ist inzwischen voll.' : 'The team has filled up in the meantime.')
+              : (locale === 'de' ? 'Beitritt fehlgeschlagen.' : 'Joining failed.'));
+          return;
+        }
+        setSubmittedJoinKind('joined');
+        setSubmittedAsWaitlist(r.status === 'Warteliste');
+        setSubmitted(true);
+      }
+    } catch {
+      setError(locale === 'de' ? 'Unerwarteter Fehler beim Beitritt.' : 'Unexpected error while joining.');
+    } finally {
+      setSubmitProgress(100);
+      setTimeout(() => { setIsSubmitting(false); setSubmitProgress(0); setSubmitProgressLabel(''); }, 250);
+    }
+  };
+
   // Eigentliche Registrierung — entkoppelt vom Validation/Submit-Trigger,
   // damit sie auch vom Fallback-Dialog aufgerufen werden kann (mit ggf. geändertem Starter-Typ).
   const performRegistration = async (starterTypeToUse: string): Promise<void> => {
@@ -1013,7 +1101,10 @@ export default function RegistrationPage(): React.ReactElement {
           firstTrim,
           surnameTrim,
           participantEmail,
-          starterTypeToUse || undefined
+          starterTypeToUse || undefined,
+          // v18.74: Bei stellvertretender Anmeldung den Zustimmungs-Nachweis
+          // mitschreiben (Pflicht-Checkbox wurde oben validiert).
+          registerForOther ? { proxyConsentConfirmed: true } : undefined
         );
         parentOk = parentResult.ok;
         if (parentOk) {
@@ -1084,7 +1175,12 @@ export default function RegistrationPage(): React.ReactElement {
           // jetzt in der Schatten-Parent-Registrierung (s.o.) — die Sub-
           // Events bekommen nur ihre eigenen CFs aus dem Modal-Flow.
           const seFieldValues = { salutation, ...(sessionFieldValues[ce.id] || {}) };
-          const ok = (await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType, crossCutCc ? { extraCc: crossCutCc } : undefined)).ok;
+          // v18.74: extraCc (übergreifende CC) + proxyConsentConfirmed (Nachweis
+          // bei stellvertretender Anmeldung) zusammen in die Opts.
+          const seOpts = (crossCutCc || registerForOther)
+            ? { ...(crossCutCc ? { extraCc: crossCutCc } : {}), ...(registerForOther ? { proxyConsentConfirmed: true } : {}) }
+            : undefined;
+          const ok = (await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType, seOpts)).ok;
           if (ok) anySuccess = true;
           subOpsDone++;
           setSubmitProgress(50 + Math.floor((subOpsDone / Math.max(subOps, 1)) * 40));
@@ -1274,6 +1370,43 @@ export default function RegistrationPage(): React.ReactElement {
               {t('reg.backtoevents') || (locale === 'de' ? 'Zurück zu Events' : 'Back to events')}
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // v18.73: Eigener Erfolgsscreen für den Team-Beitritt (direkt angemeldet
+  // bzw. Beitritts-Anfrage gesendet) — vor der generischen Anmelde-Logik.
+  if (submitted && submittedJoinKind) {
+    const isReq = submittedJoinKind === 'requested';
+    const headline = isReq
+      ? (locale === 'de' ? 'Beitritts-Anfrage gesendet' : 'Join request sent')
+      : (submittedAsWaitlist
+          ? (locale === 'de' ? 'Auf der Warteliste' : 'On the waitlist')
+          : (locale === 'de' ? 'Team-Beitritt erfolgreich' : 'Joined the team'));
+    const body = isReq
+      ? (locale === 'de'
+          ? `Deine Anfrage zum Beitritt wurde an den Team-Kapitän gesendet. Sobald er entscheidet, bekommst du eine E-Mail mit dem Ergebnis. Deine Angaben werden bei der Bestätigung automatisch übernommen.`
+          : `Your join request has been sent to the team lead. Once they decide, you will receive an email with the result. Your details will be applied automatically upon approval.`)
+      : (submittedAsWaitlist
+          ? (locale === 'de'
+              ? `Das Team war voll — du stehst jetzt auf der Warteliste für „${event.title}". Sobald ein Platz frei wird, rückst du automatisch nach und bekommst eine Bestätigung. Details findest du unter „Meine Events".`
+              : `The team was full — you are now on the waitlist for „${event.title}". You will be moved up automatically when a spot opens and receive a confirmation. See „My Events" for details.`)
+          : (locale === 'de'
+              ? `Du bist dem Team beigetreten und für „${event.title}" angemeldet. Du bekommst eine Bestätigungs-E-Mail und einen Outlook-Termin. Details findest du unter „Meine Events".`
+              : `You joined the team and are registered for „${event.title}". You will receive a confirmation email and an Outlook invite. See „My Events" for details.`));
+    return (
+      <div className="page-container text-center">
+        <div className="card" style={{ padding: '48px 32px', maxWidth: 720, margin: '0 auto' }}>
+          {event.imageUrl && (
+            <div style={{
+              width: '100%', maxWidth: 480, height: 200, margin: '0 auto 24px',
+              borderRadius: 'var(--dex-radius-lg)',
+              background: `url(${event.imageUrl}) center/cover no-repeat`,
+            }} />
+          )}
+          <h2 style={{ marginTop: 0 }}>{headline}</h2>
+          <p style={{ fontSize: '0.95rem', color: 'var(--dex-gray-700)', lineHeight: 1.6, maxWidth: 560, margin: '0 auto' }}>{body}</p>
         </div>
       </div>
     );
@@ -2157,91 +2290,10 @@ export default function RegistrationPage(): React.ReactElement {
           )}
         </div>
 
-        {/* v11.83: Offene Teams — sichtbar wenn der Organizer „Offene Slots
-            oeffentlich sichtbar" aktiviert hat und es Teams gibt, denen
-            Plaetze fehlen. User kann hier einem Team beitreten (direkt
-            oder per Anfrage, je nach event.teamJoinRequiresApproval). */}
-        {event && event.teamRegistrationEnabled && event.teamOpenSlotsVisible && !registerForOther && openTeamsLoaded && openTeams.length > 0 && !parentAlreadyRegistered && (
-          <div className="registration-form" style={{ marginBottom: 16 }}>
-            <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <Icon iconName="People" style={{ fontSize: 16 }} />
-              {locale === 'de' ? 'Offene Teams — du kannst einem unvollstaendigen Team beitreten' : 'Open teams — you can join an incomplete team'}
-            </div>
-            <div style={{ padding: '20px' }}>
-              <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>
-                {locale === 'de'
-                  ? 'Andere Personen haben Teams angemeldet, denen noch Slots fehlen. Du kannst einem beitreten — du brauchst dich dann NICHT mehr ueber das Formular unten anzumelden.'
-                  : 'Other people have registered teams with open slots. You can join one — you do NOT need to use the form below in that case.'}
-                {event.teamJoinRequiresApproval && (
-                  <> {locale === 'de'
-                    ? <><br /><strong>Hinweis:</strong> der Team-Lead muss deinen Beitritt erst bestaetigen.</>
-                    : <><br /><strong>Note:</strong> the team lead has to approve your join.</>}
-                  </>
-                )}
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {openTeams.map(t => {
-                  const free = t.teamSize - t.activeCount;
-                  return (
-                    <div key={t.teamId} style={{
-                      display: 'flex', alignItems: 'center', gap: 12,
-                      padding: '10px 12px',
-                      background: 'var(--dex-gray-50, #f7f7f7)',
-                      borderRadius: 6,
-                      border: '1px solid var(--dex-gray-200)',
-                    }}>
-                      <Icon iconName="Group" style={{ fontSize: 16, color: 'var(--dex-green-dark, #4a7c1f)' }} />
-                      <div style={{ flex: 1, fontSize: '0.88rem' }}>
-                        <div style={{ fontWeight: 600 }}>
-                          {locale === 'de'
-                            ? `Team „${t.teamName || 'ohne Namen'}"`
-                            : `Team „${t.teamName || 'unnamed'}"`}
-                        </div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
-                          {locale === 'de'
-                            ? `${t.activeCount}/${t.teamSize} belegt — ${free} Slot${free === 1 ? '' : 's'} frei`
-                            : `${t.activeCount}/${t.teamSize} taken — ${free} slot${free === 1 ? '' : 's'} free`}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        disabled={joiningTeamId !== null}
-                        onClick={() => handleJoinTeam(t.teamId, t.teamName)}
-                        style={{ fontSize: '0.82rem', padding: '6px 12px' }}
-                      >
-                        {joiningTeamId === t.teamId
-                          ? (locale === 'de' ? 'Bitte warten…' : 'Please wait…')
-                          : (event.teamJoinRequiresApproval
-                            ? (locale === 'de' ? 'Beitritt anfragen' : 'Request to join')
-                            : (locale === 'de' ? 'Beitreten' : 'Join'))}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-              <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 10, marginBottom: 0, lineHeight: 1.4 }}>
-                {locale === 'de'
-                  ? 'Mitgliedernamen werden aus Privatsphaere-Gruenden nicht angezeigt.'
-                  : 'Member names are hidden for privacy reasons.'}
-              </p>
-              {joinFeedback && (
-                <div style={{
-                  marginTop: 12,
-                  padding: '10px 12px',
-                  borderRadius: 6,
-                  background: joinFeedback.kind === 'ok' ? 'rgba(134,188,37,0.10)' : 'rgba(220,38,38,0.10)',
-                  border: `1px solid ${joinFeedback.kind === 'ok' ? 'var(--dex-green, #86bc25)' : 'var(--dex-red, #b91c1c)'}`,
-                  color: joinFeedback.kind === 'ok' ? 'var(--dex-green-dark, #3f5f10)' : '#b91c1c',
-                  fontSize: '0.85rem',
-                  lineHeight: 1.5,
-                }}>
-                  {joinFeedback.text}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {/* v18.73: Die „Offene Teams"-Box ist nach UNTEN gewandert (unter die
+            „Ich melde mich + mein Team an"-Karte) — siehe weiter unten. Oben
+            steht jetzt immer zuerst die persönliche Daten-Karte, dann die
+            event-spezifischen Infos. */}
 
         {/* Persoenliche Daten */}
         <div className="registration-form">
@@ -2263,6 +2315,7 @@ export default function RegistrationPage(): React.ReactElement {
                   setThirdPartyCheck(null);
                   setPickedUserProfile(null);
                   setOtherConsentConfirmed(false);
+                  setExternalPerson(false); // v18.74: Extern-Modus beim Wechsel zurücksetzen
                   if (!registerForOther) { setFirstName(''); setSurname(''); setEmail(''); setUserSearch(''); setUserResults([]); }
                   else { setFirstName(currentUser.firstName); setSurname(currentUser.surname); setEmail(currentUser.email); setUserSearch(''); setUserResults([]); }
                 }}
@@ -2303,7 +2356,32 @@ export default function RegistrationPage(): React.ReactElement {
                     As an Assistant you can only register <strong>Partners</strong> or <strong>Directors</strong> for this event.
                   </div>
                 )}
-                {registerForOther && (
+                {/* v18.74: Umschalter „Person außerhalb Deloitte" — nur für
+                    Organizer/Admins (nicht für Assistenten, die auf interne
+                    Partner/Directors beschränkt sind). Blendet den People-Picker
+                    aus und macht Vorname/Nachname/E-Mail frei eintragbar. */}
+                {registerForOther && canCreateEvents && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, cursor: 'pointer', fontSize: '0.85rem', color: 'var(--dex-gray-800)' }}>
+                    <input
+                      type="checkbox"
+                      checked={externalPerson}
+                      onChange={e => {
+                        const on = e.target.checked;
+                        setExternalPerson(on);
+                        // Picker- und Feld-State frisch zurücksetzen (manuelle Eingabe).
+                        setUserSearch(''); setUserResults([]); setPickedUserProfile(null);
+                        setThirdPartyCheck(null); setOtherConsentConfirmed(false);
+                        setFirstName(''); setSurname(''); setEmail('');
+                      }}
+                    />
+                    <span>
+                      {locale === 'de'
+                        ? <>Person <strong>außerhalb Deloitte</strong> anmelden (externe E-Mail-Adresse)</>
+                        : <>Register a person <strong>outside Deloitte</strong> (external email address)</>}
+                    </span>
+                  </label>
+                )}
+                {registerForOther && !externalPerson && (
                   <div className="form-group" style={{ position: 'relative', marginBottom: 20 }}>
                     {/* v11.97: Label entfernt — Suche ist selbsterklärend (Placeholder). */}
                     <input
@@ -2491,7 +2569,9 @@ export default function RegistrationPage(): React.ReactElement {
                   // registrieren" aktiv ist — nicht erst wenn die E-Mail
                   // gefüllt ist. Der User soll sofort sehen, dass eine
                   // Zustimmung nötig ist.
-                  const isExternal = !!email.trim() && !/@(.*\.)?deloitte\.de$/i.test(email.trim());
+                  // v18.74: Extern, sobald der Extern-Modus aktiv ist ODER die
+                  // eingegebene E-Mail keine Deloitte-DE-Adresse ist.
+                  const isExternal = externalPerson || (!!email.trim() && !/@(.*\.)?deloitte\.de$/i.test(email.trim()));
                   const pickedName = `${firstName} ${surname}`.trim();
                   return (
                     <div style={{
@@ -2506,13 +2586,20 @@ export default function RegistrationPage(): React.ReactElement {
                     }}>
                       <div style={{ fontWeight: 700, marginBottom: 8, fontSize: '0.95rem' }}>
                         {locale === 'de'
-                          ? 'Vorab die Zustimmung der Person einholen'
-                          : 'Get the person\'s consent up front'}
+                          ? (isExternal ? 'Schriftliche Zustimmung der Person einholen' : 'Vorab die Zustimmung der Person einholen')
+                          : (isExternal ? 'Get the person\'s written consent' : 'Get the person\'s consent up front')}
                       </div>
+                      {externalPerson && (
+                        <div style={{ marginBottom: 8, fontWeight: 600 }}>
+                          {locale === 'de'
+                            ? <>Trage <strong>Vorname, Nachname und E-Mail-Adresse</strong> der externen Person unten selbst ein.</>
+                            : <>Enter the external person&rsquo;s <strong>first name, last name and email address</strong> in the fields below.</>}
+                        </div>
+                      )}
                       <div style={{ marginBottom: 8 }}>
                         {locale === 'de'
-                          ? <>Mit dem Absenden meldest du {pickedName ? <><strong>{pickedName}</strong></> : <>die ausgewählte Person</>} stellvertretend an. Bitte stelle sicher, dass die Person ihrer Anmeldung <strong>VORHER zugestimmt</strong> hat — eine Anmeldung ohne Einverständnis ist nicht erlaubt.</>
-                          : <>By submitting you register {pickedName ? <><strong>{pickedName}</strong></> : <>the selected person</>} on their behalf. Please make sure the person has <strong>consented up front</strong> — registering people without their consent is not allowed.</>}
+                          ? <>Mit dem Absenden meldest du {pickedName ? <><strong>{pickedName}</strong></> : <>die {externalPerson ? 'externe ' : 'ausgewählte '}Person</>} stellvertretend an. Bitte stelle sicher, dass die Person ihrer Anmeldung <strong>VORHER {isExternal ? 'schriftlich ' : ''}zugestimmt</strong> hat — eine Anmeldung ohne Einverständnis ist nicht erlaubt.</>
+                          : <>By submitting you register {pickedName ? <><strong>{pickedName}</strong></> : <>the {externalPerson ? 'external ' : 'selected '}person</>} on their behalf. Please make sure the person has <strong>{isExternal ? 'consented in writing' : 'consented up front'}</strong> — registering people without their consent is not allowed.</>}
                       </div>
                       {isExternal && (
                         <div style={{
@@ -2522,12 +2609,12 @@ export default function RegistrationPage(): React.ReactElement {
                         }}>
                           <div style={{ fontWeight: 700, marginBottom: 4 }}>
                             {locale === 'de'
-                              ? 'Externe E-Mail-Adresse erkannt'
-                              : 'External email address detected'}
+                              ? 'Externe Person — kein Kalendereintrag'
+                              : 'External person — no calendar invite'}
                           </div>
                           {locale === 'de'
-                            ? <>Die Adresse <strong>{email}</strong> gehört nicht zum Deloitte-Deutschland-Tenant. Diese Person bekommt deshalb <strong>keinen Outlook-Termin</strong>. Stattdessen wird eine Bestätigungs-Mail mit dem Betreff <strong>&bdquo;Weiterleitung notwendig&ldquo;</strong> an die Event-Organizer geschickt — diese Mail dient als Anmeldebestätigung und kann unter Beachtung der Datenschutzrichtlinien an die externe Person weitergeleitet werden.</>
-                            : <>The address <strong>{email}</strong> is not part of the Deloitte Germany tenant. This person will therefore <strong>not receive an Outlook calendar invite</strong>. Instead, a confirmation email with the subject <strong>&bdquo;Forwarding required&ldquo;</strong> is sent to the event organizers — this mail serves as registration confirmation and can be forwarded to the external person, observing privacy guidelines.</>}
+                            ? <>{email.trim() ? <>Die Adresse <strong>{email}</strong> gehört nicht zum Deloitte-Deutschland-Tenant. </> : <>Eine externe Adresse gehört nicht zum Deloitte-Deutschland-Tenant. </>}Die Person bekommt deshalb <strong>keinen Outlook-Termin</strong> (an externe Adressen können wir keine Termine versenden). Die <strong>Anmeldebestätigung per E-Mail</strong> geht direkt an die Person, mit den <strong>Organizern auf CC</strong> als Nachweis. Die Zustimmung ist <strong>schriftlich</strong> einzuholen.</>
+                            : <>{email.trim() ? <>The address <strong>{email}</strong> is not part of the Deloitte Germany tenant. </> : <>An external address is not part of the Deloitte Germany tenant. </>}The person will therefore <strong>not receive an Outlook calendar invite</strong> (we cannot send invites to external addresses). The <strong>confirmation email</strong> is sent directly to the person, with the <strong>organizers on CC</strong> as a record. Consent must be obtained <strong>in writing</strong>.</>}
                         </div>
                       )}
                       <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 12, cursor: 'pointer' }}>
@@ -2540,8 +2627,12 @@ export default function RegistrationPage(): React.ReactElement {
                         <span style={{ flex: 1, color: 'var(--dex-gray-800)' }}>
                           <span style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>
                           {locale === 'de'
-                            ? 'Ich bestätige, dass die Person ihrer stellvertretenden Anmeldung zugestimmt hat.'
-                            : 'I confirm that the person has consented to this registration on their behalf.'}
+                            ? (isExternal
+                                ? 'Ich bestätige, dass die schriftliche Zustimmung der Person zur stellvertretenden Anmeldung vorliegt.'
+                                : 'Ich bestätige, dass die Person ihrer stellvertretenden Anmeldung zugestimmt hat.')
+                            : (isExternal
+                                ? 'I confirm that the person\'s written consent to this registration on their behalf is on file.'
+                                : 'I confirm that the person has consented to this registration on their behalf.')}
                         </span>
                       </label>
                     </div>
@@ -2593,17 +2684,17 @@ export default function RegistrationPage(): React.ReactElement {
                 über die Validation). */}
             <div className="form-group">
               <label className="form-label">{t('reg.firstname')}</label>
-              <input className="form-input" value={firstName} onChange={e => { if (registerForOther) setFirstName(e.target.value); }} placeholder={t('reg.firstname')} disabled={!registerForOther} style={{ background: 'var(--dex-gray-100)', ...(showErrors && !firstName.trim() ? errorBorder : {}) }} />
+              <input className="form-input" value={firstName} onChange={e => { if (registerForOther) setFirstName(e.target.value); }} placeholder={t('reg.firstname')} disabled={!registerForOther} style={{ background: registerForOther ? '#fff' : 'var(--dex-gray-100)', ...(showErrors && !firstName.trim() ? errorBorder : {}) }} />
             </div>
 
             <div className="form-group">
               <label className="form-label">{t('reg.surname')}</label>
-              <input className="form-input" value={surname} onChange={e => { if (registerForOther) setSurname(e.target.value); }} placeholder={t('reg.surname')} disabled={!registerForOther} style={{ background: 'var(--dex-gray-100)', ...(showErrors && !surname.trim() ? errorBorder : {}) }} />
+              <input className="form-input" value={surname} onChange={e => { if (registerForOther) setSurname(e.target.value); }} placeholder={t('reg.surname')} disabled={!registerForOther} style={{ background: registerForOther ? '#fff' : 'var(--dex-gray-100)', ...(showErrors && !surname.trim() ? errorBorder : {}) }} />
             </div>
 
             <div className="form-group">
               <label className="form-label">{t('reg.email')}</label>
-              <input className="form-input" type="email" value={email} onChange={e => { if (registerForOther) setEmail(e.target.value); }} placeholder="email@deloitte.de" disabled={!registerForOther} style={{ background: 'var(--dex-gray-100)', ...(showErrors && !email.trim() ? errorBorder : {}) }} />
+              <input className="form-input" type="email" value={email} onChange={e => { if (registerForOther) { setEmail(e.target.value); externalEmailConfirmedRef.current = false; /* v18.74: Tippfehler-Check bei Änderung erneut erzwingen */ } }} placeholder={externalPerson ? 'name@firma.de' : 'email@deloitte.de'} disabled={!registerForOther} style={{ background: registerForOther ? '#fff' : 'var(--dex-gray-100)', ...(showErrors && !email.trim() ? errorBorder : {}) }} />
             </div>
 
             {/* v11.94/v11.97/v12.0: Zusätzliche read-only-Profildaten aus dem
@@ -2622,6 +2713,9 @@ export default function RegistrationPage(): React.ReactElement {
               // sichtbar sind. Die Felder bleiben dann leer mit
               // Placeholder „aus SP-Profil — nicht hinterlegt".
               if (!profile && !registerForOther) return null;
+              // v18.74: Bei externen Personen gibt es kein Deloitte-Profil —
+              // Position/Geschäftsbereich/Büro gar nicht erst anzeigen.
+              if (externalPerson) return null;
               const jt = profile ? ((profile as { jobTitle?: string }).jobTitle || '') : '';
               const dept = profile ? ((profile as { department?: string }).department || '') : '';
               const loc = profile ? ((profile as { location?: string }).location || '') : '';
@@ -2659,7 +2753,7 @@ export default function RegistrationPage(): React.ReactElement {
                   <input
                     type="checkbox"
                     checked={isTeamMode}
-                    onChange={e => setIsTeamMode(e.target.checked)}
+                    onChange={e => { setIsTeamMode(e.target.checked); if (e.target.checked) setPendingJoinTeam(null); }}
                     style={{ marginTop: 3 }}
                   />
                   <div style={{ flex: 1 }}>
@@ -2815,11 +2909,106 @@ export default function RegistrationPage(): React.ReactElement {
           </div>
         )}
 
+        {/* v18.73: Offene Teams — sichtbar wenn der Organizer „Offene Slots
+            öffentlich sichtbar" aktiviert hat und es Teams gibt, denen Plätze
+            fehlen. Steht jetzt UNTER der „Ich melde mich + mein Team an"-Karte.
+            Klick auf „Vormerken" wählt ein Team nur vor — die eigentliche
+            Anmeldung (inkl. der oben/unten ausgefüllten persönlichen +
+            event-spezifischen Felder) passiert erst über den „Anmelden"-Button.
+            */}
+        {event && event.teamRegistrationEnabled && event.teamOpenSlotsVisible && !registerForOther && openTeamsLoaded && openTeams.length > 0 && !parentAlreadyRegistered && (
+          <div className="registration-form" style={{ marginBottom: 16 }}>
+            <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <Icon iconName="People" style={{ fontSize: 16 }} />
+              {locale === 'de' ? 'Offene Teams — einem unvollständigen Team beitreten' : 'Open teams — join an incomplete team'}
+            </div>
+            <div style={{ padding: '20px' }}>
+              <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>
+                {locale === 'de'
+                  ? 'Andere Personen haben Teams angemeldet, denen noch Plätze fehlen. Du kannst eines vormerken — fülle dann oben deine persönlichen Daten und unten die event-spezifischen Angaben aus und klicke auf „Anmelden", um beizutreten.'
+                  : 'Other people have registered teams with open slots. Pre-select one — then fill in your personal details above and the event-specific information below, and click „Register" to join.'}
+                {event.teamJoinRequiresApproval && (
+                  <> {locale === 'de'
+                    ? <><br /><strong>Hinweis:</strong> der Team-Kapitän muss deinen Beitritt erst bestätigen.</>
+                    : <><br /><strong>Note:</strong> the team lead has to approve your join.</>}
+                  </>
+                )}
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {openTeams.map(t => {
+                  const free = t.teamSize - t.activeCount;
+                  const isPicked = !!pendingJoinTeam && pendingJoinTeam.teamId === t.teamId;
+                  return (
+                    <div key={t.teamId} style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '10px 12px',
+                      background: isPicked ? 'rgba(134,188,37,0.10)' : 'var(--dex-gray-50, #f7f7f7)',
+                      borderRadius: 6,
+                      border: isPicked ? '2px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-200)',
+                    }}>
+                      <Icon iconName="Group" style={{ fontSize: 16, color: 'var(--dex-green-dark, #4a7c1f)' }} />
+                      <div style={{ flex: 1, fontSize: '0.88rem' }}>
+                        <div style={{ fontWeight: 600 }}>
+                          {locale === 'de'
+                            ? `Team „${t.teamName || 'ohne Namen'}"`
+                            : `Team „${t.teamName || 'unnamed'}"`}
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                          {locale === 'de'
+                            ? `${t.activeCount}/${t.teamSize} belegt — ${free} Slot${free === 1 ? '' : 's'} frei`
+                            : `${t.activeCount}/${t.teamSize} taken — ${free} slot${free === 1 ? '' : 's'} free`}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className={isPicked ? 'btn btn-secondary' : 'btn btn-primary'}
+                        onClick={() => togglePendingJoinTeam(t.teamId, t.teamName)}
+                        style={{ fontSize: '0.82rem', padding: '6px 12px' }}
+                      >
+                        {isPicked
+                          ? (locale === 'de' ? 'Vorgemerkt ✓ — entfernen' : 'Pre-selected ✓ — remove')
+                          : (locale === 'de' ? 'Vormerken' : 'Pre-select')}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 10, marginBottom: 0, lineHeight: 1.4 }}>
+                {locale === 'de'
+                  ? 'Mitgliedernamen werden aus Privatsphäre-Gründen nicht angezeigt.'
+                  : 'Member names are hidden for privacy reasons.'}
+              </p>
+              {pendingJoinTeam && (
+                <div style={{
+                  marginTop: 12,
+                  padding: '10px 12px',
+                  borderRadius: 6,
+                  background: 'rgba(134,188,37,0.10)',
+                  border: '1px solid var(--dex-green, #86bc25)',
+                  color: 'var(--dex-green-dark, #3f5f10)',
+                  fontSize: '0.85rem',
+                  lineHeight: 1.5,
+                }}>
+                  {locale === 'de'
+                    ? <>Team <strong>„{pendingJoinTeam.teamName || 'ohne Namen'}“</strong> ist vorgemerkt. Fülle deine Angaben aus und klicke unten auf <strong>„Anmelden“</strong>, um den Beitritt abzuschließen.</>
+                    : <>Team <strong>“{pendingJoinTeam.teamName || 'unnamed'}”</strong> is pre-selected. Fill in your details and click <strong>“Register”</strong> below to complete your join.</>}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Eventspezifische Felder (inkl. Split-Capacity Starter-Typ-Auswahl wenn
             beide Kapazitaeten > 0; bei nur einem verfuegbaren Typ wird dieser
             automatisch gesetzt und gar nicht angezeigt). v10.20: Sessions-/
             Hauptevent-Auswahl ist hierher gewandert (vorher links unter der
             Event-Karte). */}
+        {/* v18.73: Die „Event-spezifische Informationen"-Karte nur anzeigen,
+            wenn es dort tatsächlich etwas auszufüllen/auszuwählen gibt — also
+            Custom-Felder, eine Gruppen-Auswahl (Split) ODER eine Sub-Event-
+            Auswahl. Sonst (leeres „Keine zusätzlichen Informationen
+            erforderlich") wird die Karte komplett ausgeblendet. */}
+        {(event.eventSpecificFields.length > 0 || isSplitGroup || childEvents.length > 0) && (
         <div className="registration-specific">
           {/* v11.97: Section-Header + „* = Required field"-Legende in
               einer Zeile. Legende mit ROTEM Stern (vorher war der Stern
@@ -3221,6 +3410,7 @@ export default function RegistrationPage(): React.ReactElement {
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* v11.4: Fehlermeldung + Action-Buttons stehen jetzt direkt unter
@@ -3272,6 +3462,12 @@ export default function RegistrationPage(): React.ReactElement {
             >
               <Send size={16} /> {(() => {
                 if (isSubmitting) return t('reg.submitting');
+                // v18.73: Vorgemerkter Team-Beitritt — eigener Button-Text.
+                if (pendingJoinTeam) {
+                  return event?.teamJoinRequiresApproval
+                    ? (locale === 'de' ? 'Beitritt anfragen' : 'Request to join')
+                    : (locale === 'de' ? 'Team beitreten & anmelden' : 'Join team & register');
+                }
                 // v11.82: Team-Modus — eigener Button-Text mit Personen-Zahl.
                 if (isTeamMode) {
                   const n = 1 + teamMembersParsed.filter(Boolean).length;
@@ -3303,7 +3499,7 @@ export default function RegistrationPage(): React.ReactElement {
         {/* v18.11: „Ich nehme nicht teil" — proaktive Absage. Nur bei
             Selbst-Anmeldung (nicht „für andere", nicht Team-Modus, kein
             Demo-Event). Braucht keine Pflichtfelder. */}
-        {!registerForOther && !isTeamMode && !(event && event.isDemoShowcase) && (
+        {!registerForOther && !isTeamMode && !pendingJoinTeam && !(event && event.isDemoShowcase) && (
           <button
             type="button"
             className="btn btn-secondary"
@@ -3559,27 +3755,141 @@ export default function RegistrationPage(): React.ReactElement {
         </Modal>
       )}
 
+      {/* v18.75: Sicherheitshinweis-Dialog vor dem Absenden (pro Event). */}
+      {confirmDialogOpen && event && (() => {
+        const isFree = event.confirmDialogMode === 'freetext';
+        const selChildren = childEvents.filter(ce => selectedSessions.has(ce.id));
+        const showParent = willRegisterParent || registerForOther;
+        const parentEditable = willRegisterParent && !registerForOther; // proxy: Parent fix
+        const canConfirm = isFree
+          ? confirmDialogAck
+          : (confirmDraftParent || confirmDraftSessions.size > 0 || (showParent && !parentEditable));
+        return (
+          <Modal
+            open={confirmDialogOpen}
+            onClose={() => setConfirmDialogOpen(false)}
+            maxWidth={560}
+            padding={24}
+            ariaLabel={locale === 'de' ? 'Anmeldung bestätigen' : 'Confirm registration'}
+          >
+            <h3 style={{ margin: '0 0 12px', fontSize: '1.05rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
+              {locale === 'de' ? 'Bitte bestätigen' : 'Please confirm'}
+            </h3>
+            {isFree ? (
+              <>
+                <div style={{
+                  margin: '0 0 14px', padding: '12px 14px', whiteSpace: 'pre-wrap',
+                  background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200)',
+                  borderRadius: 8, fontSize: '0.9rem', lineHeight: 1.55, color: 'var(--dex-gray-800)',
+                }}>
+                  {(event.confirmDialogText || '').trim() || (locale === 'de' ? 'Bitte bestätige deine Anmeldung.' : 'Please confirm your registration.')}
+                </div>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginBottom: 4 }}>
+                  <input type="checkbox" checked={confirmDialogAck} onChange={e => setConfirmDialogAck(e.target.checked)} style={{ marginTop: 3 }} />
+                  <span style={{ flex: 1, fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>
+                    {locale === 'de' ? 'Ich habe den Hinweis gelesen und bestätige.' : 'I have read and acknowledge the note.'}
+                  </span>
+                </label>
+              </>
+            ) : (
+              <>
+                <p style={{ margin: '0 0 12px', fontSize: '0.9rem', lineHeight: 1.55, color: 'var(--dex-gray-700)' }}>
+                  {locale === 'de'
+                    ? 'Du meldest dich für Folgendes an. Du kannst einzelne Punkte vor dem Absenden noch abwählen:'
+                    : 'You are registering for the following. You can deselect items before submitting:'}
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+                  {showParent && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: parentEditable ? 'pointer' : 'default', padding: '8px 10px', background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200)', borderRadius: 6 }}>
+                      <input
+                        type="checkbox"
+                        checked={parentEditable ? confirmDraftParent : true}
+                        disabled={!parentEditable}
+                        onChange={e => setConfirmDraftParent(e.target.checked)}
+                      />
+                      <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>{event.title} <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>{locale === 'de' ? '(Haupt-Event)' : '(main event)'}</span></span>
+                    </label>
+                  )}
+                  {selChildren.map(ce => (
+                    <label key={ce.id} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '8px 10px', background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200)', borderRadius: 6 }}>
+                      <input
+                        type="checkbox"
+                        checked={confirmDraftSessions.has(ce.id)}
+                        onChange={e => setConfirmDraftSessions(prev => {
+                          const n = new Set(prev);
+                          if (e.target.checked) n.add(ce.id); else n.delete(ce.id);
+                          return n;
+                        })}
+                      />
+                      <span style={{ fontSize: '0.88rem' }}>{ce.title}</span>
+                    </label>
+                  ))}
+                </div>
+                {!canConfirm && (
+                  <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: 'var(--dex-red, #c00)' }}>
+                    {locale === 'de' ? 'Bitte mindestens einen Punkt auswählen.' : 'Please select at least one item.'}
+                  </p>
+                )}
+              </>
+            )}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button className="btn btn-secondary" onClick={() => setConfirmDialogOpen(false)} style={{ fontSize: '0.85rem' }}>
+                {locale === 'de' ? 'Abbrechen' : 'Cancel'}
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={!canConfirm}
+                onClick={() => {
+                  // v18.75: In der Auswahl-Übersicht die (ggf. angepasste)
+                  // Auswahl in den echten State übernehmen, dann Submit erneut
+                  // anstoßen (Ref überspringt den Dialog).
+                  if (!isFree) {
+                    if (parentEditable) setRegisterForParent(confirmDraftParent);
+                    setSelectedSessions(new Set(confirmDraftSessions));
+                  }
+                  confirmDialogConfirmedRef.current = true;
+                  setConfirmDialogOpen(false);
+                  setTimeout(() => { handleSubmit().catch(() => { /* */ }); }, 60);
+                }}
+                style={{ fontSize: '0.85rem' }}
+              >
+                {locale === 'de' ? 'Anmeldung bestätigen' : 'Confirm registration'}
+              </button>
+            </div>
+          </Modal>
+        );
+      })()}
+
       {externalEmailWarning && (
         <Modal
           open={externalEmailWarning}
           onClose={() => setExternalEmailWarning(false)}
           maxWidth={540}
           padding={24}
-          ariaLabel={locale === 'de' ? 'Externe E-Mail-Adresse' : 'External email address'}
+          ariaLabel={locale === 'de' ? 'E-Mail-Adresse prüfen' : 'Check the email address'}
         >
-            {/* v17.22: bilingual nachgezogen. */}
+            {/* v18.74: Tippfehler-Gegenlesen — die externe Adresse groß
+                anzeigen und zur Bestätigung auffordern. */}
             <h3 style={{ margin: '0 0 12px', fontSize: '1.05rem', color: 'var(--dex-orange-dark, #b35a00)' }}>
-              {locale === 'de' ? 'Externe E-Mail-Adresse' : 'External email address'}
+              {locale === 'de' ? 'E-Mail-Adresse prüfen' : 'Check the email address'}
             </h3>
-            <p style={{ margin: '0 0 12px', fontSize: '0.9rem', lineHeight: 1.55, color: 'var(--dex-gray-700)' }}>
+            <p style={{ margin: '0 0 10px', fontSize: '0.9rem', lineHeight: 1.55, color: 'var(--dex-gray-700)' }}>
               {locale === 'de'
-                ? <>Die Adresse <strong>{email}</strong> gehört nicht zum Deloitte-Deutschland-Tenant (@deloitte.de). Standardmäßig sind Anmeldungen für externe Personen nicht vorgesehen — die Plattform ist nur für DEALL-Mitarbeiter freigeschaltet.</>
-                : <>The address <strong>{email}</strong> does not belong to the Deloitte Germany tenant (@deloitte.de). Registrations for external people are not supported by default — the platform is only enabled for DEALL employees.</>}
+                ? <>Du meldest eine <strong>externe Person</strong> an. Bitte lies die Adresse genau gegen — an externe Adressen lässt sich ein <strong>Tippfehler nachträglich nicht korrigieren</strong>:</>
+                : <>You are registering an <strong>external person</strong>. Please read the address carefully — a <strong>typo cannot be corrected afterwards</strong> for external addresses:</>}
             </p>
-            <p style={{ margin: '0 0 12px', fontSize: '0.85rem', lineHeight: 1.55, color: 'var(--dex-gray-600)' }}>
+            <div style={{
+              margin: '0 0 12px', padding: '12px 14px', textAlign: 'center',
+              background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200)',
+              borderRadius: 8, fontSize: '1.05rem', fontWeight: 700, wordBreak: 'break-all',
+              color: 'var(--dex-gray-900, #222)',
+            }}>
+              {email}
+            </div>
+            <p style={{ margin: '0 0 12px', fontSize: '0.82rem', lineHeight: 1.55, color: 'var(--dex-gray-600)' }}>
               {locale === 'de'
-                ? <>Wenn du diese Person trotzdem als Teilnehmer erfassen möchtest (z.B. neue Mitarbeiter die noch nicht angestellt sind, externe Berater die am Event teilnehmen), kannst du fortfahren. Die Bestätigungsmail wird dann <strong>nicht an die externe Adresse</strong> versendet, sondern landet bei dir als Organizer in der Inbox — du kannst sie unter Beachtung der <strong>Deloitte-Datenschutzrichtlinien</strong> ggf. weiterleiten.</>
-                : <>If you still want to register this person as an attendee (e.g. new joiners not yet employed, external consultants attending the event), you can proceed. The confirmation email will then <strong>not be sent to the external address</strong> — it lands in your organizer inbox instead, and you may forward it in line with the <strong>Deloitte privacy guidelines</strong>.</>}
+                ? <>Die <strong>Anmeldebestätigung</strong> geht direkt an diese Adresse, mit den <strong>Organizern auf CC</strong>. Ein <strong>Outlook-Termin</strong> wird an externe Adressen nicht versendet.</>
+                : <>The <strong>confirmation email</strong> is sent directly to this address, with the <strong>organizers on CC</strong>. An <strong>Outlook invite</strong> is not sent to external addresses.</>}
             </p>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
               <button
@@ -3587,7 +3897,7 @@ export default function RegistrationPage(): React.ReactElement {
                 onClick={() => setExternalEmailWarning(false)}
                 style={{ fontSize: '0.85rem' }}
               >
-                {locale === 'de' ? 'Abbrechen' : 'Cancel'}
+                {locale === 'de' ? 'Zurück, korrigieren' : 'Back, edit'}
               </button>
               <button
                 className="btn btn-primary"
@@ -3599,7 +3909,7 @@ export default function RegistrationPage(): React.ReactElement {
                 }}
                 style={{ fontSize: '0.85rem' }}
               >
-                {locale === 'de' ? 'Trotzdem anmelden' : 'Register anyway'}
+                {locale === 'de' ? 'Adresse ist korrekt' : 'Address is correct'}
               </button>
             </div>
         </Modal>

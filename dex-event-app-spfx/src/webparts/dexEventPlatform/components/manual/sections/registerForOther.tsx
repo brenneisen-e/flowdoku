@@ -87,6 +87,31 @@ export function registerForOtherSection(locale: 'de' | 'en'): ManualSection {
               ? 'Im Audit-Trail des Teilnehmer-Eintrags steht, wer die Anmeldung ausgelöst hat — für Rückfragen.'
               : 'The participant record\'s audit trail logs who triggered the registration — useful for follow-up questions.',
           },
+          {
+            number: 5,
+            title: isDe ? 'Zustimmungs-Nachweis (v18.74)' : 'Consent record (v18.74)',
+            description: (
+              <>
+                {isDe
+                  ? 'Bei jeder stellvertretenden Anmeldung bestätigst du per Pflicht-Checkbox, dass die Person zugestimmt hat. Diese Bestätigung wird zusätzlich als Nachweis in der Teilnehmerliste gespeichert (Spalte „ProxyConsent") — mit deinem Namen und dem Datum. So lässt sich im Nachhinein belegen, dass die Zustimmung vorlag.'
+                  : 'For every registration on someone\'s behalf you confirm via a mandatory checkbox that the person consented. This confirmation is additionally stored as a record in the participant list (column „ProxyConsent") — with your name and the date. This proves later that consent was in place.'}
+              </>
+            ),
+          },
+          {
+            number: 6,
+            title: isDe ? 'Person außerhalb Deloitte (v18.74)' : 'Person outside Deloitte (v18.74)',
+            description: (
+              <>
+                {isDe
+                  ? 'Mit der Checkbox „Person außerhalb Deloitte" meldest du eine externe Person an. Der People-Picker verschwindet — du trägst Vorname, Nachname und E-Mail selbst ein. Die Zustimmung musst du in diesem Fall SCHRIFTLICH einholen. Die App prüft die E-Mail auf Tippfehler und zeigt sie vor dem Absenden noch einmal groß zur Kontrolle an.'
+                  : 'With the „Person outside Deloitte" checkbox you register an external person. The people picker disappears — you enter first name, last name and email yourself. In this case consent must be obtained IN WRITING. The app checks the email for typos and shows it once more, large, for review before submitting.'}
+              </>
+            ),
+            tip: isDe
+              ? 'Die Bestätigungs-Mail geht direkt an die externe Person, mit den Organizern auf CC. Ein Outlook-Termin wird an externe Adressen NICHT versendet — der Termin muss manuell in den Kalender eingetragen werden.'
+              : 'The confirmation email is sent directly to the external person, with the organizers on CC. An Outlook invite is NOT sent to external addresses — the appointment must be added to the calendar manually.',
+          },
         ],
       },
     ],

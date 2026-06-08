@@ -513,6 +513,9 @@ export interface SPEvent {
   AttendeeUploadHint?: string;   // v11.0: optionaler Hinweistext über dem Upload-Input
   AttendeeUploadLabel?: string;  // v11.0: Anzeige-Name des Upload-Felds in MyEvents
   AskSalutation?: boolean;       // v11.80: Anrede im Registrierungsformular abfragen
+  ConfirmDialogEnabled?: boolean; // v18.75: Sicherheitshinweis vor dem Absenden
+  ConfirmDialogMode?: string;     // v18.75: 'summary' | 'freetext'
+  ConfirmDialogText?: string;     // v18.75: Freitext-Hinweis
   SelfCheckInEnabled?: boolean;  // v18.33: Self-Check-in per QR-Code erlauben
   SelfCheckInToken?: string;     // v18.33: Geheimer Token (statischer Link + HMAC-Schlüssel rotierender QR)
   SelfCheckInFrom?: string;      // v18.33: optionaler Start des Check-in-Fensters (ISO), leer = nur am Event-Tag
@@ -2803,6 +2806,9 @@ export class EventService {
       { title: 'AttendeeUploadHint', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 3 }, // v11.0: Hinweistext
       { title: 'AttendeeUploadLabel', type: 2 }, // v11.0: Single-line Label fuer den Upload-Block in MyEvents
       { title: 'AskSalutation', type: 8, metaType: 'SP.Field' }, // v11.80: Boolean - Anrede im Registrierungsformular abfragen
+      { title: 'ConfirmDialogEnabled', type: 8, metaType: 'SP.Field' }, // v18.75: Boolean - Sicherheitshinweis vor dem Absenden anzeigen
+      { title: 'ConfirmDialogMode', type: 2 }, // v18.75: Single line text - 'summary' (Auswahl-Übersicht) | 'freetext'
+      { title: 'ConfirmDialogText', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 4 }, // v18.75: Note - Freitext-Hinweis
       { title: 'SelfCheckInEnabled', type: 8, metaType: 'SP.Field' }, // v18.33: Boolean - Self-Check-in per QR-Code erlauben
       { title: 'SelfCheckInToken', type: 2 }, // v18.33: Single line text - geheimer Token (statischer Link + HMAC-Schlüssel)
       { title: 'SelfCheckInFrom', type: 4 }, // v18.33: DateTime - optionaler Start des Check-in-Fensters
@@ -3189,7 +3195,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,OutlookSubject,OutlookStart,OutlookEnd,OutlookLocation,EmailLanguage,RegistrationLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,SelfCheckInEnabled,SelfCheckInToken,SelfCheckInFrom,SelfCheckInTo,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,OutlookSubject,OutlookStart,OutlookEnd,OutlookLocation,EmailLanguage,RegistrationLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,ConfirmDialogEnabled,ConfirmDialogMode,ConfirmDialogText,SelfCheckInEnabled,SelfCheckInToken,SelfCheckInFrom,SelfCheckInTo,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
 
   /**
    * Strip SharePoint-Note-Field-Wrapper.
@@ -3394,6 +3400,10 @@ export class EventService {
     attendeeUploadLabel?: string;
     /** v11.80: Anrede im Registrierungsformular abfragen (Default false). */
     askSalutation?: boolean;
+    /** v18.75: Sicherheitshinweis vor dem Absenden der Anmeldung. */
+    confirmDialogEnabled?: boolean;
+    confirmDialogMode?: string; // 'summary' | 'freetext'
+    confirmDialogText?: string;
     /** v18.33: Self-Check-in per QR-Code erlauben (Default false). */
     selfCheckInEnabled?: boolean;
     /** v18.33: Geheimer Token (statischer Link + HMAC-Schlüssel rotierender QR). */
@@ -3608,6 +3618,9 @@ export class EventService {
         'AttendeeUploadHint': event.attendeeUploadHint || '',
         'AttendeeUploadLabel': event.attendeeUploadLabel || '',
         'AskSalutation': !!event.askSalutation,
+        'ConfirmDialogEnabled': !!event.confirmDialogEnabled,
+        'ConfirmDialogMode': event.confirmDialogMode || '',
+        'ConfirmDialogText': event.confirmDialogText || '',
         'SelfCheckInEnabled': !!event.selfCheckInEnabled,
         'SelfCheckInToken': event.selfCheckInToken || '',
         'SelfCheckInFrom': event.selfCheckInFrom || null,
@@ -4045,6 +4058,7 @@ export class EventService {
       { title: 'RegistrationDate', type: 4 },
       { title: 'RegisteredByName', type: 2 },  // Audit: Name des Users der die Anmeldung durchgefuehrt hat
       { title: 'RegisteredByEmail', type: 2 }, // Audit: E-Mail des Users der die Anmeldung durchgefuehrt hat
+      { title: 'ProxyConsent', type: 3 },      // v18.74: Nachweis der Zustimmung bei stellvertretender Anmeldung (Note)
       { title: 'LastModifiedDate', type: 4 },
       { title: 'ChangeLog', type: 3 }, // Note (multiline) - Aenderungshistorie
       { title: 'CancellationDate', type: 4 },
@@ -4150,7 +4164,7 @@ export class EventService {
     // werden alle SP-Default-Spalten (Modified, Created, ID, Type, Compliance Asset,
     // App Created By, ...) aus der View rausgeworfen — nur funktionelle Felder.
     await this.configureDefaultView(REG_LIST_NAME, [
-      'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'ParticipantEmail', 'Department', 'Location', 'JobTitle', 'Phone', 'StarterType', 'PreferredStarterType', 'Status', 'RegistrationDate', 'RegisteredByName', 'RegisteredByEmail', 'CancellationDate', 'CancelledByName', 'CancelledByEmail',
+      'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'ParticipantEmail', 'Department', 'Location', 'JobTitle', 'Phone', 'StarterType', 'PreferredStarterType', 'Status', 'RegistrationDate', 'RegisteredByName', 'RegisteredByEmail', 'ProxyConsent', 'CancellationDate', 'CancelledByName', 'CancelledByEmail',
       ...customFieldViewNames,
       // v11.82: Team-Spalten am Ende der View (nach allen Custom Fields, vor
       // System-Spalten). So bleibt die View bei Nicht-Team-Events unauffaellig
@@ -4376,7 +4390,10 @@ export class EventService {
     starterType?: string, // B2Run: effektiver Typ (nach Fallback)
     preferredStarterType?: string, // B2Run: Wunsch-Typ (was der User eigentlich wollte)
     registeredByName?: string, // Audit: Name des Users der die Anmeldung ausloest
-    registeredByEmail?: string // Audit: E-Mail des Users der die Anmeldung ausloest
+    registeredByEmail?: string, // Audit: E-Mail des Users der die Anmeldung ausloest
+    // v18.74: Nachweis der Zustimmung bei stellvertretender Anmeldung — wird in
+    // die SP-Spalte ProxyConsent geschrieben (leer bei Selbst-Anmeldung).
+    proxyConsent?: string
   ): Promise<boolean> {
     try {
       // ---- Permission-Checks (v3.9.2 / v3.9.3) ----
@@ -4494,6 +4511,8 @@ export class EventService {
       const auditEmail = (registeredByEmail || this.context.pageContext.user.email || '').toLowerCase();
       if (auditName) payload['RegisteredByName'] = auditName;
       if (auditEmail) payload['RegisteredByEmail'] = auditEmail;
+      // v18.74: Zustimmungs-Nachweis bei stellvertretender Anmeldung.
+      if (proxyConsent) payload['ProxyConsent'] = proxyConsent;
 
       // B2Run: Starter-Typ + Wunsch-Typ schreiben (bei normalen Events null)
       if (starterType) payload['StarterType'] = starterType;
@@ -4795,6 +4814,9 @@ export class EventService {
       { title: 'Status', type: 6, choices: ['Pending', 'Approved', 'Rejected'], metaType: 'SP.FieldChoice' },
       { title: 'DecidedDate', type: 4 },
       { title: 'DecidedByEmail', type: 2 },
+      // v18.73: event-spezifische Antworten des Anfragenden als JSON — werden
+      // beim Approve auf den neuen Member angewandt (Note = multi-line text).
+      { title: 'CustomData', type: 3 },
     ];
 
     for (const f of fields) {
@@ -4829,6 +4851,8 @@ export class EventService {
     const wanted = [
       { title: 'DecidedDate', type: 4 },
       { title: 'DecidedByEmail', type: 2 },
+      // v18.73: CustomData-Spalte auf Bestands-Listen nachziehen.
+      { title: 'CustomData', type: 3 },
     ];
     for (const f of wanted) {
       try {
@@ -4933,6 +4957,8 @@ export class EventService {
     teamId: string;
     requesterEmail: string;
     requesterDisplayName: string;
+    // v18.73: event-spezifische Antworten als JSON (optional).
+    customData?: string;
   }): Promise<{ ok: boolean; itemId?: number }> {
     try {
       const payload = {
@@ -4943,6 +4969,7 @@ export class EventService {
         'RequesterEmail': args.requesterEmail,
         'RequesterDisplayName': args.requesterDisplayName,
         'Status': 'Pending',
+        ...(args.customData ? { 'CustomData': args.customData } : {}),
       };
       const resp = await this._post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_TeamJoinRequests')/items`,
@@ -4970,7 +4997,7 @@ export class EventService {
     eventId?: string;
     teamId?: string;
     status?: 'Pending' | 'Approved' | 'Rejected';
-  }): Promise<Array<{ Id: number; EventId: string; TeamId: string; RequesterEmail: string; RequesterDisplayName: string; Status: string; Created: string; DecidedDate?: string; DecidedByEmail?: string }>> {
+  }): Promise<Array<{ Id: number; EventId: string; TeamId: string; RequesterEmail: string; RequesterDisplayName: string; Status: string; Created: string; DecidedDate?: string; DecidedByEmail?: string; CustomData?: string }>> {
     try {
       const clauses: string[] = [];
       if (args.eventId) clauses.push(`EventId eq '${args.eventId.replace(/'/g, "''")}'`);
@@ -5026,7 +5053,8 @@ export class EventService {
     status: string = 'Angemeldet',
     customFieldMap?: Record<string, string>,
     registeredByName?: string, // Audit: Name des Users der die Re-Anmeldung ausloest
-    registeredByEmail?: string // Audit: E-Mail des Users der die Re-Anmeldung ausloest
+    registeredByEmail?: string, // Audit: E-Mail des Users der die Re-Anmeldung ausloest
+    proxyConsent?: string // v18.74: Zustimmungs-Nachweis bei stellvertretender Re-Anmeldung
   ): Promise<boolean> {
     try {
       // ---- Permission-Checks (v3.9.2 / v3.9.3) ----
@@ -5131,6 +5159,8 @@ export class EventService {
       const auditEmail = (registeredByEmail || this.context.pageContext.user.email || '').toLowerCase();
       if (auditName) body['RegisteredByName'] = auditName;
       if (auditEmail) body['RegisteredByEmail'] = auditEmail;
+      // v18.74: Zustimmungs-Nachweis bei stellvertretender Re-Anmeldung.
+      if (proxyConsent) body['ProxyConsent'] = proxyConsent;
 
       if (customFieldMap) {
         for (const cfId of Object.keys(customData)) {
@@ -6046,6 +6076,7 @@ export class EventService {
       { title: 'Anrede', type: 6, choices: ['Frau', 'Herr', 'Divers'], metaType: 'SP.FieldChoice' },
       { title: 'RegisteredByName', type: 2 },  // Audit: Name des Users der die Anmeldung durchgefuehrt hat
       { title: 'RegisteredByEmail', type: 2 }, // Audit: E-Mail des Users der die Anmeldung durchgefuehrt hat
+      { title: 'ProxyConsent', type: 3 },      // v18.74: Zustimmungs-Nachweis bei stellvertretender Anmeldung (Note)
       { title: 'CancelledByName', type: 2 },   // Audit: Name des Users der die Abmeldung ausgeloest hat
       { title: 'CancelledByEmail', type: 2 },  // Audit: E-Mail des Users der die Abmeldung ausgeloest hat
       { title: 'CheckedInDate', type: 4 },     // v7.16: Check-In-Audit — Zeitpunkt
@@ -6214,6 +6245,7 @@ export class EventService {
       viewFields.push('Status', 'RegistrationDate');
       if (postFixFields.indexOf('RegisteredByName') >= 0) viewFields.push('RegisteredByName');
       if (postFixFields.indexOf('RegisteredByEmail') >= 0) viewFields.push('RegisteredByEmail');
+      if (postFixFields.indexOf('ProxyConsent') >= 0) viewFields.push('ProxyConsent');
       viewFields.push('CancellationDate');
 
       // Wir blenden SP-System-Spalten komplett aus (Modified, Created, ID, Type,

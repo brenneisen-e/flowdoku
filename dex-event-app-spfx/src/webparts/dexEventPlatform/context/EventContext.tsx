@@ -41,7 +41,7 @@ export function applyEventTemplateOverride(
   spTemplate: { subject: string; headingColor: string; heading: string; subheading?: string; bodyHtml: string } | null,
   overridesJson: string | undefined,
   templateType: string
-): { subject: string; headingColor: string; heading: string; subheading: string; bodyHtml: string; headingFontSize?: string; headingBold?: boolean; headingItalic?: boolean; subheadingColor?: string; subheadingFontSize?: string; subheadingBold?: boolean; subheadingItalic?: boolean } | null {
+): { subject: string; headingColor: string; heading: string; subheading: string; bodyHtml: string; headingFontSize?: string; headingBold?: boolean; headingItalic?: boolean; subheadingColor?: string; subheadingFontSize?: string; subheadingBold?: boolean; subheadingItalic?: boolean; imageWidth?: number; imagePaddingV?: number; imagePaddingH?: number } | null {
   // v15.19: Subheading-Override pro Event mitziehen. Color/Size bleiben
   // weiterhin aus dem Standard-Template (wrapTemplate-Layout fest), nur
   // die Text-Werte (Subject, Heading, Subheading, Body) sind editierbar.
@@ -57,6 +57,17 @@ export function applyEventTemplateOverride(
   }
   try {
     const all = JSON.parse(overridesJson) as Record<string, { subject?: string; heading?: string; subheading?: string; bodyHtml?: string; headingColor?: string; headingFontSize?: string; headingBold?: boolean; headingItalic?: boolean; subheadingColor?: string; subheadingFontSize?: string; subheadingBold?: boolean; subheadingItalic?: boolean }>;
+    // v18.73: globales Header-Bild-Layout (Breite + Innenabstand). Liegt unter
+    // dem reservierten Piggyback-Key `_headerImageLayout` und gilt für ALLE
+    // Template-Typen des Events — daher hier einmal gelesen und in jeden
+    // Rückgabe-Zweig gespreadet (auch wenn der konkrete Typ keinen Text-
+    // Override hat).
+    const il = (all as unknown as { _headerImageLayout?: { width?: number; paddingV?: number; paddingH?: number } })._headerImageLayout || {};
+    const imgSpread = {
+      ...(typeof il.width === 'number' && il.width > 0 ? { imageWidth: il.width } : {}),
+      ...(typeof il.paddingV === 'number' && il.paddingV >= 0 ? { imagePaddingV: il.paddingV } : {}),
+      ...(typeof il.paddingH === 'number' && il.paddingH >= 0 ? { imagePaddingH: il.paddingH } : {}),
+    };
     const o = all[templateType];
     if (!o || (!o.subject && !o.heading && o.subheading === undefined && !o.bodyHtml && !o.headingColor && !o.headingFontSize && o.headingBold === undefined && o.headingItalic === undefined && !o.subheadingColor && !o.subheadingFontSize && o.subheadingBold === undefined && o.subheadingItalic === undefined)) {
       if (!spTemplate) return null;
@@ -66,6 +77,7 @@ export function applyEventTemplateOverride(
         heading: spTemplate.heading,
         subheading: spTemplate.subheading || '',
         bodyHtml: spTemplate.bodyHtml,
+        ...imgSpread,
       };
     }
     return {
@@ -85,6 +97,7 @@ export function applyEventTemplateOverride(
       ...(o.subheadingFontSize ? { subheadingFontSize: o.subheadingFontSize } : {}),
       ...(o.subheadingBold !== undefined ? { subheadingBold: o.subheadingBold } : {}),
       ...(o.subheadingItalic !== undefined ? { subheadingItalic: o.subheadingItalic } : {}),
+      ...imgSpread,
     };
   } catch {
     if (!spTemplate) return null;
@@ -221,7 +234,7 @@ interface EventContextType {
   childEventsOf: (parentEventId: string) => DeloitteEvent[];
   isEventsLoading: boolean;
   createEvent: (event: CreateEventInput) => Promise<number | null>;
-  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' }>;
+  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' }>;
   /** v11.82: Team-Anmeldung — Lead + N-1 Mitglieder gleichzeitig anmelden.
    *  Reserviert N Plaetze atomar; bei Vollbelegung geht das ganze Team auf
    *  die Warteliste (keine Teil-Anmeldungen aus Kapazitaetsmangel). */
@@ -238,7 +251,7 @@ interface EventContextType {
    *  zum bereits angemeldeten Team hinzufuegen (Plus-Button in MyEvents).
    *  Atomar einen Sitzplatz reservieren, neuen Member-Eintrag anlegen,
    *  Bestaetigungs-Mail + Outlook-Termin queuen. */
-  addTeamMember: (eventId: string, teamId: string, teamName: string | undefined, member: { email: string; displayName: string }) => Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
+  addTeamMember: (eventId: string, teamId: string, teamName: string | undefined, member: { email: string; displayName: string }, customData?: Record<string, string>) => Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
   /** v17.2: Schon angemeldete Person (ohne TeamId) einem Team zuweisen.
    *  PATCHt nur die TeamId/TeamName/TeamLead-Felder, KEINE neue
    *  Registrierung, KEINE Bestaetigungsmail, KEIN Outlook. */
@@ -247,7 +260,7 @@ interface EventContextType {
    *  Organizer "Beitritt erfordert Bestaetigung" NICHT aktiviert hat).
    *  Verhalten wie `addTeamMember`, aber laeuft mit dem eingeloggten User
    *  selbst als neuem Member. */
-  joinTeam: (eventId: string, teamId: string, teamName: string | undefined) => Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
+  joinTeam: (eventId: string, teamId: string, teamName: string | undefined, customData?: Record<string, string>) => Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
   /** v11.84: Team-Lead-Rolle innerhalb eines Teams uebergeben — nur im
    *  Admin Center fuer Admin/Organizer eigener Events sichtbar. Setzt die
    *  alte Lead-Zeile auf TeamLead=false und die neue auf TeamLead=true,
@@ -255,7 +268,7 @@ interface EventContextType {
   transferTeamLead: (eventId: string, teamId: string, newLeadEmail: string) => Promise<{ ok: boolean; reason?: string }>;
   /** v11.83: Beitritts-Anfrage in DEX_TeamJoinRequests einreichen — fuer
    *  Events bei denen der Organizer Approval aktiviert hat. */
-  createTeamJoinRequest: (eventId: string, teamId: string) => Promise<{ ok: boolean; itemId?: number; reason?: string }>;
+  createTeamJoinRequest: (eventId: string, teamId: string, customData?: Record<string, string>) => Promise<{ ok: boolean; itemId?: number; reason?: string }>;
   /** v11.83: Pending-Beitritts-Anfragen abrufen (nur fuer den
    *  eingeloggten User als Team-Lead — Filter auf TeamId, das er selber
    *  fuehrt). */
@@ -402,6 +415,10 @@ export interface CreateEventInput {
   attendeeUploadLabel?: string;
   /** v11.80: Anrede im Registrierungsformular abfragen (Default false). */
   askSalutation?: boolean;
+  /** v18.75: Sicherheitshinweis vor dem Absenden der Anmeldung. */
+  confirmDialogEnabled?: boolean;
+  confirmDialogMode?: string; // 'summary' | 'freetext'
+  confirmDialogText?: string;
   /** v18.33: Self-Check-in per QR-Code erlauben (Default false). */
   selfCheckInEnabled?: boolean;
   /** v18.33: Geheimer Token (statischer Link + HMAC-Schlüssel rotierender QR). */
@@ -816,6 +833,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // Alte Tenants ohne diese Spalten interpretieren undefined als false /
       // 0, das passt zum Default-Verhalten (Anrede aus, Team-Anmeldung aus).
       askSalutation: !!e.AskSalutation,
+      confirmDialogEnabled: !!e.ConfirmDialogEnabled,
+      confirmDialogMode: e.ConfirmDialogMode || '',
+      confirmDialogText: e.ConfirmDialogText || '',
       // v18.33: Self-Check-in. Alte Tenants ohne diese Spalten lesen undefined
       // als false / leer — Self-Check-in bleibt dann schlicht aus.
       selfCheckInEnabled: !!e.SelfCheckInEnabled,
@@ -984,7 +1004,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // „Hauptevent" ist dort nicht anmeldbar, die CC-Felder (z.B. Assistenz)
     // sind übergreifend und gelten für die Sub-Events — also müssen die
     // Sub-Event-Bestätigungsmails ebenfalls an die Assistenz auf CC gehen.
-    opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string }
+    // v18.74: proxyConsentConfirmed — bei stellvertretender Anmeldung wurde die
+    // Zustimmung der Person bestätigt (Pflicht-Checkbox auf der Anmeldeseite).
+    // Wird als Nachweis in die SP-Spalte ProxyConsent geschrieben.
+    opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean }
   ): Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' }> {
     // v17.25: Demo-Showcase-Event → No-Op, kein SP-Roundtrip. Die Register-
     // Seite blockt den Submit ohnehin mit einem Demo-Hinweis; dieser Guard
@@ -1084,13 +1107,23 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const actorName = currentUserName;
     const actorEmail = currentUserEmail;
 
+    // v18.74: Nachweis der Zustimmung bei stellvertretender Anmeldung. Eine
+    // Anmeldung gilt als „stellvertretend", wenn die Teilnehmer-E-Mail von der
+    // des eingeloggten Users abweicht. Bei externen Adressen (kein @deloitte.de)
+    // ist die Zustimmung schriftlich einzuholen — das wird im Nachweis vermerkt.
+    const isProxyRegistration = (emailToUse || '').toLowerCase() !== (currentUserEmail || '').toLowerCase();
+    const isExternalParticipant = !!emailToUse && !/@(.*\.)?deloitte\.de$/i.test(emailToUse);
+    const proxyConsentStr = (isProxyRegistration && opts?.proxyConsentConfirmed)
+      ? `${isExternalParticipant ? 'Schriftliche ' : ''}Zustimmung der Person zur stellvertretenden Anmeldung bestätigt durch ${actorName} (${actorEmail}) am ${new Date().toLocaleString('de-DE')}`
+      : '';
+
     let success: boolean;
     if (existing && existing.Status === 'Abgemeldet') {
-      success = await eventService.reactivateRegistration(subsiteUrl, existing.Id, firstNameToUse, lastNameToUse, customData, status, fieldMap, actorName, actorEmail);
+      success = await eventService.reactivateRegistration(subsiteUrl, existing.Id, firstNameToUse, lastNameToUse, customData, status, fieldMap, actorName, actorEmail, proxyConsentStr);
     } else {
       success = await eventService.registerForEvent(
         subsiteUrl, firstNameToUse, lastNameToUse, emailToUse, customData, status, fieldMap,
-        effectiveStarterType, preferredStarterType, actorName, actorEmail
+        effectiveStarterType, preferredStarterType, actorName, actorEmail, proxyConsentStr
       );
     }
 
@@ -1153,30 +1186,30 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           const orgEmails = (event.organizerEmails || []).filter(Boolean);
           if (orgEmails.length > 0) bcc = orgEmails.join(';');
         }
-        // v9.22: Externe Mail-Adresse erkennen — die Plattform ist nur fuer
-        // Deloitte Deutschland (@deloitte.de) freigeschaltet. Auch @deloitte.com
-        // (US/Global) zaehlt als extern. Bei externen Empfaengern wird die
-        // Bestaetigungsmail an den Organizer umgeleitet, der sie ggf. unter
-        // Beachtung der Datenschutzrichtlinien weiterleiten kann.
+        // v9.22: Externe Mail-Adresse erkennen — kein Deloitte-Postfach
+        // (@deloitte.de; auch @deloitte.com/Global zaehlt nicht als intern).
+        // v18.74: Bei externen Empfaengern wird die Bestaetigungsmail jetzt
+        // DIREKT an die externe Person versendet (vorher an den Organizer
+        // umgeleitet) — mit dem Organizer auf CC (Nachweis/Kopie). Ein
+        // Outlook-Kalendereintrag wird fuer externe Adressen weiterhin NICHT
+        // versendet (Microsoft blockt das ohne Federation, s.u.
+        // skipOutlookForExternal).
         const isExternalRecipient = !!emailToUse && !/@(.*\.)?deloitte\.de$/i.test(emailToUse);
-        let finalRecipient = emailToUse;
-        let finalSubject = emailData.subject;
+        const finalRecipient = emailToUse;
+        const finalSubject = emailData.subject;
         let finalBody = emailData.body;
-        let finalRecipientName = nameToUse;
+        const finalRecipientName = nameToUse;
+        // CC-Adressen, die zusaetzlich zu den Feld-CCs gelten (Organizer bei
+        // externer Anmeldung).
+        let externalCcExtra = '';
         if (isExternalRecipient) {
-          // v15.16: Subject klar nennt „Weiterleitung notwendig" — die Mail
-          // ersetzt für externe Empfänger die Anmeldebestätigung und muss vom
-          // Organizer ggf. an den externen Teilnehmer weitergeleitet werden.
           const orgEmails = (event.organizerEmails || []).filter(Boolean);
-          finalRecipient = orgEmails.length > 0 ? orgEmails.join(';') : currentUserEmail;
-          finalRecipientName = 'Organizer';
-          finalSubject = `Weiterleitung notwendig: ${emailData.subject} (${nameToUse})`;
-          // Datenschutz-Hinweis-Box VOR dem Original-Body einbauen.
+          externalCcExtra = orgEmails.join(';');
+          // Hinweis-Box VOR dem Original-Body — adressiert an die externe Person.
           const externalHint = `<div style="margin:0 0 16px;padding:12px 16px;background:#fff3e0;border:1px solid #ed8b00;border-radius:8px;font-size:13px;line-height:1.55;color:#7a4a00;">`
-            + `<strong>Weiterleitung notwendig — externer Teilnehmer.</strong><br>`
-            + `Diese Anmeldebestätigung gehört zu <strong>${nameToUse}</strong> (<strong>${emailToUse}</strong>) und ist gleichzeitig die offizielle Bestätigung der Registrierung. Da die Adresse kein Deloitte-Postfach ist, hat die App die Mail an dich als Organizer zugestellt. `
-            + `Bitte leite die Mail an die externe Person weiter — unter Beachtung der <a href="https://intranet.deloitte.com/datenschutz" style="color:#86bc25">Datenschutzrichtlinien Deloitte Deutschland</a> (insb. zur Verarbeitung personenbezogener Daten Dritter). `
-            + `Ein Outlook-Kalendereintrag wird für externe Adressen nicht versendet.`
+            + `<strong>Externe Anmeldung — kein automatischer Kalendereintrag.</strong><br>`
+            + `Diese Anmeldebestätigung gehört zu <strong>${nameToUse}</strong> (<strong>${emailToUse}</strong>). Da es sich um eine externe Adresse (kein Deloitte-Postfach) handelt, wird <strong>kein Outlook-Kalendereintrag</strong> versendet — bitte trage dir den Termin manuell in deinen Kalender ein. `
+            + `Der Organizer ist zur Bestätigung auf Kopie (CC).`
             + `</div>`;
           // Body kommt schon als komplett-gewickeltes HTML (Deloitte-Template).
           // Wir injecten den Hinweis direkt nach dem opening-<body>-Tag.
@@ -1190,7 +1223,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         const ccMerged = (() => {
           const seen = new Set<string>();
           const out: string[] = [];
-          for (const part of [ccOwn, opts?.extraCc || '']) {
+          // v18.74: externalCcExtra (Organizer bei externer Anmeldung) mitmergen.
+          for (const part of [ccOwn, opts?.extraCc || '', externalCcExtra]) {
             for (const e of part.split(';').map(s => s.trim()).filter(Boolean)) {
               const lc = e.toLowerCase();
               if (lc !== (emailToUse || '').toLowerCase() && !seen.has(lc)) { seen.add(lc); out.push(e); }
@@ -1625,7 +1659,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     eventId: string,
     teamId: string,
     teamName: string | undefined,
-    member: { email: string; displayName: string }
+    member: { email: string; displayName: string },
+    // v18.73: optionale event-spezifische Antworten des Beitretenden — werden
+    // beim Insert mitgeschrieben (vorher immer leer). Genutzt vom Self-Join
+    // über die Anmeldeseite, damit der Beitritt die Pflicht-Custom-Felder nicht
+    // mehr überspringt.
+    customData?: Record<string, string>
   ): Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }> {
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return { ok: false, reason: 'event-not-found' };
@@ -1689,7 +1728,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       teamId,
       teamLead: false,
       teamName,
-      customData: {},
+      customData: customData || {},
       starterType: effectiveStarterType,
       preferredStarterType: inheritedStarterType || undefined,
       registeredByName: currentUserName,
@@ -1828,12 +1867,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   async function joinTeam(
     eventId: string,
     teamId: string,
-    teamName: string | undefined
+    teamName: string | undefined,
+    // v18.73: event-spezifische Antworten des Beitretenden durchreichen.
+    customData?: Record<string, string>
   ): Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }> {
     return addTeamMember(eventId, teamId, teamName, {
       email: currentUserEmail,
       displayName: currentUserName,
-    });
+    }, customData);
   }
 
   /**
@@ -1935,7 +1976,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
    */
   async function createTeamJoinRequest(
     eventId: string,
-    teamId: string
+    teamId: string,
+    // v18.73: event-spezifische Antworten des Anfragenden — werden in der
+    // Request-Zeile gespeichert und beim Approve auf den neuen Member angewandt.
+    customData?: Record<string, string>
   ): Promise<{ ok: boolean; itemId?: number; reason?: string }> {
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return { ok: false, reason: 'event-not-found' };
@@ -1957,6 +2001,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       teamId,
       requesterEmail: currentUserEmail,
       requesterDisplayName: currentUserName,
+      // v18.73: Antworten als JSON mitschreiben (leer = '{}').
+      customData: JSON.stringify(customData || {}),
     });
     if (!result.ok) return { ok: false, reason: 'queue-failed' };
 
@@ -2037,10 +2083,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // Bestehenden Team-Namen ableiten.
       const members = await eventService.getTeamMembers(subsiteUrl, req.TeamId);
       const teamName = members.find(m => !!m.TeamName)?.TeamName || '';
+      // v18.73: bei der Anfrage gespeicherte event-spezifische Antworten
+      // wiederherstellen und auf den neuen Member anwenden.
+      let reqCustomData: Record<string, string> | undefined;
+      try { reqCustomData = req.CustomData ? JSON.parse(req.CustomData) : undefined; } catch { reqCustomData = undefined; }
       const addRes = await addTeamMember(req.EventId, req.TeamId, teamName || undefined, {
         email: req.RequesterEmail,
         displayName: req.RequesterDisplayName,
-      });
+      }, reqCustomData);
       if (!addRes.ok) {
         // Wir markieren die Anfrage trotzdem als Approved, wenn der Add
         // fehlschlug — der Lead bekommt ein UI-Feedback und kann manuell

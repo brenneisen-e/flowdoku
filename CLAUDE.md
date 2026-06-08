@@ -473,6 +473,122 @@ automatisch in Kopie.
   CustomFields-Write, siehe Abschnitt oben) sowie im SP→Event-Parse
   (`eventSpecificFields.map`) durchgereicht.
 
+### Sicherheitshinweis vor dem Absenden der Anmeldung (v18.75)
+
+Pro Event kann der Organizer einen **Bestätigungs-Dialog** aktivieren, der nach
+dem Klick auf „Anmelden" und VOR der eigentlichen Anmeldung erscheint.
+Konfiguration: Schritt 5 (Felder), eigene Section **ganz unten**.
+
+- **Neue SP-Spalten auf `DEX_Events`** (via `getEventsFieldDefinitions()` →
+  `ensureMissingFields`): `ConfirmDialogEnabled` (Boolean, Default false),
+  `ConfirmDialogMode` (Single line text: `'summary'` | `'freetext'`),
+  `ConfirmDialogText` (Note). Durchgereicht über `SPEvent` (EventService),
+  `EVENT_SELECT`, `createEvent`-Payload, `DeloitteEvent` (types/index.ts),
+  `CreateEventInput` (EventContext) und die Wizard-Create-/Update-Payloads.
+- **Zwei Modi:** `'summary'` = Auswahl-Übersicht (Haupt-Event + gewählte
+  Sub-Events als Checkbox-Liste; der Teilnehmer kann vor dem Absenden einzelne
+  Punkte ab-/zuwählen — bei stellvertretender Anmeldung ist das Haupt-Event
+  fixiert). `'freetext'` = frei formulierter Hinweis (`ConfirmDialogText`) mit
+  Pflicht-Bestätigungs-Checkbox.
+- **RegistrationPage:** Gate in `handleSubmit` VOR `performRegistration` (Team-
+  und Beitritts-Pfade sind ausgenommen — die haben eigene Bestätigungen). Der
+  Dialog setzt `confirmDialogConfirmedRef`; beim Bestätigen wird die (ggf.
+  angepasste) Auswahl in `registerForParent` / `selectedSessions` übernommen und
+  `handleSubmit` erneut angestoßen (überspringt dann den Dialog). Reiner
+  Client-Flow, **kein Power-Automate-Change**.
+
+### Zustimmungs-Nachweis + externe Personen bei stellvertretender Anmeldung (v18.74)
+
+Zwei zusammenhängende Erweiterungen am „Für andere registrieren"-Flow:
+
+- **Zustimmungs-Nachweis (`ProxyConsent`):** Neue Note-Spalte `ProxyConsent` auf
+  der Teilnehmerliste (`createRegistrationList` + `fixRegistrationListColumns` +
+  Default-View). Bei jeder stellvertretenden Anmeldung (Teilnehmer-E-Mail ≠
+  eingeloggter User) schreibt die App einen lesbaren Nachweis hinein, z.B.
+  „Schriftliche Zustimmung der Person zur stellvertretenden Anmeldung bestätigt
+  durch <Actor> (<Email>) am <Datum>". Der Organizer kann so in SharePoint
+  nachweisen, dass die Zustimmung vorlag. Mechanik: `registerForEvent`/
+  `reactivateRegistration` (EventService) nehmen einen `proxyConsent`-Parameter;
+  `EventContext.registerForEvent` baut den String (intern = „Zustimmung",
+  extern = „Schriftliche Zustimmung") und gibt ihn weiter, sobald
+  `opts.proxyConsentConfirmed` gesetzt ist (RegistrationPage setzt das bei
+  `registerForOther`).
+- **Externe Personen (`externalPerson`):** Im „Für andere registrieren"-Modus
+  gibt es für Organizer/Admins die Checkbox **„Person außerhalb Deloitte"**.
+  Aktiv blendet sie den Deloitte-People-Picker aus und macht Vorname/Nachname/
+  E-Mail **frei eintragbar**. Hinweis: Zustimmung **schriftlich** einholen.
+  Versand: die **Bestätigungs-Mail geht direkt an die externe Person, mit den
+  Organizern auf CC** (Nachweis) — **kein Outlook-Termin** (an externe Adressen
+  nicht möglich). Das ändert das frühere Verhalten („Weiterleitung notwendig" an
+  den Organizer umgeleitet): externe Empfänger bekommen die Mail jetzt direkt
+  (`EventContext.registerForEvent` → `externalCcExtra` = Organizer-E-Mails in den
+  CC gemischt; `skipOutlookForExternal` unterdrückt den Termin wie bisher).
+
+### Header-Bild in Mail/Outlook frei einstellbar (v18.73)
+
+Pro Event lassen sich **Breite** und **Innenabstand** (seitlich + oben/unten) des
+Hero-Bildes (`{{ORB_URL}}` = Event-Bild) im Mail- UND Outlook-Termin-Kopf
+einstellen — Use-Case: Bild größer und fast randlos statt klein mit viel
+Weißraum.
+
+- **Render:** `EmailTemplates.ts` → `WrapHeadingOpts` um `imageWidth`,
+  `imagePaddingV`, `imagePaddingH` erweitert; gemeinsamer Helper `buildHeroRow()`
+  baut die Hero-Zeile in `wrapTemplate()` + `wrapTemplateForStorage()`
+  (`width:100%;max-width:Wpx` = responsiv, `width`-Attribut als Outlook-Fallback).
+  Defaults (180 / 30 / 30) lassen Alt-Aufrufe unverändert.
+- **Mails:** `buildEmailFromTemplate()` reicht die Felder an `wrapTemplate` durch;
+  `applyEventTemplateOverride()` liest das **globale** Layout aus dem reservierten
+  Piggyback-Key `_headerImageLayout` und merged es in JEDEN Template-Typ.
+- **Outlook:** `buildOutlookBody(..., imgOpts?)` — die 3 Wizard-Call-Sites
+  (Edit / Create / Sub-Event) geben das Layout mit.
+- **Persistenz:** Piggyback-Key `_headerImageLayout` (`{ width, paddingV,
+  paddingH }`) in `EmailTemplateOverrides`-JSON — beim Load gestrippt (eigener
+  State `headerImageLayout`), beim Save in Create-/Edit-/Sub-Event-JSON gemerged.
+  **Kein Flow-Change** nötig (der Flow ersetzt nur `{{ORB_URL}}`-Src, Breite +
+  Padding stehen im gewrappten Body).
+- **UI:** Block „Header-Bild" im `HtmlEditorModal` (Schritt 6), sichtbar in der
+  Mail- UND Outlook-Vorschau, live in der Vorschau.
+
+### Beschreibung-Hinweis: Name/Datum/Ort redundant (v18.73)
+
+Schritt 1 (Grundlagen) zeigt unter dem Beschreibungs-Editor eine **orange
+Hinweis-Box**, wenn die Beschreibung den **Event-Namen**, das **Datum** oder den
+**Ort** enthält (diese werden bereits separat auf der Anmelde-Seite angezeigt).
+Die Box enthält einen **klickbaren Beispieltext**, der per Klick die Beschreibung
+mit einer einladenden Standard-Formulierung ersetzt (`setDescription`).
+Erkennung clientseitig im Wizard (Plain-Text-Vergleich, Datum in mehreren
+Formaten inkl. Monatsname).
+
+### Event-spezifische Karte ausblenden wenn leer (v18.73)
+
+Die Karte „Event-spezifische Informationen" auf der Anmelde-Seite
+(`RegistrationPage.tsx`) wird **komplett ausgeblendet**, wenn es dort nichts
+auszufüllen/auszuwählen gibt — Bedingung
+`eventSpecificFields.length > 0 || isSplitGroup || childEvents.length > 0`.
+Vorher erschien eine leere Karte mit „Keine zusätzlichen Informationen
+erforderlich".
+
+### Team-Beitritt: erst vormerken, dann anmelden (v18.73)
+
+Bisher trat ein User über die „Offene Teams"-Box **sofort** beim Klick bei —
+ohne seine event-spezifischen Infos anzugeben. Neu:
+
+- Die „Offene Teams"-Box sitzt jetzt **unter** der „Ich melde mich + mein Team
+  an"-Karte (vorher über „Persönliche Daten"). Reihenfolge: persönliche Daten →
+  Team-Karte → offene Teams → event-spezifische Infos.
+- Klick auf **„Vormerken"** wählt ein Team nur vor (`pendingJoinTeam`-State,
+  gegenseitig exklusiv zum Team-Anlege-Modus). Die eigentliche Anmeldung
+  (inkl. Pflicht-Custom-Felder) passiert erst über den **„Anmelden"**-Button
+  (`performJoinSelectedTeam`). Der Button heißt dann „Team beitreten & anmelden"
+  bzw. „Beitritt anfragen".
+- **`customData` durchgereicht:** `joinTeam()` / `addTeamMember()` nehmen einen
+  optionalen `customData`-Parameter (→ `registerTeamMember`, vorher hart `{}`).
+  Bei Approval-Teams speichert `createTeamJoinRequest()` die Antworten als JSON
+  in der neuen Spalte **`CustomData`** (Note) auf `DEX_TeamJoinRequests`; der
+  Approve-Pfad (`decideTeamJoinRequest`) wendet sie auf den neuen Member an.
+- Eigener Erfolgs-Screen für Beitritt (direkt angemeldet / Warteliste / Anfrage
+  gesendet).
+
 ### Anmeldesprache vorgeben (v18.35)
 
 Pro Event kann der Organizer die **Sprache der Anmeldeseite** fest vorgeben —

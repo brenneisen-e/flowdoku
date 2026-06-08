@@ -38,6 +38,37 @@ export interface WrapHeadingOpts {
   subheadingFontSize?: string;
   subheadingBold?: boolean;
   subheadingItalic?: boolean;
+  // v18.73: Header-Bild (Hero / Event-Bild = {{ORB_URL}}) frei einstellbar pro
+  // Event. `imageWidth` = max. Breite in px (Default 180). `imagePaddingV` =
+  // Innenabstand oben/unten in px (Default 30, = Abstand zur Unter-Überschrift
+  // bzw. zum grünen Strich). `imagePaddingH` = Innenabstand links/rechts in px
+  // (Default 30, = Abstand zum Spaltenrand). 0 = randlos. Fehlende Werte
+  // fallen auf die bisherigen Defaults zurück, damit Alt-Aufrufe unverändert
+  // aussehen.
+  imageWidth?: number;
+  imagePaddingV?: number;
+  imagePaddingH?: number;
+}
+
+/**
+ * v18.73: Baut die Hero-Zeile (Event-Bild = {{ORB_URL}}) inkl. einstellbarer
+ * Breite + Innenabstand. Gemeinsamer Helper für wrapTemplate() und
+ * wrapTemplateForStorage(), damit beide Layouts identisch bleiben.
+ *
+ * `width:100%` + `max-width` macht das Bild responsiv: es füllt die Spalte bis
+ * zur konfigurierten Maximalbreite (bei kleinem Innenabstand also fast randlos)
+ * und schrumpft auf schmalen Mobil-Clients sauber mit. Das `width`-Attribut
+ * bleibt für Outlook-Desktop (ignoriert max-width) als Fallback erhalten.
+ */
+function buildHeroRow(opts?: WrapHeadingOpts): string {
+  const w = (typeof opts?.imageWidth === 'number' && opts.imageWidth > 0) ? Math.round(opts.imageWidth) : 180;
+  const padV = (typeof opts?.imagePaddingV === 'number' && opts.imagePaddingV >= 0) ? Math.round(opts.imagePaddingV) : 30;
+  const padH = (typeof opts?.imagePaddingH === 'number' && opts.imagePaddingH >= 0) ? Math.round(opts.imagePaddingH) : 30;
+  return `<tr>
+<td style="background-color:#ffffff;text-align:center;padding:${padV}px ${padH}px ${padV}px ${padH}px;">
+  <img src="{{ORB_URL}}" alt="DEX Event Experience Platform" width="${w}" style="display:inline-block;width:100%;max-width:${w}px;height:auto;" />
+</td>
+</tr>`;
 }
 
 /** Baut die h1/h2-Zeilen (Überschrift + Unter-Überschrift) inkl. optionaler
@@ -89,11 +120,7 @@ export function wrapTemplateForStorage(headingColor: string, heading: string, su
   Deutschland | DEX App
 </td>
 </tr>
-<tr>
-<td style="background-color:#ffffff;text-align:center;padding:30px 30px 30px 30px;">
-  <img src="{{ORB_URL}}" alt="DEX Event Experience Platform" width="180" style="display:inline-block;max-width:180px;height:auto;" />
-</td>
-</tr>
+${buildHeroRow(opts)}
 <tr>
 <td style="background-color:${GREEN};height:4px;font-size:0;line-height:0;">&nbsp;</td>
 </tr>
@@ -160,12 +187,8 @@ export function wrapTemplate(headingColor: string, heading: string, subheading: 
 </td>
 </tr>
 
-<!-- ===== HERO: DEX Orb ===== -->
-<tr>
-<td style="background-color:#ffffff;text-align:center;padding:30px 30px 30px 30px;">
-  <img src="{{ORB_URL}}" alt="DEX Event Experience Platform" width="180" style="display:inline-block;max-width:180px;height:auto;" />
-</td>
-</tr>
+<!-- ===== HERO: DEX Orb (v18.73: Breite + Innenabstand einstellbar) ===== -->
+${buildHeroRow(opts)}
 
 <!-- ===== GREEN LINE ===== -->
 <tr>
@@ -268,6 +291,8 @@ export function buildEmailFromTemplate(
     // v18.22: erweiterte Heading-Formatierung (optional).
     headingBold?: boolean; headingItalic?: boolean;
     subheadingColor?: string; subheadingFontSize?: string; subheadingBold?: boolean; subheadingItalic?: boolean;
+    // v18.73: Header-Bild (Breite + Innenabstand) pro Event.
+    imageWidth?: number; imagePaddingV?: number; imagePaddingH?: number;
   },
   vars: Record<string, string>
 ): { subject: string; body: string } {
@@ -297,6 +322,10 @@ export function buildEmailFromTemplate(
         subheadingFontSize: template.subheadingFontSize,
         subheadingBold: template.subheadingBold,
         subheadingItalic: template.subheadingItalic,
+        // v18.73: Header-Bild Größe + Innenabstand pro Event.
+        imageWidth: template.imageWidth,
+        imagePaddingV: template.imagePaddingV,
+        imagePaddingH: template.imagePaddingH,
       }),
   };
 }
@@ -611,13 +640,15 @@ export function infoEmail(recipientName: string, eventTitle: string, message: st
  * Tags ist, wird er als HTML behandelt; wenn es Plain-Text ist, wird jede Zeile
  * in `<p>`-Tags gewickelt + escaped.
  */
-export function buildOutlookBody(eventTitle: string, bodyText: string, subheading?: string): string {
+export function buildOutlookBody(eventTitle: string, bodyText: string, subheading?: string, imgOpts?: { imageWidth?: number; imagePaddingV?: number; imagePaddingH?: number }): string {
   const inner = stripOutlookWrapper(bodyText || '');
   const isHtml = /<[a-z][\s\S]*>/i.test(inner);
   const bodyHtml = inner
     ? (isHtml ? inner : inner.split('\n').map(line => `<p>${escapeHtml(line)}</p>`).join('\n  '))
     : '';
-  return wrapTemplate(GREEN, eventTitle, subheading || 'Event Details', bodyHtml);
+  // v18.73: Header-Bild (Breite + Innenabstand) auch im Outlook-Termin-Body
+  // einstellbar — gleiche Logik wie in den Mails.
+  return wrapTemplate(GREEN, eventTitle, subheading || 'Event Details', bodyHtml, undefined, imgOpts);
 }
 
 /**
