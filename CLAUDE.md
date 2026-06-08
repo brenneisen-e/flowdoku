@@ -492,11 +492,14 @@ Konfiguration: Schritt 5 (Felder), eigene Section **ganz unten**.
   ein Sub-Event mit eigenen Pflichtfeldern zugewählt, öffnet erst das
   Sub-Event-Modal, danach erscheint der Dialog erneut). `'freetext'` = frei
   formulierter Hinweis (`ConfirmDialogText`) mit Pflicht-Bestätigungs-Checkbox.
-- **Feld-Ausrichtung (v18.76):** Im 2-Spalten-Custom-Field-Grid
-  (`dex-reg-fields-grid`) ist jede Feld-Karte eine Flex-Spalte; die Inline-Hilfe
-  (`flexGrow:1`) absorbiert Höhenunterschiede, sodass die Eingaben einer Zeile
-  immer auf gleicher Höhe stehen — auch wenn die Beschreibung beim Nachbarfeld
-  eine Zeile länger ist.
+- **Feld-Ausrichtung (v18.76/v18.77):** Im 2-Spalten-Custom-Field-Grid
+  (`dex-reg-fields-grid`) bekommt die Inline-Hilfe eine **`minHeight` von ~2
+  Zeilen** (`2.9em`), sodass die Eingaben benachbarter Felder auf gleicher Höhe
+  stehen, wenn sich die Beschreibungen um eine Zeile unterscheiden. (v18.76
+  nutzte stattdessen `flexGrow:1` + Flex-Spalte — das zog bei Feldern mit Inhalt
+  UNTER der Eingabe, z.B. People-Picker mit „international suchen"-Schalter, die
+  Nachbar-Eingabe bis ganz nach unten und erzeugte große Lücken; daher in v18.77
+  ersetzt.)
 - **Externe-Person-Felder (v18.76):** Vorname/Nachname/E-Mail sind NUR im
   Extern-Modus (`externalPerson`) frei editierbar; im normalen
   Stellvertreter-Modus werden sie read-only vom People-Picker befüllt.
