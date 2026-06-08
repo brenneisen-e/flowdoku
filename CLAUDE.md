@@ -485,11 +485,21 @@ Konfiguration: Schritt 5 (Felder), eigene Section **ganz unten**.
   `ConfirmDialogText` (Note). Durchgereicht über `SPEvent` (EventService),
   `EVENT_SELECT`, `createEvent`-Payload, `DeloitteEvent` (types/index.ts),
   `CreateEventInput` (EventContext) und die Wizard-Create-/Update-Payloads.
-- **Zwei Modi:** `'summary'` = Auswahl-Übersicht (Haupt-Event + gewählte
-  Sub-Events als Checkbox-Liste; der Teilnehmer kann vor dem Absenden einzelne
-  Punkte ab-/zuwählen — bei stellvertretender Anmeldung ist das Haupt-Event
-  fixiert). `'freetext'` = frei formulierter Hinweis (`ConfirmDialogText`) mit
-  Pflicht-Bestätigungs-Checkbox.
+- **Zwei Modi:** `'summary'` = Auswahl-Übersicht (Haupt-Event + **alle**
+  Sub-Events als Checkbox-Liste **mit Datum/Uhrzeit**; der Teilnehmer kann vor
+  dem Absenden einzelne Punkte ab- UND zuwählen — auch noch nicht gewählte
+  Sub-Events; bei stellvertretender Anmeldung ist das Haupt-Event fixiert. Wird
+  ein Sub-Event mit eigenen Pflichtfeldern zugewählt, öffnet erst das
+  Sub-Event-Modal, danach erscheint der Dialog erneut). `'freetext'` = frei
+  formulierter Hinweis (`ConfirmDialogText`) mit Pflicht-Bestätigungs-Checkbox.
+- **Feld-Ausrichtung (v18.76):** Im 2-Spalten-Custom-Field-Grid
+  (`dex-reg-fields-grid`) ist jede Feld-Karte eine Flex-Spalte; die Inline-Hilfe
+  (`flexGrow:1`) absorbiert Höhenunterschiede, sodass die Eingaben einer Zeile
+  immer auf gleicher Höhe stehen — auch wenn die Beschreibung beim Nachbarfeld
+  eine Zeile länger ist.
+- **Externe-Person-Felder (v18.76):** Vorname/Nachname/E-Mail sind NUR im
+  Extern-Modus (`externalPerson`) frei editierbar; im normalen
+  Stellvertreter-Modus werden sie read-only vom People-Picker befüllt.
 - **RegistrationPage:** Gate in `handleSubmit` VOR `performRegistration` (Team-
   und Beitritts-Pfade sind ausgenommen — die haben eigene Bestätigungen). Der
   Dialog setzt `confirmDialogConfirmedRef`; beim Bestätigen wird die (ggf.
