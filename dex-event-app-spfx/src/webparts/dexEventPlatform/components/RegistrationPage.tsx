@@ -300,7 +300,7 @@ export default function RegistrationPage(): React.ReactElement {
   const [error, setError] = React.useState('');
   const [showErrors, setShowErrors] = React.useState(false);
   // v11.91: showDescription wurde entfernt — Beschreibung ist immer offen.
-  const [thirdPartyCheck, setThirdPartyCheck] = React.useState<{ alreadyRegistered: boolean; notInAudience: boolean } | null>(null);
+  const [thirdPartyCheck, setThirdPartyCheck] = React.useState<{ alreadyRegistered: boolean; notInAudience: boolean; registeredName?: string; registeredDate?: string } | null>(null);
 
   // Seit v6.14: integrierte Session-Auswahl direkt auf der Registrierungsseite.
   // Der User kann auf EINER Seite wählen, ob er sich für das Haupt-Event und/oder
@@ -771,6 +771,14 @@ export default function RegistrationPage(): React.ReactElement {
     // auszulösen.
     if (registerForOther && email.trim().toLowerCase() === (currentUser.email || '').toLowerCase()) {
       setError(t('reg.error.selfasother'));
+      return;
+    }
+
+    // v19.8: Bereits angemeldete Zielperson hart blocken — kein CC-Modal, keine
+    // Anmeldung. Greift auch, falls der Button-Disable wegen einer noch
+    // laufenden Vorab-Prüfung kurz nicht aktiv war.
+    if (registerForOther && thirdPartyCheck && thirdPartyCheck.alreadyRegistered) {
+      setError(t('reg.error.other'));
       return;
     }
 
@@ -2678,7 +2686,14 @@ export default function RegistrationPage(): React.ReactElement {
                                       }
                                       notInAudience = !visible;
                                     }
-                                    setThirdPartyCheck({ alreadyRegistered, notInAudience });
+                                    setThirdPartyCheck({
+                                      alreadyRegistered,
+                                      notInAudience,
+                                      // v19.8: Name + Anmeldedatum der bestehenden
+                                      // Registrierung fuer eine konkrete Hinweis-Box.
+                                      registeredName: (existing && (existing.ParticipantName || `${existing.Vorname || ''} ${existing.Nachname || ''}`.trim())) || u.displayName || '',
+                                      registeredDate: (existing && existing.RegistrationDate) || '',
+                                    });
                                   })();
                                 }
                               }}
@@ -2798,9 +2813,28 @@ export default function RegistrationPage(): React.ReactElement {
                     color: thirdPartyCheck.alreadyRegistered ? 'var(--dex-red)' : 'var(--dex-orange)',
                     fontSize: '0.85rem',
                   }}>
-                    {thirdPartyCheck.alreadyRegistered && (
-                      <div><strong>{t('reg.thirdparty.alreadyregistered')}</strong></div>
-                    )}
+                    {thirdPartyCheck.alreadyRegistered && (() => {
+                      // v19.8: Konkrete Meldung mit Name + Anmeldedatum statt
+                      // generischem „Diese Person ist bereits angemeldet".
+                      const nm = (`${firstName} ${surname}`.trim()) || thirdPartyCheck.registeredName || (locale === 'de' ? 'Diese Person' : 'This person');
+                      const d = thirdPartyCheck.registeredDate ? new Date(thirdPartyCheck.registeredDate) : null;
+                      const dateStr = d && !isNaN(d.getTime())
+                        ? d.toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                        : '';
+                      return (
+                        <div>
+                          <strong>
+                            {nm}{locale === 'de' ? ' ist bereits für das Event angemeldet' : ' is already registered for this event'}
+                            {dateStr ? ` (${locale === 'de' ? 'Anmeldedatum' : 'Registered'}: ${dateStr})` : ''}.
+                          </strong>
+                          <div style={{ marginTop: 4, fontWeight: 400 }}>
+                            {locale === 'de'
+                              ? 'Eine erneute Anmeldung ist nicht möglich. Bitte wähle eine andere Person.'
+                              : 'Registering this person again is not possible. Please pick a different person.'}
+                          </div>
+                        </div>
+                      );
+                    })()}
                     {thirdPartyCheck.notInAudience && (
                       <div style={{ marginTop: thirdPartyCheck.alreadyRegistered ? 6 : 0 }}>
                         <strong>{t('reg.thirdparty.notinaudience')}</strong>
@@ -3588,12 +3622,19 @@ export default function RegistrationPage(): React.ReactElement {
           const nothingPicked = isSubOnly && selectedSessions.size === 0;
           // v15.16: Consent-Pflicht bei „Für andere registrieren".
           const needsOtherConsent = registerForOther && !!email.trim() && !otherConsentConfirmed;
+          // v19.8: Bei stellvertretender Anmeldung den Button sperren, wenn die
+          // ausgewählte Person bereits angemeldet ist — vorher konnte man
+          // trotz Hinweis auf „Registrieren" klicken (und es kam danach noch
+          // die CC-Frage). Jetzt klare Blockade direkt am Button.
+          const targetAlreadyRegistered = registerForOther && !!(thirdPartyCheck && thirdPartyCheck.alreadyRegistered);
           // v18: Demo-Event — Register-Button ist bewusst NICHT auswaehlbar
           // (keine echte Anmeldung; reine Showcase-Ansicht).
           const isDemo = !!(event && event.isDemoShowcase);
-          const isDisabled = isDemo || isSubmitting || (isTeamMode && !teamValidation.ok) || nothingPicked || needsOtherConsent;
+          const isDisabled = isDemo || isSubmitting || (isTeamMode && !teamValidation.ok) || nothingPicked || needsOtherConsent || targetAlreadyRegistered;
           const titleAttr = isDemo
             ? (locale === 'de' ? 'Demo-Event — eine echte Anmeldung ist nicht möglich.' : 'Demo event — real registration is not possible.')
+            : (targetAlreadyRegistered
+            ? (locale === 'de' ? 'Diese Person ist bereits für das Event angemeldet.' : 'This person is already registered for this event.')
             : (isTeamMode && !teamValidation.ok
             ? (teamValidation.reason || '')
             : (nothingPicked
@@ -3604,7 +3645,7 @@ export default function RegistrationPage(): React.ReactElement {
                     ? (locale === 'de'
                         ? 'Bitte bestätige die Zustimmung der Person.'
                         : 'Please confirm the person\'s consent.')
-                    : '')));
+                    : ''))));
           return (
             <button
               className="btn btn-primary"
