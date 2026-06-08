@@ -339,14 +339,29 @@ Trigger-Item bereits `CancelledEmail` (E-Mail der abgemeldeten Person).
 - **Zweig C — B2Run Funstarter:** `Promote_Funstarter`, Quelle `Get_Waitlist_First_Funstarter`.
 
 Pro Zweig kommen **drei neue Actions** dazu (insgesamt also 9, falls alle drei
-Zweige existieren). Die Promote-Actions selbst bleiben **unverändert** — so kann
-ein fehlendes Audit-Feld den eigentlichen Nachrück-Vorgang nie kaputt machen.
+Zweige existieren). **Alle 9 Actions werden NEU angelegt.** Es wird **keine**
+bestehende Action verändert — weder die `Promote_*`-Actions noch die
+`Queue_Org_Email_*`-Actions. So kann ein fehlendes Audit-Feld den eigentlichen
+Nachrück-Vorgang nie kaputt machen.
+
+**Wo genau:** Die drei neuen Actions kommen **ans ENDE des jeweiligen Zweigs**,
+also **unter die aktuell letzte Action** dieses Zweigs. Bei dir ist die letzte
+Action pro Zweig die Organizer-Mail `Queue_Org_Email_N` / `_D` / `_F` (aus der
+v18.63-Anleitung). Reihenfolge der drei neuen Actions: `Audit_Promoted_*` →
+`Get_Cancelled_*` → `Audit_Cancelled_*`. Jede läuft per **runAfter** genau nach
+ihrer Vorgänger-Action (siehe „Davor/Danach" bei jeder Action).
+
+> Falls ein Zweig bei dir NICHT mit `Queue_Org_Email_*` endet (z.B. du hast die
+> Organizer-Mail nicht eingebaut): dann hängst du die drei Actions einfach an die
+> **tatsächlich letzte** Action dieses Zweigs an — wichtig ist nur, dass sie
+> **nach** der `Promote_*`-Action liegen (sie referenzieren `Get_Waitlist_First*`,
+> das am Anfang des Zweigs steht).
 
 ---
 
 #### So legst du eine „Send an HTTP request to SharePoint"-Action an (gilt für ALLE unten)
 
-1. Unter der angegebenen Vorgänger-Action auf das **+** klicken → **„Aktion hinzufügen"**.
+1. **Ganz unten im jeweiligen Zweig** (unter der genannten „Davor"-Action) auf das **+** klicken → **„Aktion hinzufügen"**.
 2. Im Suchfeld **„Send an HTTP request to SharePoint"** eingeben und die Action auswählen.
 3. **Site Address:** auf das Feld klicken → **„Enter custom value"** → **denselben
    Wert eintragen wie in der Promote-Action dieses Zweigs**. (Am einfachsten:
@@ -367,7 +382,7 @@ ein fehlendes Audit-Feld den eigentlichen Nachrück-Vorgang nie kaputt machen.
 
 #### ZWEIG A — Normal (`Promote_Waitlist` / `Get_Waitlist_First`)
 
-**Action A1 — `Audit_Promoted_N`** — einfügen **direkt nach `Promote_Waitlist`**.
+**Action A1 — `Audit_Promoted_N`** · **NEU anlegen** · Davor (runAfter): `Queue_Org_Email_N` (= aktuell letzte Action im Zweig) · Danach: `Get_Cancelled_N`.
 - **Method:** `POST`
 - **Uri:** `_api/web/lists/getbytitle('Teilnehmer')/items(@{first(body('Get_Waitlist_First')?['d']?['results'])?['Id']})`
 - **Headers:**
@@ -383,9 +398,9 @@ ein fehlendes Audit-Feld den eigentlichen Nachrück-Vorgang nie kaputt machen.
     "ReplacedParticipantEmail": "@{triggerOutputs()?['body/CancelledEmail']}"
   }
   ```
-- **Rename** → `Audit_Promoted_N`. **Run after** `Promote_Waitlist` (+ has failed/skipped).
+- **Rename** → `Audit_Promoted_N`. **Run after** `Queue_Org_Email_N` (+ has failed/skipped).
 
-**Action A2 — `Get_Cancelled_N`** — einfügen **direkt nach `Audit_Promoted_N`**.
+**Action A2 — `Get_Cancelled_N`** · **NEU anlegen** · Davor: `Audit_Promoted_N` · Danach: `Audit_Cancelled_N`.
 - **Method:** `GET`
 - **Uri:** `_api/web/lists/getbytitle('Teilnehmer')/items?$filter=ParticipantEmail eq '@{triggerOutputs()?['body/CancelledEmail']}'&$select=Id&$top=1`
 - **Headers:**
@@ -393,7 +408,7 @@ ein fehlendes Audit-Feld den eigentlichen Nachrück-Vorgang nie kaputt machen.
 - **Body:** *(leer lassen)*
 - **Rename** → `Get_Cancelled_N`. **Run after** `Audit_Promoted_N` (+ has failed/skipped).
 
-**Action A3 — `Audit_Cancelled_N`** — einfügen **direkt nach `Get_Cancelled_N`**.
+**Action A3 — `Audit_Cancelled_N`** · **NEU anlegen** · Davor: `Get_Cancelled_N` · Danach: — (neue letzte Action des Zweigs).
 - **Method:** `POST`
 - **Uri:** `_api/web/lists/getbytitle('Teilnehmer')/items(@{first(body('Get_Cancelled_N')?['d']?['results'])?['Id']})`
 - **Headers:**
@@ -414,7 +429,7 @@ ein fehlendes Audit-Feld den eigentlichen Nachrück-Vorgang nie kaputt machen.
 
 #### ZWEIG B — B2Run Durchstarter (`Promote_Durchstarter` / `Get_Waitlist_First_Durchstarter`)
 
-**Action B1 — `Audit_Promoted_D`** — einfügen **direkt nach `Promote_Durchstarter`**.
+**Action B1 — `Audit_Promoted_D`** · **NEU anlegen** · Davor (runAfter): `Queue_Org_Email_D` (= aktuell letzte Action im Durchstarter-Zweig) · Danach: `Get_Cancelled_D`.
 - **Method:** `POST`
 - **Uri:** `_api/web/lists/getbytitle('Teilnehmer')/items(@{first(body('Get_Waitlist_First_Durchstarter')?['d']?['results'])?['Id']})`
 - **Headers:** `If-Match`=`*`, `X-HTTP-Method`=`MERGE`, `Content-Type`=`application/json;odata=verbose`, `Accept`=`application/json;odata=verbose`
@@ -426,16 +441,16 @@ ein fehlendes Audit-Feld den eigentlichen Nachrück-Vorgang nie kaputt machen.
     "ReplacedParticipantEmail": "@{triggerOutputs()?['body/CancelledEmail']}"
   }
   ```
-- **Rename** → `Audit_Promoted_D`. **Run after** `Promote_Durchstarter` (+ has failed/skipped).
+- **Rename** → `Audit_Promoted_D`. **Run after** `Queue_Org_Email_D` (+ has failed/skipped).
 
-**Action B2 — `Get_Cancelled_D`** — einfügen **direkt nach `Audit_Promoted_D`**.
+**Action B2 — `Get_Cancelled_D`** · **NEU anlegen** · Davor: `Audit_Promoted_D` · Danach: `Audit_Cancelled_D`.
 - **Method:** `GET`
 - **Uri:** `_api/web/lists/getbytitle('Teilnehmer')/items?$filter=ParticipantEmail eq '@{triggerOutputs()?['body/CancelledEmail']}'&$select=Id&$top=1`
 - **Headers:** `Accept`=`application/json;odata=verbose`
 - **Body:** *(leer)*
 - **Rename** → `Get_Cancelled_D`. **Run after** `Audit_Promoted_D` (+ has failed/skipped).
 
-**Action B3 — `Audit_Cancelled_D`** — einfügen **direkt nach `Get_Cancelled_D`**.
+**Action B3 — `Audit_Cancelled_D`** · **NEU anlegen** · Davor: `Get_Cancelled_D` · Danach: — (neue letzte Action des Durchstarter-Zweigs).
 - **Method:** `POST`
 - **Uri:** `_api/web/lists/getbytitle('Teilnehmer')/items(@{first(body('Get_Cancelled_D')?['d']?['results'])?['Id']})`
 - **Headers:** `If-Match`=`*`, `X-HTTP-Method`=`MERGE`, `Content-Type`=`application/json;odata=verbose`, `Accept`=`application/json;odata=verbose`
@@ -452,7 +467,7 @@ ein fehlendes Audit-Feld den eigentlichen Nachrück-Vorgang nie kaputt machen.
 
 #### ZWEIG C — B2Run Funstarter (`Promote_Funstarter` / `Get_Waitlist_First_Funstarter`)
 
-**Action C1 — `Audit_Promoted_F`** — einfügen **direkt nach `Promote_Funstarter`**.
+**Action C1 — `Audit_Promoted_F`** · **NEU anlegen** · Davor (runAfter): `Queue_Org_Email_F` (= aktuell letzte Action im Funstarter-Zweig) · Danach: `Get_Cancelled_F`.
 - **Method:** `POST`
 - **Uri:** `_api/web/lists/getbytitle('Teilnehmer')/items(@{first(body('Get_Waitlist_First_Funstarter')?['d']?['results'])?['Id']})`
 - **Headers:** `If-Match`=`*`, `X-HTTP-Method`=`MERGE`, `Content-Type`=`application/json;odata=verbose`, `Accept`=`application/json;odata=verbose`
@@ -464,16 +479,16 @@ ein fehlendes Audit-Feld den eigentlichen Nachrück-Vorgang nie kaputt machen.
     "ReplacedParticipantEmail": "@{triggerOutputs()?['body/CancelledEmail']}"
   }
   ```
-- **Rename** → `Audit_Promoted_F`. **Run after** `Promote_Funstarter` (+ has failed/skipped).
+- **Rename** → `Audit_Promoted_F`. **Run after** `Queue_Org_Email_F` (+ has failed/skipped).
 
-**Action C2 — `Get_Cancelled_F`** — einfügen **direkt nach `Audit_Promoted_F`**.
+**Action C2 — `Get_Cancelled_F`** · **NEU anlegen** · Davor: `Audit_Promoted_F` · Danach: `Audit_Cancelled_F`.
 - **Method:** `GET`
 - **Uri:** `_api/web/lists/getbytitle('Teilnehmer')/items?$filter=ParticipantEmail eq '@{triggerOutputs()?['body/CancelledEmail']}'&$select=Id&$top=1`
 - **Headers:** `Accept`=`application/json;odata=verbose`
 - **Body:** *(leer)*
 - **Rename** → `Get_Cancelled_F`. **Run after** `Audit_Promoted_F` (+ has failed/skipped).
 
-**Action C3 — `Audit_Cancelled_F`** — einfügen **direkt nach `Get_Cancelled_F`**.
+**Action C3 — `Audit_Cancelled_F`** · **NEU anlegen** · Davor: `Get_Cancelled_F` · Danach: — (neue letzte Action des Funstarter-Zweigs).
 - **Method:** `POST`
 - **Uri:** `_api/web/lists/getbytitle('Teilnehmer')/items(@{first(body('Get_Cancelled_F')?['d']?['results'])?['Id']})`
 - **Headers:** `If-Match`=`*`, `X-HTTP-Method`=`MERGE`, `Content-Type`=`application/json;odata=verbose`, `Accept`=`application/json;odata=verbose`
