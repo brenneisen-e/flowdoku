@@ -1572,10 +1572,16 @@ export default function RegistrationPage(): React.ReactElement {
     // weiterhin "i"-Hover-Box neben dem Label.
     const isInlineHelp = field.helpTextStyle === 'inline';
     const inlineHelpEl = (displayHelp && isInlineHelp)
-      ? <div style={{ fontSize: '0.78rem', fontWeight: 400, color: 'var(--dex-gray-500)', lineHeight: 1.45, marginTop: 2, marginBottom: 6 }}>{displayHelp}</div>
+      ? <div style={{ fontSize: '0.78rem', fontWeight: 400, color: 'var(--dex-gray-500)', lineHeight: 1.45, marginTop: 2, marginBottom: 6, flexGrow: 1 }}>{displayHelp}</div>
       : null;
     return (
-  <div className="form-group" key={field.id}>
+  // v18.76: Feld als Flex-Spalte rendern. Im 2-Spalten-Grid (dex-reg-fields-grid)
+  // strecken sich die Karten einer Zeile auf gleiche Höhe; die Inline-Hilfe
+  // (flexGrow:1) absorbiert den Höhenunterschied, sodass die Eingabe-Felder
+  // (Dropdown/Input) unten IMMER auf gleicher Höhe stehen — auch wenn die
+  // Beschreibung beim Nachbarfeld eine Zeile länger ist. In Nicht-Grid-Kontexten
+  // (z.B. Team-Mitglied-Felder) gibt es keinen freien Platz → kein Effekt.
+  <div className="form-group" key={field.id} style={{ display: 'flex', flexDirection: 'column' }}>
     {field.type !== 'checkbox' && (
       <>
       <label className="form-label">
@@ -2684,17 +2690,17 @@ export default function RegistrationPage(): React.ReactElement {
                 über die Validation). */}
             <div className="form-group">
               <label className="form-label">{t('reg.firstname')}</label>
-              <input className="form-input" value={firstName} onChange={e => { if (registerForOther) setFirstName(e.target.value); }} placeholder={t('reg.firstname')} disabled={!registerForOther} style={{ background: registerForOther ? '#fff' : 'var(--dex-gray-100)', ...(showErrors && !firstName.trim() ? errorBorder : {}) }} />
+              <input className="form-input" value={firstName} onChange={e => { if (externalPerson) setFirstName(e.target.value); }} placeholder={t('reg.firstname')} disabled={!externalPerson} style={{ background: externalPerson ? '#fff' : 'var(--dex-gray-100)', ...(showErrors && !firstName.trim() ? errorBorder : {}) }} />
             </div>
 
             <div className="form-group">
               <label className="form-label">{t('reg.surname')}</label>
-              <input className="form-input" value={surname} onChange={e => { if (registerForOther) setSurname(e.target.value); }} placeholder={t('reg.surname')} disabled={!registerForOther} style={{ background: registerForOther ? '#fff' : 'var(--dex-gray-100)', ...(showErrors && !surname.trim() ? errorBorder : {}) }} />
+              <input className="form-input" value={surname} onChange={e => { if (externalPerson) setSurname(e.target.value); }} placeholder={t('reg.surname')} disabled={!externalPerson} style={{ background: externalPerson ? '#fff' : 'var(--dex-gray-100)', ...(showErrors && !surname.trim() ? errorBorder : {}) }} />
             </div>
 
             <div className="form-group">
               <label className="form-label">{t('reg.email')}</label>
-              <input className="form-input" type="email" value={email} onChange={e => { if (registerForOther) { setEmail(e.target.value); externalEmailConfirmedRef.current = false; /* v18.74: Tippfehler-Check bei Änderung erneut erzwingen */ } }} placeholder={externalPerson ? 'name@firma.de' : 'email@deloitte.de'} disabled={!registerForOther} style={{ background: registerForOther ? '#fff' : 'var(--dex-gray-100)', ...(showErrors && !email.trim() ? errorBorder : {}) }} />
+              <input className="form-input" type="email" value={email} onChange={e => { if (externalPerson) { setEmail(e.target.value); externalEmailConfirmedRef.current = false; /* v18.74: Tippfehler-Check bei Änderung erneut erzwingen */ } }} placeholder={externalPerson ? 'name@firma.de' : 'email@deloitte.de'} disabled={!externalPerson} style={{ background: externalPerson ? '#fff' : 'var(--dex-gray-100)', ...(showErrors && !email.trim() ? errorBorder : {}) }} />
             </div>
 
             {/* v11.94/v11.97/v12.0: Zusätzliche read-only-Profildaten aus dem
@@ -3758,12 +3764,23 @@ export default function RegistrationPage(): React.ReactElement {
       {/* v18.75: Sicherheitshinweis-Dialog vor dem Absenden (pro Event). */}
       {confirmDialogOpen && event && (() => {
         const isFree = event.confirmDialogMode === 'freetext';
-        const selChildren = childEvents.filter(ce => selectedSessions.has(ce.id));
+        // v18.76: ALLE Sub-Events zeigen (auch nicht ausgewählte), damit der
+        // Teilnehmer im Dialog ab- UND zuwählen kann.
+        const allChildren = childEvents;
         const showParent = willRegisterParent || registerForOther;
         const parentEditable = willRegisterParent && !registerForOther; // proxy: Parent fix
         const canConfirm = isFree
           ? confirmDialogAck
           : (confirmDraftParent || confirmDraftSessions.size > 0 || (showParent && !parentEditable));
+        // v18.76: Datum + Uhrzeit pro Eintrag anzeigen.
+        const fmtDT = (iso?: string): string => {
+          if (!iso) return '';
+          try { return new Date(iso).toLocaleString(locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return ''; }
+        };
+        const dtRange = (s?: string, e?: string): string => {
+          const a = fmtDT(s); const b = fmtDT(e);
+          return a && b ? `${a} – ${b}` : (a || b);
+        };
         return (
           <Modal
             open={confirmDialogOpen}
@@ -3795,33 +3812,58 @@ export default function RegistrationPage(): React.ReactElement {
               <>
                 <p style={{ margin: '0 0 12px', fontSize: '0.9rem', lineHeight: 1.55, color: 'var(--dex-gray-700)' }}>
                   {locale === 'de'
-                    ? 'Du meldest dich für Folgendes an. Du kannst einzelne Punkte vor dem Absenden noch abwählen:'
-                    : 'You are registering for the following. You can deselect items before submitting:'}
+                    ? 'Du meldest dich für die angehakten Punkte an. Du kannst vor dem Absenden einzelne Punkte ab- oder zuwählen:'
+                    : 'You are registering for the checked items. You can de-/select items before submitting:'}
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
                   {showParent && (
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: parentEditable ? 'pointer' : 'default', padding: '8px 10px', background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200)', borderRadius: 6 }}>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: parentEditable ? 'pointer' : 'default', padding: '8px 10px', background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200)', borderRadius: 6 }}>
                       <input
                         type="checkbox"
                         checked={parentEditable ? confirmDraftParent : true}
                         disabled={!parentEditable}
                         onChange={e => setConfirmDraftParent(e.target.checked)}
+                        style={{ marginTop: 2 }}
                       />
-                      <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>{event.title} <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>{locale === 'de' ? '(Haupt-Event)' : '(main event)'}</span></span>
+                      <span style={{ flex: 1 }}>
+                        <span style={{ fontSize: '0.88rem', fontWeight: 600, display: 'block' }}>{event.title} <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>{locale === 'de' ? '(Haupt-Event)' : '(main event)'}</span></span>
+                        {dtRange(event.startDate, event.endDate) && (
+                          <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', display: 'block', marginTop: 1 }}>{dtRange(event.startDate, event.endDate)}</span>
+                        )}
+                      </span>
                     </label>
                   )}
-                  {selChildren.map(ce => (
-                    <label key={ce.id} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '8px 10px', background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200)', borderRadius: 6 }}>
+                  {allChildren.map(ce => (
+                    <label key={ce.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: '8px 10px', background: confirmDraftSessions.has(ce.id) ? 'rgba(134,188,37,0.06)' : 'var(--dex-gray-50, #f7f7f5)', border: `1px solid ${confirmDraftSessions.has(ce.id) ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`, borderRadius: 6 }}>
                       <input
                         type="checkbox"
                         checked={confirmDraftSessions.has(ce.id)}
-                        onChange={e => setConfirmDraftSessions(prev => {
-                          const n = new Set(prev);
-                          if (e.target.checked) n.add(ce.id); else n.delete(ce.id);
-                          return n;
-                        })}
+                        style={{ marginTop: 2 }}
+                        onChange={e => {
+                          if (e.target.checked) {
+                            // v18.76: Sub-Event mit eigenen Pflichtfeldern erst über
+                            // das Sub-Event-Modal erfassen, damit keine leeren
+                            // Pflicht-Antworten entstehen. Dialog schließen, Modal
+                            // öffnen; nach dem Ausfüllen erscheint der Dialog erneut.
+                            const hasCF = (ce.eventSpecificFields || []).length > 0;
+                            if (hasCF && !sessionFieldValues[ce.id] && !selectedSessions.has(ce.id)) {
+                              confirmDialogConfirmedRef.current = false;
+                              setConfirmDialogOpen(false);
+                              setPendingSubEventModal({ subEventId: ce.id, draftValues: { ...(sessionFieldValues[ce.id] || {}) } });
+                            } else {
+                              setConfirmDraftSessions(prev => { const n = new Set(prev); n.add(ce.id); return n; });
+                            }
+                          } else {
+                            setConfirmDraftSessions(prev => { const n = new Set(prev); n.delete(ce.id); return n; });
+                          }
+                        }}
                       />
-                      <span style={{ fontSize: '0.88rem' }}>{ce.title}</span>
+                      <span style={{ flex: 1 }}>
+                        <span style={{ fontSize: '0.88rem', display: 'block' }}>{ce.title}</span>
+                        {dtRange(ce.startDate, ce.endDate) && (
+                          <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', display: 'block', marginTop: 1 }}>{dtRange(ce.startDate, ce.endDate)}</span>
+                        )}
+                      </span>
                     </label>
                   ))}
                 </div>
