@@ -4588,8 +4588,14 @@ export default function AdminPage(): React.ReactElement {
         }
         const active = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
         const totalActive = isConsolidatedMode ? consolidatedActiveByEmail.size : active.length;
-        const durchActive = active.filter(r => r.StarterType === 'Durchstarter').length;
-        const funActive = active.filter(r => r.StarterType === 'Funstarter').length;
+        // v19.12: nach EFFEKTIVER Gruppe zählen (StarterType ODER, falls leer,
+        // PreferredStarterType). Sonst fehlen angemeldete Nachrücker, deren
+        // StarterType der Flow nicht gesetzt hat, in der Gruppen-Zahl — dann ist
+        // „Angemeldet" gesamt ≠ Summe der beiden Gruppen (Beobachtung: 142 vs.
+        // 130+11). Eine angemeldete Person mit Wunsch „Funstarter" belegt real
+        // einen Funstarter-Platz und muss dort mitgezählt werden.
+        const durchActive = active.filter(r => (r.StarterType || r.PreferredStarterType) === 'Durchstarter').length;
+        const funActive = active.filter(r => (r.StarterType || r.PreferredStarterType) === 'Funstarter').length;
         const durchCap = selectedEvent?.durchstarterCapacity || 0;
         const funCap = selectedEvent?.funstarterCapacity || 0;
         const labelA = (selectedEvent?.splitLabelA && selectedEvent.splitLabelA.trim()) || 'Durchstarter';
@@ -5822,7 +5828,16 @@ export default function AdminPage(): React.ReactElement {
                         if (actual && pref && actual !== pref) {
                           return <span>{actual} <span style={{ color: 'var(--dex-gray-500)' }}>(Wunsch: {pref})</span></span>;
                         }
-                        return <span>{actual || `Wunsch: ${pref}`}</span>;
+                        if (actual) return <span>{actual}</span>;
+                        // v19.12: StarterType ist leer. Bei AKTIVEN (angemeldeten/
+                        // eingecheckten) Personen ist die effektive Gruppe der Wunsch
+                        // — der Nachrück-Flow hat den StarterType beim Promoten nur
+                        // nicht gesetzt. Solche Personen NEHMEN ihren Wunsch-Platz ein,
+                        // also plain die Gruppe zeigen (NICHT „Wunsch:"). „Wunsch:"
+                        // bleibt den Warteliste-Personen vorbehalten (dort ist die
+                        // Gruppe wirklich noch nicht zugewiesen).
+                        const isWaitlist = reg.Status === 'Warteliste';
+                        return <span>{isWaitlist ? `Wunsch: ${pref}` : pref}</span>;
                       })()}
                     </td>
                   );
