@@ -7215,22 +7215,26 @@ export class EventService {
    * Bei Fehlern lieber konservativ `false` zurueckgeben statt durchlassen.
    */
   private async canRegisterForOthers(subsiteUrl: string, targetParticipantEmail: string): Promise<boolean> {
-    const sessionEmail = (this.context.pageContext.user.email || '').toLowerCase();
-    if (!sessionEmail) return false;
+    // v19.6: Mehrere moegliche Identitaeten des eingeloggten Users sammeln.
+    // `pageContext.user.email` ist im SharePoint-Mobile-WebView nicht immer
+    // gesetzt bzw. weicht vom in OrganizerEmail gespeicherten SMTP-Wert ab —
+    // deshalb zusaetzlich die E-Mail aus dem `loginName` (Claims-Format
+    // `i:0#.f|membership|user@domain`) als Fallback heranziehen.
+    const sessionIdentities = new Set<string>();
+    const rawEmail = (this.context.pageContext.user.email || '').toLowerCase().trim();
+    if (rawEmail) sessionIdentities.add(rawEmail);
+    const loginName = (this.context.pageContext.user.loginName || '').toLowerCase();
+    const loginMatch = loginName.match(/[^|]+@[^|\s]+$/);
+    if (loginMatch) sessionIdentities.add(loginMatch[0].trim());
+    if (sessionIdentities.size === 0) return false;
+    const sessionEmail = rawEmail || Array.from(sessionIdentities)[0];
+    const matchesSession = (emails: string[]): boolean =>
+      emails.some(e => sessionIdentities.has((e || '').toLowerCase().trim()));
 
     // 1. DEX_Roles pruefen: Admin- ODER Organizer-Rolle haben?
     //    v19.6 BUG-FIX: Vorher liess dieser Check NUR die Admin-Rolle durch.
-    //    Folge: ein User mit globaler **Organizer**-Rolle, der NICHT in der
-    //    OrganizerEmail genau DIESES Events steht (z.B. Organizer eines anderen
-    //    Events, Co-Organizer, oder bei einem SubsiteUrl-Mismatch), wurde
-    //    serverseitig abgelehnt — obwohl die App ihm den Button
-    //    „Für andere registrieren" zeigt (der haengt an canCreateEvents =
-    //    Organizer ODER Admin). Die Anmeldung schlug dann mit der
-    //    irrefuehrenden Meldung „bereits angemeldet" fehl, OBWOHL eine dritte
-    //    Person ausgewaehlt war. Die Rollenmatrix sieht „Für andere
-    //    registrieren" generell fuer Organizer vor (ohne „eigene"-Einschraenkung),
-    //    deshalb hier Admin UND Organizer akzeptieren — deckungsgleich mit dem
-    //    Client-Gate.
+    //    Die Rollenmatrix sieht „Für andere registrieren" generell fuer
+    //    Organizer vor — deshalb hier Admin UND Organizer akzeptieren.
     try {
       const esc = sessionEmail.replace(/'/g, "''");
       const resp = await this.context.spHttpClient.get(
@@ -7244,19 +7248,44 @@ export class EventService {
       }
     } catch { /* ignore - fallback auf weitere Checks */ }
 
-    // 2. Event-Organizer? OrganizerEmail aus DEX_Events finden ueber SubsiteUrl-Match
+    // 2. Event-Organizer ODER Co-Organizer dieses Events?
+    //    v19.6 BUG-FIX: Vorher wurde NUR `OrganizerEmail` (Haupt-Organizer)
+    //    geprueft — Co-Organizer stehen aber in `EmailTemplateOverrides._coOrganizers`
+    //    und wurden so faelschlich abgelehnt. Zudem war der Note-Strip auf EINE
+    //    `<div>`-Ebene begrenzt und der Split nur auf `;` — bei mehreren
+    //    Organizern (mehrere `<div>`/`<br>` oder Komma-Trennung) schlug der
+    //    Match fehl. Jetzt: HTML robust strippen, an `;`/`,`/Zeilenumbruch
+    //    splitten und Haupt- + Co-Organizer kombiniert gegen ALLE
+    //    Session-Identitaeten matchen.
     try {
       const resp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=SubsiteUrl eq '${encodeURIComponent(subsiteUrl.replace(/'/g, "''"))}'&$top=1&$select=OrganizerEmail`,
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=SubsiteUrl eq '${encodeURIComponent(subsiteUrl.replace(/'/g, "''"))}'&$top=1&$select=OrganizerEmail,EmailTemplateOverrides`,
         SPHttpClient.configurations.v1
       );
       if (resp.ok) {
         const data = await resp.json();
         const items = data.value || data.d?.results || [];
         if (items.length > 0) {
-          const orgStr: string = EventService.stripNoteWrapper(items[0].OrganizerEmail);
-          const orgEmails = orgStr.split(';').map(s => s.trim().toLowerCase()).filter(Boolean);
-          if (orgEmails.indexOf(sessionEmail) >= 0) return true;
+          const splitEmails = (raw: string | null | undefined): string[] =>
+            (raw || '')
+              .replace(/<br\s*\/?>/gi, ';')
+              .replace(/<\/div>\s*<div[^>]*>/gi, ';')
+              .replace(/<[^>]+>/g, '')
+              .split(/[;,\n\r]+/)
+              .map(s => s.trim().toLowerCase())
+              .filter(Boolean);
+          const mainOrgEmails = splitEmails(items[0].OrganizerEmail);
+          // Co-Organizer aus dem EmailTemplateOverrides-Piggyback `_coOrganizers`.
+          let coOrgEmails: string[] = [];
+          try {
+            const ovRaw = EventService.stripNoteWrapper(items[0].EmailTemplateOverrides) || '{}';
+            const ov = JSON.parse(ovRaw);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const list = (ov as any)._coOrganizers;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            if (Array.isArray(list)) coOrgEmails = list.map((x: any) => String(x?.email || '').toLowerCase().trim()).filter(Boolean);
+          } catch { /* kein/ungueltiges Override-JSON → keine Co-Organizer */ }
+          if (matchesSession([...mainOrgEmails, ...coOrgEmails])) return true;
         }
       }
     } catch { /* ignore */ }
