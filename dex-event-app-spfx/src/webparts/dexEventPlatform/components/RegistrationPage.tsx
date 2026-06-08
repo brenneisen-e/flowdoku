@@ -326,8 +326,15 @@ export default function RegistrationPage(): React.ReactElement {
   // v11.83: Offene Teams (Slots-frei) + Beitritts-Flow.
   const [openTeams, setOpenTeams] = React.useState<Array<{ teamId: string; teamName: string; activeCount: number; teamSize: number; leadEmail: string; leadDisplayName: string }>>([]);
   const [openTeamsLoaded, setOpenTeamsLoaded] = React.useState(false);
-  const [joiningTeamId, setJoiningTeamId] = React.useState<string | null>(null);
-  const [joinFeedback, setJoinFeedback] = React.useState<{ kind: 'ok' | 'err'; text: string } | null>(null);
+  // v18.73: Beitritt zu einem offenen Team wird nur VORGEMERKT — die eigentliche
+  // Anmeldung (inkl. der ausgefüllten persönlichen + event-spezifischen Felder)
+  // passiert erst beim Klick auf „Anmelden" unten (performJoinSelectedTeam).
+  // Vorher wurde der Beitritt sofort beim Klick committet, ohne dass der User
+  // seine event-spezifischen Infos angeben konnte.
+  const [pendingJoinTeam, setPendingJoinTeam] = React.useState<{ teamId: string; teamName: string } | null>(null);
+  // v18.73: Erfolgsscreen-Variante bei Team-Beitritt ('joined' = direkt
+  // angemeldet, 'requested' = Anfrage an den Team-Lead gesendet).
+  const [submittedJoinKind, setSubmittedJoinKind] = React.useState<null | 'joined' | 'requested'>(null);
   // Beim Aktivieren des Team-Modus: Member-Slots initialisieren (teamSize-1 Slots).
   React.useEffect(() => {
     if (isTeamMode && teamMembers.length !== Math.max(0, teamSize - 1)) {
@@ -393,6 +400,7 @@ export default function RegistrationPage(): React.ReactElement {
   React.useEffect(() => {
     setOpenTeamsLoaded(false);
     setOpenTeams([]);
+    setPendingJoinTeam(null); // v18.73: Vormerkung beim Event-/Modus-Wechsel zurücksetzen
     if (!event) return;
     if (!event.teamRegistrationEnabled || !event.teamOpenSlotsVisible) return;
     if (registerForOther) return; // Stellvertreter-Modus nicht unterstuetzt fuer Beitritt
@@ -408,56 +416,15 @@ export default function RegistrationPage(): React.ReactElement {
     })().catch(() => setOpenTeamsLoaded(true));
   }, [event?.id, event?.teamRegistrationEnabled, event?.teamOpenSlotsVisible, registerForOther, listOpenTeamsForEvent]);
 
-  const handleJoinTeam = async (teamId: string, teamName: string): Promise<void> => {
-    if (!event || joiningTeamId) return;
-    setJoiningTeamId(teamId);
-    setJoinFeedback(null);
-    try {
-      if (event.teamJoinRequiresApproval) {
-        const r = await createTeamJoinRequest(event.id, teamId);
-        if (!r.ok) {
-          setJoinFeedback({
-            kind: 'err',
-            text: r.reason === 'already-registered'
-              ? (locale === 'de' ? 'Du bist bereits beim Event angemeldet.' : 'You are already registered for the event.')
-              : (locale === 'de' ? 'Beitritts-Anfrage fehlgeschlagen.' : 'Join request failed.'),
-          });
-        } else {
-          setJoinFeedback({
-            kind: 'ok',
-            text: locale === 'de'
-              ? `Deine Anfrage zum Team „${teamName || 'Unbenannt'}" wurde gesendet. Der Team-Lead entscheidet darueber und du bekommst eine Mail mit dem Ergebnis.`
-              : `Your join request for team „${teamName || 'Unnamed'}" was sent. The team lead will decide and you will get a mail with the result.`,
-          });
-          // Teams neu laden, damit ggf. Plaetze aktualisiert sind.
-          try {
-            const list = await listOpenTeamsForEvent(event.id);
-            setOpenTeams(list);
-          } catch { /* ignore */ }
-        }
-      } else {
-        const r = await joinTeam(event.id, teamId, teamName);
-        if (!r.ok) {
-          setJoinFeedback({
-            kind: 'err',
-            text: r.reason && r.reason.startsWith('already-registered')
-              ? (locale === 'de' ? 'Du bist bereits beim Event angemeldet.' : 'You are already registered for the event.')
-              : r.reason === 'team-full'
-                ? (locale === 'de' ? 'Das Team ist inzwischen voll.' : 'The team has filled up in the meantime.')
-                : (locale === 'de' ? 'Beitritt fehlgeschlagen.' : 'Joining failed.'),
-          });
-        } else {
-          setJoinFeedback({
-            kind: 'ok',
-            text: locale === 'de'
-              ? `Du bist dem Team „${teamName || 'Unbenannt'}" beigetreten (Status: ${r.status === 'Warteliste' ? 'Warteliste' : 'Angemeldet'}). Schau in „Meine Events" fuer Details.`
-              : `You joined team „${teamName || 'Unnamed'}" (status: ${r.status === 'Warteliste' ? 'Waitlist' : 'Registered'}). Check „My Events" for details.`,
-          });
-        }
-      }
-    } finally {
-      setJoiningTeamId(null);
-    }
+  // v18.73: Team-Beitritt nur VORMERKEN (Toggle). Erneuter Klick auf dasselbe
+  // Team hebt die Vormerkung wieder auf. Gegenseitig exklusiv zum „Ich melde
+  // mich + mein Team an"-Modus (man kann nicht gleichzeitig ein neues Team
+  // anlegen und einem bestehenden beitreten). Die eigentliche Anmeldung läuft
+  // erst über den „Anmelden"-Button (performJoinSelectedTeam).
+  const togglePendingJoinTeam = (teamId: string, teamName: string): void => {
+    setError('');
+    setPendingJoinTeam(prev => (prev && prev.teamId === teamId) ? null : { teamId, teamName });
+    setIsTeamMode(false);
   };
 
   // Vorbelegen: Parent-Reg prüfen + Sessions-Meta laden (bereits-registrierte
@@ -698,7 +665,7 @@ export default function RegistrationPage(): React.ReactElement {
 
     // Wenn der Haupt-Event-Checkbox aus ist und keine Session ausgewählt ist,
     // gibt es nichts zu tun.
-    if (!willRegisterParent && !registerForOther && selectedSessions.size === 0) {
+    if (!willRegisterParent && !registerForOther && selectedSessions.size === 0 && !pendingJoinTeam) {
       setError(t('reg.nothing.selected') || 'Bitte wähle mindestens Haupt-Event oder eine Session aus.');
       return;
     }
@@ -765,7 +732,12 @@ export default function RegistrationPage(): React.ReactElement {
     // Checkbox) werden in dem Modus IMMER angezeigt und müssen IMMER validiert
     // werden. KEIN `!myParentReg`, KEIN sessionMeta-Abhängigkeit mehr.
     const willCollectMainFields = willRegisterParent || registerForOther
-      || (isSubOnlyModeValidate && selectedSessions.size > 0 && !registerForOther);
+      || (isSubOnlyModeValidate && selectedSessions.size > 0 && !registerForOther)
+      // v18.73: Beim vorgemerkten Team-Beitritt gelten dieselben Pflichtfelder
+      // (Anrede + event-spezifische Felder) wie bei einer normalen Anmeldung —
+      // der ganze Sinn der Änderung ist, dass diese Infos nicht übersprungen
+      // werden können.
+      || !!pendingJoinTeam;
     if (willCollectMainFields) {
       // v11.80: Anrede ist nur dann Pflichtfeld, wenn das Event das
       // Anrede-Dropdown auch tatsaechlich abfragt (event.askSalutation === true).
@@ -814,8 +786,10 @@ export default function RegistrationPage(): React.ReactElement {
         return;
       }
 
-      // B2Run: Starter-Typ Pflichtfeld
-      if (isSplitGroup && !preferredStarterType) {
+      // B2Run: Starter-Typ Pflichtfeld. v18.73: Beim Team-Beitritt NICHT
+      // erzwingen — der Beitretende erbt die Gruppe des Teams (siehe
+      // addTeamMember), er wählt sie nicht selbst.
+      if (isSplitGroup && !preferredStarterType && !pendingJoinTeam) {
         // v11.7: generische Fehlermeldung — vorher hatte der Translation-Key
         // 'B2Run Starter-Typ' als Fallback. Bei generischen Split-Capacity-
         // Events mit eigenen Labels (z.B. 'Vormittag' / 'Nachmittag') passt
@@ -839,7 +813,7 @@ export default function RegistrationPage(): React.ReactElement {
     // Group-Selection-Block. Wenn das Event Split-Capacity hat und Sessions
     // ausgewählt sind, muss eine Gruppe gewählt sein — egal ob Parent dabei
     // ist oder nur Sessions registriert werden.
-    if (isSplitGroup && selectedSessions.size > 0 && !preferredStarterType) {
+    if (isSplitGroup && selectedSessions.size > 0 && !preferredStarterType && !pendingJoinTeam) {
       setError(locale === 'de'
         ? 'Bitte wähle eine Gruppe.'
         : 'Please pick a group.');
@@ -876,7 +850,7 @@ export default function RegistrationPage(): React.ReactElement {
     //   (b) auf die Warteliste für den gewünschten Typ.
     // Kein stiller Auto-Fallback mehr. Beide Typen voll → direkt auf Warteliste
     // (kein Dialog, Logik in EventContext setzt Status=Warteliste).
-    if ((willRegisterParent || registerForOther) && isSplitGroup && preferredStarterType) {
+    if ((willRegisterParent || registerForOther) && isSplitGroup && preferredStarterType && !pendingJoinTeam) {
       const durchFree = Math.max(0, durchCap - starterCounts.durch);
       const funFree = Math.max(0, funCap - starterCounts.fun);
       const wunschFree = preferredStarterType === 'Durchstarter' ? durchFree : funFree;
@@ -887,6 +861,15 @@ export default function RegistrationPage(): React.ReactElement {
         setFallbackDialog({ wunsch: preferredStarterType, alt: altType, altFree });
         return;
       }
+    }
+
+    // v18.73: Vorgemerkter Team-Beitritt — committet hier (mit den oben
+    // ausgefüllten persönlichen + event-spezifischen Feldern), statt einer
+    // normalen Einzel-Anmeldung. Steht vor dem Team-Anmelde-Pfad, weil beide
+    // sich gegenseitig ausschließen.
+    if (pendingJoinTeam) {
+      await performJoinSelectedTeam();
+      return;
     }
 
     // v11.82: Team-Anmeldung — separater Submit-Pfad.
@@ -958,6 +941,53 @@ export default function RegistrationPage(): React.ReactElement {
         setSubmitProgress(0);
         setSubmitProgressLabel('');
       }, 250);
+    }
+  };
+
+  // v18.73: Vorgemerkten Team-Beitritt absenden — committet erst hier (auf
+  // „Anmelden"), inkl. der ausgefüllten event-spezifischen Felder. Direkter
+  // Beitritt (joinTeam) bzw. Anfrage an den Lead (createTeamJoinRequest), je
+  // nach event.teamJoinRequiresApproval.
+  const performJoinSelectedTeam = async (): Promise<void> => {
+    if (!pendingJoinTeam || !event) return;
+    setError('');
+    setIsSubmitting(true);
+    setSubmitProgress(10);
+    setSubmitProgressLabel(locale === 'de' ? 'Beitritt wird verarbeitet…' : 'Processing your join…');
+    try {
+      // Event-spezifische Antworten des Beitretenden (wie bei der normalen
+      // Anmeldung) — werden an den Team-Beitritt durchgereicht.
+      const customData: Record<string, string> = { salutation, ...eventSpecific };
+      setSubmitProgress(50);
+      if (event.teamJoinRequiresApproval) {
+        const r = await createTeamJoinRequest(event.id, pendingJoinTeam.teamId, customData);
+        if (!r.ok) {
+          setError(r.reason === 'already-registered'
+            ? (locale === 'de' ? 'Du bist bereits beim Event angemeldet.' : 'You are already registered for this event.')
+            : (locale === 'de' ? 'Beitritts-Anfrage fehlgeschlagen.' : 'Join request failed.'));
+          return;
+        }
+        setSubmittedJoinKind('requested');
+        setSubmitted(true);
+      } else {
+        const r = await joinTeam(event.id, pendingJoinTeam.teamId, pendingJoinTeam.teamName, customData);
+        if (!r.ok) {
+          setError(r.reason && r.reason.startsWith('already-registered')
+            ? (locale === 'de' ? 'Du bist bereits beim Event angemeldet.' : 'You are already registered for this event.')
+            : r.reason === 'team-full'
+              ? (locale === 'de' ? 'Das Team ist inzwischen voll.' : 'The team has filled up in the meantime.')
+              : (locale === 'de' ? 'Beitritt fehlgeschlagen.' : 'Joining failed.'));
+          return;
+        }
+        setSubmittedJoinKind('joined');
+        setSubmittedAsWaitlist(r.status === 'Warteliste');
+        setSubmitted(true);
+      }
+    } catch {
+      setError(locale === 'de' ? 'Unerwarteter Fehler beim Beitritt.' : 'Unexpected error while joining.');
+    } finally {
+      setSubmitProgress(100);
+      setTimeout(() => { setIsSubmitting(false); setSubmitProgress(0); setSubmitProgressLabel(''); }, 250);
     }
   };
 
@@ -1274,6 +1304,43 @@ export default function RegistrationPage(): React.ReactElement {
               {t('reg.backtoevents') || (locale === 'de' ? 'Zurück zu Events' : 'Back to events')}
             </button>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // v18.73: Eigener Erfolgsscreen für den Team-Beitritt (direkt angemeldet
+  // bzw. Beitritts-Anfrage gesendet) — vor der generischen Anmelde-Logik.
+  if (submitted && submittedJoinKind) {
+    const isReq = submittedJoinKind === 'requested';
+    const headline = isReq
+      ? (locale === 'de' ? 'Beitritts-Anfrage gesendet' : 'Join request sent')
+      : (submittedAsWaitlist
+          ? (locale === 'de' ? 'Auf der Warteliste' : 'On the waitlist')
+          : (locale === 'de' ? 'Team-Beitritt erfolgreich' : 'Joined the team'));
+    const body = isReq
+      ? (locale === 'de'
+          ? `Deine Anfrage zum Beitritt wurde an den Team-Kapitän gesendet. Sobald er entscheidet, bekommst du eine E-Mail mit dem Ergebnis. Deine Angaben werden bei der Bestätigung automatisch übernommen.`
+          : `Your join request has been sent to the team lead. Once they decide, you will receive an email with the result. Your details will be applied automatically upon approval.`)
+      : (submittedAsWaitlist
+          ? (locale === 'de'
+              ? `Das Team war voll — du stehst jetzt auf der Warteliste für „${event.title}". Sobald ein Platz frei wird, rückst du automatisch nach und bekommst eine Bestätigung. Details findest du unter „Meine Events".`
+              : `The team was full — you are now on the waitlist for „${event.title}". You will be moved up automatically when a spot opens and receive a confirmation. See „My Events" for details.`)
+          : (locale === 'de'
+              ? `Du bist dem Team beigetreten und für „${event.title}" angemeldet. Du bekommst eine Bestätigungs-E-Mail und einen Outlook-Termin. Details findest du unter „Meine Events".`
+              : `You joined the team and are registered for „${event.title}". You will receive a confirmation email and an Outlook invite. See „My Events" for details.`));
+    return (
+      <div className="page-container text-center">
+        <div className="card" style={{ padding: '48px 32px', maxWidth: 720, margin: '0 auto' }}>
+          {event.imageUrl && (
+            <div style={{
+              width: '100%', maxWidth: 480, height: 200, margin: '0 auto 24px',
+              borderRadius: 'var(--dex-radius-lg)',
+              background: `url(${event.imageUrl}) center/cover no-repeat`,
+            }} />
+          )}
+          <h2 style={{ marginTop: 0 }}>{headline}</h2>
+          <p style={{ fontSize: '0.95rem', color: 'var(--dex-gray-700)', lineHeight: 1.6, maxWidth: 560, margin: '0 auto' }}>{body}</p>
         </div>
       </div>
     );
@@ -2157,91 +2224,10 @@ export default function RegistrationPage(): React.ReactElement {
           )}
         </div>
 
-        {/* v11.83: Offene Teams — sichtbar wenn der Organizer „Offene Slots
-            oeffentlich sichtbar" aktiviert hat und es Teams gibt, denen
-            Plaetze fehlen. User kann hier einem Team beitreten (direkt
-            oder per Anfrage, je nach event.teamJoinRequiresApproval). */}
-        {event && event.teamRegistrationEnabled && event.teamOpenSlotsVisible && !registerForOther && openTeamsLoaded && openTeams.length > 0 && !parentAlreadyRegistered && (
-          <div className="registration-form" style={{ marginBottom: 16 }}>
-            <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <Icon iconName="People" style={{ fontSize: 16 }} />
-              {locale === 'de' ? 'Offene Teams — du kannst einem unvollstaendigen Team beitreten' : 'Open teams — you can join an incomplete team'}
-            </div>
-            <div style={{ padding: '20px' }}>
-              <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>
-                {locale === 'de'
-                  ? 'Andere Personen haben Teams angemeldet, denen noch Slots fehlen. Du kannst einem beitreten — du brauchst dich dann NICHT mehr ueber das Formular unten anzumelden.'
-                  : 'Other people have registered teams with open slots. You can join one — you do NOT need to use the form below in that case.'}
-                {event.teamJoinRequiresApproval && (
-                  <> {locale === 'de'
-                    ? <><br /><strong>Hinweis:</strong> der Team-Lead muss deinen Beitritt erst bestaetigen.</>
-                    : <><br /><strong>Note:</strong> the team lead has to approve your join.</>}
-                  </>
-                )}
-              </p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {openTeams.map(t => {
-                  const free = t.teamSize - t.activeCount;
-                  return (
-                    <div key={t.teamId} style={{
-                      display: 'flex', alignItems: 'center', gap: 12,
-                      padding: '10px 12px',
-                      background: 'var(--dex-gray-50, #f7f7f7)',
-                      borderRadius: 6,
-                      border: '1px solid var(--dex-gray-200)',
-                    }}>
-                      <Icon iconName="Group" style={{ fontSize: 16, color: 'var(--dex-green-dark, #4a7c1f)' }} />
-                      <div style={{ flex: 1, fontSize: '0.88rem' }}>
-                        <div style={{ fontWeight: 600 }}>
-                          {locale === 'de'
-                            ? `Team „${t.teamName || 'ohne Namen'}"`
-                            : `Team „${t.teamName || 'unnamed'}"`}
-                        </div>
-                        <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
-                          {locale === 'de'
-                            ? `${t.activeCount}/${t.teamSize} belegt — ${free} Slot${free === 1 ? '' : 's'} frei`
-                            : `${t.activeCount}/${t.teamSize} taken — ${free} slot${free === 1 ? '' : 's'} free`}
-                        </div>
-                      </div>
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        disabled={joiningTeamId !== null}
-                        onClick={() => handleJoinTeam(t.teamId, t.teamName)}
-                        style={{ fontSize: '0.82rem', padding: '6px 12px' }}
-                      >
-                        {joiningTeamId === t.teamId
-                          ? (locale === 'de' ? 'Bitte warten…' : 'Please wait…')
-                          : (event.teamJoinRequiresApproval
-                            ? (locale === 'de' ? 'Beitritt anfragen' : 'Request to join')
-                            : (locale === 'de' ? 'Beitreten' : 'Join'))}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-              <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 10, marginBottom: 0, lineHeight: 1.4 }}>
-                {locale === 'de'
-                  ? 'Mitgliedernamen werden aus Privatsphaere-Gruenden nicht angezeigt.'
-                  : 'Member names are hidden for privacy reasons.'}
-              </p>
-              {joinFeedback && (
-                <div style={{
-                  marginTop: 12,
-                  padding: '10px 12px',
-                  borderRadius: 6,
-                  background: joinFeedback.kind === 'ok' ? 'rgba(134,188,37,0.10)' : 'rgba(220,38,38,0.10)',
-                  border: `1px solid ${joinFeedback.kind === 'ok' ? 'var(--dex-green, #86bc25)' : 'var(--dex-red, #b91c1c)'}`,
-                  color: joinFeedback.kind === 'ok' ? 'var(--dex-green-dark, #3f5f10)' : '#b91c1c',
-                  fontSize: '0.85rem',
-                  lineHeight: 1.5,
-                }}>
-                  {joinFeedback.text}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {/* v18.73: Die „Offene Teams"-Box ist nach UNTEN gewandert (unter die
+            „Ich melde mich + mein Team an"-Karte) — siehe weiter unten. Oben
+            steht jetzt immer zuerst die persönliche Daten-Karte, dann die
+            event-spezifischen Infos. */}
 
         {/* Persoenliche Daten */}
         <div className="registration-form">
@@ -2659,7 +2645,7 @@ export default function RegistrationPage(): React.ReactElement {
                   <input
                     type="checkbox"
                     checked={isTeamMode}
-                    onChange={e => setIsTeamMode(e.target.checked)}
+                    onChange={e => { setIsTeamMode(e.target.checked); if (e.target.checked) setPendingJoinTeam(null); }}
                     style={{ marginTop: 3 }}
                   />
                   <div style={{ flex: 1 }}>
@@ -2815,11 +2801,106 @@ export default function RegistrationPage(): React.ReactElement {
           </div>
         )}
 
+        {/* v18.73: Offene Teams — sichtbar wenn der Organizer „Offene Slots
+            öffentlich sichtbar" aktiviert hat und es Teams gibt, denen Plätze
+            fehlen. Steht jetzt UNTER der „Ich melde mich + mein Team an"-Karte.
+            Klick auf „Vormerken" wählt ein Team nur vor — die eigentliche
+            Anmeldung (inkl. der oben/unten ausgefüllten persönlichen +
+            event-spezifischen Felder) passiert erst über den „Anmelden"-Button.
+            */}
+        {event && event.teamRegistrationEnabled && event.teamOpenSlotsVisible && !registerForOther && openTeamsLoaded && openTeams.length > 0 && !parentAlreadyRegistered && (
+          <div className="registration-form" style={{ marginBottom: 16 }}>
+            <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <Icon iconName="People" style={{ fontSize: 16 }} />
+              {locale === 'de' ? 'Offene Teams — einem unvollständigen Team beitreten' : 'Open teams — join an incomplete team'}
+            </div>
+            <div style={{ padding: '20px' }}>
+              <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>
+                {locale === 'de'
+                  ? 'Andere Personen haben Teams angemeldet, denen noch Plätze fehlen. Du kannst eines vormerken — fülle dann oben deine persönlichen Daten und unten die event-spezifischen Angaben aus und klicke auf „Anmelden", um beizutreten.'
+                  : 'Other people have registered teams with open slots. Pre-select one — then fill in your personal details above and the event-specific information below, and click „Register" to join.'}
+                {event.teamJoinRequiresApproval && (
+                  <> {locale === 'de'
+                    ? <><br /><strong>Hinweis:</strong> der Team-Kapitän muss deinen Beitritt erst bestätigen.</>
+                    : <><br /><strong>Note:</strong> the team lead has to approve your join.</>}
+                  </>
+                )}
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {openTeams.map(t => {
+                  const free = t.teamSize - t.activeCount;
+                  const isPicked = !!pendingJoinTeam && pendingJoinTeam.teamId === t.teamId;
+                  return (
+                    <div key={t.teamId} style={{
+                      display: 'flex', alignItems: 'center', gap: 12,
+                      padding: '10px 12px',
+                      background: isPicked ? 'rgba(134,188,37,0.10)' : 'var(--dex-gray-50, #f7f7f7)',
+                      borderRadius: 6,
+                      border: isPicked ? '2px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-200)',
+                    }}>
+                      <Icon iconName="Group" style={{ fontSize: 16, color: 'var(--dex-green-dark, #4a7c1f)' }} />
+                      <div style={{ flex: 1, fontSize: '0.88rem' }}>
+                        <div style={{ fontWeight: 600 }}>
+                          {locale === 'de'
+                            ? `Team „${t.teamName || 'ohne Namen'}"`
+                            : `Team „${t.teamName || 'unnamed'}"`}
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                          {locale === 'de'
+                            ? `${t.activeCount}/${t.teamSize} belegt — ${free} Slot${free === 1 ? '' : 's'} frei`
+                            : `${t.activeCount}/${t.teamSize} taken — ${free} slot${free === 1 ? '' : 's'} free`}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        className={isPicked ? 'btn btn-secondary' : 'btn btn-primary'}
+                        onClick={() => togglePendingJoinTeam(t.teamId, t.teamName)}
+                        style={{ fontSize: '0.82rem', padding: '6px 12px' }}
+                      >
+                        {isPicked
+                          ? (locale === 'de' ? 'Vorgemerkt ✓ — entfernen' : 'Pre-selected ✓ — remove')
+                          : (locale === 'de' ? 'Vormerken' : 'Pre-select')}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 10, marginBottom: 0, lineHeight: 1.4 }}>
+                {locale === 'de'
+                  ? 'Mitgliedernamen werden aus Privatsphäre-Gründen nicht angezeigt.'
+                  : 'Member names are hidden for privacy reasons.'}
+              </p>
+              {pendingJoinTeam && (
+                <div style={{
+                  marginTop: 12,
+                  padding: '10px 12px',
+                  borderRadius: 6,
+                  background: 'rgba(134,188,37,0.10)',
+                  border: '1px solid var(--dex-green, #86bc25)',
+                  color: 'var(--dex-green-dark, #3f5f10)',
+                  fontSize: '0.85rem',
+                  lineHeight: 1.5,
+                }}>
+                  {locale === 'de'
+                    ? <>Team <strong>„{pendingJoinTeam.teamName || 'ohne Namen'}“</strong> ist vorgemerkt. Fülle deine Angaben aus und klicke unten auf <strong>„Anmelden“</strong>, um den Beitritt abzuschließen.</>
+                    : <>Team <strong>“{pendingJoinTeam.teamName || 'unnamed'}”</strong> is pre-selected. Fill in your details and click <strong>“Register”</strong> below to complete your join.</>}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Eventspezifische Felder (inkl. Split-Capacity Starter-Typ-Auswahl wenn
             beide Kapazitaeten > 0; bei nur einem verfuegbaren Typ wird dieser
             automatisch gesetzt und gar nicht angezeigt). v10.20: Sessions-/
             Hauptevent-Auswahl ist hierher gewandert (vorher links unter der
             Event-Karte). */}
+        {/* v18.73: Die „Event-spezifische Informationen"-Karte nur anzeigen,
+            wenn es dort tatsächlich etwas auszufüllen/auszuwählen gibt — also
+            Custom-Felder, eine Gruppen-Auswahl (Split) ODER eine Sub-Event-
+            Auswahl. Sonst (leeres „Keine zusätzlichen Informationen
+            erforderlich") wird die Karte komplett ausgeblendet. */}
+        {(event.eventSpecificFields.length > 0 || isSplitGroup || childEvents.length > 0) && (
         <div className="registration-specific">
           {/* v11.97: Section-Header + „* = Required field"-Legende in
               einer Zeile. Legende mit ROTEM Stern (vorher war der Stern
@@ -3221,6 +3302,7 @@ export default function RegistrationPage(): React.ReactElement {
             )}
           </div>
         </div>
+        )}
       </div>
 
       {/* v11.4: Fehlermeldung + Action-Buttons stehen jetzt direkt unter
@@ -3272,6 +3354,12 @@ export default function RegistrationPage(): React.ReactElement {
             >
               <Send size={16} /> {(() => {
                 if (isSubmitting) return t('reg.submitting');
+                // v18.73: Vorgemerkter Team-Beitritt — eigener Button-Text.
+                if (pendingJoinTeam) {
+                  return event?.teamJoinRequiresApproval
+                    ? (locale === 'de' ? 'Beitritt anfragen' : 'Request to join')
+                    : (locale === 'de' ? 'Team beitreten & anmelden' : 'Join team & register');
+                }
                 // v11.82: Team-Modus — eigener Button-Text mit Personen-Zahl.
                 if (isTeamMode) {
                   const n = 1 + teamMembersParsed.filter(Boolean).length;
@@ -3303,7 +3391,7 @@ export default function RegistrationPage(): React.ReactElement {
         {/* v18.11: „Ich nehme nicht teil" — proaktive Absage. Nur bei
             Selbst-Anmeldung (nicht „für andere", nicht Team-Modus, kein
             Demo-Event). Braucht keine Pflichtfelder. */}
-        {!registerForOther && !isTeamMode && !(event && event.isDemoShowcase) && (
+        {!registerForOther && !isTeamMode && !pendingJoinTeam && !(event && event.isDemoShowcase) && (
           <button
             type="button"
             className="btn btn-secondary"

@@ -53,6 +53,14 @@ export interface HtmlEditorModalProps {
   onEmailSubheadingFontSizeChange?: (px: string) => void;
   onEmailSubheadingBoldChange?: (b: boolean) => void;
   onEmailSubheadingItalicChange?: (b: boolean) => void;
+  /** v18.73: Header-Bild (Event-Bild) Größe + Innenabstand — gilt für Mail-
+   *  UND Outlook-Kopf, daher in beiden Vorschau-Modi sichtbar. */
+  imageWidth?: number;
+  imagePaddingV?: number;
+  imagePaddingH?: number;
+  onImageWidthChange?: (px: number) => void;
+  onImagePaddingVChange?: (px: number) => void;
+  onImagePaddingHChange?: (px: number) => void;
   /** Outlook-Termin: editierbare Ueberschrift (<h1>) */
   outlookHeading?: string;
   onOutlookHeadingChange?: (s: string) => void;
@@ -97,6 +105,16 @@ const COLORS: string[] = [
 ];
 
 const isHex6 = (v: string): boolean => /^#[0-9a-fA-F]{6}$/.test(v);
+
+// v18.73: Ganzzahl aus einem Number-Input parsen und auf [0, max] begrenzen
+// (Untergrenze 0 — kleinere Werte während des Tippens erlaubt; das Rendering
+// fällt bei 0 auf die Default-Werte zurück). Bei leerer/ungültiger Eingabe
+// kommt der Fallback.
+const clampInt = (v: string, max: number, fallback: number): number => {
+  const n = parseInt(v, 10);
+  if (isNaN(n)) return fallback;
+  return Math.max(0, Math.min(max, n));
+};
 
 // v18.22: Farbwahl mit Swatches + nativem Farb-Picker + freiem Hex-Code.
 // `value` = aktuell aktive Farbe (für Highlight + Picker-Startwert).
@@ -173,6 +191,8 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     emailSubheading, onEmailSubheadingChange,
     emailSubheadingColor, emailSubheadingFontSize, emailSubheadingBold, emailSubheadingItalic,
     onEmailSubheadingColorChange, onEmailSubheadingFontSizeChange, onEmailSubheadingBoldChange, onEmailSubheadingItalicChange,
+    imageWidth, imagePaddingV, imagePaddingH,
+    onImageWidthChange, onImagePaddingVChange, onImagePaddingHChange,
     outlookHeading, onOutlookHeadingChange,
     outlookSubheading, onOutlookSubheadingChange,
     outlookSubject, onOutlookSubjectChange,
@@ -415,6 +435,8 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
           subheadingFontSize: emailSubheadingFontSize,
           subheadingBold: emailSubheadingBold,
           subheadingItalic: emailSubheadingItalic,
+          // v18.73: Header-Bild Größe + Innenabstand live mitvorschauen.
+          imageWidth, imagePaddingV, imagePaddingH,
         });
       return wrapped
         .replace(/\{\{LOGO_URL\}\}/g, logoBase64 || cachedLogo || '')
@@ -432,7 +454,8 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     const isAlreadyWrapped = /<!doctype|<html/i.test(bodyForOutlook);
     const wrapped = isAlreadyWrapped
       ? bodyForOutlook
-      : wrapTemplate('#86bc25', olHeading, olSub, bodyForOutlook);
+      // v18.73: Header-Bild Größe + Innenabstand live mitvorschauen.
+      : wrapTemplate('#86bc25', olHeading, olSub, bodyForOutlook, undefined, { imageWidth, imagePaddingV, imagePaddingH });
     return wrapped
       .replace(/\{\{LOGO_URL\}\}/g, logoBase64 || cachedLogo || '')
       .replace(/\{\{ORB_URL\}\}/g, imageBase64 || cachedOrb || '');
@@ -655,6 +678,61 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                     />
                   </div>
                 </>
+              )}
+
+              {/* v18.73: Header-Bild (Event-Bild) Größe + Innenabstand — gilt
+                  für Mail- UND Outlook-Kopf, daher in beiden Modi sichtbar. */}
+              {(previewMode === 'email' || previewMode === 'outlook') && onImageWidthChange && (
+                <div style={{ background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200, #eee)', borderRadius: 8, padding: '12px 14px' }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)', letterSpacing: 0.4, marginBottom: 6 }}>
+                    HEADER-BILD
+                  </div>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', margin: '0 0 10px', lineHeight: 1.45 }}>
+                    Größe und Innenabstand des Bildes im Kopf. Gilt für den <strong>Mail-</strong> und den <strong>Outlook-Termin-Kopf</strong>. Tipp: ein kleiner Innenabstand lässt das Bild fast bis an den Rand laufen.
+                  </p>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap' }}>
+                    <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.72rem', color: 'var(--dex-gray-600)' }}>
+                      Breite (px)
+                      <input
+                        type="number" min={80} max={600} step={10}
+                        value={imageWidth ?? 180}
+                        onChange={e => onImageWidthChange(clampInt(e.target.value, 600, 180))}
+                        style={{ width: 86, height: 30, fontSize: '0.82rem', borderRadius: 4, border: '1px solid var(--dex-gray-300)', padding: '0 8px' }}
+                      />
+                    </label>
+                    {onImagePaddingHChange && (
+                      <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.72rem', color: 'var(--dex-gray-600)' }}>
+                        Abstand seitlich (px)
+                        <input
+                          type="number" min={0} max={80} step={2}
+                          value={imagePaddingH ?? 30}
+                          onChange={e => onImagePaddingHChange(clampInt(e.target.value, 80, 30))}
+                          style={{ width: 86, height: 30, fontSize: '0.82rem', borderRadius: 4, border: '1px solid var(--dex-gray-300)', padding: '0 8px' }}
+                        />
+                      </label>
+                    )}
+                    {onImagePaddingVChange && (
+                      <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.72rem', color: 'var(--dex-gray-600)' }}>
+                        Abstand oben/unten (px)
+                        <input
+                          type="number" min={0} max={80} step={2}
+                          value={imagePaddingV ?? 30}
+                          onChange={e => onImagePaddingVChange(clampInt(e.target.value, 80, 30))}
+                          style={{ width: 86, height: 30, fontSize: '0.82rem', borderRadius: 4, border: '1px solid var(--dex-gray-300)', padding: '0 8px' }}
+                        />
+                      </label>
+                    )}
+                    <button
+                      type="button"
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => { onImageWidthChange(180); if (onImagePaddingHChange) onImagePaddingHChange(30); if (onImagePaddingVChange) onImagePaddingVChange(30); }}
+                      style={{ height: 30, padding: '0 12px', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', background: 'transparent', color: 'var(--dex-gray-600)', border: '1px solid var(--dex-gray-300)', borderRadius: 6 }}
+                      title="Auf die Standard-Werte zurücksetzen (Breite 180, Abstand 30)"
+                    >
+                      Standard
+                    </button>
+                  </div>
+                </div>
               )}
 
               {insertableVars.length > 0 && (

@@ -1019,7 +1019,7 @@ export default function EventCreationPage(): React.ReactElement {
           _splitDisplayOrderReversed,
           _requireSubEventSelection,
           _subEventsOnlyMode, _childEventTerm,
-          _inheritFlags,
+          _inheritFlags, _hideOrganizer, _headerImageLayout,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -1028,7 +1028,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _qrScanners; void _coOrganizers; void _testTeam;
         void _splitDisplayOrderReversed; void _requireSubEventSelection;
         void _subEventsOnlyMode; void _childEventTerm;
-        void _inheritFlags;
+        void _inheritFlags; void _hideOrganizer; void _headerImageLayout;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
     })() : {}
@@ -1046,6 +1046,29 @@ export default function EventCreationPage(): React.ReactElement {
     if (!editEvent?.emailTemplateOverrides) return '';
     try { const o = JSON.parse(editEvent.emailTemplateOverrides); return o._outlookLogo || ''; } catch { return ''; }
   });
+  // v18.73: Header-Bild (Event-Bild = {{ORB_URL}}) Größe + Innenabstand pro
+  // Event. Gilt für Mail- UND Outlook-Termin-Kopf. Persistiert als Piggyback
+  // `_headerImageLayout` in EmailTemplateOverrides. Default = bisheriges
+  // Layout (Breite 180, Innenabstand 30/30).
+  const [headerImageLayout, setHeaderImageLayout] = React.useState<{ width: number; paddingV: number; paddingH: number }>(() => {
+    const def = { width: 180, paddingV: 30, paddingH: 30 };
+    if (!editEvent?.emailTemplateOverrides) return def;
+    try {
+      const o = JSON.parse(editEvent.emailTemplateOverrides);
+      const il = o._headerImageLayout || {};
+      return {
+        width: typeof il.width === 'number' && il.width > 0 ? il.width : 180,
+        paddingV: typeof il.paddingV === 'number' && il.paddingV >= 0 ? il.paddingV : 30,
+        paddingH: typeof il.paddingH === 'number' && il.paddingH >= 0 ? il.paddingH : 30,
+      };
+    } catch { return def; }
+  });
+  // v18.73: Piggyback-Konfig für den Save (leer wenn alles auf Default steht —
+  // dann wird der Key gar nicht geschrieben). Wird in Create- UND Edit-Pfad
+  // sowie in die Sub-Event-Overrides gemerged.
+  const headerImageLayoutConfig = (headerImageLayout.width !== 180 || headerImageLayout.paddingV !== 30 || headerImageLayout.paddingH !== 30)
+    ? { _headerImageLayout: { width: headerImageLayout.width, paddingV: headerImageLayout.paddingV, paddingH: headerImageLayout.paddingH } }
+    : {};
   const [dragFieldId, setDragFieldId] = React.useState<string | null>(null);
   // v18.55: Pro-Feld Ein-/Ausklapp-Status für Schritt 5 (Felder). Default =
   // eingeklappt (kompakte Karte: nur Nummer + Label + Typ + Pflicht + Aktionen);
@@ -2359,7 +2382,8 @@ export default function EventCreationPage(): React.ReactElement {
         const resolvedBody = replacePlaceholders(subOutlookBodyRaw, vars);
         const resolvedHead = subOutlookHeading ? replacePlaceholders(subOutlookHeading, vars) : draft.title.trim();
         const resolvedSub2 = subOutlookSub ? replacePlaceholders(subOutlookSub, vars) : undefined;
-        const wrapped = buildOutlookBody(resolvedHead, resolvedBody, resolvedSub2);
+        // v18.73: Sub-Events erben das Header-Bild-Layout des Hauptevents.
+        const wrapped = buildOutlookBody(resolvedHead, resolvedBody, resolvedSub2, { imageWidth: headerImageLayout.width, imagePaddingV: headerImageLayout.paddingV, imagePaddingH: headerImageLayout.paddingH });
         wrappedSubOutlookBody = wrapped.replace(/\{\{ORB_URL\}\}/g, subOutlookLogo || getCachedOrbBase64() || '');
       }
       // Sub-Event-EmailTemplateOverrides: Logo-Piggybacks (Top-Level-Pattern)
@@ -2373,6 +2397,9 @@ export default function EventCreationPage(): React.ReactElement {
         ...subDraftOverrides,
         ...(subEmailLogo ? { _eventLogo: subEmailLogo } : {}),
         ...(subOutlookLogo ? { _outlookLogo: subOutlookLogo } : {}),
+        // v18.73: Sub-Event erbt das Header-Bild-Layout des Hauptevents, damit
+        // auch die Sub-Event-Mails den gleichen Bild-Kopf nutzen.
+        ...headerImageLayoutConfig,
       };
       const subEmailOverrides = Object.keys(subOverridesMerged).length > 0
         ? JSON.stringify(subOverridesMerged)
@@ -2956,7 +2983,8 @@ export default function EventCreationPage(): React.ReactElement {
         : defaultOutlookBody;
       const resolvedOlHeading = effOutlookHeading ? replacePlaceholders(effOutlookHeading, outlookVars) : title;
       const resolvedOlSub = effOutlookSubheading ? replacePlaceholders(effOutlookSubheading, outlookVars) : undefined;
-      const wrappedOutlook = buildOutlookBody(resolvedOlHeading, resolvedBody, resolvedOlSub);
+      // v18.73: Header-Bild Größe + Innenabstand (event-weit) in den Outlook-Body.
+      const wrappedOutlook = buildOutlookBody(resolvedOlHeading, resolvedBody, resolvedOlSub, { imageWidth: headerImageLayout.width, imagePaddingV: headerImageLayout.paddingV, imagePaddingH: headerImageLayout.paddingH });
       // v11.93: Top-Level-Logo aus dem Resolver — sonst würde beim Speichern
       // aus einem Sub-Tab das falsche Logo aufs Haupt-Event geschrieben.
       updates['OutlookBody'] = wrappedOutlook.replace(/\{\{ORB_URL\}\}/g, effOutlookLogo || getCachedOrbBase64() || '');
@@ -3022,7 +3050,7 @@ export default function EventCreationPage(): React.ReactElement {
         : {};
       // v18.9: Organizer-Anzeige ausblenden (Piggyback).
       const hideOrganizerConfig = hideOrganizer ? { _hideOrganizer: true } : {};
-      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0)
+      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0 || Object.keys(headerImageLayoutConfig).length > 0)
         ? JSON.stringify({
             ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
             ...(effOutlookLogo ? { _outlookLogo: effOutlookLogo } : {}),
@@ -3035,6 +3063,8 @@ export default function EventCreationPage(): React.ReactElement {
             ...subEventsOnlyConfig,
             ...childTermConfig,
             ...hideOrganizerConfig,
+            // v18.73: Header-Bild-Layout (Breite + Innenabstand) — event-weit.
+            ...headerImageLayoutConfig,
             ...topOverrides,
           })
         : '';
@@ -3492,7 +3522,8 @@ export default function EventCreationPage(): React.ReactElement {
           const resolvedBody = effOutlookBody ? replacePlaceholders(effOutlookBody, vars) : defaultBody;
           const resolvedHeading = effOutlookHeading ? replacePlaceholders(effOutlookHeading, vars) : title;
           const resolvedSub = effOutlookSubheading ? replacePlaceholders(effOutlookSubheading, vars) : undefined;
-          const wrapped = buildOutlookBody(resolvedHeading, resolvedBody, resolvedSub);
+          // v18.73: Header-Bild Größe + Innenabstand (event-weit) in den Outlook-Body.
+          const wrapped = buildOutlookBody(resolvedHeading, resolvedBody, resolvedSub, { imageWidth: headerImageLayout.width, imagePaddingV: headerImageLayout.paddingV, imagePaddingH: headerImageLayout.paddingH });
           // v11.93: Logo aus Top-Level-Resolver, sonst landet beim Speichern
           // aus einem Sub-Tab das Sub-Logo aufs Haupt-Event.
           return wrapped.replace(/\{\{ORB_URL\}\}/g, effOutlookLogo || getCachedOrbBase64() || '');
@@ -3542,7 +3573,7 @@ export default function EventCreationPage(): React.ReactElement {
           // v18.9: Organizer-Anzeige ausblenden (Piggyback).
           const hideOrganizerExtra = hideOrganizer ? { _hideOrganizer: true } : {};
           // v11.93: Top-Level-Logos aus dem Resolver lesen.
-          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0 || Object.keys(hideOrganizerExtra).length > 0;
+          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0 || Object.keys(hideOrganizerExtra).length > 0 || Object.keys(headerImageLayoutConfig).length > 0;
           return hasAny
             ? JSON.stringify({
                 ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
@@ -3556,6 +3587,8 @@ export default function EventCreationPage(): React.ReactElement {
                 ...subEvtsOnlyExtra,
                 ...childTermExtra,
                 ...hideOrganizerExtra,
+                // v18.73: Header-Bild-Layout (Breite + Innenabstand) — event-weit.
+                ...headerImageLayoutConfig,
                 ...emailTemplateOverrides,
               })
             : '';
@@ -5389,6 +5422,66 @@ export default function EventCreationPage(): React.ReactElement {
                       : (isDe ? 'Keine Beschreibung gesetzt — klicke „Bearbeiten" zum Hinzufügen.' : 'No description set — click „Edit" to add one.')}
                   </span>
                 </div>
+                {/* v18.73: Hinweis, wenn Name/Datum/Ort des Events redundant in
+                    der Beschreibung stehen — die werden bereits separat auf der
+                    Anmelde-Seite angezeigt. Mit klickbarem Beispieltext. */}
+                {(() => {
+                  const plain = (description || '')
+                    .replace(/<[^>]+>/g, ' ')
+                    .replace(/&nbsp;/gi, ' ')
+                    .replace(/\s+/g, ' ')
+                    .toLowerCase();
+                  if (plain.trim().length < 8) return null;
+                  const hits: string[] = [];
+                  const tl = title.trim().toLowerCase();
+                  if (tl.length >= 4 && plain.indexOf(tl) >= 0) hits.push(isDe ? 'der Event-Name' : 'the event name');
+                  const locl = location.trim().toLowerCase();
+                  if (locl.length >= 4 && plain.indexOf(locl) >= 0) hits.push(isDe ? 'der Ort' : 'the location');
+                  if (startDate) {
+                    const d = new Date(startDate);
+                    if (!isNaN(d.getTime())) {
+                      const dd = String(d.getDate()).padStart(2, '0');
+                      const mm = String(d.getMonth() + 1).padStart(2, '0');
+                      const yyyy = String(d.getFullYear());
+                      const monthsDe = ['januar', 'februar', 'märz', 'april', 'mai', 'juni', 'juli', 'august', 'september', 'oktober', 'november', 'dezember'];
+                      const monthsEn = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+                      const mn = (isDe ? monthsDe : monthsEn)[d.getMonth()];
+                      const pats = [`${dd}.${mm}.${yyyy}`, `${dd}.${mm}.`, `${d.getDate()}. ${mn}`, `${d.getDate()}.${mn}`, `${d.getDate()} ${mn}`];
+                      if (pats.some(p => plain.indexOf(p) >= 0)) hits.push(isDe ? 'das Datum' : 'the date');
+                    }
+                  }
+                  if (hits.length === 0) return null;
+                  const joined = hits.length === 1
+                    ? hits[0]
+                    : hits.slice(0, -1).join(', ') + (isDe ? ' und ' : ' and ') + hits[hits.length - 1];
+                  const exampleHtml = isDe
+                    ? 'Liebe Kolleginnen und Kollegen,<br><br>wir freuen uns sehr, euch herzlich einzuladen! Es erwartet euch ein abwechslungsreiches Programm mit viel Raum für Austausch und Begegnung.<br><br>Wir freuen uns auf einen schönen gemeinsamen Tag mit euch!'
+                    : 'Dear colleagues,<br><br>we are delighted to invite you! Look forward to a varied programme with plenty of room for exchange and networking.<br><br>We can&rsquo;t wait to see you there!';
+                  return (
+                    <div style={{ marginTop: 12, padding: '12px 14px', background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange, #ed8b00)', borderRadius: 8, fontSize: '0.82rem', color: 'var(--dex-gray-800)', lineHeight: 1.5 }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                        <Icon iconName="Info" style={{ fontSize: 15, color: 'var(--dex-orange, #ed8b00)', marginTop: 2 }} />
+                        <div style={{ flex: 1 }}>
+                          {isDe
+                            ? <>In der Beschreibung steht offenbar <strong>{joined}</strong>. <strong>Name, Datum und Ort</strong> des Events werden bereits <strong>separat</strong> auf der Anmelde-Seite angezeigt — du musst sie hier nicht wiederholen. Nutze die Beschreibung lieber für einen einladenden, inhaltlichen Text.</>
+                            : <>Your description appears to contain <strong>{joined}</strong>. The event&rsquo;s <strong>name, date and location</strong> are already shown <strong>separately</strong> on the registration page — no need to repeat them here. Use the description for an inviting, substantive text instead.</>}
+                          <div style={{ marginTop: 8 }}>
+                            <button
+                              type="button"
+                              onClick={() => setDescription(exampleHtml)}
+                              style={{ display: 'block', width: '100%', textAlign: 'left', fontSize: '0.78rem', cursor: 'pointer', background: '#fff', border: '1px dashed var(--dex-orange, #ed8b00)', borderRadius: 6, padding: '8px 10px', color: 'var(--dex-gray-700)', lineHeight: 1.45 }}
+                              title={isDe ? 'Diesen Beispieltext übernehmen' : 'Use this example text'}
+                            >
+                              <span style={{ fontWeight: 600, color: 'var(--dex-orange, #ed8b00)' }}>{isDe ? 'Beispiel (klicken zum Übernehmen):' : 'Example (click to apply):'}</span>
+                              <br />
+                              <span style={{ fontStyle: 'italic' }} dangerouslySetInnerHTML={{ __html: exampleHtml }} />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="form-group">
@@ -12084,6 +12177,12 @@ export default function EventCreationPage(): React.ReactElement {
             onEmailSubheadingFontSizeChange={(!isOutlook && !isDescription) ? (px) => patchOverride({ subheadingFontSize: px }) : undefined}
             onEmailSubheadingBoldChange={(!isOutlook && !isDescription) ? (b) => patchOverride({ subheadingBold: b }) : undefined}
             onEmailSubheadingItalicChange={(!isOutlook && !isDescription) ? (b) => patchOverride({ subheadingItalic: b }) : undefined}
+            imageWidth={!isDescription ? headerImageLayout.width : undefined}
+            imagePaddingV={!isDescription ? headerImageLayout.paddingV : undefined}
+            imagePaddingH={!isDescription ? headerImageLayout.paddingH : undefined}
+            onImageWidthChange={!isDescription ? (w) => setHeaderImageLayout(p => ({ ...p, width: w })) : undefined}
+            onImagePaddingVChange={!isDescription ? (v) => setHeaderImageLayout(p => ({ ...p, paddingV: v })) : undefined}
+            onImagePaddingHChange={!isDescription ? (h) => setHeaderImageLayout(p => ({ ...p, paddingH: h })) : undefined}
             outlookHeading={isOutlook ? outlookHeading : undefined}
             onOutlookHeadingChange={isOutlook ? setOutlookHeading : undefined}
             outlookSubheading={isOutlook ? outlookSubheading : undefined}

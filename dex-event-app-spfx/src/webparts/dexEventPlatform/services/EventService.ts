@@ -4795,6 +4795,9 @@ export class EventService {
       { title: 'Status', type: 6, choices: ['Pending', 'Approved', 'Rejected'], metaType: 'SP.FieldChoice' },
       { title: 'DecidedDate', type: 4 },
       { title: 'DecidedByEmail', type: 2 },
+      // v18.73: event-spezifische Antworten des Anfragenden als JSON — werden
+      // beim Approve auf den neuen Member angewandt (Note = multi-line text).
+      { title: 'CustomData', type: 3 },
     ];
 
     for (const f of fields) {
@@ -4829,6 +4832,8 @@ export class EventService {
     const wanted = [
       { title: 'DecidedDate', type: 4 },
       { title: 'DecidedByEmail', type: 2 },
+      // v18.73: CustomData-Spalte auf Bestands-Listen nachziehen.
+      { title: 'CustomData', type: 3 },
     ];
     for (const f of wanted) {
       try {
@@ -4933,6 +4938,8 @@ export class EventService {
     teamId: string;
     requesterEmail: string;
     requesterDisplayName: string;
+    // v18.73: event-spezifische Antworten als JSON (optional).
+    customData?: string;
   }): Promise<{ ok: boolean; itemId?: number }> {
     try {
       const payload = {
@@ -4943,6 +4950,7 @@ export class EventService {
         'RequesterEmail': args.requesterEmail,
         'RequesterDisplayName': args.requesterDisplayName,
         'Status': 'Pending',
+        ...(args.customData ? { 'CustomData': args.customData } : {}),
       };
       const resp = await this._post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_TeamJoinRequests')/items`,
@@ -4970,7 +4978,7 @@ export class EventService {
     eventId?: string;
     teamId?: string;
     status?: 'Pending' | 'Approved' | 'Rejected';
-  }): Promise<Array<{ Id: number; EventId: string; TeamId: string; RequesterEmail: string; RequesterDisplayName: string; Status: string; Created: string; DecidedDate?: string; DecidedByEmail?: string }>> {
+  }): Promise<Array<{ Id: number; EventId: string; TeamId: string; RequesterEmail: string; RequesterDisplayName: string; Status: string; Created: string; DecidedDate?: string; DecidedByEmail?: string; CustomData?: string }>> {
     try {
       const clauses: string[] = [];
       if (args.eventId) clauses.push(`EventId eq '${args.eventId.replace(/'/g, "''")}'`);

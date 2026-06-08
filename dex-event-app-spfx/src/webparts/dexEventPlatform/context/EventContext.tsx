@@ -41,7 +41,7 @@ export function applyEventTemplateOverride(
   spTemplate: { subject: string; headingColor: string; heading: string; subheading?: string; bodyHtml: string } | null,
   overridesJson: string | undefined,
   templateType: string
-): { subject: string; headingColor: string; heading: string; subheading: string; bodyHtml: string; headingFontSize?: string; headingBold?: boolean; headingItalic?: boolean; subheadingColor?: string; subheadingFontSize?: string; subheadingBold?: boolean; subheadingItalic?: boolean } | null {
+): { subject: string; headingColor: string; heading: string; subheading: string; bodyHtml: string; headingFontSize?: string; headingBold?: boolean; headingItalic?: boolean; subheadingColor?: string; subheadingFontSize?: string; subheadingBold?: boolean; subheadingItalic?: boolean; imageWidth?: number; imagePaddingV?: number; imagePaddingH?: number } | null {
   // v15.19: Subheading-Override pro Event mitziehen. Color/Size bleiben
   // weiterhin aus dem Standard-Template (wrapTemplate-Layout fest), nur
   // die Text-Werte (Subject, Heading, Subheading, Body) sind editierbar.
@@ -57,6 +57,17 @@ export function applyEventTemplateOverride(
   }
   try {
     const all = JSON.parse(overridesJson) as Record<string, { subject?: string; heading?: string; subheading?: string; bodyHtml?: string; headingColor?: string; headingFontSize?: string; headingBold?: boolean; headingItalic?: boolean; subheadingColor?: string; subheadingFontSize?: string; subheadingBold?: boolean; subheadingItalic?: boolean }>;
+    // v18.73: globales Header-Bild-Layout (Breite + Innenabstand). Liegt unter
+    // dem reservierten Piggyback-Key `_headerImageLayout` und gilt für ALLE
+    // Template-Typen des Events — daher hier einmal gelesen und in jeden
+    // Rückgabe-Zweig gespreadet (auch wenn der konkrete Typ keinen Text-
+    // Override hat).
+    const il = (all as unknown as { _headerImageLayout?: { width?: number; paddingV?: number; paddingH?: number } })._headerImageLayout || {};
+    const imgSpread = {
+      ...(typeof il.width === 'number' && il.width > 0 ? { imageWidth: il.width } : {}),
+      ...(typeof il.paddingV === 'number' && il.paddingV >= 0 ? { imagePaddingV: il.paddingV } : {}),
+      ...(typeof il.paddingH === 'number' && il.paddingH >= 0 ? { imagePaddingH: il.paddingH } : {}),
+    };
     const o = all[templateType];
     if (!o || (!o.subject && !o.heading && o.subheading === undefined && !o.bodyHtml && !o.headingColor && !o.headingFontSize && o.headingBold === undefined && o.headingItalic === undefined && !o.subheadingColor && !o.subheadingFontSize && o.subheadingBold === undefined && o.subheadingItalic === undefined)) {
       if (!spTemplate) return null;
@@ -66,6 +77,7 @@ export function applyEventTemplateOverride(
         heading: spTemplate.heading,
         subheading: spTemplate.subheading || '',
         bodyHtml: spTemplate.bodyHtml,
+        ...imgSpread,
       };
     }
     return {
@@ -85,6 +97,7 @@ export function applyEventTemplateOverride(
       ...(o.subheadingFontSize ? { subheadingFontSize: o.subheadingFontSize } : {}),
       ...(o.subheadingBold !== undefined ? { subheadingBold: o.subheadingBold } : {}),
       ...(o.subheadingItalic !== undefined ? { subheadingItalic: o.subheadingItalic } : {}),
+      ...imgSpread,
     };
   } catch {
     if (!spTemplate) return null;
@@ -238,7 +251,7 @@ interface EventContextType {
    *  zum bereits angemeldeten Team hinzufuegen (Plus-Button in MyEvents).
    *  Atomar einen Sitzplatz reservieren, neuen Member-Eintrag anlegen,
    *  Bestaetigungs-Mail + Outlook-Termin queuen. */
-  addTeamMember: (eventId: string, teamId: string, teamName: string | undefined, member: { email: string; displayName: string }) => Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
+  addTeamMember: (eventId: string, teamId: string, teamName: string | undefined, member: { email: string; displayName: string }, customData?: Record<string, string>) => Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
   /** v17.2: Schon angemeldete Person (ohne TeamId) einem Team zuweisen.
    *  PATCHt nur die TeamId/TeamName/TeamLead-Felder, KEINE neue
    *  Registrierung, KEINE Bestaetigungsmail, KEIN Outlook. */
@@ -247,7 +260,7 @@ interface EventContextType {
    *  Organizer "Beitritt erfordert Bestaetigung" NICHT aktiviert hat).
    *  Verhalten wie `addTeamMember`, aber laeuft mit dem eingeloggten User
    *  selbst als neuem Member. */
-  joinTeam: (eventId: string, teamId: string, teamName: string | undefined) => Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
+  joinTeam: (eventId: string, teamId: string, teamName: string | undefined, customData?: Record<string, string>) => Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
   /** v11.84: Team-Lead-Rolle innerhalb eines Teams uebergeben — nur im
    *  Admin Center fuer Admin/Organizer eigener Events sichtbar. Setzt die
    *  alte Lead-Zeile auf TeamLead=false und die neue auf TeamLead=true,
@@ -255,7 +268,7 @@ interface EventContextType {
   transferTeamLead: (eventId: string, teamId: string, newLeadEmail: string) => Promise<{ ok: boolean; reason?: string }>;
   /** v11.83: Beitritts-Anfrage in DEX_TeamJoinRequests einreichen — fuer
    *  Events bei denen der Organizer Approval aktiviert hat. */
-  createTeamJoinRequest: (eventId: string, teamId: string) => Promise<{ ok: boolean; itemId?: number; reason?: string }>;
+  createTeamJoinRequest: (eventId: string, teamId: string, customData?: Record<string, string>) => Promise<{ ok: boolean; itemId?: number; reason?: string }>;
   /** v11.83: Pending-Beitritts-Anfragen abrufen (nur fuer den
    *  eingeloggten User als Team-Lead — Filter auf TeamId, das er selber
    *  fuehrt). */
@@ -1625,7 +1638,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     eventId: string,
     teamId: string,
     teamName: string | undefined,
-    member: { email: string; displayName: string }
+    member: { email: string; displayName: string },
+    // v18.73: optionale event-spezifische Antworten des Beitretenden — werden
+    // beim Insert mitgeschrieben (vorher immer leer). Genutzt vom Self-Join
+    // über die Anmeldeseite, damit der Beitritt die Pflicht-Custom-Felder nicht
+    // mehr überspringt.
+    customData?: Record<string, string>
   ): Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }> {
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return { ok: false, reason: 'event-not-found' };
@@ -1689,7 +1707,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       teamId,
       teamLead: false,
       teamName,
-      customData: {},
+      customData: customData || {},
       starterType: effectiveStarterType,
       preferredStarterType: inheritedStarterType || undefined,
       registeredByName: currentUserName,
@@ -1828,12 +1846,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   async function joinTeam(
     eventId: string,
     teamId: string,
-    teamName: string | undefined
+    teamName: string | undefined,
+    // v18.73: event-spezifische Antworten des Beitretenden durchreichen.
+    customData?: Record<string, string>
   ): Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }> {
     return addTeamMember(eventId, teamId, teamName, {
       email: currentUserEmail,
       displayName: currentUserName,
-    });
+    }, customData);
   }
 
   /**
@@ -1935,7 +1955,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
    */
   async function createTeamJoinRequest(
     eventId: string,
-    teamId: string
+    teamId: string,
+    // v18.73: event-spezifische Antworten des Anfragenden — werden in der
+    // Request-Zeile gespeichert und beim Approve auf den neuen Member angewandt.
+    customData?: Record<string, string>
   ): Promise<{ ok: boolean; itemId?: number; reason?: string }> {
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return { ok: false, reason: 'event-not-found' };
@@ -1957,6 +1980,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       teamId,
       requesterEmail: currentUserEmail,
       requesterDisplayName: currentUserName,
+      // v18.73: Antworten als JSON mitschreiben (leer = '{}').
+      customData: JSON.stringify(customData || {}),
     });
     if (!result.ok) return { ok: false, reason: 'queue-failed' };
 
@@ -2037,10 +2062,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // Bestehenden Team-Namen ableiten.
       const members = await eventService.getTeamMembers(subsiteUrl, req.TeamId);
       const teamName = members.find(m => !!m.TeamName)?.TeamName || '';
+      // v18.73: bei der Anfrage gespeicherte event-spezifische Antworten
+      // wiederherstellen und auf den neuen Member anwenden.
+      let reqCustomData: Record<string, string> | undefined;
+      try { reqCustomData = req.CustomData ? JSON.parse(req.CustomData) : undefined; } catch { reqCustomData = undefined; }
       const addRes = await addTeamMember(req.EventId, req.TeamId, teamName || undefined, {
         email: req.RequesterEmail,
         displayName: req.RequesterDisplayName,
-      });
+      }, reqCustomData);
       if (!addRes.ok) {
         // Wir markieren die Anfrage trotzdem als Approved, wenn der Add
         // fehlschlug — der Lead bekommt ein UI-Feedback und kann manuell
