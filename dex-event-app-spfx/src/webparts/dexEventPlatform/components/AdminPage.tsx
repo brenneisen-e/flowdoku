@@ -1530,8 +1530,10 @@ export default function AdminPage(): React.ReactElement {
     // die Warteliste, deshalb sind die drei Audit-Spalten ohne Inhalt.
     if (selectedEvent?.waitlistEnabled && (selectedEvent?.maxParticipants || 0) > 0) {
       cols.push({ id: 'promotedDate', label: 'Nachgerückt am' });
-      cols.push({ id: 'replaced', label: 'Ersetzt' });
-      cols.push({ id: 'replacedBy', label: 'Ersetzt durch' });
+      // v19.4: „Hat ersetzt" = die abgemeldete Person, deren Platz diese Person
+      // übernommen hat. „Wurde ersetzt durch" wandert in die Abmeldungen-Tabelle
+      // (gehört zur abgemeldeten Person, nicht zur aktiven).
+      cols.push({ id: 'replaced', label: 'Hat ersetzt' });
     }
     cols.push({ id: 'registeredBy', label: 'Registriert von' });
     // v16.1: Team-Spalte — zeigt pro Teilnehmer den Team-Namen (falls Team-
@@ -5644,8 +5646,8 @@ export default function AdminPage(): React.ReactElement {
                 }
                 if (id === 'replaced') {
                   return (
-                    <th key={id} style={baseStyle} title={isDe ? 'Wessen Abmeldung diesen Promote ausgelöst hat. Nur gesetzt für nachgerückte Personen.' : 'Whose cancellation triggered this promotion. Only set for promoted people.'}>
-                      {isDe ? 'Ersetzt' : 'Replaced'}{hideButton(id)}
+                    <th key={id} style={baseStyle} title={isDe ? 'Die abgemeldete Person, deren Platz diese Person übernommen hat. Nur gesetzt für nachgerückte Personen.' : 'The cancelled person whose seat this person took. Only set for promoted people.'}>
+                      {isDe ? 'Hat ersetzt' : 'Replaced'}{hideButton(id)}
                     </th>
                   );
                 }
@@ -6175,7 +6177,7 @@ export default function AdminPage(): React.ReactElement {
                             try {
                               const ok = await eventServiceRef.queueIDReorder(
                                 selectedEvent.id, selectedEvent.eventNumber || 0,
-                                selectedEvent.subsiteUrl, selectedEvent.title, name
+                                selectedEvent.subsiteUrl, selectedEvent.title, name, reg.ParticipantEmail || undefined
                               );
                               if (!ok) {
                                 console.warn('[DEX] queueIDReorder returned false');
@@ -6510,7 +6512,8 @@ export default function AdminPage(): React.ReactElement {
                                     const ok = await eventServiceRef.queueIDReorder(
                                       selectedEvent.id, selectedEvent.eventNumber || 0,
                                       selectedEvent.subsiteUrl, selectedEvent.title,
-                                      `${reg.Vorname || ''} ${reg.Nachname || ''}`.trim() || reg.ParticipantName || undefined
+                                      `${reg.Vorname || ''} ${reg.Nachname || ''}`.trim() || reg.ParticipantName || undefined,
+                                      reg.ParticipantEmail || undefined
                                     );
                                     if (!ok) {
                                       alert(isDe ? 'Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.' : 'Cancellation successful, but the ID reorder entry could not be written to the queue. Please click "Reassign IDs" once.');
@@ -6609,6 +6612,9 @@ export default function AdminPage(): React.ReactElement {
                       <th style={thClickable} onClick={() => toggleSort('location')}>Standort{arrow('location')}</th>
                       <th style={thClickable} onClick={() => toggleSort('type')}>{isDe ? 'Art' : 'Type'}{arrow('type')}</th>
                       <th style={thClickable} onClick={() => toggleSort('date')}>{isDe ? 'Abgemeldet am' : 'Cancelled on'}{arrow('date')}</th>
+                      {/* v19.4: „Wurde ersetzt durch" — die nachgerückte Person, die
+                          den frei gewordenen Platz übernommen hat (vom Flow gesetzt). */}
+                      <th style={{ ...thClickable, cursor: 'default' }}>{isDe ? 'Wurde ersetzt durch' : 'Replaced by'}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -6629,6 +6635,15 @@ export default function AdminPage(): React.ReactElement {
                               : <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(218,41,28,0.08)', color: 'var(--dex-red, #da291c)' }}>{isDe ? 'Abgemeldet' : 'Cancelled'}</span>}
                           </td>
                           <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.CancellationDate)}</td>
+                          <td style={{ padding: 8, color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.8rem' }}>
+                            {(() => {
+                              const email = (anyReg.ReplacedByParticipantEmail as string | undefined) || '';
+                              if (!email) return <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
+                              const other = registrations.find(r => (r.ParticipantEmail || '').toLowerCase() === email.toLowerCase());
+                              const label = other ? (((other.Vorname || '') + ' ' + (other.Nachname || '')).trim() || other.ParticipantName || email) : email;
+                              return <span title={email}>{label}</span>;
+                            })()}
+                          </td>
                         </tr>
                       );
                     })}

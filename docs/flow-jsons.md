@@ -309,6 +309,45 @@ bzw. `Get_Waitlist_First_Funstarter` ersetzen.
 Sobald im Tenant umgesetzt: bitte den Flow-JSON zurückschicken, dann pflege ich
 den finalen Stand hier ein.
 
+### UI-Anleitung 2026-06-08 (v19.5) — Nachrück-Audit in die App schreiben (Nachgerückt am / Hat ersetzt / Wurde ersetzt durch)
+
+**Ziel:** Wenn der Flow jemanden von der Warteliste nachrückt, soll das in der
+App-Teilnehmerliste sichtbar werden:
+- auf der **nachgerückten (aktiven) Person:** `PromotedDate` (→ „Nachgerückt am")
+  + `ReplacedParticipantEmail` (→ „Hat ersetzt" = die abgemeldete Person).
+- auf der **abgemeldeten Person:** `ReplacedByParticipantEmail` (→ „Wurde ersetzt
+  durch" = die nachgerückte Person). („Abgemeldet am" = `CancellationDate` setzt
+  bereits die App.)
+
+**App-Voraussetzung (erledigt mit v19.5):** Die App schreibt jetzt beim Anlegen
+des `DEX_IDReorder`-Trigger-Items zusätzlich **`CancelledEmail`** (E-Mail der
+abgemeldeten Person) — der Flow kann sie direkt aus dem Trigger lesen
+(`triggerOutputs()?['body/CancelledEmail']`). Außerdem legen `createRegistrationList`
+und „Spalten fixen" die drei Audit-Spalten auf der Teilnehmerliste an → **einmal
+„Spalten fixen" pro Bestands-Event** laufen lassen.
+
+**Stufe 1 (einfach) — auf der nachgerückten Person.** In der Promote-Action des
+jeweiligen Zweigs (`Promote_Waitlist` / `Promote_Durchstarter` /
+`Promote_Funstarter`, die `Status='Angemeldet'` setzt) **zwei Felder ergänzen**
+(jeweils über den Expression-Tab fx):
+- `PromotedDate` = `utcNow()`
+- `ReplacedParticipantEmail` = `triggerOutputs()?['body/CancelledEmail']`
+
+**Stufe 2 (eine Action mehr) — auf der abgemeldeten Person.** Pro Zweig nach der
+Promote-Action eine **„Element aktualisieren"** (Update item) auf die
+Teilnehmerliste, Item-Id = die der abgemeldeten Person. Wenn die abgemeldete
+Person nicht ohnehin schon als Variable vorliegt: davor eine **„Elemente
+abrufen"** auf die Teilnehmerliste mit Filter
+`ParticipantEmail eq '@{triggerOutputs()?['body/CancelledEmail']}'`, dann Update
+auf `first(...)?['ID']`. Feld:
+- `ReplacedByParticipantEmail` = E-Mail der nachgerückten Person
+  (`first(body('Get_Waitlist_First')?['d']?['results'])?['ParticipantEmail']` —
+  in den Split-Zweigen `Get_Waitlist_First_Durchstarter` /
+  `_Funstarter`).
+
+Beide Werte sind spiegelbildlich. Sobald im Tenant umgesetzt: Flow-JSON
+zurückschicken, dann wird der finale Stand hier eingepflegt.
+
 ### UI-Anleitung 2026-06-02 (v18.55) — Paginierung: alle Teilnehmer laden (>1.000 / ILS-Listen)
 
 **Problem:** `Get_Enrolled_Participants` ist ein **einzelner** HTTP-GET

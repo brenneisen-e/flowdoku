@@ -2322,7 +2322,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         if (subsiteUrl) {
           try {
             const reorderOk = await eventService.queueIDReorder(
-              eventId, event.eventNumber || 0, subsiteUrl, event.title, currentUserName
+              eventId, event.eventNumber || 0, subsiteUrl, event.title, currentUserName, currentUserEmail
             );
             if (!reorderOk) console.warn('[DEX] queueIDReorder returned false');
           } catch (err) { console.warn('[DEX] queueIDReorder failed:', err); }
@@ -2466,7 +2466,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         try {
           await eventService.queueIDReorder(
             eventId, event.eventNumber || 0, subsiteUrl, event.title,
-            `${memberRegistration.Vorname || ''} ${memberRegistration.Nachname || ''}`.trim() || memberRegistration.ParticipantName || undefined
+            `${memberRegistration.Vorname || ''} ${memberRegistration.Nachname || ''}`.trim() || memberRegistration.ParticipantName || undefined,
+            memberRegistration.ParticipantEmail || undefined
           );
         } catch (err) { console.warn('[DEX] queueIDReorder (team-lead cancel) failed:', err); }
         try {

@@ -160,12 +160,19 @@ export default function RegistrationPage(): React.ReactElement {
     return fallback;
   }, [useEnVariants]);
 
-  // Per-Event-Organizer-Check: ist der eingeloggte User in event.organizerEmails?
-  // Nur dann darf er a) nach Deadline registrieren und b) "Register for another
-  // person" nutzen. Ein Organizer von EVENT A darf NICHT fuer EVENT B solche
-  // Admin-Aktionen ausfuehren. Admin darf global alles.
+  // Per-Event-Organizer-Check: ist der eingeloggte User Haupt- ODER Co-Organizer
+  // dieses Events? Nur dann darf er a) nach Deadline registrieren und b)
+  // "Register for another person" nutzen. Ein Organizer von EVENT A darf NICHT
+  // fuer EVENT B solche Admin-Aktionen ausfuehren. Admin darf global alles.
+  // v19.6: Co-Organizer (event.coOrganizerEmails) zaehlen hier ausdruecklich
+  // mit — vorher sah ein Co-Organizer den „Für andere registrieren"-Button
+  // nicht, obwohl er das Event mitorganisiert. Serverseitig wird derselbe
+  // Personenkreis in canRegisterForOthers() akzeptiert.
   const currentEmailLc = (currentUser.email || '').toLowerCase();
-  const isEventOrganizer = !!event && event.organizerEmails.some(e => e.toLowerCase() === currentEmailLc);
+  const isEventOrganizer = !!event && (
+    event.organizerEmails.some(e => (e || '').toLowerCase() === currentEmailLc) ||
+    (event.coOrganizerEmails || []).some(e => (e || '').toLowerCase() === currentEmailLc)
+  );
   const isOrganizer = isEventOrganizer; // alten Namen behalten fuer Referenzen unten
   const canCreateEvents = isEventOrganizer || isAdmin; // statt tenant-weitem Organizer
 
@@ -693,6 +700,15 @@ export default function RegistrationPage(): React.ReactElement {
   const [confirmDraftSessions, setConfirmDraftSessions] = React.useState<Set<string>>(new Set());
   const confirmDialogConfirmedRef = React.useRef(false);
   const externalEmailConfirmedRef = React.useRef(false);
+  // v19.6: Bei stellvertretender Anmeldung einer INTERNEN Person (Deloitte)
+  // fragt nach dem „Anmelden"-Klick ein Modal, ob der/die Anmeldende (Organizer,
+  // Co-Organizer oder Assistenz) selbst auf CC der Bestätigungs-Mail gesetzt
+  // werden soll. ccSelfDecidedRef merkt sich, dass die Frage in diesem
+  // Submit-Durchlauf bereits beantwortet wurde (analog confirmDialogConfirmedRef);
+  // ccSelfRef haelt die Entscheidung (true = auf CC).
+  const [ccSelfModalOpen, setCcSelfModalOpen] = React.useState(false);
+  const ccSelfDecidedRef = React.useRef(false);
+  const ccSelfRef = React.useRef(false);
 
   const handleSubmit = async (): Promise<void> => {
     // v17.25: Demo-Showcase-Event — keine echte Anmeldung. Freundlicher
@@ -741,6 +757,20 @@ export default function RegistrationPage(): React.ReactElement {
     }
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       setError(t('reg.invalidemail') || 'Ungültige E-Mail-Adresse');
+      return;
+    }
+
+    // v19.6: Stellvertretende Anmeldung — verhindern, dass der Organizer
+    // versehentlich SICH SELBST als „andere Person" einträgt. Im
+    // „Für andere registrieren"-Modus MUSS eine andere Person ausgewählt sein.
+    // Ist die Teilnehmer-E-Mail leer ODER identisch zur eigenen, läuft sonst die
+    // Doppel-Anmelde-Prüfung gegen den eingeloggten User und meldet
+    // irreführend „bereits angemeldet" (Beobachtung des Users: „bei einer
+    // Anmeldung einer dritten Person wird weiterhin geprüft, ob ich selber
+    // angemeldet werde"). Hier klar abbrechen statt still die Selbst-Prüfung
+    // auszulösen.
+    if (registerForOther && email.trim().toLowerCase() === (currentUser.email || '').toLowerCase()) {
+      setError(t('reg.error.selfasother'));
       return;
     }
 
@@ -948,6 +978,16 @@ export default function RegistrationPage(): React.ReactElement {
       return;
     }
 
+    // v19.6: Stellvertretende Anmeldung einer INTERNEN Person — fragen, ob
+    // der/die Anmeldende selbst auf CC der Bestätigungs-Mail soll. Nur einmal
+    // pro Submit-Durchlauf (ccSelfDecidedRef); externe Personen sind ausgenommen
+    // (dort ist der Organizer-Kreis ohnehin schon auf CC). Nach der Entscheidung
+    // läuft handleSubmit erneut und überspringt das Modal.
+    if (registerForOther && !externalPerson && !ccSelfDecidedRef.current) {
+      setCcSelfModalOpen(true);
+      return;
+    }
+
     await performRegistration(preferredStarterType);
   };
 
@@ -1073,6 +1113,14 @@ export default function RegistrationPage(): React.ReactElement {
       const firstTrim = firstName.trim();
       const surnameTrim = surname.trim();
 
+      // v19.6: CC-Wunsch bei stellvertretender INTERNER Anmeldung. Wenn der/die
+      // Anmeldende im Modal „Ja, auf CC" gewählt hat, landet die eigene E-Mail
+      // als CC auf der Bestätigungs-Mail (NICHT im Outlook-Termin — wie bei den
+      // Feld-CCs). Externe Anmeldungen sind ausgenommen.
+      const ccSelfEmail = (registerForOther && !externalPerson && ccSelfRef.current)
+        ? (currentUser.email || '').trim()
+        : '';
+
       let anySuccess = false;
       let parentOk = true;
 
@@ -1112,7 +1160,10 @@ export default function RegistrationPage(): React.ReactElement {
           starterTypeToUse || undefined,
           // v18.74: Bei stellvertretender Anmeldung den Zustimmungs-Nachweis
           // mitschreiben (Pflicht-Checkbox wurde oben validiert).
-          registerForOther ? { proxyConsentConfirmed: true } : undefined
+          // v19.6: ccSelfEmail (Anmeldende:r auf CC der Bestätigungs-Mail).
+          registerForOther
+            ? { proxyConsentConfirmed: true, ...(ccSelfEmail ? { extraCc: ccSelfEmail } : {}) }
+            : undefined
         );
         parentOk = parentResult.ok;
         if (parentOk) {
@@ -1120,7 +1171,10 @@ export default function RegistrationPage(): React.ReactElement {
           // v18.67: echten Status fuers Ergebnis-Modal merken (nicht isFull).
           setSubmittedAsWaitlist(parentResult.status === 'Warteliste');
         }
-        else setError(t('reg.error'));
+        // v19.6: Bei stellvertretender Anmeldung die personenbezogene Meldung
+        // („Diese Person ist möglicherweise bereits angemeldet") statt der
+        // Selbst-Meldung („du bist bereits angemeldet") zeigen.
+        else setError(t(registerForOther ? 'reg.error.other' : 'reg.error'));
         setSubmitProgress(50);
       } else if (isSubOnlyMode && parentAlreadyHasRow && sessionsBeingAdded && !registerForOther) {
         // v18.59: Die Schatten-Parent-Zeile existiert bereits (frühere
@@ -1185,8 +1239,11 @@ export default function RegistrationPage(): React.ReactElement {
           const seFieldValues = { salutation, ...(sessionFieldValues[ce.id] || {}) };
           // v18.74: extraCc (übergreifende CC) + proxyConsentConfirmed (Nachweis
           // bei stellvertretender Anmeldung) zusammen in die Opts.
-          const seOpts = (crossCutCc || registerForOther)
-            ? { ...(crossCutCc ? { extraCc: crossCutCc } : {}), ...(registerForOther ? { proxyConsentConfirmed: true } : {}) }
+          // v19.6: ccSelfEmail zusätzlich in die CC der Sub-Event-Bestätigung
+          // mergen (deduppt serverseitig).
+          const seExtraCc = [crossCutCc, ccSelfEmail].filter(Boolean).join(';');
+          const seOpts = (seExtraCc || registerForOther)
+            ? { ...(seExtraCc ? { extraCc: seExtraCc } : {}), ...(registerForOther ? { proxyConsentConfirmed: true } : {}) }
             : undefined;
           const ok = (await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType, seOpts)).ok;
           if (ok) anySuccess = true;
@@ -1232,13 +1289,17 @@ export default function RegistrationPage(): React.ReactElement {
       } else if (!parentOk) {
         // Parent-Fehler wurde schon in setError oben gesetzt.
       } else {
-        setError(t('reg.error'));
+        setError(t(registerForOther ? 'reg.error.other' : 'reg.error'));
       }
     } catch {
       setError(t('reg.genericerror'));
     } finally {
       setSubmitProgress(100);
       setSubmitProgressLabel(locale === 'de' ? 'Fertig!' : 'Done!');
+      // v19.6: CC-Frage-Entscheidung zuruecksetzen, damit der naechste
+      // Submit-Durchlauf (z.B. naechste stellvertretende Anmeldung) wieder fragt.
+      ccSelfDecidedRef.current = false;
+      ccSelfRef.current = false;
       // Kleine Verzoegerung damit der User die 100%-Anzeige kurz sieht
       // bevor das Overlay wieder verschwindet.
       setTimeout(() => {
@@ -2404,6 +2465,9 @@ export default function RegistrationPage(): React.ReactElement {
                   setPickedUserProfile(null);
                   setOtherConsentConfirmed(false);
                   setExternalPerson(false); // v18.74: Extern-Modus beim Wechsel zurücksetzen
+                  // v19.6: CC-Frage-Entscheidung beim Moduswechsel zuruecksetzen.
+                  ccSelfDecidedRef.current = false;
+                  ccSelfRef.current = false;
                   if (!registerForOther) { setFirstName(''); setSurname(''); setEmail(''); setUserSearch(''); setUserResults([]); }
                   else { setFirstName(currentUser.firstName); setSurname(currentUser.surname); setEmail(currentUser.email); setUserSearch(''); setUserResults([]); }
                 }}
@@ -4041,6 +4105,55 @@ export default function RegistrationPage(): React.ReactElement {
                 {locale === 'de' ? 'Adresse ist korrekt' : 'Address is correct'}
               </button>
             </div>
+        </Modal>
+      )}
+
+      {/* v19.6: CC-Frage bei stellvertretender INTERNER Anmeldung. Erscheint
+          nach dem „Anmelden"-Klick und vor der eigentlichen Anmeldung — der/die
+          Anmeldende (Organizer, Co-Organizer oder Assistenz) entscheidet, ob er/
+          sie selbst auf CC der Bestätigungs-Mail soll. */}
+      {ccSelfModalOpen && (
+        <Modal
+          open={ccSelfModalOpen}
+          onClose={() => setCcSelfModalOpen(false)}
+          maxWidth={520}
+          padding={24}
+          ariaLabel={locale === 'de' ? 'Auf Kopie der Bestätigung?' : 'Copy on the confirmation?'}
+        >
+          <h3 style={{ margin: '0 0 12px', fontSize: '1.05rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
+            {locale === 'de' ? 'Möchtest du eine Kopie der Bestätigung?' : 'Do you want a copy of the confirmation?'}
+          </h3>
+          <p style={{ margin: '0 0 16px', fontSize: '0.9rem', lineHeight: 1.55, color: 'var(--dex-gray-700)' }}>
+            {locale === 'de'
+              ? <>Du meldest {`${firstName} ${surname}`.trim() ? <strong>{`${firstName} ${surname}`.trim()}</strong> : <>die ausgewählte Person</>} stellvertretend an. Möchtest du selbst auf <strong>CC der Bestätigungs-Mail</strong> gesetzt werden? Du bekommst dann eine Kopie der Anmeldebestätigung.<br /><br />Der <strong>Outlook-Termin</strong> wird davon nicht berührt — die CC gilt nur für die Bestätigungs-Mail.</>
+              : <>You are registering {`${firstName} ${surname}`.trim() ? <strong>{`${firstName} ${surname}`.trim()}</strong> : <>the selected person</>} on their behalf. Would you like to be added to the <strong>CC of the confirmation email</strong>? You will then receive a copy of the confirmation.<br /><br />The <strong>Outlook invite</strong> is not affected — the CC only applies to the confirmation email.</>}
+          </p>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => {
+                ccSelfRef.current = false;
+                ccSelfDecidedRef.current = true;
+                setCcSelfModalOpen(false);
+                setTimeout(() => { handleSubmit().catch(() => { /* */ }); }, 50);
+              }}
+              style={{ fontSize: '0.85rem' }}
+            >
+              {locale === 'de' ? 'Nein, ohne CC' : 'No, without CC'}
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                ccSelfRef.current = true;
+                ccSelfDecidedRef.current = true;
+                setCcSelfModalOpen(false);
+                setTimeout(() => { handleSubmit().catch(() => { /* */ }); }, 50);
+              }}
+              style={{ fontSize: '0.85rem' }}
+            >
+              {locale === 'de' ? 'Ja, mich auf CC setzen' : 'Yes, add me to CC'}
+            </button>
+          </div>
         </Modal>
       )}
 
