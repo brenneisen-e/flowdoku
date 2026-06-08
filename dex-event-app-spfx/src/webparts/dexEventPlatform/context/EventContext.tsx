@@ -13,7 +13,7 @@ import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../types';
 import { EventService, SPEvent, CustomField, SPRegistration, ReseedSummary } from '../services/EventService';
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
-import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml } from '../services/EmailTemplates';
+import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
 import * as QRCode from 'qrcode';
 import { APP_VERSION } from '../version';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
@@ -1217,7 +1217,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             + `</div>`;
           // Body kommt schon als komplett-gewickeltes HTML (Deloitte-Template).
           // Wir injecten den Hinweis direkt nach dem opening-<body>-Tag.
-          finalBody = finalBody.replace(/<body([^>]*)>/i, `<body$1>${externalHint}`);
+          finalBody = injectIntoEmailContent(finalBody, externalHint);
         }
         // v18.41: People-Picker-Felder mit „CC bei Mail" → ausgewählte
         // Person(en) auf CC der An-/Warteliste-Mail (NICHT im Outlook-Termin).
@@ -1268,7 +1268,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
                   + `<strong>QR-Code für externen Teilnehmer.</strong><br>`
                   + `Eigentlich für <strong>${emailToUse}</strong> (${nameToUse}). Da externe Adressen keinen Auto-Versand bekommen, landet der QR-Code bei dir — drucke ihn aus oder leite die Mail intern an den Empfänger weiter (Datenschutzrichtlinien Deloitte Deutschland beachten).`
                   + `</div>`;
-                const qrBody = qrMail.body.replace(/<body([^>]*)>/i, `<body$1>${qrExternalHint}`);
+                const qrBody = injectIntoEmailContent(qrMail.body, qrExternalHint);
                 await eventService.queueEmail(
                   orgSubject, orgRecipient, 'Organizer', qrBody,
                   'QRCode', event.title, eventId
@@ -1588,12 +1588,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         registeredByName: currentUserName,
         consentRequired: true,
       });
-      const contentTdPattern = /(<td style="padding:0 30px 30px 30px;[^"]*">)/i;
-      const bodyWithHint = contentTdPattern.test(emailData.body)
-        ? emailData.body.replace(contentTdPattern, `$1${teamInfoHtml}`)
-        // Fallback (Pre-wrapped Storage-Templates ohne erwartetes Padding):
-        // dann doch nach <body> injecten — besser als gar nicht.
-        : emailData.body.replace(/<body([^>]*)>/i, `<body$1>${teamInfoHtml}`);
+      const bodyWithHint = injectIntoEmailContent(emailData.body, teamInfoHtml);
       if (!event.disableEmails) {
         const fullName = `${r.firstName} ${r.lastName}`.trim();
         eventService.queueEmail(
@@ -1788,7 +1783,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       registeredByName: currentUserName,
       consentRequired: true,
     });
-    const bodyWithHint = emailData.body.replace(/<body([^>]*)>/i, `<body$1>${teamInfoHtml}`);
+    const bodyWithHint = injectIntoEmailContent(emailData.body, teamInfoHtml);
     if (!event.disableEmails) {
       const fullName = `${parsed.firstName} ${parsed.lastName}`.trim() || member.email;
       eventService.queueEmail(

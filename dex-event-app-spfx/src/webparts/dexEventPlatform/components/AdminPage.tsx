@@ -20,7 +20,7 @@ import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, Exte
 import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
 import * as XLSX from 'xlsx';
 import { EventService } from '../services/EventService';
-import { qrCodeEmail, cancellationEmail, promotionEmail, wrapTemplate, replacePlaceholders, buildEmailFromTemplate, getCachedLogoBase64, getCachedOrbBase64 } from '../services/EmailTemplates';
+import { qrCodeEmail, cancellationEmail, promotionEmail, wrapTemplate, replacePlaceholders, buildEmailFromTemplate, getCachedLogoBase64, getCachedOrbBase64, injectIntoEmailContent } from '../services/EmailTemplates';
 import { applyEventTemplateOverride, formatOrganizerList } from '../context/EventContext';
 import { HtmlEditorModal } from './HtmlEditorModal';
 import { InfoTooltip } from './InfoTooltip';
@@ -6879,7 +6879,7 @@ export default function AdminPage(): React.ReactElement {
                           + `<strong>QR-Code für externen Teilnehmer.</strong><br>`
                           + `Eigentlich für <strong>${reg.ParticipantEmail}</strong> (${name}). Da externe Adressen keinen Mail-Versand bekommen, landet der QR-Code bei dir — drucke ihn aus oder leite die Mail intern an den Empfänger weiter (Datenschutzrichtlinien Deloitte Deutschland beachten).`
                           + `</div>`;
-                        const qrBody = emailData.body.replace(/<body([^>]*)>/i, `<body$1>${qrExternalHint}`);
+                        const qrBody = injectIntoEmailContent(emailData.body, qrExternalHint);
                         await eventServiceRef.queueEmail(
                           orgSubject, orgRecipient, 'Organizer', qrBody,
                           'QRCode', selectedEvent.title, selectedEvent.id
