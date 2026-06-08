@@ -235,6 +235,12 @@ export interface DeloitteEvent {
    *  Events brauchen keine Anrede. Gespeicherte Anrede ist in dem Fall
    *  ein leerer String. */
   askSalutation?: boolean;
+  /** v18.75: Sicherheitshinweis vor dem Absenden der Anmeldung. Default aus.
+   *  confirmDialogMode: 'summary' = Auswahl-Übersicht (Haupt-/Sub-Events mit
+   *  De-/Selektieren), 'freetext' = eigener Hinweis-Text. */
+  confirmDialogEnabled?: boolean;
+  confirmDialogMode?: string;
+  confirmDialogText?: string;
   /** v18.35: Anmeldesprache vorgeben. Wenn gesetzt ('de' | 'en'), wird die
    *  komplette Registrierungsseite (inkl. Disclaimer) in dieser Sprache
    *  angezeigt — unabhängig von der App-Sprache des Users. Leer/undefined =

@@ -473,6 +473,30 @@ automatisch in Kopie.
   CustomFields-Write, siehe Abschnitt oben) sowie im SP→Event-Parse
   (`eventSpecificFields.map`) durchgereicht.
 
+### Sicherheitshinweis vor dem Absenden der Anmeldung (v18.75)
+
+Pro Event kann der Organizer einen **Bestätigungs-Dialog** aktivieren, der nach
+dem Klick auf „Anmelden" und VOR der eigentlichen Anmeldung erscheint.
+Konfiguration: Schritt 5 (Felder), eigene Section **ganz unten**.
+
+- **Neue SP-Spalten auf `DEX_Events`** (via `getEventsFieldDefinitions()` →
+  `ensureMissingFields`): `ConfirmDialogEnabled` (Boolean, Default false),
+  `ConfirmDialogMode` (Single line text: `'summary'` | `'freetext'`),
+  `ConfirmDialogText` (Note). Durchgereicht über `SPEvent` (EventService),
+  `EVENT_SELECT`, `createEvent`-Payload, `DeloitteEvent` (types/index.ts),
+  `CreateEventInput` (EventContext) und die Wizard-Create-/Update-Payloads.
+- **Zwei Modi:** `'summary'` = Auswahl-Übersicht (Haupt-Event + gewählte
+  Sub-Events als Checkbox-Liste; der Teilnehmer kann vor dem Absenden einzelne
+  Punkte ab-/zuwählen — bei stellvertretender Anmeldung ist das Haupt-Event
+  fixiert). `'freetext'` = frei formulierter Hinweis (`ConfirmDialogText`) mit
+  Pflicht-Bestätigungs-Checkbox.
+- **RegistrationPage:** Gate in `handleSubmit` VOR `performRegistration` (Team-
+  und Beitritts-Pfade sind ausgenommen — die haben eigene Bestätigungen). Der
+  Dialog setzt `confirmDialogConfirmedRef`; beim Bestätigen wird die (ggf.
+  angepasste) Auswahl in `registerForParent` / `selectedSessions` übernommen und
+  `handleSubmit` erneut angestoßen (überspringt dann den Dialog). Reiner
+  Client-Flow, **kein Power-Automate-Change**.
+
 ### Zustimmungs-Nachweis + externe Personen bei stellvertretender Anmeldung (v18.74)
 
 Zwei zusammenhängende Erweiterungen am „Für andere registrieren"-Flow:

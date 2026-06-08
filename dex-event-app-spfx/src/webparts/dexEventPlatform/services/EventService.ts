@@ -513,6 +513,9 @@ export interface SPEvent {
   AttendeeUploadHint?: string;   // v11.0: optionaler Hinweistext über dem Upload-Input
   AttendeeUploadLabel?: string;  // v11.0: Anzeige-Name des Upload-Felds in MyEvents
   AskSalutation?: boolean;       // v11.80: Anrede im Registrierungsformular abfragen
+  ConfirmDialogEnabled?: boolean; // v18.75: Sicherheitshinweis vor dem Absenden
+  ConfirmDialogMode?: string;     // v18.75: 'summary' | 'freetext'
+  ConfirmDialogText?: string;     // v18.75: Freitext-Hinweis
   SelfCheckInEnabled?: boolean;  // v18.33: Self-Check-in per QR-Code erlauben
   SelfCheckInToken?: string;     // v18.33: Geheimer Token (statischer Link + HMAC-Schlüssel rotierender QR)
   SelfCheckInFrom?: string;      // v18.33: optionaler Start des Check-in-Fensters (ISO), leer = nur am Event-Tag
@@ -2803,6 +2806,9 @@ export class EventService {
       { title: 'AttendeeUploadHint', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 3 }, // v11.0: Hinweistext
       { title: 'AttendeeUploadLabel', type: 2 }, // v11.0: Single-line Label fuer den Upload-Block in MyEvents
       { title: 'AskSalutation', type: 8, metaType: 'SP.Field' }, // v11.80: Boolean - Anrede im Registrierungsformular abfragen
+      { title: 'ConfirmDialogEnabled', type: 8, metaType: 'SP.Field' }, // v18.75: Boolean - Sicherheitshinweis vor dem Absenden anzeigen
+      { title: 'ConfirmDialogMode', type: 2 }, // v18.75: Single line text - 'summary' (Auswahl-Übersicht) | 'freetext'
+      { title: 'ConfirmDialogText', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 4 }, // v18.75: Note - Freitext-Hinweis
       { title: 'SelfCheckInEnabled', type: 8, metaType: 'SP.Field' }, // v18.33: Boolean - Self-Check-in per QR-Code erlauben
       { title: 'SelfCheckInToken', type: 2 }, // v18.33: Single line text - geheimer Token (statischer Link + HMAC-Schlüssel)
       { title: 'SelfCheckInFrom', type: 4 }, // v18.33: DateTime - optionaler Start des Check-in-Fensters
@@ -3189,7 +3195,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,OutlookSubject,OutlookStart,OutlookEnd,OutlookLocation,EmailLanguage,RegistrationLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,SelfCheckInEnabled,SelfCheckInToken,SelfCheckInFrom,SelfCheckInTo,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,OutlookSubject,OutlookStart,OutlookEnd,OutlookLocation,EmailLanguage,RegistrationLanguage,EmailTemplateOverrides,DisableEmails,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,ConfirmDialogEnabled,ConfirmDialogMode,ConfirmDialogText,SelfCheckInEnabled,SelfCheckInToken,SelfCheckInFrom,SelfCheckInTo,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
 
   /**
    * Strip SharePoint-Note-Field-Wrapper.
@@ -3394,6 +3400,10 @@ export class EventService {
     attendeeUploadLabel?: string;
     /** v11.80: Anrede im Registrierungsformular abfragen (Default false). */
     askSalutation?: boolean;
+    /** v18.75: Sicherheitshinweis vor dem Absenden der Anmeldung. */
+    confirmDialogEnabled?: boolean;
+    confirmDialogMode?: string; // 'summary' | 'freetext'
+    confirmDialogText?: string;
     /** v18.33: Self-Check-in per QR-Code erlauben (Default false). */
     selfCheckInEnabled?: boolean;
     /** v18.33: Geheimer Token (statischer Link + HMAC-Schlüssel rotierender QR). */
@@ -3608,6 +3618,9 @@ export class EventService {
         'AttendeeUploadHint': event.attendeeUploadHint || '',
         'AttendeeUploadLabel': event.attendeeUploadLabel || '',
         'AskSalutation': !!event.askSalutation,
+        'ConfirmDialogEnabled': !!event.confirmDialogEnabled,
+        'ConfirmDialogMode': event.confirmDialogMode || '',
+        'ConfirmDialogText': event.confirmDialogText || '',
         'SelfCheckInEnabled': !!event.selfCheckInEnabled,
         'SelfCheckInToken': event.selfCheckInToken || '',
         'SelfCheckInFrom': event.selfCheckInFrom || null,

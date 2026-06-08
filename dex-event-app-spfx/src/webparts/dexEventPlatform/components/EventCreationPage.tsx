@@ -1534,6 +1534,12 @@ export default function EventCreationPage(): React.ReactElement {
   const [askSalutation, setAskSalutation] = React.useState<boolean>(
     !!editEvent?.askSalutation
   );
+  // v18.75: Sicherheitshinweis vor dem Absenden der Anmeldung (Schritt 5, ganz
+  // unten). Default aus. Modus 'summary' = Auswahl-Übersicht (Haupt-/Sub-Events
+  // mit De-/Selektieren), 'freetext' = eigener Hinweis-Text.
+  const [confirmDialogEnabled, setConfirmDialogEnabled] = React.useState<boolean>(!!editEvent?.confirmDialogEnabled);
+  const [confirmDialogMode, setConfirmDialogMode] = React.useState<string>(editEvent?.confirmDialogMode || 'summary');
+  const [confirmDialogText, setConfirmDialogText] = React.useState<string>(editEvent?.confirmDialogText || '');
   // v18.35: Anmeldesprache vorgeben. '' = App-Sprache (Default), 'de' / 'en' =
   // Anmeldeseite (inkl. Disclaimer) immer in dieser Sprache anzeigen.
   const [registrationLanguage, setRegistrationLanguage] = React.useState<'' | 'de' | 'en'>(
@@ -2111,6 +2117,9 @@ export default function EventCreationPage(): React.ReactElement {
     setTeamOpenSlotsVisible(false);
     setTeamJoinRequiresApproval(false);
     setAskSalutation(false);
+    setConfirmDialogEnabled(false); // v18.75: Sicherheitshinweis-Default
+    setConfirmDialogMode('summary');
+    setConfirmDialogText('');
     setSubEvents([]);
     setCustomFields([]);
     setAgenda([]);
@@ -3115,6 +3124,10 @@ export default function EventCreationPage(): React.ReactElement {
       updates['AttendeeUploadLabel'] = (attendeeUploadLabel || '').trim();
       // v11.80: Anrede-Toggle + Team-Anmeldung-Konfiguration mit-persistieren.
       updates['AskSalutation'] = !!askSalutation;
+      // v18.75: Sicherheitshinweis vor dem Absenden mit-persistieren.
+      updates['ConfirmDialogEnabled'] = !!confirmDialogEnabled;
+      updates['ConfirmDialogMode'] = confirmDialogEnabled ? (confirmDialogMode || 'summary') : '';
+      updates['ConfirmDialogText'] = confirmDialogEnabled && confirmDialogMode === 'freetext' ? confirmDialogText : '';
       // v18.33: Self-Check-in mit-persistieren. Token nur schreiben, wenn aktiv.
       updates['SelfCheckInEnabled'] = !!selfCheckInEnabled;
       updates['SelfCheckInToken'] = selfCheckInEnabled ? (selfCheckInToken || '') : '';
@@ -3617,6 +3630,10 @@ export default function EventCreationPage(): React.ReactElement {
         selfCheckInTo: selfCheckInEnabled && selfCheckInTo ? selfCheckInTo : undefined,
         // v11.80: Anrede-Toggle + Team-Anmelde-Konfiguration mit-durchreichen.
         askSalutation: !!askSalutation,
+        // v18.75: Sicherheitshinweis vor dem Absenden.
+        confirmDialogEnabled: !!confirmDialogEnabled,
+        confirmDialogMode: confirmDialogEnabled ? (confirmDialogMode || 'summary') : '',
+        confirmDialogText: confirmDialogEnabled && confirmDialogMode === 'freetext' ? confirmDialogText : '',
         teamRegistrationEnabled: !!teamRegistrationEnabled,
         teamSize: teamRegistrationEnabled && teamSize > 0 ? teamSize : undefined,
         askTeamName: !!askTeamName,
@@ -10694,6 +10711,79 @@ export default function EventCreationPage(): React.ReactElement {
 
               </div>{/* v16.5: close plain wrapper div (Step 5) — kein Greyout mehr */}
               </div>{/* v15.0: close activeFieldsTabIdx===0 wrapper (Top-Level Felder + hidden Bereich 2) */}
+
+              {/* v18.75: Sicherheitshinweis vor dem Absenden — eigene Section
+                  ganz unten in Schritt 5 (gilt event-weit, daher außerhalb der
+                  Feld-Tabs). */}
+              <div style={{
+                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                padding: '12px 16px', marginTop: 18, marginBottom: 4,
+                border: '1px solid var(--dex-gray-200)',
+              }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={confirmDialogEnabled}
+                    onChange={e => setConfirmDialogEnabled(e.target.checked)}
+                    style={{ marginTop: 3, cursor: 'pointer' }}
+                  />
+                  <span style={{ flex: 1 }}>
+                    <strong>{isDe ? 'Sicherheitshinweis vor dem Absenden anzeigen?' : 'Show a confirmation prompt before submitting?'}</strong>
+                    <InfoTooltip text={isDe
+                      ? <>
+                          <strong>Was du hier einstellst:</strong> ob nach dem Klick auf <strong>„Anmelden“</strong> noch ein <strong>Bestätigungs-Dialog</strong> erscheint, bevor die Anmeldung wirklich abgeschickt wird. Default: <strong>nein</strong>.<br /><br />
+                          <strong>Zwei Varianten:</strong> die <strong>Auswahl-Übersicht</strong> listet Haupt-Event und gewählte Sub-Events auf — der Teilnehmer kann vor dem Absenden einzelne Punkte noch ab- oder zuwählen. Der <strong>eigene Hinweistext</strong> zeigt stattdessen einen frei formulierten Hinweis (z.B. zu Verbindlichkeit oder Storno-Fristen), den der Teilnehmer bestätigen muss.<br /><br />
+                          <strong>Auswirkung für Teilnehmer:</strong> ein zusätzlicher, bewusster Bestätigungsschritt — schützt vor versehentlichen Anmeldungen.
+                        </>
+                      : <>
+                          <strong>What this controls:</strong> whether a <strong>confirmation dialog</strong> appears after clicking <strong>“Register”</strong>, before the registration is actually submitted. Default: <strong>no</strong>.<br /><br />
+                          <strong>Two variants:</strong> the <strong>selection summary</strong> lists the main event and selected sub-events — the attendee can de-/select items before submitting. The <strong>custom hint text</strong> instead shows a free-text note (e.g. about binding registration or cancellation deadlines) the attendee must acknowledge.<br /><br />
+                          <strong>For attendees:</strong> an extra, deliberate confirmation step — protects against accidental registrations.
+                        </>
+                    } />
+                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                      {isDe
+                        ? 'Default: nein — wenn aktiviert, muss der Teilnehmer nach „Anmelden" noch einen Dialog bestätigen.'
+                        : 'Default: no — when enabled, the attendee has to confirm a dialog after clicking „Register".'}
+                    </span>
+                  </span>
+                </label>
+                {confirmDialogEnabled && (
+                  <div style={{ marginTop: 12, paddingLeft: 30 }}>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: 8, color: 'var(--dex-gray-700)' }}>
+                      {isDe ? 'Was soll der Dialog zeigen?' : 'What should the dialog show?'}
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', marginBottom: 10 }}>
+                      <input type="radio" name="confirmDialogMode" checked={confirmDialogMode !== 'freetext'} onChange={() => setConfirmDialogMode('summary')} style={{ marginTop: 3 }} />
+                      <span style={{ fontSize: '0.85rem' }}>
+                        <strong>{isDe ? 'Auswahl-Übersicht' : 'Selection summary'}</strong> — {isDe
+                          ? 'listet Haupt-Event und gewählte Sub-Events auf; der Teilnehmer kann vor dem Absenden einzelne Punkte noch ab- oder zuwählen.'
+                          : 'lists the main event and selected sub-events; the attendee can de-/select items before submitting.'}
+                      </span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+                      <input type="radio" name="confirmDialogMode" checked={confirmDialogMode === 'freetext'} onChange={() => setConfirmDialogMode('freetext')} style={{ marginTop: 3 }} />
+                      <span style={{ fontSize: '0.85rem' }}>
+                        <strong>{isDe ? 'Eigener Hinweistext' : 'Custom hint text'}</strong> — {isDe
+                          ? 'zeigt einen frei formulierten Hinweis, den der Teilnehmer bestätigen muss.'
+                          : 'shows a free-text note the attendee must acknowledge.'}
+                      </span>
+                    </label>
+                    {confirmDialogMode === 'freetext' && (
+                      <textarea
+                        className="form-input"
+                        value={confirmDialogText}
+                        onChange={e => setConfirmDialogText(e.target.value)}
+                        rows={3}
+                        placeholder={isDe
+                          ? 'z.B. „Bitte beachte: Die Anmeldung ist verbindlich. Eine Stornierung ist nur bis 3 Tage vor dem Event möglich."'
+                          : 'e.g. „Please note: registration is binding. Cancellation is only possible up to 3 days before the event."'}
+                        style={{ marginTop: 10, width: '100%', resize: 'vertical' }}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
 
               </div>{/* close Step 5 (Felder) — v15 index 4 */}
 

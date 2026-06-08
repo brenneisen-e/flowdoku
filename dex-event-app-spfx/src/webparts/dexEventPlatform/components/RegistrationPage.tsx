@@ -679,6 +679,15 @@ export default function RegistrationPage(): React.ReactElement {
   // Bestaetigungsmail geht dann nicht an die externe Adresse, sondern an
   // den Organizer mit Datenschutz-Hinweis-Header.
   const [externalEmailWarning, setExternalEmailWarning] = React.useState(false);
+  // v18.75: Sicherheitshinweis vor dem Absenden (pro Event konfiguriert). Der
+  // Dialog erscheint nach dem „Anmelden"-Klick und vor der eigentlichen
+  // (Normal-)Anmeldung. confirmDraft* halten die — in der Auswahl-Übersicht
+  // editierbare — Auswahl, bis der User bestätigt.
+  const [confirmDialogOpen, setConfirmDialogOpen] = React.useState(false);
+  const [confirmDialogAck, setConfirmDialogAck] = React.useState(false);
+  const [confirmDraftParent, setConfirmDraftParent] = React.useState(true);
+  const [confirmDraftSessions, setConfirmDraftSessions] = React.useState<Set<string>>(new Set());
+  const confirmDialogConfirmedRef = React.useRef(false);
   const externalEmailConfirmedRef = React.useRef(false);
 
   const handleSubmit = async (): Promise<void> => {
@@ -916,6 +925,18 @@ export default function RegistrationPage(): React.ReactElement {
         return;
       }
       await performTeamRegistration(preferredStarterType);
+      return;
+    }
+
+    // v18.75: Sicherheitshinweis vor dem Absenden (nur normale Anmeldung —
+    // Team-/Beitritts-Pfade sind oben bereits abgehandelt). Beim ersten
+    // Submit öffnet sich der Dialog; nach Bestätigung läuft handleSubmit erneut
+    // (Ref gesetzt) und überspringt den Dialog.
+    if (event && event.confirmDialogEnabled && !confirmDialogConfirmedRef.current) {
+      setConfirmDraftParent(willRegisterParent || registerForOther);
+      setConfirmDraftSessions(new Set(selectedSessions));
+      setConfirmDialogAck(false);
+      setConfirmDialogOpen(true);
       return;
     }
 
@@ -3733,6 +3754,111 @@ export default function RegistrationPage(): React.ReactElement {
           })()}
         </Modal>
       )}
+
+      {/* v18.75: Sicherheitshinweis-Dialog vor dem Absenden (pro Event). */}
+      {confirmDialogOpen && event && (() => {
+        const isFree = event.confirmDialogMode === 'freetext';
+        const selChildren = childEvents.filter(ce => selectedSessions.has(ce.id));
+        const showParent = willRegisterParent || registerForOther;
+        const parentEditable = willRegisterParent && !registerForOther; // proxy: Parent fix
+        const canConfirm = isFree
+          ? confirmDialogAck
+          : (confirmDraftParent || confirmDraftSessions.size > 0 || (showParent && !parentEditable));
+        return (
+          <Modal
+            open={confirmDialogOpen}
+            onClose={() => setConfirmDialogOpen(false)}
+            maxWidth={560}
+            padding={24}
+            ariaLabel={locale === 'de' ? 'Anmeldung bestätigen' : 'Confirm registration'}
+          >
+            <h3 style={{ margin: '0 0 12px', fontSize: '1.05rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
+              {locale === 'de' ? 'Bitte bestätigen' : 'Please confirm'}
+            </h3>
+            {isFree ? (
+              <>
+                <div style={{
+                  margin: '0 0 14px', padding: '12px 14px', whiteSpace: 'pre-wrap',
+                  background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200)',
+                  borderRadius: 8, fontSize: '0.9rem', lineHeight: 1.55, color: 'var(--dex-gray-800)',
+                }}>
+                  {(event.confirmDialogText || '').trim() || (locale === 'de' ? 'Bitte bestätige deine Anmeldung.' : 'Please confirm your registration.')}
+                </div>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginBottom: 4 }}>
+                  <input type="checkbox" checked={confirmDialogAck} onChange={e => setConfirmDialogAck(e.target.checked)} style={{ marginTop: 3 }} />
+                  <span style={{ flex: 1, fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>
+                    {locale === 'de' ? 'Ich habe den Hinweis gelesen und bestätige.' : 'I have read and acknowledge the note.'}
+                  </span>
+                </label>
+              </>
+            ) : (
+              <>
+                <p style={{ margin: '0 0 12px', fontSize: '0.9rem', lineHeight: 1.55, color: 'var(--dex-gray-700)' }}>
+                  {locale === 'de'
+                    ? 'Du meldest dich für Folgendes an. Du kannst einzelne Punkte vor dem Absenden noch abwählen:'
+                    : 'You are registering for the following. You can deselect items before submitting:'}
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+                  {showParent && (
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: parentEditable ? 'pointer' : 'default', padding: '8px 10px', background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200)', borderRadius: 6 }}>
+                      <input
+                        type="checkbox"
+                        checked={parentEditable ? confirmDraftParent : true}
+                        disabled={!parentEditable}
+                        onChange={e => setConfirmDraftParent(e.target.checked)}
+                      />
+                      <span style={{ fontSize: '0.88rem', fontWeight: 600 }}>{event.title} <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>{locale === 'de' ? '(Haupt-Event)' : '(main event)'}</span></span>
+                    </label>
+                  )}
+                  {selChildren.map(ce => (
+                    <label key={ce.id} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '8px 10px', background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200)', borderRadius: 6 }}>
+                      <input
+                        type="checkbox"
+                        checked={confirmDraftSessions.has(ce.id)}
+                        onChange={e => setConfirmDraftSessions(prev => {
+                          const n = new Set(prev);
+                          if (e.target.checked) n.add(ce.id); else n.delete(ce.id);
+                          return n;
+                        })}
+                      />
+                      <span style={{ fontSize: '0.88rem' }}>{ce.title}</span>
+                    </label>
+                  ))}
+                </div>
+                {!canConfirm && (
+                  <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: 'var(--dex-red, #c00)' }}>
+                    {locale === 'de' ? 'Bitte mindestens einen Punkt auswählen.' : 'Please select at least one item.'}
+                  </p>
+                )}
+              </>
+            )}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button className="btn btn-secondary" onClick={() => setConfirmDialogOpen(false)} style={{ fontSize: '0.85rem' }}>
+                {locale === 'de' ? 'Abbrechen' : 'Cancel'}
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={!canConfirm}
+                onClick={() => {
+                  // v18.75: In der Auswahl-Übersicht die (ggf. angepasste)
+                  // Auswahl in den echten State übernehmen, dann Submit erneut
+                  // anstoßen (Ref überspringt den Dialog).
+                  if (!isFree) {
+                    if (parentEditable) setRegisterForParent(confirmDraftParent);
+                    setSelectedSessions(new Set(confirmDraftSessions));
+                  }
+                  confirmDialogConfirmedRef.current = true;
+                  setConfirmDialogOpen(false);
+                  setTimeout(() => { handleSubmit().catch(() => { /* */ }); }, 60);
+                }}
+                style={{ fontSize: '0.85rem' }}
+              >
+                {locale === 'de' ? 'Anmeldung bestätigen' : 'Confirm registration'}
+              </button>
+            </div>
+          </Modal>
+        );
+      })()}
 
       {externalEmailWarning && (
         <Modal

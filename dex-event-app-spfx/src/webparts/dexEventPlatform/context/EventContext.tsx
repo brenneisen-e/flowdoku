@@ -415,6 +415,10 @@ export interface CreateEventInput {
   attendeeUploadLabel?: string;
   /** v11.80: Anrede im Registrierungsformular abfragen (Default false). */
   askSalutation?: boolean;
+  /** v18.75: Sicherheitshinweis vor dem Absenden der Anmeldung. */
+  confirmDialogEnabled?: boolean;
+  confirmDialogMode?: string; // 'summary' | 'freetext'
+  confirmDialogText?: string;
   /** v18.33: Self-Check-in per QR-Code erlauben (Default false). */
   selfCheckInEnabled?: boolean;
   /** v18.33: Geheimer Token (statischer Link + HMAC-Schlüssel rotierender QR). */
@@ -829,6 +833,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // Alte Tenants ohne diese Spalten interpretieren undefined als false /
       // 0, das passt zum Default-Verhalten (Anrede aus, Team-Anmeldung aus).
       askSalutation: !!e.AskSalutation,
+      confirmDialogEnabled: !!e.ConfirmDialogEnabled,
+      confirmDialogMode: e.ConfirmDialogMode || '',
+      confirmDialogText: e.ConfirmDialogText || '',
       // v18.33: Self-Check-in. Alte Tenants ohne diese Spalten lesen undefined
       // als false / leer — Self-Check-in bleibt dann schlicht aus.
       selfCheckInEnabled: !!e.SelfCheckInEnabled,
