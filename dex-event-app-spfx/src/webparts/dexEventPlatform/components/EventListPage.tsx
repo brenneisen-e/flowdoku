@@ -143,9 +143,32 @@ function isEventVisibleForUser(
 export default function EventListPage(): React.ReactElement {
   // Seit v6.4: nur Top-Level-Events anzeigen. Sub-Events (parentEventId gesetzt)
   // erscheinen im Details-View des Parents (RegistrationPage), nicht eigenständig.
-  const { topLevelEvents: events, isEventsLoading, getMyEventNumbers, childEventsOf } = useEvents();
+  const { topLevelEvents: events, isEventsLoading, getMyEventNumbers, childEventsOf, refreshParticipantCounts } = useEvents();
   const { currentUser, groupEmails } = useCurrentUser();
   const { isAdmin, canCreateEvents } = useRoles();
+
+  // v19.16: Teilnehmerzahlen live halten. Die Zahlen werden sonst nur EINMAL
+  // beim Boot als Snapshot geladen — nach einem (asynchronen) Flow-Nachrücken
+  // ODER einer Anmeldung in einem anderen Tab/Gerät zeigt die Liste sonst eine
+  // veraltete Zahl (z.B. „0/1 Teilnehmer", obwohl 1 angemeldet ist).
+  // Lösung: einmal sofort beim Öffnen frisch laden + danach alle 5 Sekunden im
+  // Hintergrund nachpollen (Echtzeit-Gefühl). Läuft NUR solange die Übersicht
+  // offen ist (Cleanup beim Verlassen). `inFlight` verhindert, dass sich
+  // langsame Refreshes stapeln.
+  React.useEffect(() => {
+    let cancelled = false;
+    let inFlight = false;
+    const tick = async (): Promise<void> => {
+      if (cancelled || inFlight) return;
+      inFlight = true;
+      try { await refreshParticipantCounts(); } catch { /* best-effort */ }
+      inFlight = false;
+    };
+    void tick(); // sofort beim Öffnen
+    const id = setInterval(() => { void tick(); }, 5000);
+    return () => { cancelled = true; clearInterval(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const { t } = useLanguage();
   const [onlyActive, setOnlyActive] = React.useState(true);
   // View-Mode (Cards | List) - persistiert in localStorage
@@ -457,7 +480,20 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
           <div
             key={event.id}
             className="card card-clickable"
-            style={{ padding: '20px 24px', cursor: 'pointer' }}
+            style={{
+              padding: '20px 24px', cursor: 'pointer',
+              // v19.16: Angemeldet/Warteliste deutlich markieren — analog zum
+              // Overlay der Kachel-Ansicht, damit man auf einen Blick sieht, dass
+              // man für dieses Event angemeldet ist. Grüner Akzent + zarte Tönung
+              // (bzw. orange bei Warteliste).
+              ...(isReg ? {
+                borderLeft: '5px solid var(--dex-green, #86bc25)',
+                background: 'linear-gradient(90deg, rgba(134,188,37,0.10) 0%, rgba(134,188,37,0.015) 60%)',
+              } : isWait ? {
+                borderLeft: '5px solid var(--dex-orange, #ed8b00)',
+                background: 'linear-gradient(90deg, rgba(237,139,0,0.10) 0%, rgba(237,139,0,0.015) 60%)',
+              } : {}),
+            }}
             onClick={() => navigate(targetPage, event.id)}
           >
             <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12, width: '100%' }}>
@@ -498,10 +534,14 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
                   {event.currentParticipants}/{event.maxParticipants || '∞'} Teilnehmer
                 </span>
                 {isReg && (
-                  <span style={{ padding: '2px 10px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 600, background: 'rgba(134,188,37,0.18)', color: 'var(--dex-green-dark)' }}>Angemeldet</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 700, background: 'rgba(134,188,37,0.22)', color: 'var(--dex-green-dark)' }}>
+                    <Icon iconName="CompletedSolid" style={{ fontSize: 13 }} /> Angemeldet
+                  </span>
                 )}
                 {isWait && (
-                  <span style={{ padding: '2px 10px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 600, background: 'rgba(237,139,0,0.18)', color: 'var(--dex-orange, #ed8b00)' }}>Warteliste</span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 700, background: 'rgba(237,139,0,0.22)', color: 'var(--dex-orange, #ed8b00)' }}>
+                    <Icon iconName="Clock" style={{ fontSize: 13 }} /> Warteliste
+                  </span>
                 )}
                 {/* v19.15: Aktionen auch in der Listen-Ansicht — vorher nur in den
                     Cards (Overlay). Bei bereits angemeldeten Events „Meine Events"

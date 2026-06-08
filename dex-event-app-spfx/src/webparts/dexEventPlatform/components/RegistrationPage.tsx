@@ -91,7 +91,7 @@ export default function RegistrationPage(): React.ReactElement {
   }, []);
 
   const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
-  const { events, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest, updateMyRegistration, uploadFieldDocument } = useEvents();
+  const { events, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest, updateMyRegistration, uploadFieldDocument, refreshParticipantCounts } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers, searchUser, isAdmin } = useRoles();
   const { locale: appLocale } = useLanguage();
@@ -612,6 +612,43 @@ export default function RegistrationPage(): React.ReactElement {
       } catch { /* ignore */ }
     })();
   }, [isSplitGroup, event?.subsiteUrl]);
+  // v19.16: Auf dem Anmelde-Screen den Belegungs-Zähler alle 5 Sekunden im
+  // Hintergrund aktualisieren (Echtzeit-Verfügbarkeit) — OHNE das Formular
+  // anzufassen. `refreshParticipantCounts(eventId)` ändert NUR die
+  // Teilnehmerzahl des Events im Context; die Formularfelder sind lokaler State
+  // und bleiben erhalten (kein erneutes Eingeben nötig). Da sich event.id /
+  // subsiteUrl dabei nicht ändern, feuern die formular-relevanten useEffects
+  // (die auf event?.id / event?.subsiteUrl hängen) NICHT. Bei Split-Events
+  // zusätzlich die Gruppen-Zähler nachladen. Poll läuft nur solange der Screen
+  // offen ist (Cleanup beim Verlassen), `inFlight` verhindert Stapelung.
+  React.useEffect(() => {
+    const eid = event?.id;
+    const subsiteUrl = event?.subsiteUrl;
+    if (!eid) return;
+    let cancelled = false;
+    let inFlight = false;
+    const tick = async (): Promise<void> => {
+      if (cancelled || inFlight) return;
+      inFlight = true;
+      try {
+        await refreshParticipantCounts(eid);
+        if (isSplitGroup && subsiteUrl) {
+          const allRegs = await getAllRegistrations(subsiteUrl);
+          if (!cancelled) {
+            const active = allRegs.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
+            setStarterCounts({
+              durch: active.filter(r => r.StarterType === 'Durchstarter').length,
+              fun: active.filter(r => r.StarterType === 'Funstarter').length,
+            });
+          }
+        }
+      } catch { /* best-effort */ }
+      inFlight = false;
+    };
+    const id = setInterval(() => { void tick(); }, 5000);
+    return () => { cancelled = true; clearInterval(id); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event?.id, event?.subsiteUrl, isSplitGroup]);
   // Deloitte-Mitarbeitersuche
   const [userSearch, setUserSearch] = React.useState('');
   const [userResults, setUserResults] = React.useState<Array<{ email: string; displayName: string; location: string; jobTitle: string }>>([]);
