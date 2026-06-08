@@ -5946,6 +5946,37 @@ export default function AdminPage(): React.ReactElement {
                   const cfId = id.substring(3);
                   const field = (selectedEvent?.eventSpecificFields || []).find(f => f.id === cfId);
                   if (!field) return null;
+                  // v19.2: Dokument-Felder haben keinen Spaltenwert — die Datei
+                  // liegt als Attachment. In der Spalte einen Download-Link (oder
+                  // mehrere) zeigen, statt „-".
+                  if (field.type === 'document') {
+                    const att = attachmentsByReg[reg.Id] || [];
+                    const prefix = `dxf-${(field.id || '').replace(/[^a-zA-Z0-9]/g, '')}--`;
+                    const docs = att.filter(a => a.fileName.startsWith(prefix));
+                    const pretty = (fn: string): string => fn
+                      .replace(/^dxf-[a-zA-Z0-9]+--\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_/, '')
+                      .replace(/^dxf-[a-zA-Z0-9]+--/, '');
+                    return (
+                      <td key={id} style={{ padding: 8, fontSize: '0.8rem', whiteSpace: 'nowrap', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', ...pastelBCell }}>
+                        {docs.length === 0 ? (
+                          <span style={{ color: 'var(--dex-gray-400)' }}>–</span>
+                        ) : (
+                          docs.map((d, i) => (
+                            <a
+                              key={d.fileName}
+                              href={d.serverRelativeUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={pretty(d.fileName)}
+                              style={{ color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline', marginRight: i < docs.length - 1 ? 8 : 0, display: 'inline-flex', alignItems: 'center', gap: 3 }}
+                            >
+                              <FileText size={12} />{docs.length > 1 ? `${isDe ? 'Datei' : 'File'} ${i + 1}` : (isDe ? 'Datei' : 'File')}
+                            </a>
+                          ))
+                        )}
+                      </td>
+                    );
+                  }
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const spName = (field as any).spInternalName || '';
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -507,6 +507,12 @@ weiter.
 - **Admin Center:** der „Datei"-Button + Attachment-Modal (vorher nur bei
   `allowAttendeeUpload`) erscheint jetzt auch bei Events mit Dokument-Feld; im
   Modal wird der `dxf-…`-Präfix gestrippt und das Feld-Label als Badge angezeigt.
+  Zusätzlich (v19.2) zeigt die **Teilnehmer-Tabellen-Spalte** des Dokument-Felds
+  einen direkten Download-Link (statt „-"), gefiltert per `dxf-<fieldId>--`.
+- **Wizard-Hinweis (v19.2):** Die Beschreibungs-Redundanz-Box in Schritt 1 zeigt
+  nur noch die Warnung; der **einladende Beispieltext** ist über den
+  „Standardtext laden"-Button im **Beschreibungs-Editor** (HtmlEditorModal,
+  `defaultBodyHtml` für `isDescription`) übernehmbar.
 - **Akzeptierte Typen:** PDF + JPG/PNG (Upload-Limit 10 MB). Kein Power-Automate-
   Change (reine SP-REST-Attachments).
 
