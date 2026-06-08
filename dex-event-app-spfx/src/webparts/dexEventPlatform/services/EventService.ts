@@ -541,7 +541,7 @@ export interface SPEvent {
 export interface CustomField {
   id: string;
   label: string;
-  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate';
+  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'document'; // v19.0: document = Datei-Upload (Attachment)
   required: boolean;
   options?: string[]; // fuer select-Felder
   visible: boolean;
@@ -4109,6 +4109,9 @@ export class EventService {
     const fieldMap: Record<string, string> = {}; // cf.id -> SP InternalName
     for (const cf of customFields) {
       if (!cf.label) continue;
+      // v19.0: Dokument-Felder bekommen KEINE Spalte — die Datei wird als
+      // Attachment an die Teilnehmer-Zeile gehängt, nicht als Spaltenwert.
+      if (cf.type === 'document') continue;
       let fieldPayload: Record<string, unknown>;
 
       if (cf.type === 'select' && cf.options && cf.options.length > 0) {
@@ -6166,6 +6169,8 @@ export class EventService {
       let currentFields = [...existingFieldsList, ...added];
       for (const cf of eventContext.customFields) {
         if (!cf.label || !cf.label.trim()) continue;
+        // v19.0: Dokument-Felder bekommen keine Spalte (Datei = Attachment).
+        if (cf.type === 'document') continue;
         // Wenn spInternalName schon gesetzt und Feld existiert: uebernehmen.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const existingSp: string = String((cf as any).spInternalName || '');
@@ -6593,13 +6598,16 @@ export class EventService {
     subsiteUrl: string,
     itemId: number,
     file: File,
+    // v19.0: optionaler Präfix, um ein Attachment einem Dokument-Custom-Field
+    // zuzuordnen (z.B. 'dxf-<fieldId>--'). Leer = generischer Attendee-Upload.
+    fieldPrefix: string = '',
   ): Promise<boolean> {
     try {
       const buf = await file.arrayBuffer();
       // Dateiname säubern + Timestamp-prefix für Eindeutigkeit
       const safeName = (file.name || 'upload.pdf').replace(/[^a-zA-Z0-9._-]+/g, '_');
       const ts = new Date().toISOString().replace(/[:.]/g, '-').replace(/T/, '_').slice(0, 19);
-      const finalName = `${ts}_${safeName}`;
+      const finalName = `${fieldPrefix}${ts}_${safeName}`;
       const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})/AttachmentFiles/add(FileName='${encodeURIComponent(finalName)}')`;
       const resp = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
         headers: { 'Accept': 'application/json;odata=nometadata' },

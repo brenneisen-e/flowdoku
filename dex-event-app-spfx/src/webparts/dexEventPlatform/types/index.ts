@@ -340,7 +340,9 @@ export interface EventDocument {
 export interface EventSpecificField {
   id: string;
   label: string;
-  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate';
+  // v19.0: 'document' = PDF/Bild-Upload, der als Attachment an die Teilnehmer-
+  // Zeile gehängt wird (kein Spaltenwert).
+  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'document';
   required: boolean;
   options?: string[];
   helpText?: string;

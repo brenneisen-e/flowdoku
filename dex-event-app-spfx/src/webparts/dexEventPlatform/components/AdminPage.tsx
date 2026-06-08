@@ -612,7 +612,10 @@ export default function AdminPage(): React.ReactElement {
   // Event ändern. Damit zeigt der „Anhang"-Button in der Action-Spalte
   // sofort die korrekte Anzahl.
   React.useEffect(() => {
-    if (!selectedEvent || !selectedEvent.allowAttendeeUpload || !eventServiceRef || !selectedEvent.subsiteUrl) {
+    // v19.0: Attachments auch laden, wenn das Event ein Dokument-Custom-Feld hat
+    // (nicht nur beim generischen Attendee-Upload).
+    const hasDocField = (selectedEvent?.eventSpecificFields || []).some(f => f.type === 'document');
+    if (!selectedEvent || (!selectedEvent.allowAttendeeUpload && !hasDocField) || !eventServiceRef || !selectedEvent.subsiteUrl) {
       setAttachmentsByReg({});
       return;
     }
@@ -5313,7 +5316,10 @@ export default function AdminPage(): React.ReactElement {
                       </div>
                     </div>
                   )}
-                  {teamEntries.map(({ tid, members, lead }) => {
+                  {/* v19.0: Teams in einem responsiven 3-Spalten-Raster +
+                      durchnummeriert — spart vertikalen Platz im Organizer-Center. */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12, alignItems: 'start' }}>
+                  {teamEntries.map(({ tid, members, lead }, teamIdx) => {
                     const teamName = members.find(m => !!m.TeamName)?.TeamName || '';
                     const total = members.length;
                     const free = teamSizeCfg > 0 ? Math.max(0, teamSizeCfg - total) : 0;
@@ -5332,7 +5338,7 @@ export default function AdminPage(): React.ReactElement {
                       >
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
                           <strong style={{ fontSize: '0.95rem', color: 'var(--dex-gray-800)' }}>
-                            {teamName ? `Team „${teamName}"` : 'Team (ohne Namen)'}
+                            <span style={{ color: 'var(--dex-gray-400)', marginRight: 4 }}>{teamIdx + 1}.</span>{teamName ? `Team „${teamName}"` : 'Team (ohne Namen)'}
                           </strong>
                           <span style={{ color: 'var(--dex-gray-600)', fontSize: '0.85rem' }}>
                             {teamSizeCfg > 0 ? `${total}/${teamSizeCfg} belegt` : `${total} Mitglieder`}
@@ -5509,6 +5515,7 @@ export default function AdminPage(): React.ReactElement {
                       </div>
                     );
                   })}
+                  </div>
                 </div>
               )}
             </div>
@@ -5981,10 +5988,10 @@ export default function AdminPage(): React.ReactElement {
                       >
                         <Pencil size={12} /> {isDe ? 'Bearbeiten' : 'Edit'}
                       </button>
-                      {/* v11.0: Anhang-Button — nur wenn das Event den
-                          Teilnehmer-Upload erlaubt hat. Zeigt Counter wenn
-                          mind. eine Datei hochgeladen wurde. */}
-                      {selectedEvent?.allowAttendeeUpload && (
+                      {/* v11.0: Anhang-Button — wenn das Event den Teilnehmer-
+                          Upload erlaubt ODER ein Dokument-Custom-Feld hat (v19.0).
+                          Zeigt Counter wenn mind. eine Datei hochgeladen wurde. */}
+                      {(selectedEvent?.allowAttendeeUpload || (selectedEvent?.eventSpecificFields || []).some(f => f.type === 'document')) && (
                         <button
                           className="btn btn-secondary"
                           style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
@@ -7800,6 +7807,22 @@ export default function AdminPage(): React.ReactElement {
         const reg = attachmentsModalReg;
         const list = attachmentsByReg[reg.Id] || [];
         const close = (): void => setAttachmentsModalReg(null);
+        // v19.0: Dokument-Feld-Attachments tragen einen `dxf-<fieldId>--`-Präfix.
+        // Für die Anzeige den Präfix + Timestamp strippen und das Feld-Label
+        // ermitteln, damit der Organizer sieht, zu welchem Dokument-Feld die
+        // Datei gehört.
+        const docFields = (selectedEvent?.eventSpecificFields || []).filter(f => f.type === 'document');
+        const fieldLabelForFile = (fileName: string): string => {
+          const m = fileName.match(/^dxf-([a-zA-Z0-9]+)--/);
+          if (!m) return '';
+          const df = docFields.find(f => (f.id || '').replace(/[^a-zA-Z0-9]/g, '') === m[1]);
+          return df ? df.label : '';
+        };
+        const prettyFileName = (fileName: string): string =>
+          fileName
+            .replace(/^dxf-[a-zA-Z0-9]+--\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_/, '')
+            .replace(/^dxf-[a-zA-Z0-9]+--/, '')
+            .replace(/^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_/, '');
         const refreshOne = async (regId: number): Promise<void> => {
           if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
           try {
@@ -7867,7 +7890,12 @@ export default function AdminPage(): React.ReactElement {
                         rel="noopener noreferrer"
                         style={{ flex: 1, color: 'var(--dex-gray-800)', textDecoration: 'none', wordBreak: 'break-all' }}
                       >
-                        {f.fileName}
+                        {fieldLabelForFile(f.fileName) && (
+                          <span style={{ display: 'inline-block', fontSize: '0.68rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)', background: 'rgba(134,188,37,0.15)', borderRadius: 4, padding: '1px 6px', marginRight: 6 }}>
+                            {fieldLabelForFile(f.fileName)}
+                          </span>
+                        )}
+                        {prettyFileName(f.fileName)}
                       </a>
                       <a
                         href={f.serverRelativeUrl}

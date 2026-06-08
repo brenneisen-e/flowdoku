@@ -91,7 +91,7 @@ export default function RegistrationPage(): React.ReactElement {
   }, []);
 
   const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
-  const { events, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest, updateMyRegistration } = useEvents();
+  const { events, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest, updateMyRegistration, uploadFieldDocument } = useEvents();
   const { currentUser } = useCurrentUser();
   const { searchUsers, searchUser, isAdmin } = useRoles();
   const { locale: appLocale } = useLanguage();
@@ -256,6 +256,10 @@ export default function RegistrationPage(): React.ReactElement {
     }
   }, [navIntent, canCreateEvents]);
   const [eventSpecific, setEventSpecific] = React.useState<Record<string, string>>({});
+  // v19.0: Pro Dokument-Custom-Feld die ausgewählte Datei (vor dem Absenden).
+  // Wird NICHT in customData geschrieben — nach erfolgreicher Anmeldung als
+  // Attachment an die Teilnehmer-Zeile gehängt.
+  const [pendingDocFiles, setPendingDocFiles] = React.useState<Record<string, File | null>>({});
   const [preferredStarterType, setPreferredStarterType] = React.useState<string>('');
   // Seit v6.5: Fallback-Dialog wenn B2Run-Wunschtyp voll, aber Alternative frei.
   const [fallbackDialog, setFallbackDialog] = React.useState<{ wunsch: string; alt: string; altFree: number } | null>(null);
@@ -823,6 +827,10 @@ export default function RegistrationPage(): React.ReactElement {
             if (preferredStarterType !== want) return false;
           }
           if (!f.required) return false;
+          // v19.0: Pflicht-Dokument — bei NEUER Anmeldung muss eine Datei gewählt
+          // sein. Bei bereits angemeldeter Person läuft die Verwaltung über
+          // „Meine Events", daher dort nicht blockieren.
+          if (f.type === 'document') return !parentAlreadyRegistered && !pendingDocFiles[f.id];
           return f.type === 'checkbox'
             ? eventSpecific[f.id] !== 'true'
             : !eventSpecific[f.id]?.trim();
@@ -1202,6 +1210,20 @@ export default function RegistrationPage(): React.ReactElement {
       setSubmitProgressLabel(locale === 'de' ? 'Bestätigungen werden versandt…' : 'Confirmations are being queued…');
 
       if (anySuccess) {
+        // v19.0: ausgewählte Dokument-Dateien als Attachment an die Teilnehmer-
+        // Zeile hängen — das Item existiert jetzt. Bei stellvertretender
+        // Anmeldung an die Teilnehmer-E-Mail, sonst an den eingeloggten User.
+        const docFields = (event?.eventSpecificFields || []).filter(f => f.type === 'document');
+        const anyDoc = docFields.some(df => !!pendingDocFiles[df.id]);
+        if (anyDoc) {
+          setSubmitProgressLabel(locale === 'de' ? 'Dokumente werden hochgeladen…' : 'Uploading documents…');
+          for (const df of docFields) {
+            const file = pendingDocFiles[df.id];
+            if (!file) continue;
+            try { await uploadFieldDocument(selectedEventId!, df.id, file, registerForOther ? participantEmail : undefined); }
+            catch { /* best-effort — Anmeldung bleibt gültig, Upload kann später über „Meine Events" nachgeholt werden */ }
+          }
+        }
         // Flag: wenn ausschließlich Sessions angemeldet/geändert wurden (kein
         // Parent diesmal oder schon vorher angemeldet), zeigen wir auf der
         // Success-Seite den Sessions-Only-Hinweis.
@@ -1580,6 +1602,13 @@ export default function RegistrationPage(): React.ReactElement {
       // großen Lücken führte.
       ? <div style={{ fontSize: '0.78rem', fontWeight: 400, color: 'var(--dex-gray-500)', lineHeight: 1.45, marginTop: 2, marginBottom: 6, minHeight: '2.9em' }}>{displayHelp}</div>
       : null;
+    // v19.0: Ausgefüllte Felder bekommen die gleiche grüne Hervorhebung wie die
+    // ausgewählten Event-Sections (grüner Rand + zarter grüner Hintergrund).
+    const fieldVal = vals[field.id];
+    const isFieldFilled = field.type === 'checkbox' ? fieldVal === 'true' : !!(fieldVal && fieldVal.trim());
+    const greenFilledStyle: React.CSSProperties = { borderColor: 'var(--dex-green, #86bc25)', boxShadow: '0 0 0 1px var(--dex-green, #86bc25) inset', background: 'rgba(134,188,37,0.06)' };
+    const isErrEmpty = !!(showErrors && field.required && (field.type === 'checkbox' ? fieldVal !== 'true' : !fieldVal?.trim()));
+    const inputStyleGreen: React.CSSProperties = isErrEmpty ? errorBorder : (isFieldFilled ? greenFilledStyle : {});
     return (
   <div className="form-group" key={field.id}>
     {field.type !== 'checkbox' && (
@@ -1626,7 +1655,7 @@ export default function RegistrationPage(): React.ReactElement {
         );
       })()
     ) : field.type === 'select' ? (
-      <select className="form-select" value={vals[field.id] || ''} onChange={e => setVals({ ...vals, [field.id]: e.target.value })} style={showErrors && field.required && !vals[field.id]?.trim() ? errorBorder : {}}>
+      <select className="form-select" value={vals[field.id] || ''} onChange={e => setVals({ ...vals, [field.id]: e.target.value })} style={inputStyleGreen}>
         <option value="">{tEvent('reg.pleaseselect')}</option>
         {field.options && field.options.map((opt, i) => <option key={opt} value={opt}>{pickOptionLabel(field, i, opt)}</option>)}
       </select>
@@ -1710,8 +1739,61 @@ export default function RegistrationPage(): React.ReactElement {
           </div>
         )}
       </>
+    ) : field.type === 'document' ? (
+      // v19.0: Dokument-Upload (PDF/Bild). Datei wird in pendingDocFiles
+      // gehalten und nach erfolgreicher Anmeldung als Attachment hochgeladen.
+      // Im Team-Mitglied-Kontext (store gesetzt) nicht unterstützt.
+      store ? (
+        <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>
+          {locale === 'de' ? 'Dokument-Upload pro Team-Mitglied wird nicht unterstützt.' : 'Per-member document upload is not supported.'}
+        </div>
+      ) : (() => {
+        const picked = pendingDocFiles[field.id] || null;
+        const docErr = !!(showErrors && field.required && !picked && !parentAlreadyRegistered);
+        return (
+          <div>
+            {picked ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', border: '1.5px solid var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.06)', borderRadius: 12 }}>
+                <Icon iconName="Attach" style={{ fontSize: 16, color: 'var(--dex-green-dark, #4a7c1f)' }} />
+                <span style={{ flex: 1, fontSize: '0.88rem', wordBreak: 'break-all' }}>{picked.name}</span>
+                <button
+                  type="button"
+                  onClick={() => setPendingDocFiles(prev => ({ ...prev, [field.id]: null }))}
+                  title={locale === 'de' ? 'Datei entfernen' : 'Remove file'}
+                  style={{ background: 'var(--dex-gray-200)', border: 'none', color: 'var(--dex-gray-700)', width: 22, height: 22, borderRadius: '50%', cursor: 'pointer', fontSize: '0.9rem', lineHeight: 1, flexShrink: 0 }}
+                >×</button>
+              </div>
+            ) : (
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 16px', border: `1.5px dashed ${docErr ? 'var(--dex-red)' : 'var(--dex-gray-300)'}`, borderRadius: 12, cursor: 'pointer', fontSize: '0.88rem', color: 'var(--dex-gray-600)' }}>
+                <Icon iconName="Upload" style={{ fontSize: 16 }} />
+                {locale === 'de' ? 'Datei wählen (PDF, JPG, PNG)' : 'Choose file (PDF, JPG, PNG)'}
+                <input
+                  type="file"
+                  accept="application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg"
+                  style={{ display: 'none' }}
+                  onChange={e => {
+                    const f = e.target.files?.[0] || null;
+                    if (f && f.size > 10 * 1024 * 1024) {
+                      // eslint-disable-next-line no-alert
+                      alert(locale === 'de' ? 'Die Datei ist zu groß (max. 10 MB).' : 'The file is too large (max. 10 MB).');
+                      e.target.value = '';
+                      return;
+                    }
+                    setPendingDocFiles(prev => ({ ...prev, [field.id]: f }));
+                  }}
+                />
+              </label>
+            )}
+            <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', marginTop: 4 }}>
+              {locale === 'de'
+                ? 'Wird nach dem Absenden hochgeladen. Du kannst es auch später über „Meine Events" ergänzen oder ersetzen.'
+                : 'Uploaded after submitting. You can also add or replace it later via „My Events".'}
+            </div>
+          </div>
+        );
+      })()
     ) : (
-      <input className="form-input" value={vals[field.id] || ''} onChange={e => setVals({ ...vals, [field.id]: e.target.value })} placeholder={displayLabel} style={showErrors && field.required && !vals[field.id]?.trim() ? errorBorder : {}} />
+      <input className="form-input" value={vals[field.id] || ''} onChange={e => setVals({ ...vals, [field.id]: e.target.value })} placeholder={displayLabel} style={inputStyleGreen} />
     )}
   </div>
     );

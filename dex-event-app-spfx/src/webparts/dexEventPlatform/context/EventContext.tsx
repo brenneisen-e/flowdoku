@@ -326,6 +326,10 @@ interface EventContextType {
   listMyEventAttachments: (eventId: string) => Promise<Array<{ fileName: string; serverRelativeUrl: string }>>;
   uploadMyEventAttachment: (eventId: string, file: File) => Promise<boolean>;
   deleteMyEventAttachment: (eventId: string, fileName: string) => Promise<boolean>;
+  // v19.0: Dokument-Custom-Felder (pro-Feld-Attachments).
+  uploadFieldDocument: (eventId: string, fieldId: string, file: File, participantEmail?: string) => Promise<boolean>;
+  listFieldDocuments: (eventId: string, fieldId: string, participantEmail?: string) => Promise<Array<{ fileName: string; serverRelativeUrl: string; displayName: string }>>;
+  deleteFieldDocument: (eventId: string, fileName: string, participantEmail?: string) => Promise<boolean>;
   getMyEventNumbers: () => Promise<{ registered: number[]; waitlisted: number[] }>;
   refreshEvents: () => Promise<void>;
   refreshParticipantCounts: (eventId?: string) => Promise<void>;
@@ -2901,6 +2905,43 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return eventService.deleteRegistrationAttachment(subsiteUrl, myReg.Id, fileName);
   }
 
+  // v19.0: Dokument-Custom-Felder. Ein Attachment wird über einen Dateinamen-
+  // Präfix (`dxf-<fieldId>--`) genau EINEM Dokument-Feld zugeordnet, sodass ein
+  // Event mehrere Dokument-Felder haben kann. participantEmail erlaubt den
+  // Upload für eine andere Person (stellvertretende Anmeldung); Default = der
+  // eingeloggte User (Self-Anmeldung + „Meine Events").
+  const docFieldPrefix = (fieldId: string): string => `dxf-${(fieldId || '').replace(/[^a-zA-Z0-9]/g, '')}--`;
+  const stripDocPrefix = (fileName: string): string =>
+    fileName
+      .replace(/^dxf-[a-zA-Z0-9]+--\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_/, '')
+      .replace(/^dxf-[a-zA-Z0-9]+--/, '');
+  async function uploadFieldDocument(eventId: string, fieldId: string, file: File, participantEmail?: string): Promise<boolean> {
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl) return false;
+    const email = (participantEmail || currentUserEmail || '').trim();
+    const reg = await eventService.getMyRegistration(subsiteUrl, email);
+    if (!reg || !reg.Id) return false;
+    return eventService.addRegistrationAttachment(subsiteUrl, reg.Id, file, docFieldPrefix(fieldId));
+  }
+  async function listFieldDocuments(eventId: string, fieldId: string, participantEmail?: string): Promise<Array<{ fileName: string; serverRelativeUrl: string; displayName: string }>> {
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl) return [];
+    const email = (participantEmail || currentUserEmail || '').trim();
+    const reg = await eventService.getMyRegistration(subsiteUrl, email);
+    if (!reg || !reg.Id) return [];
+    const all = await eventService.listRegistrationAttachments(subsiteUrl, reg.Id);
+    const prefix = docFieldPrefix(fieldId);
+    return all.filter(f => f.fileName.startsWith(prefix)).map(f => ({ ...f, displayName: stripDocPrefix(f.fileName) }));
+  }
+  async function deleteFieldDocument(eventId: string, fileName: string, participantEmail?: string): Promise<boolean> {
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl) return false;
+    const email = (participantEmail || currentUserEmail || '').trim();
+    const reg = await eventService.getMyRegistration(subsiteUrl, email);
+    if (!reg || !reg.Id) return false;
+    return eventService.deleteRegistrationAttachment(subsiteUrl, reg.Id, fileName);
+  }
+
   // v10.27: Split-Capacity-Gruppen-Wechsel — wrappt EventService.switchSplitGroup,
   // ergänzt um Mail/Outlook-Sideeffects und Reload.
   async function switchSplitGroup(eventId: string, newType: 'Durchstarter' | 'Funstarter'): Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' | 'Failed'; full: boolean }> {
@@ -3131,7 +3172,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, selfCheckIn, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
+        getMyRegistration, selfCheckIn, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
         sendAdminInquiry,
         reseedDefaultEmailTemplates,
         sendOrganizerOnboarding,

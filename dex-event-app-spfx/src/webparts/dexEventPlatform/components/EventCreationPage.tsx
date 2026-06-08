@@ -152,7 +152,7 @@ async function compressImage(file: File, maxWidth: number = 1200, quality: numbe
 interface CustomFieldInput {
   id: string;
   label: string;
-  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate';
+  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'document'; // v19.0: document = Datei-Upload
   required: boolean;
   // Optionen als Array (incl. leerer Slots fuer "frisch hinzugefuegte" Eintraege)
   options: string[];
@@ -9771,6 +9771,7 @@ export default function EventCreationPage(): React.ReactElement {
                         <option value="checkbox">{isDe ? 'Checkbox' : 'Checkbox'}</option>
                         <option value="user">{isDe ? 'Person' : 'Person'}</option>
                         <option value="roommate">{isDe ? 'Roommate' : 'Roommate'}</option>
+                        <option value="document">{isDe ? 'Dokument (PDF/Bild-Upload)' : 'Document (PDF/image upload)'}</option>
                       </select>
                       <label
                         style={{

@@ -473,6 +473,58 @@ automatisch in Kopie.
   CustomFields-Write, siehe Abschnitt oben) sowie im SP→Event-Parse
   (`eventSpecificFields.map`) durchgereicht.
 
+### Dokument-Custom-Feldtyp (v19.0)
+
+Neuer Custom-Field-Typ **`document`** — der Organizer bittet Teilnehmer um einen
+**PDF-/Bild-Upload**. Die Datei wird als **SP-Item-Attachment an die Teilnehmer-
+Zeile** gehängt (kein Spaltenwert) und ist im **Admin Center** pro Teilnehmer
+abrufbar. Nutzt die bestehende Attachment-Infrastruktur (`allowAttendeeUpload`)
+weiter.
+
+- **Type-Union** an 4 Stellen ergänzt: `types/index.ts` (`EventSpecificField`),
+  `EventService.ts` (`CustomField`), `EventCreationPage.tsx` (`CustomFieldInput`
+  + Wizard-Dropdown „Dokument (PDF/Bild-Upload)"). Persistenz läuft über den
+  bestehenden `type`-Durchgriff (kein neues Property → keine `cfForFix`-Falle).
+- **Keine SP-Spalte:** Dokument-Felder werden in `createRegistrationList` UND
+  `fixRegistrationListColumns` per `continue` übersprungen; die „Antwort" ist die
+  angehängte Datei, kein Spaltenwert. Daher auch nicht in `customData`.
+- **Feld-↔Datei-Zuordnung über Dateinamen-Präfix:** ein Event kann mehrere
+  Dokument-Felder haben. `addRegistrationAttachment(..., fieldPrefix)` schreibt
+  `dxf-<sanitizedFieldId>--<ts>_<name>`; gelistet wird per `startsWith`-Filter.
+  Helper `docFieldPrefix` / `stripDocPrefix` in `EventContext.tsx`.
+- **Neue Context-Methoden:** `uploadFieldDocument`, `listFieldDocuments`,
+  `deleteFieldDocument` (jeweils mit optionalem `participantEmail` für die
+  stellvertretende Anmeldung; Default = eingeloggter User). Sie lösen das
+  Listen-Item per `getMyRegistration` auf und rufen die EventService-Attachment-
+  Helper.
+- **Upload-Timing:** Attachments brauchen die Item-Id, die erst nach dem Insert
+  existiert. `RegistrationPage` hält die gewählte Datei in `pendingDocFiles`
+  (NICHT in `customData`) und lädt sie in `performRegistration` NACH erfolgreicher
+  Anmeldung hoch. Pflicht-Dokumentfelder erzwingen bei NEU-Anmeldung eine Datei
+  (bei bereits angemeldeter Person läuft das über „Meine Events").
+- **„Meine Events":** pro Dokument-Feld ein `MyEventDocField`-Block
+  (`MyEventsPage.tsx`) zum nachträglichen Ergänzen/Ersetzen/Löschen.
+- **Admin Center:** der „Datei"-Button + Attachment-Modal (vorher nur bei
+  `allowAttendeeUpload`) erscheint jetzt auch bei Events mit Dokument-Feld; im
+  Modal wird der `dxf-…`-Präfix gestrippt und das Feld-Label als Badge angezeigt.
+- **Akzeptierte Typen:** PDF + JPG/PNG (Upload-Limit 10 MB). Kein Power-Automate-
+  Change (reine SP-REST-Attachments).
+
+### Grüne Hervorhebung ausgefüllter Felder (v19.0)
+
+Auf der Anmeldeseite bekommen **ausgefüllte** Custom-Felder (Dropdown gewählt,
+Text/Zahl eingegeben, Person ausgewählt, Mehrfachauswahl getroffen, Dokument
+hochgeladen) denselben **grünen Rand + zarten grünen Hintergrund** wie eine
+ausgewählte Event-Section. Umgesetzt in `renderRegField` (`inputStyleGreen`) +
+`MultiSelectDropdown` + `UserFieldPicker` (Chip). Checkboxen waren schon grün.
+
+### Teams im Organizer-Center als 3-Spalten-Raster (v19.0)
+
+Die Teams-Sektion im Admin Center (`AdminPage.tsx`) rendert die Team-Karten jetzt
+in einem responsiven Raster (`repeat(auto-fill, minmax(300px, 1fr))`) statt
+vollbreit gestapelt — und nummeriert die Teams durch (`1.`, `2.`, …). Spart
+vertikalen Platz bei vielen Teams.
+
 ### Sicherheitshinweis vor dem Absenden der Anmeldung (v18.75)
 
 Pro Event kann der Organizer einen **Bestätigungs-Dialog** aktivieren, der nach
