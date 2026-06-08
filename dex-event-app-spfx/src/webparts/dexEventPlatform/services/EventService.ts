@@ -4409,7 +4409,15 @@ export class EventService {
     registeredByEmail?: string, // Audit: E-Mail des Users der die Anmeldung ausloest
     // v18.74: Nachweis der Zustimmung bei stellvertretender Anmeldung — wird in
     // die SP-Spalte ProxyConsent geschrieben (leer bei Selbst-Anmeldung).
-    proxyConsent?: string
+    proxyConsent?: string,
+    // v19.9: Der CLIENT hat bereits zuverlässig festgestellt, dass der/die
+    // Anmeldende Haupt- oder Co-Organizer dieses Events ist (aus dem geladenen
+    // Event-Objekt: organizerEmails/coOrganizerEmails ⊇ aktueller User). Diese
+    // Information wird hier durchgereicht und hat Vorrang vor der fragilen
+    // serverseitigen Ableitung (SubsiteUrl-Filter + Note-Feld-Parsing +
+    // pageContext-Identität), die im Tenant gelegentlich fehlschlug und
+    // legitime Organizer mit „bereits angemeldet" ablehnte.
+    actorIsEventOrganizer: boolean = false
   ): Promise<boolean> {
     try {
       // ---- Permission-Checks (v3.9.2 / v3.9.3) ----
@@ -4440,8 +4448,13 @@ export class EventService {
       } catch { /* Bei Load-Fehler konservativ weitermachen — andere Checks greifen */ }
 
       // Check A: Darf der User fuer eine andere Person registrieren?
+      // v19.9: Wenn der Client bereits bestätigt hat, dass der/die Anmeldende
+      // Organizer/Co-Organizer dieses Events ist, vertrauen wir dem (gleiche
+      // Datengrundlage wie die Button-Sichtbarkeit) und überspringen die
+      // fragile serverseitige Ableitung. Sonst Fallback auf canRegisterForOthers
+      // (deckt Admin-Rolle + Assistant-Ausnahme zuverlässig ab).
       if (targetEmail && targetEmail !== sessionEmail) {
-        const allowed = await this.canRegisterForOthers(subsiteUrl, participantEmail);
+        const allowed = actorIsEventOrganizer || await this.canRegisterForOthers(subsiteUrl, participantEmail);
         if (!allowed) {
           console.warn(`[DEX] registerForEvent DENIED: ${sessionEmail} versuchte ${targetEmail} zu registrieren — weder Organizer noch Admin noch erlaubter Assistant-Fall.`);
           return false;
@@ -4552,10 +4565,33 @@ export class EventService {
         }
       }
 
-      const response = await this._post(
+      let response = await this._post(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items`,
         payload
       );
+      // v19.9 BUG-FIX: Stellvertretende Anmeldung schlug auf älteren
+      // Teilnehmerlisten fehl, weil die erst mit v18.74 eingeführte Spalte
+      // `ProxyConsent` dort noch nicht existiert — der Insert mit
+      // `ProxyConsent` im Body wird dann von SharePoint mit HTTP 400
+      // ("property does not exist") abgewiesen. Da `ProxyConsent` NUR bei
+      // Stellvertreter-Anmeldungen im Body steht, scheiterte ausschließlich der
+      // Proxy-Pfad (Selbst-Anmeldung lief, weil dort kein ProxyConsent gesetzt
+      // wird) — für den User sah es aus wie „Person bereits angemeldet", obwohl
+      // gar nichts gespeichert wurde. Fix: Insert einmal OHNE das optionale
+      // Audit-Feld wiederholen, damit die Anmeldung nicht an einer fehlenden
+      // Spalte scheitert. Der Zustimmungs-Nachweis geht dann verloren (der
+      // Admin kann die Spalte per „Spalten fixen" nachrüsten), die Anmeldung
+      // selbst gelingt aber.
+      if (!response.ok && payload['ProxyConsent']) {
+        console.warn('[DEX] registerForEvent: Insert fehlgeschlagen — Retry OHNE ProxyConsent (Spalte evtl. nicht vorhanden). Bitte im Admin Center "Spalten fixen" ausfuehren.');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const retryPayload: Record<string, any> = { ...payload };
+        delete retryPayload['ProxyConsent'];
+        response = await this._post(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items`,
+          retryPayload
+        );
+      }
       if (!response.ok) return false;
 
       // v9.10: Post-Insert Safety Net — bei Massen-Anmeldungen (Go-Live)
@@ -5191,10 +5227,24 @@ export class EventService {
         }
       }
 
-      const response = await this._merge(
+      let response = await this._merge(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
         body
       );
+      // v19.9: Wie bei registerForEvent — falls die ProxyConsent-Spalte auf
+      // diesem (älteren) Event noch fehlt, scheitert der MERGE mit HTTP 400.
+      // Einmal ohne das optionale Audit-Feld wiederholen, damit die
+      // Re-Aktivierung nicht an einer fehlenden Spalte scheitert.
+      if (!response.ok && body['ProxyConsent']) {
+        console.warn('[DEX] reactivateRegistration: MERGE fehlgeschlagen — Retry OHNE ProxyConsent (Spalte evtl. nicht vorhanden). Bitte im Admin Center "Spalten fixen" ausfuehren.');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const retryBody: Record<string, any> = { ...body };
+        delete retryBody['ProxyConsent'];
+        response = await this._merge(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+          retryBody
+        );
+      }
       if (!response.ok) return false;
 
       // v9.10: Post-Update Safety Net (siehe registerForEvent). Bei

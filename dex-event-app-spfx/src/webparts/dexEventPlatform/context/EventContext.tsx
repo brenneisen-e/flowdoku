@@ -1121,13 +1121,24 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       ? `${isExternalParticipant ? 'Schriftliche ' : ''}Zustimmung der Person zur stellvertretenden Anmeldung bestätigt durch ${actorName} (${actorEmail}) am ${new Date().toLocaleString('de-DE')}`
       : '';
 
+    // v19.9: Der Client weiß zuverlässig (aus dem geladenen Event-Objekt), ob
+    // der/die Anmeldende Haupt- oder Co-Organizer dieses Events ist. Diese
+    // Info an EventService durchreichen — sie hat dort Vorrang vor der fragilen
+    // serverseitigen Organizer-Ableitung (SubsiteUrl/Note-Feld/pageContext),
+    // die im Tenant gelegentlich legitime Organizer abgelehnt hat.
+    const actorEmailLc = (currentUserEmail || '').toLowerCase();
+    const actorIsEventOrganizer = !!event && (
+      (event.organizerEmails || []).some(e => (e || '').toLowerCase() === actorEmailLc) ||
+      (event.coOrganizerEmails || []).some(e => (e || '').toLowerCase() === actorEmailLc)
+    );
     let success: boolean;
     if (existing && existing.Status === 'Abgemeldet') {
       success = await eventService.reactivateRegistration(subsiteUrl, existing.Id, firstNameToUse, lastNameToUse, customData, status, fieldMap, actorName, actorEmail, proxyConsentStr);
     } else {
       success = await eventService.registerForEvent(
         subsiteUrl, firstNameToUse, lastNameToUse, emailToUse, customData, status, fieldMap,
-        effectiveStarterType, preferredStarterType, actorName, actorEmail, proxyConsentStr
+        effectiveStarterType, preferredStarterType, actorName, actorEmail, proxyConsentStr,
+        actorIsEventOrganizer
       );
     }
 
