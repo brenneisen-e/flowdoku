@@ -1466,19 +1466,42 @@ export class EventService {
     ActorName: string; ActorEmail: string; Details: string;
   }>> {
     const top = opts?.top || 200;
-    let url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_ChangeLog')/items?$select=Id,Created,Action,TargetType,TargetId,TargetName,EventId,EventTitle,ActorName,ActorEmail,Details&$orderby=Created desc&$top=${top}`;
-    if (opts?.eventId) {
-      url += `&$filter=EventId eq '${String(opts.eventId).replace(/'/g, "''")}'`;
+    const base = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_ChangeLog')/items`;
+    const sel = `$select=Id,Created,Action,TargetType,TargetId,TargetName,EventId,EventTitle,ActorName,ActorEmail,Details`;
+    const filter = opts?.eventId
+      ? `&$filter=EventId eq '${String(opts.eventId).replace(/'/g, "''")}'`
+      : '';
+    // v19.13 BUG-FIX: Das Audit-Log lud mit HTTP 400 (→ „0 Einträge"). Zwei
+    // typische Ursachen, gegen beide robust:
+    //  (a) `$orderby=Created` auf einer großen Liste ohne Index auf `Created`
+    //      → „List View Threshold"-Fehler (400). Deshalb jetzt nach `Id desc`
+    //      sortieren — `Id` ist IMMER indiziert, und da auto-increment entspricht
+    //      die Reihenfolge chronologisch absteigend.
+    //  (b) Ein Feld im `$select` existiert auf einer Bestands-/Legacy-Liste nicht
+    //      (Feld-Anlage best-effort) → 400. Deshalb Fallbacks ohne `$select` und
+    //      notfalls ohne Server-Filter (dann client-seitig nach EventId filtern).
+    const candidates = [
+      `${base}?${sel}&$orderby=Id desc&$top=${top}${filter}`,
+      `${base}?$orderby=Id desc&$top=${top}${filter}`,
+      `${base}?$orderby=Id desc&$top=${top}`,
+    ];
+    for (let i = 0; i < candidates.length; i++) {
+      try {
+        const resp = await this.context.spHttpClient.get(candidates[i], SPHttpClient.configurations.v1);
+        if (!resp.ok) continue;
+        const data = await resp.json();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let items: any[] = data.value || data.d?.results || [];
+        // Letzter Kandidat hat keinen Server-Filter (falls die EventId-Spalte
+        // im Filter das 400 ausgelöst hat) → client-seitig nachfiltern.
+        if (i === candidates.length - 1 && opts?.eventId) {
+          items = items.filter(it => String((it && it.EventId) || '') === String(opts.eventId));
+        }
+        return items;
+      } catch { /* nächsten Kandidaten versuchen */ }
     }
-    try {
-      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
-      if (!resp.ok) return [];
-      const data = await resp.json();
-      return data.value || data.d?.results || [];
-    } catch (err) {
-      console.warn('[DEX] readChangeLog failed:', err);
-      return [];
-    }
+    console.warn('[DEX] readChangeLog: alle Abfrage-Varianten fehlgeschlagen.');
+    return [];
   }
 
   /**
