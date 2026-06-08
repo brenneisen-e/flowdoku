@@ -1064,6 +1064,34 @@ der Änderung mit sauberem Deutsch versehen.
 
 Nie sagen "füge dieses JSON ein" oder "öffne den Code View" — stattdessen jeden Klick in der UI beschreiben.
 
+**Pflicht-Detailgrad pro Action (gilt für JEDE Flow-Anleitung — Chat UND
+`docs/flow-jsons.md`):** Der Maintainer will Flow-Anleitungen so präzise, dass
+er sie ohne Nachdenken abklicken kann. Für **jede** betroffene Action **immer
+explizit** angeben — auch wenn sich Teile wiederholen, lieber mehrfach nennen
+als weglassen:
+
+1. **NEU anlegen oder BESTEHENDE ändern?** Klar dazuschreiben. Bei „bestehend":
+   welche Action genau, und was darin geändert wird (Vorher/Nachher).
+2. **Wohin / Position:** Davor-Action (= `runAfter`) UND Nachfolge-Action
+   namentlich. Bei neuen Actions: an welcher Stelle im welchem Zweig sie
+   eingefügt werden (z.B. „ans Ende des Durchstarter-Zweigs, unter
+   `Queue_Org_Email_D`").
+3. **Action-Typ** (z.B. „Send an HTTP request to SharePoint", „Create item",
+   „Get items", „Condition").
+4. **Alle Parameter exakt:** Method, Uri/Site Address, jeder Header (Key=Wert),
+   der komplette Body — Felder einzeln. Ausdrücke wörtlich (`@{…}`) und mit dem
+   Hinweis „über fx eintragen".
+5. **Rename** (⋮ → Rename) auf den genannten Namen, weil Folge-Ausdrücke ihn
+   referenzieren.
+6. **Run after** (⋮ → Configure run after): welche Vorgänger-States anhaken
+   (is successful / has failed / is skipped).
+
+Konkret heißt das: **eine nummerierte/tabellarische Schritt-für-Schritt-Liste,
+eine Zeile/ein Block pro Action**, vollständig im Chat (nicht nur „steht in
+`docs/flow-jsons.md`"). Die identische Anleitung wandert zusätzlich in
+`docs/flow-jsons.md`. NIE auf die Doku verweisen statt im Chat zu antworten —
+beides muss vollständig sein.
+
 ### Power Automate Flow-Änderungen Workflow
 
 **WICHTIG:** Wenn eine Änderung in einem Power Automate Flow nötig ist:
