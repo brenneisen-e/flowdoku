@@ -3890,12 +3890,16 @@ export default function RegistrationPage(): React.ReactElement {
                   </span>
                 </label>
               </>
-            ) : (
+            ) : (() => {
+              // v19.0: statt generischem „Punkte/items" den konfigurierten
+              // Section-Begriff verwenden (Default „Event-Sections").
+              const sectionTerm = childTermPlural || (locale === 'de' ? 'Event-Sections' : 'event sections');
+              return (
               <>
                 <p style={{ margin: '0 0 12px', fontSize: '0.9rem', lineHeight: 1.55, color: 'var(--dex-gray-700)' }}>
                   {locale === 'de'
-                    ? 'Du meldest dich für die angehakten Punkte an. Du kannst vor dem Absenden einzelne Punkte ab- oder zuwählen:'
-                    : 'You are registering for the checked items. You can de-/select items before submitting:'}
+                    ? `Du meldest dich für die angehakten ${sectionTerm} an. Du kannst vor dem Absenden einzelne ${sectionTerm} ab- oder zuwählen:`
+                    : `You are registering for the checked ${sectionTerm}. You can de-/select ${sectionTerm} before submitting:`}
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
                   {showParent && (
@@ -3951,11 +3955,12 @@ export default function RegistrationPage(): React.ReactElement {
                 </div>
                 {!canConfirm && (
                   <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: 'var(--dex-red, #c00)' }}>
-                    {locale === 'de' ? 'Bitte mindestens einen Punkt auswählen.' : 'Please select at least one item.'}
+                    {locale === 'de' ? `Bitte mindestens eine ${sectionTerm} auswählen.` : `Please select at least one of the ${sectionTerm}.`}
                   </p>
                 )}
               </>
-            )}
+            );
+            })()}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
               <button className="btn btn-secondary" onClick={() => setConfirmDialogOpen(false)} style={{ fontSize: '0.85rem' }}>
                 {locale === 'de' ? 'Abbrechen' : 'Cancel'}
