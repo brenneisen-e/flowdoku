@@ -81,9 +81,10 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
           width: '100%',
           textAlign: 'left',
           padding: '12px 36px 12px 16px',
-          border: error ? '1.5px solid var(--dex-red)' : '1.5px solid var(--dex-gray-200)',
+          // v19.0: Bei Auswahl grüne Hervorhebung (wie ausgefüllte Felder).
+          border: error ? '1.5px solid var(--dex-red)' : (!isEmpty && !disabled ? '1.5px solid var(--dex-green, #86bc25)' : '1.5px solid var(--dex-gray-200)'),
           borderRadius: 12,
-          background: disabled ? 'var(--dex-gray-50)' : 'var(--dex-white, #fff)',
+          background: disabled ? 'var(--dex-gray-50)' : (!isEmpty ? 'rgba(134,188,37,0.06)' : 'var(--dex-white, #fff)'),
           color: isEmpty ? 'var(--dex-gray-400)' : 'var(--dex-gray-800)',
           fontSize: '0.95rem',
           lineHeight: 1.45,

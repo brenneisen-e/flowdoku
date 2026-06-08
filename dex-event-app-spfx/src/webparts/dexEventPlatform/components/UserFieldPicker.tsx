@@ -93,9 +93,10 @@ export function UserFieldPicker(props: {
         <div style={{
           display: 'inline-flex', alignItems: 'center', gap: 10,
           padding: '8px 12px 8px 8px',
-          border: '1px solid var(--dex-gray-200)',
+          // v19.0: grüne Hervorhebung wie ausgefüllte Felder.
+          border: '1px solid var(--dex-green, #86bc25)',
           borderRadius: 'var(--dex-radius)',
-          background: 'var(--dex-gray-50, #f7f7f7)',
+          background: 'rgba(134,188,37,0.06)',
           maxWidth: '100%',
         }}>
           <img
