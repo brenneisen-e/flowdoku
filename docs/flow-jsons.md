@@ -334,6 +334,19 @@ App-Teilnehmerliste sichtbar werden:
 
 ### UI-Anleitung 2026-06-08 (v19.11) — Nachrück-Audit EXAKT (Schritt für Schritt, jede Action einzeln)
 
+> **STATUS 2026-06-08: im Tenant umgesetzt + verifiziert.** Die 9 Audit-Actions
+> (`Audit_Promoted_D/F/N`, `Get_Cancelled_D/F/N`, `Audit_Cancelled_D/F/N`) sind im
+> `DEX_IDReorder`-Flow live. Tatsächliche Einfügepunkte (ans Ende des jeweiligen
+> Zweigs): **nach `Queue_Outlook_Durchstarter`** (Zweig D), **nach
+> `Queue_Outlook_Funstarter`** (Zweig F), **nach `Queue_Outlook`** (Zweig N).
+> Zwei häufige Fallstricke (beide im Tenant korrigiert): (1) **Site Address** der
+> Audit-Actions MUSS `@{outputs('Settings')?['siteAddress']}` (Subsite) sein —
+> nicht die Root-Site, sonst wird die `Teilnehmer`-Liste nicht gefunden. (2) Die
+> 6 MERGE-Actions brauchen die Header `If-Match: *`, `X-HTTP-Method: MERGE`,
+> `Content-Type: application/json;odata=verbose`, `Accept: application/json;odata=verbose`
+> — sonst wird nichts geschrieben. `runAfter`-Status kanonisch `Succeeded`
+> (Power Automate wertet case-insensitiv, aber sauber über ⋮ → Configure run after).
+
 **Was am Ende rauskommt:** Bei jedem Nachrücken schreibt der Flow
 - auf die **nachgerückte** Person: `PromotedDate` + `ReplacedParticipantEmail`,
 - auf die **abgemeldete** Person: `ReplacedByParticipantEmail`.
