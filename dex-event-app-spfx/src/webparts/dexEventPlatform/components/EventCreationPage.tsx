@@ -5471,29 +5471,14 @@ export default function EventCreationPage(): React.ReactElement {
                   const joined = hits.length === 1
                     ? hits[0]
                     : hits.slice(0, -1).join(', ') + (isDe ? ' und ' : ' and ') + hits[hits.length - 1];
-                  const exampleHtml = isDe
-                    ? 'Liebe Kolleginnen und Kollegen,<br><br>wir freuen uns sehr, euch herzlich einzuladen! Es erwartet euch ein abwechslungsreiches Programm mit viel Raum für Austausch und Begegnung.<br><br>Wir freuen uns auf einen schönen gemeinsamen Tag mit euch!'
-                    : 'Dear colleagues,<br><br>we are delighted to invite you! Look forward to a varied programme with plenty of room for exchange and networking.<br><br>We can&rsquo;t wait to see you there!';
                   return (
                     <div style={{ marginTop: 12, padding: '12px 14px', background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange, #ed8b00)', borderRadius: 8, fontSize: '0.82rem', color: 'var(--dex-gray-800)', lineHeight: 1.5 }}>
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
                         <Icon iconName="Info" style={{ fontSize: 15, color: 'var(--dex-orange, #ed8b00)', marginTop: 2 }} />
                         <div style={{ flex: 1 }}>
                           {isDe
-                            ? <>In der Beschreibung steht offenbar <strong>{joined}</strong>. <strong>Name, Datum und Ort</strong> des Events werden bereits <strong>separat</strong> auf der Anmelde-Seite angezeigt — du musst sie hier nicht wiederholen. Nutze die Beschreibung lieber für einen einladenden, inhaltlichen Text.</>
-                            : <>Your description appears to contain <strong>{joined}</strong>. The event&rsquo;s <strong>name, date and location</strong> are already shown <strong>separately</strong> on the registration page — no need to repeat them here. Use the description for an inviting, substantive text instead.</>}
-                          <div style={{ marginTop: 8 }}>
-                            <button
-                              type="button"
-                              onClick={() => setDescription(exampleHtml)}
-                              style={{ display: 'block', width: '100%', textAlign: 'left', fontSize: '0.78rem', cursor: 'pointer', background: '#fff', border: '1px dashed var(--dex-orange, #ed8b00)', borderRadius: 6, padding: '8px 10px', color: 'var(--dex-gray-700)', lineHeight: 1.45 }}
-                              title={isDe ? 'Diesen Beispieltext übernehmen' : 'Use this example text'}
-                            >
-                              <span style={{ fontWeight: 600, color: 'var(--dex-orange, #ed8b00)' }}>{isDe ? 'Beispiel (klicken zum Übernehmen):' : 'Example (click to apply):'}</span>
-                              <br />
-                              <span style={{ fontStyle: 'italic' }} dangerouslySetInnerHTML={{ __html: exampleHtml }} />
-                            </button>
-                          </div>
+                            ? <>In der Beschreibung steht offenbar <strong>{joined}</strong>. <strong>Name, Datum und Ort</strong> des Events werden bereits <strong>separat</strong> auf der Anmelde-Seite angezeigt — du musst sie hier nicht wiederholen. Nutze die Beschreibung lieber für einen einladenden, inhaltlichen Text. Über <strong>„Bearbeiten &amp; Vorschau“</strong> kannst du einen Beispieltext übernehmen.</>
+                            : <>Your description appears to contain <strong>{joined}</strong>. The event&rsquo;s <strong>name, date and location</strong> are already shown <strong>separately</strong> on the registration page — no need to repeat them here. Use the description for an inviting, substantive text instead. Via <strong>“Edit &amp; Preview”</strong> you can load an example text.</>}
                         </div>
                       </div>
                     </div>
@@ -9771,7 +9756,7 @@ export default function EventCreationPage(): React.ReactElement {
                         <option value="checkbox">{isDe ? 'Checkbox' : 'Checkbox'}</option>
                         <option value="user">{isDe ? 'Person' : 'Person'}</option>
                         <option value="roommate">{isDe ? 'Roommate' : 'Roommate'}</option>
-                        <option value="document">{isDe ? 'Dokument (PDF/Bild-Upload)' : 'Document (PDF/image upload)'}</option>
+                        <option value="document">{isDe ? 'Dokument (Upload)' : 'Document (upload)'}</option>
                       </select>
                       <label
                         style={{
@@ -12227,11 +12212,17 @@ export default function EventCreationPage(): React.ReactElement {
           : '<p>Du bist für das Event <strong>{{EventTitle}}</strong> angemeldet.</p>'
             + '<p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView" style="color:#86bc25;font-weight:600;">DEX App</a> („Meine Events") ab.</p>'
             + '<p>Bei organisatorischen Fragen wende dich bitte an <strong>{{Organizer}}</strong>.</p>';
+        // v19.2: Einladender Beispieltext für die Beschreibung — über den
+        // „Standardtext laden"-Button im Beschreibungs-Editor übernehmbar (statt
+        // wie früher als Inline-Box im Wizard).
+        const descriptionExampleHtml = isDe
+          ? 'Liebe Kolleginnen und Kollegen,<br><br>wir freuen uns sehr, euch herzlich einzuladen! Es erwartet euch ein abwechslungsreiches Programm mit viel Raum für Austausch und Begegnung.<br><br>Wir freuen uns auf einen schönen gemeinsamen Tag mit euch!'
+          : 'Dear colleagues,<br><br>we are delighted to invite you! Look forward to a varied programme with plenty of room for exchange and networking.<br><br>We look forward to seeing you there!';
         return (
           <HtmlEditorModal
             open={htmlEditorOpen}
             onClose={() => setHtmlEditorOpen(false)}
-            defaultBodyHtml={isOutlook ? outlookDefaultBody : undefined}
+            defaultBodyHtml={isOutlook ? outlookDefaultBody : (isDescription ? descriptionExampleHtml : undefined)}
             title={isOutlook ? 'Outlook-Termin: Body bearbeiten' : isDescription ? (isDe ? 'Event-Beschreibung bearbeiten' : 'Edit event description') : `E-Mail-Template: ${tType}`}
             value={currentBody}
             onChange={(html) => {
