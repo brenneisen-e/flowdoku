@@ -6601,8 +6601,19 @@ export class EventService {
       // nichts". Deshalb zuerst nur die Pflichtfelder schreiben.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mergeBody: Record<string, any> = { 'Status': 'Angemeldet' };
-      if (inheritStarterType) {
-        mergeBody['StarterType'] = inheritStarterType;
+      // v19.14 AUDIT-FIX: StarterType IMMER mitsetzen — entweder den vom
+      // Abgemeldeten geerbten Typ (inheritStarterType, Admin-Cancel-Pfad) ODER,
+      // falls keiner mitgegeben wurde (z.B. der manuelle „Nachrücken"-Button, der
+      // inheritStarterType=undefined übergibt), den EIGENEN Wunsch der
+      // nachrückenden Person (PreferredStarterType). Vorher blieb StarterType bei
+      // Promotes ohne inheritStarterType auf Split-Events LEER → es entstanden
+      // angemeldete „typlose" Personen (Audit-Befund: Andreas Jehle), die aus den
+      // Gruppen-Zahlen fielen und als „Wunsch: …" angezeigt wurden. Bei
+      // Nicht-Split-Events ist PreferredStarterType leer → StarterType bleibt leer
+      // (korrekt, da es dort keine Gruppen gibt).
+      const effectiveStarter = inheritStarterType || firstWaiting.PreferredStarterType || '';
+      if (effectiveStarter) {
+        mergeBody['StarterType'] = effectiveStarter;
       }
       const mergeResp = await this._merge(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${firstWaiting.Id})`,
