@@ -111,6 +111,30 @@ function getBlockedInviteRecipients(emails: string[]): Array<{ email: string; re
   return out;
 }
 
+// v19.11: Kurzname eines Sub-Events / einer Event-Section für die Anzeige im
+// Admin Center. Sub-Events heißen per Konvention „<Hauptevent> | <Section>"
+// (z.B. „P/D Meeting T&T+ | HER SPACE"). Im Admin Center reicht die Section
+// („HER SPACE") — der Hauptevent-Name steht ohnehin oben. Heuristik:
+//  1) Wenn ein Pipe „|" vorkommt, nur den Teil dahinter zeigen.
+//  2) Sonst, falls der Titel exakt mit dem Hauptevent-Titel beginnt, diesen
+//     Präfix (plus führende Trennzeichen) abschneiden.
+//  3) Sonst den Titel unverändert lassen.
+function shortSubEventTitle(title: string | undefined, parentTitle?: string): string {
+  const t = (title || '').trim();
+  if (!t) return t;
+  const pipe = t.lastIndexOf('|');
+  if (pipe >= 0) {
+    const after = t.substring(pipe + 1).trim();
+    if (after) return after;
+  }
+  const p = (parentTitle || '').trim();
+  if (p && t.toLowerCase().startsWith(p.toLowerCase())) {
+    const rest = t.substring(p.length).replace(/^[\s|:\-–—·•]+/, '').trim();
+    if (rest) return rest;
+  }
+  return t;
+}
+
 // v9.20: EventStatus-Labels lokalisieren (DE).
 // v11.89: 'Under Construction' wird transparent als 'Entwurf' angezeigt,
 // solange noch Legacy-Daten existieren — neue Events nutzen IsFictive.
@@ -1490,6 +1514,17 @@ export default function AdminPage(): React.ReactElement {
   // early return `if (!selectedEvent) return ...` stehen — sonst verletzen
   // die Hooks die Rules-of-Hooks (unterschiedliche Hook-Anzahl pro Render =
   // React Error #310).
+  // v19.11: Hat dieses Event überhaupt Warteliste-/Nachrück-Aktivität? Nur dann
+  // sind die Nachrück-Audit-Spalten („Nachgerückt am", „Hat ersetzt", „Wurde
+  // ersetzt durch") sinnvoll. `waitlistEnabled` allein reicht NICHT, weil es per
+  // Default `true` ist (e.WaitlistEnabled !== false) — Events ohne konfigurierte
+  // Warteliste hätten sonst immer die leeren Audit-Spalten. „Aktiv" = jemand
+  // steht auf der Warteliste ODER es gibt bereits Nachrück-Daten.
+  const hasWaitlistActivity = React.useMemo(() => registrations.some(r =>
+    r.Status === 'Warteliste'
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    || !!(r as any).PromotedDate || !!(r as any).ReplacedParticipantEmail || !!(r as any).ReplacedByParticipantEmail
+  ), [registrations]);
   const availableColumns = React.useMemo(() => {
     const isSplit = !!selectedEvent
       && typeof selectedEvent.durchstarterCapacity === 'number'
@@ -1528,7 +1563,10 @@ export default function AdminPage(): React.ReactElement {
     // Event ueberhaupt eine Warteliste haben KANN (waitlistEnabled UND
     // maxParticipants > 0). Bei „Unbegrenzt"-Events kommt nie jemand auf
     // die Warteliste, deshalb sind die drei Audit-Spalten ohne Inhalt.
-    if (selectedEvent?.waitlistEnabled && (selectedEvent?.maxParticipants || 0) > 0) {
+    // v19.11: Zusätzlich `hasWaitlistActivity` — Events OHNE echte Warteliste
+    // (Default waitlistEnabled=true, aber niemand wartet/nachgerückt) zeigen die
+    // leeren Audit-Spalten jetzt nicht mehr.
+    if (selectedEvent?.waitlistEnabled && (selectedEvent?.maxParticipants || 0) > 0 && hasWaitlistActivity) {
       cols.push({ id: 'promotedDate', label: 'Nachgerückt am' });
       // v19.4: „Hat ersetzt" = die abgemeldete Person, deren Platz diese Person
       // übernommen hat. „Wurde ersetzt durch" wandert in die Abmeldungen-Tabelle
@@ -1595,6 +1633,8 @@ export default function AdminPage(): React.ReactElement {
       const p = allEvents.find(e => e.id === selectedEvent.parentEventId);
       return (p?.eventSpecificFields || []).map(f => `${f.id}:${f.type}:${f.label}`).join(',');
     })(),
+    // v19.11: Audit-Spalten-Sichtbarkeit hängt an der Warteliste-Aktivität.
+    hasWaitlistActivity,
   ]);
 
   const columnStorageKey = selectedEvent ? `dex_admin_columns_${selectedEvent.id}` : '';
@@ -2804,12 +2844,12 @@ export default function AdminPage(): React.ReactElement {
                     onClick={() => handleSortConsolidated(`child:${child.id}`)}
                     title={child.title}
                   >
-                    <div style={{ fontSize: '0.78rem', fontWeight: 600 }}>{abbreviate(child.title || '?', 16)}</div>
+                    <div style={{ fontSize: '0.78rem', fontWeight: 600 }}>{abbreviate(shortSubEventTitle(child.title, selectedEvent?.title) || '?', 16)}</div>
                     <div style={{ fontSize: '0.68rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>{isDe ? 'angemeldet?' : 'registered?'}{sortArrow(`child:${child.id}`)}</div>
                   </th>
                   {fields.map(f => (
                     <th key={`scf-${child.id}-${f.id}`} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', ...PASTEL_B_HEADER }} title={`${f.label} — ${child.title}`}>
-                      <div style={{ color: 'var(--dex-gray-500)', fontWeight: 400, fontSize: '0.68rem' }}>{abbreviate(child.title || '?', 18)}</div>
+                      <div style={{ color: 'var(--dex-gray-500)', fontWeight: 400, fontSize: '0.68rem' }}>{abbreviate(shortSubEventTitle(child.title, selectedEvent?.title) || '?', 18)}</div>
                       <div style={{ fontWeight: 600 }}>{abbreviate(f.label, 20)}</div>
                     </th>
                   ))}
@@ -2936,13 +2976,13 @@ export default function AdminPage(): React.ReactElement {
                             if (!r) {
                               return (
                                 <div key={`exp-${ch.id}`} style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)' }}>
-                                  {ch.title} — {isDe ? 'nicht angemeldet' : 'not registered'}
+                                  {shortSubEventTitle(ch.title, selectedEvent?.title)} — {isDe ? 'nicht angemeldet' : 'not registered'}
                                 </div>
                               );
                             }
                             return (
                               <div key={`exp-${ch.id}`} style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: '0.82rem' }}>
-                                <span style={{ fontWeight: 500, minWidth: 200 }}>{ch.title}</span>
+                                <span style={{ fontWeight: 500, minWidth: 200 }}>{shortSubEventTitle(ch.title, selectedEvent?.title)}</span>
                                 <span className={`badge ${r.Status === 'Eingecheckt' ? 'badge-green' : 'badge-gray'}`}>{translateStatus(r.Status, isDe)}</span>
                                 <span style={{ color: 'var(--dex-gray-500)' }}>TID {r.TeilnehmerID || '?'}</span>
                                 <span style={{ color: 'var(--dex-gray-400)', fontSize: '0.75rem' }}>{formatDate(r.RegistrationDate)}</span>
@@ -3215,7 +3255,7 @@ export default function AdminPage(): React.ReactElement {
                     tabs.push({ id: parent.id, label: parent.title || (isDe ? 'Hauptevent' : 'Main event'), count: parent.currentParticipants || 0, isParent: true, ev: parent });
                   }
                   for (const c of siblings) {
-                    tabs.push({ id: c.id, label: c.title || (isDe ? 'ohne Titel' : 'untitled'), count: c.currentParticipants || 0, isParent: false, ev: c });
+                    tabs.push({ id: c.id, label: shortSubEventTitle(c.title, parent?.title) || (isDe ? 'ohne Titel' : 'untitled'), count: c.currentParticipants || 0, isParent: false, ev: c });
                   }
                   return (
                     <div
@@ -6630,8 +6670,12 @@ export default function AdminPage(): React.ReactElement {
                       <th style={thClickable} onClick={() => toggleSort('type')}>{isDe ? 'Art' : 'Type'}{arrow('type')}</th>
                       <th style={thClickable} onClick={() => toggleSort('date')}>{isDe ? 'Abgemeldet am' : 'Cancelled on'}{arrow('date')}</th>
                       {/* v19.4: „Wurde ersetzt durch" — die nachgerückte Person, die
-                          den frei gewordenen Platz übernommen hat (vom Flow gesetzt). */}
-                      <th style={{ ...thClickable, cursor: 'default' }}>{isDe ? 'Wurde ersetzt durch' : 'Replaced by'}</th>
+                          den frei gewordenen Platz übernommen hat (vom Flow gesetzt).
+                          v19.11: nur bei Events mit echter Warteliste-/Nachrück-
+                          Aktivität (sonst durchgehend leer). */}
+                      {hasWaitlistActivity && (
+                        <th style={{ ...thClickable, cursor: 'default' }}>{isDe ? 'Wurde ersetzt durch' : 'Replaced by'}</th>
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -6652,15 +6696,17 @@ export default function AdminPage(): React.ReactElement {
                               : <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(218,41,28,0.08)', color: 'var(--dex-red, #da291c)' }}>{isDe ? 'Abgemeldet' : 'Cancelled'}</span>}
                           </td>
                           <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.CancellationDate)}</td>
-                          <td style={{ padding: 8, color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.8rem' }}>
-                            {(() => {
-                              const email = (anyReg.ReplacedByParticipantEmail as string | undefined) || '';
-                              if (!email) return <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
-                              const other = registrations.find(r => (r.ParticipantEmail || '').toLowerCase() === email.toLowerCase());
-                              const label = other ? (((other.Vorname || '') + ' ' + (other.Nachname || '')).trim() || other.ParticipantName || email) : email;
-                              return <span title={email}>{label}</span>;
-                            })()}
-                          </td>
+                          {hasWaitlistActivity && (
+                            <td style={{ padding: 8, color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.8rem' }}>
+                              {(() => {
+                                const email = (anyReg.ReplacedByParticipantEmail as string | undefined) || '';
+                                if (!email) return <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
+                                const other = registrations.find(r => (r.ParticipantEmail || '').toLowerCase() === email.toLowerCase());
+                                const label = other ? (((other.Vorname || '') + ' ' + (other.Nachname || '')).trim() || other.ParticipantName || email) : email;
+                                return <span title={email}>{label}</span>;
+                              })()}
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
