@@ -1491,18 +1491,24 @@ export class EventService {
   private async ensureIDReorderCancelledNameField(): Promise<void> {
     if (this._idReorderCancelledFieldEnsured) return;
     this._idReorderCancelledFieldEnsured = true;
-    try {
-      const resp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_IDReorder')/fields/getbytitle('CancelledName')?$select=Id`,
-        SPHttpClient.configurations.v1
-      );
-      if (resp.ok) return; // existiert bereits
-    } catch { /* anlegen */ }
-    try {
-      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_IDReorder')/fields`, {
-        '__metadata': { 'type': 'SP.Field' }, 'Title': 'CancelledName', 'FieldTypeKind': 2, 'Required': false,
-      });
-    } catch { /* best-effort — Retry-ohne-Feld unten fängt es ab */ }
+    // v19.5: CancelledName UND CancelledEmail nachrüsten. CancelledEmail erlaubt
+    // dem Nachrück-Flow, die abgemeldete Person eindeutig zu adressieren
+    // (Replaced-Audit: ReplacedByParticipantEmail auf der abgemeldeten Person +
+    // ReplacedParticipantEmail auf der nachrückenden Person).
+    for (const fieldTitle of ['CancelledName', 'CancelledEmail']) {
+      try {
+        const resp = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_IDReorder')/fields/getbytitle('${fieldTitle}')?$select=Id`,
+          SPHttpClient.configurations.v1
+        );
+        if (resp.ok) continue; // existiert bereits
+      } catch { /* anlegen */ }
+      try {
+        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_IDReorder')/fields`, {
+          '__metadata': { 'type': 'SP.Field' }, 'Title': fieldTitle, 'FieldTypeKind': 2, 'Required': false,
+        });
+      } catch { /* best-effort — Retry-ohne-Feld unten fängt es ab */ }
+    }
   }
 
   public async queueIDReorder(
@@ -1515,7 +1521,10 @@ export class EventService {
     // die „jüngste Abmeldung" abzufragen, was bei gleichzeitigen Abmeldungen
     // während des Flow-Laufs falsch sein könnte). Genutzt für die
     // Organizer-Nachrücker-Mail (OrgNachruecker-Template).
-    cancelledName?: string
+    cancelledName?: string,
+    // v19.5: E-Mail der abgemeldeten Person — der Nachrück-Flow nutzt sie für
+    // das Replaced-Audit (Hat ersetzt / Wurde ersetzt durch).
+    cancelledEmail?: string
   ): Promise<boolean> {
     try {
       // ListItemEntityTypeFullName dynamisch ermitteln
@@ -1531,7 +1540,7 @@ export class EventService {
         }
       } catch { /* Fallback auf Standard-Name */ }
 
-      if (cancelledName) { try { await this.ensureIDReorderCancelledNameField(); } catch { /* */ } }
+      if (cancelledName || cancelledEmail) { try { await this.ensureIDReorderCancelledNameField(); } catch { /* */ } }
 
       const baseBody: Record<string, unknown> = {
         '__metadata': { 'type': listItemType },
@@ -1541,12 +1550,16 @@ export class EventService {
         'SubsiteUrl': subsiteUrl,
         'Status': 'Pending',
       };
+      // v19.5: CancelledName + CancelledEmail als optionale Zusatzfelder.
+      const extra: Record<string, unknown> = {};
+      if (cancelledName) extra['CancelledName'] = cancelledName;
+      if (cancelledEmail) extra['CancelledEmail'] = cancelledEmail;
       const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_IDReorder')/items`;
-      let response = await this._post(url, cancelledName ? { ...baseBody, 'CancelledName': cancelledName } : baseBody);
-      // Falls die CancelledName-Spalte (noch) fehlt, schlägt der erste POST
-      // fehl — dann ohne das Feld erneut posten, damit der Reorder NIEMALS
-      // verloren geht (kritischer Pfad).
-      if (!response.ok && cancelledName) {
+      let response = await this._post(url, Object.keys(extra).length ? { ...baseBody, ...extra } : baseBody);
+      // Falls die Zusatz-Spalten (noch) fehlen, schlägt der erste POST fehl —
+      // dann ohne die Felder erneut posten, damit der Reorder NIEMALS verloren
+      // geht (kritischer Pfad).
+      if (!response.ok && Object.keys(extra).length) {
         response = await this._post(url, baseBody);
       }
       return response.ok;
