@@ -442,6 +442,8 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
   currentUserEmailLc: string;
 }): React.ReactElement {
   const { navigate } = useNavigation();
+  const { t } = useLanguage();
+  const { canCreateEvents } = useRoles();
   return (
     <div className="my-events-list">
       {events.map(event => {
@@ -500,6 +502,39 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
                 )}
                 {isWait && (
                   <span style={{ padding: '2px 10px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 600, background: 'rgba(237,139,0,0.18)', color: 'var(--dex-orange, #ed8b00)' }}>Warteliste</span>
+                )}
+                {/* v19.15: Aktionen auch in der Listen-Ansicht — vorher nur in den
+                    Cards (Overlay). Bei bereits angemeldeten Events „Meine Events"
+                    + (für Organizer/Admin) „Für andere Person registrieren", sonst
+                    „Registrieren". stopPropagation, damit der Button nicht den
+                    Zeilen-Klick mit auslöst. */}
+                {(isReg || isWait) ? (
+                  <>
+                    <button
+                      className="btn btn-primary"
+                      style={{ fontSize: '0.78rem', padding: '6px 14px' }}
+                      onClick={(e) => { e.stopPropagation(); navigate('my-events'); }}
+                    >
+                      {t('myevents.title')}
+                    </button>
+                    {canCreateEvents && (
+                      <button
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.78rem', padding: '6px 14px' }}
+                        onClick={(e) => { e.stopPropagation(); navigate('registration', event.id, 'register-other'); }}
+                      >
+                        {t('reg.registerother')}
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <button
+                    className="btn btn-primary"
+                    style={{ fontSize: '0.78rem', padding: '6px 14px' }}
+                    onClick={(e) => { e.stopPropagation(); navigate('registration', event.id); }}
+                  >
+                    {t('reg.register')}
+                  </button>
                 )}
               </div>
             </div>
