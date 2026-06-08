@@ -1561,7 +1561,11 @@ export default function AdminPage(): React.ReactElement {
       : null;
     if (parentForCols) {
       const ownIds = new Set((selectedEvent?.eventSpecificFields || []).map(f => f.id));
-      for (const f of (parentForCols.eventSpecificFields || []).filter(f => f.type !== 'user' && f.label && f.label.trim())) {
+      // v19.10: 'roommate' (wie 'user') NICHT als generische Spalte ausgeben —
+      // diese Felder werden bereits über die dedizierte „roommate"-Spalte (mit
+      // Match-Badge) gerendert. Sonst erscheint das Feld DOPPELT (einmal mit
+      // Match, einmal als roher „Name <email>"-Text).
+      for (const f of (parentForCols.eventSpecificFields || []).filter(f => f.type !== 'user' && f.type !== 'roommate' && f.label && f.label.trim())) {
         // Sub-Events erben Parent-Felder evtl. 1:1 (Wizard kopiert das beim
         // Anlegen). Nicht doppelt ausgeben, wenn das eigene Feld die
         // gleiche ID hat — in dem Fall reicht die Sub-Event-Spalte.
@@ -1569,7 +1573,12 @@ export default function AdminPage(): React.ReactElement {
         cols.push({ id: `cfp-${f.id}`, label: f.label });
       }
     }
-    for (const f of (selectedEvent?.eventSpecificFields || []).filter(f => f.type !== 'user' && f.label && f.label.trim())) {
+    // v19.10: 'roommate'-Felder (wie 'user') hier ausschließen — sie haben
+    // bereits die dedizierte „roommate"-Spalte mit Match-Badge. Vorher fehlte
+    // `f.type !== 'roommate'`, deshalb erschien ein Zimmerpartner-Feld DOPPELT:
+    // einmal als Match-Spalte, einmal als generische cf-Spalte mit rohem
+    // „Nachname, Vorname <email>"-Text.
+    for (const f of (selectedEvent?.eventSpecificFields || []).filter(f => f.type !== 'user' && f.type !== 'roommate' && f.label && f.label.trim())) {
       cols.push({ id: `cf-${f.id}`, label: f.label });
     }
     cols.push({ id: 'action', label: 'Aktion', alwaysVisible: true });
@@ -3958,9 +3967,17 @@ export default function AdminPage(): React.ReactElement {
                         msgs.push(isDe ? 'WARN: Custom-Field-Mapping konnte nicht am Event gespeichert werden' : 'WARN: custom field mapping could not be saved on the event');
                       }
                     }
-                    setFixColumnsResult(msgs.length > 0 ? msgs.join(' | ') : (isDe ? 'Alles OK, keine Änderungen nötig' : 'All OK, no changes needed'));
+                    const finalMsg = msgs.length > 0 ? msgs.join(' | ') : (isDe ? 'Alles OK, keine Änderungen nötig.' : 'All OK, no changes needed.');
+                    setFixColumnsResult(finalMsg);
+                    // v19.10: Ergebnis zusätzlich als Dialog zeigen. Im Aktionen-
+                    // Dropdown rendert die ActionTile (und damit ihr `result`-Text)
+                    // `null` — vorher kam nach „Spalten fixen" daher GAR KEINE
+                    // sichtbare Rückmeldung. Ein window.alert ist garantiert sichtbar.
+                    window.alert((isDe ? '„Spalten fixen" — Ergebnis:\n\n' : 'Fix columns — result:\n\n') + finalMsg);
                   } catch {
-                    setFixColumnsResult(isDe ? 'Fehler beim Fixen der Spalten' : 'Error fixing columns');
+                    const errMsg = isDe ? 'Fehler beim Fixen der Spalten.' : 'Error fixing columns.';
+                    setFixColumnsResult(errMsg);
+                    window.alert(errMsg);
                   }
                   setIsFixingColumns(false);
                 }}
