@@ -106,10 +106,19 @@ ansprechen statt das Objekt:
 
 - **`Filter_Non_Waitlist`** (Nicht-Split, treibt `Count_Active`) — *erledigt:*
   `@not(equals(item()?['Status']?['Value'], 'Warteliste'))`
-- **`Filter_Active_Durchstarter`** (Split, Ja-Zweig) — *noch offen:*
-  `@and(equals(item()?['StarterType']?['Value'], 'Durchstarter'), not(equals(item()?['Status']?['Value'], 'Warteliste')))`
-- **`Filter_Active_Funstarter`** (Split, Ja-Zweig) — *noch offen:*
-  `@and(equals(item()?['StarterType']?['Value'], 'Funstarter'), not(equals(item()?['Status']?['Value'], 'Warteliste')))`
+- **`Filter_Active_Durchstarter`** (Split, Ja-Zweig) — *erledigt 2026-06-08 (v19.14),
+  im Tenant verifiziert:* zählt nach **effektiver Gruppe** (`StarterType`, sonst
+  Wunsch `PreferredStarterType` — beide sind Choice-Spalten, daher `?['Value']`):
+  `@and(equals(coalesce(item()?['StarterType']?['Value'], item()?['PreferredStarterType']?['Value']), 'Durchstarter'), not(equals(item()?['Status']?['Value'], 'Warteliste')))`
+- **`Filter_Active_Funstarter`** (Split, Ja-Zweig) — *erledigt 2026-06-08 (v19.14),
+  im Tenant verifiziert:*
+  `@and(equals(coalesce(item()?['StarterType']?['Value'], item()?['PreferredStarterType']?['Value']), 'Funstarter'), not(equals(item()?['Status']?['Value'], 'Warteliste')))`
+
+> **Warum `coalesce` statt nur `?['Value']`:** Eine angemeldete Person mit leerem
+> `StarterType` (z.B. durch direkte SP-Bearbeitung) würde sonst aus der Gruppen-
+> Zählung fallen → der Flow hält die Gruppe für leerer als sie ist und rückt eine
+> zu viel nach (beobachtete 11/10-Überbuchung). Mit dem `coalesce`-Fallback auf
+> den Wunsch zählt der Flow auch typlose Aktive korrekt → keine Über-Promotion.
 
 **Nicht betroffen:** Die `Get_Waitlist_First*`-Actions laufen über die **rohe
 SharePoint-REST-API** (`HttpRequest`, `$filter=Status eq 'Warteliste'`) — dort
