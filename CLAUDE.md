@@ -473,6 +473,33 @@ automatisch in Kopie.
   CustomFields-Write, siehe Abschnitt oben) sowie im SP→Event-Parse
   (`eventSpecificFields.map`) durchgereicht.
 
+### Zustimmungs-Nachweis + externe Personen bei stellvertretender Anmeldung (v18.74)
+
+Zwei zusammenhängende Erweiterungen am „Für andere registrieren"-Flow:
+
+- **Zustimmungs-Nachweis (`ProxyConsent`):** Neue Note-Spalte `ProxyConsent` auf
+  der Teilnehmerliste (`createRegistrationList` + `fixRegistrationListColumns` +
+  Default-View). Bei jeder stellvertretenden Anmeldung (Teilnehmer-E-Mail ≠
+  eingeloggter User) schreibt die App einen lesbaren Nachweis hinein, z.B.
+  „Schriftliche Zustimmung der Person zur stellvertretenden Anmeldung bestätigt
+  durch <Actor> (<Email>) am <Datum>". Der Organizer kann so in SharePoint
+  nachweisen, dass die Zustimmung vorlag. Mechanik: `registerForEvent`/
+  `reactivateRegistration` (EventService) nehmen einen `proxyConsent`-Parameter;
+  `EventContext.registerForEvent` baut den String (intern = „Zustimmung",
+  extern = „Schriftliche Zustimmung") und gibt ihn weiter, sobald
+  `opts.proxyConsentConfirmed` gesetzt ist (RegistrationPage setzt das bei
+  `registerForOther`).
+- **Externe Personen (`externalPerson`):** Im „Für andere registrieren"-Modus
+  gibt es für Organizer/Admins die Checkbox **„Person außerhalb Deloitte"**.
+  Aktiv blendet sie den Deloitte-People-Picker aus und macht Vorname/Nachname/
+  E-Mail **frei eintragbar**. Hinweis: Zustimmung **schriftlich** einholen.
+  Versand: die **Bestätigungs-Mail geht direkt an die externe Person, mit den
+  Organizern auf CC** (Nachweis) — **kein Outlook-Termin** (an externe Adressen
+  nicht möglich). Das ändert das frühere Verhalten („Weiterleitung notwendig" an
+  den Organizer umgeleitet): externe Empfänger bekommen die Mail jetzt direkt
+  (`EventContext.registerForEvent` → `externalCcExtra` = Organizer-E-Mails in den
+  CC gemischt; `skipOutlookForExternal` unterdrückt den Termin wie bisher).
+
 ### Header-Bild in Mail/Outlook frei einstellbar (v18.73)
 
 Pro Event lassen sich **Breite** und **Innenabstand** (seitlich + oben/unten) des

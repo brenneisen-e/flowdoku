@@ -4045,6 +4045,7 @@ export class EventService {
       { title: 'RegistrationDate', type: 4 },
       { title: 'RegisteredByName', type: 2 },  // Audit: Name des Users der die Anmeldung durchgefuehrt hat
       { title: 'RegisteredByEmail', type: 2 }, // Audit: E-Mail des Users der die Anmeldung durchgefuehrt hat
+      { title: 'ProxyConsent', type: 3 },      // v18.74: Nachweis der Zustimmung bei stellvertretender Anmeldung (Note)
       { title: 'LastModifiedDate', type: 4 },
       { title: 'ChangeLog', type: 3 }, // Note (multiline) - Aenderungshistorie
       { title: 'CancellationDate', type: 4 },
@@ -4150,7 +4151,7 @@ export class EventService {
     // werden alle SP-Default-Spalten (Modified, Created, ID, Type, Compliance Asset,
     // App Created By, ...) aus der View rausgeworfen — nur funktionelle Felder.
     await this.configureDefaultView(REG_LIST_NAME, [
-      'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'ParticipantEmail', 'Department', 'Location', 'JobTitle', 'Phone', 'StarterType', 'PreferredStarterType', 'Status', 'RegistrationDate', 'RegisteredByName', 'RegisteredByEmail', 'CancellationDate', 'CancelledByName', 'CancelledByEmail',
+      'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'ParticipantEmail', 'Department', 'Location', 'JobTitle', 'Phone', 'StarterType', 'PreferredStarterType', 'Status', 'RegistrationDate', 'RegisteredByName', 'RegisteredByEmail', 'ProxyConsent', 'CancellationDate', 'CancelledByName', 'CancelledByEmail',
       ...customFieldViewNames,
       // v11.82: Team-Spalten am Ende der View (nach allen Custom Fields, vor
       // System-Spalten). So bleibt die View bei Nicht-Team-Events unauffaellig
@@ -4376,7 +4377,10 @@ export class EventService {
     starterType?: string, // B2Run: effektiver Typ (nach Fallback)
     preferredStarterType?: string, // B2Run: Wunsch-Typ (was der User eigentlich wollte)
     registeredByName?: string, // Audit: Name des Users der die Anmeldung ausloest
-    registeredByEmail?: string // Audit: E-Mail des Users der die Anmeldung ausloest
+    registeredByEmail?: string, // Audit: E-Mail des Users der die Anmeldung ausloest
+    // v18.74: Nachweis der Zustimmung bei stellvertretender Anmeldung — wird in
+    // die SP-Spalte ProxyConsent geschrieben (leer bei Selbst-Anmeldung).
+    proxyConsent?: string
   ): Promise<boolean> {
     try {
       // ---- Permission-Checks (v3.9.2 / v3.9.3) ----
@@ -4494,6 +4498,8 @@ export class EventService {
       const auditEmail = (registeredByEmail || this.context.pageContext.user.email || '').toLowerCase();
       if (auditName) payload['RegisteredByName'] = auditName;
       if (auditEmail) payload['RegisteredByEmail'] = auditEmail;
+      // v18.74: Zustimmungs-Nachweis bei stellvertretender Anmeldung.
+      if (proxyConsent) payload['ProxyConsent'] = proxyConsent;
 
       // B2Run: Starter-Typ + Wunsch-Typ schreiben (bei normalen Events null)
       if (starterType) payload['StarterType'] = starterType;
@@ -5034,7 +5040,8 @@ export class EventService {
     status: string = 'Angemeldet',
     customFieldMap?: Record<string, string>,
     registeredByName?: string, // Audit: Name des Users der die Re-Anmeldung ausloest
-    registeredByEmail?: string // Audit: E-Mail des Users der die Re-Anmeldung ausloest
+    registeredByEmail?: string, // Audit: E-Mail des Users der die Re-Anmeldung ausloest
+    proxyConsent?: string // v18.74: Zustimmungs-Nachweis bei stellvertretender Re-Anmeldung
   ): Promise<boolean> {
     try {
       // ---- Permission-Checks (v3.9.2 / v3.9.3) ----
@@ -5139,6 +5146,8 @@ export class EventService {
       const auditEmail = (registeredByEmail || this.context.pageContext.user.email || '').toLowerCase();
       if (auditName) body['RegisteredByName'] = auditName;
       if (auditEmail) body['RegisteredByEmail'] = auditEmail;
+      // v18.74: Zustimmungs-Nachweis bei stellvertretender Re-Anmeldung.
+      if (proxyConsent) body['ProxyConsent'] = proxyConsent;
 
       if (customFieldMap) {
         for (const cfId of Object.keys(customData)) {
@@ -6054,6 +6063,7 @@ export class EventService {
       { title: 'Anrede', type: 6, choices: ['Frau', 'Herr', 'Divers'], metaType: 'SP.FieldChoice' },
       { title: 'RegisteredByName', type: 2 },  // Audit: Name des Users der die Anmeldung durchgefuehrt hat
       { title: 'RegisteredByEmail', type: 2 }, // Audit: E-Mail des Users der die Anmeldung durchgefuehrt hat
+      { title: 'ProxyConsent', type: 3 },      // v18.74: Zustimmungs-Nachweis bei stellvertretender Anmeldung (Note)
       { title: 'CancelledByName', type: 2 },   // Audit: Name des Users der die Abmeldung ausgeloest hat
       { title: 'CancelledByEmail', type: 2 },  // Audit: E-Mail des Users der die Abmeldung ausgeloest hat
       { title: 'CheckedInDate', type: 4 },     // v7.16: Check-In-Audit — Zeitpunkt
@@ -6222,6 +6232,7 @@ export class EventService {
       viewFields.push('Status', 'RegistrationDate');
       if (postFixFields.indexOf('RegisteredByName') >= 0) viewFields.push('RegisteredByName');
       if (postFixFields.indexOf('RegisteredByEmail') >= 0) viewFields.push('RegisteredByEmail');
+      if (postFixFields.indexOf('ProxyConsent') >= 0) viewFields.push('ProxyConsent');
       viewFields.push('CancellationDate');
 
       // Wir blenden SP-System-Spalten komplett aus (Modified, Created, ID, Type,

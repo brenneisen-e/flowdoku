@@ -49,6 +49,30 @@ function formatDateRange(startIso: string, endIso: string): string {
   return `${start.toLocaleDateString('de-DE', dayFmt)} ${start.toLocaleTimeString('de-DE', timeFmt)} – ${end.toLocaleDateString('de-DE', dayFmt)} ${end.toLocaleTimeString('de-DE', timeFmt)}`;
 }
 
+// v18.74: Externe Adresse = kein Deloitte-Deutschland-Postfach (@deloitte.de).
+const isExternalEmailAddr = (e: string): boolean => {
+  const v = (e || '').trim();
+  return !!v && !/@(.*\.)?deloitte\.de$/i.test(v);
+};
+
+// v18.74: Strengere Plausibilitätsprüfung gegen Tippfehler bei externen
+// Adressen — fängt fehlende/zu kurze TLD, doppelte Punkte, mehrere @, führende/
+// abschließende Punkte und Whitespace/Kommas ab. Verifiziert NICHT die Existenz
+// des Postfachs (das geht clientseitig nicht), aber blockt offensichtliche
+// Vertipper.
+const isPlausibleEmail = (e: string): boolean => {
+  const v = (e || '').trim();
+  if (!/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(v)) return false;
+  if ((v.match(/@/g) || []).length !== 1) return false;
+  if (v.indexOf('..') >= 0) return false;
+  if (/[\s,;]/.test(v)) return false;
+  const [local, domain] = v.split('@');
+  if (!local || !domain) return false;
+  if (local.startsWith('.') || local.endsWith('.')) return false;
+  if (domain.startsWith('.') || domain.endsWith('.') || domain.startsWith('-')) return false;
+  return true;
+};
+
 export default function RegistrationPage(): React.ReactElement {
   // v11.98: Beim Mount nach oben scrollen. Sonst behält der scrollende
   // .main-content-Container die Position aus der vorherigen Seite (z.B.
@@ -214,6 +238,12 @@ export default function RegistrationPage(): React.ReactElement {
   const [surname, setSurname] = React.useState(currentUser.surname);
   const [email, setEmail] = React.useState(currentUser.email);
   const [registerForOther, setRegisterForOther] = React.useState(false);
+  // v18.74: „Person außerhalb Deloitte" — explizit eine externe Person
+  // stellvertretend anmelden. Blendet den Deloitte-People-Picker aus und macht
+  // Vorname/Nachname/E-Mail frei eintragbar. Die Zustimmung ist hier SCHRIFTLICH
+  // einzuholen; es wird kein Outlook-Termin versendet (Bestätigungs-Mail mit
+  // Organizer auf CC).
+  const [externalPerson, setExternalPerson] = React.useState(false);
 
   // Wenn die Seite mit Intent 'register-other' geoeffnet wird (z.B. via "Register another person"
   // Button auf einer Karte, fuer die der Organizer/Admin schon selbst registriert ist),
@@ -691,17 +721,6 @@ export default function RegistrationPage(): React.ReactElement {
       return;
     }
 
-    // v9.22: Externe Email-Adresse bei "Für andere Person registrieren" —
-    // Warnung anzeigen bevor der Anmelde-Flow startet.
-    if (registerForOther && email && !externalEmailConfirmedRef.current) {
-      const emLow = email.trim().toLowerCase();
-      const isDel = /@(.*\.)?deloitte\.de$/.test(emLow);
-      if (!isDel) {
-        setExternalEmailWarning(true);
-        return; // Modal zeigen, User muss bestaetigen
-      }
-    }
-
     // Basis-Felder sind immer Pflicht (Name + Email), auch im Sessions-Only-Modus.
     if (!firstName.trim() || !surname.trim() || !email.trim()) {
       setError(t('reg.requiredfields'));
@@ -710,6 +729,24 @@ export default function RegistrationPage(): React.ReactElement {
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       setError(t('reg.invalidemail') || 'Ungültige E-Mail-Adresse');
       return;
+    }
+
+    // v18.74: Bei stellvertretender Anmeldung einer EXTERNEN Adresse zwei
+    // Stufen: (1) strengere Plausibilitätsprüfung gegen Tippfehler (fehlende
+    // TLD, doppelte Punkte, mehrere @, …) → harter Fehler; (2) ein
+    // Bestätigungs-Dialog, der die Adresse groß anzeigt und zum Gegenlesen
+    // auffordert (man kann an externe Adressen keinen Tippfehler korrigieren).
+    if (registerForOther && email.trim() && isExternalEmailAddr(email)) {
+      if (!isPlausibleEmail(email)) {
+        setError(locale === 'de'
+          ? 'Die externe E-Mail-Adresse sieht ungültig aus — bitte auf Tippfehler prüfen (z.B. fehlende Domain-Endung wie „.de" oder „.com").'
+          : 'The external email address looks invalid — please check for typos (e.g. a missing domain ending like „.de" or „.com").');
+        return;
+      }
+      if (!externalEmailConfirmedRef.current) {
+        setExternalEmailWarning(true);
+        return; // Bestätigungs-Dialog (Tippfehler-Gegenlesen) zeigen
+      }
     }
 
     // Nur wenn der User das Haupt-Event (neu) anmelden möchte, gelten
@@ -1043,7 +1080,10 @@ export default function RegistrationPage(): React.ReactElement {
           firstTrim,
           surnameTrim,
           participantEmail,
-          starterTypeToUse || undefined
+          starterTypeToUse || undefined,
+          // v18.74: Bei stellvertretender Anmeldung den Zustimmungs-Nachweis
+          // mitschreiben (Pflicht-Checkbox wurde oben validiert).
+          registerForOther ? { proxyConsentConfirmed: true } : undefined
         );
         parentOk = parentResult.ok;
         if (parentOk) {
@@ -1114,7 +1154,12 @@ export default function RegistrationPage(): React.ReactElement {
           // jetzt in der Schatten-Parent-Registrierung (s.o.) — die Sub-
           // Events bekommen nur ihre eigenen CFs aus dem Modal-Flow.
           const seFieldValues = { salutation, ...(sessionFieldValues[ce.id] || {}) };
-          const ok = (await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType, crossCutCc ? { extraCc: crossCutCc } : undefined)).ok;
+          // v18.74: extraCc (übergreifende CC) + proxyConsentConfirmed (Nachweis
+          // bei stellvertretender Anmeldung) zusammen in die Opts.
+          const seOpts = (crossCutCc || registerForOther)
+            ? { ...(crossCutCc ? { extraCc: crossCutCc } : {}), ...(registerForOther ? { proxyConsentConfirmed: true } : {}) }
+            : undefined;
+          const ok = (await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType, seOpts)).ok;
           if (ok) anySuccess = true;
           subOpsDone++;
           setSubmitProgress(50 + Math.floor((subOpsDone / Math.max(subOps, 1)) * 40));
@@ -2249,6 +2294,7 @@ export default function RegistrationPage(): React.ReactElement {
                   setThirdPartyCheck(null);
                   setPickedUserProfile(null);
                   setOtherConsentConfirmed(false);
+                  setExternalPerson(false); // v18.74: Extern-Modus beim Wechsel zurücksetzen
                   if (!registerForOther) { setFirstName(''); setSurname(''); setEmail(''); setUserSearch(''); setUserResults([]); }
                   else { setFirstName(currentUser.firstName); setSurname(currentUser.surname); setEmail(currentUser.email); setUserSearch(''); setUserResults([]); }
                 }}
@@ -2289,7 +2335,32 @@ export default function RegistrationPage(): React.ReactElement {
                     As an Assistant you can only register <strong>Partners</strong> or <strong>Directors</strong> for this event.
                   </div>
                 )}
-                {registerForOther && (
+                {/* v18.74: Umschalter „Person außerhalb Deloitte" — nur für
+                    Organizer/Admins (nicht für Assistenten, die auf interne
+                    Partner/Directors beschränkt sind). Blendet den People-Picker
+                    aus und macht Vorname/Nachname/E-Mail frei eintragbar. */}
+                {registerForOther && canCreateEvents && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, cursor: 'pointer', fontSize: '0.85rem', color: 'var(--dex-gray-800)' }}>
+                    <input
+                      type="checkbox"
+                      checked={externalPerson}
+                      onChange={e => {
+                        const on = e.target.checked;
+                        setExternalPerson(on);
+                        // Picker- und Feld-State frisch zurücksetzen (manuelle Eingabe).
+                        setUserSearch(''); setUserResults([]); setPickedUserProfile(null);
+                        setThirdPartyCheck(null); setOtherConsentConfirmed(false);
+                        setFirstName(''); setSurname(''); setEmail('');
+                      }}
+                    />
+                    <span>
+                      {locale === 'de'
+                        ? <>Person <strong>außerhalb Deloitte</strong> anmelden (externe E-Mail-Adresse)</>
+                        : <>Register a person <strong>outside Deloitte</strong> (external email address)</>}
+                    </span>
+                  </label>
+                )}
+                {registerForOther && !externalPerson && (
                   <div className="form-group" style={{ position: 'relative', marginBottom: 20 }}>
                     {/* v11.97: Label entfernt — Suche ist selbsterklärend (Placeholder). */}
                     <input
@@ -2477,7 +2548,9 @@ export default function RegistrationPage(): React.ReactElement {
                   // registrieren" aktiv ist — nicht erst wenn die E-Mail
                   // gefüllt ist. Der User soll sofort sehen, dass eine
                   // Zustimmung nötig ist.
-                  const isExternal = !!email.trim() && !/@(.*\.)?deloitte\.de$/i.test(email.trim());
+                  // v18.74: Extern, sobald der Extern-Modus aktiv ist ODER die
+                  // eingegebene E-Mail keine Deloitte-DE-Adresse ist.
+                  const isExternal = externalPerson || (!!email.trim() && !/@(.*\.)?deloitte\.de$/i.test(email.trim()));
                   const pickedName = `${firstName} ${surname}`.trim();
                   return (
                     <div style={{
@@ -2492,13 +2565,20 @@ export default function RegistrationPage(): React.ReactElement {
                     }}>
                       <div style={{ fontWeight: 700, marginBottom: 8, fontSize: '0.95rem' }}>
                         {locale === 'de'
-                          ? 'Vorab die Zustimmung der Person einholen'
-                          : 'Get the person\'s consent up front'}
+                          ? (isExternal ? 'Schriftliche Zustimmung der Person einholen' : 'Vorab die Zustimmung der Person einholen')
+                          : (isExternal ? 'Get the person\'s written consent' : 'Get the person\'s consent up front')}
                       </div>
+                      {externalPerson && (
+                        <div style={{ marginBottom: 8, fontWeight: 600 }}>
+                          {locale === 'de'
+                            ? <>Trage <strong>Vorname, Nachname und E-Mail-Adresse</strong> der externen Person unten selbst ein.</>
+                            : <>Enter the external person&rsquo;s <strong>first name, last name and email address</strong> in the fields below.</>}
+                        </div>
+                      )}
                       <div style={{ marginBottom: 8 }}>
                         {locale === 'de'
-                          ? <>Mit dem Absenden meldest du {pickedName ? <><strong>{pickedName}</strong></> : <>die ausgewählte Person</>} stellvertretend an. Bitte stelle sicher, dass die Person ihrer Anmeldung <strong>VORHER zugestimmt</strong> hat — eine Anmeldung ohne Einverständnis ist nicht erlaubt.</>
-                          : <>By submitting you register {pickedName ? <><strong>{pickedName}</strong></> : <>the selected person</>} on their behalf. Please make sure the person has <strong>consented up front</strong> — registering people without their consent is not allowed.</>}
+                          ? <>Mit dem Absenden meldest du {pickedName ? <><strong>{pickedName}</strong></> : <>die {externalPerson ? 'externe ' : 'ausgewählte '}Person</>} stellvertretend an. Bitte stelle sicher, dass die Person ihrer Anmeldung <strong>VORHER {isExternal ? 'schriftlich ' : ''}zugestimmt</strong> hat — eine Anmeldung ohne Einverständnis ist nicht erlaubt.</>
+                          : <>By submitting you register {pickedName ? <><strong>{pickedName}</strong></> : <>the {externalPerson ? 'external ' : 'selected '}person</>} on their behalf. Please make sure the person has <strong>{isExternal ? 'consented in writing' : 'consented up front'}</strong> — registering people without their consent is not allowed.</>}
                       </div>
                       {isExternal && (
                         <div style={{
@@ -2508,12 +2588,12 @@ export default function RegistrationPage(): React.ReactElement {
                         }}>
                           <div style={{ fontWeight: 700, marginBottom: 4 }}>
                             {locale === 'de'
-                              ? 'Externe E-Mail-Adresse erkannt'
-                              : 'External email address detected'}
+                              ? 'Externe Person — kein Kalendereintrag'
+                              : 'External person — no calendar invite'}
                           </div>
                           {locale === 'de'
-                            ? <>Die Adresse <strong>{email}</strong> gehört nicht zum Deloitte-Deutschland-Tenant. Diese Person bekommt deshalb <strong>keinen Outlook-Termin</strong>. Stattdessen wird eine Bestätigungs-Mail mit dem Betreff <strong>&bdquo;Weiterleitung notwendig&ldquo;</strong> an die Event-Organizer geschickt — diese Mail dient als Anmeldebestätigung und kann unter Beachtung der Datenschutzrichtlinien an die externe Person weitergeleitet werden.</>
-                            : <>The address <strong>{email}</strong> is not part of the Deloitte Germany tenant. This person will therefore <strong>not receive an Outlook calendar invite</strong>. Instead, a confirmation email with the subject <strong>&bdquo;Forwarding required&ldquo;</strong> is sent to the event organizers — this mail serves as registration confirmation and can be forwarded to the external person, observing privacy guidelines.</>}
+                            ? <>{email.trim() ? <>Die Adresse <strong>{email}</strong> gehört nicht zum Deloitte-Deutschland-Tenant. </> : <>Eine externe Adresse gehört nicht zum Deloitte-Deutschland-Tenant. </>}Die Person bekommt deshalb <strong>keinen Outlook-Termin</strong> (an externe Adressen können wir keine Termine versenden). Die <strong>Anmeldebestätigung per E-Mail</strong> geht direkt an die Person, mit den <strong>Organizern auf CC</strong> als Nachweis. Die Zustimmung ist <strong>schriftlich</strong> einzuholen.</>
+                            : <>{email.trim() ? <>The address <strong>{email}</strong> is not part of the Deloitte Germany tenant. </> : <>An external address is not part of the Deloitte Germany tenant. </>}The person will therefore <strong>not receive an Outlook calendar invite</strong> (we cannot send invites to external addresses). The <strong>confirmation email</strong> is sent directly to the person, with the <strong>organizers on CC</strong> as a record. Consent must be obtained <strong>in writing</strong>.</>}
                         </div>
                       )}
                       <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 12, cursor: 'pointer' }}>
@@ -2526,8 +2606,12 @@ export default function RegistrationPage(): React.ReactElement {
                         <span style={{ flex: 1, color: 'var(--dex-gray-800)' }}>
                           <span style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>
                           {locale === 'de'
-                            ? 'Ich bestätige, dass die Person ihrer stellvertretenden Anmeldung zugestimmt hat.'
-                            : 'I confirm that the person has consented to this registration on their behalf.'}
+                            ? (isExternal
+                                ? 'Ich bestätige, dass die schriftliche Zustimmung der Person zur stellvertretenden Anmeldung vorliegt.'
+                                : 'Ich bestätige, dass die Person ihrer stellvertretenden Anmeldung zugestimmt hat.')
+                            : (isExternal
+                                ? 'I confirm that the person\'s written consent to this registration on their behalf is on file.'
+                                : 'I confirm that the person has consented to this registration on their behalf.')}
                         </span>
                       </label>
                     </div>
@@ -2579,17 +2663,17 @@ export default function RegistrationPage(): React.ReactElement {
                 über die Validation). */}
             <div className="form-group">
               <label className="form-label">{t('reg.firstname')}</label>
-              <input className="form-input" value={firstName} onChange={e => { if (registerForOther) setFirstName(e.target.value); }} placeholder={t('reg.firstname')} disabled={!registerForOther} style={{ background: 'var(--dex-gray-100)', ...(showErrors && !firstName.trim() ? errorBorder : {}) }} />
+              <input className="form-input" value={firstName} onChange={e => { if (registerForOther) setFirstName(e.target.value); }} placeholder={t('reg.firstname')} disabled={!registerForOther} style={{ background: registerForOther ? '#fff' : 'var(--dex-gray-100)', ...(showErrors && !firstName.trim() ? errorBorder : {}) }} />
             </div>
 
             <div className="form-group">
               <label className="form-label">{t('reg.surname')}</label>
-              <input className="form-input" value={surname} onChange={e => { if (registerForOther) setSurname(e.target.value); }} placeholder={t('reg.surname')} disabled={!registerForOther} style={{ background: 'var(--dex-gray-100)', ...(showErrors && !surname.trim() ? errorBorder : {}) }} />
+              <input className="form-input" value={surname} onChange={e => { if (registerForOther) setSurname(e.target.value); }} placeholder={t('reg.surname')} disabled={!registerForOther} style={{ background: registerForOther ? '#fff' : 'var(--dex-gray-100)', ...(showErrors && !surname.trim() ? errorBorder : {}) }} />
             </div>
 
             <div className="form-group">
               <label className="form-label">{t('reg.email')}</label>
-              <input className="form-input" type="email" value={email} onChange={e => { if (registerForOther) setEmail(e.target.value); }} placeholder="email@deloitte.de" disabled={!registerForOther} style={{ background: 'var(--dex-gray-100)', ...(showErrors && !email.trim() ? errorBorder : {}) }} />
+              <input className="form-input" type="email" value={email} onChange={e => { if (registerForOther) { setEmail(e.target.value); externalEmailConfirmedRef.current = false; /* v18.74: Tippfehler-Check bei Änderung erneut erzwingen */ } }} placeholder={externalPerson ? 'name@firma.de' : 'email@deloitte.de'} disabled={!registerForOther} style={{ background: registerForOther ? '#fff' : 'var(--dex-gray-100)', ...(showErrors && !email.trim() ? errorBorder : {}) }} />
             </div>
 
             {/* v11.94/v11.97/v12.0: Zusätzliche read-only-Profildaten aus dem
@@ -2608,6 +2692,9 @@ export default function RegistrationPage(): React.ReactElement {
               // sichtbar sind. Die Felder bleiben dann leer mit
               // Placeholder „aus SP-Profil — nicht hinterlegt".
               if (!profile && !registerForOther) return null;
+              // v18.74: Bei externen Personen gibt es kein Deloitte-Profil —
+              // Position/Geschäftsbereich/Büro gar nicht erst anzeigen.
+              if (externalPerson) return null;
               const jt = profile ? ((profile as { jobTitle?: string }).jobTitle || '') : '';
               const dept = profile ? ((profile as { department?: string }).department || '') : '';
               const loc = profile ? ((profile as { location?: string }).location || '') : '';
@@ -3653,21 +3740,30 @@ export default function RegistrationPage(): React.ReactElement {
           onClose={() => setExternalEmailWarning(false)}
           maxWidth={540}
           padding={24}
-          ariaLabel={locale === 'de' ? 'Externe E-Mail-Adresse' : 'External email address'}
+          ariaLabel={locale === 'de' ? 'E-Mail-Adresse prüfen' : 'Check the email address'}
         >
-            {/* v17.22: bilingual nachgezogen. */}
+            {/* v18.74: Tippfehler-Gegenlesen — die externe Adresse groß
+                anzeigen und zur Bestätigung auffordern. */}
             <h3 style={{ margin: '0 0 12px', fontSize: '1.05rem', color: 'var(--dex-orange-dark, #b35a00)' }}>
-              {locale === 'de' ? 'Externe E-Mail-Adresse' : 'External email address'}
+              {locale === 'de' ? 'E-Mail-Adresse prüfen' : 'Check the email address'}
             </h3>
-            <p style={{ margin: '0 0 12px', fontSize: '0.9rem', lineHeight: 1.55, color: 'var(--dex-gray-700)' }}>
+            <p style={{ margin: '0 0 10px', fontSize: '0.9rem', lineHeight: 1.55, color: 'var(--dex-gray-700)' }}>
               {locale === 'de'
-                ? <>Die Adresse <strong>{email}</strong> gehört nicht zum Deloitte-Deutschland-Tenant (@deloitte.de). Standardmäßig sind Anmeldungen für externe Personen nicht vorgesehen — die Plattform ist nur für DEALL-Mitarbeiter freigeschaltet.</>
-                : <>The address <strong>{email}</strong> does not belong to the Deloitte Germany tenant (@deloitte.de). Registrations for external people are not supported by default — the platform is only enabled for DEALL employees.</>}
+                ? <>Du meldest eine <strong>externe Person</strong> an. Bitte lies die Adresse genau gegen — an externe Adressen lässt sich ein <strong>Tippfehler nachträglich nicht korrigieren</strong>:</>
+                : <>You are registering an <strong>external person</strong>. Please read the address carefully — a <strong>typo cannot be corrected afterwards</strong> for external addresses:</>}
             </p>
-            <p style={{ margin: '0 0 12px', fontSize: '0.85rem', lineHeight: 1.55, color: 'var(--dex-gray-600)' }}>
+            <div style={{
+              margin: '0 0 12px', padding: '12px 14px', textAlign: 'center',
+              background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200)',
+              borderRadius: 8, fontSize: '1.05rem', fontWeight: 700, wordBreak: 'break-all',
+              color: 'var(--dex-gray-900, #222)',
+            }}>
+              {email}
+            </div>
+            <p style={{ margin: '0 0 12px', fontSize: '0.82rem', lineHeight: 1.55, color: 'var(--dex-gray-600)' }}>
               {locale === 'de'
-                ? <>Wenn du diese Person trotzdem als Teilnehmer erfassen möchtest (z.B. neue Mitarbeiter die noch nicht angestellt sind, externe Berater die am Event teilnehmen), kannst du fortfahren. Die Bestätigungsmail wird dann <strong>nicht an die externe Adresse</strong> versendet, sondern landet bei dir als Organizer in der Inbox — du kannst sie unter Beachtung der <strong>Deloitte-Datenschutzrichtlinien</strong> ggf. weiterleiten.</>
-                : <>If you still want to register this person as an attendee (e.g. new joiners not yet employed, external consultants attending the event), you can proceed. The confirmation email will then <strong>not be sent to the external address</strong> — it lands in your organizer inbox instead, and you may forward it in line with the <strong>Deloitte privacy guidelines</strong>.</>}
+                ? <>Die <strong>Anmeldebestätigung</strong> geht direkt an diese Adresse, mit den <strong>Organizern auf CC</strong>. Ein <strong>Outlook-Termin</strong> wird an externe Adressen nicht versendet.</>
+                : <>The <strong>confirmation email</strong> is sent directly to this address, with the <strong>organizers on CC</strong>. An <strong>Outlook invite</strong> is not sent to external addresses.</>}
             </p>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
               <button
@@ -3675,7 +3771,7 @@ export default function RegistrationPage(): React.ReactElement {
                 onClick={() => setExternalEmailWarning(false)}
                 style={{ fontSize: '0.85rem' }}
               >
-                {locale === 'de' ? 'Abbrechen' : 'Cancel'}
+                {locale === 'de' ? 'Zurück, korrigieren' : 'Back, edit'}
               </button>
               <button
                 className="btn btn-primary"
@@ -3687,7 +3783,7 @@ export default function RegistrationPage(): React.ReactElement {
                 }}
                 style={{ fontSize: '0.85rem' }}
               >
-                {locale === 'de' ? 'Trotzdem anmelden' : 'Register anyway'}
+                {locale === 'de' ? 'Adresse ist korrekt' : 'Address is correct'}
               </button>
             </div>
         </Modal>

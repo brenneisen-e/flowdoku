@@ -234,7 +234,7 @@ interface EventContextType {
   childEventsOf: (parentEventId: string) => DeloitteEvent[];
   isEventsLoading: boolean;
   createEvent: (event: CreateEventInput) => Promise<number | null>;
-  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' }>;
+  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' }>;
   /** v11.82: Team-Anmeldung — Lead + N-1 Mitglieder gleichzeitig anmelden.
    *  Reserviert N Plaetze atomar; bei Vollbelegung geht das ganze Team auf
    *  die Warteliste (keine Teil-Anmeldungen aus Kapazitaetsmangel). */
@@ -997,7 +997,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // „Hauptevent" ist dort nicht anmeldbar, die CC-Felder (z.B. Assistenz)
     // sind übergreifend und gelten für die Sub-Events — also müssen die
     // Sub-Event-Bestätigungsmails ebenfalls an die Assistenz auf CC gehen.
-    opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string }
+    // v18.74: proxyConsentConfirmed — bei stellvertretender Anmeldung wurde die
+    // Zustimmung der Person bestätigt (Pflicht-Checkbox auf der Anmeldeseite).
+    // Wird als Nachweis in die SP-Spalte ProxyConsent geschrieben.
+    opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean }
   ): Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' }> {
     // v17.25: Demo-Showcase-Event → No-Op, kein SP-Roundtrip. Die Register-
     // Seite blockt den Submit ohnehin mit einem Demo-Hinweis; dieser Guard
@@ -1097,13 +1100,23 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const actorName = currentUserName;
     const actorEmail = currentUserEmail;
 
+    // v18.74: Nachweis der Zustimmung bei stellvertretender Anmeldung. Eine
+    // Anmeldung gilt als „stellvertretend", wenn die Teilnehmer-E-Mail von der
+    // des eingeloggten Users abweicht. Bei externen Adressen (kein @deloitte.de)
+    // ist die Zustimmung schriftlich einzuholen — das wird im Nachweis vermerkt.
+    const isProxyRegistration = (emailToUse || '').toLowerCase() !== (currentUserEmail || '').toLowerCase();
+    const isExternalParticipant = !!emailToUse && !/@(.*\.)?deloitte\.de$/i.test(emailToUse);
+    const proxyConsentStr = (isProxyRegistration && opts?.proxyConsentConfirmed)
+      ? `${isExternalParticipant ? 'Schriftliche ' : ''}Zustimmung der Person zur stellvertretenden Anmeldung bestätigt durch ${actorName} (${actorEmail}) am ${new Date().toLocaleString('de-DE')}`
+      : '';
+
     let success: boolean;
     if (existing && existing.Status === 'Abgemeldet') {
-      success = await eventService.reactivateRegistration(subsiteUrl, existing.Id, firstNameToUse, lastNameToUse, customData, status, fieldMap, actorName, actorEmail);
+      success = await eventService.reactivateRegistration(subsiteUrl, existing.Id, firstNameToUse, lastNameToUse, customData, status, fieldMap, actorName, actorEmail, proxyConsentStr);
     } else {
       success = await eventService.registerForEvent(
         subsiteUrl, firstNameToUse, lastNameToUse, emailToUse, customData, status, fieldMap,
-        effectiveStarterType, preferredStarterType, actorName, actorEmail
+        effectiveStarterType, preferredStarterType, actorName, actorEmail, proxyConsentStr
       );
     }
 
@@ -1166,30 +1179,30 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           const orgEmails = (event.organizerEmails || []).filter(Boolean);
           if (orgEmails.length > 0) bcc = orgEmails.join(';');
         }
-        // v9.22: Externe Mail-Adresse erkennen — die Plattform ist nur fuer
-        // Deloitte Deutschland (@deloitte.de) freigeschaltet. Auch @deloitte.com
-        // (US/Global) zaehlt als extern. Bei externen Empfaengern wird die
-        // Bestaetigungsmail an den Organizer umgeleitet, der sie ggf. unter
-        // Beachtung der Datenschutzrichtlinien weiterleiten kann.
+        // v9.22: Externe Mail-Adresse erkennen — kein Deloitte-Postfach
+        // (@deloitte.de; auch @deloitte.com/Global zaehlt nicht als intern).
+        // v18.74: Bei externen Empfaengern wird die Bestaetigungsmail jetzt
+        // DIREKT an die externe Person versendet (vorher an den Organizer
+        // umgeleitet) — mit dem Organizer auf CC (Nachweis/Kopie). Ein
+        // Outlook-Kalendereintrag wird fuer externe Adressen weiterhin NICHT
+        // versendet (Microsoft blockt das ohne Federation, s.u.
+        // skipOutlookForExternal).
         const isExternalRecipient = !!emailToUse && !/@(.*\.)?deloitte\.de$/i.test(emailToUse);
-        let finalRecipient = emailToUse;
-        let finalSubject = emailData.subject;
+        const finalRecipient = emailToUse;
+        const finalSubject = emailData.subject;
         let finalBody = emailData.body;
-        let finalRecipientName = nameToUse;
+        const finalRecipientName = nameToUse;
+        // CC-Adressen, die zusaetzlich zu den Feld-CCs gelten (Organizer bei
+        // externer Anmeldung).
+        let externalCcExtra = '';
         if (isExternalRecipient) {
-          // v15.16: Subject klar nennt „Weiterleitung notwendig" — die Mail
-          // ersetzt für externe Empfänger die Anmeldebestätigung und muss vom
-          // Organizer ggf. an den externen Teilnehmer weitergeleitet werden.
           const orgEmails = (event.organizerEmails || []).filter(Boolean);
-          finalRecipient = orgEmails.length > 0 ? orgEmails.join(';') : currentUserEmail;
-          finalRecipientName = 'Organizer';
-          finalSubject = `Weiterleitung notwendig: ${emailData.subject} (${nameToUse})`;
-          // Datenschutz-Hinweis-Box VOR dem Original-Body einbauen.
+          externalCcExtra = orgEmails.join(';');
+          // Hinweis-Box VOR dem Original-Body — adressiert an die externe Person.
           const externalHint = `<div style="margin:0 0 16px;padding:12px 16px;background:#fff3e0;border:1px solid #ed8b00;border-radius:8px;font-size:13px;line-height:1.55;color:#7a4a00;">`
-            + `<strong>Weiterleitung notwendig — externer Teilnehmer.</strong><br>`
-            + `Diese Anmeldebestätigung gehört zu <strong>${nameToUse}</strong> (<strong>${emailToUse}</strong>) und ist gleichzeitig die offizielle Bestätigung der Registrierung. Da die Adresse kein Deloitte-Postfach ist, hat die App die Mail an dich als Organizer zugestellt. `
-            + `Bitte leite die Mail an die externe Person weiter — unter Beachtung der <a href="https://intranet.deloitte.com/datenschutz" style="color:#86bc25">Datenschutzrichtlinien Deloitte Deutschland</a> (insb. zur Verarbeitung personenbezogener Daten Dritter). `
-            + `Ein Outlook-Kalendereintrag wird für externe Adressen nicht versendet.`
+            + `<strong>Externe Anmeldung — kein automatischer Kalendereintrag.</strong><br>`
+            + `Diese Anmeldebestätigung gehört zu <strong>${nameToUse}</strong> (<strong>${emailToUse}</strong>). Da es sich um eine externe Adresse (kein Deloitte-Postfach) handelt, wird <strong>kein Outlook-Kalendereintrag</strong> versendet — bitte trage dir den Termin manuell in deinen Kalender ein. `
+            + `Der Organizer ist zur Bestätigung auf Kopie (CC).`
             + `</div>`;
           // Body kommt schon als komplett-gewickeltes HTML (Deloitte-Template).
           // Wir injecten den Hinweis direkt nach dem opening-<body>-Tag.
@@ -1203,7 +1216,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         const ccMerged = (() => {
           const seen = new Set<string>();
           const out: string[] = [];
-          for (const part of [ccOwn, opts?.extraCc || '']) {
+          // v18.74: externalCcExtra (Organizer bei externer Anmeldung) mitmergen.
+          for (const part of [ccOwn, opts?.extraCc || '', externalCcExtra]) {
             for (const e of part.split(';').map(s => s.trim()).filter(Boolean)) {
               const lc = e.toLowerCase();
               if (lc !== (emailToUse || '').toLowerCase() && !seen.has(lc)) { seen.add(lc); out.push(e); }
