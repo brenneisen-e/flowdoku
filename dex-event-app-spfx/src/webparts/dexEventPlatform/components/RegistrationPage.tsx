@@ -1572,16 +1572,16 @@ export default function RegistrationPage(): React.ReactElement {
     // weiterhin "i"-Hover-Box neben dem Label.
     const isInlineHelp = field.helpTextStyle === 'inline';
     const inlineHelpEl = (displayHelp && isInlineHelp)
-      ? <div style={{ fontSize: '0.78rem', fontWeight: 400, color: 'var(--dex-gray-500)', lineHeight: 1.45, marginTop: 2, marginBottom: 6, flexGrow: 1 }}>{displayHelp}</div>
+      // v18.77: Inline-Hilfe reserviert mind. 2 Zeilen Höhe (minHeight). Dadurch
+      // stehen die Eingaben benachbarter Felder auf gleicher Höhe, wenn sich die
+      // Beschreibungen um eine Zeile unterscheiden — OHNE die Nachbar-Eingabe
+      // (wie zuvor mit flexGrow) bis ganz nach unten zu ziehen, was bei Feldern
+      // mit Inhalt UNTER der Eingabe (People-Picker mit „international suchen") zu
+      // großen Lücken führte.
+      ? <div style={{ fontSize: '0.78rem', fontWeight: 400, color: 'var(--dex-gray-500)', lineHeight: 1.45, marginTop: 2, marginBottom: 6, minHeight: '2.9em' }}>{displayHelp}</div>
       : null;
     return (
-  // v18.76: Feld als Flex-Spalte rendern. Im 2-Spalten-Grid (dex-reg-fields-grid)
-  // strecken sich die Karten einer Zeile auf gleiche Höhe; die Inline-Hilfe
-  // (flexGrow:1) absorbiert den Höhenunterschied, sodass die Eingabe-Felder
-  // (Dropdown/Input) unten IMMER auf gleicher Höhe stehen — auch wenn die
-  // Beschreibung beim Nachbarfeld eine Zeile länger ist. In Nicht-Grid-Kontexten
-  // (z.B. Team-Mitglied-Felder) gibt es keinen freien Platz → kein Effekt.
-  <div className="form-group" key={field.id} style={{ display: 'flex', flexDirection: 'column' }}>
+  <div className="form-group" key={field.id}>
     {field.type !== 'checkbox' && (
       <>
       <label className="form-label">
