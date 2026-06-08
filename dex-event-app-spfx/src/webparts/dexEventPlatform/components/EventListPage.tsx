@@ -274,33 +274,42 @@ export default function EventListPage(): React.ReactElement {
           {t('eventlist.hint')}
         </p>
       </div>
-      <div className="flex-between mb-16">
-        {/* View-Mode Switcher: Cards / List */}
-        <div style={{ display: 'inline-flex', borderRadius: 6, overflow: 'hidden', border: '1px solid var(--dex-gray-300)' }}>
-          <button
-            onClick={() => switchView('cards')}
-            style={{
-              padding: '6px 12px', fontSize: '0.78rem', cursor: 'pointer', border: 'none',
-              background: viewMode === 'cards' ? 'var(--dex-green)' : 'transparent',
-              color: viewMode === 'cards' ? '#fff' : 'var(--dex-gray-600)',
-              fontWeight: viewMode === 'cards' ? 600 : 400,
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-            }}
-          >
-            <Icon iconName="GridViewMedium" style={{ fontSize: 14 }} /> Cards
-          </button>
-          <button
-            onClick={() => switchView('list')}
-            style={{
-              padding: '6px 12px', fontSize: '0.78rem', cursor: 'pointer', border: 'none',
-              background: viewMode === 'list' ? 'var(--dex-green)' : 'transparent',
-              color: viewMode === 'list' ? '#fff' : 'var(--dex-gray-600)',
-              fontWeight: viewMode === 'list' ? 600 : 400,
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-            }}
-          >
-            <Icon iconName="GroupedList" style={{ fontSize: 14 }} /> List
-          </button>
+      <div className="flex-between mb-16" style={{ alignItems: 'flex-end' }}>
+        {/* View-Mode Switcher: Cards / List — mit „Ansicht"-Label darueber,
+            damit klar ist, was die beiden Buttons umschalten (v19.6). */}
+        <div>
+          <div style={{
+            fontSize: '0.8rem', fontWeight: 700, color: 'var(--dex-gray-600)',
+            textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6,
+          }}>
+            {t('eventlist.view') || 'Ansicht'}
+          </div>
+          <div style={{ display: 'inline-flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--dex-gray-300)' }}>
+            <button
+              onClick={() => switchView('cards')}
+              style={{
+                padding: '9px 18px', fontSize: '0.98rem', cursor: 'pointer', border: 'none',
+                background: viewMode === 'cards' ? 'var(--dex-green)' : 'transparent',
+                color: viewMode === 'cards' ? '#fff' : 'var(--dex-gray-600)',
+                fontWeight: viewMode === 'cards' ? 700 : 500,
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+              }}
+            >
+              <Icon iconName="GridViewMedium" style={{ fontSize: 18 }} /> Cards
+            </button>
+            <button
+              onClick={() => switchView('list')}
+              style={{
+                padding: '9px 18px', fontSize: '0.98rem', cursor: 'pointer', border: 'none',
+                background: viewMode === 'list' ? 'var(--dex-green)' : 'transparent',
+                color: viewMode === 'list' ? '#fff' : 'var(--dex-gray-600)',
+                fontWeight: viewMode === 'list' ? 700 : 500,
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+              }}
+            >
+              <Icon iconName="GroupedList" style={{ fontSize: 18 }} /> List
+            </button>
+          </div>
         </div>
         {/* v15.19: „Nur aktive Events"-Toggle nur fuer Admin/Organizer.
             Reine User sehen ohnehin nur Events ihres Standorts und brauchen
@@ -449,15 +458,15 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
             style={{ padding: '20px 24px', cursor: 'pointer' }}
             onClick={() => navigate(targetPage, event.id)}
           >
-            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-              <div style={{ flex: '1 1 200px', display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12, width: '100%' }}>
+              <div style={{ flex: '1 1 200px', minWidth: 0, display: 'flex', alignItems: 'center', gap: 16 }}>
                 {event.imageUrl && (
                   <div style={{
                     width: 60, height: 40, borderRadius: 'var(--dex-radius)', flexShrink: 0,
                     background: `url(${event.imageUrl}) center/cover no-repeat`,
                   }} />
                 )}
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <h3 style={{ marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     {event.title}
                     {isOwn && (

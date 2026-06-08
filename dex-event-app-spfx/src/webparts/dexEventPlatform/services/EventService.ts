@@ -7218,7 +7218,19 @@ export class EventService {
     const sessionEmail = (this.context.pageContext.user.email || '').toLowerCase();
     if (!sessionEmail) return false;
 
-    // 1. DEX_Roles pruefen: Admin-Rolle haben?
+    // 1. DEX_Roles pruefen: Admin- ODER Organizer-Rolle haben?
+    //    v19.6 BUG-FIX: Vorher liess dieser Check NUR die Admin-Rolle durch.
+    //    Folge: ein User mit globaler **Organizer**-Rolle, der NICHT in der
+    //    OrganizerEmail genau DIESES Events steht (z.B. Organizer eines anderen
+    //    Events, Co-Organizer, oder bei einem SubsiteUrl-Mismatch), wurde
+    //    serverseitig abgelehnt — obwohl die App ihm den Button
+    //    „Für andere registrieren" zeigt (der haengt an canCreateEvents =
+    //    Organizer ODER Admin). Die Anmeldung schlug dann mit der
+    //    irrefuehrenden Meldung „bereits angemeldet" fehl, OBWOHL eine dritte
+    //    Person ausgewaehlt war. Die Rollenmatrix sieht „Für andere
+    //    registrieren" generell fuer Organizer vor (ohne „eigene"-Einschraenkung),
+    //    deshalb hier Admin UND Organizer akzeptieren — deckungsgleich mit dem
+    //    Client-Gate.
     try {
       const esc = sessionEmail.replace(/'/g, "''");
       const resp = await this.context.spHttpClient.get(
@@ -7228,7 +7240,7 @@ export class EventService {
       if (resp.ok) {
         const data = await resp.json();
         const items = data.value || data.d?.results || [];
-        if (items.length > 0 && items[0].Role === 'Admin') return true;
+        if (items.length > 0 && (items[0].Role === 'Admin' || items[0].Role === 'Organizer')) return true;
       }
     } catch { /* ignore - fallback auf weitere Checks */ }
 

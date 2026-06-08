@@ -744,6 +744,20 @@ export default function RegistrationPage(): React.ReactElement {
       return;
     }
 
+    // v19.6: Stellvertretende Anmeldung — verhindern, dass der Organizer
+    // versehentlich SICH SELBST als „andere Person" einträgt. Im
+    // „Für andere registrieren"-Modus MUSS eine andere Person ausgewählt sein.
+    // Ist die Teilnehmer-E-Mail leer ODER identisch zur eigenen, läuft sonst die
+    // Doppel-Anmelde-Prüfung gegen den eingeloggten User und meldet
+    // irreführend „bereits angemeldet" (Beobachtung des Users: „bei einer
+    // Anmeldung einer dritten Person wird weiterhin geprüft, ob ich selber
+    // angemeldet werde"). Hier klar abbrechen statt still die Selbst-Prüfung
+    // auszulösen.
+    if (registerForOther && email.trim().toLowerCase() === (currentUser.email || '').toLowerCase()) {
+      setError(t('reg.error.selfasother'));
+      return;
+    }
+
     // v18.74: Bei stellvertretender Anmeldung einer EXTERNEN Adresse zwei
     // Stufen: (1) strengere Plausibilitätsprüfung gegen Tippfehler (fehlende
     // TLD, doppelte Punkte, mehrere @, …) → harter Fehler; (2) ein
@@ -1120,7 +1134,10 @@ export default function RegistrationPage(): React.ReactElement {
           // v18.67: echten Status fuers Ergebnis-Modal merken (nicht isFull).
           setSubmittedAsWaitlist(parentResult.status === 'Warteliste');
         }
-        else setError(t('reg.error'));
+        // v19.6: Bei stellvertretender Anmeldung die personenbezogene Meldung
+        // („Diese Person ist möglicherweise bereits angemeldet") statt der
+        // Selbst-Meldung („du bist bereits angemeldet") zeigen.
+        else setError(t(registerForOther ? 'reg.error.other' : 'reg.error'));
         setSubmitProgress(50);
       } else if (isSubOnlyMode && parentAlreadyHasRow && sessionsBeingAdded && !registerForOther) {
         // v18.59: Die Schatten-Parent-Zeile existiert bereits (frühere
@@ -1232,7 +1249,7 @@ export default function RegistrationPage(): React.ReactElement {
       } else if (!parentOk) {
         // Parent-Fehler wurde schon in setError oben gesetzt.
       } else {
-        setError(t('reg.error'));
+        setError(t(registerForOther ? 'reg.error.other' : 'reg.error'));
       }
     } catch {
       setError(t('reg.genericerror'));
