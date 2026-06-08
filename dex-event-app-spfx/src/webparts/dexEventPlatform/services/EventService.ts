@@ -6085,6 +6085,12 @@ export class EventService {
       { title: 'CheckedInDate', type: 4 },     // v7.16: Check-In-Audit — Zeitpunkt
       { title: 'CheckedInByName', type: 2 },   // v7.16: Check-In-Audit — Helfer-Name
       { title: 'CheckedInByEmail', type: 2 },  // v7.16: Check-In-Audit — Helfer-E-Mail
+      // v19.3: Nachrück-Audit-Spalten auch beim „Spalten fixen" nachziehen, damit
+      // der DEX_IDReorder-Flow (und der App-Button) sie auf Bestands-Events
+      // beschreiben kann → „Nachgerückt am / Ersetzt / Ersetzt durch" in der App.
+      { title: 'PromotedDate', type: 4 },              // DateTime — Zeitpunkt des Nachrückens
+      { title: 'ReplacedParticipantEmail', type: 2 },  // E-Mail der Person, deren Cancel den Platz freigab
+      { title: 'ReplacedByParticipantEmail', type: 2 },// E-Mail der nachrückenden Person (Spiegelbild)
       { title: 'OverbookReview', type: 2 },    // v11.36: Überbuchungs-Review-Marker
       { title: 'TeamId', type: 2 },            // v11.82: UUID einer Team-Anmeldung (leer = Solo)
       { title: 'TeamLead', type: 8 },          // v11.82: Boolean — true fuer die anmeldende Person

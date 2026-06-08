@@ -652,6 +652,23 @@ export function buildOutlookBody(eventTitle: string, bodyText: string, subheadin
 }
 
 /**
+ * v19.3: Ein HTML-Snippet (Team-Info-Box, Externe-Anmeldung-Hinweis, externer
+ * QR-Hinweis) INNEN in den Inhaltsbereich des Deloitte-Templates einsetzen — an
+ * den Anfang der Body-Content-Zelle, NICHT direkt nach <body> (sonst erscheint
+ * der Block VOR/ÜBER der ganzen Template-Karte, optisch losgelöst — siehe
+ * Bug-Report v19.3). Adressiert dieselbe Body-Content-Zelle wie
+ * stripOutlookWrapper (`padding:0 30px 30px[ 30px]`). Fallback (Pre-wrapped
+ * Storage-Templates ohne dieses Padding / abweichende Struktur): doch nach
+ * <body> — besser als gar nicht.
+ */
+export function injectIntoEmailContent(wrappedHtml: string, snippet: string): string {
+  if (!snippet) return wrappedHtml;
+  const m = wrappedHtml.match(/<td style="padding:0 30px 30px(?:\s+30px)?;[^"]*">/i);
+  if (m) return wrappedHtml.replace(m[0], `${m[0]}${snippet}`);
+  return wrappedHtml.replace(/<body([^>]*)>/i, `<body$1>${snippet}`);
+}
+
+/**
  * Extrahiert den User-Content-Teil aus einem bereits-gewickelten Outlook-Body.
  * Wenn der Input nicht gewickelt ist, wird er unveraendert zurueckgegeben.
  * Dadurch koennen wir bestehende Events bearbeiten, ohne dass der Editor das
