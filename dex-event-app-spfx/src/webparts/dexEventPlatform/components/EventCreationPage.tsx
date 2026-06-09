@@ -1063,6 +1063,14 @@ export default function EventCreationPage(): React.ReactElement {
       };
     } catch { return def; }
   });
+  // v19.20: Snapshot des initialen Header-Bild-Layouts (Breite/Innenabstand)
+  // beim Edit-Mount. Eine reine Layout-Änderung verändert NICHT den rohen
+  // Outlook-Body-Text (das Layout wird erst beim Wrappen via buildOutlookBody
+  // angewendet) — der Outlook-Änderungs-Detektor hätte sie deshalb übersehen.
+  // Wir vergleichen das aktuelle Layout gegen diesen Snapshot, damit eine
+  // Größen-/Abstands-Änderung das „Outlook-Termin aktualisieren?"-Modal genauso
+  // öffnet wie eine Textänderung. useRef fixiert den Wert beim ersten Render.
+  const initialHeaderImageLayoutRef = React.useRef<{ width: number; paddingV: number; paddingH: number }>(headerImageLayout);
   // v18.73: Piggyback-Konfig für den Save (leer wenn alles auf Default steht —
   // dann wird der Key gar nicht geschrieben). Wird in Create- UND Edit-Pfad
   // sowie in die Sub-Event-Overrides gemerged.
@@ -1429,7 +1437,7 @@ export default function EventCreationPage(): React.ReactElement {
     kind: 'top' | 'sub';
     eventId: string;
     title: string;
-    changedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'location' | 'subject'>;
+    changedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'location' | 'subject' | 'layout'>;
     /** v11.68: Sub-Event hat noch keinen Outlook-Termin (kein CalendarLink in
      *  DEX_Events). Body-/Titel-Change wird beim Save in DEX_Events
      *  persistiert, aber es kann KEIN UpdateEvent gequeuet werden — es gibt
@@ -3290,11 +3298,27 @@ export default function EventCreationPage(): React.ReactElement {
               customFields: cfForFix,
             });
             if (fixResult.customFieldMap && Object.keys(fixResult.customFieldMap).length > 0) {
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-              const merged = cfForFix.map((f: any) => {
-                const sp = fixResult.customFieldMap![f.id] || f.spInternalName || '';
-                return { ...f, spInternalName: sp };
-              });
+              // v19.20: ROBUSTER FIX für den wiederkehrenden „zweiter
+              // CustomFields-Write droppt Properties"-Bug (siehe CLAUDE.md).
+              // Früher wurde dieser zweite Write aus dem manuell gepflegten
+              // cfForFix-Mapping gebaut — jede dort vergessene Property wurde
+              // damit direkt nach dem Speichern wieder vom SP-Item entfernt
+              // (zuletzt die EN-Varianten labelEn/helpTextEn/confirmLabelEn/
+              // optionsEn; historisch multi/ccOnEmails/helpText/showIf/…).
+              // Jetzt nehmen wir den KANONISCHEN serializeCustomFields-Output
+              // (der ALLE Properties korrekt persistiert) und ergänzen pro
+              // Feld nur noch spInternalName. So kann die Property-Liste nie
+              // wieder veralten — cfForFix dient ab jetzt ausschließlich dem
+              // Spalten-Fix-Aufruf oben, nicht mehr der Persistenz.
+              const spById: Record<string, string> = {};
+              for (const f of customFields) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                spById[f.id] = (f as any).spInternalName || '';
+              }
+              const merged = serializeCustomFields(customFields, bilingualFields).map(f => ({
+                ...f,
+                spInternalName: fixResult.customFieldMap![f.id] || spById[f.id] || '',
+              }));
               await updateEvent(selectedEventId, { 'CustomFields': JSON.stringify(merged) });
             }
           }
@@ -3853,11 +3877,21 @@ export default function EventCreationPage(): React.ReactElement {
     const currentStripped = activeCommTabIdx === 0 ? (outlookBody || '') : stripOutlookWrapper(snap.outlookBody || '');
     const currentTopLocation = outlookLocationOverride.trim() || buildOutlookLocation(location, { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity });
     const currentTopSubject = (resolveTopLevelCommState().outlookSubject || '').trim();
-    const topChangedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'location' | 'subject'> = [];
+    // v19.20: globale Header-Bild-Layout-Änderung (Breite/Innenabstand) erkennen.
+    // Das Layout steht NICHT im rohen Body (wird erst beim Wrappen angewendet),
+    // betrifft aber den Hero-Bild-Kopf des Outlook-Termins — daher als eigenes
+    // Änderungs-Feld „layout" werten, damit das Update-Modal aufgeht (und der
+    // Grund klar als „Kopfbild" benannt wird, nicht irreführend als „Termin-Text").
+    const initLayout = initialHeaderImageLayoutRef.current;
+    const layoutChanged = headerImageLayout.width !== initLayout.width
+      || headerImageLayout.paddingV !== initLayout.paddingV
+      || headerImageLayout.paddingH !== initLayout.paddingH;
+    const topChangedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'location' | 'subject' | 'layout'> = [];
     if (currentTitle !== (snap.title || '')) topChangedFields.push('title');
     if (!sameInstant(currentStart, snap.startDate || '')) topChangedFields.push('startDate');
     if (!sameInstant(currentEnd, snap.endDate || '')) topChangedFields.push('endDate');
     if (currentStripped !== initialStripped) topChangedFields.push('outlookBody');
+    if (layoutChanged) topChangedFields.push('layout');
     // v18.34: reine Ort-Aenderung gilt ebenfalls als Outlook-relevant.
     if (currentTopLocation !== (snap.outlookLocation || '')) topChangedFields.push('location');
     // v18.42: reine Betreff-Aenderung gilt ebenfalls als Outlook-relevant.
@@ -3899,12 +3933,16 @@ export default function EventCreationPage(): React.ReactElement {
       const initBodyStripped = stripOutlookWrapper(s.initialOutlookBody || '');
       const curBodyStripped = (s.outlookBody || '');
       const hasOutlookEvId = !!s.initialOutlookEventId || !!s.initialCalendarLink;
-      const subChangedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody'> = [];
+      const subChangedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'layout'> = [];
       if ((s.title || '') !== initTitle) subChangedFields.push('title');
       // v11.64: auch hier semantischer Vergleich — gleiche Falle wie oben.
       if (!sameInstant(s.startDate || '', initStart)) subChangedFields.push('startDate');
       if (!sameInstant(s.endDate || '', initEnd)) subChangedFields.push('endDate');
       if (curBodyStripped !== initBodyStripped) subChangedFields.push('outlookBody');
+      // v19.20: globale Header-Bild-Layout-Änderung betrifft auch die
+      // Sub-Event-Outlook-Termine (gleicher Hero-Bild-Kopf) — als eigenes
+      // „layout"-Feld werten, damit das Update-Modal sie mit auflistet.
+      if (layoutChanged) subChangedFields.push('layout');
       // v11.66: Debug-Log fuer jeden Sub-Event, damit wir in der Browser-
       // Konsole nachvollziehen koennen, warum das Modal manchmal nicht
       // erscheint. v11.67: JSON.stringify damit der Browser die Werte
@@ -13894,13 +13932,14 @@ export default function EventCreationPage(): React.ReactElement {
             }}>
               {outlookConfirmItems.map((it, idx) => {
                 const isLast = idx === outlookConfirmItems.length - 1;
-                const fieldLabelMap: Record<'title'|'startDate'|'endDate'|'outlookBody'|'location'|'subject', { de: string; en: string }> = {
+                const fieldLabelMap: Record<'title'|'startDate'|'endDate'|'outlookBody'|'location'|'subject'|'layout', { de: string; en: string }> = {
                   title: { de: 'Titel', en: 'Title' },
                   startDate: { de: 'Startzeit', en: 'Start time' },
                   endDate: { de: 'Endzeit', en: 'End time' },
                   outlookBody: { de: 'Termin-Text', en: 'Calendar body' },
                   location: { de: 'Ort', en: 'Location' },
                   subject: { de: 'Betreff', en: 'Subject' },
+                  layout: { de: 'Kopfbild (Größe/Abstand)', en: 'Header image (size/spacing)' },
                 };
                 const changedLabels = it.changedFields.map(f => isDe ? fieldLabelMap[f].de : fieldLabelMap[f].en).join(', ');
                 const checked = !!outlookConfirmChecks[it.eventId];
