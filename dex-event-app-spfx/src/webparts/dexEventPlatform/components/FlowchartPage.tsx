@@ -756,7 +756,7 @@ function MassEmailFlow(): React.ReactElement {
 function SelfCheckInFlow(): React.ReactElement {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <FlowNode type="start" label="Organizer aktiviert 'Self-Check-in' im Wizard (Kapazität & Sichtbarkeit)" details="Beim Aktivieren wird einmalig ein geheimer Token für das Event erzeugt (Schlüssel für den statischen Link UND für den rotierenden HMAC-QR-Code). Optional kann ein Zeitfenster (Von/Bis) gesetzt werden — leer = nur am Event-Tag." />
+      <FlowNode type="start" label="Organizer öffnet eine Self-Check-in-Aktion (Check-in-Seite, Admin Center oder QR-Kachel unter dem Event-Bild)" details="Self-Check-in ist immer möglich — es gibt nichts zu konfigurieren (v20.2: der frühere Wizard-Schalter ist entfallen). Beim ersten Öffnen wird automatisch ein geheimer Token für das Event erzeugt (Schlüssel für den statischen Link UND für den rotierenden HMAC-QR-Code). Das Check-in-Zeitfenster (Von/Bis) ist im Kachel-Modal einstellbar — Standard: 2 Stunden vor Event-Start bis Event-Ende (keine verfrühten, keine nachträglichen Check-ins)." />
       <Arrow />
       <FlowNode type="decision" label="Welcher QR-Modus am Eingang?" />
       <BranchContainer>

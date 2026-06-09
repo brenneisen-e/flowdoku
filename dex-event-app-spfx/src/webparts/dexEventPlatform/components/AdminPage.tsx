@@ -20,7 +20,8 @@ import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, Exte
 import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
 // v20.1: Self-Check-in jederzeit aktivierbar (Token-Erzeugung beim Klick).
 // v20.2: + statische Check-in-URL für die QR-Kachel im Event-Detail.
-import { generateSelfCheckInToken, buildStaticCheckInUrl } from '../utils/selfCheckIn';
+// v20.3: + Default-Zeitfenster (2 Std. vor Start bis Event-Ende) zur Vorbelegung.
+import { generateSelfCheckInToken, buildStaticCheckInUrl, defaultCheckInWindow } from '../utils/selfCheckIn';
 // v20.0 (Audit): xlsx + qrcode werden nicht mehr statisch importiert, sondern
 // erst beim tatsächlichen Gebrauch (Export-Klick / QR-Vorschau) als eigener
 // Chunk nachgeladen — spart ~1 MB im Haupt-Bundle.
@@ -234,6 +235,19 @@ function migrateB2RunFieldExtras(fields: any[]): { changed: boolean } {
 // Excel-Dropdown). Badge zeigt zwingend "Organizer" (gruener Tint) oder
 // "Nur Admin" (oranger Tint), damit auf einen Blick klar ist, fuer welche
 // Rolle die Aktion gedacht ist.
+// v20.3: Kategorien für das Aktionen-Dropdown — die Aktionen werden nicht
+// mehr als flache Alphabet-Liste gerendert, sondern als aufklappbare
+// Kategorien (mehrzeilige Einträge: Titel fett, Beschreibung darunter).
+type ActionCategoryKey = 'event' | 'participants' | 'mails' | 'checkin' | 'maintenance';
+const ACTION_CATEGORY_ORDER: ActionCategoryKey[] = ['event', 'participants', 'mails', 'checkin', 'maintenance'];
+const ACTION_CATEGORY_LABELS: Record<ActionCategoryKey, { de: string; en: string }> = {
+  event: { de: 'Event', en: 'Event' },
+  participants: { de: 'Teilnehmer', en: 'Participants' },
+  mails: { de: 'E-Mails', en: 'Emails' },
+  checkin: { de: 'Check-in', en: 'Check-in' },
+  maintenance: { de: 'Wartung & Reparatur', en: 'Maintenance & repair' },
+};
+
 interface ActionTileProps {
   icon: React.ReactNode;
   title: string;
@@ -248,6 +262,10 @@ interface ActionTileProps {
   // v9.19: filled-Variante fuer Highlight-Aktionen (z.B. Event aktivieren).
   // accent='green' = grün gefuellt, accent='red' = rot gefuellt.
   accent?: 'green' | 'red';
+  // v20.3: Kategorie + optionale Unterkategorie (z.B. „Self-Check-in"
+  // innerhalb von Check-in) für das gruppierte Aktionen-Dropdown.
+  category?: ActionCategoryKey;
+  subCategory?: string;
   // children: zusaetzlicher Inhalt, der unterhalb der Standard-Tile-Inhalte
   // gerendert wird (z.B. das Excel-Dropdown-Menue).
   children?: React.ReactNode;
@@ -271,9 +289,12 @@ function ActionTile(props: ActionTileProps): React.ReactElement | null {
       onClick: props.onClick,
       href: props.href,
       disabled: props.disabled || props.busy,
+      // v20.3: Kategorie-Zuordnung fürs gruppierte Dropdown (Fallback: Event).
+      category: props.category || 'event',
+      subCategory: props.subCategory,
     });
     return () => registry.unregister(key);
-  }, [registry, registered, props.title, props.desc, props.badge, props.onClick, props.href, props.disabled, props.busy]);
+  }, [registry, registered, props.title, props.desc, props.badge, props.onClick, props.href, props.disabled, props.busy, props.category, props.subCategory]);
   if (registered) return null;
   const isInteractive = !props.disabled && !props.busy;
   const greenAccent = isInteractive && hover;
@@ -460,6 +481,9 @@ interface RegisteredAction {
   onClick?: () => void;
   href?: string;
   disabled?: boolean;
+  // v20.3: Kategorie + optionale Unterkategorie fürs gruppierte Dropdown.
+  category: ActionCategoryKey;
+  subCategory?: string;
 }
 const ActionsRegistryContext = React.createContext<{
   register: (_a: RegisteredAction) => void;
@@ -484,22 +508,74 @@ function ActionsRegistryProvider(props: { children: React.ReactNode }): React.Re
 function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | null {
   const ctx = React.useContext(ActionsRegistryContext);
   const [open, setOpen] = React.useState(false);
-  const [hoveredKey, setHoveredKey] = React.useState<string | null>(null);
+  // v20.3: aufklappbare Kategorien + Unterkategorien (z.B. „Self-Check-in"
+  // unter Check-in) statt flacher Alphabet-Liste. Einträge sind mehrzeilig:
+  // Titel fett, Beschreibung darunter — der frühere Hover-Tooltip entfällt.
+  const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     if (!open) return undefined;
     const onDocClick = (e: MouseEvent): void => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
         setOpen(false);
-        setHoveredKey(null);
       }
     };
     document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [open]);
   if (!ctx || ctx.actions.length === 0) return null;
-  const sorted = ctx.actions.slice().sort((a, b) => a.title.localeCompare(b.title, props.isDe ? 'de' : 'en'));
-  const hoveredAction = hoveredKey ? sorted.find(a => a.key === hoveredKey) : null;
+  const lang = props.isDe ? 'de' : 'en';
+  const toggleKey = (k: string): void => {
+    setExpanded(prev => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k); else next.add(k);
+      return next;
+    });
+  };
+  const runAction = (a: RegisteredAction): void => {
+    if (a.disabled) return;
+    setOpen(false);
+    if (a.href) {
+      window.open(a.href, '_blank', 'noopener,noreferrer');
+    } else if (a.onClick) {
+      a.onClick();
+    }
+  };
+  const renderActionRow = (a: RegisteredAction, indent: number): React.ReactElement => {
+    const adminOnly = a.badge === 'admin';
+    return (
+      <div
+        key={a.key}
+        onClick={() => runAction(a)}
+        onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(134,188,37,0.07)'; }}
+        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = '#fff'; }}
+        style={{
+          padding: `9px 12px 9px ${indent}px`,
+          cursor: a.disabled ? 'not-allowed' : 'pointer',
+          borderBottom: '1px solid var(--dex-gray-100)',
+          opacity: a.disabled ? 0.5 : 1,
+          background: '#fff',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+          <span style={{ fontWeight: 700, fontSize: '0.87rem', color: 'var(--dex-gray-800)' }}>{a.title}</span>
+          <span style={{
+            fontSize: '0.68rem', padding: '2px 8px', borderRadius: 999,
+            background: adminOnly ? 'rgba(237,139,0,0.12)' : 'rgba(134,188,37,0.12)',
+            color: adminOnly ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green-dark, #4a7c1f)',
+            fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
+          }}>
+            {adminOnly ? (props.isDe ? 'Nur Admin' : 'Admin only') : 'Organizer'}
+          </span>
+        </div>
+        {a.desc && (
+          <div style={{ marginTop: 3, fontSize: '0.76rem', color: 'var(--dex-gray-500)', lineHeight: 1.45 }}>
+            {a.desc}
+          </div>
+        )}
+      </div>
+    );
+  };
   return (
     <div ref={rootRef} style={{ position: 'relative', marginTop: 12 }}>
       <button
@@ -514,7 +590,7 @@ function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | null {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
         }}
       >
-        <span>{props.isDe ? `Aktion auswählen (${sorted.length})` : `Pick an action (${sorted.length})`}</span>
+        <span>{props.isDe ? `Aktion auswählen (${ctx.actions.length})` : `Pick an action (${ctx.actions.length})`}</span>
         <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.85rem', transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease' }}>▾</span>
       </button>
       {open && (
@@ -522,61 +598,63 @@ function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | null {
           position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
           background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 10,
           boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 50,
-          maxHeight: 420, overflowY: 'auto',
+          maxHeight: 480, overflowY: 'auto',
         }}>
-          {sorted.map(a => {
-            const adminOnly = a.badge === 'admin';
+          {ACTION_CATEGORY_ORDER.map(catKey => {
+            const inCat = ctx.actions.filter(a => a.category === catKey);
+            if (inCat.length === 0) return null;
+            const catLabel = props.isDe ? ACTION_CATEGORY_LABELS[catKey].de : ACTION_CATEGORY_LABELS[catKey].en;
+            const catOpen = expanded.has(catKey);
+            const direct = inCat.filter(a => !a.subCategory).slice().sort((a, b) => a.title.localeCompare(b.title, lang));
+            const subNames = Array.from(new Set(inCat.filter(a => !!a.subCategory).map(a => a.subCategory as string))).sort((a, b) => a.localeCompare(b, lang));
             return (
-              <div
-                key={a.key}
-                onMouseEnter={() => setHoveredKey(a.key)}
-                onMouseLeave={() => { if (hoveredKey === a.key) setHoveredKey(null); }}
-                onClick={() => {
-                  if (a.disabled) return;
-                  setOpen(false);
-                  setHoveredKey(null);
-                  if (a.href) {
-                    window.open(a.href, '_blank', 'noopener,noreferrer');
-                  } else if (a.onClick) {
-                    a.onClick();
-                  }
-                }}
-                style={{
-                  padding: '8px 12px', cursor: a.disabled ? 'not-allowed' : 'pointer',
-                  fontSize: '0.88rem', borderBottom: '1px solid var(--dex-gray-100)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-                  opacity: a.disabled ? 0.5 : 1,
-                  background: hoveredKey === a.key ? 'rgba(134,188,37,0.08)' : '#fff',
-                  color: 'var(--dex-gray-800)',
-                }}
-              >
-                <span style={{ fontWeight: 500 }}>{a.title}</span>
-                <span style={{
-                  fontSize: '0.7rem', padding: '2px 8px', borderRadius: 999,
-                  background: adminOnly ? 'rgba(237,139,0,0.12)' : 'rgba(134,188,37,0.12)',
-                  color: adminOnly ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green-dark, #4a7c1f)',
-                  fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
-                }}>
-                  {adminOnly ? (props.isDe ? 'Nur Admin' : 'Admin only') : 'Organizer'}
-                </span>
+              <div key={catKey}>
+                <div
+                  onClick={() => toggleKey(catKey)}
+                  style={{
+                    padding: '10px 12px', cursor: 'pointer', userSelect: 'none',
+                    display: 'flex', alignItems: 'center', gap: 8,
+                    background: 'var(--dex-gray-50, #fafafa)',
+                    borderBottom: '1px solid var(--dex-gray-200)',
+                  }}
+                >
+                  <span style={{ width: 14, color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.8rem' }}>{catOpen ? '▾' : '▸'}</span>
+                  <span style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>{catLabel}</span>
+                  <span style={{
+                    fontSize: '0.68rem', padding: '1px 7px', borderRadius: 999,
+                    background: 'rgba(134,188,37,0.12)', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700,
+                  }}>{inCat.length}</span>
+                </div>
+                {catOpen && direct.map(a => renderActionRow(a, 30))}
+                {catOpen && subNames.map(sub => {
+                  const subKey = `${catKey}::${sub}`;
+                  const subOpen = expanded.has(subKey);
+                  const subActions = inCat.filter(a => a.subCategory === sub).slice().sort((a, b) => a.title.localeCompare(b.title, lang));
+                  return (
+                    <div key={subKey}>
+                      <div
+                        onClick={() => toggleKey(subKey)}
+                        style={{
+                          padding: '8px 12px 8px 30px', cursor: 'pointer', userSelect: 'none',
+                          display: 'flex', alignItems: 'center', gap: 8,
+                          background: 'rgba(134,188,37,0.05)',
+                          borderBottom: '1px solid var(--dex-gray-100)',
+                        }}
+                      >
+                        <span style={{ width: 14, color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.75rem' }}>{subOpen ? '▾' : '▸'}</span>
+                        <span style={{ fontWeight: 700, fontSize: '0.84rem', color: 'var(--dex-gray-700)' }}>{sub}</span>
+                        <span style={{
+                          fontSize: '0.66rem', padding: '1px 6px', borderRadius: 999,
+                          background: 'rgba(134,188,37,0.12)', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700,
+                        }}>{subActions.length}</span>
+                      </div>
+                      {subOpen && subActions.map(a => renderActionRow(a, 46))}
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
-        </div>
-      )}
-      {open && hoveredAction && hoveredAction.desc && (
-        <div style={{
-          // v12.9: Tooltip jetzt LINKS neben der Dropdown-Liste (vorher
-          // rechts — wurde dort am Viewport-Rand abgeschnitten).
-          position: 'absolute', top: 'calc(100% + 4px)', right: 'calc(100% + 12px)',
-          width: 320,
-          padding: '12px 14px', background: 'rgba(40,40,40,0.96)', color: '#fff',
-          borderRadius: 10, fontSize: '0.8rem', lineHeight: 1.5,
-          boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
-          zIndex: 60, pointerEvents: 'none',
-        }}>
-          <div style={{ fontWeight: 700, marginBottom: 4 }}>{hoveredAction.title}</div>
-          <div style={{ opacity: 0.9 }}>{hoveredAction.desc}</div>
         </div>
       )}
     </div>
@@ -2310,8 +2388,13 @@ export default function AdminPage(): React.ReactElement {
       const token = await ensureSelfCheckInReady(selectedEvent);
       if (!token) return;
       setSciToken(token);
-      setSciFrom(isoToLocalInput(selectedEvent.selfCheckInFrom));
-      setSciTo(isoToLocalInput(selectedEvent.selfCheckInTo));
+      // v20.3: Von/Bis immer vorbelegen — gespeicherte Werte ODER der
+      // Standard (2 Stunden vor Event-Start bis Event-Ende). Der Standard
+      // gilt auch zur Laufzeit, solange nichts anderes gespeichert ist
+      // (isWithinCheckInWindow) — Anzeige und Verhalten sind damit deckungsgleich.
+      const def = defaultCheckInWindow(selectedEvent.startDate, selectedEvent.endDate);
+      setSciFrom(isoToLocalInput(selectedEvent.selfCheckInFrom) || (def.opensAt ? isoToLocalInput(def.opensAt.toISOString()) : ''));
+      setSciTo(isoToLocalInput(selectedEvent.selfCheckInTo) || (def.closesAt ? isoToLocalInput(def.closesAt.toISOString()) : ''));
       setSciSaveMsg('');
       try {
         const QRCode = await import('qrcode');
@@ -2320,6 +2403,29 @@ export default function AdminPage(): React.ReactElement {
       setSciModalOpen(true);
     } finally { setSciBusy(false); }
   };
+  // v20.3: Der Status-Badge neben dem Event-Titel ist klickbar — Aktiv ⇄
+  // Entwurf (ersetzt den früheren Eintrag im Aktionen-Menü). Gleiche Logik
+  // wie der alte v11.89-Toggle: IsFictive flippen, beim Live-Schalten
+  // Legacy-EventStatus auf 'Active' setzen.
+  const toggleDraftStatus = async (): Promise<void> => {
+    if (!selectedEvent) return;
+    const isDraft = !!selectedEvent.isFictive;
+    const nextIsFictive = !isDraft;
+    const confirmMsg = nextIsFictive
+      ? (isDe ? 'Event auf "Entwurf" zurücksetzen? Reguläre User sehen das Event danach nicht mehr.' : 'Reset event to "draft"? Regular users will no longer see the event afterwards.')
+      : (isDe ? 'Event live schalten? Alle Berechtigten können sich danach anmelden.' : 'Publish event? All eligible users can register afterwards.');
+    if (!window.confirm(confirmMsg)) return;
+    const patch: Record<string, unknown> = { 'IsFictive': nextIsFictive };
+    if (!nextIsFictive) patch['EventStatus'] = 'Active';
+    const ok = await updateEvent(selectedEvent.id, patch);
+    if (ok) {
+      // Badge sofort umschalten — selectedEvent ist lokaler State und wird
+      // durch refreshEvents nicht automatisch ersetzt.
+      setSelectedEvent(prev => prev ? { ...prev, isFictive: nextIsFictive, ...(nextIsFictive ? {} : { status: 'Active' }) } : prev);
+      await refreshEvents();
+    }
+  };
+
   const saveSelfCheckInWindow = async (): Promise<void> => {
     if (!selectedEvent || sciBusy) return;
     if (sciFrom && sciTo && new Date(sciFrom).getTime() >= new Date(sciTo).getTime()) {
@@ -3624,12 +3730,44 @@ export default function AdminPage(): React.ReactElement {
           {/* Header: Event-Titel + Status-Badge + Schnellaktionen (v13.11) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
             <h2 style={{ margin: 0, fontSize: '1.2rem', lineHeight: 1.2 }}>{selectedEvent.title}</h2>
-            <span className="badge" style={{
-              background: getStatusColor(selectedEvent.status) + '22',
-              color: getStatusColor(selectedEvent.status),
-            }}>
-              {selectedEvent.isFictive ? 'ENTWURF' : (isDe ? localizeStatus(selectedEvent.status) : selectedEvent.status)}
-            </span>
+            {/* v20.3: Status-Badge ist klickbar — Klick auf „Aktiv" setzt das
+                Event auf Entwurf, Klick auf „Entwurf" schaltet es live
+                (jeweils mit Sicherheitsabfrage). Nur für Admin/Organizer und
+                nur in den Zuständen Aktiv/Entwurf; Completed/Cancelled
+                bleiben reiner Text. */}
+            {(() => {
+              const isDraft = !!selectedEvent.isFictive;
+              const badgeBg = isDraft ? 'rgba(237,139,0,0.15)' : getStatusColor(selectedEvent.status) + '22';
+              const badgeFg = isDraft ? 'var(--dex-orange-dark, #b35a00)' : getStatusColor(selectedEvent.status);
+              const label = isDraft ? 'ENTWURF' : (isDe ? localizeStatus(selectedEvent.status) : selectedEvent.status);
+              const canToggleStatus = (isAdmin || isOrganizerFor(selectedEvent))
+                && !(isImpersonating && selectedEvent.isDemoShowcase)
+                && (isDraft || selectedEvent.status === 'Active');
+              if (!canToggleStatus) {
+                return (
+                  <span className="badge" style={{ background: badgeBg, color: badgeFg }}>{label}</span>
+                );
+              }
+              return (
+                <button
+                  type="button"
+                  className="badge"
+                  onClick={() => { toggleDraftStatus().catch(() => { /* */ }); }}
+                  title={isDraft
+                    ? (isDe ? 'Klicken: Event live schalten (Aktiv). Alle Berechtigten sehen das Event danach und können sich anmelden.' : 'Click: publish event (Active). All eligible users will see the event and can register.')
+                    : (isDe ? 'Klicken: Event auf Entwurf setzen. Reguläre User sehen das Event danach nicht mehr; Anmeldungen bleiben erhalten.' : 'Click: set event to draft. Regular users will no longer see the event; registrations are kept.')}
+                  style={{
+                    background: badgeBg, color: badgeFg,
+                    border: `1px solid ${badgeFg}`,
+                    cursor: 'pointer',
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                  }}
+                >
+                  {label}
+                  <span style={{ fontSize: '0.75em', opacity: 0.85 }}>⇄</span>
+                </button>
+              );
+            })()}
             {/* v13.11: Event bearbeiten + Check-In starten als Schnell-
                 Buttons direkt neben dem Status-Badge — die häufigsten
                 Aktionen aus dem Aktionen-Dropdown nach oben gezogen,
@@ -3936,6 +4074,7 @@ export default function AdminPage(): React.ReactElement {
                 diese Aktion ausloesen (siehe Header.canCheckIn-Logik). */}
             <ActionTile
               icon={<Hash size={18} />}
+              category="checkin"
               title={t('admin.checkin')}
               desc={isDe
                 ? 'Öffnet das Check-In-Tool: QR-Codes scannen, manuell ein-/auschecken, Live-KPIs (wie viele angemeldet / eingecheckt / ausstehend) sehen. Am Eventtag das wichtigste Werkzeug.'
@@ -3947,6 +4086,7 @@ export default function AdminPage(): React.ReactElement {
             {/* v9.20: QR-Codes versenden als ActionTile (Modal-Trigger). */}
             <ActionTile
               icon={<Send size={18} />}
+              category="checkin"
               title={isSendingQR ? (isDe ? `QR-Codes werden versendet... (${qrSentCount})` : `Sending QR codes... (${qrSentCount})`) : (isDe ? 'QR-Codes versenden' : 'Send QR codes')}
               desc={isDe
                 ? 'Öffnet ein Modal mit drei Optionen: Test (nur an dich), Volldurchlauf an alle Angemeldeten, oder Auto-Send aktivieren (jede neue Anmeldung kriegt automatisch ihren QR-Code).'
@@ -3960,52 +4100,14 @@ export default function AdminPage(): React.ReactElement {
               }}
             />
 
-            {/* v11.89: Event Live/Entwurf-Toggle — flippt IsFictive
-                (vorher EventStatus). Live → alle Berechtigten sehen das
-                Event und können sich anmelden. Entwurf → nur Organizer,
-                Admin und Test-Team sehen es. Bestehende Anmeldungen
-                bleiben in beiden Modi erhalten. */}
-            {(() => {
-              const isDraft = !!selectedEvent.isFictive;
-              return (
-                <ActionTile
-                  icon={isDraft ? <Check size={18} /> : <X size={18} />}
-                  // v12.4: Aktueller Status immer im Titel sichtbar, damit
-                  // der Admin/Organizer auf einen Blick weiß, in welchem
-                  // Zustand das Event gerade ist — und was der Klick bewirkt.
-                  title={isDraft
-                    ? (isDe ? 'Aktuell: Entwurf — Event live schalten' : 'Currently: draft — publish event')
-                    : (isDe ? 'Aktuell: Live — Auf Entwurf setzen' : 'Currently: live — set to draft')}
-                  desc={isDraft
-                    ? (isDe
-                      ? 'Schaltet das Event live — ab jetzt sehen alle Berechtigten das Event in der Liste und können sich anmelden. Mails + Outlook-Termine laufen wie konfiguriert.'
-                      : 'Publishes the event — from now on all eligible users see the event in the list and can register. Emails and Outlook invites run as configured.')
-                    : (isDe
-                      ? 'Setzt das Event auf "Entwurf" zurück — reguläre User können sich nicht mehr anmelden, sehen das Event nicht mehr in der Eventliste. Bestehende Anmeldungen bleiben erhalten. Du kannst jederzeit wieder live schalten.'
-                      : 'Resets the event to "draft" — regular users can no longer register and no longer see the event in the event list. Existing registrations are kept. You can publish again at any time.')}
-                  badge="organizer"
-                  accent={isDraft ? 'green' : undefined}
-                  onClick={async () => {
-                    if (!eventServiceRef) return;
-                    const nextIsFictive = !isDraft;
-                    const confirmMsg = nextIsFictive
-                      ? (isDe ? 'Event auf "Entwurf" zurücksetzen? Reguläre User sehen das Event danach nicht mehr.' : 'Reset event to "draft"? Regular users will no longer see the event afterwards.')
-                      : (isDe ? 'Event live schalten? Alle Berechtigten können sich danach anmelden.' : 'Publish event? All eligible users can register afterwards.');
-                    if (!window.confirm(confirmMsg)) return;
-                    // Legacy-Cleanup: Falls das Event noch EventStatus='Under Construction'
-                    // hatte, beim Live-Schalten direkt mit auf 'Active' setzen.
-                    const patch: Record<string, unknown> = { 'IsFictive': nextIsFictive };
-                    if (!nextIsFictive) patch['EventStatus'] = 'Active';
-                    await updateEvent(selectedEvent.id, patch);
-                    await refreshEvents();
-                  }}
-                />
-              );
-            })()}
+            {/* v11.89/v20.3: Der Event-Live/Entwurf-Toggle ist aus dem
+                Aktionen-Menü ausgezogen — der Status-Badge neben dem
+                Event-Titel ist jetzt selbst der klickbare Umschalter. */}
 
             {/* 1. Event bearbeiten */}
             <ActionTile
               icon={<Pencil size={18} />}
+              category="event"
               title={t('admin.editbutton') || 'Event bearbeiten'}
               desc={isDe
                 ? 'Öffnet das Event im Schritt-für-Schritt-Wizard. Titel, Datum, Ort, Kapazität, Custom-Fields, E-Mail-Templates und Quiz nachträglich anpassen.'
@@ -4017,6 +4119,7 @@ export default function AdminPage(): React.ReactElement {
             {/* 2. Teilnehmerliste in SharePoint öffnen */}
             <ActionTile
               icon={<ExternalLink size={18} />}
+              category="event"
               title={t('admin.opensp') || 'In SharePoint öffnen'}
               desc={isDe
                 ? 'Öffnet die SharePoint-Teilnehmerliste der Subsite in einem neuen Tab — für tiefere Bearbeitung jenseits dieser App (z.B. Massen-Edit per Spreadsheet-View).'
@@ -4031,11 +4134,27 @@ export default function AdminPage(): React.ReactElement {
                 automatisch aktiviert (Token erzeugen + am Event speichern). */}
             {(isAdmin || isOrganizerFor(selectedEvent)) && (
               <ActionTile
+                icon={<QrCode size={18} />}
+                category="checkin"
+                subCategory={isDe ? 'Self-Check-in' : 'Self check-in'}
+                title={isDe ? 'Self-Check-in einstellen' : 'Set up self check-in'}
+                desc={isDe
+                  ? 'Öffnet die Self-Check-in-Übersicht dieses Events: großer QR-Code, PDF-Download, Live-Anzeige und das Check-in-Zeitfenster (Von/Bis) — so kannst du das Zeitfenster auch schon Wochen vor dem Event festlegen. Standard: 2 Stunden vor Event-Start bis Event-Ende.'
+                  : 'Opens the self check-in overview of this event: large QR code, PDF download, live display and the check-in time window (from/until) — so you can set the window weeks before the event. Default: 2 hours before event start until event end.'}
+                badge="organizer"
+                busy={sciBusy}
+                onClick={() => { openSelfCheckInModal().catch(() => { /* best-effort */ }); }}
+              />
+            )}
+            {(isAdmin || isOrganizerFor(selectedEvent)) && (
+              <ActionTile
                 icon={<Download size={18} />}
+                category="checkin"
+                subCategory={isDe ? 'Self-Check-in' : 'Self check-in'}
                 title={isDe ? 'Self-Check-in: QR-PDF' : 'Self check-in: QR PDF'}
                 desc={isDe
-                  ? 'Lädt ein druckbares PDF mit dem QR-Code und einer kurzen Anleitung herunter. Zum Aushängen am Eingang — Teilnehmer scannen mit der Handy-Kamera und checken sich selbst ein. Tipp: am besten mit dem Zeitfenster „nur am Event-Tag" kombinieren.'
-                  : 'Downloads a printable PDF with the QR code and short instructions. For posting at the entrance — attendees scan with their phone camera and check themselves in. Tip: best combined with the "event day only" window.'}
+                  ? 'Lädt ein druckbares PDF mit dem QR-Code und einer kurzen Anleitung herunter. Zum Aushängen am Eingang — Teilnehmer scannen mit der Handy-Kamera und checken sich selbst ein. Das Check-in-Zeitfenster (Standard: 2 Stunden vor Start bis Event-Ende) begrenzt, wann der Code funktioniert — einstellbar über die QR-Kachel unter dem Event-Bild.'
+                  : 'Downloads a printable PDF with the QR code and short instructions. For posting at the entrance — attendees scan with their phone camera and check themselves in. The check-in time window (default: 2 hours before start until event end) limits when the code works — adjustable via the QR tile below the event image.'}
                 badge="organizer"
                 onClick={() => {
                   (async () => {
@@ -4054,6 +4173,8 @@ export default function AdminPage(): React.ReactElement {
             {(isAdmin || isOrganizerFor(selectedEvent)) && (
               <ActionTile
                 icon={<QrCode size={18} />}
+                category="checkin"
+                subCategory={isDe ? 'Self-Check-in' : 'Self check-in'}
                 title={isDe ? 'Self-Check-in: Live-Anzeige' : 'Self check-in: live display'}
                 desc={isDe
                   ? 'Öffnet eine rotierende QR-Anzeige für einen Bildschirm am Eingang (Laptop, Tablet, Beamer). Der Code wechselt automatisch — ein abfotografierter Code verfällt sofort. Die foto-sichere Variante.'
@@ -4076,6 +4197,7 @@ export default function AdminPage(): React.ReactElement {
                 Detail-Ansicht statt in der Event-Auswahl-Liste. */}
             <ActionTile
               icon={<Link2 size={18} />}
+              category="event"
               title={copiedDeepLink ? (t('admin.copied') || 'Kopiert') : (isDe ? 'Deep-Link kopieren' : 'Copy deep link')}
               desc={isDe
                 ? 'Legt den direkten Link auf dieses Event-Admin in die Zwischenablage. Per Mail / Teams an Co-Organizer schicken — sie landen nach Login direkt hier, ohne sich erst durch die Event-Liste klicken zu müssen.'
@@ -4100,6 +4222,7 @@ export default function AdminPage(): React.ReactElement {
             {/* 3. E-Mail-Adressen kopieren */}
             <ActionTile
               icon={<Copy size={18} />}
+              category="mails"
               title={copiedEmails ? (t('admin.copied') || 'Kopiert') : (t('admin.copyemails') || 'E-Mails kopieren')}
               desc={isDe
                 ? 'Legt alle aktiven Teilnehmer-Mails (Semikolon-getrennt) in die Zwischenablage. Direkt in Outlook-Empfänger oder externe Tools einfügbar.'
@@ -4122,6 +4245,7 @@ export default function AdminPage(): React.ReactElement {
             {/* 4. Massenmail an alle aktiven Teilnehmer */}
             <ActionTile
               icon={<Mail size={18} />}
+              category="mails"
               title={isDe ? 'E-Mail versenden an Teilnehmergruppen' : 'Send email to participant groups'}
               desc={isDe
                 ? 'Öffnet einen RichText-Editor mit Deloitte-Mail-Template. Geht an alle aktiven Teilnehmer (nicht Wartelistler / Abgemeldete).'
@@ -4144,6 +4268,7 @@ export default function AdminPage(): React.ReactElement {
                 Editor frei editierbar. */}
             <ActionTile
               icon={<Send size={18} />}
+              category="mails"
               title={isDe ? 'Einladungsmail' : 'Invitation email'}
               desc={isDe
                 ? 'Versendet eine Einladungs-Mail mit Anmelde-Link — an dich zum Weiterleiten oder direkt an den hinterlegten Mailverteiler des Events.'
@@ -4202,6 +4327,7 @@ export default function AdminPage(): React.ReactElement {
             <div style={{ position: 'relative', display: 'flex' }}>
               <ActionTile
                 icon={<Download size={18} />}
+                category="participants"
                 title={isDe ? 'Excel-Export' : 'Excel export'}
                 desc={selectedEvent && selectedEvent.type === 'B2Run'
                   ? (isDe
@@ -4275,6 +4401,7 @@ export default function AdminPage(): React.ReactElement {
             {isAdmin && (
               <ActionTile
                 icon={<AlertCircle size={18} />}
+                category="participants"
                 title={isCheckingDeclines ? (isDe ? 'Outlook wird geprüft…' : 'Checking Outlook…') : (isDe ? 'Outlook-Absagen prüfen' : 'Check Outlook declines')}
                 desc={isDe
                   ? 'Liest die Outlook-Absagen aus dem no_reply.events-Postfach und matched sie gegen aktive Teilnehmer. Zeigt, wer den Termin abgelehnt hat, aber noch in der Liste steht.'
@@ -4337,6 +4464,7 @@ export default function AdminPage(): React.ReactElement {
             {(isAdmin || (!!selectedEvent && isOrganizerFor(selectedEvent))) && (
               <ActionTile
                 icon={<Hash size={18} />}
+                category="participants"
                 title={isReorderingIDs ? (isDe ? 'IDs werden vergeben…' : 'Assigning IDs…') : (isDe ? 'IDs neu vergeben' : 'Reassign IDs')}
                 desc={isDe
                   ? 'Vergibt die TeilnehmerIDs sequentiell (1, 2, 3, …) nach Erstellungsreihenfolge. Schließt Lücken nach Stornos und sortiert die Liste sauber durch. Hinweis: nicht ausführen während gerade viele Anmeldungen laufen — erst wenn die Anmeldewelle vorbei ist.'
@@ -4363,6 +4491,7 @@ export default function AdminPage(): React.ReactElement {
             {(isAdmin || (!!selectedEvent && isOrganizerFor(selectedEvent))) && (
               <ActionTile
                 icon={<Users size={18} />}
+                category="participants"
                 title={isPromoting ? (isDe ? 'Rückt nach…' : 'Promoting…') : (isDe ? 'Von Warteliste nachrücken' : 'Promote from waitlist')}
                 desc={isDe
                   ? 'Rückt den ersten Teilnehmer von der Warteliste (nach TeilnehmerID) auf einen freien Platz nach. Die Person bekommt Status „Angemeldet", eine Nachrück-Mail und eine Outlook-Einladung; danach werden die IDs neu vergeben. Promotet nur, wenn tatsächlich ein Platz frei ist.'
@@ -4395,6 +4524,7 @@ export default function AdminPage(): React.ReactElement {
             {isAdmin && (
               <ActionTile
                 icon={<Hash size={18} />}
+                category="maintenance"
                 title={isResettingCounter ? (isDe ? 'Counter wird zurückgesetzt…' : 'Resetting counter…') : (isDe ? 'Counter zurücksetzen' : 'Reset counter')}
                 desc={isDe
                   ? 'Setzt den TeilnehmerID-Counter exakt auf den aktuellen Max-TID der Teilnehmerliste. Hilft, wenn neue Anmeldungen mit zu hohen IDs starten (Lücken durch frühere Abmeldungen) oder wenn sie versehentlich bei zu niedrigen IDs (z.B. wieder bei 1) starten würden. Bidirektional — egal ob der Counter zu hoch oder zu niedrig steht.'
@@ -4432,6 +4562,7 @@ export default function AdminPage(): React.ReactElement {
             {(isAdmin || (!!selectedEvent && isOrganizerFor(selectedEvent))) && (
               <ActionTile
                 icon={<Users size={18} />}
+                category="participants"
                 title={isDetectingOverbook ? (isDe ? 'Wird geprüft…' : 'Checking…') : (isDe ? 'Überbuchung prüfen' : 'Check overbooking')}
                 desc={isDe
                   ? 'Findet pro Gruppe (Durchstarter/Funstarter, bzw. gesamt) die zuletzt angemeldeten Personen ÜBER der Kapazität und markiert sie zur Prüfung. Es wird nichts automatisch geändert — danach entscheidest du pro Person (auf Warteliste / Platz behalten) über die Buttons oben in der Teilnehmerliste.'
@@ -4477,6 +4608,7 @@ export default function AdminPage(): React.ReactElement {
             {isAdmin && (
               <ActionTile
                 icon={<Columns size={18} />}
+                category="maintenance"
                 title={isFixingColumns ? (isDe ? 'Spalten werden gefixt…' : 'Fixing columns…') : (isDe ? 'Spalten fixen' : 'Fix columns')}
                 desc={isDe
                   ? 'Legt fehlende SP-Spalten in der Teilnehmerliste an, entfernt überflüssige (z.B. StarterType bei Nicht-B2Run-Events) und korrigiert die Default-View-Reihenfolge.'
@@ -7422,8 +7554,8 @@ export default function AdminPage(): React.ReactElement {
             </div>
             <p style={{ margin: '0 0 10px', fontSize: '0.78rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
               {isDe
-                ? 'Von wann bis wann der Self-Check-in möglich ist. Nach dem „Bis"-Zeitpunkt sind keine nachträglichen Check-ins mehr möglich. Beide Felder leer = Check-in nur am Event-Tag.'
-                : 'From when until when self check-in is possible. After the "until" time no late check-ins are possible anymore. Both fields empty = check-in only on the event day.'}
+                ? 'Von wann bis wann der Self-Check-in möglich ist. Vor „Von" und nach „Bis" sind keine Check-ins möglich — also auch keine nachträglichen. Vorbelegt mit dem Standard: 2 Stunden vor Event-Start bis Event-Ende (gilt auch, solange du nichts anderes speicherst).'
+                : 'From when until when self check-in is possible. Before "from" and after "until" no check-ins are possible — including late ones. Prefilled with the default: 2 hours before event start until event end (which also applies as long as you do not save anything else).'}
             </p>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
               <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>

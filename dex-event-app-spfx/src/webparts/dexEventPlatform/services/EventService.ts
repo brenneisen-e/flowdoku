@@ -543,7 +543,7 @@ export interface SPEvent {
   ConfirmDialogText?: string;     // v18.75: Freitext-Hinweis
   SelfCheckInEnabled?: boolean;  // v18.33: Self-Check-in per QR-Code erlauben
   SelfCheckInToken?: string;     // v18.33: Geheimer Token (statischer Link + HMAC-Schlüssel rotierender QR)
-  SelfCheckInFrom?: string;      // v18.33: optionaler Start des Check-in-Fensters (ISO), leer = nur am Event-Tag
+  SelfCheckInFrom?: string;      // v18.33: optionaler Start des Check-in-Fensters (ISO), leer = Default 2 Std. vor Start (v20.3)
   SelfCheckInTo?: string;        // v18.33: optionales Ende des Check-in-Fensters (ISO)
   TeamRegistrationEnabled?: boolean; // v11.80: Team-Anmeldung erlauben
   TeamSize?: number;             // v11.80: Maximale Teamgröße

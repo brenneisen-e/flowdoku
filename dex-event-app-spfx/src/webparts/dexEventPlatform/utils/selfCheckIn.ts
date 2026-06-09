@@ -107,9 +107,32 @@ export async function buildRotatingCheckInUrl(
   return { url, windowIndex, expiresInSeconds };
 }
 
+/** v20.3: Standard-Vorlauf des Check-in-Fensters vor Event-Start (Stunden). */
+export const SELF_CHECKIN_DEFAULT_LEAD_HOURS = 2;
+
+/** v20.3: Default-Zeitfenster — 2 Stunden vor Event-Start bis Event-Ende.
+ *  Wird sowohl von der Laufzeit-Prüfung (isWithinCheckInWindow ohne
+ *  gespeicherte Werte) als auch als Vorbelegung der Von/Bis-Felder im
+ *  Admin-Center-Modal genutzt. Ohne End-Datum: bis Tagesende des Start-Tags. */
+export function defaultCheckInWindow(
+  startDateIso: string | undefined,
+  endDateIso: string | undefined
+): { opensAt?: Date; closesAt?: Date } {
+  if (!startDateIso) return {};
+  const start = new Date(startDateIso);
+  if (isNaN(start.getTime())) return {};
+  const opensAt = new Date(start.getTime() - SELF_CHECKIN_DEFAULT_LEAD_HOURS * 60 * 60 * 1000);
+  const end = endDateIso ? new Date(endDateIso) : null;
+  const closesAt = end && !isNaN(end.getTime())
+    ? end
+    : new Date(start.getFullYear(), start.getMonth(), start.getDate(), 23, 59, 59, 999);
+  return { opensAt, closesAt };
+}
+
 /** Default-Fensterprüfung: ist „jetzt" innerhalb des erlaubten Check-in-
- *  Zeitraums? Wenn from/to gesetzt sind, gilt [from, to]. Sonst gilt der
- *  Event-Tag: vom Tagesbeginn des Start-Datums bis Tagesende des End-Datums. */
+ *  Zeitraums? Wenn from/to gesetzt sind, gilt [from, to]. Sonst gilt seit
+ *  v20.3 der Standard: 2 Stunden vor Event-Start bis Event-Ende (vorher:
+ *  ganzer Event-Tag) — keine verfrühten und keine nachträglichen Check-ins. */
 export function isWithinCheckInWindow(
   startDateIso: string | undefined,
   endDateIso: string | undefined,
@@ -122,11 +145,7 @@ export function isWithinCheckInWindow(
     const to = toIso ? new Date(toIso).getTime() : Infinity;
     return { ok: nowMs >= from && nowMs <= to, opensAt: fromIso ? new Date(fromIso) : undefined, closesAt: toIso ? new Date(toIso) : undefined };
   }
-  // Default: Event-Tag(e)
-  if (!startDateIso) return { ok: true };
-  const start = new Date(startDateIso);
-  const opensAt = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 0, 0, 0, 0);
-  const endRef = endDateIso ? new Date(endDateIso) : start;
-  const closesAt = new Date(endRef.getFullYear(), endRef.getMonth(), endRef.getDate(), 23, 59, 59, 999);
+  const { opensAt, closesAt } = defaultCheckInWindow(startDateIso, endDateIso);
+  if (!opensAt || !closesAt) return { ok: true };
   return { ok: nowMs >= opensAt.getTime() && nowMs <= closesAt.getTime(), opensAt, closesAt };
 }

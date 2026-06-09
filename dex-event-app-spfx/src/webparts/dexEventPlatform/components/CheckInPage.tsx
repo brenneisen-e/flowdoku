@@ -646,8 +646,11 @@ export default function CheckInPage(): React.ReactElement {
     } finally { setSelfCheckInBusy(false); }
   };
 
+  // v20.3: Breite begrenzen — vorher lief die Check-in-Ansicht auf großen
+  // Monitoren über die volle Viewport-Breite (Event-Picker-Branch hatte
+  // bereits maxWidth 1100, die Haupt-Ansicht nicht). Schmaler = lesbarer.
   return (
-    <div className="page-container" role="main">
+    <div className="page-container" role="main" style={{ maxWidth: 900, marginLeft: 'auto', marginRight: 'auto', width: '100%' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <h2 style={{ margin: 0 }}>
           {t('checkin.title')} {selectedEvent ? `— ${selectedEvent.title}` : ''}
