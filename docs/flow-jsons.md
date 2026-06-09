@@ -2488,9 +2488,18 @@ Im `AutoCancel_Mail_Allowed` = **If yes**:
 **2c-i — NEU `Get_AutoCancel_Template`** (SharePoint — *Get items*):
 - **Site Address:** `DOL-c-DE-EventExperiencePlatform`.
 - **List Name:** `DEX_EmailTemplates`.
-- **Filter Query (fx):** `concat('TemplateType eq ''Abmeldung'' and Language eq ''', coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['EmailLanguage'], 'EN'), '''')`
+- **Filter Query (fx):** `concat('TemplateType eq ''AbmeldungAuto'' and Language eq ''', coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['EmailLanguage'], 'EN'), '''')`
 - **Top Count:** `1`.
 - **(⋮ → Rename)** → `Get_AutoCancel_Template`.
+
+> **WICHTIG (v19.25):** Template-Typ ist **`AbmeldungAuto`**, NICHT `Abmeldung`.
+> `AbmeldungAuto` ist **pre-wrapped** (komplettes Deloitte-Layout via
+> `wrapTemplateForStorage`), weil der Flow den `BodyHtml` roh verschickt (kein
+> `wrapTemplate` wie in der App). Würde man `Abmeldung` nehmen (das ist der
+> App-Template-Typ = unwrapped, die App wrappt erst zur Laufzeit), käme die Mail
+> **ohne** Deloitte-Layout (nackter Text) raus. `AbmeldungAuto` wird von der App
+> beim Template-Seed/Reseed (v19.25+) angelegt — einmal **Admin → Settings →
+> „Default-Mail-Templates re-seed"** klicken, damit es im Tenant existiert.
 
 **2c-ii — NEU `Create_AutoCancel_Email`** (SharePoint — *Create item*), Run after `Get_AutoCancel_Template` *is successful*:
 - **Site Address:** `DOL-c-DE-EventExperiencePlatform`.
@@ -2570,7 +2579,7 @@ aktiver Auto-Abmeldung NUR der Abmelde-Pfad (Reminder + Digest werden über
                   "expression": { "and": [ { "equals": [ "@coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['DisableEmails'], false)", false ] }, { "equals": [ "@coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['DisableCancellationEmail'], false)", false ] } ] },
                   "runAfter": { "Queue_AutoCancel_IDReorder": ["SUCCEEDED"] },
                   "actions": {
-                    "Get_AutoCancel_Template": { "type": "OpenApiConnection", "inputs": { "parameters": { "table": "DEX_EmailTemplates", "$filter": "@concat('TemplateType eq ''Abmeldung'' and Language eq ''', coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['EmailLanguage'], 'EN'), '''')", "$top": 1 } } },
+                    "Get_AutoCancel_Template": { "type": "OpenApiConnection", "inputs": { "parameters": { "table": "DEX_EmailTemplates", "$filter": "@concat('TemplateType eq ''AbmeldungAuto'' and Language eq ''', coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['EmailLanguage'], 'EN'), '''')", "$top": 1 } } },
                     "Create_AutoCancel_Email": { "type": "OpenApiConnection", "inputs": { "parameters": { "table": "DEX_Emails", "item/Title": "@replace(coalesce(first(outputs('Get_AutoCancel_Template')?['body/value'])?['Subject'], concat('Abmeldung: ', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])), '{{EventTitle}}', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])", "item/Recipient": "@outputs('Final_Recipient_Email')", "item/RecipientName": "@coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], outputs('Final_Recipient_Email'))", "item/EmailType/Value": "Abmeldung", "item/EventTitle": "@first(outputs('Get_DEX_Event')?['body/value'])?['Title']", "item/Status/Value": "Pending", "item/Body": "@replace(replace(coalesce(first(outputs('Get_AutoCancel_Template')?['body/value'])?['BodyHtml'], ''), '{{Name}}', coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], outputs('Final_Recipient_Email'))), '{{EventTitle}}', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])", "item/EventId": "@first(outputs('Get_DEX_Event')?['body/value'])?['ID']" }, "host": { "operationId": "PostItem" } }, "runAfter": { "Get_AutoCancel_Template": ["SUCCEEDED"] } }
                   }
                 }

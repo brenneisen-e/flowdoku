@@ -231,6 +231,28 @@ const ORG_NACHRUECKER_BODY_DE = wrapTemplateForStorage(
 <p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein DEX-Team</strong></p>`
 );
 
+// v19.25: Pre-wrapped Abmelde-Bestätigung für die FLOW-getriebene Auto-Abmeldung
+// bei Outlook-Absage (DEX_OutlookDeclineHandler queued sie). Muss pre-wrapped
+// sein, weil der Flow den BodyHtml roh verwendet (kein wrapTemplate). Eigener
+// TemplateType `AbmeldungAuto`, damit die App-eigene `Abmeldung` (unwrapped, mit
+// Per-Event-Customizing) unangetastet bleibt. Flow ersetzt nur {{Name}} +
+// {{EventTitle}}; KEIN {{AppUrl}} (würde der Flow nicht auflösen) — feste
+// App-URL eingebaut. {{LOGO_URL}}/{{ORB_URL}} ersetzt DEX_SEND_MAIL beim Versand.
+const ABMELDUNG_AUTO_BODY_EN = wrapTemplateForStorage(
+  '#da291c', 'Cancellation confirmed', 'Event {{EventTitle}}',
+  `<p>Dear {{Name}},</p>
+<p>your registration for the event <strong>{{EventTitle}}</strong> has been <strong>cancelled</strong> because you declined the Outlook invitation.</p>
+<p>If you change your mind, you can register again any time via the <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView">DEX App</a>.</p>
+<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+);
+const ABMELDUNG_AUTO_BODY_DE = wrapTemplateForStorage(
+  '#da291c', 'Abmeldung bestätigt', 'Event {{EventTitle}}',
+  `<p>Hallo {{Name}},</p>
+<p>deine Anmeldung für das Event <strong>{{EventTitle}}</strong> wurde <strong>storniert</strong>, weil du den Outlook-Termin abgelehnt hast.</p>
+<p>Du kannst dich jederzeit erneut über die <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView">DEX App</a> anmelden.</p>
+<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+);
+
 // v12.13: Team-bezogene Mail-Vorlagen — vorher inline in EventContext.tsx
 // als ad-hoc-HTML zusammengebaut, jetzt zentral in DEX_EmailTemplates
 // hinterlegt damit Admins sie genauso wie Anmeldung/Abmeldung/Nachrücken
@@ -1674,6 +1696,13 @@ export class EventService {
         BodyHtml: '<p>Hallo {{Name}},</p><p>deine Anmeldung für das Event <strong>{{EventTitle}}</strong> wurde <strong>storniert</strong>.</p><p>Du kannst dich jederzeit erneut über die <a href="{{AppUrl}}">DEX App</a> anmelden.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
       { TemplateType: 'Nachruecken', Language: 'DE', Subject: 'Du hast einen Platz: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Du hast einen Platz!',
         BodyHtml: NACHRUECKEN_BODY_DE },
+      // v19.25: pre-wrapped Abmelde-Bestätigung für die Flow-getriebene
+      // Auto-Abmeldung (DEX_OutlookDeclineHandler), eigener Type damit die
+      // App-eigene `Abmeldung` (unwrapped) unberührt bleibt.
+      { TemplateType: 'AbmeldungAuto', Language: 'EN', Subject: 'Cancellation confirmation: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Cancellation confirmed',
+        BodyHtml: ABMELDUNG_AUTO_BODY_EN },
+      { TemplateType: 'AbmeldungAuto', Language: 'DE', Subject: 'Abmeldebestätigung: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Abmeldung bestätigt',
+        BodyHtml: ABMELDUNG_AUTO_BODY_DE },
       // v18.63: Organizer-Benachrichtigung bei Abmeldung mit Nachrücker (vom DEX_IDReorder-Flow gequeued).
       { TemplateType: 'OrgNachruecker', Language: 'EN', Subject: 'Cancellation with waitlist move-up: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Cancellation — waitlist move-up',
         BodyHtml: ORG_NACHRUECKER_BODY_EN },
@@ -1892,6 +1921,13 @@ export class EventService {
         BodyHtml: '<p>Hallo {{Name}},</p><p>deine Anmeldung für das Event <strong>{{EventTitle}}</strong> wurde <strong>storniert</strong>.</p><p>Du kannst dich jederzeit erneut über die <a href="{{AppUrl}}">DEX App</a> anmelden.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
       { TemplateType: 'Nachruecken', Language: 'DE', Subject: 'Du hast einen Platz: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Du hast einen Platz!',
         BodyHtml: NACHRUECKEN_BODY_DE },
+      // v19.25: pre-wrapped Abmelde-Bestätigung für die Flow-getriebene
+      // Auto-Abmeldung (DEX_OutlookDeclineHandler), eigener Type damit die
+      // App-eigene `Abmeldung` (unwrapped) unberührt bleibt.
+      { TemplateType: 'AbmeldungAuto', Language: 'EN', Subject: 'Cancellation confirmation: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Cancellation confirmed',
+        BodyHtml: ABMELDUNG_AUTO_BODY_EN },
+      { TemplateType: 'AbmeldungAuto', Language: 'DE', Subject: 'Abmeldebestätigung: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Abmeldung bestätigt',
+        BodyHtml: ABMELDUNG_AUTO_BODY_DE },
       // v18.63: Organizer-Benachrichtigung bei Abmeldung mit Nachrücker (vom DEX_IDReorder-Flow gequeued).
       { TemplateType: 'OrgNachruecker', Language: 'EN', Subject: 'Cancellation with waitlist move-up: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Cancellation — waitlist move-up',
         BodyHtml: ORG_NACHRUECKER_BODY_EN },
