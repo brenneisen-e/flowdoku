@@ -111,22 +111,20 @@ export default function RegistrationPage(): React.ReactElement {
     [locale]
   );
 
-  // v11.56: tEvent() liefert Form-Chrome-Strings (Placeholder, Hints, Sub-Event-
-  // Sektion) in der Event-Sprache statt der User-Locale. Wenn das Event auf
-  // emailLanguage='EN' steht, sehen alle Teilnehmer englische Form-Labels —
-  // auch wenn der eingeloggte User die App auf Deutsch nutzt. App-Chrome
-  // (Header, Navigation, Buttons ausserhalb des Formulars) bleibt bei t().
-  // v17.20: Wenn auf dem Event `bilingualFields=true` aktiv ist, folgt das
-  // Form-Chrome stattdessen der **App-Spracheinstellung des Teilnehmers**
-  // (`locale`). Damit sehen englischsprachige Kolleg:innen das komplette
-  // Anmelde-Formular auf Englisch, auch wenn der Organizer die Mail-Sprache
-  // auf DE belassen hat. `pickLocalized` weiter unten zieht zusätzlich für
-  // jedes Custom-Field die EN-Variante, falls vorhanden.
-  const eventLocale: Locale = forcedRegLang
-    ? forcedRegLang
-    : (event?.bilingualFields
-      ? locale
-      : ((event?.emailLanguage === 'EN') ? 'en' : 'de'));
+  // v11.56/v17.20/v19.18: tEvent() liefert die Form-Chrome-Strings (Placeholder,
+  // Hints, Sub-Event-/Auswahl-Sektion).
+  // v19.18 FIX: Form-Chrome folgt jetzt IMMER der App-/erzwungenen Anmeldesprache
+  // (`locale`) — NICHT mehr der Event-MAIL-Sprache (`emailLanguage`). Vorher
+  // entstand eine verwirrende Misch-Anzeige: der Großteil der Anmeldeseite in der
+  // App-Sprache (z.B. DE), aber die Sub-Event-Auswahl + Platzhalter in der
+  // Event-Mail-Sprache (z.B. EN bei einem B2Run-Event mit emailLanguage='EN').
+  // Die Anmeldeseite zeigt der Person jetzt durchgängig EINE Sprache: die
+  // erzwungene Anmeldesprache (falls per Event gesetzt), sonst die App-Sprache
+  // des Teilnehmers. Die Mail-Sprache (`emailLanguage`) steuert weiterhin NUR die
+  // tatsächlichen E-Mails — nicht die Formular-Anzeige. Der Bilingual-Toggle
+  // steuert davon unberührt weiter die EN-Varianten der Custom-Field-Labels
+  // (siehe `useEnVariants` unten).
+  const eventLocale: Locale = locale;
   const tEvent = React.useCallback((key: string): string => {
     return appTranslations[eventLocale][key] || appTranslations['en'][key] || appTranslations['de'][key] || t(key) || key;
   }, [eventLocale, t]);
