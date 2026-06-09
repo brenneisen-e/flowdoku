@@ -10,6 +10,7 @@ import { useNavigation } from '../context/NavigationContext';
 import { useEvents, collectCcEmailsFromFields } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
+import { useCachedImage } from '../utils/imageCache';
 import { useLanguage, translations as appTranslations, Locale } from '../context/LanguageContext';
 import { Salutation, EventSpecificField } from '../types';
 import { Icon } from '@fluentui/react/lib/Icon';
@@ -125,6 +126,8 @@ export default function RegistrationPage(): React.ReactElement {
   // steuert davon unberührt weiter die EN-Varianten der Custom-Field-Labels
   // (siehe `useEnVariants` unten).
   const eventLocale: Locale = locale;
+  // v19.22: Event-Bild über den IndexedDB-Cache (sofort beim zweiten Aufruf).
+  const cachedImage = useCachedImage(event?.imageUrl);
   const tEvent = React.useCallback((key: string): string => {
     return appTranslations[eventLocale][key] || appTranslations['en'][key] || appTranslations['de'][key] || t(key) || key;
   }, [eventLocale, t]);
@@ -663,7 +666,7 @@ export default function RegistrationPage(): React.ReactElement {
           <div style={{
             height: 200,
             background: event.imageUrl
-              ? `url(${event.imageUrl}) center/cover no-repeat`
+              ? `url(${cachedImage}) center/cover no-repeat`
               : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
             borderRadius: '16px 16px 0 0',
           }} />
@@ -1506,7 +1509,7 @@ export default function RegistrationPage(): React.ReactElement {
             <div style={{
               width: '100%', maxWidth: 480, height: 200, margin: '0 auto 24px',
               borderRadius: 'var(--dex-radius-lg)',
-              background: `url(${event.imageUrl}) center/cover no-repeat`,
+              background: `url(${cachedImage}) center/cover no-repeat`,
             }} />
           )}
           <h2 style={{ marginTop: 0 }}>{headline}</h2>
@@ -1553,7 +1556,7 @@ export default function RegistrationPage(): React.ReactElement {
             <div style={{
               width: '100%', maxWidth: 480, height: 200, margin: '0 auto 24px',
               borderRadius: 'var(--dex-radius-lg)',
-              background: `url(${event.imageUrl}) center/cover no-repeat`,
+              background: `url(${cachedImage}) center/cover no-repeat`,
             }} />
           )}
           <h2 style={{ marginTop: 0 }}>{successHeadline}</h2>
@@ -2034,7 +2037,7 @@ export default function RegistrationPage(): React.ReactElement {
             >
               {event.imageUrl && (
                 <img
-                  src={event.imageUrl}
+                  src={cachedImage}
                   alt={event.title}
                   // v11.56: Auch im Portrait-Modus 'contain', damit das Bild
                   // vollstaendig sichtbar bleibt (vorher wurde der obere

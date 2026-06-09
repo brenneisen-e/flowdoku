@@ -592,12 +592,17 @@ die Anmelde-Bestätigung bleibt trotzdem aktiv.
 - **Hierarchie:** Der Master `DisableEmails` sticht weiterhin — ist er an,
   gehen **gar keine** Mails raus. Die Sub-Schalter wirken nur, solange der
   Master aus ist (E-Mails grundsätzlich aktiv).
-- **Scope (bewusst Top-Level-only):** Die beiden Flags sind **nicht** per
-  Sub-Event-Comm-Tab gespiegelt (anders als `DisableEmails`/`DisableOutlook`).
-  Die Sub-Häkchen erscheinen nur auf dem **Hauptevent-Tab**
-  (`activeCommTabIdx === 0`) und gelten fürs Hauptevent. Sub-Events senden
-  ihre An-/Abmelde-Mails weiter (Default), solange ihr eigener `DisableEmails`
-  aus ist. Pro-Sub-Event-Granularität ist ein möglicher Folgeschritt.
+- **Scope (v19.22: jetzt auch pro Sub-Event):** Seit v19.22 sind die beiden
+  Flags **per Sub-Event-Comm-Tab gespiegelt** (gleicher Mechanismus wie
+  `DisableEmails`/`DisableOutlook` — `switchCommTab`/`flushActiveCommTabToState`/
+  `topLevelCommSnapshot`/`resolveTopLevelCommState` + `SubEventDraft`-Felder +
+  `persistSubEventsForParent`-childPayload). Die Sub-Häkchen erscheinen auf
+  **jedem** Comm-Tab (Hauptevent UND Sub-Events), der gebundene State hält je
+  nach aktivem Tab den Haupt- oder Sub-Wert. Der Top-Level-Persist nutzt die
+  `eff*`-Werte aus `resolveTopLevelCommState()` (Sub-Tab-Save schreibt nicht aufs
+  Hauptevent). Die EventContext-Gating-Stellen lesen `event.disableX` und greifen
+  damit automatisch auch für Sub-Event-An-/Abmeldungen. (v19.21 war noch
+  Top-Level-only.)
 - **Gating-Stellen** (jeweils zusätzlich zum `!event.disableEmails`-Check):
   - `EventContext.registerForEvent` (Anmelde-/Warteliste-Bestätigung) →
     `!event.disableRegistrationEmail`.
@@ -609,6 +614,66 @@ die Anmelde-Bestätigung bleibt trotzdem aktiv.
   RoommateRequest und die Nachrück-Mail des Power-Automate-Flows bleiben
   ausschließlich am Master `DisableEmails` hängen — die Sub-Schalter betreffen
   nur die **Standard-Anmelde-/Abmelde-Bestätigung**. **Kein Flow-Change.**
+
+### Browser-Bild-Cache (IndexedDB) (v19.22)
+
+Event-Bilder (SP-Item-Attachments, stabile URL pro Bild-Version) werden
+client-seitig in **IndexedDB** als Data-URL gecacht, damit sie beim **zweiten
+App-Aufruf sofort** erscheinen — ohne SharePoint-Roundtrip, unabhängig von den
+SP-Cache-Headern.
+
+- `utils/imageCache.ts`: `getCachedImage(url)` (mem → IndexedDB → fetch+store,
+  Fallback auf Original-URL bei JEDEM Fehler), `useCachedImage(url)` (Hook:
+  Original-URL sofort, dann nahtloser Tausch gegen die Data-URL), `prewarmImages`
+  (Hintergrund-Vorwärmen). Store `dex-image-cache`/`images`, LRU-Prune bei
+  > 150 Einträgen, Bilder > 4 MB werden nicht gecacht.
+- `components/CachedImage.tsx`: `<CachedBg>` (Hintergrund-Div) und `<CachedImg>`
+  (`<img>`) — nutzbar **auch in `.map()`-Schleifen** (Hook am Komponenten-
+  Top-Level, nicht in der Schleife).
+- Verdrahtet in: `EventCard` (Hook direkt), `RegistrationPage` (Hero-Bild),
+  `EventListPage` (Listen-Zeile via `CachedBg` + `prewarmImages` beim Laden der
+  Event-Liste), `MyEventsPage` (`CachedImg`). Profilfotos
+  (`userphoto.aspx`) bleiben unangetastet (SP cached die ohnehin gut).
+
+### Outlook-Absage = Auto-Abmeldung + Kommunikations-Übersichtsbox (v19.23)
+
+**Auto-Abmeldung bei Outlook-Absage.** Neue Boolean-Spalte
+`AutoDeregisterOnDecline` auf `DEX_Events` (via `getEventsFieldDefinitions()` →
+`ensureMissingFields`). Wizard-Toggle in Schritt 6 (Kommunikation) als
+eingerücktes Sub-Item unter dem Outlook-Schalter (Top-Level-Event, nur
+Hauptevent-Tab, nur wenn Outlook aktiv). Voll geplumbt: `SPEvent`,
+`EVENT_SELECT`, `createEvent`-Input/-Payload (EventService), `DeloitteEvent`
+(types), `CreateEventInput` + SP-Parse (EventContext), Wizard-State + Create-/
+Edit-Persistenz + Dirty-Snapshot.
+
+- **App macht nur das Flag** — die eigentliche Auto-Abmeldung läuft im
+  **Power-Automate-Flow `DEX_OutlookDeclineHandler`** (der die Outlook-Absagen
+  abfängt). Solange die Flow-Anpassung nicht eingerichtet ist, ist der Toggle
+  wirkungslos (der Toggle-Hilfetext sagt das auch).
+- **Flow-TODO (noch offen, UI-Anleitung in `docs/flow-jsons.md` v19.23):** im
+  `Still_Registered`=yes-Zweig eine Condition `Auto_Deregister_On`
+  (`first(outputs('Get_DEX_Event')?['body/value'])?['AutoDeregisterOnDecline']` ==
+  `true`). Im yes-Zweig statt des Reminders: (1) MERGE auf das Teilnehmer-Item →
+  `Status='Abgemeldet'`, `CancellationDate=utcNow()`; (2) `DEX_Emails`-Item mit
+  `Abmeldung`-Template (sofern `DisableEmails`/`DisableCancellationEmail` aus);
+  (3) `DEX_IDReorder`-Item (`EventId`, `CancelledName`, `CancelledEmail`) →
+  triggert Reorder + Nachrücken; (4) optional `DEX_Outlook`-`Ausladen`. Der
+  bestehende Reminder-Zweig wandert in den no-Zweig (greift nur wenn
+  `AutoDeregisterOnDecline` aus).
+
+**Kommunikations-Übersichtsbox.** Ganz oben im Reiter Kommunikation (Schritt 6,
+unter der Tab-Leiste) fasst eine Box pro aktivem Tab (Hauptevent / Sub-Event)
+zusammen, was automatisch kommuniziert wird: Bestätigungs-E-Mails (+ Anmelde-/
+Abmelde-Bestätigung einzeln), Outlook-Termin, Outlook-Absage→Auto-Abmeldung
+(nur Hauptevent), Mail-Sprache, Organizer-BCC-Modus. Reine Anzeige aus dem
+aktuellen (per Tab gespiegelten) State, Fluent-UI-Icons (kein Emoji).
+
+### Sub-Event-Comm-Tabs zeigen nur den Sub-Namen (v19.22)
+
+Die Tab-Leiste in Schritt 6 (Kommunikation) zeigt für Sub-Events jetzt nur den
+**reinen Sub-Namen** (z.B. „HER SPACE") statt „<Hauptevent> | HER SPACE" —
+gleiche `shortSubEventTitle()`-Logik wie im Admin Center (Parent-Präfix bzw.
+Teil nach dem letzten `|` strippen). Modul-Helper in `EventCreationPage.tsx`.
 
 ### Sicherheitshinweis vor dem Absenden der Anmeldung (v18.75)
 

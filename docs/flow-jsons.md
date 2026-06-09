@@ -2415,6 +2415,117 @@ Alle weiteren Schritte im **If yes**-Zweig; **If no** bleibt leer.
 - **Configure run after** → `Assistant_Forward_Mailto` → `Succeeded`.
 - Rename → `Create_Reminder_Queue_Item`.
 
+## UI-Anleitung 2026-06-09 (v19.23) — Auto-Abmeldung bei Outlook-Absage
+
+**Zweck:** Wenn ein Event in der App das Häkchen **„Outlook-Absage = automatische
+Abmeldung"** (`AutoDeregisterOnDecline=true`) gesetzt hat, soll eine Outlook-
+Termin-Absage die Person **automatisch vom Event abmelden** — statt nur die
+bisherige „Bitte selbst abmelden"-Erinnerung zu schicken. Verhalten = volle
+Abmeldung (wie eine Selbst-Abmeldung): Status `Abgemeldet`, Platz wird frei +
+Warteliste rückt nach (über `DEX_IDReorder`), Abmelde-Bestätigung an die Person
+(sofern die Mail-Schalter es erlauben). Kein separates Outlook-„Ausladen" —
+die Person hat den Termin ja bereits selbst abgesagt.
+
+**Dieser Umbau erfolgt im BESTEHENDEN Flow `DEX_OutlookDeclineHandler`** (genau
+der Flow, der schon auf die eingehende Absage-Mail reagiert). An der Stelle nach
+`Final_Recipient_Email` / `Still_Registered` kennt der Flow bereits das Event
+(`Get_DEX_Event`) und den Teilnehmer-Eintrag (`Get_Teilnehmer_Entry`).
+
+**Voraussetzung:** Die Spalte `AutoDeregisterOnDecline` (Ja/Nein) auf `DEX_Events`
+legt die App beim nächsten Start automatisch an (`ensureMissingFields`). Einmal in
+den Listeneinstellungen prüfen, dass sie existiert.
+
+### Schritt 1 — NEUE Condition `Auto_Deregister_On` (ganz oben im `Still_Registered` = If yes)
+
+- Position: **erste** Aktion im `Still_Registered`-**If-yes**-Zweig, **VOR**
+  `Get_Existing_Reminder`. (Connector zwischen Zweig-Start und
+  `Get_Existing_Reminder` anklicken → **+** → **Control → Condition**.)
+- Linke Seite **(fx):** `coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['AutoDeregisterOnDecline'], false)`
+- Operator: `is equal to`
+- Rechte Seite **(fx):** `true`
+- **(⋮ → Rename)** → `Auto_Deregister_On`.
+- Danach prüfen: `Get_Existing_Reminder` läuft jetzt **nach** `Auto_Deregister_On`
+  (Run after = `Auto_Deregister_On` *is successful* — Power Automate verdrahtet das
+  beim Einfügen automatisch).
+
+### Schritt 2 — Aktionen im `Auto_Deregister_On` = If yes (in dieser Reihenfolge)
+
+**2a — NEU `Deregister_Participant`** (SharePoint — *Send an HTTP request to SharePoint*):
+- **Site Address (fx):** `first(outputs('Get_DEX_Event')?['body/value'])?['SubsiteUrl']`
+- **Method:** `POST`
+- **Uri (fx):** `concat('_api/web/lists/getbytitle(''Teilnehmer'')/items(', first(body('Get_Teilnehmer_Entry')?['value'])?['Id'], ')')`
+- **Headers** (4 Zeilen):
+  - `Accept` = `application/json;odata=nometadata`
+  - `Content-Type` = `application/json;odata=nometadata`
+  - `IF-MATCH` = `*`
+  - `X-HTTP-Method` = `MERGE`
+- **Body (fx):** `concat('{"Status":"Abgemeldet","CancellationDate":"', utcNow(), '"}')`
+  (nometadata → **kein** `__metadata` im Body, siehe CLAUDE.md MERGE-Regel.)
+- **(⋮ → Rename)** → `Deregister_Participant`.
+
+**2b — NEU `Queue_AutoCancel_IDReorder`** (SharePoint — *Create item*), Run after `Deregister_Participant` *is successful*:
+- **Site Address:** `DOL-c-DE-EventExperiencePlatform` (Root-Site).
+- **List Name:** `DEX_IDReorder`.
+- **Title (fx):** `concat('Reorder: ', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])`
+- **EventId (fx):** `string(first(outputs('Get_DEX_Event')?['body/value'])?['ID'])`
+- **EventNumber (fx):** `first(outputs('Get_DEX_Event')?['body/value'])?['EventNumber']`
+- **SubsiteUrl (fx):** `first(outputs('Get_DEX_Event')?['body/value'])?['SubsiteUrl']`
+- **Status Value:** `Pending`
+- **CancelledName (fx):** `trim(concat(coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], ''), ' ', coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Nachname'], '')))`
+- **CancelledEmail (fx):** `outputs('Final_Recipient_Email')`
+- **(⋮ → Rename)** → `Queue_AutoCancel_IDReorder`.
+- Effekt: das neue `DEX_IDReorder`-Item triggert den `DEX_IDReorder_TeilnehmerIDs`-
+  Flow → TeilnehmerIDs neu vergeben + ersten Warteliste-Eintrag nachrücken +
+  Nachrück-/Organizer-Mails. (= „Platz wird frei + Warteliste rückt nach".)
+
+**2c — NEU Condition `AutoCancel_Mail_Allowed`**, Run after `Queue_AutoCancel_IDReorder` *is successful*:
+- Zeile 1 — Links **(fx):** `coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['DisableEmails'], false)`, Operator `is equal to`, Rechts **(fx):** `false`.
+- **And** Zeile 2 — Links **(fx):** `coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['DisableCancellationEmail'], false)`, Operator `is equal to`, Rechts **(fx):** `false`.
+- **(⋮ → Rename)** → `AutoCancel_Mail_Allowed`.
+
+Im `AutoCancel_Mail_Allowed` = **If yes**:
+
+**2c-i — NEU `Get_AutoCancel_Template`** (SharePoint — *Get items*):
+- **Site Address:** `DOL-c-DE-EventExperiencePlatform`.
+- **List Name:** `DEX_EmailTemplates`.
+- **Filter Query (fx):** `concat('TemplateType eq ''Abmeldung'' and Language eq ''', coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['EmailLanguage'], 'EN'), '''')`
+- **Top Count:** `1`.
+- **(⋮ → Rename)** → `Get_AutoCancel_Template`.
+
+**2c-ii — NEU `Create_AutoCancel_Email`** (SharePoint — *Create item*), Run after `Get_AutoCancel_Template` *is successful*:
+- **Site Address:** `DOL-c-DE-EventExperiencePlatform`.
+- **List Name:** `DEX_Emails`.
+- **Title (fx):** `replace(coalesce(first(outputs('Get_AutoCancel_Template')?['body/value'])?['Subject'], concat('Abmeldung: ', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])), '{{EventTitle}}', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])`
+- **Recipient (fx):** `outputs('Final_Recipient_Email')`
+- **RecipientName (fx):** `coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], outputs('Final_Recipient_Email'))`
+- **EmailType Value:** `Abmeldung`
+- **EventTitle (fx):** `first(outputs('Get_DEX_Event')?['body/value'])?['Title']`
+- **EventId (fx):** `first(outputs('Get_DEX_Event')?['body/value'])?['ID']`
+- **Status Value:** `Pending`
+- **Body (fx):** `replace(replace(coalesce(first(outputs('Get_AutoCancel_Template')?['body/value'])?['BodyHtml'], ''), '{{Name}}', coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], outputs('Final_Recipient_Email'))), '{{EventTitle}}', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])`
+- **(⋮ → Rename)** → `Create_AutoCancel_Email`.
+
+### Schritt 3 — BESTEHENDE Condition `No_Reminder_Yet` erweitern (Reminder unterdrücken, wenn Auto-Abmeldung an)
+
+- `No_Reminder_Yet` öffnen. Vorhandene Zeile bleibt: `length(body('Filter_By_Recipient'))` `is equal to` `0`.
+- **+ Add → Add row** (Gruppen-Operator muss **And** sein).
+- Neue Zeile — Links **(fx):** `coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['AutoDeregisterOnDecline'], false)`, Operator: `is equal to`, Rechts **(fx):** `false`.
+- Ergebnis: die Reminder-Mail wird **nur** noch erstellt, wenn noch kein Reminder
+  existiert **UND** Auto-Abmeldung **aus** ist. Bei aktiver Auto-Abmeldung läuft
+  ausschließlich der Abmelde-Pfad aus Schritt 2.
+
+### Ergebnis
+
+- **AutoDeregisterOnDecline = an:** Absage → Status `Abgemeldet` +
+  `CancellationDate`, `DEX_IDReorder`-Item (Reorder + Nachrücken),
+  Abmelde-Bestätigung (sofern Mails nicht deaktiviert) — **keine** Reminder-Mail.
+  Die Person taucht auch nicht mehr im Decline-Digest auf (steht ja auf
+  `Abgemeldet`).
+- **AutoDeregisterOnDecline = aus:** unverändert wie bisher (Reminder-Mail).
+
+Nach dem Einrichten bitte den aktualisierten Flow-JSON schicken, dann wird der
+„Finaler Flow-JSON"-Abschnitt hier nachgezogen.
+
 ## Ablauf-Diagramm
 
 ```
