@@ -128,6 +128,7 @@ export interface DeloitteEvent {
   disableEmails?: boolean;   // Wenn true: keine E-Mails bei An-/Abmeldung
   disableRegistrationEmail?: boolean; // v19.21: Wenn true: keine Anmelde-Bestätigung (Master disableEmails sticht weiterhin)
   disableCancellationEmail?: boolean; // v19.21: Wenn true: keine Abmelde-Bestätigung
+  autoDeregisterOnDecline?: boolean; // v19.23: Wenn true: Outlook-Absage meldet automatisch vom Event ab (Flow-getrieben)
   disableOutlook?: boolean;  // Wenn true: keine Outlook-Kalendereintraege
   /** v14.5: Wenn true UND es existieren Sub-Events, muss der Teilnehmer
    *  beim Anmelden mindestens ein Sub-Event auswählen. Typischer Use-Case:

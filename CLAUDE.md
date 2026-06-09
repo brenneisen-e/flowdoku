@@ -635,6 +635,39 @@ SP-Cache-Headern.
   Event-Liste), `MyEventsPage` (`CachedImg`). Profilfotos
   (`userphoto.aspx`) bleiben unangetastet (SP cached die ohnehin gut).
 
+### Outlook-Absage = Auto-Abmeldung + Kommunikations-Übersichtsbox (v19.23)
+
+**Auto-Abmeldung bei Outlook-Absage.** Neue Boolean-Spalte
+`AutoDeregisterOnDecline` auf `DEX_Events` (via `getEventsFieldDefinitions()` →
+`ensureMissingFields`). Wizard-Toggle in Schritt 6 (Kommunikation) als
+eingerücktes Sub-Item unter dem Outlook-Schalter (Top-Level-Event, nur
+Hauptevent-Tab, nur wenn Outlook aktiv). Voll geplumbt: `SPEvent`,
+`EVENT_SELECT`, `createEvent`-Input/-Payload (EventService), `DeloitteEvent`
+(types), `CreateEventInput` + SP-Parse (EventContext), Wizard-State + Create-/
+Edit-Persistenz + Dirty-Snapshot.
+
+- **App macht nur das Flag** — die eigentliche Auto-Abmeldung läuft im
+  **Power-Automate-Flow `DEX_OutlookDeclineHandler`** (der die Outlook-Absagen
+  abfängt). Solange die Flow-Anpassung nicht eingerichtet ist, ist der Toggle
+  wirkungslos (der Toggle-Hilfetext sagt das auch).
+- **Flow-TODO (noch offen, UI-Anleitung in `docs/flow-jsons.md` v19.23):** im
+  `Still_Registered`=yes-Zweig eine Condition `Auto_Deregister_On`
+  (`first(outputs('Get_DEX_Event')?['body/value'])?['AutoDeregisterOnDecline']` ==
+  `true`). Im yes-Zweig statt des Reminders: (1) MERGE auf das Teilnehmer-Item →
+  `Status='Abgemeldet'`, `CancellationDate=utcNow()`; (2) `DEX_Emails`-Item mit
+  `Abmeldung`-Template (sofern `DisableEmails`/`DisableCancellationEmail` aus);
+  (3) `DEX_IDReorder`-Item (`EventId`, `CancelledName`, `CancelledEmail`) →
+  triggert Reorder + Nachrücken; (4) optional `DEX_Outlook`-`Ausladen`. Der
+  bestehende Reminder-Zweig wandert in den no-Zweig (greift nur wenn
+  `AutoDeregisterOnDecline` aus).
+
+**Kommunikations-Übersichtsbox.** Ganz oben im Reiter Kommunikation (Schritt 6,
+unter der Tab-Leiste) fasst eine Box pro aktivem Tab (Hauptevent / Sub-Event)
+zusammen, was automatisch kommuniziert wird: Bestätigungs-E-Mails (+ Anmelde-/
+Abmelde-Bestätigung einzeln), Outlook-Termin, Outlook-Absage→Auto-Abmeldung
+(nur Hauptevent), Mail-Sprache, Organizer-BCC-Modus. Reine Anzeige aus dem
+aktuellen (per Tab gespiegelten) State, Fluent-UI-Icons (kein Emoji).
+
 ### Sub-Event-Comm-Tabs zeigen nur den Sub-Namen (v19.22)
 
 Die Tab-Leiste in Schritt 6 (Kommunikation) zeigt für Sub-Events jetzt nur den

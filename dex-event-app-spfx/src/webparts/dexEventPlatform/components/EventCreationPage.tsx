@@ -908,6 +908,10 @@ export default function EventCreationPage(): React.ReactElement {
   // einzeln die Anmelde- bzw. Abmelde-Bestätigung abschaltbar (Top-Level-Event).
   const [disableRegistrationEmail, setDisableRegistrationEmail] = React.useState(editEvent ? !!editEvent.disableRegistrationEmail : false);
   const [disableCancellationEmail, setDisableCancellationEmail] = React.useState(editEvent ? !!editEvent.disableCancellationEmail : false);
+  // v19.23: Outlook-Absage = automatische Abmeldung vom Event (Flow-getrieben,
+  // Top-Level-Event). Persistiert als DEX_Events-Spalte; der
+  // DEX_OutlookDeclineHandler-Flow liest die Spalte und meldet die Person ab.
+  const [autoDeregisterOnDecline, setAutoDeregisterOnDecline] = React.useState(editEvent ? !!editEvent.autoDeregisterOnDecline : false);
   const [disableOutlook, setDisableOutlook] = React.useState(editEvent ? !!editEvent.disableOutlook : false);
   // v14.4: Acknowledgement, dass bei Top-Level-Kommunikation = AUS die
   // Teilnehmer sich für mindestens ein Sub-Event anmelden müssen. Vorausgewählt
@@ -3152,6 +3156,8 @@ export default function EventCreationPage(): React.ReactElement {
       // geschrieben.
       updates['DisableRegistrationEmail'] = effDisableRegistrationEmail;
       updates['DisableCancellationEmail'] = effDisableCancellationEmail;
+      // v19.23: Outlook-Absage = Auto-Abmeldung (Top-Level-Event).
+      updates['AutoDeregisterOnDecline'] = autoDeregisterOnDecline;
       updates['DisableOutlook'] = effDisableOutlook;
       // v11.57: OutlookDirty schreiben. Wenn Outlook-relevante Aenderungen
       // anstehen und der Organizer im Update-Confirm-Modal die Checkbox
@@ -3696,6 +3702,8 @@ export default function EventCreationPage(): React.ReactElement {
         // v19.22: granulare An-/Abmelde-Mail-Schalter (Top-Level aufgelöst).
         disableRegistrationEmail: effDisableRegistrationEmail,
         disableCancellationEmail: effDisableCancellationEmail,
+        // v19.23: Outlook-Absage = Auto-Abmeldung (Top-Level-Event).
+        autoDeregisterOnDecline,
         disableOutlook: effDisableOutlook,
         notifyOrgRegisterMode,
         notifyOrgRegisterFromDate: notifyOrgRegisterMode === 'fromDate' && notifyOrgRegisterFromDate ? berlinLocalToUtcIso(notifyOrgRegisterFromDate) : '',
@@ -4303,7 +4311,7 @@ export default function EventCreationPage(): React.ReactElement {
       docsLen: (documents || []).length,
       subEventsLen: (subEvents || []).length,
       outlookBody, outlookHeading, outlookSubheading, outlookSubject,
-      disableEmails, disableRegistrationEmail, disableCancellationEmail, disableOutlook,
+      disableEmails, disableRegistrationEmail, disableCancellationEmail, autoDeregisterOnDecline, disableOutlook,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       emailTemplateOverridesHash: JSON.stringify(emailTemplateOverrides || {}),
     });
@@ -4316,7 +4324,7 @@ export default function EventCreationPage(): React.ReactElement {
     teamRegistrationEnabled, teamSize, askTeamName, teamPartialAllowed,
     teamOpenSlotsVisible, teamJoinRequiresApproval, askSalutation, requireSubEventSelection,
     customFields, agenda, documents, subEvents,
-    outlookBody, outlookHeading, outlookSubheading, outlookSubject, disableEmails, disableRegistrationEmail, disableCancellationEmail, disableOutlook,
+    outlookBody, outlookHeading, outlookSubheading, outlookSubject, disableEmails, disableRegistrationEmail, disableCancellationEmail, autoDeregisterOnDecline, disableOutlook,
     emailTemplateOverrides,
   ]);
   React.useEffect(() => {
@@ -11020,6 +11028,66 @@ export default function EventCreationPage(): React.ReactElement {
                   </div>
                 )}
 
+                {/* v19.23: Übersichts-Box ganz oben im Kommunikations-Reiter —
+                    fasst für den Organizer zusammen, was für den aktiven Tab
+                    automatisch kommuniziert wird (und was bewusst NICHT). */}
+                {!(subEventsOnlyMode && activeCommTabIdx === 0) && (() => {
+                  const emailsOn = !disableEmails;
+                  const regOn = !disableRegistrationEmail;
+                  const cancOn = !disableCancellationEmail;
+                  const outlookOn = !disableOutlook;
+                  const isMainTab = activeCommTabIdx === 0;
+                  const tabName = isMainTab
+                    ? (isDe ? 'Hauptevent' : 'Main event')
+                    : (shortSubEventTitle(subEvents[activeCommTabIdx - 1]?.title, title) || (isDe ? 'Sub-Event' : 'Sub-event'));
+                  const bccLabel = notifyOrgRegisterMode === 'always'
+                    ? (isDe ? 'immer in Kopie (BCC)' : 'always copied (BCC)')
+                    : notifyOrgRegisterMode === 'fromDate'
+                      ? (isDe ? 'ab einem Stichtag in Kopie' : 'copied from a cut-off date')
+                      : (isDe ? 'nicht in Kopie' : 'not copied');
+                  const row = (state: 'on' | 'off' | 'info', label: string, detail: string, indent?: boolean): React.ReactElement => (
+                    <div key={label} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: '0.82rem', marginLeft: indent ? 26 : 0 }}>
+                      <Icon
+                        iconName={state === 'info' ? 'Info' : state === 'on' ? 'CompletedSolid' : 'Blocked2Solid'}
+                        style={{ fontSize: 14, marginTop: 2, flexShrink: 0, color: state === 'on' ? 'var(--dex-green, #86bc25)' : state === 'off' ? 'var(--dex-gray-400)' : 'var(--dex-gray-500)' }}
+                      />
+                      <span style={{ color: 'var(--dex-gray-700)' }}><strong>{label}:</strong> {detail}</span>
+                    </div>
+                  );
+                  return (
+                    <div style={{
+                      marginBottom: 18, padding: '14px 16px', borderRadius: 10,
+                      background: 'var(--dex-gray-50, #f7f7f7)', border: '1px solid var(--dex-gray-200)',
+                      display: 'flex', flexDirection: 'column', gap: 7,
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
+                        <Icon iconName="Megaphone" style={{ fontSize: 16, color: 'var(--dex-green-dark, #4a7c1f)' }} />
+                        <strong style={{ fontSize: '0.9rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                          {isDe ? `Übersicht: automatische Kommunikation — ${tabName}` : `Overview: automatic communication — ${tabName}`}
+                        </strong>
+                      </div>
+                      {row(emailsOn ? 'on' : 'off', isDe ? 'Bestätigungs-E-Mails an Teilnehmer' : 'Confirmation emails to attendees',
+                        emailsOn
+                          ? (isDe ? 'aktiv' : 'active')
+                          : (isDe ? 'komplett deaktiviert — es geht keine einzige Mail an Teilnehmer raus' : 'completely disabled — not a single mail goes out to attendees'))}
+                      {emailsOn && row(regOn ? 'on' : 'off', isDe ? 'Anmelde-Bestätigung' : 'Registration confirmation',
+                        regOn ? (isDe ? 'wird verschickt (inkl. Warteliste/Nachrücken)' : 'is sent (incl. waitlist/promotion)') : (isDe ? 'wird NICHT verschickt' : 'is NOT sent'), true)}
+                      {emailsOn && row(cancOn ? 'on' : 'off', isDe ? 'Abmelde-Bestätigung' : 'Cancellation confirmation',
+                        cancOn ? (isDe ? 'wird verschickt' : 'is sent') : (isDe ? 'wird NICHT verschickt' : 'is NOT sent'), true)}
+                      {row(outlookOn ? 'on' : 'off', isDe ? 'Outlook-Kalendereintrag' : 'Outlook calendar entry',
+                        outlookOn
+                          ? (isDe ? 'angemeldete Teilnehmer bekommen einen Termin (bei Abmeldung wird er entfernt)' : 'registered attendees get a calendar entry (removed on cancellation)')
+                          : (isDe ? 'kein Termin — Teilnehmer planen den Termin selbst ein' : 'no entry — attendees schedule it themselves'))}
+                      {isMainTab && outlookOn && row(autoDeregisterOnDecline ? 'on' : 'off', isDe ? 'Outlook-Absage → Auto-Abmeldung' : 'Outlook decline → auto-deregistration',
+                        autoDeregisterOnDecline
+                          ? (isDe ? 'eine Termin-Absage meldet die Person automatisch vom Event ab' : 'declining the invite auto-deregisters the person')
+                          : (isDe ? 'eine Termin-Absage löst nur eine Erinnerung aus, keine automatische Abmeldung' : 'declining only triggers a reminder, no auto-deregistration'), true)}
+                      {row('info', isDe ? 'Mail-Sprache' : 'Mail language', emailLanguage === 'DE' ? (isDe ? 'Deutsch' : 'German') : (isDe ? 'Englisch' : 'English'))}
+                      {row('info', isDe ? 'Organizer bei An-/Abmeldungen' : 'Organizers on registrations/cancellations', bccLabel)}
+                    </div>
+                  );
+                })()}
+
                 {/* v14.8: „Nur Sub-Events"-Modus + auf Haupt-Event-Tab → Banner
                     statt Kommunikations-Settings rendern. Der User soll keine
                     Werte für ein nicht-existentes Hauptevent-Anmelden pflegen. */}
@@ -11177,6 +11245,29 @@ export default function EventCreationPage(): React.ReactElement {
                         <strong>{t('create.notifications.triggerupdate')}</strong>
                         <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)', lineHeight: 1.4, marginTop: 2 }}>
                           {t('create.notifications.triggerupdate.desc')}
+                        </span>
+                      </span>
+                    </label>
+                  )}
+                  {/* v19.23: Outlook-Absage = automatische Abmeldung vom Event.
+                      Top-Level-Event (nur Hauptevent-Tab), nur sinnvoll wenn
+                      Outlook aktiv ist. Die eigentliche Auto-Abmeldung läuft im
+                      Outlook-Absage-Verarbeitungsschritt (Power-Automate-Flow),
+                      die App hinterlegt nur den Schalter. */}
+                  {activeCommTabIdx === 0 && !disableOutlook && (
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginTop: 8, marginLeft: 24, paddingLeft: 12, borderLeft: '3px solid var(--dex-orange, #ed8b00)' }}>
+                      <input
+                        type="checkbox"
+                        checked={autoDeregisterOnDecline}
+                        onChange={e => setAutoDeregisterOnDecline(e.target.checked)}
+                        style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 2, flexShrink: 0 }}
+                      />
+                      <span style={{ fontSize: '0.9rem' }}>
+                        <strong>{isDe ? 'Outlook-Absage = automatische Abmeldung' : 'Outlook decline = automatic deregistration'}</strong>
+                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)', lineHeight: 1.4, marginTop: 2 }}>
+                          {isDe
+                            ? 'Wenn aktiv: Sagt ein Teilnehmer den Outlook-Termin ab, wird er automatisch auch vom Event abgemeldet — der Platz wird frei und die Warteliste rückt nach. Ohne diesen Haken bekommt die Person bei einer Outlook-Absage nur eine Erinnerung, sich bei Bedarf selbst abzumelden. Hinweis: Diese Automatik greift erst, sobald die einmalige Anpassung im Outlook-Absage-Verarbeitungsschritt im Tenant eingerichtet ist.'
+                            : 'When active: if an attendee declines the Outlook invite, they are automatically deregistered from the event — the spot is freed and the waitlist moves up. Without this, a decline only triggers a reminder asking the person to deregister themselves if needed. Note: this automation only takes effect once the one-time change in the Outlook-decline processing step is set up in the tenant.'}
                         </span>
                       </span>
                     </label>

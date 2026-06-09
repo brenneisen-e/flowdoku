@@ -404,6 +404,7 @@ export interface CreateEventInput {
   disableEmails?: boolean;
   disableRegistrationEmail?: boolean; // v19.21: keine Anmelde-Bestätigung
   disableCancellationEmail?: boolean; // v19.21: keine Abmelde-Bestätigung
+  autoDeregisterOnDecline?: boolean; // v19.23: Outlook-Absage = Auto-Abmeldung
   disableOutlook?: boolean;
   outlookDirty?: boolean; // v11.57: Outlook-Update ausstehend nach Bearbeitung
   notifyOrgRegisterMode?: 'never' | 'always' | 'fromDate';
@@ -794,6 +795,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       disableEmails: !!e.DisableEmails,
       disableRegistrationEmail: !!e.DisableRegistrationEmail,
       disableCancellationEmail: !!e.DisableCancellationEmail,
+      autoDeregisterOnDecline: !!e.AutoDeregisterOnDecline,
       disableOutlook: !!e.DisableOutlook,
       // v14.5: requireSubEventSelection als Piggyback im EmailTemplateOverrides-
       // JSON (kein neues SP-Feld nötig).
