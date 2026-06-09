@@ -661,7 +661,10 @@ Edit-Persistenz + Dirty-Snapshot.
   (`first(outputs('Get_DEX_Event')?['body/value'])?['AutoDeregisterOnDecline']` ==
   `true`). Im yes-Zweig statt des Reminders: (1) MERGE auf das Teilnehmer-Item →
   `Status='Abgemeldet'`, `CancellationDate=utcNow()`; (2) `DEX_Emails`-Item mit
-  `Abmeldung`-Template (sofern `DisableEmails`/`DisableCancellationEmail` aus);
+  **`AbmeldungAuto`**-Template (pre-wrapped! NICHT `Abmeldung` — das ist der
+  unwrapped App-Type; der Flow verschickt den BodyHtml roh, braucht also das
+  pre-wrapped `AbmeldungAuto` aus dem Template-Seed, sonst kommt die Mail ohne
+  Deloitte-Layout) — sofern `DisableEmails`/`DisableCancellationEmail` aus;
   (3) `DEX_IDReorder`-Item (`EventId`, `CancelledName`, `CancelledEmail`) →
   triggert Reorder + Nachrücken; (4) optional `DEX_Outlook`-`Ausladen`. Der
   bestehende Reminder-Zweig wandert in den no-Zweig (greift nur wenn
