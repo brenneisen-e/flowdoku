@@ -615,6 +615,32 @@ die Anmelde-Bestätigung bleibt trotzdem aktiv.
   ausschließlich am Master `DisableEmails` hängen — die Sub-Schalter betreffen
   nur die **Standard-Anmelde-/Abmelde-Bestätigung**. **Kein Flow-Change.**
 
+### Wiederverwendbarer Sichtbarkeits-Picker + Klammer-Modus (v19.27)
+
+**`components/AudiencePicker.tsx`** — der volle Sichtbarkeits-Picker
+(Personen-/Gruppen-Suche, „auch international", Massenimport, „Sichtbarkeit
+prüfen", „Personen ausschließen") wurde aus `EventCreationPage` in eine
+wiederverwendbare Komponente extrahiert und wird jetzt in Schritt 4 sowohl beim
+**Hauptevent** als auch bei **jedem Sub-Event** genutzt (vorher hatte das
+Sub-Event nur ein simples Textfeld). Props: `value`/`onChange` (kommaseparierter
+Audience-String, Datenformat unverändert), `locationFilter`, `filterMode`,
+`isDe`, optional `excludedUsers`/`onExcludedUsersChange` (nur Hauptevent
+persistiert; Sub-Events nutzen internen Exclude-State — es gibt **keine**
+SP-Spalte für Pro-Sub-Event-Excludes), `middleSlot` (Filterverknüpfung an
+Original-Position), `cardBgPrimary`/`cardBgSecondary` (Zebra-Streifen),
+`stepBadge`. Jede Instanz hat eigenen State (Suche, Modals, Visibility-Cache).
+
+**Klammer-Modus (`subEventsOnlyMode`):** Im Modus „Nur Sub-Events" heißt das
+nicht-buchbare Hauptevent in der UI **„Klammer"** (Tab-Label + Badge, nur in
+diesem Modus — sonst „Hauptevent"). In Schritt 4 ist die **Sichtbarkeit**
+(Standortfilter + Mailverteiler) der Klammer jetzt **editierbar** (vorher
+komplett ausgegraut): Der Greyout-Wrapper (`hauptGreyoutWrapperStyle`) startet
+erst ab den **Fristen** — die Sichtbarkeit steht davor und bleibt aktiv, weil
+sie laufzeit-relevant ist (`isEventVisibleForUser` in `EventListPage` nutzt
+`event.locationAudience`/`audienceFilter` unabhängig vom Modus → steuert, wer das
+ganze Event sieht). Kapazität/Fristen der Klammer bleiben ausgegraut (man bucht
+die Klammer nicht). Banner umformuliert entsprechend.
+
 ### Browser-Bild-Cache (IndexedDB) (v19.22)
 
 Event-Bilder (SP-Item-Attachments, stabile URL pro Bild-Version) werden

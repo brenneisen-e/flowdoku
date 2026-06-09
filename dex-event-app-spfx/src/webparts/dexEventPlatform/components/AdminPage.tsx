@@ -503,14 +503,15 @@ function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | null {
         onClick={() => setOpen(o => !o)}
         style={{
           width: '100%', textAlign: 'left', padding: '10px 14px',
-          border: '1.5px solid var(--dex-gray-200)', borderRadius: 10,
-          background: '#fff', color: 'var(--dex-gray-800)',
-          fontSize: '0.92rem', fontWeight: 600, cursor: 'pointer',
+          // v19.27: grün hinterlegt, damit die Aktionen-Auswahl deutlich auffällt.
+          border: '1.5px solid var(--dex-green, #86bc25)', borderRadius: 10,
+          background: 'rgba(134,188,37,0.12)', color: 'var(--dex-green-dark, #4a7c1f)',
+          fontSize: '0.92rem', fontWeight: 700, cursor: 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
         }}
       >
         <span>{props.isDe ? `Aktion auswählen (${sorted.length})` : `Pick an action (${sorted.length})`}</span>
-        <span style={{ color: 'var(--dex-gray-400)', fontSize: '0.85rem', transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease' }}>▾</span>
+        <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.85rem', transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.15s ease' }}>▾</span>
       </button>
       {open && (
         <div style={{
