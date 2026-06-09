@@ -6682,6 +6682,39 @@ export default function AdminPage(): React.ReactElement {
           };
           const thClickable: React.CSSProperties = { textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', position: 'sticky', top: 0, background: '#fff', zIndex: 5, borderBottom: '2px solid var(--dex-gray-200)' };
           const declineCount = cancelledRegs.filter(isDeclined).length;
+          // v19.28: Abgemeldete Registrierungen endgültig löschen (Admin/Organizer)
+          // — z.B. um Test-Anmeldungen aus der Übersicht zu entfernen. Hartes
+          // DELETE nach Sicherheits-Confirm; Audit-Eintrag im ChangeLog.
+          const canDelete = !!selectedEvent && (isAdmin || isOrganizerFor(selectedEvent)) && !!selectedEvent.subsiteUrl;
+          const deleteCancelled = async (reg: SPRegistration): Promise<void> => {
+            if (!selectedEvent || !selectedEvent.subsiteUrl) return;
+            const nm = `${reg.Vorname || ''} ${reg.Nachname || ''}`.trim() || reg.ParticipantName || reg.ParticipantEmail;
+            const msg = isDe
+              ? `Diese abgemeldete Registrierung von „${nm}" ENDGÜLTIG löschen?\n\nDie Zeile wird komplett aus der Teilnehmerliste entfernt und kann NICHT wiederhergestellt werden. (Nützlich z.B. zum Aufräumen von Test-Anmeldungen.)`
+              : `Permanently DELETE this cancelled registration of „${nm}"?\n\nThe row is removed entirely from the participant list and CANNOT be restored. (Useful e.g. for cleaning up test registrations.)`;
+            // eslint-disable-next-line no-alert
+            if (!window.confirm(msg)) return;
+            const ok = await eventServiceRef.deleteRegistration(selectedEvent.subsiteUrl, reg.Id);
+            if (ok) {
+              try {
+                await eventServiceRef.writeChangeLog({
+                  action: 'RegistrationDeleted',
+                  targetType: 'Participant',
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  targetId: ((reg as any).ParticipantEmail || '') + '#' + reg.Id,
+                  targetName: nm,
+                  eventId: selectedEvent.id,
+                  eventTitle: selectedEvent.title,
+                  details: { deletedStatus: reg.Status, cancellationDate: reg.CancellationDate || '' },
+                });
+              } catch { /* Audit best-effort */ }
+              const regs = await getAllRegistrations(selectedEvent.id);
+              setRegistrations(regs);
+            } else {
+              // eslint-disable-next-line no-alert
+              window.alert(isDe ? 'Löschen fehlgeschlagen.' : 'Delete failed.');
+            }
+          };
           return (
             <>
               <h4 style={{ marginTop: 24, color: 'var(--dex-gray-400)' }}>
@@ -6709,6 +6742,9 @@ export default function AdminPage(): React.ReactElement {
                           Aktivität (sonst durchgehend leer). */}
                       {hasWaitlistActivity && (
                         <th style={{ ...thClickable, cursor: 'default' }}>{isDe ? 'Wurde ersetzt durch' : 'Replaced by'}</th>
+                      )}
+                      {canDelete && (
+                        <th style={{ ...thClickable, cursor: 'default', textAlign: 'right' }}>{isDe ? 'Löschen' : 'Delete'}</th>
                       )}
                     </tr>
                   </thead>
@@ -6739,6 +6775,23 @@ export default function AdminPage(): React.ReactElement {
                                 const label = other ? (((other.Vorname || '') + ' ' + (other.Nachname || '')).trim() || other.ParticipantName || email) : email;
                                 return <span title={email}>{label}</span>;
                               })()}
+                            </td>
+                          )}
+                          {canDelete && (
+                            <td style={{ padding: 8, textAlign: 'right' }}>
+                              <button
+                                type="button"
+                                title={isDe ? 'Registrierung endgültig löschen' : 'Permanently delete registration'}
+                                onClick={() => { deleteCancelled(reg).catch(() => { /* */ }); }}
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                                  border: '1px solid var(--dex-red, #da291c)', background: 'rgba(218,41,28,0.06)',
+                                  color: 'var(--dex-red, #da291c)', borderRadius: 6, padding: '4px 9px',
+                                  fontSize: '0.74rem', fontWeight: 600, cursor: 'pointer',
+                                }}
+                              >
+                                <Trash2 size={13} /> {isDe ? 'Löschen' : 'Delete'}
+                              </button>
                             </td>
                           )}
                         </tr>

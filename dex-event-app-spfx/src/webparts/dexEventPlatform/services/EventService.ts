@@ -8162,6 +8162,22 @@ export class EventService {
     // Nach 8 Retries aufgeben — best-effort, blockiert keine andere Aktion
   }
 
+  /**
+   * v19.28: Eine Teilnehmer-Registrierung endgültig aus der Subsite-Liste
+   * löschen (hartes DELETE, kein Recycle-Bin). Use-Case: abgemeldete
+   * Test-Anmeldungen aus der Abmeldungen-Liste entfernen, damit die Übersicht
+   * sauber bleibt. Die Berechtigung (Admin/Organizer) wird in der UI geprüft.
+   */
+  public async deleteRegistration(subsiteUrl: string, itemId: number): Promise<boolean> {
+    try {
+      const resp = await this._delete(`${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`);
+      return resp.ok;
+    } catch (err) {
+      console.warn('[DEX] deleteRegistration failed:', err);
+      return false;
+    }
+  }
+
   private async _delete(url: string): Promise<SPHttpClientResponse> {
     const options: ISPHttpClientOptions = {
       headers: {
