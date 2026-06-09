@@ -3201,8 +3201,8 @@ export default function AdminPage(): React.ReactElement {
               <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('jobTitle')}>Job Title{sortArrow('jobTitle')}</th>
               <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('location')}>{isDe ? 'Standort' : 'Location'}{sortArrow('location')}</th>
               {parentCustomFields.map(f => (
-                <th key={`pf-${f.id}`} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', ...PASTEL_A_HEADER }} title={`${f.label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
-                  {abbreviate(f.label, 22)}
+                <th key={`pf-${f.id}`} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 150, verticalAlign: 'top', lineHeight: 1.25, ...PASTEL_A_HEADER }} title={`${f.label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
+                  {f.label}
                 </th>
               ))}
               {childCustomFieldsByChild.map(({ child, fields }) => (
@@ -3216,9 +3216,9 @@ export default function AdminPage(): React.ReactElement {
                     <div style={{ fontSize: '0.68rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>{isDe ? 'angemeldet?' : 'registered?'}{sortArrow(`child:${child.id}`)}</div>
                   </th>
                   {fields.map(f => (
-                    <th key={`scf-${child.id}-${f.id}`} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', ...PASTEL_B_HEADER }} title={`${f.label} — ${child.title}`}>
+                    <th key={`scf-${child.id}-${f.id}`} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 150, verticalAlign: 'top', lineHeight: 1.25, ...PASTEL_B_HEADER }} title={`${f.label} — ${child.title}`}>
                       <div style={{ color: 'var(--dex-gray-500)', fontWeight: 400, fontSize: '0.68rem' }}>{abbreviate(shortSubEventTitle(child.title, selectedEvent?.title) || '?', 18)}</div>
-                      <div style={{ fontWeight: 600 }}>{abbreviate(f.label, 20)}</div>
+                      <div style={{ fontWeight: 600 }}>{f.label}</div>
                     </th>
                   ))}
                 </React.Fragment>
@@ -6192,7 +6192,7 @@ export default function AdminPage(): React.ReactElement {
                   const label = field.label || '';
                   return (
                     <th key={id} style={{ ...baseStyle, fontSize: '0.78rem', ...pastelAHeader }} title={`${label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
-                      {label.length > 22 ? label.substring(0, 20) + '…' : label}
+                      {label}
                       {hideButton(id)}
                     </th>
                   );
@@ -6204,7 +6204,7 @@ export default function AdminPage(): React.ReactElement {
                   const label = field.label || '';
                   return (
                     <th key={id} style={{ ...baseStyle, fontSize: '0.78rem', ...pastelBHeader }} title={inSubEventDetail ? `${label} — ${isDe ? 'Sub-Event-Feld' : 'sub-event field'}` : label}>
-                      {label.length > 22 ? label.substring(0, 20) + '…' : label}
+                      {label}
                       {hideButton(id)}
                     </th>
                   );

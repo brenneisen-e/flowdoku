@@ -26,6 +26,49 @@ import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
 import { buildDemoShowcaseEvents, buildDemoMyRegistration } from '../services/demoShowcaseEvent';
 
+// v19.34: People-Picker-Antworten (Feldtyp `user`/`roommate`) im „Meine
+// Events"-Antwort-Tag mit Profilfoto statt als Rohtext „Name <email>"
+// anzeigen — analog zum Chip im People-Picker selbst.
+const parsePersonAnswer = (v: string): { name: string; email: string } | null => {
+  const m = (v || '').match(/^(.+?)\s*<([^>]+@[^>]+)>\s*$/);
+  if (!m) return null;
+  return { name: m[1].trim(), email: m[2].trim() };
+};
+
+function FieldAnswerTag(props: { label: string; value: string; type?: string; small?: boolean }): React.ReactElement {
+  const { label, value, type, small } = props;
+  const person = (type === 'user' || type === 'roommate') ? parsePersonAnswer(value) : null;
+  const baseStyle: React.CSSProperties = {
+    fontSize: small ? '0.72rem' : '0.78rem',
+    padding: small ? '3px 8px' : '4px 10px',
+    borderRadius: 4,
+    background: 'rgba(134,188,37,0.14)',
+    color: 'var(--dex-green-dark, #4a7c1f)',
+    border: '1px solid rgba(134,188,37,0.30)',
+  };
+  if (person) {
+    return (
+      <span style={{ ...baseStyle, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        {label}:
+        <img
+          src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(person.email)}&size=L`}
+          alt={person.name}
+          onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+          style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', transition: 'transform 0.15s', transformOrigin: 'center' }}
+          onMouseEnter={e => { (e.currentTarget as HTMLImageElement).style.transform = 'scale(2.6)'; (e.currentTarget as HTMLImageElement).style.zIndex = '20'; (e.currentTarget as HTMLImageElement).style.position = 'relative'; (e.currentTarget as HTMLImageElement).style.boxShadow = '0 6px 18px rgba(0,0,0,0.18)'; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLImageElement).style.transform = 'scale(1)'; (e.currentTarget as HTMLImageElement).style.boxShadow = 'none'; }}
+        />
+        <strong>{person.name}</strong>
+      </span>
+    );
+  }
+  return (
+    <span style={baseStyle}>
+      {label}: <strong>{value}</strong>
+    </span>
+  );
+}
+
 interface MyEventEntry {
   event: DeloitteEvent;
   registration: SPRegistration;
@@ -1318,7 +1361,11 @@ export default function MyEventsPage(): React.ReactElement {
             // EN-Anzeige) pro Feld, damit auch die Antwort selbst zweisprachig
             // erscheint. Map: fieldId → (DE-Option → EN-Option).
             const fieldOptionEnMap: Record<string, Record<string, string>> = {};
+            // v19.34: Feldtyp pro ID merken, damit People-Picker-Antworten
+            // (`user`/`roommate`) als Foto-Tag gerendert werden koennen.
+            const fieldTypeMap: Record<string, string> = {};
             for (const field of event.eventSpecificFields) {
+              fieldTypeMap[field.id] = field.type;
               fieldLabelMap[field.id] = (useEnDisplay && field.labelEn && field.labelEn.trim())
                 ? field.labelEn
                 : field.label;
@@ -1361,6 +1408,7 @@ export default function MyEventsPage(): React.ReactElement {
                 return {
                   label: fieldLabelMap[key] || adHocLabels[key] || key,
                   value,
+                  type: fieldTypeMap[key],
                 };
               });
 
@@ -1819,15 +1867,8 @@ export default function MyEventsPage(): React.ReactElement {
                   // Nacht"), es spaeter nicht mehr nachtragen.
                   (displayData.length > 0 || (event.eventSpecificFields || []).filter((f: EventSpecificField) => f.label).length > 0) && (
                     <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-                      {displayData.map(({ label, value }) => (
-                        <span key={label} style={{
-                          fontSize: '0.78rem', padding: '4px 10px', borderRadius: 4,
-                          background: 'rgba(134,188,37,0.14)',
-                          color: 'var(--dex-green-dark, #4a7c1f)',
-                          border: '1px solid rgba(134,188,37,0.30)',
-                        }}>
-                          {label}: <strong>{value}</strong>
-                        </span>
+                      {displayData.map(({ label, value, type }) => (
+                        <FieldAnswerTag key={label} label={label} value={value} type={type} />
                       ))}
                       {/* v11.30: Edit-Button direkt neben den Angaben-Tags
                           (statt unten in der Aktions-Zeile). Naeher am Inhalt
@@ -3261,19 +3302,12 @@ function MyEventSubEvents(props: {
             const data = seData[ce.id] || {};
             const filled = (ce.eventSpecificFields || [])
               .filter(f => f.label && (data[f.id] || '').trim())
-              .map(f => ({ label: f.label, value: data[f.id] }));
+              .map(f => ({ label: f.label, value: data[f.id], type: f.type }));
             if (filled.length === 0) return null;
             return (
               <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {filled.map(({ label, value }) => (
-                  <span key={label} style={{
-                    fontSize: '0.72rem', padding: '3px 8px', borderRadius: 4,
-                    background: 'rgba(134,188,37,0.14)',
-                    color: 'var(--dex-green-dark, #4a7c1f)',
-                    border: '1px solid rgba(134,188,37,0.30)',
-                  }}>
-                    {label}: <strong>{value}</strong>
-                  </span>
+                {filled.map(({ label, value, type }) => (
+                  <FieldAnswerTag key={label} label={label} value={value} type={type} small />
                 ))}
               </div>
             );
@@ -3542,7 +3576,7 @@ function PeerCancelCheckboxModal(props: {
       </h3>
       <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
         {isDe
-          ? 'Hak die Einträge an, die du abmelden willst. Nicht angehakte Anmeldungen bleiben erhalten.'
+          ? 'Wähle die Einträge an, die du abmelden willst. Nicht angewählte Anmeldungen bleiben erhalten.'
           : 'Tick the entries you want to cancel. Unticked registrations stay active.'}
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto' }}>
