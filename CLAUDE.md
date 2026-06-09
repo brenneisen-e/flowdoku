@@ -545,6 +545,71 @@ in einem responsiven Raster (`repeat(auto-fill, minmax(300px, 1fr))`) statt
 vollbreit gestapelt — und nummeriert die Teams durch (`1.`, `2.`, …). Spart
 vertikalen Platz bei vielen Teams.
 
+### Custom-Field-Properties beim Edit nie mehr verlieren (v19.20)
+
+Der wiederkehrende „zweiter CustomFields-Write droppt Properties"-Bug (siehe
+Abschnitt „Custom-Field-Properties: zweiter CustomFields-Write beim Edit-Save")
+ist mit v19.20 **strukturell** behoben: Der zweite Write in `handleSubmit`
+(nach `fixRegistrationListColumns`) baut die Feldliste **nicht mehr** aus dem
+manuell gepflegten `cfForFix`-Mapping, sondern nimmt den **kanonischen
+`serializeCustomFields`-Output** und ergänzt pro Feld **nur noch
+`spInternalName`** (Lookup aus `fixResult.customFieldMap` mit Fallback auf den
+bestehenden `spInternalName` aus `customFields`). `cfForFix` dient ab v19.20
+**ausschließlich** noch dem `fixRegistrationListColumns`-Aufruf (Spalten anlegen/
+ordnen), **nicht mehr** der Persistenz. Damit kann die Property-Liste nie wieder
+veralten — `multi`, `ccOnEmails`, die EN-Varianten (`labelEn`/`helpTextEn`/
+`confirmLabelEn`/`optionsEn`) und alle künftigen Properties bleiben beim Löschen/
+Umsortieren von Feldern erhalten. **Regel-Update:** Eine neue Custom-Field-
+Property muss jetzt nur noch in `serializeCustomFields()` ergänzt werden — der
+zweite Write zieht sie automatisch mit.
+
+### Header-Bild-Layout löst Outlook-Update-Modal aus (v19.20)
+
+Eine reine Änderung von **Breite/Innenabstand** des Header-Bildes
+(`headerImageLayout`, Schritt 6) galt bisher **nicht** als Outlook-relevante
+Änderung — `detectOutlookRelevantChanges()` vergleicht den **rohen** (gestrippten)
+Outlook-Body, das Layout wird aber erst beim Wrappen (`buildOutlookBody`)
+angewendet und steht daher nicht im Body-Text. Folge: Größen-/Abstands-Änderung →
+kein „Outlook-Termin aktualisieren?"-Modal. Fix v19.20: ein
+`initialHeaderImageLayoutRef` hält das Layout beim Edit-Mount fest; beim Save
+vergleicht `detectOutlookRelevantChanges()` das aktuelle Layout dagegen und
+markiert bei Abweichung ein eigenes Änderungs-Feld **`layout`** für Hauptevent
+UND betroffene Sub-Events (gleicher Hero-Bild-Kopf). Im Modal als „Kopfbild
+(Größe/Abstand)" benannt (`fieldLabelMap`).
+
+### Granulare An-/Abmelde-Mail-Schalter (v19.21)
+
+Unter dem Master-Schalter **„Bestätigungs-E-Mails an Teilnehmer schicken"**
+(Schritt 6) gibt es zwei eingerückte Sub-Häkchen, mit denen die **Anmelde-
+Bestätigung** und die **Abmelde-Bestätigung** **einzeln** abschaltbar sind.
+Use-Case: Teilnehmer still abmelden, ohne dass sie eine Abmelde-Mail bekommen —
+die Anmelde-Bestätigung bleibt trotzdem aktiv.
+
+- **Neue SP-Spalten auf `DEX_Events`** (via `getEventsFieldDefinitions()` →
+  `ensureMissingFields`, auch auf Bestands-Tenants): `DisableRegistrationEmail`
+  (Boolean), `DisableCancellationEmail` (Boolean). Default `false` =
+  Mails gehen raus.
+- **Hierarchie:** Der Master `DisableEmails` sticht weiterhin — ist er an,
+  gehen **gar keine** Mails raus. Die Sub-Schalter wirken nur, solange der
+  Master aus ist (E-Mails grundsätzlich aktiv).
+- **Scope (bewusst Top-Level-only):** Die beiden Flags sind **nicht** per
+  Sub-Event-Comm-Tab gespiegelt (anders als `DisableEmails`/`DisableOutlook`).
+  Die Sub-Häkchen erscheinen nur auf dem **Hauptevent-Tab**
+  (`activeCommTabIdx === 0`) und gelten fürs Hauptevent. Sub-Events senden
+  ihre An-/Abmelde-Mails weiter (Default), solange ihr eigener `DisableEmails`
+  aus ist. Pro-Sub-Event-Granularität ist ein möglicher Folgeschritt.
+- **Gating-Stellen** (jeweils zusätzlich zum `!event.disableEmails`-Check):
+  - `EventContext.registerForEvent` (Anmelde-/Warteliste-Bestätigung) →
+    `!event.disableRegistrationEmail`.
+  - `EventContext.cancelRegistration` (Self-Cancel) und
+    `EventContext.cancelTeamMember` → `!event.disableCancellationEmail`.
+  - `AdminPage` Admin-/Warteliste-Abmeldung (zwei Stellen) →
+    `!selectedEvent.disableCancellationEmail`.
+- **Nicht erfasst (bewusst):** Team-spezifische Mails (`TeamMemberJoined` etc.),
+  RoommateRequest und die Nachrück-Mail des Power-Automate-Flows bleiben
+  ausschließlich am Master `DisableEmails` hängen — die Sub-Schalter betreffen
+  nur die **Standard-Anmelde-/Abmelde-Bestätigung**. **Kein Flow-Change.**
+
 ### Sicherheitshinweis vor dem Absenden der Anmeldung (v18.75)
 
 Pro Event kann der Organizer einen **Bestätigungs-Dialog** aktivieren, der nach

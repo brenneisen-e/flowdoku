@@ -402,6 +402,8 @@ export interface CreateEventInput {
   outlookEnd?: string;
   emailTemplateOverrides?: string;
   disableEmails?: boolean;
+  disableRegistrationEmail?: boolean; // v19.21: keine Anmelde-Bestätigung
+  disableCancellationEmail?: boolean; // v19.21: keine Abmelde-Bestätigung
   disableOutlook?: boolean;
   outlookDirty?: boolean; // v11.57: Outlook-Update ausstehend nach Bearbeitung
   notifyOrgRegisterMode?: 'never' | 'always' | 'fromDate';
@@ -790,6 +792,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       registrationLanguage: (e.RegistrationLanguage === 'de' || e.RegistrationLanguage === 'en') ? e.RegistrationLanguage : undefined,
       emailTemplateOverrides: e.EmailTemplateOverrides || '',
       disableEmails: !!e.DisableEmails,
+      disableRegistrationEmail: !!e.DisableRegistrationEmail,
+      disableCancellationEmail: !!e.DisableCancellationEmail,
       disableOutlook: !!e.DisableOutlook,
       // v14.5: requireSubEventSelection als Piggyback im EmailTemplateOverrides-
       // JSON (kein neues SP-Feld nötig).
@@ -1217,7 +1221,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // Bestaetigungs-Mail und KEINEN Outlook-Termin bekommen — die
       // tatsaechlichen Teilnahme-Mails kommen pro Sub-Event.
       const suppressParentNotifications = !!event.subEventsOnlyMode;
-      if (!event.disableEmails && !suppressParentNotifications && !opts?.suppressMail) {
+      // v19.21: disableRegistrationEmail = nur die Anmelde-Bestätigung
+      // unterdrücken (granulares Sub-Häkchen unter dem Master „E-Mails").
+      if (!event.disableEmails && !event.disableRegistrationEmail && !suppressParentNotifications && !opts?.suppressMail) {
         // v8.5: Organizer-BCC-Modus auswerten. Bei 'always' immer BCC,
         // bei 'fromDate' nur wenn das konfigurierte Datum bereits erreicht
         // ist, bei 'never'/undefined keinen BCC.
@@ -2277,7 +2283,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // direkten Abmelden weder Bestaetigungs-Mail noch Outlook-Ausladen
         // bekamen.
         const suppressParentNotificationsCancel = !!opts?.suppressNotifications;
-        if (!event.disableEmails && !suppressParentNotificationsCancel) {
+        // v19.21: disableCancellationEmail = nur die Abmelde-Bestätigung
+        // unterdrücken (granulares Sub-Häkchen unter dem Master „E-Mails").
+        if (!event.disableEmails && !event.disableCancellationEmail && !suppressParentNotificationsCancel) {
           try {
             const lang = event.emailLanguage || 'EN';
             // {{Name}} in Anreden: nur Vorname (displayName ist im Deloitte-Tenant
@@ -2450,7 +2458,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         } catch (err) { console.warn('[DEX] removeParticipantEvent failed:', err); }
       }
       // Abmelde-Mail an die abgemeldete Person.
-      if (!event.disableEmails) {
+      // v19.21: disableCancellationEmail unterdrückt auch hier die Abmelde-Mail.
+      if (!event.disableEmails && !event.disableCancellationEmail) {
         try {
           const lang = event.emailLanguage || 'EN';
           const cancelledFirst = memberRegistration.Vorname

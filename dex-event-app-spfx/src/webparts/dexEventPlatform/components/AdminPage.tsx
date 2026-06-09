@@ -6164,7 +6164,9 @@ export default function AdminPage(): React.ReactElement {
                           await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id, `${currentUser.firstName} ${currentUser.surname}`.trim(), currentUser.email);
                           // Abmelde-Email und Outlook-Ausladen in Queue eintragen (falls nicht deaktiviert)
                           if (reg.ParticipantEmail) {
-                            if (!selectedEvent.disableEmails) {
+                            // v19.21: disableCancellationEmail unterdrückt auch die
+                            // Admin-seitige Abmelde-Mail (event-weite Vorgabe).
+                            if (!selectedEvent.disableEmails && !selectedEvent.disableCancellationEmail) {
                               const emailData = cancellationEmail(name, selectedEvent.title);
                               eventServiceRef.queueEmail(
                                 emailData.subject, reg.ParticipantEmail, name, emailData.body,
@@ -6585,7 +6587,7 @@ export default function AdminPage(): React.ReactElement {
                                 const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
                                 if (!confirm(`${name} von der Warteliste entfernen?`)) return;
                                 await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id, `${currentUser.firstName} ${currentUser.surname}`.trim(), currentUser.email);
-                                if (reg.ParticipantEmail && !selectedEvent.disableEmails) {
+                                if (reg.ParticipantEmail && !selectedEvent.disableEmails && !selectedEvent.disableCancellationEmail) {
                                   const emailData = cancellationEmail(name, selectedEvent.title);
                                   eventServiceRef.queueEmail(
                                     emailData.subject, reg.ParticipantEmail, name, emailData.body,
