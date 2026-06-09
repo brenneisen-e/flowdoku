@@ -18,6 +18,8 @@ import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
 import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2, ChevronUp, ChevronDown, QrCode } from './Icons';
 import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
+// v20.1: Self-Check-in jederzeit aktivierbar (Token-Erzeugung beim Klick).
+import { generateSelfCheckInToken } from '../utils/selfCheckIn';
 // v20.0 (Audit): xlsx + qrcode werden nicht mehr statisch importiert, sondern
 // erst beim tatsächlichen Gebrauch (Export-Klick / QR-Vorschau) als eigener
 // Chunk nachgeladen — spart ~1 MB im Haupt-Bundle.
@@ -2250,6 +2252,26 @@ export default function AdminPage(): React.ReactElement {
   // v20.0 (Audit): ungenutzte Helper-Funktion getRegListUrl entfernt
   // (war seit Jahren nie aufgerufen, lieferte ohnehin nur `<base>/Lists`).
 
+  // v20.1: Self-Check-in auto-aktivieren, falls das Event noch keinen aktiven
+  // Token hat (Wizard-Toggle nie gesetzt): Token erzeugen + am Event
+  // persistieren. Damit sind QR-PDF + Live-Anzeige grundsätzlich immer
+  // verfügbar — der Klick auf die Aktion IST die Aktivierung.
+  const ensureSelfCheckInReady = async (ev: DeloitteEvent): Promise<string | null> => {
+    if (ev.selfCheckInEnabled && ev.selfCheckInToken) return ev.selfCheckInToken;
+    const token = ev.selfCheckInToken || generateSelfCheckInToken();
+    let ok = false;
+    try {
+      ok = await updateEvent(ev.id, { 'SelfCheckInEnabled': true, 'SelfCheckInToken': token });
+    } catch { ok = false; }
+    if (!ok) {
+      alert(isDe
+        ? 'Self-Check-in konnte nicht aktiviert werden (Speichern am Event fehlgeschlagen). Bitte erneut versuchen.'
+        : 'Self check-in could not be activated (saving to the event failed). Please try again.');
+      return null;
+    }
+    return token;
+  };
+
   // Danger-Zone-Modal als gemeinsames Element — wird in BEIDEN Render-Branches
   // (Event-Liste und Event-Detail) eingehängt, sonst läuft der Löschen-Klick auf
   // der Event-Liste ins Leere (Bug v9.x: Modal war nur im Detail-Branch gerendert).
@@ -3889,32 +3911,46 @@ export default function AdminPage(): React.ReactElement {
               href={selectedEvent.subsiteUrl ? `${selectedEvent.subsiteUrl}/Lists/Teilnehmer/AllItems.aspx` : `${siteUrl}/Lists`}
             />
 
-            {/* v18.33: Self-Check-in — QR-PDF + rotierende Live-Anzeige.
-                Nur sichtbar wenn Self-Check-in fuer dieses Event aktiviert ist
-                und der User Admin oder (Co-)Organizer ist. */}
-            {selectedEvent.selfCheckInEnabled && (isAdmin || isOrganizerFor(selectedEvent)) && !!selectedEvent.selfCheckInToken && (
+            {/* v18.33/v20.1: Self-Check-in — QR-PDF + rotierende Live-Anzeige.
+                Seit v20.1 IMMER sichtbar für Admin/(Co-)Organizer: hat das
+                Event noch keinen aktiven Token, wird Self-Check-in beim Klick
+                automatisch aktiviert (Token erzeugen + am Event speichern). */}
+            {(isAdmin || isOrganizerFor(selectedEvent)) && (
               <ActionTile
                 icon={<Download size={18} />}
                 title={isDe ? 'Self-Check-in: QR-PDF' : 'Self check-in: QR PDF'}
                 desc={isDe
-                  ? 'Lädt ein druckbares PDF mit dem QR-Code und einer kurzen Anleitung herunter. Zum Aushängen am Eingang — Teilnehmer scannen mit der Handy-Kamera und checken sich selbst ein. Tipp: am besten mit dem Zeitfenster „nur am Event-Tag" kombinieren.'
-                  : 'Downloads a printable PDF with the QR code and short instructions. For posting at the entrance — attendees scan with their phone camera and check themselves in. Tip: best combined with the "event day only" window.'}
+                  ? 'Lädt ein druckbares PDF mit dem QR-Code und einer kurzen Anleitung herunter. Zum Aushängen am Eingang — Teilnehmer scannen mit der Handy-Kamera und checken sich selbst ein. Falls Self-Check-in noch nicht aktiviert war, wird es beim Klick automatisch eingeschaltet. Tipp: am besten mit dem Zeitfenster „nur am Event-Tag" kombinieren.'
+                  : 'Downloads a printable PDF with the QR code and short instructions. For posting at the entrance — attendees scan with their phone camera and check themselves in. If self check-in was not activated yet, it is switched on automatically on click. Tip: best combined with the "event day only" window.'}
                 badge="organizer"
-                onClick={() => downloadSelfCheckInPdf({
-                  eventTitle: selectedEvent.title || 'Event',
-                  token: selectedEvent.selfCheckInToken as string,
-                })}
+                onClick={() => {
+                  (async () => {
+                    const token = await ensureSelfCheckInReady(selectedEvent);
+                    if (!token) return;
+                    await downloadSelfCheckInPdf({
+                      eventTitle: selectedEvent.title || 'Event',
+                      eventDateLabel: selectedEvent.startDate ? new Date(selectedEvent.startDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '',
+                      locationLabel: selectedEvent.location || '',
+                      token,
+                    });
+                  })().catch(() => { /* best-effort */ });
+                }}
               />
             )}
-            {selectedEvent.selfCheckInEnabled && (isAdmin || isOrganizerFor(selectedEvent)) && !!selectedEvent.selfCheckInToken && (
+            {(isAdmin || isOrganizerFor(selectedEvent)) && (
               <ActionTile
                 icon={<QrCode size={18} />}
                 title={isDe ? 'Self-Check-in: Live-Anzeige' : 'Self check-in: live display'}
                 desc={isDe
-                  ? 'Öffnet eine rotierende QR-Anzeige für einen Bildschirm am Eingang (Laptop, Tablet, Beamer). Der Code wechselt automatisch — ein abfotografierter Code verfällt sofort. Die foto-sichere Variante.'
-                  : 'Opens a rotating QR display for a screen at the entrance (laptop, tablet, projector). The code changes automatically — a photographed code expires instantly. The photo-safe option.'}
+                  ? 'Öffnet eine rotierende QR-Anzeige für einen Bildschirm am Eingang (Laptop, Tablet, Beamer). Der Code wechselt automatisch — ein abfotografierter Code verfällt sofort. Die foto-sichere Variante. Falls Self-Check-in noch nicht aktiviert war, wird es beim Klick automatisch eingeschaltet.'
+                  : 'Opens a rotating QR display for a screen at the entrance (laptop, tablet, projector). The code changes automatically — a photographed code expires instantly. The photo-safe option. If self check-in was not activated yet, it is switched on automatically on click.'}
                 badge="organizer"
-                onClick={() => navigate('self-checkin-display', selectedEvent.id)}
+                onClick={() => {
+                  (async () => {
+                    const token = await ensureSelfCheckInReady(selectedEvent);
+                    if (token) navigate('self-checkin-display', selectedEvent.id);
+                  })().catch(() => { /* best-effort */ });
+                }}
               />
             )}
 
@@ -7254,6 +7290,51 @@ export default function AdminPage(): React.ReactElement {
                 Handbuch-Artikel &bdquo;Check-In am Event-Tag&ldquo;
               </a>.
             </p>
+
+            {/* v20.1: Self-Check-in als Alternative/Ergänzung zum QR-Versand —
+                direkt aus dem Modal heraus nutzbar (Live-Anzeige oder PDF).
+                Auto-Aktivierung via ensureSelfCheckInReady, falls der Token
+                noch fehlt. */}
+            <div style={{
+              padding: '10px 12px', marginBottom: 16,
+              background: 'rgba(134,188,37,0.08)', border: '1px solid var(--dex-green, #86bc25)',
+              borderRadius: 8, fontSize: '0.82rem', lineHeight: 1.5, color: 'var(--dex-gray-700)',
+            }}>
+              <strong>Self-Check-in als Ergänzung:</strong> Statt (oder zusätzlich zu) den persönlichen QR-Mails können sich Teilnehmer am Eingang auch <strong>selbst einchecken</strong> — sie scannen dafür einen Event-QR mit der normalen Handy-Kamera, ganz ohne Scanner-Team.{' '}
+              <a
+                href="javascript:void(0)"
+                onClick={e => {
+                  e.preventDefault();
+                  (async () => {
+                    const token = await ensureSelfCheckInReady(selectedEvent);
+                    if (token) {
+                      setQrSendModalOpen(false);
+                      navigate('self-checkin-display', selectedEvent.id);
+                    }
+                  })().catch(() => { /* best-effort */ });
+                }}
+                style={{ color: 'var(--dex-green-dark)', fontWeight: 600 }}
+              >Live-QR anzeigen</a>
+              {' '}oder{' '}
+              <a
+                href="javascript:void(0)"
+                onClick={e => {
+                  e.preventDefault();
+                  (async () => {
+                    const token = await ensureSelfCheckInReady(selectedEvent);
+                    if (!token) return;
+                    await downloadSelfCheckInPdf({
+                      eventTitle: selectedEvent.title || 'Event',
+                      eventDateLabel: selectedEvent.startDate ? new Date(selectedEvent.startDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '',
+                      locationLabel: selectedEvent.location || '',
+                      token,
+                    });
+                  })().catch(() => { /* best-effort */ });
+                }}
+                style={{ color: 'var(--dex-green-dark)', fontWeight: 600 }}
+              >QR-PDF zum Ausdrucken herunterladen</a>.
+              {' '}Falls Self-Check-in noch nicht aktiviert war, wird es dabei automatisch eingeschaltet.
+            </div>
 
             {/* v9.29: Hinweis falls Organizer selbst NICHT für das Event angemeldet ist —
                 "Nur Test (an mich)" verschickt zwar die QR-Mail, aber der Check-In-Scan
