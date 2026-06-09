@@ -136,6 +136,20 @@ export function manageParticipantsSection(locale: 'de' | 'en'): ManualSection {
               ? 'Der Page-ID-Indikator im Header-Avatar-Popup zeigt "admin-event" wenn du auf der Detail-Seite bist und "admin-center" auf der Event-Auswahl — praktisch, wenn du in einem Bug-Report exakt sagen willst, wo du gerade warst.'
               : 'The Page-ID indicator in the header avatar popup shows "admin-event" when you\'re on the detail view and "admin-center" on the event picker — handy when filing a bug report so you can name exactly where you were.',
           },
+          {
+            number: 8,
+            title: isDe ? 'Events mit Sub-Events: konsolidierte Teilnehmer-Ansicht' : 'Events with sub-events: consolidated participant view',
+            description: (
+              <>
+                {isDe
+                  ? 'Bei einem Event mit Sub-Events (Sections) siehst du im Admin Center eine konsolidierte Tabelle: eine Zeile pro Person, mit Spalten je Sub-Event („angemeldet?") und den übergreifenden Hauptevent-Feldern. Seit v19.30 kannst du hier pro Person (1) die übergreifenden Hauptevent-Felder über den „Felder"-Button direkt bearbeiten und (2) über den „Abmelden"-Button ein Modal öffnen, in dem du auswählst, von welchen Sub-Events — oder von allen — die Person abgemeldet werden soll. Pro gewähltem Sub-Event laufen Abmelde-Mail, Outlook-Absage und Nachrücken automatisch (die Schalter des jeweiligen Sub-Events werden respektiert). In der „Abmeldungen"-Liste darunter kannst du einzelne abgemeldete Registrierungen nach einer Sicherheits-Abfrage endgültig löschen (z.B. Test-Anmeldungen).'
+                  : 'For an event with sub-events (sections), the admin center shows a consolidated table: one row per person, with a column per sub-event („registered?") plus the cross-cutting main-event fields. Since v19.30 you can, per person, (1) edit the cross-cutting main-event fields directly via the „Fields" button and (2) open a modal via the „Cancel" button to choose which sub-events — or all — to deregister the person from. For each selected sub-event, the cancellation email, Outlook removal and waitlist promotion run automatically (each sub-event\'s switches are respected). In the „Cancellations" list below you can permanently delete individual cancelled registrations after a safety prompt (e.g. test registrations).'}
+              </>
+            ),
+            tip: isDe
+              ? 'Jede Abmeldung, Löschung und Feld-Änderung landet im Audit-Log. Öffne es über die Aktion „Audit-Log / Änderungsprotokoll" — es ist dann direkt auf dieses Event vorgefiltert und zeigt pro Eintrag wer, wann, was (bei Daten-Änderungen Vorher → Nachher je Feld).'
+              : 'Every cancellation, deletion and field change is recorded in the audit log. Open it via the „Audit log / change log" action — it is then pre-filtered to this event and shows who, when and what per entry (for data changes: before → after per field).',
+          },
         ],
       },
     ],

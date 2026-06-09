@@ -89,6 +89,34 @@ export default function SettingsPage(): React.ReactElement {
       events: accumulator[emailLc].events,
     }));
   }, [roles, events]);
+  // v19.26: Die Per-Event-Organizer-Namen stammen aus dem index-basierten
+  // Pairing von Organizer-Namen ↔ -E-Mails im Event. Driftet dieses Pairing
+  // (z.B. weil ein Feld einen leeren Slot hatte und unabhängig gefiltert wurde),
+  // steht der Name neben der falschen E-Mail — und das Foto (lädt per E-Mail)
+  // zeigt die falsche Person. Wir lösen den Anzeige-Namen daher zuverlässig über
+  // die E-Mail auf (gleicher Schlüssel wie das Foto); Fallback bleibt der
+  // Index-Name. So passen Name + Foto immer zusammen.
+  const [resolvedOrgNames, setResolvedOrgNames] = React.useState<Record<string, string>>({});
+  const orgNameAttemptedRef = React.useRef<Set<string>>(new Set());
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      for (const co of coOrganizersList) {
+        if (orgNameAttemptedRef.current.has(co.email)) continue;
+        orgNameAttemptedRef.current.add(co.email);
+        try {
+          // includeInternational=true → deckt @deloitte.de UND @deloitte.com ab.
+          const results = await searchUsers(co.email, true);
+          const match = results.find(r => (r.email || '').toLowerCase() === co.email);
+          if (match && match.displayName && !cancelled) {
+            setResolvedOrgNames(prev => ({ ...prev, [co.email]: match.displayName }));
+          }
+        } catch { /* Fallback: Index-Name aus co.name */ }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coOrganizersList]);
   // Formular-State für neue Rolle
   const [newEmail, setNewEmail] = React.useState('');
   const [newName, setNewName] = React.useState('');
@@ -680,7 +708,7 @@ export default function SettingsPage(): React.ReactElement {
                               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                 <img
                                   src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(co.email)}&size=L`}
-                                  alt={co.name}
+                                  alt={resolvedOrgNames[co.email] || co.name}
                                   onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
                                   style={{
                                     width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', flexShrink: 0,
@@ -702,7 +730,7 @@ export default function SettingsPage(): React.ReactElement {
                                     (e.currentTarget as HTMLImageElement).style.position = '';
                                   }}
                                 />
-                                <span>{co.name}</span>
+                                <span>{resolvedOrgNames[co.email] || co.name}</span>
                               </div>
                             </td>
                             <td style={{ padding: 10, color: 'var(--dex-gray-600)' }}>{co.email}</td>
