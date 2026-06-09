@@ -108,7 +108,7 @@ const OUTLOOK_FORWARD_BODY_EN = wrapTemplateForStorage(
   '#0d6efd',
   'Meeting was forwarded',
   'Event {{EventTitle}}',
-  `<p>Hi {{OrganizerFirstName}},</p>
+  `<p>Hi,</p>
 <p>FYI: <strong>{{Forwarder}}</strong> forwarded the Outlook invitation for <strong>{{EventTitle}}</strong> to <strong>{{Recipient}}</strong> ({{RecipientEmail}}).</p>
 <p><strong>{{Recipient}} is currently NOT registered in the DEX participant list.</strong> This person still needs to register via the app in order to get a ParticipantID and QR code and to appear in the official participant list.</p>
 <p style="margin:24px 0;text-align:center;"><a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView" style="display:inline-block;padding:12px 28px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Open DEX App</a></p>
@@ -126,7 +126,7 @@ const OUTLOOK_FORWARD_BODY_DE = wrapTemplateForStorage(
   '#0d6efd',
   'Termin wurde weitergeleitet',
   'Event {{EventTitle}}',
-  `<p>Hallo {{OrganizerFirstName}},</p>
+  `<p>Hallo,</p>
 <p>zur Info: <strong>{{Forwarder}}</strong> hat die Outlook-Einladung f\u00FCr <strong>{{EventTitle}}</strong> an <strong>{{Recipient}}</strong> ({{RecipientEmail}}) weitergeleitet.</p>
 <p><strong>{{Recipient}} ist aktuell NICHT in der DEX-Teilnehmerliste registriert.</strong> Die Person muss sich ggf. noch selbst \u00FCber die App anmelden, damit sie eine TeilnehmerID und einen QR-Code bekommt und in der offiziellen Teilnehmerliste erscheint.</p>
 <p style="margin:24px 0;text-align:center;"><a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView" style="display:inline-block;padding:12px 28px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">DEX-App \u00F6ffnen</a></p>
