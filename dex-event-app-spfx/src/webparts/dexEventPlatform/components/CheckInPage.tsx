@@ -9,6 +9,9 @@
 import * as React from 'react';
 import { useEvents } from '../context/EventContext';
 import { useNavigation } from '../context/NavigationContext';
+// v20.1: Self-Check-in direkt aus der Check-in-Seite (Live-QR + PDF-Druck).
+import { generateSelfCheckInToken } from '../utils/selfCheckIn';
+import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
 import { useRoles } from '../context/RoleContext';
 import { useCurrentUser } from '../context/UserContext';
 import { EventService } from '../services/EventService';
@@ -19,7 +22,7 @@ import OrganizerList from './OrganizerList';
 import type QrScanner from 'qr-scanner';
 
 export default function CheckInPage(): React.ReactElement {
-  const { events, getAllRegistrations } = useEvents();
+  const { events, getAllRegistrations, updateEvent } = useEvents();
   const { selectedEventId, navigate } = useNavigation();
   const { isAdmin, isOrganizer, siteUrl } = useRoles();
   const { currentUser } = useCurrentUser();
@@ -88,6 +91,8 @@ export default function CheckInPage(): React.ReactElement {
   const [searchRegsCache, setSearchRegsCache] = React.useState<Record<string, import('../services/EventService').SPRegistration[]>>({});
   const [isLoadingSearchRegs, setIsLoadingSearchRegs] = React.useState(false);
   const [searchLoadError, setSearchLoadError] = React.useState('');
+  // v20.1: Busy-Flag für die Self-Check-in-Aktionen (Live-QR / PDF).
+  const [selfCheckInBusy, setSelfCheckInBusy] = React.useState(false);
   React.useEffect(() => {
     if (selectedEventId && !nameSearchEventId) setNameSearchEventId(selectedEventId);
   }, [selectedEventId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -592,6 +597,55 @@ export default function CheckInPage(): React.ReactElement {
     );
   }
 
+  // v20.1: Self-Check-in — grundsätzlich immer verfügbar. Hat das Event noch
+  // keinen aktiven Token (Wizard-Toggle nie gesetzt), wird Self-Check-in beim
+  // ersten Klick automatisch aktiviert: Token erzeugen + am Event speichern.
+  // Das Persistieren braucht Schreibrechte auf DEX_Events (Organizer/Admin) —
+  // reine Check-in-Helfer bekommen in dem Fall einen klaren Hinweis. Existiert
+  // der Token bereits, funktionieren beide Aktionen ohne Schreibzugriff.
+  const ensureSelfCheckInReady = async (): Promise<string | null> => {
+    if (selectedEvent.selfCheckInEnabled && selectedEvent.selfCheckInToken) {
+      return selectedEvent.selfCheckInToken;
+    }
+    const token = selectedEvent.selfCheckInToken || generateSelfCheckInToken();
+    let ok = false;
+    try {
+      ok = await updateEvent(selectedEvent.id, { 'SelfCheckInEnabled': true, 'SelfCheckInToken': token });
+    } catch { ok = false; }
+    if (!ok) {
+      alert(isDe
+        ? 'Self-Check-in konnte für dieses Event nicht aktiviert werden (vermutlich fehlende Berechtigung). Bitte einmalig von einem Organizer oder Admin aktivieren lassen — danach kann auch das Check-in-Team die QR-Anzeige und das PDF nutzen.'
+        : 'Self check-in could not be activated for this event (probably missing permission). Please have an organizer or admin activate it once — afterwards the check-in team can use the QR display and PDF as well.');
+      return null;
+    }
+    return token;
+  };
+  const openSelfCheckInDisplay = async (): Promise<void> => {
+    if (selfCheckInBusy) return;
+    setSelfCheckInBusy(true);
+    try {
+      const token = await ensureSelfCheckInReady();
+      if (token) navigate('self-checkin-display', selectedEvent.id);
+    } finally { setSelfCheckInBusy(false); }
+  };
+  const downloadSelfCheckInQrPdf = async (): Promise<void> => {
+    if (selfCheckInBusy) return;
+    setSelfCheckInBusy(true);
+    try {
+      const token = await ensureSelfCheckInReady();
+      if (!token) return;
+      const dateLabel = selectedEvent.startDate
+        ? new Date(selectedEvent.startDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+        : '';
+      await downloadSelfCheckInPdf({
+        eventTitle: selectedEvent.title || 'Event',
+        eventDateLabel: dateLabel,
+        locationLabel: selectedEvent.location || '',
+        token,
+      });
+    } finally { setSelfCheckInBusy(false); }
+  };
+
   return (
     <div className="page-container" role="main">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
@@ -772,6 +826,41 @@ export default function CheckInPage(): React.ReactElement {
             muted
           />
         </div>
+      </div>
+
+      {/* v20.1: Self-Check-in — prominent direkt unter dem Live-Scanner.
+          Teilnehmer scannen den Event-QR mit der NATIVEN Handy-Kamera (kein
+          Kamera-Zugriff in der App nötig) und checken sich selbst ein. */}
+      <div className="card" style={{ padding: 24, marginBottom: 16 }}>
+        <h3 style={{ marginBottom: 6 }}>Self-Check-in</h3>
+        <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', margin: '0 0 14px' }}>
+          {isDe
+            ? 'Teilnehmer scannen den Event-QR mit der normalen Handy-Kamera und checken sich selbst ein — ohne Scanner-Team und ohne Kamera-Freigabe in der App. Live-Anzeige für einen Bildschirm am Eingang (Code rotiert, foto-sicher) oder PDF zum Ausdrucken und Aushängen.'
+            : 'Attendees scan the event QR with their regular phone camera and check themselves in — no scanner team and no in-app camera access needed. Live display for a screen at the entrance (rotating code, photo-safe) or a printable PDF to post.'}
+        </p>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
+          <button
+            className="btn btn-primary"
+            disabled={selfCheckInBusy}
+            onClick={openSelfCheckInDisplay}
+            style={{ fontSize: '0.95rem', padding: '12px 24px' }}
+          >
+            {isDe ? 'Live-QR anzeigen' : 'Show live QR'}
+          </button>
+          <button
+            className="btn btn-secondary"
+            disabled={selfCheckInBusy}
+            onClick={downloadSelfCheckInQrPdf}
+            style={{ fontSize: '0.95rem', padding: '12px 24px' }}
+          >
+            {isDe ? 'QR-PDF herunterladen (drucken)' : 'Download QR PDF (print)'}
+          </button>
+        </div>
+        {selfCheckInBusy && (
+          <p style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--dex-gray-400)', margin: '10px 0 0' }}>
+            {isDe ? 'Wird vorbereitet…' : 'Preparing…'}
+          </p>
+        )}
       </div>
 
       {/* v7.16: Foto-Upload-Fallback (Galerie / Kamera-Capture per File-Input)
