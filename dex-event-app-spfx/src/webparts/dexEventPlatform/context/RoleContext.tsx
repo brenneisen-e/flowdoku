@@ -262,16 +262,22 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   const originalIsAdmin = currentUserRole === 'Admin';
   const siteUrl = props.context.pageContext.web.absoluteUrl;
 
+  // v20.0 (Audit): Context-Value memoizen. Die Rollen-Methoden schließen nur
+  // über `roles` (find-Lookups) + stabile Service-/Setter-Referenzen — `roles`
+  // ist als Dependency enthalten, daher bleiben die Closures frisch. Die
+  // Funktions-Identitäten selbst sind bewusst keine Dependencies (sie werden
+  // pro Render neu erzeugt und würden das Memo wirkungslos machen).
+  const value = React.useMemo<RoleContextType>(() => ({
+    roles, currentUserRole, isRolesLoading,
+    isAdmin, isOrganizer, canCreateEvents, siteUrl,
+    originalIsAdmin, isImpersonating,
+    addRole, updateRole, setPowerUser, updateRoleLocation, removeRole, refreshRoles, searchUser, searchUsers, searchGroups, getGroupMembers, searchUsersByLocation,
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [roles, currentUserRole, isRolesLoading, isImpersonating, siteUrl]);
+
   return React.createElement(
     RoleContext.Provider,
-    {
-      value: {
-        roles, currentUserRole, isRolesLoading,
-        isAdmin, isOrganizer, canCreateEvents, siteUrl,
-        originalIsAdmin, isImpersonating,
-        addRole, updateRole, setPowerUser, updateRoleLocation, removeRole, refreshRoles, searchUser, searchUsers, searchGroups, getGroupMembers, searchUsersByLocation,
-      },
-    },
+    { value },
     props.children
   );
 }

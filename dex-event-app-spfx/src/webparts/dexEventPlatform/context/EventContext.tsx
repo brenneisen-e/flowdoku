@@ -14,7 +14,6 @@ import { DeloitteEvent } from '../types';
 import { EventService, SPEvent, CustomField, SPRegistration, ReseedSummary } from '../services/EventService';
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
 import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
-import * as QRCode from 'qrcode';
 import { APP_VERSION } from '../version';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
 
@@ -195,6 +194,70 @@ export function collectCcEmailsFromFields(
     if (em && lc !== exclude && !seen.has(lc)) { seen.add(lc); out.push(em); }
   }
   return out.join(';');
+}
+
+// v19.33: SP-Spaltennamen → lesbare Labels fürs Event-Audit-Log.
+const EVENT_AUDIT_LABELS: Record<string, string> = {
+  Title: 'Titel', Description: 'Beschreibung', Location: 'Ort', LocationAddress: 'Adresse',
+  StartDate: 'Start', EndDate: 'Ende', RegistrationDeadline: 'Anmeldeschluss',
+  LastDeregisterDate: 'Letzte Abmeldung', MaxParticipants: 'Teilnehmerzahl',
+  WaitlistEnabled: 'Warteliste', DisableEmails: 'E-Mails',
+  DisableRegistrationEmail: 'Anmelde-Bestätigung', DisableCancellationEmail: 'Abmelde-Bestätigung',
+  AutoDeregisterOnDecline: 'Outlook-Absage = Abmeldung', DisableOutlook: 'Outlook-Termin',
+  EmailLanguage: 'Mail-Sprache', RegistrationLanguage: 'Anmeldesprache',
+  CustomFields: 'Eventfelder', Agenda: 'Agenda', Transfers: 'Transferzeiten', FunZone: 'Quiz',
+  OutlookBody: 'Outlook-Text', OutlookSubject: 'Outlook-Betreff', OutlookLocation: 'Outlook-Ort',
+  OutlookStart: 'Outlook-Start', OutlookEnd: 'Outlook-Ende',
+  LocationFilter: 'Standortfilter', Audience: 'Mailverteiler', FilterMode: 'Filterverknüpfung',
+  ExcludedUsers: 'Ausgeschlossene Personen', AudienceResolvedEmails: 'Sichtbarkeits-Cache',
+  Organizer: 'Organizer', OrganizerEmail: 'Organizer-Mails',
+  ContactName: 'Ansprechpartner', ContactEmail: 'Kontakt-Mail', ContactInfo: 'Kontakt-Info',
+  EventImageUrl: 'Event-Bild', EmailImageBase64: 'Mail-Logo', EmailTemplateOverrides: 'Mail-Vorlagen',
+  DurchstarterCapacity: 'Kapazität Gruppe A', FunstarterCapacity: 'Kapazität Gruppe B',
+  SplitLabelA: 'Label Gruppe A', SplitLabelB: 'Label Gruppe B', SplitSharedWaitlist: 'Gemeinsame Warteliste',
+  TeamRegistrationEnabled: 'Team-Anmeldung', TeamSize: 'Teamgröße', AskTeamName: 'Team-Name abfragen',
+  AskSalutation: 'Anrede abfragen', BilingualFields: 'Zweisprachig',
+  ConfirmDialogEnabled: 'Bestätigungs-Dialog', SelfCheckInEnabled: 'Self-Check-in',
+  ActiveFrom: 'Sichtbar ab', NotifyOrgRegisterMode: 'Organizer-Kopie Anmeldung',
+  NotifyOrgCancelMode: 'Organizer-Kopie Abmeldung', AllowAttendeeUpload: 'Datei-Upload',
+};
+
+/**
+ * v19.33: Diff zwischen altem Roh-SP-Item und dem Update-Payload (beide
+ * SP-Spalten-Format → verlässlicher Vergleich). Liefert NUR die wirklich
+ * geänderten Felder als `{ Label: { old, new } }`. Lange/JSON-Felder werden
+ * nicht ausgeschrieben (nur „(geändert)"), Booleans als „an"/„aus".
+ */
+export function buildEventUpdateDiff(
+  oldItem: Record<string, unknown>,
+  updates: Record<string, unknown>,
+): Record<string, { old: string; new: string }> {
+  const norm = (v: unknown): string => {
+    if (v === null || v === undefined) return '';
+    if (typeof v === 'boolean') return v ? 'true' : 'false';
+    return String(v).trim();
+  };
+  const same = (a: unknown, b: unknown): boolean => {
+    const na = norm(a), nb = norm(b);
+    if (na === nb) return true;
+    const da = Date.parse(na), db = Date.parse(nb);
+    if (!isNaN(da) && !isNaN(db)) return da === db;
+    return false;
+  };
+  const prettyBool = (v: string): string => v === 'true' ? 'an' : v === 'false' ? 'aus' : v;
+  const trunc = (s: string): string => s.length > 80 ? `${s.slice(0, 77)}…` : s;
+  const opaque = new Set(['CustomFields', 'Agenda', 'Transfers', 'FunZone', 'EmailTemplateOverrides', 'AudienceResolvedEmails', 'EmailImageBase64', 'OutlookBody', 'ExcludedUsers', 'Documents']);
+  const out: Record<string, { old: string; new: string }> = {};
+  for (const key of Object.keys(updates)) {
+    if (same(oldItem[key], updates[key])) continue;
+    const label = EVENT_AUDIT_LABELS[key] || key;
+    if (opaque.has(key)) {
+      out[label] = { old: '(vorher)', new: '(geändert)' };
+    } else {
+      out[label] = { old: trunc(prettyBool(norm(oldItem[key]))) || '(leer)', new: trunc(prettyBool(norm(updates[key]))) || '(leer)' };
+    }
+  }
+  return out;
 }
 
 /** v18.33: Eingabe für den Self-Check-in-Deep-Link. Entweder `token` (statischer
@@ -1297,9 +1360,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
               const qrData = `DEX|${event.eventNumber}|${emailToUse}`;
               let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
               try {
+                // v20.0 (Audit): qrcode lazy laden (EventContext ist Boot-Pfad —
+                // die Lib gehört nicht ins Haupt-Bundle) + Fehler loggen statt
+                // still auf Text-Fallback zu wechseln.
+                const QRCode = await import('qrcode');
                 const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
                 qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
-              } catch { /* fallback bleibt Text */ }
+              } catch (qrErr) { console.warn('[DEX] QRCode.toDataURL fehlgeschlagen — Text-Fallback:', qrErr); }
               const qrMail = qrCodeEmail(firstNameToUse, event.title, qrImageHtml, lang, nameToUse);
               // v9.22: Auto-Send-QR fuer externe Empfaenger ebenfalls an den
               // Organizer umleiten (mit klarem Subject-Praefix), nicht an den
@@ -2782,20 +2849,32 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   }
 
   async function updateEvent(eventId: string, updates: Record<string, unknown>): Promise<boolean> {
+    // v19.33: Roh-Stand VOR dem Update holen, damit das Audit-Log nur die
+    // WIRKLICH geänderten Felder protokolliert (Vorher → Nachher). Vorher loggte
+    // es alle Payload-Keys — der Wizard schreibt aber immer den kompletten Payload.
+    let oldItem: Record<string, unknown> = {};
+    try {
+      const raw = await eventService.getEvent(Number(eventId));
+      if (raw) oldItem = raw as unknown as Record<string, unknown>;
+    } catch { /* Diff bleibt leer, Update läuft trotzdem */ }
     const success = await eventService.updateEvent(Number(eventId), updates);
     if (success) {
-      // v9.0: Audit-Log (fire-and-forget — UI-Save soll nicht haengen
-      // falls SP-ChangeLog-Liste fehlt oder Permissions fehlen).
+      // v9.0/v19.33: Audit-Log (fire-and-forget — UI-Save soll nicht haengen
+      // falls SP-ChangeLog-Liste fehlt oder Permissions fehlen). Nur die echten
+      // Änderungen werden geloggt; gab es keine, entfällt der Eintrag.
       const ev = events.find(e => e.id === eventId);
-      eventService.writeChangeLog({
-        action: 'EventUpdated',
-        targetType: 'Event',
-        targetId: eventId,
-        targetName: ev?.title || '',
-        eventId: eventId,
-        eventTitle: ev?.title || '',
-        details: { changedFields: Object.keys(updates) },
-      }).catch(() => { /* */ });
+      const changes = buildEventUpdateDiff(oldItem, updates);
+      if (Object.keys(changes).length > 0) {
+        eventService.writeChangeLog({
+          action: 'EventUpdated',
+          targetType: 'Event',
+          targetId: eventId,
+          targetName: ev?.title || '',
+          eventId: eventId,
+          eventTitle: ev?.title || '',
+          details: { changes },
+        }).catch(() => { /* */ });
+      }
       // v9.41: loadEvents im try/catch — wenn ein einzelner Event-Mapping (z.B.
       // ein frisch erstellter Sibling) fehlschlägt, soll das den updateEvent-
       // Erfolg nicht zu einem white-screen-blow-up führen. allSettled in loadEvents

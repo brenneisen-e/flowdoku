@@ -44,50 +44,58 @@ export function NavigationProvider(props: { children: React.ReactNode }): React.
   const [history, setHistory] = React.useState<HistoryEntry[]>([]);
   const guardRef = React.useRef<(() => Promise<boolean>) | null>(null);
 
-  const setNavigationGuard = (guard: (() => Promise<boolean>) | null): void => {
-    guardRef.current = guard;
-  };
-
-  const navigate = (page: Page, eventId?: string, intent?: NavIntent): void => {
-    // v17.3: Wenn eine Page einen Guard registriert hat (z.B.
-    // EventCreationPage bei unsaved-changes), erst dort bestaetigen lassen.
-    const proceed = (): void => {
-      setHistory(prev => [...prev, { page: currentPage, eventId: selectedEventId, intent: navIntent }]);
-      setCurrentPage(page);
-      setSelectedEventId(eventId || null);
-      setNavIntent(intent);
-      guardRef.current = null; // Guard nach erfolgreichem Wegnavigieren raeumen.
+  // v20.0 (Audit): Context-Value memoizen — die Funktionen schließen über
+  // currentPage/selectedEventId/navIntent/history, daher sind genau diese
+  // vier die Memo-Abhängigkeiten. Verhindert App-weite Re-Renders aller
+  // useNavigation()-Consumer bei Parent-Re-Renders ohne Navigations-Änderung.
+  const value = React.useMemo<NavigationContextType>(() => {
+    const setNavigationGuard = (guard: (() => Promise<boolean>) | null): void => {
+      guardRef.current = guard;
     };
-    if (guardRef.current) {
-      guardRef.current().then(ok => { if (ok) proceed(); }).catch(() => { /* abort */ });
-    } else {
-      proceed();
-    }
-  };
 
-  const goBack = (): void => {
-    const proceed = (): void => {
-      if (history.length > 0) {
-        const prev = history[history.length - 1];
-        setHistory(h => h.slice(0, -1));
-        setCurrentPage(prev.page);
-        setSelectedEventId(prev.eventId);
-        setNavIntent(prev.intent);
-        guardRef.current = null;
+    const navigate = (page: Page, eventId?: string, intent?: NavIntent): void => {
+      // v17.3: Wenn eine Page einen Guard registriert hat (z.B.
+      // EventCreationPage bei unsaved-changes), erst dort bestaetigen lassen.
+      const proceed = (): void => {
+        setHistory(prev => [...prev, { page: currentPage, eventId: selectedEventId, intent: navIntent }]);
+        setCurrentPage(page);
+        setSelectedEventId(eventId || null);
+        setNavIntent(intent);
+        guardRef.current = null; // Guard nach erfolgreichem Wegnavigieren raeumen.
+      };
+      if (guardRef.current) {
+        guardRef.current().then(ok => { if (ok) proceed(); }).catch(() => { /* abort */ });
+      } else {
+        proceed();
       }
     };
-    if (guardRef.current) {
-      guardRef.current().then(ok => { if (ok) proceed(); }).catch(() => { /* abort */ });
-    } else {
-      proceed();
-    }
-  };
 
-  const clearIntent = (): void => setNavIntent(undefined);
+    const goBack = (): void => {
+      const proceed = (): void => {
+        if (history.length > 0) {
+          const prev = history[history.length - 1];
+          setHistory(h => h.slice(0, -1));
+          setCurrentPage(prev.page);
+          setSelectedEventId(prev.eventId);
+          setNavIntent(prev.intent);
+          guardRef.current = null;
+        }
+      };
+      if (guardRef.current) {
+        guardRef.current().then(ok => { if (ok) proceed(); }).catch(() => { /* abort */ });
+      } else {
+        proceed();
+      }
+    };
+
+    const clearIntent = (): void => setNavIntent(undefined);
+
+    return { currentPage, selectedEventId, navIntent, navigate, goBack, clearIntent, setNavigationGuard };
+  }, [currentPage, selectedEventId, navIntent, history]);
 
   return React.createElement(
     NavigationContext.Provider,
-    { value: { currentPage, selectedEventId, navIntent, navigate, goBack, clearIntent, setNavigationGuard } },
+    { value },
     props.children
   );
 }

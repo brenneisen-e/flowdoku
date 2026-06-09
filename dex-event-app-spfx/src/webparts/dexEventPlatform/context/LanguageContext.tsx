@@ -917,20 +917,25 @@ export function LanguageProvider(props: { children: React.ReactNode }): React.Re
     return 'en'; // Default: Englisch
   });
 
-  const setLocale = (newLocale: Locale): void => {
-    setLocaleState(newLocale);
-    try {
-      localStorage.setItem(STORAGE_KEY, newLocale);
-    } catch { /* */ }
-  };
-
-  const t = (key: string): string => {
-    return translations[locale][key] || translations['en'][key] || key;
-  };
+  // v20.0 (Audit): Context-Value memoizen — vorher wurde bei jedem Re-Render
+  // des Providers (z.B. durch Parent-Re-Renders) ein neues Value-Objekt
+  // erzeugt und damit JEDER useLanguage()-Consumer unnötig re-rendert.
+  const value = React.useMemo<LanguageContextType>(() => {
+    const setLocale = (newLocale: Locale): void => {
+      setLocaleState(newLocale);
+      try {
+        localStorage.setItem(STORAGE_KEY, newLocale);
+      } catch { /* */ }
+    };
+    const t = (key: string): string => {
+      return translations[locale][key] || translations['en'][key] || key;
+    };
+    return { locale, setLocale, t };
+  }, [locale]);
 
   return React.createElement(
     LanguageContext.Provider,
-    { value: { locale, setLocale, t } },
+    { value },
     props.children
   );
 }

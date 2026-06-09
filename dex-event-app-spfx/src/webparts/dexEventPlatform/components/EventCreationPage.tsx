@@ -2581,6 +2581,21 @@ export default function EventCreationPage(): React.ReactElement {
           'EndDate': childPayload.endDate || null,
           'RegistrationDeadline': childPayload.registrationDeadline || null,
           'MaxParticipants': childPayload.maxParticipants,
+          // v20.0 BUG-FIX (Audit): diese Felder wurden beim UPDATE bestehender
+          // Sub-Events NIE mitgeschrieben (nur beim Create via childPayload) —
+          // Änderungen an Sichtbarkeit (v19.27 AudiencePicker), Adresse, Agenda,
+          // Transferzeiten, Abmeldefrist, Warteliste und Anrede-Abfrage gingen
+          // beim Speichern eines bestehenden Sub-Events still verloren
+          // (gleiche Bug-Klasse wie v19.32 bei den Mail-Flags).
+          'WaitlistEnabled': childPayload.waitlistEnabled,
+          'LastDeregisterDate': childPayload.lastDeregisterDate || null,
+          'LocationAddress': childPayload.locationAddress,
+          'LocationFilter': childPayload.locationFilter,
+          'Audience': childPayload.audience,
+          'FilterMode': childPayload.filterMode,
+          'Agenda': childPayload.agenda,
+          'Transfers': childPayload.transfers,
+          'AskSalutation': childPayload.askSalutation,
           'DisableEmails': childPayload.disableEmails,
           // v19.32 BUG-FIX: die granularen An-/Abmelde-Mail-Flags + Auto-Abmeldung
           // wurden beim UPDATE bestehender Sub-Events NICHT mitgeschrieben (nur
@@ -2971,6 +2986,10 @@ export default function EventCreationPage(): React.ReactElement {
         'EndDate': endDate ? berlinLocalToUtcIso(endDate) : null,
         'RegistrationDeadline': deadlineToEndOfDayIso(registrationDeadline),
         'MaxParticipants': unlimitedParticipants ? 0 : (Number(maxParticipants) || 0),
+        // v20.0 BUG-FIX (Audit): WaitlistEnabled wurde beim Edit nie persistiert —
+        // das Umschalten der Warteliste auf einem bestehenden Event ging still
+        // verloren (nur der Create-Pfad schrieb das Feld).
+        'WaitlistEnabled': !!waitlistEnabled,
         'EventImageUrl': imageUrl,
         'Organizer': sanitizedOrgPairEdit.orgString,
         'OrganizerEmail': sanitizedOrgPairEdit.orgEmailString,

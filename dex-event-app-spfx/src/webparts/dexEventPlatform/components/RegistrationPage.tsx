@@ -1595,9 +1595,17 @@ export default function RegistrationPage(): React.ReactElement {
                     : <>you have successfully registered for <strong>{event.title}</strong>. We received your registration for the following {sectionPlural}:</>}
                 </p>
                 <ul style={{ margin: '0 0 10px', paddingLeft: 22 }}>
-                  {selectedChildren.map(ce => (
-                    <li key={ce.id} style={{ marginBottom: 3 }}>{ce.title || (locale === 'de' ? 'ohne Titel' : 'untitled')}</li>
-                  ))}
+                  {selectedChildren.map(ce => {
+                    // v19.33: nur den reinen Section-Namen zeigen (Parent-Präfix
+                    // „<Hauptevent> | …" strippen) + dahinter „ | <Datum>".
+                    const full = (ce.title || '').trim();
+                    const pipe = full.lastIndexOf('|');
+                    const name = (pipe >= 0 ? full.substring(pipe + 1).trim() : full) || (locale === 'de' ? 'ohne Titel' : 'untitled');
+                    const date = ce.startDate ? formatDate(ce.startDate) : '';
+                    return (
+                      <li key={ce.id} style={{ marginBottom: 3 }}>{date ? `${name} | ${date}` : name}</li>
+                    );
+                  })}
                 </ul>
                 {confirmLine && <p style={{ margin: 0 }}>{confirmLine}</p>}
               </div>

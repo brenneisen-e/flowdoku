@@ -18,7 +18,9 @@ import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
 import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2, ChevronUp, ChevronDown, QrCode } from './Icons';
 import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
-import * as XLSX from 'xlsx';
+// v20.0 (Audit): xlsx + qrcode werden nicht mehr statisch importiert, sondern
+// erst beim tatsächlichen Gebrauch (Export-Klick / QR-Vorschau) als eigener
+// Chunk nachgeladen — spart ~1 MB im Haupt-Bundle.
 import { EventService } from '../services/EventService';
 import { qrCodeEmail, cancellationEmail, promotionEmail, wrapTemplate, replacePlaceholders, buildEmailFromTemplate, getCachedLogoBase64, getCachedOrbBase64, injectIntoEmailContent } from '../services/EmailTemplates';
 import { applyEventTemplateOverride, formatOrganizerList } from '../context/EventContext';
@@ -27,7 +29,6 @@ import { InfoTooltip } from './InfoTooltip';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
-import * as QRCode from 'qrcode';
 
 function formatDate(iso: string): string {
   if (!iso) return '-';
@@ -2061,14 +2062,8 @@ export default function AdminPage(): React.ReactElement {
       .sort((a, b) => (a.TeilnehmerID || 0) - (b.TeilnehmerID || 0));
     if (activeRegsForExport.length === 0) { alert('Keine Teilnehmer zum Exportieren.'); return; }
 
-    // CSV-Wert sicher escapen (Komma, Quotes, Newlines)
-    const esc = (v: unknown): string => {
-      const s = (v === null || v === undefined) ? '' : String(v);
-      if (s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0 || s.indexOf(';') >= 0) {
-        return `"${s.replace(/"/g, '""')}"`;
-      }
-      return s;
-    };
+    // v20.0 (Audit): toter CSV-Escaper `esc` entfernt — seit dem Umstieg auf
+    // natives XLSX (v8.4) wurde er nie mehr aufgerufen.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const parseCustom = (json: string): Record<string, any> => {
       try { return JSON.parse(json || '{}'); } catch { return {}; }
@@ -2147,26 +2142,29 @@ export default function AdminPage(): React.ReactElement {
 
     const safeName = (selectedEvent.title || 'event').replace(/[^a-zA-Z0-9]/g, '_');
     // XLSX Export — natives Excel-Format, automatische Spalten-Breiten, keine
-    // CSV-Escaping-Quirks. Gilt fuer beide Modi (Teilnehmerliste + B2Run).
+    // CSV-Escaping-Quirks. Gilt für beide Modi (Teilnehmerliste + B2Run).
     const aoa: (string | number)[][] = [headers, ...rows];
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-    const colWidths = headers.map((h, ci) => {
-      const maxLen = Math.max(h.length, ...rows.map(r => String(r[ci] || '').length));
-      return { wch: Math.min(40, Math.max(10, maxLen + 2)) };
-    });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (ws as any)['!cols'] = colWidths;
-    const wb = XLSX.utils.book_new();
     const sheetName = mode === 'b2run' ? 'B2Run' : 'Teilnehmer';
-    XLSX.utils.book_append_sheet(wb, ws, sheetName);
     const filePrefix = mode === 'b2run' ? 'B2Run' : 'Teilnehmer';
     const fileName = `${filePrefix}_${safeName}_${new Date().toISOString().slice(0, 10)}.xlsx`;
 
+    // v20.0 (Audit): xlsx erst beim Export-Klick als Chunk nachladen — die
+    // Bibliothek ist mit Abstand die schwerste Dependency und wird nur hier
+    // gebraucht. Der .then/.catch-Pfad ersetzt das frühere try/catch.
     // v8.4: Manueller Blob-Download statt XLSX.writeFile. Im SPFx-Iframe-
-    // Context ist saveAs/createObjectURL haeufig blockiert (CORS / Sandbox-
+    // Context ist saveAs/createObjectURL häufig blockiert (CORS / Sandbox-
     // Policies), wodurch der Download stillschweigend nicht startet. Mit
-    // anchor.click() laeuft das in jeder Browser-Umgebung zuverlaessig.
-    try {
+    // anchor.click() läuft das in jeder Browser-Umgebung zuverlässig.
+    import('xlsx').then(XLSX => {
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      const colWidths = headers.map((h, ci) => {
+        const maxLen = Math.max(h.length, ...rows.map(r => String(r[ci] || '').length));
+        return { wch: Math.min(40, Math.max(10, maxLen + 2)) };
+      });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (ws as any)['!cols'] = colWidths;
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
       const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
       const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const url = URL.createObjectURL(blob);
@@ -2180,14 +2178,12 @@ export default function AdminPage(): React.ReactElement {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       }, 0);
-    } catch (err) {
+    }).catch(err => {
       console.warn('[DEX] Excel-Export fehlgeschlagen:', err);
       alert(isDe
-        ? 'Excel-Export fehlgeschlagen. Bitte Browser-Console pruefen.'
+        ? 'Excel-Export fehlgeschlagen. Bitte Browser-Console prüfen.'
         : 'Excel export failed. Please check the browser console.');
-    }
-    // esc wird nicht mehr gebraucht; Hinweis an eslint
-    void esc;
+    });
   };
 
   const handleSelectEvent = async (event: DeloitteEvent): Promise<void> => {
@@ -2251,16 +2247,8 @@ export default function AdminPage(): React.ReactElement {
   // Spalte (v17.9) eingefuehrt, die der User in v17.10 wieder rausgeworfen
   // hat. Damit kein Hook mehr, der bei /joinOrder/ stale referenziert war.
 
-  // Teilnehmerlisten-URL aus regListMap ableiten
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const getRegListUrl = (_event: DeloitteEvent): string => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const ctx = (window as any).__dexSpfxContext;
-    const base = ctx ? ctx.pageContext.web.absoluteUrl : siteUrl;
-    // Event-ID nutzen um den Listennamen zu finden
-    // Der Listenname ist in der SPEvent gespeichert, hier nutzen wir die events aus dem Context
-    return `${base}/Lists`;
-  };
+  // v20.0 (Audit): ungenutzte Helper-Funktion getRegListUrl entfernt
+  // (war seit Jahren nie aufgerufen, lieferte ohnehin nur `<base>/Lists`).
 
   // Danger-Zone-Modal als gemeinsames Element — wird in BEIDEN Render-Branches
   // (Event-Liste und Event-Detail) eingehängt, sonst läuft der Löschen-Klick auf
@@ -3201,8 +3189,8 @@ export default function AdminPage(): React.ReactElement {
               <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('jobTitle')}>Job Title{sortArrow('jobTitle')}</th>
               <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('location')}>{isDe ? 'Standort' : 'Location'}{sortArrow('location')}</th>
               {parentCustomFields.map(f => (
-                <th key={`pf-${f.id}`} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', ...PASTEL_A_HEADER }} title={`${f.label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
-                  {abbreviate(f.label, 22)}
+                <th key={`pf-${f.id}`} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 150, verticalAlign: 'top', lineHeight: 1.25, ...PASTEL_A_HEADER }} title={`${f.label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
+                  {f.label}
                 </th>
               ))}
               {childCustomFieldsByChild.map(({ child, fields }) => (
@@ -3216,9 +3204,9 @@ export default function AdminPage(): React.ReactElement {
                     <div style={{ fontSize: '0.68rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>{isDe ? 'angemeldet?' : 'registered?'}{sortArrow(`child:${child.id}`)}</div>
                   </th>
                   {fields.map(f => (
-                    <th key={`scf-${child.id}-${f.id}`} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', ...PASTEL_B_HEADER }} title={`${f.label} — ${child.title}`}>
+                    <th key={`scf-${child.id}-${f.id}`} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 150, verticalAlign: 'top', lineHeight: 1.25, ...PASTEL_B_HEADER }} title={`${f.label} — ${child.title}`}>
                       <div style={{ color: 'var(--dex-gray-500)', fontWeight: 400, fontSize: '0.68rem' }}>{abbreviate(shortSubEventTitle(child.title, selectedEvent?.title) || '?', 18)}</div>
-                      <div style={{ fontWeight: 600 }}>{abbreviate(f.label, 20)}</div>
+                      <div style={{ fontWeight: 600 }}>{f.label}</div>
                     </th>
                   ))}
                 </React.Fragment>
@@ -6192,7 +6180,7 @@ export default function AdminPage(): React.ReactElement {
                   const label = field.label || '';
                   return (
                     <th key={id} style={{ ...baseStyle, fontSize: '0.78rem', ...pastelAHeader }} title={`${label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
-                      {label.length > 22 ? label.substring(0, 20) + '…' : label}
+                      {label}
                       {hideButton(id)}
                     </th>
                   );
@@ -6204,7 +6192,7 @@ export default function AdminPage(): React.ReactElement {
                   const label = field.label || '';
                   return (
                     <th key={id} style={{ ...baseStyle, fontSize: '0.78rem', ...pastelBHeader }} title={inSubEventDetail ? `${label} — ${isDe ? 'Sub-Event-Feld' : 'sub-event field'}` : label}>
-                      {label.length > 22 ? label.substring(0, 20) + '…' : label}
+                      {label}
                       {hideButton(id)}
                     </th>
                   );
@@ -7346,6 +7334,7 @@ export default function AdminPage(): React.ReactElement {
                       const qrData = `DEX|${selectedEvent.eventNumber}|${orgEmail}`;
                       let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
                       try {
+                        const QRCode = await import('qrcode');
                         const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
                         qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
                       } catch { /* */ }
@@ -7394,6 +7383,7 @@ export default function AdminPage(): React.ReactElement {
                       const qrData = `DEX|${selectedEvent.eventNumber}|${orgEmail}`;
                       let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
                       try {
+                        const QRCode = await import('qrcode');
                         const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
                         qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
                       } catch { /* */ }
@@ -7442,6 +7432,7 @@ export default function AdminPage(): React.ReactElement {
                       const firstName = reg.Vorname || (reg.ParticipantName || '').trim().split(/\s+/)[0] || name;
                       let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
                       try {
+                        const QRCode = await import('qrcode');
                         const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
                         qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
                       } catch { /* */ }

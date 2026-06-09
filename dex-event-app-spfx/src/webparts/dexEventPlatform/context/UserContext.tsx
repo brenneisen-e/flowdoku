@@ -124,9 +124,16 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
     };
   }, []);
 
+  // v20.0 (Audit): Value memoizen — reine Datenfelder, verhindert App-weite
+  // Re-Renders aller useCurrentUser()-Consumer bei Parent-Re-Renders.
+  const value = React.useMemo<UserContextType>(
+    () => ({ currentUser, isLoading, photoUrl, groupEmails }),
+    [currentUser, isLoading, photoUrl, groupEmails]
+  );
+
   return React.createElement(
     UserContext.Provider,
-    { value: { currentUser, isLoading, photoUrl, groupEmails } },
+    { value },
     props.children
   );
 }
