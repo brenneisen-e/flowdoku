@@ -33,6 +33,8 @@ import { InfoTooltip } from './InfoTooltip';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
+// v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
+import { useDialog } from '../context/DialogContext';
 
 function formatDate(iso: string): string {
   if (!iso) return '-';
@@ -240,12 +242,34 @@ function migrateB2RunFieldExtras(fields: any[]): { changed: boolean } {
 // Kategorien (mehrzeilige Einträge: Titel fett, Beschreibung darunter).
 type ActionCategoryKey = 'event' | 'participants' | 'mails' | 'checkin' | 'maintenance';
 const ACTION_CATEGORY_ORDER: ActionCategoryKey[] = ['event', 'participants', 'mails', 'checkin', 'maintenance'];
-const ACTION_CATEGORY_LABELS: Record<ActionCategoryKey, { de: string; en: string }> = {
-  event: { de: 'Event', en: 'Event' },
-  participants: { de: 'Teilnehmer', en: 'Participants' },
-  mails: { de: 'E-Mails', en: 'Emails' },
-  checkin: { de: 'Check-in', en: 'Check-in' },
-  maintenance: { de: 'Wartung & Reparatur', en: 'Maintenance & repair' },
+// v20.4: pro Kategorie zusätzlich eine Kurzbeschreibung, was darin steckt —
+// sichtbar direkt im zugeklappten Kategorie-Kopf.
+const ACTION_CATEGORY_LABELS: Record<ActionCategoryKey, { de: string; en: string; descDe: string; descEn: string }> = {
+  event: {
+    de: 'Event', en: 'Event',
+    descDe: 'Event bearbeiten, in SharePoint öffnen, Link teilen, Änderungsprotokoll ansehen.',
+    descEn: 'Edit the event, open it in SharePoint, share the link, view the change history.',
+  },
+  participants: {
+    de: 'Teilnehmer', en: 'Participants',
+    descDe: 'Teilnehmerliste exportieren, Warteliste nachrücken, Nummern neu vergeben, Überbuchung prüfen.',
+    descEn: 'Export the participant list, promote from the waitlist, renumber participants, check overbooking.',
+  },
+  mails: {
+    de: 'E-Mails', en: 'Emails',
+    descDe: 'Mails an Teilnehmer schreiben, Einladungsmail verschicken, E-Mail-Adressen kopieren.',
+    descEn: 'Write emails to participants, send the invitation email, copy email addresses.',
+  },
+  checkin: {
+    de: 'Check-in', en: 'Check-in',
+    descDe: 'Check-in am Event-Tag starten, QR-Codes versenden, Self-Check-in (QR aushängen/anzeigen) einrichten.',
+    descEn: 'Start check-in on event day, send QR codes, set up self check-in (post/show the QR).',
+  },
+  maintenance: {
+    de: 'Wartung & Reparatur', en: 'Maintenance & repair',
+    descDe: 'Werkzeuge für Sonderfälle: Daten reparieren, Zähler korrigieren, alte Events umstellen.',
+    descEn: 'Tools for edge cases: repair data, correct counters, migrate old events.',
+  },
 };
 
 interface ActionTileProps {
@@ -604,6 +628,7 @@ function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | null {
             const inCat = ctx.actions.filter(a => a.category === catKey);
             if (inCat.length === 0) return null;
             const catLabel = props.isDe ? ACTION_CATEGORY_LABELS[catKey].de : ACTION_CATEGORY_LABELS[catKey].en;
+            const catDesc = props.isDe ? ACTION_CATEGORY_LABELS[catKey].descDe : ACTION_CATEGORY_LABELS[catKey].descEn;
             const catOpen = expanded.has(catKey);
             const direct = inCat.filter(a => !a.subCategory).slice().sort((a, b) => a.title.localeCompare(b.title, lang));
             const subNames = Array.from(new Set(inCat.filter(a => !!a.subCategory).map(a => a.subCategory as string))).sort((a, b) => a.localeCompare(b, lang));
@@ -618,12 +643,20 @@ function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | null {
                     borderBottom: '1px solid var(--dex-gray-200)',
                   }}
                 >
-                  <span style={{ width: 14, color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.8rem' }}>{catOpen ? '▾' : '▸'}</span>
-                  <span style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>{catLabel}</span>
-                  <span style={{
-                    fontSize: '0.68rem', padding: '1px 7px', borderRadius: 999,
-                    background: 'rgba(134,188,37,0.12)', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700,
-                  }}>{inCat.length}</span>
+                  <span style={{ width: 14, color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.8rem', flexShrink: 0 }}>{catOpen ? '▾' : '▸'}</span>
+                  <span style={{ minWidth: 0, flex: 1 }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>{catLabel}</span>
+                      <span style={{
+                        fontSize: '0.68rem', padding: '1px 7px', borderRadius: 999,
+                        background: 'rgba(134,188,37,0.12)', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700,
+                      }}>{inCat.length}</span>
+                    </span>
+                    {/* v20.4: Kurzbeschreibung, was in der Kategorie steckt. */}
+                    <span style={{ display: 'block', fontSize: '0.74rem', color: 'var(--dex-gray-500)', fontWeight: 400, marginTop: 1, lineHeight: 1.4 }}>
+                      {catDesc}
+                    </span>
+                  </span>
                 </div>
                 {catOpen && direct.map(a => renderActionRow(a, 30))}
                 {catOpen && subNames.map(sub => {
@@ -709,6 +742,8 @@ export default function AdminPage(): React.ReactElement {
   const { isAdmin, siteUrl, currentUserRole, searchUser, searchUsers, isImpersonating } = useRoles();
   const { t, locale } = useLanguage();
   const isDe = locale === 'de';
+  // v20.4: App-Modals statt nativer Browser-Dialoge.
+  const { confirmDialog, showAlert } = useDialog();
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
   const [registrations, setRegistrations] = React.useState<SPRegistration[]>([]);
   // v11.97/v11.98: bei Events mit Split-Kapazität (zwei Gruppen) wird die
@@ -1007,7 +1042,12 @@ export default function AdminPage(): React.ReactElement {
   const [showExportMenu, setShowExportMenu] = React.useState(false);
   // v17.12: Zielgruppen-Picker fuer Excel-Export.
   const [excelTargetModal, setExcelTargetModal] = React.useState<null | { mode: 'deloitte' | 'b2run' }>(null);
-  const [excelAudience, setExcelAudience] = React.useState<'active' | 'activePlusWait' | 'waitOnly'>('active');
+  const [excelAudience, setExcelAudience] = React.useState<'active' | 'activePlusWait' | 'waitOnly' | 'withCancelled'>('active');
+  // v20.4: Excel-Export im Klammer-Modus — konsolidierte Matrix (eine Zeile
+  // pro Person, Spalten pro Sub-Event) und/oder einzelne Sub-Event-Blätter
+  // sind im Export-Modal wählbar.
+  const [excelIncludeMatrix, setExcelIncludeMatrix] = React.useState(true);
+  const [excelSubIds, setExcelSubIds] = React.useState<Set<string>>(new Set());
   // Outlook-Decline-Check (Admin only): zeigt Teilnehmer, die in Outlook
   // abgesagt haben, aber in der Teilnehmerliste noch aktiv gelistet sind.
   const [isCheckingDeclines, setIsCheckingDeclines] = React.useState(false);
@@ -2128,12 +2168,14 @@ export default function AdminPage(): React.ReactElement {
    * - 'deloitte': alle internen Felder (Anrede, Name, Email, Department, Location, JobTitle, Phone, Status, ...)
    * - 'b2run': Format laut B2Run Excel-Template (Nr, Anrede, Vorname, Nachname, E-Mail, Startblock, Zustimmung AGB, Anonym, Gruppe, Strasse, PLZ, Stadt, Mobilnummer, Infoservice, Altersklasse)
    */
-  const exportCsv = (mode: 'deloitte' | 'b2run', audience: 'active' | 'activePlusWait' | 'waitOnly' = 'active'): void => {
+  const exportCsv = (mode: 'deloitte' | 'b2run', audience: 'active' | 'activePlusWait' | 'waitOnly' | 'withCancelled' = 'active'): void => {
     if (!selectedEvent) return;
     const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
     const audienceFilter = (r: SPRegistration): boolean => {
       if (audience === 'waitOnly') return r.Status === 'Warteliste';
       if (audience === 'activePlusWait') return ACTIVE.indexOf(r.Status) >= 0 || r.Status === 'Warteliste';
+      // v20.4: alles inkl. Abgemeldete (Status-Spalte ist im Export enthalten).
+      if (audience === 'withCancelled') return true;
       return ACTIVE.indexOf(r.Status) >= 0;
     };
     // v17.12: nach TeilnehmerID asc sortieren (vorher random / Status-Reihenfolge).
@@ -2141,7 +2183,7 @@ export default function AdminPage(): React.ReactElement {
       .filter(audienceFilter)
       .slice()
       .sort((a, b) => (a.TeilnehmerID || 0) - (b.TeilnehmerID || 0));
-    if (activeRegsForExport.length === 0) { alert('Keine Teilnehmer zum Exportieren.'); return; }
+    if (activeRegsForExport.length === 0) { showAlert('Keine Teilnehmer zum Exportieren.'); return; }
 
     // v20.0 (Audit): toter CSV-Escaper `esc` entfernt — seit dem Umstieg auf
     // natives XLSX (v8.4) wurde er nie mehr aufgerufen.
@@ -2261,9 +2303,171 @@ export default function AdminPage(): React.ReactElement {
       }, 0);
     }).catch(err => {
       console.warn('[DEX] Excel-Export fehlgeschlagen:', err);
-      alert(isDe
+      showAlert(isDe
         ? 'Excel-Export fehlgeschlagen. Bitte Browser-Console prüfen.'
         : 'Excel export failed. Please check the browser console.');
+    });
+  };
+
+  // v20.4: Excel-Export der konsolidierten Klammer-Ansicht. Baut EINE Datei
+  // mit (wählbar) einem Matrix-Blatt — eine Zeile pro Person, Spalten =
+  // Stammdaten + Klammer-Felder + pro Sub-Event der Status + dessen Feld-
+  // Antworten — und/oder je einem eigenen Blatt pro gewähltem Sub-Event.
+  // Datenquellen sind die bereits geladenen States (registrations = Klammer-
+  // Zeilen, subEventRegsByEventId = Sub-Event-Listen) — kein Extra-Roundtrip.
+  const exportConsolidatedExcel = (
+    audience: 'active' | 'activePlusWait' | 'waitOnly' | 'withCancelled',
+    includeMatrix: boolean,
+    subIds: string[]
+  ): void => {
+    if (!selectedEvent) return;
+    const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
+    const matches = (r: SPRegistration): boolean => {
+      if (audience === 'waitOnly') return r.Status === 'Warteliste';
+      if (audience === 'activePlusWait') return ACTIVE.indexOf(r.Status) >= 0 || r.Status === 'Warteliste';
+      if (audience === 'withCancelled') return true;
+      return ACTIVE.indexOf(r.Status) >= 0;
+    };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const parseCustom = (json: string): Record<string, any> => {
+      try { return JSON.parse(json || '{}'); } catch { return {}; }
+    };
+    const fieldVal = (cd: Record<string, unknown>, id: string): string => {
+      const v = cd[id];
+      if (v === undefined || v === null) return '';
+      if (typeof v === 'boolean') return v ? 'Ja' : 'Nein';
+      return String(v);
+    };
+    const chosenChildren = consolidatedChildren.filter(c => subIds.indexOf(c.id) >= 0);
+    const sheets: Array<{ name: string; headers: string[]; rows: string[][] }> = [];
+    const sanitizeSheet = (s: string): string => (s || 'Blatt').replace(/[\\/?*[\]:]/g, ' ').trim().slice(0, 31) || 'Blatt';
+
+    if (includeMatrix) {
+      const parentFields = (selectedEvent.eventSpecificFields || []).filter(f => f.label);
+      type PersonRow = {
+        vorname: string; nachname: string; email: string; jobTitle: string; location: string;
+        parentCd: Record<string, unknown>;
+        perChild: Record<string, SPRegistration | undefined>;
+        hasMatch: boolean;
+      };
+      const persons: Record<string, PersonRow> = {};
+      const ensurePerson = (r: SPRegistration): PersonRow => {
+        const key = (r.ParticipantEmail || '').toLowerCase().trim();
+        if (!persons[key]) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const anyReg = r as any;
+          persons[key] = {
+            vorname: r.Vorname || '', nachname: r.Nachname || '',
+            email: r.ParticipantEmail || '',
+            jobTitle: anyReg.JobTitle || '', location: anyReg.Location || '',
+            parentCd: {}, perChild: {}, hasMatch: false,
+          };
+        }
+        return persons[key];
+      };
+      for (const r of registrations) {
+        const p = ensurePerson(r);
+        p.parentCd = parseCustom(r.CustomData || '{}');
+        if (matches(r)) p.hasMatch = true;
+      }
+      for (const child of consolidatedChildren) {
+        const regs = subEventRegsByEventId[child.id] || [];
+        for (const r of regs) {
+          const p = ensurePerson(r);
+          if (matches(r)) {
+            p.perChild[child.id] = r;
+            p.hasMatch = true;
+          }
+        }
+      }
+      const matrixHeaders: string[] = ['Vorname', 'Nachname', 'Email', 'JobTitle', 'Standort']
+        .concat(parentFields.map(f => f.label));
+      for (const child of consolidatedChildren) {
+        const short = shortSubEventTitle(child.title, selectedEvent.title) || child.title || '?';
+        matrixHeaders.push(short);
+        for (const f of (child.eventSpecificFields || []).filter(ff => ff.label)) {
+          matrixHeaders.push(`${short}: ${f.label}`);
+        }
+      }
+      const matrixRows: string[][] = Object.keys(persons)
+        .map(k => persons[k])
+        .filter(p => p.hasMatch)
+        .sort((a, b) => (a.nachname || '').localeCompare(b.nachname || '', 'de') || (a.vorname || '').localeCompare(b.vorname || '', 'de'))
+        .map(p => {
+          const row: string[] = [p.vorname, p.nachname, p.email, p.jobTitle, p.location]
+            .concat(parentFields.map(f => fieldVal(p.parentCd, f.id)));
+          for (const child of consolidatedChildren) {
+            const reg = p.perChild[child.id];
+            row.push(reg ? (reg.Status || '') : '');
+            const cd = reg ? parseCustom(reg.CustomData || '{}') : {};
+            for (const f of (child.eventSpecificFields || []).filter(ff => ff.label)) {
+              row.push(reg ? fieldVal(cd, f.id) : '');
+            }
+          }
+          return row;
+        });
+      sheets.push({ name: 'Konsolidiert', headers: matrixHeaders, rows: matrixRows });
+    }
+
+    for (const child of chosenChildren) {
+      const regs = (subEventRegsByEventId[child.id] || [])
+        .filter(matches)
+        .slice()
+        .sort((a, b) => (a.TeilnehmerID || 0) - (b.TeilnehmerID || 0));
+      const childFields = (child.eventSpecificFields || []).filter(f => f.label);
+      const headers = ['TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'Email', 'Department', 'Location', 'JobTitle', 'Status', 'RegistrationDate']
+        .concat(childFields.map(f => f.label));
+      const rows = regs.map(r => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const anyReg = r as any;
+        const cd = parseCustom(r.CustomData || '{}');
+        return [
+          String(r.TeilnehmerID || ''), r.Anrede || '', r.Vorname || '', r.Nachname || '',
+          r.ParticipantEmail || '', anyReg.Department || '', anyReg.Location || '', anyReg.JobTitle || '',
+          r.Status || '', r.RegistrationDate ? new Date(r.RegistrationDate).toLocaleString('de-DE') : '',
+        ].concat(childFields.map(f => fieldVal(cd, f.id)));
+      });
+      sheets.push({ name: sanitizeSheet(shortSubEventTitle(child.title, selectedEvent.title) || child.title || 'Sub-Event'), headers, rows });
+    }
+
+    if (sheets.length === 0) { showAlert(isDe ? 'Bitte mindestens die Matrix oder ein Sub-Event auswählen.' : 'Please select at least the matrix or one sub-event.'); return; }
+    const safeName = (selectedEvent.title || 'event').replace(/[^a-zA-Z0-9]/g, '_');
+    const fileName = `Konsolidiert_${safeName}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    import('xlsx').then(XLSX => {
+      const wb = XLSX.utils.book_new();
+      const usedNames = new Set<string>();
+      for (const sheet of sheets) {
+        const aoa: (string | number)[][] = [sheet.headers, ...sheet.rows];
+        const ws = XLSX.utils.aoa_to_sheet(aoa);
+        const colWidths = sheet.headers.map((h, ci) => {
+          const maxLen = Math.max(h.length, ...sheet.rows.map(r => String(r[ci] || '').length));
+          return { wch: Math.min(40, Math.max(10, maxLen + 2)) };
+        });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (ws as any)['!cols'] = colWidths;
+        // Doppelte Blattnamen entschärfen (xlsx verlangt eindeutige Namen).
+        let name = sheet.name;
+        let i = 2;
+        while (usedNames.has(name)) { name = `${sheet.name.slice(0, 28)}_${i}`; i++; }
+        usedNames.add(name);
+        XLSX.utils.book_append_sheet(wb, ws, name);
+      }
+      const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }, 0);
+    }).catch(err => {
+      console.warn('[DEX] Konsolidierter Excel-Export fehlgeschlagen:', err);
+      showAlert(isDe ? 'Excel-Export fehlgeschlagen. Bitte Browser-Console prüfen.' : 'Excel export failed. Please check the browser console.', { variant: 'error' });
     });
   };
 
@@ -2343,7 +2547,7 @@ export default function AdminPage(): React.ReactElement {
       ok = await updateEvent(ev.id, { 'SelfCheckInEnabled': true, 'SelfCheckInToken': token });
     } catch { ok = false; }
     if (!ok) {
-      alert(isDe
+      showAlert(isDe
         ? 'Self-Check-in konnte nicht aktiviert werden (Speichern am Event fehlgeschlagen). Bitte erneut versuchen.'
         : 'Self check-in could not be activated (saving to the event failed). Please try again.');
       return null;
@@ -2414,7 +2618,7 @@ export default function AdminPage(): React.ReactElement {
     const confirmMsg = nextIsFictive
       ? (isDe ? 'Event auf "Entwurf" zurücksetzen? Reguläre User sehen das Event danach nicht mehr.' : 'Reset event to "draft"? Regular users will no longer see the event afterwards.')
       : (isDe ? 'Event live schalten? Alle Berechtigten können sich danach anmelden.' : 'Publish event? All eligible users can register afterwards.');
-    if (!window.confirm(confirmMsg)) return;
+    if (!(await confirmDialog(confirmMsg, { title: isDe ? 'Event-Status ändern' : 'Change event status', confirmLabel: nextIsFictive ? (isDe ? 'Auf Entwurf setzen' : 'Set to draft') : (isDe ? 'Live schalten' : 'Publish') }))) return;
     const patch: Record<string, unknown> = { 'IsFictive': nextIsFictive };
     if (!nextIsFictive) patch['EventStatus'] = 'Active';
     const ok = await updateEvent(selectedEvent.id, patch);
@@ -2429,7 +2633,7 @@ export default function AdminPage(): React.ReactElement {
   const saveSelfCheckInWindow = async (): Promise<void> => {
     if (!selectedEvent || sciBusy) return;
     if (sciFrom && sciTo && new Date(sciFrom).getTime() >= new Date(sciTo).getTime()) {
-      alert(isDe ? '„Bis" muss zeitlich nach „Von" liegen.' : '"Until" must be after "From".');
+      showAlert(isDe ? '„Bis" muss zeitlich nach „Von" liegen.' : '"Until" must be after "From".');
       return;
     }
     setSciBusy(true);
@@ -2906,7 +3110,7 @@ export default function AdminPage(): React.ReactElement {
                           const msg = isDe
                             ? `Event "${event.title}" auf Standard-Schema migrieren?\n\n• Type "B2Run" wird entfernt — Event sieht aus wie ein normales Deloitte-Event.\n• Bezeichnungen "Durchstarter" / "Funstarter" werden als Gruppen-Labels gespeichert (kannst du im Wizard frei ändern).\n• Falls Leistungsnachweis-Pflicht aktiv war: wird in ein reguläres Custom-Field „Leistungsnachweis vorhanden" (Checkbox, Pflicht, nur für Gruppe A) umgewandelt — bleibt also als richtige Frage erhalten.\n• Hardcoded Startblock-Mapping pro Gruppe wird ersatzlos entfernt. Bei Bedarf als Custom-Field mit Gruppen-Bindung wieder anlegen.\n• b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe, Mobilnummer etc.) BLEIBEN als generische Custom-Fields erhalten — du kannst sie danach im Wizard umbenennen oder löschen, wenn nicht mehr gebraucht.\n• Anmeldungen, Wartelisten und Sub-Events bleiben inhaltlich unverändert.${kidsHint}`
                             : `Migrate event "${event.title}" to the standard schema?\n\n• Type "B2Run" is removed — the event will look like a standard Deloitte event.\n• Labels "Durchstarter" / "Funstarter" are persisted as group labels (editable later in the wizard).\n• If performance-proof requirement was active: it is converted into a regular custom field „Leistungsnachweis vorhanden" (checkbox, required, only for group A) — stays as a proper prompt.\n• Hardcoded per-group start-block mapping is removed. If needed, add it as a custom field bound to a group.\n• b2run_* custom fields (age group, t-shirt size, mobile etc.) are KEPT as generic custom fields — you can rename or remove them later in the wizard if no longer needed.\n• Registrations, waitlists and sub-events stay unchanged content-wise.${kidsHint}`;
-                          if (!window.confirm(msg)) return;
+                          if (!(await confirmDialog(msg, { title: isDe ? 'B2Run migrieren' : 'Migrate B2Run', confirmLabel: isDe ? 'Migrieren' : 'Migrate' }))) return;
                           const errors: string[] = [];
                           const migrateOne = async (ev: DeloitteEvent): Promise<void> => {
                             try {
@@ -3029,17 +3233,17 @@ export default function AdminPage(): React.ReactElement {
                             await refreshEvents();
                             const total = 1 + kidsToMigrate.length;
                             if (errors.length === 0) {
-                              window.alert(isDe
+                              showAlert(isDe
                                 ? `Migration abgeschlossen — ${total} Event(s) auf das Standard-Schema umgestellt.`
                                 : `Migration completed — ${total} event(s) migrated to the standard schema.`);
                             } else {
-                              window.alert(isDe
+                              showAlert(isDe
                                 ? `Migration teilweise fehlgeschlagen bei: ${errors.join(', ')}. Siehe Browser-Console.`
                                 : `Migration partially failed for: ${errors.join(', ')}. See browser console.`);
                             }
                           } catch (err) {
                             console.warn('[DEX] migrate B2Run event failed:', err);
-                            window.alert(isDe ? 'Migration fehlgeschlagen — siehe Browser-Console.' : 'Migration failed — see browser console.');
+                            showAlert(isDe ? 'Migration fehlgeschlagen — siehe Browser-Console.' : 'Migration failed — see browser console.');
                           }
                         }}
                       >
@@ -4212,9 +4416,9 @@ export default function AdminPage(): React.ReactElement {
                   navigator.clipboard.writeText(url).then(() => {
                     setCopiedDeepLink(true);
                     setTimeout(() => setCopiedDeepLink(false), 2000);
-                  }).catch(() => { window.prompt(isDe ? 'Deep-Link kopieren:' : 'Copy deep link:', url); });
+                  }).catch(() => { showAlert(<span style={{ userSelect: 'all', wordBreak: 'break-all', fontFamily: 'monospace', fontSize: '0.8rem' }}>{url}</span>, { title: isDe ? 'Deep-Link manuell kopieren' : 'Copy deep link manually' }); });
                 } else {
-                  window.prompt(isDe ? 'Deep-Link kopieren:' : 'Copy deep link:', url);
+                  showAlert(<span style={{ userSelect: 'all', wordBreak: 'break-all', fontFamily: 'monospace', fontSize: '0.8rem' }}>{url}</span>, { title: isDe ? 'Deep-Link manuell kopieren' : 'Copy deep link manually' });
                 }
               }}
             />
@@ -4237,7 +4441,7 @@ export default function AdminPage(): React.ReactElement {
                   navigator.clipboard.writeText(emails).then(() => {
                     setCopiedEmails(true);
                     setTimeout(() => setCopiedEmails(false), 2000);
-                  }).catch(() => { window.prompt(isDe ? 'E-Mail-Adressen kopieren:' : 'Copy email addresses:', emails); });
+                  }).catch(() => { showAlert(<span style={{ userSelect: 'all', wordBreak: 'break-all', fontFamily: 'monospace', fontSize: '0.8rem' }}>{emails}</span>, { title: isDe ? 'E-Mail-Adressen manuell kopieren' : 'Copy email addresses manually' }); });
                 }
               }}
             />
@@ -4404,7 +4608,7 @@ export default function AdminPage(): React.ReactElement {
                 category="participants"
                 title={isCheckingDeclines ? (isDe ? 'Outlook wird geprüft…' : 'Checking Outlook…') : (isDe ? 'Outlook-Absagen prüfen' : 'Check Outlook declines')}
                 desc={isDe
-                  ? 'Liest die Outlook-Absagen aus dem no_reply.events-Postfach und matched sie gegen aktive Teilnehmer. Zeigt, wer den Termin abgelehnt hat, aber noch in der Liste steht.'
+                  ? 'Zeigt dir, wer den Outlook-Termin abgesagt hat, aber noch als Teilnehmer angemeldet ist — damit du diese Personen gezielt ansprechen oder abmelden kannst.'
                   : 'Reads the Outlook declines from the no_reply.events mailbox and matches them against active participants. Shows who declined the appointment but is still on the list.'}
                 badge="admin"
                 busy={isCheckingDeclines}
@@ -4476,9 +4680,9 @@ export default function AdminPage(): React.ReactElement {
                 resultIsError={!!reorderResult && (reorderResult.indexOf('Fehler') >= 0 || reorderResult.indexOf('Error') >= 0)}
                 onClick={async () => {
                   if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                  if (!confirm(isDe
+                  if (!(await confirmDialog(isDe
                     ? 'TeilnehmerIDs neu vergeben (1, 2, 3, …)? Sortierung nach Erstellungsreihenfolge.\n\nNICHT ausführen, während gerade viele Anmeldungen laufen — bitte erst wenn die Anmeldewelle vorbei ist.'
-                    : 'Reassign participant IDs (1, 2, 3, …)? Sorted by creation order.\n\nDo NOT run while many registrations are coming in — please wait until the registration wave is over.')) return;
+                    : 'Reassign participant IDs (1, 2, 3, …)? Sorted by creation order.\n\nDo NOT run while many registrations are coming in — please wait until the registration wave is over.'))) return;
                   await runIdReorder();
                 }}
               />
@@ -4503,9 +4707,9 @@ export default function AdminPage(): React.ReactElement {
                 resultIsError={!!promoteResult && (promoteResult.indexOf('Fehler') >= 0 || promoteResult.indexOf('Error') >= 0)}
                 onClick={async () => {
                   if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                  if (!confirm(isDe
+                  if (!(await confirmDialog(isDe
                     ? 'Den ersten Teilnehmer von der Warteliste auf einen freien Platz nachrücken?'
-                    : 'Promote the first waitlist participant into a free seat?')) return;
+                    : 'Promote the first waitlist participant into a free seat?', { confirmLabel: isDe ? 'Nachrücken' : 'Promote' }))) return;
                   await runManualPromote();
                 }}
               />
@@ -4527,7 +4731,7 @@ export default function AdminPage(): React.ReactElement {
                 category="maintenance"
                 title={isResettingCounter ? (isDe ? 'Counter wird zurückgesetzt…' : 'Resetting counter…') : (isDe ? 'Counter zurücksetzen' : 'Reset counter')}
                 desc={isDe
-                  ? 'Setzt den TeilnehmerID-Counter exakt auf den aktuellen Max-TID der Teilnehmerliste. Hilft, wenn neue Anmeldungen mit zu hohen IDs starten (Lücken durch frühere Abmeldungen) oder wenn sie versehentlich bei zu niedrigen IDs (z.B. wieder bei 1) starten würden. Bidirektional — egal ob der Counter zu hoch oder zu niedrig steht.'
+                  ? 'Repariert die automatische Nummern-Vergabe: Neue Anmeldungen bekommen danach wieder die nächste passende Teilnehmer-Nummer. Nutzen, wenn neue Anmeldungen mit offensichtlich falschen Nummern starten (viel zu hoch oder wieder bei 1).'
                   : 'Sets the participant ID counter exactly to the current max ID of the participant list. Helps when new registrations start with IDs that are too high (gaps from earlier cancellations) or when they would accidentally start at IDs that are too low (e.g. back at 1). Bidirectional — regardless of whether the counter is too high or too low.'}
                 badge="admin"
                 busy={isResettingCounter}
@@ -4536,7 +4740,7 @@ export default function AdminPage(): React.ReactElement {
                 resultIsError={!!resetCounterResult && (resetCounterResult.indexOf('Fehler') >= 0 || resetCounterResult.indexOf('Error') >= 0)}
                 onClick={async () => {
                   if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                  if (!confirm(isDe ? 'Counter auf aktuellen Max-Wert zurücksetzen?' : 'Reset counter to the current max value?')) return;
+                  if (!(await confirmDialog(isDe ? 'Counter auf aktuellen Max-Wert zurücksetzen?' : 'Reset counter to the current max value?'))) return;
                   setIsResettingCounter(true);
                   setResetCounterResult(null);
                   try {
@@ -4574,7 +4778,7 @@ export default function AdminPage(): React.ReactElement {
                 resultIsError={!!detectOverbookResult && (detectOverbookResult.indexOf('Fehler') >= 0 || detectOverbookResult.indexOf('Error') >= 0)}
                 onClick={async () => {
                   if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                  if (!confirm(isDe ? 'Überbuchung prüfen und betroffene Personen markieren? (ändert keinen Status)' : 'Check overbooking and mark affected people? (does not change any status)')) return;
+                  if (!(await confirmDialog(isDe ? 'Überbuchung prüfen und betroffene Personen markieren? (ändert keinen Status)' : 'Check overbooking and mark affected people? (does not change any status)', { confirmLabel: isDe ? 'Prüfen' : 'Check' }))) return;
                   setIsDetectingOverbook(true);
                   setDetectOverbookResult(null);
                   try {
@@ -4611,7 +4815,7 @@ export default function AdminPage(): React.ReactElement {
                 category="maintenance"
                 title={isFixingColumns ? (isDe ? 'Spalten werden gefixt…' : 'Fixing columns…') : (isDe ? 'Spalten fixen' : 'Fix columns')}
                 desc={isDe
-                  ? 'Legt fehlende SP-Spalten in der Teilnehmerliste an, entfernt überflüssige (z.B. StarterType bei Nicht-B2Run-Events) und korrigiert die Default-View-Reihenfolge.'
+                  ? 'Bringt die Teilnehmerliste auf den aktuellen Stand: legt fehlende Spalten an, räumt überflüssige weg und sortiert die Spalten-Reihenfolge richtig. Nutzen, wenn in der Liste Spalten fehlen oder Antworten nicht ankommen.'
                   : 'Creates missing columns in the participant list, removes superfluous ones (e.g. StarterType for non-B2Run events) and fixes the default view order.'}
                 badge="admin"
                 busy={isFixingColumns}
@@ -4637,7 +4841,9 @@ export default function AdminPage(): React.ReactElement {
                       (count, titles) => {
                         const preview = titles.slice(0, 8).map(t => `„${t}"`).join(', ');
                         const more = titles.length > 8 ? (isDe ? ` …und ${titles.length - 8} weitere` : ` …and ${titles.length - 8} more`) : '';
-                        return window.confirm(isDe
+                        // v20.4: App-Modal statt window.confirm — der Service
+                        // akzeptiert boolean | Promise<boolean> und awaitet.
+                        return confirmDialog(isDe
                           ? `${count} überflüssige (leere) Duplikat-Spalten in der Teilnehmerliste gefunden ` +
                             `(${titles.length} Titel betroffen: ${preview}${more}).\n\n` +
                             `Diese werden jetzt gelöscht (irreversibel). Spalten mit Daten bleiben erhalten ` +
@@ -4679,11 +4885,11 @@ export default function AdminPage(): React.ReactElement {
                     // Dropdown rendert die ActionTile (und damit ihr `result`-Text)
                     // `null` — vorher kam nach „Spalten fixen" daher GAR KEINE
                     // sichtbare Rückmeldung. Ein window.alert ist garantiert sichtbar.
-                    window.alert((isDe ? '„Spalten fixen" — Ergebnis:\n\n' : 'Fix columns — result:\n\n') + finalMsg);
+                    showAlert((isDe ? '„Spalten fixen" — Ergebnis:\n\n' : 'Fix columns — result:\n\n') + finalMsg);
                   } catch {
                     const errMsg = isDe ? 'Fehler beim Fixen der Spalten.' : 'Error fixing columns.';
                     setFixColumnsResult(errMsg);
-                    window.alert(errMsg);
+                    showAlert(errMsg);
                   }
                   setIsFixingColumns(false);
                 }}
@@ -4711,9 +4917,9 @@ export default function AdminPage(): React.ReactElement {
                 resultIsError={!!repairOrganizersResult && (repairOrganizersResult.indexOf('Fehler') >= 0 || repairOrganizersResult.indexOf('Error') >= 0)}
                 onClick={async () => {
                   if (!eventServiceRef) return;
-                  if (!confirm(isDe
-                    ? `Organizer-Mails über ALLE ${adminEvents.length} Events reparieren? Dauert je nach Anzahl ca. 1–2 Minuten und schreibt direkt in DEX_Events zurück.`
-                    : `Repair organizer emails across ALL ${adminEvents.length} events? Depending on the count this takes about 1–2 minutes and writes directly back to DEX_Events.`)) return;
+                  if (!(await confirmDialog(isDe
+                    ? `Organizer-Mails über ALLE ${adminEvents.length} Events reparieren? Dauert je nach Anzahl ca. 1–2 Minuten.`
+                    : `Repair organizer emails across ALL ${adminEvents.length} events? Depending on the count this takes about 1–2 minutes.`, { confirmLabel: isDe ? 'Reparieren' : 'Repair' }))) return;
                   setIsRepairingOrganizers(true);
                   setRepairOrganizersResult(null);
                   let scanned = 0;
@@ -4825,7 +5031,7 @@ export default function AdminPage(): React.ReactElement {
                 icon={<RefreshCw size={18} />}
                 title={isDe ? 'Legacy-B2Run migrieren' : 'Migrate legacy B2Run'}
                 desc={isDe
-                  ? "Entfernt den B2Run-Type und persistiert 'Durchstarter' / 'Funstarter' als reguläre Gruppen-Labels (kannst du danach im Wizard frei umbenennen). b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe etc.) BLEIBEN als generische Custom-Fields erhalten. Anmeldungen, Wartelisten und Sub-Events bleiben unverändert."
+                  ? "Stellt ein altes B2Run-Event auf das normale Eventschema um. Die Gruppen heißen danach 'Durchstarter' / 'Funstarter' (im Wizard frei umbenennbar), alle Anmeldefelder, Anmeldungen, Wartelisten und Sub-Events bleiben erhalten."
                   : "Removes the B2Run type and persists 'Durchstarter' / 'Funstarter' as regular group labels (you can rename them freely in the wizard afterwards). b2run_* custom fields (age group, t-shirt size etc.) are KEPT as generic custom fields. Registrations, waitlists and sub-events remain unchanged."}
                 badge="admin"
                 onClick={async () => {
@@ -4853,7 +5059,7 @@ export default function AdminPage(): React.ReactElement {
                       (kidsToMigrate.length > 0
                         ? `Additionally, ${kidsToMigrate.length} sub-event(s) will be migrated: ${kidsToMigrate.map(k => '„' + (k.title || '?') + '"').join(', ')}.`
                         : `No sub-events with legacy B2Run traces found — only the main event will be migrated.`);
-                  if (!window.confirm(msg)) return;
+                  if (!(await confirmDialog(msg, { title: isDe ? 'B2Run migrieren' : 'Migrate B2Run', confirmLabel: isDe ? 'Migrieren' : 'Migrate' }))) return;
                   const errors: string[] = [];
                   const migrateOne = async (ev: DeloitteEvent): Promise<void> => {
                     try {
@@ -4926,17 +5132,17 @@ export default function AdminPage(): React.ReactElement {
                     await refreshEvents();
                     if (errors.length === 0) {
                       const total = 1 + kidsToMigrate.length;
-                      window.alert(isDe
+                      showAlert(isDe
                         ? `Migration abgeschlossen — ${total} Event(s) auf das Standard-Schema umgestellt.`
                         : `Migration complete — ${total} event(s) converted to the standard schema.`);
                     } else {
-                      window.alert(isDe
+                      showAlert(isDe
                         ? `Migration teilweise fehlgeschlagen bei: ${errors.join(', ')}. Siehe Browser-Console für Details.`
                         : `Migration partially failed for: ${errors.join(', ')}. See browser console for details.`);
                     }
                   } catch (err) {
                     console.warn('[DEX] migrate B2Run event failed:', err);
-                    window.alert(isDe ? 'Migration fehlgeschlagen — siehe Browser-Console.' : 'Migration failed — see browser console.');
+                    showAlert(isDe ? 'Migration fehlgeschlagen — siehe Browser-Console.' : 'Migration failed — see browser console.');
                   }
                 }}
               />
@@ -4956,7 +5162,7 @@ export default function AdminPage(): React.ReactElement {
                 icon={<RefreshCw size={18} />}
                 title={isDe ? 'Custom-Fields aus Versionsverlauf zurückholen' : 'Restore custom fields from version history'}
                 desc={isDe
-                  ? 'Liest den SharePoint-Versionsverlauf des Events und holt verloren gegangene b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe, Startblock, Mobilnummer etc.) zurück. Nützlich nach der v11.9-Migration, die diese Felder versehentlich gelöscht hat. Bestehende Felder werden NICHT überschrieben — es werden nur fehlende Felder ergänzt.'
+                  ? 'Holt versehentlich verloren gegangene Anmeldefelder (z.B. Altersgruppe, T-Shirt-Größe, Startblock, Mobilnummer) aus einer früheren Version des Events zurück. Bestehende Felder bleiben unangetastet — es wird nur Fehlendes ergänzt.'
                   : 'Reads the SharePoint version history of the event and restores lost b2run_* custom fields (age group, t-shirt size, start block, mobile number etc.). Useful after the v11.9 migration which deleted these fields by accident. Existing fields are NOT overwritten — only missing fields are added.'}
                 badge="admin"
                 onClick={async () => {
@@ -4964,7 +5170,7 @@ export default function AdminPage(): React.ReactElement {
                   try {
                     const history = await eventServiceRef.getEventCustomFieldsHistory(parseInt(selectedEvent.id, 10));
                     if (history.length === 0) {
-                      window.alert(isDe ? 'Kein Versionsverlauf gefunden — entweder hat das Event keine Versionen oder der Zugriff wurde verweigert.' : 'No version history found — the event has no versions or access was denied.');
+                      showAlert(isDe ? 'Kein Versionsverlauf gefunden — entweder hat das Event keine Versionen oder der Zugriff wurde verweigert.' : 'No version history found — the event has no versions or access was denied.');
                       return;
                     }
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -4989,20 +5195,20 @@ export default function AdminPage(): React.ReactElement {
                       }
                     }
                     if (foundFields.length === 0) {
-                      window.alert(isDe ? 'Keine fehlenden b2run_*-Felder im Versionsverlauf gefunden — entweder sind alle Felder schon vorhanden oder es gab nie welche.' : 'No missing b2run_* fields found in the version history — either all fields already exist or there never were any.');
+                      showAlert(isDe ? 'Keine fehlenden b2run_*-Felder im Versionsverlauf gefunden — entweder sind alle Felder schon vorhanden oder es gab nie welche.' : 'No missing b2run_* fields found in the version history — either all fields already exist or there never were any.');
                       return;
                     }
                     const fieldList = foundFields.map(f => `• ${f.label || f.id}`).join('\n');
                     const modifiedDate = foundModified ? new Date(foundModified).toLocaleString(isDe ? 'de-DE' : 'en-GB') : '?';
-                    if (!window.confirm(isDe
+                    if (!(await confirmDialog(isDe
                       ? `Folgende ${foundFields.length} Custom-Field(s) aus Version ${foundVersion} (${modifiedDate}) zurückholen?\n\n${fieldList}\n\nDie Felder werden ans Ende deiner aktuellen Felder-Liste angehängt. Du kannst sie danach im Wizard frei umbenennen, neu sortieren oder löschen.`
-                      : `Restore the following ${foundFields.length} custom field(s) from version ${foundVersion} (${modifiedDate})?\n\n${fieldList}\n\nThe fields are appended to the end of your current field list. You can rename, reorder or delete them afterwards in the wizard.`)) {
+                      : `Restore the following ${foundFields.length} custom field(s) from version ${foundVersion} (${modifiedDate})?\n\n${fieldList}\n\nThe fields are appended to the end of your current field list. You can rename, reorder or delete them afterwards in the wizard.`, { confirmLabel: isDe ? 'Zurückholen' : 'Restore' }))) {
                       return;
                     }
                     const merged = [...currentFields, ...foundFields];
                     const ok = await updateEvent(selectedEvent.id, { 'CustomFields': JSON.stringify(merged) });
                     if (!ok) {
-                      window.alert(isDe ? 'Update fehlgeschlagen — siehe Browser-Console.' : 'Update failed — see browser console.');
+                      showAlert(isDe ? 'Update fehlgeschlagen — siehe Browser-Console.' : 'Update failed — see browser console.');
                       return;
                     }
                     // Subsite-Spalten gleich mit-syncen, damit die b2run_*-
@@ -5031,12 +5237,12 @@ export default function AdminPage(): React.ReactElement {
                       } catch (err) { console.warn('[DEX] fixRegistrationListColumns nach Restore fehlgeschlagen:', err); }
                     }
                     await refreshEvents();
-                    window.alert(isDe
+                    showAlert(isDe
                       ? `${foundFields.length} Custom-Field(s) erfolgreich aus Version ${foundVersion} zurückgeholt.`
                       : `${foundFields.length} custom field(s) successfully restored from version ${foundVersion}.`);
                   } catch (err) {
                     console.warn('[DEX] restore custom fields from history failed:', err);
-                    window.alert(isDe ? 'Zurückholen fehlgeschlagen — siehe Browser-Console.' : 'Restore failed — see browser console.');
+                    showAlert(isDe ? 'Zurückholen fehlgeschlagen — siehe Browser-Console.' : 'Restore failed — see browser console.');
                   }
                 }}
               />
@@ -5048,7 +5254,7 @@ export default function AdminPage(): React.ReactElement {
                 icon={<Wrench size={18} />}
                 title={isFixingFields ? (isDe ? 'Felder werden repariert…' : 'Repairing fields…') : (isDe ? 'Felder reparieren' : 'Repair fields')}
                 desc={isDe
-                  ? "Normalisiert Custom-Fields: AGB/Datenschutz → Checkbox, T-Shirt → 'Kein T-Shirt'-Option, B2Run-Spezialfelder ergänzen, redundante '(Pflicht)'-Suffixe entfernen."
+                  ? "Räumt die Anmeldefelder dieses Events automatisch auf: AGB/Datenschutz wird eine richtige Checkbox, T-Shirt-Auswahl bekommt eine 'Kein T-Shirt'-Option, doppelte '(Pflicht)'-Zusätze verschwinden."
                   : "Normalizes custom fields: terms/privacy → checkbox, t-shirt → 'no t-shirt' option, add B2Run special fields, remove redundant '(required)' suffixes."}
                 badge="admin"
                 busy={isFixingFields}
@@ -5193,7 +5399,7 @@ export default function AdminPage(): React.ReactElement {
                     : 'How many of the most recent participants should be reloaded from the user profile? (job title, location, department, phone)', '20');
                   if (!ans) return;
                   const n = parseInt(ans, 10);
-                  if (isNaN(n) || n <= 0) { alert(isDe ? 'Bitte eine positive Zahl eingeben.' : 'Please enter a positive number.'); return; }
+                  if (isNaN(n) || n <= 0) { showAlert(isDe ? 'Bitte eine positive Zahl eingeben.' : 'Please enter a positive number.'); return; }
                   setIsRefreshingProfiles(true);
                   setRefreshProfilesResult(null);
                   try {
@@ -5695,9 +5901,9 @@ export default function AdminPage(): React.ReactElement {
                   style={{ marginTop: 12, fontSize: '0.82rem', opacity: isReorderingIDs ? 0.6 : 1, display: 'inline-flex', alignItems: 'center', gap: 6 }}
                   onClick={async () => {
                     if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                    if (!confirm(isDe
+                    if (!(await confirmDialog(isDe
                       ? 'TeilnehmerIDs jetzt neu vergeben (1, 2, 3, …)?\n\nNur klicken, wenn die automatische Korrektur offensichtlich nicht gelaufen ist (IDs schon länger falsch) — NICHT mitten in einer Anmeldewelle.'
-                      : 'Reassign participant IDs now (1, 2, 3, …)?\n\nOnly click if the automatic correction clearly did not run (IDs wrong for a while) — NOT in the middle of a registration wave.')) return;
+                      : 'Reassign participant IDs now (1, 2, 3, …)?\n\nOnly click if the automatic correction clearly did not run (IDs wrong for a while) — NOT in the middle of a registration wave.'))) return;
                     await runIdReorder();
                   }}
                 >
@@ -6839,7 +7045,7 @@ export default function AdminPage(): React.ReactElement {
                         onClick={async () => {
                           if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
                           const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
-                          if (!confirm(isDe ? `${name} (${reg.ParticipantEmail}) wirklich abmelden?` : `Really cancel ${name} (${reg.ParticipantEmail})?`)) return;
+                          if (!(await confirmDialog(isDe ? `${name} (${reg.ParticipantEmail}) wirklich abmelden?` : `Really cancel ${name} (${reg.ParticipantEmail})?`, { danger: true, confirmLabel: isDe ? 'Abmelden' : 'Cancel registration' }))) return;
                           // Lade-Toast anzeigen
                           setAdminToast({ kind: 'cancelling', name });
                           // Typ des Abgemeldeten merken — für typ-bewusstes Nachrücken bei B2Run-Split.
@@ -6954,11 +7160,11 @@ export default function AdminPage(): React.ReactElement {
                               );
                               if (!ok) {
                                 console.warn('[DEX] queueIDReorder returned false');
-                                alert(isDe ? 'Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.' : 'Cancellation successful, but the ID reorder entry could not be written to the queue. Please click "Reassign IDs" once.');
+                                showAlert(isDe ? 'Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.' : 'Cancellation successful, but the ID reorder entry could not be written to the queue. Please click "Reassign IDs" once.');
                               }
                             } catch (err) {
                               console.warn('[DEX] queueIDReorder threw:', err);
-                              alert('Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.');
+                              showAlert('Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.');
                             }
                           }
                           const regs = await getAllRegistrations(selectedEvent.id);
@@ -7268,7 +7474,7 @@ export default function AdminPage(): React.ReactElement {
                               onClick={async () => {
                                 if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
                                 const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
-                                if (!confirm(`${name} von der Warteliste entfernen?`)) return;
+                                if (!(await confirmDialog(`${name} von der Warteliste entfernen?`, { danger: true, confirmLabel: isDe ? 'Entfernen' : 'Remove' }))) return;
                                 await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id, `${currentUser.firstName} ${currentUser.surname}`.trim(), currentUser.email);
                                 if (reg.ParticipantEmail && !selectedEvent.disableEmails && !selectedEvent.disableCancellationEmail) {
                                   const emailData = cancellationEmail(name, selectedEvent.title);
@@ -7289,10 +7495,10 @@ export default function AdminPage(): React.ReactElement {
                                       reg.ParticipantEmail || undefined
                                     );
                                     if (!ok) {
-                                      alert(isDe ? 'Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.' : 'Cancellation successful, but the ID reorder entry could not be written to the queue. Please click "Reassign IDs" once.');
+                                      showAlert(isDe ? 'Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.' : 'Cancellation successful, but the ID reorder entry could not be written to the queue. Please click "Reassign IDs" once.');
                                     }
                                   } catch {
-                                    alert(isDe ? 'Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.' : 'Cancellation successful, but the ID reorder entry could not be written to the queue. Please click "Reassign IDs" once.');
+                                    showAlert(isDe ? 'Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.' : 'Cancellation successful, but the ID reorder entry could not be written to the queue. Please click "Reassign IDs" once.');
                                   }
                                 }
                                 const allRegs = await getAllRegistrations(selectedEvent.id);
@@ -7374,8 +7580,7 @@ export default function AdminPage(): React.ReactElement {
             const msg = isDe
               ? `Diese abgemeldete Registrierung von „${nm}" ENDGÜLTIG löschen?\n\nDie Zeile wird komplett aus der Teilnehmerliste entfernt und kann NICHT wiederhergestellt werden. (Nützlich z.B. zum Aufräumen von Test-Anmeldungen.)`
               : `Permanently DELETE this cancelled registration of „${nm}"?\n\nThe row is removed entirely from the participant list and CANNOT be restored. (Useful e.g. for cleaning up test registrations.)`;
-            // eslint-disable-next-line no-alert
-            if (!window.confirm(msg)) return;
+            if (!(await confirmDialog(msg, { danger: true, title: isDe ? 'Registrierung löschen' : 'Delete registration', confirmLabel: isDe ? 'Endgültig löschen' : 'Delete permanently' }))) return;
             const ok = await eventServiceRef.deleteRegistration(selectedEvent.subsiteUrl, reg.Id);
             if (ok) {
               try {
@@ -7394,7 +7599,7 @@ export default function AdminPage(): React.ReactElement {
               setRegistrations(regs);
             } else {
               // eslint-disable-next-line no-alert
-              window.alert(isDe ? 'Löschen fehlgeschlagen.' : 'Delete failed.');
+              showAlert(isDe ? 'Löschen fehlgeschlagen.' : 'Delete failed.');
             }
           };
           return (
@@ -7849,7 +8054,7 @@ export default function AdminPage(): React.ReactElement {
                       setQrSendResult(isDe ? 'Fehler: Keine angemeldeten Teilnehmer.' : 'Error: no registered participants.');
                       return;
                     }
-                    if (!window.confirm(isDe ? `QR-Codes an ${eligible.length} angemeldete Teilnehmer versenden?` : `Send QR codes to ${eligible.length} registered participants?`)) return;
+                    if (!(await confirmDialog(isDe ? `QR-Codes an ${eligible.length} angemeldete Teilnehmer versenden?` : `Send QR codes to ${eligible.length} registered participants?`, { confirmLabel: isDe ? 'Versenden' : 'Send' }))) return;
 
                     // Auto-Send-Toggle persistieren
                     if (qrAutoSendToggle !== !!selectedEvent.autoSendQRCode) {
@@ -8580,7 +8785,7 @@ export default function AdminPage(): React.ReactElement {
         const pastedSet = new Set(pasted);
         const missing = active.filter(r => !pastedSet.has((r.ParticipantEmail || '').toLowerCase()));
         const continueAction = (): void => {
-          if (missing.length === 0) { alert('Alle aktiven Teilnehmer stehen bereits in deiner Liste — niemand zum Anschreiben uebrig.'); return; }
+          if (missing.length === 0) { showAlert('Alle aktiven Teilnehmer stehen bereits in deiner Liste — niemand zum Anschreiben uebrig.'); return; }
           setShowEmailModal(true);
           setMassmailMode('editor');
         };
@@ -8646,12 +8851,26 @@ export default function AdminPage(): React.ReactElement {
       {/* v17.12: Excel-Export-Zielgruppen-Picker. */}
       {excelTargetModal && selectedEvent && (() => {
         const closeAll = (): void => setExcelTargetModal(null);
+        // v20.4: Im Klammer-Modus entscheidet das Modal, WAS exportiert wird —
+        // konsolidierte Matrix und/oder einzelne Sub-Event-Blätter.
+        const consolidatedExportPossible = isConsolidatedMode && excelTargetModal.mode === 'deloitte' && consolidatedChildren.length > 0;
         const proceed = (): void => {
           const mode = excelTargetModal.mode;
           setExcelTargetModal(null);
-          exportCsv(mode, excelAudience);
+          if (consolidatedExportPossible && (excelIncludeMatrix || excelSubIds.size > 0)) {
+            exportConsolidatedExcel(excelAudience, excelIncludeMatrix, Array.from(excelSubIds));
+          } else {
+            exportCsv(mode, excelAudience);
+          }
         };
-        const Row = (props: { value: 'active' | 'activePlusWait' | 'waitOnly'; label: string; desc: string }): React.ReactElement => (
+        const toggleSubId = (id: string): void => {
+          setExcelSubIds(prev => {
+            const next = new Set(prev);
+            if (next.has(id)) next.delete(id); else next.add(id);
+            return next;
+          });
+        };
+        const Row = (props: { value: 'active' | 'activePlusWait' | 'waitOnly' | 'withCancelled'; label: string; desc: string }): React.ReactElement => (
           <label style={{
             display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10,
             borderRadius: 8, border: `1px solid ${excelAudience === props.value ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
@@ -8668,9 +8887,53 @@ export default function AdminPage(): React.ReactElement {
         return (
           <Modal open={true} onClose={closeAll} maxWidth={520} padding={24} ariaLabel="Excel-Export Zielgruppe">
             <h3 style={{ margin: '0 0 14px', fontSize: '1.1rem' }}>Excel-Export — wen sollen wir exportieren?</h3>
-            <Row value="active" label="Teilnehmer (alle aktiven)" desc="Status: Angemeldet, QR versendet, Eingecheckt — Default fuer den Check-In / die Vor-Ort-Liste." />
+            <Row value="active" label="Teilnehmer (alle aktiven)" desc="Status: Angemeldet, QR versendet, Eingecheckt — Default für den Check-In / die Vor-Ort-Liste." />
             <Row value="activePlusWait" label="Teilnehmer + Warteliste" desc="Alle aktiven + Wartelistler in einem Sheet, sortiert nach TeilnehmerID." />
-            <Row value="waitOnly" label="Nur Warteliste" desc="Nur die Wartelistler — z.B. fuer Briefing." />
+            <Row value="waitOnly" label="Nur Warteliste" desc="Nur die Wartelistler — z.B. für Briefing." />
+            <Row value="withCancelled" label="Alles inkl. Abmeldungen" desc="Alle Einträge inklusive abgemeldeter Personen — der Status steht pro Zeile in der Status-Spalte." />
+            {/* v20.4: Klammer-Modus — wählen, was in die Datei kommt. */}
+            {consolidatedExportPossible && (
+              <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: 8 }}>
+                  {isDe ? 'Was soll in die Datei?' : 'What goes into the file?'}
+                </div>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 10px', borderRadius: 8, border: `1px solid ${excelIncludeMatrix ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`, background: excelIncludeMatrix ? 'rgba(134,188,37,0.08)' : '#fff', cursor: 'pointer', marginBottom: 8 }}>
+                  <input type="checkbox" checked={excelIncludeMatrix} onChange={e => setExcelIncludeMatrix(e.target.checked)} style={{ marginTop: 3 }} />
+                  <span>
+                    <span style={{ display: 'block', fontWeight: 600, fontSize: '0.9rem' }}>{isDe ? 'Konsolidierte Matrix' : 'Consolidated matrix'}</span>
+                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
+                      {isDe ? 'Eine Zeile pro Person — mit den übergreifenden Feldern und pro Sub-Event dem Status + den Sub-Event-Antworten (wie die Tabelle in der Klammer-Ansicht).' : 'One row per person — with the cross-cutting fields and per sub-event the status + the sub-event answers (like the table in the consolidated view).'}
+                    </span>
+                  </span>
+                </label>
+                <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700)', margin: '6px 0 6px' }}>
+                  {isDe ? 'Zusätzlich einzelne Sub-Event-Blätter:' : 'Additionally individual sub-event sheets:'}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 180, overflowY: 'auto' }}>
+                  {consolidatedChildren.map(child => {
+                    const checked = excelSubIds.has(child.id);
+                    const short = shortSubEventTitle(child.title, selectedEvent.title) || child.title || '?';
+                    return (
+                      <label key={child.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', borderRadius: 8, border: `1px solid ${checked ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`, background: checked ? 'rgba(134,188,37,0.08)' : '#fff', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={checked} onChange={() => toggleSubId(child.id)} />
+                        <span style={{ fontSize: '0.88rem' }}>{short}</span>
+                        <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
+                          {(subEventRegsByEventId[child.id] || []).length} {isDe ? 'Einträge' : 'entries'}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <div style={{ display: 'flex', gap: 12, marginTop: 6 }}>
+                  <button type="button" onClick={() => setExcelSubIds(new Set(consolidatedChildren.map(c => c.id)))} style={{ background: 'none', border: 'none', color: 'var(--dex-green-dark)', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+                    {isDe ? 'Alle auswählen' : 'Select all'}
+                  </button>
+                  <button type="button" onClick={() => setExcelSubIds(new Set())} style={{ background: 'none', border: 'none', color: 'var(--dex-gray-500)', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer', padding: 0 }}>
+                    {isDe ? 'Keine' : 'None'}
+                  </button>
+                </div>
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 14 }}>
               <button type="button" className="btn btn-secondary" onClick={closeAll} style={{ fontSize: '0.85rem' }}>Abbrechen</button>
               <button type="button" className="btn btn-primary" onClick={proceed} style={{ fontSize: '0.85rem' }}>Excel herunterladen</button>
@@ -8711,8 +8974,8 @@ export default function AdminPage(): React.ReactElement {
         })();
         const sendAction = async (): Promise<void> => {
           if (!eventServiceRef || !selectedEvent) return;
-          if (recipients.length === 0) { alert('Keine aktiven Teilnehmer.'); return; }
-          if (!confirm(`E-Mail an ${recipients.length} Teilnehmer senden?`)) return;
+          if (recipients.length === 0) { showAlert('Keine aktiven Teilnehmer.'); return; }
+          if (!(await confirmDialog(`E-Mail an ${recipients.length} Teilnehmer senden?`, { confirmLabel: isDe ? 'Senden' : 'Send' }))) return;
           setEmailSending(true);
           // Variablen einmalig aufloesen (Massenmail geht an alle zusammen)
           const resolvedSubject = replacePlaceholders(emailSubject, previewVars);
@@ -8734,13 +8997,13 @@ export default function AdminPage(): React.ReactElement {
             );
             setEmailSending(false);
             const ccInfo = ccString ? ` (Organizer auf CC: ${ccList.length})` : ' (Organizer schon in Empfaengerliste)';
-            alert(`E-Mail an ${recipients.length} Empfaenger in die Warteschlange eingetragen.${ccInfo}`);
+            showAlert(`E-Mail an ${recipients.length} Empfaenger in die Warteschlange eingetragen.${ccInfo}`);
             setShowEmailModal(false);
             setMassmailMode('closed');
             setMassmailPasteRaw('');
           } catch {
             setEmailSending(false);
-            alert('Fehler beim Eintragen der E-Mail.');
+            showAlert('Fehler beim Eintragen der E-Mail.');
           }
         };
         return (
@@ -8815,7 +9078,7 @@ export default function AdminPage(): React.ReactElement {
         const sendAction = async (): Promise<void> => {
           if (!eventServiceRef || !selectedEvent) return;
           if (targetEmails.length === 0) {
-            alert(isDe
+            showAlert(isDe
               ? (inviteTarget === 'audience'
                 ? 'Es ist kein Mailverteiler auf dem Event hinterlegt. Bitte zuerst in Schritt 3 (Sichtbarkeit) Empfänger ergänzen.'
                 : 'Keine eigene E-Mail-Adresse verfügbar.')
@@ -8828,7 +9091,7 @@ export default function AdminPage(): React.ReactElement {
           // Standort-/All-Verteiler ('deall', 'all', 'de.<stadt>') gehen.
           if (blockedInTargets.length > 0) {
             const lines = blockedInTargets.map(b => `• ${b.email}  (${b.reason})`).join('\n');
-            alert(isDe
+            showAlert(isDe
               ? `Die Einladungs-Mail darf NICHT an pauschale Standort- oder All-Verteiler verschickt werden.\n\nFolgende Empfänger sind blockiert:\n\n${lines}\n\nBitte entferne diese Adressen aus dem Mailverteiler in Schritt 3 des Event-Edits oder nutze die Option „An mich (zum Weiterleiten)".`
               : `The invitation email must NOT be sent to entire location or all-distribution lists.\n\nThe following recipients are blocked:\n\n${lines}\n\nPlease remove these addresses from the mail distribution in step 3 of event edit, or use the option "To me (for forwarding)".`);
             return;
@@ -8840,7 +9103,7 @@ export default function AdminPage(): React.ReactElement {
             : (inviteTarget === 'organizer'
               ? `Send invitation email to yourself (${myEmail})? You can then forward it from Outlook to your distribution list.`
               : `Send invitation email to ${audienceEmails.length} recipients of the mail distribution?\n\n${audienceEmails.join(', ')}`);
-          if (!confirm(confirmMsg)) return;
+          if (!(await confirmDialog(confirmMsg, { confirmLabel: isDe ? 'Senden' : 'Send' }))) return;
           setInviteSending(true);
           const resolvedSubject = replacePlaceholders(inviteSubject, previewVars);
           const resolvedHeading = replacePlaceholders(inviteHeading, previewVars);
@@ -8856,13 +9119,13 @@ export default function AdminPage(): React.ReactElement {
               ccString || undefined,
             );
             setInviteSending(false);
-            alert(isDe
+            showAlert(isDe
               ? `Einladungs-Mail an ${targetEmails.length} Empfänger in die Warteschlange eingetragen.`
               : `Invitation email queued for ${targetEmails.length} recipient(s).`);
             setShowInviteModal(false);
           } catch {
             setInviteSending(false);
-            alert(isDe ? 'Fehler beim Eintragen der E-Mail.' : 'Error queueing the email.');
+            showAlert(isDe ? 'Fehler beim Eintragen der E-Mail.' : 'Error queueing the email.');
           }
         };
         const headerExtra = (
@@ -9037,7 +9300,7 @@ export default function AdminPage(): React.ReactElement {
                       navigator.clipboard.writeText(emails).then(() => {
                         setDeclineCopied(true);
                         setTimeout(() => setDeclineCopied(false), 2000);
-                      }).catch(() => window.prompt(isDe ? 'E-Mail-Adressen kopieren:' : 'Copy email addresses:', emails));
+                      }).catch(() => showAlert(<span style={{ userSelect: 'all', wordBreak: 'break-all', fontFamily: 'monospace', fontSize: '0.8rem' }}>{emails}</span>, { title: isDe ? 'E-Mail-Adressen manuell kopieren' : 'Copy email addresses manually' }));
                     }}
                   >
                     <Copy size={14} /> {declineCopied ? 'Kopiert!' : 'E-Mails kopieren'}
@@ -9112,7 +9375,7 @@ export default function AdminPage(): React.ReactElement {
         };
         const onDelete = async (fileName: string): Promise<void> => {
           if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-          if (!window.confirm(isDe ? `Datei „${fileName}" wirklich löschen?` : `Really delete file „${fileName}"?`)) return;
+          if (!(await confirmDialog(isDe ? `Datei „${fileName}" wirklich löschen?` : `Really delete file „${fileName}"?`, { danger: true, confirmLabel: isDe ? 'Löschen' : 'Delete' }))) return;
           setAttachmentsBusy(true);
           try {
             await eventServiceRef.deleteRegistrationAttachment(selectedEvent.subsiteUrl, reg.Id, fileName);
@@ -9124,7 +9387,7 @@ export default function AdminPage(): React.ReactElement {
           e.target.value = '';
           if (!f || !eventServiceRef || !selectedEvent?.subsiteUrl) return;
           if (f.size > 10 * 1024 * 1024) {
-            window.alert(isDe ? 'Datei ist größer als 10 MB.' : 'File is larger than 10 MB.');
+            showAlert(isDe ? 'Datei ist größer als 10 MB.' : 'File is larger than 10 MB.');
             return;
           }
           setAttachmentsBusy(true);

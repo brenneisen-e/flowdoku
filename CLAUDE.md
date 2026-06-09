@@ -63,6 +63,54 @@ WaitlistEnabled sogar im Top-Level-Update). **Regel:** Jedes neue Feld muss in
 3. bei Sub-Event-Relevanz: `childPayload` UND `subUpdates` in
    `persistSubEventsForParent`.
 
+### App-Dialoge statt nativer Browser-Boxen (v20.4) — Konvention
+
+**Keine `window.confirm()` / `window.alert()` / `window.prompt()` mehr in der
+App** — die nativen Boxen („deudeloitte.sharepoint.com says …") sind durch
+moderne Modals ersetzt. Zentrale Infrastruktur: `context/DialogContext.tsx`
+(Provider in `DexEventPlatform.tsx` direkt unter dem LanguageProvider).
+
+```ts
+const { confirmDialog, showAlert, promptDialog } = useDialog();
+if (!(await confirmDialog('Wirklich löschen?', { danger: true, confirmLabel: 'Löschen' }))) return;
+showAlert('Gespeichert.', { variant: 'success' });
+const url = await promptDialog('Link-Adresse:', { defaultValue: 'https://' }); // null = Abbrechen
+```
+
+- `confirmDialog` ist **nicht blockierend** (Promise) — Aufrufstellen müssen
+  `await` nutzen; Handler ggf. async machen oder `.then()`-Kette.
+- `danger: true` färbt den Bestätigen-Button rot (destruktive Aktionen).
+- Copy-Fallbacks (früher `window.prompt(text, url)`) sind `showAlert` mit
+  selektierbarem Monospace-`<span style={{ userSelect: 'all' }}>`.
+- `useDialog()` hat einen Fallback auf die nativen Dialoge, wenn kein
+  Provider im Baum ist (Handbuch-Previews) — bricht also nie hart.
+- `EventService.fixRegistrationListColumns` akzeptiert für den
+  Duplikat-Confirm-Callback `boolean | Promise<boolean>`.
+- Editor-Sonderfall `HtmlEditorModal.insertLink`: nach JEDEM Dialog
+  `restoreSelection()` aufrufen, bevor `execCommand` läuft (das Modal
+  stiehlt den Fokus der contentEditable-Selektion).
+
+### Excel-Export: Zielgruppen + Klammer-Matrix (v20.4)
+
+Das Excel-Export-Modal im Organizer Center bietet als Zielgruppe zusätzlich
+**„Alles inkl. Abmeldungen"** (`withCancelled` — Status steht pro Zeile in der
+Status-Spalte). Im **Klammer-Modus** (konsolidierte Ansicht) wählt das Modal
+außerdem, WAS in die Datei kommt: die **konsolidierte Matrix** (ein Blatt,
+eine Zeile pro Person — Stammdaten + Klammer-Felder + pro Sub-Event Status +
+Sub-Event-Antworten, wie die Tabelle) und/oder **einzelne Sub-Event-Blätter**
+(Checkbox-Liste). Implementierung: `exportConsolidatedExcel()` in
+`AdminPage.tsx`, Datenquellen sind die bereits geladenen States
+(`registrations` + `subEventRegsByEventId`), Blattnamen werden für xlsx
+sanitisiert (max. 31 Zeichen, keine `\\/?*[]:`).
+
+### Aktionen-Dropdown: Kategorien + Klartext-Beschreibungen (v20.3/v20.4)
+
+Die Kategorie-Köpfe zeigen eine Kurzbeschreibung des Inhalts
+(`ACTION_CATEGORY_LABELS[*].descDe/descEn`). **Aktions-Beschreibungen sind
+Klartext-Pflicht** (gleiche Regel wie Tooltips): beschreiben WAS die Aktion
+für den Organizer tut — kein Tech-Jargon (keine SP-Spalten-/Counter-/
+Versionsverlauf-/Postfach-Interna).
+
 ### Kein lokales Testen — immer direkt bauen
 
 **WICHTIG:** Der Maintainer testet **nicht lokal** (kein `gulp serve`, kein Workbench, kein Browser-Run-Through). Schlag das auch nicht vor.

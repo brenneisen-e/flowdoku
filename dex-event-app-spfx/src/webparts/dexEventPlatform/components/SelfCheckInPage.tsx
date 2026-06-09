@@ -3,6 +3,8 @@ import { Icon } from '@fluentui/react/lib/Icon';
 import { useEvents, SelfCheckInResult } from '../context/EventContext';
 import { useNavigation } from '../context/NavigationContext';
 import { useLanguage } from '../context/LanguageContext';
+// v20.4: persönliche Begrüßung („Hallo <Vorname>,") auf dem Ergebnis-Screen.
+import { useCurrentUser } from '../context/UserContext';
 
 /**
  * v18.33 — Self-Check-in-Ergebnisseite.
@@ -20,7 +22,9 @@ const SelfCheckInPage: React.FC<{ onLeave?: (_page: 'start' | 'my-events') => vo
   const { selfCheckIn } = useEvents();
   const { navigate } = useNavigation();
   const { locale } = useLanguage();
+  const { currentUser } = useCurrentUser();
   const isDe = locale === 'de';
+  const firstName = (currentUser.firstName || '').trim();
   const leave = (page: 'start' | 'my-events'): void => {
     if (onLeave) onLeave(page);
     else navigate(page);
@@ -175,6 +179,12 @@ const SelfCheckInPage: React.FC<{ onLeave?: (_page: 'start' | 'my-events') => vo
             <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--dex-gray-800, #333)', margin: '18px 0 10px' }}>
               {view.head}
             </h1>
+            {/* v20.4: persönliche Anrede vor dem Ergebnistext. */}
+            {firstName && (
+              <p style={{ fontSize: 16, fontWeight: 600, color: 'var(--dex-gray-800, #333)', margin: '0 0 6px' }}>
+                {isDe ? `Hallo ${firstName},` : `Hi ${firstName},`}
+              </p>
+            )}
             <p style={{ fontSize: 15, color: 'var(--dex-gray-600, #555)', lineHeight: 1.5, margin: 0 }}>
               {view.body}
             </p>

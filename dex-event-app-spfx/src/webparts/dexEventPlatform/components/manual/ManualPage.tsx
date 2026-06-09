@@ -12,6 +12,8 @@ import { useRoles } from '../../context/RoleContext';
 import { useEvents } from '../../context/EventContext';
 import { useCurrentUser } from '../../context/UserContext';
 import { useLanguage } from '../../context/LanguageContext';
+// v20.4: App-Modal statt window.prompt als Copy-Fallback.
+import { useDialog } from '../../context/DialogContext';
 import { ManualSection, ManualPerspectiveBlock, ManualStep, ManualPerspective } from './types';
 import { PlaceholderShot } from './ManualMockups';
 import { getManualSections } from './handbookContent';
@@ -36,6 +38,8 @@ export default function ManualPage(): React.ReactElement {
   const { currentUser } = useCurrentUser();
   const { locale, setLocale } = useLanguage();
   const isDe = locale === 'de';
+  // v20.4: App-Modal statt window.prompt als Copy-Fallback.
+  const { showAlert } = useDialog();
 
   // v13.9: User mit Check-In-Rechten pro Event (qrScannerEmails / organizerEmails
   // / coOrganizerEmails) bekommen im Handbuch die Organizer-Sicht freigeschaltet,
@@ -90,10 +94,10 @@ export default function ManualPage(): React.ReactElement {
           setCopiedLink(true);
           setTimeout(() => setCopiedLink(false), 2000);
         }).catch(() => {
-          window.prompt(isDe ? 'Link kopieren:' : 'Copy link:', link);
+          showAlert(<span style={{ userSelect: 'all', wordBreak: 'break-all', fontFamily: 'monospace', fontSize: '0.8rem' }}>{link}</span>, { title: isDe ? 'Link manuell kopieren' : 'Copy link manually' });
         });
       } else {
-        window.prompt(isDe ? 'Link kopieren:' : 'Copy link:', link);
+        showAlert(<span style={{ userSelect: 'all', wordBreak: 'break-all', fontFamily: 'monospace', fontSize: '0.8rem' }}>{link}</span>, { title: isDe ? 'Link manuell kopieren' : 'Copy link manually' });
       }
     } catch { /* URL-Manipulation fehlgeschlagen — ignorieren */ }
   }, [activeSection?.id, isDe]);

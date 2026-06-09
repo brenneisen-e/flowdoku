@@ -15,6 +15,8 @@ import * as React from 'react';
 import { X } from './Icons';
 import { Icon } from '@fluentui/react/lib/Icon';
 import { wrapTemplate, replacePlaceholders, replacePlaceholdersPlain, getCachedOrbBase64, getCachedLogoBase64 } from '../services/EmailTemplates';
+// v20.4: modernes Confirm-Modal statt window.confirm.
+import { useDialog } from '../context/DialogContext';
 
 // v9.40: 'plain' = nur HTML rendern, kein Mail-/Outlook-Wrapper. Wird für die
 // Event-Beschreibung im Wizard genutzt — die landet 1:1 auf der Anmelde-Seite.
@@ -205,6 +207,8 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
   } = props;
 
   const editorRef = React.useRef<HTMLDivElement>(null);
+  // v20.4: App-Modals statt window.confirm/window.prompt.
+  const { confirmDialog, promptDialog } = useDialog();
   const savedSelectionRef = React.useRef<Range | null>(null);
   // v18.20: aktuelle Schriftgröße der Auswahl (px) — treibt die „wie in Word"-
   // Anzeige im Größen-Dropdown. null = keine Auswahl im Editor / unbekannt.
@@ -294,29 +298,37 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
   const insertLink = (): void => {
     restoreSelection();
     const existing = getSelectionAnchor();
-    // eslint-disable-next-line no-alert
-    const url = window.prompt('Link-Adresse (URL) — leer lassen, um den Link zu entfernen:', existing ? (existing.getAttribute('href') || '') : 'https://');
-    if (url === null) return; // Abbrechen
-    const sel = window.getSelection();
-    const collapsed = !sel || sel.rangeCount === 0 || sel.getRangeAt(0).collapsed;
-    if (url.trim() === '') {
-      try { document.execCommand('unlink'); } catch { /* ignore */ }
+    // v20.4: App-Prompt statt window.prompt. WICHTIG: nach jedem Dialog die
+    // gespeicherte Editor-Selektion wiederherstellen (das Modal stiehlt den
+    // Fokus), sonst landet execCommand ins Leere.
+    promptDialog('Link-Adresse (URL) — leer lassen, um den Link zu entfernen:', {
+      title: 'Link',
+      defaultValue: existing ? (existing.getAttribute('href') || '') : 'https://',
+      confirmLabel: 'Übernehmen',
+    }).then(async url => {
+      if (url === null) return; // Abbrechen
+      restoreSelection();
+      const sel = window.getSelection();
+      const collapsed = !sel || sel.rangeCount === 0 || sel.getRangeAt(0).collapsed;
+      if (url.trim() === '') {
+        try { document.execCommand('unlink'); } catch { /* ignore */ }
+        fireChange();
+        return;
+      }
+      if (existing) {
+        // Bestehender Link: nur die Ziel-URL aktualisieren, Anzeige-Text bleibt.
+        existing.setAttribute('href', url.trim());
+      } else if (collapsed) {
+        // Keine Auswahl: Anzeige-Text erfragen und sauberen Link einfügen.
+        const text = (await promptDialog('Anzeige-Text des Links:', { title: 'Link', defaultValue: url.trim(), confirmLabel: 'Einfügen' })) || url.trim();
+        restoreSelection();
+        try { document.execCommand('insertHTML', false, `<a href="${url.trim()}">${escHtml(text)}</a>`); } catch { /* ignore */ }
+      } else {
+        // Markierten Text in einen Link verwandeln.
+        try { document.execCommand('createLink', false, url.trim()); } catch { /* ignore */ }
+      }
       fireChange();
-      return;
-    }
-    if (existing) {
-      // Bestehender Link: nur die Ziel-URL aktualisieren, Anzeige-Text bleibt.
-      existing.setAttribute('href', url.trim());
-    } else if (collapsed) {
-      // Keine Auswahl: Anzeige-Text erfragen und sauberen Link einfügen.
-      // eslint-disable-next-line no-alert
-      const text = window.prompt('Anzeige-Text des Links:', url.trim()) || url.trim();
-      try { document.execCommand('insertHTML', false, `<a href="${url.trim()}">${escHtml(text)}</a>`); } catch { /* ignore */ }
-    } else {
-      // Markierten Text in einen Link verwandeln.
-      try { document.execCommand('createLink', false, url.trim()); } catch { /* ignore */ }
-    }
-    fireChange();
+    }).catch(() => { /* */ });
   };
 
   // v18.39: Einfügen IMMER als reiner Text (mit Zeilenumbrüchen als <br>).
@@ -771,10 +783,13 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                       onClick={() => {
                         const cur = editorRef.current?.innerHTML || '';
                         const isEmpty = cur.replace(/<[^>]*>/g, '').replace(/\s/g, '').trim() === '';
-                        // eslint-disable-next-line no-alert
-                        if (isEmpty || window.confirm('Den aktuellen Body-Text durch den Standardtext ersetzen?')) {
+                        const apply = (): void => {
                           if (editorRef.current) { editorRef.current.innerHTML = defaultBodyHtml; fireChange(); }
-                        }
+                        };
+                        if (isEmpty) { apply(); return; }
+                        confirmDialog('Den aktuellen Body-Text durch den Standardtext ersetzen?', { confirmLabel: 'Ersetzen' })
+                          .then(ok => { if (ok) apply(); })
+                          .catch(() => { /* */ });
                       }}
                       style={{
                         fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer',

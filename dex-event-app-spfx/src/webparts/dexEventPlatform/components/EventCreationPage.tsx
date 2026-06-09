@@ -11,6 +11,8 @@ import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
+// v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
+import { useDialog } from '../context/DialogContext';
 import { EventService, CustomField } from '../services/EventService';
 import { eventCreatedEmail, buildOutlookBody, stripOutlookWrapper, parseOutlookHeadings, replacePlaceholders, getCachedOrbBase64 } from '../services/EmailTemplates';
 import { exportSummaryAsPdf, exportSummaryAsDoc, SummaryData } from '../services/EventSummaryExport';
@@ -538,6 +540,8 @@ export default function EventCreationPage(): React.ReactElement {
   const [tcCheckbox, setTcCheckbox] = React.useState(false);
   const [tcExpanded, setTcExpanded] = React.useState(false);
   const { t, locale } = useLanguage();
+  // v20.4: App-Modals statt nativer Browser-Dialoge.
+  const { confirmDialog, showAlert } = useDialog();
   const isDe = locale === 'de';
 
   // Edit-Modus: wenn wir auf 'edit-event' sind und eine selectedEventId haben
@@ -2536,7 +2540,7 @@ export default function EventCreationPage(): React.ReactElement {
               : `On sub-event "${draft.title}" you turned on "Create Outlook event" after the fact, but no existing participant subsite could be determined.\n\n`
                 + `If you continue, the sub-event will be re-created from scratch — existing registrations, participant IDs and the participant subsite will be lost (recycled for 93 days).\n\n`
                 + `Continue anyway?`;
-            const confirmed = window.confirm(msg);
+            const confirmed = await confirmDialog(msg, { danger: true, title: isDe ? 'Sub-Event neu aufsetzen' : 'Recreate sub-event', confirmLabel: isDe ? 'Trotzdem fortfahren' : 'Continue anyway' });
             if (confirmed) {
               try {
                 await deleteEvent(draft.dbId);
@@ -2880,7 +2884,7 @@ export default function EventCreationPage(): React.ReactElement {
     });
     if (dateProblems.length > 0) {
       // eslint-disable-next-line no-alert
-      alert(isDe
+      showAlert(isDe
         ? `Das Enddatum darf nicht vor dem Startdatum liegen. Bitte korrigiere das Datum bei: ${dateProblems.join(', ')}.`
         : `The end date must not be before the start date. Please fix the date for: ${dateProblems.join(', ')}.`);
       return;
@@ -2916,7 +2920,7 @@ export default function EventCreationPage(): React.ReactElement {
     const hasSubs = subEventsRef.current.some(s => s.title && s.title.trim());
     if (hasSubs && (effDisableEmails || effDisableOutlook) && !requireSubEventSelection && !mainCommDisabledAck) {
       // eslint-disable-next-line no-alert
-      alert(isDe
+      showAlert(isDe
         ? 'Du hast die Kommunikation für das Hauptevent deaktiviert. Bitte aktiviere in Schritt 6 (Kommunikation, Tab „Haupt-Event") entweder den Toggle „Anmeldung für mindestens ein Sub-Event verpflichtend" ODER bestätige den Ack-Haken — sonst landen Teilnehmer stumm in der Liste.'
         : 'You disabled communication for the main event. Please either enable the toggle „Require selecting at least one sub-event" in step 6 OR tick the acknowledgement — otherwise attendees land silently in the list.');
       return;
@@ -9928,7 +9932,7 @@ export default function EventCreationPage(): React.ReactElement {
                                 type="button"
                                 onClick={() => {
                                   if (candidateSources.length === 0) {
-                                    alert(isDe
+                                    showAlert(isDe
                                       ? 'Es gibt noch kein Dropdown- oder Checkbox-Feld VOR diesem hier, an das die Sichtbarkeit geknüpft werden könnte. Lege zuerst ein passendes Feld weiter oben an.'
                                       : 'There is no dropdown or checkbox field BEFORE this one yet that visibility could depend on. Please add a suitable field above first.');
                                     return;
@@ -11005,7 +11009,7 @@ export default function EventCreationPage(): React.ReactElement {
                       // funktionieren nicht zuverlaessig in Mails (siehe
                       // EmailImageBase64-Pipeline). Empfehlung sind die
                       // offiziellen Deloitte Circular Motifs.
-                      const ok = window.confirm(t('create.logoupload.warning'));
+                      const ok = await confirmDialog(t('create.logoupload.warning'), { confirmLabel: isDe ? 'Trotzdem verwenden' : 'Use anyway' });
                       if (!ok) { e.target.value = ''; return; }
                       const compressed = await compressImage(file, 600, 0.9);
                       const reader = new FileReader();
@@ -11048,7 +11052,7 @@ export default function EventCreationPage(): React.ReactElement {
                     <input type="file" accept="image/*" style={{ display: 'none' }} onChange={async (e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
-                      const ok = window.confirm(t('create.logoupload.warning'));
+                      const ok = await confirmDialog(t('create.logoupload.warning'), { confirmLabel: isDe ? 'Trotzdem verwenden' : 'Use anyway' });
                       if (!ok) { e.target.value = ''; return; }
                       const compressed = await compressImage(file, 600, 0.9);
                       const reader = new FileReader();
@@ -11538,7 +11542,7 @@ export default function EventCreationPage(): React.ReactElement {
                                   const compressed = canvas.toDataURL('image/jpeg', 0.8);
                                   updateQuizQuestion(q.id, { imageBase64: compressed });
                                 } catch {
-                                  alert('Bild konnte nicht verarbeitet werden.');
+                                  showAlert('Bild konnte nicht verarbeitet werden.');
                                 }
                                 e.target.value = '';
                               }}
@@ -11621,11 +11625,13 @@ export default function EventCreationPage(): React.ReactElement {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  if (!window.confirm(isDe ? `Bereich "${sec}" entfernen? Die Fragen bleiben erhalten und landen in "Ohne Bereich".` : `Remove section "${sec}"? The questions are kept and move to "No section".`)) return;
-                                  for (const qq of quiz) {
-                                    if (qq.section === sec) updateQuizQuestion(qq.id, { section: undefined });
-                                  }
-                                  setPendingSections(prev => prev.filter(p => p !== sec));
+                                  confirmDialog(isDe ? `Bereich "${sec}" entfernen? Die Fragen bleiben erhalten und landen in "Ohne Bereich".` : `Remove section "${sec}"? The questions are kept and move to "No section".`, { confirmLabel: isDe ? 'Entfernen' : 'Remove' }).then(ok => {
+                                    if (!ok) return;
+                                    for (const qq of quiz) {
+                                      if (qq.section === sec) updateQuizQuestion(qq.id, { section: undefined });
+                                    }
+                                    setPendingSections(prev => prev.filter(p => p !== sec));
+                                  }).catch(() => { /* */ });
                                 }}
                                 style={{
                                   fontSize: '0.72rem', padding: '4px 10px',

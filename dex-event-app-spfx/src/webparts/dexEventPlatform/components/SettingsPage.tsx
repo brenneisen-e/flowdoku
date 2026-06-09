@@ -9,6 +9,8 @@ import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
+// v20.4: moderne Confirm-Modals statt window.confirm.
+import { useDialog } from '../context/DialogContext';
 import { UserRole } from '../types';
 import { Plus, FileText, Trash2, X } from './Icons';
 import Modal from './Modal';
@@ -24,6 +26,8 @@ export default function SettingsPage(): React.ReactElement {
   const { events, sendOrganizerOnboarding } = useEvents();
   const { locale } = useLanguage();
   const isDe = locale === 'de';
+  // v20.4: App-Modal statt window.confirm.
+  const { confirmDialog } = useDialog();
   // v13.0: Settings/Rollenverwaltung ist Admin-only. Vorher konnte ein
   // Demo-User die Seite öffnen — Admin-Controls waren zwar versteckt,
   // aber der Seitenzugriff selbst war frei. Wir nutzen originalIsAdmin
@@ -233,7 +237,7 @@ export default function SettingsPage(): React.ReactElement {
   const [isRemoving, setIsRemoving] = React.useState<number | null>(null);
 
   const handleRemoveRole = async (itemId: number, userName: string): Promise<void> => {
-    const confirmed = confirm(`Rolle für "${userName}" entfernen?`);
+    const confirmed = await confirmDialog(`Rolle für "${userName}" entfernen?`, { danger: true, confirmLabel: isDe ? 'Entfernen' : 'Remove' });
     if (!confirmed) return;
     setIsRemoving(itemId);
     const success = await removeRole(itemId);
@@ -839,6 +843,7 @@ function ReseedTemplatesCard(): React.ReactElement {
   const { reseedDefaultEmailTemplates } = useEvents();
   const { locale } = useLanguage();
   const isDe = locale === 'de';
+  const { confirmDialog } = useDialog();
   const [busy, setBusy] = React.useState(false);
   const [status, setStatus] = React.useState<'' | 'success' | 'error'>('');
   const [summary, setSummary] = React.useState<{ created: number; updated: number; skipped: number; failed: number; errors: string[] } | undefined>(undefined);
@@ -846,8 +851,7 @@ function ReseedTemplatesCard(): React.ReactElement {
     const msg = isDe
       ? 'Alle Standard-Mail-Templates (DEX_EmailTemplates) mit den Default-Texten aus dem Code überschreiben? Eigene individuelle Anpassungen an Subject / Heading / Body gehen verloren.'
       : 'Overwrite all default email templates (DEX_EmailTemplates) with the built-in default texts from the code? Any local customizations to Subject / Heading / Body will be lost.';
-    // eslint-disable-next-line no-alert
-    if (!window.confirm(msg)) return;
+    if (!(await confirmDialog(msg, { danger: true, confirmLabel: isDe ? 'Überschreiben' : 'Overwrite' }))) return;
     setBusy(true);
     setStatus('');
     setSummary(undefined);
