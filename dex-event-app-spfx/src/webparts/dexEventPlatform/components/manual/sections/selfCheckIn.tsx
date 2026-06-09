@@ -38,8 +38,8 @@ export function selfCheckInSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Es gibt keinen Schalter mehr (der frühere Wizard-Toggle ist entfallen): Öffne einfach „Live-QR anzeigen" oder „QR-PDF herunterladen" — auf der Check-in-Seite, im Admin Center oder über die QR-Kachel unter dem Event-Bild. Über die QR-Kachel stellst du im Modal auch das optionale Check-in-Zeitfenster (Von/Bis) ein: Vor „Von" und nach „Bis" sind keine Check-ins möglich — also auch keine nachträglichen. Beide Felder leer bedeutet: Check-in ist nur am Veranstaltungstag möglich.'
-                  : 'There is no toggle anymore (the former wizard switch is gone): simply open „Show live QR" or „Download QR PDF" — on the check-in page, in the admin center or via the QR tile below the event image. Via the QR tile you also set the optional check-in time window (from/until) in the modal: before „from" and after „until" no check-ins are possible — including late ones. Both fields empty means check-in is only possible on the event day.'}
+                  ? 'Es gibt keinen Schalter mehr (der frühere Wizard-Toggle ist entfallen): Öffne einfach „Live-QR anzeigen" oder „QR-PDF herunterladen" — auf der Check-in-Seite, im Admin Center oder über die QR-Kachel unter dem Event-Bild. Über die QR-Kachel stellst du im Modal auch das Check-in-Zeitfenster (Von/Bis) ein: Vor „Von" und nach „Bis" sind keine Check-ins möglich — also auch keine nachträglichen. Standard-Vorbelegung: 2 Stunden vor Event-Start bis Event-Ende — dieses Fenster gilt auch, solange du nichts anderes speicherst.'
+                  : 'There is no toggle anymore (the former wizard switch is gone): simply open „Show live QR" or „Download QR PDF" — on the check-in page, in the admin center or via the QR tile below the event image. Via the QR tile you also set the check-in time window (from/until) in the modal: before „from" and after „until" no check-ins are possible — including late ones. Default: 2 hours before event start until event end — this window also applies as long as you do not save anything else.'}
               </>
             ),
             tip: isDe
@@ -52,8 +52,8 @@ export function selfCheckInSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Nach dem Speichern findest du im Admin Center dieses Events die Aktion „Self-Check-in: QR-PDF". Sie lädt ein A4-PDF mit dem QR-Code und einer kurzen Anleitung herunter — zum Ausdrucken und Aushängen am Eingang. Bequem, aber: ein abfotografierter Code lässt sich theoretisch weitergeben. Deshalb am besten mit dem Zeitfenster „nur am Event-Tag" kombinieren.'
-                  : 'After saving, the admin center of this event offers the action „Self check-in: QR PDF". It downloads an A4 PDF with the QR code and short instructions — to print and post at the entrance. Convenient, but: a photographed code could in theory be shared. Best combined with the „event day only" window.'}
+                  ? 'Die Aktion „Self-Check-in: QR-PDF" lädt ein A4-PDF mit dem QR-Code und einer kurzen Anleitung herunter — zum Ausdrucken und Aushängen am Eingang. Bequem, aber: ein abfotografierter Code lässt sich theoretisch weitergeben. Das Check-in-Zeitfenster (Standard: 2 Stunden vor Start bis Event-Ende) begrenzt das Risiko zuverlässig.'
+                  : 'The action „Self check-in: QR PDF" downloads an A4 PDF with the QR code and short instructions — to print and post at the entrance. Convenient, but: a photographed code could in theory be shared. The check-in time window (default: 2 hours before start until event end) limits that risk reliably.'}
               </>
             ),
             mockup: (

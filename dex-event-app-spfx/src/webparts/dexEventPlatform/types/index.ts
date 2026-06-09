@@ -260,10 +260,10 @@ export interface DeloitteEvent {
    *  einmalig generiert und bleibt danach stabil. */
   selfCheckInToken?: string;
   /** v18.33: Optionaler Beginn des Self-Check-in-Zeitfensters (ISO).
-   *  Leer = Default „nur am Event-Tag" (Start- bis End-Datum). */
+   *  Leer = Default (v20.3): 2 Stunden vor Event-Start. */
   selfCheckInFrom?: string;
   /** v18.33: Optionales Ende des Self-Check-in-Zeitfensters (ISO).
-   *  Leer = Default „nur am Event-Tag". */
+   *  Leer = Default (v20.3): Event-Ende. */
   selfCheckInTo?: string;
   /** v11.80: Team-Anmeldung — eine Person meldet ein ganzes Team an.
    *  Default false. Die tatsächliche Multi-Person-Anmelde-Logik folgt

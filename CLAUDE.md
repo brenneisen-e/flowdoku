@@ -507,7 +507,18 @@ via `ensureMissingFields()` auch auf Bestands-Tenants nachgezogen):
   Event-Bild** im Event-Detail (v20.2). Deren Modal zeigt den großen QR,
   PDF-/Live-Aktionen und das editierbare **Check-in-Zeitfenster** (Von/Bis →
   `SelfCheckInFrom`/`SelfCheckInTo`; verhindert verfrühte UND nachträgliche
-  Check-ins; leer = nur am Event-Tag).
+  Check-ins). **Default-Fenster (v20.3): 2 Stunden vor Event-Start bis
+  Event-Ende** — gilt zur Laufzeit, wenn nichts gespeichert ist
+  (`isWithinCheckInWindow`/`defaultCheckInWindow` in `utils/selfCheckIn.ts`),
+  und wird im Modal als Vorbelegung angezeigt (Anzeige = Verhalten). Das
+  Modal ist zusätzlich jederzeit über die Aktion „Self-Check-in einstellen"
+  (Aktionen-Dropdown, Kategorie Check-in → Self-Check-in) erreichbar — auch
+  lange vor dem 5-Tage-Fenster der Kachel. Das Aktionen-Dropdown ist seit
+  v20.3 nach aufklappbaren **Kategorien** gruppiert (Event / Teilnehmer /
+  E-Mails / Check-in / Wartung & Reparatur, `category`/`subCategory`-Props
+  am `ActionTile`), Einträge mehrzeilig (Titel fett, Beschreibung darunter);
+  der Live/Entwurf-Toggle ist aus dem Menü in den klickbaren Status-Badge
+  neben dem Event-Titel gewandert.
 
 **Sicherheit:** Jeder checkt nur **sich selbst** ein (Login-gebunden,
 Item-Level-Security). Gegen „von zu Hause einchecken" wirken: Zeitfenster
