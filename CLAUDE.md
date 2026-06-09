@@ -640,8 +640,14 @@ SP-Cache-Headern.
 **Auto-Abmeldung bei Outlook-Absage.** Neue Boolean-Spalte
 `AutoDeregisterOnDecline` auf `DEX_Events` (via `getEventsFieldDefinitions()` →
 `ensureMissingFields`). Wizard-Toggle in Schritt 6 (Kommunikation) als
-eingerücktes Sub-Item unter dem Outlook-Schalter (Top-Level-Event, nur
-Hauptevent-Tab, nur wenn Outlook aktiv). Voll geplumbt: `SPEvent`,
+eingerücktes Sub-Item unter dem Outlook-Schalter, nur wenn Outlook aktiv.
+**Seit v19.24 pro Sub-Event** (Comm-Tab-gespiegelt wie `DisableOutlook` —
+`SubEventDraft`-Feld, `switchCommTab`/`flushActiveCommTabToState`/
+`topLevelCommSnapshot`/`resolveTopLevelCommState`, `persistSubEventsForParent`-
+childPayload; Top-Level-Persist über `effAutoDeregisterOnDecline`). Der Flow
+liest den Flag vom konkret abgesagten Event/Sub-Event (Title-Match in
+`Get_DEX_Event`), daher greift es pro Sub-Event automatisch. Voll geplumbt:
+`SPEvent`,
 `EVENT_SELECT`, `createEvent`-Input/-Payload (EventService), `DeloitteEvent`
 (types), `CreateEventInput` + SP-Parse (EventContext), Wizard-State + Create-/
 Edit-Persistenz + Dirty-Snapshot.
@@ -664,9 +670,13 @@ Edit-Persistenz + Dirty-Snapshot.
 **Kommunikations-Übersichtsbox.** Ganz oben im Reiter Kommunikation (Schritt 6,
 unter der Tab-Leiste) fasst eine Box pro aktivem Tab (Hauptevent / Sub-Event)
 zusammen, was automatisch kommuniziert wird: Bestätigungs-E-Mails (+ Anmelde-/
-Abmelde-Bestätigung einzeln), Outlook-Termin, Outlook-Absage→Auto-Abmeldung
-(nur Hauptevent), Mail-Sprache, Organizer-BCC-Modus. Reine Anzeige aus dem
-aktuellen (per Tab gespiegelten) State, Fluent-UI-Icons (kein Emoji).
+Abmelde-Bestätigung einzeln), Outlook-Termin, Outlook-Absage→Auto-Abmeldung,
+Mail-Sprache, Organizer-BCC-Modus. Reine Anzeige aus dem aktuellen (per Tab
+gespiegelten) State, Fluent-UI-Icons (kein Emoji). Der „inkl. Warteliste/
+Nachrücken"-Zusatz an der Anmelde-Bestätigung erscheint seit v19.24 nur, wenn
+der aktive Tab wirklich eine Warteliste hat (`waitlistEnabled` UND endliche
+Kapazität — bei unbegrenzter Teilnehmerzahl bzw. ausgeschalteter Warteliste
+entfällt er).
 
 ### Sub-Event-Comm-Tabs zeigen nur den Sub-Namen (v19.22)
 

@@ -1158,6 +1158,7 @@ export default function EventCreationPage(): React.ReactElement {
     // v19.22: granulare An-/Abmelde-Mail-Schalter jetzt auch pro Sub-Event.
     disableRegistrationEmail?: boolean;
     disableCancellationEmail?: boolean;
+    autoDeregisterOnDecline?: boolean;
     disableOutlook?: boolean;
     /** Per-Sub-Event Custom-Fields (v10.11+). Ersetzt die hardcoded Funstarter/
      *  Durchstarter-Frage bei B2Run — wer eine zusätzliche Auswahl-Frage pro
@@ -1302,6 +1303,7 @@ export default function EventCreationPage(): React.ReactElement {
       disableEmails: k.disableEmails,
       disableRegistrationEmail: k.disableRegistrationEmail,
       disableCancellationEmail: k.disableCancellationEmail,
+      autoDeregisterOnDecline: k.autoDeregisterOnDecline,
       disableOutlook: k.disableOutlook,
       // v11.57: pro-Sub-Event Kommunikations-Felder laden
       emailLanguage: k.emailLanguage || (locale === 'de' ? 'DE' : 'EN'),
@@ -2498,6 +2500,7 @@ export default function EventCreationPage(): React.ReactElement {
         // v19.22: granulare An-/Abmelde-Mail-Schalter pro Sub-Event persistieren.
         disableRegistrationEmail: !!draft.disableRegistrationEmail,
         disableCancellationEmail: !!draft.disableCancellationEmail,
+        autoDeregisterOnDecline: !!draft.autoDeregisterOnDecline,
         disableOutlook: !!draft.disableOutlook,
         isFictive: isFictive,
         askSalutation: !!draft.askSalutation,
@@ -2694,6 +2697,7 @@ export default function EventCreationPage(): React.ReactElement {
         disableEmails,
         disableRegistrationEmail,
         disableCancellationEmail,
+        autoDeregisterOnDecline,
         disableOutlook,
         // v14.4: Mail-Text-Overrides pro Sub-Event mitspiegeln.
         emailTemplateOverrides: { ...emailTemplateOverrides },
@@ -2716,6 +2720,7 @@ export default function EventCreationPage(): React.ReactElement {
         disableEmails,
         disableRegistrationEmail,
         disableCancellationEmail,
+        autoDeregisterOnDecline,
         disableOutlook,
         emailTemplateOverrides: { ...emailTemplateOverrides },
       };
@@ -2734,6 +2739,7 @@ export default function EventCreationPage(): React.ReactElement {
         setDisableEmails(!!snap.disableEmails);
         setDisableRegistrationEmail(!!snap.disableRegistrationEmail);
         setDisableCancellationEmail(!!snap.disableCancellationEmail);
+        setAutoDeregisterOnDecline(!!snap.autoDeregisterOnDecline);
         setDisableOutlook(!!snap.disableOutlook);
         setEmailTemplateOverrides(snap.emailTemplateOverrides || {});
       }
@@ -2750,6 +2756,7 @@ export default function EventCreationPage(): React.ReactElement {
         setDisableEmails(!!sub.disableEmails);
         setDisableRegistrationEmail(!!sub.disableRegistrationEmail);
         setDisableCancellationEmail(!!sub.disableCancellationEmail);
+        setAutoDeregisterOnDecline(!!sub.autoDeregisterOnDecline);
         setDisableOutlook(!!sub.disableOutlook);
         setEmailTemplateOverrides(sub.emailTemplateOverrides || {});
       }
@@ -2769,6 +2776,7 @@ export default function EventCreationPage(): React.ReactElement {
     disableEmails: boolean;
     disableRegistrationEmail: boolean;
     disableCancellationEmail: boolean;
+    autoDeregisterOnDecline: boolean;
     disableOutlook: boolean;
     emailTemplateOverrides: Record<string, EmailOverrideEntry>;
   } | null>(null);
@@ -2792,6 +2800,7 @@ export default function EventCreationPage(): React.ReactElement {
         disableEmails,
         disableRegistrationEmail,
         disableCancellationEmail,
+        autoDeregisterOnDecline,
         disableOutlook,
         emailTemplateOverrides: { ...emailTemplateOverrides },
       } : s);
@@ -2825,6 +2834,7 @@ export default function EventCreationPage(): React.ReactElement {
     disableEmails: boolean;
     disableRegistrationEmail: boolean;
     disableCancellationEmail: boolean;
+    autoDeregisterOnDecline: boolean;
     disableOutlook: boolean;
     emailTemplateOverrides: Record<string, EmailOverrideEntry>;
   } => {
@@ -2840,6 +2850,7 @@ export default function EventCreationPage(): React.ReactElement {
         disableEmails,
         disableRegistrationEmail,
         disableCancellationEmail,
+        autoDeregisterOnDecline,
         disableOutlook,
         emailTemplateOverrides,
       };
@@ -2860,6 +2871,7 @@ export default function EventCreationPage(): React.ReactElement {
       disableEmails,
       disableRegistrationEmail,
       disableCancellationEmail,
+      autoDeregisterOnDecline,
       disableOutlook,
       emailTemplateOverrides,
     };
@@ -2939,6 +2951,8 @@ export default function EventCreationPage(): React.ReactElement {
     // auflösen (auf Sub-Tabs hält der State den Sub-Wert → resolveTopLevelCommState).
     const effDisableRegistrationEmail = topComm.disableRegistrationEmail;
     const effDisableCancellationEmail = topComm.disableCancellationEmail;
+    // v19.24: Auto-Abmeldung jetzt per Sub-Event gespiegelt → top-level auflösen.
+    const effAutoDeregisterOnDecline = topComm.autoDeregisterOnDecline;
     const effDisableOutlook = topComm.disableOutlook;
 
     // v14.4 / v14.5: Wenn das Hauptevent Sub-Events hat UND die
@@ -3157,7 +3171,7 @@ export default function EventCreationPage(): React.ReactElement {
       updates['DisableRegistrationEmail'] = effDisableRegistrationEmail;
       updates['DisableCancellationEmail'] = effDisableCancellationEmail;
       // v19.23: Outlook-Absage = Auto-Abmeldung (Top-Level-Event).
-      updates['AutoDeregisterOnDecline'] = autoDeregisterOnDecline;
+      updates['AutoDeregisterOnDecline'] = effAutoDeregisterOnDecline;
       updates['DisableOutlook'] = effDisableOutlook;
       // v11.57: OutlookDirty schreiben. Wenn Outlook-relevante Aenderungen
       // anstehen und der Organizer im Update-Confirm-Modal die Checkbox
@@ -3702,8 +3716,8 @@ export default function EventCreationPage(): React.ReactElement {
         // v19.22: granulare An-/Abmelde-Mail-Schalter (Top-Level aufgelöst).
         disableRegistrationEmail: effDisableRegistrationEmail,
         disableCancellationEmail: effDisableCancellationEmail,
-        // v19.23: Outlook-Absage = Auto-Abmeldung (Top-Level-Event).
-        autoDeregisterOnDecline,
+        // v19.23/v19.24: Outlook-Absage = Auto-Abmeldung (Top-Level aufgelöst).
+        autoDeregisterOnDecline: effAutoDeregisterOnDecline,
         disableOutlook: effDisableOutlook,
         notifyOrgRegisterMode,
         notifyOrgRegisterFromDate: notifyOrgRegisterMode === 'fromDate' && notifyOrgRegisterFromDate ? berlinLocalToUtcIso(notifyOrgRegisterFromDate) : '',
@@ -11037,6 +11051,16 @@ export default function EventCreationPage(): React.ReactElement {
                   const cancOn = !disableCancellationEmail;
                   const outlookOn = !disableOutlook;
                   const isMainTab = activeCommTabIdx === 0;
+                  // v19.24: Warteliste nur erwähnen, wenn es für den aktiven Tab
+                  // wirklich eine gibt (Master-Schalter an UND endliche Kapazität).
+                  // Bei unbegrenzter Teilnehmerzahl oder ausgeschalteter Warteliste
+                  // entfällt der „inkl. Warteliste/Nachrücken"-Zusatz.
+                  const capForTab = isMainTab
+                    ? (useSplitCapacities
+                        ? ((parseInt(durchstarterCapacity, 10) || 0) + (parseInt(funstarterCapacity, 10) || 0))
+                        : (parseInt(maxParticipants, 10) || 0))
+                    : (subEvents[activeCommTabIdx - 1]?.maxParticipants || 0);
+                  const hasWaitlist = waitlistEnabled && capForTab > 0;
                   const tabName = isMainTab
                     ? (isDe ? 'Hauptevent' : 'Main event')
                     : (shortSubEventTitle(subEvents[activeCommTabIdx - 1]?.title, title) || (isDe ? 'Sub-Event' : 'Sub-event'));
@@ -11071,14 +11095,16 @@ export default function EventCreationPage(): React.ReactElement {
                           ? (isDe ? 'aktiv' : 'active')
                           : (isDe ? 'komplett deaktiviert — es geht keine einzige Mail an Teilnehmer raus' : 'completely disabled — not a single mail goes out to attendees'))}
                       {emailsOn && row(regOn ? 'on' : 'off', isDe ? 'Anmelde-Bestätigung' : 'Registration confirmation',
-                        regOn ? (isDe ? 'wird verschickt (inkl. Warteliste/Nachrücken)' : 'is sent (incl. waitlist/promotion)') : (isDe ? 'wird NICHT verschickt' : 'is NOT sent'), true)}
+                        regOn
+                          ? (isDe ? `wird verschickt${hasWaitlist ? ' (inkl. Warteliste/Nachrücken)' : ''}` : `is sent${hasWaitlist ? ' (incl. waitlist/promotion)' : ''}`)
+                          : (isDe ? 'wird NICHT verschickt' : 'is NOT sent'), true)}
                       {emailsOn && row(cancOn ? 'on' : 'off', isDe ? 'Abmelde-Bestätigung' : 'Cancellation confirmation',
                         cancOn ? (isDe ? 'wird verschickt' : 'is sent') : (isDe ? 'wird NICHT verschickt' : 'is NOT sent'), true)}
                       {row(outlookOn ? 'on' : 'off', isDe ? 'Outlook-Kalendereintrag' : 'Outlook calendar entry',
                         outlookOn
                           ? (isDe ? 'angemeldete Teilnehmer bekommen einen Termin (bei Abmeldung wird er entfernt)' : 'registered attendees get a calendar entry (removed on cancellation)')
                           : (isDe ? 'kein Termin — Teilnehmer planen den Termin selbst ein' : 'no entry — attendees schedule it themselves'))}
-                      {isMainTab && outlookOn && row(autoDeregisterOnDecline ? 'on' : 'off', isDe ? 'Outlook-Absage → Auto-Abmeldung' : 'Outlook decline → auto-deregistration',
+                      {outlookOn && row(autoDeregisterOnDecline ? 'on' : 'off', isDe ? 'Outlook-Absage → Auto-Abmeldung' : 'Outlook decline → auto-deregistration',
                         autoDeregisterOnDecline
                           ? (isDe ? 'eine Termin-Absage meldet die Person automatisch vom Event ab' : 'declining the invite auto-deregisters the person')
                           : (isDe ? 'eine Termin-Absage löst nur eine Erinnerung aus, keine automatische Abmeldung' : 'declining only triggers a reminder, no auto-deregistration'), true)}
@@ -11249,12 +11275,12 @@ export default function EventCreationPage(): React.ReactElement {
                       </span>
                     </label>
                   )}
-                  {/* v19.23: Outlook-Absage = automatische Abmeldung vom Event.
-                      Top-Level-Event (nur Hauptevent-Tab), nur sinnvoll wenn
-                      Outlook aktiv ist. Die eigentliche Auto-Abmeldung läuft im
-                      Outlook-Absage-Verarbeitungsschritt (Power-Automate-Flow),
-                      die App hinterlegt nur den Schalter. */}
-                  {activeCommTabIdx === 0 && !disableOutlook && (
+                  {/* v19.23/v19.24: Outlook-Absage = automatische Abmeldung vom
+                      Event. Ab v19.24 pro Tab (Hauptevent UND Sub-Events), nur
+                      sinnvoll wenn Outlook aktiv ist. Die eigentliche
+                      Auto-Abmeldung läuft im Outlook-Absage-Verarbeitungsschritt
+                      (Power-Automate-Flow), die App hinterlegt nur den Schalter. */}
+                  {!disableOutlook && (
                     <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginTop: 8, marginLeft: 24, paddingLeft: 12, borderLeft: '3px solid var(--dex-orange, #ed8b00)' }}>
                       <input
                         type="checkbox"
