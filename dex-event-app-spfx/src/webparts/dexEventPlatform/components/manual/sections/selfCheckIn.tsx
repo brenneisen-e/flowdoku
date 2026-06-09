@@ -24,22 +24,22 @@ export function selfCheckInSection(locale: 'de' | 'en'): ManualSection {
         title: isDe ? 'Als Organizer:in' : 'As organizer',
         intro: isDe ? (
           <>
-            Self-Check-in steht <strong>grundsätzlich für jedes Event zur Verfügung</strong>: Die Aktionen findest du im <strong>Admin Center</strong> UND direkt auf der <strong>Check-in-Seite</strong> — als <strong>druckbares PDF</strong> und als <strong>rotierende Live-Anzeige</strong>. Beim ersten Klick wird Self-Check-in automatisch für das Event eingeschaltet (du musst nichts vorab konfigurieren). Beide Wege nutzen denselben event-spezifischen Code — Teilnehmer scannen ihn mit der normalen Handy-Kamera und werden automatisch als anwesend markiert. Im Wizard unter <strong>&bdquo;Kapazität &amp; Sichtbarkeit&ldquo;</strong> kannst du zusätzlich das Zeitfenster einstellen oder Self-Check-in gezielt deaktivieren.
+            Self-Check-in ist <strong>für jedes Event immer möglich</strong> — es gibt nichts zu konfigurieren. <strong>Du entscheidest einfach selbst, ob du es nutzt:</strong> Hängst du den QR-Code aus (druckbares PDF) oder zeigst die rotierende Live-Anzeige am Eingang, können sich Teilnehmer selbst einchecken — tust du es nicht, läuft das Check-in klassisch über dein Team. Die Aktionen findest du auf der <strong>Check-in-Seite</strong>, im <strong>Admin Center</strong> und über die <strong>QR-Kachel unter dem Event-Bild</strong>. Teilnehmer scannen den Code mit der normalen Handy-Kamera und werden automatisch als anwesend markiert.
           </>
         ) : (
           <>
-            Self check-in is <strong>available for every event by default</strong>: you find the actions in the <strong>admin center</strong> AND directly on the <strong>check-in page</strong> — as a <strong>printable PDF</strong> and as a <strong>rotating live display</strong>. The first click activates self check-in for the event automatically (no upfront configuration needed). Both use the same event-specific code — attendees scan it with their normal phone camera and are automatically marked present. In the wizard under <strong>&bdquo;Capacity &amp; visibility&ldquo;</strong> you can additionally set the time window or deliberately disable self check-in.
+            Self check-in is <strong>always possible for every event</strong> — there is nothing to configure. <strong>You simply decide whether to use it:</strong> if you post the QR code (printable PDF) or show the rotating live display at the entrance, attendees can check themselves in — if you do not, check-in runs classically via your team. You find the actions on the <strong>check-in page</strong>, in the <strong>admin center</strong> and via the <strong>QR tile below the event image</strong>. Attendees scan the code with their normal phone camera and are automatically marked present.
           </>
         ),
         steps: [
           {
             number: 1,
-            title: isDe ? 'Aktivierung: automatisch beim ersten Klick (oder im Wizard)' : 'Activation: automatic on first click (or in the wizard)',
+            title: isDe ? 'Nutzen statt konfigurieren — plus optionales Zeitfenster' : 'Use it instead of configuring it — plus optional time window',
             description: (
               <>
                 {isDe
-                  ? 'Du musst Self-Check-in nicht mehr vorab einschalten: Beim ersten Klick auf „Live-QR anzeigen" oder „QR-PDF herunterladen" (Check-in-Seite oder Admin Center) wird es automatisch für das Event aktiviert — dabei wird einmalig ein geheimer Code erzeugt. Alternativ aktivierst du es wie bisher im Event-Wizard im Schritt „Kapazität & Sichtbarkeit" über den Schalter „Self-Check-in per QR-Code" — dort legst du auch das optionale Zeitfenster (Von/Bis) fest. Leer bedeutet: Check-in ist nur am Veranstaltungstag möglich.'
-                  : 'You no longer need to enable self check-in upfront: the first click on „Show live QR" or „Download QR PDF" (check-in page or admin center) activates it for the event automatically — generating a one-time secret code. Alternatively enable it as before in the event wizard, step „Capacity & visibility", via the „Self check-in via QR code" toggle — that is also where you set the optional time window (from/until). Empty means check-in is only possible on the event day.'}
+                  ? 'Es gibt keinen Schalter mehr (der frühere Wizard-Toggle ist entfallen): Öffne einfach „Live-QR anzeigen" oder „QR-PDF herunterladen" — auf der Check-in-Seite, im Admin Center oder über die QR-Kachel unter dem Event-Bild. Über die QR-Kachel stellst du im Modal auch das optionale Check-in-Zeitfenster (Von/Bis) ein: Vor „Von" und nach „Bis" sind keine Check-ins möglich — also auch keine nachträglichen. Beide Felder leer bedeutet: Check-in ist nur am Veranstaltungstag möglich.'
+                  : 'There is no toggle anymore (the former wizard switch is gone): simply open „Show live QR" or „Download QR PDF" — on the check-in page, in the admin center or via the QR tile below the event image. Via the QR tile you also set the optional check-in time window (from/until) in the modal: before „from" and after „until" no check-ins are possible — including late ones. Both fields empty means check-in is only possible on the event day.'}
               </>
             ),
             tip: isDe
@@ -59,8 +59,8 @@ export function selfCheckInSection(locale: 'de' | 'en'): ManualSection {
             mockup: (
               <Callout variant="info" title={isDe ? 'Wo finde ich das?' : 'Where do I find this?'}>
                 {isDe
-                  ? 'Check-in-Seite → Karte „Self-Check-in" → „QR-PDF herunterladen (drucken)" — oder Admin Center → Event auswählen → Aktion „Self-Check-in: QR-PDF". Auch das QR-Versand-Modal verlinkt beide Aktionen. Der Download startet sofort.'
-                  : 'Check-in page → „Self check-in" card → „Download QR PDF (print)" — or admin center → select event → action „Self check-in: QR PDF". The QR sending modal links both actions as well. The download starts immediately.'}
+                  ? 'Check-in-Seite → Karte „Self-Check-in" → „QR-PDF herunterladen (drucken)" — oder Admin Center → Event auswählen → Aktion „Self-Check-in: QR-PDF". Zusätzlich erscheint ab 5 Tagen vor dem Event (oder sobald QR-Codes versendet wurden) eine klickbare QR-Kachel direkt unter dem Event-Bild — sie öffnet ein Modal mit großem QR, Druck-/Live-Aktionen und dem Check-in-Zeitfenster (Von/Bis, verhindert auch nachträgliche Check-ins). Auch das QR-Versand-Modal verlinkt beide Aktionen. Der Download startet sofort.'
+                  : 'Check-in page → „Self check-in" card → „Download QR PDF (print)" — or admin center → select event → action „Self check-in: QR PDF". In addition, from 5 days before the event (or as soon as QR codes were sent) a clickable QR tile appears right below the event image — it opens a modal with a large QR, print/live actions and the check-in time window (from/until, also prevents late check-ins). The QR sending modal links both actions as well. The download starts immediately.'}
               </Callout>
             ),
           },

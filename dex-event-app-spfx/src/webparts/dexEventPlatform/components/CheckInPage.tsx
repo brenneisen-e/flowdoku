@@ -614,8 +614,8 @@ export default function CheckInPage(): React.ReactElement {
     } catch { ok = false; }
     if (!ok) {
       alert(isDe
-        ? 'Self-Check-in konnte für dieses Event nicht aktiviert werden (vermutlich fehlende Berechtigung). Bitte einmalig von einem Organizer oder Admin aktivieren lassen — danach kann auch das Check-in-Team die QR-Anzeige und das PDF nutzen.'
-        : 'Self check-in could not be activated for this event (probably missing permission). Please have an organizer or admin activate it once — afterwards the check-in team can use the QR display and PDF as well.');
+        ? 'Der Self-Check-in-QR für dieses Event konnte noch nicht eingerichtet werden (fehlende Berechtigung zum Speichern am Event). Bitte einmalig von einem Organizer oder Admin öffnen lassen — danach kann auch das Check-in-Team QR-Anzeige und PDF nutzen.'
+        : 'The self check-in QR for this event could not be set up yet (missing permission to save on the event). Please have an organizer or admin open it once — afterwards the check-in team can use the QR display and PDF as well.');
       return null;
     }
     return token;
