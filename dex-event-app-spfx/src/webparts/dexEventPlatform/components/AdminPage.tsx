@@ -583,6 +583,26 @@ function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | null {
 // registered". v12.7: ersetzt durch ActionsDropdown + ActionsRegistry —
 // die folgende Funktion bleibt aus Kompatibilitätsgründen als no-op.
 
+// v14.11 / v19.30: Aggregierte Zeile im konsolidierten View (Hauptevent mit
+// Sub-Events), eine pro Person. Auf Modul-Ebene definiert, damit auch
+// Handler außerhalb des Render-Bodys (z.B. das Abmelde-/Edit-Modal von
+// Feature A/B) den Typ referenzieren können.
+type ConsolidatedRow = {
+  emailKey: string;
+  email: string;
+  vorname: string;
+  nachname: string;
+  jobTitle: string;
+  location: string;
+  teilnehmerId: number | null;
+  /** v15.23: Früheste RegistrationDate über alle Sub-Event-
+   *  Registrierungen der Person — Default-Sortierschlüssel im
+   *  konsolidierten View (chronologisch nach erster Anmeldung). */
+  earliestRegistrationTs: number;
+  perChild: Record<string, SPRegistration | undefined>;
+  activeCount: number;
+};
+
 export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
   // v14.11: zusätzlich `events` (alle Events inkl. Sub-Events) als `allEvents`
@@ -947,6 +967,30 @@ export default function AdminPage(): React.ReactElement {
   const [attachmentsByReg, setAttachmentsByReg] = React.useState<Record<number, Array<{ fileName: string; serverRelativeUrl: string }>>>({});
   const [attachmentsModalReg, setAttachmentsModalReg] = React.useState<SPRegistration | null>(null);
   const [attachmentsBusy, setAttachmentsBusy] = React.useState(false);
+  // v19.30 — Feature A: Im konsolidierten View (Hauptevent mit Sub-Events) die
+  // Custom-Felder des Hauptevents („Felder des Hauptevents") pro Teilnehmer
+  // editierbar machen. Die Antworten leben in der Registrierung der Person auf
+  // der Hauptevent-Subsite (`selectedEvent.subsiteUrl`). `mainFieldsEditReg`
+  // hält diese Parent-Registrierung; `mainFieldsEditForm` die editierten Werte
+  // (Field-ID → String). `mainFieldsEditName` nur zur Anzeige im Modal-Titel.
+  const [mainFieldsEditReg, setMainFieldsEditReg] = React.useState<SPRegistration | null>(null);
+  const [mainFieldsEditName, setMainFieldsEditName] = React.useState('');
+  const [mainFieldsEditForm, setMainFieldsEditForm] = React.useState<Record<string, string>>({});
+  const [mainFieldsEditSaving, setMainFieldsEditSaving] = React.useState(false);
+  const [mainFieldsEditError, setMainFieldsEditError] = React.useState('');
+  // v19.30 — Feature B: Abmeldung eines Teilnehmers aus dem konsolidierten
+  // View mit Sub-Event-Auswahl. Der Modal listet alle Sub-Events, für die die
+  // Person aktiv angemeldet ist (Status angemeldet/QR/eingecheckt/Warteliste),
+  // je mit Checkbox. `deregModal` hält die betroffene Person + die abmeldbaren
+  // Sub-Event-Registrierungen; `deregSelected` die angehakten Sub-Event-IDs.
+  const [deregModal, setDeregModal] = React.useState<{
+    emailKey: string;
+    name: string;
+    email: string;
+    items: Array<{ child: DeloitteEvent; reg: SPRegistration }>;
+  } | null>(null);
+  const [deregSelected, setDeregSelected] = React.useState<Set<string>>(new Set());
+  const [deregBusy, setDeregBusy] = React.useState(false);
   const openEditModal = (reg: SPRegistration): void => {
     setEditError('');
     setEditingReg(reg);
@@ -1163,6 +1207,286 @@ export default function AdminPage(): React.ReactElement {
     } finally {
       setIsSavingEdit(false);
     }
+  };
+
+  // v19.30 — Feature A: Edit-Modal für die Hauptevent-Custom-Felder einer
+  // konsolidierten Zeile öffnen. Die Antworten stehen in der Registrierung der
+  // Person auf der Hauptevent-Subsite. Wir suchen sie per E-Mail in
+  // `registrations` (das ist die Teilnehmerliste des selektierten Hauptevents).
+  const openMainFieldsEdit = (emailKey: string, displayName: string): void => {
+    if (!selectedEvent) return;
+    setMainFieldsEditError('');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const parentReg = registrations.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === emailKey) || null;
+    setMainFieldsEditReg(parentReg);
+    setMainFieldsEditName(displayName);
+    const initial: Record<string, string> = {};
+    if (parentReg) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const anyReg = parentReg as any;
+      let cd: Record<string, unknown> = {};
+      if (anyReg.CustomData) { try { cd = JSON.parse(anyReg.CustomData); } catch { /* */ } }
+      const parentFields = (selectedEvent.eventSpecificFields || []).filter(f => f.type !== 'user' && f.type !== 'document' && f.label && f.label.trim());
+      for (const f of parentFields) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const sp = (f as any).spInternalName || '';
+        let v: unknown = sp ? anyReg[sp] : undefined;
+        if (v === undefined || v === null || v === '') v = cd[f.id];
+        initial[f.id] = (v === undefined || v === null) ? '' : String(v);
+      }
+    }
+    setMainFieldsEditForm(initial);
+  };
+  const closeMainFieldsEdit = (): void => {
+    setMainFieldsEditReg(null);
+    setMainFieldsEditName('');
+    setMainFieldsEditForm({});
+    setMainFieldsEditError('');
+  };
+  // v19.30 — Feature A: Speichern der Hauptevent-Custom-Felder. Persistiert
+  // über dasselbe `adminUpdateRegistration` wie das reguläre Teilnehmer-Edit
+  // (schreibt die SP-Spalten der Hauptevent-Teilnehmerliste) und legt eine
+  // Audit-Zeile 'ParticipantUpdated' mit dem Vorher/Nachher-Diff an. Es werden
+  // nur geänderte Felder ins Patch aufgenommen — sonst kippt ein unverändertes
+  // Choice-Feld den ganzen Save (HTTP 400 'Invalid choice').
+  const saveMainFieldsEdit = async (): Promise<void> => {
+    if (!mainFieldsEditReg || !eventServiceRef || !selectedEvent?.subsiteUrl) return;
+    setMainFieldsEditSaving(true);
+    setMainFieldsEditError('');
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const anyReg = mainFieldsEditReg as any;
+      let cd: Record<string, unknown> = {};
+      if (anyReg.CustomData) { try { cd = JSON.parse(anyReg.CustomData); } catch { /* */ } }
+      const parentFields = (selectedEvent.eventSpecificFields || []).filter(f => f.type !== 'user' && f.type !== 'document' && f.label && f.label.trim());
+      const patch: Record<string, unknown> = {};
+      const oldValues: Record<string, unknown> = {};
+      const fieldLabelMap: Record<string, string> = {};
+      const nextCd: Record<string, unknown> = { ...cd };
+      let cdChanged = false;
+      for (const f of parentFields) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const sp = (f as any).spInternalName || '';
+        const newVal = mainFieldsEditForm[f.id] || '';
+        let oldVal = '';
+        let oldFromSp: unknown = sp ? anyReg[sp] : undefined;
+        if (oldFromSp === undefined || oldFromSp === null || oldFromSp === '') oldFromSp = cd[f.id];
+        if (oldFromSp !== undefined && oldFromSp !== null) oldVal = String(oldFromSp);
+        if (newVal === oldVal) continue; // unverändert → überspringen
+        fieldLabelMap[sp || f.id] = f.label;
+        oldValues[sp || f.id] = oldVal;
+        // SP-Spalte patchen, falls vorhanden; sonst nur CustomData mitschreiben.
+        if (sp) patch[sp] = newVal;
+        nextCd[f.id] = newVal;
+        cdChanged = true;
+      }
+      if (!cdChanged && Object.keys(patch).length === 0) {
+        closeMainFieldsEdit();
+        return;
+      }
+      // CustomData immer mitschreiben, damit der konsolidierte View (der bei
+      // fehlender SP-Spalte auf CustomData zurückfällt) konsistent bleibt.
+      if (cdChanged) patch['CustomData'] = JSON.stringify(nextCd);
+      const actor = {
+        name: `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email,
+        email: currentUser.email,
+      };
+      const ok = await eventServiceRef.adminUpdateRegistration(
+        selectedEvent.subsiteUrl, mainFieldsEditReg.Id, patch, actor, oldValues, fieldLabelMap
+      );
+      if (!ok) {
+        setMainFieldsEditError(isDe
+          ? 'Speichern fehlgeschlagen — vermutlich fehlt eine SP-Spalte in der Hauptevent-Teilnehmerliste. Klicke einmal „Spalten fixen" für das Hauptevent, dann erneut versuchen.'
+          : 'Save failed — likely a missing SP column on the main-event participant list. Click „Fix columns" for the main event once, then retry.');
+        return;
+      }
+      // Audit-Log mit Diff der geänderten Felder (analog saveEdit).
+      try {
+        const changes: Record<string, { old: unknown; new: unknown }> = {};
+        for (const k of Object.keys(oldValues)) {
+          changes[k] = { old: oldValues[k], new: (k in patch ? patch[k] : mainFieldsEditForm[k]) };
+        }
+        await eventServiceRef.writeChangeLog({
+          action: 'ParticipantUpdated',
+          targetType: 'Participant',
+          targetId: (mainFieldsEditReg.ParticipantEmail || '') + '#' + mainFieldsEditReg.Id,
+          targetName: `${mainFieldsEditReg.Vorname || ''} ${mainFieldsEditReg.Nachname || ''}`.trim() || mainFieldsEditName,
+          eventId: selectedEvent.id,
+          eventTitle: selectedEvent.title,
+          details: { changes, scope: 'mainEventFields' },
+        });
+      } catch { /* */ }
+      // Hauptevent-Teilnehmerliste neu laden, damit die Pastel-A-Spalten
+      // (Hauptevent-Felder) die neuen Werte zeigen.
+      const regs = await getAllRegistrations(selectedEvent.id);
+      setRegistrations(regs);
+      closeMainFieldsEdit();
+    } catch (err) {
+      console.warn('[DEX] saveMainFieldsEdit error:', err);
+      setMainFieldsEditError(isDe
+        ? 'Unerwarteter Fehler beim Speichern.'
+        : 'Unexpected error while saving.');
+    } finally {
+      setMainFieldsEditSaving(false);
+    }
+  };
+
+  // v19.30 — Feature B: Sub-Event-Registrierungen neu laden (nach einer
+  // Abmeldung im konsolidierten View). Spiegelt den Lade-Effekt von oben.
+  const reloadSubEventRegs = async (): Promise<void> => {
+    if (!selectedEvent || !selectedEvent.subEventsOnlyMode) return;
+    const children = childEventsOf(selectedEvent.id);
+    const map: Record<string, SPRegistration[]> = {};
+    for (const ch of children) {
+      try { map[ch.id] = await getAllRegistrations(ch.id); }
+      catch { map[ch.id] = []; }
+    }
+    setSubEventRegsByEventId(map);
+  };
+  // v19.30 — Feature B: Abmelde-Modal für eine konsolidierte Zeile öffnen.
+  // Sammelt alle Sub-Events, in denen die Person aktiv angemeldet ist.
+  const openDeregModal = (row: ConsolidatedRow): void => {
+    if (!selectedEvent) return;
+    const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
+    const items: Array<{ child: DeloitteEvent; reg: SPRegistration }> = [];
+    for (const ch of childEventsOf(selectedEvent.id)) {
+      const r = row.perChild[ch.id];
+      if (r && ACTIVE.indexOf(r.Status) >= 0) items.push({ child: ch, reg: r });
+    }
+    setDeregModal({
+      emailKey: row.emailKey,
+      name: `${row.vorname} ${row.nachname}`.trim() || row.email,
+      email: row.email,
+      items,
+    });
+    // Default: alle Sub-Events vorausgewählt — der häufigste Fall ist „ganz
+    // abmelden". Der Organizer kann einzelne wieder abwählen.
+    setDeregSelected(new Set(items.map(i => i.child.id)));
+  };
+  const closeDeregModal = (): void => {
+    setDeregModal(null);
+    setDeregSelected(new Set());
+  };
+  // v19.30 — Feature B: Abmeldung pro gewähltem Sub-Event durchführen. Spiegelt
+  // exakt die Nebenwirkungen des Einzel-Event-Abmeldens (Abmelde-Mail +
+  // Outlook 'Ausladen' + DEX_Participants-Cleanup + Nachrücken + ID-Reorder)
+  // und schreibt zusätzlich pro Abmeldung eine 'RegistrationCancelled'-
+  // Audit-Zeile (die der Einzel-Pfad nicht setzt).
+  const runDeregModal = async (): Promise<void> => {
+    if (!deregModal || !eventServiceRef) return;
+    setDeregBusy(true);
+    const actorName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email;
+    const actorEmail = currentUser.email;
+    const chosen = deregModal.items.filter(i => deregSelected.has(i.child.id));
+    for (const { child, reg } of chosen) {
+      const sub = child.subsiteUrl;
+      if (!sub) continue;
+      const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+      const cancelledStarterType = reg.StarterType || '';
+      try {
+        await eventServiceRef.cancelRegistration(sub, reg.Id, actorName, actorEmail);
+        // Audit-Zeile (Feature D: Abmeldungen sollen im Event-Log auftauchen).
+        try {
+          await eventServiceRef.writeChangeLog({
+            action: 'RegistrationCancelled',
+            targetType: 'Participant',
+            targetId: (reg.ParticipantEmail || '') + '#' + reg.Id,
+            targetName: name,
+            eventId: child.id,
+            eventTitle: child.title,
+            details: { asActor: 'organizer', via: 'consolidatedDeregister' },
+          });
+        } catch { /* */ }
+        // Abmelde-Mail + Outlook 'Ausladen' (event-weite Schalter respektieren).
+        if (reg.ParticipantEmail) {
+          if (!child.disableEmails && !child.disableCancellationEmail) {
+            try {
+              const emailData = cancellationEmail(name, child.title);
+              await eventServiceRef.queueEmail(
+                emailData.subject, reg.ParticipantEmail, name, emailData.body,
+                'Abmeldung', child.title, child.id
+              );
+            } catch (err) { console.warn('[DEX]', err); }
+          }
+          if (!child.disableOutlook) {
+            try {
+              await eventServiceRef.queueOutlookEvent(
+                reg.ParticipantEmail, child.id, child.title, 'Ausladen'
+              );
+            } catch (err) { console.warn('[DEX]', err); }
+          }
+        }
+        // DEX_Participants aufräumen.
+        if (reg.ParticipantEmail && child.eventNumber) {
+          eventServiceRef.removeParticipantEvent(reg.ParticipantEmail, child.eventNumber)
+            .catch(err => console.warn('[DEX]', err));
+        }
+        // Client-seitiges Nachrücken (typ-bewusst bei Split-Capacity, außer
+        // splitSharedWaitlist) — identisch zum Einzel-Event-Abmelden.
+        const isSplitEvent = typeof child.durchstarterCapacity === 'number'
+          && typeof child.funstarterCapacity === 'number'
+          && ((child.durchstarterCapacity || 0) > 0 || (child.funstarterCapacity || 0) > 0);
+        const useTypeFilter = isSplitEvent && !child.splitSharedWaitlist;
+        try {
+          const promoted = await eventServiceRef.promoteFirstWaitlistItem(
+            sub,
+            cancelledStarterType || undefined,
+            child.maxParticipants,
+            (useTypeFilter && cancelledStarterType) ? cancelledStarterType : undefined,
+            { itemId: reg.Id, participantEmail: reg.ParticipantEmail || '' },
+          );
+          if (promoted && promoted.success && promoted.email) {
+            if (!child.disableEmails) {
+              try {
+                const lang = child.emailLanguage || 'EN';
+                const promotedFirstName = (promoted.name || '').trim().split(/\s+/)[0] || '';
+                const promoteVars = {
+                  Name: promotedFirstName,
+                  EventTitle: child.title,
+                  Organizer: formatOrganizerList(child.organizers, lang),
+                  AppUrl: `${eventServiceRef.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+                  WaitlistPosition: '',
+                };
+                let emailData: { subject: string; body: string };
+                const spTplRaw = await eventServiceRef.getEmailTemplate('Nachruecken', lang).catch(() => null);
+                const spTpl = applyEventTemplateOverride(spTplRaw, child.emailTemplateOverrides, 'Nachruecken');
+                if (spTpl) emailData = buildEmailFromTemplate(spTpl, promoteVars);
+                else emailData = promotionEmail(promotedFirstName, child.title);
+                await eventServiceRef.queueEmail(
+                  emailData.subject, promoted.email, promoted.name || '', emailData.body,
+                  'Nachruecken', child.title, child.id
+                );
+              } catch (err) { console.warn('[DEX] promote-email failed:', err); }
+            }
+            if (!child.disableOutlook) {
+              try {
+                await eventServiceRef.queueOutlookEvent(promoted.email, child.id, child.title, 'Einladen');
+              } catch (err) { console.warn('[DEX] promote-outlook failed:', err); }
+            }
+          }
+        } catch (err) { console.warn('[DEX] promoteFirstWaitlistItem failed:', err); }
+        // ID-Reorder in die Queue (Flow macht nur noch Reorder).
+        try {
+          await eventServiceRef.queueIDReorder(
+            child.id, child.eventNumber || 0, sub, child.title, name, reg.ParticipantEmail || undefined
+          );
+        } catch (err) { console.warn('[DEX] queueIDReorder threw:', err); }
+      } catch (err) {
+        console.warn('[DEX] consolidated deregister failed for child', child.id, err);
+      }
+    }
+    try { await reloadSubEventRegs(); } catch { /* */ }
+    setDeregBusy(false);
+    closeDeregModal();
+  };
+
+  // v19.30 — Feature D: Audit-Log vorgefiltert auf das aktuell selektierte
+  // Event öffnen (setzt den Event-/Ziel-Filter auf den Event-Titel).
+  const openChangeLogForEvent = (): void => {
+    setChangeLogFilterEvent(selectedEvent?.title || '');
+    setChangeLogFilterAction('');
+    setChangeLogFilterActor('');
+    void openChangeLog();
   };
 
   // v11.36: Fairer Wartelisten-Rang einer Person in ihrer Gruppe — gleiche
@@ -2078,6 +2402,51 @@ export default function AdminPage(): React.ReactElement {
       if (a.indexOf('Cancelled') >= 0) return 'var(--dex-orange)';
       return 'var(--dex-gray-700)';
     };
+    // v19.30 (Feature D): Details lesbar rendern. Bei ParticipantUpdated &
+    // ähnlichen Aktionen steht im Details-JSON `{ changes: { Feld: { old, new } } }`.
+    // Wir zeigen pro Feld eine „Feld: alt → neu"-Zeile statt rohes JSON. Bei
+    // anderen/unstrukturierten Details fallen wir auf den Klartext zurück.
+    const fmtVal = (v: unknown): string => {
+      if (v === undefined || v === null || v === '') return '—';
+      return String(v);
+    };
+    const renderDetails = (raw: string): React.ReactNode => {
+      if (!raw) return <span style={{ color: 'var(--dex-gray-400)' }}>—</span>;
+      let parsed: unknown;
+      try { parsed = JSON.parse(raw); } catch { return <span>{raw}</span>; }
+      if (!parsed || typeof parsed !== 'object') return <span>{raw}</span>;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const obj = parsed as any;
+      const changes = obj.changes;
+      if (changes && typeof changes === 'object' && Object.keys(changes).length > 0) {
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {Object.keys(changes).map(field => {
+              const c = changes[field] || {};
+              return (
+                <div key={field} style={{ fontFamily: 'inherit', fontSize: '0.78rem', lineHeight: 1.4 }}>
+                  <strong style={{ color: 'var(--dex-gray-800)' }}>{field}:</strong>{' '}
+                  <span style={{ color: 'var(--dex-gray-500)', textDecoration: 'line-through' }}>{fmtVal(c.old)}</span>
+                  {' → '}
+                  <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600 }}>{fmtVal(c.new)}</span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      }
+      // Kein changes-Block: übrige aussagekräftige Schlüssel kompakt zeigen
+      // (z.B. asActor / via / scope), sonst das rohe JSON.
+      const keys = Object.keys(obj).filter(k => k !== 'asActor');
+      if (keys.length === 0) {
+        return <span style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>{isDe ? '(keine Detailänderungen)' : '(no detail changes)'}</span>;
+      }
+      return (
+        <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>
+          {keys.map(k => `${k}: ${fmtVal(obj[k])}`).join(' · ')}
+        </span>
+      );
+    };
     return (
       <div
         style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
@@ -2156,7 +2525,7 @@ export default function AdminPage(): React.ReactElement {
                           <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{e.ActorEmail}</div>
                         )}
                       </td>
-                      <td style={{ padding: 6, color: 'var(--dex-gray-600)', fontSize: '0.75rem', fontFamily: 'monospace', maxWidth: 320, wordBreak: 'break-word' }}>{e.Details}</td>
+                      <td style={{ padding: 6, color: 'var(--dex-gray-600)', fontSize: '0.75rem', maxWidth: 360, wordBreak: 'break-word' }}>{renderDetails(e.Details)}</td>
                     </tr>
                   ))}
                   {filtered.length === 0 && (
@@ -2668,21 +3037,6 @@ export default function AdminPage(): React.ReactElement {
   const parentEventForSelected: DeloitteEvent | null = (selectedEvent && selectedEvent.parentEventId)
     ? (allEvents.find(e => e.id === selectedEvent.parentEventId) || null)
     : null;
-  type ConsolidatedRow = {
-    emailKey: string;
-    email: string;
-    vorname: string;
-    nachname: string;
-    jobTitle: string;
-    location: string;
-    teilnehmerId: number | null;
-    /** v15.23: Frueheste RegistrationDate ueber alle Sub-Event-
-     *  Registrierungen der Person — Default-Sortierschluessel im
-     *  konsolidierten View (chronologisch nach erster Anmeldung). */
-    earliestRegistrationTs: number;
-    perChild: Record<string, SPRegistration | undefined>;
-    activeCount: number;
-  };
   // v15.2 HOTFIX: React.useMemo entfernt — der Hook stand NACH dem early
   // return `if (!selectedEvent)` weiter oben (~Zeile 1940) und feuerte
   // damit nur, wenn ein Event selektiert war. Das verletzte die Rules of
@@ -2804,6 +3158,19 @@ export default function AdminPage(): React.ReactElement {
     const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
     const abbreviate = (s: string, max: number): string => s.length > max ? s.substring(0, max - 1) + '…' : s;
     const totalColSpan = 6 + parentCustomFields.length + childCustomFieldsByChild.reduce((sum, x) => sum + 1 + x.fields.length, 0) + 1;
+    // v19.30: Aktionen (Hauptevent-Felder bearbeiten / abmelden) nur für
+    // berechtigte Rollen (Admin oder Organizer dieses Events).
+    const canManage = isAdmin || isOrganizerFor(selectedEvent);
+    // v19.30 (Feature A): Anzahl der bearbeitbaren Hauptevent-Felder (ohne
+    // People-Picker und Dokument-Uploads, die keinen editierbaren Textwert
+    // haben). Nur wenn > 0 erscheint der „Felder"-Button.
+    const editableParentFieldCount = parentCustomFields.filter(f => f.type !== 'document').length;
+    // v19.30 (Feature A): Hat die Person eine Registrierung auf der
+    // Hauptevent-Teilnehmerliste? Nur dann gibt es Hauptevent-Antworten zum
+    // Bearbeiten. (Im subEventsOnlyMode kann jemand nur in Sub-Events
+    // angemeldet sein.)
+    const hasParentReg = (emailKey: string): boolean =>
+      registrations.some(r => (r.ParticipantEmail || '').toLowerCase().trim() === emailKey);
     return (
       <div style={{ overflowX: 'auto' }}>
         {/* v15.3.1: Legende für die Pastell-Spalten — sonst rät der Organizer,
@@ -2954,15 +3321,43 @@ export default function AdminPage(): React.ReactElement {
                       );
                     })}
                     <td style={{ padding: 8 }}>
-                      <button
-                        type="button"
-                        className="btn btn-secondary"
-                        style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                        onClick={() => setExpandedConsolidatedEmail(isExpanded ? null : row.emailKey)}
-                      >
-                        {isExpanded ? (isDe ? 'Schließen' : 'Close') : (isDe ? 'Details' : 'Details')}
-                        {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                      </button>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                          onClick={() => setExpandedConsolidatedEmail(isExpanded ? null : row.emailKey)}
+                        >
+                          {isExpanded ? (isDe ? 'Schließen' : 'Close') : (isDe ? 'Details' : 'Details')}
+                          {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                        </button>
+                        {/* v19.30 (Feature A): Hauptevent-Felder bearbeiten —
+                            nur wenn es Hauptevent-Custom-Felder gibt UND die
+                            Person eine Hauptevent-Registrierung hat. */}
+                        {canManage && editableParentFieldCount > 0 && hasParentReg(row.emailKey) && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            title={isDe ? 'Felder des Hauptevents dieser Person bearbeiten' : 'Edit this person’s main-event fields'}
+                            onClick={() => openMainFieldsEdit(row.emailKey, `${row.vorname} ${row.nachname}`.trim() || row.email)}
+                          >
+                            <Pencil size={12} /> {isDe ? 'Felder' : 'Fields'}
+                          </button>
+                        )}
+                        {/* v19.30 (Feature B): Abmelden mit Sub-Event-Auswahl. */}
+                        {canManage && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--dex-red, #c00)' }}
+                            title={isDe ? 'Aus einzelnen oder allen Sub-Events abmelden' : 'Deregister from selected or all sub-events'}
+                            onClick={() => openDeregModal(row)}
+                          >
+                            <Trash2 size={12} /> {isDe ? 'Abmelden' : 'Cancel'}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                   {isExpanded && (
@@ -4543,6 +4938,23 @@ export default function AdminPage(): React.ReactElement {
                   }
                   setIsRefreshingProfiles(false);
                 }}
+              />
+            )}
+
+            {/* v19.30 (Feature D): Audit-Log / Änderungsprotokoll dieses
+                Events öffnen — vorgefiltert auf den Event-Titel. Sichtbar für
+                Admin oder Organizer dieses Events. Zeigt pro Eintrag Zeitpunkt,
+                Akteur, Aktion, Ziel-Teilnehmer und bei Daten-Änderungen das
+                Vorher → Nachher je Feld. */}
+            {(isAdmin || isOrganizerFor(selectedEvent)) && (
+              <ActionTile
+                icon={<FileText size={18} />}
+                title={isDe ? 'Audit-Log / Änderungsprotokoll' : 'Audit log / change history'}
+                desc={isDe
+                  ? 'Öffnet das Änderungsprotokoll vorgefiltert auf dieses Event. Du siehst pro Eintrag: wann, wer, welche Aktion (z.B. bearbeitet, abgemeldet, gelöscht), welcher Teilnehmer betroffen war und bei Daten-Änderungen den genauen Vorher → Nachher-Vergleich je Feld.'
+                  : 'Opens the change history pre-filtered to this event. Each entry shows: when, who, which action (e.g. edited, deregistered, deleted), which participant was affected and — for data changes — the exact before → after comparison per field.'}
+                badge="organizer"
+                onClick={openChangeLogForEvent}
               />
             )}
           </div>
@@ -7375,6 +7787,253 @@ export default function AdminPage(): React.ReactElement {
           </div>
         </div>
       )}
+
+      {/* v19.30 (Feature A): Bearbeiten der Hauptevent-Custom-Felder einer
+          konsolidierten Zeile. Schreibt in die Registrierung der Person auf
+          der Hauptevent-Subsite — gleiche Persistenz wie das Teilnehmer-Edit. */}
+      {mainFieldsEditReg && selectedEvent && (
+        <Modal
+          open={!!mainFieldsEditReg}
+          onClose={() => { if (!mainFieldsEditSaving) closeMainFieldsEdit(); }}
+          maxWidth={760}
+          dismissable={!mainFieldsEditSaving}
+          ariaLabel={isDe ? 'Hauptevent-Felder bearbeiten' : 'Edit main-event fields'}
+        >
+          <div className="flex-between">
+            <h3 style={{ margin: 0, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <Pencil size={18} />{' '}
+              {isDe ? 'Felder des Hauptevents bearbeiten' : 'Edit main-event fields'}
+              {' — '}
+              <span style={{ color: 'var(--dex-green-dark)' }}>{mainFieldsEditName}</span>
+            </h3>
+            <button
+              onClick={closeMainFieldsEdit}
+              style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--dex-gray-500)' }}
+              aria-label={isDe ? 'Schließen' : 'Close'}
+              disabled={mainFieldsEditSaving}
+            ><X size={20} /></button>
+          </div>
+          <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
+            {isDe
+              ? 'Du bearbeitest hier die Antworten auf die Felder des Hauptevents (die hellblauen Spalten „Felder des Hauptevents"). Sie werden in der Registrierung der Person auf dem Hauptevent gespeichert — nicht pro Sub-Event. Jede Änderung wird im Änderungsprotokoll mit deinem Namen und Datum festgehalten.'
+              : 'You are editing the answers to the main-event fields (the light-blue „Main-event fields" columns). They are stored in the person’s registration on the main event — not per sub-event. Every change is recorded in the audit log with your name and date.'}
+          </p>
+          {(() => {
+            const parentFields = (selectedEvent.eventSpecificFields || []).filter(f => f.type !== 'user' && f.type !== 'document' && f.label && f.label.trim());
+            if (parentFields.length === 0) {
+              return (
+                <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>
+                  {isDe ? 'Dieses Hauptevent hat keine bearbeitbaren Felder.' : 'This main event has no editable fields.'}
+                </p>
+              );
+            }
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                {parentFields.map(cf => {
+                  const value = mainFieldsEditForm[cf.id] || '';
+                  const setVal = (v: string): void => setMainFieldsEditForm(prev => ({ ...prev, [cf.id]: v }));
+                  const labelEl = (
+                    <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 4 }}>
+                      {cf.label}{cf.required && <span style={{ color: 'var(--dex-red, #c00)' }}> *</span>}
+                    </label>
+                  );
+                  if (cf.type === 'select' && !cf.multi && cf.options && cf.options.length > 0) {
+                    return (
+                      <div key={cf.id}>
+                        {labelEl}
+                        <select className="form-select" value={value} onChange={e => setVal(e.target.value)} style={{ width: '100%' }}>
+                          <option value="">{isDe ? '— bitte wählen —' : '— please choose —'}</option>
+                          {cf.options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                        </select>
+                      </div>
+                    );
+                  }
+                  if (cf.type === 'select' && cf.multi && cf.options && cf.options.length > 0) {
+                    const selected = value.split(' | ').map(s => s.trim()).filter(Boolean);
+                    return (
+                      <div key={cf.id} style={{ gridColumn: '1 / -1' }}>
+                        {labelEl}
+                        <MultiSelectDropdown
+                          options={cf.options}
+                          value={selected}
+                          onChange={next => setVal(next.join(' | '))}
+                          placeholder={isDe ? '— bitte wählen —' : '— please choose —'}
+                        />
+                      </div>
+                    );
+                  }
+                  if (cf.type === 'checkbox') {
+                    const isChecked = value === 'true' || value === '1';
+                    return (
+                      <div key={cf.id}>
+                        {labelEl}
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: isChecked ? 'rgba(134,188,37,0.12)' : 'var(--dex-gray-50)', borderRadius: 6, cursor: 'pointer', fontSize: '0.85rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={e => setVal(e.target.checked ? 'true' : 'false')}
+                            style={{ accentColor: 'var(--dex-green)' }}
+                          />
+                          {isChecked ? (isDe ? 'Ja' : 'Yes') : (isDe ? 'Nein' : 'No')}
+                        </label>
+                      </div>
+                    );
+                  }
+                  if (cf.type === 'number') {
+                    return (
+                      <div key={cf.id}>
+                        {labelEl}
+                        <input className="form-input" type="number" value={value} onChange={e => setVal(e.target.value)} style={{ width: '100%' }} />
+                      </div>
+                    );
+                  }
+                  return (
+                    <div key={cf.id}>
+                      {labelEl}
+                      <input className="form-input" value={value} onChange={e => setVal(e.target.value)} style={{ width: '100%' }} />
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+          {mainFieldsEditError && (
+            <div style={{ padding: '8px 12px', background: 'rgba(218,41,28,0.08)', border: '1px solid var(--dex-red, #c00)', borderRadius: 6, fontSize: '0.85rem', color: 'var(--dex-red, #c00)' }}>
+              {mainFieldsEditError}
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+            <button type="button" className="btn btn-outline" onClick={closeMainFieldsEdit} disabled={mainFieldsEditSaving}>
+              {isDe ? 'Abbrechen' : 'Cancel'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={saveMainFieldsEdit}
+              disabled={mainFieldsEditSaving}
+              style={{ opacity: mainFieldsEditSaving ? 0.6 : 1 }}
+            >
+              {mainFieldsEditSaving ? (isDe ? 'Speichert…' : 'Saving…') : (isDe ? 'Speichern' : 'Save')}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* v19.30 (Feature B): Abmelde-Modal mit Sub-Event-Auswahl. Listet alle
+          Sub-Events, für die die Person aktiv angemeldet ist, je mit Checkbox
+          plus „Alle"-Schalter. Beim Bestätigen werden die gewählten Sub-Events
+          abgemeldet (inkl. Mail/Outlook/Nachrücken/ID-Reorder). */}
+      {deregModal && selectedEvent && (() => {
+        const allChecked = deregModal.items.length > 0 && deregModal.items.every(i => deregSelected.has(i.child.id));
+        const someChecked = deregModal.items.some(i => deregSelected.has(i.child.id));
+        const selectedCount = deregModal.items.filter(i => deregSelected.has(i.child.id)).length;
+        const toggleAll = (): void => {
+          if (allChecked) setDeregSelected(new Set());
+          else setDeregSelected(new Set(deregModal.items.map(i => i.child.id)));
+        };
+        const toggleOne = (cid: string): void => {
+          setDeregSelected(prev => {
+            const next = new Set(prev);
+            if (next.has(cid)) next.delete(cid); else next.add(cid);
+            return next;
+          });
+        };
+        return (
+          <Modal
+            open={!!deregModal}
+            onClose={() => { if (!deregBusy) closeDeregModal(); }}
+            maxWidth={640}
+            dismissable={!deregBusy}
+            ariaLabel={isDe ? 'Teilnehmer abmelden' : 'Deregister attendee'}
+          >
+            <div className="flex-between">
+              <h3 style={{ margin: 0, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                <Trash2 size={18} />{' '}
+                {isDe ? 'Abmelden' : 'Deregister'}
+                {' — '}
+                <span style={{ color: 'var(--dex-green-dark)' }}>{deregModal.name}</span>
+              </h3>
+              <button
+                onClick={closeDeregModal}
+                style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: 'var(--dex-gray-500)' }}
+                aria-label={isDe ? 'Schließen' : 'Close'}
+                disabled={deregBusy}
+              ><X size={20} /></button>
+            </div>
+            {/* Orange Sicherheits-Hinweis */}
+            <div style={{ display: 'flex', gap: 10, padding: '10px 12px', background: 'rgba(237,139,0,0.10)', border: '1px solid var(--dex-orange, #ed8b00)', borderRadius: 8, fontSize: '0.82rem', color: 'var(--dex-gray-800)' }}>
+              <span style={{ color: 'var(--dex-orange, #ed8b00)', flexShrink: 0, marginTop: 1 }}><AlertCircle size={18} /></span>
+              <span>
+                {isDe
+                  ? <>Die ausgewählten Anmeldungen werden <strong>verbindlich abgemeldet</strong>. Pro Sub-Event bekommt die Person (sofern nicht deaktiviert) eine Abmelde-Bestätigung, der Outlook-Termin wird zurückgezogen, frei werdende Plätze rücken nach und die Teilnehmer-IDs werden neu vergeben. Dieser Schritt lässt sich nicht automatisch rückgängig machen.</>
+                  : <>The selected registrations will be <strong>cancelled for good</strong>. For each sub-event the person receives (unless disabled) a cancellation confirmation, the Outlook invite is withdrawn, freed seats are filled from the waitlist and participant IDs are reassigned. This step cannot be undone automatically.</>}
+              </span>
+            </div>
+            {deregModal.items.length === 0 ? (
+              <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>
+                {isDe ? 'Diese Person ist in keinem Sub-Event aktiv angemeldet.' : 'This person is not actively registered in any sub-event.'}
+              </p>
+            ) : (
+              <>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', fontWeight: 600, color: 'var(--dex-gray-800)', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={allChecked}
+                    ref={el => { if (el) el.indeterminate = !allChecked && someChecked; }}
+                    onChange={toggleAll}
+                    style={{ accentColor: 'var(--dex-green)' }}
+                    disabled={deregBusy}
+                  />
+                  {isDe ? 'Alle Sub-Events auswählen' : 'Select all sub-events'}
+                </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto' }}>
+                  {deregModal.items.map(({ child, reg }) => {
+                    const checked = deregSelected.has(child.id);
+                    return (
+                      <label
+                        key={child.id}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px',
+                          background: checked ? 'rgba(218,41,28,0.05)' : 'var(--dex-gray-50)',
+                          border: `1px solid ${checked ? 'rgba(218,41,28,0.35)' : 'var(--dex-gray-200)'}`,
+                          borderRadius: 8, cursor: deregBusy ? 'default' : 'pointer', fontSize: '0.85rem',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleOne(child.id)}
+                          style={{ accentColor: 'var(--dex-red, #c00)' }}
+                          disabled={deregBusy}
+                        />
+                        <span style={{ flex: 1, fontWeight: 500 }}>{shortSubEventTitle(child.title, selectedEvent.title) || child.title}</span>
+                        <span className={`badge ${reg.Status === 'Eingecheckt' ? 'badge-green' : 'badge-gray'}`}>{translateStatus(reg.Status, isDe)}</span>
+                        <span style={{ color: 'var(--dex-gray-400)', fontSize: '0.75rem' }}>TID {reg.TeilnehmerID || '?'}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button type="button" className="btn btn-outline" onClick={closeDeregModal} disabled={deregBusy}>
+                {isDe ? 'Abbrechen' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={runDeregModal}
+                disabled={deregBusy || selectedCount === 0}
+                style={{ opacity: (deregBusy || selectedCount === 0) ? 0.6 : 1, background: 'var(--dex-red, #c00)', borderColor: 'var(--dex-red, #c00)' }}
+              >
+                {deregBusy
+                  ? (isDe ? 'Melde ab…' : 'Cancelling…')
+                  : (isDe ? `Abmelden (${selectedCount})` : `Deregister (${selectedCount})`)}
+              </button>
+            </div>
+          </Modal>
+        );
+      })()}
 
       {/* v9.37: Vorschau-Modal für die QR-Code-Mail. Rendert das wirklich
           versendete Mail-HTML in einem sandboxed iframe — analog zur Live-

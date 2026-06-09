@@ -641,6 +641,50 @@ sie laufzeit-relevant ist (`isEventVisibleForUser` in `EventListPage` nutzt
 ganze Event sieht). Kapazität/Fristen der Klammer bleiben ausgegraut (man bucht
 die Klammer nicht). Banner umformuliert entsprechend.
 
+### Teilnehmer-Management im Organizer Center: Löschen, Klammer-Felder, Sub-Event-Abmeldung, Audit-Log (v19.28 + v19.30)
+
+Alle vier Erweiterungen leben in `AdminPage.tsx` und nutzen ausschließlich
+bestehende Service-Methoden (kein EventService/EventContext-Change außer
+`deleteRegistration`).
+
+- **Abmeldungen löschen (v19.28):** In der „Abmeldungen"-Liste pro Zeile ein
+  Löschen-Button (nur `canManage = isAdmin || isOrganizerFor(selectedEvent)`).
+  Nach `window.confirm` hartes DELETE via neuer Methode
+  `EventService.deleteRegistration(subsiteUrl, itemId)` (REST DELETE auf die
+  Teilnehmer-Liste, kein Recycle-Bin) + Audit-Eintrag
+  `writeChangeLog({ action: 'RegistrationDeleted' })` + Reload. Use-Case:
+  Test-Anmeldungen aufräumen.
+- **Klammer-/Hauptevent-Felder editierbar (v19.30, Feature A):** In der
+  konsolidierten Ansicht (`isConsolidatedMode`) sind die übergreifenden
+  Hauptevent-Custom-Fields pro Teilnehmer jetzt über einen „Felder"-Pencil-Button
+  + Modal editierbar. Persistenz über den bestehenden
+  `adminUpdateRegistration(selectedEvent.subsiteUrl, parentReg.Id, patch, …)`-Pfad
+  (nur geänderte Felder im Patch → kein HTTP-400 bei unberührten Choice-Feldern),
+  Audit-Diff `ParticipantUpdated` mit `scope: 'mainEventFields'`. Die
+  Hauptevent-Registrierung wird per E-Mail-Match aus dem bereits geladenen
+  `registrations`-State gefunden (gleiche Logik wie die Pastel-A-Spalten).
+  People-Picker- und Dokument-Felder sind nicht editierbar.
+- **Sub-Event-Abmeldung mit Auswahl (v19.30, Feature B):** Pro konsolidiertem
+  Teilnehmer ein „Abmelden"-Button → Modal mit Checkbox-Liste aller Sub-Events,
+  in denen die Person aktiv registriert ist (+ „Alle Sub-Events auswählen",
+  Default alle an, orange Sicherheits-Hinweis). Pro gewähltem Sub-Event werden die
+  Single-Event-Cancel-Side-Effects **gespiegelt**: `cancelRegistration` →
+  `writeChangeLog({ action: 'RegistrationCancelled' })` (neue Audit-Action — der
+  Single-Event-Cancel-Pfad loggt NICHT) → Abmelde-Mail (gated
+  `!child.disableEmails && !child.disableCancellationEmail`) → Outlook-`Ausladen`
+  (gated `!child.disableOutlook`) → `removeParticipantEvent` → clientseitiges
+  `promoteFirstWaitlistItem` (split-aware) → `queueIDReorder`. Flags werden pro
+  Sub-Event (`child`) gelesen.
+- **Audit-Log pro Event (v19.30, Feature D):** Das ChangeLog-Modal existierte
+  schon (`openChangeLog`/`readChangeLog`, Filter Action/Event/Actor,
+  `changeLogHideSelf`). Neu: ActionTile „Audit-Log / Änderungsprotokoll" öffnet
+  es **vorgefiltert** auf das Event (`openChangeLogForEvent` setzt
+  `changeLogFilterEvent = selectedEvent.title`). Der Event-Filter matcht als
+  Substring gegen `EventTitle` ODER `TargetName` → erfasst auch die Sub-Event-
+  Logs (Konvention `"<Hauptevent> | <Section>"`). Die Detail-Spalte rendert
+  Daten-Änderungen jetzt als **„Feld: alt → neu"** pro Feld (alt durchgestrichen
+  grau, neu fett grün) statt Roh-JSON.
+
 ### Browser-Bild-Cache (IndexedDB) (v19.22)
 
 Event-Bilder (SP-Item-Attachments, stabile URL pro Bild-Version) werden
