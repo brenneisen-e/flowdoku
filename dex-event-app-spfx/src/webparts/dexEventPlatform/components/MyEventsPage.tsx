@@ -18,6 +18,8 @@ import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime, QuizQuesti
 import { SPRegistration } from '../services/EventService';
 import { wrapTemplate } from '../services/EmailTemplates';
 import { useLanguage } from '../context/LanguageContext';
+// v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
+import { useDialog } from '../context/DialogContext';
 // v11.99: RefreshCw nicht mehr benötigt (Page-Level-Refresh-Button entfernt).
 import { X, Pencil } from './Icons';
 import { InfoTooltip } from './InfoTooltip';
@@ -874,6 +876,8 @@ export default function MyEventsPage(): React.ReactElement {
   };
 
   const { t, locale } = useLanguage();
+  // v20.4: App-Modals statt nativer Browser-Dialoge.
+  const { confirmDialog, showAlert } = useDialog();
   const isDe = locale === 'de';
   const [myEvents, setMyEvents] = React.useState<MyEventEntry[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -2242,16 +2246,16 @@ export default function MyEventsPage(): React.ReactElement {
                             onClick={async () => {
                               const msg = `${t('myevents.switchgroup.confirm') || 'Gruppe wechseln zu'} „${targetLabel}"?\n\n` +
                                 ((t('myevents.switchgroup.hint') || 'Falls die Ziel-Gruppe bereits voll ist, kommst du auf deren Warteliste und rückst nach, sobald ein Platz frei wird.'));
-                              if (!window.confirm(msg)) return;
+                              if (!(await confirmDialog(msg, { confirmLabel: isDe ? 'Wechseln' : 'Switch' }))) return;
                               const r = await switchSplitGroup(event.id, targetType);
                               if (!r.ok) {
-                                window.alert(t('myevents.switchgroup.failed') || 'Gruppen-Wechsel fehlgeschlagen.');
+                                showAlert(t('myevents.switchgroup.failed') || 'Gruppen-Wechsel fehlgeschlagen.', { variant: 'error' });
                                 return;
                               }
                               const okMsg = r.full
                                 ? `${t('myevents.switchgroup.waitlist') || 'Wechsel registriert — du stehst auf der Warteliste der Gruppe'} „${targetLabel}".`
                                 : `${t('myevents.switchgroup.success') || 'Wechsel erfolgreich — du bist jetzt in Gruppe'} „${targetLabel}".`;
-                              window.alert(okMsg);
+                              showAlert(okMsg, { variant: 'success' });
                               await loadMyRegistrations();
                             }}
                           >
@@ -2916,6 +2920,8 @@ function MyEventUpload(props: {
 }): React.ReactElement | null {
   const { event } = props;
   const isDe = (event.emailLanguage || 'EN').toUpperCase() === 'DE';
+  // v20.4: App-Modal statt window.confirm.
+  const { confirmDialog } = useDialog();
   const [files, setFiles] = React.useState<Array<{ fileName: string; serverRelativeUrl: string }>>([]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string>('');
@@ -2956,7 +2962,7 @@ function MyEventUpload(props: {
   };
 
   const onDelete = async (fileName: string): Promise<void> => {
-    if (!window.confirm(isDe ? `Datei „${fileName}" wirklich löschen?` : `Really delete file „${fileName}"?`)) return;
+    if (!(await confirmDialog(isDe ? `Datei „${fileName}" wirklich löschen?` : `Really delete file „${fileName}"?`, { danger: true, confirmLabel: isDe ? 'Löschen' : 'Delete' }))) return;
     setBusy(true);
     try {
       await props.remove(event.id, fileName);
@@ -3041,6 +3047,8 @@ function MyEventDocField(props: {
 }): React.ReactElement {
   const { event, field } = props;
   const isDe = (event.emailLanguage || 'EN').toUpperCase() === 'DE';
+  // v20.4: App-Modal statt window.confirm.
+  const { confirmDialog } = useDialog();
   const [files, setFiles] = React.useState<Array<{ fileName: string; serverRelativeUrl: string; displayName: string }>>([]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState('');
@@ -3063,7 +3071,7 @@ function MyEventDocField(props: {
   };
   const onDelete = async (fileName: string, displayName: string): Promise<void> => {
     // eslint-disable-next-line no-alert
-    if (!window.confirm(isDe ? `Datei „${displayName}" wirklich löschen?` : `Really delete file „${displayName}"?`)) return;
+    if (!(await confirmDialog(isDe ? `Datei „${displayName}" wirklich löschen?` : `Really delete file „${displayName}"?`, { danger: true, confirmLabel: isDe ? 'Löschen' : 'Delete' }))) return;
     setBusy(true);
     try { await props.remove(event.id, fileName); await refresh(); } finally { setBusy(false); }
   };

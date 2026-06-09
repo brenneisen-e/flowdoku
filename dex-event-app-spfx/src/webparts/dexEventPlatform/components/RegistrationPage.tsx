@@ -12,6 +12,8 @@ import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useCachedImage } from '../utils/imageCache';
 import { useLanguage, translations as appTranslations, Locale } from '../context/LanguageContext';
+// v20.4: modernes Alert-Modal statt window.alert.
+import { useDialog } from '../context/DialogContext';
 import { Salutation, EventSpecificField } from '../types';
 import { Icon } from '@fluentui/react/lib/Icon';
 import { Trash2, Send, X } from './Icons';
@@ -96,6 +98,8 @@ export default function RegistrationPage(): React.ReactElement {
   const { currentUser } = useCurrentUser();
   const { searchUsers, searchUser, isAdmin } = useRoles();
   const { locale: appLocale } = useLanguage();
+  // v20.4: App-Modal statt nativem Browser-Alert.
+  const { showAlert } = useDialog();
   const event = events.find(e => e.id === selectedEventId);
 
   // v18.35: Erzwungene Anmeldesprache. Hat der Organizer für dieses Event eine
@@ -1868,7 +1872,7 @@ export default function RegistrationPage(): React.ReactElement {
                     const f = e.target.files?.[0] || null;
                     if (f && f.size > 10 * 1024 * 1024) {
                       // eslint-disable-next-line no-alert
-                      alert(locale === 'de' ? 'Die Datei ist zu groß (max. 10 MB).' : 'The file is too large (max. 10 MB).');
+                      showAlert(locale === 'de' ? 'Die Datei ist zu groß (max. 10 MB).' : 'The file is too large (max. 10 MB).', { variant: 'error' });
                       e.target.value = '';
                       return;
                     }

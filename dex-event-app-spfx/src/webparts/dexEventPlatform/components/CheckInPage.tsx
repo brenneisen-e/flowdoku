@@ -12,6 +12,8 @@ import { useNavigation } from '../context/NavigationContext';
 // v20.1: Self-Check-in direkt aus der Check-in-Seite (Live-QR + PDF-Druck).
 import { generateSelfCheckInToken } from '../utils/selfCheckIn';
 import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
+// v20.4: modernes Alert-Modal statt window.alert.
+import { useDialog } from '../context/DialogContext';
 import { useRoles } from '../context/RoleContext';
 import { useCurrentUser } from '../context/UserContext';
 import { EventService } from '../services/EventService';
@@ -23,6 +25,8 @@ import type QrScanner from 'qr-scanner';
 
 export default function CheckInPage(): React.ReactElement {
   const { events, getAllRegistrations, updateEvent } = useEvents();
+  // v20.4: App-Modal statt nativem Browser-Alert.
+  const { showAlert } = useDialog();
   const { selectedEventId, navigate } = useNavigation();
   const { isAdmin, isOrganizer, siteUrl } = useRoles();
   const { currentUser } = useCurrentUser();
@@ -613,9 +617,9 @@ export default function CheckInPage(): React.ReactElement {
       ok = await updateEvent(selectedEvent.id, { 'SelfCheckInEnabled': true, 'SelfCheckInToken': token });
     } catch { ok = false; }
     if (!ok) {
-      alert(isDe
+      showAlert(isDe
         ? 'Der Self-Check-in-QR für dieses Event konnte noch nicht eingerichtet werden (fehlende Berechtigung zum Speichern am Event). Bitte einmalig von einem Organizer oder Admin öffnen lassen — danach kann auch das Check-in-Team QR-Anzeige und PDF nutzen.'
-        : 'The self check-in QR for this event could not be set up yet (missing permission to save on the event). Please have an organizer or admin open it once — afterwards the check-in team can use the QR display and PDF as well.');
+        : 'The self check-in QR for this event could not be set up yet (missing permission to save on the event). Please have an organizer or admin open it once — afterwards the check-in team can use the QR display and PDF as well.', { variant: 'error' });
       return null;
     }
     return token;
@@ -698,7 +702,7 @@ export default function CheckInPage(): React.ReactElement {
                   setResultMessage(isDe ? 'Link kopiert! Öffne ihn in Edge oder Safari.' : 'Link copied! Open it in Edge or Safari.');
                   setResultType('info');
                 }).catch(() => {
-                  window.prompt(isDe ? 'Link kopieren und in Edge/Safari öffnen:' : 'Copy link and open in Edge/Safari:', url);
+                  showAlert(<span style={{ userSelect: 'all', wordBreak: 'break-all', fontFamily: 'monospace', fontSize: '0.8rem' }}>{url}</span>, { title: isDe ? 'Link kopieren und in Edge/Safari öffnen' : 'Copy link and open in Edge/Safari' });
                 });
               }}
             >
