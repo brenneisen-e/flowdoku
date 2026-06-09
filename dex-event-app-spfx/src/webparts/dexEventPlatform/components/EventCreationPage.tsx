@@ -884,6 +884,10 @@ export default function EventCreationPage(): React.ReactElement {
       : (locale === 'de' ? 'DE' : 'EN')
   );
   const [disableEmails, setDisableEmails] = React.useState(editEvent ? !!editEvent.disableEmails : false);
+  // v19.21: granulare Sub-Schalter unter dem Master „Bestätigungs-E-Mails":
+  // einzeln die Anmelde- bzw. Abmelde-Bestätigung abschaltbar (Top-Level-Event).
+  const [disableRegistrationEmail, setDisableRegistrationEmail] = React.useState(editEvent ? !!editEvent.disableRegistrationEmail : false);
+  const [disableCancellationEmail, setDisableCancellationEmail] = React.useState(editEvent ? !!editEvent.disableCancellationEmail : false);
   const [disableOutlook, setDisableOutlook] = React.useState(editEvent ? !!editEvent.disableOutlook : false);
   // v14.4: Acknowledgement, dass bei Top-Level-Kommunikation = AUS die
   // Teilnehmer sich für mindestens ein Sub-Event anmelden müssen. Vorausgewählt
@@ -3092,6 +3096,10 @@ export default function EventCreationPage(): React.ReactElement {
       // DefaultImageBase64 (DEX-Orb) zurueck.
       updates['EmailImageBase64'] = effEmailLogo || '';
       updates['DisableEmails'] = effDisableEmails;
+      // v19.21: granulare An-/Abmelde-Mail-Schalter (Top-Level, nicht per Tab
+      // gespiegelt — die States bleiben über Tab-Wechsel erhalten).
+      updates['DisableRegistrationEmail'] = disableRegistrationEmail;
+      updates['DisableCancellationEmail'] = disableCancellationEmail;
       updates['DisableOutlook'] = effDisableOutlook;
       // v11.57: OutlookDirty schreiben. Wenn Outlook-relevante Aenderungen
       // anstehen und der Organizer im Update-Confirm-Modal die Checkbox
@@ -3633,6 +3641,9 @@ export default function EventCreationPage(): React.ReactElement {
         // v11.93: aus dem Top-Level-Resolver — Sub-Tab-Werte würden sonst
         // beim Save fälschlich aufs Haupt-Event übernommen.
         disableEmails: effDisableEmails,
+        // v19.21: granulare An-/Abmelde-Mail-Schalter (Top-Level-Event).
+        disableRegistrationEmail,
+        disableCancellationEmail,
         disableOutlook: effDisableOutlook,
         notifyOrgRegisterMode,
         notifyOrgRegisterFromDate: notifyOrgRegisterMode === 'fromDate' && notifyOrgRegisterFromDate ? berlinLocalToUtcIso(notifyOrgRegisterFromDate) : '',
@@ -4240,7 +4251,7 @@ export default function EventCreationPage(): React.ReactElement {
       docsLen: (documents || []).length,
       subEventsLen: (subEvents || []).length,
       outlookBody, outlookHeading, outlookSubheading, outlookSubject,
-      disableEmails, disableOutlook,
+      disableEmails, disableRegistrationEmail, disableCancellationEmail, disableOutlook,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       emailTemplateOverridesHash: JSON.stringify(emailTemplateOverrides || {}),
     });
@@ -4253,7 +4264,7 @@ export default function EventCreationPage(): React.ReactElement {
     teamRegistrationEnabled, teamSize, askTeamName, teamPartialAllowed,
     teamOpenSlotsVisible, teamJoinRequiresApproval, askSalutation, requireSubEventSelection,
     customFields, agenda, documents, subEvents,
-    outlookBody, outlookHeading, outlookSubheading, outlookSubject, disableEmails, disableOutlook,
+    outlookBody, outlookHeading, outlookSubheading, outlookSubject, disableEmails, disableRegistrationEmail, disableCancellationEmail, disableOutlook,
     emailTemplateOverrides,
   ]);
   React.useEffect(() => {
@@ -11046,6 +11057,45 @@ export default function EventCreationPage(): React.ReactElement {
                       </span>
                     </span>
                   </label>
+                  {/* v19.21: granulare Sub-Schalter — einzeln die Anmelde- bzw.
+                      Abmelde-Bestätigung abschalten. Nur auf dem Hauptevent-Tab
+                      und nur wenn E-Mails grundsätzlich aktiv sind (Master an). */}
+                  {activeCommTabIdx === 0 && !disableEmails && (
+                    <div style={{ marginLeft: 24, paddingLeft: 12, borderLeft: '3px solid var(--dex-green, #86bc25)', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 8 }}>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={!disableRegistrationEmail}
+                          onChange={e => setDisableRegistrationEmail(!e.target.checked)}
+                          style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 2, flexShrink: 0 }}
+                        />
+                        <span style={{ fontSize: '0.9rem' }}>
+                          <strong>{isDe ? 'Anmelde-Bestätigung schicken' : 'Send registration confirmation'}</strong>
+                          <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)', lineHeight: 1.4, marginTop: 2 }}>
+                            {isDe
+                              ? 'Wenn aktiv: Teilnehmer bekommen bei der Anmeldung eine Bestätigungs-Mail (und, falls Warteliste aktiv, die Warteliste-Mail). Haken aus = es geht keine Anmelde-Bestätigung raus — die Abmelde-Mail bleibt davon unberührt.'
+                              : 'When active: attendees receive a confirmation email on registration (plus the waitlist email if a waitlist is active). Unchecked = no registration confirmation is sent — the cancellation email is unaffected.'}
+                          </span>
+                        </span>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={!disableCancellationEmail}
+                          onChange={e => setDisableCancellationEmail(!e.target.checked)}
+                          style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 2, flexShrink: 0 }}
+                        />
+                        <span style={{ fontSize: '0.9rem' }}>
+                          <strong>{isDe ? 'Abmelde-Bestätigung schicken' : 'Send cancellation confirmation'}</strong>
+                          <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)', lineHeight: 1.4, marginTop: 2 }}>
+                            {isDe
+                              ? 'Wenn aktiv: Teilnehmer bekommen bei einer Abmeldung eine Bestätigungs-Mail. Haken aus = es geht keine Abmelde-Bestätigung raus (z.B. wenn du Teilnehmer still abmeldest) — die Anmelde-Mail bleibt davon unberührt.'
+                              : 'When active: attendees receive a confirmation email when cancelled. Unchecked = no cancellation confirmation is sent (e.g. when you remove attendees silently) — the registration email is unaffected.'}
+                          </span>
+                        </span>
+                      </label>
+                    </div>
+                  )}
                   <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
                     <input
                       type="checkbox"

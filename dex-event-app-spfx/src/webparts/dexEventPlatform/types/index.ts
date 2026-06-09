@@ -126,6 +126,8 @@ export interface DeloitteEvent {
   bilingualFields?: boolean;
   emailTemplateOverrides?: string; // JSON mit Event-spezifischen Template-Anpassungen
   disableEmails?: boolean;   // Wenn true: keine E-Mails bei An-/Abmeldung
+  disableRegistrationEmail?: boolean; // v19.21: Wenn true: keine Anmelde-Bestätigung (Master disableEmails sticht weiterhin)
+  disableCancellationEmail?: boolean; // v19.21: Wenn true: keine Abmelde-Bestätigung
   disableOutlook?: boolean;  // Wenn true: keine Outlook-Kalendereintraege
   /** v14.5: Wenn true UND es existieren Sub-Events, muss der Teilnehmer
    *  beim Anmelden mindestens ein Sub-Event auswählen. Typischer Use-Case:
