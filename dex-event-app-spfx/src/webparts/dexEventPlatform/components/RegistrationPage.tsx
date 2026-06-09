@@ -268,7 +268,10 @@ export default function RegistrationPage(): React.ReactElement {
   const [preferredStarterType, setPreferredStarterType] = React.useState<string>('');
   // Seit v6.5: Fallback-Dialog wenn B2Run-Wunschtyp voll, aber Alternative frei.
   const [fallbackDialog, setFallbackDialog] = React.useState<{ wunsch: string; alt: string; altFree: number } | null>(null);
-  const [starterCounts, setStarterCounts] = React.useState<{ durch: number; fun: number } | null>(null);
+  // v19.19: zusätzlich zu den aktiven Belegungen pro Gruppe (durch/fun) auch
+  // die Wartelisten-Zahlen pro Gruppe (durchWait/funWait) — für die
+  // Kapazitäts-/Warteliste-Anzeige in der Gruppen-Auswahl.
+  const [starterCounts, setStarterCounts] = React.useState<{ durch: number; fun: number; durchWait: number; funWait: number } | null>(null);
   const [submitted, setSubmitted] = React.useState(false);
   // v18.11: „Ich nehme nicht teil"-Absage.
   const [declined, setDeclined] = React.useState(false);
@@ -603,9 +606,17 @@ export default function RegistrationPage(): React.ReactElement {
         const svc = new EventService(ctx);
         const allRegs = await svc.getAllRegistrations(event.subsiteUrl!);
         const active = allRegs.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
+        // v19.19: Warteliste pro Gruppe über die effektive Gruppe
+        // (StarterType || PreferredStarterType) — Wartelisten-Einträge haben
+        // i.d.R. noch keinen StarterType, ihr Gruppen-Wunsch steht in
+        // PreferredStarterType.
+        const waiting = allRegs.filter(r => r.Status === 'Warteliste');
+        const effGroup = (r: { StarterType?: string; PreferredStarterType?: string }): string => r.StarterType || r.PreferredStarterType || '';
         setStarterCounts({
           durch: active.filter(r => r.StarterType === 'Durchstarter').length,
           fun: active.filter(r => r.StarterType === 'Funstarter').length,
+          durchWait: waiting.filter(r => effGroup(r) === 'Durchstarter').length,
+          funWait: waiting.filter(r => effGroup(r) === 'Funstarter').length,
         });
       } catch { /* ignore */ }
     })();
@@ -2373,7 +2384,11 @@ export default function RegistrationPage(): React.ReactElement {
                                 const sessionFree = Math.max(0, (ce.maxParticipants || 0) - (meta.count || 0));
                                 return (
                                   <> · <span style={{ color: isSessionFull ? 'var(--dex-red)' : 'inherit', fontWeight: 600 }}>
-                                    {meta.count}/{ce.maxParticipants} {t('reg.subevents.taken')}
+                                    {/* v19.19: belegt-Zahl bei der Kapazität deckeln,
+                                        damit eine Überbuchung (count > cap) auf der
+                                        Anmeldeseite NICHT sichtbar wird — die echte
+                                        Überbuchungszahl sieht nur der Organizer/Admin. */}
+                                    {Math.min(meta.count, ce.maxParticipants || 0)}/{ce.maxParticipants} {t('reg.subevents.taken')}
                                   </span>
                                   {!isSessionFull && (
                                     <span style={{ color: 'var(--dex-green-dark)' }}> — {sessionFree} {t('reg.free')}</span>
@@ -3243,10 +3258,57 @@ export default function RegistrationPage(): React.ReactElement {
                     ? `Wähle eine der zwei Gruppen aus. Ist die Wunsch-Gruppe voll, kannst du automatisch in die andere wechseln oder auf der Warteliste warten.`
                     : 'Pick one of the two groups. If your preferred group is full, you can either switch to the other or join the waitlist.'}
                 </p>
+                {/* v19.19: Gesamt-Kapazitäts-Zusammenfassung — Gesamtzahl der
+                    Plätze, aktuell freie Plätze (geklammert ≥ 0) und die Zahl
+                    der Personen auf der Warteliste. WICHTIG: hier wird NIE eine
+                    Überbuchung sichtbar — freie Plätze sind bei 0 gedeckelt,
+                    bei Vollbelegung steht „ausgebucht". Die echte
+                    Überbuchungszahl ist ausschließlich dem Organizer/Admin
+                    im Admin Center vorbehalten. */}
+                {(() => {
+                  const totalCap = durchCap + funCap;
+                  const dActive = starterCounts?.durch ?? 0;
+                  const fActive = starterCounts?.fun ?? 0;
+                  const totalFree = Math.max(0, durchCap - dActive) + Math.max(0, funCap - fActive);
+                  const totalWait = (starterCounts?.durchWait ?? 0) + (starterCounts?.funWait ?? 0);
+                  return (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                      marginBottom: 12, padding: '8px 12px', borderRadius: 8,
+                      background: 'var(--dex-gray-50, #f7f7f7)', border: '1px solid var(--dex-gray-200)',
+                      fontSize: '0.8rem',
+                    }}>
+                      <span style={{ color: 'var(--dex-gray-700)', fontWeight: 700 }}>
+                        {locale === 'de' ? 'Gesamtkapazität:' : 'Total capacity:'} {totalCap} {locale === 'de' ? 'Plätze' : 'seats'}
+                      </span>
+                      <span style={{ color: 'var(--dex-gray-300)' }}>·</span>
+                      {totalFree > 0 ? (
+                        <span style={{ color: 'var(--dex-green-dark, #6b9a1e)', fontWeight: 700 }}>
+                          {totalFree} {locale === 'de' ? 'frei' : 'free'}
+                        </span>
+                      ) : (
+                        <span style={{ color: 'var(--dex-red, #c00)', fontWeight: 700 }}>
+                          {locale === 'de' ? 'ausgebucht' : 'fully booked'}
+                        </span>
+                      )}
+                      {totalWait > 0 && (
+                        <>
+                          <span style={{ color: 'var(--dex-gray-300)' }}>·</span>
+                          <span style={{ color: 'var(--dex-gray-600)' }}>
+                            {totalWait} {locale === 'de'
+                              ? (totalWait === 1 ? 'Person auf der Warteliste' : 'Personen auf der Warteliste')
+                              : (totalWait === 1 ? 'person on the waitlist' : 'people on the waitlist')}
+                            {event.splitSharedWaitlist ? (locale === 'de' ? ' (gemeinsam)' : ' (shared)') : ''}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  );
+                })()}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                   {(() => {
-                    const optA = { id: 'Durchstarter', label: splitLabelA, desc: splitLabelA === 'Durchstarter' ? t('reg.starter.durch.desc') : '', cap: durchCap, count: starterCounts?.durch ?? 0, color: 'var(--dex-green-dark, #6b9a1e)' };
-                    const optB = { id: 'Funstarter', label: splitLabelB, desc: splitLabelB === 'Funstarter' ? t('reg.starter.fun.desc') : '', cap: funCap, count: starterCounts?.fun ?? 0, color: 'var(--dex-orange, #ff8c00)' };
+                    const optA = { id: 'Durchstarter', label: splitLabelA, desc: splitLabelA === 'Durchstarter' ? t('reg.starter.durch.desc') : '', cap: durchCap, count: starterCounts?.durch ?? 0, wait: starterCounts?.durchWait ?? 0, color: 'var(--dex-green-dark, #6b9a1e)' };
+                    const optB = { id: 'Funstarter', label: splitLabelB, desc: splitLabelB === 'Funstarter' ? t('reg.starter.fun.desc') : '', cap: funCap, count: starterCounts?.fun ?? 0, wait: starterCounts?.funWait ?? 0, color: 'var(--dex-orange, #ff8c00)' };
                     // v11.25: pure UI-Reihenfolge — bei reversed wird Karte B
                     // zuerst gerendert. Interne IDs/Capacities/StarterType der
                     // Anmeldungen bleiben unangetastet.
@@ -3278,7 +3340,20 @@ export default function RegistrationPage(): React.ReactElement {
                           {isFull ? (
                             <span style={{ color: 'var(--dex-red, #c00)', fontWeight: 600 }}>{t('reg.starter.full')}</span>
                           ) : (
-                            <span style={{ color: opt.color }}>{`${free} / ${opt.cap} ${t('reg.starter.free')}`}</span>
+                            // v19.19: nie negativ — bei Überbuchung greift der
+                            // isFull-Zweig oben (zeigt „Voll"), die echte
+                            // Überbuchungszahl bleibt dem Organizer/Admin vorbehalten.
+                            <span style={{ color: opt.color }}>{`${Math.max(0, free)} / ${opt.cap} ${t('reg.starter.free')}`}</span>
+                          )}
+                          {/* v19.19: Warteliste pro Gruppe — nur bei GETRENNTEN
+                              Wartelisten. Bei gemeinsamer Warteliste steht die
+                              Zahl gesammelt in der Kapazitäts-Zusammenfassung. */}
+                          {!event.splitSharedWaitlist && opt.wait > 0 && (
+                            <span style={{ display: 'block', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                              {opt.wait} {locale === 'de'
+                                ? (opt.wait === 1 ? 'Person auf der Warteliste' : 'Personen auf der Warteliste')
+                                : (opt.wait === 1 ? 'person on the waitlist' : 'people on the waitlist')}
+                            </span>
                           )}
                         </div>
                       </button>
@@ -3515,7 +3590,9 @@ export default function RegistrationPage(): React.ReactElement {
                                 const sessionFree = Math.max(0, (ce.maxParticipants || 0) - (meta.count || 0));
                                 return (
                                   <> · <span style={{ color: isSessionFull ? 'var(--dex-red)' : 'inherit', fontWeight: 600 }}>
-                                    {meta.count}/{ce.maxParticipants} {tEvent('reg.subevents.taken')}
+                                    {/* v19.19: belegt-Zahl bei der Kapazität deckeln (s.o.) —
+                                        Überbuchung nie auf der Anmeldeseite anzeigen. */}
+                                    {Math.min(meta.count, ce.maxParticipants || 0)}/{ce.maxParticipants} {tEvent('reg.subevents.taken')}
                                   </span>
                                   {!isSessionFull && (
                                     <span style={{ color: 'var(--dex-green-dark)' }}> — {sessionFree} {tEvent('reg.free')}</span>
