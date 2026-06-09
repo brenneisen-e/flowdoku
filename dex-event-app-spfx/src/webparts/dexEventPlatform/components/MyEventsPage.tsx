@@ -7,6 +7,7 @@
 import * as React from 'react';
 import { Icon } from '@fluentui/react/lib/Icon';
 import OrganizerList from './OrganizerList';
+import { CachedImg } from './CachedImage';
 
 import { useNavigation } from '../context/NavigationContext';
 import { useEvents } from '../context/EventContext';
@@ -1383,7 +1384,7 @@ export default function MyEventsPage(): React.ReactElement {
                         overflow: 'hidden',
                       }}
                     >
-                      <img
+                      <CachedImg
                         src={event.imageUrl}
                         alt={event.title}
                         loading="lazy"

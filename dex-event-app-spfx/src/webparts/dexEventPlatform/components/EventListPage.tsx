@@ -16,6 +16,8 @@ import { useLanguage } from '../context/LanguageContext';
 // v11.99: RefreshCw nicht mehr benötigt (Page-Level-Refresh-Button entfernt).
 import { Icon } from '@fluentui/react/lib/Icon';
 import EventCard from './EventCard';
+import { CachedBg } from './CachedImage';
+import { prewarmImages } from '../utils/imageCache';
 
 /**
  * Prüft ob ein User-Standort zu einem LocationFilter passt.
@@ -157,6 +159,12 @@ export default function EventListPage(): React.ReactElement {
     refreshParticipantCounts().catch(() => { /* best-effort */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // v19.22: Event-Bilder im Hintergrund in den Cache vorwärmen, sobald die
+  // Event-Liste da ist — beim Öffnen eines Events liegt das Bild dann bereits
+  // lokal vor (kein SharePoint-Roundtrip).
+  React.useEffect(() => {
+    prewarmImages((events || []).map(e => e.imageUrl));
+  }, [events]);
   const { t } = useLanguage();
   const [onlyActive, setOnlyActive] = React.useState(true);
   // View-Mode (Cards | List) - persistiert in localStorage
@@ -486,12 +494,9 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
           >
             <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12, width: '100%' }}>
               <div style={{ flex: '1 1 200px', minWidth: 0, display: 'flex', alignItems: 'center', gap: 16 }}>
-                {event.imageUrl && (
-                  <div style={{
-                    width: 60, height: 40, borderRadius: 'var(--dex-radius)', flexShrink: 0,
-                    background: `url(${event.imageUrl}) center/cover no-repeat`,
-                  }} />
-                )}
+                <CachedBg url={event.imageUrl} style={{
+                  width: 60, height: 40, borderRadius: 'var(--dex-radius)', flexShrink: 0,
+                }} />
                 <div style={{ minWidth: 0 }}>
                   <h3 style={{ marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     {event.title}

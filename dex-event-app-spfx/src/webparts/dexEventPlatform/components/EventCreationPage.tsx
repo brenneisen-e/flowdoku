@@ -271,6 +271,26 @@ function serializeCustomFields(
     });
 }
 
+// v19.22: Sub-Event-Titel auf den reinen Sub-Namen kuerzen (Parent-Praefix
+// entfernen) — gleiche Logik wie im Admin Center. Sub-Event-Titel werden oft
+// als „<Hauptevent> | <Sub-Name>" gespeichert; in den Tabs/Listen reicht der
+// Sub-Name (z.B. „HER SPACE").
+function shortSubEventTitle(title: string | undefined, parentTitle?: string): string {
+  const t = (title || '').trim();
+  if (!t) return t;
+  const pipe = t.lastIndexOf('|');
+  if (pipe >= 0) {
+    const after = t.substring(pipe + 1).trim();
+    if (after) return after;
+  }
+  const p = (parentTitle || '').trim();
+  if (p && t.toLowerCase().startsWith(p.toLowerCase())) {
+    const rest = t.substring(p.length).replace(/^[\s|:\-–—·•]+/, '').trim();
+    if (rest) return rest;
+  }
+  return t;
+}
+
 function StepBadge({ n }: { n: number }): React.ReactElement {
   return (
     <span style={{
@@ -1131,6 +1151,9 @@ export default function EventCreationPage(): React.ReactElement {
     maxParticipants?: number;
     registrationDeadline?: string;
     disableEmails?: boolean;
+    // v19.22: granulare An-/Abmelde-Mail-Schalter jetzt auch pro Sub-Event.
+    disableRegistrationEmail?: boolean;
+    disableCancellationEmail?: boolean;
     disableOutlook?: boolean;
     /** Per-Sub-Event Custom-Fields (v10.11+). Ersetzt die hardcoded Funstarter/
      *  Durchstarter-Frage bei B2Run — wer eine zusätzliche Auswahl-Frage pro
@@ -1273,6 +1296,8 @@ export default function EventCreationPage(): React.ReactElement {
       maxParticipants: k.maxParticipants || 0,
       registrationDeadline: k.registrationDeadline,
       disableEmails: k.disableEmails,
+      disableRegistrationEmail: k.disableRegistrationEmail,
+      disableCancellationEmail: k.disableCancellationEmail,
       disableOutlook: k.disableOutlook,
       // v11.57: pro-Sub-Event Kommunikations-Felder laden
       emailLanguage: k.emailLanguage || (locale === 'de' ? 'DE' : 'EN'),
@@ -2466,6 +2491,9 @@ export default function EventCreationPage(): React.ReactElement {
         emailLanguage: subEmailLang,
         emailTemplateOverrides: subEmailOverrides,
         disableEmails: !!draft.disableEmails,
+        // v19.22: granulare An-/Abmelde-Mail-Schalter pro Sub-Event persistieren.
+        disableRegistrationEmail: !!draft.disableRegistrationEmail,
+        disableCancellationEmail: !!draft.disableCancellationEmail,
         disableOutlook: !!draft.disableOutlook,
         isFictive: isFictive,
         askSalutation: !!draft.askSalutation,
@@ -2660,6 +2688,8 @@ export default function EventCreationPage(): React.ReactElement {
         outlookSubheading,
         outlookSubject,
         disableEmails,
+        disableRegistrationEmail,
+        disableCancellationEmail,
         disableOutlook,
         // v14.4: Mail-Text-Overrides pro Sub-Event mitspiegeln.
         emailTemplateOverrides: { ...emailTemplateOverrides },
@@ -2680,6 +2710,8 @@ export default function EventCreationPage(): React.ReactElement {
         outlookSubheading,
         outlookSubject,
         disableEmails,
+        disableRegistrationEmail,
+        disableCancellationEmail,
         disableOutlook,
         emailTemplateOverrides: { ...emailTemplateOverrides },
       };
@@ -2696,6 +2728,8 @@ export default function EventCreationPage(): React.ReactElement {
         setOutlookSubheading(snap.outlookSubheading || '');
         setOutlookSubject(snap.outlookSubject || '');
         setDisableEmails(!!snap.disableEmails);
+        setDisableRegistrationEmail(!!snap.disableRegistrationEmail);
+        setDisableCancellationEmail(!!snap.disableCancellationEmail);
         setDisableOutlook(!!snap.disableOutlook);
         setEmailTemplateOverrides(snap.emailTemplateOverrides || {});
       }
@@ -2710,6 +2744,8 @@ export default function EventCreationPage(): React.ReactElement {
         setOutlookSubheading(sub.outlookSubheading || '');
         setOutlookSubject(sub.outlookSubject || '');
         setDisableEmails(!!sub.disableEmails);
+        setDisableRegistrationEmail(!!sub.disableRegistrationEmail);
+        setDisableCancellationEmail(!!sub.disableCancellationEmail);
         setDisableOutlook(!!sub.disableOutlook);
         setEmailTemplateOverrides(sub.emailTemplateOverrides || {});
       }
@@ -2727,6 +2763,8 @@ export default function EventCreationPage(): React.ReactElement {
     outlookSubheading: string;
     outlookSubject: string;
     disableEmails: boolean;
+    disableRegistrationEmail: boolean;
+    disableCancellationEmail: boolean;
     disableOutlook: boolean;
     emailTemplateOverrides: Record<string, EmailOverrideEntry>;
   } | null>(null);
@@ -2748,6 +2786,8 @@ export default function EventCreationPage(): React.ReactElement {
         outlookSubheading,
         outlookSubject,
         disableEmails,
+        disableRegistrationEmail,
+        disableCancellationEmail,
         disableOutlook,
         emailTemplateOverrides: { ...emailTemplateOverrides },
       } : s);
@@ -2779,6 +2819,8 @@ export default function EventCreationPage(): React.ReactElement {
     outlookSubheading: string;
     outlookSubject: string;
     disableEmails: boolean;
+    disableRegistrationEmail: boolean;
+    disableCancellationEmail: boolean;
     disableOutlook: boolean;
     emailTemplateOverrides: Record<string, EmailOverrideEntry>;
   } => {
@@ -2792,6 +2834,8 @@ export default function EventCreationPage(): React.ReactElement {
         outlookSubheading,
         outlookSubject,
         disableEmails,
+        disableRegistrationEmail,
+        disableCancellationEmail,
         disableOutlook,
         emailTemplateOverrides,
       };
@@ -2810,6 +2854,8 @@ export default function EventCreationPage(): React.ReactElement {
       outlookSubheading,
       outlookSubject,
       disableEmails,
+      disableRegistrationEmail,
+      disableCancellationEmail,
       disableOutlook,
       emailTemplateOverrides,
     };
@@ -2885,6 +2931,10 @@ export default function EventCreationPage(): React.ReactElement {
     const effOutlookSubheading = topComm.outlookSubheading;
     const effOutlookSubject = topComm.outlookSubject;
     const effDisableEmails = topComm.disableEmails;
+    // v19.22: granulare An-/Abmelde-Mail-Schalter des Hauptevents top-level
+    // auflösen (auf Sub-Tabs hält der State den Sub-Wert → resolveTopLevelCommState).
+    const effDisableRegistrationEmail = topComm.disableRegistrationEmail;
+    const effDisableCancellationEmail = topComm.disableCancellationEmail;
     const effDisableOutlook = topComm.disableOutlook;
 
     // v14.4 / v14.5: Wenn das Hauptevent Sub-Events hat UND die
@@ -3096,10 +3146,12 @@ export default function EventCreationPage(): React.ReactElement {
       // DefaultImageBase64 (DEX-Orb) zurueck.
       updates['EmailImageBase64'] = effEmailLogo || '';
       updates['DisableEmails'] = effDisableEmails;
-      // v19.21: granulare An-/Abmelde-Mail-Schalter (Top-Level, nicht per Tab
-      // gespiegelt — die States bleiben über Tab-Wechsel erhalten).
-      updates['DisableRegistrationEmail'] = disableRegistrationEmail;
-      updates['DisableCancellationEmail'] = disableCancellationEmail;
+      // v19.22: granulare An-/Abmelde-Mail-Schalter des Hauptevents (top-level
+      // aufgelöst, damit ein Save von einem Sub-Tab nicht den Sub-Wert aufs
+      // Hauptevent schreibt). Pro Sub-Event werden sie in persistSubEventsForParent
+      // geschrieben.
+      updates['DisableRegistrationEmail'] = effDisableRegistrationEmail;
+      updates['DisableCancellationEmail'] = effDisableCancellationEmail;
       updates['DisableOutlook'] = effDisableOutlook;
       // v11.57: OutlookDirty schreiben. Wenn Outlook-relevante Aenderungen
       // anstehen und der Organizer im Update-Confirm-Modal die Checkbox
@@ -3641,9 +3693,9 @@ export default function EventCreationPage(): React.ReactElement {
         // v11.93: aus dem Top-Level-Resolver — Sub-Tab-Werte würden sonst
         // beim Save fälschlich aufs Haupt-Event übernommen.
         disableEmails: effDisableEmails,
-        // v19.21: granulare An-/Abmelde-Mail-Schalter (Top-Level-Event).
-        disableRegistrationEmail,
-        disableCancellationEmail,
+        // v19.22: granulare An-/Abmelde-Mail-Schalter (Top-Level aufgelöst).
+        disableRegistrationEmail: effDisableRegistrationEmail,
+        disableCancellationEmail: effDisableCancellationEmail,
         disableOutlook: effDisableOutlook,
         notifyOrgRegisterMode,
         notifyOrgRegisterFromDate: notifyOrgRegisterMode === 'fromDate' && notifyOrgRegisterFromDate ? berlinLocalToUtcIso(notifyOrgRegisterFromDate) : '',
@@ -10866,7 +10918,7 @@ export default function EventCreationPage(): React.ReactElement {
                         paddingBottom: 0,
                       }}
                     >
-                      {[{ label: `${isDe ? 'Haupt-Event' : 'Main event'}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`, isMain: true }, ...subEvents.map(s => ({ label: (s.title || (isDe ? 'Sub-Event ohne Titel' : 'Untitled sub-event')).trim(), isMain: false }))].map((tab, tabIdx) => {
+                      {[{ label: `${isDe ? 'Haupt-Event' : 'Main event'}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`, isMain: true }, ...subEvents.map(s => ({ label: (shortSubEventTitle(s.title, title) || (isDe ? 'Sub-Event ohne Titel' : 'Untitled sub-event')).trim(), isMain: false }))].map((tab, tabIdx) => {
                         const active = tabIdx === activeCommTabIdx;
                         // v14.8: Haupt-Event-Tab visuell deaktivieren, wenn der
                         // „Nur Sub-Events"-Modus aktiv ist — kein Click, keine
@@ -11057,10 +11109,12 @@ export default function EventCreationPage(): React.ReactElement {
                       </span>
                     </span>
                   </label>
-                  {/* v19.21: granulare Sub-Schalter — einzeln die Anmelde- bzw.
-                      Abmelde-Bestätigung abschalten. Nur auf dem Hauptevent-Tab
-                      und nur wenn E-Mails grundsätzlich aktiv sind (Master an). */}
-                  {activeCommTabIdx === 0 && !disableEmails && (
+                  {/* v19.21/v19.22: granulare Sub-Schalter — einzeln die Anmelde-
+                      bzw. Abmelde-Bestätigung abschalten. Ab v19.22 pro Tab
+                      (Hauptevent UND Sub-Events), nur wenn E-Mails grundsätzlich
+                      aktiv sind (Master an). Der gebundene State spiegelt je nach
+                      aktivem Tab den Haupt- oder Sub-Event-Wert. */}
+                  {!disableEmails && (
                     <div style={{ marginLeft: 24, paddingLeft: 12, borderLeft: '3px solid var(--dex-green, #86bc25)', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 8 }}>
                       <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
                         <input

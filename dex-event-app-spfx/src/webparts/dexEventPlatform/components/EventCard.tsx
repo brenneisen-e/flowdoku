@@ -10,6 +10,7 @@ import { useNavigation } from '../context/NavigationContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useRoles } from '../context/RoleContext';
 import { DeloitteEvent } from '../types';
+import { useCachedImage } from '../utils/imageCache';
 
 // Deutsches Datumsformat
 function formatDate(iso: string): string {
@@ -61,6 +62,9 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
   const { navigate } = useNavigation();
   const { t } = useLanguage();
   const { canCreateEvents } = useRoles();
+  // v19.22: Event-Bild über den IndexedDB-Cache — beim zweiten App-Aufruf sofort
+  // da, ohne SharePoint-Roundtrip.
+  const cachedImage = useCachedImage(event.imageUrl);
   // v9.8: B2Run-Events haben maxParticipants=0, weil die Kapazitaet auf
   // Durchstarter + Funstarter aufgeteilt ist. Die Summe gilt als
   // Gesamtkapazitaet — sonst zeigt die Karte faelschlich "Unbegrenzt", obwohl
@@ -173,7 +177,7 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
       )}
       <div className="event-card__image" style={{
         background: event.imageUrl
-          ? `url(${event.imageUrl}) center/cover no-repeat`
+          ? `url(${cachedImage}) center/cover no-repeat`
           : getEventGradient(event.type, index),
       }}>
         <div className="event-card__overlay">

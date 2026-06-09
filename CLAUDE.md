@@ -592,12 +592,17 @@ die Anmelde-Bestätigung bleibt trotzdem aktiv.
 - **Hierarchie:** Der Master `DisableEmails` sticht weiterhin — ist er an,
   gehen **gar keine** Mails raus. Die Sub-Schalter wirken nur, solange der
   Master aus ist (E-Mails grundsätzlich aktiv).
-- **Scope (bewusst Top-Level-only):** Die beiden Flags sind **nicht** per
-  Sub-Event-Comm-Tab gespiegelt (anders als `DisableEmails`/`DisableOutlook`).
-  Die Sub-Häkchen erscheinen nur auf dem **Hauptevent-Tab**
-  (`activeCommTabIdx === 0`) und gelten fürs Hauptevent. Sub-Events senden
-  ihre An-/Abmelde-Mails weiter (Default), solange ihr eigener `DisableEmails`
-  aus ist. Pro-Sub-Event-Granularität ist ein möglicher Folgeschritt.
+- **Scope (v19.22: jetzt auch pro Sub-Event):** Seit v19.22 sind die beiden
+  Flags **per Sub-Event-Comm-Tab gespiegelt** (gleicher Mechanismus wie
+  `DisableEmails`/`DisableOutlook` — `switchCommTab`/`flushActiveCommTabToState`/
+  `topLevelCommSnapshot`/`resolveTopLevelCommState` + `SubEventDraft`-Felder +
+  `persistSubEventsForParent`-childPayload). Die Sub-Häkchen erscheinen auf
+  **jedem** Comm-Tab (Hauptevent UND Sub-Events), der gebundene State hält je
+  nach aktivem Tab den Haupt- oder Sub-Wert. Der Top-Level-Persist nutzt die
+  `eff*`-Werte aus `resolveTopLevelCommState()` (Sub-Tab-Save schreibt nicht aufs
+  Hauptevent). Die EventContext-Gating-Stellen lesen `event.disableX` und greifen
+  damit automatisch auch für Sub-Event-An-/Abmeldungen. (v19.21 war noch
+  Top-Level-only.)
 - **Gating-Stellen** (jeweils zusätzlich zum `!event.disableEmails`-Check):
   - `EventContext.registerForEvent` (Anmelde-/Warteliste-Bestätigung) →
     `!event.disableRegistrationEmail`.
@@ -609,6 +614,33 @@ die Anmelde-Bestätigung bleibt trotzdem aktiv.
   RoommateRequest und die Nachrück-Mail des Power-Automate-Flows bleiben
   ausschließlich am Master `DisableEmails` hängen — die Sub-Schalter betreffen
   nur die **Standard-Anmelde-/Abmelde-Bestätigung**. **Kein Flow-Change.**
+
+### Browser-Bild-Cache (IndexedDB) (v19.22)
+
+Event-Bilder (SP-Item-Attachments, stabile URL pro Bild-Version) werden
+client-seitig in **IndexedDB** als Data-URL gecacht, damit sie beim **zweiten
+App-Aufruf sofort** erscheinen — ohne SharePoint-Roundtrip, unabhängig von den
+SP-Cache-Headern.
+
+- `utils/imageCache.ts`: `getCachedImage(url)` (mem → IndexedDB → fetch+store,
+  Fallback auf Original-URL bei JEDEM Fehler), `useCachedImage(url)` (Hook:
+  Original-URL sofort, dann nahtloser Tausch gegen die Data-URL), `prewarmImages`
+  (Hintergrund-Vorwärmen). Store `dex-image-cache`/`images`, LRU-Prune bei
+  > 150 Einträgen, Bilder > 4 MB werden nicht gecacht.
+- `components/CachedImage.tsx`: `<CachedBg>` (Hintergrund-Div) und `<CachedImg>`
+  (`<img>`) — nutzbar **auch in `.map()`-Schleifen** (Hook am Komponenten-
+  Top-Level, nicht in der Schleife).
+- Verdrahtet in: `EventCard` (Hook direkt), `RegistrationPage` (Hero-Bild),
+  `EventListPage` (Listen-Zeile via `CachedBg` + `prewarmImages` beim Laden der
+  Event-Liste), `MyEventsPage` (`CachedImg`). Profilfotos
+  (`userphoto.aspx`) bleiben unangetastet (SP cached die ohnehin gut).
+
+### Sub-Event-Comm-Tabs zeigen nur den Sub-Namen (v19.22)
+
+Die Tab-Leiste in Schritt 6 (Kommunikation) zeigt für Sub-Events jetzt nur den
+**reinen Sub-Namen** (z.B. „HER SPACE") statt „<Hauptevent> | HER SPACE" —
+gleiche `shortSubEventTitle()`-Logik wie im Admin Center (Parent-Präfix bzw.
+Teil nach dem letzten `|` strippen). Modul-Helper in `EventCreationPage.tsx`.
 
 ### Sicherheitshinweis vor dem Absenden der Anmeldung (v18.75)
 
