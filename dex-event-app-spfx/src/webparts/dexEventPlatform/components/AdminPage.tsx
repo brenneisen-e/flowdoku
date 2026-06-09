@@ -5383,7 +5383,7 @@ export default function AdminPage(): React.ReactElement {
                   )}
                   {/* v19.0: Teams in einem responsiven 3-Spalten-Raster +
                       durchnummeriert — spart vertikalen Platz im Organizer-Center. */}
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12, alignItems: 'start' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12, alignItems: 'stretch' }}>
                   {teamEntries.map(({ tid, members, lead }, teamIdx) => {
                     const teamName = members.find(m => !!m.TeamName)?.TeamName || '';
                     const total = members.length;
@@ -5391,23 +5391,39 @@ export default function AdminPage(): React.ReactElement {
                     const canAdd = canManage && (teamSizeCfg === 0 || total < teamSizeCfg);
                     const leadEmail = lead?.ParticipantEmail || '';
                     const otherMembers = members.filter(m => m.Id !== lead?.Id);
+                    // v19.19: Teams mit freien Plätzen farblich (orange) hervorheben,
+                    // damit der Organizer auf einen Blick sieht, welche Teams noch
+                    // nicht voll belegt sind.
+                    const hasFreeSlots = free > 0;
                     return (
                       <div
                         key={tid}
                         style={{
                           padding: 14,
-                          border: '1px solid var(--dex-gray-200)',
+                          border: hasFreeSlots ? '1px solid var(--dex-orange, #ed8b00)' : '1px solid var(--dex-gray-200)',
                           borderRadius: 10,
-                          background: 'var(--dex-gray-50, #f7f7f7)',
+                          background: hasFreeSlots ? 'rgba(237,139,0,0.06)' : 'var(--dex-gray-50, #f7f7f7)',
+                          // v19.19: Flex-Spalte, damit der Aktions-Block (u.a.
+                          // „Lead-Rolle übergeben") per marginTop:auto immer am
+                          // unteren Kartenrand sitzt → alle Karten gleich hoch.
+                          display: 'flex',
+                          flexDirection: 'column',
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
                           <strong style={{ fontSize: '0.95rem', color: 'var(--dex-gray-800)' }}>
                             <span style={{ color: 'var(--dex-gray-400)', marginRight: 4 }}>{teamIdx + 1}.</span>{teamName ? `Team „${teamName}"` : 'Team (ohne Namen)'}
                           </strong>
-                          <span style={{ color: 'var(--dex-gray-600)', fontSize: '0.85rem' }}>
+                          <span style={{ color: hasFreeSlots ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-gray-600)', fontSize: '0.85rem', fontWeight: hasFreeSlots ? 600 : 400 }}>
                             {teamSizeCfg > 0 ? `${total}/${teamSizeCfg} belegt` : `${total} Mitglieder`}
                           </span>
+                          {hasFreeSlots && (
+                            <span style={{
+                              display: 'inline-block', padding: '1px 8px', borderRadius: 10,
+                              background: 'var(--dex-orange, #ed8b00)', color: '#fff',
+                              fontSize: '0.7rem', fontWeight: 700,
+                            }}>{free} frei</span>
+                          )}
                         </div>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                           {members.map(m => {
@@ -5469,7 +5485,7 @@ export default function AdminPage(): React.ReactElement {
                           })}
                         </div>
                         {canManage && (
-                          <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', position: 'relative' }}>
+                          <div style={{ marginTop: 'auto', paddingTop: 12, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8, position: 'relative' }}>
                             {canAdd && (
                               <button
                                 type="button"
