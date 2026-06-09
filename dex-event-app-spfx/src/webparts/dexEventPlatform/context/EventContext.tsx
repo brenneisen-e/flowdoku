@@ -661,15 +661,41 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       if (!subsiteUrl) return;
       try {
         const counts = await eventService.getRegistrationCount(subsiteUrl);
-        setEvents(current =>
-          current.map(e =>
-            e.id === eventId ? { ...e, currentParticipants: counts.registered, waitlistCount: counts.waitlist } : e
-          )
-        );
+        // v19.17: referenzschonend — nur das betroffene Event ersetzen, und nur
+        // wenn sich die Zahl tatsächlich geändert hat. Bleibt alles gleich, wird
+        // dieselbe Array-Referenz zurückgegeben → React rendert NICHT neu (kein
+        // sichtbares Flackern).
+        setEvents(current => {
+          let changed = false;
+          const next = current.map(e => {
+            if (e.id === eventId && (e.currentParticipants !== counts.registered || e.waitlistCount !== counts.waitlist)) {
+              changed = true;
+              return { ...e, currentParticipants: counts.registered, waitlistCount: counts.waitlist };
+            }
+            return e;
+          });
+          return changed ? next : current;
+        });
       } catch { /* default bleibt */ }
     } else {
+      // Alle Events: frische Zahlen laden, dann NUR die geänderten Events durch
+      // neue Objekte ersetzen (unveränderte behalten ihre Referenz). Ändert sich
+      // gar nichts, bleibt die Array-Referenz gleich → kein Re-Render.
       setEvents(current => {
-        loadParticipantCountsForEvents(current).then(updated => setEvents(updated)).catch(() => { /* ignore */ });
+        loadParticipantCountsForEvents(current).then(updated => {
+          setEvents(prev => {
+            let changed = false;
+            const next = prev.map(e => {
+              const u = updated.find(x => x.id === e.id);
+              if (u && (u.currentParticipants !== e.currentParticipants || u.waitlistCount !== e.waitlistCount)) {
+                changed = true;
+                return { ...e, currentParticipants: u.currentParticipants, waitlistCount: u.waitlistCount };
+              }
+              return e;
+            });
+            return changed ? next : prev;
+          });
+        }).catch(() => { /* ignore */ });
         return current;
       });
     }
