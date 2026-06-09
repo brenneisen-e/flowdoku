@@ -2582,6 +2582,12 @@ export default function EventCreationPage(): React.ReactElement {
           'RegistrationDeadline': childPayload.registrationDeadline || null,
           'MaxParticipants': childPayload.maxParticipants,
           'DisableEmails': childPayload.disableEmails,
+          // v19.32 BUG-FIX: die granularen An-/Abmelde-Mail-Flags + Auto-Abmeldung
+          // wurden beim UPDATE bestehender Sub-Events NICHT mitgeschrieben (nur
+          // beim Create), daher gingen sie nach dem Speichern verloren.
+          'DisableRegistrationEmail': childPayload.disableRegistrationEmail,
+          'DisableCancellationEmail': childPayload.disableCancellationEmail,
+          'AutoDeregisterOnDecline': childPayload.autoDeregisterOnDecline,
           'DisableOutlook': childPayload.disableOutlook,
           'OutlookSubject': subOutlookSubject,
           'OutlookStart': (draft.outlookStart || '') || null,
