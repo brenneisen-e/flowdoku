@@ -2523,8 +2523,85 @@ Im `AutoCancel_Mail_Allowed` = **If yes**:
   `Abgemeldet`).
 - **AutoDeregisterOnDecline = aus:** unverändert wie bisher (Reminder-Mail).
 
-Nach dem Einrichten bitte den aktualisierten Flow-JSON schicken, dann wird der
-„Finaler Flow-JSON"-Abschnitt hier nachgezogen.
+**✅ Umgesetzt + verifiziert 2026-06-09.** Run-Reihenfolge im `Still_Registered`-Ja-Zweig:
+`Auto_Deregister_On` (erste Aktion, kein runAfter) → danach `Get_Existing_Reminder`
+(runAfter `Auto_Deregister_On` *Succeeded*) → `Filter_By_Recipient` → `No_Reminder_Yet`
+(jetzt mit der zusätzlichen `AutoDeregisterOnDecline == false`-Zeile). Damit läuft bei
+aktiver Auto-Abmeldung NUR der Abmelde-Pfad (Reminder + Digest werden über
+`No_Reminder_Yet` mit unterdrückt), bei deaktivierter Auto-Abmeldung alles wie bisher.
+
+### Finaler Flow-JSON — `Is_Decline_Mail`-Block (Stand 2026-06-09, mit Auto-Abmeldung)
+
+```json
+{
+  "type": "If",
+  "expression": {
+    "and": [
+      {
+        "equals": [
+          "@or(startsWith(toLower(coalesce(triggerOutputs()?['body/subject'], '')), 'declined:'), startsWith(toLower(coalesce(triggerOutputs()?['body/subject'], '')), 'declined '), startsWith(toLower(coalesce(triggerOutputs()?['body/subject'], '')), 'abgelehnt:'), startsWith(toLower(coalesce(triggerOutputs()?['body/subject'], '')), 'abgelehnt '), startsWith(toLower(coalesce(triggerOutputs()?['body/subject'], '')), 'refusé'), startsWith(toLower(coalesce(triggerOutputs()?['body/subject'], '')), 'rifiutato:'), and(or(startsWith(toLower(coalesce(triggerOutputs()?['body/subject'], '')), 'fw:'), startsWith(toLower(coalesce(triggerOutputs()?['body/subject'], '')), 'wg:')), or(contains(toLower(coalesce(triggerOutputs()?['body/bodyPreview'], '')), 'declined:'), contains(toLower(coalesce(triggerOutputs()?['body/bodyPreview'], '')), 'abgelehnt:'))))",
+          "@true"
+        ]
+      }
+    ]
+  },
+  "actions": {
+    "Cleaned_Subject": { "type": "Compose", "inputs": "@trim(replace(replace(replace(replace(replace(replace(replace(replace(triggerOutputs()?['body/subject'], 'FW:', ''), 'WG:', ''), 'Declined:', ''), 'Declined ', ''), 'Abgelehnt:', ''), 'Abgelehnt ', ''), 'Refusé :', ''), 'Rifiutato:', ''))" },
+    "Get_DEX_Event": { "type": "OpenApiConnection", "inputs": { "parameters": { "$filter": "@concat('Title eq ''', replace(outputs('Cleaned_Subject'), '''', ''''''), '''')", "$top": 1 } }, "runAfter": { "Decliner_Firstname": ["Succeeded"] } },
+    "Event_Found": {
+      "type": "If",
+      "expression": { "and": [ { "greater": [ "@length(outputs('Get_DEX_Event')?['body/value'])", 0 ] } ] },
+      "actions": {
+        "Get_Teilnehmer_Entry": { "type": "OpenApiConnection", "comment": "GET Teilnehmer per Email/Name, Status ne Abgemeldet" },
+        "Final_Recipient_Email": { "type": "Compose", "inputs": "@coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['ParticipantEmail'], outputs('Real_Sender'))", "runAfter": { "Get_Teilnehmer_Entry": ["Succeeded"] } },
+        "Still_Registered": {
+          "type": "If",
+          "expression": { "and": [ { "greater": [ "@length(body('Get_Teilnehmer_Entry')?['value'])", 0 ] } ] },
+          "runAfter": { "Final_Recipient_Email": ["Succeeded"] },
+          "actions": {
+            "Auto_Deregister_On": {
+              "type": "If",
+              "expression": { "and": [ { "equals": [ "@coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['AutoDeregisterOnDecline'], false)", true ] } ] },
+              "actions": {
+                "Deregister_Participant": { "type": "OpenApiConnection", "inputs": { "parameters": { "dataset": "@first(outputs('Get_DEX_Event')?['body/value'])?['SubsiteUrl']", "parameters/method": "POST", "parameters/uri": "@concat('_api/web/lists/getbytitle(''Teilnehmer'')/items(', first(body('Get_Teilnehmer_Entry')?['value'])?['Id'], ')')", "parameters/headers": { "Accept": "application/json;odata=nometadata", "Content-Type": "application/json;odata=nometadata", "IF-MATCH": "*", "X-HTTP-Method": "MERGE" }, "parameters/body": "@concat('{\"Status\":\"Abgemeldet\",\"CancellationDate\":\"', utcNow(), '\"}')" }, "host": { "operationId": "HttpRequest" } } },
+                "Queue_AutoCancel_IDReorder": { "type": "OpenApiConnection", "inputs": { "parameters": { "table": "DEX_IDReorder", "item/Title": "@concat('Reorder: ', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])", "item/EventId": "@string(first(outputs('Get_DEX_Event')?['body/value'])?['ID'])", "item/EventNumber": "@first(outputs('Get_DEX_Event')?['body/value'])?['EventNumber']", "item/SubsiteUrl": "@first(outputs('Get_DEX_Event')?['body/value'])?['SubsiteUrl']", "item/Status/Value": "Pending", "item/CancelledName": "@trim(concat(coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], ''), ' ', coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Nachname'], '')))", "item/CancelledEmail": "@outputs('Final_Recipient_Email')" }, "host": { "operationId": "PostItem" } }, "runAfter": { "Deregister_Participant": ["SUCCEEDED"] } },
+                "AutoCancel_Mail_Allowed": {
+                  "type": "If",
+                  "expression": { "and": [ { "equals": [ "@coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['DisableEmails'], false)", false ] }, { "equals": [ "@coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['DisableCancellationEmail'], false)", false ] } ] },
+                  "runAfter": { "Queue_AutoCancel_IDReorder": ["SUCCEEDED"] },
+                  "actions": {
+                    "Get_AutoCancel_Template": { "type": "OpenApiConnection", "inputs": { "parameters": { "table": "DEX_EmailTemplates", "$filter": "@concat('TemplateType eq ''Abmeldung'' and Language eq ''', coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['EmailLanguage'], 'EN'), '''')", "$top": 1 } } },
+                    "Create_AutoCancel_Email": { "type": "OpenApiConnection", "inputs": { "parameters": { "table": "DEX_Emails", "item/Title": "@replace(coalesce(first(outputs('Get_AutoCancel_Template')?['body/value'])?['Subject'], concat('Abmeldung: ', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])), '{{EventTitle}}', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])", "item/Recipient": "@outputs('Final_Recipient_Email')", "item/RecipientName": "@coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], outputs('Final_Recipient_Email'))", "item/EmailType/Value": "Abmeldung", "item/EventTitle": "@first(outputs('Get_DEX_Event')?['body/value'])?['Title']", "item/Status/Value": "Pending", "item/Body": "@replace(replace(coalesce(first(outputs('Get_AutoCancel_Template')?['body/value'])?['BodyHtml'], ''), '{{Name}}', coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], outputs('Final_Recipient_Email'))), '{{EventTitle}}', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])", "item/EventId": "@first(outputs('Get_DEX_Event')?['body/value'])?['ID']" }, "host": { "operationId": "PostItem" } }, "runAfter": { "Get_AutoCancel_Template": ["SUCCEEDED"] } }
+                  }
+                }
+              }
+            },
+            "Get_Existing_Reminder": { "type": "OpenApiConnection", "inputs": { "parameters": { "table": "DEX_Emails", "$filter": "@concat('EmailType eq ''OutlookDeclineReminder'' and EventId eq ''', first(outputs('Get_DEX_Event')?['body/value'])?['ID'], '''')", "$top": 20 } }, "runAfter": { "Auto_Deregister_On": ["SUCCEEDED"] } },
+            "Filter_By_Recipient": { "type": "Query", "inputs": { "from": "@body('Get_Existing_Reminder')?['value']", "where": "@contains(concat(';', replace(item()?['Recipient'], ' ', ''), ';'), concat(';', outputs('Final_Recipient_Email'), ';'))" }, "runAfter": { "Get_Existing_Reminder": ["Succeeded"] } },
+            "No_Reminder_Yet": {
+              "type": "If",
+              "expression": { "and": [ { "equals": [ "@length(body('Filter_By_Recipient'))", 0 ] }, { "equals": [ "@coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['AutoDeregisterOnDecline'], false)", false ] } ] },
+              "runAfter": { "Filter_By_Recipient": ["Succeeded"] },
+              "actions": { "comment": "unverändert: Get_Reminder_Template → Assistant_Forward_Mailto → Create_Reminder_Queue_Item → Get_Outlook_EventId → Has_Outlook_Event (Decline-Digest)" }
+            }
+          }
+        }
+      },
+      "runAfter": { "Get_DEX_Event": ["Succeeded"] }
+    },
+    "Real_Sender": { "type": "Compose", "runAfter": { "Cleaned_Subject": ["Succeeded"] } },
+    "Decliner_Lastname": { "type": "Compose", "runAfter": { "Real_Sender": ["Succeeded"] } },
+    "Decliner_Firstname": { "type": "Compose", "runAfter": { "Decliner_Lastname": ["Succeeded"] } }
+  },
+  "runAfter": { "Init_StillRegistered_Count": ["Succeeded"] }
+}
+```
+
+> Gekürzt dargestellt (die unveränderten Compose-/Reminder-/Digest-Bodies sind in
+> den Abschnitten oben vollständig dokumentiert). Entscheidend sind die vier neuen
+> Actions im `Auto_Deregister_On`-Block, das `runAfter` von `Get_Existing_Reminder`
+> auf `Auto_Deregister_On` und die zweite `AutoDeregisterOnDecline == false`-Zeile in
+> `No_Reminder_Yet`.
 
 ## Ablauf-Diagramm
 
