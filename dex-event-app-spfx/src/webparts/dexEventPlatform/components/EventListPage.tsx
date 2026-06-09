@@ -147,26 +147,14 @@ export default function EventListPage(): React.ReactElement {
   const { currentUser, groupEmails } = useCurrentUser();
   const { isAdmin, canCreateEvents } = useRoles();
 
-  // v19.16: Teilnehmerzahlen live halten. Die Zahlen werden sonst nur EINMAL
-  // beim Boot als Snapshot geladen — nach einem (asynchronen) Flow-Nachrücken
-  // ODER einer Anmeldung in einem anderen Tab/Gerät zeigt die Liste sonst eine
-  // veraltete Zahl (z.B. „0/1 Teilnehmer", obwohl 1 angemeldet ist).
-  // Lösung: einmal sofort beim Öffnen frisch laden + danach alle 5 Sekunden im
-  // Hintergrund nachpollen (Echtzeit-Gefühl). Läuft NUR solange die Übersicht
-  // offen ist (Cleanup beim Verlassen). `inFlight` verhindert, dass sich
-  // langsame Refreshes stapeln.
+  // v19.17: KEIN 5-Sekunden-Polling mehr — das verursachte einen sichtbaren
+  // Re-Render der ganzen Liste. Stattdessen die Teilnehmerzahlen nur EINMAL beim
+  // Öffnen der Übersicht im Hintergrund frisch nachladen (fixt die veraltete
+  // Boot-Snapshot-Zahl, z.B. „0/1" nach Flow-Nachrücken). refreshParticipantCounts
+  // aktualisiert dabei nur die Events, deren Zahl sich tatsächlich geändert hat
+  // (referenzschonend, siehe EventContext) → kein Flackern.
   React.useEffect(() => {
-    let cancelled = false;
-    let inFlight = false;
-    const tick = async (): Promise<void> => {
-      if (cancelled || inFlight) return;
-      inFlight = true;
-      try { await refreshParticipantCounts(); } catch { /* best-effort */ }
-      inFlight = false;
-    };
-    void tick(); // sofort beim Öffnen
-    const id = setInterval(() => { void tick(); }, 5000);
-    return () => { cancelled = true; clearInterval(id); };
+    refreshParticipantCounts().catch(() => { /* best-effort */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const { t } = useLanguage();
