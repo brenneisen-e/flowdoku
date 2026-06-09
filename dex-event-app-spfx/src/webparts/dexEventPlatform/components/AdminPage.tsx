@@ -8008,7 +8008,6 @@ export default function AdminPage(): React.ReactElement {
                         />
                         <span style={{ flex: 1, fontWeight: 500 }}>{shortSubEventTitle(child.title, selectedEvent.title) || child.title}</span>
                         <span className={`badge ${reg.Status === 'Eingecheckt' ? 'badge-green' : 'badge-gray'}`}>{translateStatus(reg.Status, isDe)}</span>
-                        <span style={{ color: 'var(--dex-gray-400)', fontSize: '0.75rem' }}>TID {reg.TeilnehmerID || '?'}</span>
                       </label>
                     );
                   })}
