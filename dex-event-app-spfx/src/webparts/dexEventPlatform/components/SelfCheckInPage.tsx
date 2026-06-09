@@ -12,11 +12,19 @@ import { useLanguage } from '../context/LanguageContext';
  * vollflächiges Ergebnis. Kein In-App-Scanner nötig — der native Kamera-Scan
  * umgeht die fehlende Kamera-Freigabe der SharePoint-Mobile-App.
  */
-const SelfCheckInPage: React.FC = () => {
+// v20.2: `onLeave` kommt von DexEventPlatform und räumt VOR der Navigation
+// die Deep-Link-Parameter (?action=selfcheckin&…) aus der URL — vorher
+// kurzschloss renderPage dauerhaft auf diese Ergebnisseite und die Buttons
+// „Meine Events"/„Zur Startseite" reagierten scheinbar nicht (Mobile-Bug).
+const SelfCheckInPage: React.FC<{ onLeave?: (_page: 'start' | 'my-events') => void }> = ({ onLeave }) => {
   const { selfCheckIn } = useEvents();
   const { navigate } = useNavigation();
   const { locale } = useLanguage();
   const isDe = locale === 'de';
+  const leave = (page: 'start' | 'my-events'): void => {
+    if (onLeave) onLeave(page);
+    else navigate(page);
+  };
 
   const [result, setResult] = React.useState<SelfCheckInResult | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -174,7 +182,7 @@ const SelfCheckInPage: React.FC = () => {
               <button
                 type="button"
                 className="btn"
-                onClick={() => navigate('my-events')}
+                onClick={() => leave('my-events')}
                 style={{
                   padding: '11px 22px', borderRadius: 10, border: '1px solid var(--dex-green, #86bc25)',
                   background: 'var(--dex-green, #86bc25)', color: '#fff', fontWeight: 600, cursor: 'pointer',
@@ -184,7 +192,7 @@ const SelfCheckInPage: React.FC = () => {
               </button>
               <button
                 type="button"
-                onClick={() => navigate('start')}
+                onClick={() => leave('start')}
                 style={{
                   padding: '11px 22px', borderRadius: 10, border: '1px solid var(--dex-gray-300, #ccc)',
                   background: '#fff', color: 'var(--dex-gray-700, #444)', fontWeight: 600, cursor: 'pointer',

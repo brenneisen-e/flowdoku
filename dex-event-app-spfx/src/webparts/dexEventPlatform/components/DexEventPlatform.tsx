@@ -205,10 +205,26 @@ function AppContent(): React.ReactElement {
   // v18.33: Self-Check-in-Deep-Link (?action=selfcheckin&…). Wird per Handy-
   // Kamera gescannter QR-Code aufgerufen. Rendert direkt die Ergebnisseite,
   // unabhängig von currentPage — kein In-App-Scanner nötig.
-  const isSelfCheckInDeepLink = React.useMemo(() => {
+  // v20.2 BUG-FIX: vorher ein eingefrorenes useMemo([]) — die Buttons
+  // „Meine Events"/„Zur Startseite" auf der Ergebnisseite liefen damit ins
+  // Leere (renderPage kurzschloss weiter auf die Ergebnisseite, solange
+  // ?action=selfcheckin in der URL stand). Jetzt State + Leave-Handler, der
+  // die Deep-Link-Parameter aus der URL entfernt und dann navigiert.
+  const [isSelfCheckInDeepLink, setIsSelfCheckInDeepLink] = React.useState<boolean>(() => {
     try {
       return new URLSearchParams(window.location.search).get('action') === 'selfcheckin';
     } catch { return false; }
+  });
+  const leaveSelfCheckIn = React.useCallback((page: 'start' | 'my-events'): void => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      ['action', 'token', 'event', 'code', 't'].forEach(k => sp.delete(k));
+      const qs = sp.toString();
+      window.history.replaceState({}, '', window.location.pathname + (qs ? `?${qs}` : '') + window.location.hash);
+    } catch { /* URL-Cleanup best-effort */ }
+    setIsSelfCheckInDeepLink(false);
+    navigate(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // v9.43: Deep-Link Handling für ?action=event-created/event-updated&event=<id>.
@@ -537,8 +553,9 @@ function AppContent(): React.ReactElement {
       );
     }
     // v18.33: Self-Check-in-Deep-Link rendert direkt die Ergebnisseite.
+    // v20.2: onLeave räumt die URL-Parameter weg und gibt die Navigation frei.
     if (isSelfCheckInDeepLink) {
-      return <SelfCheckInPage />;
+      return <SelfCheckInPage onLeave={leaveSelfCheckIn} />;
     }
     switch (currentPage) {
       case 'landing':

@@ -19,7 +19,8 @@ import { SPRegistration } from '../services/EventService';
 import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2, ChevronUp, ChevronDown, QrCode } from './Icons';
 import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
 // v20.1: Self-Check-in jederzeit aktivierbar (Token-Erzeugung beim Klick).
-import { generateSelfCheckInToken } from '../utils/selfCheckIn';
+// v20.2: + statische Check-in-URL für die QR-Kachel im Event-Detail.
+import { generateSelfCheckInToken, buildStaticCheckInUrl } from '../utils/selfCheckIn';
 // v20.0 (Audit): xlsx + qrcode werden nicht mehr statisch importiert, sondern
 // erst beim tatsächlichen Gebrauch (Export-Klick / QR-Vorschau) als eigener
 // Chunk nachgeladen — spart ~1 MB im Haupt-Bundle.
@@ -2272,6 +2273,71 @@ export default function AdminPage(): React.ReactElement {
     return token;
   };
 
+  // v20.2: Self-Check-in-QR-Kachel unter dem Event-Logo + Erklär-/Einstell-Modal.
+  // Die Kachel erscheint ab 5 Tagen vor Event-Start ODER sobald QR-Codes
+  // versendet wurden; Klick öffnet das Modal mit großem QR, PDF-/Live-Aktionen
+  // und dem editierbaren Check-in-Zeitfenster (Von/Bis).
+  const [sciModalOpen, setSciModalOpen] = React.useState(false);
+  const [sciModalQr, setSciModalQr] = React.useState('');
+  const [sciMiniQr, setSciMiniQr] = React.useState('');
+  const [sciToken, setSciToken] = React.useState('');
+  const [sciFrom, setSciFrom] = React.useState('');
+  const [sciTo, setSciTo] = React.useState('');
+  const [sciBusy, setSciBusy] = React.useState(false);
+  const [sciSaveMsg, setSciSaveMsg] = React.useState('');
+  // Mini-QR für die Kachel, sobald das Event einen Token hat (lazy qrcode-Chunk).
+  React.useEffect(() => {
+    let cancelled = false;
+    const token = selectedEvent?.selfCheckInToken;
+    if (!token) { setSciMiniQr(''); return undefined; }
+    import('qrcode').then(async QRCode => {
+      const d = await QRCode.toDataURL(buildStaticCheckInUrl(token), { width: 220, margin: 0 });
+      if (!cancelled) setSciMiniQr(d);
+    }).catch(() => { /* Kachel zeigt dann das Icon-Fallback */ });
+    return () => { cancelled = true; };
+  }, [selectedEvent?.selfCheckInToken]);
+  const isoToLocalInput = (iso?: string): string => {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const p = (n: number): string => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+  };
+  const openSelfCheckInModal = async (): Promise<void> => {
+    if (!selectedEvent || sciBusy) return;
+    setSciBusy(true);
+    try {
+      const token = await ensureSelfCheckInReady(selectedEvent);
+      if (!token) return;
+      setSciToken(token);
+      setSciFrom(isoToLocalInput(selectedEvent.selfCheckInFrom));
+      setSciTo(isoToLocalInput(selectedEvent.selfCheckInTo));
+      setSciSaveMsg('');
+      try {
+        const QRCode = await import('qrcode');
+        setSciModalQr(await QRCode.toDataURL(buildStaticCheckInUrl(token), { width: 560, margin: 1 }));
+      } catch { setSciModalQr(''); }
+      setSciModalOpen(true);
+    } finally { setSciBusy(false); }
+  };
+  const saveSelfCheckInWindow = async (): Promise<void> => {
+    if (!selectedEvent || sciBusy) return;
+    if (sciFrom && sciTo && new Date(sciFrom).getTime() >= new Date(sciTo).getTime()) {
+      alert(isDe ? '„Bis" muss zeitlich nach „Von" liegen.' : '"Until" must be after "From".');
+      return;
+    }
+    setSciBusy(true);
+    try {
+      const ok = await updateEvent(selectedEvent.id, {
+        'SelfCheckInFrom': sciFrom ? new Date(sciFrom).toISOString() : null,
+        'SelfCheckInTo': sciTo ? new Date(sciTo).toISOString() : null,
+      });
+      setSciSaveMsg(ok
+        ? (isDe ? 'Zeitfenster gespeichert.' : 'Time window saved.')
+        : (isDe ? 'Speichern fehlgeschlagen — bitte erneut versuchen.' : 'Saving failed — please try again.'));
+    } finally { setSciBusy(false); }
+  };
+
   // Danger-Zone-Modal als gemeinsames Element — wird in BEIDEN Render-Branches
   // (Event-Liste und Event-Detail) eingehängt, sonst läuft der Löschen-Klick auf
   // der Event-Liste ins Leere (Bug v9.x: Modal war nur im Detail-Branch gerendert).
@@ -3615,33 +3681,81 @@ export default function AdminPage(): React.ReactElement {
             {/* v12.6: Event-Bild jetzt prominent als großes Rechteck-
                 Format (wie auf der Registrierungs-Seite) statt kleinem
                 Avatar-Kreis. Hintergrund weiß für saubere Darstellung
-                transparenter PNG-Logos. */}
-            {selectedEvent.imageUrl && (
-              <div
-                style={{
-                  flex: '0 0 auto',
-                  width: 260,
-                  maxWidth: '38%',
-                  background: '#fff',
-                  borderRadius: 'var(--dex-radius, 12px)',
-                  overflow: 'hidden',
-                  border: '1px solid var(--dex-gray-200, #e5e7eb)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-              >
-                <img
-                  src={selectedEvent.imageUrl}
-                  alt={selectedEvent.title}
-                  style={{
-                    display: 'block',
-                    width: '100%',
-                    height: 'auto',
-                    maxHeight: 240,
-                    objectFit: 'contain',
-                  }}
-                />
-              </div>
-            )}
+                transparenter PNG-Logos.
+                v20.2: darunter die Self-Check-in-QR-Kachel — sichtbar ab
+                5 Tagen vor Event-Start ODER sobald QR-Codes versendet
+                wurden (und solange das Event nicht länger als 1 Tag vorbei
+                ist). Klick öffnet das Erklär-/Einstell-Modal. */}
+            {(() => {
+              const canManageSci = isAdmin || isOrganizerFor(selectedEvent);
+              const dayMs = 24 * 60 * 60 * 1000;
+              const startTs = selectedEvent.startDate ? new Date(selectedEvent.startDate).getTime() : 0;
+              const endTs = selectedEvent.endDate ? new Date(selectedEvent.endDate).getTime() : startTs;
+              const nowTs = Date.now();
+              const qrPhase = registrations.some(r => r.Status === 'QR versendet' || r.Status === 'Eingecheckt');
+              const within5Days = startTs > 0 && nowTs >= startTs - 5 * dayMs;
+              const notLongPast = (endTs || startTs) === 0 || nowTs <= (endTs || startTs) + dayMs;
+              const showSciTile = canManageSci && notLongPast && (qrPhase || within5Days);
+              if (!selectedEvent.imageUrl && !showSciTile) return null;
+              return (
+                <div style={{ flex: '0 0 auto', width: 260, maxWidth: '38%', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {selectedEvent.imageUrl && (
+                    <div
+                      style={{
+                        background: '#fff',
+                        borderRadius: 'var(--dex-radius, 12px)',
+                        overflow: 'hidden',
+                        border: '1px solid var(--dex-gray-200, #e5e7eb)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}
+                    >
+                      <img
+                        src={selectedEvent.imageUrl}
+                        alt={selectedEvent.title}
+                        style={{
+                          display: 'block',
+                          width: '100%',
+                          height: 'auto',
+                          maxHeight: 240,
+                          objectFit: 'contain',
+                        }}
+                      />
+                    </div>
+                  )}
+                  {showSciTile && (
+                    <button
+                      type="button"
+                      onClick={openSelfCheckInModal}
+                      disabled={sciBusy}
+                      title={isDe ? 'Self-Check-in-QR anzeigen, drucken und Zeitfenster einstellen' : 'Show/print the self check-in QR and set the time window'}
+                      style={{
+                        background: '#fff',
+                        border: '1px solid var(--dex-green, #86bc25)',
+                        borderRadius: 'var(--dex-radius, 12px)',
+                        padding: 12, cursor: sciBusy ? 'wait' : 'pointer',
+                        display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left',
+                      }}
+                    >
+                      {sciMiniQr ? (
+                        <img src={sciMiniQr} alt="Self-Check-in QR" style={{ width: 64, height: 64, flexShrink: 0 }} />
+                      ) : (
+                        <span style={{ width: 64, height: 64, flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(134,188,37,0.10)', borderRadius: 8, color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                          <QrCode size={32} />
+                        </span>
+                      )}
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ display: 'block', fontWeight: 700, fontSize: '0.88rem', color: 'var(--dex-gray-800)' }}>
+                          Self-Check-in QR
+                        </span>
+                        <span style={{ display: 'block', fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                          {isDe ? 'Anklicken: anzeigen, drucken + Zeitfenster festlegen' : 'Click: show, print + set time window'}
+                        </span>
+                      </span>
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
             <div style={{ flex: 1, minWidth: 0 }}>
               <h3 className="mb-16">{isDe ? 'Event-Details' : 'Event details'}</h3>
                 {/* v11.28: Bookmark-Tabs statt Dropdown fuer schnelles Umschalten
@@ -3920,8 +4034,8 @@ export default function AdminPage(): React.ReactElement {
                 icon={<Download size={18} />}
                 title={isDe ? 'Self-Check-in: QR-PDF' : 'Self check-in: QR PDF'}
                 desc={isDe
-                  ? 'Lädt ein druckbares PDF mit dem QR-Code und einer kurzen Anleitung herunter. Zum Aushängen am Eingang — Teilnehmer scannen mit der Handy-Kamera und checken sich selbst ein. Falls Self-Check-in noch nicht aktiviert war, wird es beim Klick automatisch eingeschaltet. Tipp: am besten mit dem Zeitfenster „nur am Event-Tag" kombinieren.'
-                  : 'Downloads a printable PDF with the QR code and short instructions. For posting at the entrance — attendees scan with their phone camera and check themselves in. If self check-in was not activated yet, it is switched on automatically on click. Tip: best combined with the "event day only" window.'}
+                  ? 'Lädt ein druckbares PDF mit dem QR-Code und einer kurzen Anleitung herunter. Zum Aushängen am Eingang — Teilnehmer scannen mit der Handy-Kamera und checken sich selbst ein. Tipp: am besten mit dem Zeitfenster „nur am Event-Tag" kombinieren.'
+                  : 'Downloads a printable PDF with the QR code and short instructions. For posting at the entrance — attendees scan with their phone camera and check themselves in. Tip: best combined with the "event day only" window.'}
                 badge="organizer"
                 onClick={() => {
                   (async () => {
@@ -3942,8 +4056,8 @@ export default function AdminPage(): React.ReactElement {
                 icon={<QrCode size={18} />}
                 title={isDe ? 'Self-Check-in: Live-Anzeige' : 'Self check-in: live display'}
                 desc={isDe
-                  ? 'Öffnet eine rotierende QR-Anzeige für einen Bildschirm am Eingang (Laptop, Tablet, Beamer). Der Code wechselt automatisch — ein abfotografierter Code verfällt sofort. Die foto-sichere Variante. Falls Self-Check-in noch nicht aktiviert war, wird es beim Klick automatisch eingeschaltet.'
-                  : 'Opens a rotating QR display for a screen at the entrance (laptop, tablet, projector). The code changes automatically — a photographed code expires instantly. The photo-safe option. If self check-in was not activated yet, it is switched on automatically on click.'}
+                  ? 'Öffnet eine rotierende QR-Anzeige für einen Bildschirm am Eingang (Laptop, Tablet, Beamer). Der Code wechselt automatisch — ein abfotografierter Code verfällt sofort. Die foto-sichere Variante.'
+                  : 'Opens a rotating QR display for a screen at the entrance (laptop, tablet, projector). The code changes automatically — a photographed code expires instantly. The photo-safe option.'}
                 badge="organizer"
                 onClick={() => {
                   (async () => {
@@ -7246,6 +7360,115 @@ export default function AdminPage(): React.ReactElement {
 
       {changeLogModal}
 
+      {/* v20.2: Self-Check-in-Modal (von der QR-Kachel unter dem Event-Logo):
+          großer QR, Erklärtext, PDF-/Live-Aktionen + editierbares Zeitfenster. */}
+      {sciModalOpen && selectedEvent && (
+        <Modal
+          open={sciModalOpen}
+          onClose={() => setSciModalOpen(false)}
+          dismissable={!sciBusy}
+          maxWidth={560}
+          padding={24}
+          ariaLabel="Self-Check-in"
+        >
+          <h3 style={{ margin: '0 0 8px', fontSize: '1.05rem' }}>
+            {isDe ? 'Self-Check-in — QR-Code' : 'Self check-in — QR code'}
+          </h3>
+          <p style={{ margin: '0 0 12px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+            {isDe
+              ? 'Diesen QR-Code kannst du am Eingang aushängen oder auf einem Bildschirm zeigen. Teilnehmer scannen ihn mit der Kamera ihres Firmenhandys und checken sich damit selbst ein — ganz ohne Scanner-Team. Jede Person kann nur sich selbst einchecken (Login-gebunden).'
+              : 'Post this QR code at the entrance or show it on a screen. Attendees scan it with their company phone camera and check themselves in — no scanner team needed. Each person can only check in themselves (login-bound).'}
+          </p>
+          {sciModalQr ? (
+            <div style={{ textAlign: 'center', margin: '0 0 14px' }}>
+              <img src={sciModalQr} alt="Self-Check-in QR" style={{ width: 260, maxWidth: '80%', height: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 12, padding: 10, background: '#fff' }} />
+            </div>
+          ) : (
+            <p style={{ textAlign: 'center', color: 'var(--dex-gray-400)', fontSize: '0.85rem' }}>
+              {isDe ? 'QR-Code konnte nicht erzeugt werden.' : 'QR code could not be generated.'}
+            </p>
+          )}
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center', marginBottom: 18 }}>
+            <button
+              className="btn btn-primary"
+              disabled={sciBusy}
+              style={{ fontSize: '0.88rem', padding: '10px 18px' }}
+              onClick={() => {
+                (async () => {
+                  await downloadSelfCheckInPdf({
+                    eventTitle: selectedEvent.title || 'Event',
+                    eventDateLabel: selectedEvent.startDate ? new Date(selectedEvent.startDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '',
+                    locationLabel: selectedEvent.location || '',
+                    token: sciToken,
+                  });
+                })().catch(() => { /* best-effort */ });
+              }}
+            >
+              {isDe ? 'QR-PDF herunterladen (drucken)' : 'Download QR PDF (print)'}
+            </button>
+            <button
+              className="btn btn-secondary"
+              disabled={sciBusy}
+              style={{ fontSize: '0.88rem', padding: '10px 18px' }}
+              onClick={() => { setSciModalOpen(false); navigate('self-checkin-display', selectedEvent.id); }}
+            >
+              {isDe ? 'Live-QR anzeigen (rotierend)' : 'Show live QR (rotating)'}
+            </button>
+          </div>
+          {/* Zeitfenster: Von/Bis — verhindert verfrühte UND nachträgliche Check-ins. */}
+          <div style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 10, padding: '12px 14px' }}>
+            <div style={{ fontWeight: 700, fontSize: '0.88rem', marginBottom: 4 }}>
+              {isDe ? 'Check-in-Zeitfenster' : 'Check-in time window'}
+            </div>
+            <p style={{ margin: '0 0 10px', fontSize: '0.78rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+              {isDe
+                ? 'Von wann bis wann der Self-Check-in möglich ist. Nach dem „Bis"-Zeitpunkt sind keine nachträglichen Check-ins mehr möglich. Beide Felder leer = Check-in nur am Event-Tag.'
+                : 'From when until when self check-in is possible. After the "until" time no late check-ins are possible anymore. Both fields empty = check-in only on the event day.'}
+            </p>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                {isDe ? 'Von' : 'From'}
+                <input
+                  type="datetime-local"
+                  value={sciFrom}
+                  onChange={e => setSciFrom(e.target.value)}
+                  className="form-input"
+                  style={{ padding: '8px 10px', fontSize: '0.85rem' }}
+                />
+              </label>
+              <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                {isDe ? 'Bis' : 'Until'}
+                <input
+                  type="datetime-local"
+                  value={sciTo}
+                  onChange={e => setSciTo(e.target.value)}
+                  className="form-input"
+                  style={{ padding: '8px 10px', fontSize: '0.85rem' }}
+                />
+              </label>
+              <button
+                className="btn btn-secondary"
+                disabled={sciBusy}
+                style={{ fontSize: '0.85rem', padding: '9px 16px' }}
+                onClick={() => { saveSelfCheckInWindow().catch(() => { /* */ }); }}
+              >
+                {sciBusy ? (isDe ? 'Speichert…' : 'Saving…') : (isDe ? 'Zeitfenster speichern' : 'Save time window')}
+              </button>
+            </div>
+            {sciSaveMsg && (
+              <p style={{ margin: '8px 0 0', fontSize: '0.78rem', color: sciSaveMsg.indexOf('fehlgeschlagen') >= 0 || sciSaveMsg.indexOf('failed') >= 0 ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)' }}>
+                {sciSaveMsg}
+              </p>
+            )}
+          </div>
+          <div style={{ textAlign: 'right', marginTop: 14 }}>
+            <button className="btn btn-secondary" onClick={() => setSciModalOpen(false)} style={{ fontSize: '0.85rem' }}>
+              {isDe ? 'Schließen' : 'Close'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
       {/* v9.15: QR-Code-Versand-Modal — Test (nur Organizer) / Volldurchlauf
           (alle Angemeldeten) / Auto-Send-Toggle fuer zukuenftige Anmeldungen. */}
       {qrSendModalOpen && selectedEvent && (
@@ -7333,7 +7556,6 @@ export default function AdminPage(): React.ReactElement {
                 }}
                 style={{ color: 'var(--dex-green-dark)', fontWeight: 600 }}
               >QR-PDF zum Ausdrucken herunterladen</a>.
-              {' '}Falls Self-Check-in noch nicht aktiviert war, wird es dabei automatisch eingeschaltet.
             </div>
 
             {/* v9.29: Hinweis falls Organizer selbst NICHT für das Event angemeldet ist —

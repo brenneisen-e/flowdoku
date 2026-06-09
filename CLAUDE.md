@@ -488,11 +488,26 @@ via `ensureMissingFields()` auch auf Bestands-Tenants nachgezogen):
   Boot-Loader abgefangen).
 - `SelfCheckInDisplayPage.tsx` — rotierende Live-Anzeige für den Organizer
   (Page `self-checkin-display`, Deep-Link `?action=selfcheckin-display&event=<id>`).
-- Wizard: Toggle + Zeitfenster + Erklär-Modal in Schritt **Kapazität &
-  Sichtbarkeit** (`EventCreationPage.tsx`); Persistenz im create-Objekt UND
-  im Edit-`updates`-Payload.
-- Admin Center: zwei `ActionTile`s „Self-Check-in: QR-PDF" und „… Live-
-  Anzeige" (sichtbar bei `selfCheckInEnabled` + Admin/Organizer + Token).
+- **Wizard (v20.2: ENTFERNT):** Der frühere Toggle + Zeitfenster + Erklär-Modal
+  in Schritt Kapazität & Sichtbarkeit ist mit v20.2 ausgebaut. Der Wizard fasst
+  die `SelfCheckIn*`-Spalten **weder beim Create noch beim Edit** an — sonst
+  würde jeder Wizard-Save die im Admin Center gesetzten Werte zurücksetzen.
+- **Immer möglich (v20.1/v20.2):** Self-Check-in ist grundsätzlich für jedes
+  Event nutzbar — der Organizer entscheidet durchs Bereitstellen des QR-Codes
+  (kein Aktivierungs-Konzept mehr in der UI-Sprache). Technisch erzeugt der
+  erste Klick auf eine der Aktionen den Token und persistiert
+  `SelfCheckInEnabled=true` + `SelfCheckInToken` (`ensureSelfCheckInReady` in
+  `AdminPage.tsx`/`CheckInPage.tsx`; braucht Schreibrechte auf DEX_Events —
+  Check-in-Team ohne Schreibrechte bekommt bei noch fehlendem Token einen
+  Hinweis, danach funktionieren Anzeige/PDF auch für sie).
+- Fundorte der Aktionen: Check-in-Seite (Karte „Self-Check-in"), Admin Center
+  (zwei `ActionTile`s, immer sichtbar für Admin/Organizer), QR-Versand-Modal
+  (grüne Hinweis-Box mit Direkt-Links) und — ab 5 Tage vor Event-Start ODER
+  sobald QR-Codes versendet wurden — eine klickbare **QR-Kachel unter dem
+  Event-Bild** im Event-Detail (v20.2). Deren Modal zeigt den großen QR,
+  PDF-/Live-Aktionen und das editierbare **Check-in-Zeitfenster** (Von/Bis →
+  `SelfCheckInFrom`/`SelfCheckInTo`; verhindert verfrühte UND nachträgliche
+  Check-ins; leer = nur am Event-Tag).
 
 **Sicherheit:** Jeder checkt nur **sich selbst** ein (Login-gebunden,
 Item-Level-Security). Gegen „von zu Hause einchecken" wirken: Zeitfenster
