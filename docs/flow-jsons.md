@@ -106,10 +106,19 @@ ansprechen statt das Objekt:
 
 - **`Filter_Non_Waitlist`** (Nicht-Split, treibt `Count_Active`) — *erledigt:*
   `@not(equals(item()?['Status']?['Value'], 'Warteliste'))`
-- **`Filter_Active_Durchstarter`** (Split, Ja-Zweig) — *noch offen:*
-  `@and(equals(item()?['StarterType']?['Value'], 'Durchstarter'), not(equals(item()?['Status']?['Value'], 'Warteliste')))`
-- **`Filter_Active_Funstarter`** (Split, Ja-Zweig) — *noch offen:*
-  `@and(equals(item()?['StarterType']?['Value'], 'Funstarter'), not(equals(item()?['Status']?['Value'], 'Warteliste')))`
+- **`Filter_Active_Durchstarter`** (Split, Ja-Zweig) — *erledigt 2026-06-08 (v19.14),
+  im Tenant verifiziert:* zählt nach **effektiver Gruppe** (`StarterType`, sonst
+  Wunsch `PreferredStarterType` — beide sind Choice-Spalten, daher `?['Value']`):
+  `@and(equals(coalesce(item()?['StarterType']?['Value'], item()?['PreferredStarterType']?['Value']), 'Durchstarter'), not(equals(item()?['Status']?['Value'], 'Warteliste')))`
+- **`Filter_Active_Funstarter`** (Split, Ja-Zweig) — *erledigt 2026-06-08 (v19.14),
+  im Tenant verifiziert:*
+  `@and(equals(coalesce(item()?['StarterType']?['Value'], item()?['PreferredStarterType']?['Value']), 'Funstarter'), not(equals(item()?['Status']?['Value'], 'Warteliste')))`
+
+> **Warum `coalesce` statt nur `?['Value']`:** Eine angemeldete Person mit leerem
+> `StarterType` (z.B. durch direkte SP-Bearbeitung) würde sonst aus der Gruppen-
+> Zählung fallen → der Flow hält die Gruppe für leerer als sie ist und rückt eine
+> zu viel nach (beobachtete 11/10-Überbuchung). Mit dem `coalesce`-Fallback auf
+> den Wunsch zählt der Flow auch typlose Aktive korrekt → keine Über-Promotion.
 
 **Nicht betroffen:** Die `Get_Waitlist_First*`-Actions laufen über die **rohe
 SharePoint-REST-API** (`HttpRequest`, `$filter=Status eq 'Warteliste'`) — dort
@@ -324,6 +333,19 @@ App-Teilnehmerliste sichtbar werden:
 > bleibt als Kurzfassung/Konzept stehen.
 
 ### UI-Anleitung 2026-06-08 (v19.11) — Nachrück-Audit EXAKT (Schritt für Schritt, jede Action einzeln)
+
+> **STATUS 2026-06-08: im Tenant umgesetzt + verifiziert.** Die 9 Audit-Actions
+> (`Audit_Promoted_D/F/N`, `Get_Cancelled_D/F/N`, `Audit_Cancelled_D/F/N`) sind im
+> `DEX_IDReorder`-Flow live. Tatsächliche Einfügepunkte (ans Ende des jeweiligen
+> Zweigs): **nach `Queue_Outlook_Durchstarter`** (Zweig D), **nach
+> `Queue_Outlook_Funstarter`** (Zweig F), **nach `Queue_Outlook`** (Zweig N).
+> Zwei häufige Fallstricke (beide im Tenant korrigiert): (1) **Site Address** der
+> Audit-Actions MUSS `@{outputs('Settings')?['siteAddress']}` (Subsite) sein —
+> nicht die Root-Site, sonst wird die `Teilnehmer`-Liste nicht gefunden. (2) Die
+> 6 MERGE-Actions brauchen die Header `If-Match: *`, `X-HTTP-Method: MERGE`,
+> `Content-Type: application/json;odata=verbose`, `Accept: application/json;odata=verbose`
+> — sonst wird nichts geschrieben. `runAfter`-Status kanonisch `Succeeded`
+> (Power Automate wertet case-insensitiv, aber sauber über ⋮ → Configure run after).
 
 **Was am Ende rauskommt:** Bei jedem Nachrücken schreibt der Flow
 - auf die **nachgerückte** Person: `PromotedDate` + `ReplacedParticipantEmail`,

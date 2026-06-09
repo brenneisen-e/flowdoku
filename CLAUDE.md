@@ -86,6 +86,20 @@ Neue SP-Spalten in `DEX_Events`:
   beide Gruppen (FIFO), `false`/leer = getrennte Wartelisten pro Gruppe
   (alter B2Run-Stil mit typ-bewusstem Nachrücken).
 
+**WICHTIG — Anzeige-Label vs. interner Wert (nicht verwechseln!):** Die
+Datenwerte in `StarterType` / `PreferredStarterType` sind **immer** die festen
+internen IDs **`'Durchstarter'`** (= Gruppe A) bzw. **`'Funstarter'`** (= Gruppe
+B) — **unabhängig** davon, wie der Organizer die Gruppen benennt.
+`SplitLabelA` / `SplitLabelB` sind **reine Anzeige-Labels** (z.B. „Vormittag",
+„VIP", „Lauf 5 km"). Beleg: `RegistrationPage.tsx` Gruppenauswahl
+(`optA = { id: 'Durchstarter', label: splitLabelA }`, `optB = { id: 'Funstarter',
+label: splitLabelB }`, `setPreferredStarterType(opt.id)`). Konsequenz: Der
+Power-Automate-Flow `DEX_IDReorder_TeilnehmerIDs` matcht gegen die internen Werte
+`'Durchstarter'` / `'Funstarter'` und funktioniert für **jedes** Split-Event,
+egal wie die Gruppen heißen. Diese Literale im Flow **NICHT** auf die
+Custom-Labels umstellen — sonst bricht das Nachrücken. Anzeige flexibel,
+Datenwerte stabil (bewusst entkoppelt).
+
 Die SP-Spalte `EventType` ist **seit v5.2 deprecated** und wird **mit v10.20
 auch in der UI nicht mehr abgefragt**. Der Type wird beim Laden aus
 `CustomFields` abgeleitet (Presence von `b2run_startblock` ⇒ `'B2Run'`,
