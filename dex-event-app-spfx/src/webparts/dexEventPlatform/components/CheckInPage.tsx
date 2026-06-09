@@ -14,7 +14,9 @@ import { useCurrentUser } from '../context/UserContext';
 import { EventService } from '../services/EventService';
 import { useLanguage } from '../context/LanguageContext';
 import OrganizerList from './OrganizerList';
-import QrScanner from 'qr-scanner';
+// v20.0 (Audit): qr-scanner nur noch als Typ statisch importieren — die
+// eigentliche Bibliothek wird erst beim Kamera-Start dynamisch nachgeladen.
+import type QrScanner from 'qr-scanner';
 
 export default function CheckInPage(): React.ReactElement {
   const { events, getAllRegistrations } = useEvents();
@@ -314,7 +316,9 @@ export default function CheckInPage(): React.ReactElement {
 
     // 3. qr-scanner starten (nutzt jetzt die bereits erteilte Permission)
     try {
-      const scanner = new QrScanner(
+      // v20.0: Bibliothek lazy laden (eigener Chunk, nur bei Kamera-Start).
+      const QrScannerCls = (await import('qr-scanner')).default;
+      const scanner = new QrScannerCls(
         videoRef.current,
         async (result) => {
           const code = result.data;

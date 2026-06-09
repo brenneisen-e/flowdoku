@@ -20,10 +20,48 @@ When deploying changes to the SPFx project:
    ```bash
    cp dex-event-app-spfx/sharepoint/solution/dex-event-platform.sppkg dist/dex-event-platform.sppkg
    ```
-4. **Size-Check:** Das resultierende `.sppkg` sollte ca. 950 KB - 1.1 MB gross sein. Wenn es deutlich groesser ist (>2 MB), wurden die alten Bundles nicht entfernt - Schritt 1 wiederholen und neu bauen.
+4. **Size-Check (Stand v20.0):** Das resultierende `.sppkg` sollte ca. **1.7 - 1.9 MB** gross sein (seit dem Route-Level-Code-Splitting in v20.0 enthaelt das Paket zusaetzlich die Lazy-Chunks — das ist korrekt so). Wenn es deutlich groesser ist (>2.5 MB), wurden die alten Bundles nicht entfernt — Schritt 1 wiederholen und neu bauen. **Verlaesslichstes Kriterium:** in `release/assets/` darf es nur EINE `dex-event-platform-web-part_<hash>.js` geben; zwei oder mehr = stale Bundles.
 5. Commit and push both the source changes and the updated `dist/dex-event-platform.sppkg`
 
 The `dist/dex-event-platform.sppkg` must always reflect the latest build so it can be downloaded directly from GitHub.
+
+### Bundle-Architektur / Lazy-Loading (v20.0) — Konvention
+
+Mit v20.0 wurde das Haupt-Bundle per Code-Splitting von ~5.1 MB auf ~0.9 MB
+reduziert (Audit-Bericht: `docs/code-audit-2026-06.md`). Damit das so bleibt,
+gelten zwei Regeln:
+
+1. **Route-Level-Splitting:** Die Sekundär-Seiten `EventCreationPage`,
+   `AdminPage`, `CheckInPage`, `SettingsPage`, `RoleMatrixPage`,
+   `ParticipantsPage`, `FlowchartPage`, `ManualPage`,
+   `SelfCheckInDisplayPage` werden in `DexEventPlatform.tsx` per
+   `React.lazy(() => import('./X'))` + `<React.Suspense>` geladen. Neue
+   Sekundär-Seiten (alles außer Landing/Start/EventList/Registration/
+   MyEvents/Profile/SelfCheckInPage) bitte demselben Muster folgen.
+   `SelfCheckInPage` MUSS eager bleiben (Deep-Link rendert vor dem Boot-Loader).
+2. **Schwere Bibliotheken nur dynamisch:** `xlsx`, `jspdf`, `qrcode`,
+   `qr-scanner`, `react-pdf` (via `PdfViewer`-`React.lazy`) werden
+   ausschließlich per `await import('lib')` / `import('lib').then(...)` an der
+   Verwendungsstelle geladen — NIE als statischer Import, insbesondere nicht
+   in Boot-Pfad-Dateien (Contexts, eager Pages). Neue Dependencies > ~50 KB
+   genauso behandeln. Typ-Imports (`import type X from 'lib'`) sind erlaubt
+   (werden wegcompiliert).
+
+### Event-Felder: Create- UND Update-Payloads pflegen (wiederkehrender Bug)
+
+Analog zur Custom-Field-Property-Falle gibt es eine zweite wiederkehrende
+Bug-Klasse: **ein neues Event-/Sub-Event-Feld wird beim CREATE persistiert,
+aber im EDIT-Payload vergessen** — die Einstellung geht dann beim Speichern
+eines bestehenden Events/Sub-Events still verloren. Bug-Historie: v19.32
+(DisableRegistrationEmail/DisableCancellationEmail/AutoDeregisterOnDecline im
+Sub-Event-Update), v20.0 (Audience/LocationFilter/FilterMode/LocationAddress/
+Agenda/Transfers/LastDeregisterDate/AskSalutation im Sub-Event-Update;
+WaitlistEnabled sogar im Top-Level-Update). **Regel:** Jedes neue Feld muss in
+`EventCreationPage.tsx` an DREI Stellen ergänzt werden:
+1. `createEvent`-Payload (Top-Level-Create in `handleSubmit`),
+2. Top-Level-`updates`-Payload (Edit in `handleSubmit`),
+3. bei Sub-Event-Relevanz: `childPayload` UND `subUpdates` in
+   `persistSubEventsForParent`.
 
 ### Kein lokales Testen — immer direkt bauen
 

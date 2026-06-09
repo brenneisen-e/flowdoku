@@ -5,9 +5,10 @@
 // statischen Check-in-Link; gescannt mit der normalen Handy-Kamera öffnet er
 // die App und checkt den eingeloggten Teilnehmer automatisch ein.
 
-import { jsPDF } from 'jspdf';
-import * as QRCode from 'qrcode';
 import { buildStaticCheckInUrl } from './selfCheckIn';
+
+// v20.0 (Audit): jspdf + qrcode werden erst beim PDF-Download dynamisch als
+// Chunk geladen statt statisch im Haupt-Bundle zu liegen (~400 KB Ersparnis).
 
 const DELOITTE_GREEN = '#86bc25';
 const GRAY_DARK = '#2b2b2b';
@@ -21,6 +22,7 @@ export async function downloadSelfCheckInPdf(opts: {
   token: string;
 }): Promise<void> {
   const url = buildStaticCheckInUrl(opts.token);
+  const [QRCode, { jsPDF }] = await Promise.all([import('qrcode'), import('jspdf')]);
   const qrDataUrl = await QRCode.toDataURL(url, { width: 900, margin: 1, errorCorrectionLevel: 'M' });
 
   const doc = new jsPDF({ unit: 'mm', format: 'a4' });

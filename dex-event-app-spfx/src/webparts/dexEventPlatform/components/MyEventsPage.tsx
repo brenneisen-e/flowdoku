@@ -18,13 +18,16 @@ import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime, QuizQuesti
 import { SPRegistration } from '../services/EventService';
 import { wrapTemplate } from '../services/EmailTemplates';
 import { useLanguage } from '../context/LanguageContext';
-import PdfViewer from './PdfViewer';
 // v11.99: RefreshCw nicht mehr benötigt (Page-Level-Refresh-Button entfernt).
 import { X, Pencil } from './Icons';
 import { InfoTooltip } from './InfoTooltip';
 import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
 import { buildDemoShowcaseEvents, buildDemoMyRegistration } from '../services/demoShowcaseEvent';
+
+// v20.0 (Audit): PdfViewer zieht react-pdf (+pdfjs) ins Bundle — lazy laden,
+// der Viewer wird nur beim Öffnen eines Dokuments gebraucht.
+const PdfViewer = React.lazy(() => import('./PdfViewer'));
 
 // v19.34: People-Picker-Antworten (Feldtyp `user`/`roommate`) im „Meine
 // Events"-Antwort-Tag mit Profilfoto statt als Rohtext „Name <email>"
@@ -648,8 +651,11 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
                     {t('myevents.agenda') === 'Programm' ? 'Vorschau wird geladen...' : 'Loading preview...'}
                   </div>
                 ) : pdfBlob ? (
-                  /* PDF via react-pdf (Canvas) - funktioniert Desktop + Mobile, eigenes Scrolling */
-                  <PdfViewer blob={pdfBlob} height={600} />
+                  /* PDF via react-pdf (Canvas) - funktioniert Desktop + Mobile, eigenes Scrolling.
+                     v20.0: lazy Chunk — Suspense zeigt kurz den Lade-Hinweis. */
+                  <React.Suspense fallback={<div style={{ padding: 40, textAlign: 'center', color: 'var(--dex-gray-400)' }}>…</div>}>
+                    <PdfViewer blob={pdfBlob} height={600} />
+                  </React.Suspense>
                 ) : blobUrl ? (
                   /* Desktop-PDF + Bilder via iframe.
                      #view=FitH zwingt das Browser-PDF-Plugin in vertikalen Scroll-Modus
@@ -959,6 +965,9 @@ export default function MyEventsPage(): React.ReactElement {
     const tNums = performance.now();
     const myNumbers = await getMyEventNumbers();
     const allMyNumbers = [...myNumbers.registered, ...myNumbers.waitlisted];
+    // v20.0 (Audit): Set statt wiederholtem Array.indexOf in den Filter-Schleifen
+    // (vorher O(Events × Anmeldungen) pro Ladevorgang).
+    const myNumSet = new Set(allMyNumbers);
     // eslint-disable-next-line no-console
     console.log(`[DEX][perf][myevents] getMyEventNumbers = ${Math.round(performance.now() - tNums)} ms (n=${allMyNumbers.length})`);
 
@@ -967,7 +976,7 @@ export default function MyEventsPage(): React.ReactElement {
       // Seit v6.4: Sub-Events sind eigene DEX_Events-Items. In "My Events" zeigen
       // wir nur Top-Level-Events; Sub-Event-Anmeldungen erscheinen verschachtelt
       // unter ihrem Parent über childEventsOf().
-      const relevantEvents = topLevelEvents.filter(e => e.eventNumber && allMyNumbers.indexOf(e.eventNumber) >= 0);
+      const relevantEvents = topLevelEvents.filter(e => e.eventNumber && myNumSet.has(e.eventNumber));
       const tRel = performance.now();
       // v11.79: parallele getMyRegistration-Calls statt sequentielle Schleife.
       const relevantRegs = await Promise.all(relevantEvents.map(async (event) => {
@@ -987,7 +996,7 @@ export default function MyEventsPage(): React.ReactElement {
         // Verhalten.
         if (reg.Status === 'Abgemeldet') {
           const kids = childEventsOf(event.id);
-          const activeKids = kids.filter(k => k.eventNumber && allMyNumbers.indexOf(k.eventNumber) >= 0);
+          const activeKids = kids.filter(k => k.eventNumber && myNumSet.has(k.eventNumber));
           if (activeKids.length > 0) {
             entries.push({
               event,
@@ -1013,7 +1022,7 @@ export default function MyEventsPage(): React.ReactElement {
         if (parentsAlreadyAdded.has(parent.id)) continue;
         const kids = childEventsOf(parent.id);
         if (kids.length === 0) continue;
-        const activeKids = kids.filter(k => k.eventNumber && allMyNumbers.indexOf(k.eventNumber) >= 0);
+        const activeKids = kids.filter(k => k.eventNumber && myNumSet.has(k.eventNumber));
         if (activeKids.length === 0) continue;
         // Virtuelle Registration — reicht als Platzhalter. Status 'Abgemeldet' würde den
         // Eintrag in den "past"-Bucket werfen; wir nutzen 'Angemeldet' mit sessionsOnly=true
@@ -1064,7 +1073,7 @@ export default function MyEventsPage(): React.ReactElement {
       // UND 'Abgemeldet' fuer dasselbe Parent-Event).
       const handledParentIds = new Set(entries.map(e => e.event.id));
       const remainingEvents = topLevelEvents.filter(e =>
-        (!e.eventNumber || allMyNumbers.indexOf(e.eventNumber) < 0) && !handledParentIds.has(e.id)
+        (!e.eventNumber || !myNumSet.has(e.eventNumber)) && !handledParentIds.has(e.id)
       );
       const tRem = performance.now();
       // v11.79: auch die Abgemeldet-Suche parallelisieren. Vorher: pro nicht-
@@ -1084,7 +1093,7 @@ export default function MyEventsPage(): React.ReactElement {
           // bzw. der User nur Sub-Event-Anmeldungen hat und kein DEX_Participants-
           // Eintrag fuer das Parent existiert.
           const kids = childEventsOf(event.id);
-          const activeKids = kids.filter(k => k.eventNumber && allMyNumbers.indexOf(k.eventNumber) >= 0);
+          const activeKids = kids.filter(k => k.eventNumber && myNumSet.has(k.eventNumber));
           if (activeKids.length > 0) {
             entries.push({
               event,

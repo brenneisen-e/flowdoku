@@ -194,11 +194,6 @@ export default function EventListPage(): React.ReactElement {
   // konnte das Event trotzdem nicht sehen. Der Entwurfs-/ActiveFrom-Check
   // läuft jetzt ausschließlich in `fictiveFiltered` unten, wo die
   // per-User-Whitelist (Test-Team etc.) korrekt berücksichtigt wird.
-  const nowTs = Date.now();
-  const statusFiltered = onlyActive
-    ? events.filter((e) => e.status === 'Active')
-    : events;
-
   // Admin sieht ALLE Events. Organizer sieht nur (a) Events, die zur Filterlogik
   // passen UND (b) Events, bei denen er selbst in organizerEmails steht — NICHT
   // tenant-weit alle Events. User sieht nur Filter-passende Events.
@@ -211,49 +206,60 @@ export default function EventListPage(): React.ReactElement {
   // v9.21: ActiveFrom-Logik — wenn das Event ein Aktiv-ab-Datum hat und das
   // in der Zukunft liegt, wird es fuer regulaere User behandelt wie ein Entwurf.
   const currentEmailLc = (currentUser.email || '').toLowerCase();
-  const now = Date.now();
-  const fictiveFiltered = statusFiltered.filter((e: DeloitteEvent) => {
-    // Effektiv "noch im Entwurf": entweder isFictive oder ActiveFrom in der Zukunft
-    const activeFromTs = e.activeFrom ? new Date(e.activeFrom).getTime() : 0;
-    const isInDraftMode = e.isFictive || (activeFromTs > 0 && activeFromTs > now);
-    if (!isInDraftMode) return true;
-    if (isAdmin) return true;
-    if (e.organizerEmails.some((em: string) => (em || '').toLowerCase() === currentEmailLc)) return true;
-    if ((e.coOrganizerEmails || []).some((em: string) => (em || '').toLowerCase() === currentEmailLc)) return true;
-    if ((e.qrScannerEmails || []).some((em: string) => (em || '').toLowerCase() === currentEmailLc)) return true;
-    if ((e.testTeamEmails || []).some((em: string) => (em || '').toLowerCase() === currentEmailLc)) return true;
-    return false;
-  });
   // v11.90: Events, bei denen der eingeloggte User selbst Organizer ist
   // (Haupt- oder Co-Organizer), kommen oben links — ABER nur solange das
   // Event nicht abgelaufen ist (EndDate in der Vergangenheit). Abgelaufene
   // eigene Events sortieren mit allen anderen rein nach Startdatum.
-  const isOwnOrganizer = (e: DeloitteEvent): boolean => {
+  // v20.0 (Audit): useCallback, damit die memoizte Filterkette unten eine
+  // stabile Referenz als Dependency bekommt.
+  const isOwnOrganizer = React.useCallback((e: DeloitteEvent): boolean => {
     const own = (e.organizerEmails || []).some((em: string) => (em || '').toLowerCase() === currentEmailLc);
     const co = (e.coOrganizerEmails || []).some((em: string) => (em || '').toLowerCase() === currentEmailLc);
     return own || co;
-  };
-  const isExpired = (e: DeloitteEvent): boolean => {
-    const t = e.endDate ? new Date(e.endDate).getTime() : 0;
-    return t > 0 && t < nowTs;
-  };
-  const filteredEvents = (isAdmin
-    ? fictiveFiltered
-    : fictiveFiltered.filter((e: DeloitteEvent) =>
-        isEventVisibleForUser(e, currentUser.email, currentUser.location, groupEmails)
-        || e.organizerEmails.some((em: string) => (em || '').toLowerCase() === currentEmailLc)
-      )
-  ).slice().sort((a: DeloitteEvent, b: DeloitteEvent) => {
-    // v11.90: Priorität — eigene, noch nicht abgelaufene Events zuerst.
-    const aPrio = isOwnOrganizer(a) && !isExpired(a) ? 0 : 1;
-    const bPrio = isOwnOrganizer(b) && !isExpired(b) ? 0 : 1;
-    if (aPrio !== bPrio) return aPrio - bPrio;
-    // Innerhalb der Priorität: chronologisch nach Startdatum (frueheste zuerst).
-    // Events ohne Datum ans Ende.
-    const ta = a.startDate ? new Date(a.startDate).getTime() : Number.POSITIVE_INFINITY;
-    const tb = b.startDate ? new Date(b.startDate).getTime() : Number.POSITIVE_INFINITY;
-    return ta - tb;
-  });
+  }, [currentEmailLc]);
+  // v20.0 (Audit): die komplette Filter-/Sortier-Kette (Status → Entwurf →
+  // Sichtbarkeit → Sortierung) lief vorher bei JEDEM Render neu über alle
+  // Events. Jetzt memoizt — neu berechnet nur wenn sich Events, Filter,
+  // Rolle oder User-Identität ändern.
+  const filteredEvents = React.useMemo(() => {
+    const nowTs = Date.now();
+    const statusFiltered = onlyActive
+      ? events.filter((e) => e.status === 'Active')
+      : events;
+    const fictiveFiltered = statusFiltered.filter((e: DeloitteEvent) => {
+      // Effektiv "noch im Entwurf": entweder isFictive oder ActiveFrom in der Zukunft
+      const activeFromTs = e.activeFrom ? new Date(e.activeFrom).getTime() : 0;
+      const isInDraftMode = e.isFictive || (activeFromTs > 0 && activeFromTs > nowTs);
+      if (!isInDraftMode) return true;
+      if (isAdmin) return true;
+      if (e.organizerEmails.some((em: string) => (em || '').toLowerCase() === currentEmailLc)) return true;
+      if ((e.coOrganizerEmails || []).some((em: string) => (em || '').toLowerCase() === currentEmailLc)) return true;
+      if ((e.qrScannerEmails || []).some((em: string) => (em || '').toLowerCase() === currentEmailLc)) return true;
+      if ((e.testTeamEmails || []).some((em: string) => (em || '').toLowerCase() === currentEmailLc)) return true;
+      return false;
+    });
+    const isExpired = (e: DeloitteEvent): boolean => {
+      const t = e.endDate ? new Date(e.endDate).getTime() : 0;
+      return t > 0 && t < nowTs;
+    };
+    return (isAdmin
+      ? fictiveFiltered
+      : fictiveFiltered.filter((e: DeloitteEvent) =>
+          isEventVisibleForUser(e, currentUser.email, currentUser.location, groupEmails)
+          || e.organizerEmails.some((em: string) => (em || '').toLowerCase() === currentEmailLc)
+        )
+    ).slice().sort((a: DeloitteEvent, b: DeloitteEvent) => {
+      // v11.90: Priorität — eigene, noch nicht abgelaufene Events zuerst.
+      const aPrio = isOwnOrganizer(a) && !isExpired(a) ? 0 : 1;
+      const bPrio = isOwnOrganizer(b) && !isExpired(b) ? 0 : 1;
+      if (aPrio !== bPrio) return aPrio - bPrio;
+      // Innerhalb der Priorität: chronologisch nach Startdatum (frueheste zuerst).
+      // Events ohne Datum ans Ende.
+      const ta = a.startDate ? new Date(a.startDate).getTime() : Number.POSITIVE_INFINITY;
+      const tb = b.startDate ? new Date(b.startDate).getTime() : Number.POSITIVE_INFINITY;
+      return ta - tb;
+    });
+  }, [events, onlyActive, isAdmin, currentEmailLc, currentUser.email, currentUser.location, groupEmails, isOwnOrganizer]);
 
   if (isEventsLoading) {
     return (

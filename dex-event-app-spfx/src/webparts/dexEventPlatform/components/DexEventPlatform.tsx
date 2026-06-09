@@ -21,18 +21,28 @@ import StartPage from './StartPage';
 import EventListPage from './EventListPage';
 import RegistrationPage from './RegistrationPage';
 import MyEventsPage from './MyEventsPage';
-import EventCreationPage from './EventCreationPage';
-import SettingsPage from './SettingsPage';
 import ProfilePage from './ProfilePage';
-import AdminPage from './AdminPage';
-import RoleMatrixPage from './RoleMatrixPage';
-import ParticipantsPage from './ParticipantsPage';
-import FlowchartPage from './FlowchartPage';
-import CheckInPage from './CheckInPage';
 import SelfCheckInPage from './SelfCheckInPage';
-import SelfCheckInDisplayPage from './SelfCheckInDisplayPage';
-import ManualPage from './manual/ManualPage';
 import { KpiRow } from './LandingPage';
+
+// v20.0 (Audit): Route-Level-Code-Splitting. Die schweren Sekundär-Seiten
+// (Wizard ~13k Zeilen + react-datepicker, Organizer Center ~9.5k Zeilen + xlsx,
+// Check-in + qr-scanner, Handbuch, Flowcharts, Settings, Rollenmatrix,
+// Teilnehmer-KPIs, Live-QR-Anzeige) werden erst beim ersten Aufruf der
+// jeweiligen Seite als eigener Webpack-Chunk nachgeladen. Das verkleinert
+// das Haupt-Bundle für JEDEN App-Start massiv — User, die nur die
+// Anmelde-Flows nutzen, laden den Organizer-Code nie. Die Erst-Navigation
+// auf eine dieser Seiten zeigt kurz den Suspense-Fallback (Chunk-Load vom
+// SharePoint-CDN, typisch < 0,5 s), danach ist der Chunk gecacht.
+const EventCreationPage = React.lazy(() => import('./EventCreationPage'));
+const SettingsPage = React.lazy(() => import('./SettingsPage'));
+const AdminPage = React.lazy(() => import('./AdminPage'));
+const RoleMatrixPage = React.lazy(() => import('./RoleMatrixPage'));
+const ParticipantsPage = React.lazy(() => import('./ParticipantsPage'));
+const FlowchartPage = React.lazy(() => import('./FlowchartPage'));
+const CheckInPage = React.lazy(() => import('./CheckInPage'));
+const SelfCheckInDisplayPage = React.lazy(() => import('./SelfCheckInDisplayPage'));
+const ManualPage = React.lazy(() => import('./manual/ManualPage'));
 
 export interface IDexEventPlatformProps {
   context: WebPartContext;
@@ -613,7 +623,11 @@ function AppContent(): React.ReactElement {
         </div>
       )}
       <main className="main-content" style={{ position: 'relative', display: 'flex', flexDirection: 'column' }}>
-        {renderPage()}
+        {/* v20.0: Suspense-Grenze für die lazy geladenen Sekundär-Seiten-Chunks.
+            Sprachneutraler Fallback — der Chunk-Load dauert typisch < 0,5 s. */}
+        <React.Suspense fallback={<div style={{ padding: 64, textAlign: 'center', color: 'var(--dex-gray-400, #999)', fontSize: '1.2rem', letterSpacing: 4 }}>…</div>}>
+          {renderPage()}
+        </React.Suspense>
       </main>
     </div>
   );

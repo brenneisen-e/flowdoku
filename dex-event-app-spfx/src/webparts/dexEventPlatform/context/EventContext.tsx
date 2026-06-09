@@ -14,7 +14,6 @@ import { DeloitteEvent } from '../types';
 import { EventService, SPEvent, CustomField, SPRegistration, ReseedSummary } from '../services/EventService';
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
 import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
-import * as QRCode from 'qrcode';
 import { APP_VERSION } from '../version';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
 
@@ -1361,9 +1360,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
               const qrData = `DEX|${event.eventNumber}|${emailToUse}`;
               let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
               try {
+                // v20.0 (Audit): qrcode lazy laden (EventContext ist Boot-Pfad —
+                // die Lib gehört nicht ins Haupt-Bundle) + Fehler loggen statt
+                // still auf Text-Fallback zu wechseln.
+                const QRCode = await import('qrcode');
                 const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
                 qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
-              } catch { /* fallback bleibt Text */ }
+              } catch (qrErr) { console.warn('[DEX] QRCode.toDataURL fehlgeschlagen — Text-Fallback:', qrErr); }
               const qrMail = qrCodeEmail(firstNameToUse, event.title, qrImageHtml, lang, nameToUse);
               // v9.22: Auto-Send-QR fuer externe Empfaenger ebenfalls an den
               // Organizer umleiten (mit klarem Subject-Praefix), nicht an den

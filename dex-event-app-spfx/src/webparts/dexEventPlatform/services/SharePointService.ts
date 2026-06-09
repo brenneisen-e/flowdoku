@@ -998,8 +998,11 @@ export class SharePointService {
     all.length = 0;
     all.push(...memberFirmFiltered);
 
-    // Location + JobTitle per User Profile nachladen
-    for (const user of all) {
+    // Location + JobTitle per User Profile nachladen.
+    // v20.0 (Audit): parallel statt sequentiell — vorher bis zu N serielle
+    // Profil-Roundtrips pro Tipp-Suche (spürbare Picker-Latenz). Reine
+    // Lese-Calls auf max. ~10 Treffer, daher unkritisch fürs Throttling.
+    await Promise.all(all.map(async user => {
       try {
         const profile = await this.searchUserByEmail(user.email);
         if (profile) {
@@ -1007,7 +1010,7 @@ export class SharePointService {
           if (profile.jobTitle) user.jobTitle = profile.jobTitle;
         }
       } catch { /* ignore */ }
-    }
+    }));
 
     return all;
   }
