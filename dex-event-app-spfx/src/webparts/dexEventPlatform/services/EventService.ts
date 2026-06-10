@@ -4454,6 +4454,121 @@ export class EventService {
   }
 
   /**
+   * v20.6: Reparatur-Werkzeug (Admin) — prüft EINE Teilnehmerliste und
+   * repariert den Zugriff bei Fremd-Anmeldungen. Zwei Schritte:
+   *
+   * 1. **Item-Level-Security verifizieren:** liest ReadSecurity/WriteSecurity
+   *    der Liste. Steht sie NICHT auf 2/2 („nur eigene Elemente" — z.B. weil
+   *    der Set beim Anlegen still fehlschlug, siehe Security-Audit v20.x),
+   *    wird sie neu gesetzt und per Read-back verifiziert.
+   * 2. **Fremd-Anmeldungen (Anmeldung durch Dritte):** lädt alle Items mit
+   *    Autor und setzt bei jedem Item, dessen `RegisteredByEmail` von der
+   *    `ParticipantEmail` abweicht UND dessen Autor noch nicht der Teilnehmer
+   *    ist, den Autor auf den Teilnehmer (`ensureuser` → `AuthorId`-MERGE,
+   *    pro E-Mail gecacht). Damit sieht die angemeldete Person ihre eigene
+   *    Zeile in „Meine Events" und kann sich selbst abmelden (v20.5-Logik,
+   *    rückwirkend für Bestands-Anmeldungen).
+   *
+   * Läuft sequentiell (SP-Throttling-Schonung). `onProgress` meldet den
+   * Item-Fortschritt für die UI. Externe Teilnehmer (kein Tenant-Login)
+   * scheitern am `ensureuser` und landen in `authorFailed` — erwartbar.
+   */
+  public async repairProxyRegistrationAccess(
+    subsiteUrl: string,
+    onProgress?: (done: number, total: number) => void
+  ): Promise<{ ilsWasWrong: boolean; ilsFixed: boolean; itemsTotal: number; proxyFound: number; authorFixed: number; authorFailed: number }> {
+    const result = { ilsWasWrong: false, ilsFixed: false, itemsTotal: 0, proxyFound: 0, authorFixed: 0, authorFailed: 0 };
+
+    // ---- Schritt 1: Listen-Sicherheit „nur eigene Elemente" sicherstellen ----
+    const readSecurity = async (): Promise<{ rs: number; ws: number } | null> => {
+      try {
+        const resp = await this.context.spHttpClient.get(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')?$select=ReadSecurity,WriteSecurity`,
+          SPHttpClient.configurations.v1
+        );
+        if (!resp.ok) return null;
+        const d = await resp.json();
+        const rs = d.ReadSecurity ?? d.d?.ReadSecurity;
+        const ws = d.WriteSecurity ?? d.d?.WriteSecurity;
+        return (typeof rs === 'number' && typeof ws === 'number') ? { rs, ws } : null;
+      } catch { return null; }
+    };
+    const before = await readSecurity();
+    if (before && (before.rs !== 2 || before.ws !== 2)) {
+      result.ilsWasWrong = true;
+      await this.setItemLevelPermissions(subsiteUrl);
+      const after = await readSecurity();
+      result.ilsFixed = !!after && after.rs === 2 && after.ws === 2;
+    }
+
+    // ---- Schritt 2: Items mit Autor laden (paged) ----
+    type Row = { Id: number; ParticipantEmail?: string; RegisteredByEmail?: string; Author?: { EMail?: string } };
+    const items: Row[] = [];
+    let url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,ParticipantEmail,RegisteredByEmail,Author/EMail&$expand=Author&$top=500`;
+    while (url) {
+      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      if (!resp.ok) break;
+      const data = await resp.json();
+      const arr: Row[] = data.value || data.d?.results || [];
+      items.push(...arr);
+      url = data['odata.nextLink'] || data['@odata.nextLink'] || data.d?.__next || '';
+    }
+    result.itemsTotal = items.length;
+
+    // ---- Schritt 3: Fremd-Anmeldungen → Autor auf Teilnehmer setzen ----
+    const userIdCache: Record<string, number> = {};
+    let done = 0;
+    for (const it of items) {
+      done++;
+      const pe = (it.ParticipantEmail || '').toLowerCase().trim();
+      const rb = (it.RegisteredByEmail || '').toLowerCase().trim();
+      const au = (it.Author?.EMail || '').toLowerCase().trim();
+      // Nur Fremd-Anmeldungen: RegisteredByEmail vorhanden UND != Teilnehmer.
+      // (Alt-Bestand ohne RegisteredByEmail = vor v3.x — dort ist der Autor
+      // ohnehin der Teilnehmer selbst, weil es nur Selbst-Anmeldung gab.)
+      if (!pe || !rb || pe === rb) { if (onProgress) onProgress(done, items.length); continue; }
+      result.proxyFound++;
+      // Autor stimmt schon (z.B. v20.5-Anmeldung oder früherer Lauf) → ok.
+      if (au === pe) { if (onProgress) onProgress(done, items.length); continue; }
+      try {
+        let uid = userIdCache[pe] || 0;
+        if (!uid) {
+          const er = await this.context.spHttpClient.post(
+            `${subsiteUrl}/_api/web/ensureuser`,
+            SPHttpClient.configurations.v1,
+            {
+              headers: {
+                'Accept': 'application/json;odata=nometadata',
+                'Content-Type': 'application/json;odata=nometadata',
+              },
+              body: JSON.stringify({ logonName: pe }),
+            }
+          );
+          if (er.ok) {
+            const u = await er.json();
+            uid = u?.Id || u?.d?.Id || 0;
+            if (uid) userIdCache[pe] = uid;
+          }
+        }
+        if (!uid) {
+          result.authorFailed++;
+          if (onProgress) onProgress(done, items.length);
+          continue;
+        }
+        const m = await this._merge(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${it.Id})`,
+          { 'AuthorId': uid }
+        );
+        if (m.ok) result.authorFixed++; else result.authorFailed++;
+      } catch {
+        result.authorFailed++;
+      }
+      if (onProgress) onProgress(done, items.length);
+    }
+    return result;
+  }
+
+  /**
    * Berechtigungen fuer Teilnehmerliste auf der Subsite setzen.
    */
   private async setRegistrationListPermissions(subsiteUrl: string, organizerEmail: string): Promise<void> {

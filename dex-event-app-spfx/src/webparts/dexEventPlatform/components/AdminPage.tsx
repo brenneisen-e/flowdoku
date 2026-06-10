@@ -1016,6 +1016,11 @@ export default function AdminPage(): React.ReactElement {
   // Globale Reparatur: Organizer-Email-Mismatch über alle Events fixen
   const [isRepairingOrganizers, setIsRepairingOrganizers] = React.useState(false);
   const [repairOrganizersResult, setRepairOrganizersResult] = React.useState<string | null>(null);
+  // v20.6: Reparatur "Fremd-Anmeldungen: Zugriff" über alle aktiven Events —
+  // prüft pro Teilnehmerliste die "nur eigene Elemente"-Sicherheit und setzt
+  // bei Anmeldungen durch Dritte den Zeilen-Autor auf den Teilnehmer.
+  const [isRepairingAccess, setIsRepairingAccess] = React.useState(false);
+  const [repairAccessResult, setRepairAccessResult] = React.useState<string | null>(null);
   // Email Compose Modal
   const [showEmailModal, setShowEmailModal] = React.useState(false);
   // v17.10: Massmail-Target-Picker. Erst Zielgruppe waehlen, dann den
@@ -4896,6 +4901,105 @@ export default function AdminPage(): React.ReactElement {
               />
             )}
 
+            {/* v20.6: Fremd-Anmeldungen: Zugriff reparieren (alle aktiven
+                Events) — Admin only. Geht alle Teilnehmerlisten durch, stellt
+                die "nur eigene Elemente"-Sicherheit sicher und setzt bei
+                Anmeldungen durch Dritte den Zeilen-Autor auf den Teilnehmer,
+                damit die angemeldete Person ihre Anmeldung in "Meine Events"
+                sieht und sich selbst abmelden kann (v20.5 rückwirkend). */}
+            {isAdmin && (
+              <ActionTile
+                icon={<Wrench size={18} />}
+                category="maintenance"
+                title={isRepairingAccess ? (isDe ? 'Prüfung läuft…' : 'Check running…') : (isDe ? 'Fremd-Anmeldungen: Zugriff reparieren (alle aktiven Events)' : 'Proxy registrations: repair access (all active events)')}
+                desc={isDe
+                  ? 'Geht alle Teilnehmerlisten aller aktiven Events (inkl. Sub-Events) durch und prüft zwei Dinge: (1) dass jede Liste auf „nur eigene Elemente" steht — also niemand fremde Anmeldedaten sehen kann; (2) dass bei Anmeldungen, die jemand FÜR eine andere Person gemacht hat, die angemeldete Person ihre eigene Anmeldung sehen und sich selbst abmelden kann. Gefundene Probleme werden direkt repariert. Externe Personen ohne Deloitte-Login können dabei nicht berücksichtigt werden.'
+                  : 'Walks the participant lists of all active events (incl. sub-events) and checks two things: (1) that every list is set to „own items only" — so nobody can see other people’s registration data; (2) that for registrations someone made FOR another person, the registered person can see their own registration and cancel it themselves. Found issues are repaired directly. External people without a Deloitte login cannot be covered.'}
+                badge="admin"
+                busy={isRepairingAccess}
+                result={repairAccessResult}
+                resultIsError={!!repairAccessResult && (repairAccessResult.indexOf('Fehler') >= 0 || repairAccessResult.indexOf('Error') >= 0)}
+                onClick={async () => {
+                  if (!eventServiceRef) return;
+                  // Alle aktiven Events (inkl. Sub-Events) mit Teilnehmerliste,
+                  // dedupliziert nach Subsite (Reuse-Pfade teilen sich eine).
+                  const seen = new Set<string>();
+                  const targets = allEvents.filter(ev => {
+                    if (ev.status !== 'Active' || !ev.subsiteUrl) return false;
+                    const key = ev.subsiteUrl.toLowerCase();
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                  });
+                  if (targets.length === 0) {
+                    setRepairAccessResult(isDe ? 'Keine aktiven Events mit Teilnehmerliste gefunden.' : 'No active events with a participant list found.');
+                    return;
+                  }
+                  if (!(await confirmDialog(isDe
+                    ? `Zugriffs-Prüfung über ${targets.length} aktive Event-Teilnehmerlisten starten?\n\nGeprüft wird pro Liste die „nur eigene Elemente"-Sicherheit, und bei Anmeldungen durch Dritte bekommt die angemeldete Person Zugriff auf ihre eigene Anmeldung. Je nach Teilnehmerzahl kann das einige Minuten dauern.`
+                    : `Start the access check across ${targets.length} active event participant lists?\n\nEach list is checked for „own items only" security, and for registrations made by a third party the registered person gets access to their own registration. Depending on participant counts this can take a few minutes.`, { confirmLabel: isDe ? 'Prüfen & reparieren' : 'Check & repair' }))) return;
+                  setIsRepairingAccess(true);
+                  setRepairAccessResult(null);
+                  let listsChecked = 0;
+                  let ilsWrong = 0;
+                  let ilsFixed = 0;
+                  let proxyFound = 0;
+                  let authorFixed = 0;
+                  let authorFailed = 0;
+                  const errorEvents: string[] = [];
+                  try {
+                    for (let i = 0; i < targets.length; i++) {
+                      const ev = targets[i];
+                      const shortTitle = (ev.title || '?').slice(0, 40);
+                      setRepairAccessResult(isDe
+                        ? `Prüfe ${i + 1}/${targets.length}: ${shortTitle}…`
+                        : `Checking ${i + 1}/${targets.length}: ${shortTitle}…`);
+                      try {
+                        const r = await eventServiceRef.repairProxyRegistrationAccess(ev.subsiteUrl as string, (done, total) => {
+                          if (total > 50 && done % 25 === 0) {
+                            setRepairAccessResult(isDe
+                              ? `Prüfe ${i + 1}/${targets.length}: ${shortTitle} — Eintrag ${done}/${total}…`
+                              : `Checking ${i + 1}/${targets.length}: ${shortTitle} — item ${done}/${total}…`);
+                          }
+                        });
+                        listsChecked++;
+                        if (r.ilsWasWrong) {
+                          ilsWrong++;
+                          if (r.ilsFixed) ilsFixed++;
+                        }
+                        proxyFound += r.proxyFound;
+                        authorFixed += r.authorFixed;
+                        authorFailed += r.authorFailed;
+                      } catch {
+                        errorEvents.push(shortTitle);
+                      }
+                    }
+                    const parts: string[] = [];
+                    if (isDe) {
+                      parts.push(`${listsChecked} Listen geprüft.`);
+                      parts.push(ilsWrong === 0
+                        ? 'Listen-Sicherheit überall korrekt („nur eigene Elemente").'
+                        : `Listen-Sicherheit bei ${ilsWrong} Liste(n) falsch — ${ilsFixed} davon repariert${ilsFixed < ilsWrong ? ', Rest bitte manuell prüfen!' : '.'}`);
+                      parts.push(`${proxyFound} Anmeldungen durch Dritte gefunden, ${authorFixed} Zugriffe repariert${authorFailed > 0 ? `, ${authorFailed} nicht möglich (z.B. externe Personen)` : ''}.`);
+                      if (errorEvents.length > 0) parts.push(`Fehler bei: ${errorEvents.join(', ')}`);
+                    } else {
+                      parts.push(`${listsChecked} lists checked.`);
+                      parts.push(ilsWrong === 0
+                        ? 'List security correct everywhere („own items only").'
+                        : `List security wrong on ${ilsWrong} list(s) — ${ilsFixed} repaired${ilsFixed < ilsWrong ? ', please check the rest manually!' : '.'}`);
+                      parts.push(`${proxyFound} third-party registrations found, ${authorFixed} access repaired${authorFailed > 0 ? `, ${authorFailed} not possible (e.g. external people)` : ''}.`);
+                      if (errorEvents.length > 0) parts.push(`Errors on: ${errorEvents.join(', ')}`);
+                    }
+                    setRepairAccessResult(parts.join(' '));
+                  } catch {
+                    setRepairAccessResult(isDe ? 'Fehler bei der Zugriffs-Prüfung.' : 'Error during the access check.');
+                  } finally {
+                    setIsRepairingAccess(false);
+                  }
+                }}
+              />
+            )}
+
             {/* 8b. Organizer-Mails reparieren (alle Events) — Admin only.
                 Findet Events mit Längen-Mismatch zwischen organizers (Names) und
                 organizerEmails — typisch nach Legacy-Korruption aus v10.0–v10.2-
@@ -4907,6 +5011,7 @@ export default function AdminPage(): React.ReactElement {
             {isAdmin && (
               <ActionTile
                 icon={<Wrench size={18} />}
+                category="maintenance"
                 title={isRepairingOrganizers ? (isDe ? 'Reparatur läuft…' : 'Repair running…') : (isDe ? 'Organizer-Mails reparieren (alle Events)' : 'Repair organizer emails (all events)')}
                 desc={isDe
                   ? 'Scannt alle Events nach Mismatches zwischen Organizer-Namen und Organizer-Emails (Legacy-Korruption aus früheren App-Versionen). Sucht fehlende Emails per Tenant-Suche über den Nachnamen und persistiert die gefixten Paare. Manuell nicht auflösbare Personen bleiben mit leerem Email-Slot — User muss diese im Wizard nachziehen.'
@@ -5029,6 +5134,7 @@ export default function AdminPage(): React.ReactElement {
             {isAdmin && selectedEvent && (selectedEvent.type === 'B2Run' || (selectedEvent.eventSpecificFields || []).some(f => (f.id || '').toLowerCase().startsWith('b2run_'))) && (
               <ActionTile
                 icon={<RefreshCw size={18} />}
+                category="maintenance"
                 title={isDe ? 'Legacy-B2Run migrieren' : 'Migrate legacy B2Run'}
                 desc={isDe
                   ? "Stellt ein altes B2Run-Event auf das normale Eventschema um. Die Gruppen heißen danach 'Durchstarter' / 'Funstarter' (im Wizard frei umbenennbar), alle Anmeldefelder, Anmeldungen, Wartelisten und Sub-Events bleiben erhalten."
@@ -5160,6 +5266,7 @@ export default function AdminPage(): React.ReactElement {
             {isAdmin && selectedEvent && (
               <ActionTile
                 icon={<RefreshCw size={18} />}
+                category="maintenance"
                 title={isDe ? 'Custom-Fields aus Versionsverlauf zurückholen' : 'Restore custom fields from version history'}
                 desc={isDe
                   ? 'Holt versehentlich verloren gegangene Anmeldefelder (z.B. Altersgruppe, T-Shirt-Größe, Startblock, Mobilnummer) aus einer früheren Version des Events zurück. Bestehende Felder bleiben unangetastet — es wird nur Fehlendes ergänzt.'
@@ -5252,6 +5359,7 @@ export default function AdminPage(): React.ReactElement {
             {isAdmin && (
               <ActionTile
                 icon={<Wrench size={18} />}
+                category="maintenance"
                 title={isFixingFields ? (isDe ? 'Felder werden repariert…' : 'Repairing fields…') : (isDe ? 'Felder reparieren' : 'Repair fields')}
                 desc={isDe
                   ? "Räumt die Anmeldefelder dieses Events automatisch auf: AGB/Datenschutz wird eine richtige Checkbox, T-Shirt-Auswahl bekommt eine 'Kein T-Shirt'-Option, doppelte '(Pflicht)'-Zusätze verschwinden."
@@ -5383,6 +5491,7 @@ export default function AdminPage(): React.ReactElement {
             {isAdmin && (
               <ActionTile
                 icon={<RefreshCw size={18} />}
+                category="maintenance"
                 title={isRefreshingProfiles ? (isDe ? 'Profile werden geladen…' : 'Loading profiles…') : (isDe ? 'Profile neu laden' : 'Reload profiles')}
                 desc={isDe
                   ? 'Frischt JobTitle, Standort, Department und Telefonnummer der letzten N Teilnehmer aus dem Microsoft-365-Benutzerprofil auf — wenn z.B. nach einem Org-Wechsel die Teilnehmerdaten veraltet sind.'
@@ -5425,6 +5534,7 @@ export default function AdminPage(): React.ReactElement {
             {(isAdmin || isOrganizerFor(selectedEvent)) && (
               <ActionTile
                 icon={<FileText size={18} />}
+                category="event"
                 title={isDe ? 'Audit-Log / Änderungsprotokoll' : 'Audit log / change history'}
                 desc={isDe
                   ? 'Öffnet das Änderungsprotokoll vorgefiltert auf dieses Event. Du siehst pro Eintrag: wann, wer, welche Aktion (z.B. bearbeitet, abgemeldet, gelöscht), welcher Teilnehmer betroffen war und bei Daten-Änderungen den genauen Vorher → Nachher-Vergleich je Feld.'

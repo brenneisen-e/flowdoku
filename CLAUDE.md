@@ -139,6 +139,20 @@ und `reactivateRegistration`. Dadurch sieht der Teilnehmer seine Anmeldung in
 - **Audit bleibt intakt:** der tatsächliche Akteur steht ohnehin separat in
   `RegisteredByEmail` — der Autor-Wechsel verfälscht den Nachweis nicht. Keine
   App-Logik hängt am SharePoint-`Created By` (nur ein `$select`).
+- **Rückwirkende Reparatur (v20.6):** Admin-Aktion **„Fremd-Anmeldungen:
+  Zugriff reparieren (alle aktiven Events)"** (Aktionen-Dropdown, Kategorie
+  Wartung & Reparatur) → `EventService.repairProxyRegistrationAccess(subsiteUrl,
+  onProgress)`. Pro Teilnehmerliste aller aktiven Events (inkl. Sub-Events,
+  dedupliziert nach Subsite): (1) liest `ReadSecurity`/`WriteSecurity` und
+  setzt sie auf 2/2 nach, falls falsch (Read-back-Verifikation — schließt die
+  Fail-open-Lücke aus dem Security-Audit), (2) lädt alle Items mit
+  `$expand=Author` (paged) und setzt bei jeder Fremd-Anmeldung
+  (`RegisteredByEmail ≠ ParticipantEmail`, Autor ≠ Teilnehmer) den
+  `AuthorId` auf den Teilnehmer (`ensureuser` pro E-Mail gecacht, sequentiell
+  wegen SP-Throttling). Ergebnis-Summary im Tile (Listen geprüft / Sicherheit
+  korrigiert / Fremd-Anmeldungen / Zugriffe repariert / Fehler). Externe
+  Teilnehmer ohne Tenant-Login scheitern am `ensureuser` → zählen als „nicht
+  möglich" (erwartbar).
 
 ### Kein lokales Testen — immer direkt bauen
 
