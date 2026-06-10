@@ -302,10 +302,16 @@ function ActionTile(props: ActionTileProps): React.ReactElement | null {
   const registry = React.useContext(ActionsRegistryContext);
   const registered = !!registry && !props.children;
   const [hover, setHover] = React.useState(false);
+  // v22.6: NUR die (stabilen) register/unregister-Funktionen als Effekt-Deps —
+  // nicht das ganze Context-Objekt. Das war vorher bei jedem Provider-Render ein
+  // neues Objekt und ließ den Effekt endlos neu feuern (Render-Schleife → das
+  // Suchfeld im Aktionen-Dropdown war dadurch unbeschreibbar).
+  const registryRegister = registry?.register;
+  const registryUnregister = registry?.unregister;
   React.useEffect(() => {
-    if (!registry || !registered) return undefined;
+    if (!registryRegister || !registryUnregister || !registered) return undefined;
     const key = props.title;
-    registry.register({
+    registryRegister({
       key,
       title: props.title,
       desc: props.desc,
@@ -317,8 +323,8 @@ function ActionTile(props: ActionTileProps): React.ReactElement | null {
       category: props.category || 'event',
       subCategory: props.subCategory,
     });
-    return () => registry.unregister(key);
-  }, [registry, registered, props.title, props.desc, props.badge, props.onClick, props.href, props.disabled, props.busy, props.category, props.subCategory]);
+    return () => registryUnregister(key);
+  }, [registryRegister, registryUnregister, registered, props.title, props.desc, props.badge, props.onClick, props.href, props.disabled, props.busy, props.category, props.subCategory]);
   if (registered) return null;
   const isInteractive = !props.disabled && !props.busy;
   const greenAccent = isInteractive && hover;
@@ -526,7 +532,11 @@ function ActionsRegistryProvider(props: { children: React.ReactNode }): React.Re
   const unregister = React.useCallback((key: string) => {
     setActions(prev => prev.filter(x => x.key !== key));
   }, []);
-  return React.createElement(ActionsRegistryContext.Provider, { value: { register, unregister, actions } }, props.children);
+  // v22.6: Context-Value memoisieren — sonst entsteht bei jedem Render ein neues
+  // Objekt, das die ActionTile-Register-Effekte erneut feuern lässt → Render-
+  // Schleife (machte zuvor das Suchfeld im Aktionen-Dropdown unbeschreibbar).
+  const value = React.useMemo(() => ({ register, unregister, actions }), [register, unregister, actions]);
+  return React.createElement(ActionsRegistryContext.Provider, { value }, props.children);
 }
 
 function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | null {
@@ -1120,6 +1130,8 @@ export default function AdminPage(): React.ReactElement {
   // verhindert, dass das Auto-Speichern den gerade geladenen Entwurf sofort
   // wieder überschreibt, bevor der State gesetzt ist.
   const inviteHydratingRef = React.useRef(false);
+  // v22.5: kurzes „Gespeichert"-Feedback nach Klick auf den Speichern-Button.
+  const [inviteDraftSaved, setInviteDraftSaved] = React.useState(false);
   const [showExportMenu, setShowExportMenu] = React.useState(false);
   // v17.12: Zielgruppen-Picker fuer Excel-Export.
   const [excelTargetModal, setExcelTargetModal] = React.useState<null | { mode: 'deloitte' | 'b2run' }>(null);
@@ -2761,7 +2773,21 @@ export default function AdminPage(): React.ReactElement {
     setInviteHeading(def.heading);
     setInviteSubheading(def.subheading);
     setInviteBody(def.body);
+    setInviteDraftSaved(false);
     window.setTimeout(() => { inviteHydratingRef.current = false; }, 0);
+  };
+  // v22.5/v22.6: expliziter „Entwurf speichern"-Klick — schreibt den aktuellen
+  // Stand sofort in localStorage und zeigt kurz „Gespeichert".
+  const saveInviteDraft = (): void => {
+    if (!selectedEvent) return;
+    try {
+      window.localStorage.setItem(inviteDraftKey(selectedEvent.id), JSON.stringify({
+        subject: inviteSubject, heading: inviteHeading, subheading: inviteSubheading,
+        body: inviteBody, target: inviteTarget,
+      }));
+      setInviteDraftSaved(true);
+      window.setTimeout(() => setInviteDraftSaved(false), 2500);
+    } catch { /* localStorage evtl. blockiert */ }
   };
   // Auto-Speichern, solange das Modal offen ist — beim nächsten Öffnen wird der
   // Entwurf wiederhergestellt.
@@ -2774,6 +2800,105 @@ export default function AdminPage(): React.ReactElement {
       }));
     } catch { /* */ }
   }, [showInviteModal, selectedEvent, inviteSubject, inviteHeading, inviteSubheading, inviteBody, inviteTarget]);
+
+  // v22.6: QR-Versand-Aktionen als benannte Funktionen (vorher inline im Modal) —
+  // macht das neue kompakte Querformat-Layout lesbar. Verhalten unverändert.
+  const buildQrImageHtml = async (qrData: string): Promise<string> => {
+    let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
+    try {
+      const QRCode = await import('qrcode');
+      const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
+      qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
+    } catch { /* */ }
+    return qrImageHtml;
+  };
+  const qrPreviewAction = async (): Promise<void> => {
+    if (!selectedEvent) return;
+    setQrPreviewLoading(true);
+    try {
+      const orgEmail = currentUser.email;
+      const orgFullName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || orgEmail;
+      const orgFirstName = currentUser.firstName || orgFullName.split(/\s+/)[0] || orgFullName;
+      const qrData = `DEX|${selectedEvent.eventNumber}|${orgEmail}`;
+      const qrImageHtml = await buildQrImageHtml(qrData);
+      const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName);
+      let eventOrb = '';
+      try {
+        const ov = JSON.parse(selectedEvent.emailTemplateOverrides || '{}');
+        if (ov && typeof ov._eventLogo === 'string') eventOrb = ov._eventLogo;
+      } catch { /* */ }
+      const previewBody = emailData.body.replace(/\{\{ORB_URL\}\}/g, eventOrb || getCachedOrbBase64() || '');
+      setQrPreviewSubject(emailData.subject);
+      setQrPreviewHtml(previewBody);
+      setQrPreviewOpen(true);
+    } finally { setQrPreviewLoading(false); }
+  };
+  const qrTestSendAction = async (): Promise<void> => {
+    if (!eventServiceRef || !selectedEvent) return;
+    setIsSendingQR(true); setQrSendResult(null); setQrSentCount(0);
+    try {
+      const orgEmail = currentUser.email;
+      const orgFullName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || orgEmail;
+      const orgFirstName = currentUser.firstName || orgFullName.split(/\s+/)[0] || orgFullName;
+      const qrData = `DEX|${selectedEvent.eventNumber}|${orgEmail}`;
+      const qrImageHtml = await buildQrImageHtml(qrData);
+      const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName);
+      await eventServiceRef.queueEmail(emailData.subject, orgEmail, orgFullName, emailData.body, 'QRCode', selectedEvent.title, selectedEvent.id);
+      setQrSendResult(isDe
+        ? `Test-Mail an ${orgEmail} verschickt — bitte in deinem Postfach prüfen.`
+        : `Test email sent to ${orgEmail} — please check your mailbox.`);
+    } catch (err) {
+      setQrSendResult((isDe ? 'Fehler beim Test-Versand: ' : 'Error during test send: ') + (err instanceof Error ? err.message : String(err)));
+    }
+    setIsSendingQR(false);
+  };
+  const qrFullSendAction = async (): Promise<void> => {
+    if (!eventServiceRef || !selectedEvent) return;
+    const eligible = registrations.filter(r => r.Status === 'Angemeldet');
+    if (eligible.length === 0) {
+      setQrSendResult(isDe ? 'Alle Teilnehmer haben bereits einen QR-Code — nichts zu senden.' : 'All participants already have a QR code — nothing to send.');
+      return;
+    }
+    if (!(await confirmDialog(isDe ? `QR-Code an ${eligible.length} Teilnehmer ohne Code senden?` : `Send the QR code to ${eligible.length} participants without a code?`, { confirmLabel: isDe ? 'Senden' : 'Send' }))) return;
+    setIsSendingQR(true); setQrSendResult(null); setQrSentCount(0);
+    let sent = 0; let extCount = 0;
+    for (const reg of eligible) {
+      const qrData = `DEX|${selectedEvent.eventNumber}|${reg.ParticipantEmail}`;
+      const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+      const firstName = reg.Vorname || (reg.ParticipantName || '').trim().split(/\s+/)[0] || name;
+      const qrImageHtml = await buildQrImageHtml(qrData);
+      const emailData = qrCodeEmail(firstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', name);
+      const isExternal = !!reg.ParticipantEmail && !/@(.*\.)?deloitte\.de$/i.test(reg.ParticipantEmail);
+      if (isExternal) {
+        const orgEmails = (selectedEvent.organizerEmails || []).filter(Boolean);
+        const orgRecipient = orgEmails.length > 0 ? orgEmails.join(';') : currentUser.email;
+        const orgSubject = `[Externer Teilnehmer] QR-Code für ${name} — ${selectedEvent.title}`;
+        const qrExternalHint = `<div style="margin:0 0 16px;padding:12px 16px;background:#fff3e0;border:1px solid #ed8b00;border-radius:8px;font-size:13px;line-height:1.55;color:#7a4a00;">`
+          + `<strong>QR-Code für externen Teilnehmer.</strong><br>`
+          + `Eigentlich für <strong>${reg.ParticipantEmail}</strong> (${name}). Da externe Adressen keinen Mail-Versand bekommen, landet der QR-Code bei dir — drucke ihn aus oder leite die Mail intern an den Empfänger weiter (Datenschutzrichtlinien Deloitte Deutschland beachten).`
+          + `</div>`;
+        const qrBody = injectIntoEmailContent(emailData.body, qrExternalHint);
+        await eventServiceRef.queueEmail(orgSubject, orgRecipient, 'Organizer', qrBody, 'QRCode', selectedEvent.title, selectedEvent.id);
+        extCount++;
+      } else {
+        await eventServiceRef.queueEmail(emailData.subject, reg.ParticipantEmail, name, emailData.body, 'QRCode', selectedEvent.title, selectedEvent.id);
+      }
+      if (selectedEvent.subsiteUrl) {
+        await eventServiceRef.setQRSentStatus(selectedEvent.subsiteUrl, reg.Id);
+      }
+      sent++; setQrSentCount(sent);
+    }
+    // v21: Erster Massen-Versand startet die QR-Phase (AutoSendQRCode=true).
+    try { await eventServiceRef.updateEvent(parseInt(selectedEvent.id, 10), { AutoSendQRCode: true }); } catch { /* */ }
+    const regs = await getAllRegistrations(selectedEvent.id);
+    setRegistrations(regs);
+    setIsSendingQR(false);
+    setQrSendResult(extCount > 0
+      ? (isDe
+        ? `${sent} QR-Codes verschickt (davon ${extCount} an dich/Organizer umgeleitet — externe Adressen).`
+        : `${sent} QR codes sent (${extCount} of them redirected to you/the organizer — external addresses).`)
+      : (isDe ? `${sent} QR-Codes verschickt.` : `${sent} QR codes sent.`));
+  };
 
   const saveSelfCheckInWindow = async (): Promise<void> => {
     if (!selectedEvent || sciBusy) return;
@@ -4427,20 +4552,28 @@ export default function AdminPage(): React.ReactElement {
               </p>
               <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 13 }}>
                 {(() => {
+                  // v22.6: Sichtbarkeit eines Events als Klartext (für Haupt-
+                  // event UND je Sub-Section).
+                  const visText = (lc: string[], au: string[]): string => {
+                    if (lc.length === 0 && au.length === 0) {
+                      return isDe ? 'alle Mitarbeiter von Deloitte Deutschland' : 'all Deloitte Germany employees';
+                    }
+                    const parts: string[] = [];
+                    if (lc.length) parts.push((isDe ? 'Standorte: ' : 'Locations: ') + lc.join(', '));
+                    if (au.length) parts.push(isDe ? `${au.length} Verteiler/Personen` : `${au.length} distributions/people`);
+                    return parts.join(isDe ? ' und ' : ' and ');
+                  };
                   const locs = (selectedEvent.locationAudience || []).filter(Boolean);
                   const auds = (selectedEvent.audienceFilter || []).filter(Boolean);
-                  const hasChildren = childEventsOf(selectedEvent.id).length > 0;
-                  let visSummary: string;
-                  if (locs.length === 0 && auds.length === 0) {
-                    visSummary = isDe
-                      ? 'Aktuell sehen es alle Mitarbeiter von Deloitte Deutschland.'
-                      : 'Currently all Deloitte Germany employees can see it.';
-                  } else {
-                    const parts: string[] = [];
-                    if (locs.length) parts.push((isDe ? 'Standorte: ' : 'Locations: ') + locs.join(', '));
-                    if (auds.length) parts.push(isDe ? `${auds.length} ausgewählte Verteiler/Personen` : `${auds.length} selected distributions/people`);
-                    visSummary = (isDe ? 'Sichtbar für ' : 'Visible to ') + parts.join(isDe ? ' und ' : ' and ') + '.';
-                  }
+                  const children = childEventsOf(selectedEvent.id);
+                  const hasChildren = children.length > 0;
+                  const visSummary = (isDe ? 'Sichtbar für ' : 'Visible to ') + visText(locs, auds) + '.';
+                  // Pro Sub-Section die Sichtbarkeit; wenn alle gleich → nur einmal.
+                  const childVis = children.map(c => ({
+                    title: shortSubEventTitle(c.title, selectedEvent.title) || c.title,
+                    text: visText((c.locationAudience || []).filter(Boolean), (c.audienceFilter || []).filter(Boolean)),
+                  }));
+                  const allChildSame = childVis.length > 1 && childVis.every(c => c.text === childVis[0].text);
                   const steps: Array<{ title: string; body: React.ReactNode }> = [
                     {
                       title: isDe ? 'Event finalisieren' : 'Finalize the event',
@@ -4462,8 +4595,26 @@ export default function AdminPage(): React.ReactElement {
                             ? 'Oben über das Status-Häkchen „Entwurf → Aktiv" schalten. Danach ist es für die berechtigten Gruppen sichtbar.'
                             : 'Switch the status badge above from “Draft → Active”. It is then visible to the eligible groups.'}
                           <span style={{ display: 'block', marginTop: 5, padding: '6px 8px', borderRadius: 6, background: '#fff', border: '1px solid var(--dex-gray-200)', color: 'var(--dex-gray-600)', fontSize: '0.74rem', lineHeight: 1.45 }}>
-                            {visSummary}
-                            {hasChildren && (isDe ? ' Dieselbe Sichtbarkeit gilt für das Gesamt-Event; einzelne Sub-Events können eigene Empfänger haben.' : ' The same visibility applies to the overall event; individual sub-events can have their own recipients.')}
+                            <strong style={{ color: 'var(--dex-gray-700)' }}>{isDe ? 'Gesamt-Event: ' : 'Overall event: '}</strong>{visSummary}
+                            {hasChildren && (
+                              <span style={{ display: 'block', marginTop: 4 }}>
+                                {allChildSame ? (
+                                  <>
+                                    <strong style={{ color: 'var(--dex-gray-700)' }}>
+                                      {isDe ? `Für alle ${childVis.length} Sub-Sections gilt: ` : `For all ${childVis.length} sub-sections: `}
+                                    </strong>
+                                    {childVis[0].text}.
+                                  </>
+                                ) : (
+                                  <>
+                                    <strong style={{ color: 'var(--dex-gray-700)' }}>{isDe ? 'Sub-Sections:' : 'Sub-sections:'}</strong>
+                                    {childVis.map((c, ci) => (
+                                      <span key={ci} style={{ display: 'block', paddingLeft: 8 }}>• <strong>{c.title}:</strong> {c.text}</span>
+                                    ))}
+                                  </>
+                                )}
+                              </span>
+                            )}
                           </span>
                         </>
                       ),
@@ -8194,172 +8345,135 @@ export default function AdminPage(): React.ReactElement {
           open={qrSendModalOpen}
           onClose={() => setQrSendModalOpen(false)}
           dismissable={!isSendingQR}
-          maxWidth={520}
+          maxWidth={860}
           padding={24}
           ariaLabel="QR-Codes versenden"
         >
-            <h3 style={{ margin: '0 0 6px', fontSize: '1.05rem' }}>{isDe ? 'QR-Code-Versand starten' : 'Start QR code sending'}</h3>
-            <p style={{ margin: '0 0 14px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+            <h3 style={{ margin: '0 0 4px', fontSize: '1.15rem' }}>{isDe ? 'QR-Code-Versand' : 'QR code sending'}</h3>
+            <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
               {isDe
-                ? 'Der QR-Code geht im Deloitte-Layout an die Teilnehmer und enthält unter dem Code Name + Event als Klartext (für den manuellen Check-in).'
-                : 'The QR code is sent to participants in the Deloitte layout and shows name + event as plain text below the code (for manual check-in).'}
+                ? 'Persönliche QR-Codes an deine Teilnehmer — fürs schnelle Einchecken am Event-Tag. Jede Mail kommt im Deloitte-Layout und zeigt unter dem Code Name + Event als Klartext.'
+                : 'Personal QR codes for your participants — for fast check-in on event day. Each email comes in the Deloitte layout and shows name + event as plain text below the code.'}
             </p>
-            {/* v22.5: Klarer 1-2-3-Ablauf, was als Nächstes zu tun ist. */}
-            <div style={{ margin: '0 0 14px', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--dex-gray-200)', background: 'var(--dex-gray-50, #fafafa)' }}>
-              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: 10, color: 'var(--dex-gray-800)' }}>
-                {isDe ? 'So gehst du vor:' : 'Here is how it works:'}
-              </div>
-              <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 9 }}>
-                {[
-                  { n: 1, t: isDe ? 'Vorschau ansehen' : 'Preview', d: isDe ? 'Mit „Vorschau Mail" siehst du, wie die QR-Mail aussieht.' : 'Use “Preview email” to see how the QR email looks.' },
-                  { n: 2, t: isDe ? 'Test an dich' : 'Test to yourself', d: isDe ? 'Mit „Nur Test (an mich)" schickst du dir die QR-Mail einmal selbst zu.' : 'Use “Test only (to me)” to send the QR email to yourself once.' },
-                  { n: 3, t: isDe ? 'An alle Angemeldeten senden' : 'Send to all registered', d: isDe ? 'Verschickt die QR-Codes an alle Teilnehmer ohne Code. Ab dem ersten Versand bekommt jede neue Anmeldung ihren QR-Code automatisch.' : 'Sends the QR codes to all participants without a code. After the first send, every new registration gets its QR code automatically.' },
-                ].map(s => (
-                  <li key={s.n} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                    <span style={{ flexShrink: 0, width: 22, height: 22, borderRadius: '50%', background: 'var(--dex-green, #86bc25)', color: '#fff', fontWeight: 700, fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{s.n}</span>
-                    <span style={{ fontSize: '0.83rem', lineHeight: 1.45 }}>
-                      <strong>{s.t}.</strong> <span style={{ color: 'var(--dex-gray-600)' }}>{s.d}</span>
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            </div>
-            {/* v20.8: Restanten-Übersicht — wie viele Angemeldete haben noch
-                KEINEN QR-Code (Status 'Angemeldet') bzw. schon einen (Status
-                'QR versendet'/'Eingecheckt'). Neue Anmeldungen bekommen ihn
-                automatisch (v20.7), der Versand hier ist das Nachsenden an die
-                „Alt-Anmeldungen" ohne Code. */}
+            {/* v22.6: kompakte Status-Pills statt mehrerer Boxen. */}
             {(() => {
               const without = registrations.filter(r => r.Status === 'Angemeldet').length;
               const withQr = registrations.filter(r => r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length;
+              const externalCount = registrations.filter(r => r.Status === 'Angemeldet').filter(r => r.ParticipantEmail && !/@(.*\.)?deloitte\.de$/i.test(r.ParticipantEmail)).length;
+              const pill = (bg: string, fg: string, content: React.ReactNode): React.ReactElement => (
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 999, background: bg, color: fg, fontSize: '0.8rem', fontWeight: 600 }}>{content}</span>
+              );
               return (
-                <div style={{
-                  margin: '0 0 12px', padding: '10px 12px', borderRadius: 8,
-                  border: '1px solid var(--dex-gray-200)', background: 'var(--dex-gray-50, #fafafa)',
-                  fontSize: '0.85rem', color: 'var(--dex-gray-700)', lineHeight: 1.5,
-                }}>
-                  <strong style={{ color: without > 0 ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-green-dark, #4a7c1f)' }}>
-                    {without} {without === 1 ? 'Teilnehmer' : 'Teilnehmer'} ohne QR-Code
-                  </strong>{without > 0 ? ' (Restanten — bekommen ihn mit „Nachsenden" unten).' : '.'}<br />
-                  <span style={{ color: 'var(--dex-gray-500)' }}>{withQr} {withQr === 1 ? 'Teilnehmer hat' : 'Teilnehmer haben'} ihren QR-Code bereits. Neue Anmeldungen erhalten ihn automatisch bei der Anmeldung.</span>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
+                  {pill(without > 0 ? 'rgba(237,139,0,0.12)' : 'rgba(134,188,37,0.12)', without > 0 ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-green-dark, #4a7c1f)', <><strong>{without}</strong> {isDe ? 'ohne Code' : 'without code'}</>)}
+                  {pill('var(--dex-gray-100, #eee)', 'var(--dex-gray-600)', <><strong>{withQr}</strong> {isDe ? 'mit Code' : 'with code'}</>)}
+                  {pill('rgba(134,188,37,0.10)', 'var(--dex-gray-600)', isDe ? 'Neue Anmeldungen automatisch (ab 1. Versand)' : 'New registrations automatic (after 1st send)')}
+                  {externalCount > 0 && pill('#fff3e0', '#7a4a00', isDe ? `${externalCount} extern → QR an Organizer` : `${externalCount} external → QR to organizer`)}
                 </div>
               );
             })()}
-            {/* v9.22: Hinweis bei externen Teilnehmern. */}
-            {(() => {
-              const externalCount = registrations
-                .filter(r => r.Status === 'Angemeldet')
-                .filter(r => r.ParticipantEmail && !/@(.*\.)?deloitte\.de$/i.test(r.ParticipantEmail))
-                .length;
-              if (externalCount === 0) return null;
-              return (
-                <p style={{
-                  margin: '0 0 12px', fontSize: '0.8rem', color: 'var(--dex-orange-dark, #b35a00)',
-                  background: '#fff3e0', border: '1px solid #ed8b00', borderRadius: 6,
-                  padding: '8px 12px', lineHeight: 1.5,
-                }}>
-                  <strong>Hinweis:</strong> {externalCount} {externalCount === 1 ? 'externer Teilnehmer' : 'externe Teilnehmer'} in der Liste (keine @deloitte.de-Adresse). Diese bekommen <strong>keine</strong> QR-Code-Mail — stattdessen landet der jeweilige QR-Code bei dir als Organizer mit klar markiertem Subject. Drucke ihn aus oder leite ihn unter Beachtung der Deloitte-Datenschutzrichtlinien intern weiter.
-                </p>
-              );
-            })()}
-            {/* v9.19: Hinweis aufs Handbuch — User klickt auf den Link und
-                landet direkt in der Check-In-Sektion. */}
-            <p style={{ margin: '0 0 16px', fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
-              Tipp: Wie der Check-In am Eventtag genau abläuft — vom QR-Code-Scan über manuelle Eincheck-Vorgänge bis zu Sonderfällen — steht im{' '}
-              <a
-                href="javascript:void(0)"
-                onClick={(e) => { e.preventDefault(); navigate('manual'); window.location.hash = 'check-in'; }}
-                style={{ color: 'var(--dex-green-dark)', fontWeight: 500 }}
-              >
-                Handbuch-Artikel &bdquo;Check-In am Event-Tag&ldquo;
-              </a>.
-            </p>
-
-            {/* v20.1: Self-Check-in als Alternative/Ergänzung zum QR-Versand —
-                direkt aus dem Modal heraus nutzbar (Live-Anzeige oder PDF).
-                Auto-Aktivierung via ensureSelfCheckInReady, falls der Token
-                noch fehlt. */}
-            <div style={{
-              padding: '10px 12px', marginBottom: 16,
-              background: 'rgba(134,188,37,0.08)', border: '1px solid var(--dex-green, #86bc25)',
-              borderRadius: 8, fontSize: '0.82rem', lineHeight: 1.5, color: 'var(--dex-gray-700)',
-            }}>
-              <strong>Self-Check-in als Ergänzung:</strong> Statt (oder zusätzlich zu) den persönlichen QR-Mails können sich Teilnehmer am Eingang auch <strong>selbst einchecken</strong> — sie scannen dafür einen Event-QR mit der normalen Handy-Kamera, ganz ohne Scanner-Team.{' '}
-              <a
-                href="javascript:void(0)"
-                onClick={e => {
-                  e.preventDefault();
-                  (async () => {
-                    const token = await ensureSelfCheckInReady(selectedEvent);
-                    if (token) {
-                      setQrSendModalOpen(false);
-                      navigate('self-checkin-display', selectedEvent.id);
-                    }
-                  })().catch(() => { /* best-effort */ });
-                }}
-                style={{ color: 'var(--dex-green-dark)', fontWeight: 600 }}
-              >Live-QR anzeigen</a>
-              {' '}oder{' '}
-              <a
-                href="javascript:void(0)"
-                onClick={e => {
-                  e.preventDefault();
-                  (async () => {
-                    const token = await ensureSelfCheckInReady(selectedEvent);
-                    if (!token) return;
-                    await downloadSelfCheckInPdf({
-                      eventTitle: selectedEvent.title || 'Event',
-                      eventDateLabel: selectedEvent.startDate ? new Date(selectedEvent.startDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '',
-                      locationLabel: selectedEvent.location || '',
-                      token,
-                    });
-                  })().catch(() => { /* best-effort */ });
-                }}
-                style={{ color: 'var(--dex-green-dark)', fontWeight: 600 }}
-              >QR-PDF zum Ausdrucken herunterladen</a>.
-            </div>
-
-            {/* v9.29: Hinweis falls Organizer selbst NICHT für das Event angemeldet ist —
-                "Nur Test (an mich)" verschickt zwar die QR-Mail, aber der Check-In-Scan
-                wird die Person nicht in der Teilnehmerliste finden. */}
-            {(() => {
-              const orgEmail = (currentUser.email || '').toLowerCase();
-              const isOrgRegistered = !!orgEmail && registrations.some(r =>
-                (r.ParticipantEmail || '').toLowerCase() === orgEmail
-                && (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt')
-              );
-              if (isOrgRegistered) return null;
-              return (
-                <div style={{
-                  display: 'flex', alignItems: 'flex-start', gap: 10,
-                  padding: '10px 12px', marginBottom: 16,
-                  background: '#fff8e1', border: '1px solid #f5b400',
-                  borderRadius: 8, fontSize: '0.82rem', lineHeight: 1.5,
-                  color: '#7a5a00',
-                }}>
-                  <span style={{ fontSize: '1.05rem', flexShrink: 0 }}>⚠</span>
-                  <div>
-                    <strong>Du bist selbst nicht für dieses Event angemeldet.</strong> Beim Klick auf <strong>{'„Nur Test (an mich)“'}</strong> bekommst du zwar die QR-Code-Mail, aber das anschließende Check-In wird <strong>nicht funktionieren</strong> — beim Scan wird die Teilnehmerliste durchsucht, dort fehlst du. Wenn du den kompletten Flow inklusive Check-In testen willst, melde dich vorher selbst zum Event an.
+            {/* v22.6: Querformat — links der Versand-Flow, rechts die
+                Self-Check-in-Alternative. Auto-stack auf schmalen Screens. */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16, alignItems: 'stretch' }}>
+              {/* LINKS: QR-Codes an Teilnehmer senden */}
+              <div style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: 10, color: 'var(--dex-gray-800)' }}>
+                  {isDe ? 'QR-Codes an deine Teilnehmer senden' : 'Send QR codes to your participants'}
+                </div>
+                <ol style={{ margin: '0 0 14px', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[
+                    { n: 1, d: isDe ? 'Vorschau ansehen — wie sieht die Mail aus?' : 'Preview — what does the email look like?' },
+                    { n: 2, d: isDe ? 'Test an dich — Mail einmal selbst bekommen.' : 'Test to yourself — receive the email once.' },
+                    { n: 3, d: isDe ? 'An alle ohne Code senden.' : 'Send to everyone without a code.' },
+                  ].map(s => (
+                    <li key={s.n} style={{ display: 'flex', gap: 9, alignItems: 'center' }}>
+                      <span style={{ flexShrink: 0, width: 20, height: 20, borderRadius: '50%', background: 'var(--dex-green, #86bc25)', color: '#fff', fontWeight: 700, fontSize: '0.72rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{s.n}</span>
+                      <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.4 }}>{s.d}</span>
+                    </li>
+                  ))}
+                </ol>
+                {/* v22.6: Aktions-Buttons im linken Block — Reihenfolge wie die Schritte. */}
+                <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button
+                      className="btn btn-outline"
+                      disabled={isSendingQR || qrPreviewLoading}
+                      onClick={() => { qrPreviewAction().catch(() => { /* */ }); }}
+                      style={{ fontSize: '0.85rem', flex: 1, minWidth: 130 }}
+                      title={isDe ? 'So sieht die Mail aus, die rausgeht — inklusive echtem QR-Code für dich.' : 'How the email looks when sent — including a real QR code for you.'}
+                    >
+                      {qrPreviewLoading ? (isDe ? 'Lädt…' : 'Loading…') : (isDe ? '1. Vorschau' : '1. Preview')}
+                    </button>
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => { qrTestSendAction().catch(() => { /* */ }); }}
+                      disabled={isSendingQR}
+                      style={{ fontSize: '0.85rem', flex: 1, minWidth: 130 }}
+                    >
+                      {isDe ? '2. Test an mich' : '2. Test to me'}
+                    </button>
                   </div>
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => { qrFullSendAction().catch(() => { /* */ }); }}
+                    disabled={isSendingQR || registrations.filter(r => r.Status === 'Angemeldet').length === 0}
+                    style={{ fontSize: '0.9rem', width: '100%', padding: '11px 18px', fontWeight: 700 }}
+                  >
+                    {(() => {
+                      const n = registrations.filter(r => r.Status === 'Angemeldet').length;
+                      if (isSendingQR) return `${isDe ? 'Versende' : 'Sending'}… (${qrSentCount})`;
+                      if (n === 0) return isDe ? 'Alle haben ihren QR-Code' : 'Everyone has their QR code';
+                      if (isDe) return `3. QR-${n === 1 ? 'Code' : 'Codes'} an ${n} Teilnehmer senden`;
+                      return `3. Send QR ${n === 1 ? 'code' : 'codes'} to ${n} participant${n === 1 ? '' : 's'}`;
+                    })()}
+                  </button>
+                  {/* Hinweis, falls Organizer selbst nicht angemeldet ist (nur fürs Testen relevant). */}
+                  {(() => {
+                    const orgEmail = (currentUser.email || '').toLowerCase();
+                    const isOrgRegistered = !!orgEmail && registrations.some(r => (r.ParticipantEmail || '').toLowerCase() === orgEmail && (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt'));
+                    if (isOrgRegistered) return null;
+                    return (
+                      <div style={{ fontSize: '0.74rem', color: '#7a5a00', background: '#fff8e1', border: '1px solid #f5b400', borderRadius: 6, padding: '7px 10px', lineHeight: 1.4 }}>
+                        {isDe
+                          ? 'Test-Hinweis: Du bist selbst nicht angemeldet — die Test-Mail kommt an, aber ein späterer Check-in-Scan findet dich nicht in der Liste.'
+                          : 'Test note: you are not registered yourself — the test email arrives, but a later check-in scan will not find you in the list.'}
+                      </div>
+                    );
+                  })()}
                 </div>
-              );
-            })()}
-
-            {/* v20.7: Auto-Send ist Standard und nicht mehr abwählbar — der
-                frühere Toggle ist durch eine Info-Box ersetzt. Jede NEUE
-                Anmeldung (auch nach der Anmeldefrist / nach diesem Versand)
-                bekommt ihren QR-Code automatisch per Mail. */}
-            <div style={{
-              display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px',
-              border: '1px solid rgba(134,188,37,0.35)', borderRadius: 8, marginBottom: 16,
-              background: 'var(--dex-green-light, #f0f8e8)',
-            }}>
-              <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', flexShrink: 0, marginTop: 1 }}><Check size={18} /></span>
-              <div style={{ fontSize: '0.85rem' }}>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>Nach dem ersten Versand: neue Anmeldungen erhalten ihren QR-Code automatisch</div>
-                <div style={{ color: 'var(--dex-gray-600)' }}>
-                  Sobald du hier einmal die QR-Codes versendet hast, bekommt jede weitere Anmeldung an diesem Event ihren persönlichen QR-Code automatisch per Mail — auch nach der Anmeldefrist. Vor dem ersten Versand wird bei der Anmeldung kein QR-Code verschickt. Zusätzlich ist der QR-Code für jeden Teilnehmer jederzeit unter &bdquo;Meine Events&ldquo; abrufbar.
+              </div>
+              {/* RECHTS: Self-Check-in als Alternative */}
+              <div style={{ border: '1px solid var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.06)', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: 8, color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                  {isDe ? 'Alternative: Self-Check-in' : 'Alternative: self check-in'}
                 </div>
+                <p style={{ margin: '0 0 14px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                  {isDe
+                    ? 'Teilnehmer checken sich am Eingang selbst ein — sie scannen einen Event-QR mit der normalen Handy-Kamera, ganz ohne Scanner-Team.'
+                    : 'Participants check in at the entrance themselves — they scan an event QR with their phone camera, no scanner team needed.'}
+                </p>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 'auto' }}>
+                  <button
+                    className="btn btn-outline"
+                    style={{ fontSize: '0.82rem', flex: 1, minWidth: 130 }}
+                    onClick={() => { (async () => { const token = await ensureSelfCheckInReady(selectedEvent); if (token) { setQrSendModalOpen(false); navigate('self-checkin-display', selectedEvent.id); } })().catch(() => { /* */ }); }}
+                  >
+                    {isDe ? 'Live-QR anzeigen' : 'Show live QR'}
+                  </button>
+                  <button
+                    className="btn btn-outline"
+                    style={{ fontSize: '0.82rem', flex: 1, minWidth: 130 }}
+                    onClick={() => { (async () => { const token = await ensureSelfCheckInReady(selectedEvent); if (!token) return; await downloadSelfCheckInPdf({ eventTitle: selectedEvent.title || 'Event', eventDateLabel: selectedEvent.startDate ? new Date(selectedEvent.startDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '', locationLabel: selectedEvent.location || '', token }); })().catch(() => { /* */ }); }}
+                  >
+                    {isDe ? 'QR-PDF herunterladen' : 'Download QR PDF'}
+                  </button>
+                </div>
+                <p style={{ margin: '14px 0 0', fontSize: '0.74rem', color: 'var(--dex-gray-500)', lineHeight: 1.45 }}>
+                  {isDe ? 'Ablauf am Event-Tag: ' : 'Process on event day: '}
+                  <a href="javascript:void(0)" onClick={(e) => { e.preventDefault(); navigate('manual'); window.location.hash = 'check-in'; }} style={{ color: 'var(--dex-green-dark)', fontWeight: 600 }}>
+                    {isDe ? 'Handbuch „Check-In am Event-Tag"' : 'Manual “Check-in on event day”'}
+                  </a>
+                </p>
               </div>
             </div>
 
@@ -8371,182 +8485,15 @@ export default function AdminPage(): React.ReactElement {
               }}>{qrSendResult}</div>
             )}
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              {/* v22.5: klarer strukturiert — Reihenfolge folgt den Schritten
-                  oben: erst Testen (Vorschau + Test an mich) nebeneinander, dann
-                  der primäre Vollversand über die volle Breite, zuletzt Abbrechen. */}
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button
-                  className="btn btn-outline"
-                  disabled={isSendingQR || qrPreviewLoading}
-                  onClick={async () => {
-                    if (!selectedEvent) return;
-                    setQrPreviewLoading(true);
-                    try {
-                      const orgEmail = currentUser.email;
-                      const orgFullName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || orgEmail;
-                      const orgFirstName = currentUser.firstName || orgFullName.split(/\s+/)[0] || orgFullName;
-                      const qrData = `DEX|${selectedEvent.eventNumber}|${orgEmail}`;
-                      let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
-                      try {
-                        const QRCode = await import('qrcode');
-                        const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
-                        qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
-                      } catch { /* */ }
-                      const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName);
-                      // v13.12: {{ORB_URL}}-Platzhalter für die Vorschau auflösen,
-                      // damit das DEX-Orb-Bild im Modal sichtbar ist statt als
-                      // kaputtes Bild-Icon zu landen. Reihenfolge: event-eigenes
-                      // _eventLogo (aus EmailTemplateOverrides) → globaler Default-
-                      // Orb aus dem Logo-Cache → leerer String (im Echtversand
-                      // ersetzt der Power-Automate-Flow ohnehin selbst).
-                      let eventOrb = '';
-                      try {
-                        const ov = JSON.parse(selectedEvent.emailTemplateOverrides || '{}');
-                        if (ov && typeof ov._eventLogo === 'string') eventOrb = ov._eventLogo;
-                      } catch { /* */ }
-                      const previewBody = emailData.body.replace(
-                        /\{\{ORB_URL\}\}/g,
-                        eventOrb || getCachedOrbBase64() || '',
-                      );
-                      setQrPreviewSubject(emailData.subject);
-                      setQrPreviewHtml(previewBody);
-                      setQrPreviewOpen(true);
-                    } finally { setQrPreviewLoading(false); }
-                  }}
-                  style={{ fontSize: '0.85rem', flex: 1, minWidth: 160 }}
-                  title={isDe ? 'So sieht die Mail aus, die beim Versand rausgeht — inklusive echtem QR-Code für dich als Empfänger.' : 'This is how the email looks when sent — including a real QR code for you as the recipient.'}
-                >
-                  {qrPreviewLoading ? (isDe ? 'Lade Vorschau…' : 'Loading preview…') : (isDe ? '1. Vorschau Mail' : '1. Preview email')}
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  onClick={async () => {
-                    if (!eventServiceRef || !selectedEvent) return;
-                    // Test-Modus: an Organizer-Mail des aktuellen Users versenden
-                    setIsSendingQR(true);
-                    setQrSendResult(null);
-                    setQrSentCount(0);
-                    try {
-                      const orgEmail = currentUser.email;
-                      const orgFullName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || orgEmail;
-                      const orgFirstName = currentUser.firstName || orgFullName.split(/\s+/)[0] || orgFullName;
-                      const qrData = `DEX|${selectedEvent.eventNumber}|${orgEmail}`;
-                      let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
-                      try {
-                        const QRCode = await import('qrcode');
-                        const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
-                        qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
-                      } catch { /* */ }
-                      const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName);
-                      await eventServiceRef.queueEmail(
-                        emailData.subject, orgEmail, orgFullName, emailData.body,
-                        'QRCode', selectedEvent.title, selectedEvent.id
-                      );
-                      setQrSendResult(isDe
-                        ? `Test-Mail an ${orgEmail} verschickt — bitte in deinem Postfach prüfen.`
-                        : `Test email sent to ${orgEmail} — please check your mailbox.`);
-                    } catch (err) {
-                      setQrSendResult((isDe ? 'Fehler beim Test-Versand: ' : 'Error during test send: ') + (err instanceof Error ? err.message : String(err)));
-                    }
-                    setIsSendingQR(false);
-                  }}
-                  disabled={isSendingQR}
-                  style={{ fontSize: '0.85rem', flex: 1, minWidth: 160 }}
-                >
-                  {isDe ? '2. Nur Test (an mich)' : '2. Test only (to me)'}
-                </button>
-              </div>
+            <div style={{ marginTop: 16, textAlign: 'right' }}>
               <button
-                  className="btn btn-primary"
-                  onClick={async () => {
-                    if (!eventServiceRef || !selectedEvent) return;
-                    const eligible = registrations.filter(r => r.Status === 'Angemeldet');
-                    if (eligible.length === 0) {
-                      setQrSendResult(isDe ? 'Alle Teilnehmer haben bereits einen QR-Code — nichts nachzusenden.' : 'All participants already have a QR code — nothing to resend.');
-                      return;
-                    }
-                    if (!(await confirmDialog(isDe ? `QR-Code an ${eligible.length} Teilnehmer ohne Code nachsenden?` : `Resend the QR code to ${eligible.length} participants without a code?`, { confirmLabel: isDe ? 'Nachsenden' : 'Resend' }))) return;
-                    setIsSendingQR(true);
-                    setQrSendResult(null);
-                    setQrSentCount(0);
-                    let sent = 0;
-                    let extCount = 0;
-                    for (const reg of eligible) {
-                      const qrData = `DEX|${selectedEvent.eventNumber}|${reg.ParticipantEmail}`;
-                      const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
-                      const firstName = reg.Vorname || (reg.ParticipantName || '').trim().split(/\s+/)[0] || name;
-                      let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
-                      try {
-                        const QRCode = await import('qrcode');
-                        const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
-                        qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
-                      } catch { /* */ }
-                      const emailData = qrCodeEmail(firstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', name);
-                      // v9.22: Externe Mail-Adresse → QR an Organizer umleiten.
-                      const isExternal = !!reg.ParticipantEmail && !/@(.*\.)?deloitte\.de$/i.test(reg.ParticipantEmail);
-                      if (isExternal) {
-                        const orgEmails = (selectedEvent.organizerEmails || []).filter(Boolean);
-                        const orgRecipient = orgEmails.length > 0 ? orgEmails.join(';') : currentUser.email;
-                        const orgSubject = `[Externer Teilnehmer] QR-Code für ${name} — ${selectedEvent.title}`;
-                        const qrExternalHint = `<div style="margin:0 0 16px;padding:12px 16px;background:#fff3e0;border:1px solid #ed8b00;border-radius:8px;font-size:13px;line-height:1.55;color:#7a4a00;">`
-                          + `<strong>QR-Code für externen Teilnehmer.</strong><br>`
-                          + `Eigentlich für <strong>${reg.ParticipantEmail}</strong> (${name}). Da externe Adressen keinen Mail-Versand bekommen, landet der QR-Code bei dir — drucke ihn aus oder leite die Mail intern an den Empfänger weiter (Datenschutzrichtlinien Deloitte Deutschland beachten).`
-                          + `</div>`;
-                        const qrBody = injectIntoEmailContent(emailData.body, qrExternalHint);
-                        await eventServiceRef.queueEmail(
-                          orgSubject, orgRecipient, 'Organizer', qrBody,
-                          'QRCode', selectedEvent.title, selectedEvent.id
-                        );
-                        extCount++;
-                      } else {
-                        await eventServiceRef.queueEmail(
-                          emailData.subject, reg.ParticipantEmail, name, emailData.body,
-                          'QRCode', selectedEvent.title, selectedEvent.id
-                        );
-                      }
-                      if (selectedEvent.subsiteUrl) {
-                        await eventServiceRef.setQRSentStatus(selectedEvent.subsiteUrl, reg.Id);
-                      }
-                      sent++;
-                      setQrSentCount(sent);
-                    }
-                    // v21: Erster Massen-Versand startet die QR-Phase — ab
-                    // jetzt bekommt jede NEUE Anmeldung an diesem Event ihren
-                    // QR-Code automatisch (AutoSendQRCode=true am Event;
-                    // VOR dem ersten Versand wird bei Anmeldung KEIN QR
-                    // verschickt — User-Hotfix).
-                    try { await eventServiceRef.updateEvent(parseInt(selectedEvent.id, 10), { AutoSendQRCode: true }); } catch { /* */ }
-                    const regs = await getAllRegistrations(selectedEvent.id);
-                    setRegistrations(regs);
-                    setIsSendingQR(false);
-                    setQrSendResult(extCount > 0
-                      ? (isDe
-                        ? `${sent} QR-Codes verschickt (davon ${extCount} an dich/Organizer umgeleitet — externe Adressen).`
-                        : `${sent} QR codes sent (${extCount} of them redirected to you/the organizer — external addresses).`)
-                      : (isDe ? `${sent} QR-Codes verschickt.` : `${sent} QR codes sent.`));
-                  }}
-                  disabled={isSendingQR || registrations.filter(r => r.Status === 'Angemeldet').length === 0}
-                  style={{ fontSize: '0.9rem', width: '100%', padding: '11px 18px', fontWeight: 700 }}
-                >
-                  {(() => {
-                    const n = registrations.filter(r => r.Status === 'Angemeldet').length;
-                    if (isSendingQR) return `${isDe ? 'Versende' : 'Sending'}… (${qrSentCount})`;
-                    if (n === 0) return isDe ? 'Alle haben ihren QR-Code' : 'Everyone has their QR code';
-                    // v22.5: eindeutigeres Wording — „QR-Codes an N Teilnehmer
-                    // senden" (vorher „QR an 1 ohne Code nachsenden" → missverständlich).
-                    if (isDe) return `3. QR-${n === 1 ? 'Code' : 'Codes'} an ${n} Teilnehmer senden`;
-                    return `3. Send QR ${n === 1 ? 'code' : 'codes'} to ${n} participant${n === 1 ? '' : 's'}`;
-                  })()}
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => setQrSendModalOpen(false)}
-                  disabled={isSendingQR}
-                  style={{ fontSize: '0.85rem', width: '100%' }}
-                >
-                  {isDe ? 'Abbrechen' : 'Cancel'}
-                </button>
+                className="btn btn-secondary"
+                onClick={() => setQrSendModalOpen(false)}
+                disabled={isSendingQR}
+                style={{ fontSize: '0.85rem' }}
+              >
+                {isDe ? 'Abbrechen' : 'Cancel'}
+              </button>
             </div>
         </Modal>
       )}
@@ -9648,25 +9595,38 @@ export default function AdminPage(): React.ReactElement {
                 </div>
               </div>
             )}
-            {/* v22.5: Entwurf wird automatisch gespeichert + Zurücksetzen. */}
-            <div style={{
-              marginTop: 10, paddingTop: 8, borderTop: '1px dashed var(--dex-gray-200)',
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap',
-              fontSize: '0.74rem', color: 'var(--dex-gray-500)',
-            }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                <Check size={13} />
+            {/* v22.5/v22.6: Entwurf speichern (Button) + Auto-Speichern-Hinweis
+                + Zurücksetzen. */}
+            <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px dashed var(--dex-gray-200)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={saveInviteDraft}
+                  style={{ fontSize: '0.78rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                >
+                  <Check size={14} />
+                  {isDe ? 'Entwurf speichern' : 'Save draft'}
+                </button>
+                {inviteDraftSaved && (
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700, fontSize: '0.78rem' }}>
+                    <Check size={14} /> {isDe ? 'Gespeichert' : 'Saved'}
+                  </span>
+                )}
+                <span style={{ flex: 1 }} />
+                <button
+                  type="button"
+                  onClick={resetInviteDraft}
+                  style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600, fontSize: '0.74rem', textDecoration: 'underline' }}
+                >
+                  {isDe ? 'Auf Standardtext zurücksetzen' : 'Reset to default text'}
+                </button>
+              </div>
+              <div style={{ marginTop: 6, fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
                 {isDe
-                  ? 'Dein Text wird automatisch gespeichert und beim nächsten Öffnen wiederhergestellt.'
-                  : 'Your text is saved automatically and restored next time you open it.'}
-              </span>
-              <button
-                type="button"
-                onClick={resetInviteDraft}
-                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600, fontSize: '0.74rem', textDecoration: 'underline' }}
-              >
-                {isDe ? 'Auf Standardtext zurücksetzen' : 'Reset to default text'}
-              </button>
+                  ? 'Dein Text wird zusätzlich automatisch gespeichert und beim nächsten Öffnen wiederhergestellt.'
+                  : 'Your text is also saved automatically and restored next time you open it.'}
+              </div>
             </div>
           </div>
         );
