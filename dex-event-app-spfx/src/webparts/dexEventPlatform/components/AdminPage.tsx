@@ -4645,13 +4645,18 @@ export default function AdminPage(): React.ReactElement {
                   const auds = (selectedEvent.audienceFilter || []).filter(Boolean);
                   const children = childEventsOf(selectedEvent.id);
                   const hasChildren = children.length > 0;
-                  const visSummary = (isDe ? 'Sichtbar für ' : 'Visible to ') + visText(locs, auds) + '.';
+                  const parentVisText = visText(locs, auds);
+                  const visSummary = (isDe ? 'Sichtbar für ' : 'Visible to ') + parentVisText + '.';
                   // Pro Sub-Section die Sichtbarkeit; wenn alle gleich → nur einmal.
                   const childVis = children.map(c => ({
                     title: shortSubEventTitle(c.title, selectedEvent.title) || c.title,
                     text: visText((c.locationAudience || []).filter(Boolean), (c.audienceFilter || []).filter(Boolean)),
                   }));
-                  const allChildSame = childVis.length > 1 && childVis.every(c => c.text === childVis[0].text);
+                  const allChildrenSame = childVis.length > 0 && childVis.every(c => c.text === childVis[0].text);
+                  // v22.8: Wenn Gesamt-Event UND alle Sub-Sections dieselbe
+                  // Sichtbarkeit haben, ist die Unterscheidung überflüssig — dann
+                  // nur EINE Aussage zeigen.
+                  const everythingSame = hasChildren && allChildrenSame && childVis[0].text === parentVisText;
                   const steps: Array<{ title: string; body: React.ReactNode }> = [
                     {
                       title: isDe ? 'Event finalisieren' : 'Finalize the event',
@@ -4673,25 +4678,32 @@ export default function AdminPage(): React.ReactElement {
                             ? 'Oben über das Status-Häkchen „Entwurf → Aktiv" schalten. Danach ist es für die berechtigten Gruppen sichtbar.'
                             : 'Switch the status badge above from “Draft → Active”. It is then visible to the eligible groups.'}
                           <span style={{ display: 'block', marginTop: 5, padding: '6px 8px', borderRadius: 6, background: '#fff', border: '1px solid var(--dex-gray-200)', color: 'var(--dex-gray-600)', fontSize: '0.74rem', lineHeight: 1.45 }}>
-                            <strong style={{ color: 'var(--dex-gray-700)' }}>{isDe ? 'Gesamt-Event: ' : 'Overall event: '}</strong>{visSummary}
-                            {hasChildren && (
-                              <span style={{ display: 'block', marginTop: 4 }}>
-                                {allChildSame ? (
-                                  <>
-                                    <strong style={{ color: 'var(--dex-gray-700)' }}>
-                                      {isDe ? `Für alle ${childVis.length} Sub-Sections gilt: ` : `For all ${childVis.length} sub-sections: `}
-                                    </strong>
-                                    {childVis[0].text}.
-                                  </>
-                                ) : (
-                                  <>
-                                    <strong style={{ color: 'var(--dex-gray-700)' }}>{isDe ? 'Sub-Sections:' : 'Sub-sections:'}</strong>
-                                    {childVis.map((c, ci) => (
-                                      <span key={ci} style={{ display: 'block', paddingLeft: 8 }}>• <strong>{c.title}:</strong> {c.text}</span>
-                                    ))}
-                                  </>
-                                )}
-                              </span>
+                            {everythingSame ? (
+                              // Gesamt-Event und alle Sub-Sections gleich → eine Aussage.
+                              <>{visSummary} {isDe ? `(Gesamt-Event und alle ${childVis.length} Sub-Section${childVis.length === 1 ? '' : 's'}.)` : `(Overall event and all ${childVis.length} sub-section${childVis.length === 1 ? '' : 's'}.)`}</>
+                            ) : !hasChildren ? (
+                              <>{visSummary}</>
+                            ) : (
+                              <>
+                                <strong style={{ color: 'var(--dex-gray-700)' }}>{isDe ? 'Gesamt-Event: ' : 'Overall event: '}</strong>{visSummary}
+                                <span style={{ display: 'block', marginTop: 4 }}>
+                                  {allChildrenSame ? (
+                                    <>
+                                      <strong style={{ color: 'var(--dex-gray-700)' }}>
+                                        {isDe ? `Für alle ${childVis.length} Sub-Sections gilt: ` : `For all ${childVis.length} sub-sections: `}
+                                      </strong>
+                                      {childVis[0].text}.
+                                    </>
+                                  ) : (
+                                    <>
+                                      <strong style={{ color: 'var(--dex-gray-700)' }}>{isDe ? 'Sub-Sections:' : 'Sub-sections:'}</strong>
+                                      {childVis.map((c, ci) => (
+                                        <span key={ci} style={{ display: 'block', paddingLeft: 8 }}>• <strong>{c.title}:</strong> {c.text}</span>
+                                      ))}
+                                    </>
+                                  )}
+                                </span>
+                              </>
                             )}
                           </span>
                         </>

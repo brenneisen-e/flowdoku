@@ -184,8 +184,8 @@ export default function AudiencePicker({
           borderRadius: 6, padding: '8px 12px', marginBottom: 12, lineHeight: 1.5,
         }}>
           {isDe
-            ? <><strong>Hinweis:</strong> Die Mitglieder der ausgewählten Mailverteiler werden beim Speichern des Events einmal aufgelöst und gespeichert — das ist der schnelle Pfad für den Sichtbarkeits-Check. Wenn sich später Mitglieder eines Verteilers ändern (z.B. neue Person zur DL hinzugefügt), <strong>speichere das Event einmal neu</strong>, damit die App den frischen Stand bekommt.</>
-            : <><strong>Note:</strong> The members of the selected distribution lists are resolved and cached when the event is saved — this is the fast path for the visibility check. If list members change later (e.g. new person added to a DL), <strong>re-save the event once</strong> to refresh the cache.</>}
+            ? <><strong>Wichtig:</strong> Beim Speichern des Events wird einmal festgehalten, welche Personen aktuell zu den ausgewählten Verteilern gehören. Kommt später eine neue Person in einen dieser Verteiler dazu, wird sie <strong>nicht automatisch</strong> übernommen — <strong>speichere das Event dann einfach noch einmal</strong>, damit auch die neue Person das Event sieht.</>
+            : <><strong>Important:</strong> When you save the event, the app records once which people currently belong to the selected distribution lists. If someone is added to one of these lists later, they are <strong>not picked up automatically</strong> — <strong>just save the event once more</strong> so the new person can see the event too.</>}
         </div>
         {/* Chip-Liste der bereits ausgewaehlten Audience-Eintraege.
             Bei vielen Eintraegen: Inline-Suche + Pagination (nur 10 sichtbar, 'Mehr anzeigen'-Button). */}
@@ -982,7 +982,10 @@ export default function AudiencePicker({
         <div style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={() => setShowEmailModal(false)}>
+        }}>
+          {/* v22.8: NICHT mehr per Backdrop-Klick schließbar — nur „×" oder
+              „Schließen" schließen das Modal (sonst ging es bei jedem Klick
+              daneben versehentlich zu, mitten in der Suche). */}
           <div
             className="card"
             style={{ width: '90%', maxWidth: 600, maxHeight: '80vh', overflow: 'auto', padding: 24 }}
@@ -1002,8 +1005,8 @@ export default function AudiencePicker({
 
             <p style={{ margin: '0 0 12px', fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
               {isDe
-                ? 'Hier kannst du verifizieren, ob die kombinierte Sichtbarkeit (Standortfilter + Mailverteiler / einzelne User + Verknüpfung) wirklich zu der Person passt, die das Event sehen soll. Tippe Name oder E-Mail einer Testperson ein und klick „Suchen" — die Tabelle darunter zeigt, ob sie das Event in ihrer Übersicht sieht und woher die Sichtbarkeit kommt (Standort-Match oder Mitgliedschaft in einem Verteiler).'
-                : 'Use this to verify whether the combined visibility (location filter + mailing lists / individual users + the AND/OR mode) actually matches the person you want to reach. Type a test person\'s name or email and click "Search" — the table below shows whether they can see the event and where the visibility comes from (location match or membership in a list).'}
+                ? 'Hier kannst du prüfen, ob eine bestimmte Person das Event sehen würde. Tippe einfach den Namen oder die E-Mail einer Testperson ein — die Suche startet automatisch. Die Tabelle darunter zeigt mit Foto, ob die Person das Event in ihrer Übersicht sieht und warum (Standort oder Mitgliedschaft in einem Verteiler).'
+                : 'Check here whether a specific person would see the event. Just type a test person\'s name or email — the search starts automatically. The table below shows, with a photo, whether the person can see the event and why (location or membership in a distribution list).'}
             </p>
 
             <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--dex-gray-100)', borderRadius: 'var(--dex-radius)', fontSize: '0.85rem' }}>
@@ -1082,6 +1085,14 @@ export default function AudiencePicker({
               />
             </div>
 
+            {/* v22.8: klares Feedback, wenn (noch) nichts gefunden wurde. */}
+            {emailSearch.trim().length >= 2 && !isSearchingEmails && emailSearchResults.length === 0 && (
+              <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 8, background: 'var(--dex-gray-50, #fafafa)', border: '1px solid var(--dex-gray-200)', fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                {isDe
+                  ? <>Keine Person gefunden. Tipp: Versuch „Vorname Nachname“ oder die E-Mail — und falls die Person zu einer internationalen Member-Firm gehört, aktiviere oben <strong>„Auch international suchen“</strong>.</>
+                  : <>No person found. Tip: try “first name last name” or the email — and if the person belongs to an international member firm, enable <strong>“Also search internationally”</strong> above.</>}
+              </div>
+            )}
             {emailSearchResults.length > 0 && (
               <div style={{ marginTop: 12 }}>
                 <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-500)', marginBottom: 8 }}>
@@ -1173,6 +1184,17 @@ export default function AudiencePicker({
                 </table>
               </div>
             )}
+            {/* v22.8: expliziter Schließen-Button (Backdrop-Klick schließt nicht mehr). */}
+            <div style={{ marginTop: 18, textAlign: 'right' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowEmailModal(false)}
+                style={{ fontSize: '0.85rem' }}
+              >
+                {isDe ? 'Schließen' : 'Close'}
+              </button>
+            </div>
           </div>
         </div>
       )}
