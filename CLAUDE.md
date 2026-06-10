@@ -111,6 +111,35 @@ Klartext-Pflicht** (gleiche Regel wie Tooltips): beschreiben WAS die Aktion
 für den Organizer tut — kein Tech-Jargon (keine SP-Spalten-/Counter-/
 Versionsverlauf-/Postfach-Interna).
 
+### Stellvertretende Anmeldung → Teilnehmer wird Zeilen-Autor (v20.5)
+
+Die Teilnehmerlisten laufen mit Item-Level-Security (`ReadSecurity=2`/
+`WriteSecurity=2`, gesetzt in `setItemLevelPermissions`): ein User darf nur
+Items **lesen/bearbeiten, die ER ERSTELLT hat** — geprüft am SharePoint-Autor
+(`Created By`), **nicht** am Feld `ParticipantEmail`. Folge bei stellvertretender
+Anmeldung (Organizer/Admin meldet eine andere Person an): der Akteur war der
+Autor → der angemeldete Teilnehmer sah seine Anmeldung **nicht** in „Meine
+Events" und konnte sich **nicht selbst abmelden**.
+
+Fix v20.5: `EventService.trySetItemAuthor(subsiteUrl, listName, itemId,
+participantEmail)` setzt nach dem Insert/Re-Insert den **Autor der Zeile auf den
+Teilnehmer** (`ensureuser` → `AuthorId`-MERGE). Eingehängt in
+`registerForEvent` (nach dem Dedup-Block, wenn `participantEmail !== auditEmail`)
+und `reactivateRegistration`. Dadurch sieht der Teilnehmer seine Anmeldung in
+„Meine Events" und kann self-canceln.
+
+- **Best-effort:** `AuthorId` setzen erfordert „Listen verwalten"/Full Control.
+  **Organizer (eigenes Event) + Admin haben das** → greift. Ein normaler
+  **Contribute-User (z.B. eine Assistenz) hat das NICHT** → der MERGE 403t und
+  wird still ignoriert (Zeile bleibt beim Akteur, Verhalten wie vor v20.5).
+  Für assistenz-angelegte Anmeldungen ist der Teilnehmer-Self-Service damit
+  **nicht** app-only lösbar (bräuchte Elevation = Privacy-Kosten, oder einen
+  kleinen Service-Flow, der `Author=ParticipantEmail` für Proxy-Anmeldungen
+  setzt).
+- **Audit bleibt intakt:** der tatsächliche Akteur steht ohnehin separat in
+  `RegisteredByEmail` — der Autor-Wechsel verfälscht den Nachweis nicht. Keine
+  App-Logik hängt am SharePoint-`Created By` (nur ein `$select`).
+
 ### Kein lokales Testen — immer direkt bauen
 
 **WICHTIG:** Der Maintainer testet **nicht lokal** (kein `gulp serve`, kein Workbench, kein Browser-Run-Through). Schlag das auch nicht vor.

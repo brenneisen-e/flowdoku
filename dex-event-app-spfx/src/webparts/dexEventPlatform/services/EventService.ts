@@ -4404,6 +4404,56 @@ export class EventService {
   }
 
   /**
+   * v20.5: Setzt nachtraeglich den Autor (Created By / SharePoint-Ersteller)
+   * einer Teilnehmer-Zeile auf den TEILNEHMER selbst.
+   *
+   * Hintergrund: Die Teilnehmerlisten laufen mit Item-Level-Security
+   * (ReadSecurity=2 / WriteSecurity=2) — ein User darf nur Items LESEN und
+   * BEARBEITEN, die ER ERSTELLT hat (geprueft am Autor, NICHT am Feld
+   * ParticipantEmail). Bei einer stellvertretenden Anmeldung (Organizer/Admin
+   * meldet eine andere Person an) waere sonst der Akteur der Autor — der
+   * angemeldete Teilnehmer saehe seine eigene Anmeldung NICHT in "Meine
+   * Events" und koennte sich nicht selbst abmelden. Indem der Teilnehmer zum
+   * Autor wird, bekommt er Lese- + Abmelde-Zugriff auf SEINE Zeile.
+   *
+   * Best-effort: das Umsetzen von AuthorId erfordert "Listen verwalten" /
+   * Full Control auf der Liste. Organizer (eigenes Event) und Admin haben das;
+   * ein normaler Contribute-User (z.B. eine Assistenz) NICHT — dort schlaegt
+   * der MERGE mit 403 fehl und wird still ignoriert (die Zeile bleibt beim
+   * Akteur als Autor). Der eigentliche Akteur ist ohnehin separat im Feld
+   * RegisteredByEmail protokolliert, der Audit-Nachweis bleibt also erhalten.
+   */
+  private async trySetItemAuthor(subsiteUrl: string, listName: string, itemId: number, participantEmail: string): Promise<void> {
+    try {
+      // 1. Teilnehmer als SP-User der Subsite sicherstellen + dessen Id holen.
+      const ensureResp = await this.context.spHttpClient.post(
+        `${subsiteUrl}/_api/web/ensureuser`,
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            'Accept': 'application/json;odata=nometadata',
+            'Content-Type': 'application/json;odata=nometadata',
+          },
+          body: JSON.stringify({ logonName: participantEmail }),
+        }
+      );
+      if (!ensureResp.ok) return;
+      const u = await ensureResp.json();
+      const userId: number = u?.Id || u?.d?.Id || 0;
+      if (!userId) return;
+      // 2. AuthorId der Zeile auf den Teilnehmer setzen (nometadata-MERGE,
+      //    daher KEIN __metadata im Body). 403 = fehlende Rechte → catch.
+      await this._merge(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${listName}')/items(${itemId})`,
+        { 'AuthorId': userId }
+      );
+    } catch {
+      // Best-effort: kein "Listen verwalten" → Autor bleibt der Akteur, die
+      // Zeile bleibt fuer den Teilnehmer unsichtbar (Verhalten wie vor v20.5).
+    }
+  }
+
+  /**
    * Berechtigungen fuer Teilnehmerliste auf der Subsite setzen.
    */
   private async setRegistrationListPermissions(subsiteUrl: string, organizerEmail: string): Promise<void> {
@@ -4665,6 +4715,15 @@ export class EventService {
       }
       if (!response.ok) return false;
 
+      // Inserted-Item-Id EINMALIG aus der Response lesen (der Body laesst sich
+      // nur einmal konsumieren) — wird sowohl fuer die Dedup-Pruefung als auch
+      // fuer das Setzen des Autors (stellvertretende Anmeldung) gebraucht.
+      let insertedId = 0;
+      try {
+        const respJson = await response.json();
+        insertedId = respJson?.d?.Id || respJson?.Id || 0;
+      } catch { /* Body nicht lesbar — Dedup/Autor-Set entfallen, Insert war ok */ }
+
       // v9.10: Post-Insert Safety Net — bei Massen-Anmeldungen (Go-Live)
       // gab es trotz ETag-Counter vereinzelt Duplikate. Ursache war der
       // alte max+1-Fallback (jetzt entfernt) und ggf. Edge-Cases im
@@ -4673,32 +4732,28 @@ export class EventService {
       // Wenn ja: der mit der HOEHEREN SP-Item-Id verliert (= der spaetere
       // Insert), holt sich frisch eine ID am Counter und patcht sich.
       // So bleiben die zuerst eingetroffenen Anmeldungen stabil.
-      if (typeof nextId === 'number' && nextId > 0) {
+      if (typeof nextId === 'number' && nextId > 0 && insertedId > 0) {
         try {
-          const respJson = await response.json();
-          const insertedId: number = respJson?.d?.Id || respJson?.Id || 0;
-          if (insertedId > 0) {
-            const dupResp = await this.context.spHttpClient.get(
-              `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,TeilnehmerID&$filter=TeilnehmerID eq ${nextId}&$top=10`,
-              SPHttpClient.configurations.v1
-            );
-            if (dupResp.ok) {
-              const dupData = await dupResp.json();
-              const dupItems: Array<{ Id: number; TeilnehmerID: number }> = dupData.value || dupData.d?.results || [];
-              if (dupItems.length > 1) {
-                const minId = Math.min(...dupItems.map(d => d.Id));
-                if (insertedId !== minId) {
-                  // Wir haben verloren — fresh ID holen + patchen
-                  const fresh = await this.getNextTeilnehmerId(subsiteUrl);
-                  if (typeof fresh === 'number' && fresh > 0) {
-                    await this._merge(
-                      `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${insertedId})`,
-                      { 'TeilnehmerID': fresh }
-                    );
-                    console.warn(`[DEX] Post-insert dedup: TeilnehmerID ${nextId} kollidierte, Item ${insertedId} hat jetzt #${fresh}.`);
-                  } else {
-                    console.warn(`[DEX] Post-insert dedup: kollidierende TeilnehmerID ${nextId} entdeckt, aber Counter lieferte keine fresh ID. Admin sollte "IDs neu vergeben" laufen lassen.`);
-                  }
+          const dupResp = await this.context.spHttpClient.get(
+            `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,TeilnehmerID&$filter=TeilnehmerID eq ${nextId}&$top=10`,
+            SPHttpClient.configurations.v1
+          );
+          if (dupResp.ok) {
+            const dupData = await dupResp.json();
+            const dupItems: Array<{ Id: number; TeilnehmerID: number }> = dupData.value || dupData.d?.results || [];
+            if (dupItems.length > 1) {
+              const minId = Math.min(...dupItems.map(d => d.Id));
+              if (insertedId !== minId) {
+                // Wir haben verloren — fresh ID holen + patchen
+                const fresh = await this.getNextTeilnehmerId(subsiteUrl);
+                if (typeof fresh === 'number' && fresh > 0) {
+                  await this._merge(
+                    `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${insertedId})`,
+                    { 'TeilnehmerID': fresh }
+                  );
+                  console.warn(`[DEX] Post-insert dedup: TeilnehmerID ${nextId} kollidierte, Item ${insertedId} hat jetzt #${fresh}.`);
+                } else {
+                  console.warn(`[DEX] Post-insert dedup: kollidierende TeilnehmerID ${nextId} entdeckt, aber Counter lieferte keine fresh ID. Admin sollte "IDs neu vergeben" laufen lassen.`);
                 }
               }
             }
@@ -4707,6 +4762,14 @@ export class EventService {
           // Safety-Net-Fehler nicht kritisch — Insert war erfolgreich
           console.warn('[DEX] Post-insert dedup check fehlgeschlagen:', err);
         }
+      }
+
+      // v20.5: Stellvertretende Anmeldung (Akteur != Teilnehmer) → den
+      // Teilnehmer zum Autor der Zeile machen, damit er seine eigene Anmeldung
+      // in "Meine Events" sieht und sich selbst abmelden kann. auditEmail ist
+      // bereits lowercased; bei Selbst-Anmeldung sind beide gleich → kein Set.
+      if (insertedId > 0 && auditEmail && participantEmail && participantEmail.toLowerCase().trim() !== auditEmail) {
+        await this.trySetItemAuthor(subsiteUrl, REG_LIST_NAME, insertedId, participantEmail);
       }
 
       return true;
@@ -5187,6 +5250,9 @@ export class EventService {
       // beim Reaktivieren die alte ID erhalten bleibt — Counter wird NUR
       // dann angefasst, wenn die alte ID null/0 ist (Legacy-Edge).
       let existingTeilnehmerId = 0;
+      // v20.5: Teilnehmer-E-Mail in den aeusseren Scope heben, damit der
+      // Autor-Set am Ende (stellvertretende Re-Anmeldung) sie nutzen kann.
+      let reactivateParticipantEmail = '';
       try {
         const itemResp = await this.context.spHttpClient.get(
           `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items(${itemId})?$select=ParticipantEmail,TeilnehmerID`,
@@ -5197,6 +5263,7 @@ export class EventService {
         if (itemResp.ok) {
           const itemData = await itemResp.json();
           targetEmail = (itemData.ParticipantEmail || itemData.d?.ParticipantEmail || '').toLowerCase();
+          reactivateParticipantEmail = targetEmail;
           const tnId = itemData.TeilnehmerID ?? itemData.d?.TeilnehmerID;
           if (typeof tnId === 'number' && tnId > 0) existingTeilnehmerId = tnId;
         }
@@ -5348,6 +5415,13 @@ export class EventService {
         } catch (err) {
           console.warn('[DEX] Post-update dedup check (reactivate) fehlgeschlagen:', err);
         }
+      }
+
+      // v20.5: Stellvertretende Re-Anmeldung → Teilnehmer zum Autor der Zeile
+      // machen (analog registerForEvent), damit er sie in "Meine Events" sieht
+      // und sich selbst abmelden kann. Best-effort (nur mit "Listen verwalten").
+      if (reactivateParticipantEmail && auditEmail && reactivateParticipantEmail !== auditEmail) {
+        await this.trySetItemAuthor(subsiteUrl, REG_LIST_NAME, itemId, reactivateParticipantEmail);
       }
 
       return true;
