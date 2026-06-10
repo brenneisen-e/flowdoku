@@ -30,9 +30,27 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
 }) => {
   const [open, setOpen] = React.useState(false);
   const rootRef = React.useRef<HTMLDivElement | null>(null);
+  // v22.4: Das Optionen-Panel als position:fixed an die Button-Bounding-Box
+  // ankern, damit es NICHT vom `overflow:hidden` der umgebenden Card
+  // abgeschnitten wird (Bug: die letzte(n) Option(en) eines Dropdowns waren
+  // unsichtbar). Gleiches Muster wie der People-Picker (UserFieldPicker,
+  // v18.5). Bei wenig Platz unten klappt es nach oben auf, sonst nach unten;
+  // die Höhe wird auf den verfügbaren Platz begrenzt (intern scrollbar).
+  const [menuPos, setMenuPos] = React.useState<{ left: number; width: number; openUp: boolean; anchorTop: number; anchorBottom: number; maxHeight: number } | null>(null);
+  const recalcMenu = React.useCallback((): void => {
+    const el = rootRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - r.bottom - 8;
+    const spaceAbove = r.top - 8;
+    const openUp = spaceBelow < 200 && spaceAbove > spaceBelow;
+    const maxHeight = Math.max(140, Math.min(300, openUp ? spaceAbove : spaceBelow));
+    setMenuPos({ left: r.left, width: r.width, openUp, anchorTop: r.bottom + 4, anchorBottom: window.innerHeight - r.top + 4, maxHeight });
+  }, []);
 
   React.useEffect(() => {
     if (!open) return undefined;
+    recalcMenu();
     const onDocClick = (e: MouseEvent): void => {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
         setOpen(false);
@@ -43,11 +61,17 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
     };
     document.addEventListener('mousedown', onDocClick);
     document.addEventListener('keydown', onKey);
+    // Beim Scrollen/Resizen neu ausrichten (capture=true: auch innere Scroll-
+    // Container der Anmeldeseite erfassen).
+    window.addEventListener('scroll', recalcMenu, true);
+    window.addEventListener('resize', recalcMenu);
     return () => {
       document.removeEventListener('mousedown', onDocClick);
       document.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', recalcMenu, true);
+      window.removeEventListener('resize', recalcMenu);
     };
-  }, [open]);
+  }, [open, recalcMenu]);
 
   const toggle = (opt: string): void => {
     if (value.indexOf(opt) >= 0) {
@@ -109,19 +133,21 @@ export const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
       >
         {label}
       </button>
-      {open && (
+      {open && menuPos && (
         <div
           style={{
-            position: 'absolute',
-            top: 'calc(100% + 4px)',
-            left: 0,
-            right: 0,
-            zIndex: 1000,
+            // v22.4: position:fixed an der Bounding-Box — escaped das
+            // overflow:hidden der Card; flippt bei Platzmangel nach oben.
+            position: 'fixed',
+            left: menuPos.left,
+            width: menuPos.width,
+            ...(menuPos.openUp ? { bottom: menuPos.anchorBottom } : { top: menuPos.anchorTop }),
+            zIndex: 3000,
             background: '#fff',
             border: '1px solid var(--dex-gray-200)',
             borderRadius: 8,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
-            maxHeight: 280,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+            maxHeight: menuPos.maxHeight,
             overflowY: 'auto',
           }}
         >
