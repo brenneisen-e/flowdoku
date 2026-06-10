@@ -89,6 +89,9 @@ export default function AudiencePicker({
   const [isSearchingAudience, setIsSearchingAudience] = React.useState(false);
   const [audienceIncludeIntl, setAudienceIncludeIntl] = React.useState(false);
   const audienceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  // v22.7: Debounce-Timer für die Live-People-Picker-Suche im „Sichtbarkeit
+  // prüfen"-Modal (vorher manuelles Enter/„Suchen").
+  const emailSearchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   // Audience-Chip-Pagination + Inline-Suche
   const [audienceShowAll, setAudienceShowAll] = React.useState(false);
   const [audienceChipSearch, setAudienceChipSearch] = React.useState('');
@@ -1029,44 +1032,47 @@ export default function AudiencePicker({
             </div>
 
             <div className="form-group">
-              <label className="form-label">{isDe ? 'User suchen (Name oder E-Mail)' : 'Search user (name or email)'}</label>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <label className="form-label">{isDe ? 'Testperson suchen (Name oder E-Mail)' : 'Search test person (name or email)'}</label>
+              {/* v22.7: Live-People-Picker — tippen genügt (Vorname Nachname,
+                  Nachname Vorname oder E-Mail), die Suche läuft automatisch. */}
+              <div style={{ position: 'relative' }}>
                 <input
                   className="form-input"
                   value={emailSearch}
-                  onChange={e => setEmailSearch(e.target.value)}
-                  placeholder="z.B. Max Mustermann oder mmustermann@"
-                  onKeyDown={async e => {
-                    if (e.key === 'Enter' && emailSearch.length >= 2) {
-                      setIsSearchingEmails(true);
-                      const results = await searchUsers(emailSearch, emailSearchIncludeIntl);
-                      setEmailSearchResults(results);
-                      setIsSearchingEmails(false);
+                  autoFocus
+                  onChange={e => {
+                    const val = e.target.value;
+                    setEmailSearch(val);
+                    if (emailSearchTimerRef.current) clearTimeout(emailSearchTimerRef.current);
+                    if (val.trim().length >= 2) {
+                      emailSearchTimerRef.current = setTimeout(async () => {
+                        setIsSearchingEmails(true);
+                        try {
+                          const results = await searchUsers(val.trim(), emailSearchIncludeIntl);
+                          setEmailSearchResults(results);
+                        } catch { setEmailSearchResults([]); }
+                        setIsSearchingEmails(false);
+                      }, 350);
+                    } else {
+                      setEmailSearchResults([]);
                     }
                   }}
+                  placeholder={isDe ? 'z.B. Max Mustermann, Mustermann Max oder mmustermann@' : 'e.g. Max Mustermann, Mustermann Max or mmustermann@'}
                 />
-                <button
-                  className="btn btn-primary"
-                  style={{ whiteSpace: 'nowrap' }}
-                  disabled={emailSearch.length < 2 || isSearchingEmails}
-                  onClick={async () => {
-                    setIsSearchingEmails(true);
-                    const results = await searchUsers(emailSearch, emailSearchIncludeIntl);
-                    setEmailSearchResults(results);
-                    setIsSearchingEmails(false);
-                  }}
-                >
-                  {isSearchingEmails ? '...' : (isDe ? 'Suchen' : 'Search')}
-                </button>
+                {isSearchingEmails && (
+                  <span style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', fontSize: '0.78rem', color: 'var(--dex-gray-400)' }}>
+                    {isDe ? 'sucht…' : 'searching…'}
+                  </span>
+                )}
               </div>
               <InternationalSearchToggle
                 checked={emailSearchIncludeIntl}
                 onChange={async next => {
                   setEmailSearchIncludeIntl(next);
-                  if (emailSearch.length >= 2) {
+                  if (emailSearch.trim().length >= 2) {
                     setIsSearchingEmails(true);
                     try {
-                      const results = await searchUsers(emailSearch, next);
+                      const results = await searchUsers(emailSearch.trim(), next);
                       setEmailSearchResults(results);
                     } catch { /* */ }
                     setIsSearchingEmails(false);
@@ -1084,6 +1090,7 @@ export default function AudiencePicker({
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                   <thead>
                     <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
+                      <th style={{ textAlign: 'left', padding: 6, width: 44 }} aria-label={isDe ? 'Foto' : 'Photo'} />
                       <th style={{ textAlign: 'left', padding: 6 }}>Name</th>
                       <th style={{ textAlign: 'left', padding: 6 }}>E-Mail</th>
                       <th style={{ textAlign: 'left', padding: 6 }}>Standort</th>
@@ -1093,7 +1100,7 @@ export default function AudiencePicker({
                   </thead>
                   <tbody>
                     {visibilityCacheLoading && (
-                      <tr><td colSpan={5} style={{ padding: 12, textAlign: 'center', fontSize: '0.82rem', color: 'var(--dex-gray-500)' }}>
+                      <tr><td colSpan={6} style={{ padding: 12, textAlign: 'center', fontSize: '0.82rem', color: 'var(--dex-gray-500)' }}>
                         {isDe ? 'Verteiler werden aufgelöst…' : 'Resolving distribution lists…'}
                       </td></tr>
                     )}
@@ -1139,6 +1146,15 @@ export default function AudiencePicker({
                       }
                       return (
                         <tr key={u.email} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
+                          <td style={{ padding: 6 }}>
+                            {/* v22.7: Profilfoto wie in der Teilnehmerliste. */}
+                            <img
+                              src={`/_layouts/15/userphoto.aspx?size=L&accountname=${encodeURIComponent(u.email)}`}
+                              alt=""
+                              style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100, #eee)', display: 'block' }}
+                              onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                            />
+                          </td>
                           <td style={{ padding: 6 }}>{u.displayName}</td>
                           <td style={{ padding: 6, color: 'var(--dex-gray-600)' }}>{u.email}</td>
                           <td style={{ padding: 6, color: 'var(--dex-gray-500)' }}>{u.location || '-'}</td>

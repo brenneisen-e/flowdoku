@@ -1246,6 +1246,71 @@ export class EventService {
     }
   }
 
+  /**
+   * v22.7: Prüft per Microsoft Graph, ob die übergebenen (Deloitte-)E-Mail-
+   * Adressen noch zu einem aktiven Konto gehören. Liefert die Liste der
+   * Adressen, zu denen KEIN aktives Konto gefunden wurde — die Person hat
+   * womöglich das Unternehmen verlassen oder das Konto ist deaktiviert.
+   *
+   * - Nur @deloitte-Adressen werden geprüft; externe/Nicht-Deloitte-Adressen
+   *   werden übersprungen (nicht zuverlässig prüfbar) und nie gemeldet.
+   * - Batches von je 8 Adressen pro Graph-Request (mail/UPN-OR-Filter).
+   * - Best-effort: nur Adressen aus ERFOLGREICH abgefragten Batches können
+   *   als inaktiv gemeldet werden — fehlgeschlagene Batches erzeugen keinen
+   *   Fehlalarm. `ok=false`, wenn gar nichts geprüft werden konnte.
+   */
+  public async checkAccountsActive(
+    emails: string[]
+  ): Promise<{ ok: boolean; inactive: string[] }> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ctx = this.context as any;
+    if (!ctx.msGraphClientFactory) return { ok: false, inactive: [] };
+    const candidates = Array.from(new Set(
+      emails
+        .map(e => (e || '').trim().toLowerCase())
+        .filter(e => /@(.*\.)?deloitte\.(de|com)$/i.test(e))
+    ));
+    if (candidates.length === 0) return { ok: true, inactive: [] };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let client: any;
+    try {
+      client = await ctx.msGraphClientFactory.getClient('3');
+    } catch {
+      return { ok: false, inactive: [] };
+    }
+    const activeSet = new Set<string>();
+    const checkedSet = new Set<string>();
+    const esc = (s: string): string => s.replace(/'/g, "''");
+    const BATCH = 8;
+    for (let i = 0; i < candidates.length; i += BATCH) {
+      const batch = candidates.slice(i, i + BATCH);
+      const clauses = batch
+        .map(e => `mail eq '${esc(e)}' or userPrincipalName eq '${esc(e)}'`)
+        .join(' or ');
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const resp: any = await client.api('/users')
+          .filter(`(${clauses})`)
+          .select('mail,userPrincipalName,accountEnabled')
+          .top(999)
+          .get();
+        // Batch gilt als geprüft (egal ob jemand gefunden wurde).
+        for (const e of batch) checkedSet.add(e);
+        const found = (resp?.value || []) as Array<{ mail?: string; userPrincipalName?: string; accountEnabled?: boolean }>;
+        for (const u of found) {
+          if (u.accountEnabled === false) continue; // deaktiviert → zählt als inaktiv
+          if (u.mail) activeSet.add(u.mail.toLowerCase());
+          if (u.userPrincipalName) activeSet.add(u.userPrincipalName.toLowerCase());
+        }
+      } catch (err) {
+        console.warn('[DEX] checkAccountsActive batch failed:', err);
+      }
+    }
+    if (checkedSet.size === 0) return { ok: false, inactive: [] };
+    const inactive = candidates.filter(e => checkedSet.has(e) && !activeSet.has(e));
+    return { ok: true, inactive };
+  }
+
   // ==================== DEX_IDReorder Queue ====================
 
   /**
