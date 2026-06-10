@@ -74,19 +74,22 @@ export default function LandingPage(): React.ReactElement {
     let cancelled = false;
     (async () => {
       const now = Date.now();
-      const twoDaysMs = 2 * 24 * 60 * 60 * 1000;
       // Kandidaten: Events, deren Start höchstens 2 Tage entfernt ist und die
       // noch nicht vorbei sind (Ende, Fallback: Ende des Start-Tages).
+      // v22.3: kalendertägig statt exakt 48h — die Box erscheint ab 00:00 des
+      // Tages, der zwei Tage vor dem Start-Tag liegt (Beispiel: Event am
+      // 12.06. 18:00 → Box ab 10.06. 00:00 sichtbar, nicht erst ab 18:00).
       const candidates = events.filter(e => {
         if (!e.eventNumber || !e.startDate) return false;
-        const start = new Date(e.startDate).getTime();
+        const startDt = new Date(e.startDate);
+        const start = startDt.getTime();
         if (!Number.isFinite(start)) return false;
         let end = e.endDate ? new Date(e.endDate).getTime() : NaN;
         if (!Number.isFinite(end)) {
-          const s = new Date(e.startDate);
-          end = new Date(s.getFullYear(), s.getMonth(), s.getDate(), 23, 59, 59).getTime();
+          end = new Date(startDt.getFullYear(), startDt.getMonth(), startDt.getDate(), 23, 59, 59).getTime();
         }
-        return now >= start - twoDaysMs && now <= end;
+        const windowOpens = new Date(startDt.getFullYear(), startDt.getMonth(), startDt.getDate() - 2, 0, 0, 0).getTime();
+        return now >= windowOpens && now <= end;
       }).slice(0, 4);
       if (candidates.length === 0) { if (!cancelled) setCheckInBoxes([]); return; }
       const boxes: Array<{ eventId: string; title: string; qrSmall: string; qrData: string; name: string; tid?: number }> = [];
