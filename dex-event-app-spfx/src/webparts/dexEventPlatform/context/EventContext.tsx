@@ -1350,15 +1350,19 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           finalSubject, finalRecipient, finalRecipientName, finalBody,
           templateType, event.title, eventId, ccFromFields, bcc
         ).catch(err => console.warn('[DEX] queueEmail failed:', err));
+      }
 
-        // v9.15/v20.7: Auto-Send QR-Code — seit v20.7 IMMER aktiv (nicht mehr
-        // pro Event abwählbar; das frühere AutoSendQRCode-Flag wird ignoriert).
-        // Damit bekommt auch eine Anmeldung nach dem QR-Massen-Versand bzw.
-        // nach der Anmeldefrist automatisch ihren QR-Code. Nur fuer
-        // Status='Angemeldet' (Wartelistler sind noch nicht confirmed) und
-        // nur solange E-Mails am Event nicht deaktiviert sind.
-        if (status === 'Angemeldet' && !event.disableEmails) {
-          (async (): Promise<void> => {
+      // v9.15/v20.7/v20.10: Auto-Send QR-Code — UNABHÄNGIG vom Bestätigungs-
+      // Mail-Block (vorher war er DARIN verschachtelt und wurde dadurch bei
+      // stiller Massen-Anmeldung mit `opts.suppressMail` UND bei
+      // `disableRegistrationEmail` mit übersprungen → nachgetragene Teilnehmer
+      // bekamen keinen QR). Jetzt greift er für JEDE neue Anmeldung; nur der
+      // Master „DisableEmails" und die Schatten-Registrierung (subEventsOnly)
+      // heben ihn auf. Nur fuer Status='Angemeldet' (Wartelistler sind noch
+      // nicht confirmed).
+      if (status === 'Angemeldet' && !event.disableEmails && !suppressParentNotifications) {
+        const isExternalRecipientQr = !!emailToUse && !/@(.*\.)?deloitte\.de$/i.test(emailToUse);
+        (async (): Promise<void> => {
             try {
               const qrData = `DEX|${event.eventNumber}|${emailToUse}`;
               let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
@@ -1374,7 +1378,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
               // v9.22: Auto-Send-QR fuer externe Empfaenger ebenfalls an den
               // Organizer umleiten (mit klarem Subject-Praefix), nicht an den
               // externen Mail-Empfaenger.
-              if (isExternalRecipient) {
+              if (isExternalRecipientQr) {
                 const orgEmails = (event.organizerEmails || []).filter(Boolean);
                 const orgRecipient = orgEmails.length > 0 ? orgEmails.join(';') : currentUserEmail;
                 const orgSubject = `[Externer Teilnehmer] QR-Code für ${nameToUse} — ${event.title}`;
@@ -1406,7 +1410,6 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             } catch (err) { console.warn('[DEX] auto-send QR failed:', err); }
           })().catch(err => console.warn('[DEX] auto-send QR outer failed:', err));
         }
-      }
       // Roommate-Benachrichtigung: nur Custom-Fields vom Typ 'roommate'
       // durchsuchen (seit v7.17 eigener Feldtyp; vorher waren es alle 'user'-
       // Felder, was bei "Assistent"-, "Mentor"- etc. Pickern zu ungewollten
