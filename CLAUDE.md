@@ -176,6 +176,49 @@ und `reactivateRegistration`. Dadurch sieht der Teilnehmer seine Anmeldung in
   mit identischem Payload wie die QR-Mail (`DEX|<EventNr>|<E-Mail>`), plus
   Name + Teilnehmer-Nr. als Fallback für den manuellen Check-in.
 
+### QR-Phase: Auto-Versand erst nach dem ersten Massen-Versand (v21)
+
+Der QR-Auto-Versand bei Anmeldung (eigener Block in
+`EventContext.registerForEvent`, unabhängig von Bestätigungs-Mail /
+`suppressMail`) greift NUR, wenn `event.autoSendQRCode === true` — und das
+setzt ausschließlich der **erste manuelle QR-Massen-Versand** im Organizer
+Center (`AutoSendQRCode=true` am Event nach erfolgreichem Volldurchlauf).
+**Vor dem ersten Versand löst KEINE Anmeldung eine QR-Mail aus** (v21-Hotfix;
+v20.7–v20.10 feuerte fälschlich bei jeder Anmeldung an jedem Event). Kein
+Deadline-Trigger. Der Test-Versand („Nur Test an mich") startet die Phase
+NICHT. Master `DisableEmails` und subEventsOnly-Schatten-Registrierungen
+heben den Auto-Versand weiterhin auf. Restanten (Status 'Angemeldet' ohne
+Code) löst der Button „QR an X ohne Code nachsenden". „Mein QR-Code" in
+Meine Events ist davon unabhängig (clientseitig erzeugt, immer abrufbar).
+
+### Archivierung abgelaufener Event-Zeilen (v21/v22)
+
+Admin-only-Werkzeug, um die globalen Queue-/Log-Listen schlank zu halten:
+
+- **Quellen** (`EventService.ARCHIVE_SOURCES`): `DEX_Emails`, `DEX_Outlook`,
+  `DEX_IDReorder`, `DEX_ChangeLog` (Match über `EventId`) + `DEX_AccessFix`
+  (Match über `SubsiteUrl`). Bewusst NICHT dabei: `DEX_Participants`
+  (lebendes Cross-Event-Register), Teilnehmer-Subsite-Listen, Konfig-Listen.
+- **Abgelaufen** = End-Datum (Fallback Start-Datum) in der Vergangenheit
+  (`getExpiredEventSets` in EventContext, über ALLE Events inkl. Sub-Events).
+- **Ziel-Liste `DEX_Archive`** (Site-Collection-Root, `ensureArchiveList` im
+  Boot): generisches Schema `SourceList`/`EventId`/`EventTitle`/`OriginalId`/
+  `ArchivedAt`/`Payload` (JSON der Originalzeile). Berechtigungen via
+  `setArchiveListPermissions`: NUR Owners (Admins) — kein Visitors-Grant.
+- **Verschieben, nicht kopieren:** `archiveExpiredRows` macht pro Zeile
+  Insert ins Archiv und löscht ERST BEI ERFOLG aus der Quelle (kein
+  Datenverlust); sequentiell wegen SP-Throttling; `onProgress` (Liste i/N +
+  Zeile x/y) treibt das Fortschrittsmodal.
+- **UI (v22):** Landing Page rechts oben — Box „Archivierung" (nur Admin,
+  nur wenn `getArchivableCount().total > 0`, gezählt beim App-Start sobald
+  Events geladen) mit Pro-Liste-Aufschlüsselung + Button „Jetzt archivieren"
+  → Confirm → Fortschrittsmodal → Summary → Neuzählung.
+- **Queue-ILS-Härtung (v22):** `hardenQueueListsIls()` setzt
+  `DEX_Outlook` + `DEX_IDReorder` auf ReadSecurity/WriteSecurity=2 („nur
+  eigene Elemente"); läuft zu Beginn des Admin-Buttons „Fremd-Anmeldungen:
+  Zugriff reparieren" mit. `DEX_TeamJoinRequests` bekommt ILS bewusst NICHT
+  (Team-Lead muss fremde Beitritts-Anfragen lesen können).
+
 ### Kein lokales Testen — immer direkt bauen
 
 **WICHTIG:** Der Maintainer testet **nicht lokal** (kein `gulp serve`, kein Workbench, kein Browser-Run-Through). Schlag das auch nicht vor.
