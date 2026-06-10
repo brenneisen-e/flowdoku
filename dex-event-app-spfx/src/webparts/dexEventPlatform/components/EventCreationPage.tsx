@@ -4208,6 +4208,28 @@ export default function EventCreationPage(): React.ReactElement {
     }
   }, [currentStep]);
 
+  // v22.6: Sub-Events/Sub-Sections erben standardmäßig die Sichtbarkeit der
+  // Klammer / des Hauptevents. Beim Öffnen eines bestehenden Events werden
+  // Sub-Events OHNE eigene Sichtbarkeit einmalig mit Standortfilter +
+  // Mailverteiler + Verknüpfung des Hauptevents vorbelegt. Sub-Events, die
+  // bereits eine eigene Sichtbarkeit haben, bleiben unangetastet (werden NICHT
+  // automatisch überschrieben). Danach pro Sub-Event frei änderbar.
+  const subVisibilityInheritedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (subVisibilityInheritedRef.current) return;
+    if (!editEvent || subEvents.length === 0) return;
+    subVisibilityInheritedRef.current = true;
+    const parentLoc = locationFilter.trim();
+    const parentAud = audience.trim();
+    if (!parentLoc && !parentAud) return; // Hauptevent/Klammer ohne Filter → nichts zu erben
+    setSubEvents(prev => prev.map(se => {
+      const seHasOwn = (se.locationFilter || '').trim() || (se.audience || '').trim();
+      if (seHasOwn) return se; // eigene Sichtbarkeit → nicht überschreiben
+      return { ...se, locationFilter, audience, filterMode };
+    }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editEvent, subEvents.length, locationFilter, audience, filterMode]);
+
   // v15.6: Hinweis-Banner für den Hauptevent-Tab in den Steps 3/4/5, wenn
   // subEventsOnlyMode aktiv ist. Der Hauptevent ist dann nicht buchbar — die
   // Einstellungen aus diesem Tab werden zur Laufzeit ignoriert. Der Tab bleibt
@@ -4236,11 +4258,11 @@ export default function EventCreationPage(): React.ReactElement {
         <div>
           {isDe ? (
             <>
-              <strong>Die Klammer ist nicht buchbar</strong> — sie hält die {termPlural} zusammen. <strong>Kapazität und Fristen weiter unten</strong> werden daher nicht verwendet (man bucht ja die Klammer nicht). Die <strong>Sichtbarkeit oben</strong> (Standortfilter + Mailverteiler) gilt aber sehr wohl — sie steuert, <strong>wer das ganze Event überhaupt sieht</strong>. Für die Buchung selbst pflegst du jeden {childTermSingular || 'Sub-Event'}-Tab.
+              Du hast für dieses Event eingestellt, dass sich Teilnehmer <strong>nur für die {termPlural} (Sub-Sections) anmelden</strong> — die Klammer selbst ist <strong>nicht buchbar</strong>, sie fasst die {termPlural} nur zusammen. (Eingestellt in Schritt 2 „Ort &amp; Programm“ unter „Wie sollen sich Teilnehmer anmelden?“ → „Nur für {termPlural}“.) <strong>Kapazität und Fristen weiter unten</strong> werden hier daher nicht verwendet — die pflegst du je {childTermSingular || 'Sub-Event'}-Tab. Die <strong>Sichtbarkeit oben</strong> (Standortfilter + Mailverteiler) gilt aber sehr wohl: sie steuert, <strong>wer das ganze Event überhaupt sieht</strong>, und wird standardmäßig an die {termPlural} vererbt.
             </>
           ) : (
             <>
-              <strong>The bracket is not bookable</strong> — it groups the {termPlural}. <strong>Capacity and deadlines below</strong> are therefore not used (you do not book the bracket). But the <strong>visibility above</strong> (location filter + mailing lists) DOES apply — it controls <strong>who sees the whole event</strong>. For booking itself, maintain each {childTermSingular || 'sub-event'} tab.
+              You configured this event so that participants <strong>register only for the {termPlural} (sub-sections)</strong> — the bracket itself is <strong>not bookable</strong>, it only groups the {termPlural}. (Set in step 2 “Location &amp; Programme” under “How should participants register?” → “Sub-{termPlural} only”.) <strong>Capacity and deadlines below</strong> are therefore not used here — maintain those per {childTermSingular || 'sub-event'} tab. But the <strong>visibility above</strong> (location filter + mailing lists) DOES apply: it controls <strong>who sees the whole event</strong>, and is inherited by the {termPlural} by default.
             </>
           )}
         </div>
@@ -7446,15 +7468,18 @@ export default function EventCreationPage(): React.ReactElement {
                         disableEmails: false,
                         disableOutlook: false,
                         // v15.3: neue Sub-Events starten leer und vollwertig.
-                        // Default-Werte koennen per „Vom Hauptevent kopieren"-
-                        // Button in den Steps 3/4/5 einmalig vorbelegt werden.
+                        // v22.6: Sichtbarkeit (Standortfilter + Mailverteiler +
+                        // Verknüpfung) wird standardmäßig vom Hauptevent/der
+                        // Klammer vorbelegt — kann pro Sub-Event geändert werden.
+                        // „Vom Hauptevent kopieren" übernimmt zusätzlich
+                        // Kapazität/Deadlines/Warteliste.
                         locationAddress: { street: '', houseNo: '', zip: '', city: '' },
                         agenda: [],
                         transferTimes: [],
                         lastDeregisterDate: '',
-                        locationFilter: '',
-                        audience: '',
-                        filterMode: 'OR',
+                        locationFilter: locationFilter,
+                        audience: audience,
+                        filterMode: filterMode,
                         waitlistEnabled: true,
                         askSalutation: false,
                       };
@@ -7553,8 +7578,8 @@ export default function EventCreationPage(): React.ReactElement {
                       </h3>
                       <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
                         {isDe
-                          ? <>Auch dieses Sub-Event ist standardmäßig für <strong>alle Mitarbeiter von Deloitte Deutschland</strong> sichtbar. Über Standortfilter und Mailverteiler kannst du den Empfängerkreis gezielt einschränken — unabhängig vom Hauptevent.</>
-                          : <>By default this sub-event is visible for <strong>all Deloitte Germany employees</strong>. Use the location filter and mailing lists below to restrict the audience — independent from the main event.</>}
+                          ? <>Dieses Sub-Event übernimmt <strong>standardmäßig die Sichtbarkeit {subEventsOnlyMode ? 'der Klammer' : 'des Hauptevents'}</strong> (Standortfilter + Mailverteiler sind unten vorbefüllt). Du kannst den Empfängerkreis hier aber <strong>jederzeit anpassen</strong> — oder mit „Vom Hauptevent kopieren“ oben erneut übernehmen.</>
+                          : <>This sub-event <strong>inherits the visibility {subEventsOnlyMode ? 'of the bracket' : 'of the main event'}</strong> by default (location filter + mailing lists are pre-filled below). You can <strong>change the audience here at any time</strong> — or re-apply it with “Copy from main event” above.</>}
                       </p>
                     </div>
 
