@@ -376,8 +376,9 @@ interface EventContextType {
   updateEvent: (eventId: string, updates: Record<string, unknown>) => Promise<boolean>;
   /** v21: Archivierung — zählt archivreife Zeilen abgelaufener Events. */
   getArchivableCount: () => Promise<{ total: number; perList: Record<string, number> }>;
-  /** v21: Archivierung — verschiebt archivreife Zeilen ins DEX_Archive. */
-  runArchiveExpired: (onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void) => Promise<{ archived: number; failed: number; perList: Record<string, number> }>;
+  /** v21: Archivierung — verschiebt archivreife Zeilen ins DEX_Archive.
+   *  v22.2: shouldCancel = Abbruch-Check aus dem Fortschrittsmodal. */
+  runArchiveExpired: (onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void, shouldCancel?: () => boolean) => Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number> }>;
   updateMyRegistration: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
   /** v10.27: Split-Capacity-Gruppen-Wechsel für die eigene Registrierung.
    *  Nimmt die App-internen Wert-IDs ('Durchstarter' | 'Funstarter') —
@@ -2929,13 +2930,15 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return eventService.countArchivableRows(ids, subs);
   }
 
-  /** v21: Verschiebt alle archivreifen Zeilen ins DEX_Archive (Admin). */
+  /** v21: Verschiebt alle archivreifen Zeilen ins DEX_Archive (Admin).
+   *  v22.2: shouldCancel = Abbruch-Check aus dem Fortschrittsmodal. */
   async function runArchiveExpired(
-    onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void
-  ): Promise<{ archived: number; failed: number; perList: Record<string, number> }> {
-    if (!eventService) return { archived: 0, failed: 0, perList: {} };
+    onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void,
+    shouldCancel?: () => boolean
+  ): Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number> }> {
+    if (!eventService) return { archived: 0, failed: 0, cancelled: false, perList: {} };
     const { ids, subs, titles } = getExpiredEventSets();
-    return eventService.archiveExpiredRows(ids, subs, titles, onProgress);
+    return eventService.archiveExpiredRows(ids, subs, titles, onProgress, shouldCancel);
   }
 
   async function deleteEvent(eventId: string): Promise<boolean> {

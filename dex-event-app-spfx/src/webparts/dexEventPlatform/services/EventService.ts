@@ -1412,9 +1412,20 @@ export class EventService {
       // 5. Item-Level-Read = "ReadAllItems" (1) — Organizer und Admin
       //    muessen ALLE Eintraege sehen, nicht nur eigene. Eigene
       //    Lese-Beschraenkung waere fuer Audit-Log nutzlos.
-      await this._post(
+      // v22.2 FIX: war vorher ein nackter POST (kein MERGE) → SharePoint
+      // antwortete bei jedem Boot mit HTTP 400 (Console-Rauschen); der Wert
+      // wurde nie gesetzt (Default ist ohnehin 1, daher ohne Folgen).
+      await this.context.spHttpClient.post(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`,
-        { '__metadata': { 'type': 'SP.List' }, 'ReadSecurity': 1 }
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            'Accept': 'application/json;odata=verbose',
+            'Content-Type': 'application/json;odata=verbose',
+            'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE',
+          },
+          body: JSON.stringify({ '__metadata': { 'type': 'SP.List' }, 'ReadSecurity': 1 }),
+        }
       );
     } catch (e) {
       console.warn('[DEX] ensureChangeLogPermissions failed:', e);
@@ -8525,12 +8536,20 @@ export class EventService {
   // DEX_Archive wandern (verschieben = nach Insert aus der Quelle löschen).
   // DEX_Emails/Outlook/IDReorder/ChangeLog matchen über EventId, DEX_AccessFix
   // über SubsiteUrl (hat keine EventId).
-  private static readonly ARCHIVE_SOURCES: Array<{ list: string; matchBy: 'eventId' | 'subsiteUrl' }> = [
-    { list: 'DEX_Emails', matchBy: 'eventId' },
-    { list: 'DEX_Outlook', matchBy: 'eventId' },
-    { list: 'DEX_IDReorder', matchBy: 'eventId' },
-    { list: 'DEX_ChangeLog', matchBy: 'eventId' },
-    { list: 'DEX_AccessFix', matchBy: 'subsiteUrl' },
+  // v22.2: Pro Quelle eine SCHLANKE Feldauswahl für den Archiv-Lauf.
+  // WICHTIG: DEX_Emails OHNE `Body` — 1000+ komplette HTML-Mail-Bodies in
+  // den Browser zu laden hängte den Archiv-Lauf praktisch auf (zig MB).
+  // Der Mail-Body wird bewusst NICHT mitarchiviert (Metadaten reichen als
+  // Nachweis; die Mail ist längst versendet).
+  // hasStatus: Liste besitzt eine Status-Spalte → Zeilen mit 'Pending'
+  // (Flow hat sie noch nicht verarbeitet) werden NICHT archiviert, damit
+  // keine unversendete Mail / kein offener Auftrag aus der Queue verschwindet.
+  private static readonly ARCHIVE_SOURCES: Array<{ list: string; matchBy: 'eventId' | 'subsiteUrl'; select: string; hasStatus: boolean }> = [
+    { list: 'DEX_Emails', matchBy: 'eventId', select: 'Id,Title,Recipient,RecipientName,EmailType,EventTitle,EventId,Status,Cc,Bcc,Importance,Created', hasStatus: true },
+    { list: 'DEX_Outlook', matchBy: 'eventId', select: 'Id,Title,Attendee,EventId,ActionType,Status,Created', hasStatus: true },
+    { list: 'DEX_IDReorder', matchBy: 'eventId', select: 'Id,Title,EventId,EventNumber,SubsiteUrl,Status,CancelledName,CancelledEmail,Created', hasStatus: true },
+    { list: 'DEX_ChangeLog', matchBy: 'eventId', select: 'Id,Title,Action,TargetType,TargetId,TargetName,EventId,EventTitle,ActorName,ActorEmail,Details,Created', hasStatus: false },
+    { list: 'DEX_AccessFix', matchBy: 'subsiteUrl', select: 'Id,Title,SubsiteUrl,ItemId,ParticipantEmail,Status,Created', hasStatus: true },
   ];
 
   /**
@@ -8616,6 +8635,11 @@ export class EventService {
     r: Record<string, unknown>, matchBy: 'eventId' | 'subsiteUrl',
     expiredEventIds: Set<string>, expiredSubsiteUrls: Set<string>
   ): boolean {
+    // v22.2: 'Pending' = der Flow hat die Zeile noch nicht verarbeitet —
+    // niemals archivieren (sonst verschwindet z.B. eine unversendete Mail
+    // aus der Queue). Hängengebliebene Pendings bleiben so in der
+    // Arbeitsliste sichtbar, wo der Admin sie sehen soll.
+    if (String(r['Status'] || '') === 'Pending') return false;
     if (matchBy === 'eventId') {
       const id = String(r['EventId'] || '').trim();
       return !!id && expiredEventIds.has(id);
@@ -8634,7 +8658,10 @@ export class EventService {
     for (const src of EventService.ARCHIVE_SOURCES) {
       let c = 0;
       try {
-        const select = src.matchBy === 'eventId' ? 'Id,EventId' : 'Id,SubsiteUrl';
+        // v22.2: Status mitladen (wo vorhanden), damit der Pending-Ausschluss
+        // schon beim Zählen greift und die Box-Zahl zum Lauf passt.
+        const base = src.matchBy === 'eventId' ? 'Id,EventId' : 'Id,SubsiteUrl';
+        const select = src.hasStatus ? `${base},Status` : base;
         const rows = await this.loadAllListRows(src.list, select);
         for (const r of rows) {
           if (this.rowMatchesExpired(r, src.matchBy, expiredEventIds, expiredSubsiteUrls)) c++;
@@ -8652,18 +8679,37 @@ export class EventService {
   public async archiveExpiredRows(
     expiredEventIds: Set<string>, expiredSubsiteUrls: Set<string>,
     eventTitleById: Record<string, string>,
-    onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void
-  ): Promise<{ archived: number; failed: number; perList: Record<string, number> }> {
-    const result = { archived: 0, failed: 0, perList: {} as Record<string, number> };
+    onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void,
+    // v22.2: Abbruch-Check (UI-Button). Sauber: bereits verschobene Zeilen
+    // bleiben im Archiv (jede Zeile ist atomar Insert→Delete), der Rest
+    // bleibt in der Quelle und kommt beim nächsten Lauf dran.
+    shouldCancel?: () => boolean
+  ): Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number> }> {
+    const result = { archived: 0, failed: 0, cancelled: false, perList: {} as Record<string, number> };
     const sources = EventService.ARCHIVE_SOURCES;
+    // v22.2: Payload-Werte kürzen — einzelne Felder (z.B. ChangeLog-Details)
+    // können lang sein; das Archiv braucht keine Romane.
+    const buildPayload = (r: Record<string, unknown>): string => {
+      const out: Record<string, unknown> = {};
+      for (const k of Object.keys(r)) {
+        const v = r[k];
+        out[k] = (typeof v === 'string' && v.length > 4000) ? `${v.slice(0, 4000)}… [gekürzt]` : v;
+      }
+      return JSON.stringify(out);
+    };
     for (let si = 0; si < sources.length; si++) {
       const src = sources[si];
+      if (shouldCancel && shouldCancel()) { result.cancelled = true; break; }
       let listArchived = 0;
       try {
-        const rows = await this.loadAllListRows(src.list); // alle Felder für den Payload
+        // v22.2: Fortschritt SOFORT melden (vorher kam der erste Callback erst
+        // nach dem Komplett-Laden — das Modal wirkte eingefroren).
+        if (onProgress) onProgress(si, sources.length, src.list, 0, 0);
+        const rows = await this.loadAllListRows(src.list, src.select);
         const matching = rows.filter(r => this.rowMatchesExpired(r, src.matchBy, expiredEventIds, expiredSubsiteUrls));
         if (onProgress) onProgress(si, sources.length, src.list, 0, matching.length);
         for (let i = 0; i < matching.length; i++) {
+          if (shouldCancel && shouldCancel()) { result.cancelled = true; break; }
           const r = matching[i];
           const origId = Number(r['Id'] || 0);
           const eid = src.matchBy === 'eventId' ? String(r['EventId'] || '') : '';
@@ -8677,7 +8723,7 @@ export class EventService {
               'EventTitle': title,
               'OriginalId': origId,
               'ArchivedAt': new Date().toISOString(),
-              'Payload': JSON.stringify(r),
+              'Payload': buildPayload(r),
             });
             if (ins.ok && origId > 0) {
               // Nur löschen, wenn der Archiv-Insert geklappt hat (kein Datenverlust).
@@ -8691,6 +8737,7 @@ export class EventService {
         }
       } catch { /* Liste nicht vorhanden — überspringen */ }
       result.perList[src.list] = listArchived;
+      if (result.cancelled) break;
     }
     return result;
   }
