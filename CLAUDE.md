@@ -228,6 +228,49 @@ Admin-only-Werkzeug, um die globalen Queue-/Log-Listen schlank zu halten:
   Zugriff reparieren" mit. `DEX_TeamJoinRequests` bekommt ILS bewusst NICHT
   (Team-Lead muss fremde Beitritts-Anfragen lesen können).
 
+### Sub-Event-Sichtbarkeit erbt von der Klammer (v22.6)
+
+Sub-Events/Sub-Sections übernehmen standardmäßig die Sichtbarkeit des
+Hauptevents/der Klammer (Standortfilter `locationAudience` + Mailverteiler
+`audienceFilter` + `filterMode`):
+
+- **Neue Sub-Events** werden im Wizard (`EventCreationPage.tsx`, „Sub-Event
+  hinzufügen") mit `locationFilter`/`audience`/`filterMode` des Hauptevents
+  vorbelegt (vorher leer).
+- **Bestehende Events:** beim Öffnen läuft ein `subVisibilityInheritedRef`-
+  Effekt einmalig und befüllt Sub-Events OHNE eigene Sichtbarkeit aus dem
+  Hauptevent. Sub-Events mit eigener Sichtbarkeit bleiben unangetastet (kein
+  Auto-Überschreiben). Danach pro Sub-Event frei änderbar.
+- Greift nur, wenn das Hauptevent eine Sichtbarkeit gesetzt hat. Reine Wizard-/
+  Persistenz-Logik, kein Runtime-Semantik-Change an `isEventVisibleForUser`.
+
+### Konten-Aktiv-Check beim Öffnen eines Events (v22.7)
+
+Beim Öffnen der Organizer-Detailansicht prüft die App im Hintergrund, ob die
+Teilnehmer-E-Mail-Adressen noch zu einem **aktiven Deloitte-Konto** gehören —
+wenn nicht, erscheint oben eine orange Hinweisbox („… hat womöglich Deloitte
+verlassen").
+
+- `EventService.checkAccountsActive(emails)` — Microsoft-Graph-Lookup
+  (`/users?$filter=mail eq … or userPrincipalName eq …`, Batches à 8,
+  `accountEnabled` beachtet). **Best-effort:** nur Adressen aus erfolgreich
+  abgefragten Batches können gemeldet werden (kein Fehlalarm bei Permission-/
+  Drosselungs-Fehlern); nur `@deloitte.de`/`.com` werden geprüft.
+- **Cache 1×/Tag pro Event:** `AdminPage`-Effekt liest/schreibt
+  `localStorage['dex_acctcheck_<eventId>']` (`{ ts, inactive[] }`); innerhalb
+  von 24 h kein erneuter Graph-Call.
+
+### Aktionen-Dropdown: Suchfeld + Render-Schleifen-Falle (v22.5/v22.6)
+
+Das Aktionen-Dropdown (`ActionsDropdown`) hat ein Suchfeld + alphabetisch
+sortierte, aufklappbare Kategorien mit Hover. **Wichtig:** Der
+`ActionsRegistryProvider` MUSS seinen Context-Value memoisieren
+(`React.useMemo`), und `ActionTile` darf in seinem Register-Effekt nur an den
+**stabilen** `register`/`unregister`-Funktionen hängen — NICHT am ganzen
+Context-Objekt. Sonst entsteht eine Render-Schleife (jeder Render = neues
+Context-Objekt → Effekt feuert → `setActions` → Render …), die u.a. das
+Suchfeld unbeschreibbar macht (Regression-Historie v22.5→v22.6).
+
 ### Kein lokales Testen — immer direkt bauen
 
 **WICHTIG:** Der Maintainer testet **nicht lokal** (kein `gulp serve`, kein Workbench, kein Browser-Run-Through). Schlag das auch nicht vor.

@@ -817,6 +817,10 @@ export default function AdminPage(): React.ReactElement {
   const { confirmDialog, showAlert } = useDialog();
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
   const [registrations, setRegistrations] = React.useState<SPRegistration[]>([]);
+  // v22.7: Konten-Aktiv-Check — Adressen (lowercase) der Teilnehmer, deren
+  // Deloitte-Konto nicht mehr aktiv ist (Person hat womöglich das Unternehmen
+  // verlassen). Wird im Hintergrund max. 1×/Tag pro Event geprüft.
+  const [inactiveAccounts, setInactiveAccounts] = React.useState<string[]>([]);
   // v11.97/v11.98: bei Events mit Split-Kapazität (zwei Gruppen) wird die
   // Aktiv-Teilnehmer-Tabelle standardmäßig nach Gruppe getrennt angezeigt
   // (kleinere Gruppe zuerst). Per Toggle umschaltbar auf zusammengeführte
@@ -1985,6 +1989,42 @@ export default function AdminPage(): React.ReactElement {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const spfxContext = (window as any).__dexSpfxContext;
   const eventServiceRef = React.useMemo(() => spfxContext ? new EventService(spfxContext) : null, []);
+
+  // v22.7: Hintergrund-Check beim Öffnen eines Events — sind die E-Mail-Adressen
+  // der Teilnehmer noch zu einem aktiven Deloitte-Konto? Ergebnis wird pro Event
+  // max. 1×/Tag in localStorage gecacht (kein Graph-Call bei jedem Öffnen).
+  React.useEffect(() => {
+    setInactiveAccounts([]);
+    if (!selectedEvent || !eventServiceRef || registrations.length === 0) return undefined;
+    const emails = Array.from(new Set(registrations
+      .filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt' || r.Status === 'Warteliste')
+      .map(r => (r.ParticipantEmail || '').trim().toLowerCase())
+      .filter(Boolean)));
+    if (emails.length === 0) return undefined;
+    const cacheKey = `dex_acctcheck_${selectedEvent.id}`;
+    try {
+      const raw = window.localStorage.getItem(cacheKey);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { ts?: number; inactive?: string[] };
+        if (parsed && typeof parsed.ts === 'number' && (Date.now() - parsed.ts) < 24 * 60 * 60 * 1000 && Array.isArray(parsed.inactive)) {
+          // < 24h → Cache nutzen, aber nur Adressen anzeigen, die noch in der Liste sind.
+          setInactiveAccounts(parsed.inactive.filter(e => emails.indexOf(e) >= 0));
+          return undefined;
+        }
+      }
+    } catch { /* localStorage evtl. blockiert */ }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await eventServiceRef.checkAccountsActive(emails);
+        if (cancelled || !res.ok) return;
+        setInactiveAccounts(res.inactive);
+        try { window.localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), inactive: res.inactive })); } catch { /* */ }
+      } catch { /* best-effort */ }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEvent?.id, registrations.length, eventServiceRef]);
 
   // SuperAdmin sieht alle Events, EventAdmin nur seine + QR-Scanner-Events.
   // Zugriff wird strikt per E-Mail geprüft — NICHT per Namens-Substring
@@ -4199,6 +4239,44 @@ export default function AdminPage(): React.ReactElement {
       {/* v9.29: Inline Zurück + Aktualisieren entfernt — beides liegt jetzt im Header.
           Eventauswahl-Reset („zurück zur Event-Liste") triggern wir über den Header-Back —
           siehe Listener weiter oben, der bei navigate-Wechsel selectedEvent zurücksetzt. */}
+
+      {/* v22.7: Hinweisbox, wenn Teilnehmer-Konten nicht mehr aktiv sind
+          (Person hat womöglich Deloitte verlassen). Hintergrund-Check beim
+          Öffnen, max. 1×/Tag pro Event. */}
+      {inactiveAccounts.length > 0 && (() => {
+        const items = inactiveAccounts.map(email => {
+          const reg = registrations.find(r => (r.ParticipantEmail || '').toLowerCase() === email);
+          const name = reg ? ((reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || email)) : email;
+          return { email, name };
+        });
+        return (
+          <div style={{
+            display: 'flex', alignItems: 'flex-start', gap: 12,
+            padding: '14px 16px', marginBottom: 20,
+            background: '#fff3e0', border: '1px solid var(--dex-orange, #ed8b00)', borderRadius: 12,
+            color: 'var(--dex-gray-800)',
+          }}>
+            <AlertCircle size={20} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontWeight: 700, marginBottom: 4, color: 'var(--dex-orange-dark, #b35a00)' }}>
+                {isDe
+                  ? `${items.length === 1 ? 'Eine Person' : `${items.length} Personen`} hat womöglich Deloitte verlassen`
+                  : `${items.length === 1 ? 'One person' : `${items.length} people`} may have left Deloitte`}
+              </div>
+              <div style={{ fontSize: '0.84rem', color: 'var(--dex-gray-600)', lineHeight: 1.5, marginBottom: 8 }}>
+                {isDe
+                  ? 'Zu folgenden Teilnehmern wurde kein aktives Deloitte-Konto mehr gefunden — das Konto ist deaktiviert oder existiert nicht mehr. Mails/Outlook-Termine an diese Adressen kommen ggf. nicht an. Bitte prüfen und ggf. abmelden.'
+                  : 'No active Deloitte account was found for the following participants — the account is disabled or no longer exists. Emails/Outlook invites to these addresses may not arrive. Please review and deregister if needed.'}
+              </div>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.85rem', color: 'var(--dex-gray-800)' }}>
+                {items.map(it => (
+                  <li key={it.email}><strong>{it.name}</strong> <span style={{ color: 'var(--dex-gray-500)' }}>({it.email})</span></li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* v12.7: Aktionen-Card aufgelöst — alle ActionTiles registrieren
           sich jetzt im ActionsRegistryProvider. Die Dropdown-Liste sitzt
@@ -8475,6 +8553,18 @@ export default function AdminPage(): React.ReactElement {
                   </a>
                 </p>
               </div>
+            </div>
+
+            {/* v22.7: Info-Box „neue Anmeldungen automatisch" — erklärt, dass
+                nach dem ersten Versand niemand mehr manuell nachversorgt werden
+                muss. */}
+            <div style={{ marginTop: 14, display: 'flex', alignItems: 'flex-start', gap: 9, padding: '10px 12px', borderRadius: 8, background: 'var(--dex-green-light, #f0f8e8)', border: '1px solid rgba(134,188,37,0.4)' }}>
+              <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', flexShrink: 0, marginTop: 1 }}><Check size={16} /></span>
+              <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                {isDe
+                  ? <><strong>Neue Anmeldungen bekommen ihren QR-Code automatisch.</strong> Sobald du den Versand einmal gestartet hast (Schritt 3), erhält jede weitere Anmeldung an diesem Event ihren QR-Code direkt zusammen mit der Anmeldebestätigung — auch nach der Anmeldefrist. Du musst dann nichts mehr manuell nachsenden.</>
+                  : <><strong>New registrations get their QR code automatically.</strong> Once you have started sending (step 3), every further registration for this event receives its QR code together with the registration confirmation — even after the deadline. You no longer have to resend anything manually.</>}
+              </span>
             </div>
 
             {qrSendResult && (
