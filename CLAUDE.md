@@ -129,13 +129,19 @@ und `reactivateRegistration`. Dadurch sieht der Teilnehmer seine Anmeldung in
 „Meine Events" und kann self-canceln.
 
 - **Best-effort:** `AuthorId` setzen erfordert „Listen verwalten"/Full Control.
-  **Organizer (eigenes Event) + Admin haben das** → greift. Ein normaler
-  **Contribute-User (z.B. eine Assistenz) hat das NICHT** → der MERGE 403t und
-  wird still ignoriert (Zeile bleibt beim Akteur, Verhalten wie vor v20.5).
-  Für assistenz-angelegte Anmeldungen ist der Teilnehmer-Self-Service damit
-  **nicht** app-only lösbar (bräuchte Elevation = Privacy-Kosten, oder einen
-  kleinen Service-Flow, der `Author=ParticipantEmail` für Proxy-Anmeldungen
-  setzt).
+  **Organizer (eigenes Event) + Admin haben das** → greift direkt. Ein normaler
+  **Contribute-User (z.B. eine Assistenz) hat das NICHT** → seit **v20.7**
+  schreibt `trySetItemAuthor` in dem Fall (ensureuser- ODER MERGE-Fehler) einen
+  Auftrag in die Queue-Liste **`DEX_AccessFix`** (Site-Collection-Root,
+  `ensureAccessFixList` in initEvents; Spalten `SubsiteUrl`/`ItemId`/
+  `ParticipantEmail`/`Status`; Schreibrechte via `setQueueListPermissions` +
+  ReadSecurity/WriteSecurity=2). Der **Power-Automate-Flow
+  `DEX_AccessFix_Autor`** (Service-Identität mit Full Control) arbeitet die
+  Aufträge ab: `ensureuser` auf der Subsite → `AuthorId`-MERGE auf das
+  Teilnehmer-Item → `Status=Done`/`Failed`. UI-Schritt-für-Schritt-Anleitung
+  in `docs/flow-jsons.md`, Abschnitt „7. DEX_AccessFix_Autor (NEU, v20.7)".
+  **Solange der Flow nicht eingerichtet ist**, bleiben Assistenz-Aufträge auf
+  `Pending` und das Verhalten entspricht v20.5 (Zeile bleibt beim Akteur).
 - **Audit bleibt intakt:** der tatsächliche Akteur steht ohnehin separat in
   `RegisteredByEmail` — der Autor-Wechsel verfälscht den Nachweis nicht. Keine
   App-Logik hängt am SharePoint-`Created By` (nur ein `$select`).
@@ -153,6 +159,22 @@ und `reactivateRegistration`. Dadurch sieht der Teilnehmer seine Anmeldung in
   korrigiert / Fremd-Anmeldungen / Zugriffe repariert / Fehler). Externe
   Teilnehmer ohne Tenant-Login scheitern am `ensureuser` → zählen als „nicht
   möglich" (erwartbar).
+
+### QR-Codes: Auto-Send immer aktiv + „Mein QR-Code" in Meine Events (v20.7)
+
+- **Auto-Send ist Standard und nicht abwählbar:** Jede neue Anmeldung mit
+  `Status='Angemeldet'` bekommt ihren persönlichen QR-Code automatisch per
+  Mail — auch nach dem QR-Massen-Versand und nach der Anmeldefrist. Das
+  frühere Pro-Event-Flag `AutoSendQRCode` wird **ignoriert** (Spalte bleibt
+  aus Kompatibilität bestehen, wird aber nicht mehr geschrieben); der Toggle
+  im QR-Versand-Modal ist durch eine Info-Box ersetzt. Gate: Master
+  `DisableEmails` sticht weiterhin (keine Mails = auch keine QR-Mail).
+  Code: `EventContext.registerForEvent`, Auto-Send-Block.
+- **„Mein QR-Code" in Meine Events:** Aktive Registrierungen (Angemeldet /
+  QR versendet / Eingecheckt, nicht sessionsOnly) zeigen einen Button, der
+  ein Modal mit dem persönlichen Check-in-QR öffnet — client-seitig erzeugt
+  mit identischem Payload wie die QR-Mail (`DEX|<EventNr>|<E-Mail>`), plus
+  Name + Teilnehmer-Nr. als Fallback für den manuellen Check-in.
 
 ### Kein lokales Testen — immer direkt bauen
 

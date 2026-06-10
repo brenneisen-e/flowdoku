@@ -4437,19 +4437,33 @@ export class EventService {
           body: JSON.stringify({ logonName: participantEmail }),
         }
       );
-      if (!ensureResp.ok) return;
+      if (!ensureResp.ok) {
+        // v20.7: z.B. Assistenz ohne ausreichende Rechte auf der Subsite →
+        // Auftrag in die DEX_AccessFix-Queue, der Flow setzt den Autor.
+        await this.queueAccessFix(subsiteUrl, itemId, participantEmail);
+        return;
+      }
       const u = await ensureResp.json();
       const userId: number = u?.Id || u?.d?.Id || 0;
-      if (!userId) return;
+      if (!userId) {
+        await this.queueAccessFix(subsiteUrl, itemId, participantEmail);
+        return;
+      }
       // 2. AuthorId der Zeile auf den Teilnehmer setzen (nometadata-MERGE,
-      //    daher KEIN __metadata im Body). 403 = fehlende Rechte → catch.
-      await this._merge(
+      //    daher KEIN __metadata im Body). 403 = fehlende Rechte → Queue.
+      const m = await this._merge(
         `${subsiteUrl}/_api/web/lists/getbytitle('${listName}')/items(${itemId})`,
         { 'AuthorId': userId }
       );
+      if (!m.ok) {
+        // v20.7: typischer Assistenz-Fall — Contribute reicht nicht, um den
+        // Autor zu setzen (braucht "Listen verwalten"). Flow übernimmt.
+        await this.queueAccessFix(subsiteUrl, itemId, participantEmail);
+      }
     } catch {
-      // Best-effort: kein "Listen verwalten" → Autor bleibt der Akteur, die
-      // Zeile bleibt fuer den Teilnehmer unsichtbar (Verhalten wie vor v20.5).
+      // Best-effort: auch hier den Flow-Auftrag versuchen — scheitert auch
+      // der, bleibt die Zeile beim Akteur (Verhalten wie vor v20.5).
+      try { await this.queueAccessFix(subsiteUrl, itemId, participantEmail); } catch { /* */ }
     }
   }
 
@@ -5198,6 +5212,93 @@ export class EventService {
    * „UI-Anleitung 2026-06-02 (v18.48) — Option B: Pro-Event-Lock fuer
    * parallele Outlook-Laeufe".
    */
+  /**
+   * v20.7: Queue-Liste `DEX_AccessFix` (Site-Collection-Root) für den
+   * Assistenz-Fall der Fremd-Anmeldung. Wenn `trySetItemAuthor` mangels
+   * „Listen verwalten"-Rechten scheitert (normaler Contribute-User, z.B.
+   * Assistenz meldet einen Partner an), schreibt die App hier einen
+   * Auftrag — der Power-Automate-Flow `DEX_AccessFix_Autor` (läuft mit
+   * Service-Identität, hat Full Control) setzt dann den Zeilen-Autor auf
+   * den Teilnehmer und markiert den Auftrag als Done/Failed.
+   * Spalten: SubsiteUrl (Text), ItemId (Number), ParticipantEmail (Text),
+   * Status (Text: Pending/Done/Failed). Schreibrechte für alle User via
+   * setQueueListPermissions (analog DEX_Emails).
+   */
+  public async ensureAccessFixList(): Promise<void> {
+    const listName = 'DEX_AccessFix';
+    const exists = await this.listExists(listName);
+    if (exists) return;
+
+    await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'Queue: Zeilen-Autor bei Fremd-Anmeldungen auf den Teilnehmer setzen (v20.7, Flow DEX_AccessFix_Autor).',
+      'BaseTemplate': 100,
+      'AllowContentTypes': false,
+    });
+    const fields: Array<{ title: string; type: number }> = [
+      { title: 'SubsiteUrl', type: 2 },
+      { title: 'ItemId', type: 9 },
+      { title: 'ParticipantEmail', type: 2 },
+      { title: 'Status', type: 2 },
+    ];
+    for (const f of fields) {
+      try {
+        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
+          '__metadata': { 'type': 'SP.Field' },
+          'Title': f.title,
+          'FieldTypeKind': f.type,
+          'Required': false,
+        });
+      } catch { /* einzelne Feld-Fehler ignorieren */ }
+    }
+    try {
+      await this.configureDefaultView(listName, ['SubsiteUrl', 'ItemId', 'ParticipantEmail', 'Status', 'Created']);
+    } catch { /* View optional */ }
+    try {
+      await this.setQueueListPermissions(listName);
+    } catch { /* best-effort */ }
+    // Item-Level-Security: User sehen/ändern nur EIGENE Aufträge (sonst wäre
+    // ablesbar, wer wen angemeldet hat). Der Flow läuft als Site-Owner und
+    // sieht alle Items („Listen verwalten" hebelt die Item-Beschränkung aus).
+    try {
+      await this.context.spHttpClient.post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`,
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            'Accept': 'application/json;odata=verbose',
+            'Content-Type': 'application/json;odata=verbose',
+            'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE',
+          },
+          body: JSON.stringify({
+            '__metadata': { 'type': 'SP.List' },
+            'ReadSecurity': 2, 'WriteSecurity': 2,
+          }),
+        }
+      );
+    } catch { /* best-effort */ }
+  }
+
+  /**
+   * v20.7: Auftrag für den DEX_AccessFix_Autor-Flow einreihen (siehe
+   * ensureAccessFixList). Best-effort — Fehler blocken die Anmeldung nie.
+   */
+  public async queueAccessFix(subsiteUrl: string, itemId: number, participantEmail: string): Promise<void> {
+    try {
+      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_AccessFix')/items`, {
+        '__metadata': { 'type': 'SP.Data.DEX_x005f_AccessFixListItem' },
+        'Title': `${participantEmail} -> Item ${itemId}`.slice(0, 250),
+        'SubsiteUrl': subsiteUrl,
+        'ItemId': itemId,
+        'ParticipantEmail': participantEmail,
+        'Status': 'Pending',
+      });
+    } catch (err) {
+      console.warn('[DEX] queueAccessFix fehlgeschlagen (best-effort):', err);
+    }
+  }
+
   public async ensureOutlookLocksList(): Promise<void> {
     const listName = 'DEX_OutlookLocks';
     const exists = await this.listExists(listName);
