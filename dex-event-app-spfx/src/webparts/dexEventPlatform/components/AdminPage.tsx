@@ -4306,8 +4306,8 @@ export default function AdminPage(): React.ReactElement {
               category="checkin"
               title={isSendingQR ? (isDe ? `QR-Codes werden versendet... (${qrSentCount})` : `Sending QR codes... (${qrSentCount})`) : (isDe ? 'QR-Codes versenden' : 'Send QR codes')}
               desc={isDe
-                ? 'Öffnet ein Modal mit zwei Optionen: Test (nur an dich) oder Volldurchlauf an alle Angemeldeten. Jede NEUE Anmeldung bekommt ihren QR-Code ohnehin automatisch per Mail — auch nach der Anmeldefrist. Teilnehmer finden ihren QR-Code zusätzlich jederzeit unter „Meine Events".'
-                : 'Opens a modal with two options: test (only to you) or full run to all registered participants. Every NEW registration receives its QR code automatically by email anyway — even after the registration deadline. Participants can also find their QR code anytime under "My events".'}
+                ? 'Öffnet ein Modal mit zwei Optionen: Test (nur an dich) oder Versand an alle ohne Code. Nach dem ERSTEN Versand bekommt jede weitere Anmeldung an diesem Event ihren QR-Code automatisch per Mail — auch nach der Anmeldefrist. Teilnehmer finden ihren QR-Code zusätzlich jederzeit unter „Meine Events".'
+                : 'Opens a modal with two options: test (only to you) or send to everyone without a code. After the FIRST send, every further registration on this event receives its QR code automatically by email — even after the registration deadline. Participants can also find their QR code anytime under "My events".'}
               badge="organizer"
               busy={isSendingQR}
               onClick={() => {
@@ -8128,9 +8128,9 @@ export default function AdminPage(): React.ReactElement {
             }}>
               <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', flexShrink: 0, marginTop: 1 }}><Check size={18} /></span>
               <div style={{ fontSize: '0.85rem' }}>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>Neue Anmeldungen erhalten ihren QR-Code automatisch</div>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>Nach dem ersten Versand: neue Anmeldungen erhalten ihren QR-Code automatisch</div>
                 <div style={{ color: 'var(--dex-gray-600)' }}>
-                  Jeder Teilnehmer bekommt direkt nach erfolgreicher Anmeldung seinen persönlichen QR-Code per Mail — auch bei Anmeldungen nach diesem Versand oder nach der Anmeldefrist. Zusätzlich ist der QR-Code für jeden Teilnehmer jederzeit unter &bdquo;Meine Events&ldquo; abrufbar.
+                  Sobald du hier einmal die QR-Codes versendet hast, bekommt jede weitere Anmeldung an diesem Event ihren persönlichen QR-Code automatisch per Mail — auch nach der Anmeldefrist. Vor dem ersten Versand wird bei der Anmeldung kein QR-Code verschickt. Zusätzlich ist der QR-Code für jeden Teilnehmer jederzeit unter &bdquo;Meine Events&ldquo; abrufbar.
                 </div>
               </div>
             </div>
@@ -8287,6 +8287,12 @@ export default function AdminPage(): React.ReactElement {
                       sent++;
                       setQrSentCount(sent);
                     }
+                    // v21: Erster Massen-Versand startet die QR-Phase — ab
+                    // jetzt bekommt jede NEUE Anmeldung an diesem Event ihren
+                    // QR-Code automatisch (AutoSendQRCode=true am Event;
+                    // VOR dem ersten Versand wird bei Anmeldung KEIN QR
+                    // verschickt — User-Hotfix).
+                    try { await eventServiceRef.updateEvent(parseInt(selectedEvent.id, 10), { AutoSendQRCode: true }); } catch { /* */ }
                     const regs = await getAllRegistrations(selectedEvent.id);
                     setRegistrations(regs);
                     setIsSendingQR(false);
