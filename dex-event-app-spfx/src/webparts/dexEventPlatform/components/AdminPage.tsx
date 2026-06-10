@@ -4949,6 +4949,15 @@ export default function AdminPage(): React.ReactElement {
                   setRepairAccessResult(null);
                   // v20.7: Fortschritts-Modal öffnen.
                   setAccessFixModal({ running: true, evIdx: 0, evTotal: targets.length, evTitle: '', itemDone: 0, itemTotal: 0, summary: null });
+                  // v22: Globale Queue-Listen (DEX_Outlook/DEX_IDReorder) auf
+                  // „nur eigene Elemente" härten — einmal pro Lauf, idempotent.
+                  let queueIlsLine = '';
+                  try {
+                    const q = await eventServiceRef.hardenQueueListsIls();
+                    queueIlsLine = q.failed.length === 0
+                      ? (isDe ? 'Globale Queue-Listen (Outlook/IDReorder) stehen auf „nur eigene Elemente".' : 'Global queue lists (Outlook/IDReorder) set to „own items only".')
+                      : (isDe ? `Queue-Listen-Härtung fehlgeschlagen bei: ${q.failed.join(', ')}.` : `Queue list hardening failed for: ${q.failed.join(', ')}.`);
+                  } catch { /* best-effort */ }
                   let listsChecked = 0;
                   let ilsWrong = 0;
                   let ilsFixed = 0;
@@ -4995,6 +5004,7 @@ export default function AdminPage(): React.ReactElement {
                       parts.push(`${proxyFound} third-party registrations found, ${authorFixed} access repaired${authorFailed > 0 ? `, ${authorFailed} not possible (e.g. external people)` : ''}.`);
                       if (errorEvents.length > 0) parts.push(`Errors on: ${errorEvents.join(', ')}`);
                     }
+                    if (queueIlsLine) parts.push(queueIlsLine);
                     setRepairAccessResult(parts.join(' '));
                     // v20.7: Summary im Fortschritts-Modal anzeigen.
                     setAccessFixModal(prev => prev ? { ...prev, running: false, summary: parts } : prev);

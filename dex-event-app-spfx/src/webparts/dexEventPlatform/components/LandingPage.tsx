@@ -11,6 +11,13 @@ import { APP_VERSION } from '../version';
 import { Info, Mail } from './Icons';
 import LandingInfoModal from './LandingInfoModal';
 import InquiryModal from './InquiryModal';
+// v22: Archivierungs-Info für Admins (rechts auf der Landing Page) —
+// zählt beim App-Start die archivreifen Zeilen abgelaufener Events und
+// bietet das Verschieben ins admin-only DEX_Archive mit Fortschrittsmodal.
+import { useEvents } from '../context/EventContext';
+import { useRoles } from '../context/RoleContext';
+import { useDialog } from '../context/DialogContext';
+import Modal from './Modal';
 
 export default function LandingPage(): React.ReactElement {
   const { navigate } = useNavigation();
@@ -23,6 +30,118 @@ export default function LandingPage(): React.ReactElement {
   // v13.3: Inquiry-Modal lebt jetzt komplett in der wiederverwendbaren
   // InquiryModal-Komponente — eigene States hier entfallen.
   const [showInquiry, setShowInquiry] = React.useState(false);
+
+  // ==================== v22: Archivierung (Admin) ====================
+  const { isAdmin } = useRoles();
+  const { isEventsLoading, getArchivableCount, runArchiveExpired } = useEvents();
+  const { confirmDialog } = useDialog();
+  const [archInfo, setArchInfo] = React.useState<{ total: number; perList: Record<string, number> } | null>(null);
+  const [archModal, setArchModal] = React.useState<null | {
+    running: boolean;
+    listIdx: number; listTotal: number; listName: string;
+    done: number; total: number;
+    summary: string[] | null;
+  }>(null);
+  // Beim App-Start (sobald Events geladen) als Admin die archivreifen
+  // Zeilen zählen — nur dann erscheint die Box mit dem Button.
+  React.useEffect(() => {
+    if (!isAdmin || isEventsLoading) return undefined;
+    let cancelled = false;
+    getArchivableCount()
+      .then(r => { if (!cancelled) setArchInfo(r); })
+      .catch(() => { /* Zählung best-effort — Box bleibt dann aus */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin, isEventsLoading]);
+  // ==================== v22.1: Check-in-Hinweisbox (Landing) ====================
+  // Ab 2 Tagen vor Event-Start UND sobald der QR-Massen-Versand lief (eigener
+  // Status 'QR versendet'), zeigt die Landing Page über dem Start-Button eine
+  // Hinweisbox „Check-in für <Event>" mit kleinem QR — Klick öffnet ihn groß.
+  const { getMyRegistration, events } = useEvents();
+  const [checkInBoxes, setCheckInBoxes] = React.useState<Array<{
+    eventId: string; title: string; qrSmall: string; qrData: string;
+    name: string; tid?: number;
+  }>>([]);
+  const [qrBigModal, setQrBigModal] = React.useState<{ dataUrl: string; title: string; name: string; tid?: number } | null>(null);
+  React.useEffect(() => {
+    if (isEventsLoading) return undefined;
+    const myEmail = (currentUser?.email || '').trim();
+    if (!myEmail) return undefined;
+    let cancelled = false;
+    (async () => {
+      const now = Date.now();
+      const twoDaysMs = 2 * 24 * 60 * 60 * 1000;
+      // Kandidaten: Events, deren Start höchstens 2 Tage entfernt ist und die
+      // noch nicht vorbei sind (Ende, Fallback: Ende des Start-Tages).
+      const candidates = events.filter(e => {
+        if (!e.eventNumber || !e.startDate) return false;
+        const start = new Date(e.startDate).getTime();
+        if (!Number.isFinite(start)) return false;
+        let end = e.endDate ? new Date(e.endDate).getTime() : NaN;
+        if (!Number.isFinite(end)) {
+          const s = new Date(e.startDate);
+          end = new Date(s.getFullYear(), s.getMonth(), s.getDate(), 23, 59, 59).getTime();
+        }
+        return now >= start - twoDaysMs && now <= end;
+      }).slice(0, 4);
+      if (candidates.length === 0) { if (!cancelled) setCheckInBoxes([]); return; }
+      const boxes: Array<{ eventId: string; title: string; qrSmall: string; qrData: string; name: string; tid?: number }> = [];
+      const QRCode = await import('qrcode');
+      for (const ev of candidates) {
+        try {
+          const reg = await getMyRegistration(ev.id);
+          // Nur wenn der QR-Versand für diese Person bereits lief — Status
+          // 'QR versendet' (Massen-Versand ODER Auto-Versand nach Phase-Start).
+          if (!reg || reg.Status !== 'QR versendet') continue;
+          const qrData = `DEX|${ev.eventNumber}|${reg.ParticipantEmail || myEmail}`;
+          const qrSmall = await QRCode.toDataURL(qrData, { width: 132, margin: 1 });
+          const name = `${reg.Vorname || ''} ${reg.Nachname || ''}`.trim() || (reg.ParticipantEmail || myEmail);
+          boxes.push({ eventId: ev.id, title: ev.title || '', qrSmall, qrData, name, tid: reg.TeilnehmerID || undefined });
+        } catch { /* einzelner Lookup-Fehler — Box entfällt */ }
+        if (cancelled) return;
+      }
+      if (!cancelled) setCheckInBoxes(boxes);
+    })().catch(() => { /* best-effort */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEventsLoading, currentUser?.email]);
+  const openBigQr = async (box: { qrData: string; title: string; name: string; tid?: number }): Promise<void> => {
+    try {
+      const QRCode = await import('qrcode');
+      const dataUrl = await QRCode.toDataURL(box.qrData, { width: 320, margin: 2 });
+      setQrBigModal({ dataUrl, title: box.title, name: box.name, tid: box.tid });
+    } catch { /* */ }
+  };
+
+  const startArchive = async (): Promise<void> => {
+    if (!archInfo || archInfo.total === 0) return;
+    const ok = await confirmDialog(
+      isDe
+        ? `${archInfo.total} Zeilen abgelaufener Events jetzt ins Archiv verschieben?\n\nDie Zeilen werden aus den Arbeitslisten (E-Mails, Outlook, ID-Vergabe, Änderungsprotokoll, Zugriffs-Queue) entfernt und sind danach nur noch für Admins in der Liste DEX_Archive einsehbar.`
+        : `Move ${archInfo.total} rows of expired events to the archive now?\n\nThe rows are removed from the working lists (emails, Outlook, ID assignment, change log, access queue) and are afterwards only visible to admins in the DEX_Archive list.`,
+      { title: isDe ? 'Archivierung' : 'Archiving', confirmLabel: isDe ? 'Jetzt archivieren' : 'Archive now' }
+    );
+    if (!ok) return;
+    setArchModal({ running: true, listIdx: 0, listTotal: 5, listName: '', done: 0, total: 0, summary: null });
+    try {
+      const res = await runArchiveExpired((listIdx, listTotal, listName, done, total) => {
+        setArchModal(prev => prev ? { ...prev, listIdx: listIdx + 1, listTotal, listName, done, total } : prev);
+      });
+      const parts: string[] = [];
+      parts.push(isDe ? `${res.archived} Zeilen ins Archiv verschoben.` : `${res.archived} rows moved to the archive.`);
+      const perListLine = Object.keys(res.perList).filter(k => res.perList[k] > 0).map(k => `${k}: ${res.perList[k]}`).join(' · ');
+      if (perListLine) parts.push(perListLine);
+      if (res.failed > 0) {
+        parts.push(isDe
+          ? `${res.failed} Zeile(n) konnten nicht verschoben werden — sie bleiben in der Quell-Liste und werden beim nächsten Lauf erneut versucht.`
+          : `${res.failed} row(s) could not be moved — they stay in the source list and will be retried on the next run.`);
+      }
+      setArchModal(prev => prev ? { ...prev, running: false, summary: parts } : prev);
+      getArchivableCount().then(r => setArchInfo(r)).catch(() => { /* */ });
+    } catch {
+      setArchModal(prev => prev ? { ...prev, running: false, summary: [isDe ? 'Fehler bei der Archivierung — bitte erneut versuchen.' : 'Error during archiving — please try again.'] } : prev);
+    }
+  };
 
   // Keyframes als inline style-Tag injizieren, da SPFx SCSS-Module
   // @keyframes innerhalb von :global manchmal nicht korrekt emittieren
@@ -50,6 +169,96 @@ export default function LandingPage(): React.ReactElement {
       }}>
         v{APP_VERSION}
       </span>
+
+      {/* v22: Archivierungs-Info (nur Admin, nur wenn Zeilen anstehen) —
+          rechts oben auf der Landing Page. */}
+      {isAdmin && archInfo && archInfo.total > 0 && (
+        <div style={{
+          position: 'absolute', top: 34, right: 16, width: 290,
+          maxWidth: 'calc(100vw - 32px)', zIndex: 6,
+          background: '#fff', border: '1px solid rgba(134,188,37,0.5)',
+          borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+          padding: '14px 16px', textAlign: 'left',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>
+              {isDe ? 'Archivierung' : 'Archiving'}
+            </span>
+            <span style={{
+              fontSize: '0.66rem', padding: '1px 7px', borderRadius: 999, fontWeight: 700,
+              background: 'rgba(237,139,0,0.12)', color: 'var(--dex-orange, #ed8b00)',
+            }}>{isDe ? 'Nur Admin' : 'Admin only'}</span>
+          </div>
+          <p style={{ margin: '0 0 8px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+            {isDe
+              ? <><strong>{archInfo.total}</strong> Zeilen aus abgelaufenen Events stehen zur Archivierung an.</>
+              : <><strong>{archInfo.total}</strong> rows from expired events are ready for archiving.</>}
+          </p>
+          <ul style={{ margin: '0 0 10px', paddingLeft: 16, fontSize: '0.72rem', color: 'var(--dex-gray-500)', lineHeight: 1.5 }}>
+            {Object.keys(archInfo.perList).filter(k => archInfo.perList[k] > 0).map(k => (
+              <li key={k}>{k}: {archInfo.perList[k]}</li>
+            ))}
+          </ul>
+          <button
+            className="btn btn-primary"
+            style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }}
+            onClick={() => { startArchive().catch(() => { /* */ }); }}
+          >
+            {isDe ? 'Jetzt archivieren' : 'Archive now'}
+          </button>
+        </div>
+      )}
+
+      {/* v22: Fortschritts-/Ergebnis-Modal der Archivierung. */}
+      {archModal && (
+        <Modal
+          open={true}
+          onClose={() => { if (!archModal.running) setArchModal(null); }}
+          dismissable={!archModal.running}
+          maxWidth={520}
+          ariaLabel={isDe ? 'Archivierung' : 'Archiving'}
+        >
+          <h3 style={{ margin: '0 0 10px', fontSize: '1.05rem' }}>
+            {isDe ? 'Archivierung abgelaufener Event-Zeilen' : 'Archiving expired event rows'}
+          </h3>
+          {archModal.running ? (
+            <>
+              <p style={{ margin: '0 0 6px', fontSize: '0.9rem', color: 'var(--dex-gray-700)' }}>
+                {isDe ? 'Liste' : 'List'} {archModal.listIdx}/{archModal.listTotal}: <strong>{archModal.listName || '…'}</strong>
+              </p>
+              <p style={{ margin: '0 0 12px', fontSize: '0.82rem', color: 'var(--dex-gray-500)' }}>
+                {archModal.total > 0
+                  ? (isDe ? `Zeile ${archModal.done}/${archModal.total} wird verschoben…` : `Moving row ${archModal.done}/${archModal.total}…`)
+                  : (isDe ? 'Liste wird geladen…' : 'Loading list…')}
+              </p>
+              {(() => {
+                const base = Math.max(0, archModal.listIdx - 1);
+                const inner = archModal.total > 0 ? archModal.done / archModal.total : 0;
+                const pct = Math.min(100, Math.round(((base + inner) / Math.max(1, archModal.listTotal)) * 100));
+                return (
+                  <div style={{ background: 'var(--dex-gray-100, #f0f0f0)', borderRadius: 999, height: 10, overflow: 'hidden' }}>
+                    <div style={{ width: `${pct}%`, height: '100%', background: 'var(--dex-green, #86bc25)', borderRadius: 999, transition: 'width 0.2s ease' }} />
+                  </div>
+                );
+              })()}
+              <p style={{ margin: '10px 0 0', fontSize: '0.78rem', color: 'var(--dex-gray-400)' }}>
+                {isDe ? 'Bitte das Fenster geöffnet lassen, bis die Archivierung abgeschlossen ist.' : 'Please keep this window open until archiving completes.'}
+              </p>
+            </>
+          ) : (
+            <>
+              <ul style={{ margin: '0 0 14px', paddingLeft: 18, fontSize: '0.88rem', color: 'var(--dex-gray-700)', lineHeight: 1.6 }}>
+                {(archModal.summary || []).map((s, i) => <li key={i}>{s}</li>)}
+              </ul>
+              <div style={{ textAlign: 'right' }}>
+                <button className="btn btn-primary" onClick={() => setArchModal(null)} style={{ fontSize: '0.88rem', padding: '9px 18px' }}>
+                  {isDe ? 'Schließen' : 'Close'}
+                </button>
+              </div>
+            </>
+          )}
+        </Modal>
+      )}
 
       <div className="landing__hero">
         <div className="landing__card" style={{ position: 'relative' }}>
@@ -103,6 +312,36 @@ export default function LandingPage(): React.ReactElement {
                 : 'Your central platform for Deloitte events – from invitation through registration to check-in.'}
             </p>
           </div>
+          {/* v22.1: Check-in-Hinweisbox(en) — ab 2 Tage vor dem Event, sobald
+              der eigene QR-Code versendet wurde. Klick auf den kleinen QR
+              öffnet ihn groß im Modal (zum Vorzeigen am Eingang). */}
+          {checkInBoxes.map(box => (
+            <button
+              key={box.eventId}
+              type="button"
+              onClick={() => { openBigQr(box).catch(() => { /* */ }); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 14, width: '100%',
+                textAlign: 'left', marginBottom: 12, padding: '12px 14px',
+                background: 'rgba(134,188,37,0.08)',
+                border: '1.5px solid var(--dex-green, #86bc25)', borderRadius: 12,
+                cursor: 'pointer',
+              }}
+              title={isDe ? 'QR-Code groß anzeigen' : 'Show QR code enlarged'}
+            >
+              <img src={box.qrSmall} alt="QR" style={{ width: 66, height: 66, flexShrink: 0, borderRadius: 6, background: '#fff', border: '1px solid var(--dex-gray-200)' }} />
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: 'block', fontWeight: 700, fontSize: '0.92rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                  {isDe ? 'Check-in für' : 'Check-in for'} {box.title}
+                </span>
+                <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
+                  {isDe
+                    ? 'Dein persönlicher QR-Code — antippen zum Vergrößern und am Eingang vorzeigen.'
+                    : 'Your personal QR code — tap to enlarge and show at the entrance.'}
+                </span>
+              </span>
+            </button>
+          ))}
           <button className="btn btn-lg btn-block btn-outline" onClick={() => navigate('start')}>
             {t('landing.start')}
           </button>
@@ -185,6 +424,45 @@ export default function LandingPage(): React.ReactElement {
           </div>
         </div>
       </div>
+      {/* v22.1: Groß-Ansicht des persönlichen Check-in-QR (Klick auf die
+          Hinweisbox) — gleicher Aufbau wie „Mein QR-Code" in Meine Events. */}
+      {qrBigModal && (
+        <Modal
+          open={true}
+          onClose={() => setQrBigModal(null)}
+          maxWidth={420}
+          ariaLabel={isDe ? 'Mein QR-Code' : 'My QR code'}
+        >
+          <h3 style={{ margin: 0, fontSize: '1.05rem', textAlign: 'center' }}>
+            {isDe ? 'Mein Check-in-QR-Code' : 'My check-in QR code'}
+          </h3>
+          <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--dex-gray-500)', textAlign: 'center' }}>
+            {qrBigModal.title}
+          </p>
+          <div style={{ textAlign: 'center' }}>
+            <img
+              src={qrBigModal.dataUrl}
+              alt="QR-Code"
+              style={{ width: 280, maxWidth: '90%', height: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 12, padding: 10, background: '#fff' }}
+            />
+          </div>
+          <p style={{ margin: 0, textAlign: 'center', fontWeight: 700, fontSize: '0.95rem' }}>
+            {qrBigModal.name}
+            {qrBigModal.tid ? <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)' }}> · Nr. {qrBigModal.tid}</span> : null}
+          </p>
+          <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--dex-gray-500)', textAlign: 'center', lineHeight: 1.5 }}>
+            {isDe
+              ? 'Zeig diesen Code am Eingang dem Check-in-Team — er ist derselbe wie in deiner QR-Mail. Falls der Scan nicht klappt, reicht dein Name.'
+              : 'Show this code to the check-in team at the entrance — it is the same as in your QR email. If the scan fails, your name is enough.'}
+          </p>
+          <div style={{ textAlign: 'right' }}>
+            <button className="btn btn-secondary" onClick={() => setQrBigModal(null)} style={{ fontSize: '0.85rem' }}>
+              {isDe ? 'Schließen' : 'Close'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
       <LandingInfoModal open={showInfo} locale={locale === 'de' ? 'de' : 'en'} onClose={() => setShowInfo(false)} />
       {/* v13.3: Inquiry-Modal aus der wiederverwendbaren Komponente. */}
       <InquiryModal open={showInquiry} onClose={() => setShowInquiry(false)} />
