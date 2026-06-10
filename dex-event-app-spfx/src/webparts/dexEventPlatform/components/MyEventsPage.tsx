@@ -1894,7 +1894,11 @@ export default function MyEventsPage(): React.ReactElement {
                   // ausgefuellt sind. Sonst kann ein Teilnehmer, der ein
                   // optionales Feld leer gelassen hat (z.B. „zusaetzliche
                   // Nacht"), es spaeter nicht mehr nachtragen.
-                  (displayData.length > 0 || (event.eventSpecificFields || []).filter((f: EventSpecificField) => f.label).length > 0) && (
+                  // v20.9 BUG-FIX: Der Block rendert jetzt AUCH, wenn das Event
+                  // keine Custom-Felder hat, aber die Anmeldung QR-fähig ist —
+                  // sonst fehlte der „Mein QR-Code"-Button bei Events ohne
+                  // Abfragefelder (z.B. einfaches Sommerfest).
+                  (displayData.length > 0 || (event.eventSpecificFields || []).filter((f: EventSpecificField) => f.label).length > 0 || (!sessionsOnly && !!event.eventNumber && ['Angemeldet', 'QR versendet', 'Eingecheckt'].indexOf(registration.Status) >= 0)) && (
                     <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
                       {displayData.map(({ label, value, type }) => (
                         <FieldAnswerTag key={label} label={label} value={value} type={type} />

@@ -4306,8 +4306,8 @@ export default function AdminPage(): React.ReactElement {
               category="checkin"
               title={isSendingQR ? (isDe ? `QR-Codes werden versendet... (${qrSentCount})` : `Sending QR codes... (${qrSentCount})`) : (isDe ? 'QR-Codes versenden' : 'Send QR codes')}
               desc={isDe
-                ? 'Öffnet ein Modal mit zwei Optionen: Test (nur an dich) oder Volldurchlauf an alle Angemeldeten. Jede NEUE Anmeldung bekommt ihren QR-Code ohnehin automatisch per Mail — auch nach der Anmeldefrist. Teilnehmer finden ihren QR-Code zusätzlich jederzeit unter „Meine Events".'
-                : 'Opens a modal with two options: test (only to you) or full run to all registered participants. Every NEW registration receives its QR code automatically by email anyway — even after the registration deadline. Participants can also find their QR code anytime under "My events".'}
+                ? 'Öffnet ein Modal mit zwei Optionen: Test (nur an dich) oder Versand an alle ohne Code. Nach dem ERSTEN Versand bekommt jede weitere Anmeldung an diesem Event ihren QR-Code automatisch per Mail — auch nach der Anmeldefrist. Teilnehmer finden ihren QR-Code zusätzlich jederzeit unter „Meine Events".'
+                : 'Opens a modal with two options: test (only to you) or send to everyone without a code. After the FIRST send, every further registration on this event receives its QR code automatically by email — even after the registration deadline. Participants can also find their QR code anytime under "My events".'}
               badge="organizer"
               busy={isSendingQR}
               onClick={() => {
@@ -7996,6 +7996,27 @@ export default function AdminPage(): React.ReactElement {
             <p style={{ margin: '0 0 12px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
               Wähle, wie der Versand laufen soll. Der QR-Code geht im Deloitte-Layout an die Empfänger und enthält unter dem Code Name + Event als Klartext (für manuellen Check-in).
             </p>
+            {/* v20.8: Restanten-Übersicht — wie viele Angemeldete haben noch
+                KEINEN QR-Code (Status 'Angemeldet') bzw. schon einen (Status
+                'QR versendet'/'Eingecheckt'). Neue Anmeldungen bekommen ihn
+                automatisch (v20.7), der Versand hier ist das Nachsenden an die
+                „Alt-Anmeldungen" ohne Code. */}
+            {(() => {
+              const without = registrations.filter(r => r.Status === 'Angemeldet').length;
+              const withQr = registrations.filter(r => r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length;
+              return (
+                <div style={{
+                  margin: '0 0 12px', padding: '10px 12px', borderRadius: 8,
+                  border: '1px solid var(--dex-gray-200)', background: 'var(--dex-gray-50, #fafafa)',
+                  fontSize: '0.85rem', color: 'var(--dex-gray-700)', lineHeight: 1.5,
+                }}>
+                  <strong style={{ color: without > 0 ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-green-dark, #4a7c1f)' }}>
+                    {without} {without === 1 ? 'Teilnehmer' : 'Teilnehmer'} ohne QR-Code
+                  </strong>{without > 0 ? ' (Restanten — bekommen ihn mit „Nachsenden" unten).' : '.'}<br />
+                  <span style={{ color: 'var(--dex-gray-500)' }}>{withQr} {withQr === 1 ? 'Teilnehmer hat' : 'Teilnehmer haben'} ihren QR-Code bereits. Neue Anmeldungen erhalten ihn automatisch bei der Anmeldung.</span>
+                </div>
+              );
+            })()}
             {/* v9.22: Hinweis bei externen Teilnehmern. */}
             {(() => {
               const externalCount = registrations
@@ -8107,9 +8128,9 @@ export default function AdminPage(): React.ReactElement {
             }}>
               <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', flexShrink: 0, marginTop: 1 }}><Check size={18} /></span>
               <div style={{ fontSize: '0.85rem' }}>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>Neue Anmeldungen erhalten ihren QR-Code automatisch</div>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>Nach dem ersten Versand: neue Anmeldungen erhalten ihren QR-Code automatisch</div>
                 <div style={{ color: 'var(--dex-gray-600)' }}>
-                  Jeder Teilnehmer bekommt direkt nach erfolgreicher Anmeldung seinen persönlichen QR-Code per Mail — auch bei Anmeldungen nach diesem Versand oder nach der Anmeldefrist. Zusätzlich ist der QR-Code für jeden Teilnehmer jederzeit unter &bdquo;Meine Events&ldquo; abrufbar.
+                  Sobald du hier einmal die QR-Codes versendet hast, bekommt jede weitere Anmeldung an diesem Event ihren persönlichen QR-Code automatisch per Mail — auch nach der Anmeldefrist. Vor dem ersten Versand wird bei der Anmeldung kein QR-Code verschickt. Zusätzlich ist der QR-Code für jeden Teilnehmer jederzeit unter &bdquo;Meine Events&ldquo; abrufbar.
                 </div>
               </div>
             </div>
@@ -8218,10 +8239,10 @@ export default function AdminPage(): React.ReactElement {
                     if (!eventServiceRef || !selectedEvent) return;
                     const eligible = registrations.filter(r => r.Status === 'Angemeldet');
                     if (eligible.length === 0) {
-                      setQrSendResult(isDe ? 'Fehler: Keine angemeldeten Teilnehmer.' : 'Error: no registered participants.');
+                      setQrSendResult(isDe ? 'Alle Teilnehmer haben bereits einen QR-Code — nichts nachzusenden.' : 'All participants already have a QR code — nothing to resend.');
                       return;
                     }
-                    if (!(await confirmDialog(isDe ? `QR-Codes an ${eligible.length} angemeldete Teilnehmer versenden?` : `Send QR codes to ${eligible.length} registered participants?`, { confirmLabel: isDe ? 'Versenden' : 'Send' }))) return;
+                    if (!(await confirmDialog(isDe ? `QR-Code an ${eligible.length} Teilnehmer ohne Code nachsenden?` : `Resend the QR code to ${eligible.length} participants without a code?`, { confirmLabel: isDe ? 'Nachsenden' : 'Resend' }))) return;
                     setIsSendingQR(true);
                     setQrSendResult(null);
                     setQrSentCount(0);
@@ -8266,6 +8287,12 @@ export default function AdminPage(): React.ReactElement {
                       sent++;
                       setQrSentCount(sent);
                     }
+                    // v21: Erster Massen-Versand startet die QR-Phase — ab
+                    // jetzt bekommt jede NEUE Anmeldung an diesem Event ihren
+                    // QR-Code automatisch (AutoSendQRCode=true am Event;
+                    // VOR dem ersten Versand wird bei Anmeldung KEIN QR
+                    // verschickt — User-Hotfix).
+                    try { await eventServiceRef.updateEvent(parseInt(selectedEvent.id, 10), { AutoSendQRCode: true }); } catch { /* */ }
                     const regs = await getAllRegistrations(selectedEvent.id);
                     setRegistrations(regs);
                     setIsSendingQR(false);
@@ -8275,10 +8302,15 @@ export default function AdminPage(): React.ReactElement {
                         : `${sent} QR codes sent (${extCount} of them redirected to you/the organizer — external addresses).`)
                       : (isDe ? `${sent} QR-Codes verschickt.` : `${sent} QR codes sent.`));
                   }}
-                  disabled={isSendingQR}
+                  disabled={isSendingQR || registrations.filter(r => r.Status === 'Angemeldet').length === 0}
                   style={{ fontSize: '0.85rem' }}
                 >
-                  {isSendingQR ? `${isDe ? 'Versende' : 'Sending'}... (${qrSentCount})` : (isDe ? 'An alle Angemeldeten' : 'To all registered')}
+                  {(() => {
+                    const n = registrations.filter(r => r.Status === 'Angemeldet').length;
+                    if (isSendingQR) return `${isDe ? 'Versende' : 'Sending'}... (${qrSentCount})`;
+                    if (n === 0) return isDe ? 'Alle haben ihren QR-Code' : 'Everyone has their QR code';
+                    return isDe ? `QR an ${n} ohne Code nachsenden` : `Resend QR to ${n} without code`;
+                  })()}
                 </button>
               </div>
             </div>

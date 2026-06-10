@@ -4494,25 +4494,46 @@ export class EventService {
     const result = { ilsWasWrong: false, ilsFixed: false, itemsTotal: 0, proxyFound: 0, authorFixed: 0, authorFailed: 0 };
 
     // ---- Schritt 1: Listen-Sicherheit „nur eigene Elemente" sicherstellen ----
+    // v21 FIX: Der v20.6-Check meldete fälschlich ALLE Listen als unsicher
+    // („27 falsch, 0 repariert"), obwohl die ILS nachweislich aktiv war
+    // (Fremd-Zeilen unsichtbar). Ursache: Antwortformat/Typ der
+    // ReadSecurity-Property nicht deterministisch behandelt. Jetzt: explizit
+    // nometadata anfordern, Werte hart zu Zahlen koerzieren und bei
+    // Unplausibilität die ROHE Antwort loggen statt „falsch" zu raten —
+    // nur ein KLARER numerischer Wert ungleich 2 zählt als unsicher.
     const readSecurity = async (): Promise<{ rs: number; ws: number } | null> => {
       try {
         const resp = await this.context.spHttpClient.get(
           `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')?$select=ReadSecurity,WriteSecurity`,
-          SPHttpClient.configurations.v1
+          SPHttpClient.configurations.v1,
+          { headers: { 'Accept': 'application/json;odata=nometadata' } }
         );
         if (!resp.ok) return null;
         const d = await resp.json();
-        const rs = d.ReadSecurity ?? d.d?.ReadSecurity;
-        const ws = d.WriteSecurity ?? d.d?.WriteSecurity;
-        return (typeof rs === 'number' && typeof ws === 'number') ? { rs, ws } : null;
-      } catch { return null; }
+        const rawRs = d.ReadSecurity ?? d.d?.ReadSecurity;
+        const rawWs = d.WriteSecurity ?? d.d?.WriteSecurity;
+        const rs = Number(rawRs);
+        const ws = Number(rawWs);
+        if (!Number.isFinite(rs) || !Number.isFinite(ws)) {
+          console.warn('[DEX][ILS-Check] ReadSecurity/WriteSecurity nicht lesbar — rohe Antwort:', subsiteUrl, JSON.stringify(d).slice(0, 400));
+          return null;
+        }
+        return { rs, ws };
+      } catch (e) {
+        console.warn('[DEX][ILS-Check] Lesen fehlgeschlagen:', subsiteUrl, e);
+        return null;
+      }
     };
     const before = await readSecurity();
     if (before && (before.rs !== 2 || before.ws !== 2)) {
+      console.warn(`[DEX][ILS-Check] Liste meldet ReadSecurity=${before.rs}/WriteSecurity=${before.ws} (erwartet 2/2):`, subsiteUrl);
       result.ilsWasWrong = true;
       await this.setItemLevelPermissions(subsiteUrl);
       const after = await readSecurity();
       result.ilsFixed = !!after && after.rs === 2 && after.ws === 2;
+      if (!result.ilsFixed) {
+        console.warn('[DEX][ILS-Check] Read-back nach Fix weiterhin abweichend:', subsiteUrl, after);
+      }
     }
 
     // ---- Schritt 2: Items mit Autor laden (paged) ----
@@ -8466,6 +8487,212 @@ export class EventService {
       console.warn('[DEX] deleteRegistration failed:', err);
       return false;
     }
+  }
+
+  /**
+   * v21: Item-Level-Security („nur eigene Elemente", 2/2) auf den globalen
+   * Queue-Listen DEX_Outlook + DEX_IDReorder nachziehen. DEX_Emails und
+   * DEX_AccessFix haben sie bereits; DEX_TeamJoinRequests bekommt sie
+   * bewusst NICHT (der Team-Lead muss fremde Beitritts-Anfragen lesen).
+   * Idempotent; wird vom Admin-Reparatur-Button mit ausgeführt.
+   */
+  public async hardenQueueListsIls(): Promise<{ fixed: string[]; failed: string[] }> {
+    const targets = ['DEX_Outlook', 'DEX_IDReorder'];
+    const fixed: string[] = [];
+    const failed: string[] = [];
+    for (const listName of targets) {
+      try {
+        const resp = await this.context.spHttpClient.post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`,
+          SPHttpClient.configurations.v1,
+          {
+            headers: {
+              'Accept': 'application/json;odata=verbose',
+              'Content-Type': 'application/json;odata=verbose',
+              'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE',
+            },
+            body: JSON.stringify({ '__metadata': { 'type': 'SP.List' }, 'ReadSecurity': 2, 'WriteSecurity': 2 }),
+          }
+        );
+        if (resp.ok) fixed.push(listName); else failed.push(listName);
+      } catch { failed.push(listName); }
+    }
+    return { fixed, failed };
+  }
+
+  // ==================== v21: Archivierung ====================
+  // Globale Queue-/Log-Listen, deren Zeilen abgelaufener Events ins
+  // DEX_Archive wandern (verschieben = nach Insert aus der Quelle löschen).
+  // DEX_Emails/Outlook/IDReorder/ChangeLog matchen über EventId, DEX_AccessFix
+  // über SubsiteUrl (hat keine EventId).
+  private static readonly ARCHIVE_SOURCES: Array<{ list: string; matchBy: 'eventId' | 'subsiteUrl' }> = [
+    { list: 'DEX_Emails', matchBy: 'eventId' },
+    { list: 'DEX_Outlook', matchBy: 'eventId' },
+    { list: 'DEX_IDReorder', matchBy: 'eventId' },
+    { list: 'DEX_ChangeLog', matchBy: 'eventId' },
+    { list: 'DEX_AccessFix', matchBy: 'subsiteUrl' },
+  ];
+
+  /**
+   * v21: DEX_Archive anlegen (Site-Collection-Root) — generisches Schema, das
+   * Zeilen aus mehreren Quell-Listen aufnimmt: SourceList, EventId, EventTitle,
+   * OriginalId, ArchivedAt + Payload (JSON der Originalzeile). NUR Admins
+   * (Owners) bekommen Zugriff (setArchiveListPermissions, kein Visitors-Grant).
+   */
+  public async ensureArchiveList(): Promise<void> {
+    const listName = 'DEX_Archive';
+    const exists = await this.listExists(listName);
+    if (exists) return;
+    const createResp = await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'Archiv abgelaufener Event-Zeilen aus den Queue-/Log-Listen (v21). Nur fuer Admins lesbar.',
+      'BaseTemplate': 100,
+      'AllowContentTypes': false,
+    });
+    if (!createResp.ok) {
+      console.warn('[DEX] DEX_Archive konnte nicht angelegt werden — vermutlich fehlen Owner-Rechte.');
+      return;
+    }
+    const fields: Array<{ title: string; type: number; metaType?: string }> = [
+      { title: 'SourceList', type: 2 },
+      { title: 'EventId', type: 2 },
+      { title: 'EventTitle', type: 2 },
+      { title: 'OriginalId', type: 9 },
+      { title: 'ArchivedAt', type: 4 },
+      { title: 'Payload', type: 3, metaType: 'SP.FieldMultiLineText' },
+    ];
+    for (const f of fields) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const payload: Record<string, any> = {
+          '__metadata': { 'type': f.metaType || 'SP.Field' },
+          'Title': f.title, 'FieldTypeKind': f.type, 'Required': false,
+        };
+        if (f.metaType === 'SP.FieldMultiLineText') { payload['RichText'] = false; payload['NumberOfLines'] = 6; }
+        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
+      } catch { /* einzelne Feld-Fehler ignorieren */ }
+    }
+    try { await this.configureDefaultView(listName, ['SourceList', 'EventTitle', 'EventId', 'OriginalId', 'ArchivedAt']); } catch { /* */ }
+    try { await this.setArchiveListPermissions(listName); } catch { /* */ }
+  }
+
+  /** Admin-only: Vererbung brechen, NUR Owners (Site-Admins) Full Control —
+   *  bewusst KEIN Visitors-/Members-Grant, damit das Archiv nicht von allen
+   *  lesbar ist. */
+  private async setArchiveListPermissions(listName: string): Promise<void> {
+    try {
+      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`, {});
+      const ownersResp = await this.context.spHttpClient.get(`${this.siteUrl}/_api/web/associatedownergroup?$select=Id`, SPHttpClient.configurations.v1);
+      if (ownersResp.ok) {
+        const d = await ownersResp.json();
+        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741829)`, {});
+      }
+    } catch (e) { console.warn('[DEX] setArchiveListPermissions failed:', e); }
+  }
+
+  /** Lädt alle Zeilen einer Liste (paged, nometadata). `select` schränkt die
+   *  Felder ein (fürs Zählen leichtgewichtig); ohne select = alle Felder
+   *  (für den Payload). */
+  private async loadAllListRows(listName: string, select?: string): Promise<Array<Record<string, unknown>>> {
+    const rows: Array<Record<string, unknown>> = [];
+    let url = `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$top=500${select ? `&$select=${select}` : ''}`;
+    let guard = 0;
+    while (url && guard < 500) {
+      guard++;
+      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1, {
+        headers: { 'Accept': 'application/json;odata=nometadata' },
+      });
+      if (!resp.ok) break;
+      const data = await resp.json();
+      const arr: Array<Record<string, unknown>> = data.value || data.d?.results || [];
+      rows.push(...arr);
+      url = (data['odata.nextLink'] as string) || (data['@odata.nextLink'] as string) || '';
+    }
+    return rows;
+  }
+
+  private rowMatchesExpired(
+    r: Record<string, unknown>, matchBy: 'eventId' | 'subsiteUrl',
+    expiredEventIds: Set<string>, expiredSubsiteUrls: Set<string>
+  ): boolean {
+    if (matchBy === 'eventId') {
+      const id = String(r['EventId'] || '').trim();
+      return !!id && expiredEventIds.has(id);
+    }
+    const su = String(r['SubsiteUrl'] || '').toLowerCase().trim();
+    return !!su && expiredSubsiteUrls.has(su);
+  }
+
+  /** v21: Zählt die archivreifen Zeilen pro Quell-Liste (leichtgewichtig:
+   *  nur Id+EventId bzw. Id+SubsiteUrl). */
+  public async countArchivableRows(
+    expiredEventIds: Set<string>, expiredSubsiteUrls: Set<string>
+  ): Promise<{ total: number; perList: Record<string, number> }> {
+    const perList: Record<string, number> = {};
+    let total = 0;
+    for (const src of EventService.ARCHIVE_SOURCES) {
+      let c = 0;
+      try {
+        const select = src.matchBy === 'eventId' ? 'Id,EventId' : 'Id,SubsiteUrl';
+        const rows = await this.loadAllListRows(src.list, select);
+        for (const r of rows) {
+          if (this.rowMatchesExpired(r, src.matchBy, expiredEventIds, expiredSubsiteUrls)) c++;
+        }
+      } catch { /* Liste evtl. nicht vorhanden */ }
+      perList[src.list] = c;
+      total += c;
+    }
+    return { total, perList };
+  }
+
+  /** v21: Verschiebt alle archivreifen Zeilen ins DEX_Archive (Insert →
+   *  Delete aus der Quelle). Sequentiell (SP-Throttling). onProgress meldet
+   *  Listen- + Zeilen-Fortschritt fürs Modal. */
+  public async archiveExpiredRows(
+    expiredEventIds: Set<string>, expiredSubsiteUrls: Set<string>,
+    eventTitleById: Record<string, string>,
+    onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void
+  ): Promise<{ archived: number; failed: number; perList: Record<string, number> }> {
+    const result = { archived: 0, failed: 0, perList: {} as Record<string, number> };
+    const sources = EventService.ARCHIVE_SOURCES;
+    for (let si = 0; si < sources.length; si++) {
+      const src = sources[si];
+      let listArchived = 0;
+      try {
+        const rows = await this.loadAllListRows(src.list); // alle Felder für den Payload
+        const matching = rows.filter(r => this.rowMatchesExpired(r, src.matchBy, expiredEventIds, expiredSubsiteUrls));
+        if (onProgress) onProgress(si, sources.length, src.list, 0, matching.length);
+        for (let i = 0; i < matching.length; i++) {
+          const r = matching[i];
+          const origId = Number(r['Id'] || 0);
+          const eid = src.matchBy === 'eventId' ? String(r['EventId'] || '') : '';
+          const title = eid ? (eventTitleById[eid] || '') : '';
+          try {
+            const ins = await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_Archive')/items`, {
+              '__metadata': { 'type': 'SP.Data.DEX_x005f_ArchiveListItem' },
+              'Title': `${src.list}#${origId}`.slice(0, 250),
+              'SourceList': src.list,
+              'EventId': eid,
+              'EventTitle': title,
+              'OriginalId': origId,
+              'ArchivedAt': new Date().toISOString(),
+              'Payload': JSON.stringify(r),
+            });
+            if (ins.ok && origId > 0) {
+              // Nur löschen, wenn der Archiv-Insert geklappt hat (kein Datenverlust).
+              const del = await this._delete(`${this.siteUrl}/_api/web/lists/getbytitle('${src.list}')/items(${origId})`);
+              if (del.ok) { listArchived++; result.archived++; } else { result.failed++; }
+            } else {
+              result.failed++;
+            }
+          } catch { result.failed++; }
+          if (onProgress) onProgress(si, sources.length, src.list, i + 1, matching.length);
+        }
+      } catch { /* Liste nicht vorhanden — überspringen */ }
+      result.perList[src.list] = listArchived;
+    }
+    return result;
   }
 
   private async _delete(url: string): Promise<SPHttpClientResponse> {

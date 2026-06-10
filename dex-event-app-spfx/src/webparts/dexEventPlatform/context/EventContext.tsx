@@ -374,6 +374,10 @@ interface EventContextType {
    *  Anmeldungen bleibt erhalten. */
   deleteEventItemOnly: (eventId: string) => Promise<boolean>;
   updateEvent: (eventId: string, updates: Record<string, unknown>) => Promise<boolean>;
+  /** v21: Archivierung — zählt archivreife Zeilen abgelaufener Events. */
+  getArchivableCount: () => Promise<{ total: number; perList: Record<string, number> }>;
+  /** v21: Archivierung — verschiebt archivreife Zeilen ins DEX_Archive. */
+  runArchiveExpired: (onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void) => Promise<{ archived: number; failed: number; perList: Record<string, number> }>;
   updateMyRegistration: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
   /** v10.27: Split-Capacity-Gruppen-Wechsel für die eigene Registrierung.
    *  Nimmt die App-internen Wert-IDs ('Durchstarter' | 'Funstarter') —
@@ -628,6 +632,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         safeRun('ensureTeamJoinRequestsList', () => eventService.ensureTeamJoinRequestsList(), parallelMarks),
         safeRun('ensureOutlookLocksList', () => eventService.ensureOutlookLocksList(), parallelMarks),
         safeRun('ensureAccessFixList', () => eventService.ensureAccessFixList(), parallelMarks),
+        safeRun('ensureArchiveList', () => eventService.ensureArchiveList(), parallelMarks),
         safeRun('ensureAssetsFolders', () => eventService.ensureAssetsFolders(), parallelMarks),
         safeRun('ensureLogosInConfig', () => eventService.ensureLogosInConfig(), parallelMarks),
       ]);
@@ -1350,15 +1355,25 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           finalSubject, finalRecipient, finalRecipientName, finalBody,
           templateType, event.title, eventId, ccFromFields, bcc
         ).catch(err => console.warn('[DEX] queueEmail failed:', err));
+      }
 
-        // v9.15/v20.7: Auto-Send QR-Code — seit v20.7 IMMER aktiv (nicht mehr
-        // pro Event abwählbar; das frühere AutoSendQRCode-Flag wird ignoriert).
-        // Damit bekommt auch eine Anmeldung nach dem QR-Massen-Versand bzw.
-        // nach der Anmeldefrist automatisch ihren QR-Code. Nur fuer
-        // Status='Angemeldet' (Wartelistler sind noch nicht confirmed) und
-        // nur solange E-Mails am Event nicht deaktiviert sind.
-        if (status === 'Angemeldet' && !event.disableEmails) {
-          (async (): Promise<void> => {
+      // v9.15/v20.7/v20.10/v21: Auto-Send QR-Code — unabhängig vom
+      // Bestätigungs-Mail-Block (greift auch bei stiller Massen-Anmeldung),
+      // aber NUR in der „QR-Phase" des Events. v21 BUG-FIX: vorher feuerte
+      // der QR bei JEDER Anmeldung an JEDEM Event — auch Monate im Voraus.
+      // QR-Phase = der Organizer hat den QR-Massen-Versand bereits gestartet
+      // (setzt AutoSendQRCode=true am Event, siehe AdminPage) ODER die
+      // Anmeldefrist ist vorbei (Nachzügler). Master „DisableEmails" und die
+      // Schatten-Registrierung (subEventsOnly) heben ihn weiterhin auf; nur
+      // fuer Status='Angemeldet' (Wartelistler sind noch nicht confirmed).
+      // v21 HOTFIX (User): QR-Phase startet AUSSCHLIESSLICH mit dem ersten
+      // manuellen QR-Massen-Versand des Organizers (der setzt
+      // AutoSendQRCode=true am Event). Kein Deadline-Trigger — vor dem ersten
+      // Versand bekommt KEINE Anmeldung automatisch einen QR-Code.
+      const qrPhaseActive = event.autoSendQRCode === true;
+      if (qrPhaseActive && status === 'Angemeldet' && !event.disableEmails && !suppressParentNotifications) {
+        const isExternalRecipientQr = !!emailToUse && !/@(.*\.)?deloitte\.de$/i.test(emailToUse);
+        (async (): Promise<void> => {
             try {
               const qrData = `DEX|${event.eventNumber}|${emailToUse}`;
               let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
@@ -1374,7 +1389,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
               // v9.22: Auto-Send-QR fuer externe Empfaenger ebenfalls an den
               // Organizer umleiten (mit klarem Subject-Praefix), nicht an den
               // externen Mail-Empfaenger.
-              if (isExternalRecipient) {
+              if (isExternalRecipientQr) {
                 const orgEmails = (event.organizerEmails || []).filter(Boolean);
                 const orgRecipient = orgEmails.length > 0 ? orgEmails.join(';') : currentUserEmail;
                 const orgSubject = `[Externer Teilnehmer] QR-Code für ${nameToUse} — ${event.title}`;
@@ -1406,7 +1421,6 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             } catch (err) { console.warn('[DEX] auto-send QR failed:', err); }
           })().catch(err => console.warn('[DEX] auto-send QR outer failed:', err));
         }
-      }
       // Roommate-Benachrichtigung: nur Custom-Fields vom Typ 'roommate'
       // durchsuchen (seit v7.17 eigener Feldtyp; vorher waren es alle 'user'-
       // Felder, was bei "Assistent"-, "Mentor"- etc. Pickern zu ungewollten
@@ -2887,6 +2901,43 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return success;
   }
 
+  // ==================== v21: Archivierung ====================
+  // Abgelaufen = End-Datum (Fallback Start-Datum) liegt in der Vergangenheit.
+  // Liefert Event-Ids + Subsite-URLs + Titel-Map für die Archiv-Funktionen.
+  function getExpiredEventSets(): { ids: Set<string>; subs: Set<string>; titles: Record<string, string> } {
+    const now = Date.now();
+    const ids = new Set<string>();
+    const subs = new Set<string>();
+    const titles: Record<string, string> = {};
+    for (const e of events) {
+      const endRef = e.endDate || e.startDate;
+      const t = endRef ? new Date(endRef).getTime() : 0;
+      if (t > 0 && t < now) {
+        ids.add(String(e.id));
+        titles[String(e.id)] = e.title || '';
+        if (e.subsiteUrl) subs.add(e.subsiteUrl.toLowerCase());
+      }
+    }
+    return { ids, subs, titles };
+  }
+
+  /** v21: Zählt archivreife Zeilen (Queue-/Log-Listen abgelaufener Events). */
+  async function getArchivableCount(): Promise<{ total: number; perList: Record<string, number> }> {
+    if (!eventService) return { total: 0, perList: {} };
+    const { ids, subs } = getExpiredEventSets();
+    if (ids.size === 0) return { total: 0, perList: {} };
+    return eventService.countArchivableRows(ids, subs);
+  }
+
+  /** v21: Verschiebt alle archivreifen Zeilen ins DEX_Archive (Admin). */
+  async function runArchiveExpired(
+    onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void
+  ): Promise<{ archived: number; failed: number; perList: Record<string, number> }> {
+    if (!eventService) return { archived: 0, failed: 0, perList: {} };
+    const { ids, subs, titles } = getExpiredEventSets();
+    return eventService.archiveExpiredRows(ids, subs, titles, onProgress);
+  }
+
   async function deleteEvent(eventId: string): Promise<boolean> {
     // v18.3: Demo-Showcase-Event → No-Op (kein SP-Backend). Defense in depth;
     // die UI blendet den Löschen-Button fuer das Demo-Event ohnehin aus.
@@ -3298,7 +3349,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, selfCheckIn, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted,
+        getMyRegistration, selfCheckIn, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, getArchivableCount, runArchiveExpired,
         sendAdminInquiry,
         reseedDefaultEmailTemplates,
         sendOrganizerOnboarding,
