@@ -191,6 +191,15 @@ heben den Auto-Versand weiterhin auf. Restanten (Status 'Angemeldet' ohne
 Code) löst der Button „QR an X ohne Code nachsenden". „Mein QR-Code" in
 Meine Events ist davon unabhängig (clientseitig erzeugt, immer abrufbar).
 
+**v22.1 — Check-in-Hinweisbox auf der Landing Page:** Ab 2 Tagen vor
+Event-Start zeigt die Landing Page über dem Start-Button pro passendem Event
+eine grüne Box „Check-in für <Event>" mit kleinem persönlichem QR; Klick
+öffnet ihn groß im Modal (gleicher Aufbau wie „Mein QR-Code"). Bedingung pro
+Event: eigener Registrierungs-Status `'QR versendet'` (d.h. Massen- oder
+Auto-Versand lief) UND `jetzt ∈ [Start − 2 Tage, Ende]` (ohne Ende: Ende des
+Start-Tages). Implementierung in `LandingPage.tsx` (Kandidaten max. 4,
+`getMyRegistration` pro Kandidat, qrcode lazy).
+
 ### Archivierung abgelaufener Event-Zeilen (v21/v22)
 
 Admin-only-Werkzeug, um die globalen Queue-/Log-Listen schlank zu halten:

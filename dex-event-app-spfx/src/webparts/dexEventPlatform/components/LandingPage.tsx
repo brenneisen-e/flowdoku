@@ -53,6 +53,66 @@ export default function LandingPage(): React.ReactElement {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, isEventsLoading]);
+  // ==================== v22.1: Check-in-Hinweisbox (Landing) ====================
+  // Ab 2 Tagen vor Event-Start UND sobald der QR-Massen-Versand lief (eigener
+  // Status 'QR versendet'), zeigt die Landing Page über dem Start-Button eine
+  // Hinweisbox „Check-in für <Event>" mit kleinem QR — Klick öffnet ihn groß.
+  const { getMyRegistration, events } = useEvents();
+  const [checkInBoxes, setCheckInBoxes] = React.useState<Array<{
+    eventId: string; title: string; qrSmall: string; qrData: string;
+    name: string; tid?: number;
+  }>>([]);
+  const [qrBigModal, setQrBigModal] = React.useState<{ dataUrl: string; title: string; name: string; tid?: number } | null>(null);
+  React.useEffect(() => {
+    if (isEventsLoading) return undefined;
+    const myEmail = (currentUser?.email || '').trim();
+    if (!myEmail) return undefined;
+    let cancelled = false;
+    (async () => {
+      const now = Date.now();
+      const twoDaysMs = 2 * 24 * 60 * 60 * 1000;
+      // Kandidaten: Events, deren Start höchstens 2 Tage entfernt ist und die
+      // noch nicht vorbei sind (Ende, Fallback: Ende des Start-Tages).
+      const candidates = events.filter(e => {
+        if (!e.eventNumber || !e.startDate) return false;
+        const start = new Date(e.startDate).getTime();
+        if (!Number.isFinite(start)) return false;
+        let end = e.endDate ? new Date(e.endDate).getTime() : NaN;
+        if (!Number.isFinite(end)) {
+          const s = new Date(e.startDate);
+          end = new Date(s.getFullYear(), s.getMonth(), s.getDate(), 23, 59, 59).getTime();
+        }
+        return now >= start - twoDaysMs && now <= end;
+      }).slice(0, 4);
+      if (candidates.length === 0) { if (!cancelled) setCheckInBoxes([]); return; }
+      const boxes: Array<{ eventId: string; title: string; qrSmall: string; qrData: string; name: string; tid?: number }> = [];
+      const QRCode = await import('qrcode');
+      for (const ev of candidates) {
+        try {
+          const reg = await getMyRegistration(ev.id);
+          // Nur wenn der QR-Versand für diese Person bereits lief — Status
+          // 'QR versendet' (Massen-Versand ODER Auto-Versand nach Phase-Start).
+          if (!reg || reg.Status !== 'QR versendet') continue;
+          const qrData = `DEX|${ev.eventNumber}|${reg.ParticipantEmail || myEmail}`;
+          const qrSmall = await QRCode.toDataURL(qrData, { width: 132, margin: 1 });
+          const name = `${reg.Vorname || ''} ${reg.Nachname || ''}`.trim() || (reg.ParticipantEmail || myEmail);
+          boxes.push({ eventId: ev.id, title: ev.title || '', qrSmall, qrData, name, tid: reg.TeilnehmerID || undefined });
+        } catch { /* einzelner Lookup-Fehler — Box entfällt */ }
+        if (cancelled) return;
+      }
+      if (!cancelled) setCheckInBoxes(boxes);
+    })().catch(() => { /* best-effort */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEventsLoading, currentUser?.email]);
+  const openBigQr = async (box: { qrData: string; title: string; name: string; tid?: number }): Promise<void> => {
+    try {
+      const QRCode = await import('qrcode');
+      const dataUrl = await QRCode.toDataURL(box.qrData, { width: 320, margin: 2 });
+      setQrBigModal({ dataUrl, title: box.title, name: box.name, tid: box.tid });
+    } catch { /* */ }
+  };
+
   const startArchive = async (): Promise<void> => {
     if (!archInfo || archInfo.total === 0) return;
     const ok = await confirmDialog(
@@ -252,6 +312,36 @@ export default function LandingPage(): React.ReactElement {
                 : 'Your central platform for Deloitte events – from invitation through registration to check-in.'}
             </p>
           </div>
+          {/* v22.1: Check-in-Hinweisbox(en) — ab 2 Tage vor dem Event, sobald
+              der eigene QR-Code versendet wurde. Klick auf den kleinen QR
+              öffnet ihn groß im Modal (zum Vorzeigen am Eingang). */}
+          {checkInBoxes.map(box => (
+            <button
+              key={box.eventId}
+              type="button"
+              onClick={() => { openBigQr(box).catch(() => { /* */ }); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 14, width: '100%',
+                textAlign: 'left', marginBottom: 12, padding: '12px 14px',
+                background: 'rgba(134,188,37,0.08)',
+                border: '1.5px solid var(--dex-green, #86bc25)', borderRadius: 12,
+                cursor: 'pointer',
+              }}
+              title={isDe ? 'QR-Code groß anzeigen' : 'Show QR code enlarged'}
+            >
+              <img src={box.qrSmall} alt="QR" style={{ width: 66, height: 66, flexShrink: 0, borderRadius: 6, background: '#fff', border: '1px solid var(--dex-gray-200)' }} />
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: 'block', fontWeight: 700, fontSize: '0.92rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                  {isDe ? 'Check-in für' : 'Check-in for'} {box.title}
+                </span>
+                <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
+                  {isDe
+                    ? 'Dein persönlicher QR-Code — antippen zum Vergrößern und am Eingang vorzeigen.'
+                    : 'Your personal QR code — tap to enlarge and show at the entrance.'}
+                </span>
+              </span>
+            </button>
+          ))}
           <button className="btn btn-lg btn-block btn-outline" onClick={() => navigate('start')}>
             {t('landing.start')}
           </button>
@@ -334,6 +424,45 @@ export default function LandingPage(): React.ReactElement {
           </div>
         </div>
       </div>
+      {/* v22.1: Groß-Ansicht des persönlichen Check-in-QR (Klick auf die
+          Hinweisbox) — gleicher Aufbau wie „Mein QR-Code" in Meine Events. */}
+      {qrBigModal && (
+        <Modal
+          open={true}
+          onClose={() => setQrBigModal(null)}
+          maxWidth={420}
+          ariaLabel={isDe ? 'Mein QR-Code' : 'My QR code'}
+        >
+          <h3 style={{ margin: 0, fontSize: '1.05rem', textAlign: 'center' }}>
+            {isDe ? 'Mein Check-in-QR-Code' : 'My check-in QR code'}
+          </h3>
+          <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--dex-gray-500)', textAlign: 'center' }}>
+            {qrBigModal.title}
+          </p>
+          <div style={{ textAlign: 'center' }}>
+            <img
+              src={qrBigModal.dataUrl}
+              alt="QR-Code"
+              style={{ width: 280, maxWidth: '90%', height: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 12, padding: 10, background: '#fff' }}
+            />
+          </div>
+          <p style={{ margin: 0, textAlign: 'center', fontWeight: 700, fontSize: '0.95rem' }}>
+            {qrBigModal.name}
+            {qrBigModal.tid ? <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)' }}> · Nr. {qrBigModal.tid}</span> : null}
+          </p>
+          <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--dex-gray-500)', textAlign: 'center', lineHeight: 1.5 }}>
+            {isDe
+              ? 'Zeig diesen Code am Eingang dem Check-in-Team — er ist derselbe wie in deiner QR-Mail. Falls der Scan nicht klappt, reicht dein Name.'
+              : 'Show this code to the check-in team at the entrance — it is the same as in your QR email. If the scan fails, your name is enough.'}
+          </p>
+          <div style={{ textAlign: 'right' }}>
+            <button className="btn btn-secondary" onClick={() => setQrBigModal(null)} style={{ fontSize: '0.85rem' }}>
+              {isDe ? 'Schließen' : 'Close'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
       <LandingInfoModal open={showInfo} locale={locale === 'de' ? 'de' : 'en'} onClose={() => setShowInfo(false)} />
       {/* v13.3: Inquiry-Modal aus der wiederverwendbaren Komponente. */}
       <InquiryModal open={showInquiry} onClose={() => setShowInquiry(false)} />
