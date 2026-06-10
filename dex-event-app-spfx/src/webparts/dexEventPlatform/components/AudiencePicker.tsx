@@ -381,9 +381,11 @@ export default function AudiencePicker({
 
       {middleSlot}
 
-      {/* Sichtbarkeit-Pruefen + Ausschliessen: erscheint, sobald
-          Standortfilter ODER Audience gesetzt ist. */}
-      {(locationFilter || audience) && (
+      {/* v22.5: „Sichtbarkeit prüfen" ist IMMER verfügbar — auch wenn KEIN
+          Filter gesetzt ist (zeigt dann „für alle sichtbar"). „Personen
+          ausschließen" erscheint weiterhin nur, sobald ein Standortfilter
+          ODER eine Audience gesetzt ist (sonst gibt es nichts auszuschließen). */}
+      {(
         <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', marginBottom: 12, background: cardBgSecondary, borderRadius: 8, border: '1px solid var(--dex-gray-100)', flexWrap: 'wrap' }}>
           <button
             className="btn btn-outline"
@@ -417,6 +419,7 @@ export default function AudiencePicker({
           >
             <Users size={14} /> {isDe ? 'Sichtbarkeit prüfen' : 'Check visibility'}
           </button>
+          {(locationFilter || audience) && (
           <button
             className="btn btn-outline"
             style={{ fontSize: '0.8rem', padding: '6px 14px', whiteSpace: 'nowrap' }}
@@ -495,10 +498,11 @@ export default function AudiencePicker({
               </span>
             )}
           </button>
+          )}
           <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: 0, lineHeight: 1.5, flex: 1, minWidth: 200 }}>
             {isDe
-              ? 'Öffnet eine Vorschau, mit der du anhand einer Testperson verifizieren kannst, ob die kombinierte Sichtbarkeit (Standortfilter + Mailverteiler/User + Verknüpfung) wirklich passt — bevor du das Event speicherst.'
-              : 'Opens a preview where you can use a test person to verify whether the combined visibility (location filter + mailing lists/users + AND/OR combination) really matches — before you save the event.'}
+              ? 'Öffnet eine Vorschau, mit der du anhand einer Testperson verifizieren kannst, ob das Event wirklich für den gewünschten Personenkreis sichtbar ist — ohne Filter ist es für alle sichtbar.'
+              : 'Opens a preview where you can use a test person to verify whether the event is really visible to the intended audience — with no filter it is visible to everyone.'}
           </p>
         </div>
       )}
