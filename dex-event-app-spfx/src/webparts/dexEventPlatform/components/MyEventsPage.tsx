@@ -21,7 +21,7 @@ import { useLanguage } from '../context/LanguageContext';
 // v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
 import { useDialog } from '../context/DialogContext';
 // v11.99: RefreshCw nicht mehr benötigt (Page-Level-Refresh-Button entfernt).
-import { X, Pencil } from './Icons';
+import { X, Pencil, QrCode } from './Icons';
 import { InfoTooltip } from './InfoTooltip';
 import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
@@ -878,6 +878,22 @@ export default function MyEventsPage(): React.ReactElement {
   const { t, locale } = useLanguage();
   // v20.4: App-Modals statt nativer Browser-Dialoge.
   const { confirmDialog, showAlert } = useDialog();
+  // v20.7: Persönlicher Check-in-QR-Code unter „Meine Events" — gleicher
+  // Payload wie die QR-Mail (DEX|<EventNr>|<E-Mail>), client-seitig erzeugt.
+  // Damit hat jeder aktive Teilnehmer seinen QR jederzeit zur Hand, auch
+  // ohne die Mail zu suchen.
+  const [myQrModal, setMyQrModal] = React.useState<{ dataUrl: string; name: string; tid?: number; eventTitle: string } | null>(null);
+  const openMyQr = async (ev: DeloitteEvent, reg: SPRegistration): Promise<void> => {
+    try {
+      const QRCode = await import('qrcode');
+      const email = reg.ParticipantEmail || currentUser.email || '';
+      const dataUrl = await QRCode.toDataURL(`DEX|${ev.eventNumber}|${email}`, { width: 320, margin: 2 });
+      const name = `${reg.Vorname || currentUser.firstName || ''} ${reg.Nachname || currentUser.surname || ''}`.trim() || email;
+      setMyQrModal({ dataUrl, name, tid: reg.TeilnehmerID || undefined, eventTitle: ev.title || '' });
+    } catch {
+      showAlert(isDe ? 'QR-Code konnte nicht erzeugt werden.' : 'QR code could not be generated.', { variant: 'error' });
+    }
+  };
   const isDe = locale === 'de';
   const [myEvents, setMyEvents] = React.useState<MyEventEntry[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -1903,6 +1919,24 @@ export default function MyEventsPage(): React.ReactElement {
                         <Pencil size={12} /> {displayData.length > 0 ? t('myevents.edit') : (isDe ? 'Angaben ergänzen' : 'Add details')}
                       </button>
                       )}
+                      {/* v20.7: Persönlicher Check-in-QR — für aktive
+                          Anmeldungen jederzeit abrufbar (gleicher Code wie
+                          in der QR-Mail). */}
+                      {!sessionsOnly && !!event.eventNumber && ['Angemeldet', 'QR versendet', 'Eingecheckt'].indexOf(registration.Status) >= 0 && (
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          onClick={() => { openMyQr(event, registration).catch(() => { /* */ }); }}
+                          style={{
+                            fontSize: '0.78rem', padding: '5px 12px', borderRadius: 6,
+                            width: 'auto', cursor: 'pointer',
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                          }}
+                          title={isDe ? 'Deinen persönlichen Check-in-QR-Code anzeigen' : 'Show your personal check-in QR code'}
+                        >
+                          <QrCode size={12} /> {isDe ? 'Mein QR-Code' : 'My QR code'}
+                        </button>
+                      )}
                     </div>
                   )
                 ) : (
@@ -2824,6 +2858,46 @@ export default function MyEventsPage(): React.ReactElement {
           </Modal>
         );
       })()}
+
+      {/* v20.7: Modal mit dem persönlichen Check-in-QR-Code (wie in der
+          QR-Mail: großer Code + Name + Teilnehmer-Nr. als Fallback für den
+          manuellen Check-in). */}
+      {myQrModal && (
+        <Modal
+          open={true}
+          onClose={() => setMyQrModal(null)}
+          maxWidth={420}
+          ariaLabel={isDe ? 'Mein QR-Code' : 'My QR code'}
+        >
+          <h3 style={{ margin: 0, fontSize: '1.05rem', textAlign: 'center' }}>
+            {isDe ? 'Mein Check-in-QR-Code' : 'My check-in QR code'}
+          </h3>
+          <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--dex-gray-500)', textAlign: 'center' }}>
+            {myQrModal.eventTitle}
+          </p>
+          <div style={{ textAlign: 'center' }}>
+            <img
+              src={myQrModal.dataUrl}
+              alt="QR-Code"
+              style={{ width: 280, maxWidth: '90%', height: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 12, padding: 10, background: '#fff' }}
+            />
+          </div>
+          <p style={{ margin: 0, textAlign: 'center', fontWeight: 700, fontSize: '0.95rem' }}>
+            {myQrModal.name}
+            {myQrModal.tid ? <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)' }}> · Nr. {myQrModal.tid}</span> : null}
+          </p>
+          <p style={{ margin: 0, fontSize: '0.78rem', color: 'var(--dex-gray-500)', textAlign: 'center', lineHeight: 1.5 }}>
+            {isDe
+              ? 'Zeig diesen Code am Event-Tag dem Check-in-Team — er ist derselbe wie in deiner QR-Mail. Falls der Scan nicht klappt, reicht dein Name.'
+              : 'Show this code to the check-in team on event day — it is the same as in your QR email. If the scan fails, your name is enough.'}
+          </p>
+          <div style={{ textAlign: 'right' }}>
+            <button className="btn btn-secondary" onClick={() => setMyQrModal(null)} style={{ fontSize: '0.85rem' }}>
+              {isDe ? 'Schließen' : 'Close'}
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

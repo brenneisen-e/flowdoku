@@ -914,9 +914,9 @@ export default function AdminPage(): React.ReactElement {
   const [copiedDeepLink, setCopiedDeepLink] = React.useState(false);
   const [isSendingQR, setIsSendingQR] = React.useState(false);
   const [qrSentCount, setQrSentCount] = React.useState(0);
-  // v9.15: QR-Code-Versand-Modal mit Test-/Volldurchlauf + Auto-Send-Toggle
+  // v9.15: QR-Code-Versand-Modal mit Test-/Volldurchlauf. v20.7: der
+  // Auto-Send-Toggle ist entfallen — Auto-Send ist immer aktiv.
   const [qrSendModalOpen, setQrSendModalOpen] = React.useState(false);
-  const [qrAutoSendToggle, setQrAutoSendToggle] = React.useState(false);
   const [qrSendResult, setQrSendResult] = React.useState<string | null>(null);
   // v9.37: Vorschau der QR-Code-Mail (analog zur Live-Vorschau im Event-Wizard
   // unter „Kommunikation"). Der Organizer sieht damit vorab genau die Mail, die
@@ -1016,6 +1016,19 @@ export default function AdminPage(): React.ReactElement {
   // Globale Reparatur: Organizer-Email-Mismatch über alle Events fixen
   const [isRepairingOrganizers, setIsRepairingOrganizers] = React.useState(false);
   const [repairOrganizersResult, setRepairOrganizersResult] = React.useState<string | null>(null);
+  // v20.6: Reparatur "Fremd-Anmeldungen: Zugriff" über alle aktiven Events —
+  // prüft pro Teilnehmerliste die "nur eigene Elemente"-Sicherheit und setzt
+  // bei Anmeldungen durch Dritte den Zeilen-Autor auf den Teilnehmer.
+  const [isRepairingAccess, setIsRepairingAccess] = React.useState(false);
+  const [repairAccessResult, setRepairAccessResult] = React.useState<string | null>(null);
+  // v20.7: Fortschritts-Modal für die Zugriffs-Reparatur (Event i/N +
+  // Eintrag x/y + Abschluss-Summary). running=false ⇒ Summary + Schließen.
+  const [accessFixModal, setAccessFixModal] = React.useState<{
+    running: boolean;
+    evIdx: number; evTotal: number; evTitle: string;
+    itemDone: number; itemTotal: number;
+    summary: string[] | null;
+  } | null>(null);
   // Email Compose Modal
   const [showEmailModal, setShowEmailModal] = React.useState(false);
   // v17.10: Massmail-Target-Picker. Erst Zielgruppe waehlen, dann den
@@ -4293,12 +4306,11 @@ export default function AdminPage(): React.ReactElement {
               category="checkin"
               title={isSendingQR ? (isDe ? `QR-Codes werden versendet... (${qrSentCount})` : `Sending QR codes... (${qrSentCount})`) : (isDe ? 'QR-Codes versenden' : 'Send QR codes')}
               desc={isDe
-                ? 'Öffnet ein Modal mit drei Optionen: Test (nur an dich), Volldurchlauf an alle Angemeldeten, oder Auto-Send aktivieren (jede neue Anmeldung kriegt automatisch ihren QR-Code).'
-                : 'Opens a modal with three options: test (only to you), full run to all registered participants, or enable auto-send (every new registration automatically gets its QR code).'}
+                ? 'Öffnet ein Modal mit zwei Optionen: Test (nur an dich) oder Volldurchlauf an alle Angemeldeten. Jede NEUE Anmeldung bekommt ihren QR-Code ohnehin automatisch per Mail — auch nach der Anmeldefrist. Teilnehmer finden ihren QR-Code zusätzlich jederzeit unter „Meine Events".'
+                : 'Opens a modal with two options: test (only to you) or full run to all registered participants. Every NEW registration receives its QR code automatically by email anyway — even after the registration deadline. Participants can also find their QR code anytime under "My events".'}
               badge="organizer"
               busy={isSendingQR}
               onClick={() => {
-                setQrAutoSendToggle(!!selectedEvent?.autoSendQRCode);
                 setQrSendResult(null);
                 setQrSendModalOpen(true);
               }}
@@ -4896,6 +4908,107 @@ export default function AdminPage(): React.ReactElement {
               />
             )}
 
+            {/* v20.6: Fremd-Anmeldungen: Zugriff reparieren (alle aktiven
+                Events) — Admin only. Geht alle Teilnehmerlisten durch, stellt
+                die "nur eigene Elemente"-Sicherheit sicher und setzt bei
+                Anmeldungen durch Dritte den Zeilen-Autor auf den Teilnehmer,
+                damit die angemeldete Person ihre Anmeldung in "Meine Events"
+                sieht und sich selbst abmelden kann (v20.5 rückwirkend). */}
+            {isAdmin && (
+              <ActionTile
+                icon={<Wrench size={18} />}
+                category="maintenance"
+                title={isRepairingAccess ? (isDe ? 'Prüfung läuft…' : 'Check running…') : (isDe ? 'Fremd-Anmeldungen: Zugriff reparieren (alle aktiven Events)' : 'Proxy registrations: repair access (all active events)')}
+                desc={isDe
+                  ? 'Geht alle Teilnehmerlisten aller aktiven Events (inkl. Sub-Events) durch und prüft zwei Dinge: (1) dass jede Liste auf „nur eigene Elemente" steht — also niemand fremde Anmeldedaten sehen kann; (2) dass bei Anmeldungen, die jemand FÜR eine andere Person gemacht hat, die angemeldete Person ihre eigene Anmeldung sehen und sich selbst abmelden kann. Gefundene Probleme werden direkt repariert. Externe Personen ohne Deloitte-Login können dabei nicht berücksichtigt werden.'
+                  : 'Walks the participant lists of all active events (incl. sub-events) and checks two things: (1) that every list is set to „own items only" — so nobody can see other people’s registration data; (2) that for registrations someone made FOR another person, the registered person can see their own registration and cancel it themselves. Found issues are repaired directly. External people without a Deloitte login cannot be covered.'}
+                badge="admin"
+                busy={isRepairingAccess}
+                result={repairAccessResult}
+                resultIsError={!!repairAccessResult && (repairAccessResult.indexOf('Fehler') >= 0 || repairAccessResult.indexOf('Error') >= 0)}
+                onClick={async () => {
+                  if (!eventServiceRef) return;
+                  // Alle aktiven Events (inkl. Sub-Events) mit Teilnehmerliste,
+                  // dedupliziert nach Subsite (Reuse-Pfade teilen sich eine).
+                  const seen = new Set<string>();
+                  const targets = allEvents.filter(ev => {
+                    if (ev.status !== 'Active' || !ev.subsiteUrl) return false;
+                    const key = ev.subsiteUrl.toLowerCase();
+                    if (seen.has(key)) return false;
+                    seen.add(key);
+                    return true;
+                  });
+                  if (targets.length === 0) {
+                    setRepairAccessResult(isDe ? 'Keine aktiven Events mit Teilnehmerliste gefunden.' : 'No active events with a participant list found.');
+                    return;
+                  }
+                  if (!(await confirmDialog(isDe
+                    ? `Zugriffs-Prüfung über ${targets.length} aktive Event-Teilnehmerlisten starten?\n\nGeprüft wird pro Liste die „nur eigene Elemente"-Sicherheit, und bei Anmeldungen durch Dritte bekommt die angemeldete Person Zugriff auf ihre eigene Anmeldung. Je nach Teilnehmerzahl kann das einige Minuten dauern.`
+                    : `Start the access check across ${targets.length} active event participant lists?\n\nEach list is checked for „own items only" security, and for registrations made by a third party the registered person gets access to their own registration. Depending on participant counts this can take a few minutes.`, { confirmLabel: isDe ? 'Prüfen & reparieren' : 'Check & repair' }))) return;
+                  setIsRepairingAccess(true);
+                  setRepairAccessResult(null);
+                  // v20.7: Fortschritts-Modal öffnen.
+                  setAccessFixModal({ running: true, evIdx: 0, evTotal: targets.length, evTitle: '', itemDone: 0, itemTotal: 0, summary: null });
+                  let listsChecked = 0;
+                  let ilsWrong = 0;
+                  let ilsFixed = 0;
+                  let proxyFound = 0;
+                  let authorFixed = 0;
+                  let authorFailed = 0;
+                  const errorEvents: string[] = [];
+                  try {
+                    for (let i = 0; i < targets.length; i++) {
+                      const ev = targets[i];
+                      const shortTitle = (ev.title || '?').slice(0, 40);
+                      setAccessFixModal(prev => prev ? { ...prev, evIdx: i + 1, evTitle: shortTitle, itemDone: 0, itemTotal: 0 } : prev);
+                      try {
+                        const r = await eventServiceRef.repairProxyRegistrationAccess(ev.subsiteUrl as string, (done, total) => {
+                          if (done % 10 === 0 || done === total) {
+                            setAccessFixModal(prev => prev ? { ...prev, itemDone: done, itemTotal: total } : prev);
+                          }
+                        });
+                        listsChecked++;
+                        if (r.ilsWasWrong) {
+                          ilsWrong++;
+                          if (r.ilsFixed) ilsFixed++;
+                        }
+                        proxyFound += r.proxyFound;
+                        authorFixed += r.authorFixed;
+                        authorFailed += r.authorFailed;
+                      } catch {
+                        errorEvents.push(shortTitle);
+                      }
+                    }
+                    const parts: string[] = [];
+                    if (isDe) {
+                      parts.push(`${listsChecked} Listen geprüft.`);
+                      parts.push(ilsWrong === 0
+                        ? 'Listen-Sicherheit überall korrekt („nur eigene Elemente").'
+                        : `Listen-Sicherheit bei ${ilsWrong} Liste(n) falsch — ${ilsFixed} davon repariert${ilsFixed < ilsWrong ? ', Rest bitte manuell prüfen!' : '.'}`);
+                      parts.push(`${proxyFound} Anmeldungen durch Dritte gefunden, ${authorFixed} Zugriffe repariert${authorFailed > 0 ? `, ${authorFailed} nicht möglich (z.B. externe Personen)` : ''}.`);
+                      if (errorEvents.length > 0) parts.push(`Fehler bei: ${errorEvents.join(', ')}`);
+                    } else {
+                      parts.push(`${listsChecked} lists checked.`);
+                      parts.push(ilsWrong === 0
+                        ? 'List security correct everywhere („own items only").'
+                        : `List security wrong on ${ilsWrong} list(s) — ${ilsFixed} repaired${ilsFixed < ilsWrong ? ', please check the rest manually!' : '.'}`);
+                      parts.push(`${proxyFound} third-party registrations found, ${authorFixed} access repaired${authorFailed > 0 ? `, ${authorFailed} not possible (e.g. external people)` : ''}.`);
+                      if (errorEvents.length > 0) parts.push(`Errors on: ${errorEvents.join(', ')}`);
+                    }
+                    setRepairAccessResult(parts.join(' '));
+                    // v20.7: Summary im Fortschritts-Modal anzeigen.
+                    setAccessFixModal(prev => prev ? { ...prev, running: false, summary: parts } : prev);
+                  } catch {
+                    const err = isDe ? 'Fehler bei der Zugriffs-Prüfung.' : 'Error during the access check.';
+                    setRepairAccessResult(err);
+                    setAccessFixModal(prev => prev ? { ...prev, running: false, summary: [err] } : prev);
+                  } finally {
+                    setIsRepairingAccess(false);
+                  }
+                }}
+              />
+            )}
+
             {/* 8b. Organizer-Mails reparieren (alle Events) — Admin only.
                 Findet Events mit Längen-Mismatch zwischen organizers (Names) und
                 organizerEmails — typisch nach Legacy-Korruption aus v10.0–v10.2-
@@ -4907,6 +5020,7 @@ export default function AdminPage(): React.ReactElement {
             {isAdmin && (
               <ActionTile
                 icon={<Wrench size={18} />}
+                category="maintenance"
                 title={isRepairingOrganizers ? (isDe ? 'Reparatur läuft…' : 'Repair running…') : (isDe ? 'Organizer-Mails reparieren (alle Events)' : 'Repair organizer emails (all events)')}
                 desc={isDe
                   ? 'Scannt alle Events nach Mismatches zwischen Organizer-Namen und Organizer-Emails (Legacy-Korruption aus früheren App-Versionen). Sucht fehlende Emails per Tenant-Suche über den Nachnamen und persistiert die gefixten Paare. Manuell nicht auflösbare Personen bleiben mit leerem Email-Slot — User muss diese im Wizard nachziehen.'
@@ -5029,6 +5143,7 @@ export default function AdminPage(): React.ReactElement {
             {isAdmin && selectedEvent && (selectedEvent.type === 'B2Run' || (selectedEvent.eventSpecificFields || []).some(f => (f.id || '').toLowerCase().startsWith('b2run_'))) && (
               <ActionTile
                 icon={<RefreshCw size={18} />}
+                category="maintenance"
                 title={isDe ? 'Legacy-B2Run migrieren' : 'Migrate legacy B2Run'}
                 desc={isDe
                   ? "Stellt ein altes B2Run-Event auf das normale Eventschema um. Die Gruppen heißen danach 'Durchstarter' / 'Funstarter' (im Wizard frei umbenennbar), alle Anmeldefelder, Anmeldungen, Wartelisten und Sub-Events bleiben erhalten."
@@ -5160,6 +5275,7 @@ export default function AdminPage(): React.ReactElement {
             {isAdmin && selectedEvent && (
               <ActionTile
                 icon={<RefreshCw size={18} />}
+                category="maintenance"
                 title={isDe ? 'Custom-Fields aus Versionsverlauf zurückholen' : 'Restore custom fields from version history'}
                 desc={isDe
                   ? 'Holt versehentlich verloren gegangene Anmeldefelder (z.B. Altersgruppe, T-Shirt-Größe, Startblock, Mobilnummer) aus einer früheren Version des Events zurück. Bestehende Felder bleiben unangetastet — es wird nur Fehlendes ergänzt.'
@@ -5252,6 +5368,7 @@ export default function AdminPage(): React.ReactElement {
             {isAdmin && (
               <ActionTile
                 icon={<Wrench size={18} />}
+                category="maintenance"
                 title={isFixingFields ? (isDe ? 'Felder werden repariert…' : 'Repairing fields…') : (isDe ? 'Felder reparieren' : 'Repair fields')}
                 desc={isDe
                   ? "Räumt die Anmeldefelder dieses Events automatisch auf: AGB/Datenschutz wird eine richtige Checkbox, T-Shirt-Auswahl bekommt eine 'Kein T-Shirt'-Option, doppelte '(Pflicht)'-Zusätze verschwinden."
@@ -5383,6 +5500,7 @@ export default function AdminPage(): React.ReactElement {
             {isAdmin && (
               <ActionTile
                 icon={<RefreshCw size={18} />}
+                category="maintenance"
                 title={isRefreshingProfiles ? (isDe ? 'Profile werden geladen…' : 'Loading profiles…') : (isDe ? 'Profile neu laden' : 'Reload profiles')}
                 desc={isDe
                   ? 'Frischt JobTitle, Standort, Department und Telefonnummer der letzten N Teilnehmer aus dem Microsoft-365-Benutzerprofil auf — wenn z.B. nach einem Org-Wechsel die Teilnehmerdaten veraltet sind.'
@@ -5425,6 +5543,7 @@ export default function AdminPage(): React.ReactElement {
             {(isAdmin || isOrganizerFor(selectedEvent)) && (
               <ActionTile
                 icon={<FileText size={18} />}
+                category="event"
                 title={isDe ? 'Audit-Log / Änderungsprotokoll' : 'Audit log / change history'}
                 desc={isDe
                   ? 'Öffnet das Änderungsprotokoll vorgefiltert auf dieses Event. Du siehst pro Eintrag: wann, wer, welche Aktion (z.B. bearbeitet, abgemeldet, gelöscht), welcher Teilnehmer betroffen war und bei Daten-Änderungen den genauen Vorher → Nachher-Vergleich je Feld.'
@@ -7697,6 +7816,62 @@ export default function AdminPage(): React.ReactElement {
 
       {changeLogModal}
 
+      {/* v20.7: Fortschritts-Modal der Zugriffs-Reparatur („Fremd-Anmeldungen:
+          Zugriff reparieren") — Event i/N, Eintrag x/y, Balken, Abschluss-
+          Summary. Während des Laufs nicht wegklickbar. */}
+      {accessFixModal && (
+        <Modal
+          open={true}
+          onClose={() => { if (!accessFixModal.running) setAccessFixModal(null); }}
+          dismissable={!accessFixModal.running}
+          maxWidth={520}
+          padding={24}
+          ariaLabel={isDe ? 'Zugriffs-Prüfung' : 'Access check'}
+        >
+          <h3 style={{ margin: '0 0 10px', fontSize: '1.05rem' }}>
+            {isDe ? 'Fremd-Anmeldungen: Zugriff reparieren' : 'Proxy registrations: repair access'}
+          </h3>
+          {accessFixModal.running ? (
+            <>
+              <p style={{ margin: '0 0 6px', fontSize: '0.9rem', color: 'var(--dex-gray-700)' }}>
+                {isDe ? 'Event' : 'Event'} {accessFixModal.evIdx}/{accessFixModal.evTotal}: <strong>{accessFixModal.evTitle || '…'}</strong>
+              </p>
+              <p style={{ margin: '0 0 12px', fontSize: '0.82rem', color: 'var(--dex-gray-500)' }}>
+                {accessFixModal.itemTotal > 0
+                  ? (isDe
+                    ? `Eintrag ${accessFixModal.itemDone}/${accessFixModal.itemTotal} wird geprüft…`
+                    : `Checking item ${accessFixModal.itemDone}/${accessFixModal.itemTotal}…`)
+                  : (isDe ? 'Liste wird geladen…' : 'Loading list…')}
+              </p>
+              {(() => {
+                const evBase = Math.max(0, accessFixModal.evIdx - 1);
+                const inner = accessFixModal.itemTotal > 0 ? accessFixModal.itemDone / accessFixModal.itemTotal : 0;
+                const pct = Math.min(100, Math.round(((evBase + inner) / Math.max(1, accessFixModal.evTotal)) * 100));
+                return (
+                  <div style={{ background: 'var(--dex-gray-100, #f0f0f0)', borderRadius: 999, height: 10, overflow: 'hidden' }}>
+                    <div style={{ width: `${pct}%`, height: '100%', background: 'var(--dex-green, #86bc25)', borderRadius: 999, transition: 'width 0.2s ease' }} />
+                  </div>
+                );
+              })()}
+              <p style={{ margin: '10px 0 0', fontSize: '0.78rem', color: 'var(--dex-gray-400)' }}>
+                {isDe ? 'Bitte das Fenster geöffnet lassen, bis die Prüfung abgeschlossen ist.' : 'Please keep this window open until the check completes.'}
+              </p>
+            </>
+          ) : (
+            <>
+              <ul style={{ margin: '0 0 14px', paddingLeft: 18, fontSize: '0.88rem', color: 'var(--dex-gray-700)', lineHeight: 1.6 }}>
+                {(accessFixModal.summary || []).map((s, i) => <li key={i}>{s}</li>)}
+              </ul>
+              <div style={{ textAlign: 'right' }}>
+                <button className="btn btn-primary" onClick={() => setAccessFixModal(null)} style={{ fontSize: '0.88rem', padding: '9px 18px' }}>
+                  {isDe ? 'Schließen' : 'Close'}
+                </button>
+              </div>
+            </>
+          )}
+        </Modal>
+      )}
+
       {/* v20.2: Self-Check-in-Modal (von der QR-Kachel unter dem Event-Logo):
           großer QR, Erklärtext, PDF-/Live-Aktionen + editierbares Zeitfenster. */}
       {sciModalOpen && selectedEvent && (
@@ -7921,27 +8096,23 @@ export default function AdminPage(): React.ReactElement {
               );
             })()}
 
-            {/* Auto-Send-Toggle */}
-            <label style={{
+            {/* v20.7: Auto-Send ist Standard und nicht mehr abwählbar — der
+                frühere Toggle ist durch eine Info-Box ersetzt. Jede NEUE
+                Anmeldung (auch nach der Anmeldefrist / nach diesem Versand)
+                bekommt ihren QR-Code automatisch per Mail. */}
+            <div style={{
               display: 'flex', alignItems: 'flex-start', gap: 10, padding: '12px',
-              border: '1px solid var(--dex-gray-200)', borderRadius: 8, marginBottom: 16,
-              background: qrAutoSendToggle ? 'var(--dex-green-light, #f0f8e8)' : '#fff',
-              cursor: 'pointer',
+              border: '1px solid rgba(134,188,37,0.35)', borderRadius: 8, marginBottom: 16,
+              background: 'var(--dex-green-light, #f0f8e8)',
             }}>
-              <input
-                type="checkbox"
-                checked={qrAutoSendToggle}
-                onChange={e => setQrAutoSendToggle(e.target.checked)}
-                disabled={isSendingQR}
-                style={{ marginTop: 3 }}
-              />
+              <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', flexShrink: 0, marginTop: 1 }}><Check size={18} /></span>
               <div style={{ fontSize: '0.85rem' }}>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>Automatisch bei Anmeldung versenden</div>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>Neue Anmeldungen erhalten ihren QR-Code automatisch</div>
                 <div style={{ color: 'var(--dex-gray-600)' }}>
-                  Wenn aktiv, bekommt jeder neue Teilnehmer direkt nach erfolgreicher Anmeldung seinen QR-Code per Mail. Diese Einstellung wird am Event gespeichert und wirkt für ALLE zukünftigen Anmeldungen.
+                  Jeder Teilnehmer bekommt direkt nach erfolgreicher Anmeldung seinen persönlichen QR-Code per Mail — auch bei Anmeldungen nach diesem Versand oder nach der Anmeldefrist. Zusätzlich ist der QR-Code für jeden Teilnehmer jederzeit unter &bdquo;Meine Events&ldquo; abrufbar.
                 </div>
               </div>
-            </label>
+            </div>
 
             {qrSendResult && (
               <div style={{
@@ -8008,10 +8179,6 @@ export default function AdminPage(): React.ReactElement {
                   className="btn btn-secondary"
                   onClick={async () => {
                     if (!eventServiceRef || !selectedEvent) return;
-                    // Toggle persistieren (einmal speichern reicht — auch wenn user nur testet)
-                    if (qrAutoSendToggle !== !!selectedEvent.autoSendQRCode) {
-                      try { await eventServiceRef.updateEvent(parseInt(selectedEvent.id, 10), { AutoSendQRCode: qrAutoSendToggle }); } catch { /* */ }
-                    }
                     // Test-Modus: an Organizer-Mail des aktuellen Users versenden
                     setIsSendingQR(true);
                     setQrSendResult(null);
@@ -8055,12 +8222,6 @@ export default function AdminPage(): React.ReactElement {
                       return;
                     }
                     if (!(await confirmDialog(isDe ? `QR-Codes an ${eligible.length} angemeldete Teilnehmer versenden?` : `Send QR codes to ${eligible.length} registered participants?`, { confirmLabel: isDe ? 'Versenden' : 'Send' }))) return;
-
-                    // Auto-Send-Toggle persistieren
-                    if (qrAutoSendToggle !== !!selectedEvent.autoSendQRCode) {
-                      try { await eventServiceRef.updateEvent(parseInt(selectedEvent.id, 10), { AutoSendQRCode: qrAutoSendToggle }); } catch { /* */ }
-                    }
-
                     setIsSendingQR(true);
                     setQrSendResult(null);
                     setQrSentCount(0);

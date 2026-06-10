@@ -627,6 +627,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         safeRun('ensureChangeLogList', () => eventService.ensureChangeLogList(), parallelMarks),
         safeRun('ensureTeamJoinRequestsList', () => eventService.ensureTeamJoinRequestsList(), parallelMarks),
         safeRun('ensureOutlookLocksList', () => eventService.ensureOutlookLocksList(), parallelMarks),
+        safeRun('ensureAccessFixList', () => eventService.ensureAccessFixList(), parallelMarks),
         safeRun('ensureAssetsFolders', () => eventService.ensureAssetsFolders(), parallelMarks),
         safeRun('ensureLogosInConfig', () => eventService.ensureLogosInConfig(), parallelMarks),
       ]);
@@ -1350,11 +1351,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           templateType, event.title, eventId, ccFromFields, bcc
         ).catch(err => console.warn('[DEX] queueEmail failed:', err));
 
-        // v9.15: Auto-Send QR-Code wenn am Event aktiviert. Nur fuer
-        // Status='Angemeldet' (Wartelistler bekommen keinen QR — sie sind
-        // noch nicht confirmed). Setting wird im Admin-Center per QR-Versand-
-        // Modal pro Event umgeschaltet (autoSendQRCode → SP-Feld AutoSendQRCode).
-        if (event.autoSendQRCode && status === 'Angemeldet') {
+        // v9.15/v20.7: Auto-Send QR-Code — seit v20.7 IMMER aktiv (nicht mehr
+        // pro Event abwählbar; das frühere AutoSendQRCode-Flag wird ignoriert).
+        // Damit bekommt auch eine Anmeldung nach dem QR-Massen-Versand bzw.
+        // nach der Anmeldefrist automatisch ihren QR-Code. Nur fuer
+        // Status='Angemeldet' (Wartelistler sind noch nicht confirmed) und
+        // nur solange E-Mails am Event nicht deaktiviert sind.
+        if (status === 'Angemeldet' && !event.disableEmails) {
           (async (): Promise<void> => {
             try {
               const qrData = `DEX|${event.eventNumber}|${emailToUse}`;

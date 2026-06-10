@@ -3773,3 +3773,101 @@ Cancellation-Mail-Body (rotes Banner + durchgestrichener Event-Titel)
 seit v17.20 live. Bei Bedarf kann der Tenant-Admin Variante B im
 `DEX_Outlook_Einladungen`-Flow nachziehen — bis dahin reicht der
 verbesserte Mail-Body als visuelle Bestätigung der Cancelation.
+
+---
+
+## 7. DEX_AccessFix_Autor (NEU, v20.7) — Zeilen-Autor bei Assistenz-Anmeldungen setzen
+
+**Zweck:** Die Teilnehmerlisten laufen mit Item-Level-Security („nur eigene
+Elemente", geprüft am SharePoint-Autor der Zeile). Bei einer stellvertretenden
+Anmeldung setzt die App den Autor auf den Teilnehmer, damit dieser seine
+Anmeldung in „Meine Events" sieht und sich selbst abmelden kann (v20.5). Das
+funktioniert für Organizer/Admin direkt — eine **Assistenz** (normaler
+Contribute-User) hat dafür aber keine Rechte. In dem Fall schreibt die App
+einen Auftrag in die neue Queue-Liste **`DEX_AccessFix`** (Site-Collection-
+Root, von der App automatisch provisioniert; Spalten: `SubsiteUrl` Text,
+`ItemId` Zahl, `ParticipantEmail` Text, `Status` Text). Dieser Flow arbeitet
+die Aufträge mit Service-Identität ab.
+
+**Verbindungs-Identität:** Der Flow muss mit einem Konto laufen, das auf den
+Event-Subsites **Vollzugriff** hat (Site-Owner / das übliche Service-Konto der
+übrigen DEX-Flows).
+
+### UI-Anleitung — Flow komplett neu anlegen (Stand v20.7)
+
+1. **NEU: Flow anlegen.** Power Automate → „Erstellen" → **„Automatisierter
+   Cloud-Flow"** → Name: `DEX_AccessFix_Autor` → Trigger suchen: **„Wenn ein
+   Element erstellt wird" (SharePoint)** → „Erstellen".
+2. **Trigger konfigurieren** (bestehende Trigger-Karte):
+   - **Websiteadresse:** die Hauptsite
+     (`https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform`)
+   - **Listenname:** `DEX_AccessFix`
+3. **NEU: Action 1 — User auflösen.**
+   - **Wohin:** direkt unter den Trigger (erste Action).
+   - **Action-Typ:** **„HTTP-Anforderung an SharePoint senden"** („Send an
+     HTTP request to SharePoint").
+   - **Websiteadresse:** NICHT aus der Dropdown wählen, sondern unten
+     **„Benutzerdefinierten Wert eingeben"** → über den **Expression-Tab (fx)**
+     eintragen: `triggerOutputs()?['body/SubsiteUrl']`
+   - **Methode:** `POST`
+   - **URI:** `_api/web/ensureuser`
+   - **Header** (zwei Zeilen, Key = Wert):
+     - `Accept` = `application/json;odata=nometadata`
+     - `Content-Type` = `application/json;odata=nometadata`
+   - **Text (Body):**
+     ```
+     { "logonName": "@{triggerOutputs()?['body/ParticipantEmail']}" }
+     ```
+     (den `@{…}`-Teil über den **Expression-Tab (fx)** einfügen:
+     `triggerOutputs()?['body/ParticipantEmail']`)
+   - **Rename** (⋮ → Umbenennen): **`Ensure_User`** — der Name wird von der
+     nächsten Action referenziert.
+4. **NEU: Action 2 — Autor setzen.**
+   - **Wohin:** direkt unter `Ensure_User`.
+   - **Action-Typ:** **„HTTP-Anforderung an SharePoint senden"**.
+   - **Websiteadresse:** wieder „Benutzerdefinierten Wert eingeben" → fx:
+     `triggerOutputs()?['body/SubsiteUrl']`
+   - **Methode:** `POST`
+   - **URI:** über fx zusammensetzen:
+     `concat('_api/web/lists/getbytitle(''Teilnehmer'')/items(', triggerOutputs()?['body/ItemId'], ')')`
+   - **Header** (vier Zeilen):
+     - `Accept` = `application/json;odata=nometadata`
+     - `Content-Type` = `application/json;odata=nometadata`
+     - `IF-MATCH` = `*`
+     - `X-HTTP-Method` = `MERGE`
+   - **Text (Body):**
+     ```
+     { "AuthorId": @{body('Ensure_User')?['Id']} }
+     ```
+     (fx: `body('Ensure_User')?['Id']` — OHNE Anführungszeichen drumherum,
+     der Wert ist eine Zahl)
+   - **Rename:** **`Set_Author`**.
+   - **Run after:** Standard (ist erfolgreich) — nichts ändern.
+5. **NEU: Action 3 — Auftrag als erledigt markieren.**
+   - **Wohin:** unter `Set_Author`.
+   - **Action-Typ:** **„Element aktualisieren" (SharePoint)**.
+   - **Websiteadresse:** die Hauptsite (Dropdown), **Listenname:**
+     `DEX_AccessFix`, **ID:** dynamischer Inhalt „ID" aus dem Trigger.
+   - **Status:** `Done` (als Text eintippen). Alle übrigen Felder leer lassen.
+   - **Rename:** **`Mark_Done`**.
+6. **NEU: Action 4 — Fehlerpfad markieren.**
+   - **Wohin:** unter `Mark_Done` (parallel-alternativer Abschluss).
+   - **Action-Typ:** **„Element aktualisieren" (SharePoint)** — gleiche
+     Parameter wie `Mark_Done`, aber **Status:** `Failed`.
+   - **Rename:** **`Mark_Failed`**.
+   - **Run after** (⋮ → „Ausführen nach konfigurieren"): Haken bei
+     `Set_Author` → **„ist fehlgeschlagen"** UND **„wird übersprungen"**
+     setzen, den Haken bei „ist erfolgreich" ENTFERNEN. (Damit greift der
+     Fehlerpfad auch, wenn schon `Ensure_User` scheitert — `Set_Author` ist
+     dann „übersprungen".)
+7. **Speichern** und einmal testen: in der App als Assistenz (oder per Hand
+   ein Item in `DEX_AccessFix` mit gültiger SubsiteUrl/ItemId/E-Mail anlegen)
+   → der Lauf muss `Status=Done` setzen und in der Teilnehmerliste steht als
+   „Erstellt von" der Teilnehmer.
+
+**Hinweis:** Externe Personen (keine Tenant-Identität) lassen `Ensure_User`
+fehlschlagen → `Status=Failed`. Das ist erwartbar — externe Empfänger haben
+ohnehin keinen App-Zugriff.
+
+**TODO nach Einrichtung:** Flow-JSON aus dem Code-View kopieren und hier als
+Abschnitt „Finaler Flow-JSON DEX_AccessFix_Autor" einpflegen.
