@@ -42,6 +42,10 @@ export default function LandingPage(): React.ReactElement {
     done: number; total: number;
     summary: string[] | null;
   }>(null);
+  // v22.2: Abbruch-Mechanik — Ref wird vom Abbrechen-Button gesetzt und vom
+  // Lauf pro Zeile geprüft (bereits verschobene Zeilen bleiben archiviert).
+  const archCancelRef = React.useRef(false);
+  const [archCancelRequested, setArchCancelRequested] = React.useState(false);
   // Beim App-Start (sobald Events geladen) als Admin die archivreifen
   // Zeilen zählen — nur dann erscheint die Box mit dem Button.
   React.useEffect(() => {
@@ -122,13 +126,21 @@ export default function LandingPage(): React.ReactElement {
       { title: isDe ? 'Archivierung' : 'Archiving', confirmLabel: isDe ? 'Jetzt archivieren' : 'Archive now' }
     );
     if (!ok) return;
+    archCancelRef.current = false;
+    setArchCancelRequested(false);
     setArchModal({ running: true, listIdx: 0, listTotal: 5, listName: '', done: 0, total: 0, summary: null });
     try {
       const res = await runArchiveExpired((listIdx, listTotal, listName, done, total) => {
         setArchModal(prev => prev ? { ...prev, listIdx: listIdx + 1, listTotal, listName, done, total } : prev);
-      });
+      }, () => archCancelRef.current);
       const parts: string[] = [];
+      if (res.cancelled) {
+        parts.push(isDe
+          ? `Abgebrochen — ${res.archived} Zeilen wurden bereits verschoben, der Rest bleibt in den Arbeitslisten und steht beim nächsten Lauf wieder an.`
+          : `Cancelled — ${res.archived} rows were already moved, the rest stays in the working lists and will be offered again on the next run.`);
+      } else {
       parts.push(isDe ? `${res.archived} Zeilen ins Archiv verschoben.` : `${res.archived} rows moved to the archive.`);
+      }
       const perListLine = Object.keys(res.perList).filter(k => res.perList[k] > 0).map(k => `${k}: ${res.perList[k]}`).join(' · ');
       if (perListLine) parts.push(perListLine);
       if (res.failed > 0) {
@@ -244,6 +256,19 @@ export default function LandingPage(): React.ReactElement {
               <p style={{ margin: '10px 0 0', fontSize: '0.78rem', color: 'var(--dex-gray-400)' }}>
                 {isDe ? 'Bitte das Fenster geöffnet lassen, bis die Archivierung abgeschlossen ist.' : 'Please keep this window open until archiving completes.'}
               </p>
+              {/* v22.2: Abbrechen — stoppt nach der aktuellen Zeile. */}
+              <div style={{ textAlign: 'right', marginTop: 12 }}>
+                <button
+                  className="btn btn-secondary"
+                  disabled={archCancelRequested}
+                  onClick={() => { archCancelRef.current = true; setArchCancelRequested(true); }}
+                  style={{ fontSize: '0.85rem' }}
+                >
+                  {archCancelRequested
+                    ? (isDe ? 'Wird abgebrochen…' : 'Cancelling…')
+                    : (isDe ? 'Abbrechen' : 'Cancel')}
+                </button>
+              </div>
             </>
           ) : (
             <>
