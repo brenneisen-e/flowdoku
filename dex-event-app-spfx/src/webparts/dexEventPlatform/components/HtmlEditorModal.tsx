@@ -86,6 +86,11 @@ export interface HtmlEditorModalProps {
   insertableVars?: Array<{ key: string; label: string }>;
   logoBase64?: string;
   imageBase64?: string;
+  /** v22.5: optionale „Briefumschlag"-Kopfzeile über der Mail-Vorschau —
+   *  zeigt Empfänger („An") und Betreff, damit man die komplette Mail wie im
+   *  Postfach sieht. Nur im previewMode 'email' relevant. */
+  previewToLine?: string;
+  previewSubjectLine?: string;
   /** Optional: zusaetzlicher primaerer Button im Footer (z.B. "Senden") */
   extraAction?: {
     label: string;
@@ -204,6 +209,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     logoBase64 = '', imageBase64 = '',
     extraAction,
     headerExtra,
+    previewToLine, previewSubjectLine,
   } = props;
 
   const editorRef = React.useRef<HTMLDivElement>(null);
@@ -950,6 +956,25 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
             <div style={{ padding: '10px 16px', fontSize: '0.75rem', color: 'var(--dex-gray-500)', borderBottom: '1px solid var(--dex-gray-200)', background: '#fff' }}>
               Live-Vorschau {previewMode === 'outlook' ? '(Outlook-Termin)' : previewMode === 'plain' ? '(Anmelde-Seite)' : '(Deloitte-Mail)'} — Variablen werden mit Beispielwerten ersetzt
             </div>
+            {/* v22.5: „Briefumschlag"-Kopf über der Mail-Vorschau — zeigt
+                Empfänger („An") + Betreff, damit man die komplette Mail wie im
+                Postfach sieht. Nur wenn vom Aufrufer befüllt (Einladungsmail). */}
+            {previewMode === 'email' && (previewToLine || previewSubjectLine) && (
+              <div style={{ background: '#fff', borderBottom: '1px solid var(--dex-gray-200)', padding: '10px 16px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                {previewToLine && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <span style={{ color: 'var(--dex-gray-400)', fontWeight: 600, minWidth: 52, flexShrink: 0 }}>An:</span>
+                    <span style={{ wordBreak: 'break-word' }}>{previewToLine}</span>
+                  </div>
+                )}
+                {previewSubjectLine && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <span style={{ color: 'var(--dex-gray-400)', fontWeight: 600, minWidth: 52, flexShrink: 0 }}>Betreff:</span>
+                    <span style={{ fontWeight: 700, color: 'var(--dex-gray-800)', wordBreak: 'break-word' }}>{previewSubjectLine}</span>
+                  </div>
+                )}
+              </div>
+            )}
             <iframe
               title="Vorschau"
               srcDoc={renderPreviewHtml()}

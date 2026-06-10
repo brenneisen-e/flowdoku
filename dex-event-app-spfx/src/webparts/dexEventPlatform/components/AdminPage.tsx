@@ -16,7 +16,7 @@ import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
-import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2, ChevronUp, ChevronDown, QrCode } from './Icons';
+import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2, ChevronUp, ChevronDown, QrCode, Search, Info } from './Icons';
 import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
 // v20.1: Self-Check-in jederzeit aktivierbar (Token-Erzeugung beim Klick).
 // v20.2: + statische Check-in-URL für die QR-Kachel im Event-Detail.
@@ -536,6 +536,9 @@ function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | null {
   // unter Check-in) statt flacher Alphabet-Liste. Einträge sind mehrzeilig:
   // Titel fett, Beschreibung darunter — der frühere Hover-Tooltip entfällt.
   const [expanded, setExpanded] = React.useState<Set<string>>(new Set());
+  // v22.5: Freitext-Suche über alle Aktionen (Titel + Beschreibung). Solange
+  // etwas eingetippt ist, werden alle Kategorien automatisch aufgeklappt.
+  const [query, setQuery] = React.useState('');
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     if (!open) return undefined;
@@ -547,8 +550,21 @@ function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | null {
     document.addEventListener('mousedown', onDocClick);
     return () => document.removeEventListener('mousedown', onDocClick);
   }, [open]);
+  // v22.5: Suchfeld leeren, sobald das Dropdown geschlossen wird.
+  React.useEffect(() => { if (!open) setQuery(''); }, [open]);
   if (!ctx || ctx.actions.length === 0) return null;
   const lang = props.isDe ? 'de' : 'en';
+  // v22.5: Kategorien alphabetisch nach lokalisiertem Label sortieren.
+  const sortedCats = ACTION_CATEGORY_ORDER.slice().sort((a, b) => {
+    const la = props.isDe ? ACTION_CATEGORY_LABELS[a].de : ACTION_CATEGORY_LABELS[a].en;
+    const lb = props.isDe ? ACTION_CATEGORY_LABELS[b].de : ACTION_CATEGORY_LABELS[b].en;
+    return la.localeCompare(lb, lang);
+  });
+  // v22.5: Aktiver Suchbegriff (klein geschrieben) + Treffer-Filter.
+  const q = query.trim().toLowerCase();
+  const matchesQuery = (a: RegisteredAction): boolean =>
+    !q || a.title.toLowerCase().indexOf(q) >= 0 || (!!a.desc && a.desc.toLowerCase().indexOf(q) >= 0);
+  const visibleActions = ctx.actions.filter(matchesQuery);
   const toggleKey = (k: string): void => {
     setExpanded(prev => {
       const next = new Set(prev);
@@ -624,23 +640,65 @@ function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | null {
           boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 50,
           maxHeight: 480, overflowY: 'auto',
         }}>
-          {ACTION_CATEGORY_ORDER.map(catKey => {
-            const inCat = ctx.actions.filter(a => a.category === catKey);
+          {/* v22.5: Suchfeld — filtert alle Aktionen quer über die Kategorien. */}
+          <div style={{
+            position: 'sticky', top: 0, zIndex: 2, background: '#fff',
+            padding: 10, borderBottom: '1px solid var(--dex-gray-200)',
+          }}>
+            <div style={{ position: 'relative' }}>
+              <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--dex-gray-400)', display: 'inline-flex', pointerEvents: 'none' }}>
+                <Search size={15} />
+              </span>
+              <input
+                type="text"
+                autoFocus
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder={props.isDe ? 'Aktion suchen…' : 'Search action…'}
+                style={{
+                  width: '100%', boxSizing: 'border-box', padding: '8px 30px 8px 32px',
+                  border: '1px solid var(--dex-gray-300)', borderRadius: 8, fontSize: '0.85rem',
+                  outline: 'none',
+                }}
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery('')}
+                  aria-label={props.isDe ? 'Suche leeren' : 'Clear search'}
+                  style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-gray-400)', display: 'inline-flex', padding: 4 }}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          </div>
+          {q && visibleActions.length === 0 && (
+            <div style={{ padding: '18px 14px', textAlign: 'center', color: 'var(--dex-gray-500)', fontSize: '0.85rem' }}>
+              {props.isDe ? 'Keine Aktion gefunden.' : 'No action found.'}
+            </div>
+          )}
+          {sortedCats.map(catKey => {
+            const inCat = visibleActions.filter(a => a.category === catKey);
             if (inCat.length === 0) return null;
             const catLabel = props.isDe ? ACTION_CATEGORY_LABELS[catKey].de : ACTION_CATEGORY_LABELS[catKey].en;
             const catDesc = props.isDe ? ACTION_CATEGORY_LABELS[catKey].descDe : ACTION_CATEGORY_LABELS[catKey].descEn;
-            const catOpen = expanded.has(catKey);
+            // v22.5: bei aktiver Suche alle Treffer-Kategorien automatisch öffnen.
+            const catOpen = q ? true : expanded.has(catKey);
             const direct = inCat.filter(a => !a.subCategory).slice().sort((a, b) => a.title.localeCompare(b.title, lang));
             const subNames = Array.from(new Set(inCat.filter(a => !!a.subCategory).map(a => a.subCategory as string))).sort((a, b) => a.localeCompare(b, lang));
             return (
               <div key={catKey}>
                 <div
                   onClick={() => toggleKey(catKey)}
+                  onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(134,188,37,0.10)'; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'var(--dex-gray-50, #fafafa)'; }}
                   style={{
                     padding: '10px 12px', cursor: 'pointer', userSelect: 'none',
                     display: 'flex', alignItems: 'center', gap: 8,
                     background: 'var(--dex-gray-50, #fafafa)',
                     borderBottom: '1px solid var(--dex-gray-200)',
+                    transition: 'background 0.12s ease',
                   }}
                 >
                   <span style={{ width: 14, color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.8rem', flexShrink: 0 }}>{catOpen ? '▾' : '▸'}</span>
@@ -661,17 +719,20 @@ function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | null {
                 {catOpen && direct.map(a => renderActionRow(a, 30))}
                 {catOpen && subNames.map(sub => {
                   const subKey = `${catKey}::${sub}`;
-                  const subOpen = expanded.has(subKey);
+                  const subOpen = q ? true : expanded.has(subKey);
                   const subActions = inCat.filter(a => a.subCategory === sub).slice().sort((a, b) => a.title.localeCompare(b.title, lang));
                   return (
                     <div key={subKey}>
                       <div
                         onClick={() => toggleKey(subKey)}
+                        onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(134,188,37,0.12)'; }}
+                        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = 'rgba(134,188,37,0.05)'; }}
                         style={{
                           padding: '8px 12px 8px 30px', cursor: 'pointer', userSelect: 'none',
                           display: 'flex', alignItems: 'center', gap: 8,
                           background: 'rgba(134,188,37,0.05)',
                           borderBottom: '1px solid var(--dex-gray-100)',
+                          transition: 'background 0.12s ease',
                         }}
                       >
                         <span style={{ width: 14, color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.75rem' }}>{subOpen ? '▾' : '▸'}</span>
@@ -1052,6 +1113,13 @@ export default function AdminPage(): React.ReactElement {
   const [inviteBody, setInviteBody] = React.useState('');
   const [inviteTarget, setInviteTarget] = React.useState<'organizer' | 'audience'>('organizer');
   const [inviteSending, setInviteSending] = React.useState(false);
+  // v22.5: Unter-Überschrift der Einladungsmail (vorher nicht erfasst) + Entwurf-
+  // Speicherung pro Event in localStorage, damit ein angefangener Text beim
+  // Schließen + erneuten Öffnen erhalten bleibt.
+  const [inviteSubheading, setInviteSubheading] = React.useState('');
+  // verhindert, dass das Auto-Speichern den gerade geladenen Entwurf sofort
+  // wieder überschreibt, bevor der State gesetzt ist.
+  const inviteHydratingRef = React.useRef(false);
   const [showExportMenu, setShowExportMenu] = React.useState(false);
   // v17.12: Zielgruppen-Picker fuer Excel-Export.
   const [excelTargetModal, setExcelTargetModal] = React.useState<null | { mode: 'deloitte' | 'b2run' }>(null);
@@ -2643,6 +2711,70 @@ export default function AdminPage(): React.ReactElement {
     }
   };
 
+  // v22.5: Einladungsmail — Default-Texte bauen, Entwurf laden/speichern
+  // (localStorage pro Event), Modal öffnen, zurücksetzen.
+  const inviteDraftKey = (id: string): string => `dex_invite_draft_${id}`;
+  const buildInviteDefaults = (ev: DeloitteEvent): { subject: string; heading: string; subheading: string; body: string } => {
+    const appUrl = `${siteUrl}/SitePages/DEX.aspx?env=WebView`;
+    const linkHtml = `<a href="${appUrl}" style="color:#86bc25;font-weight:600;">${appUrl}</a>`;
+    const orgList = (ev.organizers || []).map(s => (s || '').trim()).filter(Boolean);
+    const teamLine = isDe ? `Das ${ev.title} Orga Team` : `The ${ev.title} Organizer Team`;
+    const signatureNames = orgList.length > 0 ? `${teamLine}<br />${orgList.join('<br />')}` : teamLine;
+    const body = isDe
+      ? `<p>Hallo,</p>\n<p>wir laden dich herzlich zum Event <strong>${ev.title}</strong> ein.</p>\n<p>Du kannst dich ab sofort über unsere Event-Plattform anmelden:</p>\n<p>${linkHtml}</p>\n<p>Falls du dich im Nachgang doch nicht beteiligen kannst, ist eine <strong>Abmeldung jederzeit über dieselbe Plattform</strong> möglich — bitte gib uns rechtzeitig Bescheid, damit Wartelisten-Plätze nachrücken können.</p>\n<p>Bei Rückfragen meld dich gern bei uns.</p>\n<p>Viele Grüße<br />${signatureNames}</p>`
+      : `<p>Hello,</p>\n<p>we would like to invite you to the event <strong>${ev.title}</strong>.</p>\n<p>You can register via our event platform:</p>\n<p>${linkHtml}</p>\n<p>If you change your mind, you can <strong>cancel anytime via the same platform</strong> — please let us know early so people on the waitlist can move up.</p>\n<p>Feel free to reach out if you have any questions.</p>\n<p>Best regards<br />${signatureNames}</p>`;
+    return {
+      subject: isDe ? `Einladung: ${ev.title}` : `Invitation: ${ev.title}`,
+      heading: isDe ? `Einladung zu ${ev.title}` : `Invitation to ${ev.title}`,
+      subheading: '',
+      body,
+    };
+  };
+  const applyInviteDraftOrDefaults = (ev: DeloitteEvent): void => {
+    inviteHydratingRef.current = true;
+    let loaded: { subject?: string; heading?: string; subheading?: string; body?: string; target?: string } | null = null;
+    try {
+      const raw = window.localStorage.getItem(inviteDraftKey(ev.id));
+      if (raw) loaded = JSON.parse(raw);
+    } catch { /* localStorage evtl. blockiert */ }
+    const def = buildInviteDefaults(ev);
+    setInviteSubject(loaded && typeof loaded.subject === 'string' ? loaded.subject : def.subject);
+    setInviteHeading(loaded && typeof loaded.heading === 'string' ? loaded.heading : def.heading);
+    setInviteSubheading(loaded && typeof loaded.subheading === 'string' ? loaded.subheading : def.subheading);
+    setInviteBody(loaded && typeof loaded.body === 'string' ? loaded.body : def.body);
+    setInviteTarget(loaded && loaded.target === 'audience' ? 'audience' : 'organizer');
+    // Hydration-Flag im nächsten Tick freigeben, damit das Auto-Speichern erst
+    // auf echte Nutzer-Edits reagiert (nicht auf das initiale Laden).
+    window.setTimeout(() => { inviteHydratingRef.current = false; }, 0);
+  };
+  const openInviteModal = (): void => {
+    if (!selectedEvent) return;
+    applyInviteDraftOrDefaults(selectedEvent);
+    setShowInviteModal(true);
+  };
+  const resetInviteDraft = (): void => {
+    if (!selectedEvent) return;
+    try { window.localStorage.removeItem(inviteDraftKey(selectedEvent.id)); } catch { /* */ }
+    inviteHydratingRef.current = true;
+    const def = buildInviteDefaults(selectedEvent);
+    setInviteSubject(def.subject);
+    setInviteHeading(def.heading);
+    setInviteSubheading(def.subheading);
+    setInviteBody(def.body);
+    window.setTimeout(() => { inviteHydratingRef.current = false; }, 0);
+  };
+  // Auto-Speichern, solange das Modal offen ist — beim nächsten Öffnen wird der
+  // Entwurf wiederhergestellt.
+  React.useEffect(() => {
+    if (!showInviteModal || !selectedEvent || inviteHydratingRef.current) return;
+    try {
+      window.localStorage.setItem(inviteDraftKey(selectedEvent.id), JSON.stringify({
+        subject: inviteSubject, heading: inviteHeading, subheading: inviteSubheading,
+        body: inviteBody, target: inviteTarget,
+      }));
+    } catch { /* */ }
+  }, [showInviteModal, selectedEvent, inviteSubject, inviteHeading, inviteSubheading, inviteBody, inviteTarget]);
+
   const saveSelfCheckInWindow = async (): Promise<void> => {
     if (!selectedEvent || sciBusy) return;
     if (sciFrom && sciTo && new Date(sciFrom).getTime() >= new Date(sciTo).getTime()) {
@@ -3071,8 +3203,14 @@ export default function AdminPage(): React.ReactElement {
                           effektive Kapazitaet anzeigen statt "∞". */}
                       {(() => {
                         const split = (event.durchstarterCapacity || 0) + (event.funstarterCapacity || 0);
+                        const isSplitEv = (event.durchstarterCapacity || 0) > 0 && (event.funstarterCapacity || 0) > 0;
                         const eff = event.maxParticipants && event.maxParticipants > 0 ? event.maxParticipants : split;
-                        return `${event.currentParticipants}/${eff || '∞'} Teilnehmer`;
+                        // v22.5: Bei Events mit zwei Teilnehmergruppen keine Überbuchung
+                        // in der Listenzeile zeigen — die belegte Zahl auf die Kapazität
+                        // deckeln (die echte Überbuchungszahl bleibt dem Werkzeug
+                        // „Überbuchung prüfen" im Event-Detail vorbehalten).
+                        const shown = (isSplitEv && eff > 0) ? Math.min(event.currentParticipants, eff) : event.currentParticipants;
+                        return `${shown}/${eff || '∞'} Teilnehmer`;
                       })()}
                     </span>
                     {/* v9.20: Status-Badge mit Entwurfs-Override.
@@ -3943,7 +4081,11 @@ export default function AdminPage(): React.ReactElement {
           statt vorher 2-Spalten. */}
       <ActionsRegistryProvider>
       <div className="admin-event-info-grid" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 24, marginBottom: 24 }}>
-        <div ref={detailCardRef} className="card" style={{ padding: 24, minHeight: reservedDetailHeight }}>
+        {/* v22.5: Detail-Card + „Nächste Schritte"-Box rechts daneben (Desktop;
+            stapelt auf Mobile via flex-wrap). Die Box erscheint nur für Entwürfe
+            und nur für Admin/Organizer. */}
+        <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div ref={detailCardRef} className="card" style={{ padding: 24, minHeight: reservedDetailHeight, flex: '1 1 420px', minWidth: 0 }}>
           {/* Header: Event-Titel + Status-Badge + Schnellaktionen (v13.11) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
             <h2 style={{ margin: 0, fontSize: '1.2rem', lineHeight: 1.2 }}>{selectedEvent.title}</h2>
@@ -4269,6 +4411,103 @@ export default function AdminPage(): React.ReactElement {
             </div>
           </div>
         </div>
+        {/* v22.5: „Nächste Schritte"-Box rechts neben der Detail-Card — nur für
+            Entwürfe (Admin/Organizer). Erklärt, was nach dem Anlegen noch zu tun
+            ist: finalisieren, Test-An-/Abmeldung, live schalten (+ wer es sieht),
+            Einladungsmail verschicken, Anmeldungen verfolgen. */}
+        {(isAdmin || isOrganizerFor(selectedEvent)) && !!selectedEvent.isFictive && !selectedEvent.isDemoShowcase && (
+          <aside style={{ flex: '0 1 340px', minWidth: 290 }}>
+            <div className="card" style={{ padding: 20, background: 'rgba(134,188,37,0.05)', border: '1px solid var(--dex-green, #86bc25)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', display: 'inline-flex' }}><Info size={18} /></span>
+                <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Nächste Schritte' : 'Next steps'}</h3>
+              </div>
+              <p style={{ margin: '0 0 14px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                {isDe ? 'Dein Event ist angelegt — so machst du es startklar:' : 'Your event is created — here is how to get it ready:'}
+              </p>
+              <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 13 }}>
+                {(() => {
+                  const locs = (selectedEvent.locationAudience || []).filter(Boolean);
+                  const auds = (selectedEvent.audienceFilter || []).filter(Boolean);
+                  const hasChildren = childEventsOf(selectedEvent.id).length > 0;
+                  let visSummary: string;
+                  if (locs.length === 0 && auds.length === 0) {
+                    visSummary = isDe
+                      ? 'Aktuell sehen es alle Mitarbeiter von Deloitte Deutschland.'
+                      : 'Currently all Deloitte Germany employees can see it.';
+                  } else {
+                    const parts: string[] = [];
+                    if (locs.length) parts.push((isDe ? 'Standorte: ' : 'Locations: ') + locs.join(', '));
+                    if (auds.length) parts.push(isDe ? `${auds.length} ausgewählte Verteiler/Personen` : `${auds.length} selected distributions/people`);
+                    visSummary = (isDe ? 'Sichtbar für ' : 'Visible to ') + parts.join(isDe ? ' und ' : ' and ') + '.';
+                  }
+                  const steps: Array<{ title: string; body: React.ReactNode }> = [
+                    {
+                      title: isDe ? 'Event finalisieren' : 'Finalize the event',
+                      body: isDe
+                        ? 'Über „Event bearbeiten" Felder, Bild und Texte vervollständigen.'
+                        : 'Use “Edit event” to complete fields, image and texts.',
+                    },
+                    {
+                      title: isDe ? 'Test-An- und Abmeldung' : 'Test registration & cancellation',
+                      body: isDe
+                        ? 'Melde dich einmal selbst an und wieder ab, um zu prüfen, ob die automatische Kommunikation (Bestätigungs-Mail, Outlook-Termin, Abmelde-Mail) richtig ankommt.'
+                        : 'Register and cancel yourself once to check that the automatic communication (confirmation email, Outlook invite, cancellation email) works correctly.',
+                    },
+                    {
+                      title: isDe ? 'Event live schalten' : 'Publish the event',
+                      body: (
+                        <>
+                          {isDe
+                            ? 'Oben über das Status-Häkchen „Entwurf → Aktiv" schalten. Danach ist es für die berechtigten Gruppen sichtbar.'
+                            : 'Switch the status badge above from “Draft → Active”. It is then visible to the eligible groups.'}
+                          <span style={{ display: 'block', marginTop: 5, padding: '6px 8px', borderRadius: 6, background: '#fff', border: '1px solid var(--dex-gray-200)', color: 'var(--dex-gray-600)', fontSize: '0.74rem', lineHeight: 1.45 }}>
+                            {visSummary}
+                            {hasChildren && (isDe ? ' Dieselbe Sichtbarkeit gilt für das Gesamt-Event; einzelne Sub-Events können eigene Empfänger haben.' : ' The same visibility applies to the overall event; individual sub-events can have their own recipients.')}
+                          </span>
+                        </>
+                      ),
+                    },
+                    {
+                      title: isDe ? 'Einladungsmail verschicken' : 'Send the invitation email',
+                      body: (
+                        <>
+                          {isDe
+                            ? 'Optional kannst du die Einladung mit Anmelde-Link direkt über DEX verschicken — an dich zum Weiterleiten oder an den Mailverteiler.'
+                            : 'Optionally send the invitation with the registration link directly via DEX — to yourself for forwarding or to the mail distribution.'}
+                          {' '}
+                          <button
+                            type="button"
+                            onClick={openInviteModal}
+                            style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700, fontSize: '0.78rem', textDecoration: 'underline' }}
+                          >
+                            {isDe ? 'Einladungsmail öffnen' : 'Open invitation email'}
+                          </button>
+                        </>
+                      ),
+                    },
+                    {
+                      title: isDe ? 'Anmeldungen verfolgen' : 'Track registrations',
+                      body: isDe
+                        ? 'Sobald sich Teilnehmer anmelden, siehst du hier im Admin-Panel alle Infos — Anzahl, Status und die komplette Teilnehmerliste.'
+                        : 'As soon as participants register, you see everything here in the admin panel — count, status and the full participant list.',
+                    },
+                  ];
+                  return steps.map((s, i) => (
+                    <li key={i} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                      <span style={{ flexShrink: 0, width: 24, height: 24, borderRadius: '50%', background: 'var(--dex-green, #86bc25)', color: '#fff', fontWeight: 700, fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
+                      <span style={{ fontSize: '0.82rem', lineHeight: 1.5 }}>
+                        <strong style={{ color: 'var(--dex-gray-800)' }}>{s.title}.</strong>{' '}
+                        <span style={{ color: 'var(--dex-gray-600)' }}>{s.body}</span>
+                      </span>
+                    </li>
+                  ));
+                })()}
+              </ol>
+            </div>
+          </aside>
+        )}
+        </div>
 
         {/* v7.6: Aktionen-Bereich als Kachel-Grid (auto-fit ab 220px, max 4
             pro Zeile auf Desktop). Default Grau, beim Hover Deloitte-Gruen mit
@@ -4490,50 +4729,7 @@ export default function AdminPage(): React.ReactElement {
                 ? 'Versendet eine Einladungs-Mail mit Anmelde-Link — an dich zum Weiterleiten oder direkt an den hinterlegten Mailverteiler des Events.'
                 : 'Sends an invitation email with the registration link — to yourself for forwarding or directly to the configured mail distribution list of the event.'}
               badge="organizer"
-              onClick={() => {
-                if (!selectedEvent) return;
-                const appUrl = `${siteUrl}/SitePages/DEX.aspx?env=WebView`;
-                const linkHtml = `<a href="${appUrl}" style="color:#86bc25;font-weight:600;">${appUrl}</a>`;
-                // v11.44: Signatur in zwei Stufen:
-                //   1. "Das <Event-Titel> Orga Team" als kollektive Absender-
-                //      bezeichnung — gibt der Mail einen erkennbaren Anker.
-                //   2. Darunter die einzelnen Organizer mit vollem Namen
-                //      (Vorname Nachname), in Reihenfolge wie im Wizard
-                //      eingetragen — Haupt-Organizer zuerst.
-                const orgList = (selectedEvent.organizers || [])
-                  .map(s => (s || '').trim())
-                  .filter(Boolean);
-                const teamLine = isDe
-                  ? `Das ${selectedEvent.title} Orga Team`
-                  : `The ${selectedEvent.title} Organizer Team`;
-                const signatureNames = orgList.length > 0
-                  ? `${teamLine}<br />${orgList.join('<br />')}`
-                  : teamLine;
-                const defaultBody = isDe
-                  ? `<p>Hallo,</p>
-<p>wir laden dich herzlich zum Event <strong>${selectedEvent.title}</strong> ein.</p>
-<p>Du kannst dich ab sofort über unsere Event-Plattform anmelden:</p>
-<p>${linkHtml}</p>
-<p>Falls du dich im Nachgang doch nicht beteiligen kannst, ist eine <strong>Abmeldung jederzeit über dieselbe Plattform</strong> möglich — bitte gib uns rechtzeitig Bescheid, damit Wartelisten-Plätze nachrücken können.</p>
-<p>Bei Rückfragen meld dich gern bei uns.</p>
-<p>Viele Grüße<br />${signatureNames}</p>`
-                  : `<p>Hello,</p>
-<p>we would like to invite you to the event <strong>${selectedEvent.title}</strong>.</p>
-<p>You can register via our event platform:</p>
-<p>${linkHtml}</p>
-<p>If you change your mind, you can <strong>cancel anytime via the same platform</strong> — please let us know early so people on the waitlist can move up.</p>
-<p>Feel free to reach out if you have any questions.</p>
-<p>Best regards<br />${signatureNames}</p>`;
-                setInviteSubject(isDe
-                  ? `Einladung: ${selectedEvent.title}`
-                  : `Invitation: ${selectedEvent.title}`);
-                setInviteHeading(isDe
-                  ? `Einladung zu ${selectedEvent.title}`
-                  : `Invitation to ${selectedEvent.title}`);
-                setInviteBody(defaultBody);
-                setInviteTarget('organizer');
-                setShowInviteModal(true);
-              }}
+              onClick={openInviteModal}
             />
 
             {/* 5. Excel-Download (mit Dropdown Deloitte/B2Run-View)
@@ -8002,10 +8198,32 @@ export default function AdminPage(): React.ReactElement {
           padding={24}
           ariaLabel="QR-Codes versenden"
         >
-            <h3 style={{ margin: '0 0 8px', fontSize: '1.05rem' }}>QR-Codes versenden</h3>
-            <p style={{ margin: '0 0 12px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-              Wähle, wie der Versand laufen soll. Der QR-Code geht im Deloitte-Layout an die Empfänger und enthält unter dem Code Name + Event als Klartext (für manuellen Check-in).
+            <h3 style={{ margin: '0 0 6px', fontSize: '1.05rem' }}>{isDe ? 'QR-Code-Versand starten' : 'Start QR code sending'}</h3>
+            <p style={{ margin: '0 0 14px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+              {isDe
+                ? 'Der QR-Code geht im Deloitte-Layout an die Teilnehmer und enthält unter dem Code Name + Event als Klartext (für den manuellen Check-in).'
+                : 'The QR code is sent to participants in the Deloitte layout and shows name + event as plain text below the code (for manual check-in).'}
             </p>
+            {/* v22.5: Klarer 1-2-3-Ablauf, was als Nächstes zu tun ist. */}
+            <div style={{ margin: '0 0 14px', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--dex-gray-200)', background: 'var(--dex-gray-50, #fafafa)' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: 10, color: 'var(--dex-gray-800)' }}>
+                {isDe ? 'So gehst du vor:' : 'Here is how it works:'}
+              </div>
+              <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 9 }}>
+                {[
+                  { n: 1, t: isDe ? 'Vorschau ansehen' : 'Preview', d: isDe ? 'Mit „Vorschau Mail" siehst du, wie die QR-Mail aussieht.' : 'Use “Preview email” to see how the QR email looks.' },
+                  { n: 2, t: isDe ? 'Test an dich' : 'Test to yourself', d: isDe ? 'Mit „Nur Test (an mich)" schickst du dir die QR-Mail einmal selbst zu.' : 'Use “Test only (to me)” to send the QR email to yourself once.' },
+                  { n: 3, t: isDe ? 'An alle Angemeldeten senden' : 'Send to all registered', d: isDe ? 'Verschickt die QR-Codes an alle Teilnehmer ohne Code. Ab dem ersten Versand bekommt jede neue Anmeldung ihren QR-Code automatisch.' : 'Sends the QR codes to all participants without a code. After the first send, every new registration gets its QR code automatically.' },
+                ].map(s => (
+                  <li key={s.n} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                    <span style={{ flexShrink: 0, width: 22, height: 22, borderRadius: '50%', background: 'var(--dex-green, #86bc25)', color: '#fff', fontWeight: 700, fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{s.n}</span>
+                    <span style={{ fontSize: '0.83rem', lineHeight: 1.45 }}>
+                      <strong>{s.t}.</strong> <span style={{ color: 'var(--dex-gray-600)' }}>{s.d}</span>
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
             {/* v20.8: Restanten-Übersicht — wie viele Angemeldete haben noch
                 KEINEN QR-Code (Status 'Angemeldet') bzw. schon einen (Status
                 'QR versendet'/'Eingecheckt'). Neue Anmeldungen bekommen ihn
@@ -8153,15 +8371,10 @@ export default function AdminPage(): React.ReactElement {
               }}>{qrSendResult}</div>
             )}
 
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap' }}>
-              <button
-                className="btn btn-secondary"
-                onClick={() => setQrSendModalOpen(false)}
-                disabled={isSendingQR}
-                style={{ fontSize: '0.85rem' }}
-              >
-                Abbrechen
-              </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {/* v22.5: klarer strukturiert — Reihenfolge folgt den Schritten
+                  oben: erst Testen (Vorschau + Test an mich) nebeneinander, dann
+                  der primäre Vollversand über die volle Breite, zuletzt Abbrechen. */}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button
                   className="btn btn-outline"
@@ -8201,10 +8414,10 @@ export default function AdminPage(): React.ReactElement {
                       setQrPreviewOpen(true);
                     } finally { setQrPreviewLoading(false); }
                   }}
-                  style={{ fontSize: '0.85rem' }}
+                  style={{ fontSize: '0.85rem', flex: 1, minWidth: 160 }}
                   title={isDe ? 'So sieht die Mail aus, die beim Versand rausgeht — inklusive echtem QR-Code für dich als Empfänger.' : 'This is how the email looks when sent — including a real QR code for you as the recipient.'}
                 >
-                  {qrPreviewLoading ? (isDe ? 'Lade Vorschau…' : 'Loading preview…') : (isDe ? 'Vorschau Mail' : 'Preview email')}
+                  {qrPreviewLoading ? (isDe ? 'Lade Vorschau…' : 'Loading preview…') : (isDe ? '1. Vorschau Mail' : '1. Preview email')}
                 </button>
                 <button
                   className="btn btn-secondary"
@@ -8239,11 +8452,12 @@ export default function AdminPage(): React.ReactElement {
                     setIsSendingQR(false);
                   }}
                   disabled={isSendingQR}
-                  style={{ fontSize: '0.85rem' }}
+                  style={{ fontSize: '0.85rem', flex: 1, minWidth: 160 }}
                 >
-                  {isDe ? 'Nur Test (an mich)' : 'Test only (to me)'}
+                  {isDe ? '2. Nur Test (an mich)' : '2. Test only (to me)'}
                 </button>
-                <button
+              </div>
+              <button
                   className="btn btn-primary"
                   onClick={async () => {
                     if (!eventServiceRef || !selectedEvent) return;
@@ -8313,16 +8527,26 @@ export default function AdminPage(): React.ReactElement {
                       : (isDe ? `${sent} QR-Codes verschickt.` : `${sent} QR codes sent.`));
                   }}
                   disabled={isSendingQR || registrations.filter(r => r.Status === 'Angemeldet').length === 0}
-                  style={{ fontSize: '0.85rem' }}
+                  style={{ fontSize: '0.9rem', width: '100%', padding: '11px 18px', fontWeight: 700 }}
                 >
                   {(() => {
                     const n = registrations.filter(r => r.Status === 'Angemeldet').length;
-                    if (isSendingQR) return `${isDe ? 'Versende' : 'Sending'}... (${qrSentCount})`;
+                    if (isSendingQR) return `${isDe ? 'Versende' : 'Sending'}… (${qrSentCount})`;
                     if (n === 0) return isDe ? 'Alle haben ihren QR-Code' : 'Everyone has their QR code';
-                    return isDe ? `QR an ${n} ohne Code nachsenden` : `Resend QR to ${n} without code`;
+                    // v22.5: eindeutigeres Wording — „QR-Codes an N Teilnehmer
+                    // senden" (vorher „QR an 1 ohne Code nachsenden" → missverständlich).
+                    if (isDe) return `3. QR-${n === 1 ? 'Code' : 'Codes'} an ${n} Teilnehmer senden`;
+                    return `3. Send QR ${n === 1 ? 'code' : 'codes'} to ${n} participant${n === 1 ? '' : 's'}`;
                   })()}
                 </button>
-              </div>
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => setQrSendModalOpen(false)}
+                  disabled={isSendingQR}
+                  style={{ fontSize: '0.85rem', width: '100%' }}
+                >
+                  {isDe ? 'Abbrechen' : 'Cancel'}
+                </button>
             </div>
         </Modal>
       )}
@@ -9311,7 +9535,11 @@ export default function AdminPage(): React.ReactElement {
           const resolvedSubject = replacePlaceholders(inviteSubject, previewVars);
           const resolvedHeading = replacePlaceholders(inviteHeading, previewVars);
           const resolvedBody = replacePlaceholders(inviteBody, previewVars);
-          const fullBody = wrapTemplate('#86bc25', resolvedHeading, `Event ${selectedEvent.title}`, resolvedBody);
+          // v22.5: editierbare Unter-Überschrift verwenden (leer = „Event <Titel>").
+          const resolvedSubheading = inviteSubheading && inviteSubheading.trim()
+            ? replacePlaceholders(inviteSubheading, previewVars)
+            : `Event ${selectedEvent.title}`;
+          const fullBody = wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody);
           const allEmails = targetEmails.join(';');
           const ccString = ccEmails.join(';');
           const recipientName = inviteTarget === 'organizer' ? myDisplayName : (isDe ? 'Mailverteiler' : 'Mail distribution');
@@ -9420,8 +9648,32 @@ export default function AdminPage(): React.ReactElement {
                 </div>
               </div>
             )}
+            {/* v22.5: Entwurf wird automatisch gespeichert + Zurücksetzen. */}
+            <div style={{
+              marginTop: 10, paddingTop: 8, borderTop: '1px dashed var(--dex-gray-200)',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap',
+              fontSize: '0.74rem', color: 'var(--dex-gray-500)',
+            }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                <Check size={13} />
+                {isDe
+                  ? 'Dein Text wird automatisch gespeichert und beim nächsten Öffnen wiederhergestellt.'
+                  : 'Your text is saved automatically and restored next time you open it.'}
+              </span>
+              <button
+                type="button"
+                onClick={resetInviteDraft}
+                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600, fontSize: '0.74rem', textDecoration: 'underline' }}
+              >
+                {isDe ? 'Auf Standardtext zurücksetzen' : 'Reset to default text'}
+              </button>
+            </div>
           </div>
         );
+        const previewToLine = inviteTarget === 'organizer'
+          ? myEmail
+          : (isDe ? `${audienceEmails.length} Empfänger des Mailverteilers` : `${audienceEmails.length} mail distribution recipients`);
+        const previewSubjectLine = replacePlaceholders(inviteSubject, previewVars);
         return (
           <HtmlEditorModal
             open={showInviteModal}
@@ -9436,7 +9688,11 @@ export default function AdminPage(): React.ReactElement {
             onEmailSubjectChange={setInviteSubject}
             emailHeading={inviteHeading}
             onEmailHeadingChange={setInviteHeading}
+            emailSubheading={inviteSubheading}
+            onEmailSubheadingChange={setInviteSubheading}
             emailHeadingColor="#86bc25"
+            previewToLine={previewToLine}
+            previewSubjectLine={previewSubjectLine}
             previewVars={previewVars}
             insertableVars={[
               { key: '{{EventTitle}}', label: isDe ? 'Event-Titel' : 'Event title' },

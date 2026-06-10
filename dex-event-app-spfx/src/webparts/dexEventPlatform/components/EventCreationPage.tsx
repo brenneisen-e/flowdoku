@@ -4696,10 +4696,15 @@ export default function EventCreationPage(): React.ReactElement {
     ariaLabel: string,
   ): React.ReactElement | null => {
     if (subEvents.length === 0) return null;
+    // v22.5: Der „Haupt"/„Klammer"-Badge links im Tab trägt die Rolle bereits —
+    // deshalb das doppelte „Klammer: …"/„Haupt-Event: …"-Präfix aus dem Label
+    // strippen (sonst stand „KLAMMER  Klammer: …" doppelt da). Sub-Event-Tabs
+    // zeigen nur den reinen Sub-Namen (ohne „<Hauptevent> | "-Präfix).
+    const strippedMain = mainLabel.replace(/^(Klammer|Bracket|Haupt-Event|Main event):\s*/i, '').trim();
     const tabs: Array<{ label: string; isMain: boolean }> = [
-      { label: mainLabel, isMain: true },
+      { label: strippedMain || mainLabel, isMain: true },
       ...subEvents.map(s => ({
-        label: (s.title || (isDe ? 'Sub-Event ohne Titel' : 'Untitled sub-event')).trim(),
+        label: (shortSubEventTitle(s.title, title) || (isDe ? 'Sub-Event ohne Titel' : 'Untitled sub-event')).trim(),
         isMain: false,
       })),
     ];
