@@ -1634,7 +1634,12 @@ beides muss vollständig sein.
 Markdown-Tabelle geliefert, **eine Zeile pro Action**, mit genau diesen
 Spalten:
 
-| # | Neu / Geändert | Stelle (Action-Name + Zweig + Vorgänger) | Das machst du (alle Klicks) |
+| # | Neu / Geändert | Name der Action | Art der Action | Stelle (Zweig + Vorgänger) | Das machst du (alle Klicks) |
+
+„Art der Action" = der Action-Typ, wie er im „Aktion hinzufügen"-Dialog
+heißt, DE + EN (z.B. „Array filtern (Filter array)", „SharePoint — Element
+erstellen (Create item)", „Bedingung (Condition)"); bei Änderungen an
+bestehenden Actions z.B. „Run-after-Änderung (bestehende Action)".
 
 Die Spalte „Das machst du" ist eine **nummerierte Schritt-Liste** (1., 2.,
 3., … — in der Tabellen-Zelle mit `<br>` getrennt), **ein Klick bzw. ein
@@ -1644,8 +1649,13 @@ hinzufügen"-Dialog), jedes Feld mit exaktem Wert, jeder fx-Ausdruck
 wörtlich (mit Hinweis „über den Expression-Tab/fx eintragen"), ⋮ →
 Umbenennen auf den Zielnamen, ⋮ → Ausführen nach konfigurieren mit den
 anzuhakenden Status. Der Maintainer kann kein JSON einfügen — alles muss
-UI-klickbar beschrieben sein. Diese Tabelle steht vollständig im Chat UND
-in `docs/flow-jsons.md`.
+UI-klickbar beschrieben sein.
+
+**Die Antwort gehört IMMER vollständig in den Chat.** Der Maintainer
+arbeitet Flow-Anleitungen direkt im Chat ab — die komplette Tabelle muss
+also in der Chat-Antwort stehen. `docs/flow-jsons.md` bekommt zusätzlich
+dieselbe Tabelle als Archiv-Kopie, ist aber NIE ein Ersatz für die
+Chat-Antwort („steht in der Doku" ist keine zulässige Antwort).
 
 ### Power Automate Flow-Änderungen Workflow
 
