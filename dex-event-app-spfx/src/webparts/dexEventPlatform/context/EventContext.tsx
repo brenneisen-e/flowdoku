@@ -1386,7 +1386,16 @@ export function EventProvider(props: { context: WebPartContext; children: React.
                 const qrDataUrl = await QRCode.toDataURL(qrData, { width: 300, margin: 2 });
                 qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
               } catch (qrErr) { console.warn('[DEX] QRCode.toDataURL fehlgeschlagen — Text-Fallback:', qrErr); }
-              const qrMail = qrCodeEmail(firstNameToUse, event.title, qrImageHtml, lang, nameToUse);
+              // v22.18: pro-Event angepasster QR-Mail-Text (Override-Key
+              // 'QRCode' im EmailTemplateOverrides-JSON) — gilt damit auch
+              // für den Auto-Versand, nicht nur den manuellen Versand.
+              let qrOverride;
+              try {
+                const ovAll = JSON.parse(event.emailTemplateOverrides || '{}');
+                const ov = ovAll && ovAll['QRCode'];
+                if (ov && (ov.subject || ov.heading || ov.subheading || ov.bodyHtml)) qrOverride = ov;
+              } catch { /* kein Override */ }
+              const qrMail = qrCodeEmail(firstNameToUse, event.title, qrImageHtml, lang, nameToUse, qrOverride);
               // v9.22: Auto-Send-QR für externe Empfänger ebenfalls an den
               // Organizer umleiten (mit klarem Subject-Präfix), nicht an den
               // externen Mail-Empfänger.
