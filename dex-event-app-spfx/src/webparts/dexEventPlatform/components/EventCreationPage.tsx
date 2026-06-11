@@ -2621,6 +2621,16 @@ export default function EventCreationPage(): React.ReactElement {
           'EmailImageBase64': subEmailLogo || '',
           'CustomFields': cfJson,
         };
+        // v22.15: Auto-Heilung — steht das Sub-Event auf „Abgeschlossen"
+        // (z.B. vom Auto-Cleanup wegen eines alten Testdatums), das End-Datum
+        // liegt nach dieser Bearbeitung aber in der Zukunft, zurück auf Aktiv.
+        {
+          const storedChild = childEventsOf(parentEventId).find(k => k.id === draft.dbId);
+          const subEndIso = childPayload.endDate || childPayload.startDate || '';
+          if (storedChild && storedChild.status === 'Completed' && subEndIso && new Date(subEndIso).getTime() > Date.now()) {
+            subUpdates['EventStatus'] = 'Active';
+          }
+        }
         // OutlookDirty + Update wird vom Aufrufer (handleSubmit) anhand des
         // jeweiligen Sub-Event-Snapshots gesteuert — siehe pendingSubUpdates.
         await updateEvent(draft.dbId, subUpdates);
@@ -3162,6 +3172,16 @@ export default function EventCreationPage(): React.ReactElement {
       updates['NotifyOrgCancelMode'] = notifyOrgCancelMode === 'always' ? 'Always' : notifyOrgCancelMode === 'afterDeadline' ? 'AfterDeadline' : 'Never';
       updates['ExcludedUsers'] = excludedUsers.filter(Boolean).join(';');
       updates['IsFictive'] = isFictive;
+      // v22.15: Auto-Heilung — steht das Event auf „Abgeschlossen" (z.B. vom
+      // Auto-Cleanup wegen eines alten Testdatums), das End-Datum liegt nach
+      // dieser Bearbeitung aber in der Zukunft, zurück auf Aktiv setzen.
+      // Sonst bleibt das Event unsichtbar, obwohl es noch bevorsteht.
+      if (editEvent && editEvent.status === 'Completed') {
+        const newEndIso = endDate ? berlinLocalToUtcIso(endDate) : (startDate ? berlinLocalToUtcIso(startDate) : '');
+        if (newEndIso && new Date(newEndIso).getTime() > Date.now()) {
+          updates['EventStatus'] = 'Active';
+        }
+      }
       if (useSplitCapacities) {
         updates['DurchstarterCapacity'] = parseInt(durchstarterCapacity, 10) || 0;
         updates['FunstarterCapacity'] = parseInt(funstarterCapacity, 10) || 0;

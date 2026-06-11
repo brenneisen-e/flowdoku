@@ -2813,6 +2813,28 @@ export default function AdminPage(): React.ReactElement {
   const toggleDraftStatus = async (): Promise<void> => {
     if (!selectedEvent) return;
     const isDraft = !!selectedEvent.isFictive;
+    // v22.15: Abgeschlossen/Abgesagt → zurück auf Aktiv (Reaktivierung).
+    // Vorher waren diese Zustände eine Sackgasse — auch für Admins.
+    const isFinalState = !isDraft && (selectedEvent.status === 'Completed' || selectedEvent.status === 'Cancelled');
+    if (isFinalState) {
+      const fromLabel = isDe ? localizeStatus(selectedEvent.status) : selectedEvent.status;
+      if (!(await confirmDialog(
+        isDe
+          ? `Event von „${fromLabel}" wieder auf Aktiv setzen? Danach ist es für die Berechtigten wieder sichtbar und buchbar. Hinweis: Liegt das End-Datum in der Vergangenheit, setzt der automatische Aufräum-Lauf das Event beim nächsten App-Start erneut auf „Abgeschlossen" — dann zuerst das Datum korrigieren.`
+          : `Set event from "${fromLabel}" back to Active? It will be visible and bookable for eligible users again. Note: if the end date is in the past, the automatic cleanup will set it back to "Completed" on the next app start — fix the date first in that case.`,
+        { title: isDe ? 'Event reaktivieren' : 'Reactivate event', confirmLabel: isDe ? 'Auf Aktiv setzen' : 'Set to Active' },
+      ))) return;
+      const ok = await updateEvent(selectedEvent.id, { 'EventStatus': 'Active' });
+      if (ok) {
+        setSelectedEvent(prev => prev ? { ...prev, status: 'Active' } : prev);
+        await refreshEvents();
+      } else {
+        showAlert(isDe
+          ? 'Der Status konnte nicht geändert werden. Vermutlich fehlen dir Schreibrechte auf der Event-Liste — bitte einen Haupt-Organizer oder Admin den Status umschalten lassen.'
+          : 'The status could not be changed. You probably lack write permission on the event list — please ask a main organizer or admin to switch the status.', { variant: 'error' });
+      }
+      return;
+    }
     const nextIsFictive = !isDraft;
     const confirmMsg = nextIsFictive
       ? (isDe ? 'Event auf "Entwurf" zurücksetzen? Reguläre User sehen das Event danach nicht mehr.' : 'Reset event to "draft"? Regular users will no longer see the event afterwards.')
@@ -4457,17 +4479,20 @@ export default function AdminPage(): React.ReactElement {
             <h2 style={{ margin: 0, fontSize: '1.2rem', lineHeight: 1.2 }}>{selectedEvent.title}</h2>
             {/* v20.3: Status-Badge ist klickbar — Klick auf „Aktiv" setzt das
                 Event auf Entwurf, Klick auf „Entwurf" schaltet es live
-                (jeweils mit Sicherheitsabfrage). Nur für Admin/Organizer und
-                nur in den Zuständen Aktiv/Entwurf; Completed/Cancelled
-                bleiben reiner Text. */}
+                (jeweils mit Sicherheitsabfrage). v22.15: auch Abgeschlossen/
+                Abgesagt sind für Admin/Organizer klickbar und lassen sich
+                wieder auf Aktiv setzen (vorher Sackgasse — z.B. wenn der
+                Auto-Cleanup ein Event mit altem Testdatum auf „Abgeschlossen"
+                gesetzt hatte und das Datum später korrigiert wurde). */}
             {(() => {
               const isDraft = !!selectedEvent.isFictive;
               const badgeBg = isDraft ? 'rgba(237,139,0,0.15)' : getStatusColor(selectedEvent.status) + '22';
               const badgeFg = isDraft ? 'var(--dex-orange-dark, #b35a00)' : getStatusColor(selectedEvent.status);
               const label = isDraft ? 'ENTWURF' : (isDe ? localizeStatus(selectedEvent.status) : selectedEvent.status);
+              const isFinalState = !isDraft && (selectedEvent.status === 'Completed' || selectedEvent.status === 'Cancelled');
               const canToggleStatus = (isAdmin || isOrganizerFor(selectedEvent))
                 && !(isImpersonating && selectedEvent.isDemoShowcase)
-                && (isDraft || selectedEvent.status === 'Active');
+                && (isDraft || selectedEvent.status === 'Active' || isFinalState);
               if (!canToggleStatus) {
                 return (
                   <span className="badge" style={{ background: badgeBg, color: badgeFg }}>{label}</span>
@@ -4480,7 +4505,9 @@ export default function AdminPage(): React.ReactElement {
                   onClick={() => { toggleDraftStatus().catch(() => { /* */ }); }}
                   title={isDraft
                     ? (isDe ? 'Klicken: Event live schalten (Aktiv). Alle Berechtigten sehen das Event danach und können sich anmelden.' : 'Click: publish event (Active). All eligible users will see the event and can register.')
-                    : (isDe ? 'Klicken: Event auf Entwurf setzen. Reguläre User sehen das Event danach nicht mehr; Anmeldungen bleiben erhalten.' : 'Click: set event to draft. Regular users will no longer see the event; registrations are kept.')}
+                    : isFinalState
+                      ? (isDe ? 'Klicken: Event wieder auf Aktiv setzen. Danach ist es für die Berechtigten wieder sichtbar und buchbar.' : 'Click: set event back to Active. It will be visible and bookable for eligible users again.')
+                      : (isDe ? 'Klicken: Event auf Entwurf setzen. Reguläre User sehen das Event danach nicht mehr; Anmeldungen bleiben erhalten.' : 'Click: set event to draft. Regular users will no longer see the event; registrations are kept.')}
                   style={{
                     background: badgeBg, color: badgeFg,
                     border: `1px solid ${badgeFg}`,
