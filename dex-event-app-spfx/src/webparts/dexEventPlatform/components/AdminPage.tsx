@@ -1109,8 +1109,10 @@ export default function AdminPage(): React.ReactElement {
   // v17.10: Massmail-Target-Picker. Erst Zielgruppe waehlen, dann den
   // RichText-Editor oeffnen. Mode = 'closed' | 'pick' | 'paste' | 'editor'.
   const [massmailMode, setMassmailMode] = React.useState<'closed' | 'pick' | 'paste' | 'editor'>('closed');
-  type MassmailAudience = 'active' | 'activePlusWait' | 'waitOnly' | 'nachruecker';
+  type MassmailAudience = 'active' | 'activePlusWait' | 'waitOnly' | 'nachruecker' | 'custom';
   const [massmailAudience, setMassmailAudience] = React.useState<MassmailAudience>('active');
+  // v22.9: Eigene Status-Auswahl ('custom') — welche Status die Mail bekommen.
+  const [massmailStatuses, setMassmailStatuses] = React.useState<Set<string>>(new Set(['Angemeldet', 'QR versendet', 'Eingecheckt']));
   // Fuer 'nachruecker': der eingefuegte Rohtext + die nach Extraktion
   // verbleibenden Teilnehmer (= angemeldete Personen, die NICHT in der
   // eingefuegten Liste stehen).
@@ -9288,8 +9290,17 @@ export default function AdminPage(): React.ReactElement {
       {massmailMode === 'pick' && selectedEvent && (() => {
         const closeAll = (): void => { setMassmailMode('closed'); setMassmailPasteRaw(''); };
         const proceed = (): void => {
+          if (massmailAudience === 'custom' && massmailStatuses.size === 0) return;
           if (massmailAudience === 'nachruecker') setMassmailMode('paste');
           else { setShowEmailModal(true); setMassmailMode('editor'); }
+        };
+        const STATUS_OPTIONS = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
+        const toggleStatus = (st: string): void => {
+          setMassmailStatuses(prev => {
+            const next = new Set(prev);
+            if (next.has(st)) next.delete(st); else next.add(st);
+            return next;
+          });
         };
         const Row = (props: { value: MassmailAudience; label: string; desc: string }): React.ReactElement => (
           <label style={{
@@ -9318,9 +9329,40 @@ export default function AdminPage(): React.ReactElement {
             <Row value="activePlusWait" label="Teilnehmer + Warteliste" desc="Alle aktiven UND Wartelistler — z.B. wenn sich noch Plaetze frei machen und du auch die Warteliste vorwarnen willst." />
             <Row value="waitOnly" label="Nur Warteliste" desc={'Nur Wartelistler — z.B. Info „Es wird wahrscheinlich keinen Platz mehr geben".'} />
             <Row value="nachruecker" label="Nachruecker (Manueller Abgleich)" desc="Du fuegst im naechsten Schritt eine Liste von E-Mails ein (Verteiler, Vorname Nachname Email, beliebig formatiert) — die App extrahiert die Adressen und schickt die Mail an alle aktiven Teilnehmer, die NICHT in deiner Liste stehen." />
+            {/* v22.9: Eigene Status-Auswahl — einzelne Status getrennt anhaken. */}
+            <div style={{
+              borderRadius: 8, border: `1px solid ${massmailAudience === 'custom' ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+              background: massmailAudience === 'custom' ? 'rgba(134,188,37,0.08)' : '#fff',
+              marginBottom: 8, padding: 10,
+            }}>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                <input type="radio" name="massmail-target" checked={massmailAudience === 'custom'} onChange={() => setMassmailAudience('custom')} style={{ marginTop: 3 }} />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.92rem' }}>Eigene Auswahl (nach Status)</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>Häkchen setzen, welche Status die Mail bekommen sollen — z.B. nur „QR versendet“.</div>
+                </div>
+              </label>
+              {massmailAudience === 'custom' && (
+                <div style={{ marginTop: 10, paddingLeft: 28, display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  {STATUS_OPTIONS.map(st => {
+                    const count = registrations.filter(r => r.Status === st).length;
+                    return (
+                      <label key={st} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={massmailStatuses.has(st)} onChange={() => toggleStatus(st)} />
+                        <span style={{ fontWeight: 500 }}>{st}</span>
+                        <span style={{ color: 'var(--dex-gray-500)' }}>({count})</span>
+                      </label>
+                    );
+                  })}
+                  {massmailStatuses.size === 0 && (
+                    <span style={{ fontSize: '0.78rem', color: 'var(--dex-orange-dark, #b35a00)' }}>Bitte mindestens einen Status anhaken.</span>
+                  )}
+                </div>
+              )}
+            </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 14 }}>
               <button type="button" className="btn btn-secondary" onClick={closeAll} style={{ fontSize: '0.85rem' }}>Abbrechen</button>
-              <button type="button" className="btn btn-primary" onClick={proceed} style={{ fontSize: '0.85rem' }}>Weiter</button>
+              <button type="button" className="btn btn-primary" onClick={proceed} disabled={massmailAudience === 'custom' && massmailStatuses.size === 0} style={{ fontSize: '0.85rem' }}>Weiter</button>
             </div>
           </Modal>
         );
@@ -9510,6 +9552,9 @@ export default function AdminPage(): React.ReactElement {
         // v17.10: Empfaenger-Filter abhaengig vom gewaehlten massmailAudience.
         const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
         const recipients = (() => {
+          if (massmailAudience === 'custom') {
+            return registrations.filter(r => massmailStatuses.has(r.Status));
+          }
           if (massmailAudience === 'waitOnly') {
             return registrations.filter(r => r.Status === 'Warteliste');
           }

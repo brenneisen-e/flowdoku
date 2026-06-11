@@ -10,6 +10,9 @@ import { useNavigation } from '../context/NavigationContext';
 import { useEvents, collectCcEmailsFromFields } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
+// v22.10: Sub-Sections nach ihrer EIGENEN Sichtbarkeit filtern (gleiche Logik
+// wie die Event-Liste) — sonst sieht jeder Hauptevent-Teilnehmer alle Sub-Events.
+import { isEventVisibleForUser } from './EventListPage';
 import { useCachedImage } from '../utils/imageCache';
 import { useLanguage, translations as appTranslations, Locale } from '../context/LanguageContext';
 // v20.4: modernes Alert-Modal statt window.alert.
@@ -95,7 +98,7 @@ export default function RegistrationPage(): React.ReactElement {
 
   const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
   const { events, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest, updateMyRegistration, uploadFieldDocument } = useEvents();
-  const { currentUser } = useCurrentUser();
+  const { currentUser, groupEmails } = useCurrentUser();
   const { searchUsers, searchUser, isAdmin } = useRoles();
   const { locale: appLocale } = useLanguage();
   // v20.4: App-Modal statt nativem Browser-Alert.
@@ -314,7 +317,18 @@ export default function RegistrationPage(): React.ReactElement {
   // Der User kann auf EINER Seite wählen, ob er sich für das Haupt-Event und/oder
   // einzelne Sub-Events anmelden möchte. Bei B2Run-Parents zusätzlich pro Session
   // eine Durchstarter/Funstarter-Auswahl.
-  const childEvents = React.useMemo(() => event ? childEventsOf(event.id) : [], [event?.id]);
+  // v22.10 (Bugfix): Sub-Sections werden jetzt nach ihrer EIGENEN Sichtbarkeit
+  // gefiltert. Vorher sah jeder, der das Hauptevent sehen konnte, ALLE
+  // Sub-Events — auch wenn das Sub-Event einen eigenen Empfängerkreis hatte.
+  // Organizer/Admins (und der „Für andere registrieren"-Modus) sehen weiterhin
+  // alle Sub-Sections, damit sie stellvertretend buchen können.
+  const childEvents = React.useMemo(() => {
+    if (!event) return [];
+    const all = childEventsOf(event.id);
+    if (canCreateEvents || registerForOther) return all;
+    return all.filter(ce => isEventVisibleForUser(ce, currentUser.email, currentUser.location, groupEmails));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event?.id, canCreateEvents, registerForOther, currentUser.email, currentUser.location, groupEmails]);
   // v15.10: vom Organizer konfigurierbare Bezeichnung (z.B. „Event-Sections",
   // „Workshops"). Wenn gesetzt überschreibt das die Default-Übersetzung
   // („Sessions" / „Sub-Events") überall im RegistrationPage-UI.
