@@ -19,6 +19,147 @@ Wird aktualisiert wenn Flows geändert werden.
 **Zweck:** TeilnehmerIDs neu vergeben (Aktive + Warteliste lückenlos sortiert) + Nachrücken von Warteliste (seit v6.7 inkl. typ-bewusster Promotion für B2Run-Split-Wartelisten; seit v10.20 mit optionalem Shared-Waitlist-Modus)
 **Letztes Update:** 2026-06-03 (v18.71 — `Status`/`StarterType` als Objekt aus „Get items" → Filter auf `?['Value']`; siehe Anleitung unten)
 
+### UI-Anleitung 2026-06-11 (Audit) — Status-Sortierung zurück in die Renummerierung + Folge-Reorder nach Promotion + Fehler-Sichtbarkeit
+
+**Status: OFFEN — noch nicht im Tenant umgesetzt.** Ergebnis des
+Action-für-Action-Audits vom 2026-06-11 („IDs werden ab und zu nicht perfekt
+korrigiert"). Drei Befunde, drei Fixes:
+
+**Befund A (Hauptursache):** Seit dem v18.69-Umbau sortiert die
+Renummerierung NUR noch nach `TeilnehmerID asc` — die alte
+Status-Gruppierung (`Sort_ByStatusPriority`: Aktive zuerst, Warteliste
+danach) wurde in Phase 1 ersatzlos gelöscht. Folge: Jede Konstellation, bei
+der eine AKTIVE Person eine höhere ID trägt als ein Wartelistler, wird vom
+Flow **für immer konserviert** (Diff sieht nichts zu tun). Solche
+Inversionen entstehen im Alltag durch: (1) Split-Promotion, die
+andersgruppige Wartelistler überspringt (Nachgerückter behält z.B. ID 103
+zwischen Warteliste 102 und 104), (2) Reaktivierung/Wieder-Anmeldung nach
+Abmeldung (Counter vergibt max+1 → hinter der Warteliste), (3) Anmeldungen
+während der Renummerier-Schleife. Die App-seitige Renummerierung
+(`reorderParticipantIDs`) sortiert dagegen Status-first — je nachdem,
+welcher Pfad zuletzt lief, sieht die Liste anders aus („ab und zu").
+
+**Befund B:** Die Promotion läuft NACH der Renummerierung und stößt keine
+Folge-Korrektur an. Im Nicht-Split-Fall ist das zufällig perfekt (der
+erste Wartelistler trägt nach der Renummerierung genau die nächste aktive
+Nummer). Im Split-Fall NICHT (siehe Befund A Punkt 1). Außerdem füllt ein
+Lauf maximal EINEN Platz pro Gruppe — geht ein Lauf verloren (Failed,
+Queue-Item gelöscht, Trigger-Backlog > 100 maximumWaitingRuns), bleibt ein
+Platz trotz Warteliste frei bis zur nächsten Abmeldung.
+
+**Befund C:** Schlägt `Batch_Until_Clean` selbst fehl (Timeout/HTTP), sind
+alle Folge-Actions SKIPPED (nicht failed) → `Error_Handler` (Run after:
+has failed an `DEX_IDReorder`) feuert nicht → das Queue-Item bleibt ewig
+auf `Processing`. Und: Läuft die Do-until per Count-Limit (5) aus, gilt sie
+als SUCCEEDED → der Flow macht mit unfertigen IDs still weiter.
+
+**Befund D (alt, weiter offen):** `SplitSharedWaitlist` wird ignoriert —
+die dritte Bedingungszeile in `Is_B2RunSplit` (UI-Anleitung v10.20 weiter
+unten) ist im Tenant nie umgesetzt worden. Nur relevant, falls ein
+Split-Event mit gemeinsamer Warteliste läuft.
+
+---
+
+#### Fix 1 — Status-Sortierung in der Renummerier-Schleife (4 neue Actions + 1 runAfter)
+
+Alle vier Actions liegen INNERHALB von `Batch_Until_Clean`, zwischen
+`Set_AllParticipants` und `Generate_Indices`:
+
+1. **`Filter_Sort_Aktive`** · NEU · Typ **Filter array (Array filtern)** ·
+   Position: nach `Set_AllParticipants` (Run after: is successful), vor
+   `Filter_Sort_Warteliste`.
+   - **From** (fx): `variables('AllParticipants')`
+   - **Where** (Erweiterter Modus, fx): `@not(equals(item()?['Status']?['Value'], 'Warteliste'))`
+   - ⋮ → Rename → `Filter_Sort_Aktive`
+2. **`Filter_Sort_Warteliste`** · NEU · Typ **Filter array** · Position:
+   nach `Filter_Sort_Aktive` (Run after: is successful).
+   - **From** (fx): `variables('AllParticipants')`
+   - **Where** (fx): `@equals(item()?['Status']?['Value'], 'Warteliste')`
+   - ⋮ → Rename → `Filter_Sort_Warteliste`
+3. **`Sort_AktiveZuerst`** · NEU · Typ **Compose (Verfassen)** · Position:
+   nach `Filter_Sort_Warteliste` (Run after: is successful).
+   - **Inputs** (fx): `union(body('Filter_Sort_Aktive'), body('Filter_Sort_Warteliste'))`
+   - ⋮ → Rename → `Sort_AktiveZuerst`
+4. **`Set_AllParticipants_Sortiert`** · NEU · Typ **Set variable (Variable
+   festlegen)** · Position: nach `Sort_AktiveZuerst` (Run after: is successful).
+   - **Name:** `AllParticipants`
+   - **Value** (fx): `outputs('Sort_AktiveZuerst')`
+   - ⋮ → Rename → `Set_AllParticipants_Sortiert`
+5. **`Generate_Indices`** · BESTEHEND ändern · ⋮ → Configure run after:
+   Haken bei `Set_AllParticipants` ENTFERNEN, stattdessen
+   `Set_AllParticipants_Sortiert` (is successful) anhaken.
+
+Innerhalb der Gruppen bleibt die Reihenfolge `TeilnehmerID asc` (kommt so
+aus `Load_Participants`) → minimaler Diff, unberührte Aktive behalten ihre
+Nummer. Konvergenz bleibt erhalten: nach dem ersten Schreib-Durchlauf ist
+die TID-Reihenfolge identisch mit der Status-Reihenfolge → Diff leer →
+Schleife endet. Kein `union`-Duplikat-Risiko (Items unterscheiden sich
+mindestens in `ID`).
+
+#### Fix 2 — Folge-Reorder nach jeder Promotion (3 neue Actions, 1 pro Zweig)
+
+Je Promote-Zweig EINE neue Action als neue LETZTE Action des
+Has-Waitlist-JA-Zweigs (nach `Audit_Cancelled_N` / `_D` / `_F`):
+
+- **`Requeue_Reorder_N`** · NEU · Typ **Create item (Element erstellen)** ·
+  Position: nach `Audit_Cancelled_N` · ⋮ → Configure run after:
+  **is successful + has failed + is skipped** ALLE anhaken (damit der
+  Folge-Reorder auch kommt, wenn die Best-effort-Audit-Kette scheitert).
+  - **Site Address:** `https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform` (Root — wie der Trigger, NICHT die Subsite)
+  - **List Name:** `DEX_IDReorder`
+  - **Title:** `Reorder: Folge-Korrektur nach Nachrücken`
+  - **EventId** (fx): `triggerOutputs()?['body/EventId']`
+  - **EventNumber** (fx): `triggerOutputs()?['body/EventNumber']`
+  - **SubsiteUrl** (fx): `triggerOutputs()?['body/SubsiteUrl']`
+  - **Status:** `Pending`
+  - **CancelledName** (fx): `triggerOutputs()?['body/CancelledName']`
+  - **CancelledEmail** (fx): `triggerOutputs()?['body/CancelledEmail']`
+- **`Requeue_Reorder_D`** · NEU · identisch, Position: nach
+  `Audit_Cancelled_D`, gleiche Run-after-Haken.
+- **`Requeue_Reorder_F`** · NEU · identisch, Position: nach
+  `Audit_Cancelled_F`, gleiche Run-after-Haken.
+
+Wirkung: (1) Nach jeder Promotion läuft sofort ein frischer
+Renummerier-Lauf → der Nachgerückte bekommt seine korrekte aktive Nummer
+(mit Fix 1 zusammen heilt das auch die Split-Sandwiches sofort statt erst
+bei der nächsten Abmeldung). (2) Sind mehrere Plätze frei (Mehrfach-
+Abmeldungen, verlorene Läufe), füllt die Kette sie nacheinander auf.
+**Terminierung garantiert:** Ein Folge-Item entsteht NUR nach erfolgreicher
+Promotion; jede Promotion verkleinert die Warteliste bzw. füllt einen
+Platz → sobald nichts mehr nachrückt, entsteht kein neues Item.
+CancelledName/-Email werden durchgereicht: Org-Mail + Audit verhalten sich
+wie heute (der frei gewordene Platz stammt aus genau dieser Absage).
+
+#### Fix 3 — Fehler-Sichtbarkeit (1 Run-after-Änderung + optional 1 Condition)
+
+1. **`Error_Handler`** (bzw. die `Set_Failed`-Action darin) · BESTEHEND
+   ändern · ⋮ → Configure run after (auf `DEX_IDReorder`): zusätzlich zu
+   **has failed** auch **is skipped** anhaken. Dann wird das Queue-Item
+   auch bei Abbrüchen VOR dem Done-Patch (z.B. Batch_Until_Clean-Timeout)
+   auf `Failed` gesetzt statt ewig `Processing` zu bleiben.
+2. **Optional `Check_Renumber_Clean`** · NEU · Typ **Condition** ·
+   Position: direkt nach `Batch_Until_Clean` (Run after: is successful),
+   vor `Filter_Non_Waitlist`; `Filter_Non_Waitlist` Run-after auf den
+   JA-Zweig bzw. nach der Condition umhängen.
+   - Bedingung (fx, linke Seite): `length(body('GenerateSPData'))` ·
+     **is equal to** · `0`
+   - **NEIN-Zweig:** Update item auf das Trigger-Item → `Status` =
+     `Failed` (die Schleife ist 5× gelaufen und der Diff ist immer noch
+     nicht leer → nicht still weitermachen).
+
+**Verifikation nach Umsetzung:** (1) Split-Event mit gemischter Warteliste:
+Person der einen Gruppe abmelden → nach beiden Läufen müssen die Aktiven
+lückenlos 1..N sein und die Warteliste N+1..M, der Nachgerückte mittendrin
+korrekt einsortiert. (2) Normal-Event: Abmeldung → ein Nachrücker, IDs
+lückenlos. (3) DEX_IDReorder-Queue: pro Promotion genau ein Folge-Item,
+das auf `Done` endet und KEIN weiteres Item erzeugt.
+
+> Nach dem Durchklicken bitte bestätigen + Flow-JSON exportieren — dann
+> wird der json-Block unten ersetzt (er ist ohnehin teilweise stale: zeigt
+> noch die v18.69-gelöschten Actions `Load_All_Pages`/`Filter_Active`/
+> `Filter_Waitlist`/`Sort_ByStatusPriority` und die alten Split-Filter,
+> obwohl v19.14 im Tenant verifiziert ist).
+
 ### ✅ GELÖST 2026-06-02 (v18.66) — leeres `from` + unquoted `Warteliste` + Self-Reference
 
 > **Status: umgesetzt & verifiziert.** Alle drei unten beschriebenen Fehler
