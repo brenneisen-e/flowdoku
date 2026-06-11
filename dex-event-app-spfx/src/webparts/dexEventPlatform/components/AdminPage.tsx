@@ -2102,6 +2102,17 @@ export default function AdminPage(): React.ReactElement {
     if (!currentEmailLc) return false;
     if (ev.organizerEmails && ev.organizerEmails.some(e => e.toLowerCase() === currentEmailLc)) return true;
     if (ev.coOrganizerEmails && ev.coOrganizerEmails.some(e => (e || '').toLowerCase() === currentEmailLc)) return true;
+    // v22.14: Organizer des HAUPTEVENTS gelten auch auf dessen Sub-Events als
+    // Organizer. Vorher waren Sub-Event-Tabs für Parent-Organizer beschnitten
+    // (Status-Badge nicht klickbar, Organizer-Aktionen ausgeblendet), wenn die
+    // Organizer-Liste des Kindes nicht (mehr) identisch gepflegt war.
+    if (ev.parentEventId) {
+      const parent = allEvents.find(p => p.id === ev.parentEventId);
+      if (parent) {
+        if (parent.organizerEmails && parent.organizerEmails.some(e => (e || '').toLowerCase() === currentEmailLc)) return true;
+        if (parent.coOrganizerEmails && parent.coOrganizerEmails.some(e => (e || '').toLowerCase() === currentEmailLc)) return true;
+      }
+    }
     return false;
   };
   const adminEvents = isAdmin
@@ -2815,6 +2826,12 @@ export default function AdminPage(): React.ReactElement {
       // durch refreshEvents nicht automatisch ersetzt.
       setSelectedEvent(prev => prev ? { ...prev, isFictive: nextIsFictive, ...(nextIsFictive ? {} : { status: 'Active' }) } : prev);
       await refreshEvents();
+    } else {
+      // v22.14: vorher scheiterte der Klick STUMM — der Organizer dachte,
+      // der Status lasse sich nicht ändern, ohne zu erfahren warum.
+      showAlert(isDe
+        ? 'Der Status konnte nicht geändert werden. Vermutlich fehlen dir Schreibrechte auf der Event-Liste (z.B. als Co-Organizer ohne Organizer-Rolle) — bitte einen Haupt-Organizer oder Admin den Status umschalten lassen.'
+        : 'The status could not be changed. You probably lack write permission on the event list (e.g. co-organizer without the organizer role) — please ask a main organizer or admin to switch the status.', { variant: 'error' });
     }
   };
 
