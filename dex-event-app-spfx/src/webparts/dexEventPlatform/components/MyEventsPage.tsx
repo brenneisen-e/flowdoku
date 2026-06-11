@@ -14,6 +14,9 @@ import { useEvents } from '../context/EventContext';
 import { useRoles } from '../context/RoleContext';
 import { UserFieldPicker } from './UserFieldPicker';
 import { useCurrentUser } from '../context/UserContext';
+// v22.13: Sub-Events in „Meine Events" nach ihrer EIGENEN Sichtbarkeit filtern
+// (gleiche Logik wie Anmeldeseite/Event-Liste).
+import { isEventVisibleForUser } from './EventListPage';
 import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime, QuizQuestion } from '../types';
 import { SPRegistration } from '../services/EventService';
 import { wrapTemplate } from '../services/EmailTemplates';
@@ -3201,6 +3204,12 @@ function MyEventSubEvents(props: {
   // und sagt nichts darüber aus, in welcher Sprache der User die App sieht.
   const { locale: __uiLocale } = useLanguage();
   const isDe = __uiLocale === 'de';
+  // v22.13: Sub-Events auch in „Meine Events" nach ihrer EIGENEN Sichtbarkeit
+  // filtern (gleiche Logik wie Anmeldeseite/Event-Liste, Fix v22.10). Eigene
+  // aktive Anmeldungen bleiben IMMER sichtbar (verwalten/abmelden); Organizer
+  // des Events und Admins sehen weiterhin alles.
+  const { currentUser, groupEmails } = useCurrentUser();
+  const { isAdmin } = useRoles();
   const [busyId, setBusyId] = React.useState<string | null>(null);
   // v15.21: Voll-Bild-Progress-Modal beim (Peer-)Cancel + Anmeldung. Vorher
   // war nur die einzelne Karte mit „…" markiert — bei Peer-Cancels haben die
@@ -3357,7 +3366,17 @@ function MyEventSubEvents(props: {
     }
   };
 
-  if (props.childEvents.length === 0) return null;
+  // v22.13: nur Sub-Events zeigen, die der User laut Sub-Event-Sichtbarkeit
+  // sehen darf — ODER in denen er bereits aktiv angemeldet ist.
+  const myEmailLc = (currentUser.email || '').toLowerCase();
+  const isParentOrganizer = (props.parentEvent.organizerEmails || []).some(e => (e || '').toLowerCase() === myEmailLc);
+  const visibleChildren = (isAdmin || isParentOrganizer)
+    ? props.childEvents
+    : props.childEvents.filter(ce =>
+        registeredSet.has(ce.id)
+        || isEventVisibleForUser(ce, currentUser.email, currentUser.location, groupEmails));
+
+  if (visibleChildren.length === 0) return null;
 
   // v15.13: Bezeichnung kommt jetzt direkt aus event.childEventTermPlural /
   // childEventTermSingular (Wizard-Setting). Fallback: „Sub-Events"-Begriff.
@@ -3380,7 +3399,7 @@ function MyEventSubEvents(props: {
         {hintLabel}
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {props.childEvents.map(ce => {
+        {visibleChildren.map(ce => {
           const isReg = registeredSet.has(ce.id);
           const isBusy = busyId === ce.id;
           const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date());
