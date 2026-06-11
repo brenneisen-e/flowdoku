@@ -3089,7 +3089,15 @@ export default function AdminPage(): React.ReactElement {
     const qrData = `DEX|${selectedEvent.eventNumber}|${currentUser.email}`;
     const qrImageHtml = await buildQrImageHtml(qrData);
     setQrEditSampleBlock(buildQrBlockHtml(qrImageHtml, myName, selectedEvent.title));
+    // v22.19: Versand-Modal schließen — der Editor zeigt die Versand-Aktionen
+    // in einer eigenen linken Spalte (nebeneinander statt übereinander).
+    // Beim Schließen des Editors öffnet das Versand-Modal wieder.
+    setQrSendModalOpen(false);
     setQrEditOpen(true);
+  };
+  const closeQrMailEditor = (): void => {
+    setQrEditOpen(false);
+    setQrSendModalOpen(true);
   };
   // Speichern: Override in das EmailTemplateOverrides-JSON des Events mergen
   // (andere Keys + Piggybacks bleiben erhalten). Entspricht alles den
@@ -3115,7 +3123,6 @@ export default function AdminPage(): React.ReactElement {
       if (ok) {
         setSelectedEvent(prev => prev ? { ...prev, emailTemplateOverrides: json } : prev);
         await refreshEvents();
-        setQrEditOpen(false);
         showAlert(isDe
           ? (isDefault
             ? 'QR-Mail auf den Standardtext zurückgesetzt.'
@@ -3156,7 +3163,9 @@ export default function AdminPage(): React.ReactElement {
       setQrPreviewOpen(true);
     } finally { setQrPreviewLoading(false); }
   };
-  const qrTestSendAction = async (): Promise<void> => {
+  // v22.19: optionaler liveOverride — der Test-Versand aus dem Mail-Editor
+  // nutzt den AKTUELLEN (ggf. ungespeicherten) Editor-Text, damit Test = Vorschau.
+  const qrTestSendAction = async (liveOverride?: QrEmailOverride): Promise<void> => {
     if (!eventServiceRef || !selectedEvent) return;
     setIsSendingQR(true); setQrSendResult(null); setQrSentCount(0);
     try {
@@ -3165,7 +3174,7 @@ export default function AdminPage(): React.ReactElement {
       const orgFirstName = currentUser.firstName || orgFullName.split(/\s+/)[0] || orgFullName;
       const qrData = `DEX|${selectedEvent.eventNumber}|${orgEmail}`;
       const qrImageHtml = await buildQrImageHtml(qrData);
-      const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName, getQrMailOverride(selectedEvent));
+      const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName, liveOverride || getQrMailOverride(selectedEvent));
       await eventServiceRef.queueEmail(emailData.subject, orgEmail, orgFullName, emailData.body, 'QRCode', selectedEvent.title, selectedEvent.id);
       setQrSendResult(isDe
         ? `Test-Mail an ${orgEmail} verschickt — bitte in deinem Postfach prüfen.`
@@ -9050,6 +9059,82 @@ export default function AdminPage(): React.ReactElement {
           .replace(/\{\{Vorname\}\}/g, previewVars.Vorname)
           .replace(/\{\{Name\}\}/g, myName);
         const def = qrEmailDefaults(selectedEvent.emailLanguage || 'EN');
+        // Versand-Spalte links: ungespeicherte Änderungen sperren den
+        // Massen-Versand (der nutzt den GESPEICHERTEN Text) — der Test an
+        // mich nutzt bewusst den aktuellen Editor-Text (Test = Vorschau).
+        const savedOv = getQrMailOverride(selectedEvent);
+        const savedSubject = (savedOv && savedOv.subject) || def.subject;
+        const savedHeading = (savedOv && savedOv.heading) || def.heading;
+        const savedSubheading = (savedOv && savedOv.subheading) || def.subheading;
+        const savedBody = (savedOv && savedOv.bodyHtml) || def.body;
+        const qrEditDirty = qrEditSubject.trim() !== savedSubject.trim()
+          || qrEditHeading.trim() !== savedHeading.trim()
+          || qrEditSubheading.trim() !== savedSubheading.trim()
+          || qrEditBody.trim() !== savedBody.trim();
+        const noCodeCount = registrations.filter(r => r.Status === 'Angemeldet').length;
+        const withCodeCount = registrations.filter(r => r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length;
+        const leftPanel = (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ fontWeight: 700, fontSize: '0.92rem' }}>{isDe ? 'QR-Code-Versand' : 'QR code sending'}</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <span style={{ background: '#eef6e3', color: 'var(--dex-green-dark, #4a7c1f)', borderRadius: 12, padding: '3px 10px', fontSize: '0.74rem', fontWeight: 600 }}>
+                <strong>{noCodeCount}</strong> {isDe ? 'ohne Code' : 'without code'}
+              </span>
+              <span style={{ background: 'var(--dex-gray-100, #f0f0f0)', color: 'var(--dex-gray-600)', borderRadius: 12, padding: '3px 10px', fontSize: '0.74rem', fontWeight: 600 }}>
+                <strong>{withCodeCount}</strong> {isDe ? 'mit Code' : 'with code'}
+              </span>
+            </div>
+            <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', lineHeight: 1.5 }}>
+              {isDe
+                ? 'Die Live-Vorschau rechts zeigt deinen aktuellen Text. Der Test an dich nutzt ebenfalls den aktuellen Text — der Versand an die Teilnehmer immer den gespeicherten.'
+                : 'The live preview on the right shows your current text. The test to yourself also uses the current text — sending to participants always uses the saved one.'}
+            </div>
+            <button
+              type="button"
+              className="btn btn-outline"
+              disabled={isSendingQR}
+              onClick={() => { qrTestSendAction({ subject: qrEditSubject, heading: qrEditHeading, subheading: qrEditSubheading, bodyHtml: qrEditBody }).catch(() => { /* */ }); }}
+              style={{ fontSize: '0.82rem', width: '100%' }}
+            >
+              {isDe ? 'Test an mich (aktueller Text)' : 'Test to me (current text)'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={isSendingQR || qrEditDirty || noCodeCount === 0}
+              onClick={() => { qrFullSendAction().catch(() => { /* */ }); }}
+              style={{ fontSize: '0.82rem', width: '100%', fontWeight: 700 }}
+              title={qrEditDirty ? (isDe ? 'Erst speichern — der Versand nutzt den gespeicherten Text.' : 'Save first — sending uses the saved text.') : undefined}
+            >
+              {isSendingQR
+                ? `${isDe ? 'Versende' : 'Sending'}… (${qrSentCount})`
+                : (noCodeCount === 0
+                  ? (isDe ? 'Alle haben ihren QR-Code' : 'Everyone has their QR code')
+                  : (isDe ? `An ${noCodeCount} Teilnehmer senden` : `Send to ${noCodeCount} participant${noCodeCount === 1 ? '' : 's'}`))}
+            </button>
+            {qrEditDirty && (
+              <div style={{ background: '#fff3e0', border: '1px solid #ed8b00', borderRadius: 'var(--dex-radius)', padding: '8px 10px', fontSize: '0.72rem', color: '#7a4a00', lineHeight: 1.5 }}>
+                {isDe
+                  ? 'Ungespeicherte Änderungen — erst „Für dieses Event speichern" klicken, dann an die Teilnehmer senden.'
+                  : 'Unsaved changes — click "Save for this event" first, then send to participants.'}
+              </div>
+            )}
+            {qrSendResult && (
+              <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-600)', lineHeight: 1.5, borderTop: '1px solid var(--dex-gray-200)', paddingTop: 8 }}>
+                {qrSendResult}
+              </div>
+            )}
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={isSendingQR}
+              onClick={closeQrMailEditor}
+              style={{ fontSize: '0.78rem', width: '100%', marginTop: 4 }}
+            >
+              {isDe ? 'Zurück zum Versand-Modal' : 'Back to the send dialog'}
+            </button>
+          </div>
+        );
         const headerExtra = (
           <div style={{ padding: 12, background: 'var(--dex-gray-50, #fafafa)', border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius)', marginBottom: 4, fontSize: '0.78rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
             {isDe
@@ -9060,8 +9145,9 @@ export default function AdminPage(): React.ReactElement {
         return (
           <HtmlEditorModal
             open={qrEditOpen}
-            onClose={() => !qrEditSaving && setQrEditOpen(false)}
+            onClose={() => { if (!qrEditSaving && !isSendingQR) closeQrMailEditor(); }}
             title={isDe ? `QR-Mail anpassen: ${selectedEvent.title}` : `Customize QR email: ${selectedEvent.title}`}
+            leftPanel={leftPanel}
             value={qrEditBody}
             onChange={setQrEditBody}
             previewMode="email"

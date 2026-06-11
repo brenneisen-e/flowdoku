@@ -87,6 +87,11 @@ export interface HtmlEditorModalProps {
    *  QR-Mail-Editor) — wird in der Vorschau OHNE HTML-Escaping ersetzt
    *  (previewVars escaped die Werte). */
   previewHtmlVars?: Record<string, string>;
+  /** v22.19: Optionale schmale Spalte LINKS neben dem Editor (z.B. die
+   *  QR-Versand-Aktionen) — Layout wird dann: Aktionen | Editor | Vorschau.
+   *  So stehen Versand und Mail-Anpassung nebeneinander statt als zwei
+   *  übereinander gestapelte Modals. */
+  leftPanel?: React.ReactNode;
   insertableVars?: Array<{ key: string; label: string }>;
   logoBase64?: string;
   imageBase64?: string;
@@ -211,6 +216,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     defaultBodyHtml,
     previewVars = {}, insertableVars = [],
     previewHtmlVars,
+    leftPanel,
     logoBase64 = '', imageBase64 = '',
     extraAction,
     headerExtra,
@@ -514,7 +520,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
       <div
         className="card"
         style={{
-          width: '100%', maxWidth: 1280, maxHeight: '100%',
+          width: '100%', maxWidth: leftPanel ? 1600 : 1280, maxHeight: '100%',
           display: 'flex', flexDirection: 'column',
           background: '#fff', borderRadius: 'var(--dex-radius)', overflow: 'hidden',
         }}
@@ -532,6 +538,12 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
         </div>
 
         <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
+          {/* === OPTIONALE AKTIONS-SPALTE LINKS (v22.19) === */}
+          {leftPanel && (
+            <div style={{ width: 280, minWidth: 280, borderRight: '1px solid var(--dex-gray-200)', overflow: 'auto', background: 'var(--dex-gray-50, #fafafa)', padding: '14px 16px' }}>
+              {leftPanel}
+            </div>
+          )}
           {/* === EDITOR === */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--dex-gray-200)', overflow: 'auto' }}>
             <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>

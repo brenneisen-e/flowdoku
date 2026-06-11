@@ -160,6 +160,39 @@ und `reactivateRegistration`. Dadurch sieht der Teilnehmer seine Anmeldung in
   Teilnehmer ohne Tenant-Login scheitern am `ensureuser` → zählen als „nicht
   möglich" (erwartbar).
 
+### ID-Konsistenz App-seitig (v22.20) — Reihenfolge immer fair + deckungsgleich mit dem Flow
+
+Leitlinie: **Die TeilnehmerID-Reihenfolge ist immer „Aktive 1..N, Warteliste
+N+1..M, FIFO ohne Vordrängeln"** — App und `DEX_IDReorder`-Flow erzeugen
+exakt dieselbe Ordnung. Vier Bausteine (v22.20):
+
+- **`reorderParticipantIDs` (Client)** sortiert innerhalb der Gruppen jetzt
+  primär nach **vorhandener TeilnehmerID** (asc, ohne ID ans Ende),
+  Gleichstand nach Item-Id — identisch zur Flow-Renummerierung (die seit dem
+  2026-06-11-Umbau Status-sortiert + TID-stabil arbeitet). Vorher Client =
+  Erstellungsreihenfolge → IDs „sprangen" je nachdem, ob zuletzt der
+  Admin-Button oder der Flow lief.
+- **`switchSplitGroup`:** Wer in die VOLLE Zielgruppe wechselt (→ Warteliste),
+  bekommt eine **frische Counter-ID** (reiht sich hinten ein) statt die alte
+  niedrige zu behalten — kein Überholen der länger Wartenden beim
+  typ-bewussten Nachrücken. Best-effort (Counter-Ausfall = alte ID bleibt).
+- **Nach jedem Gruppenwechsel** stößt der EventContext einen `queueIDReorder`
+  an: Flow sortiert sofort neu UND besetzt den in der alten Gruppe frei
+  gewordenen Platz direkt nach (Name/E-Mail des Wechslers gehen als
+  CancelledName/-Email mit → Nachrück-Mail/Audit benennen den Vorgänger).
+- **Nach jeder Reaktivierung als 'Angemeldet'** (Counter vergibt bewusst eine
+  frische End-ID) ebenfalls `queueIDReorder` → die Person wird sofort in den
+  aktiven Block einsortiert statt erst bei der nächsten Abmeldung.
+
+**Flow-Gegenstück (im Tenant, 2026-06-11):** Renummerier-Schleife sortiert
+Status-first (`Filter_Sort_Aktive`/`_Warteliste`/`Sort_AktiveZuerst`/
+`Set_AllParticipants_Sortiert` in `Batch_Until_Clean`), nach jeder Promotion
+erzeugt `Requeue_Reorder_N/D/F` (gated über `Check_Promote_OK_*`, HTTP 204)
+einen Folge-Reorder, `Error_Handler` greift auch bei SKIPPED,
+`Check_Renumber_Clean` terminiert bei unsauberer Schleife. Die
+„circular loop"-Speicher-Warnung ist dabei ERWARTBAR und bleibt dauerhaft
+(statische Prüfung: Flow schreibt in seine eigene Trigger-Liste).
+
 ### QR-Codes: Auto-Send immer aktiv + „Mein QR-Code" in Meine Events (v20.7)
 
 - **Auto-Send ist Standard und nicht abwählbar:** Jede neue Anmeldung mit
@@ -226,6 +259,18 @@ Massenmail, aber **persistiert am Event** statt in localStorage:
   RAW (previewVars escaped die Werte). „Standardtext laden" via
   `defaultBodyHtml`; Speichern mit Default-Vergleich (alles Standard → Key
   wird entfernt).
+- **Nebeneinander statt gestapelt (v22.19):** Das shared `Modal` liegt auf
+  z-index 9999, der `HtmlEditorModal` auf 1200 — zwei offene Modals
+  verdecken sich also (Versand-Modal über dem Editor). Deshalb öffnet
+  „Mail-Text anpassen" den Editor als EINZIGES Overlay und schließt das
+  Versand-Modal; die Versand-Aktionen wandern in das neue
+  `HtmlEditorModal`-Prop **`leftPanel`** (schmale Spalte links: Zähler
+  ohne/mit Code, Test an mich, Massen-Versand, zurück). Layout: Versand |
+  Editor | Live-Vorschau. **Test an mich** nutzt den AKTUELLEN Editor-Text
+  (`qrTestSendAction(liveOverride?)`), der **Massen-Versand** immer den
+  gespeicherten — bei ungespeicherten Änderungen ist er gesperrt (orange
+  Hinweisbox). Editor-Close/„Zurück" öffnet das Versand-Modal wieder
+  (`closeQrMailEditor`).
 
 ### Archivierung abgelaufener Event-Zeilen (v21/v22)
 
@@ -1029,7 +1074,9 @@ Edit-Persistenz + Dirty-Snapshot.
   `Still_Registered`=yes-Zweig eine Condition `Auto_Deregister_On`
   (`first(outputs('Get_DEX_Event')?['body/value'])?['AutoDeregisterOnDecline']` ==
   `true`). Im yes-Zweig statt des Reminders: (1) MERGE auf das Teilnehmer-Item →
-  `Status='Abgemeldet'`, `CancellationDate=utcNow()`; (2) `DEX_Emails`-Item mit
+  `Status='Abgemeldet'`, `CancellationDate=utcNow()` **und `TeilnehmerID=null`**
+  (PFLICHT — sonst behält die abgemeldete Zeile ihre alte Nummer und verfälscht
+  die Max-Berechnung des ID-Reorder-Flows → Counter läuft davon); (2) `DEX_Emails`-Item mit
   **`AbmeldungAuto`**-Template (pre-wrapped! NICHT `Abmeldung` — das ist der
   unwrapped App-Type; der Flow verschickt den BodyHtml roh, braucht also das
   pre-wrapped `AbmeldungAuto` aus dem Template-Seed, sonst kommt die Mail ohne
@@ -1533,6 +1580,13 @@ Dabei werden **fette Schlagwörter** (`<strong>`) für die wichtigsten Begriffe 
 
 Die `InfoTooltip`-Komponente nimmt ab v9.32 `text: React.ReactNode` an (vorher nur `string`) — bei JSX-Tooltips bilingual als `{isDe ? <>...</> : <>...</>}` rendern. Bei einfachen Texten ist weiterhin ein String erlaubt.
 
+### Antwort-Sprache im Chat — ALWAYS
+
+Chat-Antworten an den Maintainer IMMER auf **Deutsch**. Einzige Ausnahme:
+**Power-Automate-UI-Begriffe bleiben Englisch** (siehe Regel in der
+Power-Automate-Sektion — der Maker/Tenant des Maintainers läuft komplett
+auf Englisch).
+
 ### German Text / Sonderzeichen — ALWAYS
 
 **IMPORTANT (strikt ab v6.3.0, verschärft v10.25):** Alle deutschen Texte —
@@ -1617,6 +1671,49 @@ eine Zeile/ein Block pro Action**, vollständig im Chat (nicht nur „steht in
 `docs/flow-jsons.md`"). Die identische Anleitung wandert zusätzlich in
 `docs/flow-jsons.md`. NIE auf die Doku verweisen statt im Chat zu antworten —
 beides muss vollständig sein.
+
+**Pflicht-Format (Stand 2026-06-11, final): Übersichts-Tabelle + Abarbeitungs-Blöcke.**
+Hintergrund: Der Kopier-Button der Chat-UI existiert NUR an fenced
+Code-Blöcken — und Code-Blöcke lassen sich nicht in Markdown-Tabellen-Zellen
+rendern. Deshalb zweiteilig:
+
+1. **Übersichts-Tabelle** (Orientierung, eine Zeile pro Action) mit den
+   Spalten:
+
+   | # | Neu / Geändert | Name der Action | Art der Action | Stelle (Zweig + Vorgänger) |
+
+   „Art der Action" = der Action-Typ in der **englischen**
+   Original-Bezeichnung, wie er im „Add an action"-Dialog heißt (z.B.
+   „Filter array", „Compose", „Set variable", „Create item", „Update item",
+   „Condition", „Terminate"); bei Änderungen an bestehenden Actions z.B.
+   „Run-after-Änderung (bestehende Action)". KEINE fx-Ausdrücke in die
+   Tabelle (dort gibt es keinen Kopier-Button).
+2. **Pro Tabellen-Zeile ein Abarbeitungs-Block** darunter, Überschrift
+   „Zeile N — `ActionName` (Art)", Inhalt = nummerierte Schritt-Liste
+   (ein Klick bzw. ein Feld pro Schritt). **JEDER zu übernehmende Wert**
+   (fx-Ausdrücke, Feldwerte, Site-URLs, Listennamen, Title-Texte,
+   Status-Werte und auch die Rename-Zielnamen) steht als **eigener fenced
+   Code-Block direkt unter dem Schritt**, der ihn braucht — ein Wert pro
+   Block, nichts anderes im Block → ein Klick auf den Kopier-Button
+   übernimmt ihn in die Zwischenablage. Keine separate „Zum
+   Kopieren"-Sektion am Ende — die Werte gehören an die Stelle im
+   Ablauf, wo sie eingetragen werden.
+
+**Sprache in Flow-Anleitungen (Stand 2026-06-11):** Erklärtexte auf
+Deutsch, aber ALLE Power-Automate-UI-Begriffe auf **ENGLISCH** — das
+Power Automate des Maintainers läuft komplett auf Englisch. Also: „Add an
+action", „Rename" (⋮), „Configure run after" (⋮), „Edit in advanced
+mode", „Site Address", „List Name", „From", „Inputs", „Value", Operator
+„is equal to", Run-after-Status „is successful / has failed / is
+skipped", Terminate-Status „Failed". NIE die deutschen Übersetzungen
+(„Array filtern", „Umbenennen", „Ausführen nach konfigurieren" …)
+verwenden — die findet der Maintainer in seiner UI nicht.
+
+**Die Antwort gehört IMMER vollständig in den Chat.** Der Maintainer
+arbeitet Flow-Anleitungen direkt im Chat ab — die komplette Tabelle muss
+also in der Chat-Antwort stehen. `docs/flow-jsons.md` bekommt zusätzlich
+dieselbe Tabelle als Archiv-Kopie, ist aber NIE ein Ersatz für die
+Chat-Antwort („steht in der Doku" ist keine zulässige Antwort).
 
 ### Power Automate Flow-Änderungen Workflow
 
