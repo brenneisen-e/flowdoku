@@ -21,7 +21,7 @@ Wird aktualisiert wenn Flows geändert werden.
 
 ### UI-Anleitung 2026-06-11 (Audit) — Status-Sortierung zurück in die Renummerierung + Folge-Reorder nach Promotion + Fehler-Sichtbarkeit
 
-**Status: UMGESETZT im Tenant + per Flow-JSON-Review verifiziert (2026-06-11).** Restbaustelle: `Set_Failed_Unclean` wurde unvollständig gespeichert (List Name leer, `Status=Failed`-Feld + Title fehlen) — Fix-Block am Ende dieses Abschnitts. Ergebnis des
+**Status: VOLLSTÄNDIG UMGESETZT im Tenant + per Flow-JSON verifiziert (2026-06-11).** Alle 12 Zeilen sind live; die zunächst unvollständig gespeicherte Action `Set_Failed_Unclean` wurde am selben Tag nachgezogen (korrigierte Fassung steht im json-Block unten). Ergebnis des
 Action-für-Action-Audits vom 2026-06-11 („IDs werden ab und zu nicht perfekt
 korrigiert"). Drei Befunde, drei Fixes:
 
@@ -266,10 +266,12 @@ Terminate_Unclean
 ```
 (Verhindert, dass nach 5 erfolglosen Renummerier-Runden noch mit unfertigen IDs nachgerückt wird.)
 
-#### Nach-Review 2026-06-11 — Restbaustelle `Set_Failed_Unclean` vervollständigen
+#### Nach-Review 2026-06-11 — Restbaustelle `Set_Failed_Unclean` (✅ erledigt 2026-06-11)
 
-Im Export ist die Action ohne Liste gespeichert (`"table": ""`) und ohne
-`Status`/`Title`-Felder — im False-Zweig würde sie zur Laufzeit fehlschlagen.
+Im ersten Export war die Action ohne Liste gespeichert (`"table": ""`) und ohne
+`Status`/`Title`-Felder. Der Maintainer hat sie am selben Tag vervollständigt
+(List Name `DEX_IDReorder`, Id/Title vom Trigger, `Status=Failed`) — die
+Anleitung unten bleibt als Doku stehen.
 
 | # | Neu / Geändert | Name der Action | Art der Action | Stelle |
 |---|----------------|-----------------|----------------|--------|
@@ -1959,8 +1961,10 @@ Batch_Update (Scope - enthaelt Batch_Until_Clean inkl. Status-Sortierung v2026-0
             "inputs": {
               "parameters": {
                 "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
-                "table": "",
-                "id": "@triggerOutputs()?['body/ID']"
+                "table": "9d46ff77-5fe2-4e1d-9b93-14b9dca1a360",
+                "id": "@triggerOutputs()?['body/ID']",
+                "item/Title": "@triggerOutputs()?['body/Title']",
+                "item/Status/Value": "Failed"
               },
               "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PatchItem" }
             }
@@ -2064,8 +2068,9 @@ If_Counter_Stale (If -> Patch_Counter):
 > des großen Scope im Tenant (enthält `Batch_Until_Clean`, `Check_Renumber_Clean`,
 > `Filter_Non_Waitlist`/`Count_Active`, `Get_EventDetails`, `Is_B2RunSplit` mit den
 > drei Promote-Zweigen inkl. `Requeue_Reorder_N/D/F`, `DEX_IDReorder`→Done und
-> `Error_Handler`). **Bekannte Restbaustelle:** `Set_Failed_Unclean` ist hier noch
-> mit leerem `table` gespeichert — Fix-Anleitung im Audit-Abschnitt oben.
+> `Error_Handler`). `Set_Failed_Unclean` wurde am 2026-06-11 nachgereicht und ist
+> oben bereits in der korrigierten Fassung enthalten — der Flow-Stand ist damit
+> vollständig.
 
 ---
 
