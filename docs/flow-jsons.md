@@ -293,7 +293,7 @@ Failed
 ```
 6. Speichern.
 
-#### Nachtrag 2026-06-11 — Speicher-Warnung „circular loop" + Promote-OK-Schranke (Status: OFFEN)
+#### Nachtrag 2026-06-11 — Speicher-Warnung „circular loop" + Promote-OK-Schranke (Status: UMGESETZT — Typ-Korrektur OFFEN, siehe unten)
 
 **Die Warnung ist erwartbar:** Power Automate zeigt sie STATISCH bei jedem
 Flow, der Items in seine eigene Trigger-Liste schreibt (`Requeue_Reorder_*`
@@ -365,6 +365,36 @@ Rename:
 Check_Promote_OK_F
 ```
 Run after auf `Audit_Cancelled_F` (3 Haken) · `Requeue_Reorder_F` in den True-Zweig.
+
+##### Typ-Korrektur (OFFEN) — `equals` ist typ-strikt: string("204") ≠ Zahl 204
+
+Im Export 2026-06-11 steht in allen drei `Check_Promote_OK_*`-Conditions
+links `@string(coalesce(...))` (Text), rechts hat der Designer die ZAHL
+`204` gespeichert. `equals` vergleicht typ-strikt → immer false → das
+Requeue feuert NIE. Fix: in allen drei Conditions NUR die linke Seite
+ändern (`string(` → `int(`), die rechte Seite (204) NICHT anfassen:
+
+| # | Neu / Geändert | Name der Action | Art der Action | Stelle |
+|---|----------------|-----------------|----------------|--------|
+| 1 | GEÄNDERT | `Check_Promote_OK_N` | Condition (bestehend, nur linker Operand) | NEIN-Zweig → `Condition_1` JA |
+| 2 | GEÄNDERT | `Check_Promote_OK_D` | Condition (bestehend, nur linker Operand) | Durchstarter-Zweig |
+| 3 | GEÄNDERT | `Check_Promote_OK_F` | Condition (bestehend, nur linker Operand) | Funstarter-Zweig |
+
+Zeile 1 — linke Seite über den Expression-Tab (fx) ERSETZEN durch:
+```
+int(coalesce(outputs('Promote_Waitlist')?['statusCode'], 0))
+```
+Zeile 2 — linke Seite ersetzen durch:
+```
+int(coalesce(outputs('Promote_Durchstarter')?['statusCode'], 0))
+```
+Zeile 3 — linke Seite ersetzen durch:
+```
+int(coalesce(outputs('Promote_Funstarter')?['statusCode'], 0))
+```
+Rechte Seite jeweils unverändert lassen (Zahl `204`), Operator bleibt
+**is equal to**. Danach speichern (die „circular loop"-Warnung erscheint
+wieder — erwartbar, ignorieren).
 
 **Verifikation nach Umsetzung:** (1) Split-Event mit gemischter Warteliste:
 Person der einen Gruppe abmelden → nach beiden Läufen müssen die Aktiven
@@ -1283,7 +1313,7 @@ batchTemplate (Compose):
   "runAfter": { "BatchGuids": [ "Succeeded" ] }
 }
 
-Batch_Update (Scope - enthaelt Batch_Until_Clean inkl. Status-Sortierung v2026-06-11, Check_Renumber_Clean, Filter_Non_Waitlist, Count_Active, Get_EventDetails, Is_B2RunSplit mit den drei Promote-Zweigen inkl. Requeue_Reorder_N/D/F, DEX_IDReorder->Done, Error_Handler):
+Batch_Update (Scope - enthaelt Batch_Until_Clean inkl. Status-Sortierung, Check_Renumber_Clean (Set_Failed_Unclean vollstaendig), Filter_Non_Waitlist, Count_Active, Get_EventDetails, Is_B2RunSplit mit den drei Promote-Zweigen inkl. Check_Promote_OK_N/D/F um Requeue_Reorder_N/D/F, DEX_IDReorder->Done, Error_Handler):
 {
   "type": "Scope",
   "actions": {
@@ -1331,7 +1361,7 @@ Batch_Update (Scope - enthaelt Batch_Until_Clean inkl. Status-Sortierung v2026-0
           }
         }
       },
-      "runAfter": { "DEX_IDReorder": [ "Failed", "SKIPPED" ] }
+      "runAfter": { "DEX_IDReorder": [ "Failed", "Skipped" ] }
     },
     "Is_B2RunSplit": {
       "type": "If",
@@ -1488,23 +1518,30 @@ Batch_Update (Scope - enthaelt Batch_Until_Clean inkl. Status-Sortierung v2026-0
                   },
                   "runAfter": { "Get_Cancelled_D": [ "Succeeded" ] }
                 },
-                "Requeue_Reorder_D": {
-                  "type": "OpenApiConnection",
-                  "inputs": {
-                    "parameters": {
-                      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
-                      "table": "9d46ff77-5fe2-4e1d-9b93-14b9dca1a360",
-                      "item/Title": "Reorder: Folge-Korrektur nach Nachrücken",
-                      "item/EventId": "@triggerOutputs()?['body/EventId']",
-                      "item/EventNumber": "@triggerOutputs()?['body/EventNumber']",
-                      "item/SubsiteUrl": "@triggerOutputs()?['body/SubsiteUrl']",
-                      "item/Status/Value": "Pending",
-                      "item/CancelledName": "@triggerOutputs()?['body/CancelledName']",
-                      "item/CancelledEmail": "@triggerOutputs()?['body/CancelledEmail']"
-                    },
-                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
+                "Check_Promote_OK_D": {
+                  "type": "If",
+                  "expression": { "and": [ { "equals": [ "@string(coalesce(outputs('Promote_Durchstarter')?['statusCode'], 0))", 204 ] } ] },
+                  "actions": {
+                    "Requeue_Reorder_D": {
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "parameters": {
+                          "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                          "table": "9d46ff77-5fe2-4e1d-9b93-14b9dca1a360",
+                          "item/Title": "Reorder: Folge-Korrektur nach Nachrücken",
+                          "item/EventId": "@triggerOutputs()?['body/EventId']",
+                          "item/EventNumber": "@triggerOutputs()?['body/EventNumber']",
+                          "item/SubsiteUrl": "@triggerOutputs()?['body/SubsiteUrl']",
+                          "item/Status/Value": "Pending",
+                          "item/CancelledName": "@triggerOutputs()?['body/CancelledName']",
+                          "item/CancelledEmail": "@triggerOutputs()?['body/CancelledEmail']"
+                        },
+                        "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
+                      }
+                    }
                   },
-                  "runAfter": { "Audit_Cancelled_D": [ "SUCCEEDED", "SKIPPED", "FAILED" ] }
+                  "else": { "actions": {} },
+                  "runAfter": { "Audit_Cancelled_D": [ "Succeeded", "Skipped", "Failed" ] }
                 }
               },
               "else": { "actions": {} },
@@ -1682,23 +1719,30 @@ Batch_Update (Scope - enthaelt Batch_Until_Clean inkl. Status-Sortierung v2026-0
                   },
                   "runAfter": { "Get_Cancelled_F": [ "Succeeded" ] }
                 },
-                "Requeue_Reorder_F": {
-                  "type": "OpenApiConnection",
-                  "inputs": {
-                    "parameters": {
-                      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
-                      "table": "9d46ff77-5fe2-4e1d-9b93-14b9dca1a360",
-                      "item/Title": "Reorder: Folge-Korrektur nach Nachrücken",
-                      "item/EventId": "@triggerOutputs()?['body/EventId']",
-                      "item/EventNumber": "@triggerOutputs()?['body/EventNumber']",
-                      "item/SubsiteUrl": "@triggerOutputs()?['body/SubsiteUrl']",
-                      "item/Status/Value": "Pending",
-                      "item/CancelledName": "@triggerOutputs()?['body/CancelledName']",
-                      "item/CancelledEmail": "@triggerOutputs()?['body/CancelledEmail']"
-                    },
-                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
+                "Check_Promote_OK_F": {
+                  "type": "If",
+                  "expression": { "and": [ { "equals": [ "@string(coalesce(outputs('Promote_Funstarter')?['statusCode'], 0))", 204 ] } ] },
+                  "actions": {
+                    "Requeue_Reorder_F": {
+                      "type": "OpenApiConnection",
+                      "inputs": {
+                        "parameters": {
+                          "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                          "table": "9d46ff77-5fe2-4e1d-9b93-14b9dca1a360",
+                          "item/Title": "Reorder: Folge-Korrektur nach Nachrücken",
+                          "item/EventId": "@triggerOutputs()?['body/EventId']",
+                          "item/EventNumber": "@triggerOutputs()?['body/EventNumber']",
+                          "item/SubsiteUrl": "@triggerOutputs()?['body/SubsiteUrl']",
+                          "item/Status/Value": "Pending",
+                          "item/CancelledName": "@triggerOutputs()?['body/CancelledName']",
+                          "item/CancelledEmail": "@triggerOutputs()?['body/CancelledEmail']"
+                        },
+                        "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
+                      }
+                    }
                   },
-                  "runAfter": { "Audit_Cancelled_F": [ "SUCCEEDED", "SKIPPED", "FAILED" ] }
+                  "else": { "actions": {} },
+                  "runAfter": { "Audit_Cancelled_F": [ "Succeeded", "Skipped", "Failed" ] }
                 }
               },
               "else": { "actions": {} },
@@ -1883,23 +1927,30 @@ Batch_Update (Scope - enthaelt Batch_Until_Clean inkl. Status-Sortierung v2026-0
                     },
                     "runAfter": { "Get_Cancelled_N": [ "Succeeded" ] }
                   },
-                  "Requeue_Reorder_N": {
-                    "type": "OpenApiConnection",
-                    "inputs": {
-                      "parameters": {
-                        "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
-                        "table": "9d46ff77-5fe2-4e1d-9b93-14b9dca1a360",
-                        "item/Title": "Reorder: Folge-Korrektur nach Nachrücken",
-                        "item/EventId": "@triggerOutputs()?['body/EventId']",
-                        "item/EventNumber": "@triggerOutputs()?['body/EventNumber']",
-                        "item/SubsiteUrl": "@triggerOutputs()?['body/SubsiteUrl']",
-                        "item/Status/Value": "Pending",
-                        "item/CancelledName": "@triggerOutputs()?['body/CancelledName']",
-                        "item/CancelledEmail": "@triggerOutputs()?['body/CancelledEmail']"
-                      },
-                      "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
+                  "Check_Promote_OK_N": {
+                    "type": "If",
+                    "expression": { "and": [ { "equals": [ "@string(coalesce(outputs('Promote_Waitlist')?['statusCode'], 0))", 204 ] } ] },
+                    "actions": {
+                      "Requeue_Reorder_N": {
+                        "type": "OpenApiConnection",
+                        "inputs": {
+                          "parameters": {
+                            "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                            "table": "9d46ff77-5fe2-4e1d-9b93-14b9dca1a360",
+                            "item/Title": "Reorder: Folge-Korrektur nach Nachrücken",
+                            "item/EventId": "@triggerOutputs()?['body/EventId']",
+                            "item/EventNumber": "@triggerOutputs()?['body/EventNumber']",
+                            "item/SubsiteUrl": "@triggerOutputs()?['body/SubsiteUrl']",
+                            "item/Status/Value": "Pending",
+                            "item/CancelledName": "@triggerOutputs()?['body/CancelledName']",
+                            "item/CancelledEmail": "@triggerOutputs()?['body/CancelledEmail']"
+                          },
+                          "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
+                        }
+                      }
                     },
-                    "runAfter": { "Audit_Cancelled_N": [ "SUCCEEDED", "FAILED", "SKIPPED" ] }
+                    "else": { "actions": {} },
+                    "runAfter": { "Audit_Cancelled_N": [ "Succeeded", "Failed", "Skipped" ] }
                   }
                 },
                 "else": { "actions": {} },
@@ -1950,22 +2001,22 @@ Batch_Update (Scope - enthaelt Batch_Until_Clean inkl. Status-Sortierung v2026-0
             "from": "@variables('AllParticipants')",
             "where": "@equals(item()?['Status']?['Value'], 'Warteliste')"
           },
-          "runAfter": { "Filter_Sort_Aktive": [ "SUCCEEDED" ] }
+          "runAfter": { "Filter_Sort_Aktive": [ "Succeeded" ] }
         },
         "Sort_AktiveZuerst": {
           "type": "Compose",
           "inputs": "@union(body('Filter_Sort_Aktive'), body('Filter_Sort_Warteliste'))",
-          "runAfter": { "Filter_Sort_Warteliste": [ "SUCCEEDED" ] }
+          "runAfter": { "Filter_Sort_Warteliste": [ "Succeeded" ] }
         },
         "Set_AllParticipants_Sortiert": {
           "type": "SetVariable",
           "inputs": { "name": "AllParticipants", "value": "@outputs('Sort_AktiveZuerst')" },
-          "runAfter": { "Sort_AktiveZuerst": [ "SUCCEEDED" ] }
+          "runAfter": { "Sort_AktiveZuerst": [ "Succeeded" ] }
         },
         "Generate_Indices": {
           "type": "Compose",
           "inputs": "@range(0, length(variables('AllParticipants')))",
-          "runAfter": { "Set_AllParticipants_Sortiert": [ "SUCCEEDED" ] }
+          "runAfter": { "Set_AllParticipants_Sortiert": [ "Succeeded" ] }
         },
         "GenerateSPData_Full": {
           "type": "Select",
@@ -2045,7 +2096,7 @@ Batch_Update (Scope - enthaelt Batch_Until_Clean inkl. Status-Sortierung v2026-0
           "Terminate_Unclean": {
             "type": "Terminate",
             "inputs": { "runStatus": "Failed" },
-            "runAfter": { "Set_Failed_Unclean": [ "SUCCEEDED" ] }
+            "runAfter": { "Set_Failed_Unclean": [ "Succeeded" ] }
           }
         }
       },
@@ -2057,7 +2108,7 @@ Batch_Update (Scope - enthaelt Batch_Until_Clean inkl. Status-Sortierung v2026-0
         "from": "@variables('AllParticipants')",
         "where": "@not(equals(item()?['Status']?['Value'],'Warteliste'))"
       },
-      "runAfter": { "Check_Renumber_Clean": [ "SUCCEEDED" ] }
+      "runAfter": { "Check_Renumber_Clean": [ "Succeeded" ] }
     },
     "Count_Active": {
       "type": "Compose",
@@ -2137,13 +2188,13 @@ If_Counter_Stale (If -> Patch_Counter):
 }
 ```
 
-> Export vom 2026-06-11 (nach Audit-Fixes). `Batch_Update` ist der Anzeigename
-> des großen Scope im Tenant (enthält `Batch_Until_Clean`, `Check_Renumber_Clean`,
-> `Filter_Non_Waitlist`/`Count_Active`, `Get_EventDetails`, `Is_B2RunSplit` mit den
-> drei Promote-Zweigen inkl. `Requeue_Reorder_N/D/F`, `DEX_IDReorder`→Done und
-> `Error_Handler`). `Set_Failed_Unclean` wurde am 2026-06-11 nachgereicht und ist
-> oben bereits in der korrigierten Fassung enthalten — der Flow-Stand ist damit
-> vollständig.
+> Export-Stand 2026-06-11 (inkl. `Check_Promote_OK_N/D/F` um die Requeue-Actions
+> und vollständigem `Set_Failed_Unclean`). `Batch_Update` ist der Anzeigename des
+> großen Scope im Tenant. **ACHTUNG — eine Typ-Korrektur ist noch OFFEN:** die
+> linke Seite der drei `Check_Promote_OK_*`-Conditions ist als `string(...)`
+> gespeichert, die rechte Seite als ZAHL `204` — `equals` ist typ-strikt, der
+> Vergleich ist damit IMMER false und das Requeue feuert nie. Fix-Anleitung im
+> Nachtrag-Abschnitt oben (string( ) auf der linken Seite durch int( ) ersetzen).
 
 ---
 
