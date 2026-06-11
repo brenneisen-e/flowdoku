@@ -1,8 +1,8 @@
 /**
  * Inline SVG Icons
  *
- * lucide-react ist in SPFx nicht verfuegbar,
- * daher hier die benoetigten Icons als einfache SVG-Komponenten.
+ * lucide-react ist in SPFx nicht verfügbar,
+ * daher hier die benötigten Icons als einfache SVG-Komponenten.
  */
 
 import * as React from 'react';

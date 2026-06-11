@@ -54,12 +54,12 @@ function getStatusColor(status: string): string {
   }
 }
 
-// v11.41: Einladungsmail-Empfaenger-Blocker. Die Einladungsmail darf NIE an
+// v11.41: Einladungsmail-Empfänger-Blocker. Die Einladungsmail darf NIE an
 // komplette Standort-Verteiler ('de.duesseldorf@...', 'duesseldorf@...' etc.)
 // oder an pauschale 'all'-Listen ('deall@...', 'all@...', 'alldeloitte@...')
 // gehen. Hintergrund: solche Aussendungen sind ohne CMC-/Marketing-Freigabe
 // nicht erlaubt — kleinere explizite Verteilergruppen (Team-Mailboxen,
-// Funktions-Accounts) bleiben aber zulaessig.
+// Funktions-Accounts) bleiben aber zulässig.
 const DEX_LOCATION_TOKENS: string[] = [
   'berlin', 'dresden', 'duesseldorf', 'dusseldorf', 'düsseldorf',
   'frankfurt', 'goerlitz', 'görlitz', 'halle', 'hamburg', 'hannover',
@@ -69,20 +69,20 @@ const DEX_LOCATION_TOKENS: string[] = [
 ];
 
 /** Wenn die Adresse als unerlaubter Massen-Verteiler erkannt wird, gibt den
- *  Block-Grund zurueck — sonst null. Heuristik bewusst konservativ: matched
+ *  Block-Grund zurück — sonst null. Heuristik bewusst konservativ: matched
  *  nur, wenn der Local-Part (bzw. der gesamte Token, falls kein '@' vorhanden)
  *  eindeutig ein Standort-/All-Verteiler ist. Team-Mailboxen wie
  *  'frankfurt-event-team@' bleiben erlaubt.
  *
- *  v11.44: Auch reine Tokens ohne '@' werden geprueft — der Mailverteiler
- *  kann Eintraege wie 'All' oder 'Duesseldorf' enthalten, die direkt aus dem
+ *  v11.44: Auch reine Tokens ohne '@' werden geprüft — der Mailverteiler
+ *  kann Einträge wie 'All' oder 'Duesseldorf' enthalten, die direkt aus dem
  *  Standort-/Location-Picker stammen. Vorher wurden die durchgelassen, weil
- *  der Parser an `at <= 0` zurueckkehrte. */
+ *  der Parser an `at <= 0` zurückkehrte. */
 function getBlockedInviteReason(email: string): string | null {
   const lc = (email || '').trim().toLowerCase();
   if (!lc) return null;
   const at = lc.indexOf('@');
-  // Mit '@': Local-Part vor dem '@' pruefen. Ohne '@': gesamten Token pruefen
+  // Mit '@': Local-Part vor dem '@' prüfen. Ohne '@': gesamten Token prüfen
   // (z.B. wenn die Sichtbarkeit per Location-Picker auf 'All' gesetzt war
   // und 'All' so im audienceFilter landet).
   const local = at > 0 ? lc.slice(0, at) : lc;
@@ -92,12 +92,12 @@ function getBlockedInviteReason(email: string): string | null {
   if (local === 'deall' || local === 'alldeloitte' || tokens.includes('deall') || tokens.includes('alldeloitte')) {
     return 'globaler Deloitte-DE-Verteiler';
   }
-  // (2) 'all' als eigenstaendiger Token oder Local-Part — pauschale Liste.
+  // (2) 'all' als eigenständiger Token oder Local-Part — pauschale Liste.
   if (local === 'all' || tokens.includes('all')) {
     return 'globaler "all"-Verteiler';
   }
   // (3) Standort-Verteiler: Local-Part ist exakt eine Stadt ODER beginnt /
-  //     endet mit 'de.' / 'de-' und enthaelt eine Stadt als Token.
+  //     endet mit 'de.' / 'de-' und enthält eine Stadt als Token.
   for (const loc of DEX_LOCATION_TOKENS) {
     if (local === loc) return `Standort-Verteiler (${loc})`;
     // 'de.<loc>' / 'de-<loc>' / '<loc>.de' / '<loc>-de'
@@ -108,7 +108,7 @@ function getBlockedInviteReason(email: string): string | null {
   return null;
 }
 
-/** Liefert pro Empfaenger die Block-Begruendung — leeres Array = alles OK. */
+/** Liefert pro Empfänger die Block-Begründung — leeres Array = alles OK. */
 function getBlockedInviteRecipients(emails: string[]): Array<{ email: string; reason: string }> {
   const out: Array<{ email: string; reason: string }> = [];
   for (const e of emails) {
@@ -230,12 +230,12 @@ function migrateB2RunFieldExtras(fields: any[]): { changed: boolean } {
   return { changed };
 }
 
-// v7.6: Wiederverwendbare Action-Kachel fuer den Aktionen-Bereich.
+// v7.6: Wiederverwendbare Action-Kachel für den Aktionen-Bereich.
 // Default in Grau, beim Hover/Focus kippt Border + Icon + Hintergrund auf
-// Deloitte-Gruen. Unterstuetzt Button (onClick), Link (href, oeffnet in neuem
-// Tab) und passive Wrapper (children-Mode fuer Spezialfaelle wie das
-// Excel-Dropdown). Badge zeigt zwingend "Organizer" (gruener Tint) oder
-// "Nur Admin" (oranger Tint), damit auf einen Blick klar ist, fuer welche
+// Deloitte-Grün. Unterstützt Button (onClick), Link (href, oeffnet in neuem
+// Tab) und passive Wrapper (children-Mode für Spezialfälle wie das
+// Excel-Dropdown). Badge zeigt zwingend "Organizer" (grüner Tint) oder
+// "Nur Admin" (oranger Tint), damit auf einen Blick klar ist, für welche
 // Rolle die Aktion gedacht ist.
 // v20.3: Kategorien für das Aktionen-Dropdown — die Aktionen werden nicht
 // mehr als flache Alphabet-Liste gerendert, sondern als aufklappbare
@@ -283,15 +283,15 @@ interface ActionTileProps {
   busy?: boolean;
   result?: string | null;
   resultIsError?: boolean;
-  // v9.19: filled-Variante fuer Highlight-Aktionen (z.B. Event aktivieren).
-  // accent='green' = grün gefuellt, accent='red' = rot gefuellt.
+  // v9.19: filled-Variante für Highlight-Aktionen (z.B. Event aktivieren).
+  // accent='green' = grün gefüllt, accent='red' = rot gefüllt.
   accent?: 'green' | 'red';
   // v20.3: Kategorie + optionale Unterkategorie (z.B. „Self-Check-in"
   // innerhalb von Check-in) für das gruppierte Aktionen-Dropdown.
   category?: ActionCategoryKey;
   subCategory?: string;
-  // children: zusaetzlicher Inhalt, der unterhalb der Standard-Tile-Inhalte
-  // gerendert wird (z.B. das Excel-Dropdown-Menue).
+  // children: zusätzlicher Inhalt, der unterhalb der Standard-Tile-Inhalte
+  // gerendert wird (z.B. das Excel-Dropdown-Menü).
   children?: React.ReactNode;
 }
 function ActionTile(props: ActionTileProps): React.ReactElement | null {
@@ -328,15 +328,15 @@ function ActionTile(props: ActionTileProps): React.ReactElement | null {
   if (registered) return null;
   const isInteractive = !props.disabled && !props.busy;
   const greenAccent = isInteractive && hover;
-  // v9.19/v9.20: filled-Look — Tile dezent eingefaerbt fuer
-  // Highlight-Aktionen. Pastell statt voll gesaettigt, damit nicht
+  // v9.19/v9.20: filled-Look — Tile dezent eingefärbt für
+  // Highlight-Aktionen. Pastell statt voll gesättigt, damit nicht
   // alarmierend wirkt.
   const isFilled = !!props.accent;
   const filledBg = props.accent === 'green' ? '#e3f0c5' : props.accent === 'red' ? '#ffe5e5' : '';
   const filledBorder = props.accent === 'green' ? 'var(--dex-green, #86bc25)' : props.accent === 'red' ? 'var(--dex-red, #da291c)' : '';
   const borderColor = isFilled ? filledBorder : (greenAccent ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200, #e5e7eb)');
   const bg = isFilled ? filledBg : (greenAccent ? 'rgba(134,188,37,0.06)' : '#fff');
-  // v9.20: bei pastell-gefuellten Tiles Text/Icon dunkel halten — auf
+  // v9.20: bei pastell-gefüllten Tiles Text/Icon dunkel halten — auf
   // hellem Pastell-Hintergrund gut lesbar (im Gegensatz zum vorherigen
   // weiss auf saturated-Color).
   const filledIconColor = props.accent === 'green' ? 'var(--dex-green-dark, #4a7c1f)' : props.accent === 'red' ? '#a01e15' : 'var(--dex-gray-500, #6b7280)';
@@ -359,8 +359,8 @@ function ActionTile(props: ActionTileProps): React.ReactElement | null {
     transition: 'all 0.15s ease',
     boxShadow: greenAccent ? '0 4px 12px rgba(134,188,37,0.18)' : 'none',
     position: 'relative',
-    // width:100% sorgt dafuer, dass die Kachel auch in einem flex-Wrapper
-    // (z.B. Excel-Export hat einen <div display:flex>-Wrapper fuer das
+    // width:100% sorgt dafür, dass die Kachel auch in einem flex-Wrapper
+    // (z.B. Excel-Export hat einen <div display:flex>-Wrapper für das
     // Dropdown-Positioning) auf die volle Grid-Zellen-Breite gestreckt
     // wird — sonst sieht sie schmaler aus als die direkten Grid-Geschwister.
     width: '100%',
@@ -839,7 +839,7 @@ export default function AdminPage(): React.ReactElement {
   // 'id' | 'vorname' | 'nachname' | 'email' | 'jobTitle' | 'location' |
   // 'child:<eventId>' sein. Default: 'nachname' aufsteigend.
   // v15.23: Default-Sort im konsolidierten View jetzt chronologisch
-  // nach erster Anmeldung (frueheste zuerst), nicht mehr alphabetisch
+  // nach erster Anmeldung (früheste zuerst), nicht mehr alphabetisch
   // nach Nachname. Damit ist die # in der Liste die Reihenfolge der
   // Anmeldung, nicht die Alphabet-Position.
   const [consolidatedSort, setConsolidatedSort] = React.useState<string>('id');
@@ -952,8 +952,8 @@ export default function AdminPage(): React.ReactElement {
   const [reservedDetailHeight, setReservedDetailHeight] = React.useState<number | undefined>(undefined);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   // v9.0: Danger-Zone-Modal — User muss den Event-Titel exakt (lowercase)
-  // eintippen bevor der Loesch-Button aktiv wird. Schutz gegen versehentliche
-  // Loeschungen (frueher: Click-to-Confirm-Pattern, war zu schwach).
+  // eintippen bevor der Lösch-Button aktiv wird. Schutz gegen versehentliche
+  // Löschungen (früher: Click-to-Confirm-Pattern, war zu schwach).
   const [confirmDeleteEvent, setConfirmDeleteEvent] = React.useState<DeloitteEvent | null>(null);
   const [confirmDeleteText, setConfirmDeleteText] = React.useState('');
   // v9.0: ChangeLog-Modal — Admin/Organizer sehen den Audit-Log aller
@@ -1048,7 +1048,7 @@ export default function AdminPage(): React.ReactElement {
     teamId: string;
     teamName: string;
     freeSlots: number;
-    /** v17.1: true wenn dieser Dialog im „Neues Team anlegen"-Flow geoeffnet
+    /** v17.1: true wenn dieser Dialog im „Neues Team anlegen"-Flow geöffnet
      *  wurde — dann zeigen wir ein optionales Team-Name-Eingabefeld
      *  und uebernehmen den eingegebenen Namen beim Insert. */
     isNewTeam?: boolean;
@@ -1106,16 +1106,16 @@ export default function AdminPage(): React.ReactElement {
   } | null>(null);
   // Email Compose Modal
   const [showEmailModal, setShowEmailModal] = React.useState(false);
-  // v17.10: Massmail-Target-Picker. Erst Zielgruppe waehlen, dann den
+  // v17.10: Massmail-Target-Picker. Erst Zielgruppe wählen, dann den
   // RichText-Editor oeffnen. Mode = 'closed' | 'pick' | 'paste' | 'editor'.
   const [massmailMode, setMassmailMode] = React.useState<'closed' | 'pick' | 'paste' | 'editor'>('closed');
   type MassmailAudience = 'active' | 'activePlusWait' | 'waitOnly' | 'nachruecker' | 'custom';
   const [massmailAudience, setMassmailAudience] = React.useState<MassmailAudience>('active');
   // v22.9: Eigene Status-Auswahl ('custom') — welche Status die Mail bekommen.
   const [massmailStatuses, setMassmailStatuses] = React.useState<Set<string>>(new Set(['Angemeldet', 'QR versendet', 'Eingecheckt']));
-  // Fuer 'nachruecker': der eingefuegte Rohtext + die nach Extraktion
+  // Für 'nachruecker': der eingefügte Rohtext + die nach Extraktion
   // verbleibenden Teilnehmer (= angemeldete Personen, die NICHT in der
-  // eingefuegten Liste stehen).
+  // eingefügten Liste stehen).
   const [massmailPasteRaw, setMassmailPasteRaw] = React.useState<string>('');
   const [emailSubject, setEmailSubject] = React.useState('');
   const [emailHeading, setEmailHeading] = React.useState('');
@@ -1127,6 +1127,9 @@ export default function AdminPage(): React.ReactElement {
   const massmailHydratingRef = React.useRef(false);
   const [massmailTesting, setMassmailTesting] = React.useState(false);
   const [massmailTestMsg, setMassmailTestMsg] = React.useState<string | null>(null);
+  // v22.11: Unter-Überschrift der Massenmail editierbar (Parität zur
+  // Einladungsmail; vorher war das Feld sichtbar, aber nicht angebunden).
+  const [massmailSubheading, setMassmailSubheading] = React.useState('');
   // v11.40: Einladungsmail-Modal — Mail mit Anmelde-Link an Organizer (zum
   // Weiterleiten) oder direkt an den hinterlegten Mailverteiler des Events.
   const [showInviteModal, setShowInviteModal] = React.useState(false);
@@ -1145,7 +1148,7 @@ export default function AdminPage(): React.ReactElement {
   // v22.5: kurzes „Gespeichert"-Feedback nach Klick auf den Speichern-Button.
   const [inviteDraftSaved, setInviteDraftSaved] = React.useState(false);
   const [showExportMenu, setShowExportMenu] = React.useState(false);
-  // v17.12: Zielgruppen-Picker fuer Excel-Export.
+  // v17.12: Zielgruppen-Picker für Excel-Export.
   const [excelTargetModal, setExcelTargetModal] = React.useState<null | { mode: 'deloitte' | 'b2run' }>(null);
   const [excelAudience, setExcelAudience] = React.useState<'active' | 'activePlusWait' | 'waitOnly' | 'withCancelled'>('active');
   // v20.4: Excel-Export im Klammer-Modus — konsolidierte Matrix (eine Zeile
@@ -1164,9 +1167,9 @@ export default function AdminPage(): React.ReactElement {
   const [showDeclineModal, setShowDeclineModal] = React.useState(false);
   const [declineCopied, setDeclineCopied] = React.useState(false);
 
-  // Admin-Toast fuer Abmelde-/Nachrueck-Feedback (seit v6.8):
-  //  - 'cancelling': waehrend die Abmeldung + Nachrueck-Suche laeuft (orange, Spinner)
-  //  - 'promoted'  : erfolgreicher Nachruecker mit Namen + Typ (gruen)
+  // Admin-Toast für Abmelde-/Nachrück-Feedback (seit v6.8):
+  //  - 'cancelling': während die Abmeldung + Nachrück-Suche läuft (orange, Spinner)
+  //  - 'promoted'  : erfolgreicher Nachrücker mit Namen + Typ (grün)
   //  - 'no-promote': Abmeldung ok, aber keiner auf der Warteliste (grau)
   type AdminToast =
     | { kind: 'cancelling'; name: string }
@@ -1174,11 +1177,11 @@ export default function AdminPage(): React.ReactElement {
     | { kind: 'no-promote'; name: string };
   const [adminToast, setAdminToast] = React.useState<AdminToast | null>(null);
 
-  // v8.0: In-App-Edit-Modal fuer Teilnehmer (Admin/Organizer kann jeden
+  // v8.0: In-App-Edit-Modal für Teilnehmer (Admin/Organizer kann jeden
   // Teilnehmer-Eintrag direkt aus der Liste editieren — Anrede, Name, Email,
   // Phone, Department, Location, JobTitle, Status, plus alle Custom-Felder).
   // Beim Save wird eine Audit-Zeile in ChangeLog geschrieben (wer/wann/was)
-  // und LastModifiedDate gesetzt — kein direkter SP-Edit mehr noetig, was
+  // und LastModifiedDate gesetzt — kein direkter SP-Edit mehr nötig, was
   // gleichzeitig das deutsche Datumsformat-Problem in SP umgeht.
   const [editingReg, setEditingReg] = React.useState<SPRegistration | null>(null);
   const [editForm, setEditForm] = React.useState<Record<string, string>>({});
@@ -1267,8 +1270,8 @@ export default function AdminPage(): React.ReactElement {
       // editierbar gemacht — z.B. um Tippfehler nach manueller Anlage zu
       // korrigieren. Validierung:
       //   1. E-Mail muss eine Deloitte-Deutschland-Adresse sein (@deloitte.de).
-      //      Die Plattform ist nur fuer DEALL freigeschaltet — auch @deloitte.com
-      //      (US/Global) zaehlt als extern. Sonst Abbruch mit Fehler.
+      //      Die Plattform ist nur für DEALL freigeschaltet — auch @deloitte.com
+      //      (US/Global) zählt als extern. Sonst Abbruch mit Fehler.
       //   2. Person muss in M365 existieren (searchUserByEmail). Sonst
       //      Abbruch mit "Tippfehler"-Hinweis.
       // Die uebrigen Profil-Felder (Phone, Department, Location, JobTitle)
@@ -1283,7 +1286,7 @@ export default function AdminPage(): React.ReactElement {
 
       const profileFields: { Department?: string; Location?: string; JobTitle?: string } = {};
       if (stammChanged) {
-        // Plausibilitaet: nicht-leer
+        // Plausibilität: nicht-leer
         if (!newVorname || !newNachname || !newEmail) {
           setEditError(isDe
             ? 'Vorname, Nachname und E-Mail dürfen nicht leer sein.'
@@ -1331,7 +1334,7 @@ export default function AdminPage(): React.ReactElement {
         }
         if (newEmail !== oldEmail) {
           oldValues.ParticipantEmail = oldEmail; patch.ParticipantEmail = newEmail; fieldLabelMap.ParticipantEmail = 'E-Mail';
-          // Profil-Daten mit aktualisieren (nur wenn ueberhaupt was zurueckkam)
+          // Profil-Daten mit aktualisieren (nur wenn ueberhaupt was zurückkam)
           if (profileFields.Location) {
             oldValues.Location = String(r.Location || ''); patch.Location = profileFields.Location;
             fieldLabelMap.Location = isDe ? 'Standort' : 'Location';
@@ -1406,7 +1409,7 @@ export default function AdminPage(): React.ReactElement {
           : 'Save failed — likely a missing SP column on the participant list. Click „Fix columns" in the event toolbox once, then retry.');
         return;
       }
-      // v9.0: Audit-Log mit Diff der geaenderten Felder
+      // v9.0: Audit-Log mit Diff der geänderten Felder
       try {
         const changes: Record<string, { old: unknown; new: unknown }> = {};
         for (const k of Object.keys(patch)) {
@@ -1926,19 +1929,19 @@ export default function AdminPage(): React.ReactElement {
   };
 
   // v11.70 / v11.71: Hinweis-Box „IDs sind ggf. nicht korrekt" wird jetzt
-  // an die tatsaechliche TeilnehmerID-Sequenz gekoppelt — nicht mehr an
+  // an die tatsächliche TeilnehmerID-Sequenz gekoppelt — nicht mehr an
   // eine 10-Minuten-Zeit-Heuristik nach der letzten Abmeldung.
   //
-  // Erwartet: alle nicht-abgemeldeten Eintraege (Status in
+  // Erwartet: alle nicht-abgemeldeten Einträge (Status in
   // Angemeldet/QR versendet/Eingecheckt/Warteliste) haben TeilnehmerIDs,
-  // die nach Sortierung lueckenlos 1..N durchlaufen. Sobald
-  //   - eine ID fehlt (Luecke),
+  // die nach Sortierung lückenlos 1..N durchlaufen. Sobald
+  //   - eine ID fehlt (Lücke),
   //   - eine ID doppelt vorkommt,
   //   - ein nicht-abgemeldeter Eintrag keine (oder ≤0) ID hat,
   // ist der Zustand „IDs evtl. nicht korrekt". Typischer Trigger: gerade
   // erfolgte Abmeldung, der DEX_IDReorder-Flow ist noch nicht fertig.
   // Das gibt einen ehrlichen Status — die Box verschwindet automatisch,
-  // sobald der Flow durch ist (statt nach willkuerlichen 10 Minuten).
+  // sobald der Flow durch ist (statt nach willkürlichen 10 Minuten).
   const recentCancellation = (regs: SPRegistration[]): { recent: boolean; whenIso: string } => {
     const active = regs.filter(r => r.Status !== 'Abgemeldet');
     if (active.length === 0) return { recent: false, whenIso: '' };
@@ -1946,14 +1949,14 @@ export default function AdminPage(): React.ReactElement {
     for (const r of active) {
       const id = Number(r.TeilnehmerID);
       if (!isFinite(id) || id <= 0) {
-        // Eintrag ohne gueltige ID — IDs sind kaputt, Letzten-Cancel
+        // Eintrag ohne gültige ID — IDs sind kaputt, Letzten-Cancel
         // mitgeben (oder leer wenn keiner).
         return { recent: true, whenIso: latestCancelIso(regs) };
       }
       ids.push(id);
     }
     ids.sort((a, b) => a - b);
-    // Lueckenlos 1..N pruefen
+    // Lückenlos 1..N prüfen
     for (let i = 0; i < ids.length; i++) {
       if (ids[i] !== i + 1) {
         return { recent: true, whenIso: latestCancelIso(regs) };
@@ -1961,7 +1964,7 @@ export default function AdminPage(): React.ReactElement {
     }
     return { recent: false, whenIso: '' };
   };
-  // Hilfsfunktion: jüngste CancellationDate aus der Liste (fuer den
+  // Hilfsfunktion: jüngste CancellationDate aus der Liste (für den
   // optionalen Zeit-Hinweis in der Box).
   const latestCancelIso = (regs: SPRegistration[]): string => {
     let latest = 0;
@@ -1976,9 +1979,9 @@ export default function AdminPage(): React.ReactElement {
 
   // v11.70: kein Modal mehr beim Event-Oeffnen — der Hinweis steht ab
   // jetzt direkt als Box oben in der Teilnehmerliste, solange die
-  // Bedingung erfuellt ist (siehe Render-Block unten). Der Ref bleibt
+  // Bedingung erfüllt ist (siehe Render-Block unten). Der Ref bleibt
   // erhalten, um in Zukunft ein erneutes „Mount-Trigger"-Verhalten
-  // einbauen zu koennen, ohne den Save-Pfad zu touchen.
+  // einbauen zu können, ohne den Save-Pfad zu touchen.
   React.useEffect(() => {
     if (!selectedEvent || isLoadingRegs || registrations.length === 0) return;
     if (idFixCheckedForRef.current === selectedEvent.id) return;
@@ -2045,12 +2048,12 @@ export default function AdminPage(): React.ReactElement {
   const isQRScannerFor = (ev: DeloitteEvent): boolean =>
     !!currentEmailLc && !!ev.qrScannerEmails && ev.qrScannerEmails.some(e => e.toLowerCase() === currentEmailLc);
   // v9.18: Co-Organizer haben pro Event die gleichen Rechte wie der Hauptorganizer.
-  // isOrganizerFor returned true sowohl fuer event.organizerEmails als auch
-  // fuer event.coOrganizerEmails (per-Event-Rolle).
+  // isOrganizerFor returned true sowohl für event.organizerEmails als auch
+  // für event.coOrganizerEmails (per-Event-Rolle).
   const isOrganizerFor = (ev: DeloitteEvent): boolean => {
     // v18.3: Im Demo-Modus ist der (User-)Demo-Account „Organizer" des
     // synthetischen Demo-Events — so sieht er die Teilnehmer-Verwaltung
-    // (read-only) im Admin-Center. Greift nur fuer das Demo-Event.
+    // (read-only) im Admin-Center. Greift nur für das Demo-Event.
     if (isImpersonating && ev.isDemoShowcase) return true;
     if (!currentEmailLc) return false;
     if (ev.organizerEmails && ev.organizerEmails.some(e => e.toLowerCase() === currentEmailLc)) return true;
@@ -2065,9 +2068,9 @@ export default function AdminPage(): React.ReactElement {
   // + QR-Code-Scanner-Button sichtbar.
   const isQRScannerOnlyForSelected = !!selectedEvent && !isAdmin && !isOrganizerFor(selectedEvent) && isQRScannerFor(selectedEvent);
 
-  // Fuer Admins: vergangene Events in eine einklappbare Sektion auslagern
+  // Für Admins: vergangene Events in eine einklappbare Sektion auslagern
   // (Organizer sehen nur ihre eigenen Events — dort bleiben auch abgelaufene
-  // sichtbar, weil der Organizer sie fuer den Abschluss / CSV-Export etc.
+  // sichtbar, weil der Organizer sie für den Abschluss / CSV-Export etc.
   // evtl. direkt griffbereit braucht).
   const now = Date.now();
   const isPastEvent = (e: DeloitteEvent): boolean =>
@@ -2129,7 +2132,7 @@ export default function AdminPage(): React.ReactElement {
       { id: 'id', label: '#', alwaysVisible: true },
       ...(askSal ? [{ id: 'anrede', label: 'Anrede' }] : []),
       // v11.26: getrennte Vorname / Nachname Spalten statt der einen
-      // kombinierten 'name'-Spalte. Alte localStorage-Eintraege mit 'name'
+      // kombinierten 'name'-Spalte. Alte localStorage-Einträge mit 'name'
       // werden im useEffect-Loader unten in 'vorname','nachname' migriert.
       { id: 'vorname', label: 'Vorname', alwaysVisible: true },
       { id: 'nachname', label: 'Nachname', alwaysVisible: true },
@@ -2137,7 +2140,7 @@ export default function AdminPage(): React.ReactElement {
       { id: 'jobTitle', label: 'Job Title' },
       { id: 'location', label: 'Standort' },
     ];
-    // v11.6: bei Split-Capacity die frei waehlbaren Gruppen-Labels nutzen
+    // v11.6: bei Split-Capacity die frei wählbaren Gruppen-Labels nutzen
     // (Fallback auf 'Starter-Typ' wenn keine Labels gesetzt sind).
     if (isSplit) {
       const lblA = (selectedEvent?.splitLabelA && selectedEvent.splitLabelA.trim()) || '';
@@ -2147,7 +2150,7 @@ export default function AdminPage(): React.ReactElement {
     }
     cols.push({ id: 'status', label: 'Status' });
     cols.push({ id: 'date', label: 'Registriert am' });
-    // v17.15/v17.17.1: Nachrueck-Audit-Spalten — nur sichtbar wenn das
+    // v17.15/v17.17.1: Nachrück-Audit-Spalten — nur sichtbar wenn das
     // Event ueberhaupt eine Warteliste haben KANN (waitlistEnabled UND
     // maxParticipants > 0). Bei „Unbegrenzt"-Events kommt nie jemand auf
     // die Warteliste, deshalb sind die drei Audit-Spalten ohne Inhalt.
@@ -2237,9 +2240,9 @@ export default function AdminPage(): React.ReactElement {
         if (parsed && Array.isArray(parsed.order) && Array.isArray(parsed.hidden)) {
           // v11.26: Migration alter Spaltenkonfigurationen — die zentrale
           // 'name'-Spalte wurde in 'vorname' + 'nachname' aufgeteilt. Wenn
-          // ein gespeichertes Layout noch 'name' enthaelt, an gleicher
+          // ein gespeichertes Layout noch 'name' enthält, an gleicher
           // Position durch ['vorname','nachname'] ersetzen, damit der
-          // User seine gewuenschte Reihenfolge beibehaelt.
+          // User seine gewünschte Reihenfolge beibehält.
           const migratedOrder: string[] = [];
           for (const id of parsed.order as string[]) {
             if (id === 'name') {
@@ -2305,7 +2308,7 @@ export default function AdminPage(): React.ReactElement {
   };
 
   /**
-   * CSV Export fuer Teilnehmerlisten.
+   * CSV Export für Teilnehmerlisten.
    * - 'deloitte': alle internen Felder (Anrede, Name, Email, Department, Location, JobTitle, Phone, Status, ...)
    * - 'b2run': Format laut B2Run Excel-Template (Nr, Anrede, Vorname, Nachname, E-Mail, Startblock, Zustimmung AGB, Anonym, Gruppe, Strasse, PLZ, Stadt, Mobilnummer, Infoservice, Altersklasse)
    */
@@ -2670,7 +2673,7 @@ export default function AdminPage(): React.ReactElement {
 
   // v17.9: Map regId → Beitritts-Position (1-basiert, sortiert nach
   // v17.15: joinOrderById useMemo entfernt — wurde mit der Beitritts-#-
-  // Spalte (v17.9) eingefuehrt, die der User in v17.10 wieder rausgeworfen
+  // Spalte (v17.9) eingeführt, die der User in v17.10 wieder rausgeworfen
   // hat. Damit kein Hook mehr, der bei /joinOrder/ stale referenziert war.
 
   // v20.0 (Audit): ungenutzte Helper-Funktion getRegListUrl entfernt
@@ -2859,7 +2862,7 @@ export default function AdminPage(): React.ReactElement {
   });
   const applyMassmailDraftOrDefaults = (ev: DeloitteEvent): void => {
     massmailHydratingRef.current = true;
-    let loaded: { subject?: string; heading?: string; body?: string } | null = null;
+    let loaded: { subject?: string; heading?: string; subheading?: string; body?: string } | null = null;
     try {
       const raw = window.localStorage.getItem(massmailDraftKey(ev.id));
       if (raw) loaded = JSON.parse(raw);
@@ -2867,6 +2870,7 @@ export default function AdminPage(): React.ReactElement {
     const def = buildMassmailDefaults(ev);
     setEmailSubject(loaded && typeof loaded.subject === 'string' ? loaded.subject : def.subject);
     setEmailHeading(loaded && typeof loaded.heading === 'string' ? loaded.heading : def.heading);
+    setMassmailSubheading(loaded && typeof loaded.subheading === 'string' ? loaded.subheading : '');
     setEmailBody(loaded && typeof loaded.body === 'string' ? loaded.body : def.body);
     window.setTimeout(() => { massmailHydratingRef.current = false; }, 0);
   };
@@ -2884,6 +2888,7 @@ export default function AdminPage(): React.ReactElement {
     const def = buildMassmailDefaults(selectedEvent);
     setEmailSubject(def.subject);
     setEmailHeading(def.heading);
+    setMassmailSubheading('');
     setEmailBody(def.body);
     setMassmailDraftSaved(false);
     window.setTimeout(() => { massmailHydratingRef.current = false; }, 0);
@@ -2892,7 +2897,7 @@ export default function AdminPage(): React.ReactElement {
     if (!selectedEvent) return;
     try {
       window.localStorage.setItem(massmailDraftKey(selectedEvent.id), JSON.stringify({
-        subject: emailSubject, heading: emailHeading, body: emailBody,
+        subject: emailSubject, heading: emailHeading, subheading: massmailSubheading, body: emailBody,
       }));
       setMassmailDraftSaved(true);
       window.setTimeout(() => setMassmailDraftSaved(false), 2500);
@@ -2903,10 +2908,10 @@ export default function AdminPage(): React.ReactElement {
     if (massmailMode !== 'editor' || !showEmailModal || !selectedEvent || massmailHydratingRef.current) return;
     try {
       window.localStorage.setItem(massmailDraftKey(selectedEvent.id), JSON.stringify({
-        subject: emailSubject, heading: emailHeading, body: emailBody,
+        subject: emailSubject, heading: emailHeading, subheading: massmailSubheading, body: emailBody,
       }));
     } catch { /* */ }
-  }, [massmailMode, showEmailModal, selectedEvent, emailSubject, emailHeading, emailBody]);
+  }, [massmailMode, showEmailModal, selectedEvent, emailSubject, emailHeading, massmailSubheading, emailBody]);
   // Testmail mit dem aktuellen Stand an die Organizer (zur Kontrolle vor dem
   // echten Massenversand). Geht NICHT an die Teilnehmer.
   const sendMassmailTestToOrganizers = async (): Promise<void> => {
@@ -2928,7 +2933,8 @@ export default function AdminPage(): React.ReactElement {
       const resolvedSubject = `[TEST] ${replacePlaceholders(emailSubject, previewVars)}`;
       const resolvedHeading = replacePlaceholders(emailHeading, previewVars);
       const resolvedBody = replacePlaceholders(emailBody, previewVars);
-      const fullBody = wrapTemplate('#86bc25', resolvedHeading, `Event ${selectedEvent.title}`, resolvedBody);
+      const resolvedSub = massmailSubheading.trim() ? replacePlaceholders(massmailSubheading, previewVars) : `Event ${selectedEvent.title}`;
+      const fullBody = wrapTemplate('#86bc25', resolvedHeading, resolvedSub, resolvedBody);
       await eventServiceRef.queueEmail(resolvedSubject, to, 'Organizer (Test)', fullBody, 'Massenmail', selectedEvent.title, selectedEvent.id);
       setMassmailTestMsg(isDe ? `Testmail an die Organizer (${to.split(';').length}) verschickt — bitte Postfach prüfen.` : `Test email sent to the organizers (${to.split(';').length}) — please check the mailbox.`);
     } catch (err) {
@@ -3459,9 +3465,9 @@ export default function AdminPage(): React.ReactElement {
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
-                      {/* v9.10: B2Run-Events haben maxParticipants=0 weil die Kapazitaet
+                      {/* v9.10: B2Run-Events haben maxParticipants=0 weil die Kapazität
                           auf durchstarter+funstarter aufgeteilt ist — Summe als
-                          effektive Kapazitaet anzeigen statt "∞". */}
+                          effektive Kapazität anzeigen statt "∞". */}
                       {(() => {
                         const split = (event.durchstarterCapacity || 0) + (event.funstarterCapacity || 0);
                         const isSplitEv = (event.durchstarterCapacity || 0) > 0 && (event.funstarterCapacity || 0) > 0;
@@ -3476,7 +3482,7 @@ export default function AdminPage(): React.ReactElement {
                     </span>
                     {/* v9.20: Status-Badge mit Entwurfs-Override.
                         Wenn das Event als Entwurf markiert ist, wird "ENTWURF"
-                        statt des EventStatus angezeigt — fuer den Organizer
+                        statt des EventStatus angezeigt — für den Organizer
                         ist dieser Hinweis wichtiger als der technische Status. */}
                     <span className="badge" style={{
                       background: event.isFictive ? 'rgba(237,139,0,0.15)' : getStatusColor(event.status) + '22',
@@ -3485,24 +3491,24 @@ export default function AdminPage(): React.ReactElement {
                     }}>
                       {event.isFictive ? 'ENTWURF' : (isDe ? localizeStatus(event.status) : event.status)}
                     </span>
-                    {/* v10.20 / v11.9: Migrations-Button fuer Legacy-B2Run-Events.
+                    {/* v10.20 / v11.9: Migrations-Button für Legacy-B2Run-Events.
                         Erkennt das Event als 'altes B2Run' wenn entweder
                         type === 'B2Run' (alte EventType-Spalte) ODER mind.
                         ein b2run_*-Custom-Field in den eventSpecificFields
                         steht. Damit erscheint der Knopf auch wenn die alte
-                        EventType-Spalte aus DEX_Events bereits geloescht
+                        EventType-Spalte aus DEX_Events bereits gelöscht
                         wurde — entscheidend ist die b2run_*-Spur in der
                         Felder-Konfiguration. Klick: entfernt b2run_*-Fields
                         aus customFields, persistiert 'Durchstarter' /
                         'Funstarter' als Gruppen-Labels, setzt EventType
                         best-effort auf 'Other'. Bestehende Anmeldungen,
-                        Wartelisten und Sub-Events bleiben unveraendert. */}
+                        Wartelisten und Sub-Events bleiben unverändert. */}
                     {isAdmin && (event.type === 'B2Run' || (event.eventSpecificFields || []).some(f => (f.id || '').toLowerCase().startsWith('b2run_'))) && (
                       <button
                         className="btn btn-secondary"
                         style={{ fontSize: '0.8rem', padding: '6px 12px', color: 'var(--dex-green-dark, #4a7c1f)' }}
                         title={isDe
-                          ? 'Auf neues Standard-Event-Schema migrieren (Type entfernen, Labels Durchstarter/Funstarter explizit speichern). Bestehende Anmeldungen bleiben unveraendert.'
+                          ? 'Auf neues Standard-Event-Schema migrieren (Type entfernen, Labels Durchstarter/Funstarter explizit speichern). Bestehende Anmeldungen bleiben unverändert.'
                           : 'Migrate to the new standard event schema (drop type, persist Durchstarter/Funstarter labels). Existing registrations remain unchanged.'}
                         onClick={async (e) => {
                           e.stopPropagation();
@@ -3783,7 +3789,7 @@ export default function AdminPage(): React.ReactElement {
         break;
       }
       case 'nachname': {
-        // Fallback fuer Alt-Daten ohne separates Vorname/Nachname:
+        // Fallback für Alt-Daten ohne separates Vorname/Nachname:
         // Letztes Wort aus ParticipantName als Nachname.
         const lastWord = (s: string): string => {
           const parts = s.trim().split(/\s+/);
@@ -3880,7 +3886,7 @@ export default function AdminPage(): React.ReactElement {
           if (!row.location && anyR.Location) row.location = anyR.Location;
           if (!row.vorname && r.Vorname) row.vorname = r.Vorname;
           if (!row.nachname && r.Nachname) row.nachname = r.Nachname;
-          // Frueheste RegistrationDate uebernehmen (min).
+          // Früheste RegistrationDate uebernehmen (min).
           const ts = r.RegistrationDate ? new Date(r.RegistrationDate).getTime() : Number.POSITIVE_INFINITY;
           if (ts < row.earliestRegistrationTs) row.earliestRegistrationTs = ts;
         }
@@ -4220,10 +4226,10 @@ export default function AdminPage(): React.ReactElement {
 
   // Roommate-Matching: durchsucht CustomData nach roommate-Type Feldern, extrahiert
   // Email aus "Name <email>"-Format, baut Map Email -> Partner-Email. Match-Badge,
-  // wenn beide sich gegenseitig ausgewaehlt haben.
+  // wenn beide sich gegenseitig ausgewählt haben.
   // v11.65: ausschliesslich `roommate`-Felder, nicht mehr `user`. Bei Assistant-
   // /generischen User-Pickern macht ein „Match"-Badge semantisch keinen Sinn —
-  // der wurde faelschlich auch dort gezeigt, wenn Person A und B sich
+  // der wurde fälschlich auch dort gezeigt, wenn Person A und B sich
   // gegenseitig als Assistant eingetragen haben.
   const userFieldIds = (selectedEvent?.eventSpecificFields || [])
     .filter(f => f.type === 'roommate')
@@ -4270,8 +4276,8 @@ export default function AdminPage(): React.ReactElement {
   return (
     <div className="page-container" role="main">
       {/* Admin-Toast: drei Phasen beim Abmelden (seit v6.8).
-          1. cancelling — orange, Spinner, laeuft waehrend der Abmeldung+Promote-Suche
-          2. promoted   — gruen, zeigt den Nachruecker
+          1. cancelling — orange, Spinner, läuft während der Abmeldung+Promote-Suche
+          2. promoted   — grün, zeigt den Nachrücker
           3. no-promote — grau, Abmeldung ok, keiner auf der Warteliste */}
       {adminToast && (() => {
         const accent = adminToast.kind === 'cancelling'
@@ -4472,7 +4478,7 @@ export default function AdminPage(): React.ReactElement {
             </div>
           </div>
           {/* Foto immer als Kreis links, Detail-Rows rechts. Layout
-              unabhaengig vom Bildformat (cover-Crop sorgt fuer den Kreis). */}
+              unabhängig vom Bildformat (cover-Crop sorgt für den Kreis). */}
           <div style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
             {/* v12.6: Event-Bild jetzt prominent als großes Rechteck-
                 Format (wie auf der Registrierungs-Seite) statt kleinem
@@ -4554,7 +4560,7 @@ export default function AdminPage(): React.ReactElement {
             })()}
             <div style={{ flex: 1, minWidth: 0 }}>
               <h3 className="mb-16">{isDe ? 'Event-Details' : 'Event details'}</h3>
-                {/* v11.28: Bookmark-Tabs statt Dropdown fuer schnelles Umschalten
+                {/* v11.28: Bookmark-Tabs statt Dropdown für schnelles Umschalten
                     zwischen Hauptevent und Sub-Events. Pro Tab wird die aktuelle
                     Teilnehmerzahl (currentParticipants aus EventContext) als
                     kleiner Badge angezeigt. */}
@@ -4638,8 +4644,8 @@ export default function AdminPage(): React.ReactElement {
                   );
                 })()}
               {/* Eigenes Row-Layout (zwei Spalten: Label fett, Wert links-
-                  buendig). Das globale .settings-info SCSS macht stattdessen
-                  space-between (also Wert rechts-buendig) — hier wollen wir
+                  bündig). Das globale .settings-info SCSS macht stattdessen
+                  space-between (also Wert rechts-bündig) — hier wollen wir
                   beide Spalten links ausgerichtet. */}
               {(() => {
                 const rowStyle: React.CSSProperties = {
@@ -4672,7 +4678,7 @@ export default function AdminPage(): React.ReactElement {
                     <div style={rowStyle}>
                       <span style={labelStyle}>{isDe ? 'Max. Teilnehmer' : 'Max. attendees'}</span>
                       <span style={valueStyle}>{(() => {
-                        // v9.11: B2Run-Events nutzen Split-Kapazitaet statt maxParticipants —
+                        // v9.11: B2Run-Events nutzen Split-Kapazität statt maxParticipants —
                         // hier die Summe anzeigen statt "Unbegrenzt".
                         const split = (selectedEvent.durchstarterCapacity || 0) + (selectedEvent.funstarterCapacity || 0);
                         const eff = selectedEvent.maxParticipants && selectedEvent.maxParticipants > 0
@@ -4847,8 +4853,8 @@ export default function AdminPage(): React.ReactElement {
         </div>
 
         {/* v7.6: Aktionen-Bereich als Kachel-Grid (auto-fit ab 220px, max 4
-            pro Zeile auf Desktop). Default Grau, beim Hover Deloitte-Gruen mit
-            leichtem Schatten. Jede Kachel zeigt SVG-Icon + Titel + ausfuehrliche
+            pro Zeile auf Desktop). Default Grau, beim Hover Deloitte-Grün mit
+            leichtem Schatten. Jede Kachel zeigt SVG-Icon + Titel + ausführliche
             Beschreibung + Rollen-Badge ("Organizer" oder "Nur Admin"). Die
             ehemals in der TN-Toolbar versteckten Wartungs-Aktionen (IDs neu
             vergeben, Spalten fixen, Felder reparieren, Profile neu laden) sind
@@ -4863,8 +4869,8 @@ export default function AdminPage(): React.ReactElement {
             gap: 12,
           }}>
             {/* v9.20: Check-In starten — prominent als erster Tile.
-                Sowohl Organizer als auch Check-In-Team-Mitglieder duerfen
-                diese Aktion ausloesen (siehe Header.canCheckIn-Logik). */}
+                Sowohl Organizer als auch Check-In-Team-Mitglieder dürfen
+                diese Aktion auslösen (siehe Header.canCheckIn-Logik). */}
             <ActionTile
               icon={<Hash size={18} />}
               category="checkin"
@@ -5049,7 +5055,7 @@ export default function AdminPage(): React.ReactElement {
             {/* v11.40: 4b. Einladungsmail — Mail mit Anmelde-Link an dich
                 (zum Weiterleiten an Kollegen / Teams / externe Adressen)
                 oder direkt an den auf dem Event hinterlegten Mailverteiler.
-                Default-Text + Link werden vorbefuellt, sind aber im RichText-
+                Default-Text + Link werden vorbefüllt, sind aber im RichText-
                 Editor frei editierbar. */}
             <ActionTile
               icon={<Send size={18} />}
@@ -5064,7 +5070,7 @@ export default function AdminPage(): React.ReactElement {
 
             {/* 5. Excel-Download (mit Dropdown Deloitte/B2Run-View)
                 Wrapper braucht display:flex, damit der innere Button auf die
-                volle Grid-Zellen-Hoehe gestreckt wird — sonst sieht die Kachel
+                volle Grid-Zellen-Höhe gestreckt wird — sonst sieht die Kachel
                 niedriger aus als ihre Nachbarn, die zwei Zeilen Titel haben. */}
             <div style={{ position: 'relative', display: 'flex' }}>
               <ActionTile
@@ -5081,7 +5087,7 @@ export default function AdminPage(): React.ReactElement {
                 badge="organizer"
                 onClick={() => {
                   // v17.12: Erst Zielgruppe abfragen, dann erst exportieren.
-                  // Bei B2Run zusaetzlich noch View-Auswahl im Dropdown.
+                  // Bei B2Run zusätzlich noch View-Auswahl im Dropdown.
                   if (selectedEvent && selectedEvent.type === 'B2Run') {
                     setShowExportMenu(!showExportMenu);
                   } else {
@@ -5257,11 +5263,11 @@ export default function AdminPage(): React.ReactElement {
                 Recovery-Button um den DEX_TeilnehmerCounter EXAKT auf
                 max(TeilnehmerID) der Subsite zu setzen. Bidirektional:
                 Counter wird hochgezogen wenn er drunter steht (gegen
-                Doppel-IDs), oder runtergesetzt wenn er drueber steht
+                Doppel-IDs), oder runtergesetzt wenn er drüber steht
                 (z.B. nach vielen Abmeldungen, die TIDs gefressen
                 haben). Vorher (vor v11.27) lief es nur monotonic-up,
                 weshalb ein zu hoher Counter (Counter=11, Max-TID=4)
-                nicht zurueckgesetzt wurde — Klick auf den Button
+                nicht zurückgesetzt wurde — Klick auf den Button
                 hatte dann keinen sichtbaren Effekt. */}
             {isAdmin && (
               <ActionTile
@@ -5979,7 +5985,7 @@ export default function AdminPage(): React.ReactElement {
                           changes.push("Mobilnummer-Label präzisiert");
                         }
                       }
-                      if (nf.id === 'b2run_infoservice' && nf.label && nf.label.indexOf('benoetigt') >= 0) {
+                      if (nf.id === 'b2run_infoservice' && nf.label && nf.label.indexOf('benötigt') >= 0) {
                         nf.label = 'Infoservice nutzen (SMS von B2Run — Mobilnummer erforderlich)';
                         changes.push('Infoservice-Label modernisiert');
                       }
@@ -6097,7 +6103,7 @@ export default function AdminPage(): React.ReactElement {
       {/* Zähler + QR/Check-in Aktionen.
           v9.14: Warteliste-KPI wird nur gerendert wenn Event eine Warteliste hat.
           Sonst Grid auf 4 Spalten.
-          v11.32: Bei Split-Capacity wird die separate Kapazitaets-Karten-Reihe
+          v11.32: Bei Split-Capacity wird die separate Kapazitäts-Karten-Reihe
           unten in die „Angemeldet"-Kachel hochgezogen. Die Kachel bekommt
           dann doppelte Breite (2fr) damit Group-A/B-Breakdown sauber drin
           Platz hat — keine zwei breiten Vollbreite-Karten mehr. */}
@@ -6205,15 +6211,15 @@ export default function AdminPage(): React.ReactElement {
 
       {/* v9.20: Check-In starten + QR-Codes versenden sind jetzt im Aktionen-Grid
           unten als ActionTile gerendert (nicht mehr als eigene Button-Reihe).
-          Damit sind alle Quick-Actions an EINEM Ort zusammengefasst. Auch fuer
+          Damit sind alle Quick-Actions an EINEM Ort zusammengefasst. Auch für
           Check-In-only-User (qrScanner-Mode) — die sehen weiterhin nur den
-          Check-In-Tile, da das Aktionen-Grid fuer sie unten gefiltert ist. */}
+          Check-In-Tile, da das Aktionen-Grid für sie unten gefiltert ist. */}
       {!isQRScannerOnlyForSelected && (<>
 
       {/* ===== QUIZ-STATISTIK (collapsible, oberhalb Teilnehmerliste) ===== */}
       {selectedEvent && selectedEvent.quiz && selectedEvent.quiz.length > 0 && (() => {
-        // Teilnehmer mit mindestens einer beantworteten Frage (nicht nur "komplett durchgefuehrt").
-        // Dadurch erscheinen auch Teilnehmer, die mittendrin aufgehoert haben.
+        // Teilnehmer mit mindestens einer beantworteten Frage (nicht nur "komplett durchgeführt").
+        // Dadurch erscheinen auch Teilnehmer, die mittendrin aufgehört haben.
         const regsWithQuiz = registrations.filter(r => {
           if (!r.QuizAnswers) return false;
           try {
@@ -6312,7 +6318,7 @@ export default function AdminPage(): React.ReactElement {
                   {(() => {
                     const hasSections = perQuestion.some(pq => !!pq.section);
                     if (!hasSections) return null;
-                    // Gruppen in Reihenfolge der ersten Erwaehnung
+                    // Gruppen in Reihenfolge der ersten Erwähnung
                     const sectionsInOrder: string[] = [];
                     for (const pq of perQuestion) {
                       if (pq.section && sectionsInOrder.indexOf(pq.section) < 0) sectionsInOrder.push(pq.section);
@@ -6436,7 +6442,7 @@ export default function AdminPage(): React.ReactElement {
                           const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
                           const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
                           const done = !!reg.QuizCompletedAt;
-                          // Beantwortete Fragen zaehlen (fuer Partial)
+                          // Beantwortete Fragen zählen (für Partial)
                           let answeredN = 0;
                           try {
                             const parsed = JSON.parse(reg.QuizAnswers || '[]');
@@ -6471,7 +6477,7 @@ export default function AdminPage(): React.ReactElement {
       {/* Teilnehmerliste */}
       <div className="card" style={{ padding: 24 }}>
         {/* v11.28: Suchfeld direkt neben dem „Teilnehmer (N)"-Header
-            statt rechtsbuendig — fluessiger Lese-Flow von links nach
+            statt rechtsbündig — flüssiger Lese-Flow von links nach
             rechts, kein Sprung ueber die ganze Card-Breite mehr. */}
         <div className="mb-16" style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <h3 style={{ margin: 0, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
@@ -6780,11 +6786,11 @@ export default function AdminPage(): React.ReactElement {
 
         {(() => {
           // v11.84: Teams-Section — Admin-Center-Team-Management.
-          // Sichtbar nur fuer Events mit aktivierter Team-Anmeldung. Listet
+          // Sichtbar nur für Events mit aktivierter Team-Anmeldung. Listet
           // alle Teams (gruppiert per TeamId, abgemeldete Mitglieder
-          // ausgeblendet), mit Lead-Badge und Buttons fuer „+ Person
-          // hinzufuegen" und „Lead-Rolle uebergeben". Reagiert live auf
-          // `registrations` — kein zusaetzlicher Roundtrip.
+          // ausgeblendet), mit Lead-Badge und Buttons für „+ Person
+          // hinzufügen" und „Lead-Rolle uebergeben". Reagiert live auf
+          // `registrations` — kein zusätzlicher Roundtrip.
           if (!selectedEvent || !selectedEvent.teamRegistrationEnabled) return null;
           if (isLoadingRegs) return null;
 
@@ -6873,7 +6879,7 @@ export default function AdminPage(): React.ReactElement {
                       onClick={() => {
                         // Neue lokale TeamID generieren und Add-Member-Dialog
                         // direkt damit oeffnen. Sobald die erste Person hinzu-
-                        // gefuegt wird, wird die TeamId im SP-Item gespeichert.
+                        // gefügt wird, wird die TeamId im SP-Item gespeichert.
                         const newTid = (typeof crypto !== 'undefined' && crypto.randomUUID)
                           ? crypto.randomUUID()
                           : `team-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
@@ -7133,7 +7139,7 @@ export default function AdminPage(): React.ReactElement {
                                 )}
                               </>
                             )}
-                            {/* leadEmail nur als Referenz fuer den Lead-Lookup behalten — nicht fuer's TS-Linting wegwerfen. */}
+                            {/* leadEmail nur als Referenz für den Lead-Lookup behalten — nicht für's TS-Linting wegwerfen. */}
                             <span style={{ display: 'none' }}>{leadEmail}</span>
                           </div>
                         )}
@@ -7172,9 +7178,9 @@ export default function AdminPage(): React.ReactElement {
         ) : (
           /* v17.13: overflowX: 'auto' entfernt — der scrollbare Wrapper
              hat die sticky-thead-Berechnung gebrochen (sticky relative zum
-             Scroll-Container statt zum Window). Tabelle laesst die Karte
+             Scroll-Container statt zum Window). Tabelle lässt die Karte
              jetzt horizontal ueberlaufen, was bei vielen Spalten zu einer
-             Scrollbar AM AUSSEREN Container (SP-Page) fuehrt — Sticky-
+             Scrollbar AM AUSSEREN Container (SP-Page) führt — Sticky-
              thead funktioniert dort einwandfrei. */
           <div style={{ overflowX: 'visible' }}>
             {(() => {
@@ -7230,7 +7236,7 @@ export default function AdminPage(): React.ReactElement {
                   verticalAlign: 'top',
                   lineHeight: 1.3,
                   // v17.10: Sticky-Header — beim Scrollen bleiben die
-                  // Spaltenueberschriften der Teilnehmer-Tabelle sichtbar.
+                  // Spaltenüberschriften der Teilnehmer-Tabelle sichtbar.
                   position: 'sticky',
                   top: 0,
                   background: '#fff',
@@ -7351,12 +7357,12 @@ export default function AdminPage(): React.ReactElement {
                   return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{reg.Anrede || '-'}</td>;
                 }
                 if (id === 'vorname') {
-                  // Fallback fuer Alt-Daten: erstes Wort aus ParticipantName.
+                  // Fallback für Alt-Daten: erstes Wort aus ParticipantName.
                   const v = reg.Vorname || ((reg.ParticipantName || '').split(' ')[0] || '');
                   return <td key={id} style={{ padding: 8, fontWeight: 500 }}>{v || '-'}</td>;
                 }
                 if (id === 'nachname') {
-                  // Fallback fuer Alt-Daten: alles ausser dem ersten Wort als Nachname.
+                  // Fallback für Alt-Daten: alles ausser dem ersten Wort als Nachname.
                   let n = reg.Nachname || '';
                   if (!n && reg.ParticipantName) {
                     const parts = reg.ParticipantName.trim().split(/\s+/);
@@ -7415,8 +7421,8 @@ export default function AdminPage(): React.ReactElement {
                   return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.RegistrationDate)}</td>;
                 }
                 if (id === 'promotedDate') {
-                  // v17.15: „Nachgerueckt am" — gesetzt beim Promote
-                  // von Warteliste → Angemeldet. Leer fuer Personen die
+                  // v17.15: „Nachgerückt am" — gesetzt beim Promote
+                  // von Warteliste → Angemeldet. Leer für Personen die
                   // sich direkt in den Aktiv-Bereich angemeldet haben.
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const v = (reg as any).PromotedDate as string | undefined;
@@ -7424,7 +7430,7 @@ export default function AdminPage(): React.ReactElement {
                 }
                 if (id === 'replaced') {
                   // v17.15: „Ersetzt" — die Person, deren Cancel diesen
-                  // Promote ausgeloest hat. Wenn die Person in den
+                  // Promote ausgelöst hat. Wenn die Person in den
                   // aktuellen registrations gefunden wird, zeigen wir den
                   // Namen — sonst fallback auf die rohe E-Mail.
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -7723,7 +7729,7 @@ export default function AdminPage(): React.ReactElement {
                               ).catch(err => console.warn('[DEX]', err));
                             }
                           }
-                          // DEX_Participants aufraeumen
+                          // DEX_Participants aufräumen
                           if (reg.ParticipantEmail && selectedEvent.eventNumber) {
                             eventServiceRef.removeParticipantEvent(
                               reg.ParticipantEmail, selectedEvent.eventNumber
@@ -7736,10 +7742,10 @@ export default function AdminPage(): React.ReactElement {
                           // Typ-bewusst: bei aktiver Split-Capacity (DurchstarterCapacity > 0
                           // UND FunstarterCapacity > 0) wird per Default nur ein
                           // Warteliste-Teilnehmer mit passendem PreferredStarterType
-                          // nachgerueckt — es sei denn, das Event ist auf
-                          // splitSharedWaitlist=true gesetzt (v10.20). Dann faellt der
-                          // Filter weg und der aelteste Wartelistler rueckt nach,
-                          // unabhaengig vom Typ.
+                          // nachgerückt — es sei denn, das Event ist auf
+                          // splitSharedWaitlist=true gesetzt (v10.20). Dann fällt der
+                          // Filter weg und der aelteste Wartelistler rückt nach,
+                          // unabhängig vom Typ.
                           const isSplitEvent = typeof selectedEvent.durchstarterCapacity === 'number'
                             && typeof selectedEvent.funstarterCapacity === 'number'
                             && (selectedEvent.durchstarterCapacity > 0 || selectedEvent.funstarterCapacity > 0);
@@ -8041,7 +8047,7 @@ export default function AdminPage(): React.ReactElement {
           </div>
         )}
 
-        {/* v17.8: Anker fuer Floating-Jump-Button „Zur Warteliste". */}
+        {/* v17.8: Anker für Floating-Jump-Button „Zur Warteliste". */}
         <div id="admin-waitlist-anchor" style={{ scrollMarginTop: 80 }} />
         {(() => {
           // Seit v6.5: bei B2Run-Split-Kapazitäten getrennte Wartelisten-Tabellen pro
@@ -8100,7 +8106,7 @@ export default function AdminPage(): React.ReactElement {
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         const anyReg = reg as any;
                         // v17.8: Position bleibt die FIFO-Position basierend auf der ORIGINAL-
-                        // Reihenfolge (TeilnehmerID asc), unabhaengig von der aktuellen Sortierung.
+                        // Reihenfolge (TeilnehmerID asc), unabhängig von der aktuellen Sortierung.
                         // Wenn der User nach Nachname sortiert, soll trotzdem klar sein, wer
                         // Platz 1 / 2 / 3 ist.
                         const fifoIdx = regs
@@ -8179,7 +8185,7 @@ export default function AdminPage(): React.ReactElement {
             const wlLabelA = (selectedEvent?.splitLabelA && selectedEvent.splitLabelA.trim()) || 'Durchstarter';
             const wlLabelB = (selectedEvent?.splitLabelB && selectedEvent.splitLabelB.trim()) || 'Funstarter';
             // v11.29: Reihenfolge respektiert splitDisplayOrderReversed
-            // (gleicher Toggle wie auf Register-Page + Kapazitaets-Cards).
+            // (gleicher Toggle wie auf Register-Page + Kapazitäts-Cards).
             const wlA = renderWaitlistTable(`Warteliste ${wlLabelA}`, waitlistDurch, 'var(--dex-green-dark, #6b9a1e)');
             const wlB = renderWaitlistTable(`Warteliste ${wlLabelB}`, waitlistFun, 'var(--dex-orange, #ff8c00)');
             const reversed = !!selectedEvent?.splitDisplayOrderReversed;
@@ -8518,7 +8524,7 @@ export default function AdminPage(): React.ReactElement {
       )}
 
       {/* v9.15: QR-Code-Versand-Modal — Test (nur Organizer) / Volldurchlauf
-          (alle Angemeldeten) / Auto-Send-Toggle fuer zukuenftige Anmeldungen. */}
+          (alle Angemeldeten) / Auto-Send-Toggle für zukünftige Anmeldungen. */}
       {qrSendModalOpen && selectedEvent && (
         <Modal
           open={qrSendModalOpen}
@@ -8839,7 +8845,7 @@ export default function AdminPage(): React.ReactElement {
                   )}
 
                   {/* Custom Fields des Events — DAS ist der editierbare Teil.
-                      Renderer abhaengig vom Field-Type (text/number/select/
+                      Renderer abhängig vom Field-Type (text/number/select/
                       checkbox). Multi-Select speichert Werte als " | "-
                       getrennten String, identisch zum Registrierungs-Pfad. */}
                   {selectedEvent.eventSpecificFields && selectedEvent.eventSpecificFields.length > 0 && (
@@ -8935,7 +8941,7 @@ export default function AdminPage(): React.ReactElement {
                             );
                           }
 
-                          // Default: text-Input (auch fuer 'text', 'user', 'roommate')
+                          // Default: text-Input (auch für 'text', 'user', 'roommate')
                           return (
                             <div key={cf.id}>
                               {labelEl}
@@ -9285,7 +9291,7 @@ export default function AdminPage(): React.ReactElement {
         </Modal>
       )}
 
-      {/* v17.10: Step 1 — Zielgruppen-Picker fuer Massenmail. Erscheint vor
+      {/* v17.10: Step 1 — Zielgruppen-Picker für Massenmail. Erscheint vor
           dem RichText-Editor. */}
       {massmailMode === 'pick' && selectedEvent && (() => {
         const closeAll = (): void => { setMassmailMode('closed'); setMassmailPasteRaw(''); };
@@ -9323,12 +9329,12 @@ export default function AdminPage(): React.ReactElement {
           </label>
         );
         return (
-          <Modal open={true} onClose={closeAll} maxWidth={560} padding={24} ariaLabel="Empfaenger waehlen">
+          <Modal open={true} onClose={closeAll} maxWidth={560} padding={24} ariaLabel="Empfänger wählen">
             <h3 style={{ margin: '0 0 14px', fontSize: '1.1rem' }}>An wen soll die Mail gehen?</h3>
-            <Row value="active" label="Teilnehmer (alle aktiven)" desc="Status: Angemeldet, QR versendet, Eingecheckt — Default fuer die ueblichen Info-Mails." />
-            <Row value="activePlusWait" label="Teilnehmer + Warteliste" desc="Alle aktiven UND Wartelistler — z.B. wenn sich noch Plaetze frei machen und du auch die Warteliste vorwarnen willst." />
+            <Row value="active" label="Teilnehmer (alle aktiven)" desc="Status: Angemeldet, QR versendet, Eingecheckt — Default für die ueblichen Info-Mails." />
+            <Row value="activePlusWait" label="Teilnehmer + Warteliste" desc="Alle aktiven UND Wartelistler — z.B. wenn sich noch Plätze frei machen und du auch die Warteliste vorwarnen willst." />
             <Row value="waitOnly" label="Nur Warteliste" desc={'Nur Wartelistler — z.B. Info „Es wird wahrscheinlich keinen Platz mehr geben".'} />
-            <Row value="nachruecker" label="Nachruecker (Manueller Abgleich)" desc="Du fuegst im naechsten Schritt eine Liste von E-Mails ein (Verteiler, Vorname Nachname Email, beliebig formatiert) — die App extrahiert die Adressen und schickt die Mail an alle aktiven Teilnehmer, die NICHT in deiner Liste stehen." />
+            <Row value="nachruecker" label="Nachrücker (Manueller Abgleich)" desc="Du fügst im nächsten Schritt eine Liste von E-Mails ein (Verteiler, Vorname Nachname Email, beliebig formatiert) — die App extrahiert die Adressen und schickt die Mail an alle aktiven Teilnehmer, die NICHT in deiner Liste stehen." />
             {/* v22.9: Eigene Status-Auswahl — einzelne Status getrennt anhaken. */}
             <div style={{
               borderRadius: 8, border: `1px solid ${massmailAudience === 'custom' ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
@@ -9368,7 +9374,7 @@ export default function AdminPage(): React.ReactElement {
         );
       })()}
 
-      {/* v17.10: Step 2 (nur fuer 'nachruecker') — Paste-Eingabe + Extraktion */}
+      {/* v17.10: Step 2 (nur für 'nachruecker') — Paste-Eingabe + Extraktion */}
       {massmailMode === 'paste' && selectedEvent && (() => {
         const closeAll = (): void => { setMassmailMode('closed'); setMassmailPasteRaw(''); };
         const back = (): void => { setMassmailMode('pick'); };
@@ -9395,8 +9401,8 @@ export default function AdminPage(): React.ReactElement {
           setMassmailMode('editor');
         };
         return (
-          <Modal open={true} onClose={closeAll} maxWidth={680} padding={24} ariaLabel="Nachruecker — Liste einfuegen">
-            <h3 style={{ margin: '0 0 8px', fontSize: '1.1rem' }}>Nachruecker — bestehende Empfaenger-Liste einfuegen</h3>
+          <Modal open={true} onClose={closeAll} maxWidth={680} padding={24} ariaLabel="Nachrücker — Liste einfügen">
+            <h3 style={{ margin: '0 0 8px', fontSize: '1.1rem' }}>Nachrücker — bestehende Empfänger-Liste einfügen</h3>
             <p style={{ margin: '0 0 14px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
               Hau alles rein, was du hast — Verteiler-Export, Outlook-To-Liste, Vorname Nachname &lt;mail@deloitte.de&gt;-Format, kommagetrennt, semikolongetrennt, Zeilenumbruch — die App pickt die E-Mail-Adressen automatisch raus.
             </p>
@@ -9414,7 +9420,7 @@ export default function AdminPage(): React.ReactElement {
             {missing.length > 0 && (
               <details style={{ marginTop: 8, padding: 0, borderRadius: 6, background: 'rgba(237,139,0,0.06)', border: '1px solid var(--dex-orange, #ed8b00)', fontSize: '0.82rem' }}>
                 <summary style={{ padding: '8px 12px', cursor: 'pointer', fontWeight: 600, color: 'var(--dex-orange-dark, #b35a00)' }}>
-                  Empfaenger anzeigen ({missing.length})
+                  Empfänger anzeigen ({missing.length})
                 </summary>
                 <div style={{ maxHeight: 320, overflowY: 'auto' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
@@ -9445,7 +9451,7 @@ export default function AdminPage(): React.ReactElement {
               </details>
             )}
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 14 }}>
-              <button type="button" className="btn btn-secondary" onClick={back} style={{ fontSize: '0.85rem' }}>Zurueck</button>
+              <button type="button" className="btn btn-secondary" onClick={back} style={{ fontSize: '0.85rem' }}>Zurück</button>
               <button type="button" className="btn btn-secondary" onClick={closeAll} style={{ fontSize: '0.85rem' }}>Abbrechen</button>
               <button type="button" className="btn btn-primary" disabled={missing.length === 0} onClick={continueAction} style={{ fontSize: '0.85rem' }}>Weiter zum Mail-Editor</button>
             </div>
@@ -9549,7 +9555,7 @@ export default function AdminPage(): React.ReactElement {
 
       {/* ===== MASSENMAIL MODAL (HtmlEditorModal mit Toolbar, Variablen, Live-Preview) ===== */}
       {showEmailModal && selectedEvent && (() => {
-        // v17.10: Empfaenger-Filter abhaengig vom gewaehlten massmailAudience.
+        // v17.10: Empfänger-Filter abhängig vom gewählten massmailAudience.
         const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
         const recipients = (() => {
           if (massmailAudience === 'custom') {
@@ -9562,7 +9568,7 @@ export default function AdminPage(): React.ReactElement {
             return registrations.filter(r => ACTIVE.indexOf(r.Status) >= 0 || r.Status === 'Warteliste');
           }
           if (massmailAudience === 'nachruecker') {
-            // Aktive minus die in der eingefuegten Liste enthaltenen E-Mails.
+            // Aktive minus die in der eingefügten Liste enthaltenen E-Mails.
             const matches = (massmailPasteRaw || '').match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
             const pastedSet = new Set(matches.map(m => m.toLowerCase()));
             return registrations.filter(r => ACTIVE.indexOf(r.Status) >= 0 && !pastedSet.has((r.ParticipantEmail || '').toLowerCase()));
@@ -9582,17 +9588,21 @@ export default function AdminPage(): React.ReactElement {
         })();
         const sendAction = async (): Promise<void> => {
           if (!eventServiceRef || !selectedEvent) return;
-          if (recipients.length === 0) { showAlert('Keine aktiven Teilnehmer.'); return; }
+          if (recipients.length === 0) { showAlert('Keine Empfänger in der gewählten Auswahl.'); return; }
           if (!(await confirmDialog(`E-Mail an ${recipients.length} Teilnehmer senden?`, { confirmLabel: isDe ? 'Senden' : 'Send' }))) return;
           setEmailSending(true);
-          // Variablen einmalig aufloesen (Massenmail geht an alle zusammen)
+          // Variablen einmalig auflösen (Massenmail geht an alle zusammen)
           const resolvedSubject = replacePlaceholders(emailSubject, previewVars);
           const resolvedHeading = replacePlaceholders(emailHeading, previewVars);
           const resolvedBody = replacePlaceholders(emailBody, previewVars);
-          const fullBody = wrapTemplate('#86bc25', resolvedHeading, `Event ${selectedEvent.title}`, resolvedBody);
+          // v22.11: editierbare Unter-Überschrift (leer = "Event <Titel>").
+          const resolvedSubheading = massmailSubheading.trim()
+            ? replacePlaceholders(massmailSubheading, previewVars)
+            : `Event ${selectedEvent.title}`;
+          const fullBody = wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody);
           const allEmails = recipients.map(r => r.ParticipantEmail).join(';');
           // v17.10: Organizer immer auf CC (falls nicht ohnehin schon
-          // unter den Empfaengern). Dedup per lowercase, semicolon-join.
+          // unter den Empfängern). Dedup per lowercase, semicolon-join.
           const orgEmails = (selectedEvent.organizerEmails || []).filter(Boolean);
           const recipientSet = new Set(recipients.map(r => (r.ParticipantEmail || '').toLowerCase()));
           const ccList = orgEmails.filter(e => e && !recipientSet.has(e.toLowerCase()));
@@ -9604,8 +9614,8 @@ export default function AdminPage(): React.ReactElement {
               ccString,
             );
             setEmailSending(false);
-            const ccInfo = ccString ? ` (Organizer auf CC: ${ccList.length})` : ' (Organizer schon in Empfaengerliste)';
-            showAlert(`E-Mail an ${recipients.length} Empfaenger in die Warteschlange eingetragen.${ccInfo}`);
+            const ccInfo = ccString ? ` (Organizer auf CC: ${ccList.length})` : ' (Organizer schon in Empfängerliste)';
+            showAlert(`E-Mail an ${recipients.length} Empfänger in die Warteschlange eingetragen.${ccInfo}`);
             setShowEmailModal(false);
             setMassmailMode('closed');
             setMassmailPasteRaw('');
@@ -9614,6 +9624,16 @@ export default function AdminPage(): React.ReactElement {
             showAlert('Fehler beim Eintragen der E-Mail.');
           }
         };
+        // v22.11: „Briefumschlag"-Kopf über der Vorschau — wie bei der
+        // Einladungsmail (An: Empfängergruppe, Betreff: aufgelöster Subject).
+        const audienceLabel = massmailAudience === 'custom'
+          ? Array.from(massmailStatuses).join(', ')
+          : massmailAudience === 'waitOnly' ? 'Nur Warteliste'
+          : massmailAudience === 'activePlusWait' ? 'Teilnehmer + Warteliste'
+          : massmailAudience === 'nachruecker' ? 'Nachrücker (manueller Abgleich)'
+          : 'Alle aktiven Teilnehmer';
+        const previewToLine = `${recipients.length} Empfänger — ${audienceLabel} · Organizer in CC`;
+        const previewSubjectLine = replacePlaceholders(emailSubject, previewVars);
         return (
           <HtmlEditorModal
             open={showEmailModal}
@@ -9626,6 +9646,10 @@ export default function AdminPage(): React.ReactElement {
             onEmailSubjectChange={setEmailSubject}
             emailHeading={emailHeading}
             onEmailHeadingChange={setEmailHeading}
+            emailSubheading={massmailSubheading}
+            onEmailSubheadingChange={setMassmailSubheading}
+            previewToLine={previewToLine}
+            previewSubjectLine={previewSubjectLine}
             emailHeadingColor="#86bc25"
             previewVars={previewVars}
             insertableVars={[
@@ -9688,15 +9712,15 @@ export default function AdminPage(): React.ReactElement {
         const myDisplayName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || myEmail;
         const targetEmails = inviteTarget === 'organizer' ? [myEmail].filter(Boolean) : audienceEmails;
         // v11.43: Organizer-Mails als CC mitschicken — damit alle Organizer
-        // sehen, dass die Einladung raus ist und ggf. auf Rueckfragen
-        // antworten koennen. Duplikate gegenueber TO werden rausgefiltert
-        // (z.B. wenn der Sender selbst Organizer ist und 'An mich' waehlt).
+        // sehen, dass die Einladung raus ist und ggf. auf Rückfragen
+        // antworten können. Duplikate gegenüber TO werden rausgefiltert
+        // (z.B. wenn der Sender selbst Organizer ist und 'An mich' wählt).
         const toLcSet = new Set(targetEmails.map(e => (e || '').toLowerCase()));
         const ccEmails = (selectedEvent.organizerEmails || [])
           .map(s => (s || '').trim())
           .filter(Boolean)
           .filter(e => !toLcSet.has(e.toLowerCase()));
-        // v11.41: Blocked-Check fuer den aktuell gewaehlten Empfaenger-Modus.
+        // v11.41: Blocked-Check für den aktuell gewählten Empfänger-Modus.
         // 'organizer'-Modus blockt eigentlich nie — die eigene Mail ist immer
         // eine Person, kein Verteiler — aber wir laufen das defensiv mit.
         const blockedInTargets = getBlockedInviteRecipients(targetEmails);
@@ -10400,7 +10424,7 @@ export default function AdminPage(): React.ReactElement {
             setTeamsToast(toastMsg);
             // TODO v17.5: Wenn adminAddSendMail=true UND assignTeamlessToTeam-
             // Pfad genutzt wurde, hier explizit eine „Du bist jetzt im Team
-            // <Name>"-Mail queuen. Aktuell laeuft die Mail nur ueber den
+            // <Name>"-Mail queuen. Aktuell läuft die Mail nur ueber den
             // addTeamMember-Pfad (Graph-Pick) automatisch.
             window.setTimeout(() => setTeamsToast(''), 4500);
             const regs = await getAllRegistrations(selectedEvent.id);
@@ -10433,7 +10457,7 @@ export default function AdminPage(): React.ReactElement {
               </div>
               {/* v17.1: Team-Name-Eingabe nur im „Neues Team anlegen"-Flow.
                   Optional — wenn leer, bekommt das Team beim Insert keinen
-                  Namen, der Lead kann ihn aber spaeter nicht mehr setzen,
+                  Namen, der Lead kann ihn aber später nicht mehr setzen,
                   daher direkt hier abfragen. */}
               {adminAddMemberDialog.isNewTeam && (
                 <div style={{ marginTop: 4 }}>
@@ -10451,8 +10475,8 @@ export default function AdminPage(): React.ReactElement {
                 </div>
               )}
               {/* v17.4: Consent-Box nur, wenn eine wirklich NEUE Person
-                  via Graph hinzugefuegt wird. Bei reiner Team-Zuordnung
-                  schon-angemeldeter Personen brauchen wir keine zusaetzliche
+                  via Graph hinzugefügt wird. Bei reiner Team-Zuordnung
+                  schon-angemeldeter Personen brauchen wir keine zusätzliche
                   Zustimmung — die haben sie bei der eigenen Anmeldung
                   bereits gegeben. */}
               {consentRequired ? (
@@ -10494,7 +10518,7 @@ export default function AdminPage(): React.ReactElement {
                 </label>
                 {/* v17.4: Multi-Select aus bereits registrierten Personen
                     ohne Team. Checkbox-Liste; bei Mehrfach-Auswahl
-                    erscheint zusaetzlich die Lead-Radio-Auswahl. */}
+                    erscheint zusätzlich die Lead-Radio-Auswahl. */}
                 {teamlessActiveLocal.length > 0 && (
                   <div style={{ marginBottom: 12, padding: 10, border: '1px dashed var(--dex-orange, #ed8b00)', borderRadius: 6, background: 'rgba(237,139,0,0.04)' }}>
                     <div style={{ fontSize: '0.78rem', color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 600, marginBottom: 6 }}>
@@ -10572,9 +10596,9 @@ export default function AdminPage(): React.ReactElement {
                     </div>
                   </div>
                 )}
-                {/* v17.4: Mail-Opt-in fuer die Team-Zuordnung. Nur sinnvoll
+                {/* v17.4: Mail-Opt-in für die Team-Zuordnung. Nur sinnvoll
                     wenn mind. eine teamlose Person zugeordnet wird — beim
-                    Graph-Pick laeuft die Bestaetigungsmail ohnehin via
+                    Graph-Pick läuft die Bestätigungsmail ohnehin via
                     addTeamMember. */}
                 {adminAddTeamlessPicks.size > 0 && (
                   <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, fontSize: '0.82rem', cursor: 'pointer' }}>
@@ -10745,8 +10769,8 @@ export default function AdminPage(): React.ReactElement {
       {/* v17.8: Floating Jump-Buttons. Erscheinen sobald der User durch die
           Teilnehmer-Tabelle scrollt — sparen Zeit bei langen Listen. */}
       {/* v17.11.1: JumpButtons immer rendern wenn ein Event selektiert ist —
-          das interne Show-Gating (scrollY > 300) reicht. Frueher Threshold
-          activeRegs>10 war zu hoch, fuer Test-Events mit wenig TN
+          das interne Show-Gating (scrollY > 300) reicht. Früher Threshold
+          activeRegs>10 war zu hoch, für Test-Events mit wenig TN
           erschienen die Buttons nie. */}
       {selectedEvent && (
         <JumpButtons hasWaitlist={waitlistRegs.length > 0} />
@@ -10761,14 +10785,14 @@ export default function AdminPage(): React.ReactElement {
  *  - Nach oben springen (window.scrollTo {top:0})
  *  - Zur Warteliste springen (scrollIntoView auf #admin-waitlist-anchor)
  *
- * Nur sichtbar wenn die Teilnehmer-Tabelle >10 Eintraege hat (kurze Listen
+ * Nur sichtbar wenn die Teilnehmer-Tabelle >10 Einträge hat (kurze Listen
  * brauchen keine Sprung-Hilfe).
  */
 /**
  * v17.13: Floating Jump-Buttons. Im SPFx-Webpart-Kontext scrollt nicht
  * window, sondern ein SP-interner Container — deshalb sind die Buttons
  * jetzt IMMER sichtbar (kein scrollY-Gating), und der Click sucht den
- * tatsaechlich scrollenden Vorfahren des Targets statt window.scrollTo.
+ * tatsächlich scrollenden Vorfahren des Targets statt window.scrollTo.
  */
 function JumpButtons(props: { hasWaitlist: boolean }): React.ReactElement {
   const { hasWaitlist } = props;
@@ -10804,7 +10828,7 @@ function JumpButtons(props: { hasWaitlist: boolean }): React.ReactElement {
     const el = document.getElementById('admin-waitlist-anchor');
     if (!el) return;
     try { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { el.scrollIntoView(); }
-    // Zusaetzlich: scroll-Parent suchen und manuell scrollen (Fallback
+    // Zusätzlich: scroll-Parent suchen und manuell scrollen (Fallback
     // wenn scrollIntoView durch den SP-Container gefangen wird).
     const parent = findScrollParent(el);
     if (parent !== window && parent instanceof HTMLElement) {
@@ -10817,9 +10841,9 @@ function JumpButtons(props: { hasWaitlist: boolean }): React.ReactElement {
     <div style={{
       position: 'fixed',
       // v18: Buttons horizontal ZENTRIERT ueber dem Content (vorher links am
-      // Rand „im Raum haengend"). Als Zeile nebeneinander, mittig unten —
+      // Rand „im Raum hängend"). Als Zeile nebeneinander, mittig unten —
       // liegt damit in der horizontalen Mitte der Teilnehmer-Tabelle /
-      // Spaltenueberschriften statt am Seitenrand.
+      // Spaltenüberschriften statt am Seitenrand.
       left: '50%', transform: 'translateX(-50%)',
       bottom: 20, zIndex: 900,
       display: 'flex', flexDirection: 'row', gap: 8,

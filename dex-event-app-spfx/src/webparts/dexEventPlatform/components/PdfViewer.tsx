@@ -4,12 +4,12 @@
  * Warum eigene Komponente:
  * - Mobile Browser (iOS Safari, Android Chrome) rendern PDFs nicht in <iframe>
  * - react-pdf rendert PDF-Seiten per Canvas und funktioniert auf allen Plattformen
- * - Fake-Worker (pdf.worker.entry) laeuft im Main-Thread, keine CSP-Probleme in SPFx
+ * - Fake-Worker (pdf.worker.entry) läuft im Main-Thread, keine CSP-Probleme in SPFx
  */
 
 import * as React from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
-// Fake Worker Loader - laedt pdfjs-Worker im Main-Thread (keine externen URLs, CSP-kompatibel)
+// Fake Worker Loader - lädt pdfjs-Worker im Main-Thread (keine externen URLs, CSP-kompatibel)
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 require('pdfjs-dist/build/pdf.worker.entry');
 // Fallback: workerSrc leer lassen, damit pdfjs den fake worker (global) verwendet

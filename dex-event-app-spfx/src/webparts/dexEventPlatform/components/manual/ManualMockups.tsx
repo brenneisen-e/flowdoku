@@ -1,5 +1,5 @@
 /**
- * Wiederverwendbare Mockup- und Live-Demo-Komponenten fuer das Handbuch.
+ * Wiederverwendbare Mockup- und Live-Demo-Komponenten für das Handbuch.
  *
  * - PlaceholderShot: gestylter "Screenshot folgt"-Slot
  * - MiniBrowser: simuliert ein Browser-Frame um echte App-Komponenten herum
@@ -13,7 +13,7 @@
 import * as React from 'react';
 
 // ============================================================================
-// PlaceholderShot — Slot fuer echten Screenshot (bis User Bild liefert)
+// PlaceholderShot — Slot für echten Screenshot (bis User Bild liefert)
 // ============================================================================
 
 export const PlaceholderShot: React.FC<{ caption?: string; height?: number }> = ({ caption, height = 240 }) => (
@@ -217,7 +217,7 @@ export const DemoQuizQuestion: React.FC<{ showAnswered?: boolean }> = ({ showAns
 );
 
 // ============================================================================
-// DemoParticipantTable — Mini-Teilnehmertabelle mit Mock-Eintraegen
+// DemoParticipantTable — Mini-Teilnehmertabelle mit Mock-Einträgen
 // ============================================================================
 
 export const DemoParticipantTable: React.FC<{ withQuizScore?: boolean }> = ({ withQuizScore = false }) => {
@@ -394,7 +394,7 @@ export const DemoPillToggles: React.FC<{ options: string[]; selected?: string[] 
 );
 
 // ============================================================================
-// DemoOrganizerChips — der Chip-Picker fuer Organizer mit Remove + Reorder
+// DemoOrganizerChips — der Chip-Picker für Organizer mit Remove + Reorder
 // ============================================================================
 
 export const DemoOrganizerChips: React.FC<{ names?: string[] }> = ({ names = ['Erika Musterfrau', 'Max Mustermann'] }) => (
@@ -674,7 +674,7 @@ export const DemoDateTimePicker: React.FC<{ label: string; value?: string; after
 );
 
 // ============================================================================
-// DemoQuizEditor — Editor fuer eine Quiz-Frage (Form-View)
+// DemoQuizEditor — Editor für eine Quiz-Frage (Form-View)
 // ============================================================================
 
 export const DemoQuizEditor: React.FC = () => (

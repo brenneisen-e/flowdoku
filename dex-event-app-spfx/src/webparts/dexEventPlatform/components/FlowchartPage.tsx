@@ -1,8 +1,8 @@
 /**
  * Flowchart-Seite - Visualisierung der Prozesse
  *
- * Zeigt die einzelnen Ablaeufe (Anmeldung, Abmeldung, ID-Reorder, Nachrücken)
- * als verstaendliche Flowcharts fuer Dritte.
+ * Zeigt die einzelnen Abläufe (Anmeldung, Abmeldung, ID-Reorder, Nachrücken)
+ * als verständliche Flowcharts für Dritte.
  */
 
 import * as React from 'react';
@@ -121,8 +121,8 @@ function renderBulletDetails(details: string): React.ReactElement {
     // App-Felder
     'TeilnehmerID', 'NextValue', 'CalendarLink', 'iCalUId', 'organizerEmails', 'coOrganizerEmails', 'qrScannerEmails', 'audienceFilter', 'locationAudience', 'EmailLanguage',
   ];
-  // Sortierung: laengste Keywords zuerst (verhindert dass "DEX_Events" in
-  // "DEX_EventsListItem" das laengere matched). Plus String-Escape fuer Regex.
+  // Sortierung: längste Keywords zuerst (verhindert dass "DEX_Events" in
+  // "DEX_EventsListItem" das längere matched). Plus String-Escape für Regex.
   const escaped = BOLD_KEYWORDS
     .slice()
     .sort((a, b) => b.length - a.length)

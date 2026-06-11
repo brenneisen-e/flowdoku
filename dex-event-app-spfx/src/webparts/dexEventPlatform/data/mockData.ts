@@ -1,6 +1,6 @@
 /**
- * Mock-Daten fuer die DEX Event Platform
- * Spaeter durch echte API-Calls / SharePoint-Listen ersetzen.
+ * Mock-Daten für die DEX Event Platform
+ * Später durch echte API-Calls / SharePoint-Listen ersetzen.
  * - Eike
  */
 

@@ -1,5 +1,5 @@
 /**
- * Datenstruktur fuer das In-App-Handbuch.
+ * Datenstruktur für das In-App-Handbuch.
  *
  * Pro Workflow gibt es bis zu drei Perspektiven (Organizer / User / Admin),
  * jeweils mit nummerierten Schritten. Pro Schritt kann ein Live-Render
@@ -43,11 +43,11 @@ export interface ManualPerspectiveBlock {
 }
 
 export interface ManualSection {
-  /** Stable URL-Slug (fuer Anker-Links + Suche) */
+  /** Stable URL-Slug (für Anker-Links + Suche) */
   id: string;
   title: string;
   category: ManualCategory;
-  /** 1-2 Saetze Intro (wird in der Sidebar als Subtitle gezeigt) */
+  /** 1-2 Sätze Intro (wird in der Sidebar als Subtitle gezeigt) */
   description: string;
   /** Welche Rollen sehen diese Sektion in der Sidebar */
   visibleFor: Array<'User' | 'Organizer' | 'Admin'>;

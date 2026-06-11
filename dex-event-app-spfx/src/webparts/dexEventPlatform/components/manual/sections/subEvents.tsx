@@ -24,11 +24,11 @@ export function subEventsSection(locale: 'de' | 'en'): ManualSection {
         steps: [
           {
             number: 1,
-            title: isDe ? 'Wofuer sind Sub-Events?' : 'What are sub-events for?',
+            title: isDe ? 'Wofür sind Sub-Events?' : 'What are sub-events for?',
             description: (
               <>
                 {isDe
-                  ? 'Sub-Events sind eigenstaendige Sessions innerhalb eines Hauptevents — z.B. ein mehrtaegiges Offsite mit Tagesblocks, ein Workshop-Track mit mehreren Themen-Sessions, ein Networking-Dinner als optionaler Add-on-Termin oder eine Kick-off-Session vor dem eigentlichen Event. Jedes Sub-Event hat einen eigenen Termin, Ort, Kapazitaet, eigene An-/Abmelde-Mail und einen eigenen Outlook-Kalendereintrag. Teilnehmer koennen sich zum Hauptevent anmelden und beliebige Sessions einzeln dazubuchen — entweder gleich bei der initialen Anmeldung oder spaeter ueber „Meine Events".'
+                  ? 'Sub-Events sind eigenständige Sessions innerhalb eines Hauptevents — z.B. ein mehrtägiges Offsite mit Tagesblocks, ein Workshop-Track mit mehreren Themen-Sessions, ein Networking-Dinner als optionaler Add-on-Termin oder eine Kick-off-Session vor dem eigentlichen Event. Jedes Sub-Event hat einen eigenen Termin, Ort, Kapazität, eigene An-/Abmelde-Mail und einen eigenen Outlook-Kalendereintrag. Teilnehmer können sich zum Hauptevent anmelden und beliebige Sessions einzeln dazubuchen — entweder gleich bei der initialen Anmeldung oder später ueber „Meine Events".'
                   : 'Sub-events are standalone sessions inside a main event — e.g. a multi-day offsite with daily blocks, a workshop track with several theme sessions, a networking dinner as an optional add-on, or a kick-off session ahead of the main event. Each sub-event has its own date, location, capacity, own registration/cancellation email and dedicated Outlook calendar entry. Attendees register for the main event and then opt in to any sessions individually — either right at initial registration or later via "My Events".'}
               </>
             ),
@@ -69,11 +69,11 @@ export function subEventsSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Alle Mails zu Sub-Events (An-/Abmeldung) und Outlook-Termine nutzen automatisch das Deloitte-Layout (Logo, gruener Balken, Footer). Der Body wird pro Session aus Titel, Beschreibung, Datum und Ort zusammengesetzt und in die Deloitte-Vorlage gewrappt. Teilnehmer bekommen also fuer jede gebuchte Session eine separate, sauber gestaltete Mail und einen eigenen Kalendereintrag.'
+                  ? 'Alle Mails zu Sub-Events (An-/Abmeldung) und Outlook-Termine nutzen automatisch das Deloitte-Layout (Logo, grüner Balken, Footer). Der Body wird pro Session aus Titel, Beschreibung, Datum und Ort zusammengesetzt und in die Deloitte-Vorlage gewrappt. Teilnehmer bekommen also für jede gebuchte Session eine separate, sauber gestaltete Mail und einen eigenen Kalendereintrag.'
                   : 'All sub-event emails (registration/cancellation) and Outlook invites automatically use the Deloitte layout (logo, green bar, footer). The body per session is composed from title, description, date and location and wrapped into the Deloitte template. Attendees receive a clean, branded email and a dedicated calendar entry for each booked session.'}
               </>
             ),
-            mockup: <Callout variant="info">{isDe ? 'Kein Power-Automate-Flow-Update noetig — Sub-Event-Details nutzen die bestehende DEX_Outlook-Queue mit Override-Feldern.' : 'No Power Automate flow update required — sub-event details use the existing DEX_Outlook queue with override fields.'}</Callout>,
+            mockup: <Callout variant="info">{isDe ? 'Kein Power-Automate-Flow-Update nötig — Sub-Event-Details nutzen die bestehende DEX_Outlook-Queue mit Override-Feldern.' : 'No Power Automate flow update required — sub-event details use the existing DEX_Outlook queue with override fields.'}</Callout>,
           },
           {
             number: 4,
@@ -81,7 +81,7 @@ export function subEventsSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Im Admin Center erscheint in der Teilnehmerliste ein zusaetzliches Dropdown, sobald das Event Sub-Events hat. Du kannst filtern nach: "Alle" (komplette Teilnehmerliste), "Nur Hauptevent" (ohne Session-Anmeldung) oder einem konkreten Sub-Event. Im Dropdown siehst du pro Session direkt die Auslastung (z.B. "12/25").'
+                  ? 'Im Admin Center erscheint in der Teilnehmerliste ein zusätzliches Dropdown, sobald das Event Sub-Events hat. Du kannst filtern nach: "Alle" (komplette Teilnehmerliste), "Nur Hauptevent" (ohne Session-Anmeldung) oder einem konkreten Sub-Event. Im Dropdown siehst du pro Session direkt die Auslastung (z.B. "12/25").'
                   : 'The admin center shows an additional dropdown above the attendee list as soon as the event has sub-events. Filter by: "All" (complete list), "Main event only" (no session) or a specific sub-event. The dropdown displays the current capacity per session inline (e.g. "12/25").'}
               </>
             ),
@@ -143,7 +143,7 @@ export function subEventsSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Unter "My Events" siehst du pro Event deine gebuchten Sessions. Du kannst jederzeit zusaetzliche Sessions buchen oder einzelne wieder stornieren — das Hauptevent bleibt davon unberuehrt.'
+                  ? 'Unter "My Events" siehst du pro Event deine gebuchten Sessions. Du kannst jederzeit zusätzliche Sessions buchen oder einzelne wieder stornieren — das Hauptevent bleibt davon unberührt.'
                   : 'Under "My Events" each event card lists your booked sessions. You can add or cancel individual sessions at any time — the main-event registration is not affected.'}
               </>
             ),

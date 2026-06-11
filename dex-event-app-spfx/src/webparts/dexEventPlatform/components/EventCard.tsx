@@ -1,7 +1,7 @@
 /**
- * Event-Karte fuer die Uebersichtsseite
+ * Event-Karte für die Uebersichtsseite
  *
- * Zeigt Gradient-Hintergrund, Event-Infos und freie Plaetze.
+ * Zeigt Gradient-Hintergrund, Event-Infos und freie Plätze.
  * Die Gradient-Farben rotieren basierend auf dem Index.
  */
 
@@ -24,7 +24,7 @@ function formatDate(iso: string): string {
   }) + ' ' + d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 }
 
-// Nur Datum (ohne Uhrzeit) - wird z.B. fuer die Registration Deadline verwendet,
+// Nur Datum (ohne Uhrzeit) - wird z.B. für die Registration Deadline verwendet,
 // die im Formular ausschliesslich als Datum gepflegt wird.
 function formatDateOnly(iso: string): string {
   if (!iso) return '';
@@ -37,8 +37,8 @@ function formatDateOnly(iso: string): string {
   });
 }
 
-// 4 verschiedene Farbverlaeufe, rotieren durch
-// type wird aktuell nicht genutzt, koennte man spaeter fuer typspezifische Farben verwenden
+// 4 verschiedene Farbverläufe, rotieren durch
+// type wird aktuell nicht genutzt, könnte man später für typspezifische Farben verwenden
 function getEventGradient(_type: string, index: number): string {
   const gradients = [
     'linear-gradient(135deg, #0a2e1a 0%, #1a6b3c 40%, #00ff88 100%)',
@@ -65,10 +65,10 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
   // v19.22: Event-Bild über den IndexedDB-Cache — beim zweiten App-Aufruf sofort
   // da, ohne SharePoint-Roundtrip.
   const cachedImage = useCachedImage(event.imageUrl);
-  // v9.8: B2Run-Events haben maxParticipants=0, weil die Kapazitaet auf
+  // v9.8: B2Run-Events haben maxParticipants=0, weil die Kapazität auf
   // Durchstarter + Funstarter aufgeteilt ist. Die Summe gilt als
-  // Gesamtkapazitaet — sonst zeigt die Karte faelschlich "Unbegrenzt", obwohl
-  // es z.B. 140 Plaetze gibt.
+  // Gesamtkapazität — sonst zeigt die Karte fälschlich "Unbegrenzt", obwohl
+  // es z.B. 140 Plätze gibt.
   const splitCapacity = (event.durchstarterCapacity || 0) + (event.funstarterCapacity || 0);
   const effectiveMax = event.maxParticipants && event.maxParticipants > 0
     ? event.maxParticipants
@@ -78,7 +78,7 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
   const isFull = !isUnlimited && freePlaces <= 0;
   const alreadySignedUp = isRegistered || isWaitlisted;
   const isDeadlinePassed = !!event.registrationDeadline && new Date(event.registrationDeadline) < new Date();
-  // Nur normale User bekommen den Deadline-Overlay. Organizer/Admins duerfen
+  // Nur normale User bekommen den Deadline-Overlay. Organizer/Admins dürfen
   // trotzdem reinklicken, um ggf. manuell zu registrieren.
   const showDeadlineOverlay = isDeadlinePassed && !canCreateEvents && !alreadySignedUp;
 
@@ -191,7 +191,7 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
         </div>
       </div>
       <div className="event-card__body" style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-        {/* Datum links + Freie-Plaetze-Badge rechts in einer Zeile */}
+        {/* Datum links + Freie-Plätze-Badge rechts in einer Zeile */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 8 }}>
           <div className="event-card__dates" style={{ flex: 1, minWidth: 0 }}>
             {formatDate(event.startDate)} {t('events.until')}

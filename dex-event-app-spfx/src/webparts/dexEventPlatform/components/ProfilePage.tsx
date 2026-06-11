@@ -1,7 +1,7 @@
 /**
  * Profil-Seite
  *
- * Zeigt ALLE verfuegbaren Informationen aus dem SharePoint User Profile:
+ * Zeigt ALLE verfügbaren Informationen aus dem SharePoint User Profile:
  * Name, Titel, Abteilung, Bereich, Standort, Telefon, Manager etc.
  *
  * - Eike, Maerz 2026
@@ -93,7 +93,7 @@ export default function ProfilePage(props: ProfilePageProps): React.ReactElement
         const data = await response.json();
         const allProps: Array<{ Key: string; Value: string }> = data.UserProfileProperties || [];
 
-        // Properties filtern und in der gewuenschten Reihenfolge anzeigen
+        // Properties filtern und in der gewünschten Reihenfolge anzeigen
         const mapped: Array<{ key: string; label: string; value: string }> = [];
 
         for (const field of PROFILE_FIELDS) {

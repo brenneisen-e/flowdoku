@@ -1,11 +1,11 @@
 /**
- * Gemeinsame Komponente fuer die Anzeige von Organisatoren mit Foto.
+ * Gemeinsame Komponente für die Anzeige von Organisatoren mit Foto.
  *
  * Verwendet die SharePoint-Userphoto-URL:
  *   /_layouts/15/userphoto.aspx?accountname=<email>&size=<S|M|L>
  *
  * - Default: kleines Avatar (28px) plus Name als Chip
- * - Mouse-Over: groesseres Bild (96px) plus Name in Tooltip-Box
+ * - Mouse-Over: größeres Bild (96px) plus Name in Tooltip-Box
  * - Fallback: Initialen-Avatar, falls Foto nicht geladen werden kann
  */
 
@@ -54,7 +54,7 @@ function OrganizerChip({ name, email, sizeClass }: { name: string; email: string
   const wrapperRef = React.useRef<HTMLSpanElement>(null);
   const avatarSize = sizeClass === 'sm' ? 24 : 32;
   const enlargedSize = 120;
-  const popoverHeight = 180; // ungefaehre Popover-Hoehe fuer Flip-Entscheidung
+  const popoverHeight = 180; // ungefähre Popover-Höhe für Flip-Entscheidung
   const initials = getInitials(name);
   const cacheBust = retryAttempt > 0 ? `&_r=${retryAttempt}` : '';
 
@@ -129,7 +129,7 @@ function OrganizerChip({ name, email, sizeClass }: { name: string; email: string
       )}
       <span style={{ whiteSpace: 'nowrap' }}>{name}</span>
 
-      {/* Hover-Vergroesserung: fixed positioning damit Container-Overflow nichts abschneidet */}
+      {/* Hover-Vergrößerung: fixed positioning damit Container-Overflow nichts abschneidet */}
       {hovered && email && !failed && coords && (
         <span
           style={{

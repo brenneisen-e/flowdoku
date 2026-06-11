@@ -1,9 +1,9 @@
 /**
  * Wiederverwendbares Modal mit HTML-Editor + Live-Vorschau.
  *
- * Wird genutzt fuer:
+ * Wird genutzt für:
  *   - Outlook-Termin-Body (Calendar Description)
- *   - E-Mail-Templates (Anmeldung, Warteliste, Abmeldung, Nachruecken)
+ *   - E-Mail-Templates (Anmeldung, Warteliste, Abmeldung, Nachrücken)
  *
  * Layout (split): links der Editor (contentEditable + Toolbar + Variable-Buttons),
  * rechts die gerenderte Vorschau im echten Wrapper (Outlook-Calendar bzw. Deloitte-Mail).
@@ -91,7 +91,7 @@ export interface HtmlEditorModalProps {
    *  Postfach sieht. Nur im previewMode 'email' relevant. */
   previewToLine?: string;
   previewSubjectLine?: string;
-  /** Optional: zusaetzlicher primaerer Button im Footer (z.B. "Senden") */
+  /** Optional: zusätzlicher primärer Button im Footer (z.B. "Senden") */
   extraAction?: {
     label: string;
     onClick: () => void | Promise<void>;
@@ -99,7 +99,7 @@ export interface HtmlEditorModalProps {
     icon?: React.ReactNode;
   };
   /** v11.40: Optionaler React-Knoten oberhalb von Subject/Ueberschrift im
-   *  Editor — z.B. fuer eine Ziel-Auswahl im Einladungsmail-Modal. */
+   *  Editor — z.B. für eine Ziel-Auswahl im Einladungsmail-Modal. */
   headerExtra?: React.ReactNode;
 }
 
@@ -409,8 +409,8 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
 
   const insertVariable = (key: string): void => {
     restoreSelection();
-    // execCommand insertText fuegt an Cursor ein (oder ersetzt Selektion).
-    // Variable als Text — der Server ersetzt sie spaeter per replacePlaceholders.
+    // execCommand insertText fügt an Cursor ein (oder ersetzt Selektion).
+    // Variable als Text — der Server ersetzt sie später per replacePlaceholders.
     try { document.execCommand('insertText', false, key); } catch { /* ignore */ }
     fireChange();
   };
@@ -437,7 +437,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
       // v15.19: Subheading aus dem Override; Fallback {{EventTitle}}.
       const rawSub = (emailSubheading && emailSubheading.trim()) || '{{EventTitle}}';
       const subheading = replacePlaceholdersPlain(rawSub, previewVars);
-      // Manche System-Templates (z.B. Nachruecken, OutlookDeclineReminder)
+      // Manche System-Templates (z.B. Nachrücken, OutlookDeclineReminder)
       // werden bereits komplett Deloitte-gewrappt gespeichert
       // (wrapTemplateForStorage), weil die Power-Automate-Flows den BodyHtml
       // roh versenden. In dem Fall NICHT noch einmal wrappen — sonst tauchen

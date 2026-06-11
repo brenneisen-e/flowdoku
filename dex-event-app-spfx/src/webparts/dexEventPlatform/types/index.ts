@@ -16,7 +16,7 @@ export interface DeloitteEvent {
   type: EventType;
   status: EventStatus;
   organizers: string[];
-  organizerEmails: string[]; // ';'-separiert in SharePoint (OrganizerEmail), hier als Array fuer Benachrichtigungen
+  organizerEmails: string[]; // ';'-separiert in SharePoint (OrganizerEmail), hier als Array für Benachrichtigungen
   /** Seit v6.19: QR-Code-Scanner pro Event. Diese User haben eingeschränkten Admin-Zugriff:
    *  - Dürfen NICHT Teilnehmer bearbeiten, Event editieren, Mails versenden etc.
    *  - Dürfen das QR-Code-Scanner-Tool nutzen + Check-In-KPIs ansehen (wie viele eingecheckt, wie viele ausstehen).
@@ -30,7 +30,7 @@ export interface DeloitteEvent {
    *  Persistenz: EmailTemplateOverrides._coOrganizers (JSON, analog _qrScanners).
    *  Ab v9.20 wird das Co-Organizer-Konzept faktisch durch den Graph-Search-Organizer-
    *  Picker ersetzt — der Hauptorganizer selbst kann jeden beliebigen Deloitte-User
-   *  als Organizer hinterlegen. Felder bleiben fuer Backward-Compat. */
+   *  als Organizer hinterlegen. Felder bleiben für Backward-Compat. */
   coOrganizerNames?: string[];
   coOrganizerEmails?: string[];
   /** v10.16: Optionaler Ansprechpartner pro Event — z.B. die Person vor Ort
@@ -42,8 +42,8 @@ export interface DeloitteEvent {
   contactEmail?: string;
   contactInfo?: string;
   /** v9.21: Test-Team pro Event — Personen die diesen Event bereits im Entwurfs-
-   *  Modus sehen + sich anmelden duerfen. Sie testen das Event durch, bevor der
-   *  Organizer das "Entwurf"-Haekchen wegnimmt. Persistenz:
+   *  Modus sehen + sich anmelden dürfen. Sie testen das Event durch, bevor der
+   *  Organizer das "Entwurf"-Häkchen wegnimmt. Persistenz:
    *  EmailTemplateOverrides._testTeam (JSON, analog _qrScanners). */
   testTeamNames?: string[];
   testTeamEmails?: string[];
@@ -55,11 +55,11 @@ export interface DeloitteEvent {
   locationAddress?: { street: string; houseNo: string; zip: string; city: string };
   locationAudience: string[];
   audienceFilter: string[];
-  /** v16.4: Vor-aufgeloeste E-Mails der DLs aus audienceFilter (lowercase),
-   *  beim Event-Save via Graph auf transitive Members aufgeloest. matchesAudience
-   *  in EventListPage checkt zusaetzlich gegen diese Liste — damit funktioniert
-   *  die Sichtbarkeit auch fuer verschachtelte DLs, die /me/memberOf nicht
-   *  zurueckliefert. Bei DL-Member-Aenderungen muss der Organizer das Event
+  /** v16.4: Vor-aufgelöste E-Mails der DLs aus audienceFilter (lowercase),
+   *  beim Event-Save via Graph auf transitive Members aufgelöst. matchesAudience
+   *  in EventListPage checkt zusätzlich gegen diese Liste — damit funktioniert
+   *  die Sichtbarkeit auch für verschachtelte DLs, die /me/memberOf nicht
+   *  zurückliefert. Bei DL-Member-Aenderungen muss der Organizer das Event
    *  einmal neu speichern, damit der Cache aktualisiert wird. */
   audienceResolvedEmails?: string[];
   filterMode: 'AND' | 'OR';
@@ -92,10 +92,10 @@ export interface DeloitteEvent {
    *  (`persistSubEventsForParent` in `EventCreationPage.tsx`). */
   outlookEventId?: string;
   /** CalendarLink (iCalUId) aus DEX_Events. Wird vom DEX_CreateOutlookEvent-Flow
-   *  nach erfolgreichem Anlegen geschrieben — und ist tatsaechlich das einzige
-   *  Feld, das auf Erfolgsbasis gefuellt wird (OutlookEventId nur bei Fehler
+   *  nach erfolgreichem Anlegen geschrieben — und ist tatsächlich das einzige
+   *  Feld, das auf Erfolgsbasis gefüllt wird (OutlookEventId nur bei Fehler
    *  ='FAILED'). Wird in der App genutzt, um zu erkennen, ob ein Event einen
-   *  Outlook-Termin besitzt — wichtig fuer die v11.57-Update-Confirm-Logik. */
+   *  Outlook-Termin besitzt — wichtig für die v11.57-Update-Confirm-Logik. */
   calendarLink?: string;
   /** v11.57: Marker, dass beim letzten Edit Outlook-relevante Felder (Title,
    *  Start, End, OutlookBody) geändert wurden, ohne dass der Organizer ein
@@ -157,46 +157,46 @@ export interface DeloitteEvent {
    *  - 'never' (Default): Organizer bekommt nichts mit
    *  - 'always': Organizer wird bei jeder Anmeldung als BCC dazugesetzt
    *  - 'fromDate': erst ab notifyOrgRegisterFromDate wird BCC'd
-   *  Hintergrund: bei grossen Events ist Organizer-Spam waehrend der
+   *  Hintergrund: bei grossen Events ist Organizer-Spam während der
    *  Hauptanmeldephase nervig — kurz vor dem Event will man aber sehen,
-   *  wer kurzfristig noch dazustoesst. */
+   *  wer kurzfristig noch dazustößt. */
   notifyOrgRegisterMode?: 'never' | 'always' | 'fromDate';
   notifyOrgRegisterFromDate?: string; // ISO; nur relevant wenn mode='fromDate'
 
   /** v8.5: Granulare Organizer-Benachrichtigung bei Abmeldungen.
-   *  - 'never': Organizer bekommt keine Storno-Bestaetigungs-Mails
+   *  - 'never': Organizer bekommt keine Storno-Bestätigungs-Mails
    *  - 'always': BCC bei jedem Storno
    *  - 'afterDeadline': BCC erst wenn die Abmeldefrist (lastDeregisterDate)
-   *    bereits ueberschritten ist — also nur bei "spaeten" Stornos, die
-   *    fuer den Organizer planungsrelevant sind. */
+   *    bereits ueberschritten ist — also nur bei "späten" Stornos, die
+   *    für den Organizer planungsrelevant sind. */
   notifyOrgCancelMode?: 'never' | 'always' | 'afterDeadline';
 
   /** v8.6: Liste explizit ausgeschlossener User-E-Mails (semikolon-separiert
    *  in SP, Array hier). Greift NACH Standortfilter + Mailverteiler/User —
-   *  egal warum jemand sonst Sichtbarkeit haette, wenn seine Mail hier
+   *  egal warum jemand sonst Sichtbarkeit hätte, wenn seine Mail hier
    *  drin ist, sieht er das Event nicht. Genutzt z.B. wenn aus einem
    *  100er-Verteiler 5 Personen gezielt rausgenommen werden sollen. */
   excludedUsers?: string[];
-  isFictive?: boolean;       // Wenn true: Event nur fuer Admins + eigene Organizer sichtbar (Test-Event)
-  /** Geteilte Kapazitäten — bis v10.19 nur fuer B2Run gedacht (Durchstarter /
-   *  Funstarter), seit v10.20 generisch fuer beliebige Events nutzbar. Wenn
+  isFictive?: boolean;       // Wenn true: Event nur für Admins + eigene Organizer sichtbar (Test-Event)
+  /** Geteilte Kapazitäten — bis v10.19 nur für B2Run gedacht (Durchstarter /
+   *  Funstarter), seit v10.20 generisch für beliebige Events nutzbar. Wenn
    *  beide > 0 zeigt die Registration-Seite zwei nebeneinanderstehende Boxen
    *  zur Auswahl. Die Beschriftungen kommen aus splitLabelA/splitLabelB; ist
    *  dort nichts hinterlegt, wird der historische Default
-   *  "Durchstarter"/"Funstarter" verwendet (Backward-Compat fuer B2Run-Events
+   *  "Durchstarter"/"Funstarter" verwendet (Backward-Compat für B2Run-Events
    *  vor v10.20). */
   durchstarterCapacity?: number;
   funstarterCapacity?: number;
-  /** v10.20: frei wählbare Beschriftungen fuer die zwei Kapazitäts-Gruppen.
+  /** v10.20: frei wählbare Beschriftungen für die zwei Kapazitäts-Gruppen.
    *  Beispiel: "Vormittag" / "Nachmittag", "Lauf 5 km" / "Lauf 10 km",
    *  "VIP" / "Standard". Bei B2Run-Legacy-Events leer = Default. */
   splitLabelA?: string;
   splitLabelB?: string;
   /** v10.20: Warteliste-Verhalten bei aktiver Split-Capacity.
    *  - false / undefined (Default): zwei getrennte Wartelisten — eine pro
-   *    Gruppe, Nachrueck-Logik bleibt typ-bewusst (alter B2Run-Stil).
+   *    Gruppe, Nachrück-Logik bleibt typ-bewusst (alter B2Run-Stil).
    *  - true: eine gemeinsame Warteliste — wer zuerst auf der Warteliste war,
-   *    rueckt nach, unabhaengig von der Gruppe. Sinnvoll z.B. wenn die zwei
+   *    rückt nach, unabhängig von der Gruppe. Sinnvoll z.B. wenn die zwei
    *    Gruppen nur ein UI-Konstrukt sind aber organisatorisch fluide
    *    behandelt werden. */
   splitSharedWaitlist?: boolean;
@@ -204,15 +204,15 @@ export interface DeloitteEvent {
    *  Registrierungs-UI umkehren. Default false — Karte A links / zuerst,
    *  Karte B rechts / zweitens. Mit true wird Karte B zuerst gezeigt
    *  (Group 2 prominent). Aenderung beeinflusst NUR die Anzeige-Reihen-
-   *  folge in RegistrationPage und der Kapazitaets-Uebersicht im
+   *  folge in RegistrationPage und der Kapazitäts-Uebersicht im
    *  AdminCenter — keinerlei Daten-Migration, splitLabelA/B,
    *  durchstarter-/funstarterCapacity und die internen StarterType-
    *  IDs auf den Anmeldungen bleiben unangetastet. */
   splitDisplayOrderReversed?: boolean;
-  /** v11.0: Wenn true, koennen sich Teilnehmer ueber „Meine Events" eine
+  /** v11.0: Wenn true, können sich Teilnehmer ueber „Meine Events" eine
    *  PDF-Datei pro Anmeldung hochladen (z.B. Reisekostenbeleg, Foto-
-   *  Einverstaendnis, Zertifikat). Die Datei wird als Item-Attachment an
-   *  die Teilnehmerlisten-Zeile in der Subsite gehaengt und ist im Admin-
+   *  Einverständnis, Zertifikat). Die Datei wird als Item-Attachment an
+   *  die Teilnehmerlisten-Zeile in der Subsite gehängt und ist im Admin-
    *  Center sichtbar / herunterladbar. Default: false. */
   allowAttendeeUpload?: boolean;
   /** v11.0: Optionaler Hinweistext, der dem Teilnehmer im Upload-Bereich
@@ -273,7 +273,7 @@ export interface DeloitteEvent {
    *  beim Aktivieren = 4). Nur relevant wenn teamRegistrationEnabled. */
   teamSize?: number;
   /** v11.80: Wenn true, fragt das Anmeldeformular bei einer Team-
-   *  Anmeldung zusaetzlich nach einem Team-Namen (frei waehlbar). */
+   *  Anmeldung zusätzlich nach einem Team-Namen (frei wählbar). */
   askTeamName?: boolean;
   /** v11.81: Beitritts-Modus. Wenn true, kann der Team-Lead unvollständige
    *  Teams anmelden (z.B. 2 von 4 Slots). Wenn false (Default), müssen
@@ -325,7 +325,7 @@ export interface QuizQuestion {
   id: string;
   question: string;
   options: string[];
-  correctIndices: number[]; // Indices der richtigen Antworten (0-basiert, mehrere moeglich)
+  correctIndices: number[]; // Indices der richtigen Antworten (0-basiert, mehrere möglich)
   /** Optionales Bild zur Frage (data-URL mit base64-jpeg oder png). Wird inline im
    * FunZone-JSON gespeichert. Max empfohlen: ~80KB pro Bild (komprimiert). */
   imageBase64?: string;

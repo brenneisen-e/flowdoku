@@ -1,16 +1,16 @@
 /**
- * Navigation Context - ersetzt react-router fuer SPFx
+ * Navigation Context - ersetzt react-router für SPFx
  *
- * SPFx WebParts koennen kein Browser-Routing verwenden,
+ * SPFx WebParts können kein Browser-Routing verwenden,
  * deshalb wird hier alles ueber State gesteuert.
- * Der History-Stack ermoeglicht die Zurueck-Navigation.
+ * Der History-Stack ermöglicht die Zurück-Navigation.
  */
 
 import * as React from 'react';
 
 export type Page = 'landing' | 'start' | 'register' | 'registration' | 'my-events' | 'create-event' | 'edit-event' | 'settings' | 'profile' | 'admin' | 'role-matrix' | 'participants' | 'flowcharts' | 'check-in' | 'self-checkin-display' | 'help' | 'manual';
 
-// Optionale Absicht beim Navigieren (z.B. Registration-Seite direkt im "Fuer andere"-Modus oeffnen)
+// Optionale Absicht beim Navigieren (z.B. Registration-Seite direkt im "Für andere"-Modus oeffnen)
 export type NavIntent = 'register-other' | 'auto-cancel' | undefined;
 
 interface NavigationContextType {
@@ -20,9 +20,9 @@ interface NavigationContextType {
   navigate: (page: Page, eventId?: string, intent?: NavIntent) => void;
   goBack: () => void;
   clearIntent: () => void;
-  /** v17.3: Page registriert einen Confirm-Hook fuer ungespeicherte
+  /** v17.3: Page registriert einen Confirm-Hook für ungespeicherte
    *  Aenderungen. Wird VOR jeder Navigation aufgerufen — wenn er false
-   *  zurueckliefert, blockiert das Navigation. Null = keine Aenderungen,
+   *  zurückliefert, blockiert das Navigation. Null = keine Aenderungen,
    *  durchnavigieren. */
   setNavigationGuard: (guard: (() => Promise<boolean>) | null) => void;
 }
@@ -55,13 +55,13 @@ export function NavigationProvider(props: { children: React.ReactNode }): React.
 
     const navigate = (page: Page, eventId?: string, intent?: NavIntent): void => {
       // v17.3: Wenn eine Page einen Guard registriert hat (z.B.
-      // EventCreationPage bei unsaved-changes), erst dort bestaetigen lassen.
+      // EventCreationPage bei unsaved-changes), erst dort bestätigen lassen.
       const proceed = (): void => {
         setHistory(prev => [...prev, { page: currentPage, eventId: selectedEventId, intent: navIntent }]);
         setCurrentPage(page);
         setSelectedEventId(eventId || null);
         setNavIntent(intent);
-        guardRef.current = null; // Guard nach erfolgreichem Wegnavigieren raeumen.
+        guardRef.current = null; // Guard nach erfolgreichem Wegnavigieren räumen.
       };
       if (guardRef.current) {
         guardRef.current().then(ok => { if (ok) proceed(); }).catch(() => { /* abort */ });

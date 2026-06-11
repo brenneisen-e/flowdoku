@@ -1,7 +1,7 @@
 /**
  * DEX Event Experience Platform - Hauptkomponente (SPFx)
  *
- * Wrapper fuer Navigation und Event Context.
+ * Wrapper für Navigation und Event Context.
  * Rendert je nach currentPage die passende Unterseite.
  *
  * Autor: Eike Brenneisen
@@ -107,12 +107,12 @@ function AppContent(): React.ReactElement {
   const { isAdmin, isOrganizer, isRolesLoading } = useRoles();
   const { markExpiredEventsAsCompleted, isEventsLoading, events, getKpiCache, updateKpiCache } = useEvents();
 
-  // v11.52: KPI-Boxen im Boot-Loader. Live-Zaehlung ueber alle Event-
+  // v11.52: KPI-Boxen im Boot-Loader. Live-Zählung ueber alle Event-
   // Subsites war zu langsam (Counts kommen erst nach mehreren Sekunden) —
   // jetzt lesen wir einen gecachten Wert aus der _Config-Zeile von
-  // DEX_EmailTemplates: EIN schneller REST-Call, sofort verfuegbar.
-  // Im Hintergrund laeuft nach vollem Event-Load ein Refresh, der die
-  // Cache-Werte aktualisiert — naechster Boot sieht frische Zahlen.
+  // DEX_EmailTemplates: EIN schneller REST-Call, sofort verfügbar.
+  // Im Hintergrund läuft nach vollem Event-Load ein Refresh, der die
+  // Cache-Werte aktualisiert — nächster Boot sieht frische Zahlen.
   const [kpiCache, setKpiCache] = React.useState<{ participants: number; events: number } | null>(null);
   React.useEffect(() => {
     let cancelled = false;
@@ -126,12 +126,12 @@ function AppContent(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // v11.54: Self-Heal-Recompute nur durch Admin oder Organizer ausloesen.
+  // v11.54: Self-Heal-Recompute nur durch Admin oder Organizer auslösen.
   // Normale User lesen den gecachten Wert (1 schneller GET) — kein
   // Recompute-Roundtrip, kein SP-Write. Bei 10k+ aktiven Usern reicht es
-  // voellig, wenn die paar Dutzend Admins/Organizer den Cache periodisch
+  // völlig, wenn die paar Dutzend Admins/Organizer den Cache periodisch
   // konvergieren lassen. Direkt-Increments bei Register/Cancel/Create/
-  // Delete laufen weiterhin fuer alle Rollen — Cache bleibt nah dran.
+  // Delete laufen weiterhin für alle Rollen — Cache bleibt nah dran.
   const kpiRefreshedRef = React.useRef(false);
   React.useEffect(() => {
     if (isEventsLoading || isRolesLoading) return;
@@ -177,11 +177,11 @@ function AppContent(): React.ReactElement {
       const elapsed = Date.now() - start;
       // v7.10/v11.79: Linearer Fortschritt — nach 4 Sekunden bei 100%
       // (vorher 10 s, war seit dem App-Boot-Speedup auf ~1.6 s zu langsam).
-      // Wenn das Laden frueher fertig ist, setzt der Done-Branch oben sofort
-      // auf 100% und stoppt das Intervall. Sollte Roles/Events laenger als
+      // Wenn das Laden früher fertig ist, setzt der Done-Branch oben sofort
+      // auf 100% und stoppt das Intervall. Sollte Roles/Events länger als
       // 4 s brauchen, friert der Balken bei 99% ein, bis das Done-Signal
-      // kommt — sonst stuende der Balken auf 100%, obwohl die App noch
-      // nicht bereit ist (das wirkt verwirrend / "haengend").
+      // kommt — sonst stünde der Balken auf 100%, obwohl die App noch
+      // nicht bereit ist (das wirkt verwirrend / "hängend").
       const target = Math.min(99, Math.round((elapsed / 4000) * 100));
       setBootProgress(prev => Math.max(prev, target));
     }, 60);
@@ -194,7 +194,7 @@ function AppContent(): React.ReactElement {
   // My Events navigieren mit der eventId - MyEventsPage cancelt dann die
   // Registrierung automatisch.
   //
-  // Damit der User nicht 5 Sekunden lang auf der LandingPage "haengt" bis die
+  // Damit der User nicht 5 Sekunden lang auf der LandingPage "hängt" bis die
   // Events geladen sind, zeigen wir statt der LandingPage einen Vollbild-
   // Lade-Spinner, sobald wir erkennen dass ein Cancel-Deep-Link aktiv ist.
   const isCancelDeepLink = React.useMemo(() => {
@@ -257,8 +257,8 @@ function AppContent(): React.ReactElement {
         title: detail.title || 'Event',
         type: detail.type === 'update' ? 'update' : 'create',
       });
-      // v17.4: Beim Update kehrt der User in das Organizer-Menue des Events
-      // zurueck (AdminPage mit dem soeben gespeicherten Event vorselektiert)
+      // v17.4: Beim Update kehrt der User in das Organizer-Menü des Events
+      // zurück (AdminPage mit dem soeben gespeicherten Event vorselektiert)
       // statt in die Event-Liste — weiterarbeiten ohne Such-Klick.
       // Beim Create bleibt der bisherige Pfad: Event-Liste, damit der neue
       // Event direkt in der Uebersicht auftaucht.
@@ -408,8 +408,8 @@ function AppContent(): React.ReactElement {
         padding-bottom: 0 !important;
         margin-bottom: 0 !important;
       }
-      /* Globale Keyframes fuer Loading-Spinner (werden von EventListPage/MyEventsPage genutzt,
-         unabhaengig davon ob die LandingPage vorher gerendert wurde) */
+      /* Globale Keyframes für Loading-Spinner (werden von EventListPage/MyEventsPage genutzt,
+         unabhängig davon ob die LandingPage vorher gerendert wurde) */
       @keyframes dexOrbSpin { to { transform: rotate(360deg); } }
     `;
     document.head.appendChild(styleEl);
@@ -653,7 +653,7 @@ function AppContent(): React.ReactElement {
 }
 
 export default function DexEventPlatform(props: IDexEventPlatformProps): React.ReactElement {
-  // Context global verfuegbar machen fuer ProfilePage
+  // Context global verfügbar machen für ProfilePage
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   (window as any).__dexSpfxContext = props.context;
 

@@ -3,7 +3,7 @@
  *
  * Vorher: hand-gebaute Mockup-Cards (links Event-Info, rechts Form-Mock).
  * Jetzt: das ECHTE <RegistrationPage>-Component wird gerendert, mit einem
- * synthetischen DeloitteEvent aus dem Wizard-Form-State und den dazugehoerigen
+ * synthetischen DeloitteEvent aus dem Wizard-Form-State und den dazugehörigen
  * Preview-Provider-Stubs (kein Live-API-Call). Wrapper hat pointer-events:none,
  * damit der Organizer schauen, aber nicht interagieren kann.
  *

@@ -1,5 +1,5 @@
 /**
- * Aggregator fuer alle Handbuch-Sektionen.
+ * Aggregator für alle Handbuch-Sektionen.
  *
  * Jede Sektion lebt in einer eigenen Datei unter ./sections/.
  * Reihenfolge hier = Reihenfolge in der Sidebar.
@@ -36,7 +36,7 @@ export type Locale = 'de' | 'en';
 
 export function getManualSections(locale: Locale): ManualSection[] {
   // Aktuell deutsch. English-Overrides kommen pro Sektion (locale-Parameter wird
-  // weitergereicht, damit einzelne Sektionen zweisprachig zurueckgeben koennen).
+  // weitergereicht, damit einzelne Sektionen zweisprachig zurückgeben können).
   return [
     introSection(locale),
     findEventSection(locale),

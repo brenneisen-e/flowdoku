@@ -4,7 +4,7 @@
  * Basiert auf der offiziellen Deloitte E-Mail-Vorlage
  * (Deloitte_DCGmbH_Email_with_Tagline.html).
  *
- * Generiert den kompletten HTML-Body fuer Power Automate.
+ * Generiert den kompletten HTML-Body für Power Automate.
  */
 
 import { SPHttpClient } from '@microsoft/sp-http';
@@ -87,13 +87,13 @@ function buildHeadingsHtml(headingColor: string, heading: string, subheading: st
 }
 
 /**
- * Wrapped Deloitte-Template-HTML fuer die SPEICHERUNG in DEX_EmailTemplates
+ * Wrapped Deloitte-Template-HTML für die SPEICHERUNG in DEX_EmailTemplates
  * erzeugen. Im Unterschied zu wrapTemplate() wird KEIN dynamisches Datum
  * eingebettet - der gespeicherte Template-HTML bleibt stabil, sodass
- * upgradeStandardEmailTemplates() die SharePoint-Eintraege nicht bei jedem
- * App-Start unnoetig patcht.
+ * upgradeStandardEmailTemplates() die SharePoint-Einträge nicht bei jedem
+ * App-Start unnötig patcht.
  *
- * Wird fuer Templates genutzt, die von Power Automate direkt aus dem
+ * Wird für Templates genutzt, die von Power Automate direkt aus dem
  * BodyHtml-Feld versendet werden (z.B. OutlookDeclineReminder), weil dort
  * keine SPFx-seitige wrapTemplate()-Wrapper-Logik greift.
  */
@@ -283,7 +283,7 @@ export function replacePlaceholdersPlain(text: string, vars: Record<string, stri
 
 /**
  * Email aus SharePoint-Template generieren.
- * Nutzt wrapTemplate fuer das Deloitte-Design.
+ * Nutzt wrapTemplate für das Deloitte-Design.
  */
 export function buildEmailFromTemplate(
   template: {
@@ -306,7 +306,7 @@ export function buildEmailFromTemplate(
   const subheading = replacePlaceholdersPlain(rawSub, vars);
   // Body: HTML, daher Werte escapen
   const bodyHtml = replacePlaceholders(template.bodyHtml, vars);
-  // Pre-wrapped templates (z.B. OutlookDeclineReminder, Nachruecken) enthalten
+  // Pre-wrapped templates (z.B. OutlookDeclineReminder, Nachrücken) enthalten
   // bereits das komplette Deloitte-Design via wrapTemplateForStorage(). Nicht
   // doppelt wrappen — sonst zwei Header/Footer im finalen HTML.
   const trimmed = (template.bodyHtml || '').trimLeft();
@@ -431,7 +431,7 @@ export function waitlistEmail(recipientName: string, eventTitle: string, positio
  * Abmeldebestätigung
  */
 export function cancellationEmail(recipientName: string, eventTitle: string): { subject: string; body: string } {
-  // v17.20: Visuell deutlicher Stornierungs-Banner direkt unter der Begruessung
+  // v17.20: Visuell deutlicher Stornierungs-Banner direkt unter der Begrüßung
   // \u2014 Event-Titel ausgegraut + durchgestrichen, damit auf den ersten Blick
   // erkennbar ist, dass die Anmeldung storniert wurde (vorher: Stornierung
   // ging nur ueber den Subject-Zusatz hervor).
@@ -509,7 +509,7 @@ export function eventCreatedEmail(recipientName: string, eventTitle: string, sub
  * optional ausgelöst. Enthält Link zur App, Link zum Handbuch und kurze
  * Bullet-Points zum Anlegen eines ersten Test-Events.
  *
- * Deloitte-displayName ist "Nachname, Vorname" — fuer die Anrede nur den
+ * Deloitte-displayName ist "Nachname, Vorname" — für die Anrede nur den
  * Vornamen verwenden (analog qrCodeEmail / registrationEmail).
  */
 export function organizerOnboardingEmail(recipientName: string, role: 'Organizer' | 'Admin' = 'Organizer'): { subject: string; body: string } {
@@ -560,11 +560,11 @@ export function organizerOnboardingEmail(recipientName: string, role: 'Organizer
 }
 
 /**
- * QR-Code E-Mail fuer Check-in.
+ * QR-Code E-Mail für Check-in.
  * Subject + Body folgen der Event-Sprache (DE/EN). Anrede nutzt nur den
  * Vornamen (nicht den vollen Namen).
  *
- * v9.15: Unterhalb des QR-Codes wird zusaetzlich "<voller Name> | <Event-Titel>"
+ * v9.15: Unterhalb des QR-Codes wird zusätzlich "<voller Name> | <Event-Titel>"
  * fett angezeigt \u2014 hilft den Organizern beim manuellen Check-in (Foto- oder
  * Bildschirm-Vergleich), wenn der Scanner mal nicht zur Hand ist.
  */
@@ -578,7 +578,7 @@ export function qrCodeEmail(
   const isDe = (lang || 'EN').toUpperCase() === 'DE';
   // Fallback: wenn kein fullName uebergeben, nutze nur firstName
   const fullDisplayName = (fullName || firstName || '').trim();
-  // HTML-Escape \u2014 Nutzer-Eingaben (Namen) duerfen das Layout nicht brechen
+  // HTML-Escape \u2014 Nutzer-Eingaben (Namen) dürfen das Layout nicht brechen
   const escName = fullDisplayName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const escTitle = (eventTitle || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   const checkInLabel = `<p style="text-align:center;font-size:16px;margin:8px 0 0;"><strong>${escName} | ${escTitle}</strong></p>`;
@@ -670,17 +670,17 @@ export function injectIntoEmailContent(wrappedHtml: string, snippet: string): st
 
 /**
  * Extrahiert den User-Content-Teil aus einem bereits-gewickelten Outlook-Body.
- * Wenn der Input nicht gewickelt ist, wird er unveraendert zurueckgegeben.
- * Dadurch koennen wir bestehende Events bearbeiten, ohne dass der Editor das
+ * Wenn der Input nicht gewickelt ist, wird er unverändert zurückgegeben.
+ * Dadurch können wir bestehende Events bearbeiten, ohne dass der Editor das
  * komplette Wrapper-HTML als rohen Text anzeigt.
  */
 export function stripOutlookWrapper(html: string): string {
   if (!html) return '';
   if (!/<!doctype|<html/i.test(html)) return html;
-  // wrapTemplate fuegt den Body in <td style="padding:0 30px 30px[ 30px];...color:#333333;">CONTENT</td>
+  // wrapTemplate fügt den Body in <td style="padding:0 30px 30px[ 30px];...color:#333333;">CONTENT</td>
   // Non-greedy auf </td> reicht — wir brauchen keine trailing-Constraint (HTML-Kommentare
-  // zwischen </tr> und naechstem <tr> wuerden eine engere Pruefung sonst sprengen, wodurch
-  // der Strip fehlschlaegt und beim Re-Save der gesamte Wrapper erneut umwickelt wird).
+  // zwischen </tr> und nächstem <tr> würden eine engere Prüfung sonst sprengen, wodurch
+  // der Strip fehlschlägt und beim Re-Save der gesamte Wrapper erneut umwickelt wird).
   // Seit v11.56 nutzt wrapTemplate 4-value-Paddings ("0 30px 30px 30px"), aber bestehende
   // gespeicherte Bodies haben noch 3-value ("0 30px 30px") — die Regex muss beide matchen.
   const m = html.match(/<td style="padding:0 30px 30px(?:\s+30px)?;[^"]*">([\s\S]*?)<\/td>/i);
@@ -690,7 +690,7 @@ export function stripOutlookWrapper(html: string): string {
 
 /**
  * Extrahiert Heading (<h1>) und Subheading (<h2>) aus einer bereits gewickelten
- * Outlook-Body. Gibt leere Strings zurueck wenn keine vorhanden.
+ * Outlook-Body. Gibt leere Strings zurück wenn keine vorhanden.
  */
 export function parseOutlookHeadings(html: string): { heading: string; subheading: string } {
   if (!html || !/<!doctype|<html/i.test(html)) return { heading: '', subheading: '' };
@@ -705,13 +705,13 @@ export function parseOutlookHeadings(html: string): { heading: string; subheadin
 /**
  * Logo als Base64 in den Memory-Cache laden.
  * Liest zuerst aus DEX_EmailTemplates (_Config), dann Fallback auf SiteAssets.
- * Schreibt NICHT zurueck - das macht EventService.ensureLogosInConfig().
+ * Schreibt NICHT zurück - das macht EventService.ensureLogosInConfig().
  */
 export async function loadLogosAsBase64(spHttpClient: SPHttpClient, siteUrl: string): Promise<void> {
   if (cachedLogoBase64 && cachedOrbBase64) return;
 
   try {
-    // 1. Aus _Config Zeile lesen (falls bereits befuellt)
+    // 1. Aus _Config Zeile lesen (falls bereits befüllt)
     const configUrl = `${siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=LogoBase64,DefaultImageBase64`;
     const response = await spHttpClient.get(configUrl, SPHttpClient.configurations.v1);
     if (response.ok) {
@@ -732,11 +732,11 @@ export async function loadLogosAsBase64(spHttpClient: SPHttpClient, siteUrl: str
       const orb = await loadImageAsBase64(spHttpClient, siteUrl, 'DEX_Logos/dex-orb.png');
       if (orb) cachedOrbBase64 = orb;
     }
-  } catch { /* Logo nicht verfuegbar - Flow ersetzt Platzhalter als Fallback */ }
+  } catch { /* Logo nicht verfügbar - Flow ersetzt Platzhalter als Fallback */ }
 }
 
 /**
- * Bild aus SiteAssets laden und als Base64 Data-URI zurueckgeben.
+ * Bild aus SiteAssets laden und als Base64 Data-URI zurückgeben.
  */
 async function loadImageAsBase64(spHttpClient: SPHttpClient, siteUrl: string, path: string): Promise<string> {
   try {

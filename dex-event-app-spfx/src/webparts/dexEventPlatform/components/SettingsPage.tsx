@@ -40,7 +40,7 @@ export default function SettingsPage(): React.ReactElement {
   /**
    * Map: organizer-email-lowercase -> Liste von Event-Titeln, die diese Person koordiniert.
    * Nutzt den gleichen Substring-Match wie die AdminPage Filter-Logik:
-   * Organizer-Eintrag enthaelt entweder den Vor+Nachnamen oder nur den Nachnamen.
+   * Organizer-Eintrag enthält entweder den Vor+Nachnamen oder nur den Nachnamen.
    */
   const organizerEventMap = React.useMemo<Record<string, string[]>>(() => {
     const map: Record<string, string[]> = {};
@@ -190,7 +190,7 @@ export default function SettingsPage(): React.ReactElement {
 
   // Onboarding-Mail-Prompt: erscheint nach erfolgreicher Zuweisung einer
   // Organizer- oder Admin-Rolle. Ein Klick auf "Mail senden" verschickt eine
-  // Begruessungsmail mit Links zur App und zum Handbuch (siehe
+  // Begrüßungsmail mit Links zur App und zum Handbuch (siehe
   // organizerOnboardingEmail in EmailTemplates.ts) — Cc geht automatisch an
   // die DEX-Verantwortlichen.
   const [onboardingPrompt, setOnboardingPrompt] = React.useState<
@@ -212,7 +212,7 @@ export default function SettingsPage(): React.ReactElement {
       setNewName('');
       setNewLocation('');
       setShowAddForm(false);
-      // User/-Rolle bekommt keine Onboarding-Mail — die Mail erklaert
+      // User/-Rolle bekommt keine Onboarding-Mail — die Mail erklärt
       // Organizer-/Admin-Funktionen, die Standard-User gar nicht haben.
       if (assignedRole === 'Organizer' || assignedRole === 'Admin') {
         setOnboardingPrompt({ email: assignedEmail, name: assignedName, role: assignedRole });
@@ -300,7 +300,7 @@ export default function SettingsPage(): React.ReactElement {
           </div>
         </div>
 
-        {/* Admin Actions - sichtbar fuer Organizer und Admin */}
+        {/* Admin Actions - sichtbar für Organizer und Admin */}
         {canCreateEvents && (
           <div className="card">
             <h3 className="mb-16">Admin Actions</h3>
@@ -355,7 +355,7 @@ export default function SettingsPage(): React.ReactElement {
               </div>
             )}
 
-            {/* Neue Rolle hinzufuegen — v11.72: nach OBEN verschoben, damit der
+            {/* Neue Rolle hinzufügen — v11.72: nach OBEN verschoben, damit der
                 Admin nicht erst durch die Tabelle scrollen muss. Form ist auf
                 EINEN People-Picker reduziert (analog zum Organizer-Picker im
                 EventCreation-Wizard). */}
@@ -601,7 +601,7 @@ export default function SettingsPage(): React.ReactElement {
                                 „Power User" ist KEINE eigene Rolle, sondern ein
                                 Zusatz auf einem Organizer/Admin — die Person
                                 bleibt also Organizer und ist zusätzlich Power
-                                User. Nur fuer Organizer/Admin-Rollen sinnvoll. */}
+                                User. Nur für Organizer/Admin-Rollen sinnvoll. */}
                             {(r.role === 'Organizer' || r.role === 'Admin') && (
                               <button
                                 type="button"
@@ -779,7 +779,7 @@ export default function SettingsPage(): React.ReactElement {
             Nachrücken-Mail in v12.11/v12.12). */}
         {isAdmin && <ReseedTemplatesCard />}
 
-        {/* Berechtigungs-Übersicht - nur fuer Admin */}
+        {/* Berechtigungs-Übersicht - nur für Admin */}
         {isAdmin && <PermissionsViewer siteUrl={siteUrl} />}
 
       </div>
@@ -858,7 +858,7 @@ function ReseedTemplatesCard(): React.ReactElement {
     try {
       const res = await reseedDefaultEmailTemplates();
       setSummary(res);
-      // v18.66: Ein fehlgeschlagener Insert (z.B. neues Template) zaehlt als
+      // v18.66: Ein fehlgeschlagener Insert (z.B. neues Template) zählt als
       // Fehler, auch wenn der Rest durchlief — so sieht der Admin sofort,
       // dass nicht alle Templates angelegt wurden.
       setStatus(res.failed > 0 ? 'error' : 'success');

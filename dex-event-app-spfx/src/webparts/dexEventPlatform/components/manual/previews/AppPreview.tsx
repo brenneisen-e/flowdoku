@@ -33,13 +33,13 @@ interface AppPreviewProps {
    *  gezielt setzen, damit das Handbuch pro Step den passenden Inhalt zeigt. */
   initialStep?: number;
   /** v7.7: Wenn der User im Modal auf Handy/Laptop umschalten kann, wird diese
-   *  Breite fuer die Mobile-Variante genutzt (default 412 = Galaxy S23). Die
+   *  Breite für die Mobile-Variante genutzt (default 412 = Galaxy S23). Die
    *  laptopWidth = Hauptprop `width`. So kann jede Sektion im Handbuch beide
    *  Ansichten anbieten ohne zwei AppPreviews nebeneinander einzublenden. */
   mobileWidth?: number;
   /** v7.7: Wenn true, blendet AppPreview im Modal-Header einen Toggle ein
    *  (Laptop ⇄ Handy). Default: true sobald `width >= 1024` (also wenn die
-   *  Standard-Ansicht Desktop ist und es Sinn macht, zusaetzlich Mobile zu
+   *  Standard-Ansicht Desktop ist und es Sinn macht, zusätzlich Mobile zu
    *  zeigen). Auf reinen Handy-Sektionen (width <= 768) bleibt der Toggle aus,
    *  weil das Feature in dem Kontext eh nur mobil existiert. */
   allowDeviceToggle?: boolean;
@@ -59,15 +59,15 @@ export function AppPreview(props: AppPreviewProps): React.ReactElement {
       ? 'laptop'
       : (propWidth <= 768 ? 'phone' : 'laptop');
   const [mode, setMode] = React.useState<'phone' | 'laptop'>(initialMode);
-  // Bei jedem neuen Open auf den Initial-Mode der Section zurueckspringen,
-  // damit der Toggle-Zustand nicht zwischen Sektionen rueberblutet.
+  // Bei jedem neuen Open auf den Initial-Mode der Section zurückspringen,
+  // damit der Toggle-Zustand nicht zwischen Sektionen rüberblutet.
   React.useEffect(() => {
     if (open) setMode(initialMode);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   // Toggle nur sinnvoll, wenn die Section eine Desktop-Variante hat (also
   // propWidth >= 1024 oder explizit allowDeviceToggle gesetzt). Auf reinen
-  // Mobile-Sections (Bubble, Scanner) bleibt er aus — dort wuerde das
+  // Mobile-Sections (Bubble, Scanner) bleibt er aus — dort würde das
   // Desktop-Layout das Feature ja gar nicht zeigen.
   const allowDeviceToggle = props.allowDeviceToggle !== undefined
     ? props.allowDeviceToggle
@@ -77,7 +77,7 @@ export function AppPreview(props: AppPreviewProps): React.ReactElement {
   // v6.30: Mobile-Flag SYNCHRON setzen (nicht erst im useEffect), damit der
   // Header im Preview schon beim ersten Render die Mobile-Variante rendert.
   // useState-Init in <Header> liest das Flag sonst BEVOR unser useEffect
-  // läuft, und die Check-In-Bubble fehlt. Greift jetzt auf `mode` zurueck,
+  // läuft, und die Check-In-Bubble fehlt. Greift jetzt auf `mode` zurück,
   // damit auch ein Toggle mid-modal die Mobile-Variante des Headers triggert.
   if (open && mode === 'phone' && typeof window !== 'undefined') {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

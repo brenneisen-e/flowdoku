@@ -2,11 +2,11 @@ import * as React from 'react';
 import { ManualSection } from '../types';
 
 /**
- * Handbuch-Sektion zur Team-Anmeldung (eingefuehrt v11.82).
+ * Handbuch-Sektion zur Team-Anmeldung (eingeführt v11.82).
  *
- * Erklaert User + Organizer wie der Team-Anmelde-Flow funktioniert:
+ * Erklärt User + Organizer wie der Team-Anmelde-Flow funktioniert:
  * Voraussetzung am Event, Zustimmungs-Pflicht, Wartelisten-Verhalten bei
- * unzureichender Restkapazitaet, Pflicht-Bestaetigungs-Checkbox, automatische
+ * unzureichender Restkapazität, Pflicht-Bestätigungs-Checkbox, automatische
  * Mails + Outlook-Termine pro Mitglied, Sub-Event-Hinweis.
  */
 export function teamRegistrationSection(locale: 'de' | 'en'): ManualSection {

@@ -1,7 +1,7 @@
 /**
- * Meine Events - zeigt alle Events fuer die der User registriert ist.
- * Laedt Registrierungen aus den jeweiligen Teilnehmerlisten.
- * Ermoeglicht Abmeldung mit Zwei-Schritt-Bestaetigung.
+ * Meine Events - zeigt alle Events für die der User registriert ist.
+ * Lädt Registrierungen aus den jeweiligen Teilnehmerlisten.
+ * Ermöglicht Abmeldung mit Zwei-Schritt-Bestätigung.
  */
 
 import * as React from 'react';
@@ -82,8 +82,8 @@ interface MyEventEntry {
    *  nur als Container, damit die Session-Registrierungen sichtbar und verwaltbar
    *  bleiben. Das Status-Badge zeigt "Nur Sessions" statt dem echten Parent-Status. */
   sessionsOnly?: boolean;
-  /** v11.31: Titel der Sub-Events fuer die der User aktiv angemeldet ist —
-   *  wird bei sessionsOnly-Entries befuellt, damit der Hinweis-Text die
+  /** v11.31: Titel der Sub-Events für die der User aktiv angemeldet ist —
+   *  wird bei sessionsOnly-Entries befüllt, damit der Hinweis-Text die
    *  konkreten Sub-Event-Namen in Klammern ausgeben kann. */
   subEventTitles?: string[];
 }
@@ -145,7 +145,7 @@ function getDocIconName(name: string): string {
 
 /**
  * Berechnet wie viele Fragen korrekt beantwortet wurden.
- * Eine Frage gilt als korrekt, wenn die Menge der gewaehlten Indices exakt
+ * Eine Frage gilt als korrekt, wenn die Menge der gewählten Indices exakt
  * gleich der Menge der `correctIndices` ist.
  */
 function computeQuizScore(quiz: QuizQuestion[], answers: number[][]): number {
@@ -164,7 +164,7 @@ function computeQuizScore(quiz: QuizQuestion[], answers: number[][]): number {
 }
 
 /**
- * Zaehlt wie viele Fragen (mindestens teilweise) beantwortet wurden.
+ * Zählt wie viele Fragen (mindestens teilweise) beantwortet wurden.
  */
 function countAnswered(answers: number[][]): number {
   let n = 0;
@@ -179,7 +179,7 @@ function countAnswered(answers: number[][]): number {
  *
  * - initialAnswers: zuvor gespeicherte Antworten (leere innere Arrays = nicht beantwortet)
  * - clusterSize: 1..4 Fragen pro Ansicht (Default 1)
- * - onProgress: wird bei jedem "Weiter"/"Zurueck" aufgerufen + am Ende mit isComplete=true
+ * - onProgress: wird bei jedem "Weiter"/"Zurück" aufgerufen + am Ende mit isComplete=true
  */
 function QuizPlayer({
   quiz,
@@ -197,7 +197,7 @@ function QuizPlayer({
   const size = Math.min(Math.max(1, clusterSize || 1), 4);
   const isDe = t('myevents.agenda') === 'Programm';
 
-  // Antworten initialisieren: fuer jede Frage ein Array (leer wenn unbeantwortet).
+  // Antworten initialisieren: für jede Frage ein Array (leer wenn unbeantwortet).
   // Pads initialAnswers auf quiz.length, damit Zugriff per Index immer sicher ist.
   const buildInitial = (): number[][] => {
     const padded: number[][] = [];
@@ -215,7 +215,7 @@ function QuizPlayer({
   // Gruppen = "Seiten" des Quiz. Wenn mindestens eine Frage ein Feld `section`
   // hat, wird pro Section eine Gruppe (alle Fragen der Section zusammen). Fragen
   // ohne Section landen im Anschluss in einer "Ohne Bereich"-Gruppe. Ohne
-  // Sections faellt alles auf Cluster-Groesse zurueck.
+  // Sections fällt alles auf Cluster-Größe zurück.
   const groups: Array<{ title?: string; indices: number[] }> = (() => {
     const hasAnySection = quiz.some(q => !!q.section);
     if (!hasAnySection) {
@@ -226,7 +226,7 @@ function QuizPlayer({
       }
       return out;
     }
-    // Sections in Reihenfolge der ersten Frage-Erwaehnung
+    // Sections in Reihenfolge der ersten Frage-Erwähnung
     const sectionsInOrder: string[] = [];
     for (const q of quiz) {
       if (q.section && sectionsInOrder.indexOf(q.section) < 0) sectionsInOrder.push(q.section);
@@ -248,7 +248,7 @@ function QuizPlayer({
     return out;
   })();
 
-  // Welche Gruppe enthaelt die erste unbeantwortete Frage?
+  // Welche Gruppe enthält die erste unbeantwortete Frage?
   const firstUnansweredGroupIdx = (answers: number[][]): number => {
     for (let g = 0; g < groups.length; g++) {
       for (const qi of groups[g].indices) {
@@ -532,7 +532,7 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
   const [blobUrl, setBlobUrl] = React.useState<string>('');
   const [pdfBlob, setPdfBlob] = React.useState<Blob | null>(null);
   const [loading, setLoading] = React.useState(false);
-  // Mobile-Erkennung: Auf Mobile nutzen wir react-pdf (Canvas), auf Desktop bleibt iframe (bewaehrt)
+  // Mobile-Erkennung: Auf Mobile nutzen wir react-pdf (Canvas), auf Desktop bleibt iframe (bewährt)
   const [isMobile, setIsMobile] = React.useState<boolean>(
     typeof window !== 'undefined' && window.matchMedia ? window.matchMedia('(max-width: 768px)').matches : false
   );
@@ -574,7 +574,7 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
       const encodedPath = serverRelPath.split('/').map(s => encodeURIComponent(s)).join('/');
       const apiUrl = `${siteUrl}/_api/web/GetFileByServerRelativeUrl('${encodedPath}')/$value`;
 
-      // XHR fuer Binary-Download (zuverlaessiger als fetch fuer SharePoint)
+      // XHR für Binary-Download (zuverlässiger als fetch für SharePoint)
       const blob = await new Promise<Blob | null>((resolve) => {
         const xhr = new XMLHttpRequest();
         xhr.open('GET', apiUrl, true);
@@ -601,7 +601,7 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
           // Mobile: PDF via react-pdf (Canvas) - funktioniert wo iframe versagt
           setPdfBlob(correctBlob);
         } else {
-          // Desktop oder Bilder: Blob-URL + iframe (bewaehrt)
+          // Desktop oder Bilder: Blob-URL + iframe (bewährt)
           setBlobUrl(URL.createObjectURL(correctBlob));
         }
       }
@@ -691,7 +691,7 @@ export default function MyEventsPage(): React.ReactElement {
   const currentUserEmail = (currentUser?.email || '').toLowerCase();
   // v11.82: Team-Mitglieder pro Event-Karte cachen — Lazy-Load via getTeamMembers.
   // Key = `${eventId}|${teamId}`. Belastet das initiale loadMyRegistrations
-  // nicht — nur fuer Events mit gesetzter TeamId im eigenen Eintrag.
+  // nicht — nur für Events mit gesetzter TeamId im eigenen Eintrag.
   const [teamMembersCache, setTeamMembersCache] = React.useState<Record<string, SPRegistration[]>>({});
   const teamCacheKeyRef = React.useRef<Set<string>>(new Set());
   const enqueueTeamFetch = React.useCallback((eventId: string, teamId: string): void => {
@@ -708,7 +708,7 @@ export default function MyEventsPage(): React.ReactElement {
   // v11.99: Page-Level-Refresh-State entfernt — Header-Button übernimmt.
 
   // v11.83: Add-Member-Modal + Join-Requests-Cache + Helpers.
-  // searchUsers wird fuer den Add-Member-Picker gebraucht (gleiche API wie
+  // searchUsers wird für den Add-Member-Picker gebraucht (gleiche API wie
   // im Registrierungs-Formular).
   const { searchUsers, searchUser, isImpersonating } = useRoles();
   const [addMemberDialog, setAddMemberDialog] = React.useState<{
@@ -764,7 +764,7 @@ export default function MyEventsPage(): React.ReactElement {
       if (!res.ok) {
         if (res.reason && res.reason.startsWith('already-registered')) {
           setAddMemberError(isDe
-            ? 'Diese Person ist bereits beim Event angemeldet — bitte abmelden lassen, bevor du sie zum Team hinzufuegst.'
+            ? 'Diese Person ist bereits beim Event angemeldet — bitte abmelden lassen, bevor du sie zum Team hinzufügst.'
             : 'This person is already registered for the event — please have them cancel first before adding to the team.');
         } else if (res.reason === 'team-full') {
           setAddMemberError(isDe ? 'Das Team ist bereits voll.' : 'The team is already full.');
@@ -789,7 +789,7 @@ export default function MyEventsPage(): React.ReactElement {
     }
   };
 
-  // Join-Request-Cache pro (eventId|teamId). Nur fuer Leads relevant.
+  // Join-Request-Cache pro (eventId|teamId). Nur für Leads relevant.
   const [joinRequestsCache, setJoinRequestsCache] = React.useState<Record<string, Array<{ Id: number; RequesterEmail: string; RequesterDisplayName: string; Status: string; Created: string }>>>({});
   const joinReqKeyRef = React.useRef<Set<string>>(new Set());
   const enqueueJoinReqFetch = React.useCallback((eventId: string, teamId: string): void => {
@@ -828,7 +828,7 @@ export default function MyEventsPage(): React.ReactElement {
   };
   // v11.86: „Team verwalten"-Modal. Lead kann pro Mitglied einen
   // Trash-Button anklicken — ein zweites Confirm-Modal fordert die
-  // Bestaetigung an und ruft anschliessend cancelTeamMember auf.
+  // Bestätigung an und ruft anschliessend cancelTeamMember auf.
   const [manageTeamDialog, setManageTeamDialog] = React.useState<{
     eventId: string;
     teamId: string;
@@ -854,7 +854,7 @@ export default function MyEventsPage(): React.ReactElement {
     try {
       const ok = await cancelTeamMember(manageTeamDialog.eventId, member);
       if (ok) {
-        // Cache invalidieren, damit das Team-Badge neu laedt.
+        // Cache invalidieren, damit das Team-Badge neu lädt.
         const key = `${manageTeamDialog.eventId}|${manageTeamDialog.teamId}`;
         teamCacheKeyRef.current.delete(key);
         setTeamMembersCache(prev => {
@@ -903,10 +903,10 @@ export default function MyEventsPage(): React.ReactElement {
   const [editData, setEditData] = React.useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = React.useState(false);
   const [loadError, setLoadError] = React.useState('');
-  // v17.23: Event-Beschreibung auf der MyEvents-Karte ist standardmaessig
+  // v17.23: Event-Beschreibung auf der MyEvents-Karte ist standardmäßig
   // eingeklappt — pro Event-Id gemerkt, ob der User sie aufgeklappt hat.
   const [descExpanded, setDescExpanded] = React.useState<Record<string, boolean>>({});
-  // v11.34: Cascade-Cancel-Dialog (Parent → Sub-Events). State haelt
+  // v11.34: Cascade-Cancel-Dialog (Parent → Sub-Events). State hält
   // den Dialog-Inhalt + die Resolver-Funktion, damit performCancel auf
   // die User-Wahl awaiten kann statt window.confirm.
   const [cascadeDialog, setCascadeDialog] = React.useState<{
@@ -936,7 +936,7 @@ export default function MyEventsPage(): React.ReactElement {
     // v11.79: Stale-while-revalidate. Wenn vor < 60 s schon mal MyEvents
     // geladen wurden, sofort den letzten Stand aus dem sessionStorage
     // rendern (Skeleton-Spinner uebersprungen) und im Hintergrund frisch
-    // nachladen. Beim erneuten Klick auf "Meine Events" fuehlt sich die
+    // nachladen. Beim erneuten Klick auf "Meine Events" fühlt sich die
     // Seite damit instantan an, ohne Stale-Daten zu riskieren.
     try {
       const raw = window.sessionStorage.getItem('dex:myevents:cache');
@@ -958,7 +958,7 @@ export default function MyEventsPage(): React.ReactElement {
     // v11.79: Performance-Logs + Promise.all-Parallelisierung.
     // Vorher: pro angemeldetem Event eine sequentielle getMyRegistration —
     // bei N Anmeldungen N Roundtrips in Serie. Jetzt: alle parallel via
-    // Promise.all, dazu Phase-Timer pro Block fuer ein Vorher/Nachher-
+    // Promise.all, dazu Phase-Timer pro Block für ein Vorher/Nachher-
     // Profil in der Browser-Console.
     const tStart = performance.now();
     if (!silent) {
@@ -1084,13 +1084,13 @@ export default function MyEventsPage(): React.ReactElement {
           subEventTitles: activeKids.map(k => k.title || (isDe ? 'ohne Titel' : 'untitled')),
         });
       }
-      // Zusatzschleife: abgemeldete Events finden. DEX_Participants haelt nur
+      // Zusatzschleife: abgemeldete Events finden. DEX_Participants hält nur
       // EventRegistered/EventOnWaitlist - bei Abmeldung wird die EventNumber dort
-      // entfernt. Ohne diese Schleife waeren alte Abmeldungen im "My Events"-Tab
-      // unsichtbar, sobald der User noch fuer mind. ein Event angemeldet ist.
-      // v10.22: Skip-Check fuer Events, die wir oben bereits als sessionsOnly-
+      // entfernt. Ohne diese Schleife wären alte Abmeldungen im "My Events"-Tab
+      // unsichtbar, sobald der User noch für mind. ein Event angemeldet ist.
+      // v10.22: Skip-Check für Events, die wir oben bereits als sessionsOnly-
       // Container eingetragen haben (sonst Doppel-Eintrag mit Status 'Angemeldet'
-      // UND 'Abgemeldet' fuer dasselbe Parent-Event).
+      // UND 'Abgemeldet' für dasselbe Parent-Event).
       const handledParentIds = new Set(entries.map(e => e.event.id));
       const remainingEvents = topLevelEvents.filter(e =>
         (!e.eventNumber || !myNumSet.has(e.eventNumber)) && !handledParentIds.has(e.id)
@@ -1098,7 +1098,7 @@ export default function MyEventsPage(): React.ReactElement {
       const tRem = performance.now();
       // v11.79: auch die Abgemeldet-Suche parallelisieren. Vorher: pro nicht-
       // angemeldetem Event ein Roundtrip — bei vielen Events der teuerste
-      // Block, weil oft 80%+ "kein Eintrag" zurueckkommen. Parallel schneidet
+      // Block, weil oft 80%+ "kein Eintrag" zurückkommen. Parallel schneidet
       // die Gesamtdauer auf max(slowest), nicht sum().
       const remainingRegs = await Promise.all(remainingEvents.map(async (event) => {
         try { return { event, reg: await getMyRegistration(event.id) }; }
@@ -1108,10 +1108,10 @@ export default function MyEventsPage(): React.ReactElement {
       console.log(`[DEX][perf][myevents] getMyRegistration remaining n=${remainingEvents.length} = ${Math.round(performance.now() - tRem)} ms (parallel, Abgemeldet-Suche)`);
       for (const { event, reg } of remainingRegs) {
         if (reg && reg.Status === 'Abgemeldet') {
-          // v10.22: Auch hier den hasActiveChild-Sonderfall pruefen — falls
+          // v10.22: Auch hier den hasActiveChild-Sonderfall prüfen — falls
           // DEX_Participants die Parent-EventNumber noch nicht entfernt hat
           // bzw. der User nur Sub-Event-Anmeldungen hat und kein DEX_Participants-
-          // Eintrag fuer das Parent existiert.
+          // Eintrag für das Parent existiert.
           const kids = childEventsOf(event.id);
           const activeKids = kids.filter(k => k.eventNumber && myNumSet.has(k.eventNumber));
           if (activeKids.length > 0) {
@@ -1127,7 +1127,7 @@ export default function MyEventsPage(): React.ReactElement {
         }
       }
     } else {
-      // Fallback: Alter Weg fuer Altdaten ohne DEX_Participants-Eintrag.
+      // Fallback: Alter Weg für Altdaten ohne DEX_Participants-Eintrag.
       // v11.79: ebenfalls parallelisiert.
       const tFb = performance.now();
       const fbRegs = await Promise.all(topLevelEvents.map(async (event) => {
@@ -1146,7 +1146,7 @@ export default function MyEventsPage(): React.ReactElement {
     }
     setMyEvents(entries);
     if (!silent) setIsLoading(false);
-    // v11.79: Cache fuer Stale-while-revalidate. Beim naechsten Mount
+    // v11.79: Cache für Stale-while-revalidate. Beim nächsten Mount
     // innerhalb 60 s wird sofort der letzte Stand gerendert.
     try {
       window.sessionStorage.setItem('dex:myevents:cache', JSON.stringify({ ts: Date.now(), entries }));
@@ -1156,7 +1156,7 @@ export default function MyEventsPage(): React.ReactElement {
     console.log(`[DEX][perf][myevents] total = ${tTotal} ms (entries=${entries.length}, silent=${silent})`);
   }
 
-  // Eigentliche Cancel-Logik (direkt ausfuehren, ohne 2-Klick-Bestaetigung).
+  // Eigentliche Cancel-Logik (direkt ausführen, ohne 2-Klick-Bestätigung).
   // Wird sowohl von handleCancel (beim 2. Klick) als auch vom Auto-Cancel-
   // Deep-Link (direkt nach Navigation) genutzt.
   const performCancel = async (eventId: string): Promise<void> => {
@@ -1168,7 +1168,7 @@ export default function MyEventsPage(): React.ReactElement {
     const isLateCancellation = entry?.event.lastDeregisterDate && new Date(entry.event.lastDeregisterDate) < new Date();
 
     // v11.33/v11.34: Cascade-Prompt via gestyltem Modal — wenn das
-    // Hauptevent Sub-Events hat fuer die der User aktiv angemeldet ist,
+    // Hauptevent Sub-Events hat für die der User aktiv angemeldet ist,
     // fragen ob diese auch abgemeldet werden sollen. Drei Auswahlen:
     // - 'cascade'      → Parent + alle Sub-Events abmelden
     // - 'parent-only'  → nur Parent abmelden, Sub-Events behalten
@@ -1244,14 +1244,14 @@ export default function MyEventsPage(): React.ReactElement {
             // alle Organizer die Mail gemeinsam (statt N separate Einzel-Mails).
             const toList = entry.event.organizerEmails.join(';');
             const toNames = entry.event.organizers.join(', ') || toList;
-            // EmailType 'Info' (Choice-Feld laesst nur Anmeldung/Abmeldung/
-            // Warteliste/Nachruecken/Info zu).
+            // EmailType 'Info' (Choice-Feld lässt nur Anmeldung/Abmeldung/
+            // Warteliste/Nachrücken/Info zu).
             await svc.queueEmail(subject, toList, toNames, body, 'Info', entry.event.title, eventId)
               .catch(err => console.warn('[DEX] LateCancel queueEmail failed:', err));
           }
         } catch { /* Email-Fehler ignorieren */ }
       }
-      // v11.33: nach erfolgreicher Parent-Abmeldung optional die ausgewaehlten
+      // v11.33: nach erfolgreicher Parent-Abmeldung optional die ausgewählten
       // Sub-Events kaskadieren. Best-effort — Fehler einzelner Sub-Events
       // brechen den Reload nicht ab.
       for (const childId of childIdsToCancel) {
@@ -1272,18 +1272,18 @@ export default function MyEventsPage(): React.ReactElement {
     }
   };
 
-  // Auto-Cancel: wenn die Seite via Deep-Link mit Intent 'auto-cancel' geoeffnet
+  // Auto-Cancel: wenn die Seite via Deep-Link mit Intent 'auto-cancel' geöffnet
   // wurde (z.B. aus einer Outlook-Decline-Reminder-Mail), die Registrierung
-  // direkt stornieren - OHNE dass der User zusaetzlich auf "Abmeldung
-  // bestaetigen" klicken muss. Der Klick auf den Link in der Mail gilt als
-  // Bestaetigung. Da der User eingeloggt sein muss und nur seine eigene
+  // direkt stornieren - OHNE dass der User zusätzlich auf "Abmeldung
+  // bestätigen" klicken muss. Der Klick auf den Link in der Mail gilt als
+  // Bestätigung. Da der User eingeloggt sein muss und nur seine eigene
   // Registrierung cancelt, ist das sicher.
   const didAutoOpen = React.useRef(false);
   React.useEffect(() => {
     if (didAutoOpen.current) return;
     if (navIntent !== 'auto-cancel' || !selectedEventId) return;
     // Warten bis die Registrierungen geladen sind, sonst findet performCancel
-    // den entry nicht (late-cancel-check schlaegt fehl).
+    // den entry nicht (late-cancel-check schlägt fehl).
     if (isLoading) return;
     didAutoOpen.current = true;
     clearIntent();
@@ -1344,7 +1344,7 @@ export default function MyEventsPage(): React.ReactElement {
     <div className="page-container" style={{ maxWidth: 1100, marginLeft: 'auto', marginRight: 'auto' }}>
       <style>{`
         @keyframes dex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        /* v9.9: Hover-Effekt fuer den Abmelden-Button — fuellt rot, hebt leicht
+        /* v9.9: Hover-Effekt für den Abmelden-Button — füllt rot, hebt leicht
            an und wirft einen weicheren Schatten, damit die Affordance klar ist.
            Im 2. Klick-Zustand (cancellingId === event.id) bleibt er ohnehin
            rot — nur der idle-State braucht Feedback. */
@@ -1386,12 +1386,12 @@ export default function MyEventsPage(): React.ReactElement {
             // bei der Anmeldung die EN-Labels angesehen hatte.
             const useEnDisplay = locale === 'en' && !!event.bilingualFields;
             const fieldLabelMap: Record<string, string> = {};
-            // v17.22: Wert-Uebersetzung fuer Select-Optionen (DE-Wert →
+            // v17.22: Wert-Uebersetzung für Select-Optionen (DE-Wert →
             // EN-Anzeige) pro Feld, damit auch die Antwort selbst zweisprachig
             // erscheint. Map: fieldId → (DE-Option → EN-Option).
             const fieldOptionEnMap: Record<string, Record<string, string>> = {};
             // v19.34: Feldtyp pro ID merken, damit People-Picker-Antworten
-            // (`user`/`roommate`) als Foto-Tag gerendert werden koennen.
+            // (`user`/`roommate`) als Foto-Tag gerendert werden können.
             const fieldTypeMap: Record<string, string> = {};
             for (const field of event.eventSpecificFields) {
               fieldTypeMap[field.id] = field.type;
@@ -1717,7 +1717,7 @@ export default function MyEventsPage(): React.ReactElement {
                               )}
                             </div>
                           )}
-                          {/* v11.83: Beitritts-Anfragen-Block — nur fuer Leads, wenn das
+                          {/* v11.83: Beitritts-Anfragen-Block — nur für Leads, wenn das
                               Event Approval aktiviert hat UND es Pending-Anfragen gibt. */}
                           {isLead && event.teamJoinRequiresApproval && (() => {
                             const jKey = `${event.id}|${registration.TeamId}`;
@@ -1793,7 +1793,7 @@ export default function MyEventsPage(): React.ReactElement {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon iconName="Calendar" style={{ fontSize: 14, color: 'var(--dex-gray-500)' }} /> {formatDateRange(event.startDate, event.endDate)}</div>
                     </div>
 
-                    {/* Organizer mit Foto (Hover vergroessert). v18.9: optional ausgeblendet. */}
+                    {/* Organizer mit Foto (Hover vergrößert). v18.9: optional ausgeblendet. */}
                     {!event.hideOrganizer && event.organizers.length > 0 && (
                       <div style={{ marginTop: 10 }}>
                         <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Organizer</div>
@@ -1838,7 +1838,7 @@ export default function MyEventsPage(): React.ReactElement {
                     anzeigen (vorher nur auf der Anmeldeseite). RichText-HTML
                     aus dem eigenen Tenant — gleiche Render-Logik wie auf der
                     RegistrationPage (HTML erlaubt, sonst \n→<br>).
-                    v17.23: standardmaessig eingeklappt, per Button aufklappbar. */}
+                    v17.23: standardmäßig eingeklappt, per Button aufklappbar. */}
                 {event.description && (!editingId || editingId !== event.id) && (() => {
                   const isOpen = !!descExpanded[event.id];
                   return (
@@ -1891,9 +1891,9 @@ export default function MyEventsPage(): React.ReactElement {
                 {!editingId || editingId !== event.id ? (
                   // v18.38: Edit-Bereich anzeigen, sobald das Event ueberhaupt
                   // bearbeitbare Felder hat — NICHT mehr nur wenn schon Werte
-                  // ausgefuellt sind. Sonst kann ein Teilnehmer, der ein
-                  // optionales Feld leer gelassen hat (z.B. „zusaetzliche
-                  // Nacht"), es spaeter nicht mehr nachtragen.
+                  // ausgefüllt sind. Sonst kann ein Teilnehmer, der ein
+                  // optionales Feld leer gelassen hat (z.B. „zusätzliche
+                  // Nacht"), es später nicht mehr nachtragen.
                   // v20.9 BUG-FIX: Der Block rendert jetzt AUCH, wenn das Event
                   // keine Custom-Felder hat, aber die Anmeldung QR-fähig ist —
                   // sonst fehlte der „Mein QR-Code"-Button bei Events ohne
@@ -1904,7 +1904,7 @@ export default function MyEventsPage(): React.ReactElement {
                         <FieldAnswerTag key={label} label={label} value={value} type={type} />
                       ))}
                       {/* v11.30: Edit-Button direkt neben den Angaben-Tags
-                          (statt unten in der Aktions-Zeile). Naeher am Inhalt
+                          (statt unten in der Aktions-Zeile). Näher am Inhalt
                           den er bearbeitet.
                           v18.38: zeigt jetzt „Angaben ergänzen", wenn noch
                           nichts ausgefüllt wurde — sonst „Angaben bearbeiten". */}
@@ -1946,7 +1946,7 @@ export default function MyEventsPage(): React.ReactElement {
                 ) : (
                   <div style={{ marginTop: 12 }}>
                     {/* v17.22: EN-Varianten auch im „Meine Events"-Edit-Formular
-                        beruecksichtigen — vorher rein DE, obwohl der Teilnehmer
+                        berücksichtigen — vorher rein DE, obwohl der Teilnehmer
                         sich auf der Anmeldeseite die EN-Labels angesehen hatte. */}
                     {(() => {
                       const useEnEdit = locale === 'en' && !!event.bilingualFields;
@@ -2131,7 +2131,7 @@ export default function MyEventsPage(): React.ReactElement {
                     })()}
                     onProgress={async (score: number, answers: number[][], isComplete: boolean) => {
                       // Nach jedem Cluster-Wechsel in die Subsite-Teilnehmerliste schreiben.
-                      // isComplete=true setzt zusaetzlich QuizCompletedAt (fuer Statistik-Filter).
+                      // isComplete=true setzt zusätzlich QuizCompletedAt (für Statistik-Filter).
                       if (!event.subsiteUrl) {
                         console.warn('[DEX] saveQuizProgress: event.subsiteUrl leer - Save uebersprungen', { eventId: event.id });
                         return;
@@ -2148,7 +2148,7 @@ export default function MyEventsPage(): React.ReactElement {
                         const ok = await svc.saveQuizProgress(event.subsiteUrl, registration.Id, score, answers, isComplete);
                         const answeredNow = answers.filter(a => Array.isArray(a) && a.length > 0).length;
                         console.warn(`[DEX] saveQuizProgress ok=${ok} regId=${registration.Id} score=${score} answered=${answeredNow}/${answers.length} complete=${isComplete} subsite=${event.subsiteUrl}`);
-                        // VERIFY: re-read das Item und checke ob QuizAnswers tatsaechlich in SP landete
+                        // VERIFY: re-read das Item und checke ob QuizAnswers tatsächlich in SP landete
                         try {
                           const verifyResp = await ctx.spHttpClient.get(
                             `${event.subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items(${registration.Id})?$select=QuizScore,QuizAnswers,QuizCompletedAt`,
@@ -2253,7 +2253,7 @@ export default function MyEventsPage(): React.ReactElement {
                       )}
                       {/* v11.30: „Angaben bearbeiten"-Button wandert nach
                           oben neben die Angaben-Tags. Hier in der Aktions-
-                          Zeile nur noch der Cancel-Edit-Button waehrend
+                          Zeile nur noch der Cancel-Edit-Button während
                           aktiver Bearbeitung — sonst leer. */}
                       {editingId === event.id && (
                         <button className="btn btn-secondary" style={{ fontSize: '0.85rem', padding: '8px 16px' }} onClick={() => setEditingId(null)}>
@@ -2303,7 +2303,7 @@ export default function MyEventsPage(): React.ReactElement {
                       })()}
                       {/* Abmelden-Button: prominent ausgelegt damit er auf der Karte
                           sofort gefunden wird (User-Feedback v9.8). 2-Klick-Confirm
-                          bleibt — der erste Klick faerbt rot und blendet den
+                          bleibt — der erste Klick färbt rot und blendet den
                           "Doch behalten"-Button daneben ein. */}
                       <button
                         className={`btn dex-cancel-btn${cancellingId === event.id ? ' dex-cancel-btn--armed' : ''}`}
@@ -2357,10 +2357,10 @@ export default function MyEventsPage(): React.ReactElement {
         />
       )}
 
-      {/* v11.34: Cascade-Cancel-Modal — ersetzt das frueher genutzte
+      {/* v11.34: Cascade-Cancel-Modal — ersetzt das früher genutzte
           window.confirm. Drei klare Aktionen: alles abmelden, nur
           Hauptevent, Abbrechen. */}
-      {/* v11.83: Add-Member-Modal (Team-Lead fuegt nachtraeglich ein
+      {/* v11.83: Add-Member-Modal (Team-Lead fügt nachträglich ein
           Mitglied hinzu). Layout-Logik analog zum cascadeDialog. */}
       {addMemberDialog && (
         <Modal
@@ -2547,7 +2547,7 @@ export default function MyEventsPage(): React.ReactElement {
       )}
       {/* v11.86: Manage-Team-Modal — Lead bearbeitet sein Team
           (Mitglieder abmelden). Pflicht-Confirm vor dem eigentlichen
-          Cancel; der Cancel selbst laeuft ueber cancelTeamMember im
+          Cancel; der Cancel selbst läuft ueber cancelTeamMember im
           EventContext. */}
       {manageTeamDialog && (() => {
         const activeMembers = manageTeamMembers.filter(m => m.Status !== 'Abgemeldet');
@@ -2653,7 +2653,7 @@ export default function MyEventsPage(): React.ReactElement {
                           Lead
                         </span>
                       ) : null}
-                      {/* Trash-Button — nur fuer aktive Nicht-Lead-Nicht-Self-Mitglieder. */}
+                      {/* Trash-Button — nur für aktive Nicht-Lead-Nicht-Self-Mitglieder. */}
                       {!isCancelled && !isMemberLead && !isSelf && (
                         <button
                           type="button"
@@ -3204,19 +3204,19 @@ function MyEventSubEvents(props: {
   const [busyId, setBusyId] = React.useState<string | null>(null);
   // v15.21: Voll-Bild-Progress-Modal beim (Peer-)Cancel + Anmeldung. Vorher
   // war nur die einzelne Karte mit „…" markiert — bei Peer-Cancels haben die
-  // peers visuell nicht reagiert, weil busyId nur die EINE id haelt.
+  // peers visuell nicht reagiert, weil busyId nur die EINE id hält.
   const [processingMessage, setProcessingMessage] = React.useState<string>('');
   const [registeredSet, setRegisteredSet] = React.useState<Set<string>>(new Set());
   const [counts, setCounts] = React.useState<Record<string, number>>({});
   // v10.27: pro Sub-Event die geparsten Custom-Field-Antworten aus
-  // myReg.CustomData. Wird nur fuer aktive Registrierungen befuellt.
+  // myReg.CustomData. Wird nur für aktive Registrierungen befüllt.
   const [seData, setSeData] = React.useState<Record<string, Record<string, string>>>({});
   // v10.27: aktuell ge-editiertes Sub-Event + Draft der Werte. Beim Save
-  // gehen die Werte ueber updateMyRegistration in die Subsite zurueck.
+  // gehen die Werte ueber updateMyRegistration in die Subsite zurück.
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editDraft, setEditDraft] = React.useState<Record<string, string>>({});
   const [savingEdit, setSavingEdit] = React.useState(false);
-  // v11.34: Cascade-Cancel-Dialog fuer Sub-Event-Cancel — fragt ob auch
+  // v11.34: Cascade-Cancel-Dialog für Sub-Event-Cancel — fragt ob auch
   // die anderen aktiven Sub-Events des gleichen Parents abgemeldet
   // werden sollen (Peer-Cancel).
   // v15.8: Peer-Cancel-Modal mit Checkbox-Liste statt drei-Buttons —
@@ -3305,7 +3305,7 @@ function MyEventSubEvents(props: {
     }
     setBusyId(childEventId);
     // v15.21: Voll-Bild-Progress mit Beschreibung — bei Peer-Cancels
-    // zaehlen wir die Fortschritte fortlaufend mit, damit der User sieht
+    // zählen wir die Fortschritte fortlaufend mit, damit der User sieht
     // dass auch die peers verarbeitet werden.
     const totalSteps = (currentlyRegistered ? 1 + peerIdsToCancel.length : 1);
     const initialMsg = currentlyRegistered
@@ -3339,7 +3339,7 @@ function MyEventSubEvents(props: {
             .filter(id => registeredSet.has(id));
           if (remainingActive.length === 0) {
             setProcessingMessage(isDe ? 'Hauptevent-Eintrag wird entfernt…' : 'Removing main-event entry…');
-            // v17.22: Schatten-Parent-Cancel → Notifications unterdruecken
+            // v17.22: Schatten-Parent-Cancel → Notifications unterdrücken
             // (die Sub-Event-Abmeldung hat ihre eigene Mail schon geschickt).
             try { await props.cancelRegistration(props.parentEvent.id, { suppressNotifications: true }); }
             catch (err) { console.warn('[DEX] shadow-parent cancel failed:', err); }
@@ -3388,10 +3388,10 @@ function MyEventSubEvents(props: {
           const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
           const isFull = hasCap && count >= (ce.maxParticipants || 0);
           const disabled = isBusy || (deadlinePassed && !isReg) || (isFull && !isReg);
-          // v11.31: Custom-Field-Antworten gehoeren INS Sub-Event-Karten-
+          // v11.31: Custom-Field-Antworten gehören INS Sub-Event-Karten-
           // Layout, nicht ausserhalb. Maintainer-Wunsch: Tags zwischen
           // der Datums-/Adress-Zeile und den Action-Buttons (rechts) als
-          // kleiner gruener Pastell-Stripe IN der Karte.
+          // kleiner grüner Pastell-Stripe IN der Karte.
           const filledFieldTags = (() => {
             if (!isReg) return null;
             const data = seData[ce.id] || {};
@@ -3466,7 +3466,7 @@ function MyEventSubEvents(props: {
       {/* v10.27: Sub-Event-Edit-Modal — analog zum Hauptevent-Inline-Edit
           (siehe weiter oben), aber als Modal damit es uebersichtlich
           bleibt. Beim Speichern geht der Draft per
-          updateMyRegistration(subEventId, ...) in die Subsite zurueck. */}
+          updateMyRegistration(subEventId, ...) in die Subsite zurück. */}
       {editingId && (() => {
         const ce = props.childEvents.find(c => c.id === editingId);
         if (!ce) return null;
@@ -3578,9 +3578,9 @@ function MyEventSubEvents(props: {
           Default: target ist immer abgemeldet (lock-Checkbox); peers
           unchecked. Klick auf „Abmelden" verarbeitet die Auswahl. */}
       {peerCancelDialog && <PeerCancelCheckboxModal dlg={peerCancelDialog} isDe={isDe} isSectionedEvent={!!props.parentEvent.requireSubEventSelection} />}
-      {/* v15.21: Globaler Progress-Overlay waehrend (Peer-)Cancel +
+      {/* v15.21: Globaler Progress-Overlay während (Peer-)Cancel +
           Registrierung — blockiert die ganze Seite, damit der User nicht
-          versehentlich nochmal klickt und sieht, dass die Aktion laeuft. */}
+          versehentlich nochmal klickt und sieht, dass die Aktion läuft. */}
       {processingMessage && (
         <div
           role="dialog"
