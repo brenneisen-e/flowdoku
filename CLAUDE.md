@@ -1545,6 +1545,13 @@ Dabei werden **fette Schlagwörter** (`<strong>`) für die wichtigsten Begriffe 
 
 Die `InfoTooltip`-Komponente nimmt ab v9.32 `text: React.ReactNode` an (vorher nur `string`) — bei JSX-Tooltips bilingual als `{isDe ? <>...</> : <>...</>}` rendern. Bei einfachen Texten ist weiterhin ein String erlaubt.
 
+### Antwort-Sprache im Chat — ALWAYS
+
+Chat-Antworten an den Maintainer IMMER auf **Deutsch**. Einzige Ausnahme:
+**Power-Automate-UI-Begriffe bleiben Englisch** (siehe Regel in der
+Power-Automate-Sektion — der Maker/Tenant des Maintainers läuft komplett
+auf Englisch).
+
 ### German Text / Sonderzeichen — ALWAYS
 
 **IMPORTANT (strikt ab v6.3.0, verschärft v10.25):** Alle deutschen Texte —
@@ -1636,10 +1643,21 @@ Spalten:
 
 | # | Neu / Geändert | Name der Action | Art der Action | Stelle (Zweig + Vorgänger) | Das machst du (alle Klicks) |
 
-„Art der Action" = der Action-Typ, wie er im „Aktion hinzufügen"-Dialog
-heißt, DE + EN (z.B. „Array filtern (Filter array)", „SharePoint — Element
-erstellen (Create item)", „Bedingung (Condition)"); bei Änderungen an
-bestehenden Actions z.B. „Run-after-Änderung (bestehende Action)".
+„Art der Action" = der Action-Typ in der **englischen** Original-
+Bezeichnung, wie er im „Add an action"-Dialog heißt (z.B. „Filter array",
+„Compose", „Set variable", „Create item", „Update item", „Condition",
+„Terminate"); bei Änderungen an bestehenden Actions z.B. „Run-after-
+Änderung (bestehende Action)".
+
+**Sprache in Flow-Anleitungen (Stand 2026-06-11):** Erklärtexte auf
+Deutsch, aber ALLE Power-Automate-UI-Begriffe auf **ENGLISCH** — das
+Power Automate des Maintainers läuft komplett auf Englisch. Also: „Add an
+action", „Rename" (⋮), „Configure run after" (⋮), „Edit in advanced
+mode", „Site Address", „List Name", „From", „Inputs", „Value", Operator
+„is equal to", Run-after-Status „is successful / has failed / is
+skipped", Terminate-Status „Failed". NIE die deutschen Übersetzungen
+(„Array filtern", „Umbenennen", „Ausführen nach konfigurieren" …)
+verwenden — die findet der Maintainer in seiner UI nicht.
 
 Die Spalte „Das machst du" ist eine **nummerierte Schritt-Liste** (1., 2.,
 3., … — in der Tabellen-Zelle mit `<br>` getrennt), **ein Klick bzw. ein
