@@ -293,6 +293,79 @@ Failed
 ```
 6. Speichern.
 
+#### Nachtrag 2026-06-11 — Speicher-Warnung „circular loop" + Promote-OK-Schranke (Status: OFFEN)
+
+**Die Warnung ist erwartbar:** Power Automate zeigt sie STATISCH bei jedem
+Flow, der Items in seine eigene Trigger-Liste schreibt (`Requeue_Reorder_*`
+→ `DEX_IDReorder`). Der Designer kann die fachliche Abbruchlogik nicht
+sehen. Die Warnung verschwindet auch nach der Härtung unten NICHT — sie ist
+ein Hinweis, kein Fehler; der Flow ist gespeichert und aktiv.
+
+**Warum keine Endlosschleife entsteht (Happy Path):** Ein Folge-Item wird
+nur im `Has_*_Waitlist`-JA-Zweig erzeugt, also nur wenn tatsächlich jemand
+nachgerückt ist. Jede Promotion füllt einen Platz bzw. verkürzt die
+Warteliste → nach endlich vielen Läufen rückt niemand mehr nach → kein
+neues Item → Kette endet. Zusätzlich drosseln Concurrency 1 + 1-Minuten-
+Polling.
+
+**Echte Rest-Lücke (deshalb die Schranke):** `Requeue_Reorder_*` läuft per
+Run-after auch bei **has failed / is skipped** der Audit-Kette — gewollt,
+damit ein Mail-/Audit-Fehler den Folge-Reorder nicht verhindert. Dadurch
+feuert das Requeue aber auch, wenn schon der **Promote selbst** scheitert
+(alles danach skipped). Scheitert der Promote DAUERHAFT (z.B. gesperrte
+Liste, gelöschte Spalte), entstünde ein Retry-Loop im Minutentakt (sichtbar
+als Failed-Läufe). Die Schranke bindet das Requeue an den Promote-Erfolg
+(SharePoint-MERGE antwortet bei Erfolg mit HTTP 204):
+
+| # | Neu / Geändert | Name der Action | Art der Action | Stelle |
+|---|----------------|-----------------|----------------|--------|
+| 1 | NEU | `Check_Promote_OK_N` | Condition | NEIN-Zweig → `Condition_1` JA, nach `Audit_Cancelled_N`; `Requeue_Reorder_N` wandert in den True-Zweig |
+| 2 | NEU | `Check_Promote_OK_D` | Condition | Durchstarter-Zweig, nach `Audit_Cancelled_D`; `Requeue_Reorder_D` wandert in den True-Zweig |
+| 3 | NEU | `Check_Promote_OK_F` | Condition | Funstarter-Zweig, nach `Audit_Cancelled_F`; `Requeue_Reorder_F` wandert in den True-Zweig |
+
+##### Zeile 1 — `Check_Promote_OK_N` (Condition)
+
+1. **+** direkt unter `Audit_Cancelled_N` → **Add an action** → **„Condition"**.
+2. Linke Seite über den Expression-Tab (fx):
+```
+string(coalesce(outputs('Promote_Waitlist')?['statusCode'], 0))
+```
+3. Operator: **is equal to** · rechte Seite (als Text):
+```
+204
+```
+4. ⋮ → **Rename** →
+```
+Check_Promote_OK_N
+```
+5. ⋮ → **Configure run after** → bei `Audit_Cancelled_N` DREI Haken: **is successful + has failed + is skipped** (übernimmt die bisherigen Requeue-Haken).
+6. `Requeue_Reorder_N` per Drag & Drop in den **True**-Zweig der neuen Condition ziehen. (Falls Drag & Drop hakt: `Requeue_Reorder_N` löschen und im True-Zweig neu anlegen — Felder stehen im Abschnitt „Zeile 6" oben.)
+7. Prüfen: `Requeue_Reorder_N` hat im True-Zweig KEIN eigenes Configure-run-after mehr nötig (erste Action im Zweig).
+
+##### Zeile 2 — `Check_Promote_OK_D` (Condition)
+
+Wie Zeile 1, aber: **+** unter `Audit_Cancelled_D` · linke Seite (fx):
+```
+string(coalesce(outputs('Promote_Durchstarter')?['statusCode'], 0))
+```
+Rename:
+```
+Check_Promote_OK_D
+```
+Run after auf `Audit_Cancelled_D` (3 Haken) · `Requeue_Reorder_D` in den True-Zweig.
+
+##### Zeile 3 — `Check_Promote_OK_F` (Condition)
+
+Wie Zeile 1, aber: **+** unter `Audit_Cancelled_F` · linke Seite (fx):
+```
+string(coalesce(outputs('Promote_Funstarter')?['statusCode'], 0))
+```
+Rename:
+```
+Check_Promote_OK_F
+```
+Run after auf `Audit_Cancelled_F` (3 Haken) · `Requeue_Reorder_F` in den True-Zweig.
+
 **Verifikation nach Umsetzung:** (1) Split-Event mit gemischter Warteliste:
 Person der einen Gruppe abmelden → nach beiden Läufen müssen die Aktiven
 lückenlos 1..N sein und die Warteliste N+1..M, der Nachgerückte mittendrin
