@@ -17,11 +17,11 @@ Wird aktualisiert wenn Flows geändert werden.
 
 **Trigger:** Neuer Eintrag in DEX_IDReorder
 **Zweck:** TeilnehmerIDs neu vergeben (Aktive + Warteliste lückenlos sortiert) + Nachrücken von Warteliste (seit v6.7 inkl. typ-bewusster Promotion für B2Run-Split-Wartelisten; seit v10.20 mit optionalem Shared-Waitlist-Modus)
-**Letztes Update:** 2026-06-03 (v18.71 — `Status`/`StarterType` als Objekt aus „Get items" → Filter auf `?['Value']`; siehe Anleitung unten)
+**Letztes Update:** 2026-06-11 (Audit-Fixes: Status-Sortierung in der Renummerierung, Folge-Reorder nach jeder Promotion, Fehler-Sichtbarkeit; JSON unten = as-implemented Export vom 2026-06-11)
 
 ### UI-Anleitung 2026-06-11 (Audit) — Status-Sortierung zurück in die Renummerierung + Folge-Reorder nach Promotion + Fehler-Sichtbarkeit
 
-**Status: OFFEN — noch nicht im Tenant umgesetzt.** Ergebnis des
+**Status: UMGESETZT im Tenant + per Flow-JSON-Review verifiziert (2026-06-11).** Restbaustelle: `Set_Failed_Unclean` wurde unvollständig gespeichert (List Name leer, `Status=Failed`-Feld + Title fehlen) — Fix-Block am Ende dieses Abschnitts. Ergebnis des
 Action-für-Action-Audits vom 2026-06-11 („IDs werden ab und zu nicht perfekt
 korrigiert"). Drei Befunde, drei Fixes:
 
@@ -265,6 +265,31 @@ Set_Failed_Unclean
 Terminate_Unclean
 ```
 (Verhindert, dass nach 5 erfolglosen Renummerier-Runden noch mit unfertigen IDs nachgerückt wird.)
+
+#### Nach-Review 2026-06-11 — Restbaustelle `Set_Failed_Unclean` vervollständigen
+
+Im Export ist die Action ohne Liste gespeichert (`"table": ""`) und ohne
+`Status`/`Title`-Felder — im False-Zweig würde sie zur Laufzeit fehlschlagen.
+
+| # | Neu / Geändert | Name der Action | Art der Action | Stelle |
+|---|----------------|-----------------|----------------|--------|
+| 1 | GEÄNDERT (unvollständig gespeichert) | `Set_Failed_Unclean` | SharePoint — Update item (bestehend) | False-Zweig von `Check_Renumber_Clean` |
+
+1. `Set_Failed_Unclean` öffnen.
+2. **List Name:** im Dropdown `DEX_IDReorder` auswählen (steht aktuell auf LEER — deshalb fehlen auch die Felder).
+3. **Id** (fx) prüfen/neu eintragen (kann beim Listenwechsel geleert werden):
+```
+triggerOutputs()?['body/ID']
+```
+4. **Title** (fx):
+```
+triggerOutputs()?['body/Title']
+```
+5. **Status Value** (falls Dropdown: „Enter custom value"):
+```
+Failed
+```
+6. Speichern.
 
 **Verifikation nach Umsetzung:** (1) Split-Event mit gemischter Warteliste:
 Person der einen Gruppe abmelden → nach beiden Läufen müssen die Aktiven
@@ -1099,7 +1124,7 @@ aber lesbarer.
 > `{{CancelledName}}` direkt aus `triggerOutputs()?['body/CancelledName']`).
 
 ```json
-TRIGGER:
+TRIGGER (GetOnNewItems DEX_IDReorder, splitOn, Concurrency 1):
 {
   "type": "OpenApiConnection",
   "inputs": {
@@ -1118,109 +1143,929 @@ TRIGGER:
   "splitOn": "@triggerOutputs()?['body/value']"
 }
 
-ACTIONS (Reihenfolge laut runAfter):
+Update_item (PatchItem -> Status=Processing):
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+      "table": "9d46ff77-5fe2-4e1d-9b93-14b9dca1a360",
+      "id": "@triggerBody()?['ID']",
+      "item/Title": "@triggerBody()?['Title']",
+      "item/Status/Value": "Processing"
+    },
+    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PatchItem" }
+  },
+  "runAfter": {}
+}
 
-Update_item (PatchItem → Status=Processing)
-Settings (Compose: siteAddress/listName/batchSize=250)
-Get_ListItemType (HTTP GET ListItemEntityTypeFullName)
+Settings (Compose):
+{
+  "type": "Compose",
+  "inputs": {
+    "siteAddress": "@{triggerOutputs()?['body/SubsiteUrl']}",
+    "listName": "Teilnehmer",
+    "batchSize": 250
+  },
+  "runAfter": { "Update_item": [ "Succeeded" ] }
+}
 
-Init_AllParticipants (InitializeVariable, Array)  runAfter Get_ListItemType
-Init_NextPageUri (InitializeVariable, String):
-  @concat('_api/web/lists/getbytitle(''', outputs('Settings')?['listName'], ''')/items?$select=Id,TeilnehmerID,Status,RegistrationDate&$filter=Status ne ''Abgemeldet''&$orderby=RegistrationDate asc&$top=5000')
-  runAfter Init_AllParticipants
+Get_ListItemType (HttpRequest):
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "@outputs('Settings')?['siteAddress']",
+      "parameters/method": "GET",
+      "parameters/uri": "_api/web/lists/getbytitle('@{outputs('Settings')?['listName']}')?$select=ListItemEntityTypeFullName"
+    },
+    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+  },
+  "runAfter": { "Settings": [ "Succeeded" ] }
+}
 
-Load_All_Pages (Until @equals(variables('NextPageUri'),''), count 400, timeout PT3H)  runAfter Init_NextPageUri
-  Get_Page (HTTP GET @variables('NextPageUri'), Accept nometadata)
-  Merge_Pages (Compose): @union(variables('AllParticipants'), body('Get_Page')?['value'])   runAfter Get_Page
-  Append_Page (SetVariable AllParticipants): @outputs('Merge_Pages')                          runAfter Merge_Pages
-  Set_NextPageUri (SetVariable NextPageUri):
-    @if(empty(coalesce(body('Get_Page')?['@odata.nextLink'], body('Get_Page')?['odata.nextLink'])), '', concat('_api', last(split(coalesce(body('Get_Page')?['@odata.nextLink'], body('Get_Page')?['odata.nextLink']), '_api'))))  runAfter Append_Page
+Init_AllParticipants (InitializeVariable):
+{
+  "type": "InitializeVariable",
+  "inputs": { "variables": [ { "name": "AllParticipants", "type": "array" } ] },
+  "runAfter": { "Get_ListItemType": [ "Succeeded" ] }
+}
 
-Filter_Non_Waitlist (Query)  runAfter Batch_Until_Clean
-  from:  @variables('AllParticipants')
-  where: @not(equals(item()?['Status']?['Value'], 'Warteliste'))   ← v18.71: ?['Value'] (Get items liefert Choice als Objekt)
-Count_Active (Compose: @length(body('Filter_Non_Waitlist')))  runAfter Filter_Non_Waitlist
-Filter_Active (Query)  runAfter Count_Active
-  from:  @variables('AllParticipants')
-  where: @not(equals(item()?['Status'], 'Warteliste'))
-Filter_Waitlist (Query)  runAfter Filter_Active
-  from:  @variables('AllParticipants')
-  where: @equals(item()?['Status'], 'Warteliste')
-Sort_ByStatusPriority (Compose: @union(body('Filter_Active'), body('Filter_Waitlist')))  runAfter Filter_Waitlist
-Generate_Indices (Compose: @range(0, length(variables('AllParticipants'))))  runAfter Sort_ByStatusPriority
-GenerateSPData (Select)  runAfter Generate_Indices
-  from: @outputs('Generate_Indices')
-  select: { "ID": "@variables('AllParticipants')[item()]?['Id']", "TeilnehmerID": "@add(item(), 1)" }
-BatchGuids (Compose: batchGUID/changeSetGUID)  runAfter GenerateSPData
-batchTemplate (Compose: PATCH-Changeset-Template)  runAfter BatchGuids
+BatchGuids (Compose):
+{
+  "type": "Compose",
+  "inputs": {
+    "batchGUID": "@{guid()}",
+    "changeSetGUID": "@{guid()}"
+  },
+  "runAfter": { "Init_AllParticipants": [ "Succeeded" ] }
+}
 
-Process_Batch_Scope (Scope)  runAfter batchTemplate
-  Loop_Batches (Foreach @chunk(body('GenerateSPData'), outputs('Settings')?['batchSize']), repetitions 1)
-    Select_map → batchData → SendBatch (_api/$batch)
-  Get_EventDetails (GetItems DEX_Events, $filter ID eq EventId)  runAfter Loop_Batches
-  Is_B2RunSplit (If: DurchstarterCapacity>0 AND FunstarterCapacity>0)  runAfter Get_EventDetails
-    [JA — Split]
-      Filter_Active_Durchstarter (Query)
-        from:  @variables('AllParticipants')
-        where: @and(equals(item()?['StarterType']?['Value'], 'Durchstarter'), not(equals(item()?['Status']?['Value'], 'Warteliste')))   ← v18.71: ?['Value'] (noch offen im Tenant)
-      Count_Active_Durchstarter (Compose @length(body('Filter_Active_Durchstarter')))
-      Check_Durchstarter_Free (If Count<DurchstarterCapacity)
-        Get_Waitlist_First_Durchstarter (HTTP GET Status=Warteliste & PreferredStarterType=Durchstarter, $orderby TeilnehmerID asc top 1)
-        Has_Durchstarter_Waitlist (If results>0)
-          Promote_Durchstarter (MERGE Status=Angemeldet, StarterType=Durchstarter)
-          Get_Email_Template_Durchstarter (GET Nachruecken-Template)  runAfter Promote_Durchstarter
-          Queue_Email_Durchstarter (DEX_Emails, EmailType Nachruecken)  runAfter Get_Email_Template_Durchstarter
-          Get_Org_Template_D (GET OrgNachruecker-Template, Accept verbose)  runAfter Queue_Email_Durchstarter
-          Queue_Org_Email_D (DEX_Emails, EmailType OrgNachruecker, Recipient OrganizerEmail,
-            Body replace {{EventTitle}}/{{PromotedName}}/{{CancelledName}})  runAfter Get_Org_Template_D
-          Queue_Outlook_Durchstarter (DEX_Outlook Einladen)  runAfter Queue_Org_Email_D
-      Filter_Active_Funstarter (Query)  runAfter Check_Durchstarter_Free
-        from:  @variables('AllParticipants')
-        where: @and(equals(item()?['StarterType']?['Value'], 'Funstarter'), not(equals(item()?['Status']?['Value'], 'Warteliste')))   ← v18.71: ?['Value'] (noch offen im Tenant)
-      Count_Active_Funstarter (Compose @length(body('Filter_Active_Funstarter')))
-      Check_Funstarter_Free (If Count<FunstarterCapacity)
-        Get_Waitlist_First_Funstarter (HTTP GET Status=Warteliste & PreferredStarterType=Funstarter, $orderby TeilnehmerID asc top 1)
-        Has_Funstarter_Waitlist (If results>0)
-          Promote_Funstarter (MERGE Status=Angemeldet, StarterType=Funstarter)
-          Get_Email_Template_Funstarter (GET Nachruecken-Template)  runAfter Promote_Funstarter
-          Queue_Email_Funstarter (DEX_Emails, EmailType Nachruecken)  runAfter Get_Email_Template_Funstarter
-          Get_Org_Template_F (GET OrgNachruecker-Template, Accept verbose)  runAfter Queue_Email_Funstarter
-          Queue_Org_Email_F (DEX_Emails, EmailType OrgNachruecker, Recipient OrganizerEmail,
-            Body replace {{EventTitle}}/{{PromotedName}}/{{CancelledName}})  runAfter Get_Org_Template_F
-          Queue_Outlook_Funstarter (DEX_Outlook Einladen)  runAfter Queue_Org_Email_F
-    [NEIN — kein Split]
-      Check_Nachrücken (If Count_Active<MaxParticipants AND MaxParticipants>0)
-        Get_Waitlist_First (HTTP GET Status=Warteliste, $orderby TeilnehmerID asc top 1)
-        Condition_1 (If results>0)
-          Promote_Waitlist (MERGE Status=Angemeldet)
-          Get_Email_Template (GET Nachruecken-Template)  runAfter Promote_Waitlist
-          Queue_Email (DEX_Emails, EmailType Nachruecken)  runAfter Get_Email_Template
-          Get_Org_Template_N (GET OrgNachruecker-Template, Accept verbose)  runAfter Queue_Email
-          Queue_Org_Email_N (DEX_Emails, EmailType OrgNachruecker, Recipient OrganizerEmail,
-            Body replace {{EventTitle}}/{{PromotedName}}/{{CancelledName}})  runAfter Get_Org_Template_N
-          Queue_Outlook (DEX_Outlook Einladen)  runAfter Queue_Org_Email_N
-  DEX_IDReorder (PatchItem → Status=Done)  runAfter Is_B2RunSplit
-  Error_Handler (Scope: Set_Failed → Status=Failed)  runAfter DEX_IDReorder [Failed]
+batchTemplate (Compose):
+{
+  "type": "Compose",
+  "inputs": "--changeset_@{outputs('BatchGuids')?['changeSetGUID']}\nContent-Type: application/http\nContent-Transfer-Encoding: binary\n\nPATCH @{outputs('Settings')?['siteAddress']}/_api/web/lists/getByTitle('@{outputs('Settings')?['listName']}')/items(|ID|) HTTP/1.1\nContent-Type: application/json;odata=verbose\nAccept: application/json;odata=verbose\nIf-Match: *\n\n{\"__metadata\":{\"type\":\"@{body('Get_ListItemType')?['d']?['ListItemEntityTypeFullName']}\"},\"TeilnehmerID\":|TID|}\n",
+  "runAfter": { "BatchGuids": [ "Succeeded" ] }
+}
 
-Get_Counter_Item (HTTP GET DEX_TeilnehmerCounter items(1))  runAfter Batch_Update*
-Get_Max_TeilnehmerID (HTTP GET Teilnehmer $orderby TeilnehmerID desc top 1)  runAfter Get_Counter_Item
-Compute_MaxValue (Compose max TeilnehmerID)  runAfter Get_Max_TeilnehmerID
-Compute_CurrentCounter (Compose @coalesce(body('Get_Counter_Item')?['NextValue'],0))  runAfter Compute_MaxValue
-If_Counter_Stale (If Current != Max)  runAfter Compute_CurrentCounter
-  Patch_Counter (MERGE DEX_TeilnehmerCounter NextValue=Compute_MaxValue, retry exp 3)
+Batch_Update (Scope - enthaelt Batch_Until_Clean inkl. Status-Sortierung v2026-06-11, Check_Renumber_Clean, Filter_Non_Waitlist, Count_Active, Get_EventDetails, Is_B2RunSplit mit den drei Promote-Zweigen inkl. Requeue_Reorder_N/D/F, DEX_IDReorder->Done, Error_Handler):
+{
+  "type": "Scope",
+  "actions": {
+    "Get_EventDetails": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+          "table": "28457815-1163-4e92-8b08-3ae43f477d9e",
+          "$filter": "ID eq @{int(triggerOutputs()?['body/EventId'])}",
+          "$top": 1
+        },
+        "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "GetItems" }
+      },
+      "runAfter": { "Count_Active": [ "Succeeded" ] }
+    },
+    "DEX_IDReorder": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+          "table": "9d46ff77-5fe2-4e1d-9b93-14b9dca1a360",
+          "id": "@triggerBody()?['ID']",
+          "item/Title": "@triggerBody()?['Title']",
+          "item/Status/Value": "Done"
+        },
+        "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PatchItem" }
+      },
+      "runAfter": { "Is_B2RunSplit": [ "Succeeded" ] }
+    },
+    "Error_Handler": {
+      "type": "Scope",
+      "actions": {
+        "Set_Failed": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "parameters": {
+              "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+              "table": "9d46ff77-5fe2-4e1d-9b93-14b9dca1a360",
+              "id": "@triggerBody()?['ID']",
+              "item/Title": "@triggerBody()?['Title']",
+              "item/Status/Value": "Failed"
+            },
+            "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PatchItem" }
+          }
+        }
+      },
+      "runAfter": { "DEX_IDReorder": [ "Failed", "SKIPPED" ] }
+    },
+    "Is_B2RunSplit": {
+      "type": "If",
+      "expression": {
+        "and": [
+          { "greater": [ "@coalesce(first(outputs('Get_EventDetails')?['body/value'])?['DurchstarterCapacity'], 0)", 0 ] },
+          { "greater": [ "@coalesce(first(outputs('Get_EventDetails')?['body/value'])?['FunstarterCapacity'], 0)", 0 ] }
+        ]
+      },
+      "actions": {
+        "Count_Active_Durchstarter": {
+          "type": "Compose",
+          "inputs": "@length(body('Filter_Active_Durchstarter'))",
+          "runAfter": { "Filter_Active_Durchstarter": [ "Succeeded" ] }
+        },
+        "Check_Durchstarter_Free": {
+          "type": "If",
+          "expression": { "and": [ { "less": [ "@outputs('Count_Active_Durchstarter')", "@coalesce(first(outputs('Get_EventDetails')?['body/value'])?['DurchstarterCapacity'], 0)" ] } ] },
+          "actions": {
+            "Has_Durchstarter_Waitlist": {
+              "type": "If",
+              "expression": { "and": [ { "greater": [ "@length(coalesce(body('Get_Waitlist_First_Durchstarter')?['d']?['results'], json('[]')))", 0 ] } ] },
+              "actions": {
+                "Promote_Durchstarter": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "@outputs('Settings')?['siteAddress']",
+                      "parameters/method": "POST",
+                      "parameters/uri": "@concat('_api/web/lists/getbytitle(''', outputs('Settings')?['listName'], ''')/items(', first(body('Get_Waitlist_First_Durchstarter')?['d']?['results'])?['Id'], ')')",
+                      "parameters/headers": { "Content-Type": "application/json;odata=verbose", "IF-MATCH": "*", "X-HTTP-Method": "MERGE", "Accept": "application/json;odata=verbose" },
+                      "parameters/body": "{\"__metadata\":{\"type\":\"SP.Data.TeilnehmerListItem\"},\"Status\":\"Angemeldet\",\"StarterType\":\"Durchstarter\"}"
+                    },
+                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+                  }
+                },
+                "Get_Email_Template_Durchstarter": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                      "parameters/method": "GET",
+                      "parameters/uri": "@concat('_api/web/lists/getbytitle(''DEX_EmailTemplates'')/items?$filter=TemplateType eq ''Nachruecken'' and Language eq ''', coalesce(first(outputs('Get_EventDetails')?['body/value'])?['EmailLanguage'], 'EN'), '''&$select=Subject,BodyHtml&$top=1')"
+                    },
+                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+                  },
+                  "runAfter": { "Promote_Durchstarter": [ "Succeeded" ] }
+                },
+                "Queue_Email_Durchstarter": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                      "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
+                      "item/Title": "@replace(replace(coalesce(first(body('Get_Email_Template_Durchstarter')?['d']?['results'])?['Subject'], concat('Spot available: ', first(outputs('Get_EventDetails')?['body/value'])?['Title'])), '{{Name}}', first(body('Get_Waitlist_First_Durchstarter')?['d']?['results'])?['Vorname']), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title'])",
+                      "item/Recipient": "@first(body('Get_Waitlist_First_Durchstarter')?['d']?['results'])?['ParticipantEmail']",
+                      "item/RecipientName": "@first(body('Get_Waitlist_First_Durchstarter')?['d']?['results'])?['Vorname']",
+                      "item/EmailType/Value": "Nachruecken",
+                      "item/EventTitle": "@first(outputs('Get_EventDetails')?['body/value'])?['Title']",
+                      "item/Status/Value": "Pending",
+                      "item/Body": "@replace(replace(coalesce(first(body('Get_Email_Template_Durchstarter')?['d']?['results'])?['BodyHtml'], ''), '{{Name}}', first(body('Get_Waitlist_First_Durchstarter')?['d']?['results'])?['Vorname']), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title'])",
+                      "item/EventId": "@triggerOutputs()?['body/EventId']"
+                    },
+                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
+                  },
+                  "runAfter": { "Get_Email_Template_Durchstarter": [ "Succeeded" ] }
+                },
+                "Queue_Outlook_Durchstarter": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                      "table": "d794655b-c950-416c-a478-5dbae285e46d",
+                      "item/Title": "@concat('Einladen: ', first(outputs('Get_EventDetails')?['body/value'])?['Title'])",
+                      "item/Attendee": "@first(body('Get_Waitlist_First_Durchstarter')?['d']?['results'])?['ParticipantEmail']",
+                      "item/EventId": "@triggerOutputs()?['body/EventId']",
+                      "item/ActionType/Value": "Einladen",
+                      "item/Status/Value": "Pending"
+                    },
+                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
+                  },
+                  "runAfter": { "Queue_Org_Email_D": [ "Succeeded" ] }
+                },
+                "Get_Org_Template_D": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                      "parameters/method": "GET",
+                      "parameters/uri": "@concat('_api/web/lists/getbytitle(''DEX_EmailTemplates'')/items?$filter=TemplateType eq ''OrgNachruecker'' and Language eq ''', coalesce(first(outputs('Get_EventDetails')?['body/value'])?['EmailLanguage'], 'EN'), '''&$select=Subject,BodyHtml&$top=1')",
+                      "parameters/headers": { "Accept": "application/json;odata=verbose" }
+                    },
+                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+                  },
+                  "runAfter": { "Queue_Email_Durchstarter": [ "Succeeded" ] }
+                },
+                "Queue_Org_Email_D": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                      "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
+                      "item/Title": "@replace(replace(coalesce(first(body('Get_Org_Template_D')?['d']?['results'])?['Subject'], concat('Abmeldung mit Nachrücker: ', first(outputs('Get_EventDetails')?['body/value'])?['Title'])), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title']), '{{PromotedName}}', concat(first(body('Get_Waitlist_First_Durchstarter')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Waitlist_First_Durchstarter')?['d']?['results'])?['Nachname']))",
+                      "item/Recipient": "@first(outputs('Get_EventDetails')?['body/value'])?['OrganizerEmail']",
+                      "item/RecipientName": "Organizer",
+                      "item/EmailType/Value": "OrgNachruecker",
+                      "item/EventTitle": "@first(outputs('Get_EventDetails')?['body/value'])?['Title']",
+                      "item/Status/Value": "Pending",
+                      "item/Body": "@replace(replace(replace(coalesce(first(body('Get_Org_Template_D')?['d']?['results'])?['BodyHtml'], ''), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title']), '{{PromotedName}}', concat(first(body('Get_Waitlist_First_Durchstarter')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Waitlist_First_Durchstarter')?['d']?['results'])?['Nachname'])), '{{CancelledName}}', coalesce(triggerOutputs()?['body/CancelledName'], 'eine Person'))",
+                      "item/EventId": "@triggerOutputs()?['body/EventId']"
+                    },
+                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
+                  },
+                  "runAfter": { "Get_Org_Template_D": [ "Succeeded" ] }
+                },
+                "Audit_Promoted_D": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "@outputs('Settings')?['siteAddress']",
+                      "parameters/method": "POST",
+                      "parameters/uri": "_api/web/lists/getbytitle('@{outputs('Settings')?['listName']}')/items(@{first(body('Get_Waitlist_First_Durchstarter')?['d']?['results'])?['Id']})",
+                      "parameters/headers": { "If-Match": "*", "X-HTTP-Method": "MERGE", "Content-Type": "application/json;odata=verbose", "Accept": "application/json;odata=verbose" },
+                      "parameters/body": "{\"__metadata\":{\"type\":\"SP.Data.TeilnehmerListItem\"},\"PromotedDate\":\"@{utcNow()}\",\"ReplacedParticipantEmail\":\"@{triggerOutputs()?['body/CancelledEmail']}\"}"
+                    },
+                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+                  },
+                  "runAfter": { "Queue_Outlook_Durchstarter": [ "Succeeded" ] }
+                },
+                "Get_Cancelled_D": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "@outputs('Settings')?['siteAddress']",
+                      "parameters/method": "GET",
+                      "parameters/uri": "_api/web/lists/getbytitle('@{outputs('Settings')?['listName']}')/items?$filter=ParticipantEmail eq '@{triggerOutputs()?['body/CancelledEmail']}'&$select=Id&$top=1",
+                      "parameters/headers": { "Accept": "application/json;odata=verbose" }
+                    },
+                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+                  },
+                  "runAfter": { "Audit_Promoted_D": [ "Succeeded" ] }
+                },
+                "Audit_Cancelled_D": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "@outputs('Settings')?['siteAddress']",
+                      "parameters/method": "POST",
+                      "parameters/uri": "_api/web/lists/getbytitle('@{outputs('Settings')?['listName']}')/items(@{first(body('Get_Cancelled_D')?['d']?['results'])?['Id']})",
+                      "parameters/headers": { "If-Match": "*", "X-HTTP-Method": "MERGE", "Content-Type": "application/json;odata=verbose", "Accept": "application/json;odata=verbose" },
+                      "parameters/body": "{\"__metadata\":{\"type\":\"SP.Data.TeilnehmerListItem\"},\"ReplacedByParticipantEmail\":\"@{first(body('Get_Waitlist_First_Durchstarter')?['d']?['results'])?['ParticipantEmail']}\"}"
+                    },
+                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+                  },
+                  "runAfter": { "Get_Cancelled_D": [ "Succeeded" ] }
+                },
+                "Requeue_Reorder_D": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                      "table": "9d46ff77-5fe2-4e1d-9b93-14b9dca1a360",
+                      "item/Title": "Reorder: Folge-Korrektur nach Nachrücken",
+                      "item/EventId": "@triggerOutputs()?['body/EventId']",
+                      "item/EventNumber": "@triggerOutputs()?['body/EventNumber']",
+                      "item/SubsiteUrl": "@triggerOutputs()?['body/SubsiteUrl']",
+                      "item/Status/Value": "Pending",
+                      "item/CancelledName": "@triggerOutputs()?['body/CancelledName']",
+                      "item/CancelledEmail": "@triggerOutputs()?['body/CancelledEmail']"
+                    },
+                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
+                  },
+                  "runAfter": { "Audit_Cancelled_D": [ "SUCCEEDED", "SKIPPED", "FAILED" ] }
+                }
+              },
+              "else": { "actions": {} },
+              "runAfter": { "Get_Waitlist_First_Durchstarter": [ "Succeeded" ] }
+            },
+            "Get_Waitlist_First_Durchstarter": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "parameters": {
+                  "dataset": "@outputs('Settings')?['siteAddress']",
+                  "parameters/method": "GET",
+                  "parameters/uri": "@concat('_api/web/lists/getbytitle(''', outputs('Settings')?['listName'], ''')/items?$select=Id,Vorname,Nachname,ParticipantName,ParticipantEmail,PreferredStarterType&$filter=Status eq ''Warteliste'' and PreferredStarterType eq ''Durchstarter''&$orderby=TeilnehmerID asc&$top=1')"
+                },
+                "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+              }
+            }
+          },
+          "else": { "actions": {} },
+          "runAfter": { "Count_Active_Durchstarter": [ "Succeeded" ] }
+        },
+        "Count_Active_Funstarter": {
+          "type": "Compose",
+          "inputs": "@length(body('Filter_Active_Funstarter'))",
+          "runAfter": { "Filter_Active_Funstarter": [ "Succeeded" ] }
+        },
+        "Check_Funstarter_Free": {
+          "type": "If",
+          "expression": { "and": [ { "less": [ "@outputs('Count_Active_Funstarter')", "@coalesce(first(outputs('Get_EventDetails')?['body/value'])?['FunstarterCapacity'], 0)" ] } ] },
+          "actions": {
+            "Get_Waitlist_First_Funstarter": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "parameters": {
+                  "dataset": "@outputs('Settings')?['siteAddress']",
+                  "parameters/method": "GET",
+                  "parameters/uri": "@concat('_api/web/lists/getbytitle(''', outputs('Settings')?['listName'], ''')/items?$select=Id,Vorname,Nachname,ParticipantName,ParticipantEmail,PreferredStarterType&$filter=Status eq ''Warteliste'' and PreferredStarterType eq ''Funstarter''&$orderby=TeilnehmerID asc&$top=1')"
+                },
+                "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+              }
+            },
+            "Has_Funstarter_Waitlist": {
+              "type": "If",
+              "expression": { "and": [ { "greater": [ "@length(coalesce(body('Get_Waitlist_First_Funstarter')?['d']?['results'], json('[]')))", 0 ] } ] },
+              "actions": {
+                "Promote_Funstarter": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "@outputs('Settings')?['siteAddress']",
+                      "parameters/method": "POST",
+                      "parameters/uri": "@concat('_api/web/lists/getbytitle(''', outputs('Settings')?['listName'], ''')/items(', first(body('Get_Waitlist_First_Funstarter')?['d']?['results'])?['Id'], ')')",
+                      "parameters/headers": { "Content-Type": "application/json;odata=verbose", "IF-MATCH": "*", "X-HTTP-Method": "MERGE", "Accept": "application/json;odata=verbose" },
+                      "parameters/body": "{\"__metadata\":{\"type\":\"SP.Data.TeilnehmerListItem\"},\"Status\":\"Angemeldet\",\"StarterType\":\"Funstarter\"}"
+                    },
+                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+                  }
+                },
+                "Get_Email_Template_Funstarter": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                      "parameters/method": "GET",
+                      "parameters/uri": "@concat('_api/web/lists/getbytitle(''DEX_EmailTemplates'')/items?$filter=TemplateType eq ''Nachruecken'' and Language eq ''', coalesce(first(outputs('Get_EventDetails')?['body/value'])?['EmailLanguage'], 'EN'), '''&$select=Subject,BodyHtml&$top=1')"
+                    },
+                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+                  },
+                  "runAfter": { "Promote_Funstarter": [ "Succeeded" ] }
+                },
+                "Queue_Email_Funstarter": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                      "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
+                      "item/Title": "@replace(replace(coalesce(first(body('Get_Email_Template_Funstarter')?['d']?['results'])?['Subject'], concat('Spot available: ', first(outputs('Get_EventDetails')?['body/value'])?['Title'])), '{{Name}}', first(body('Get_Waitlist_First_Funstarter')?['d']?['results'])?['Vorname']), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title'])",
+                      "item/Recipient": "@first(body('Get_Waitlist_First_Funstarter')?['d']?['results'])?['ParticipantEmail']",
+                      "item/RecipientName": "@first(body('Get_Waitlist_First_Funstarter')?['d']?['results'])?['Vorname']",
+                      "item/EmailType/Value": "Nachruecken",
+                      "item/EventTitle": "@first(outputs('Get_EventDetails')?['body/value'])?['Title']",
+                      "item/Status/Value": "Pending",
+                      "item/Body": "@replace(replace(coalesce(first(body('Get_Email_Template_Funstarter')?['d']?['results'])?['BodyHtml'], ''), '{{Name}}', first(body('Get_Waitlist_First_Funstarter')?['d']?['results'])?['Vorname']), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title'])",
+                      "item/EventId": "@triggerOutputs()?['body/EventId']"
+                    },
+                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
+                  },
+                  "runAfter": { "Get_Email_Template_Funstarter": [ "Succeeded" ] }
+                },
+                "Queue_Outlook_Funstarter": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                      "table": "d794655b-c950-416c-a478-5dbae285e46d",
+                      "item/Title": "@concat('Einladen: ', first(outputs('Get_EventDetails')?['body/value'])?['Title'])",
+                      "item/Attendee": "@first(body('Get_Waitlist_First_Funstarter')?['d']?['results'])?['ParticipantEmail']",
+                      "item/EventId": "@triggerOutputs()?['body/EventId']",
+                      "item/ActionType/Value": "Einladen",
+                      "item/Status/Value": "Pending"
+                    },
+                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
+                  },
+                  "runAfter": { "Queue_Org_Email_F": [ "Succeeded" ] }
+                },
+                "Get_Org_Template_F": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                      "parameters/method": "GET",
+                      "parameters/uri": "@concat('_api/web/lists/getbytitle(''DEX_EmailTemplates'')/items?$filter=TemplateType eq ''OrgNachruecker'' and Language eq ''', coalesce(first(outputs('Get_EventDetails')?['body/value'])?['EmailLanguage'], 'EN'), '''&$select=Subject,BodyHtml&$top=1')",
+                      "parameters/headers": { "Accept": "application/json;odata=verbose" }
+                    },
+                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+                  },
+                  "runAfter": { "Queue_Email_Funstarter": [ "Succeeded" ] }
+                },
+                "Queue_Org_Email_F": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                      "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
+                      "item/Title": "@replace(replace(coalesce(first(body('Get_Org_Template_F')?['d']?['results'])?['Subject'], concat('Abmeldung mit Nachrücker: ', first(outputs('Get_EventDetails')?['body/value'])?['Title'])), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title']), '{{PromotedName}}', concat(first(body('Get_Waitlist_First_Funstarter')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Waitlist_First_Funstarter')?['d']?['results'])?['Nachname']))",
+                      "item/Recipient": "@first(outputs('Get_EventDetails')?['body/value'])?['OrganizerEmail']",
+                      "item/RecipientName": "Organizer",
+                      "item/EmailType/Value": "OrgNachruecker",
+                      "item/EventTitle": "@first(outputs('Get_EventDetails')?['body/value'])?['Title']",
+                      "item/Status/Value": "Pending",
+                      "item/Body": "@replace(replace(replace(coalesce(first(body('Get_Org_Template_F')?['d']?['results'])?['BodyHtml'], ''), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title']), '{{PromotedName}}', concat(first(body('Get_Waitlist_First_Funstarter')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Waitlist_First_Funstarter')?['d']?['results'])?['Nachname'])), '{{CancelledName}}', coalesce(triggerOutputs()?['body/CancelledName'], 'eine Person'))",
+                      "item/EventId": "@triggerOutputs()?['body/EventId']"
+                    },
+                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
+                  },
+                  "runAfter": { "Get_Org_Template_F": [ "Succeeded" ] }
+                },
+                "Audit_Promoted_F": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "@outputs('Settings')?['siteAddress']",
+                      "parameters/method": "POST",
+                      "parameters/uri": "_api/web/lists/getbytitle('@{outputs('Settings')?['listName']}')/items(@{first(body('Get_Waitlist_First_Funstarter')?['d']?['results'])?['Id']})",
+                      "parameters/headers": { "If-Match": "*", "X-HTTP-Method": "MERGE", "Content-Type": "application/json;odata=verbose", "Accept": "application/json;odata=verbose" },
+                      "parameters/body": "{\"__metadata\":{\"type\":\"SP.Data.TeilnehmerListItem\"},\"PromotedDate\":\"@{utcNow()}\",\"ReplacedParticipantEmail\":\"@{triggerOutputs()?['body/CancelledEmail']}\"}"
+                    },
+                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+                  },
+                  "runAfter": { "Queue_Outlook_Funstarter": [ "Succeeded" ] }
+                },
+                "Get_Cancelled_F": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "@outputs('Settings')?['siteAddress']",
+                      "parameters/method": "GET",
+                      "parameters/uri": "_api/web/lists/getbytitle('@{outputs('Settings')?['listName']}')/items?$filter=ParticipantEmail eq '@{triggerOutputs()?['body/CancelledEmail']}'&$select=Id&$top=1",
+                      "parameters/headers": { "Accept": "application/json;odata=verbose" }
+                    },
+                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+                  },
+                  "runAfter": { "Audit_Promoted_F": [ "Succeeded" ] }
+                },
+                "Audit_Cancelled_F": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "@outputs('Settings')?['siteAddress']",
+                      "parameters/method": "POST",
+                      "parameters/uri": "_api/web/lists/getbytitle('@{outputs('Settings')?['listName']}')/items(@{first(body('Get_Cancelled_F')?['d']?['results'])?['Id']})",
+                      "parameters/headers": { "If-Match": "*", "X-HTTP-Method": "MERGE", "Content-Type": "application/json;odata=verbose", "Accept": "application/json;odata=verbose" },
+                      "parameters/body": "{\"__metadata\":{\"type\":\"SP.Data.TeilnehmerListItem\"},\"ReplacedByParticipantEmail\":\"@{first(body('Get_Waitlist_First_Funstarter')?['d']?['results'])?['ParticipantEmail']}\"}"
+                    },
+                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+                  },
+                  "runAfter": { "Get_Cancelled_F": [ "Succeeded" ] }
+                },
+                "Requeue_Reorder_F": {
+                  "type": "OpenApiConnection",
+                  "inputs": {
+                    "parameters": {
+                      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                      "table": "9d46ff77-5fe2-4e1d-9b93-14b9dca1a360",
+                      "item/Title": "Reorder: Folge-Korrektur nach Nachrücken",
+                      "item/EventId": "@triggerOutputs()?['body/EventId']",
+                      "item/EventNumber": "@triggerOutputs()?['body/EventNumber']",
+                      "item/SubsiteUrl": "@triggerOutputs()?['body/SubsiteUrl']",
+                      "item/Status/Value": "Pending",
+                      "item/CancelledName": "@triggerOutputs()?['body/CancelledName']",
+                      "item/CancelledEmail": "@triggerOutputs()?['body/CancelledEmail']"
+                    },
+                    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
+                  },
+                  "runAfter": { "Audit_Cancelled_F": [ "SUCCEEDED", "SKIPPED", "FAILED" ] }
+                }
+              },
+              "else": { "actions": {} },
+              "runAfter": { "Get_Waitlist_First_Funstarter": [ "Succeeded" ] }
+            }
+          },
+          "else": { "actions": {} },
+          "runAfter": { "Count_Active_Funstarter": [ "Succeeded" ] }
+        },
+        "Filter_Active_Durchstarter": {
+          "type": "Query",
+          "inputs": {
+            "from": "@variables('AllParticipants')",
+            "where": "@and(equals(coalesce(item()?['StarterType']?['Value'], item()?['PreferredStarterType']?['Value']), 'Durchstarter'), not(equals(item()?['Status']?['Value'], 'Warteliste')))"
+          }
+        },
+        "Filter_Active_Funstarter": {
+          "type": "Query",
+          "inputs": {
+            "from": "@variables('AllParticipants')",
+            "where": "@and(equals(coalesce(item()?['StarterType']?['Value'], item()?['PreferredStarterType']?['Value']), 'Funstarter'), not(equals(item()?['Status']?['Value'], 'Warteliste')))"
+          },
+          "runAfter": { "Check_Durchstarter_Free": [ "Succeeded" ] }
+        }
+      },
+      "else": {
+        "actions": {
+          "Check_Nachrücken": {
+            "type": "If",
+            "expression": {
+              "and": [
+                { "less": [ "@outputs('Count_Active')", "@first(outputs('Get_EventDetails')?['body/value'])?['MaxParticipants']" ] },
+                { "greater": [ "@first(outputs('Get_EventDetails')?['body/value'])?['MaxParticipants']", 0 ] }
+              ]
+            },
+            "actions": {
+              "Get_Waitlist_First": {
+                "type": "OpenApiConnection",
+                "inputs": {
+                  "parameters": {
+                    "dataset": "@outputs('Settings')?['siteAddress']",
+                    "parameters/method": "GET",
+                    "parameters/uri": "_api/web/lists/getbytitle('@{outputs('Settings')?['listName']}')/items?$select=Id,Vorname,Nachname,ParticipantName,ParticipantEmail&$filter=Status eq 'Warteliste'&$orderby=TeilnehmerID asc&$top=1"
+                  },
+                  "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+                }
+              },
+              "Condition_1": {
+                "type": "If",
+                "expression": { "and": [ { "greater": [ "@length(coalesce(body('Get_Waitlist_First')?['d']?['results'], json('[]')))", 0 ] } ] },
+                "actions": {
+                  "Promote_Waitlist": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "parameters": {
+                        "dataset": "@outputs('Settings')?['siteAddress']",
+                        "parameters/method": "POST",
+                        "parameters/uri": "_api/web/lists/getbytitle('@{outputs('Settings')?['listName']}')/items(@{first(body('Get_Waitlist_First')?['d']?['results'])?['Id']})",
+                        "parameters/headers": { "Content-Type": "application/json;odata=verbose", "IF-MATCH": "*", "X-HTTP-Method": "MERGE", "Accept": "application/json;odata=verbose" },
+                        "parameters/body": "{\"__metadata\":{\"type\":\"SP.Data.TeilnehmerListItem\"},\"Status\":\"Angemeldet\"}"
+                      },
+                      "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+                    }
+                  },
+                  "Queue_Email": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "parameters": {
+                        "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                        "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
+                        "item/Title": "@replace(replace(coalesce(first(body('Get_Email_Template')?['d']?['results'])?['Subject'], concat('Spot available: ', first(outputs('Get_EventDetails')?['body/value'])?['Title'])), '{{Name}}', first(body('Get_Waitlist_First')?['d']?['results'])?['Vorname']), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title'])",
+                        "item/Recipient": "@first(body('Get_Waitlist_First')?['d']?['results'])?['ParticipantEmail']",
+                        "item/RecipientName": "@first(body('Get_Waitlist_First')?['d']?['results'])?['Vorname']",
+                        "item/EmailType/Value": "Nachruecken",
+                        "item/EventTitle": "@first(outputs('Get_EventDetails')?['body/value'])?['Title']",
+                        "item/Status/Value": "Pending",
+                        "item/Body": "@replace(replace(coalesce(first(body('Get_Email_Template')?['d']?['results'])?['BodyHtml'], ''), '{{Name}}', first(body('Get_Waitlist_First')?['d']?['results'])?['Vorname']), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title'])",
+                        "item/EventId": "@triggerOutputs()?['body/EventId']"
+                      },
+                      "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
+                    },
+                    "runAfter": { "Get_Email_Template": [ "Succeeded" ] }
+                  },
+                  "Queue_Outlook": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "parameters": {
+                        "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                        "table": "d794655b-c950-416c-a478-5dbae285e46d",
+                        "item/Title": "Einladen: @{first(outputs('Get_EventDetails')?['body/value'])?['Title']}",
+                        "item/Attendee": "@first(body('Get_Waitlist_First')?['d']?['results'])?['ParticipantEmail']",
+                        "item/EventId": "@triggerOutputs()?['body/EventId']",
+                        "item/ActionType/Value": "Einladen",
+                        "item/Status/Value": "Pending"
+                      },
+                      "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
+                    },
+                    "runAfter": { "Queue_Org_Email_N": [ "Succeeded" ] }
+                  },
+                  "Get_Email_Template": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "parameters": {
+                        "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                        "parameters/method": "GET",
+                        "parameters/uri": "@concat('_api/web/lists/getbytitle(''DEX_EmailTemplates'')/items?$filter=TemplateType eq ''Nachruecken'' and Language eq ''', coalesce(first(outputs('Get_EventDetails')?['body/value'])?['EmailLanguage'], 'EN'), '''&$select=Subject,BodyHtml&$top=1')"
+                      },
+                      "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+                    },
+                    "runAfter": { "Promote_Waitlist": [ "Succeeded" ] }
+                  },
+                  "Get_Org_Template_N": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "parameters": {
+                        "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                        "parameters/method": "GET",
+                        "parameters/uri": "@concat('_api/web/lists/getbytitle(''DEX_EmailTemplates'')/items?$filter=TemplateType eq ''OrgNachruecker'' and Language eq ''', coalesce(first(outputs('Get_EventDetails')?['body/value'])?['EmailLanguage'], 'EN'), '''&$select=Subject,BodyHtml&$top=1')",
+                        "parameters/headers": { "Accept": "application/json;odata=verbose" }
+                      },
+                      "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+                    },
+                    "runAfter": { "Queue_Email": [ "Succeeded" ] }
+                  },
+                  "Queue_Org_Email_N": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "parameters": {
+                        "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                        "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
+                        "item/Title": "@replace(replace(coalesce(first(body('Get_Org_Template_N')?['d']?['results'])?['Subject'], concat('Abmeldung mit Nachrücker: ', first(outputs('Get_EventDetails')?['body/value'])?['Title'])), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title']), '{{PromotedName}}', concat(first(body('Get_Waitlist_First')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Waitlist_First')?['d']?['results'])?['Nachname']))",
+                        "item/Recipient": "@first(outputs('Get_EventDetails')?['body/value'])?['OrganizerEmail']",
+                        "item/RecipientName": "Organizer",
+                        "item/EmailType/Value": "OrgNachruecker",
+                        "item/EventTitle": "@first(outputs('Get_EventDetails')?['body/value'])?['Title']",
+                        "item/Status/Value": "Pending",
+                        "item/Body": "@replace(replace(replace(coalesce(first(body('Get_Org_Template_N')?['d']?['results'])?['BodyHtml'], ''), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title']), '{{PromotedName}}', concat(first(body('Get_Waitlist_First')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Waitlist_First')?['d']?['results'])?['Nachname'])), '{{CancelledName}}', coalesce(triggerOutputs()?['body/CancelledName'], 'eine Person'))",
+                        "item/EventId": "@triggerOutputs()?['body/EventId']"
+                      },
+                      "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
+                    },
+                    "runAfter": { "Get_Org_Template_N": [ "Succeeded" ] }
+                  },
+                  "Audit_Promoted_N": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "parameters": {
+                        "dataset": "@outputs('Settings')?['siteAddress']",
+                        "parameters/method": "POST",
+                        "parameters/uri": "_api/web/lists/getbytitle('@{outputs('Settings')?['listName']}')/items(@{first(body('Get_Waitlist_First')?['d']?['results'])?['Id']})",
+                        "parameters/headers": { "If-Match": "*", "X-HTTP-Method": "MERGE", "Content-Type": "application/json;odata=verbose", "Accept": "application/json;odata=verbose" },
+                        "parameters/body": "{\"__metadata\":{\"type\":\"SP.Data.TeilnehmerListItem\"},\"PromotedDate\":\"@{utcNow()}\",\"ReplacedParticipantEmail\":\"@{triggerOutputs()?['body/CancelledEmail']}\"}"
+                      },
+                      "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+                    },
+                    "runAfter": { "Queue_Outlook": [ "Succeeded" ] }
+                  },
+                  "Get_Cancelled_N": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "parameters": {
+                        "dataset": "@outputs('Settings')?['siteAddress']",
+                        "parameters/method": "GET",
+                        "parameters/uri": "_api/web/lists/getbytitle('@{outputs('Settings')?['listName']}')/items?$filter=ParticipantEmail eq '@{triggerOutputs()?['body/CancelledEmail']}'&$select=Id&$top=1",
+                        "parameters/headers": { "Accept": "application/json;odata=verbose" }
+                      },
+                      "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+                    },
+                    "runAfter": { "Audit_Promoted_N": [ "Succeeded" ] }
+                  },
+                  "Audit_Cancelled_N": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "parameters": {
+                        "dataset": "@outputs('Settings')?['siteAddress']",
+                        "parameters/method": "POST",
+                        "parameters/uri": "_api/web/lists/getbytitle('@{outputs('Settings')?['listName']}')/items(@{first(body('Get_Cancelled_N')?['d']?['results'])?['Id']})",
+                        "parameters/headers": { "If-Match": "*", "X-HTTP-Method": "MERGE", "Content-Type": "application/json;odata=verbose", "Accept": "application/json;odata=verbose" },
+                        "parameters/body": "{\"__metadata\":{\"type\":\"SP.Data.TeilnehmerListItem\"},\"ReplacedByParticipantEmail\":\"@{first(body('Get_Waitlist_First')?['d']?['results'])?['ParticipantEmail']}\"}"
+                      },
+                      "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+                    },
+                    "runAfter": { "Get_Cancelled_N": [ "Succeeded" ] }
+                  },
+                  "Requeue_Reorder_N": {
+                    "type": "OpenApiConnection",
+                    "inputs": {
+                      "parameters": {
+                        "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                        "table": "9d46ff77-5fe2-4e1d-9b93-14b9dca1a360",
+                        "item/Title": "Reorder: Folge-Korrektur nach Nachrücken",
+                        "item/EventId": "@triggerOutputs()?['body/EventId']",
+                        "item/EventNumber": "@triggerOutputs()?['body/EventNumber']",
+                        "item/SubsiteUrl": "@triggerOutputs()?['body/SubsiteUrl']",
+                        "item/Status/Value": "Pending",
+                        "item/CancelledName": "@triggerOutputs()?['body/CancelledName']",
+                        "item/CancelledEmail": "@triggerOutputs()?['body/CancelledEmail']"
+                      },
+                      "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
+                    },
+                    "runAfter": { "Audit_Cancelled_N": [ "SUCCEEDED", "FAILED", "SKIPPED" ] }
+                  }
+                },
+                "else": { "actions": {} },
+                "runAfter": { "Get_Waitlist_First": [ "Succeeded" ] }
+              }
+            },
+            "else": { "actions": {} }
+          }
+        }
+      },
+      "runAfter": { "Get_EventDetails": [ "Succeeded" ] }
+    },
+    "Batch_Until_Clean": {
+      "type": "Until",
+      "expression": "@equals(length(body('GenerateSPData')), 0)",
+      "limit": { "count": 5, "timeout": "PT30M" },
+      "actions": {
+        "Load_Participants": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "parameters": {
+              "dataset": "@outputs('Settings')?['siteAddress']",
+              "table": "@outputs('Settings')?['listName']",
+              "$filter": "Status ne 'Abgemeldet'",
+              "$orderby": "TeilnehmerID asc",
+              "$top": 5000
+            },
+            "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "GetItems" }
+          },
+          "runtimeConfiguration": { "paginationPolicy": { "minimumItemCount": 5000 } }
+        },
+        "Set_AllParticipants": {
+          "type": "SetVariable",
+          "inputs": { "name": "AllParticipants", "value": "@body('Load_Participants')?['value']" },
+          "runAfter": { "Load_Participants": [ "Succeeded" ] }
+        },
+        "Filter_Sort_Aktive": {
+          "type": "Query",
+          "inputs": {
+            "from": "@variables('AllParticipants')",
+            "where": "@not(equals(item()?['Status']?['Value'], 'Warteliste'))"
+          },
+          "runAfter": { "Set_AllParticipants": [ "Succeeded" ] }
+        },
+        "Filter_Sort_Warteliste": {
+          "type": "Query",
+          "inputs": {
+            "from": "@variables('AllParticipants')",
+            "where": "@equals(item()?['Status']?['Value'], 'Warteliste')"
+          },
+          "runAfter": { "Filter_Sort_Aktive": [ "SUCCEEDED" ] }
+        },
+        "Sort_AktiveZuerst": {
+          "type": "Compose",
+          "inputs": "@union(body('Filter_Sort_Aktive'), body('Filter_Sort_Warteliste'))",
+          "runAfter": { "Filter_Sort_Warteliste": [ "SUCCEEDED" ] }
+        },
+        "Set_AllParticipants_Sortiert": {
+          "type": "SetVariable",
+          "inputs": { "name": "AllParticipants", "value": "@outputs('Sort_AktiveZuerst')" },
+          "runAfter": { "Sort_AktiveZuerst": [ "SUCCEEDED" ] }
+        },
+        "Generate_Indices": {
+          "type": "Compose",
+          "inputs": "@range(0, length(variables('AllParticipants')))",
+          "runAfter": { "Set_AllParticipants_Sortiert": [ "SUCCEEDED" ] }
+        },
+        "GenerateSPData_Full": {
+          "type": "Select",
+          "inputs": {
+            "from": "@outputs('Generate_Indices')",
+            "select": {
+              "ID": "@variables('AllParticipants')[item()]?['ID']",
+              "TeilnehmerID": "@add(item(), 1)",
+              "Old": "@variables('AllParticipants')[item()]?['TeilnehmerID']"
+            }
+          },
+          "runAfter": { "Generate_Indices": [ "Succeeded" ] }
+        },
+        "GenerateSPData": {
+          "type": "Query",
+          "inputs": {
+            "from": "@body('GenerateSPData_Full')",
+            "where": "@not(equals(item()?['TeilnehmerID'], item()?['Old']))"
+          },
+          "runAfter": { "GenerateSPData_Full": [ "Succeeded" ] }
+        },
+        "Loop_Batches": {
+          "type": "Foreach",
+          "foreach": "@chunk(body('GenerateSPData'), outputs('Settings')?['batchSize'])",
+          "actions": {
+            "Select_map": {
+              "type": "Select",
+              "inputs": {
+                "from": "@items('Loop_Batches')",
+                "select": "@replace(replace(outputs('batchTemplate'), '|ID|', string(item()?['ID'])), '|TID|', string(item()?['TeilnehmerID']))"
+              }
+            },
+            "batchData": {
+              "type": "Compose",
+              "inputs": "@join(body('Select_map'), decodeUriComponent('%0A'))",
+              "runAfter": { "Select_map": [ "Succeeded" ] }
+            },
+            "SendBatch": {
+              "type": "OpenApiConnection",
+              "inputs": {
+                "parameters": {
+                  "dataset": "@outputs('Settings')?['siteAddress']",
+                  "parameters/method": "POST",
+                  "parameters/uri": "_api/$batch",
+                  "parameters/headers": { "Content-Type": "multipart/mixed;boundary=batch_@{outputs('BatchGuids')?['batchGUID']}" },
+                  "parameters/body": "--batch_@{outputs('BatchGuids')?['batchGUID']}\nContent-Type: multipart/mixed; boundary=\"changeset_@{outputs('BatchGuids')?['changeSetGUID']}\"\nContent-Length: @{length(outputs('batchData'))}\nContent-Transfer-Encoding: binary\n\n@{outputs('batchData')}\n--changeset_@{outputs('BatchGuids')?['changeSetGUID']}--\n\n--batch_@{outputs('BatchGuids')?['batchGUID']}--\n"
+                },
+                "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+              },
+              "runAfter": { "batchData": [ "Succeeded" ] }
+            }
+          },
+          "runAfter": { "GenerateSPData": [ "Succeeded" ] },
+          "runtimeConfiguration": { "concurrency": { "repetitions": 1 } }
+        }
+      }
+    },
+    "Check_Renumber_Clean": {
+      "type": "If",
+      "expression": { "and": [ { "equals": [ "@length(body('GenerateSPData'))", 0 ] } ] },
+      "actions": {},
+      "else": {
+        "actions": {
+          "Set_Failed_Unclean": {
+            "type": "OpenApiConnection",
+            "inputs": {
+              "parameters": {
+                "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+                "table": "",
+                "id": "@triggerOutputs()?['body/ID']"
+              },
+              "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PatchItem" }
+            }
+          },
+          "Terminate_Unclean": {
+            "type": "Terminate",
+            "inputs": { "runStatus": "Failed" },
+            "runAfter": { "Set_Failed_Unclean": [ "SUCCEEDED" ] }
+          }
+        }
+      },
+      "runAfter": { "Batch_Until_Clean": [ "Succeeded" ] }
+    },
+    "Filter_Non_Waitlist": {
+      "type": "Query",
+      "inputs": {
+        "from": "@variables('AllParticipants')",
+        "where": "@not(equals(item()?['Status']?['Value'],'Warteliste'))"
+      },
+      "runAfter": { "Check_Renumber_Clean": [ "SUCCEEDED" ] }
+    },
+    "Count_Active": {
+      "type": "Compose",
+      "inputs": "@length(body('Filter_Non_Waitlist'))",
+      "runAfter": { "Filter_Non_Waitlist": [ "Succeeded" ] }
+    }
+  },
+  "runAfter": { "batchTemplate": [ "Succeeded" ] }
+}
+
+Get_Counter_Item (HttpRequest):
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "@outputs('Settings')?['siteAddress']",
+      "parameters/method": "GET",
+      "parameters/uri": "_api/web/lists/getbytitle('DEX_TeilnehmerCounter')/items(1)",
+      "parameters/headers": { "Accept": "application/json;odata=nometadata" }
+    },
+    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+  },
+  "runAfter": { "Batch_Update": [ "Succeeded" ] }
+}
+
+Get_Max_TeilnehmerID (HttpRequest):
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "@outputs('Settings')?['siteAddress']",
+      "parameters/method": "GET",
+      "parameters/uri": "_api/web/lists/getbytitle('@{outputs('Settings')?['listName']}')/items?$select=TeilnehmerID&$orderby=TeilnehmerID desc&$top=1",
+      "parameters/headers": { "Accept": "application/json;odata=nometadata" }
+    },
+    "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+  },
+  "runAfter": { "Get_Counter_Item": [ "Succeeded" ] }
+}
+
+Compute_MaxValue (Compose):
+{
+  "type": "Compose",
+  "inputs": "@if(greater(length(body('Get_Max_TeilnehmerID')?['value']), 0), coalesce(first(body('Get_Max_TeilnehmerID')?['value'])?['TeilnehmerID'], 0), 0)",
+  "runAfter": { "Get_Max_TeilnehmerID": [ "Succeeded" ] }
+}
+
+Compute_CurrentCounter (Compose):
+{
+  "type": "Compose",
+  "inputs": "@coalesce(body('Get_Counter_Item')?['NextValue'], 0)",
+  "runAfter": { "Compute_MaxValue": [ "Succeeded" ] }
+}
+
+If_Counter_Stale (If -> Patch_Counter):
+{
+  "type": "If",
+  "expression": { "and": [ { "not": { "equals": [ "@outputs('Compute_CurrentCounter')", "@outputs('Compute_MaxValue')" ] } } ] },
+  "actions": {
+    "Patch_Counter": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "dataset": "@outputs('Settings')?['siteAddress']",
+          "parameters/method": "POST",
+          "parameters/uri": "_api/web/lists/getbytitle('DEX_TeilnehmerCounter')/items(1)",
+          "parameters/headers": { "Accept": "application/json;odata=nometadata", "Content-Type": "application/json;odata=nometadata", "IF-MATCH": "*", "X-HTTP-Method": "MERGE" },
+          "parameters/body": "{ \"NextValue\": @{outputs('Compute_MaxValue')}}"
+        },
+        "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" },
+        "retryPolicy": { "type": "exponential", "count": 3, "interval": "PT10S", "minimumInterval": "PT5S", "maximumInterval": "PT1M" }
+      }
+    }
+  },
+  "else": { "actions": {} },
+  "runAfter": { "Compute_CurrentCounter": [ "Succeeded" ] }
+}
 ```
 
-> *(\*) `Batch_Update` ist der Anzeigename des `Process_Batch_Scope` im Tenant —
-> die drei Counter-Reconcile-Actions laufen nach Abschluss des Scopes.*
-
-> **Wichtige Ausdrücke verbatim** (für Copy-Paste in den fx-Tab):
->
-> - **Init_NextPageUri:** `concat('_api/web/lists/getbytitle(''', outputs('Settings')?['listName'], ''')/items?$select=Id,TeilnehmerID,Status,RegistrationDate&$filter=Status ne ''Abgemeldet''&$orderby=RegistrationDate asc&$top=5000')`
-> - **Merge_Pages (v18.67):** `union(variables('AllParticipants'), body('Get_Page')?['value'])` — **nicht** `concat` (String-Funktion → Typfehler in Append_Page)
-> - **Append_Page (Wert):** `outputs('Merge_Pages')`
-> - **Set_NextPageUri (v18.67, Endlosschleifen-Fix):** `if(empty(coalesce(body('Get_Page')?['@odata.nextLink'], body('Get_Page')?['odata.nextLink'])), '', concat('_api', last(split(coalesce(body('Get_Page')?['@odata.nextLink'], body('Get_Page')?['odata.nextLink']), '_api'))))`
-> - **Org-Template-URI (alle drei Zweige):** `concat('_api/web/lists/getbytitle(''DEX_EmailTemplates'')/items?$filter=TemplateType eq ''OrgNachruecker'' and Language eq ''', coalesce(first(outputs('Get_EventDetails')?['body/value'])?['EmailLanguage'], 'EN'), '''&$select=Subject,BodyHtml&$top=1')` — Header `Accept: application/json;odata=verbose`
-> - **Org-Mail Body (Beispiel Zweig N):** `replace(replace(replace(coalesce(first(body('Get_Org_Template_N')?['d']?['results'])?['BodyHtml'], ''), '{{EventTitle}}', first(outputs('Get_EventDetails')?['body/value'])?['Title']), '{{PromotedName}}', concat(first(body('Get_Waitlist_First')?['d']?['results'])?['Vorname'], ' ', first(body('Get_Waitlist_First')?['d']?['results'])?['Nachname'])), '{{CancelledName}}', coalesce(triggerOutputs()?['body/CancelledName'], 'eine Person'))`
+> Export vom 2026-06-11 (nach Audit-Fixes). `Batch_Update` ist der Anzeigename
+> des großen Scope im Tenant (enthält `Batch_Until_Clean`, `Check_Renumber_Clean`,
+> `Filter_Non_Waitlist`/`Count_Active`, `Get_EventDetails`, `Is_B2RunSplit` mit den
+> drei Promote-Zweigen inkl. `Requeue_Reorder_N/D/F`, `DEX_IDReorder`→Done und
+> `Error_Handler`). **Bekannte Restbaustelle:** `Set_Failed_Unclean` ist hier noch
+> mit leerem `table` gespeichert — Fix-Anleitung im Audit-Abschnitt oben.
 
 ---
 
