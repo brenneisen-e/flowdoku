@@ -155,6 +155,27 @@ function localizeStatus(status: string): string {
   }
 }
 
+// v22.16: Heuristik für die „Hinweise"-Box bei aktiven Events — erkennt
+// englischsprachigen Event-Inhalt (Beschreibung + Felder), damit die App
+// empfehlen kann, die Anmeldesprache fest auf Englisch zu stellen (sonst
+// mischt das Formular je nach App-Sprache des Teilnehmers Deutsch/Englisch).
+function stripHtmlToText(html: string): string {
+  return (html || '').replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+}
+function looksEnglishText(text: string): boolean {
+  const t = ' ' + (text || '').toLowerCase().replace(/\s+/g, ' ') + ' ';
+  if (t.trim().length < 40) return false; // zu wenig Text für ein Urteil
+  const enWords = [' the ', ' and ', ' you ', ' your ', ' please ', ' with ', ' for ', ' our ', ' this ', ' are ', ' join ', ' we ', ' from ', ' all '];
+  const deWords = [' der ', ' die ', ' das ', ' und ', ' nicht ', ' bitte ', ' wir ', ' euch ', ' dich ', ' ihr ', ' eine ', ' einen ', ' zur ', ' zum ', ' bei ', ' auf '];
+  let en = 0;
+  let de = 0;
+  for (const w of enWords) if (t.indexOf(w) >= 0) en++;
+  for (const w of deWords) if (t.indexOf(w) >= 0) de++;
+  // Umlaute/ß sind ein starkes Deutsch-Signal.
+  if (/[äöüß]/.test(t)) de += 2;
+  return en >= 4 && en >= de * 2;
+}
+
 // Status-Werte sind in SP als deutsche Strings gespeichert ('Angemeldet',
 // 'QR versendet', 'Warteliste', 'Eingecheckt', 'Abgemeldet'). Die App
 // rendert sie hier in der UI-Sprache des Users, ohne den Datenbankwert
@@ -821,6 +842,10 @@ export default function AdminPage(): React.ReactElement {
   // Deloitte-Konto nicht mehr aktiv ist (Person hat womöglich das Unternehmen
   // verlassen). Wird im Hintergrund max. 1×/Tag pro Event geprüft.
   const [inactiveAccounts, setInactiveAccounts] = React.useState<string[]>([]);
+  // v22.16: „Hinweise"-Box für aktive Events — Busy-State für den 1-Klick-
+  // Sprach-Fix + Tick, damit „Ausblenden" (localStorage) sofort re-rendert.
+  const [hintLangBusy, setHintLangBusy] = React.useState(false);
+  const [hintsDismissTick, setHintsDismissTick] = React.useState(0);
   // v11.97/v11.98: bei Events mit Split-Kapazität (zwei Gruppen) wird die
   // Aktiv-Teilnehmer-Tabelle standardmäßig nach Gruppe getrennt angezeigt
   // (kleinere Gruppe zuerst). Per Toggle umschaltbar auf zusammengeführte
@@ -4938,6 +4963,115 @@ export default function AdminPage(): React.ReactElement {
             </div>
           </aside>
         )}
+        {/* v22.16: „Hinweise"-Box für AKTIVE Events — Pendant zur „Nächste
+            Schritte"-Box bei Entwürfen. Zeigt smarte Empfehlungen (z.B.
+            englischer Inhalt → Anmeldesprache fest auf Englisch stellen).
+            Erscheint nur, wenn mindestens ein Hinweis zutrifft; jeder Hinweis
+            ist pro Event ausblendbar (localStorage). */}
+        {(isAdmin || isOrganizerFor(selectedEvent)) && !selectedEvent.isFictive && !selectedEvent.isDemoShowcase && (() => {
+          void hintsDismissTick; // erzwingt Re-Render nach „Ausblenden"
+          const dismissKey = (id: string): string => `dex_hint_dismiss_${selectedEvent.id}_${id}`;
+          const isDismissed = (id: string): boolean => {
+            try { return window.localStorage.getItem(dismissKey(id)) === '1'; } catch { return false; }
+          };
+          const hints: Array<{ id: string; title: string; body: React.ReactNode; action?: React.ReactNode }> = [];
+          // 1) Englischer Inhalt, aber Anmeldesprache nicht fest auf Englisch.
+          const fieldsText = (selectedEvent.eventSpecificFields || [])
+            .map(f => [f.label, f.helpText, (f.options || []).join(' ')].filter(Boolean).join(' '))
+            .join(' ');
+          const contentText = `${stripHtmlToText(selectedEvent.description || '')} ${fieldsText}`;
+          if ((selectedEvent.registrationLanguage || '') !== 'en' && looksEnglishText(contentText)) {
+            hints.push({
+              id: 'lang-en',
+              title: isDe ? 'Anmeldesprache auf Englisch festlegen?' : 'Fix registration language to English?',
+              body: isDe
+                ? 'Beschreibung und Felder dieses Events sind offenbar auf Englisch — die Anmeldeseite folgt aber der App-Sprache des Teilnehmers. Bei deutscher App-Einstellung mischt das Formular dann Deutsch (Buttons, Hinweise, Datenschutz) und Englisch (Inhalte). Empfehlung: die Anmeldesprache fest auf Englisch stellen. (Auch im Wizard änderbar: Schritt 5 „Felder" → „Sprache des Anmeldeformulars".)'
+                : 'The description and fields of this event appear to be in English — but the registration page follows each participant\'s app language. With a German app setting the form then mixes German (buttons, hints, privacy note) and English (content). Recommendation: fix the registration language to English. (Also changeable in the wizard: step 5 “Fields” → “Registration form language”.)',
+              action: (
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={hintLangBusy}
+                  style={{ fontSize: '0.78rem', padding: '6px 12px' }}
+                  onClick={() => {
+                    (async () => {
+                      setHintLangBusy(true);
+                      const ok = await updateEvent(selectedEvent.id, { 'RegistrationLanguage': 'en' });
+                      setHintLangBusy(false);
+                      if (ok) {
+                        setSelectedEvent(prev => prev ? { ...prev, registrationLanguage: 'en' } : prev);
+                        await refreshEvents();
+                        showAlert(isDe
+                          ? 'Anmeldesprache auf Englisch festgelegt — das Anmeldeformular erscheint jetzt für alle Teilnehmer durchgängig auf Englisch.'
+                          : 'Registration language fixed to English — the registration form now appears consistently in English for everyone.', { variant: 'success' });
+                      } else {
+                        showAlert(isDe ? 'Anmeldesprache konnte nicht gespeichert werden.' : 'Could not save the registration language.', { variant: 'error' });
+                      }
+                    })().catch(() => { /* */ });
+                  }}
+                >
+                  {hintLangBusy ? (isDe ? 'Speichert…' : 'Saving…') : (isDe ? 'Auf Englisch festlegen' : 'Fix to English')}
+                </button>
+              ),
+            });
+          }
+          // 2) Beschreibung fehlt oder ist sehr kurz.
+          if (stripHtmlToText(selectedEvent.description || '').length < 20) {
+            hints.push({
+              id: 'no-desc',
+              title: isDe ? 'Beschreibung ergänzen' : 'Add a description',
+              body: isDe
+                ? 'Das Event hat (fast) keine Beschreibung — Teilnehmer sehen auf der Anmeldeseite dann kaum, worum es geht. Über „Event bearbeiten" → Schritt 1 (Grundlagen) ergänzen.'
+                : 'The event has (almost) no description — participants see very little about it on the registration page. Add one via “Edit event” → step 1 (Basics).',
+            });
+          }
+          // 3) Event-Bild fehlt.
+          if (!selectedEvent.imageUrl) {
+            hints.push({
+              id: 'no-image',
+              title: isDe ? 'Event-Bild hochladen' : 'Upload an event image',
+              body: isDe
+                ? 'Ohne Bild wirkt die Event-Karte in der Übersicht und der Mail-Kopf deutlich weniger einladend. Über „Event bearbeiten" → Schritt 1 (Grundlagen) hochladen.'
+                : 'Without an image the event card in the list and the email header look much less inviting. Upload one via “Edit event” → step 1 (Basics).',
+            });
+          }
+          const visible = hints.filter(h => !isDismissed(h.id));
+          if (visible.length === 0) return null;
+          return (
+            <aside style={{ flex: '0 1 340px', minWidth: 290 }}>
+              <div className="card" style={{ padding: 20, background: 'rgba(0,118,168,0.04)', border: '1px solid var(--dex-blue, #0076a8)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <span style={{ color: 'var(--dex-blue, #0076a8)', display: 'inline-flex' }}><Info size={18} /></span>
+                  <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--dex-blue, #0076a8)' }}>{isDe ? 'Hinweise zu diesem Event' : 'Hints for this event'}</h3>
+                </div>
+                <p style={{ margin: '0 0 14px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                  {isDe ? 'Der App sind ein paar Dinge aufgefallen, die du dir kurz anschauen solltest:' : 'The app noticed a few things worth a quick look:'}
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  {visible.map(h => (
+                    <div key={h.id} style={{ borderTop: '1px solid rgba(0,118,168,0.15)', paddingTop: 12 }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--dex-gray-800)', marginBottom: 4 }}>{h.title}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>{h.body}</div>
+                      <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                        {h.action}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            try { window.localStorage.setItem(dismissKey(h.id), '1'); } catch { /* */ }
+                            setHintsDismissTick(t => t + 1);
+                          }}
+                          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--dex-gray-500)', fontSize: '0.74rem', textDecoration: 'underline' }}
+                        >
+                          {isDe ? 'Hinweis ausblenden' : 'Dismiss hint'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </aside>
+          );
+        })()}
         </div>
 
         {/* v7.6: Aktionen-Bereich als Kachel-Grid (auto-fit ab 220px, max 4
