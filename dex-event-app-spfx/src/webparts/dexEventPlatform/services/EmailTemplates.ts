@@ -568,48 +568,97 @@ export function organizerOnboardingEmail(recipientName: string, role: 'Organizer
  * fett angezeigt \u2014 hilft den Organizern beim manuellen Check-in (Foto- oder
  * Bildschirm-Vergleich), wenn der Scanner mal nicht zur Hand ist.
  */
+// v22.18: Pro-Event-Anpassung der QR-Mail (analog Einladungs-/Massenmail).
+// Der QR-Block (Code + Name + Event als Klartext) ist FESTER Bestandteil und
+// wird über den Platzhalter {{QR_BLOCK}} in den Body eingesetzt — fehlt der
+// Platzhalter im angepassten Text, wird der Block automatisch ans Ende gesetzt
+// (die Mail geht nie ohne QR raus). Persistiert wird der Override im Event
+// (EmailTemplateOverrides-JSON, Key 'QRCode') — dadurch gilt er auch für den
+// QR-Auto-Versand bei neuen Anmeldungen, nicht nur im eigenen Browser.
+export interface QrEmailOverride {
+  subject?: string;
+  heading?: string;
+  subheading?: string;
+  bodyHtml?: string;
+}
+
+/** Standard-Texte der QR-Mail mit Platzhaltern ({{Vorname}}, {{Name}},
+ *  {{EventTitle}}, {{QR_BLOCK}}) — Grundlage für den Editor im Organizer
+ *  Center UND für den Versand ohne Override. */
+export function qrEmailDefaults(lang: string = 'EN'): { subject: string; heading: string; subheading: string; body: string } {
+  const isDe = (lang || 'EN').toUpperCase() === 'DE';
+  if (isDe) {
+    return {
+      subject: 'Dein QR-Code für {{EventTitle}}',
+      heading: 'Dein QR-Code',
+      subheading: '{{EventTitle}}',
+      body: `<p>Hallo {{Vorname}},</p>
+<p>hier ist dein persönlicher QR-Code für das Event <strong>{{EventTitle}}</strong>.</p>
+<p>Bitte zeige den QR-Code beim Check-in vor.</p>
+{{QR_BLOCK}}
+<p style="color:#999;font-size:12px;text-align:center;">Der QR-Code ist persönlich und nicht übertragbar.</p>
+<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`,
+    };
+  }
+  return {
+    subject: 'Your QR Code for {{EventTitle}}',
+    heading: 'Your QR Code',
+    subheading: '{{EventTitle}}',
+    body: `<p>Dear {{Vorname}},</p>
+<p>here is your personal QR code for the event <strong>{{EventTitle}}</strong>.</p>
+<p>Please show this QR code at check-in.</p>
+{{QR_BLOCK}}
+<p style="color:#999;font-size:12px;text-align:center;">This QR code is personal and non-transferable.</p>
+<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`,
+  };
+}
+
+/** Fester QR-Block: Code-Bild + „<Name> | <Event>“ als Klartext (für den
+ *  manuellen Check-in). Wird beim Versand UND in der Editor-Vorschau gleich
+ *  gebaut. */
+export function buildQrBlockHtml(qrImageHtml: string, fullDisplayName: string, eventTitle: string): string {
+  const escName = (fullDisplayName || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const escTitle = (eventTitle || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const checkInLabel = `<p style="text-align:center;font-size:16px;margin:8px 0 0;"><strong>${escName} | ${escTitle}</strong></p>`;
+  return `<div style="text-align:center;margin:24px 0;">${qrImageHtml}${checkInLabel}</div>`;
+}
+
 export function qrCodeEmail(
   firstName: string,
   eventTitle: string,
   qrImageHtml: string,
   lang: string = 'EN',
-  fullName?: string
+  fullName?: string,
+  override?: QrEmailOverride
 ): { subject: string; body: string } {
-  const isDe = (lang || 'EN').toUpperCase() === 'DE';
   // Fallback: wenn kein fullName uebergeben, nutze nur firstName
   const fullDisplayName = (fullName || firstName || '').trim();
-  // HTML-Escape \u2014 Nutzer-Eingaben (Namen) dürfen das Layout nicht brechen
-  const escName = fullDisplayName.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const escTitle = (eventTitle || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const checkInLabel = `<p style="text-align:center;font-size:16px;margin:8px 0 0;"><strong>${escName} | ${escTitle}</strong></p>`;
-  if (isDe) {
-    return {
-      subject: `Dein QR-Code f\u00FCr ${eventTitle}`,
-      body: wrapTemplate(
-        GREEN,
-        'Dein QR-Code',
-        eventTitle,
-        `<p>Hallo ${firstName},</p>
-        <p>hier ist dein pers\u00F6nlicher QR-Code f\u00FCr das Event <strong>${eventTitle}</strong>.</p>
-        <p>Bitte zeige den QR-Code beim Check-in vor.</p>
-        <div style="text-align:center;margin:24px 0;">${qrImageHtml}${checkInLabel}</div>
-        <p style="color:#999;font-size:12px;text-align:center;">Der QR-Code ist pers\u00F6nlich und nicht \u00FCbertragbar.</p>
-        <p style="margin-top:24px;"><strong>Viele Gr\u00FC\u00DFe</strong><br><br><strong>Dein Event-Team</strong></p>`
-      ),
-    };
+  const qrBlock = buildQrBlockHtml(qrImageHtml, fullDisplayName, eventTitle);
+  const defaults = qrEmailDefaults(lang);
+  const subjectTpl = (override && override.subject && override.subject.trim()) ? override.subject : defaults.subject;
+  const headingTpl = (override && override.heading && override.heading.trim()) ? override.heading : defaults.heading;
+  const subheadingTpl = (override && override.subheading && override.subheading.trim()) ? override.subheading : defaults.subheading;
+  const bodyTpl = (override && override.bodyHtml && override.bodyHtml.trim()) ? override.bodyHtml : defaults.body;
+  const vars: Record<string, string> = {
+    Vorname: firstName || fullDisplayName,
+    Name: fullDisplayName,
+    EventTitle: eventTitle || '',
+  };
+  // Personen-/Event-Platzhalter HTML-escaped ersetzen, den QR-Block danach
+  // RAW einsetzen (er ist selbst HTML). Subject/Headings ohne HTML-Escape.
+  let body = replacePlaceholders(bodyTpl, vars);
+  if (body.indexOf('{{QR_BLOCK}}') >= 0) {
+    body = body.replace(/\{\{QR_BLOCK\}\}/g, qrBlock);
+  } else {
+    body += qrBlock;
   }
   return {
-    subject: `Your QR Code for ${eventTitle}`,
+    subject: replacePlaceholdersPlain(subjectTpl, vars),
     body: wrapTemplate(
       GREEN,
-      'Your QR Code',
-      eventTitle,
-      `<p>Dear ${firstName},</p>
-      <p>here is your personal QR code for the event <strong>${eventTitle}</strong>.</p>
-      <p>Please show this QR code at check-in.</p>
-      <div style="text-align:center;margin:24px 0;">${qrImageHtml}${checkInLabel}</div>
-      <p style="color:#999;font-size:12px;text-align:center;">This QR code is personal and non-transferable.</p>
-      <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
+      replacePlaceholdersPlain(headingTpl, vars),
+      replacePlaceholdersPlain(subheadingTpl, vars),
+      body
     ),
   };
 }

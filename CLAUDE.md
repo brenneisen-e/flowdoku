@@ -200,6 +200,33 @@ Auto-Versand lief) UND `jetzt ∈ [Start − 2 Tage, Ende]` (ohne Ende: Ende des
 Start-Tages). Implementierung in `LandingPage.tsx` (Kandidaten max. 4,
 `getMyRegistration` pro Kandidat, qrcode lazy).
 
+### QR-Mail pro Event anpassbar (v22.18)
+
+Der Text der QR-Code-Mail ist pro Event anpassbar — analog Einladungs-/
+Massenmail, aber **persistiert am Event** statt in localStorage:
+
+- **Override-Speicherort:** `EmailTemplateOverrides`-JSON, Key **`QRCode`**
+  (`{ subject, heading, subheading, bodyHtml }`). Nicht-Unterstrich-Keys
+  überleben den Wizard-Roundtrip (Load `...rest` + Save-Spread) — der
+  Override geht beim Event-Edit also NICHT verloren.
+- **Fester Bestandteil:** Platzhalter **`{{QR_BLOCK}}`** = QR-Code + „<Name> |
+  <Event>"-Klartext (`buildQrBlockHtml`). Fehlt er im angepassten Body, hängt
+  `qrCodeEmail` den Block automatisch ans Ende — die Mail geht nie ohne QR
+  raus. Weitere Platzhalter: `{{Vorname}}`, `{{Name}}`, `{{EventTitle}}`.
+- **Builder:** `qrCodeEmail(..., override?)` + `qrEmailDefaults(lang)`
+  (Standard-Texte mit Platzhaltern) in `EmailTemplates.ts`. Personen-/Event-
+  Platzhalter werden HTML-escaped ersetzt, der QR-Block danach RAW.
+- **Gilt überall:** alle 3 Versand-Stellen im Admin Center (Vorschau / Test /
+  Massen-Versand via `getQrMailOverride`) UND der **Auto-Versand** bei neuen
+  Anmeldungen (`EventContext.registerForEvent` parst den Key) — deshalb
+  Event-Persistenz statt localStorage.
+- **Editor:** QR-Versand-Modal → „Mail-Text anpassen" → `HtmlEditorModal`
+  (previewMode email) mit Live-Vorschau inkl. echtem Beispiel-QR. Neues
+  Modal-Prop **`previewHtmlVars`** ersetzt HTML-Platzhalter in der Vorschau
+  RAW (previewVars escaped die Werte). „Standardtext laden" via
+  `defaultBodyHtml`; Speichern mit Default-Vergleich (alles Standard → Key
+  wird entfernt).
+
 ### Archivierung abgelaufener Event-Zeilen (v21/v22)
 
 Admin-only-Werkzeug, um die globalen Queue-/Log-Listen schlank zu halten:

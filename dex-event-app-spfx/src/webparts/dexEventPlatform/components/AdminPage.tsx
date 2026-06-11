@@ -26,7 +26,7 @@ import { generateSelfCheckInToken, buildStaticCheckInUrl, defaultCheckInWindow }
 // erst beim tatsächlichen Gebrauch (Export-Klick / QR-Vorschau) als eigener
 // Chunk nachgeladen — spart ~1 MB im Haupt-Bundle.
 import { EventService } from '../services/EventService';
-import { qrCodeEmail, cancellationEmail, promotionEmail, wrapTemplate, replacePlaceholders, buildEmailFromTemplate, getCachedLogoBase64, getCachedOrbBase64, injectIntoEmailContent } from '../services/EmailTemplates';
+import { qrCodeEmail, qrEmailDefaults, buildQrBlockHtml, QrEmailOverride, cancellationEmail, promotionEmail, wrapTemplate, replacePlaceholders, buildEmailFromTemplate, getCachedLogoBase64, getCachedOrbBase64, injectIntoEmailContent } from '../services/EmailTemplates';
 import { applyEventTemplateOverride, formatOrganizerList } from '../context/EventContext';
 import { HtmlEditorModal } from './HtmlEditorModal';
 import { InfoTooltip } from './InfoTooltip';
@@ -1025,6 +1025,15 @@ export default function AdminPage(): React.ReactElement {
   const [qrPreviewHtml, setQrPreviewHtml] = React.useState('');
   const [qrPreviewSubject, setQrPreviewSubject] = React.useState('');
   const [qrPreviewLoading, setQrPreviewLoading] = React.useState(false);
+  // v22.18: QR-Mail-Text pro Event anpassbar (HtmlEditorModal mit Live-
+  // Vorschau, gespeichert im Event → gilt auch für den Auto-Versand).
+  const [qrEditOpen, setQrEditOpen] = React.useState(false);
+  const [qrEditSubject, setQrEditSubject] = React.useState('');
+  const [qrEditHeading, setQrEditHeading] = React.useState('');
+  const [qrEditSubheading, setQrEditSubheading] = React.useState('');
+  const [qrEditBody, setQrEditBody] = React.useState('');
+  const [qrEditSaving, setQrEditSaving] = React.useState(false);
+  const [qrEditSampleBlock, setQrEditSampleBlock] = React.useState('');
   const [searchQuery, setSearchQuery] = React.useState('');
   const [sortColumn, setSortColumn] = React.useState<'id' | 'anrede' | 'vorname' | 'nachname' | 'email' | 'status' | 'date'>('id');
   const [sortAsc, setSortAsc] = React.useState(true);
@@ -3053,6 +3062,70 @@ export default function AdminPage(): React.ReactElement {
 
   // v22.6: QR-Versand-Aktionen als benannte Funktionen (vorher inline im Modal) —
   // macht das neue kompakte Querformat-Layout lesbar. Verhalten unverändert.
+  // v22.18: pro-Event angepasster QR-Mail-Text — Override-Key 'QRCode' im
+  // EmailTemplateOverrides-JSON des Events (übersteht den Wizard-Roundtrip,
+  // weil Nicht-Unterstrich-Keys dort erhalten bleiben). QR-Block bleibt fix.
+  const getQrMailOverride = (ev: DeloitteEvent | null): QrEmailOverride | undefined => {
+    if (!ev) return undefined;
+    try {
+      const all = JSON.parse(ev.emailTemplateOverrides || '{}');
+      const ov = all && all['QRCode'];
+      if (ov && (ov.subject || ov.heading || ov.subheading || ov.bodyHtml)) return ov as QrEmailOverride;
+    } catch { /* kein Override */ }
+    return undefined;
+  };
+  // Editor öffnen: Felder aus Override (falls vorhanden) oder den Standard-
+  // Texten vorbelegen + Beispiel-QR-Block für die Live-Vorschau erzeugen.
+  const openQrMailEditor = async (): Promise<void> => {
+    if (!selectedEvent) return;
+    const ov = getQrMailOverride(selectedEvent);
+    const def = qrEmailDefaults(selectedEvent.emailLanguage || 'EN');
+    setQrEditSubject((ov && ov.subject) || def.subject);
+    setQrEditHeading((ov && ov.heading) || def.heading);
+    setQrEditSubheading((ov && ov.subheading) || def.subheading);
+    setQrEditBody((ov && ov.bodyHtml) || def.body);
+    // Beispiel-QR (eigene Daten) für die Vorschau — gleicher Aufbau wie im Versand.
+    const myName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email;
+    const qrData = `DEX|${selectedEvent.eventNumber}|${currentUser.email}`;
+    const qrImageHtml = await buildQrImageHtml(qrData);
+    setQrEditSampleBlock(buildQrBlockHtml(qrImageHtml, myName, selectedEvent.title));
+    setQrEditOpen(true);
+  };
+  // Speichern: Override in das EmailTemplateOverrides-JSON des Events mergen
+  // (andere Keys + Piggybacks bleiben erhalten). Entspricht alles den
+  // Standard-Texten, wird der Key entfernt (= zurück auf Standard).
+  const saveQrMailOverride = async (): Promise<void> => {
+    if (!selectedEvent || qrEditSaving) return;
+    setQrEditSaving(true);
+    try {
+      const def = qrEmailDefaults(selectedEvent.emailLanguage || 'EN');
+      const isDefault = qrEditSubject.trim() === def.subject.trim()
+        && qrEditHeading.trim() === def.heading.trim()
+        && qrEditSubheading.trim() === def.subheading.trim()
+        && qrEditBody.trim() === def.body.trim();
+      let all: Record<string, unknown> = {};
+      try { all = JSON.parse(selectedEvent.emailTemplateOverrides || '{}') || {}; } catch { all = {}; }
+      if (isDefault) {
+        delete all['QRCode'];
+      } else {
+        all['QRCode'] = { subject: qrEditSubject, heading: qrEditHeading, subheading: qrEditSubheading, bodyHtml: qrEditBody };
+      }
+      const json = JSON.stringify(all);
+      const ok = await updateEvent(selectedEvent.id, { 'EmailTemplateOverrides': json });
+      if (ok) {
+        setSelectedEvent(prev => prev ? { ...prev, emailTemplateOverrides: json } : prev);
+        await refreshEvents();
+        setQrEditOpen(false);
+        showAlert(isDe
+          ? (isDefault
+            ? 'QR-Mail auf den Standardtext zurückgesetzt.'
+            : 'QR-Mail-Text gespeichert — gilt ab jetzt für Vorschau, Versand UND den automatischen QR-Versand bei neuen Anmeldungen.')
+          : (isDefault ? 'QR email reset to the default text.' : 'QR email text saved — now used for preview, sending AND the automatic QR send for new registrations.'), { variant: 'success' });
+      } else {
+        showAlert(isDe ? 'Speichern fehlgeschlagen — vermutlich fehlen Schreibrechte auf der Event-Liste.' : 'Saving failed — you probably lack write permission on the event list.', { variant: 'error' });
+      }
+    } finally { setQrEditSaving(false); }
+  };
   const buildQrImageHtml = async (qrData: string): Promise<string> => {
     let qrImageHtml = `<p style="font-family:monospace;font-size:1.2rem;background:#f5f5f5;padding:12px;border-radius:8px;text-align:center;">${qrData}</p>`;
     try {
@@ -3071,7 +3144,7 @@ export default function AdminPage(): React.ReactElement {
       const orgFirstName = currentUser.firstName || orgFullName.split(/\s+/)[0] || orgFullName;
       const qrData = `DEX|${selectedEvent.eventNumber}|${orgEmail}`;
       const qrImageHtml = await buildQrImageHtml(qrData);
-      const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName);
+      const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName, getQrMailOverride(selectedEvent));
       let eventOrb = '';
       try {
         const ov = JSON.parse(selectedEvent.emailTemplateOverrides || '{}');
@@ -3092,7 +3165,7 @@ export default function AdminPage(): React.ReactElement {
       const orgFirstName = currentUser.firstName || orgFullName.split(/\s+/)[0] || orgFullName;
       const qrData = `DEX|${selectedEvent.eventNumber}|${orgEmail}`;
       const qrImageHtml = await buildQrImageHtml(qrData);
-      const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName);
+      const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName, getQrMailOverride(selectedEvent));
       await eventServiceRef.queueEmail(emailData.subject, orgEmail, orgFullName, emailData.body, 'QRCode', selectedEvent.title, selectedEvent.id);
       setQrSendResult(isDe
         ? `Test-Mail an ${orgEmail} verschickt — bitte in deinem Postfach prüfen.`
@@ -3117,7 +3190,7 @@ export default function AdminPage(): React.ReactElement {
       const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
       const firstName = reg.Vorname || (reg.ParticipantName || '').trim().split(/\s+/)[0] || name;
       const qrImageHtml = await buildQrImageHtml(qrData);
-      const emailData = qrCodeEmail(firstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', name);
+      const emailData = qrCodeEmail(firstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', name, getQrMailOverride(selectedEvent));
       const isExternal = !!reg.ParticipantEmail && !/@(.*\.)?deloitte\.de$/i.test(reg.ParticipantEmail);
       if (isExternal) {
         const orgEmails = (selectedEvent.organizerEmails || []).filter(Boolean);
@@ -8861,6 +8934,19 @@ export default function AdminPage(): React.ReactElement {
                       return `3. Send QR ${n === 1 ? 'code' : 'codes'} to ${n} participant${n === 1 ? '' : 's'}`;
                     })()}
                   </button>
+                  {/* v22.18: Mail-Text pro Event anpassbar — QR-Block bleibt fix. */}
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    disabled={isSendingQR}
+                    onClick={() => { openQrMailEditor().catch(() => { /* */ }); }}
+                    style={{ fontSize: '0.82rem', width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                  >
+                    <Pencil size={14} />
+                    {isDe
+                      ? `Mail-Text anpassen${getQrMailOverride(selectedEvent) ? ' (angepasst)' : ''}`
+                      : `Customize email text${getQrMailOverride(selectedEvent) ? ' (customized)' : ''}`}
+                  </button>
                   {/* Hinweis, falls Organizer selbst nicht angemeldet ist (nur fürs Testen relevant). */}
                   {(() => {
                     const orgEmail = (currentUser.email || '').toLowerCase();
@@ -8943,6 +9029,73 @@ export default function AdminPage(): React.ReactElement {
             </div>
         </Modal>
       )}
+
+      {/* ===== v22.18: QR-MAIL-TEXT ANPASSEN (HtmlEditorModal mit Live-Vorschau,
+          gespeichert im Event — gilt auch für den Auto-Versand) ===== */}
+      {qrEditOpen && selectedEvent && (() => {
+        const myName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email;
+        const previewVars: Record<string, string> = {
+          EventTitle: selectedEvent.title,
+          Vorname: currentUser.firstName || myName,
+          Name: myName,
+        };
+        const customLogo = (() => {
+          try {
+            const o = JSON.parse(selectedEvent.emailTemplateOverrides || '{}');
+            return (o && typeof o._eventLogo === 'string') ? o._eventLogo : '';
+          } catch { return ''; }
+        })();
+        const resolvePlain = (s: string): string => s
+          .replace(/\{\{EventTitle\}\}/g, selectedEvent.title)
+          .replace(/\{\{Vorname\}\}/g, previewVars.Vorname)
+          .replace(/\{\{Name\}\}/g, myName);
+        const def = qrEmailDefaults(selectedEvent.emailLanguage || 'EN');
+        const headerExtra = (
+          <div style={{ padding: 12, background: 'var(--dex-gray-50, #fafafa)', border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius)', marginBottom: 4, fontSize: '0.78rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+            {isDe
+              ? <><strong>Fester Bestandteil:</strong> Der Platzhalter <code>{'{{QR_BLOCK}}'}</code> steht für den persönlichen QR-Code mit Name + Event als Klartext — er lässt sich verschieben, aber nicht entfernen (fehlt er im Text, wird der Block beim Versand automatisch ans Ende gesetzt). Verfügbare Platzhalter: <code>{'{{Vorname}}'}</code>, <code>{'{{Name}}'}</code>, <code>{'{{EventTitle}}'}</code>. <strong>Der gespeicherte Text gilt für alle QR-Mails dieses Events</strong> — manueller Versand UND automatischer Versand bei neuen Anmeldungen.</>
+              : <><strong>Fixed element:</strong> the placeholder <code>{'{{QR_BLOCK}}'}</code> represents the personal QR code with name + event as plain text — it can be moved but not removed (if missing, the block is appended automatically when sending). Available placeholders: <code>{'{{Vorname}}'}</code>, <code>{'{{Name}}'}</code>, <code>{'{{EventTitle}}'}</code>. <strong>The saved text applies to all QR emails of this event</strong> — manual sending AND the automatic send for new registrations.</>}
+          </div>
+        );
+        return (
+          <HtmlEditorModal
+            open={qrEditOpen}
+            onClose={() => !qrEditSaving && setQrEditOpen(false)}
+            title={isDe ? `QR-Mail anpassen: ${selectedEvent.title}` : `Customize QR email: ${selectedEvent.title}`}
+            value={qrEditBody}
+            onChange={setQrEditBody}
+            previewMode="email"
+            emailSubject={qrEditSubject}
+            onEmailSubjectChange={setQrEditSubject}
+            emailHeading={qrEditHeading}
+            onEmailHeadingChange={setQrEditHeading}
+            emailSubheading={qrEditSubheading}
+            onEmailSubheadingChange={setQrEditSubheading}
+            emailHeadingColor="#86bc25"
+            previewVars={previewVars}
+            previewHtmlVars={{ QR_BLOCK: qrEditSampleBlock }}
+            previewToLine={`${currentUser.email} ${isDe ? '(Beispiel — du selbst)' : '(example — yourself)'}`}
+            previewSubjectLine={resolvePlain(qrEditSubject)}
+            defaultBodyHtml={def.body}
+            insertableVars={[
+              { key: '{{Vorname}}', label: isDe ? 'Vorname' : 'First name' },
+              { key: '{{Name}}', label: isDe ? 'Voller Name' : 'Full name' },
+              { key: '{{EventTitle}}', label: isDe ? 'Event-Titel' : 'Event title' },
+              { key: '{{QR_BLOCK}}', label: isDe ? 'QR-Code-Block (fix)' : 'QR code block (fixed)' },
+            ]}
+            imageBase64={customLogo}
+            headerExtra={headerExtra}
+            extraAction={{
+              label: qrEditSaving
+                ? (isDe ? 'Speichert…' : 'Saving…')
+                : (isDe ? 'Für dieses Event speichern' : 'Save for this event'),
+              onClick: saveQrMailOverride,
+              disabled: qrEditSaving || !qrEditSubject.trim() || !qrEditBody.trim(),
+              icon: <Check size={16} />,
+            }}
+          />
+        );
+      })()}
 
       {editingReg && selectedEvent && (
         <div

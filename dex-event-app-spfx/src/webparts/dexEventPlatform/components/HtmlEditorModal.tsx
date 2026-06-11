@@ -83,6 +83,10 @@ export interface HtmlEditorModalProps {
    *  laden". Wenn gesetzt, erscheint ein Reset-Button über dem Body-Editor. */
   defaultBodyHtml?: string;
   previewVars?: Record<string, string>;
+  /** v22.18: Platzhalter, deren Wert ROHES HTML ist (z.B. {{QR_BLOCK}} im
+   *  QR-Mail-Editor) — wird in der Vorschau OHNE HTML-Escaping ersetzt
+   *  (previewVars escaped die Werte). */
+  previewHtmlVars?: Record<string, string>;
   insertableVars?: Array<{ key: string; label: string }>;
   logoBase64?: string;
   imageBase64?: string;
@@ -206,6 +210,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     outlookDateEditor, outlookLocationValue, onOutlookLocationChange, outlookLocationAuto,
     defaultBodyHtml,
     previewVars = {}, insertableVars = [],
+    previewHtmlVars,
     logoBase64 = '', imageBase64 = '',
     extraAction,
     headerExtra,
@@ -416,7 +421,14 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
   };
 
   const renderPreviewHtml = (): string => {
-    const bodyWithVars = replacePlaceholders(value || '', previewVars);
+    let bodyWithVars = replacePlaceholders(value || '', previewVars);
+    // v22.18: HTML-Platzhalter (z.B. {{QR_BLOCK}}) RAW ersetzen — nach den
+    // escapten previewVars, damit das eingesetzte HTML nicht escaped wird.
+    if (previewHtmlVars) {
+      for (const k of Object.keys(previewHtmlVars)) {
+        bodyWithVars = bodyWithVars.replace(new RegExp(`\\{\\{${k}\\}\\}`, 'g'), previewHtmlVars[k]);
+      }
+    }
     const cachedLogo = getCachedLogoBase64();
     const cachedOrb = getCachedOrbBase64();
 
