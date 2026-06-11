@@ -6033,19 +6033,30 @@ export class EventService {
     }
 
     // Ziel-IDs in einem ersten Durchlauf berechnen: erst Angemeldete, dann Warteliste.
+    // v22.20: Innerhalb der Gruppen wird primär nach der VORHANDENEN TeilnehmerID
+    // sortiert (aufsteigend, ohne ID ans Ende), Gleichstand nach Item-Id. Damit ist
+    // die Client-Renummerierung deckungsgleich mit dem DEX_IDReorder-Flow (der
+    // ebenfalls nach TeilnehmerID sortiert) — egal welcher Pfad zuletzt lief, das
+    // Ergebnis ist identisch und die IDs „springen" nicht mehr zwischen
+    // Admin-Button und Flow-Lauf hin und her.
     const targetIds = new Map<number, number | null>();
     let nextId = 1;
+    const NO_TID = Number.MAX_SAFE_INTEGER;
+    const byTidThenId = (a: { Id: number; TeilnehmerID: number | null }, b: { Id: number; TeilnehmerID: number | null }): number =>
+      ((a.TeilnehmerID ?? NO_TID) - (b.TeilnehmerID ?? NO_TID)) || (a.Id - b.Id);
     // Pass 1: Angemeldete / QR versendet / Eingecheckt
-    for (const item of allItems) {
-      if (item.Status === 'Angemeldet' || item.Status === 'QR versendet' || item.Status === 'Eingecheckt') {
-        targetIds.set(item.Id, nextId++);
-      }
+    const activeItems = allItems
+      .filter(item => item.Status === 'Angemeldet' || item.Status === 'QR versendet' || item.Status === 'Eingecheckt')
+      .sort(byTidThenId);
+    for (const item of activeItems) {
+      targetIds.set(item.Id, nextId++);
     }
     // Pass 2: Warteliste
-    for (const item of allItems) {
-      if (item.Status === 'Warteliste') {
-        targetIds.set(item.Id, nextId++);
-      }
+    const waitlistItems = allItems
+      .filter(item => item.Status === 'Warteliste')
+      .sort(byTidThenId);
+    for (const item of waitlistItems) {
+      targetIds.set(item.Id, nextId++);
     }
     // Pass 3: Abgemeldete (TeilnehmerID=null)
     for (const item of allItems) {
@@ -7268,6 +7279,18 @@ export class EventService {
       const body: Record<string, any> = goWaitlist
         ? { 'Status': 'Warteliste', 'StarterType': '', 'PreferredStarterType': newType }
         : { 'Status': 'Angemeldet', 'StarterType': newType, 'PreferredStarterType': newType };
+      // v22.20: FIFO-Fairness — wer auf die Warteliste der Zielgruppe wechselt,
+      // verliert seine alte (niedrige) TeilnehmerID und reiht sich mit einer
+      // frischen Counter-ID HINTEN ein. Sonst würde er beim typ-bewussten
+      // Nachrücken (TeilnehmerID asc) alle überholen, die schon länger warten.
+      // Best-effort: schlägt der Counter fehl, bleibt die alte ID stehen und der
+      // anschließende Reorder-Lauf normalisiert wenigstens die Nummerierung.
+      if (goWaitlist) {
+        try {
+          const freshId = await this.getNextTeilnehmerId(subsiteUrl);
+          if (typeof freshId === 'number' && freshId > 0) body['TeilnehmerID'] = freshId;
+        } catch { /* alte ID behalten */ }
+      }
       const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`;
       const resp = await this._merge(url, body);
       if (!resp.ok) {

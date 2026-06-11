@@ -160,6 +160,39 @@ und `reactivateRegistration`. Dadurch sieht der Teilnehmer seine Anmeldung in
   Teilnehmer ohne Tenant-Login scheitern am `ensureuser` → zählen als „nicht
   möglich" (erwartbar).
 
+### ID-Konsistenz App-seitig (v22.20) — Reihenfolge immer fair + deckungsgleich mit dem Flow
+
+Leitlinie: **Die TeilnehmerID-Reihenfolge ist immer „Aktive 1..N, Warteliste
+N+1..M, FIFO ohne Vordrängeln"** — App und `DEX_IDReorder`-Flow erzeugen
+exakt dieselbe Ordnung. Vier Bausteine (v22.20):
+
+- **`reorderParticipantIDs` (Client)** sortiert innerhalb der Gruppen jetzt
+  primär nach **vorhandener TeilnehmerID** (asc, ohne ID ans Ende),
+  Gleichstand nach Item-Id — identisch zur Flow-Renummerierung (die seit dem
+  2026-06-11-Umbau Status-sortiert + TID-stabil arbeitet). Vorher Client =
+  Erstellungsreihenfolge → IDs „sprangen" je nachdem, ob zuletzt der
+  Admin-Button oder der Flow lief.
+- **`switchSplitGroup`:** Wer in die VOLLE Zielgruppe wechselt (→ Warteliste),
+  bekommt eine **frische Counter-ID** (reiht sich hinten ein) statt die alte
+  niedrige zu behalten — kein Überholen der länger Wartenden beim
+  typ-bewussten Nachrücken. Best-effort (Counter-Ausfall = alte ID bleibt).
+- **Nach jedem Gruppenwechsel** stößt der EventContext einen `queueIDReorder`
+  an: Flow sortiert sofort neu UND besetzt den in der alten Gruppe frei
+  gewordenen Platz direkt nach (Name/E-Mail des Wechslers gehen als
+  CancelledName/-Email mit → Nachrück-Mail/Audit benennen den Vorgänger).
+- **Nach jeder Reaktivierung als 'Angemeldet'** (Counter vergibt bewusst eine
+  frische End-ID) ebenfalls `queueIDReorder` → die Person wird sofort in den
+  aktiven Block einsortiert statt erst bei der nächsten Abmeldung.
+
+**Flow-Gegenstück (im Tenant, 2026-06-11):** Renummerier-Schleife sortiert
+Status-first (`Filter_Sort_Aktive`/`_Warteliste`/`Sort_AktiveZuerst`/
+`Set_AllParticipants_Sortiert` in `Batch_Until_Clean`), nach jeder Promotion
+erzeugt `Requeue_Reorder_N/D/F` (gated über `Check_Promote_OK_*`, HTTP 204)
+einen Folge-Reorder, `Error_Handler` greift auch bei SKIPPED,
+`Check_Renumber_Clean` terminiert bei unsauberer Schleife. Die
+„circular loop"-Speicher-Warnung ist dabei ERWARTBAR und bleibt dauerhaft
+(statische Prüfung: Flow schreibt in seine eigene Trigger-Liste).
+
 ### QR-Codes: Auto-Send immer aktiv + „Mein QR-Code" in Meine Events (v20.7)
 
 - **Auto-Send ist Standard und nicht abwählbar:** Jede neue Anmeldung mit
@@ -1041,7 +1074,9 @@ Edit-Persistenz + Dirty-Snapshot.
   `Still_Registered`=yes-Zweig eine Condition `Auto_Deregister_On`
   (`first(outputs('Get_DEX_Event')?['body/value'])?['AutoDeregisterOnDecline']` ==
   `true`). Im yes-Zweig statt des Reminders: (1) MERGE auf das Teilnehmer-Item →
-  `Status='Abgemeldet'`, `CancellationDate=utcNow()`; (2) `DEX_Emails`-Item mit
+  `Status='Abgemeldet'`, `CancellationDate=utcNow()` **und `TeilnehmerID=null`**
+  (PFLICHT — sonst behält die abgemeldete Zeile ihre alte Nummer und verfälscht
+  die Max-Berechnung des ID-Reorder-Flows → Counter läuft davon); (2) `DEX_Emails`-Item mit
   **`AbmeldungAuto`**-Template (pre-wrapped! NICHT `Abmeldung` — das ist der
   unwrapped App-Type; der Flow verschickt den BodyHtml roh, braucht also das
   pre-wrapped `AbmeldungAuto` aus dem Template-Seed, sonst kommt die Mail ohne

@@ -1245,6 +1245,15 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     }
 
     if (success && event) {
+      // v22.20: Eine Reaktivierung vergibt bewusst eine FRISCHE Counter-ID —
+      // die Person landet damit nummerisch hinter der Warteliste, obwohl sie
+      // als Angemeldet zurückkommt. Direkt einen ID-Reorder anstoßen, damit
+      // der Flow sie sofort korrekt einsortiert (statt erst bei der nächsten
+      // Abmeldung). Best-effort, blockiert die Anmeldung nicht.
+      if (existing && existing.Status === 'Abgemeldet' && status === 'Angemeldet') {
+        eventService.queueIDReorder(eventId, event.eventNumber, subsiteUrl, event.title)
+          .catch(err => console.warn('[DEX] queueIDReorder (reactivate) failed:', err));
+      }
       // v9.0: Audit-Log (fire-and-forget)
       eventService.writeChangeLog({
         action: existing ? 'ParticipantReactivated' : 'ParticipantRegistered',
@@ -3197,6 +3206,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             .catch(err => console.warn('[DEX] switchSplitGroup mail failed:', err));
         } catch { /* */ }
       }
+      // v22.20: Nach jedem Gruppenwechsel einen ID-Reorder anstoßen — der Flow
+      // zieht die Nummerierung sofort glatt (Wechsler korrekt einsortiert) und
+      // besetzt einen in der ALTEN Gruppe frei gewordenen Platz direkt nach,
+      // statt erst bei der nächsten Abmeldung. Name/E-Mail des Wechslers gehen
+      // mit, damit Nachrück-Mail + Audit den Platz-Vorgänger korrekt benennen.
+      try {
+        await eventService.queueIDReorder(eventId, event.eventNumber, subsiteUrl, event.title, currentUserName, currentUserEmail);
+      } catch (err) { console.warn('[DEX] queueIDReorder (group switch) failed:', err); }
       await loadEvents();
     }
     return result;

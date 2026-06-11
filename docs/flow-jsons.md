@@ -3726,7 +3726,12 @@ den Listeneinstellungen prüfen, dass sie existiert.
   - `Content-Type` = `application/json;odata=nometadata`
   - `IF-MATCH` = `*`
   - `X-HTTP-Method` = `MERGE`
-- **Body (fx):** `concat('{"Status":"Abgemeldet","CancellationDate":"', utcNow(), '"}')`
+- **Body (fx):** `concat('{"Status":"Abgemeldet","CancellationDate":"', utcNow(), '","TeilnehmerID":null}')`
+  > **PFLICHT-Ergänzung 2026-06-11:** `"TeilnehmerID":null` MUSS mit in den Body —
+  > die App nullt die ID bei jeder Abmeldung ebenfalls. Ohne das behielte die
+  > abgemeldete Zeile ihre alte Nummer und würde die Max-Berechnung des
+  > ID-Reorder-Flows (`Get_Max_TeilnehmerID`, ohne Status-Filter) verfälschen →
+  > der Counter läuft davon und neue Anmeldungen bekommen zu hohe IDs.
   (nometadata → **kein** `__metadata` im Body, siehe CLAUDE.md MERGE-Regel.)
 - **(⋮ → Rename)** → `Deregister_Participant`.
 
