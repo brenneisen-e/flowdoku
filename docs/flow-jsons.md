@@ -3689,6 +3689,37 @@ Alle weiteren Schritte im **If yes**-Zweig; **If no** bleibt leer.
 
 ## UI-Anleitung 2026-06-09 (v19.23) — Auto-Abmeldung bei Outlook-Absage
 
+> **STATUS 2026-06-11: IM TENANT UMGESETZT** (per Scope-Export verifiziert).
+> Implementiert als Condition `Auto_Deregister_On` im `Still_Registered`-JA-Zweig
+> mit `Deregister_Participant` (MERGE), `Queue_AutoCancel_IDReorder`
+> (CancelledName/-Email gefüllt → triggert Reorder + Nachrücken) und
+> `AutoCancel_Mail_Allowed` (Gates `DisableEmails`/`DisableCancellationEmail`,
+> Template `AbmeldungAuto`). Der Reminder-Zweig ist über die zweite
+> `No_Reminder_Yet`-Bedingung (`AutoDeregisterOnDecline == false`) sauber
+> unterdrückt, wenn die Auto-Abmeldung aktiv ist.
+>
+> **EIN Restpunkt offen:** Im `Deregister_Participant`-Body fehlt
+> `"TeilnehmerID":null` — Fix-Block direkt unten. Optional (bewusst nicht
+> umgesetzt): `DEX_Outlook`-`Ausladen`-Queue-Item (der Decliner hat den Termin
+> ohnehin selbst abgelehnt).
+
+### Restpunkt 2026-06-11 — `Deregister_Participant`: TeilnehmerID mit nullen (OFFEN)
+
+| # | Neu / Geändert | Name der Action | Art der Action | Stelle |
+|---|----------------|-----------------|----------------|--------|
+| 1 | GEÄNDERT (nur Body) | `Deregister_Participant` | Send an HTTP request to SharePoint (bestehend) | Flow `DEX_OutlookDeclineHandler` → `Still_Registered` JA → `Auto_Deregister_On` JA |
+
+1. Action öffnen → in das **Body**-Feld klicken → Expression-Tab (fx) → vorhandenen Ausdruck komplett ersetzen durch:
+```
+concat('{"Status":"Abgemeldet","CancellationDate":"', utcNow(), '","TeilnehmerID":null}')
+```
+2. **Save**. Hintergrund: Die App nullt die TeilnehmerID bei jeder Abmeldung —
+   ohne das behält die abgemeldete Zeile ihre alte Nummer und verfälscht die
+   Max-Berechnung des ID-Reorder-Flows (`Get_Max_TeilnehmerID`, ohne
+   Status-Filter) → der Counter läuft davon und neue Anmeldungen bekommen zu
+   hohe Nummern.
+
+
 **Zweck:** Wenn ein Event in der App das Häkchen **„Outlook-Absage = automatische
 Abmeldung"** (`AutoDeregisterOnDecline=true`) gesetzt hat, soll eine Outlook-
 Termin-Absage die Person **automatisch vom Event abmelden** — statt nur die
