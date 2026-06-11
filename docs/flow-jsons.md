@@ -1159,6 +1159,39 @@ SET_FAILED (Email-Versand fehlgeschlagen):
 **Zweck:** Outlook-Kalendereintrag im Deloitte-Design erstellen (Logo + Event-Bild aus DEX_EmailTemplates) und iCalUId zurückschreiben
 **Letztes Update:** 2026-04-09
 
+### UI-Anleitung 2026-06-11 (v22.17) — „Create event (V4)" gegen leeres EndDate/StartDate härten
+
+**Problem:** Wird ein Event/Sub-Event OHNE End-Datum angelegt (z.B. ein
+Sub-Event „Abendessen" nur mit Startzeit), kommt im Trigger kein `EndDate` an.
+Die Action **`Create event (V4)`** rechnet dann
+`convertFromUtc(coalesce(OutlookEnd, EndDate))` = `convertFromUtc(null)` und
+**stürzt ab** mit `InvalidTemplate … 'convertFromUtc' expects its first
+parameter to be a string … The provided value is of type 'Null'.` → es
+entsteht KEIN Outlook-Termin, „Update item" wird übersprungen.
+
+**App-Seite (ab v22.17):** Die SPFx-App schreibt jetzt nie mehr ein leeres
+EndDate — fehlt es, wird das StartDate eingesetzt. Damit kann der Fall bei
+NEUEN/aktualisierten Events nicht mehr auftreten. Zur Absicherung (Bestands-
+Items, manuell angelegte Zeilen) sollte zusätzlich der Flow gehärtet werden:
+
+**BESTEHENDE Action ändern — `Create event (V4)`** (Connector „Office 365
+Outlook", liegt nach `Compose Image`, vor `Update item`):
+
+1. Action `Create event (V4)` aufklappen.
+2. Feld **End time** leeren und über den **Expression-Tab (fx)** neu setzen
+   (exakt, dann „OK"):
+   `convertFromUtc(coalesce(triggerBody()?['OutlookEnd'], triggerBody()?['EndDate'], triggerBody()?['OutlookStart'], triggerBody()?['StartDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')`
+3. Feld **Start time** ebenfalls über **fx** auf den (schon vorhandenen, hier
+   nur zur Sicherheit dokumentierten) Ausdruck setzen:
+   `convertFromUtc(coalesce(triggerBody()?['OutlookStart'], triggerBody()?['StartDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss')`
+4. Speichern. Kein Rename, kein Run-After-Change nötig.
+
+Effekt: Fehlt das Ende, nutzt der Termin automatisch die Startzeit
+(Null-Längen-Termin statt Crash). Sobald der Organizer später ein End-Datum
+pflegt, aktualisiert der `DEX_Outlook_Einladungen`-UpdateEvent-Zweig den
+Termin ohnehin. **TODO:** Nach dem Durchklicken bitte den aktuellen Flow-JSON
+hier einpflegen (Code View → kopieren).
+
 ### UI-Anleitung 2026-06-02 (v18.44) — Abweichendes Outlook-Datum (Start/Ende)
 
 **Hintergrund:** Der Organizer kann im Outlook-Editor (und im Reiter „Ort &

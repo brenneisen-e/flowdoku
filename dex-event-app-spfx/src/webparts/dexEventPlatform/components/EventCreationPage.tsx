@@ -2421,7 +2421,11 @@ export default function EventCreationPage(): React.ReactElement {
         // schreibt sie in die Spalte ExcludedUsers).
         excludedUsers: draft.excludedUsers || [],
         startDate: draft.startDate || '',
-        endDate: draft.endDate || '',
+        // v22.17: NIE ein leeres EndDate persistieren — sonst rechnet der
+        // DEX_CreateOutlookEvent-Flow convertFromUtc(coalesce(OutlookEnd,
+        // EndDate)) = convertFromUtc(null) und „Create event (V4)" stürzt ab
+        // (kein Outlook-Termin). Fallback auf das Start-Datum.
+        endDate: draft.endDate || draft.startDate || '',
         registrationDeadline: draft.registrationDeadline || '',
         lastDeregisterDate: draft.lastDeregisterDate || '',
         maxParticipants: draft.maxParticipants || 0,
@@ -3000,7 +3004,8 @@ export default function EventCreationPage(): React.ReactElement {
         'AudienceResolvedEmails': await resolveAudienceMembersToCsv(audience, getGroupMembers),
         'FilterMode': filterMode,
         'StartDate': startDate ? berlinLocalToUtcIso(startDate) : null,
-        'EndDate': endDate ? berlinLocalToUtcIso(endDate) : null,
+        // v22.17: EndDate nie leer lassen (Outlook-Flow-Crash, s.o.) — Fallback Start.
+        'EndDate': endDate ? berlinLocalToUtcIso(endDate) : (startDate ? berlinLocalToUtcIso(startDate) : null),
         'RegistrationDeadline': deadlineToEndOfDayIso(registrationDeadline),
         'MaxParticipants': unlimitedParticipants ? 0 : (Number(maxParticipants) || 0),
         // v20.0 BUG-FIX (Audit): WaitlistEnabled wurde beim Edit nie persistiert —
@@ -3589,7 +3594,8 @@ export default function EventCreationPage(): React.ReactElement {
         audienceResolvedEmails: audienceResolved,
         filterMode,
         startDate: startDate ? berlinLocalToUtcIso(startDate) : '',
-        endDate: endDate ? berlinLocalToUtcIso(endDate) : '',
+        // v22.17: EndDate nie leer lassen (Outlook-Flow-Crash, s.o.) — Fallback Start.
+        endDate: endDate ? berlinLocalToUtcIso(endDate) : (startDate ? berlinLocalToUtcIso(startDate) : ''),
         registrationDeadline: deadlineToEndOfDayIso(registrationDeadline) || '',
         lastDeregisterDate: deadlineToEndOfDayIso(lastDeregisterDate) || '',
         maxParticipants: unlimitedParticipants ? 0 : (Number(maxParticipants) || 0),
