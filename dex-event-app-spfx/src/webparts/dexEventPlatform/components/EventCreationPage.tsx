@@ -1179,6 +1179,11 @@ export default function EventCreationPage(): React.ReactElement {
     audience?: string;
     /** v15.3: pro Sub-Event eigene Filterverknuepfung. */
     filterMode?: 'AND' | 'OR';
+    /** v22.10: pro Sub-Event ausgeschlossene Personen (E-Mails). Wird im
+     *  DEX_Events-Item (Spalte ExcludedUsers) des Sub-Events persistiert —
+     *  vorher hielt der Picker den Ausschluss nur intern (ging beim Reload
+     *  verloren). */
+    excludedUsers?: string[];
     /** v15.3: pro Sub-Event eigene Warteliste an/aus. */
     waitlistEnabled?: boolean;
     /** v15.3: pro Sub-Event eigene Anrede-Abfrage. */
@@ -1326,6 +1331,9 @@ export default function EventCreationPage(): React.ReactElement {
       locationFilter: (k.locationAudience || []).join(', '),
       audience: (k.audienceFilter || []).join(', '),
       filterMode: (k.filterMode === 'AND' ? 'AND' : 'OR') as 'AND' | 'OR',
+      // v22.10: Ausschluss-Liste des Sub-Events laden (vorher nicht persistiert).
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      excludedUsers: ((k as any).excludedUsers || []) as string[],
       waitlistEnabled: typeof k.waitlistEnabled === 'boolean' ? k.waitlistEnabled : true,
       askSalutation: !!k.askSalutation,
       // v15.0 (legacy): Inheritance-Flags werden seit v15.3 nicht mehr
@@ -2409,6 +2417,9 @@ export default function EventCreationPage(): React.ReactElement {
         locationFilter: draft.locationFilter || '',
         audience: draft.audience || '',
         filterMode: (draft.filterMode === 'AND' ? 'AND' : 'OR'),
+        // v22.10: Ausschluss-Liste pro Sub-Event mitpersistieren (createEvent
+        // schreibt sie in die Spalte ExcludedUsers).
+        excludedUsers: draft.excludedUsers || [],
         startDate: draft.startDate || '',
         endDate: draft.endDate || '',
         registrationDeadline: draft.registrationDeadline || '',
@@ -2587,6 +2598,8 @@ export default function EventCreationPage(): React.ReactElement {
           'LocationFilter': childPayload.locationFilter,
           'Audience': childPayload.audience,
           'FilterMode': childPayload.filterMode,
+          // v22.10: Ausschluss-Liste pro Sub-Event aktualisieren (semikolon-sep.).
+          'ExcludedUsers': (draft.excludedUsers || []).filter(Boolean).join(';'),
           'Agenda': childPayload.agenda,
           'Transfers': childPayload.transfers,
           'AskSalutation': childPayload.askSalutation,
@@ -4258,11 +4271,11 @@ export default function EventCreationPage(): React.ReactElement {
         <div>
           {isDe ? (
             <>
-              Du hast für dieses Event eingestellt, dass sich Teilnehmer <strong>nur für die {termPlural} (Sub-Sections) anmelden</strong> — die Klammer selbst ist <strong>nicht buchbar</strong>, sie fasst die {termPlural} nur zusammen. (Eingestellt in Schritt 2 „Ort &amp; Programm“ unter „Wie sollen sich Teilnehmer anmelden?“ → „Nur für {termPlural}“.) <strong>Kapazität und Fristen weiter unten</strong> werden hier daher nicht verwendet — die pflegst du je {childTermSingular || 'Sub-Event'}-Tab. Die <strong>Sichtbarkeit oben</strong> (Standortfilter + Mailverteiler) gilt aber sehr wohl: sie steuert, <strong>wer das ganze Event überhaupt sieht</strong>, und wird standardmäßig an die {termPlural} vererbt.
+              Du hast für dieses Event eingestellt, dass sich Teilnehmer <strong>nur für die {termPlural} (Sub-Sections) anmelden</strong> — die Klammer selbst ist <strong>nicht buchbar</strong>, sie fasst die {termPlural} nur zusammen. (Eingestellt in Schritt 2 „Ort &amp; Programm“ unter „Wie sollen sich Teilnehmer anmelden?“ → „Nur für {termPlural}“.) <strong>Entscheidend ist die Sichtbarkeit oben</strong> (Standortfilter + Mailverteiler): Sie legt fest, <strong>wer das Event überhaupt sieht und sich für die {termPlural} anmelden kann</strong> — die {termPlural} übernehmen diese Sichtbarkeit standardmäßig. <strong>Plätze und Fristen</strong> stellst du nicht hier auf der Klammer ein, sondern <strong>je {childTermSingular || 'Sub-Event'}-Tab</strong> (wie viele Plätze, bis wann an-/abmelden) — die Felder hier unten sind darum ausgegraut.
             </>
           ) : (
             <>
-              You configured this event so that participants <strong>register only for the {termPlural} (sub-sections)</strong> — the bracket itself is <strong>not bookable</strong>, it only groups the {termPlural}. (Set in step 2 “Location &amp; Programme” under “How should participants register?” → “Sub-{termPlural} only”.) <strong>Capacity and deadlines below</strong> are therefore not used here — maintain those per {childTermSingular || 'sub-event'} tab. But the <strong>visibility above</strong> (location filter + mailing lists) DOES apply: it controls <strong>who sees the whole event</strong>, and is inherited by the {termPlural} by default.
+              You configured this event so that participants <strong>register only for the {termPlural} (sub-sections)</strong> — the bracket itself is <strong>not bookable</strong>, it only groups the {termPlural}. (Set in step 2 “Location &amp; Programme” under “How should participants register?” → “Sub-{termPlural} only”.) <strong>The decisive setting is the visibility above</strong> (location filter + mailing lists): it determines <strong>who can see the event at all and register for the {termPlural}</strong> — the {termPlural} inherit this visibility by default. You set <strong>seats and deadlines</strong> not here on the bracket but <strong>per {childTermSingular || 'sub-event'} tab</strong> (how many seats, until when to register/cancel) — which is why the fields below are greyed out.
             </>
           )}
         </div>
@@ -7480,6 +7493,7 @@ export default function EventCreationPage(): React.ReactElement {
                         locationFilter: locationFilter,
                         audience: audience,
                         filterMode: filterMode,
+                        excludedUsers: [],
                         waitlistEnabled: true,
                         askSalutation: false,
                       };
@@ -7606,14 +7620,20 @@ export default function EventCreationPage(): React.ReactElement {
                         <AudiencePicker>. Die Filterverknüpfung (ODER/UND) wird
                         als middleSlot zwischen Mailverteiler-Karte und Prüfen-
                         Zeile eingeschoben — gleiche Reihenfolge wie im Hauptevent.
-                        Sub-Events persistieren keine Ausschluss-Liste, daher hält
-                        der Picker seinen Ausschluss-State intern (UI identisch). */}
+                        v22.10: Die Ausschluss-Liste wird jetzt AUCH pro Sub-Event
+                        persistiert (Spalte ExcludedUsers), vorher nur intern. */}
                     <AudiencePicker
                       value={se.audience || ''}
                       onChange={v => updateSub({ audience: v })}
                       locationFilter={se.locationFilter || ''}
                       filterMode={(se.filterMode as 'AND' | 'OR') || 'OR'}
                       isDe={isDe}
+                      // v22.10: Ausschluss-Liste pro Sub-Event jetzt persistiert
+                      // (vorher interner Picker-State → ging beim Reload verloren).
+                      // Der Picker liefert einen Updater (prev => next), den wir auf
+                      // den aktuellen Stand des Sub-Events anwenden.
+                      excludedUsers={se.excludedUsers || []}
+                      onExcludedUsersChange={updater => setSubEvents(prev => prev.map((x, i) => i === seIdx ? { ...x, excludedUsers: updater(x.excludedUsers || []) } : x))}
                       stepBadge={<StepBadge n={14} />}
                       cardBgPrimary={zebraS3Bg()}
                       middleSlot={(seLocationFilterList.length > 0 && (se.audience || '').trim().length > 0) ? (

@@ -1109,8 +1109,10 @@ export default function AdminPage(): React.ReactElement {
   // v17.10: Massmail-Target-Picker. Erst Zielgruppe waehlen, dann den
   // RichText-Editor oeffnen. Mode = 'closed' | 'pick' | 'paste' | 'editor'.
   const [massmailMode, setMassmailMode] = React.useState<'closed' | 'pick' | 'paste' | 'editor'>('closed');
-  type MassmailAudience = 'active' | 'activePlusWait' | 'waitOnly' | 'nachruecker';
+  type MassmailAudience = 'active' | 'activePlusWait' | 'waitOnly' | 'nachruecker' | 'custom';
   const [massmailAudience, setMassmailAudience] = React.useState<MassmailAudience>('active');
+  // v22.9: Eigene Status-Auswahl ('custom') — welche Status die Mail bekommen.
+  const [massmailStatuses, setMassmailStatuses] = React.useState<Set<string>>(new Set(['Angemeldet', 'QR versendet', 'Eingecheckt']));
   // Fuer 'nachruecker': der eingefuegte Rohtext + die nach Extraktion
   // verbleibenden Teilnehmer (= angemeldete Personen, die NICHT in der
   // eingefuegten Liste stehen).
@@ -1119,6 +1121,12 @@ export default function AdminPage(): React.ReactElement {
   const [emailHeading, setEmailHeading] = React.useState('');
   const [emailBody, setEmailBody] = React.useState('');
   const [emailSending, setEmailSending] = React.useState(false);
+  // v22.9: Massenmail-Entwurf pro Event speichern (wie Einladungsmail) +
+  // Testmail an die Organizer.
+  const [massmailDraftSaved, setMassmailDraftSaved] = React.useState(false);
+  const massmailHydratingRef = React.useRef(false);
+  const [massmailTesting, setMassmailTesting] = React.useState(false);
+  const [massmailTestMsg, setMassmailTestMsg] = React.useState<string | null>(null);
   // v11.40: Einladungsmail-Modal — Mail mit Anmelde-Link an Organizer (zum
   // Weiterleiten) oder direkt an den hinterlegten Mailverteiler des Events.
   const [showInviteModal, setShowInviteModal] = React.useState(false);
@@ -2840,6 +2848,94 @@ export default function AdminPage(): React.ReactElement {
       }));
     } catch { /* */ }
   }, [showInviteModal, selectedEvent, inviteSubject, inviteHeading, inviteSubheading, inviteBody, inviteTarget]);
+
+  // v22.9: Massenmail-Entwurf — Default-Texte, laden/speichern (localStorage pro
+  // Event), Picker öffnen, zurücksetzen, Testmail an die Organizer.
+  const massmailDraftKey = (id: string): string => `dex_massmail_draft_${id}`;
+  const buildMassmailDefaults = (ev: DeloitteEvent): { subject: string; heading: string; body: string } => ({
+    subject: `${ev.title} - Info`,
+    heading: ev.title,
+    body: '',
+  });
+  const applyMassmailDraftOrDefaults = (ev: DeloitteEvent): void => {
+    massmailHydratingRef.current = true;
+    let loaded: { subject?: string; heading?: string; body?: string } | null = null;
+    try {
+      const raw = window.localStorage.getItem(massmailDraftKey(ev.id));
+      if (raw) loaded = JSON.parse(raw);
+    } catch { /* localStorage evtl. blockiert */ }
+    const def = buildMassmailDefaults(ev);
+    setEmailSubject(loaded && typeof loaded.subject === 'string' ? loaded.subject : def.subject);
+    setEmailHeading(loaded && typeof loaded.heading === 'string' ? loaded.heading : def.heading);
+    setEmailBody(loaded && typeof loaded.body === 'string' ? loaded.body : def.body);
+    window.setTimeout(() => { massmailHydratingRef.current = false; }, 0);
+  };
+  const openMassmailPicker = (): void => {
+    if (selectedEvent) applyMassmailDraftOrDefaults(selectedEvent);
+    setMassmailAudience('active');
+    setMassmailPasteRaw('');
+    setMassmailTestMsg(null);
+    setMassmailMode('pick');
+  };
+  const resetMassmailDraft = (): void => {
+    if (!selectedEvent) return;
+    try { window.localStorage.removeItem(massmailDraftKey(selectedEvent.id)); } catch { /* */ }
+    massmailHydratingRef.current = true;
+    const def = buildMassmailDefaults(selectedEvent);
+    setEmailSubject(def.subject);
+    setEmailHeading(def.heading);
+    setEmailBody(def.body);
+    setMassmailDraftSaved(false);
+    window.setTimeout(() => { massmailHydratingRef.current = false; }, 0);
+  };
+  const saveMassmailDraft = (): void => {
+    if (!selectedEvent) return;
+    try {
+      window.localStorage.setItem(massmailDraftKey(selectedEvent.id), JSON.stringify({
+        subject: emailSubject, heading: emailHeading, body: emailBody,
+      }));
+      setMassmailDraftSaved(true);
+      window.setTimeout(() => setMassmailDraftSaved(false), 2500);
+    } catch { /* */ }
+  };
+  // Auto-Speichern, solange der Massenmail-Editor offen ist.
+  React.useEffect(() => {
+    if (massmailMode !== 'editor' || !showEmailModal || !selectedEvent || massmailHydratingRef.current) return;
+    try {
+      window.localStorage.setItem(massmailDraftKey(selectedEvent.id), JSON.stringify({
+        subject: emailSubject, heading: emailHeading, body: emailBody,
+      }));
+    } catch { /* */ }
+  }, [massmailMode, showEmailModal, selectedEvent, emailSubject, emailHeading, emailBody]);
+  // Testmail mit dem aktuellen Stand an die Organizer (zur Kontrolle vor dem
+  // echten Massenversand). Geht NICHT an die Teilnehmer.
+  const sendMassmailTestToOrganizers = async (): Promise<void> => {
+    if (!eventServiceRef || !selectedEvent) return;
+    const orgEmails = (selectedEvent.organizerEmails || []).filter(Boolean);
+    const to = orgEmails.length > 0 ? orgEmails.join(';') : (currentUser.email || '');
+    if (!to) {
+      setMassmailTestMsg(isDe ? 'Keine Organizer-E-Mail hinterlegt — Test nicht möglich.' : 'No organizer email available — test not possible.');
+      return;
+    }
+    if (!emailSubject.trim() || !emailBody.trim()) {
+      setMassmailTestMsg(isDe ? 'Bitte Betreff und Text ausfüllen.' : 'Please fill in subject and body.');
+      return;
+    }
+    setMassmailTesting(true);
+    setMassmailTestMsg(null);
+    try {
+      const previewVars: Record<string, string> = { EventTitle: selectedEvent.title, Organizer: (selectedEvent.organizers || []).join(', ') };
+      const resolvedSubject = `[TEST] ${replacePlaceholders(emailSubject, previewVars)}`;
+      const resolvedHeading = replacePlaceholders(emailHeading, previewVars);
+      const resolvedBody = replacePlaceholders(emailBody, previewVars);
+      const fullBody = wrapTemplate('#86bc25', resolvedHeading, `Event ${selectedEvent.title}`, resolvedBody);
+      await eventServiceRef.queueEmail(resolvedSubject, to, 'Organizer (Test)', fullBody, 'Massenmail', selectedEvent.title, selectedEvent.id);
+      setMassmailTestMsg(isDe ? `Testmail an die Organizer (${to.split(';').length}) verschickt — bitte Postfach prüfen.` : `Test email sent to the organizers (${to.split(';').length}) — please check the mailbox.`);
+    } catch (err) {
+      setMassmailTestMsg((isDe ? 'Fehler beim Test-Versand: ' : 'Error during test send: ') + (err instanceof Error ? err.message : String(err)));
+    }
+    setMassmailTesting(false);
+  };
 
   // v22.6: QR-Versand-Aktionen als benannte Funktionen (vorher inline im Modal) —
   // macht das neue kompakte Querformat-Layout lesbar. Verhalten unverändert.
@@ -4645,13 +4741,18 @@ export default function AdminPage(): React.ReactElement {
                   const auds = (selectedEvent.audienceFilter || []).filter(Boolean);
                   const children = childEventsOf(selectedEvent.id);
                   const hasChildren = children.length > 0;
-                  const visSummary = (isDe ? 'Sichtbar für ' : 'Visible to ') + visText(locs, auds) + '.';
+                  const parentVisText = visText(locs, auds);
+                  const visSummary = (isDe ? 'Sichtbar für ' : 'Visible to ') + parentVisText + '.';
                   // Pro Sub-Section die Sichtbarkeit; wenn alle gleich → nur einmal.
                   const childVis = children.map(c => ({
                     title: shortSubEventTitle(c.title, selectedEvent.title) || c.title,
                     text: visText((c.locationAudience || []).filter(Boolean), (c.audienceFilter || []).filter(Boolean)),
                   }));
-                  const allChildSame = childVis.length > 1 && childVis.every(c => c.text === childVis[0].text);
+                  const allChildrenSame = childVis.length > 0 && childVis.every(c => c.text === childVis[0].text);
+                  // v22.8: Wenn Gesamt-Event UND alle Sub-Sections dieselbe
+                  // Sichtbarkeit haben, ist die Unterscheidung überflüssig — dann
+                  // nur EINE Aussage zeigen.
+                  const everythingSame = hasChildren && allChildrenSame && childVis[0].text === parentVisText;
                   const steps: Array<{ title: string; body: React.ReactNode }> = [
                     {
                       title: isDe ? 'Event finalisieren' : 'Finalize the event',
@@ -4673,25 +4774,32 @@ export default function AdminPage(): React.ReactElement {
                             ? 'Oben über das Status-Häkchen „Entwurf → Aktiv" schalten. Danach ist es für die berechtigten Gruppen sichtbar.'
                             : 'Switch the status badge above from “Draft → Active”. It is then visible to the eligible groups.'}
                           <span style={{ display: 'block', marginTop: 5, padding: '6px 8px', borderRadius: 6, background: '#fff', border: '1px solid var(--dex-gray-200)', color: 'var(--dex-gray-600)', fontSize: '0.74rem', lineHeight: 1.45 }}>
-                            <strong style={{ color: 'var(--dex-gray-700)' }}>{isDe ? 'Gesamt-Event: ' : 'Overall event: '}</strong>{visSummary}
-                            {hasChildren && (
-                              <span style={{ display: 'block', marginTop: 4 }}>
-                                {allChildSame ? (
-                                  <>
-                                    <strong style={{ color: 'var(--dex-gray-700)' }}>
-                                      {isDe ? `Für alle ${childVis.length} Sub-Sections gilt: ` : `For all ${childVis.length} sub-sections: `}
-                                    </strong>
-                                    {childVis[0].text}.
-                                  </>
-                                ) : (
-                                  <>
-                                    <strong style={{ color: 'var(--dex-gray-700)' }}>{isDe ? 'Sub-Sections:' : 'Sub-sections:'}</strong>
-                                    {childVis.map((c, ci) => (
-                                      <span key={ci} style={{ display: 'block', paddingLeft: 8 }}>• <strong>{c.title}:</strong> {c.text}</span>
-                                    ))}
-                                  </>
-                                )}
-                              </span>
+                            {everythingSame ? (
+                              // Gesamt-Event und alle Sub-Sections gleich → eine Aussage.
+                              <>{visSummary} {isDe ? `(Gesamt-Event und alle ${childVis.length} Sub-Section${childVis.length === 1 ? '' : 's'}.)` : `(Overall event and all ${childVis.length} sub-section${childVis.length === 1 ? '' : 's'}.)`}</>
+                            ) : !hasChildren ? (
+                              <>{visSummary}</>
+                            ) : (
+                              <>
+                                <strong style={{ color: 'var(--dex-gray-700)' }}>{isDe ? 'Gesamt-Event: ' : 'Overall event: '}</strong>{visSummary}
+                                <span style={{ display: 'block', marginTop: 4 }}>
+                                  {allChildrenSame ? (
+                                    <>
+                                      <strong style={{ color: 'var(--dex-gray-700)' }}>
+                                        {isDe ? `Für alle ${childVis.length} Sub-Sections gilt: ` : `For all ${childVis.length} sub-sections: `}
+                                      </strong>
+                                      {childVis[0].text}.
+                                    </>
+                                  ) : (
+                                    <>
+                                      <strong style={{ color: 'var(--dex-gray-700)' }}>{isDe ? 'Sub-Sections:' : 'Sub-sections:'}</strong>
+                                      {childVis.map((c, ci) => (
+                                        <span key={ci} style={{ display: 'block', paddingLeft: 8 }}>• <strong>{c.title}:</strong> {c.text}</span>
+                                      ))}
+                                    </>
+                                  )}
+                                </span>
+                              </>
                             )}
                           </span>
                         </>
@@ -4935,14 +5043,7 @@ export default function AdminPage(): React.ReactElement {
                 ? 'Öffnet einen RichText-Editor mit Deloitte-Mail-Template. Geht an alle aktiven Teilnehmer (nicht Wartelistler / Abgemeldete).'
                 : 'Opens a rich-text editor with the Deloitte mail template. Goes to all active participants (not waitlisted / cancelled).'}
               badge="organizer"
-              onClick={() => {
-                setEmailSubject(selectedEvent ? `${selectedEvent.title} - Info` : '');
-                setEmailHeading(selectedEvent ? selectedEvent.title : '');
-                setEmailBody('');
-                setMassmailAudience('active');
-                setMassmailPasteRaw('');
-                setMassmailMode('pick');
-              }}
+              onClick={openMassmailPicker}
             />
 
             {/* v11.40: 4b. Einladungsmail — Mail mit Anmelde-Link an dich
@@ -9189,8 +9290,17 @@ export default function AdminPage(): React.ReactElement {
       {massmailMode === 'pick' && selectedEvent && (() => {
         const closeAll = (): void => { setMassmailMode('closed'); setMassmailPasteRaw(''); };
         const proceed = (): void => {
+          if (massmailAudience === 'custom' && massmailStatuses.size === 0) return;
           if (massmailAudience === 'nachruecker') setMassmailMode('paste');
           else { setShowEmailModal(true); setMassmailMode('editor'); }
+        };
+        const STATUS_OPTIONS = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
+        const toggleStatus = (st: string): void => {
+          setMassmailStatuses(prev => {
+            const next = new Set(prev);
+            if (next.has(st)) next.delete(st); else next.add(st);
+            return next;
+          });
         };
         const Row = (props: { value: MassmailAudience; label: string; desc: string }): React.ReactElement => (
           <label style={{
@@ -9219,9 +9329,40 @@ export default function AdminPage(): React.ReactElement {
             <Row value="activePlusWait" label="Teilnehmer + Warteliste" desc="Alle aktiven UND Wartelistler — z.B. wenn sich noch Plaetze frei machen und du auch die Warteliste vorwarnen willst." />
             <Row value="waitOnly" label="Nur Warteliste" desc={'Nur Wartelistler — z.B. Info „Es wird wahrscheinlich keinen Platz mehr geben".'} />
             <Row value="nachruecker" label="Nachruecker (Manueller Abgleich)" desc="Du fuegst im naechsten Schritt eine Liste von E-Mails ein (Verteiler, Vorname Nachname Email, beliebig formatiert) — die App extrahiert die Adressen und schickt die Mail an alle aktiven Teilnehmer, die NICHT in deiner Liste stehen." />
+            {/* v22.9: Eigene Status-Auswahl — einzelne Status getrennt anhaken. */}
+            <div style={{
+              borderRadius: 8, border: `1px solid ${massmailAudience === 'custom' ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+              background: massmailAudience === 'custom' ? 'rgba(134,188,37,0.08)' : '#fff',
+              marginBottom: 8, padding: 10,
+            }}>
+              <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                <input type="radio" name="massmail-target" checked={massmailAudience === 'custom'} onChange={() => setMassmailAudience('custom')} style={{ marginTop: 3 }} />
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: '0.92rem' }}>Eigene Auswahl (nach Status)</div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>Häkchen setzen, welche Status die Mail bekommen sollen — z.B. nur „QR versendet“.</div>
+                </div>
+              </label>
+              {massmailAudience === 'custom' && (
+                <div style={{ marginTop: 10, paddingLeft: 28, display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  {STATUS_OPTIONS.map(st => {
+                    const count = registrations.filter(r => r.Status === st).length;
+                    return (
+                      <label key={st} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={massmailStatuses.has(st)} onChange={() => toggleStatus(st)} />
+                        <span style={{ fontWeight: 500 }}>{st}</span>
+                        <span style={{ color: 'var(--dex-gray-500)' }}>({count})</span>
+                      </label>
+                    );
+                  })}
+                  {massmailStatuses.size === 0 && (
+                    <span style={{ fontSize: '0.78rem', color: 'var(--dex-orange-dark, #b35a00)' }}>Bitte mindestens einen Status anhaken.</span>
+                  )}
+                </div>
+              )}
+            </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 14 }}>
               <button type="button" className="btn btn-secondary" onClick={closeAll} style={{ fontSize: '0.85rem' }}>Abbrechen</button>
-              <button type="button" className="btn btn-primary" onClick={proceed} style={{ fontSize: '0.85rem' }}>Weiter</button>
+              <button type="button" className="btn btn-primary" onClick={proceed} disabled={massmailAudience === 'custom' && massmailStatuses.size === 0} style={{ fontSize: '0.85rem' }}>Weiter</button>
             </div>
           </Modal>
         );
@@ -9411,6 +9552,9 @@ export default function AdminPage(): React.ReactElement {
         // v17.10: Empfaenger-Filter abhaengig vom gewaehlten massmailAudience.
         const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
         const recipients = (() => {
+          if (massmailAudience === 'custom') {
+            return registrations.filter(r => massmailStatuses.has(r.Status));
+          }
           if (massmailAudience === 'waitOnly') {
             return registrations.filter(r => r.Status === 'Warteliste');
           }
@@ -9489,6 +9633,42 @@ export default function AdminPage(): React.ReactElement {
               { key: '{{Organizer}}', label: 'Organizer' },
             ]}
             imageBase64={customLogo}
+            headerExtra={(
+              <div style={{ padding: 12, background: 'var(--dex-gray-50, #fafafa)', border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius)', marginBottom: 4 }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginBottom: 8 }}>
+                  {isDe
+                    ? <>Geht an <strong>{recipients.length}</strong> Empfänger (die oben gewählte Gruppe). Organizer kommen automatisch auf CC.</>
+                    : <>Goes to <strong>{recipients.length}</strong> recipients (the group selected above). Organizers are automatically on CC.</>}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                  <button type="button" className="btn btn-secondary" onClick={saveMassmailDraft} disabled={emailSending} style={{ fontSize: '0.78rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <Check size={14} /> {isDe ? 'Entwurf speichern' : 'Save draft'}
+                  </button>
+                  {massmailDraftSaved && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700, fontSize: '0.78rem' }}>
+                      <Check size={14} /> {isDe ? 'Gespeichert' : 'Saved'}
+                    </span>
+                  )}
+                  <button type="button" className="btn btn-outline" onClick={() => { sendMassmailTestToOrganizers().catch(() => { /* */ }); }} disabled={emailSending || massmailTesting} style={{ fontSize: '0.78rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <Send size={14} /> {massmailTesting ? (isDe ? 'Sendet…' : 'Sending…') : (isDe ? 'Testmail an Organizer' : 'Test email to organizers')}
+                  </button>
+                  <span style={{ flex: 1 }} />
+                  <button type="button" onClick={resetMassmailDraft} disabled={emailSending} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600, fontSize: '0.74rem', textDecoration: 'underline' }}>
+                    {isDe ? 'Zurücksetzen' : 'Reset'}
+                  </button>
+                </div>
+                {massmailTestMsg && (
+                  <div style={{ marginTop: 8, fontSize: '0.78rem', color: (massmailTestMsg.indexOf('verschickt') >= 0 || massmailTestMsg.indexOf('sent') >= 0) ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-orange-dark, #b35a00)' }}>
+                    {massmailTestMsg}
+                  </div>
+                )}
+                <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
+                  {isDe
+                    ? 'Dein Text wird zusätzlich automatisch gespeichert und beim nächsten Öffnen wiederhergestellt.'
+                    : 'Your text is also saved automatically and restored next time you open it.'}
+                </div>
+              </div>
+            )}
             extraAction={{
               label: emailSending ? 'Wird eingetragen…' : `An ${recipients.length} Teilnehmer senden`,
               onClick: sendAction,

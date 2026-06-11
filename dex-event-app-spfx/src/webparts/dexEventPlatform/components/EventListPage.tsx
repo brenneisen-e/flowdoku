@@ -105,7 +105,11 @@ function normalizeAudience(audience: string[]): string[] {
  * Mit filterMode='OR' wird stattdessen die Vereinigung verwendet (z.B.
  * "Köln-Mitarbeiter ODER explizit eingeladene Gäste").
  */
-function isEventVisibleForUser(
+// v22.10: exportiert, damit die RegistrationPage Sub-Sections mit derselben
+// Logik filtern kann (eine Sub-Section nur zeigen, wenn der User sie laut ihrer
+// EIGENEN Sichtbarkeit sehen darf — vorher sah jeder Hauptevent-Teilnehmer alle
+// Sub-Events).
+export function isEventVisibleForUser(
   event: DeloitteEvent,
   userEmail: string,
   userLocation: string,
