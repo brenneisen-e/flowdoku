@@ -293,7 +293,7 @@ Failed
 ```
 6. Speichern.
 
-#### Nachtrag 2026-06-11 — Speicher-Warnung „circular loop" + Promote-OK-Schranke (Status: UMGESETZT — Typ-Korrektur OFFEN, siehe unten)
+#### Nachtrag 2026-06-11 — Speicher-Warnung „circular loop" + Promote-OK-Schranke (Status: VOLLSTÄNDIG UMGESETZT inkl. Typ-Korrektur, per Export verifiziert)
 
 **Die Warnung ist erwartbar:** Power Automate zeigt sie STATISCH bei jedem
 Flow, der Items in seine eigene Trigger-Liste schreibt (`Requeue_Reorder_*`
@@ -366,7 +366,7 @@ Check_Promote_OK_F
 ```
 Run after auf `Audit_Cancelled_F` (3 Haken) · `Requeue_Reorder_F` in den True-Zweig.
 
-##### Typ-Korrektur (OFFEN) — `equals` ist typ-strikt: string("204") ≠ Zahl 204
+##### Typ-Korrektur (✅ erledigt 2026-06-11) — `equals` ist typ-strikt: string("204") ≠ Zahl 204
 
 Im Export 2026-06-11 steht in allen drei `Check_Promote_OK_*`-Conditions
 links `@string(coalesce(...))` (Text), rechts hat der Designer die ZAHL
@@ -1520,7 +1520,7 @@ Batch_Update (Scope - enthaelt Batch_Until_Clean inkl. Status-Sortierung, Check_
                 },
                 "Check_Promote_OK_D": {
                   "type": "If",
-                  "expression": { "and": [ { "equals": [ "@string(coalesce(outputs('Promote_Durchstarter')?['statusCode'], 0))", 204 ] } ] },
+                  "expression": { "and": [ { "equals": [ "@int(coalesce(outputs('Promote_Durchstarter')?['statusCode'], 0))", 204 ] } ] },
                   "actions": {
                     "Requeue_Reorder_D": {
                       "type": "OpenApiConnection",
@@ -1721,7 +1721,7 @@ Batch_Update (Scope - enthaelt Batch_Until_Clean inkl. Status-Sortierung, Check_
                 },
                 "Check_Promote_OK_F": {
                   "type": "If",
-                  "expression": { "and": [ { "equals": [ "@string(coalesce(outputs('Promote_Funstarter')?['statusCode'], 0))", 204 ] } ] },
+                  "expression": { "and": [ { "equals": [ "@int(coalesce(outputs('Promote_Funstarter')?['statusCode'], 0))", 204 ] } ] },
                   "actions": {
                     "Requeue_Reorder_F": {
                       "type": "OpenApiConnection",
@@ -1929,7 +1929,7 @@ Batch_Update (Scope - enthaelt Batch_Until_Clean inkl. Status-Sortierung, Check_
                   },
                   "Check_Promote_OK_N": {
                     "type": "If",
-                    "expression": { "and": [ { "equals": [ "@string(coalesce(outputs('Promote_Waitlist')?['statusCode'], 0))", 204 ] } ] },
+                    "expression": { "and": [ { "equals": [ "@int(coalesce(outputs('Promote_Waitlist')?['statusCode'], 0))", 204 ] } ] },
                     "actions": {
                       "Requeue_Reorder_N": {
                         "type": "OpenApiConnection",
@@ -2188,13 +2188,18 @@ If_Counter_Stale (If -> Patch_Counter):
 }
 ```
 
-> Export-Stand 2026-06-11 (inkl. `Check_Promote_OK_N/D/F` um die Requeue-Actions
-> und vollständigem `Set_Failed_Unclean`). `Batch_Update` ist der Anzeigename des
-> großen Scope im Tenant. **ACHTUNG — eine Typ-Korrektur ist noch OFFEN:** die
-> linke Seite der drei `Check_Promote_OK_*`-Conditions ist als `string(...)`
-> gespeichert, die rechte Seite als ZAHL `204` — `equals` ist typ-strikt, der
-> Vergleich ist damit IMMER false und das Requeue feuert nie. Fix-Anleitung im
-> Nachtrag-Abschnitt oben (string( ) auf der linken Seite durch int( ) ersetzen).
+> Export-Stand 2026-06-11, FINAL (inkl. `Check_Promote_OK_N/D/F` mit
+> `int(coalesce(...))`-Typ-Korrektur, repariertem `Filter_Sort_Aktive` und
+> vollständigem `Set_Failed_Unclean`). `Batch_Update` ist der Anzeigename des
+> großen Scope im Tenant.
+>
+> **Bekannter Anzeigefehler des New-designer-Code-Views:** Bei „Set variable"-
+> Actions (`Set_AllParticipants` / `Set_AllParticipants_Sortiert`) zeigt der
+> Code-View das `value`-Feld NICHT an — die Werte SIND im Designer gesetzt
+> (`body('Load_Participants')?['value']` bzw. `outputs('Sort_AktiveZuerst')`).
+> Bei künftigen Export-Diffs also nicht von fehlenden SetVariable-values
+> täuschen lassen — im Zweifel die Run-History öffnen (Lauf → Action
+> aufklappen → Inputs zeigen das Array) oder den klassischen Designer prüfen.
 
 ---
 
