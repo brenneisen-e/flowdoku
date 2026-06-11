@@ -66,95 +66,205 @@ Fix 1 = Zeilen 1–5 (Status-Sortierung), Fix 2 = Zeilen 6–8 (Folge-Reorder),
 Fix 3 = Zeile 9 (+ optional 10–12). Alle fx-Ausdrücke über den
 **Expression-Tab (fx)** eintragen, nie als Text.
 
-| # | Neu / Geändert | Name der Action | Art der Action | Stelle | Das machst du |
-|---|----------------|-----------------|----------------|--------|---------------|
-| 1 | **NEU** | `Filter_Sort_Aktive` | Filter array | Innerhalb der Schleife `Batch_Until_Clean`, direkt nach `Set_AllParticipants` (vor `Generate_Indices`) | 1. Schleife `Batch_Until_Clean` aufklappen, auf das **+** direkt unter `Set_AllParticipants` klicken → **Add an action**.<br>2. Nach **„Filter array"** suchen (Kategorie Data Operations) und auswählen.<br>3. **From:** über den Expression-Tab (fx) eintragen: `variables('AllParticipants')`<br>4. Auf **„Edit in advanced mode"** klicken und eintragen: `@not(equals(item()?['Status']?['Value'], 'Warteliste'))`<br>5. ⋮ → **Rename** → `Filter_Sort_Aktive` |
-| 2 | **NEU** | `Filter_Sort_Warteliste` | Filter array | Direkt nach `Filter_Sort_Aktive` | 1. **+** direkt unter `Filter_Sort_Aktive` → **Add an action** → **„Filter array"**.<br>2. **From** (fx): `variables('AllParticipants')`<br>3. **„Edit in advanced mode"** → `@equals(item()?['Status']?['Value'], 'Warteliste')`<br>4. ⋮ → **Rename** → `Filter_Sort_Warteliste` |
-| 3 | **NEU** | `Sort_AktiveZuerst` | Compose | Direkt nach `Filter_Sort_Warteliste` | 1. **+** unter `Filter_Sort_Warteliste` → **Add an action** → **„Compose"**.<br>2. **Inputs** (fx): `union(body('Filter_Sort_Aktive'), body('Filter_Sort_Warteliste'))`<br>3. ⋮ → **Rename** → `Sort_AktiveZuerst` |
-| 4 | **NEU** | `Set_AllParticipants_Sortiert` | Set variable | Direkt nach `Sort_AktiveZuerst` | 1. **+** unter `Sort_AktiveZuerst` → **Add an action** → **„Set variable"**.<br>2. **Name:** im Dropdown `AllParticipants` wählen.<br>3. **Value** (fx): `outputs('Sort_AktiveZuerst')`<br>4. ⋮ → **Rename** → `Set_AllParticipants_Sortiert` |
-| 5 | **GEÄNDERT** | `Generate_Indices` | Run-after-Änderung (bestehende Compose-Action) | In `Batch_Until_Clean`, nach den neuen Actions 1–4 | 1. `Generate_Indices` anklicken → ⋮ → **Configure run after**.<br>2. Prüfen: es darf NUR `Set_AllParticipants_Sortiert` mit Haken **„is successful"** drinstehen.<br>3. Falls `Set_AllParticipants` noch als Vorgänger drinsteht: Haken entfernen. (Beim Einfügen über die **+**-Punkte verdrahtet der Designer das meist schon automatisch.) |
-| 6 | **NEU** | `Requeue_Reorder_N` | SharePoint — Create item | NEIN-Zweig von `Is_B2RunSplit` → `Check_Nachrücken` JA → `Condition_1` JA, als neue LETZTE Action nach `Audit_Cancelled_N` | 1. **+** direkt unter `Audit_Cancelled_N` → **Add an action** → SharePoint **„Create item"**.<br>2. **Site Address:** `https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform` (Root-Site wie der Trigger, NICHT die Subsite).<br>3. **List Name:** `DEX_IDReorder`<br>4. **Title:** `Reorder: Folge-Korrektur nach Nachrücken` (als Text eintippen).<br>5. **EventId** (fx): `triggerOutputs()?['body/EventId']`<br>6. **EventNumber** (fx): `triggerOutputs()?['body/EventNumber']`<br>7. **SubsiteUrl** (fx): `triggerOutputs()?['body/SubsiteUrl']`<br>8. **Status:** `Pending` (falls ein Dropdown erscheint: **„Enter custom value"** → `Pending`).<br>9. **CancelledName** (fx): `triggerOutputs()?['body/CancelledName']`<br>10. **CancelledEmail** (fx): `triggerOutputs()?['body/CancelledEmail']`<br>11. ⋮ → **Rename** → `Requeue_Reorder_N`<br>12. ⋮ → **Configure run after** → bei `Audit_Cancelled_N` DREI Haken setzen: **is successful + has failed + is skipped** (die Audit-Kette ist best-effort — der Folge-Reorder muss trotzdem kommen). |
-| 7 | **NEU** | `Requeue_Reorder_D` | SharePoint — Create item | JA-Zweig `Is_B2RunSplit` → `Check_Durchstarter_Free` JA → `Has_Durchstarter_Waitlist` JA, nach `Audit_Cancelled_D` | 1. **+** direkt unter `Audit_Cancelled_D` → **Add an action** → SharePoint **„Create item"**.<br>2. Alle Felder und fx-Ausdrücke EXAKT wie Zeile 6, Schritte 2–10.<br>3. ⋮ → **Rename** → `Requeue_Reorder_D`<br>4. ⋮ → **Configure run after** → bei `Audit_Cancelled_D` DREI Haken: **is successful + has failed + is skipped**. |
-| 8 | **NEU** | `Requeue_Reorder_F` | SharePoint — Create item | JA-Zweig `Is_B2RunSplit` → `Check_Funstarter_Free` JA → `Has_Funstarter_Waitlist` JA, nach `Audit_Cancelled_F` | 1. **+** direkt unter `Audit_Cancelled_F` → **Add an action** → SharePoint **„Create item"**.<br>2. Alle Felder und fx-Ausdrücke EXAKT wie Zeile 6, Schritte 2–10.<br>3. ⋮ → **Rename** → `Requeue_Reorder_F`<br>4. ⋮ → **Configure run after** → bei `Audit_Cancelled_F` DREI Haken: **is successful + has failed + is skipped**. |
-| 9 | **GEÄNDERT** | `Error_Handler` (bzw. `Set_Failed` darin) | Run-after-Änderung (bestehender Scope) | Top-Level, hängt an `DEX_IDReorder` | 1. `Error_Handler` anklicken → ⋮ → **Configure run after**.<br>2. Bei `DEX_IDReorder` zusätzlich zu **has failed** auch **is skipped** anhaken.<br>3. Effekt: das Queue-Item wird auch bei Abbruch VOR dem Done-Patch auf `Failed` gesetzt statt ewig auf `Processing` zu bleiben. |
-| 10 | **NEU (optional)** | `Check_Renumber_Clean` | Condition | Top-Level zwischen `Batch_Until_Clean` und `Filter_Non_Waitlist` | 1. **+** zwischen `Batch_Until_Clean` und `Filter_Non_Waitlist` → **Add an action** → **„Condition"**.<br>2. Linke Seite (fx): `length(body('GenerateSPData'))`<br>3. Operator: **is equal to** · rechte Seite: `0`<br>4. ⋮ → **Rename** → `Check_Renumber_Clean` (`Filter_Non_Waitlist` bleibt NACH der Condition — verdrahtet der Designer automatisch). |
-| 11 | **NEU (optional)** | `Set_Failed_Unclean` | SharePoint — Update item | Im NEIN-Zweig (False) von `Check_Renumber_Clean` | 1. Im **False**-Zweig **Add an action** → SharePoint **„Update item"**.<br>2. **Site Address:** Root-Site (wie Zeile 6, Schritt 2) · **List Name:** `DEX_IDReorder`<br>3. **Id** (fx): `triggerOutputs()?['body/ID']`<br>4. **Title** (fx): `triggerOutputs()?['body/Title']` (sonst wird der Titel geleert).<br>5. **Status:** `Failed`<br>6. ⋮ → **Rename** → `Set_Failed_Unclean` |
-| 12 | **NEU (optional)** | `Terminate_Unclean` | Terminate | Im NEIN-Zweig (False), nach `Set_Failed_Unclean` | 1. **+** unter `Set_Failed_Unclean` → **Add an action** → **„Terminate"**.<br>2. **Status:** `Failed`<br>3. ⋮ → **Rename** → `Terminate_Unclean` — verhindert, dass nach 5 erfolglosen Renummerier-Runden noch mit unfertigen IDs nachgerückt wird. |
+**Übersicht** (Abarbeitungs-Blöcke mit allen Klicks + Kopier-Werten darunter):
 
-#### Zum Kopieren — alle fx-Ausdrücke und Feldwerte (ein Block = ein Wert)
+| # | Neu / Geändert | Name der Action | Art der Action | Stelle |
+|---|----------------|-----------------|----------------|--------|
+| 1 | NEU | `Filter_Sort_Aktive` | Filter array | In `Batch_Until_Clean`, direkt nach `Set_AllParticipants` (vor `Generate_Indices`) |
+| 2 | NEU | `Filter_Sort_Warteliste` | Filter array | Direkt nach `Filter_Sort_Aktive` |
+| 3 | NEU | `Sort_AktiveZuerst` | Compose | Direkt nach `Filter_Sort_Warteliste` |
+| 4 | NEU | `Set_AllParticipants_Sortiert` | Set variable | Direkt nach `Sort_AktiveZuerst` |
+| 5 | GEÄNDERT | `Generate_Indices` | Run-after-Änderung (Compose, bestehend) | In `Batch_Until_Clean`, nach Action 4 |
+| 6 | NEU | `Requeue_Reorder_N` | SharePoint — Create item | NEIN-Zweig `Is_B2RunSplit` → `Check_Nachrücken` JA → `Condition_1` JA, nach `Audit_Cancelled_N` |
+| 7 | NEU | `Requeue_Reorder_D` | SharePoint — Create item | JA-Zweig → `Check_Durchstarter_Free` JA → `Has_Durchstarter_Waitlist` JA, nach `Audit_Cancelled_D` |
+| 8 | NEU | `Requeue_Reorder_F` | SharePoint — Create item | JA-Zweig → `Check_Funstarter_Free` JA → `Has_Funstarter_Waitlist` JA, nach `Audit_Cancelled_F` |
+| 9 | GEÄNDERT | `Error_Handler` | Run-after-Änderung (Scope, bestehend) | Top-Level, hängt an `DEX_IDReorder` |
+| 10 | NEU (optional) | `Check_Renumber_Clean` | Condition | Zwischen `Batch_Until_Clean` und `Filter_Non_Waitlist` |
+| 11 | NEU (optional) | `Set_Failed_Unclean` | SharePoint — Update item | False-Zweig von `Check_Renumber_Clean` |
+| 12 | NEU (optional) | `Terminate_Unclean` | Terminate | False-Zweig, nach `Set_Failed_Unclean` |
 
-**Zeile 1 + 2 — From (beide Filter-array-Actions):**
+#### Zeile 1 — `Filter_Sort_Aktive` (Filter array) · NEU
+
+1. Schleife `Batch_Until_Clean` aufklappen, auf das **+** direkt unter `Set_AllParticipants` klicken → **Add an action**.
+2. Nach **„Filter array"** suchen (Kategorie Data Operations) und auswählen.
+3. **From** über den Expression-Tab (fx):
 ```
 variables('AllParticipants')
 ```
-**Zeile 1 — Edit in advanced mode:**
+4. Auf **„Edit in advanced mode"** klicken und eintragen:
 ```
 @not(equals(item()?['Status']?['Value'], 'Warteliste'))
 ```
-**Zeile 2 — Edit in advanced mode:**
+5. ⋮ → **Rename** →
+```
+Filter_Sort_Aktive
+```
+
+#### Zeile 2 — `Filter_Sort_Warteliste` (Filter array) · NEU
+
+1. **+** direkt unter `Filter_Sort_Aktive` → **Add an action** → **„Filter array"**.
+2. **From** (fx):
+```
+variables('AllParticipants')
+```
+3. **„Edit in advanced mode"** → eintragen:
 ```
 @equals(item()?['Status']?['Value'], 'Warteliste')
 ```
-**Zeile 3 — Inputs (fx):**
+4. ⋮ → **Rename** →
+```
+Filter_Sort_Warteliste
+```
+
+#### Zeile 3 — `Sort_AktiveZuerst` (Compose) · NEU
+
+1. **+** unter `Filter_Sort_Warteliste` → **Add an action** → **„Compose"**.
+2. **Inputs** (fx):
 ```
 union(body('Filter_Sort_Aktive'), body('Filter_Sort_Warteliste'))
 ```
-**Zeile 4 — Value (fx):**
+3. ⋮ → **Rename** →
+```
+Sort_AktiveZuerst
+```
+
+#### Zeile 4 — `Set_AllParticipants_Sortiert` (Set variable) · NEU
+
+1. **+** unter `Sort_AktiveZuerst` → **Add an action** → **„Set variable"**.
+2. **Name:** im Dropdown `AllParticipants` wählen.
+3. **Value** (fx):
 ```
 outputs('Sort_AktiveZuerst')
 ```
-**Zeile 6/7/8 + 11 — Site Address:**
+4. ⋮ → **Rename** →
+```
+Set_AllParticipants_Sortiert
+```
+
+#### Zeile 5 — `Generate_Indices` (Run-after-Änderung, bestehend) · GEÄNDERT
+
+1. `Generate_Indices` anklicken → ⋮ → **Configure run after**.
+2. Prüfen: es darf NUR `Set_AllParticipants_Sortiert` mit Haken **„is successful"** drinstehen.
+3. Falls `Set_AllParticipants` noch als Vorgänger drinsteht: Haken entfernen. (Beim Einfügen über die **+**-Punkte verdrahtet der Designer das meist schon automatisch.)
+
+#### Zeile 6 — `Requeue_Reorder_N` (SharePoint — Create item) · NEU
+
+1. **+** direkt unter `Audit_Cancelled_N` → **Add an action** → SharePoint **„Create item"**.
+2. **Site Address** (Root-Site wie der Trigger, NICHT die Subsite):
 ```
 https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform
 ```
-**Zeile 6/7/8 + 11 — List Name:**
+3. **List Name:**
 ```
 DEX_IDReorder
 ```
-**Zeile 6/7/8 — Title (Text):**
+4. **Title** (als Text):
 ```
 Reorder: Folge-Korrektur nach Nachrücken
 ```
-**Zeile 6/7/8 — EventId (fx):**
+5. **EventId** (fx):
 ```
 triggerOutputs()?['body/EventId']
 ```
-**Zeile 6/7/8 — EventNumber (fx):**
+6. **EventNumber** (fx):
 ```
 triggerOutputs()?['body/EventNumber']
 ```
-**Zeile 6/7/8 — SubsiteUrl (fx):**
+7. **SubsiteUrl** (fx):
 ```
 triggerOutputs()?['body/SubsiteUrl']
 ```
-**Zeile 6/7/8 — Status (Text):**
+8. **Status** (falls Dropdown: **„Enter custom value"**):
 ```
 Pending
 ```
-**Zeile 6/7/8 — CancelledName (fx):**
+9. **CancelledName** (fx):
 ```
 triggerOutputs()?['body/CancelledName']
 ```
-**Zeile 6/7/8 — CancelledEmail (fx):**
+10. **CancelledEmail** (fx):
 ```
 triggerOutputs()?['body/CancelledEmail']
 ```
-**Zeile 10 — Condition, linke Seite (fx):**
+11. ⋮ → **Rename** →
+```
+Requeue_Reorder_N
+```
+12. ⋮ → **Configure run after** → bei `Audit_Cancelled_N` DREI Haken setzen: **is successful + has failed + is skipped** (die Audit-Kette ist best-effort — der Folge-Reorder muss trotzdem kommen).
+
+#### Zeile 7 — `Requeue_Reorder_D` (SharePoint — Create item) · NEU
+
+1. **+** direkt unter `Audit_Cancelled_D` → **Add an action** → SharePoint **„Create item"**.
+2. Alle Felder EXAKT wie Zeile 6, Schritte 2–10 (gleiche Kopier-Blöcke).
+3. ⋮ → **Rename** →
+```
+Requeue_Reorder_D
+```
+4. ⋮ → **Configure run after** → bei `Audit_Cancelled_D` DREI Haken: **is successful + has failed + is skipped**.
+
+#### Zeile 8 — `Requeue_Reorder_F` (SharePoint — Create item) · NEU
+
+1. **+** direkt unter `Audit_Cancelled_F` → **Add an action** → SharePoint **„Create item"**.
+2. Alle Felder EXAKT wie Zeile 6, Schritte 2–10.
+3. ⋮ → **Rename** →
+```
+Requeue_Reorder_F
+```
+4. ⋮ → **Configure run after** → bei `Audit_Cancelled_F` DREI Haken: **is successful + has failed + is skipped**.
+
+#### Zeile 9 — `Error_Handler` (Run-after-Änderung, bestehend) · GEÄNDERT
+
+1. `Error_Handler` anklicken → ⋮ → **Configure run after**.
+2. Bei `DEX_IDReorder` zusätzlich zu **has failed** auch **is skipped** anhaken.
+3. Effekt: das Queue-Item wird auch bei Abbruch VOR dem Done-Patch auf `Failed` gesetzt statt ewig auf `Processing` zu bleiben.
+
+#### Zeile 10 — `Check_Renumber_Clean` (Condition) · NEU (optional)
+
+1. **+** zwischen `Batch_Until_Clean` und `Filter_Non_Waitlist` → **Add an action** → **„Condition"**.
+2. Linke Seite (fx):
 ```
 length(body('GenerateSPData'))
 ```
-**Zeile 11 — Id (fx):**
+3. Operator: **is equal to** · rechte Seite:
+```
+0
+```
+4. ⋮ → **Rename** →
+```
+Check_Renumber_Clean
+```
+(`Filter_Non_Waitlist` bleibt NACH der Condition — verdrahtet der Designer automatisch.)
+
+#### Zeile 11 — `Set_Failed_Unclean` (SharePoint — Update item) · NEU (optional)
+
+1. Im **False**-Zweig **Add an action** → SharePoint **„Update item"**.
+2. **Site Address** + **List Name:** Kopier-Blöcke aus Zeile 6, Schritte 2–3.
+3. **Id** (fx):
 ```
 triggerOutputs()?['body/ID']
 ```
-**Zeile 11 — Title (fx):**
+4. **Title** (fx, sonst wird der Titel geleert):
 ```
 triggerOutputs()?['body/Title']
 ```
-**Zeile 11 — Status (Text):**
+5. **Status:**
 ```
 Failed
 ```
+6. ⋮ → **Rename** →
+```
+Set_Failed_Unclean
+```
+
+#### Zeile 12 — `Terminate_Unclean` (Terminate) · NEU (optional)
+
+1. **+** unter `Set_Failed_Unclean` → **Add an action** → **„Terminate"**.
+2. **Status:** `Failed`
+3. ⋮ → **Rename** →
+```
+Terminate_Unclean
+```
+(Verhindert, dass nach 5 erfolglosen Renummerier-Runden noch mit unfertigen IDs nachgerückt wird.)
 
 **Verifikation nach Umsetzung:** (1) Split-Event mit gemischter Warteliste:
 Person der einen Gruppe abmelden → nach beiden Läufen müssen die Aktiven

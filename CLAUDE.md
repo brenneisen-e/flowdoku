@@ -1637,17 +1637,32 @@ eine Zeile/ein Block pro Action**, vollständig im Chat (nicht nur „steht in
 `docs/flow-jsons.md`. NIE auf die Doku verweisen statt im Chat zu antworten —
 beides muss vollständig sein.
 
-**Pflicht-Format: Tabelle (Stand 2026-06-11).** Jede Flow-Anleitung wird als
-Markdown-Tabelle geliefert, **eine Zeile pro Action**, mit genau diesen
-Spalten:
+**Pflicht-Format (Stand 2026-06-11, final): Übersichts-Tabelle + Abarbeitungs-Blöcke.**
+Hintergrund: Der Kopier-Button der Chat-UI existiert NUR an fenced
+Code-Blöcken — und Code-Blöcke lassen sich nicht in Markdown-Tabellen-Zellen
+rendern. Deshalb zweiteilig:
 
-| # | Neu / Geändert | Name der Action | Art der Action | Stelle (Zweig + Vorgänger) | Das machst du (alle Klicks) |
+1. **Übersichts-Tabelle** (Orientierung, eine Zeile pro Action) mit den
+   Spalten:
 
-„Art der Action" = der Action-Typ in der **englischen** Original-
-Bezeichnung, wie er im „Add an action"-Dialog heißt (z.B. „Filter array",
-„Compose", „Set variable", „Create item", „Update item", „Condition",
-„Terminate"); bei Änderungen an bestehenden Actions z.B. „Run-after-
-Änderung (bestehende Action)".
+   | # | Neu / Geändert | Name der Action | Art der Action | Stelle (Zweig + Vorgänger) |
+
+   „Art der Action" = der Action-Typ in der **englischen**
+   Original-Bezeichnung, wie er im „Add an action"-Dialog heißt (z.B.
+   „Filter array", „Compose", „Set variable", „Create item", „Update item",
+   „Condition", „Terminate"); bei Änderungen an bestehenden Actions z.B.
+   „Run-after-Änderung (bestehende Action)". KEINE fx-Ausdrücke in die
+   Tabelle (dort gibt es keinen Kopier-Button).
+2. **Pro Tabellen-Zeile ein Abarbeitungs-Block** darunter, Überschrift
+   „Zeile N — `ActionName` (Art)", Inhalt = nummerierte Schritt-Liste
+   (ein Klick bzw. ein Feld pro Schritt). **JEDER zu übernehmende Wert**
+   (fx-Ausdrücke, Feldwerte, Site-URLs, Listennamen, Title-Texte,
+   Status-Werte und auch die Rename-Zielnamen) steht als **eigener fenced
+   Code-Block direkt unter dem Schritt**, der ihn braucht — ein Wert pro
+   Block, nichts anderes im Block → ein Klick auf den Kopier-Button
+   übernimmt ihn in die Zwischenablage. Keine separate „Zum
+   Kopieren"-Sektion am Ende — die Werte gehören an die Stelle im
+   Ablauf, wo sie eingetragen werden.
 
 **Sprache in Flow-Anleitungen (Stand 2026-06-11):** Erklärtexte auf
 Deutsch, aber ALLE Power-Automate-UI-Begriffe auf **ENGLISCH** — das
@@ -1658,27 +1673,6 @@ mode", „Site Address", „List Name", „From", „Inputs", „Value", Operato
 skipped", Terminate-Status „Failed". NIE die deutschen Übersetzungen
 („Array filtern", „Umbenennen", „Ausführen nach konfigurieren" …)
 verwenden — die findet der Maintainer in seiner UI nicht.
-
-Die Spalte „Das machst du" ist eine **nummerierte Schritt-Liste** (1., 2.,
-3., … — in der Tabellen-Zelle mit `<br>` getrennt), **ein Klick bzw. ein
-Feld pro Schritt** — KEINE Pfeil-Ketten („→ → →"). Enthalten sein müssen:
-Action-Typ und wie man ihn findet (Suchbegriff im „Aktion
-hinzufügen"-Dialog), jedes Feld mit exaktem Wert, jeder fx-Ausdruck
-wörtlich (mit Hinweis „über den Expression-Tab/fx eintragen"), ⋮ →
-Umbenennen auf den Zielnamen, ⋮ → Ausführen nach konfigurieren mit den
-anzuhakenden Status. Der Maintainer kann kein JSON einfügen — alles muss
-UI-klickbar beschrieben sein.
-
-**Copy-Blöcke für alle fx-Ausdrücke und Feldwerte (Stand 2026-06-11):**
-Unter jeder Anleitungs-Tabelle folgt eine Sektion **„Zum Kopieren"**, in der
-JEDER fx-Ausdruck und jeder exakt zu übernehmende Feldwert (auch scheinbar
-triviale wie `variables('AllParticipants')`, Site-URLs, Listennamen,
-Title-Texte, Status-Werte) in einem EIGENEN fenced Code-Block steht — ein
-Wert pro Block, nichts anderes im Block. Grund: Die Chat-UI zeigt an
-Code-Blöcken einen Kopier-Button (ein Klick → Zwischenablage), an
-Inline-Code in Tabellen-Zellen nicht. Reihenfolge = Abarbeitungs-
-Reihenfolge der Tabelle; Beschriftung pro Block: Tabellen-Zeile + Feldname
-(z.B. „Zeile 6 — EventId (fx):").
 
 **Die Antwort gehört IMMER vollständig in den Chat.** Der Maintainer
 arbeitet Flow-Anleitungen direkt im Chat ab — die komplette Tabelle muss
