@@ -51,12 +51,12 @@ export function flowsSection(locale: 'de' | 'en'): ManualSection {
               <>
                 <p style={{ margin: '0 0 6px 0' }}>
                   {isDe
-                    ? 'Trigger: neues DEX_Events-Item. Erzeugt einmalig den Outlook-Kalendereintrag im Postfach des Hauptorganisators und schreibt die iCalUId in DEX_Events.CalendarLink zurueck.'
+                    ? 'Trigger: neues DEX_Events-Item. Erzeugt einmalig den Outlook-Kalendereintrag im Postfach des Hauptorganisators und schreibt die iCalUId in DEX_Events.CalendarLink zurück.'
                     : 'Trigger: new DEX_Events item. Creates the initial Outlook calendar entry in the primary organizer\'s mailbox and writes back iCalUId to DEX_Events.CalendarLink.'}
                 </p>
                 <p style={{ margin: 0 }}>
                   {isDe
-                    ? 'Wichtig: das Body-Feld in der "Create event (V4)"-Aktion DARF KEINEN <p class="editor-paragraph">…</p>-Wrapper enthalten — sonst wird das Deloitte-HTML-Layout in einen einzigen <p>-Tag gepresst und Outlook strippt fast alles weg. Erwartet wird der reine OutlookBody mit Platzhalter-Replace fuer LOGO_URL und ORB_URL.'
+                    ? 'Wichtig: das Body-Feld in der "Create event (V4)"-Aktion DARF KEINEN <p class="editor-paragraph">…</p>-Wrapper enthalten — sonst wird das Deloitte-HTML-Layout in einen einzigen <p>-Tag gepresst und Outlook strippt fast alles weg. Erwartet wird der reine OutlookBody mit Platzhalter-Replace für LOGO_URL und ORB_URL.'
                     : 'Important: the body field in "Create event (V4)" must NOT have a <p class="editor-paragraph">…</p> wrapper — otherwise the Deloitte HTML layout collapses into a single <p> tag and Outlook strips most of it. Expected: the raw OutlookBody with placeholder replacement for LOGO_URL and ORB_URL.'}
                 </p>
               </>
@@ -76,10 +76,10 @@ export function flowsSection(locale: 'de' | 'en'): ManualSection {
                     : 'Trigger: new item in DEX_Outlook (queue). Four ActionTypes:'}
                 </p>
                 <ul style={{ paddingLeft: 18, margin: '0 0 6px 0', lineHeight: 1.7 }}>
-                  <li><strong>Einladen</strong> — {isDe ? 'fuegt einen einzelnen Teilnehmer zum Outlook-Termin hinzu (PATCH attendees-Array).' : 'adds a single attendee to the Outlook event (PATCH attendees array).'}</li>
+                  <li><strong>Einladen</strong> — {isDe ? 'fügt einen einzelnen Teilnehmer zum Outlook-Termin hinzu (PATCH attendees-Array).' : 'adds a single attendee to the Outlook event (PATCH attendees array).'}</li>
                   <li><strong>Ausladen</strong> — {isDe ? 'entfernt einen einzelnen Teilnehmer (PATCH gefiltertes attendees-Array).' : 'removes a single attendee (PATCH filtered attendees array).'}</li>
-                  <li><strong>UpdateEvent</strong> — {isDe ? 'patcht Titel, Start, Ende UND Body (seit 2026-04-17). Der Body kommt aus DEX_Events.OutlookBody mit aufgeloestem {{ORB_URL}}. Vorher wurde der Body NICHT mitgeschickt → Aenderungen waren unsichtbar.' : 'patches subject, start, end AND body (since 2026-04-17). Body comes from DEX_Events.OutlookBody with {{ORB_URL}} resolved. Previously body was NOT sent → changes were invisible.'}</li>
-                  <li><strong>DeleteEvent</strong> — {isDe ? 'loescht den Outlook-Termin per Graph DELETE. Item-CalendarLink wird direkt im Queue-Item mitgegeben (weil das DEX_Events-Item bei Lauf bereits weg ist).' : 'deletes the Outlook event via Graph DELETE. CalendarLink is included in the queue item (because the DEX_Events item is already gone when the flow runs).'}</li>
+                  <li><strong>UpdateEvent</strong> — {isDe ? 'patcht Titel, Start, Ende UND Body (seit 2026-04-17). Der Body kommt aus DEX_Events.OutlookBody mit aufgelöstem {{ORB_URL}}. Vorher wurde der Body NICHT mitgeschickt → Aenderungen waren unsichtbar.' : 'patches subject, start, end AND body (since 2026-04-17). Body comes from DEX_Events.OutlookBody with {{ORB_URL}} resolved. Previously body was NOT sent → changes were invisible.'}</li>
+                  <li><strong>DeleteEvent</strong> — {isDe ? 'löscht den Outlook-Termin per Graph DELETE. Item-CalendarLink wird direkt im Queue-Item mitgegeben (weil das DEX_Events-Item bei Lauf bereits weg ist).' : 'deletes the Outlook event via Graph DELETE. CalendarLink is included in the queue item (because the DEX_Events item is already gone when the flow runs).'}</li>
                 </ul>
                 <p style={{ margin: 0 }}>
                   {isDe
@@ -89,7 +89,7 @@ export function flowsSection(locale: 'de' | 'en'): ManualSection {
               </>
             ),
             tip: isDe
-              ? 'UpdateEvent-Body-Expression nutzt json(string(...)) um HTML-Quotes sauber zu escapen. Wenn der PATCH 400 zurueckgibt, ist meistens ein un-escaped Anfuehrungszeichen im OutlookBody die Ursache.'
+              ? 'UpdateEvent-Body-Expression nutzt json(string(...)) um HTML-Quotes sauber zu escapen. Wenn der PATCH 400 zurückgibt, ist meistens ein un-escaped Anführungszeichen im OutlookBody die Ursache.'
               : 'The UpdateEvent body expression uses json(string(...)) to escape HTML quotes. A 400 response on PATCH is usually caused by an unescaped quote in OutlookBody.',
           },
           {
@@ -98,7 +98,7 @@ export function flowsSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Erkennt, wenn ein Teilnehmer die Outlook-Einladung ablehnt (auch ueber weitergeleitete Decline-Mails wie FW:/WG:). Statt automatisch in der App abzumelden, wird eine Reminder-Mail gequeued ("war das Absicht? Wenn ja, klicke hier zum Abmelden") — Nutzer bleibt in der App angemeldet bis er aktiv bestaetigt.'
+                  ? 'Erkennt, wenn ein Teilnehmer die Outlook-Einladung ablehnt (auch ueber weitergeleitete Decline-Mails wie FW:/WG:). Statt automatisch in der App abzumelden, wird eine Reminder-Mail gequeued ("war das Absicht? Wenn ja, klicke hier zum Abmelden") — Nutzer bleibt in der App angemeldet bis er aktiv bestätigt.'
                   : 'Detects when an attendee declines the Outlook invite (including forwarded decline notifications like FW:/Re:). Instead of auto-cancelling in the app, queues a reminder email ("did you mean it? click here to confirm cancellation") — user stays registered until they actively confirm.'}
               </>
             ),
@@ -109,7 +109,7 @@ export function flowsSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Reagiert auf Meeting-Forward-Notifications. Wenn der weitergeleitete Empfaenger NICHT in der App fuer das Event angemeldet ist, geht eine FYI-Mail an den Organizer ("X hat den Termin an Y weitergeleitet — Y ist aber nicht angemeldet"). Hilft Organizern bei der Sichtkontrolle.'
+                  ? 'Reagiert auf Meeting-Forward-Notifications. Wenn der weitergeleitete Empfänger NICHT in der App für das Event angemeldet ist, geht eine FYI-Mail an den Organizer ("X hat den Termin an Y weitergeleitet — Y ist aber nicht angemeldet"). Hilft Organizern bei der Sichtkontrolle.'
                   : 'Reacts to meeting forward notifications. If the forwarded-to person is NOT registered for the event in the app, sends an FYI to the organizer ("X forwarded the invite to Y — but Y is not registered"). Helps organizers spot-check.'}
               </>
             ),
@@ -120,7 +120,7 @@ export function flowsSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Wird durch den Admin-Button "IDs neu vergeben" getriggert. Nummeriert alle aktiven Teilnehmer eines Events sequentiell (luecken-frei) und rueckt Wartelistler entsprechend nach. Letzter Schritt vor groesseren Events um sauberere Teilnehmer-IDs zu haben.'
+                  ? 'Wird durch den Admin-Button "IDs neu vergeben" getriggert. Nummeriert alle aktiven Teilnehmer eines Events sequentiell (lücken-frei) und rückt Wartelistler entsprechend nach. Letzter Schritt vor größeren Events um sauberere Teilnehmer-IDs zu haben.'
                   : 'Triggered by the admin "Renumber IDs" button. Renumbers active attendees sequentially (gap-free) and promotes waitlist members accordingly. Last step before bigger events to get clean attendee IDs.'}
               </>
             ),
@@ -132,7 +132,7 @@ export function flowsSection(locale: 'de' | 'en'): ManualSection {
               <>
                 <p style={{ margin: '0 0 6px 0' }}>
                   {isDe
-                    ? 'Die SPFx-App + Flows teilen sich die Verantwortung fuer Bilder im HTML-Body:'
+                    ? 'Die SPFx-App + Flows teilen sich die Verantwortung für Bilder im HTML-Body:'
                     : 'The SPFx app and the flows share responsibility for images in HTML body content:'}
                 </p>
                 <ul style={{ paddingLeft: 18, margin: '0 0 6px 0', lineHeight: 1.7 }}>
@@ -141,7 +141,7 @@ export function flowsSection(locale: 'de' | 'en'): ManualSection {
                 </ul>
                 <p style={{ margin: 0 }}>
                   {isDe
-                    ? 'Vorteil: kein Doppel-Wrapping, kein Wrapper-Wissen im Flow noetig. Beim Edit eines Events wird der Body in der App via stripOutlookWrapper() unwrapped, der User bearbeitet nur den inneren Content, und beim Speichern wird er erneut sauber gewickelt (idempotent).'
+                    ? 'Vorteil: kein Doppel-Wrapping, kein Wrapper-Wissen im Flow nötig. Beim Edit eines Events wird der Body in der App via stripOutlookWrapper() unwrapped, der User bearbeitet nur den inneren Content, und beim Speichern wird er erneut sauber gewickelt (idempotent).'
                     : 'Advantage: no double-wrapping, no wrapper knowledge needed in the flow. On event edit, the body is unwrapped via stripOutlookWrapper(), the user edits only the inner content, and on save it gets re-wrapped cleanly (idempotent).'}
                 </p>
               </>
@@ -153,14 +153,14 @@ export function flowsSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Alle Flows laufen unter no_reply.events@deloitte.de. Fehler siehst du im Power-Automate-Admin-Center. Die Queue-Listen (DEX_Emails, DEX_Outlook) zeigen "Failed"-Eintraege in der Status-Spalte — regelmaessig sichten und manuell auf "Pending" zuruecksetzen falls ein Retry sinnvoll ist.'
+                  ? 'Alle Flows laufen unter no_reply.events@deloitte.de. Fehler siehst du im Power-Automate-Admin-Center. Die Queue-Listen (DEX_Emails, DEX_Outlook) zeigen "Failed"-Einträge in der Status-Spalte — regelmäßig sichten und manuell auf "Pending" zurücksetzen falls ein Retry sinnvoll ist.'
                   : 'All flows run under no_reply.events@deloitte.de. Errors are visible in the Power Automate admin center. The queue lists (DEX_Emails, DEX_Outlook) show "Failed" entries in the Status column — review regularly and manually reset to "Pending" for retries.'}
               </>
             ),
             mockup: (
               <Callout variant="warning">
                 {isDe
-                  ? 'Bei Aenderungen an einem Flow: IMMER das aktuelle JSON in docs/flow-jsons.md pflegen. Das ist die einzige Quelle der Wahrheit fuer den aktuellen Stand. Power Automate selbst hat keine Versionierung im Sinne von Git.'
+                  ? 'Bei Aenderungen an einem Flow: IMMER das aktuelle JSON in docs/flow-jsons.md pflegen. Das ist die einzige Quelle der Wahrheit für den aktuellen Stand. Power Automate selbst hat keine Versionierung im Sinne von Git.'
                   : 'When modifying a flow: ALWAYS update the current JSON in docs/flow-jsons.md. That file is the single source of truth — Power Automate has no Git-style versioning.'}
               </Callout>
             ),

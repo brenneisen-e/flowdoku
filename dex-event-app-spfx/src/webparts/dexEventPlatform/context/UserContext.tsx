@@ -20,7 +20,7 @@ interface UserContextType {
   /** v15.27: lowercase E-Mail-Adressen aller Mailverteiler/Gruppen,
    *  in denen der eingeloggte User Mitglied ist. Wird beim Boot via
    *  Microsoft Graph (/me/memberOf) geladen und in matchesAudience
-   *  fuer Sichtbarkeits-Checks gegen Audience-Filter-DL-Adressen
+   *  für Sichtbarkeits-Checks gegen Audience-Filter-DL-Adressen
    *  benutzt — vorher war ein literaler E-Mail-Vergleich, der nur
    *  bei direkter Adresse, nie bei DL-Mitgliedschaft matchte. */
   groupEmails: string[];
@@ -86,8 +86,8 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
     setIsLoading(false);
 
     // Standort + JobTitle ueber SP-Profil nachladen.
-    // JobTitle brauchen wir fuer die Assistant-Ausnahme in der Registration
-    // ("Assistant" darf fuer "Director"/"Partner" registrieren).
+    // JobTitle brauchen wir für die Assistant-Ausnahme in der Registration
+    // ("Assistant" darf für "Director"/"Partner" registrieren).
     loadUserProfile(props.context).then(profile => {
       if (profile.location || profile.jobTitle || profile.department || profile.mobilePhone) {
         setCurrentUser(prev => ({
@@ -103,12 +103,12 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
     // Profilbild ueber Microsoft Graph laden
     loadUserPhoto(props.context).then(url => {
       if (url) setPhotoUrl(url);
-    }).catch(() => { /* Foto nicht verfuegbar */ });
+    }).catch(() => { /* Foto nicht verfügbar */ });
 
     // v15.27: Gruppen-/DL-Mitgliedschaften des Users laden, damit der
     // Audience-Filter-Check zur Laufzeit Verteiler-Mitgliedschaften matched.
     // Seit v16.4 ist die Pre-Compiled-Liste in event.audienceResolvedEmails
-    // der primaere Pfad — der Runtime-Lookup hier dient nur noch als Fallback,
+    // der primäre Pfad — der Runtime-Lookup hier dient nur noch als Fallback,
     // damit Events, die seit dem Schema-Upgrade noch nicht neu gespeichert
     // wurden, weiterhin funktionieren.
     loadUserGroupEmails(props.context).then(list => {
@@ -168,17 +168,17 @@ async function loadUserProfile(context: WebPartContext): Promise<{ location: str
         };
       }
     }
-  } catch { /* Profil nicht verfuegbar */ }
+  } catch { /* Profil nicht verfügbar */ }
   return { location: '', jobTitle: '', department: '', mobilePhone: '' };
 }
 
 /**
  * v15.27: Gruppen-Mitgliedschaften (Mailverteiler + Security-Groups) des
  * eingeloggten Users via Microsoft Graph laden. Wird in matchesAudience
- * benutzt, um zu pruefen ob der User in einer Audience-DL Mitglied ist.
+ * benutzt, um zu prüfen ob der User in einer Audience-DL Mitglied ist.
  *
  * Wir nehmen sowohl `mail` als auch `mailNickname@deloitte.com` /
- * `mailNickname@deloitte.de` auf — die Audience-Filter koennen entweder
+ * `mailNickname@deloitte.de` auf — die Audience-Filter können entweder
  * die volle DL-Adresse (z.B. DETTDUESSELDORF@deloitte.com) oder den
  * Nicknames (selten) enthalten.
  */
@@ -187,12 +187,12 @@ async function loadUserGroupEmails(context: WebPartContext): Promise<string[]> {
     const client = await context.msGraphClientFactory.getClient('3');
     // /me/memberOf liefert alle Gruppen + Roles. Wir filtern auf groups
     // mit `mail`. $top=500 reicht in der Regel; wenn ein User in mehr als
-    // 500 DLs ist, kommt Pagination ins Spiel — fuer DEALL ist das aber
+    // 500 DLs ist, kommt Pagination ins Spiel — für DEALL ist das aber
     // praxisfern.
     // v17.11: `@odata.type` ist in $select nicht erlaubt (Graph wirft 400
     // „Parsing OData Select and Expand failed"). Wir holen nur mail +
     // mailNickname — der Type kommt via standard-odata-metadata wenn
-    // benoetigt, aber wir filtern hier nur auf Gruppen mit Mail-Adresse
+    // benötigt, aber wir filtern hier nur auf Gruppen mit Mail-Adresse
     // ohnehin.
     const resp = await client.api('/me/memberOf?$select=mail,mailNickname&$top=500').get();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -225,7 +225,7 @@ async function loadUserPhoto(context: WebPartContext): Promise<string> {
       return URL.createObjectURL(blob);
     }
   } catch {
-    // Graph nicht verfuegbar — Fallback auf SharePoint UserPhoto
+    // Graph nicht verfügbar — Fallback auf SharePoint UserPhoto
     try {
       const siteUrl = context.pageContext.web.absoluteUrl;
       const email = context.pageContext.user.email;

@@ -67,7 +67,7 @@ export function templatesReseedSection(locale: 'de' | 'en'): ManualSection {
                 {isDe ? (
                   <>
                     Alle Standard-Templates, sowohl DE als auch EN:<br/>
-                    Anmeldung, Warteliste, Abmeldung, Nachruecken, EventErstellt,
+                    Anmeldung, Warteliste, Abmeldung, Nachrücken, EventErstellt,
                     OutlookDeclineReminder, OutlookDeclineReminder_OnBehalfOf,
                     OutlookForwardNotification, OutlookDeclineDigest,
                     TeamMemberJoined, TeamJoinRequest, TeamJoinRejected,
@@ -78,7 +78,7 @@ export function templatesReseedSection(locale: 'de' | 'en'): ManualSection {
                   <>
                     All standard templates, both DE and EN:<br/>
                     Anmeldung (registration), Warteliste (waitlist), Abmeldung
-                    (cancellation), Nachruecken (promotion), EventErstellt
+                    (cancellation), Nachrücken (promotion), EventErstellt
                     (event-created notification), OutlookDeclineReminder,
                     OutlookDeclineReminder_OnBehalfOf, OutlookForwardNotification,
                     OutlookDeclineDigest, TeamMemberJoined, TeamJoinRequest,

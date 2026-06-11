@@ -1,5 +1,5 @@
 /**
- * Styles fuer die DEX Event Platform (SPFx)
+ * Styles für die DEX Event Platform (SPFx)
  *
  * Alle Styles sind im .dexApp Container geschachtelt,
  * damit sie nicht mit anderen SharePoint-Webparts kollidieren.
@@ -112,7 +112,7 @@
     cursor: not-allowed;
   }
 
-  // CSS-Variablen fuer das Deloitte-Theme
+  // CSS-Variablen für das Deloitte-Theme
   --dex-black: #000000;
   --dex-white: #ffffff;
   --dex-green: #86bc25;
@@ -153,7 +153,7 @@
   }
 
   :global {
-    /* Layout - dynamische Hoehe wird per JS gesetzt */
+    /* Layout - dynamische Höhe wird per JS gesetzt */
     .app-layout {
       display: flex;
       flex-direction: column;
@@ -227,7 +227,7 @@
     .form-label .required { color: var(--dex-red); margin-right: 4px; }
 
     /* v11.56: Im 2-Spalten-Custom-Field-Grid wickeln sich manche Labels auf
-       zwei Zeilen ("Soll deine Mobilnummer hinterlegt werden?") waehrend
+       zwei Zeilen ("Soll deine Mobilnummer hinterlegt werden?") während
        Geschwister-Labels nur eine Zeile haben — die Inputs in der Zeile
        saßen vorher vertikal versetzt. min-height auf das Label faengt das
        ab; in der Mobile-Variante (1-Spalte) ist es egal. */
@@ -455,7 +455,7 @@
     }
     .registration-event__card { padding: 16px; }
     .registration-event__image {
-      // v11.58: KEIN hardcoded height mehr — die Hoehe kommt aus dem Inline-Style
+      // v11.58: KEIN hardcoded height mehr — die Höhe kommt aus dem Inline-Style
       // der RegistrationPage (Portrait: stretch, Landscape: auto). Hardcoded 200px
       // hat object-fit:contain ausgehebelt und das Bild oben weggeschnitten.
       position: relative; border-radius: var(--dex-radius); overflow: hidden;
@@ -480,7 +480,7 @@
          schleppen dabei eine eigene font-family (z.B. "Times New Roman") als
          Inline-Style oder <font face="…"> mit — das ueberschrieb bisher die
          App-Schrift und liess die Beschreibung als Serifen-Schrift erscheinen.
-         Wir erzwingen die App-Schriftart fuer die Beschreibung und alle
+         Wir erzwingen die App-Schriftart für die Beschreibung und alle
          Kind-Elemente; Farbe, Fett/Kursiv und Schriftgroesse bleiben intakt. */
       font-family: inherit !important;
       *, font { font-family: inherit !important; }
@@ -564,7 +564,7 @@
       .registration-actions { flex-direction: column; gap: 8px; }
       /* v11.2: Custom-Field-Grid auf Mobile 1 Spalte. */
       .dex-reg-fields-grid { grid-template-columns: 1fr !important; }
-      /* v11.56: min-height-Hack fuer 2-Spalten-Alignment greift auf Mobile
+      /* v11.56: min-height-Hack für 2-Spalten-Alignment greift auf Mobile
          nicht, weil die Felder eh untereinander stehen — Label wieder
          natuerlich umbrechen lassen, damit kein leerer Block entsteht. */
       .dex-reg-fields-grid .form-label { min-height: 0; display: block; }
@@ -618,7 +618,7 @@
       }
       /* Admin Event-Info-Grid (Bild + Detail-Rows) auf eine Spalte */
       .admin-event-info-grid { grid-template-columns: 1fr !important; }
-      /* Admin Action-Tiles auto-fit groesser, damit pro Tile zumindest
+      /* Admin Action-Tiles auto-fit größer, damit pro Tile zumindest
          eine ganze Mobile-Zeile bleibt */
       .admin-actions-grid {
         grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)) !important;

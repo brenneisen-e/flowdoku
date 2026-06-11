@@ -54,10 +54,10 @@ function matchesAudience(
   const groupSet = new Set((userGroupEmails || []).map(g => (g || '').toLowerCase().trim()).filter(Boolean));
   const resolvedSet = new Set((eventResolvedEmails || []).map(e => (e || '').toLowerCase().trim()).filter(Boolean));
 
-  // v16.4: Pre-compiled-Pfad — wenn die DLs beim Event-Save aufgeloest und
+  // v16.4: Pre-compiled-Pfad — wenn die DLs beim Event-Save aufgelöst und
   // in event.audienceResolvedEmails gespeichert wurden, reicht ein direkter
-  // E-Mail-Lookup. Funktioniert auch fuer verschachtelte DLs, die
-  // /me/memberOf nicht zurueckliefert.
+  // E-Mail-Lookup. Funktioniert auch für verschachtelte DLs, die
+  // /me/memberOf nicht zurückliefert.
   if (resolvedSet.has(email)) return true;
 
   return audienceFilters.some(filter => {
@@ -66,7 +66,7 @@ function matchesAudience(
 
     // E-Mail-Adresse: entweder direkte User-Adresse, ODER der User ist
     // Mitglied in dieser Mailverteiler-/Gruppen-Adresse (v15.27 — Fix
-    // fuer Check-Visibility vs Runtime-Mismatch).
+    // für Check-Visibility vs Runtime-Mismatch).
     if (f.indexOf('@') >= 0) {
       if (email === f) return true;
       if (groupSet.has(f)) return true;
@@ -89,7 +89,7 @@ function matchesAudience(
 /**
  * Audience-Liste normalisieren: 'All'/'DEALL' bedeuten "kein Audience-Filter"
  * und werden weggefiltert. So wird "München + All" korrekt als "nur München"
- * interpretiert (statt 'All' als Override fuer alle User).
+ * interpretiert (statt 'All' als Override für alle User).
  */
 function normalizeAudience(audience: string[]): string[] {
   return audience
@@ -98,7 +98,7 @@ function normalizeAudience(audience: string[]): string[] {
 }
 
 /**
- * Prüft ob ein Event fuer den User sichtbar ist.
+ * Prüft ob ein Event für den User sichtbar ist.
  *
  * Default: AND (Schnittmenge). Wenn Standort UND Zielgruppe gesetzt sind,
  * muss BEIDES passen (z.B. "München + SAP" = nur Munich-SAP-Mitarbeiter).
@@ -117,7 +117,7 @@ export function isEventVisibleForUser(
 ): boolean {
   // v8.6: Exclude-Liste hat Vorrang. Wer hier drin ist, sieht das Event NIE
   // — egal ob er ueber Standortfilter oder Verteiler-Mitgliedschaft sonst
-  // sichtbar waere.
+  // sichtbar wäre.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const excluded = ((event as any).excludedUsers || []) as string[];
   if (excluded.length > 0 && userEmail) {
@@ -140,7 +140,7 @@ export function isEventVisibleForUser(
     if (hasLocationFilter) return locMatch;
     return audMatch;
   }
-  // AND (Default): beide Filter muessen passen, falls beide gesetzt
+  // AND (Default): beide Filter müssen passen, falls beide gesetzt
   if (hasLocationFilter && hasAudienceFilter) return locMatch && audMatch;
   if (hasLocationFilter) return locMatch;
   return audMatch;
@@ -201,14 +201,14 @@ export default function EventListPage(): React.ReactElement {
   // Admin sieht ALLE Events. Organizer sieht nur (a) Events, die zur Filterlogik
   // passen UND (b) Events, bei denen er selbst in organizerEmails steht — NICHT
   // tenant-weit alle Events. User sieht nur Filter-passende Events.
-  // Fictive (Test-)Events sind sichtbar fuer:
+  // Fictive (Test-)Events sind sichtbar für:
   //   - Admins (immer)
   //   - Event-eigene Organizer (immer)
   //   - Co-Organizer + QR-Scanner des konkreten Events
   //   - v9.21: Test-Team-Mitglieder DIESES Events (vorher global, jetzt per-Event)
   //
   // v9.21: ActiveFrom-Logik — wenn das Event ein Aktiv-ab-Datum hat und das
-  // in der Zukunft liegt, wird es fuer regulaere User behandelt wie ein Entwurf.
+  // in der Zukunft liegt, wird es für reguläre User behandelt wie ein Entwurf.
   const currentEmailLc = (currentUser.email || '').toLowerCase();
   // v11.90: Events, bei denen der eingeloggte User selbst Organizer ist
   // (Haupt- oder Co-Organizer), kommen oben links — ABER nur solange das
@@ -257,7 +257,7 @@ export default function EventListPage(): React.ReactElement {
       const aPrio = isOwnOrganizer(a) && !isExpired(a) ? 0 : 1;
       const bPrio = isOwnOrganizer(b) && !isExpired(b) ? 0 : 1;
       if (aPrio !== bPrio) return aPrio - bPrio;
-      // Innerhalb der Priorität: chronologisch nach Startdatum (frueheste zuerst).
+      // Innerhalb der Priorität: chronologisch nach Startdatum (früheste zuerst).
       // Events ohne Datum ans Ende.
       const ta = a.startDate ? new Date(a.startDate).getTime() : Number.POSITIVE_INFINITY;
       const tb = b.startDate ? new Date(b.startDate).getTime() : Number.POSITIVE_INFINITY;
@@ -269,9 +269,9 @@ export default function EventListPage(): React.ReactElement {
     return (
       <div className="page-container text-center">
         <div style={{ padding: 48 }}>
-          {/* SVG-Spinner mit SMIL animateTransform - laeuft unabhaengig von
+          {/* SVG-Spinner mit SMIL animateTransform - läuft unabhängig von
               CSS-Keyframes / SPFx-Style-Hashing / React inline-style-Ordering.
-              Voller hellgruener Ring + dunkelgruener Arc der rotiert. */}
+              Voller hellgrüner Ring + dunkelgrüner Arc der rotiert. */}
           <svg width={48} height={48} viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', margin: '0 auto 16px' }}>
             <circle cx={24} cy={24} r={20} fill="none" stroke="rgba(134,188,37,0.20)" strokeWidth={4} />
             <path d="M 24 4 A 20 20 0 0 1 44 24" fill="none" stroke="#86bc25" strokeWidth={4} strokeLinecap="round">
@@ -289,7 +289,7 @@ export default function EventListPage(): React.ReactElement {
       {/* v11.99: Page-Level-Refresh-Button entfernt — Header oben rechts
           hat bereits einen Aktualisieren-Button, doppelt verwirrt. */}
       <style>{`@keyframes dex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-      {/* Titel + Hinweis: Events sind fuer den User personalisiert */}
+      {/* Titel + Hinweis: Events sind für den User personalisiert */}
       <div className="card" style={{
         padding: '16px 20px',
         marginBottom: 16,
@@ -304,7 +304,7 @@ export default function EventListPage(): React.ReactElement {
         </p>
       </div>
       <div className="flex-between mb-16" style={{ alignItems: 'flex-end' }}>
-        {/* View-Mode Switcher: Cards / List — mit „Ansicht"-Label darueber,
+        {/* View-Mode Switcher: Cards / List — mit „Ansicht"-Label darüber,
             damit klar ist, was die beiden Buttons umschalten (v19.6). */}
         <div>
           <div style={{
@@ -340,10 +340,10 @@ export default function EventListPage(): React.ReactElement {
             </button>
           </div>
         </div>
-        {/* v15.19: „Nur aktive Events"-Toggle nur fuer Admin/Organizer.
+        {/* v15.19: „Nur aktive Events"-Toggle nur für Admin/Organizer.
             Reine User sehen ohnehin nur Events ihres Standorts und brauchen
             den Switch nicht — sie sollen vergangene Events nicht
-            ausversehen einblenden koennen. */}
+            ausversehen einblenden können. */}
         {(isAdmin || canCreateEvents) && (
           <div className="toggle-wrapper">
             <label className="toggle">
@@ -379,7 +379,7 @@ export default function EventListPage(): React.ReactElement {
         };
         // v15.22: Bei subEventsOnlyMode-Events gibt es keine Parent-
         // Registrierung — die EventNumber des Hauptevents taucht in
-        // myNumbers.registered nicht auf. Stattdessen muessen wir
+        // myNumbers.registered nicht auf. Stattdessen müssen wir
         // die Sub-Events durchgehen: ist mindestens eines davon
         // angemeldet/wartelistig, soll auch die Parent-Karte den
         // „Registered"-Overlay zeigen.
@@ -416,7 +416,7 @@ export default function EventListPage(): React.ReactElement {
               </div>
             );
           }
-          // v15.22: Fuer den Listen-View die Parent-EventNumbers von
+          // v15.22: Für den Listen-View die Parent-EventNumbers von
           // subEventsOnlyMode-Parents augmentieren, wenn ein Sub-Event
           // angemeldet ist — damit der Listen-View ebenfalls
           // „angemeldet" markiert.

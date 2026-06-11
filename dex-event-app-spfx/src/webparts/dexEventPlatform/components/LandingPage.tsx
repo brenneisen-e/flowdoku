@@ -500,8 +500,8 @@ export default function LandingPage(): React.ReactElement {
 
 // v11.47: KPI-Box-Reihe ueber dem "Entwickelt von ..."-Block. Drei Boxen
 // nebeneinander: gehostete Events, Teilnehmer, App-Aufrufe. Jede Box mit
-// einer AnimatedCounter-Komponente, die beim ersten Verfuegbarwerden des
-// Werts von 0 zum Zielwert ease-out hochzaehlt (~1.6s). Solange Daten noch
+// einer AnimatedCounter-Komponente, die beim ersten Verfügbarwerden des
+// Werts von 0 zum Zielwert ease-out hochzählt (~1.6s). Solange Daten noch
 // laden, steht ein dezenter Skeleton-Punkt im Wert-Feld.
 export function KpiRow(props: {
   locale: string;
@@ -578,7 +578,7 @@ function SkeletonDots(): React.ReactElement {
 function AnimatedCounter(props: { value: number; durationMs?: number }): React.ReactElement {
   const target = Math.max(0, Math.floor(props.value || 0));
   // v11.79: Default-Dauer von 1600 ms → 600 ms reduziert. Seit der App-Boot
-  // unter ~1.6 s liegt, wirkte das laengere Count-Up-Tempo traege; die Zahl
+  // unter ~1.6 s liegt, wirkte das längere Count-Up-Tempo träge; die Zahl
   // tickt jetzt knackiger hoch ohne hektisch zu wirken.
   const duration = props.durationMs ?? 600;
   const [shown, setShown] = React.useState<number>(0);

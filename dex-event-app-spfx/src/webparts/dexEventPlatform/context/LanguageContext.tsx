@@ -1,7 +1,7 @@
 /**
  * Language Context - Mehrsprachigkeit (DE/EN)
  *
- * Speichert die gewaehlte Sprache im localStorage.
+ * Speichert die gewählte Sprache im localStorage.
  * Stellt eine t()-Funktion bereit die Uebersetzungen liefert.
  */
 
@@ -20,7 +20,7 @@ const LanguageContext = React.createContext<LanguageContextType | undefined>(und
 // ==================== Übersetzungen ====================
 
 // v11.56: exportiert, damit die RegistrationPage Form-Chrome-Strings nach der
-// Event-Sprache (event.emailLanguage) auswaehlen kann statt nach der User-Locale —
+// Event-Sprache (event.emailLanguage) auswählen kann statt nach der User-Locale —
 // englischsprachige Events sollen Englisch zeigen, auch wenn der Browser-User
 // gerade Deutsch eingestellt hat.
 export const translations: Record<Locale, Record<string, string>> = {
@@ -313,7 +313,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'create.tpl.Anmeldung': 'Anmeldebestätigung',
     'create.tpl.Warteliste': 'Warteliste-Bestätigung',
     'create.tpl.Abmeldung': 'Abmeldebestätigung',
-    'create.tpl.Nachrücken': 'Nachrücken',
+    // Key = TemplateType-Datenwert 'Nachruecken' (ASCII, NICHT umbenennen —
+    // t(`create.tpl.${tType}`) baut den Key dynamisch). Anzeige mit Umlaut.
     'create.tpl.Nachruecken': 'Nachrücken',
     'create.agenda': 'Agenda',
     'create.agenda.add': 'Programmpunkt hinzufügen',
@@ -752,7 +753,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'create.tpl.Anmeldung': 'Registration Confirmation',
     'create.tpl.Warteliste': 'Waitlist Confirmation',
     'create.tpl.Abmeldung': 'Cancellation Confirmation',
-    'create.tpl.Nachrücken': 'Waitlist Promotion',
+    // Key = TemplateType data value 'Nachruecken' (ASCII, do NOT rename —
+    // t(`create.tpl.${tType}`) builds the key dynamically).
     'create.tpl.Nachruecken': 'Waitlist Promotion',
     'create.agenda': 'Agenda',
     'create.agenda.add': 'Add agenda item',

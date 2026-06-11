@@ -85,10 +85,10 @@ export default function CheckInPage(): React.ReactElement {
 
   const selectedEvent = selectedEventId ? events.find(e => e.id === selectedEventId) : null;
 
-  // v7.12: Name-Suche fuer manuelles Einchecken — wenn der QR-Scanner in der
+  // v7.12: Name-Suche für manuelles Einchecken — wenn der QR-Scanner in der
   // SP-App nicht funktioniert (Camera-API gesperrt) oder der Teilnehmer den
   // QR-Code nicht zur Hand hat, kann der Helfer nach Namen / E-Mail suchen
-  // und per Tap "Einchecken" ausloesen. Die Registrierungen werden pro Event
+  // und per Tap "Einchecken" auslösen. Die Registrierungen werden pro Event
   // lazy nachgeladen und in `searchRegsCache` zwischengespeichert.
   const [nameSearchQuery, setNameSearchQuery] = React.useState('');
   const [nameSearchEventId, setNameSearchEventId] = React.useState<string>(selectedEventId || '');
@@ -128,7 +128,7 @@ export default function CheckInPage(): React.ReactElement {
   // Helfer am Eingang nur die noch offenen Anmeldungen sieht.
   const [onlyOpen, setOnlyOpen] = React.useState(false);
 
-  // KPI-Zaehler: angemeldet (= Status Angemeldet/QR versendet/Eingecheckt)
+  // KPI-Zähler: angemeldet (= Status Angemeldet/QR versendet/Eingecheckt)
   // und eingecheckt. Wird im KPI-Bereich der Check-In-Page angezeigt.
   const checkInKpis = React.useMemo(() => {
     if (!nameSearchEventId) return { registered: 0, checkedIn: 0 };
@@ -217,13 +217,13 @@ export default function CheckInPage(): React.ReactElement {
     }, 100);
   };
 
-  // Erkennen ob die App in der SharePoint Mobile App laeuft
+  // Erkennen ob die App in der SharePoint Mobile App läuft
   const isSharePointMobileApp = React.useMemo(() => {
     const ua = navigator.userAgent;
     return /SharePoint/i.test(ua) && /Mobile|Android|iPhone|iPad/i.test(ua);
   }, []);
 
-  // URL fuer den Browser-Link generieren (fuer zukuenftige Nutzung)
+  // URL für den Browser-Link generieren (für zukünftige Nutzung)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const getBrowserUrl = (): string => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -235,7 +235,7 @@ export default function CheckInPage(): React.ReactElement {
     return window.location.href;
   };
 
-  // Scanner in neuem Fenster oeffnen (aspx-Seite in SiteAssets, fuer zukuenftige Nutzung)
+  // Scanner in neuem Fenster oeffnen (aspx-Seite in SiteAssets, für zukünftige Nutzung)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const openExternalScanner = (): void => {
     const checkinUrl = `${siteUrl}/SiteAssets/checkin.aspx`;
@@ -302,7 +302,7 @@ export default function CheckInPage(): React.ReactElement {
       } else if (name === 'NotReadableError' || name === 'TrackStartError') {
         msg = 'Die Kamera ist bereits in Benutzung (z.B. Teams-Anruf oder eine andere App). Bitte schließe andere Apps und versuche es erneut.';
       } else if (name === 'OverconstrainedError' || name === 'ConstraintNotSatisfiedError') {
-        // Kein Environment-Facing-Camera verfuegbar -> Fallback auf beliebige Kamera
+        // Kein Environment-Facing-Camera verfügbar -> Fallback auf beliebige Kamera
         try {
           const fallback = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
           fallback.getTracks().forEach(track => track.stop());
@@ -807,10 +807,10 @@ export default function CheckInPage(): React.ReactElement {
             </div>
           </>
         )}
-        {/* Wichtig: Video nicht mit fixer Hoehe + objectFit:cover croppen, sonst landet
+        {/* Wichtig: Video nicht mit fixer Höhe + objectFit:cover croppen, sonst landet
             die vom qr-scanner eingeblendete Scan-Region-Box verschoben, weil die
             Library Overlay-Koordinaten aus dem nativen Video-Aspect berechnet.
-            Video soll seine natuerliche Aspect Ratio behalten (width:100%, height:auto).
+            Video soll seine natürliche Aspect Ratio behalten (width:100%, height:auto).
             Vor dem Scan-Start verstecken wir den Container via max-height:0 - so
             bleibt der Video-Ref stabil und die Library kann nach getUserMedia die
             Dimensionen korrekt bestimmen. */}
@@ -876,7 +876,7 @@ export default function CheckInPage(): React.ReactElement {
           dort kann man per Klick manuell einchecken. */}
 
       {/* v7.14: Live-Teilnehmerliste mit Foto / Position / Standort + Filter.
-          Liste wird sofort beim Auswaehlen des Events geladen, kein "ab 2
+          Liste wird sofort beim Auswählen des Events geladen, kein "ab 2
           Zeichen tippen" mehr — der Helfer sieht direkt alle Leute, kann den
           gesuchten Eintrag scrollen oder das Suchfeld zum Filtern nutzen. */}
       <div className="card" style={{ padding: 24, marginBottom: 16 }}>
@@ -896,7 +896,7 @@ export default function CheckInPage(): React.ReactElement {
         )}
         {/* v7.16: KPI-Bereich — angemeldet vs. eingecheckt, plus Quick-Filter
             "Nur offene anzeigen" der die Liste auf Angemeldet/QR versendet
-            reduziert. Sichtbar nur wenn Event gewaehlt + Liste geladen. */}
+            reduziert. Sichtbar nur wenn Event gewählt + Liste geladen. */}
         {nameSearchEventId && (searchRegsCache[nameSearchEventId] || []).length > 0 && (
           <div style={{
             display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8,
@@ -988,7 +988,7 @@ export default function CheckInPage(): React.ReactElement {
                 </div>
                 <div style={{
                   display: 'flex', flexDirection: 'column', gap: 8,
-                  // Maximalhoehe + Scroll, damit lange Events nicht die ganze Seite sprengen.
+                  // Maximalhöhe + Scroll, damit lange Events nicht die ganze Seite sprengen.
                   maxHeight: 480, overflowY: 'auto',
                   paddingRight: 4,
                 }}>
@@ -1025,7 +1025,7 @@ export default function CheckInPage(): React.ReactElement {
                         }}
                       >
                         {/* Foto-Avatar mit Initials-Fallback. Initialen liegen
-                            im Hintergrund, das <img> deckt sie ab — schlaegt
+                            im Hintergrund, das <img> deckt sie ab — schlägt
                             der Image-Load fehl, kommen sie zum Vorschein. */}
                         <div style={{
                           position: 'relative',

@@ -2,7 +2,7 @@
  * Info-Tooltip Komponente.
  *
  * Ersetzt das bisherige `<span className="info-icon" title="...">i</span>` —
- * das Browser-Default-`title` zeigt nicht in allen Browsern zuverlaessig
+ * das Browser-Default-`title` zeigt nicht in allen Browsern zuverlässig
  * Tooltips an (vor allem nicht auf Touch und in Edge bei kleinen Hover-Targets).
  *
  * Diese Komponente rendert das gleiche `i`-Icon, blendet beim Hover/Focus aber
@@ -10,7 +10,7 @@
  * bei Tastatur-Navigation (focus) und Touch (click).
  *
  * v11.56: Das Tooltip-Popup wird via React.createPortal direkt an document.body
- * gehaengt, damit es nicht von uebergeordneten `overflow:hidden`-Containern
+ * gehängt, damit es nicht von uebergeordneten `overflow:hidden`-Containern
  * (z.B. Karten auf der Registrierungs-Seite) abgeschnitten wird. Die Position
  * wird aus dem getBoundingClientRect() des Trigger-Icons berechnet (fixed).
  */
@@ -125,7 +125,7 @@ export const InfoTooltip: React.FC<InfoTooltipProps> = ({ text, placement = 'top
         borderRadius: 8,
         boxShadow: '0 6px 18px rgba(0,0,0,0.28)',
         // v9.24: breiter als vorher (320 -> 480) damit lange Hilfetexte
-        // — vor allem die ausfuehrlicheren Hints aus v9.17/v9.21 — nicht
+        // — vor allem die ausführlicheren Hints aus v9.17/v9.21 — nicht
         // mehr in einer schmalen Spalte hochkant umgebrochen werden.
         width: 'max-content',
         maxWidth: 'min(480px, calc(100vw - 24px))',

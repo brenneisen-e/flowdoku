@@ -145,7 +145,7 @@ export function templatesSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Der Outlook-Termin-Body funktioniert ähnlich wie System-Mails (HTML-Editor, Toolbar, Variablen), aber mit anderen Variablen (Address, Location, StartDate, EndDate) — diese werden bereits beim Speichern in der App ersetzt (nicht erst beim Versand), weil der Outlook-Body für ALLE Teilnehmer identisch ist. Per-Empfaenger-Variablen (Name, AppUrl) ergeben hier keinen Sinn.'
+                  ? 'Der Outlook-Termin-Body funktioniert ähnlich wie System-Mails (HTML-Editor, Toolbar, Variablen), aber mit anderen Variablen (Address, Location, StartDate, EndDate) — diese werden bereits beim Speichern in der App ersetzt (nicht erst beim Versand), weil der Outlook-Body für ALLE Teilnehmer identisch ist. Per-Empfänger-Variablen (Name, AppUrl) ergeben hier keinen Sinn.'
                   : 'The Outlook event body works similarly to system mails (HTML editor, toolbar, variables) but uses different variables (Address, Location, StartDate, EndDate) — these are resolved at save time (not at send time) because the Outlook body is identical for all attendees. Per-recipient variables (Name, AppUrl) don\'t make sense here.'}
               </>
             ),

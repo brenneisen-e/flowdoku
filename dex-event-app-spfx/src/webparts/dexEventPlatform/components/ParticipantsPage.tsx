@@ -3,7 +3,7 @@
  *
  * Zeigt alle registrierten Teilnehmer mit ihren Event-Zuordnungen.
  * EventNumbers sind klickbar und navigieren zur Teilnehmerliste des Events.
- * Link zur SharePoint-Liste fuer direkten Zugriff.
+ * Link zur SharePoint-Liste für direkten Zugriff.
  */
 
 import * as React from 'react';
@@ -28,7 +28,7 @@ export default function ParticipantsPage(): React.ReactElement {
   const context = (window as any).__dexSpfxContext;
   const eventService = React.useMemo(() => context ? new EventService(context) : null, []);
 
-  // EventNumber -> Event Map fuer schnelle Lookups
+  // EventNumber -> Event Map für schnelle Lookups
   const eventByNumber = React.useMemo(() => {
     const map: Record<number, DeloitteEvent> = {};
     for (const e of events) {

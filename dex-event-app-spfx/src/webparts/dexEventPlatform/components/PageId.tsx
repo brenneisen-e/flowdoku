@@ -1,11 +1,11 @@
 /**
- * v9.19/v9.20: PageId — kleines unauffaelliges Label am Seitenende mit der
+ * v9.19/v9.20: PageId — kleines unauffälliges Label am Seitenende mit der
  * aktuellen Seiten-ID.
  *
- * Zweck: User kann mir bei UI-Anfragen praezise sagen, welche Seite er meint
+ * Zweck: User kann mir bei UI-Anfragen präzise sagen, welche Seite er meint
  * ("PAGE-ID: events → Card ABC aendern").
  *
- * v9.20-Fix: position:fixed funktioniert in SPFx-Webparts nicht zuverlaessig
+ * v9.20-Fix: position:fixed funktioniert in SPFx-Webparts nicht zuverlässig
  * (transformierter Parent macht aus fixed effektiv absolute → relativ zum
  * Webpart-Container, und der ist oft hidden/clipped). Statt dessen rendern
  * wir das Label als Inline-Block am unteren linken Rand des main-Containers

@@ -2,7 +2,7 @@
  * Handbuch-Seite (In-App-Manual)
  *
  * Layout: Sidebar mit Sektionsliste (gefiltert nach Rolle) + Content-Bereich
- * mit ausgewaehlter Sektion. Pro Sektion werden die Perspektiven (User /
+ * mit ausgewählter Sektion. Pro Sektion werden die Perspektiven (User /
  * Organizer / Admin) als Tabs dargestellt, innerhalb einer Perspektive die
  * nummerierten Schritte mit Text + Visual.
  */

@@ -1,7 +1,7 @@
 /**
- * Event Context - zentraler State fuer alle Events
+ * Event Context - zentraler State für alle Events
  *
- * Laedt Events aus der SharePoint-Liste DEX_Events.
+ * Lädt Events aus der SharePoint-Liste DEX_Events.
  * Erstellt die Liste automatisch beim ersten Start.
  * Verwaltet Registrierungen ueber Event-Subsites mit Teilnehmerlisten.
  *
@@ -18,12 +18,12 @@ import { APP_VERSION } from '../version';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
 
 /**
- * Organizer-Namen fuer Mail-Anreden sauber formatieren:
+ * Organizer-Namen für Mail-Anreden sauber formatieren:
  *   Input:  ['Sathasivam, Philipp', 'Oesterle, Ines']
  *   Output: 'Philipp Sathasivam und Ines Oesterle'  (bei DE)
  *           'Philipp Sathasivam and Ines Oesterle'  (bei EN)
  *
- * - Namen koennen auch ';'-separiert als Einzel-String kommen, wird gesplittet.
+ * - Namen können auch ';'-separiert als Einzel-String kommen, wird gesplittet.
  * - Nachname/Vorname-Pairs werden vorgetauscht (SP-Default ist "Nachname, Vorname").
  * - Bei 1 Name: nur der Name. Bei 2: "A und B" / "A and B". Bei 3+: "A, B und C" / "A, B and C".
  */
@@ -34,7 +34,7 @@ import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } fro
  * - Pro Feld gilt: Override > globale SP-Vorlage. headingColor bleibt immer
  *   die globale (Overrides aendern keine Brand-Farben).
  * - Wenn weder Override noch SP-Template existieren, gibt die Funktion null
- *   zurueck und der Caller faellt auf das Code-Default zurueck.
+ *   zurück und der Caller fällt auf das Code-Default zurück.
  */
 export function applyEventTemplateOverride(
   spTemplate: { subject: string; headingColor: string; heading: string; subheading?: string; bodyHtml: string } | null,
@@ -139,7 +139,7 @@ export function formatOrganizerList(organizers: string[], lang: string): string 
     // Akzeptiere ';' UND ',' als Top-Level-Trenner zwischen Personen.
     // Wenn die Anzahl der Komma-Tokens gerade und >=2 ist, behandeln wir sie als
     // Paare ('Lastname, Firstname, Lastname, Firstname, ...'). Sonst fallen wir
-    // zurueck auf Semikolon-Split + 'Lastname, Firstname' pro Stueck.
+    // zurück auf Semikolon-Split + 'Lastname, Firstname' pro Stück.
     const raw = (entry || '').trim();
     if (!raw) continue;
     const semiPieces = raw.split(';').map(p => p.trim()).filter(Boolean);
@@ -299,50 +299,50 @@ interface EventContextType {
   createEvent: (event: CreateEventInput) => Promise<number | null>;
   registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' }>;
   /** v11.82: Team-Anmeldung — Lead + N-1 Mitglieder gleichzeitig anmelden.
-   *  Reserviert N Plaetze atomar; bei Vollbelegung geht das ganze Team auf
-   *  die Warteliste (keine Teil-Anmeldungen aus Kapazitaetsmangel). */
+   *  Reserviert N Plätze atomar; bei Vollbelegung geht das ganze Team auf
+   *  die Warteliste (keine Teil-Anmeldungen aus Kapazitätsmangel). */
   registerTeam: (
     eventId: string,
     leadData: { firstName: string; lastName: string; email: string; salutation?: string; customData: Record<string, string>; preferredStarterType?: string },
     members: Array<{ email: string; displayName: string; customData?: Record<string, string> }>,
     teamName: string | undefined
   ) => Promise<{ ok: boolean; teamId?: string; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
-  /** v11.82: Andere Team-Mitglieder zu einer Registrierung laden — fuer das
+  /** v11.82: Andere Team-Mitglieder zu einer Registrierung laden — für das
    *  Team-Badge in „Meine Events". */
   getTeamMembers: (eventId: string, teamId: string) => Promise<SPRegistration[]>;
-  /** v11.83: Ein Team-Lead kann nachtraeglich ein einzelnes Mitglied
-   *  zum bereits angemeldeten Team hinzufuegen (Plus-Button in MyEvents).
+  /** v11.83: Ein Team-Lead kann nachträglich ein einzelnes Mitglied
+   *  zum bereits angemeldeten Team hinzufügen (Plus-Button in MyEvents).
    *  Atomar einen Sitzplatz reservieren, neuen Member-Eintrag anlegen,
-   *  Bestaetigungs-Mail + Outlook-Termin queuen. */
+   *  Bestätigungs-Mail + Outlook-Termin queuen. */
   addTeamMember: (eventId: string, teamId: string, teamName: string | undefined, member: { email: string; displayName: string }, customData?: Record<string, string>) => Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
   /** v17.2: Schon angemeldete Person (ohne TeamId) einem Team zuweisen.
    *  PATCHt nur die TeamId/TeamName/TeamLead-Felder, KEINE neue
-   *  Registrierung, KEINE Bestaetigungsmail, KEIN Outlook. */
+   *  Registrierung, KEINE Bestätigungsmail, KEIN Outlook. */
   assignTeamlessToTeam: (eventId: string, teamId: string, teamName: string | undefined, existingRegId: number, isLead?: boolean) => Promise<boolean>;
   /** v11.83: Direkter Team-Beitritt aus der Anmeldeseite (wenn der
-   *  Organizer "Beitritt erfordert Bestaetigung" NICHT aktiviert hat).
-   *  Verhalten wie `addTeamMember`, aber laeuft mit dem eingeloggten User
+   *  Organizer "Beitritt erfordert Bestätigung" NICHT aktiviert hat).
+   *  Verhalten wie `addTeamMember`, aber läuft mit dem eingeloggten User
    *  selbst als neuem Member. */
   joinTeam: (eventId: string, teamId: string, teamName: string | undefined, customData?: Record<string, string>) => Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
   /** v11.84: Team-Lead-Rolle innerhalb eines Teams uebergeben — nur im
-   *  Admin Center fuer Admin/Organizer eigener Events sichtbar. Setzt die
+   *  Admin Center für Admin/Organizer eigener Events sichtbar. Setzt die
    *  alte Lead-Zeile auf TeamLead=false und die neue auf TeamLead=true,
    *  schickt anschliessend eine Info-Mail an alle aktiven Mitglieder. */
   transferTeamLead: (eventId: string, teamId: string, newLeadEmail: string) => Promise<{ ok: boolean; reason?: string }>;
-  /** v11.83: Beitritts-Anfrage in DEX_TeamJoinRequests einreichen — fuer
+  /** v11.83: Beitritts-Anfrage in DEX_TeamJoinRequests einreichen — für
    *  Events bei denen der Organizer Approval aktiviert hat. */
   createTeamJoinRequest: (eventId: string, teamId: string, customData?: Record<string, string>) => Promise<{ ok: boolean; itemId?: number; reason?: string }>;
-  /** v11.83: Pending-Beitritts-Anfragen abrufen (nur fuer den
+  /** v11.83: Pending-Beitritts-Anfragen abrufen (nur für den
    *  eingeloggten User als Team-Lead — Filter auf TeamId, das er selber
-   *  fuehrt). */
+   *  führt). */
   listTeamJoinRequestsForEvent: (eventId: string, teamId: string) => Promise<Array<{ Id: number; EventId: string; TeamId: string; RequesterEmail: string; RequesterDisplayName: string; Status: string; Created: string }>>;
   /** v11.83: Approval-/Reject-Entscheidung eines Leads — bei „Approved"
    *  legt die App die Member-Anmeldung an und queued Mails; bei
    *  „Rejected" eine kurze Absage-Mail an den Anfragenden. */
   decideTeamJoinRequest: (requestId: number, decision: 'Approved' | 'Rejected') => Promise<boolean>;
-  /** v11.83: Liste der Teams (gruppiert nach TeamId) eines Events fuer
+  /** v11.83: Liste der Teams (gruppiert nach TeamId) eines Events für
    *  die „Offene Teams"-Anzeige auf der Registrierungs-Seite. Nur Teams
-   *  mit aktivem Mitglied-Count < TeamSize werden aufgefuehrt. */
+   *  mit aktivem Mitglied-Count < TeamSize werden aufgeführt. */
   listOpenTeamsForEvent: (eventId: string) => Promise<Array<{ teamId: string; teamName: string; activeCount: number; teamSize: number; leadEmail: string; leadDisplayName: string }>>;
   cancelRegistration: (eventId: string, opts?: { suppressNotifications?: boolean }) => Promise<boolean>;
   /** v18.11: Proaktive Absage durch einen (noch nicht angemeldeten) Teilnehmer
@@ -350,10 +350,10 @@ interface EventContextType {
   declineEvent: (eventId: string) => Promise<boolean>;
   /** v11.86: Ein Team-Lead meldet ueber „Team verwalten" stellvertretend
    *  ein Team-Mitglied vom Event ab. Audit-Felder (CancelledBy*) werden
-   *  mit dem eingeloggten Lead gefuellt, danach laeuft derselbe
+   *  mit dem eingeloggten Lead gefüllt, danach läuft derselbe
    *  Team-Post-Step wie beim Self-Cancel (Info-Mails an die uebrigen
    *  Mitglieder; Auto-Promote nicht relevant, weil der Lead sich nicht
-   *  selbst loescht). */
+   *  selbst löscht). */
   cancelTeamMember: (
     eventId: string,
     memberRegistration: SPRegistration
@@ -367,7 +367,7 @@ interface EventContextType {
   checkRegistrationByEmail: (eventId: string, email: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
   deleteEvent: (eventId: string) => Promise<boolean>;
-  /** v11.69: Loescht NUR das DEX_Events-Listenitem, ohne Subsite-/Teilnehmer-
+  /** v11.69: Löscht NUR das DEX_Events-Listenitem, ohne Subsite-/Teilnehmer-
    *  Liste-Recycle und ohne Outlook-DeleteEvent-Queue. Wird gebraucht, um ein
    *  Sub-Event mit `existingSubsiteUrl` neu anzulegen, damit der
    *  `DEX_CreateOutlookEvent`-Flow triggert — die alte Subsite mit
@@ -387,9 +387,9 @@ interface EventContextType {
    *  wurde (full=true). */
   switchSplitGroup: (eventId: string, newType: 'Durchstarter' | 'Funstarter') => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' | 'Failed'; full: boolean }>;
   /** v11.0: Item-Attachments einer Teilnehmer-Zeile listen / hochladen /
-   *  loeschen — der itemId ist in beiden Fällen die SharePoint-ID des
+   *  löschen — der itemId ist in beiden Fällen die SharePoint-ID des
    *  jeweiligen Teilnehmer-Items in der Subsite. Im User-Flow nutzt die
-   *  App fuer 'eigene Anmeldung' getMyRegistration, im Admin-Flow gibt
+   *  App für 'eigene Anmeldung' getMyRegistration, im Admin-Flow gibt
    *  AdminPage die fremde Item-ID direkt mit. */
   listMyEventAttachments: (eventId: string) => Promise<Array<{ fileName: string; serverRelativeUrl: string }>>;
   uploadMyEventAttachment: (eventId: string, file: File) => Promise<boolean>;
@@ -408,10 +408,10 @@ interface EventContextType {
    *  jedes Standard-Templates mit den Default-Werten aus dem Code. */
   reseedDefaultEmailTemplates: () => Promise<ReseedSummary>;
   /** v11.52: Gecachte KPI-Werte (Events + Teilnehmer) aus _Config lesen —
-   *  ein einziger schneller REST-Call, fuer Boot-Loader-Anzeige. */
+   *  ein einziger schneller REST-Call, für Boot-Loader-Anzeige. */
   getKpiCache: () => Promise<{ participants: number; events: number } | null>;
   /** v11.52: Frische KPI-Werte in _Config schreiben. Wird nach vollem
-   *  App-Load im Hintergrund aufgerufen, damit naechster Boot frisch ist. */
+   *  App-Load im Hintergrund aufgerufen, damit nächster Boot frisch ist. */
   updateKpiCache: (v: { participants: number; events: number }) => Promise<boolean>;
   /**
    * Onboarding-Mail an einen frisch ernannten Organizer/Admin verschicken.
@@ -421,7 +421,7 @@ interface EventContextType {
   sendOrganizerOnboarding: (recipientEmail: string, recipientName: string, role: 'Organizer' | 'Admin') => Promise<boolean>;
   // v9.21: Globaler TestTeam-State entfernt — Test-Team ist ab jetzt
   // per-Event (auf event.testTeamEmails). Die globalen Methoden bleiben
-  // im EventService dormant fuer Backward-Compat.
+  // im EventService dormant für Backward-Compat.
 }
 
 export interface CreateEventInput {
@@ -451,7 +451,7 @@ export interface CreateEventInput {
   contactInfo?: string;
   outlookEventId: string;
   outlookBody: string;
-  agenda?: string; // JSON-Array mit Agenda-Eintraegen
+  agenda?: string; // JSON-Array mit Agenda-Einträgen
   transfers?: string; // JSON-Array mit Transferzeiten
   documents?: string; // JSON-Array mit Dokumenten
   funZone?: string; // JSON-Array mit Quiz-Fragen
@@ -519,7 +519,7 @@ export interface CreateEventInput {
   customFields: CustomField[];
   /** v11.69: Optional — wenn gesetzt zusammen mit `existingRegistrationListName`,
    *  wird keine neue Subsite angelegt. Stattdessen wird die mitgegebene Subsite
-   *  an die neue DEX_Events-Zeile gekoppelt. Genutzt fuer "Outlook nachtraeglich
+   *  an die neue DEX_Events-Zeile gekoppelt. Genutzt für "Outlook nachträglich
    *  aktivieren ohne Teilnehmer-Verlust" (siehe `deleteEventItemOnly`). */
   existingSubsiteUrl?: string;
   /** v11.69: Optional — Listenname der bereits bestehenden Teilnehmerliste in
@@ -548,7 +548,7 @@ export const EventContext = React.createContext<EventContextType | undefined>(un
 export function EventProvider(props: { context: WebPartContext; children: React.ReactNode }): React.ReactElement {
   const [events, setEvents] = React.useState<DeloitteEvent[]>([]);
   const [isEventsLoading, setIsEventsLoading] = React.useState(true);
-  // Map von EventId -> SubsiteUrl fuer schnellen Zugriff
+  // Map von EventId -> SubsiteUrl für schnellen Zugriff
   const subsiteMap = React.useRef<Record<string, string>>({});
 
   const eventService = React.useMemo(() => new EventService(props.context), []);
@@ -557,7 +557,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   // ist jetzt per-Event (event.testTeamEmails). Globaler State raus.
   const currentUserEmail = props.context.pageContext.user.email;
   const currentUserName = props.context.pageContext.user.displayName;
-  // Vorname fuer E-Mail-Anreden ({{Name}} im Template).
+  // Vorname für E-Mail-Anreden ({{Name}} im Template).
   // Deloitte-displayName ist "Nachname, Vorname" (mit Komma) -> Teil nach Komma.
   // Fallback: displayName ohne Komma -> erstes Wort (vereinzelt "Vorname Nachname").
   const getFirstName = (displayName: string): string => {
@@ -615,7 +615,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // Stage 1: DEX_Events anlegen/sichern (Listen-Erstellung muss als erstes;
       // die upgrade*-Calls operieren auf DEX_Events).
       await stage('ensureEventsList', () => eventService.ensureEventsList());
-      // Stage 2: alles andere parallel — keine inter-Abhaengigkeiten.
+      // Stage 2: alles andere parallel — keine inter-Abhängigkeiten.
       const parallelMarks: Array<{ name: string; ms: number }> = [];
       const tPar = performance.now();
       // Hinweis: safeRun() swallowt Exceptions intern und resolved IMMER. Daher
@@ -693,13 +693,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const dMap = Math.round(performance.now() - tMap);
     // eslint-disable-next-line no-console
     console.log(`[DEX][perf][loadEvents] mapSPEventToDeloitteEvent x ${spEvents.length} = ${dMap} ms`);
-    // Teilnehmerzahlen fuer alle Events mit Subsite laden
+    // Teilnehmerzahlen für alle Events mit Subsite laden
     const tCnt = performance.now();
     const withCounts = await loadParticipantCountsForEvents(mapped);
     const dCnt = Math.round(performance.now() - tCnt);
     // eslint-disable-next-line no-console
     console.log(`[DEX][perf][loadEvents] participantCounts = ${dCnt} ms`);
-    // Attachments (Dokumente) fuer alle Events laden
+    // Attachments (Dokumente) für alle Events laden
     const tAtt = performance.now();
     const withDocs = await Promise.all(withCounts.map(async (evt) => {
       try {
@@ -788,15 +788,15 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     let customFields: CustomField[] = [];
     try {
       if (e.CustomFields) customFields = JSON.parse(e.CustomFields);
-    } catch { /* ungueltig */ }
-    // v11.18: Debug-Trace fuer den helpText-Roundtrip — den rohen SP-String
-    // logge ich direkt aus, damit wir sehen koennen ob helpText/onlyForGroup
-    // tatsaechlich in dem zurueckkommenden JSON drin sind. Wenn ja → das
+    } catch { /* ungültig */ }
+    // v11.18: Debug-Trace für den helpText-Roundtrip — den rohen SP-String
+    // logge ich direkt aus, damit wir sehen können ob helpText/onlyForGroup
+    // tatsächlich in dem zurückkommenden JSON drin sind. Wenn ja → das
     // Wizard-Loadmapping verschluckt sie. Wenn nicht → SP hat sie beim
     // Save gar nicht erst gespeichert.
     if (typeof e.CustomFields === 'string' && e.CustomFields.indexOf('helpText') >= 0) {
-      // Nur ausfuehrlich loggen wenn das Event tatsaechlich helpText
-      // beinhaltet — sonst lautes Logging fuer alle alten Events.
+      // Nur ausführlich loggen wenn das Event tatsächlich helpText
+      // beinhaltet — sonst lautes Logging für alle alten Events.
       // eslint-disable-next-line no-console
       console.log('[DEX][load] Raw CustomFields for event', e.Id, e.Title, ':\n', e.CustomFields);
     }
@@ -829,7 +829,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       })(),
       locationAudience: e.LocationFilter ? e.LocationFilter.split(',').map(s => s.trim()) : [],
       audienceFilter: e.Audience ? e.Audience.split(',').map(s => s.trim()) : [],
-      // v16.4: vor-aufgeloeste Member-E-Mails der Audience-DLs.
+      // v16.4: vor-aufgelöste Member-E-Mails der Audience-DLs.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       audienceResolvedEmails: ((e as any).AudienceResolvedEmails || '')
         .split(';').map((s: string) => s.trim().toLowerCase()).filter(Boolean),
@@ -855,7 +855,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       outlookEventId: e.OutlookEventId || '',
       // v11.61: CalendarLink (iCalUId) muss in den Event-Type, weil der
       // DEX_CreateOutlookEvent-Flow nur dieses Feld auf Erfolg setzt — die
-      // v11.57-Modal-Erkennung hatte auf OutlookEventId geprueft (immer leer)
+      // v11.57-Modal-Erkennung hatte auf OutlookEventId geprüft (immer leer)
       // und das Outlook-Update-Confirm-Modal kam deshalb nie.
       calendarLink: e.CalendarLink || '',
       emailLanguage: e.EmailLanguage || 'EN',
@@ -958,7 +958,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       teamPartialAllowed: !!e.TeamPartialAllowed,
       teamOpenSlotsVisible: !!e.TeamOpenSlotsVisible,
       teamJoinRequiresApproval: !!e.TeamJoinRequiresApproval,
-      // v17.20: Bilingual-Toggle fuer Custom-Fields (DE + EN).
+      // v17.20: Bilingual-Toggle für Custom-Fields (DE + EN).
       bilingualFields: !!e.BilingualFields,
       // v6.15: Extra-B2Run-Config aus EmailTemplateOverrides._b2run (piggyback in
       // der bestehenden JSON-Struktur, keine neue SP-Spalte nötig).
@@ -977,7 +977,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           const co = (parsed as any)._coOrganizers;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const tt = (parsed as any)._testTeam;
-          // v11.25: pure Display-Reihenfolge-Umkehr fuer Split-Capacity-Karten.
+          // v11.25: pure Display-Reihenfolge-Umkehr für Split-Capacity-Karten.
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const splitDispRev = !!(parsed as any)._splitDisplayOrderReversed;
           const b2Part = b && typeof b === 'object' ? {
@@ -1027,7 +1027,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // v7.11: multi-Flag durchreichen, damit RegistrationPage Mehrfachauswahl rendern kann
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         multi: !!(cf as any).multi,
-        // externalLinks ebenfalls durchreichen, damit AGB-Links fuer B2Run-Datenschutz
+        // externalLinks ebenfalls durchreichen, damit AGB-Links für B2Run-Datenschutz
         // korrekt unter dem Feld angezeigt werden (war bisher nur ueber den Fallback in
         // RegistrationPage abgesichert).
         externalLinks: cf.externalLinks,
@@ -1035,8 +1035,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ccOnEmails: !!(cf as any).ccOnEmails,
         // v11.16: onlyForGroup aus dem persistierten Feld durchreichen.
-        // Wurde im Wizard sauber gespeichert (CustomFields-JSON enthaelt
-        // den Schluessel), aber der Loader hat ihn nie zurueckgelesen —
+        // Wurde im Wizard sauber gespeichert (CustomFields-JSON enthält
+        // den Schlüssel), aber der Loader hat ihn nie zurückgelesen —
         // Folge: die Gruppen-spezifische Sichtbarkeit (Funstarter only /
         // Durchstarter only) hat in der Registrierungs-UI nie gegriffen,
         // weil die Filter-Chain auf undefined gefallen ist.
@@ -1045,7 +1045,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // v17.19: confirmLabel (Text neben Checkbox) im Mapping nachgezogen
         // — vorher hier vergessen, Folge: Wizard speicherte den Text korrekt,
         // RegistrationPage fiel aber immer auf den Default „Ja, bestätigen"
-        // zurueck, weil das Field-Mapping confirmLabel droppte.
+        // zurück, weil das Field-Mapping confirmLabel droppte.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         confirmLabel: (cf as any).confirmLabel,
         // v17.20: Englische Varianten durchreichen — nur dann wirksam, wenn
@@ -1076,8 +1076,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         eventTitle: input.title,
         details: { eventType: input.type, location: input.location, startDate: input.startDate, maxParticipants: input.maxParticipants },
       }).catch(() => { /* */ });
-      // v11.53: KPI-Counter sofort hochzaehlen — nur fuer nicht-fictive Events
-      // (Test-Events zaehlen nicht in der LandingPage-KPI).
+      // v11.53: KPI-Counter sofort hochzählen — nur für nicht-fictive Events
+      // (Test-Events zählen nicht in der LandingPage-KPI).
       if (!input.isFictive) {
         eventService.bumpKpiEvents(1).catch(() => { /* best-effort */ });
       }
@@ -1124,8 +1124,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
 
     // Vorname/Nachname aus displayName extrahieren falls nicht uebergeben.
     // Deloitte-Profile liefern den Namen typischerweise als "Nachname, Vorname"
-    // (Komma-Format aus dem Active Directory). Frueher haben wir mit Space
-    // gesplittet — das tauschte Vor- und Nachname und fuehrte u.a. dazu, dass
+    // (Komma-Format aus dem Active Directory). Früher haben wir mit Space
+    // gesplittet — das tauschte Vor- und Nachname und führte u.a. dazu, dass
     // bei Sub-Event-Anmeldungen (die ohne explizite Vor-/Nachname-Args laufen)
     // die "Anrede" mit dem Nachnamen geschrieben wurde.
     const parseDisplayName = (raw: string): { firstName: string; lastName: string } => {
@@ -1146,11 +1146,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const emailToUse = participantEmail || currentUserEmail;
     const nameToUse = `${firstNameToUse} ${lastNameToUse}`.trim();
 
-    // Pruefen ob schon registriert
+    // Prüfen ob schon registriert
     const existing = await eventService.getMyRegistration(subsiteUrl, emailToUse);
     if (existing && existing.Status !== 'Abgemeldet') return { ok: false, status: 'Warteliste' };
 
-    // Pruefen ob Platz frei oder Waitlist
+    // Prüfen ob Platz frei oder Waitlist
     const event = events.find(e => e.id === eventId);
     let status: 'Angemeldet' | 'Warteliste' = 'Angemeldet';
     let effectiveStarterType: string | undefined = preferredStarterType;
@@ -1207,7 +1207,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     }
 
     // Audit-Trail: wer klickt gerade "Register"? = der eingeloggte User.
-    // Bei Self-Registration ist das = der Teilnehmer selbst, bei "Fuer andere
+    // Bei Self-Registration ist das = der Teilnehmer selbst, bei "Für andere
     // Person registrieren" ist das der Organizer/Admin (Teilnehmer-Daten
     // wurden ueber participantFirstName/participantEmail uebergeben).
     const actorName = currentUserName;
@@ -1275,7 +1275,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       const lang = event.emailLanguage || 'EN';
       const posText = waitlistPosition > 0 ? String(waitlistPosition) : '';
       // {{Name}} in E-Mail-Anreden: nur Vorname (firstNameToUse ist bei Self-Reg
-      // aus dem displayName gesplittet, bei "Fuer andere registrieren" explizit gesetzt).
+      // aus dem displayName gesplittet, bei "Für andere registrieren" explizit gesetzt).
       const vars = { Name: firstNameToUse, EventTitle: event.title, Organizer: formatOrganizerList(event.organizers, lang), AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, WaitlistPosition: posText };
       let emailData: { subject: string; body: string };
       const spTemplateRaw = await eventService.getEmailTemplate(templateType, lang).catch(() => null);
@@ -1288,10 +1288,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           : registrationEmail(firstNameToUse, event.title);
       }
       // v15.25: Im subEventsOnlyMode wird das Hauptevent nur als
-      // „Schatten-Registrierung" angelegt (Daten-Zeile fuer Parent-CFs).
-      // Der User nimmt nicht am Hauptevent teil und soll dafuer KEINE
-      // Bestaetigungs-Mail und KEINEN Outlook-Termin bekommen — die
-      // tatsaechlichen Teilnahme-Mails kommen pro Sub-Event.
+      // „Schatten-Registrierung" angelegt (Daten-Zeile für Parent-CFs).
+      // Der User nimmt nicht am Hauptevent teil und soll dafür KEINE
+      // Bestätigungs-Mail und KEINEN Outlook-Termin bekommen — die
+      // tatsächlichen Teilnahme-Mails kommen pro Sub-Event.
       const suppressParentNotifications = !!event.subEventsOnlyMode;
       // v19.21: disableRegistrationEmail = nur die Anmelde-Bestätigung
       // unterdrücken (granulares Sub-Häkchen unter dem Master „E-Mails").
@@ -1306,11 +1306,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           if (orgEmails.length > 0) bcc = orgEmails.join(';');
         }
         // v9.22: Externe Mail-Adresse erkennen — kein Deloitte-Postfach
-        // (@deloitte.de; auch @deloitte.com/Global zaehlt nicht als intern).
-        // v18.74: Bei externen Empfaengern wird die Bestaetigungsmail jetzt
+        // (@deloitte.de; auch @deloitte.com/Global zählt nicht als intern).
+        // v18.74: Bei externen Empfängern wird die Bestätigungsmail jetzt
         // DIREKT an die externe Person versendet (vorher an den Organizer
         // umgeleitet) — mit dem Organizer auf CC (Nachweis/Kopie). Ein
-        // Outlook-Kalendereintrag wird fuer externe Adressen weiterhin NICHT
+        // Outlook-Kalendereintrag wird für externe Adressen weiterhin NICHT
         // versendet (Microsoft blockt das ohne Federation, s.u.
         // skipOutlookForExternal).
         const isExternalRecipient = !!emailToUse && !/@(.*\.)?deloitte\.de$/i.test(emailToUse);
@@ -1318,7 +1318,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         const finalSubject = emailData.subject;
         let finalBody = emailData.body;
         const finalRecipientName = nameToUse;
-        // CC-Adressen, die zusaetzlich zu den Feld-CCs gelten (Organizer bei
+        // CC-Adressen, die zusätzlich zu den Feld-CCs gelten (Organizer bei
         // externer Anmeldung).
         let externalCcExtra = '';
         if (isExternalRecipient) {
@@ -1366,7 +1366,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // (setzt AutoSendQRCode=true am Event, siehe AdminPage) ODER die
       // Anmeldefrist ist vorbei (Nachzügler). Master „DisableEmails" und die
       // Schatten-Registrierung (subEventsOnly) heben ihn weiterhin auf; nur
-      // fuer Status='Angemeldet' (Wartelistler sind noch nicht confirmed).
+      // für Status='Angemeldet' (Wartelistler sind noch nicht confirmed).
       // v21 HOTFIX (User): QR-Phase startet AUSSCHLIESSLICH mit dem ersten
       // manuellen QR-Massen-Versand des Organizers (der setzt
       // AutoSendQRCode=true am Event). Kein Deadline-Trigger — vor dem ersten
@@ -1387,14 +1387,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
                 qrImageHtml = `<img src="${qrDataUrl}" alt="QR-Code" style="width:300px;max-width:100%;height:auto;" />`;
               } catch (qrErr) { console.warn('[DEX] QRCode.toDataURL fehlgeschlagen — Text-Fallback:', qrErr); }
               const qrMail = qrCodeEmail(firstNameToUse, event.title, qrImageHtml, lang, nameToUse);
-              // v9.22: Auto-Send-QR fuer externe Empfaenger ebenfalls an den
-              // Organizer umleiten (mit klarem Subject-Praefix), nicht an den
-              // externen Mail-Empfaenger.
+              // v9.22: Auto-Send-QR für externe Empfänger ebenfalls an den
+              // Organizer umleiten (mit klarem Subject-Präfix), nicht an den
+              // externen Mail-Empfänger.
               if (isExternalRecipientQr) {
                 const orgEmails = (event.organizerEmails || []).filter(Boolean);
                 const orgRecipient = orgEmails.length > 0 ? orgEmails.join(';') : currentUserEmail;
                 const orgSubject = `[Externer Teilnehmer] QR-Code für ${nameToUse} — ${event.title}`;
-                // Hinweis-Box vor dem QR-Code-Body — analog zur Bestaetigungsmail.
+                // Hinweis-Box vor dem QR-Code-Body — analog zur Bestätigungsmail.
                 const qrExternalHint = `<div style="margin:0 0 16px;padding:12px 16px;background:#fff3e0;border:1px solid #ed8b00;border-radius:8px;font-size:13px;line-height:1.55;color:#7a4a00;">`
                   + `<strong>QR-Code für externen Teilnehmer.</strong><br>`
                   + `Eigentlich für <strong>${emailToUse}</strong> (${nameToUse}). Da externe Adressen keinen Auto-Versand bekommen, landet der QR-Code bei dir — drucke ihn aus oder leite die Mail intern an den Empfänger weiter (Datenschutzrichtlinien Deloitte Deutschland beachten).`
@@ -1425,7 +1425,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // Roommate-Benachrichtigung: nur Custom-Fields vom Typ 'roommate'
       // durchsuchen (seit v7.17 eigener Feldtyp; vorher waren es alle 'user'-
       // Felder, was bei "Assistent"-, "Mentor"- etc. Pickern zu ungewollten
-      // Roommate-Mails fuehrte). Fuer jede ausgewaehlte E-Mail eine Roommate-
+      // Roommate-Mails führte). Für jede ausgewählte E-Mail eine Roommate-
       // Anfrage-Mail im Deloitte-Template queuen.
       if (!event.disableEmails) {
         for (const f of event.eventSpecificFields) {
@@ -1482,34 +1482,34 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           emailToUse, eventId, event.title, 'Einladen'
         ).catch(err => console.warn('[DEX] queueOutlookEvent failed:', err));
       }
-      // v11.53: KPI-Counter sofort hochzaehlen, damit der naechste Boot-
-      // Loader die neue Zahl ohne Verzoegerung zeigt. Nur fuer 'Angemeldet'-
-      // Status (Warteliste zaehlt nicht in 'Teilnehmer').
+      // v11.53: KPI-Counter sofort hochzählen, damit der nächste Boot-
+      // Loader die neue Zahl ohne Verzögerung zeigt. Nur für 'Angemeldet'-
+      // Status (Warteliste zählt nicht in 'Teilnehmer').
       if (status === 'Angemeldet') {
         eventService.bumpKpiParticipants(1).catch(() => { /* best-effort */ });
       }
       await loadEvents();
     }
-    // v18.67: echten Status zurueckgeben (Angemeldet/Warteliste), damit die
+    // v18.67: echten Status zurückgeben (Angemeldet/Warteliste), damit die
     // RegistrationPage das Ergebnis-Modal nicht mehr aus der gecachten
-    // currentParticipants-Schaetzung (isFull) ableiten muss — die war nach
-    // Cancel/Re-Register veraltet und zeigte faelschlich "Warteliste".
+    // currentParticipants-Schätzung (isFull) ableiten muss — die war nach
+    // Cancel/Re-Register veraltet und zeigte fälschlich "Warteliste".
     return { ok: success, status };
   }
 
   /**
    * v11.82: Team-Anmeldung — eine Person meldet sich + N-1 Mitglieder
-   * gleichzeitig an. N Plaetze werden atomar reserviert (per `reserveSeat`
-   * mit count=N). Sind nicht genug Plaetze frei, geht das gesamte Team
+   * gleichzeitig an. N Plätze werden atomar reserviert (per `reserveSeat`
+   * mit count=N). Sind nicht genug Plätze frei, geht das gesamte Team
    * auf die Warteliste — kein Teil-Anmelden eines vollen Events.
    *
    * Jedes Mitglied bekommt einen eigenen Eintrag in der Subsite-Teilnehmer-
    * liste mit identischer `TeamId`. Genau ein Eintrag (der Lead, also der
    * Submitter) ist `TeamLead=true`. Jeder Mitglied bekommt eine eigene
-   * Bestaetigungs-Mail (mit Hinweis dass er als Teil eines Teams angemeldet
+   * Bestätigungs-Mail (mit Hinweis dass er als Teil eines Teams angemeldet
    * wurde) und einen eigenen Outlook-Termin (sofern aktiviert).
    *
-   * Die Member-Eintraege bekommen leere Custom-Field-Antworten — nur der
+   * Die Member-Einträge bekommen leere Custom-Field-Antworten — nur der
    * Lead beantwortet event-spezifische Fragen. Pflicht-Custom-Fields sollten
    * organisatorisch nicht mit Team-Anmeldung kombiniert werden; die App
    * setzt das nicht hart durch, der Wizard sollte den Organizer im Manual
@@ -1533,10 +1533,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const event = events.find(e => e.id === eventId);
     if (!event) return { ok: false, reason: 'event-not-found' };
 
-    // Doppel-Anmelde-Pruefung: weder der Lead noch ein Member darf bereits
+    // Doppel-Anmelde-Prüfung: weder der Lead noch ein Member darf bereits
     // (aktiv) angemeldet sein. v11.83: konsolidiert auf den zentralen Helper
     // `isUserAlreadyOnEvent`, der genau die blockierenden Status-Werte
-    // beruecksichtigt (Angemeldet/QR versendet/Eingecheckt/Warteliste). Pfad
+    // berücksichtigt (Angemeldet/QR versendet/Eingecheckt/Warteliste). Pfad
     // ist nicht performance-kritisch — sequentiell ist OK bei N ≤ 20.
     const allEmails = [leadData.email, ...members.map(m => m.email)];
     for (const em of allEmails) {
@@ -1560,7 +1560,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     let status: 'Angemeldet' | 'Warteliste' = 'Angemeldet';
     let effectiveStarterType: string | undefined = leadData.preferredStarterType;
 
-    // Atomar N Plaetze reservieren — Split-Group oder klassisch.
+    // Atomar N Plätze reservieren — Split-Group oder klassisch.
     const isSplitGroup = typeof event.durchstarterCapacity === 'number' && typeof event.funstarterCapacity === 'number'
       && (event.durchstarterCapacity > 0 || event.funstarterCapacity > 0);
     if (isSplitGroup && leadData.preferredStarterType) {
@@ -1647,14 +1647,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           teamId,
           teamLead: false,
           teamName,
-          // v18.12: Custom-Field-Antworten des Mitglieds (z.B. Essenspraeferenz).
+          // v18.12: Custom-Field-Antworten des Mitglieds (z.B. Essenspräferenz).
           customData: m.customData || {},
           customFieldMap: fieldMap,
           starterType: effectiveStarterType,
           preferredStarterType: leadData.preferredStarterType,
           registeredByName: actorName,
           registeredByEmail: actorEmail,
-          // Anrede der Mitglieder bleibt leer — kein Picker fuer Member-Anreden.
+          // Anrede der Mitglieder bleibt leer — kein Picker für Member-Anreden.
           salutation: '',
         });
         return { ok: r.ok, email: m.email, firstName: parsed.firstName, lastName: parsed.lastName };
@@ -1665,7 +1665,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const anyOk = results.some(r => r.ok);
     if (!anyOk) return { ok: false, reason: 'insert-failed' };
 
-    // Pro erfolgreiche Anmeldung: Bestaetigungs-Mail + Outlook-Termin queuen.
+    // Pro erfolgreiche Anmeldung: Bestätigungs-Mail + Outlook-Termin queuen.
     const lang = event.emailLanguage || 'EN';
     const isDe = lang.toUpperCase() === 'DE';
     // v11.87: Team-Info-Block — Mitglieder-Liste, Belegung, Cancel-Hinweis.
@@ -1704,12 +1704,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           : registrationEmail(r.firstName, event.title);
       }
       // v11.87: Team-Info-Block + Consent-Hinweis injecten.
-      // v16.3: Vorher wurde der Block direkt nach <body> eingefuegt — damit
-      // landete er VOR dem Deloitte-Template-Header (Logo, gruener Balken,
+      // v16.3: Vorher wurde der Block direkt nach <body> eingefügt — damit
+      // landete er VOR dem Deloitte-Template-Header (Logo, grüner Balken,
       // Headline). Stattdessen jetzt INNERHALB des Content-<td> einsetzen,
       // also direkt vor dem eigentlichen Mail-Body. Wir matchen das Content-
       // Padding (`padding:0 30px 30px 30px`) als Marker — dieser Style ist
-      // im wrapTemplate eindeutig fuer das Body-Td.
+      // im wrapTemplate eindeutig für das Body-Td.
       const teamInfoHtml = teamInfoBlockHtml({
         teamName,
         members: teamMembersForBlock,
@@ -1757,8 +1757,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   }
 
   /**
-   * v11.83: Einzelnes Mitglied zu einem bestehenden Team hinzufuegen.
-   * Wird vom „+ Mitglied"-Button im MyEvents-Team-Badge benutzt — nur fuer
+   * v11.83: Einzelnes Mitglied zu einem bestehenden Team hinzufügen.
+   * Wird vom „+ Mitglied"-Button im MyEvents-Team-Badge benutzt — nur für
    * Leads sichtbar, daher hier keine separate Lead-Authorisierung; die
    * UI versteckt den Button.
    *
@@ -1768,7 +1768,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
    *   2) Atomar 1 Sitzplatz reservieren — split-aware. Bei Vollbelegung
    *      landet das neue Mitglied auf der Warteliste (kein Hard-Fail).
    *   3) `registerTeamMember` mit identischer TeamId, `teamLead=false`.
-   *   4) Bestaetigungs-Mail + Outlook-Termin queuen.
+   *   4) Bestätigungs-Mail + Outlook-Termin queuen.
    *   5) Optional: Info-Mail an die anderen Mitglieder „X ist eurem Team
    *      beigetreten" (best-effort).
    */
@@ -1866,8 +1866,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     });
     if (!r.ok) return { ok: false, reason: 'insert-failed' };
 
-    // Bestaetigungs-Mail + Outlook + DEX_Participants — same pattern as
-    // registerTeam aber fuer EINEN Member.
+    // Bestätigungs-Mail + Outlook + DEX_Participants — same pattern as
+    // registerTeam aber für EINEN Member.
     const lang = event.emailLanguage || 'EN';
     const isDe = (lang || 'EN').toUpperCase() === 'DE';
     const templateType = status === 'Warteliste' ? 'Warteliste' : 'Anmeldung';
@@ -1988,7 +1988,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
 
   /**
    * v11.83: Direkter Team-Beitritt aus der Anmeldeseite (ohne Approval).
-   * Funktional identisch zu `addTeamMember`, aber laeuft mit dem
+   * Funktional identisch zu `addTeamMember`, aber läuft mit dem
    * eingeloggten User als Member. Der Submit-Pfad in RegistrationPage
    * unterscheidet zwischen `joinTeam` (Approval OFF) und
    * `createTeamJoinRequest` (Approval ON).
@@ -2007,8 +2007,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   }
 
   /**
-   * v11.84: Lead-Rolle innerhalb eines Teams uebergeben. Nur fuer Admin
-   * Center gedacht — die UI versteckt den Button fuer alle anderen Rollen.
+   * v11.84: Lead-Rolle innerhalb eines Teams uebergeben. Nur für Admin
+   * Center gedacht — die UI versteckt den Button für alle anderen Rollen.
    * Wirft kein Mail zur "alten" Person, sondern eine Info-Mail an alle
    * aktiven Team-Mitglieder mit dem Hinweis "Die Team-Lead-Rolle wurde
    * an <Name> uebergeben". Audit-Eintrag im ChangeLog.
@@ -2030,7 +2030,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const newLead = active.find(m => (m.ParticipantEmail || '').toLowerCase() === newLeadEmail.toLowerCase());
     if (!newLead) return { ok: false, reason: 'new-lead-not-found' };
     if (!oldLead) {
-      // Kein aktiver Lead — einfach den neuen promoten, kein Demote noetig.
+      // Kein aktiver Lead — einfach den neuen promoten, kein Demote nötig.
       const okPromote = await eventService.promoteToTeamLead(subsiteUrl, newLead.Id);
       if (!okPromote) return { ok: false, reason: 'promote-failed' };
     } else {
@@ -2175,7 +2175,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   }
 
   /**
-   * v11.83: Pending-Anfragen fuer ein bestimmtes Team eines Events
+   * v11.83: Pending-Anfragen für ein bestimmtes Team eines Events
    * abrufen — wird in der „Beitritts-Anfragen"-Box im MyEvents-Team-
    * Badge angezeigt (nur Leads sehen sie).
    */
@@ -2229,7 +2229,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       }
       await eventService.decideTeamJoinRequest(requestId, 'Approved', currentUserEmail);
       // „Du wurdest aufgenommen"-Mail wurde bereits durch addTeamMember
-      // gequeued (Bestaetigungs-Mail), daher hier keine doppelte Mail.
+      // gequeued (Bestätigungs-Mail), daher hier keine doppelte Mail.
       return true;
     }
 
@@ -2267,9 +2267,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   }
 
   /**
-   * v11.83: Aktive Teams eines Events fuer die „Offene Teams"-Box.
+   * v11.83: Aktive Teams eines Events für die „Offene Teams"-Box.
    * Filter: nur Teams mit aktivem Mitglied-Count < event.teamSize.
-   * Mitgliedernamen werden bewusst NICHT zurueckgegeben (Privatsphaere) —
+   * Mitgliedernamen werden bewusst NICHT zurückgegeben (Privatsphäre) —
    * nur Belegungs-Anzahl, TeamName und LeadEmail (LeadEmail wird ohnehin
    * gebraucht, weil der Beitritts-Pfad eine Lead-Notification queued).
    */
@@ -2318,16 +2318,16 @@ export function EventProvider(props: { context: WebPartContext; children: React.
 
     // Audit: wer klickt gerade 'Abmelden'? = der eingeloggte User. Bei Self-Cancel
     // ist das = der Teilnehmer selbst. Aus der App heraus gibt's aktuell keinen
-    // "Abmeldung fuer andere"-Pfad (das macht der Organizer/Admin ueber AdminPage,
+    // "Abmeldung für andere"-Pfad (das macht der Organizer/Admin ueber AdminPage,
     // dort wird eventService.cancelRegistration direkt aufgerufen).
     // v11.53: vorherigen Status merken, damit wir den KPI-Counter nur dann
-    // dekrementieren, wenn der User tatsaechlich 'Angemeldet' war (Wartelist-
-    // Cancel beruehrt den Teilnehmer-KPI nicht).
+    // dekrementieren, wenn der User tatsächlich 'Angemeldet' war (Wartelist-
+    // Cancel berührt den Teilnehmer-KPI nicht).
     const wasActive = myReg.Status === 'Angemeldet';
     // v11.83: Team-Anmeldungs-Kontext snapshotten, BEVOR der eigene Status
     // auf 'Abgemeldet' kippt — danach liefert getTeamMembers den eigenen
     // Eintrag schon mit dem alten Lead-Flag aus und der Promote-Pfad
-    // verlaesst sich nicht mehr darauf. Wir speichern hier den eigenen
+    // verlässt sich nicht mehr darauf. Wir speichern hier den eigenen
     // TeamId/TeamLead/TeamName-Stand und filtern nach dem Cancel die
     // verbleibenden Mitglieder.
     const wasTeamCancel = !!myReg.TeamId;
@@ -2358,16 +2358,16 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           } catch (err) { console.warn('[DEX] removeParticipantEvent failed:', err); }
         }
         // Abmelde-E-Mail in Queue eintragen (SharePoint-Template, Fallback auf Code-Template)
-        // v17.19/v17.22: Notifications werden NUR unterdrueckt, wenn der Aufrufer
+        // v17.19/v17.22: Notifications werden NUR unterdrückt, wenn der Aufrufer
         // das explizit anfordert (`opts.suppressNotifications`). Das passiert
         // ausschliesslich beim automatischen Schatten-Parent-Cancel im
-        // subEventsOnlyMode (MyEventsPage: letzte Sub-Event-Abmeldung raeumt
+        // subEventsOnlyMode (MyEventsPage: letzte Sub-Event-Abmeldung räumt
         // den Schatten-Parent ab — die Sub-Event-Abmeldung hat ihre eigene
         // Mail schon verschickt). v17.22-Fix: vorher wurde pauschal auf
-        // `event.subEventsOnlyMode` geprueft, wodurch Alt-Anmeldungen (User
+        // `event.subEventsOnlyMode` geprüft, wodurch Alt-Anmeldungen (User
         // hat sich noch im Normal-Modus direkt beim Parent angemeldet, bevor
         // der Organizer das Event auf subEventsOnlyMode umstellte) beim
-        // direkten Abmelden weder Bestaetigungs-Mail noch Outlook-Ausladen
+        // direkten Abmelden weder Bestätigungs-Mail noch Outlook-Ausladen
         // bekamen.
         const suppressParentNotificationsCancel = !!opts?.suppressNotifications;
         // v19.21: disableCancellationEmail = nur die Abmelde-Bestätigung
@@ -2471,16 +2471,16 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       } else {
         console.warn('[DEX] cancelRegistration: event not found in state for id', eventId);
       }
-      // v11.83: Team-Cancel-Nachlauf — Auto-Promote des frueheren Members
+      // v11.83: Team-Cancel-Nachlauf — Auto-Promote des früheren Members
       // zum neuen Lead (falls Self-Cancel der Lead war), Info-Mails an die
       // verbleibenden Mitglieder, Hinweis welche Optionen ihnen offenstehen.
       // Der Sitzplatz-Counter wird im normalen Reconcile oben schon
       // dekrementiert — der frei werdende Platz darf von anderen Teilnehmern
       // belegt werden (oder vom Team-Lead nachbesetzt werden, siehe
       // addTeamMember). Die App entscheidet hier bewusst NICHT, ob der
-      // Slot fuer das Team reserviert bleibt — das passt zur Beschreibung
+      // Slot für das Team reserviert bleibt — das passt zur Beschreibung
       // im Spec, weil der frei werdende Sitz neutral ist: der Team-Lead
-      // kann ihn ueber "Mitglied hinzufuegen" wieder fuellen, ansonsten
+      // kann ihn ueber "Mitglied hinzufügen" wieder füllen, ansonsten
       // landet er in der normalen Sitzplatz-Verwaltung.
       if (wasTeamCancel && event) {
         await handleTeamCancelPostStep(event, eventId, subsiteUrl, teamId, teamName, wasTeamLead, myReg).catch(err => {
@@ -2494,14 +2494,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
 
   /**
    * v11.86: Team-Lead meldet stellvertretend ein Team-Mitglied vom Event
-   * ab — ausgeloest aus dem „Team verwalten"-Modal in MyEvents. Audit
+   * ab — ausgelöst aus dem „Team verwalten"-Modal in MyEvents. Audit
    * wird auf den eingeloggten Lead geschrieben (CancelledByName/Email),
-   * danach laeuft derselbe Team-Post-Step wie beim Self-Cancel:
+   * danach läuft derselbe Team-Post-Step wie beim Self-Cancel:
    * Sitzplatz-Reconcile, IDReorder-Queue, Outlook-Ausladung,
-   * Abmelde-Bestaetigung an die abgemeldete Person und Info-Mails an die
+   * Abmelde-Bestätigung an die abgemeldete Person und Info-Mails an die
    * uebrigen Team-Mitglieder. Der Lead darf sich ueber diesen Pfad
-   * NICHT selbst loeschen — das uebernimmt der normale Self-Cancel ueber
-   * `cancelRegistration` (inkl. Auto-Promote des fruehesten Members).
+   * NICHT selbst löschen — das uebernimmt der normale Self-Cancel ueber
+   * `cancelRegistration` (inkl. Auto-Promote des frühesten Members).
    */
   async function cancelTeamMember(
     eventId: string,
@@ -2510,8 +2510,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl || !memberRegistration?.Id) return false;
     if (!memberRegistration.TeamId) return false;
-    // Self-Schutz: der Lead loescht sich nicht ueber diesen Pfad — sein
-    // eigener Cancel laeuft via cancelRegistration mit Auto-Promote.
+    // Self-Schutz: der Lead löscht sich nicht ueber diesen Pfad — sein
+    // eigener Cancel läuft via cancelRegistration mit Auto-Promote.
     if ((memberRegistration.ParticipantEmail || '').toLowerCase() === (currentUserEmail || '').toLowerCase()) {
       console.warn('[DEX] cancelTeamMember: Lead cannot cancel itself via this path');
       return false;
@@ -2610,7 +2610,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           await eventService.syncSeatsToActiveCount(subsiteUrl, { isSplit });
         } catch { /* best-effort */ }
       }
-      // Info-Mails an die uebrigen Team-Mitglieder. Wir loeschen NICHT
+      // Info-Mails an die uebrigen Team-Mitglieder. Wir löschen NICHT
       // den Lead, daher `wasTeamLead = false` → kein Auto-Promote.
       await handleTeamCancelPostStep(event, eventId, subsiteUrl, teamId, teamName, false, memberRegistration)
         .catch(err => { console.warn('[DEX] team-cancel post-step (lead-initiated) failed:', err); });
@@ -2625,10 +2625,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
    *   1) Verbleibende aktive Team-Mitglieder laden (ohne den gerade
    *      Abgemeldeten, der jetzt 'Abgemeldet' ist).
    *   2) Falls die abgemeldete Person Lead war UND mindestens ein Member
-   *      uebrig ist, das frueheste aktive Mitglied per MERGE-Patch zum
+   *      uebrig ist, das früheste aktive Mitglied per MERGE-Patch zum
    *      neuen Lead promoten.
    *   3) Pro verbleibendem Mitglied eine Info-Mail in DEX_Emails queuen,
-   *      die den Cancel ankuendigt und die naechsten Schritte erklaert.
+   *      die den Cancel ankündigt und die nächsten Schritte erklärt.
    *
    * Fail-safe: alle Sub-Operationen sind best-effort und schlucken Fehler
    * still — das Cancel selbst hat oben schon erfolgreich auf dem Item
@@ -2647,16 +2647,16 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const members = await eventService.getTeamMembers(subsiteUrl, teamId);
     // Verbleibende = aktive (NICHT 'Abgemeldet') und NICHT der gerade
     // abgemeldete Eintrag (Id-Vergleich, weil ein parallel-Member denselben
-    // Vor-/Nachnamen haben koennte).
+    // Vor-/Nachnamen haben könnte).
     const remaining = members.filter(m => m.Status !== 'Abgemeldet' && m.Id !== cancelledReg.Id);
     if (remaining.length === 0) {
-      // Team aufgeloest — kein Promote, keine Info-Mails noetig.
+      // Team aufgelöst — kein Promote, keine Info-Mails nötig.
       return;
     }
 
-    // Auto-Promote: wenn der Cancel ein Lead war, das frueheste aktive
+    // Auto-Promote: wenn der Cancel ein Lead war, das früheste aktive
     // Member zum neuen Lead machen. Sortier-Kriterium: kleinste
-    // TeilnehmerID, sonst frueheste RegistrationDate, sonst kleinste Id.
+    // TeilnehmerID, sonst früheste RegistrationDate, sonst kleinste Id.
     let newLeadId: number | null = null;
     if (wasTeamLead) {
       const sorted = [...remaining].sort((a, b) => {
@@ -2877,7 +2877,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     } catch { /* Diff bleibt leer, Update läuft trotzdem */ }
     const success = await eventService.updateEvent(Number(eventId), updates);
     if (success) {
-      // v9.0/v19.33: Audit-Log (fire-and-forget — UI-Save soll nicht haengen
+      // v9.0/v19.33: Audit-Log (fire-and-forget — UI-Save soll nicht hängen
       // falls SP-ChangeLog-Liste fehlt oder Permissions fehlen). Nur die echten
       // Änderungen werden geloggt; gab es keine, entfällt der Eintrag.
       const ev = events.find(e => e.id === eventId);
@@ -2943,7 +2943,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
 
   async function deleteEvent(eventId: string): Promise<boolean> {
     // v18.3: Demo-Showcase-Event → No-Op (kein SP-Backend). Defense in depth;
-    // die UI blendet den Löschen-Button fuer das Demo-Event ohnehin aus.
+    // die UI blendet den Löschen-Button für das Demo-Event ohnehin aus.
     if (isDemoShowcaseId(eventId)) return false;
     // Seit v6.4: Sub-Events sind eigene DEX_Events-Items. Vor dem Löschen des
     // Parent-Events müssen alle Child-Events gelöscht werden, damit auch deren
@@ -2957,8 +2957,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         console.warn('[DEX] Child-Event-Delete fehlgeschlagen:', child.id, err);
       }
     }
-    // v11.53: vor dem Loeschen merken, wie viele aktive Anmeldungen wir
-    // vom KPI-Counter abziehen muessen — Parent + alle Children, nur
+    // v11.53: vor dem Löschen merken, wie viele aktive Anmeldungen wir
+    // vom KPI-Counter abziehen müssen — Parent + alle Children, nur
     // nicht-fictive Events. Wird im Hintergrund einmalig abgezogen.
     const ev = events.find(e => e.id === eventId);
     const childActive = children
@@ -2978,13 +2978,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         eventService.bumpKpiParticipants(-totalActive).catch(() => { /* */ });
       }
     }
-    // Events immer neu laden, auch wenn Subsite-Loeschung fehlschlug
+    // Events immer neu laden, auch wenn Subsite-Löschung fehlschlug
     await loadEvents();
     return success;
   }
 
   /**
-   * v11.69: Loescht ausschliesslich das DEX_Events-Listenitem — KEIN Cascade
+   * v11.69: Löscht ausschliesslich das DEX_Events-Listenitem — KEIN Cascade
    * auf Subsite, Teilnehmerliste oder Outlook-DeleteEvent-Queue.
    * Wird genutzt, um ein Sub-Event mit `existingSubsiteUrl` an einer neuen
    * DEX_Events-Zeile wieder anzulegen, damit der `DEX_CreateOutlookEvent`-
@@ -3024,7 +3024,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       }
     }
 
-    // Alte Daten und Labels fuer ChangeLog
+    // Alte Daten und Labels für ChangeLog
     let oldCustomData: Record<string, string> = {};
     try {
       if (myReg.CustomData) oldCustomData = JSON.parse(myReg.CustomData);
@@ -3206,7 +3206,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   /**
    * Anfrage von der Landing Page an die DEX-Admins. Verwendet DEX_SEND_MAIL via
    * der DEX_Emails-Queue, mit dem Anfrager im Cc-Feld. Body wird ins Deloitte-
-   * Template (gruener Header, Footer) gewrappt.
+   * Template (grüner Header, Footer) gewrappt.
    */
   // v12.12: Re-Seed-Aktion durchreichen.
   async function reseedDefaultEmailTemplates(): Promise<ReseedSummary> {
@@ -3239,11 +3239,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     `;
     const body = wrapTemplate('#86bc25', 'Neue DEX-Anfrage', `Event: ${eventName || '-'}`, bodyInner);
     // EventId muss '0' sein (nicht ''), damit der DEX_SEND_MAIL Flow Get_Event
-    // mit "ID eq 0" als gueltigem OData-Filter aufrufen kann. Bei leerem
-    // EventId baut der Flow "ID eq " was kein gueltiger OData-Ausdruck ist
+    // mit "ID eq 0" als gültigem OData-Filter aufrufen kann. Bei leerem
+    // EventId baut der Flow "ID eq " was kein gültiger OData-Ausdruck ist
     // und der Flow direkt in Get_Event failed (clientRequestId-Fehler).
-    // Get_Event liefert dann 0 Items, Compose_Image faellt automatisch auf
-    // das Default-Bild aus _Config zurueck - die Mail geht trotzdem raus.
+    // Get_Event liefert dann 0 Items, Compose_Image fällt automatisch auf
+    // das Default-Bild aus _Config zurück - die Mail geht trotzdem raus.
     // v18.30: Anfrage-Mail mit hoher Wichtigkeit (rotes „!" in Outlook) —
     // der DEX_SEND_MAIL-Flow liest das Importance-Feld aus der Queue aus.
     return eventService.queueEmail(
@@ -3256,7 +3256,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
    * Subject + Body kommen aus EmailTemplates.organizerOnboardingEmail (Deloitte-
    * Layout inkl. Header/Footer). Die DEX-Verantwortlichen werden im Cc
    * informiert. EventId='0' damit der DEX_SEND_MAIL Flow den Get_Event-Step
-   * mit gueltigem OData-Filter ausfuehren kann (analog sendAdminInquiry).
+   * mit gültigem OData-Filter ausführen kann (analog sendAdminInquiry).
    */
   async function sendOrganizerOnboarding(
     recipientEmail: string,
@@ -3304,8 +3304,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       if (!raw) return events;
       const payload = JSON.parse(raw);
       // v17.25: Im Demo-Impersonation-Modus das synthetische Showcase-Event
-      // (+ Sub-Event) vorne in die Liste haengen, damit der Admin auf der
-      // Register-Seite alle Event-Faehigkeiten durchspielen kann. Existiert
+      // (+ Sub-Event) vorne in die Liste hängen, damit der Admin auf der
+      // Register-Seite alle Event-Fähigkeiten durchspielen kann. Existiert
       // nur client-seitig — kein SP-Roundtrip. Sprache aus dem persistierten
       // Locale-Key, Fallback DE.
       let withDemo = events;

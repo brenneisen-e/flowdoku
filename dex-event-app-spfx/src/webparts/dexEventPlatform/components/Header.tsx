@@ -3,7 +3,7 @@
  *
  * Sticky Header mit dynamischem Titel je nach aktueller Seite.
  * Auf der Landing Page wird das Deloitte-Logo angezeigt,
- * auf allen anderen Seiten ein Zurueck-Button.
+ * auf allen anderen Seiten ein Zurück-Button.
  */
 
 import * as React from 'react';
@@ -23,15 +23,15 @@ export default function Header(): React.ReactElement {
   const [showImpersonate, setShowImpersonate] = React.useState(false);
   const { events } = useEvents();
   // Check-In-Button (Admin / Organizer / QR-Scanner): schneller Einstieg in den
-  // QR-Scanner ohne vorher ein konkretes Event auszuwaehlen. CheckInPage liest
+  // QR-Scanner ohne vorher ein konkretes Event auszuwählen. CheckInPage liest
   // das Event aus dem gescannten QR-Code selbst (`DEX|<eventNumber>|<email>`).
-  // v6.26: Zugriff auch fuer User, die per E-Mail in event.qrScannerEmails
+  // v6.26: Zugriff auch für User, die per E-Mail in event.qrScannerEmails
   // mindestens eines Events eingetragen sind — ohne globale Organizer-Rolle.
-  // v9.18: Co-Organizer pro Event ebenfalls Check-In-faehig.
+  // v9.18: Co-Organizer pro Event ebenfalls Check-In-fähig.
   // v11.46: Seit v9.20 hat der Wizard nur einen Organizer-Picker, der alle
   // (Haupt-Organizer wie Co-Organizer) in event.organizerEmails schreibt.
-  // Pruefung deshalb analog zu AdminPage.isOrganizerFor: organizerEmails ODER
-  // coOrganizerEmails (Backward-Compat fuer alte Events).
+  // Prüfung deshalb analog zu AdminPage.isOrganizerFor: organizerEmails ODER
+  // coOrganizerEmails (Backward-Compat für alte Events).
   const currentEmailLc = (currentUser.email || '').toLowerCase();
   const isQRScannerOfAny = !!currentEmailLc && (events || []).some(
     e => (e.qrScannerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc),
@@ -83,8 +83,8 @@ export default function Header(): React.ReactElement {
     ? (selectedEventId ? 'admin-event' : 'admin-center')
     : (pageIdMap[currentPage] || currentPage);
 
-  // v6.26: Mobile-Detection fuer die "Jetzt einchecken"-Sprechblase neben dem
-  // QR-Icon. Wird nur auf Mobilgeraeten angezeigt (Viewport <= 768px), auf
+  // v6.26: Mobile-Detection für die "Jetzt einchecken"-Sprechblase neben dem
+  // QR-Icon. Wird nur auf Mobilgeräten angezeigt (Viewport <= 768px), auf
   // Desktop bleibt der Header schlank.
   // v6.28: Handbuch-Preview kann Mobile erzwingen (window.__dexForceMobile),
   // damit die Bubble im Phone-Frame-Rahmen des AppPreview sichtbar ist —
@@ -269,7 +269,7 @@ export default function Header(): React.ReactElement {
             {regLangHintText}
           </span>
         )}
-        {/* v7.26: Sprach-Toggle DE/EN — laesst den User auch im laufenden
+        {/* v7.26: Sprach-Toggle DE/EN — lässt den User auch im laufenden
             Tool zwischen Deutsch und Englisch wechseln. Visuell ein kleiner
             Pill-Toggle im Header-Style. */}
         <div

@@ -12,7 +12,7 @@ export interface MultiSelectDropdownProps {
   placeholder?: string;
   error?: boolean;
   disabled?: boolean;
-  /** v17.20: Optionale positional gemappte Anzeige-Labels (z.B. fuer den
+  /** v17.20: Optionale positional gemappte Anzeige-Labels (z.B. für den
    *  bilingualen Modus, in dem das englische Label angezeigt wird, der
    *  gespeicherte Wert aber weiterhin das deutsche Original ist). Wenn
    *  gesetzt, MUSS `optionLabels.length === options.length`. */

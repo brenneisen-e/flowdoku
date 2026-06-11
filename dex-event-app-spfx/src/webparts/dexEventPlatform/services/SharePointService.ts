@@ -1,8 +1,8 @@
 /**
- * SharePoint Service - zentrale Klasse fuer alle SP REST API Aufrufe
+ * SharePoint Service - zentrale Klasse für alle SP REST API Aufrufe
  *
- * Erstellt Listen automatisch, liest/schreibt Eintraege.
- * Nutzt den SPFx-Context fuer authentifizierte Aufrufe.
+ * Erstellt Listen automatisch, liest/schreibt Einträge.
+ * Nutzt den SPFx-Context für authentifizierte Aufrufe.
  *
  * - Eike, Maerz 2026
  */
@@ -20,7 +20,7 @@ export class SharePointService {
   }
 
   /**
-   * Pruefen ob eine Liste existiert
+   * Prüfen ob eine Liste existiert
    */
   public async listExists(listName: string): Promise<boolean> {
     try {
@@ -55,7 +55,7 @@ export class SharePointService {
     const exists = await this.listExists(listName);
 
     if (exists) {
-      // Berechtigungen pruefen und ggf. nachtraeglich setzen
+      // Berechtigungen prüfen und ggf. nachträglich setzen
       await this.ensureRolesListPermissions(listName);
 
       // Choice-Werte des Role-Feldes auf neue Benennung migrieren
@@ -80,7 +80,7 @@ export class SharePointService {
       } catch { /* Choice-Update optional */ }
 
       // v18.5: IsPowerUser-Spalte auf bestehenden Listen nachziehen (best-effort;
-      // schlaegt fehl falls die Spalte schon existiert — dann ignorieren).
+      // schlägt fehl falls die Spalte schon existiert — dann ignorieren).
       try {
         await this._post(
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`,
@@ -104,7 +104,7 @@ export class SharePointService {
     const listPayload = {
       '__metadata': { 'type': 'SP.List' },
       'Title': listName,
-      'Description': 'Rollenverwaltung fuer die DEX Event Experience Platform',
+      'Description': 'Rollenverwaltung für die DEX Event Experience Platform',
       'BaseTemplate': 100, // Generic List
       'AllowContentTypes': false,
     };
@@ -114,7 +114,7 @@ export class SharePointService {
       listPayload
     );
 
-    // Spalten hinzufuegen
+    // Spalten hinzufügen
     const columns = [
       {
         '__metadata': { 'type': 'SP.Field' },
@@ -176,13 +176,13 @@ export class SharePointService {
       // View-Update ist optional
     }
 
-    // Berechtigungen setzen: nur Site-Owners (SuperAdmins) duerfen die Liste sehen
+    // Berechtigungen setzen: nur Site-Owners (SuperAdmins) dürfen die Liste sehen
     await this.setRolesListPermissions(listName);
     return { isNewlyCreated: true };
   }
 
   /**
-   * Pruefen ob die Liste bereits eigene Berechtigungen hat, sonst setzen
+   * Prüfen ob die Liste bereits eigene Berechtigungen hat, sonst setzen
    */
   private async ensureRolesListPermissions(listName: string): Promise<void> {
     try {
@@ -202,7 +202,7 @@ export class SharePointService {
   }
 
   /**
-   * Eigene Berechtigungen fuer die Rollen-Liste setzen.
+   * Eigene Berechtigungen für die Rollen-Liste setzen.
    *
    * Berechtigungskonzept:
    *   - SuperAdmin (Site Owners): Full Control (lesen + schreiben)
@@ -245,7 +245,7 @@ export class SharePointService {
   }
 
   /**
-   * Einem User Leseberechtigung auf die Rollen-Liste geben (fuer EventAdmins).
+   * Einem User Leseberechtigung auf die Rollen-Liste geben (für EventAdmins).
    * Ermittelt die User-ID per E-Mail und setzt Read-Berechtigung.
    */
   public async grantReadOnRolesList(userEmail: string): Promise<void> {
@@ -260,7 +260,7 @@ export class SharePointService {
       // Sicherstellen dass Liste unique permissions hat
       await this.ensureListHasUniquePermissions('DEX_Roles');
 
-      // Read = 1073741826 (Standard SharePoint ID, sprachunabhaengig)
+      // Read = 1073741826 (Standard SharePoint ID, sprachunabhängig)
       const readRoleId = 1073741826;
 
       // Leseberechtigung setzen
@@ -346,7 +346,7 @@ export class SharePointService {
         {}
       );
 
-      // 2. Full Control auf Site-Ebene (fuer Subsite-Erstellung)
+      // 2. Full Control auf Site-Ebene (für Subsite-Erstellung)
       // Full Control = 1073741829
       await this._post(
         `${this.siteUrl}/_api/web/roleassignments/addroleassignment(principalid=${userId}, roledefid=1073741829)`,
@@ -358,7 +358,7 @@ export class SharePointService {
   }
 
   /**
-   * Einem User Contribute-Rechte auf die DEX_Events-Liste geben (fuer Organizer).
+   * Einem User Contribute-Rechte auf die DEX_Events-Liste geben (für Organizer).
    */
   public async grantContributeOnEventsList(userEmail: string): Promise<void> {
     try {
@@ -523,7 +523,7 @@ export class SharePointService {
   }
 
   /**
-   * Alle Rollen-Eintraege lesen
+   * Alle Rollen-Einträge lesen
    */
   // v6.34: Rückgabetyp erweitert — `null` bei API-Fehler (z.B. 403 Forbidden
   // oder Netzwerk-Fehler), `[]` nur bei wirklich leerer Liste. Der Caller
@@ -540,7 +540,7 @@ export class SharePointService {
     IsPowerUser?: boolean;
   }> | null> {
     // v18.5: IsPowerUser mitlesen. Falls die Spalte auf einem alten Tenant
-    // noch fehlt (ensureRolesList noch nicht durchgelaufen), wuerde der
+    // noch fehlt (ensureRolesList noch nicht durchgelaufen), würde der
     // $select mit IsPowerUser einen HTTP 400 werfen — daher Fallback auf den
     // Select OHNE IsPowerUser.
     const baseSelect = 'Id,Title,UserName,Role,UserLocation,AssignedBy,AssignedDate';
@@ -735,12 +735,12 @@ export class SharePointService {
 
   /**
    * User per E-Mail in Microsoft 365 suchen — robust gegen UPN != SMTP-Mismatches.
-   * Gibt Name, Standort und JobTitle zurueck falls gefunden.
+   * Gibt Name, Standort und JobTitle zurück falls gefunden.
    *
    * Strategie:
    *   1. Direkter Claim-Lookup mit `i:0#.f|membership|<email>` (schnell).
    *   2. Wenn leer oder kein DisplayName: per `siteusers/getbyemail` den echten
-   *      LoginName aufloesen (UPN-Claim), dann GetPropertiesFor damit erneut
+   *      LoginName auflösen (UPN-Claim), dann GetPropertiesFor damit erneut
    *      aufrufen. Deckt UPN != SMTP, Guest-Accounts, Alias-SMTP-Adressen ab.
    */
   public async searchUserByEmail(email: string): Promise<{
@@ -785,7 +785,7 @@ export class SharePointService {
         const data = await directResp.json();
         const hit = extract(data);
         if (hit && (hit.jobTitle || hit.location)) return hit;
-        // DisplayName ohne Properties? Merken fuer Fallback-Default.
+        // DisplayName ohne Properties? Merken für Fallback-Default.
         if (hit) {
           // weiter zum LoginName-Pfad - vielleicht bringt der jobTitle
         }
@@ -871,7 +871,7 @@ export class SharePointService {
       // v11.77: „Firstname Lastname" (ohne Komma) → SP-Picker findet das
       // nicht zuverlässig. In DE-Tenants ist das Standard-Display-Name-
       // Format „Lastname, Firstname" — die Such-API matched besser darauf.
-      // Daher zusaetzliche Varianten generieren: swap + Komma-Variante +
+      // Daher zusätzliche Varianten generieren: swap + Komma-Variante +
       // nur-Lastname + nur-Firstname.
       const tokens = cleanQuery.split(/\s+/).map(s => s.trim()).filter(Boolean);
       if (tokens.length === 2) {
@@ -927,9 +927,9 @@ export class SharePointService {
 
         // v11.75: vor allem Variante 1 — SP-Picker liefert manchmal Treffer
         // mit leerem EntityData.Email (z.B. wenn der User noch keine SP-
-        // Personalwand hat / Profil noch nicht angelegt). Frueher wurde der
+        // Personalwand hat / Profil noch nicht angelegt). Früher wurde der
         // Treffer mit `filter(x => x.EntityData?.Email)` rausgeworfen — Namens-
-        // Suchen wie „Inga Fuhr" kamen dann mit 0 Vorschlaegen zurueck.
+        // Suchen wie „Inga Fuhr" kamen dann mit 0 Vorschlägen zurück.
         // Fallback: Email aus `Key` (z.B. „i:0#.f|membership|email@domain")
         // oder `Description` ziehen.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -964,7 +964,7 @@ export class SharePointService {
     // mehrere Tokens eingegeben hat, MUESSEN ALLE Tokens im displayName
     // ODER der Email der Person vorkommen (case-insensitive Substring).
     // Single-Token-Queries (1 Wort, ohne Komma) bleiben unangetastet —
-    // dort ist Substring-Match auf einen Begriff genau das gewuenschte
+    // dort ist Substring-Match auf einen Begriff genau das gewünschte
     // Verhalten.
     const queryTokens = cleanQuery
       .replace(/,/g, ' ')
@@ -985,7 +985,7 @@ export class SharePointService {
     }
 
     // v13.6: Member-Firm-Filter. Default: nur @deloitte.de (DEALL-Equivalent).
-    // Mit includeInternational=true zusaetzlich @deloitte.com erlaubt (internationale
+    // Mit includeInternational=true zusätzlich @deloitte.com erlaubt (internationale
     // Member-Firms wie DEUS/DECH/DECEMEA, die alle auf @deloitte.com mappen). Andere
     // Domains (Gast-Accounts, externe Tenants) bleiben in beiden Modi geblockt.
     const allowedSuffixes = includeInternational
@@ -1019,14 +1019,14 @@ export class SharePointService {
    * v8.9: Alle User eines Standorts via Microsoft Graph laden. Genutzt vom
    * Exclude-Modal, damit der Organizer auch bei nur-Standortfilter-Events
    * eine Personenliste zum Aushaken bekommt (statt alle Personen einzeln
-   * ueber die Suche finden zu muessen).
+   * ueber die Suche finden zu müssen).
    *
    * Pagination: Graph $top=999 ist Maximum pro Page. Folgt @odata.nextLink
    * um alle Personen einzusammeln. Hard-Cap bei 5000 damit die UI nicht
-   * haengt bei sehr grossen Standorten.
+   * hängt bei sehr grossen Standorten.
    *
-   * Match: officeLocation eq '<location>' (exakt). Faellt auf
-   * startsWith zurueck, wenn das nichts liefert (z.B. 'DE - Köln' vs
+   * Match: officeLocation eq '<location>' (exakt). Fällt auf
+   * startsWith zurück, wenn das nichts liefert (z.B. 'DE - Köln' vs
    * 'Koeln, Germany' Schreibweisen-Drift).
    */
   public async searchUsersByLocation(location: string): Promise<Array<{
@@ -1048,10 +1048,10 @@ export class SharePointService {
     // (z.B. 'DE - Köln' -> DEKOELN@deloitte.com, 'DE - Düsseldorf' ->
     // DEDUESSELDORF@deloitte.com). Wir extrahieren die Stadt aus dem
     // Standort-String, normalisieren Umlaute zu ASCII-Substitutionen und
-    // versuchen den Verteiler ueber getGroupMembers aufzuloesen. Damit
-    // sparen wir uns Graph-Permission-Overhead vollstaendig fuer den
-    // typischen DE-Office-Fall. Andere Faelle (kein 'DE'-Prefix oder
-    // unbekannte Stadt) fallen weiter unten auf Graph + SP-Search zurueck.
+    // versuchen den Verteiler ueber getGroupMembers aufzulösen. Damit
+    // sparen wir uns Graph-Permission-Overhead vollständig für den
+    // typischen DE-Office-Fall. Andere Fälle (kein 'DE'-Prefix oder
+    // unbekannte Stadt) fallen weiter unten auf Graph + SP-Search zurück.
     try {
       const cityRaw = location
         .replace(/^DE\s*[-–—]\s*/i, '') // 'DE - Köln' -> 'Köln'
@@ -1161,7 +1161,7 @@ export class SharePointService {
     }
 
     if (collected.length === 0) {
-      console.warn('[DEX] searchUsersByLocation: keine User gefunden fuer Standort', location, '— Graph User.Read.All-Permission und SP-Search-People-Index pruefen.');
+      console.warn('[DEX] searchUsersByLocation: keine User gefunden für Standort', location, '— Graph User.Read.All-Permission und SP-Search-People-Index prüfen.');
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1222,7 +1222,7 @@ export class SharePointService {
 
   /**
    * Mitglieder einer Entra-Gruppe via Microsoft Graph laden.
-   * Benoetigt Group.Read.All Berechtigung im SharePoint App Catalog (admin-consent).
+   * Benötigt Group.Read.All Berechtigung im SharePoint App Catalog (admin-consent).
    * Nutzt MSGraphClientV3 aus dem WebPartContext.
    */
   public async getGroupMembers(groupEmail: string): Promise<{ groupName: string; members: Array<{ email: string; displayName: string; firstName?: string; lastName?: string; jobTitle?: string; location?: string }> } | null> {
@@ -1243,8 +1243,8 @@ export class SharePointService {
       if (groups.length === 0) return { groupName: groupEmail, members: [] };
       const group = groups[0];
       // 2. Transitive Members (inkl. verschachtelte Gruppen) holen — v8.8:
-      // mit zusaetzlichen Profil-Feldern. v8.12: PAGINATION ueber
-      // @odata.nextLink, sonst stoppt Graph nach 999 Eintraegen (oder
+      // mit zusätzlichen Profil-Feldern. v8.12: PAGINATION ueber
+      // @odata.nextLink, sonst stoppt Graph nach 999 Einträgen (oder
       // 200 wie vor v8.12) — bei Standort-Verteilern wie DEKOELN sind
       // das schnell 1000+ Personen.
       const HARD_CAP = 5000;
@@ -1269,7 +1269,7 @@ export class SharePointService {
         firstName: u.givenName || '',
         lastName: u.surname || '',
         jobTitle: u.jobTitle || '',
-        // officeLocation ist haeufig 'DE - Koeln'-Format; city ist Fallback
+        // officeLocation ist häufig 'DE - Koeln'-Format; city ist Fallback
         location: u.officeLocation || u.city || '',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       })).filter((m: any) => m.email);

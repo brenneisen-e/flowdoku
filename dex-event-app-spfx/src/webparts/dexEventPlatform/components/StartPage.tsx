@@ -23,25 +23,25 @@ export default function StartPage(): React.ReactElement {
 
   // v11.38/v11.46: Co-Organizer pro Event (per-Event-Rolle, ohne globale
   // Organizer-Rolle in DEX_Roles) sehen die Organizer-Kachel ebenfalls —
-  // AdminPage gewaehrt ihnen ohnehin Zugriff auf "ihre" Events (siehe
-  // isOrganizerFor dort), aber ohne Kachel im Startmenue gab es bisher
+  // AdminPage gewährt ihnen ohnehin Zugriff auf "ihre" Events (siehe
+  // isOrganizerFor dort), aber ohne Kachel im Startmenü gab es bisher
   // keinen Einstieg.
   //
   // v11.46-Fix: seit v9.20 hat der Wizard nur EINEN Organizer-Picker und
   // schreibt alle Personen (Haupt-Organizer wie Co-Organizer) in
   // event.organizerEmails — das alte Feld event.coOrganizerEmails wird
-  // garnicht mehr befuellt (siehe EventCreationPage const-State ohne Setter).
-  // Der bisherige Check auf nur coOrganizerEmails fand also fuer alle nach
-  // v9.20 angelegten Events nichts. Pruefung jetzt analog zu
+  // garnicht mehr befüllt (siehe EventCreationPage const-State ohne Setter).
+  // Der bisherige Check auf nur coOrganizerEmails fand also für alle nach
+  // v9.20 angelegten Events nichts. Prüfung jetzt analog zu
   // AdminPage.isOrganizerFor: organizerEmails ODER coOrganizerEmails
-  // (Backward-Compat fuer alte Events).
+  // (Backward-Compat für alte Events).
   const currentEmailLc = (currentUser.email || '').toLowerCase();
   const isOrganizerOfAnyEvent = !!currentEmailLc && (events || []).some(e => {
     const inOrg = (e.organizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
     if (inOrg) return true;
     return (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
   });
-  // v18.3: Im Demo-Modus ist die Organizer-Kachel klickbar (fuehrt ins
+  // v18.3: Im Demo-Modus ist die Organizer-Kachel klickbar (führt ins
   // Admin-Center mit dem read-only Demo-Event), obwohl der Demo-Account
   // formal nur „User" ist.
   const isOrganizer = canCreateEvents || isOrganizerOfAnyEvent || isImpersonating;

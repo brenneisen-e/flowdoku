@@ -1,5 +1,5 @@
 /**
- * Event Service - SharePoint-Operationen fuer Events und Teilnehmerlisten
+ * Event Service - SharePoint-Operationen für Events und Teilnehmerlisten
  *
  * Erstellt DEX_Events-Liste automatisch beim ersten Start.
  * Erstellt pro Event eine Subsite mit einer "Teilnehmer"-Liste.
@@ -23,7 +23,7 @@ import { wrapTemplateForStorage, buildEmailFromTemplate } from './EmailTemplates
 import { buildOutlookLocation } from '../utils/eventFormat';
 
 /**
- * HTML-Body fuer die OutlookDeclineReminder-Mail (EN) - komplett im
+ * HTML-Body für die OutlookDeclineReminder-Mail (EN) - komplett im
  * Deloitte-Design gewrappt, damit er vom DEX_SEND_MAIL-Flow direkt versendet
  * werden kann (der Flow ersetzt nur {{LOGO_URL}} und {{ORB_URL}}, wickelt aber
  * keinen Template-Wrapper mehr drumherum).
@@ -61,10 +61,10 @@ const OUTLOOK_DECLINE_BODY_DE = wrapTemplateForStorage(
 // OnBehalfOf-Decline-Reminder: Outlook-Decline kam von einer Assistenz, die den
 // Termin im Namen einer anderen Person (Partner/Director) abgelehnt hat. Die Mail
 // geht an die Mailbox der Assistenz/des Partners. Der Cancel-Button funktioniert
-// nur fuer den registrierten Partner selbst (SP-Item-Level-Security). Fuer die
+// nur für den registrierten Partner selbst (SP-Item-Level-Security). Für die
 // Assistenz gibt's einen zweiten Button, der via mailto: eine Bitte um Abmeldung
 // an die Event-Organizer schickt — die haben Full Control auf der Teilnehmerliste
-// und koennen den Eintrag direkt im Admin Center loeschen.
+// und können den Eintrag direkt im Admin Center löschen.
 const OUTLOOK_DECLINE_BODY_ONBEHALF_EN = wrapTemplateForStorage(
   '#ed8b00',
   'You declined the Outlook invite',
@@ -100,8 +100,8 @@ const OUTLOOK_DECLINE_BODY_ONBEHALF_DE = wrapTemplateForStorage(
 // Die Mail geht an den Organizer. Platzhalter:
 //   {{OrganizerFirstName}} — Vorname des Organizers (Anrede)
 //   {{Forwarder}}          — Person, die den Termin weitergeleitet hat
-//   {{Recipient}}          — Name der hinzugefuegten Person
-//   {{RecipientEmail}}     — Email der hinzugefuegten Person ('nicht aufgeloest' bei Externen)
+//   {{Recipient}}          — Name der hinzugefügten Person
+//   {{RecipientEmail}}     — Email der hinzugefügten Person ('nicht aufgelöst' bei Externen)
 //   {{EventTitle}}         — Event-Titel
 //   {{AppUrl}}             — DEX-App-URL (Organizer kann dort manuell registrieren)
 const OUTLOOK_FORWARD_BODY_EN = wrapTemplateForStorage(
@@ -171,7 +171,7 @@ const OUTLOOK_DECLINE_DIGEST_BODY_DE = wrapTemplateForStorage(
 <p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
 );
 
-// Nachruecken-Mail (PA-Flow DEX_IDReorder queued sie) — muss pre-wrapped sein,
+// Nachrücken-Mail (PA-Flow DEX_IDReorder queued sie) — muss pre-wrapped sein,
 // weil die Flow-seite den BodyHtml raw verwendet (ohne wrapTemplate). Client-Code
 // erkennt die Pre-Wrap in buildEmailFromTemplate() und skippt den Wrap dann.
 // v12.11/v12.12: Nachr\u00FCcken-Mail-Text pr\u00E4zisiert \u2014 der alte \u201ESpot available"-
@@ -203,7 +203,7 @@ const NACHRUECKEN_BODY_DE = wrapTemplateForStorage(
 
 // v18.63: Organizer-Benachrichtigung bei Abmeldung MIT Nachrücker. Wird vom
 // DEX_IDReorder-Flow nach einem erfolgreichen Promote an die Organizer
-// gequeued (nicht von der App). Pre-wrapped gespeichert wie Nachruecken; der
+// gequeued (nicht von der App). Pre-wrapped gespeichert wie Nachrücken; der
 // Flow ersetzt nur {{EventTitle}} und {{PromotedName}} per replace(). Daher
 // KEIN {{AppUrl}} (würde der Flow nicht auflösen) — feste App-URL eingebaut.
 // Platzhalter: {{EventTitle}}, {{CancelledName}} (abgemeldete Person),
@@ -438,16 +438,16 @@ const OVERBOOK_APOLOGY_BODY_DE = wrapTemplateForStorage(
 // Fester Listenname auf jeder Subsite
 const REG_LIST_NAME = 'Teilnehmer';
 const REG_LIST_ITEM_TYPE = 'SP.Data.TeilnehmerListItem';
-// v7.28: Counter-Liste fuer atomare TeilnehmerID-Vergabe (ETag-basiert).
+// v7.28: Counter-Liste für atomare TeilnehmerID-Vergabe (ETag-basiert).
 // Pro Subsite eine Liste mit genau einem Item, dessen NextValue beim
-// Anmelden via If-Match-Header inkrementiert wird. So koennen mehrere
+// Anmelden via If-Match-Header inkrementiert wird. So können mehrere
 // User parallel registrieren ohne dass IDs doppelt vergeben werden.
 //
 // Listenname mit Unterstrich → SharePoint kodiert das in der Item-Type-
 // Bezeichnung als `_x005f_`. Genauso wie wir das schon bei DEX_Events
 // machen ('SP.Data.DEX_x005f_EventsListItem'). Ohne dieses Encoding
-// schlaegt der POST stillschweigend mit HTTP 400 fehl, weil SP den
-// Typ-Namen nicht aufloesen kann.
+// schlägt der POST stillschweigend mit HTTP 400 fehl, weil SP den
+// Typ-Namen nicht auflösen kann.
 const COUNTER_LIST_NAME = 'DEX_TeilnehmerCounter';
 const COUNTER_LIST_ITEM_TYPE = 'SP.Data.DEX_x005f_TeilnehmerCounterListItem';
 
@@ -457,7 +457,7 @@ export interface DeclinedAttendee {
 }
 
 // v18.66: Ergebnis-Zusammenfassung des Template-Reseeds, damit die UI dem
-// Admin konkret zurueckmeldet, was passiert ist (statt nur "erfolgreich").
+// Admin konkret zurückmeldet, was passiert ist (statt nur "erfolgreich").
 export interface ReseedSummary {
   created: number;
   updated: number;
@@ -470,7 +470,7 @@ export type DeclineCheckReason = 'no-pointer' | 'not-found' | 'forbidden' | 'err
 
 // Flaches Ergebnis-Shape, weil der TS-4.7-Compiler bei Discriminated Unions
 // ueber eine async-Funktion + React-Callback teils nicht korrekt narrowed.
-// Erfolg: ok=true, attendees gefuellt, reason/message leer.
+// Erfolg: ok=true, attendees gefüllt, reason/message leer.
 // Fehler: ok=false, reason gesetzt, attendees leeres Array.
 export interface DeclineCheckResult {
   ok: boolean;
@@ -498,7 +498,7 @@ export interface SPEvent {
   MaxParticipants: number;
   WaitlistEnabled: boolean;
   EventImageUrl: string;
-  EmailImageBase64: string; // Base64 Event-Bild fuer E-Mails/Outlook
+  EmailImageBase64: string; // Base64 Event-Bild für E-Mails/Outlook
   Organizer: string;
   OrganizerEmail: string;
   /** v10.16: optionaler Ansprechpartner (Anzeige-Feld). */
@@ -507,22 +507,22 @@ export interface SPEvent {
   ContactInfo?: string;
   OutlookEventId: string;
   CalendarLink: string;
-  OutlookBody: string; // Text fuer den Outlook-Kalendereintrag
+  OutlookBody: string; // Text für den Outlook-Kalendereintrag
   OutlookSubject?: string; // v18.42: Betreff des Outlook-Termins (leer = Event-Titel)
   OutlookStart?: string; // v18.44: abweichende Start-Zeit des Outlook-Termins (ISO, leer = Event-Start)
   OutlookEnd?: string;   // v18.44: abweichende End-Zeit des Outlook-Termins (ISO, leer = Event-Ende)
-  OutlookLocation?: string; // v18.34: lesbarer Ort fuer das Location-Feld des Outlook-Termins
+  OutlookLocation?: string; // v18.34: lesbarer Ort für das Location-Feld des Outlook-Termins
   EmailLanguage: string; // DE oder EN
   RegistrationLanguage?: string; // v18.35: erzwungene Sprache der Anmeldeseite ('de' | 'en' | '')
   EmailTemplateOverrides: string; // JSON mit Event-spezifischen Template-Anpassungen
   DisableEmails: boolean; // true = keine E-Mails bei An-/Abmeldung
-  DisableRegistrationEmail?: boolean; // v19.21: true = keine Anmelde-Bestaetigung (Master DisableEmails sticht weiterhin)
-  DisableCancellationEmail?: boolean; // v19.21: true = keine Abmelde-Bestaetigung
+  DisableRegistrationEmail?: boolean; // v19.21: true = keine Anmelde-Bestätigung (Master DisableEmails sticht weiterhin)
+  DisableCancellationEmail?: boolean; // v19.21: true = keine Abmelde-Bestätigung
   AutoDeregisterOnDecline?: boolean; // v19.23: true = Outlook-Absage meldet automatisch vom Event ab
   DisableOutlook: boolean; // true = keine Outlook-Kalendereintraege
   OutlookDirty?: boolean; // v11.57: true = Outlook-relevante Felder geändert, Update an Teilnehmer-Termine noch nicht angestoßen
   AutoSendQRCode?: boolean; // v9.15: true = nach Anmeldung automatisch QR-Code-Mail versenden
-  ActiveFrom?: string; // v9.21: ISO-Datum, ab dem ein "Active"-Event tatsaechlich sichtbar wird
+  ActiveFrom?: string; // v9.21: ISO-Datum, ab dem ein "Active"-Event tatsächlich sichtbar wird
   // v8.5: Granulare Organizer-BCC-Modi
   NotifyOrgRegisterMode?: string; // 'Never' | 'Always' | 'FromDate'
   NotifyOrgRegisterFromDate?: string;
@@ -531,8 +531,8 @@ export interface SPEvent {
   IsFictive?: boolean; // true = Test-Event (nur Admin + eigene Organizer sichtbar)
   DurchstarterCapacity?: number; // Split-Capacity Gruppe A (historisch B2Run-Durchstarter)
   FunstarterCapacity?: number;   // Split-Capacity Gruppe B (historisch B2Run-Funstarter)
-  SplitLabelA?: string; // v10.20: frei waehlbare Bezeichnung Gruppe A
-  SplitLabelB?: string; // v10.20: frei waehlbare Bezeichnung Gruppe B
+  SplitLabelA?: string; // v10.20: frei wählbare Bezeichnung Gruppe A
+  SplitLabelB?: string; // v10.20: frei wählbare Bezeichnung Gruppe B
   SplitSharedWaitlist?: boolean; // v10.20: true = gemeinsame Warteliste, false = getrennt (Default)
   AllowAttendeeUpload?: boolean; // v11.0: Teilnehmer können PDF an ihre Anmeldung hängen
   AttendeeUploadHint?: string;   // v11.0: optionaler Hinweistext über dem Upload-Input
@@ -553,7 +553,7 @@ export interface SPEvent {
   TeamJoinRequiresApproval?: boolean; // v11.81: Beitritt erfordert Bestätigung durch Team-Kapitän
   BilingualFields?: boolean; // v17.20: Custom-Fields zweisprachig (DE + EN) anbieten
   CustomFields: string; // JSON-String mit konfigurierbaren Feldern
-  Agenda: string; // JSON-Array mit Agenda-Eintraegen
+  Agenda: string; // JSON-Array mit Agenda-Einträgen
   Transfers: string; // JSON-Array mit Transferzeiten
   Documents: string; // JSON-Array mit Dokumenten
   FunZone: string; // JSON-Array mit Quiz-Fragen
@@ -568,7 +568,7 @@ export interface CustomField {
   label: string;
   type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'document'; // v19.0: document = Datei-Upload (Attachment)
   required: boolean;
-  options?: string[]; // fuer select-Felder
+  options?: string[]; // für select-Felder
   visible: boolean;
   /** v7.20: Optionaler Hilfe-/Beschreibungstext, der im Registrierungs-
    *  Formular als "i"-Tooltip neben dem Feld-Label sichtbar ist. */
@@ -586,12 +586,12 @@ export interface CustomField {
    *  'all'/undefined = für beide Gruppen sichtbar. */
   onlyForGroup?: 'all' | 'A' | 'B';
   /** Optionale externe Links, die unter dem Feld als klickbare Links erscheinen.
-   * Aktuell vor allem fuer B2Run-Zustimmung (AGB + Datenschutz von b2run.de). */
+   * Aktuell vor allem für B2Run-Zustimmung (AGB + Datenschutz von b2run.de). */
   externalLinks?: Array<{ label: string; url: string }>;
   /** v7.11: Bei type=select erlaubt true Mehrfachauswahl. Wert wird in der
    *  Teilnehmerliste " | "-getrennt gespeichert. */
   multi?: boolean;
-  /** v11.94: Nur fuer type='checkbox' — Text neben der Checkbox (Default
+  /** v11.94: Nur für type='checkbox' — Text neben der Checkbox (Default
    *  „Ja, bestätigen" / „Yes, confirm"). */
   confirmLabel?: string;
   /** v17.20: Englische Varianten — nur relevant wenn auf Event-Ebene
@@ -621,17 +621,17 @@ export interface SPRegistration {
    *  über Gruppen-/Event-Kapazität markiert; wartet auf Admin-Entscheidung. */
   OverbookReview?: string;
   RegistrationDate: string;
-  RegisteredByName?: string;   // Audit: Name des Users der die Anmeldung durchfuehrte
-  RegisteredByEmail?: string;  // Audit: E-Mail des Users der die Anmeldung durchfuehrte
+  RegisteredByName?: string;   // Audit: Name des Users der die Anmeldung durchführte
+  RegisteredByEmail?: string;  // Audit: E-Mail des Users der die Anmeldung durchführte
   CancellationDate: string;
-  CancelledByName?: string;    // Audit: Name des Users der die Abmeldung ausgeloest hat
-  CancelledByEmail?: string;   // Audit: E-Mail des Users der die Abmeldung ausgeloest hat
+  CancelledByName?: string;    // Audit: Name des Users der die Abmeldung ausgelöst hat
+  CancelledByEmail?: string;   // Audit: E-Mail des Users der die Abmeldung ausgelöst hat
   /** v7.16: Check-In-Audit — gesetzt sobald checkInParticipant() aufgerufen wird. */
   CheckedInDate?: string;      // ISO-DateTime, wann der Teilnehmer eingecheckt wurde
-  CheckedInByName?: string;    // Name des Helfers, der den Check-In ausgeloest hat
-  CheckedInByEmail?: string;   // E-Mail des Helfers, der den Check-In ausgeloest hat
+  CheckedInByName?: string;    // Name des Helfers, der den Check-In ausgelöst hat
+  CheckedInByEmail?: string;   // E-Mail des Helfers, der den Check-In ausgelöst hat
   /** v11.82: Team-Anmeldung — TeamId ist die UUID, die alle Mitglieder eines
-   *  gemeinsam angemeldeten Teams gruppiert. TeamLead=true nur fuer die
+   *  gemeinsam angemeldeten Teams gruppiert. TeamLead=true nur für die
    *  anmeldende Person. TeamName ist optional (nur wenn AskTeamName aktiv). */
   TeamId?: string;
   TeamLead?: boolean;
@@ -641,11 +641,11 @@ export interface SPRegistration {
    *  Mitglieder-Identifikation angezeigt. Auf der SP-Liste seit jeher
    *  vorhanden — hier nur als TypeScript-Property nachgezogen. */
   Location?: string;
-  /** v17.15: Nachrueck-Audit. PromotedDate ist die ISO-Zeit des Promote
+  /** v17.15: Nachrück-Audit. PromotedDate ist die ISO-Zeit des Promote
    *  (Warteliste → Angemeldet). ReplacedParticipantEmail ist die E-Mail
-   *  der Person, deren Cancel diesen Promote ausgeloest hat („Ersetzt
+   *  der Person, deren Cancel diesen Promote ausgelöst hat („Ersetzt
    *  wen"). ReplacedByParticipantEmail ist auf der cancelnden Person
-   *  gesetzt und zeigt die E-Mail der nachrueckenden Person („Ersetzt
+   *  gesetzt und zeigt die E-Mail der nachrückenden Person („Ersetzt
    *  durch"). Beide Felder Single-Line-Text. */
   PromotedDate?: string;
   ReplacedParticipantEmail?: string;
@@ -676,7 +676,7 @@ export class EventService {
 
   /**
    * E-Mail-Queue-Liste erstellen falls nicht vorhanden.
-   * Power Automate reagiert auf neue Eintraege und versendet Mails.
+   * Power Automate reagiert auf neue Einträge und versendet Mails.
    *
    * Spalten:
    * - Title: Betreff der E-Mail
@@ -696,32 +696,32 @@ export class EventService {
       // Recipient-Feld auf Plain Text (RichText=false) setzen, falls es
       // noch im alten RichText-Modus ist. SharePoint wrappt sonst den Wert
       // in <div class="ExternalClassXXXX">...</div>, was den Power Automate
-      // Flow "emailMessage/To must be String/email" Fehler ausloest.
+      // Flow "emailMessage/To must be String/email" Fehler auslöst.
       try {
         await this.setRecipientFieldPlainText(listName);
       } catch { /* ignore */ }
 
-      // Cc-Feld nachtraeglich anlegen (fuer Anfrage-Mails von der Landing Page).
+      // Cc-Feld nachträglich anlegen (für Anfrage-Mails von der Landing Page).
       // Bestehende Listen aus aelteren App-Versionen haben das Feld noch nicht.
       try {
         await this.ensureCcFieldExists(listName);
       } catch { /* ignore */ }
 
-      // v8.5: Bcc-Feld nachtraeglich anlegen — wird genutzt um Organizer
-      // automatisch in Anmelde-/Abmelde-Bestaetigungen zu BCC'en, ohne den
+      // v8.5: Bcc-Feld nachträglich anlegen — wird genutzt um Organizer
+      // automatisch in Anmelde-/Abmelde-Bestätigungen zu BCC'en, ohne den
       // Teilnehmer den Verteiler zu zeigen.
       try {
         await this.ensureBccFieldExists(listName);
       } catch { /* ignore */ }
 
-      // v18.30: Importance-Feld nachtraeglich anlegen — der DEX_SEND_MAIL-Flow
+      // v18.30: Importance-Feld nachträglich anlegen — der DEX_SEND_MAIL-Flow
       // setzt darauf basierend die Outlook-Wichtigkeit (High = rotes „!").
       // Leer/„Normal" = normale Wichtigkeit.
       try {
         await this.ensureImportanceFieldExists(listName);
       } catch { /* ignore */ }
 
-      // Berechtigungen pruefen
+      // Berechtigungen prüfen
       try {
         const listInfo = await this.context.spHttpClient.get(
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=HasUniqueRoleAssignments`,
@@ -792,7 +792,7 @@ export class EventService {
   /**
    * Recipient-Feld auf Plain Text (RichText=false) umstellen.
    * Idempotent: Wenn schon Plain Text, macht nichts.
-   * Nur moeglich wenn der Current User Manage Lists Rechte hat (Owner/Admin).
+   * Nur möglich wenn der Current User Manage Lists Rechte hat (Owner/Admin).
    */
   private async setRecipientFieldPlainText(listName: string): Promise<void> {
     const fieldUrl = `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('Recipient')`;
@@ -874,7 +874,7 @@ export class EventService {
   }
 
   /**
-   * Berechtigungen fuer DEX_Emails: Owners Full Control, Members Contribute, Item-Level Security
+   * Berechtigungen für DEX_Emails: Owners Full Control, Members Contribute, Item-Level Security
    */
   private async setEmailsListPermissions(listName: string): Promise<void> {
     try {
@@ -920,7 +920,7 @@ export class EventService {
   }
 
   /**
-   * Berechtigungen fuer Queue-Listen (DEX_Outlook, DEX_IDReorder):
+   * Berechtigungen für Queue-Listen (DEX_Outlook, DEX_IDReorder):
    * Owners Full Control, Members Contribute, Item-Level Security
    */
   private async setQueueListPermissions(listName: string): Promise<void> {
@@ -993,7 +993,7 @@ export class EventService {
 
   /**
    * Outlook-Termin-Queue-Liste erstellen falls nicht vorhanden.
-   * Power Automate reagiert auf neue Eintraege und laedt Teilnehmer
+   * Power Automate reagiert auf neue Einträge und lädt Teilnehmer
    * zum Outlook-Termin ein oder aus. Der Flow holt sich alle Event-Details
    * (Titel, Datum, Ort, CalendarLink) aus der DEX_Events-Liste via EventId.
    *
@@ -1003,7 +1003,7 @@ export class EventService {
    * - EventId: ID des Events in DEX_Events (Referenz)
    * - ActionType: Einladen, Ausladen
    * - Status: Pending, Sent, Failed
-   * - SentDate: Wann wurde die Aktion ausgefuehrt
+   * - SentDate: Wann wurde die Aktion ausgeführt
    */
   public async ensureOutlookList(): Promise<void> {
     const listName = 'DEX_Outlook';
@@ -1013,7 +1013,7 @@ export class EventService {
     await this._post(`${this.siteUrl}/_api/web/lists`, {
       '__metadata': { 'type': 'SP.List' },
       'Title': listName,
-      'Description': 'Outlook-Termin-Queue: Power Automate laedt Teilnehmer ein/aus',
+      'Description': 'Outlook-Termin-Queue: Power Automate lädt Teilnehmer ein/aus',
       'BaseTemplate': 100,
       'AllowContentTypes': false,
     });
@@ -1060,10 +1060,10 @@ export class EventService {
   private _outlookLocationBackfilled = new Set<string>();
 
   /**
-   * v18.34: Backfill fuer Bestands-Events. Stellt sicher, dass das DEX_Events-Item
-   * eine gefuellte OutlookLocation hat, BEVOR der Flow den Termin anlegt/aktualisiert.
+   * v18.34: Backfill für Bestands-Events. Stellt sicher, dass das DEX_Events-Item
+   * eine gefüllte OutlookLocation hat, BEVOR der Flow den Termin anlegt/aktualisiert.
    * Neue Events bekommen OutlookLocation bereits beim Anlegen/Bearbeiten — alte
-   * (vor v18.34 erstellte) Events haetten sonst eine leere Spalte.
+   * (vor v18.34 erstellte) Events hätten sonst eine leere Spalte.
    */
   private async backfillOutlookLocation(eventId: string): Promise<void> {
     if (!eventId || this._outlookLocationBackfilled.has(eventId)) return;
@@ -1092,7 +1092,7 @@ export class EventService {
     actionType: 'Einladen' | 'Ausladen' | 'UpdateEvent'
   ): Promise<boolean> {
     try {
-      // v18.34: OutlookLocation fuer Bestands-Events nachziehen (einmal pro Event/Session).
+      // v18.34: OutlookLocation für Bestands-Events nachziehen (einmal pro Event/Session).
       await this.backfillOutlookLocation(eventId);
       const response = await this._post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Outlook')/items`,
@@ -1145,15 +1145,15 @@ export class EventService {
    * Liefert alle Attendees, die den Outlook-Kalendertermin abgelehnt haben.
    *
    * Liest den Termin im Postfach der Shared Mailbox `no_reply.events@deloitte.de`
-   * via Microsoft Graph. Der Admin-User braucht dafuer delegate/shared access
+   * via Microsoft Graph. Der Admin-User braucht dafür delegate/shared access
    * auf das Postfach (Mailbox-Permission) + die SPFx-App muss `Calendars.Read.Shared`
    * im Admin Center genehmigt bekommen.
    *
-   * Holt `OutlookEventId` + `CalendarLink` via `GET` auf DEX_Events/{id}. Primaerer
+   * Holt `OutlookEventId` + `CalendarLink` via `GET` auf DEX_Events/{id}. Primärer
    * Lookup des Outlook-Events ueber `OutlookEventId`. Wenn leer (alte Events):
    * Fallback ueber `iCalUId` per `$filter`.
    *
-   * Rueckgabe-Status:
+   * Rückgabe-Status:
    * - `ok: true`, `attendees: [...]` - Termin gefunden, Declines extrahiert
    * - `ok: false`, `reason: 'no-pointer'` - DEX_Events hat weder OutlookEventId noch CalendarLink
    * - `ok: false`, `reason: 'not-found'` - Outlook-Termin existiert nicht (mehr)
@@ -1167,10 +1167,10 @@ export class EventService {
     const ctx = this.context as any;
     if (!ctx.msGraphClientFactory) return { ok: false, attendees: [], reason: 'error', message: 'Graph-Client nicht verfügbar.' };
 
-    // 1. OutlookEventId + CalendarLink aus DEX_Events holen. Nutzt den bewaehrten
+    // 1. OutlookEventId + CalendarLink aus DEX_Events holen. Nutzt den bewährten
     // `getEvent()`-Path (gleiche Abfrage wie der Rest der App). Direktes
     // $select=OutlookEventId,CalendarLink hatte in v5.18 zu leeren Strings
-    // gefuehrt obwohl die Spalten in SharePoint gefuellt waren.
+    // geführt obwohl die Spalten in SharePoint gefüllt waren.
     let outlookEventId = '';
     let calendarLink = '';
     let loadedEvent = false;
@@ -1314,9 +1314,9 @@ export class EventService {
   // ==================== DEX_IDReorder Queue ====================
 
   /**
-   * Queue-Liste fuer ID-Neuvergabe erstellen falls nicht vorhanden.
-   * Power Automate reagiert auf neue Eintraege und vergibt TeilnehmerIDs
-   * auf der jeweiligen Subsite-Teilnehmerliste lueckenlos neu.
+   * Queue-Liste für ID-Neuvergabe erstellen falls nicht vorhanden.
+   * Power Automate reagiert auf neue Einträge und vergibt TeilnehmerIDs
+   * auf der jeweiligen Subsite-Teilnehmerliste lückenlos neu.
    *
    * Spalten:
    * - Title: Kurzbeschreibung (z.B. "Reorder: Test_20260408")
@@ -1333,7 +1333,7 @@ export class EventService {
     await this._post(`${this.siteUrl}/_api/web/lists`, {
       '__metadata': { 'type': 'SP.List' },
       'Title': listName,
-      'Description': 'Queue fuer TeilnehmerID-Neuvergabe nach Abmeldungen',
+      'Description': 'Queue für TeilnehmerID-Neuvergabe nach Abmeldungen',
       'BaseTemplate': 100,
       'AllowContentTypes': false,
     });
@@ -1368,10 +1368,10 @@ export class EventService {
   }
 
   // ==================== DEX_ChangeLog (v9.0) ====================
-  // Audit-Liste fuer alle Aenderungen an Events und Teilnehmern. Read-
-  // Berechtigung fuer Organizer/Admin (gleiche Permission-Pattern wie
-  // DEX_Roles), Schreibrechte fuer alle (damit User-Aktionen wie
-  // Anmeldung/Abmeldung mitloggen koennen).
+  // Audit-Liste für alle Aenderungen an Events und Teilnehmern. Read-
+  // Berechtigung für Organizer/Admin (gleiche Permission-Pattern wie
+  // DEX_Roles), Schreibrechte für alle (damit User-Aktionen wie
+  // Anmeldung/Abmeldung mitloggen können).
   public async ensureChangeLogList(): Promise<void> {
     const listName = 'DEX_ChangeLog';
     try {
@@ -1380,19 +1380,19 @@ export class EventService {
         try { await this.ensureChangeLogPermissions(listName); } catch { /* */ }
         return;
       }
-      // Liste existiert nicht — versuchen sie anzulegen. Schlaegt fehl
+      // Liste existiert nicht — versuchen sie anzulegen. Schlägt fehl
       // wenn der aktuelle User keine Owner-Permissions hat. Dann wird der
-      // App-Start nicht blockiert (Audit-Log ist best-effort fuer User
+      // App-Start nicht blockiert (Audit-Log ist best-effort für User
       // ohne Schreibrechte auf der Liste-Erstellung).
       const createResp = await this._post(`${this.siteUrl}/_api/web/lists`, {
         '__metadata': { 'type': 'SP.List' },
         'Title': listName,
-        'Description': 'Audit-Log fuer alle Aenderungen an Events und Teilnehmern (v9.0)',
+        'Description': 'Audit-Log für alle Aenderungen an Events und Teilnehmern (v9.0)',
         'BaseTemplate': 100,
         'AllowContentTypes': false,
       });
       if (!createResp.ok) {
-        console.warn('[DEX] DEX_ChangeLog konnte nicht angelegt werden — vermutlich fehlen dem User Owner-Rechte. App laeuft weiter, Audit-Eintraege fehlen aber.');
+        console.warn('[DEX] DEX_ChangeLog konnte nicht angelegt werden — vermutlich fehlen dem User Owner-Rechte. App läuft weiter, Audit-Einträge fehlen aber.');
         return;
       }
       const fields = [
@@ -1430,13 +1430,13 @@ export class EventService {
       } catch { /* View-Setup ist optional */ }
       try { await this.ensureChangeLogPermissions(listName); } catch { /* */ }
     } catch (err) {
-      console.warn('[DEX] ensureChangeLogList failed (best-effort, App laeuft weiter):', err);
+      console.warn('[DEX] ensureChangeLogList failed (best-effort, App läuft weiter):', err);
     }
   }
 
-  // Berechtigungen: Site-Members und alle authentifizierten User koennen
-  // Eintraege HINZUFUEGEN (damit Self-Reg/Cancel mitschreibt), aber nur
-  // Organizer/Admin koennen LESEN. Setzt Item-Level-Read = "Only their own".
+  // Berechtigungen: Site-Members und alle authentifizierten User können
+  // Einträge HINZUFUEGEN (damit Self-Reg/Cancel mitschreibt), aber nur
+  // Organizer/Admin können LESEN. Setzt Item-Level-Read = "Only their own".
   private async ensureChangeLogPermissions(listName: string): Promise<void> {
     try {
       // 1. Inheritance brechen
@@ -1455,7 +1455,7 @@ export class EventService {
         );
       }
       // 3. Members (Organizer-Group typischerweise) → Contribute (sollen
-      //    auch schreiben koennen, damit Organizer-Aktionen wie Event-
+      //    auch schreiben können, damit Organizer-Aktionen wie Event-
       //    Updates protokolliert werden).
       const membersResp = await this.context.spHttpClient.get(
         `${this.siteUrl}/_api/web/associatedmembergroup?$select=Id`, SPHttpClient.configurations.v1
@@ -1467,7 +1467,7 @@ export class EventService {
         );
       }
       // 4. Visitors (DEALL / Authenticated Users) → Contribute (damit
-      //    User-Aktionen wie Self-Anmeldung mitloggen koennen).
+      //    User-Aktionen wie Self-Anmeldung mitloggen können).
       const visitorsId = await this.getVisitorsGroupId();
       if (visitorsId) {
         await this._post(
@@ -1475,8 +1475,8 @@ export class EventService {
         );
       }
       // 5. Item-Level-Read = "ReadAllItems" (1) — Organizer und Admin
-      //    muessen ALLE Eintraege sehen, nicht nur eigene. Eigene
-      //    Lese-Beschraenkung waere fuer Audit-Log nutzlos.
+      //    müssen ALLE Einträge sehen, nicht nur eigene. Eigene
+      //    Lese-Beschränkung wäre für Audit-Log nutzlos.
       // v22.2 FIX: war vorher ein nackter POST (kein MERGE) → SharePoint
       // antwortete bei jedem Boot mit HTTP 400 (Console-Rauschen); der Wert
       // wurde nie gesetzt (Default ist ohnehin 1, daher ohne Folgen).
@@ -1558,7 +1558,7 @@ export class EventService {
 
   /**
    * Audit-Log lesen — Organizer/Admin only (durch SP-Permissions
-   * geschuetzt). Liefert die letzten N Eintraege, optional gefiltert
+   * geschützt). Liefert die letzten N Einträge, optional gefiltert
    * nach EventId.
    */
   public async readChangeLog(opts?: { eventId?: string; top?: number }): Promise<Array<{
@@ -1695,8 +1695,8 @@ export class EventService {
   // ==================== DEX_EmailTemplates Liste ====================
 
   /**
-   * Email-Templates-Liste erstellen und Default-Templates einfuegen.
-   * Templates koennen pro Event ueberschrieben werden (im Event JSON).
+   * Email-Templates-Liste erstellen und Default-Templates einfügen.
+   * Templates können pro Event ueberschrieben werden (im Event JSON).
    *
    * Platzhalter: {{Name}}, {{EventTitle}}, {{AppUrl}}
    */
@@ -1704,9 +1704,9 @@ export class EventService {
     const listName = 'DEX_EmailTemplates';
     const exists = await this.listExists(listName);
     if (exists) {
-      // Liste existiert - pruefen ob _Config Zeile und Logo-Spalten vorhanden
+      // Liste existiert - prüfen ob _Config Zeile und Logo-Spalten vorhanden
       await this.ensureEmailTemplatesConfig(listName);
-      // Neuere Templates nachruesten (falls die Liste vor v3.0.27 angelegt wurde
+      // Neuere Templates nachrüsten (falls die Liste vor v3.0.27 angelegt wurde
       // und OutlookDeclineReminder noch nicht existiert)
       await this.ensureMissingEmailTemplates(listName);
       // Standard-Templates auf aktuelle Version upgraden (uerschreibt User-Customizing!)
@@ -1746,7 +1746,7 @@ export class EventService {
       });
     }
 
-    // Default-Templates: DE + EN fuer jeden Typ
+    // Default-Templates: DE + EN für jeden Typ
     const defaults = [
       // ===== ENGLISCH =====
       { TemplateType: 'Anmeldung', Language: 'EN', Subject: 'Registration confirmation: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Registration successful',
@@ -1867,7 +1867,7 @@ export class EventService {
       });
     }
 
-    // _Config Eintrag fuer Logos erstellen (Base64 muss manuell in SharePoint eingetragen werden)
+    // _Config Eintrag für Logos erstellen (Base64 muss manuell in SharePoint eingetragen werden)
     await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
       '__metadata': { 'type': listItemType },
       'Title': '_Config',
@@ -1886,8 +1886,8 @@ export class EventService {
 
   /**
    * Sicherstellen dass LogoBase64/DefaultImageBase64 Spalten und _Config Zeile existieren.
-   * Fuer Tenants wo DEX_EmailTemplates schon vor v3.0.27 angelegt wurde:
-   * neuere Templates (z.B. OutlookDeclineReminder DE+EN) nachruesten, ohne
+   * Für Tenants wo DEX_EmailTemplates schon vor v3.0.27 angelegt wurde:
+   * neuere Templates (z.B. OutlookDeclineReminder DE+EN) nachrüsten, ohne
    * bestehende zu ueberschreiben.
    */
   private async ensureMissingEmailTemplates(listName: string): Promise<void> {
@@ -1973,7 +1973,7 @@ export class EventService {
   private async upgradeStandardEmailTemplates(listName: string): Promise<ReseedSummary> {
     const summary: ReseedSummary = { created: 0, updated: 0, skipped: 0, failed: 0, errors: [] };
     const APP_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
-    void APP_URL; // Reserviert fuer spaetere Templates die {{AppUrl}} hardcoden
+    void APP_URL; // Reserviert für spätere Templates die {{AppUrl}} hardcoden
     const standards = [
       // ========== EN ==========
       { TemplateType: 'Anmeldung', Language: 'EN', Subject: 'Registration confirmation: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Registration successful',
@@ -2089,13 +2089,13 @@ export class EventService {
         );
         if (!checkResp.ok) {
           summary.failed++;
-          summary.errors.push(`${label}: Pruefung fehlgeschlagen (HTTP ${checkResp.status})`);
+          summary.errors.push(`${label}: Prüfung fehlgeschlagen (HTTP ${checkResp.status})`);
           continue;
         }
         const checkData = await checkResp.json();
         const items = checkData.value || checkData.d?.results || [];
         if (items.length === 0) {
-          // existiert nicht -> anlegen (uebernimmt ensureMissingEmailTemplates fuer einige; hier sicherheitshalber auch)
+          // existiert nicht -> anlegen (uebernimmt ensureMissingEmailTemplates für einige; hier sicherheitshalber auch)
           const postResp = await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
             '__metadata': { 'type': listItemType },
             'Title': label,
@@ -2106,9 +2106,9 @@ export class EventService {
             'Heading': t.Heading,
             'BodyHtml': t.BodyHtml,
           });
-          // v18.66: _post wirft NICHT bei HTTP 4xx/5xx — Status explizit pruefen,
+          // v18.66: _post wirft NICHT bei HTTP 4xx/5xx — Status explizit prüfen,
           // sonst scheitern Inserts (z.B. neue Templates wie OrgNachruecker)
-          // stillschweigend und der Reseed meldet faelschlich Erfolg.
+          // stillschweigend und der Reseed meldet fälschlich Erfolg.
           if (postResp.ok || postResp.status === 201 || postResp.status === 204) {
             summary.created++;
           } else {
@@ -2152,29 +2152,29 @@ export class EventService {
   }
 
   /**
-   * Wird aufgerufen wenn die Liste bereits existiert (nachtraegliches Upgrade).
+   * Wird aufgerufen wenn die Liste bereits existiert (nachträgliches Upgrade).
    */
   private async ensureEmailTemplatesConfig(listName: string): Promise<void> {
     try {
-      // 1. Logo-Spalten nachtraeglich anlegen falls fehlend
-      // v9.16: TestTeamEmails ergaenzt — globale Liste (";"-separiert) der
-      // User die Test-Events sehen + sich anmelden duerfen, auch wenn sie
+      // 1. Logo-Spalten nachträglich anlegen falls fehlend
+      // v9.16: TestTeamEmails ergänzt — globale Liste (";"-separiert) der
+      // User die Test-Events sehen + sich anmelden dürfen, auch wenn sie
       // keine Organizer/Admin-Rolle haben.
       const logoFields = [
         { title: 'LogoBase64', type: 3 },
         { title: 'DefaultImageBase64', type: 3 },
         { title: 'TestTeamEmails', type: 3 }, // Note (multi-line text), ";"-separiert
-        // v11.47: App-Aufruf-Counter fuer die KPI-Boxen auf der LandingPage.
+        // v11.47: App-Aufruf-Counter für die KPI-Boxen auf der LandingPage.
         // Wird pro Browser-Session genau einmal inkrementiert (Session-Guard
         // in LandingPage), ETag-CAS-Retry im incrementAppViewCount().
         { title: 'AppViewCount', type: 9 }, // Number
-        // v11.52: gecachter Total-Teilnehmer-Counter fuer das LandingPage-KPI.
-        // Live-Zaehlung ueber alle Event-Subsites war zu langsam — stattdessen
+        // v11.52: gecachter Total-Teilnehmer-Counter für das LandingPage-KPI.
+        // Live-Zählung ueber alle Event-Subsites war zu langsam — stattdessen
         // liest der Boot-Loader diesen einen Wert (schneller REST-Call), und
         // sobald die App fertig geladen hat, schreiben wir den frischen Wert
-        // im Hintergrund zurueck. Eventual consistency, fuer KPI-Anzeige ok.
+        // im Hintergrund zurück. Eventual consistency, für KPI-Anzeige ok.
         { title: 'TotalParticipantsCount', type: 9 }, // Number
-        { title: 'TotalEventsCount', type: 9 }, // Number — analog fuer 'Events'
+        { title: 'TotalEventsCount', type: 9 }, // Number — analog für 'Events'
         // v15.17: Subheading-Spalte für die untere Headline-Zeile pro
         // Template (vorher hart als „Event {{EventTitle}}" im Code).
         // Leerwert = Fallback im Code auf {{EventTitle}} ohne Präfix.
@@ -2197,7 +2197,7 @@ export class EventService {
         } catch { /* Spalte existiert oder Fehler - ignorieren */ }
       }
 
-      // 2. _Config Zeile pruefen und ggf. anlegen
+      // 2. _Config Zeile prüfen und ggf. anlegen
       const configResp = await this.context.spHttpClient.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id`,
         SPHttpClient.configurations.v1
@@ -2234,7 +2234,7 @@ export class EventService {
    * aus der _Config-Zeile von DEX_EmailTemplates lesen. Ein einziger REST-
    * Call, kein Subsite-Roundtrip — Boot-Loader zeigt das innerhalb von ms.
    * Liefert null bei Fehler, sonst { participants, events } mit 0 als
-   * Default fuer leere Felder.
+   * Default für leere Felder.
    */
   public async getKpiCache(): Promise<{ participants: number; events: number } | null> {
     try {
@@ -2256,7 +2256,7 @@ export class EventService {
   }
 
   /**
-   * v11.53: KPI-Counter um delta hochzaehlen (Anmeldung +1, Cancel -1,
+   * v11.53: KPI-Counter um delta hochzählen (Anmeldung +1, Cancel -1,
    * createEvent +1, deleteEvent -N). ETag-CAS-Retry, race-safe bei 10k+
    * parallelen Usern. Liefert den neuen Wert oder null bei Fehler.
    */
@@ -2295,10 +2295,10 @@ export class EventService {
   }
 
   /**
-   * v11.52: Gecachte KPI-Werte zurueckschreiben. Wird nach vollem App-Load
-   * im Hintergrund aufgerufen (DexEventPlatform), damit der naechste Boot-
-   * Loader frische Zahlen sieht. Best-effort, kein ETag-CAS noetig — bei
-   * gleichzeitigen Schreibern gewinnt der letzte, was fuer KPI ok ist.
+   * v11.52: Gecachte KPI-Werte zurückschreiben. Wird nach vollem App-Load
+   * im Hintergrund aufgerufen (DexEventPlatform), damit der nächste Boot-
+   * Loader frische Zahlen sieht. Best-effort, kein ETag-CAS nötig — bei
+   * gleichzeitigen Schreibern gewinnt der letzte, was für KPI ok ist.
    */
   public async updateKpiCache(values: { participants: number; events: number }): Promise<boolean> {
     const itemUrl = await this.getConfigItemUrl();
@@ -2313,7 +2313,7 @@ export class EventService {
   }
 
   /**
-   * v11.50: Anzahl Items in DEX_Participants (= unique User, die jemals fuer
+   * v11.50: Anzahl Items in DEX_Participants (= unique User, die jemals für
    * irgendein Event angemeldet/auf Warteliste waren). Liest nur das ItemCount-
    * Metadatum der Liste, nicht alle Items — schnell und cheap. Liefert null
    * bei Fehler.
@@ -2356,7 +2356,7 @@ export class EventService {
   /**
    * v11.47: App-Aufruf-Counter um 1 inkrementieren — ETag-CAS-Retry analog
    * zum reserveSeat-Muster. Liefert den neuen Wert nach Inkrement, oder
-   * null bei Fehler / Retry-Erschoepfung.
+   * null bei Fehler / Retry-Erschöpfung.
    */
   public async incrementAppViewCount(): Promise<number | null> {
     const itemUrl = await this.getConfigItemUrl();
@@ -2406,8 +2406,8 @@ export class EventService {
   }
 
   /**
-   * Logos als Base64 in die _Config Zeile schreiben (fuer Power Automate Flows).
-   * Laedt Deloitte_Logo.png und dex-orb.png aus SiteAssets/DEX_Logos,
+   * Logos als Base64 in die _Config Zeile schreiben (für Power Automate Flows).
+   * Lädt Deloitte_Logo.png und dex-orb.png aus SiteAssets/DEX_Logos,
    * konvertiert zu Base64 Data-URI und speichert in LogoBase64/DefaultImageBase64.
    */
   public async ensureLogosInConfig(): Promise<void> {
@@ -2423,7 +2423,7 @@ export class EventService {
       const configItem = items[0];
       if (!configItem) return;
 
-      // 2. Wenn LogoBase64 schon korrekt befuellt ist (mit image/ MIME-Type), nichts tun
+      // 2. Wenn LogoBase64 schon korrekt befüllt ist (mit image/ MIME-Type), nichts tun
       if (configItem.LogoBase64 && configItem.LogoBase64.startsWith('data:image/')) return;
 
       // 3. Bilder aus SiteAssets laden
@@ -2468,7 +2468,7 @@ export class EventService {
       const serverRelativeUrl = this.context.pageContext.web.serverRelativeUrl;
       const fileUrl = `${this.siteUrl}/_api/web/GetFileByServerRelativeUrl('${serverRelativeUrl}/SiteAssets/${path}')/$value`;
 
-      // SPHttpClient mit binaryStringResponseBody fuer Binary-Downloads
+      // SPHttpClient mit binaryStringResponseBody für Binary-Downloads
       const resp = await this.context.spHttpClient.get(fileUrl, SPHttpClient.configurations.v1, {
         headers: { 'Accept': '*/*' },
       } as ISPHttpClientOptions);
@@ -2565,7 +2565,7 @@ export class EventService {
   }
 
   /**
-   * Alle Email-Templates laden (fuer Event-Erstellung / Admin).
+   * Alle Email-Templates laden (für Event-Erstellung / Admin).
    */
   public async getAllEmailTemplates(): Promise<Array<{ id: number; templateType: string; language: string; subject: string; headingColor: string; heading: string; subheading: string; bodyHtml: string }>> {
     try {
@@ -2595,7 +2595,7 @@ export class EventService {
 
   /**
    * Zentrale Teilnehmer-Liste erstellen falls nicht vorhanden.
-   * Speichert pro Person die EventNumbers fuer Registrierung und Warteliste.
+   * Speichert pro Person die EventNumbers für Registrierung und Warteliste.
    */
   public async ensureParticipantsList(): Promise<void> {
     const listName = 'DEX_Participants';
@@ -2620,8 +2620,8 @@ export class EventService {
       { title: 'Vorname', type: 2 },
       { title: 'Nachname', type: 2 },
       { title: 'Email', type: 2 },
-      { title: 'EventRegistered', type: 3 }, // Note fuer beliebig viele EventNumbers
-      { title: 'EventOnWaitlist', type: 3 }, // Note fuer beliebig viele EventNumbers
+      { title: 'EventRegistered', type: 3 }, // Note für beliebig viele EventNumbers
+      { title: 'EventOnWaitlist', type: 3 }, // Note für beliebig viele EventNumbers
     ];
 
     for (const f of fields) {
@@ -2692,7 +2692,7 @@ export class EventService {
 
   /**
    * Teilnehmer anlegen oder aktualisieren bei Registrierung.
-   * Fuegt eventNumber zu EventRegistered oder EventOnWaitlist hinzu.
+   * Fügt eventNumber zu EventRegistered oder EventOnWaitlist hinzu.
    */
   public async upsertParticipant(
     vorname: string,
@@ -2705,7 +2705,7 @@ export class EventService {
       const existing = await this.getParticipantByEmail(email);
 
       if (existing) {
-        // EventNumber zu richtigem Feld hinzufuegen
+        // EventNumber zu richtigem Feld hinzufügen
         let registered = existing.EventRegistered ? existing.EventRegistered.split(',').map(s => s.trim()).filter(s => s) : [];
         let waitlist = existing.EventOnWaitlist ? existing.EventOnWaitlist.split(',').map(s => s.trim()).filter(s => s) : [];
         const en = eventNumber.toString();
@@ -2774,13 +2774,13 @@ export class EventService {
   }
 
   /**
-   * Alle Teilnehmer laden (fuer Admin-Seite).
+   * Alle Teilnehmer laden (für Admin-Seite).
    */
   public async getAllParticipants(): Promise<SPParticipant[]> {
     const allItems: SPParticipant[] = [];
     // $top=5000 statt 500 — bei mehr als 500 jemals registrierten Personen
     // im Tenant lieferte SharePoint mit $orderby+$top in Kombination mit
-    // ILS nicht zuverlaessig nextLink, sodass Eintraege fehlten.
+    // ILS nicht zuverlässig nextLink, sodass Einträge fehlten.
     let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items?$select=Id,Title,Vorname,Nachname,Email,EventRegistered,EventOnWaitlist&$orderby=Nachname,Vorname&$top=5000`;
 
     while (url) {
@@ -2852,7 +2852,7 @@ export class EventService {
       'AllowContentTypes': false,
     });
 
-    // Spalten hinzufuegen
+    // Spalten hinzufügen
     const fields = this.getEventsFieldDefinitions();
     for (const f of fields) {
       const payload: Record<string, unknown> = {
@@ -2883,7 +2883,7 @@ export class EventService {
   }
 
   /**
-   * Feld-Definitionen fuer DEX_Events Liste
+   * Feld-Definitionen für DEX_Events Liste
    */
   private getEventsFieldDefinitions(): Array<{ title: string; type: number; choices?: string[]; metaType?: string; richText?: boolean; numberOfLines?: number }> {
     return [
@@ -2897,14 +2897,14 @@ export class EventService {
       { title: 'LocationFilter', type: 2 },
       // Audience ist Multi-Line-Text (Note) damit es auch bei 100+ E-Mail-Adressen
       // nicht abgeschnitten wird (Single-Line-Text ist auf 255 Zeichen limitiert).
-      // Fuer bestehende Events siehe upgradeAudienceFieldToNote() — migriert die
+      // Für bestehende Events siehe upgradeAudienceFieldToNote() — migriert die
       // alte Text-Spalte zu Note ohne Datenverlust.
       { title: 'Audience', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 4 },
-      // v16.4: Vor-aufgeloeste E-Mails der Audience-DLs (Multi-Line, ';'-
+      // v16.4: Vor-aufgelöste E-Mails der Audience-DLs (Multi-Line, ';'-
       // separiert). Wird beim Event-Save vom EventCreationPage-Flow
-      // gesetzt; matchesAudience im EventListPage checkt zusaetzlich
-      // gegen diese Liste. Damit funktioniert die Sichtbarkeit auch fuer
-      // verschachtelte DLs, die /me/memberOf nicht zurueckliefert.
+      // gesetzt; matchesAudience im EventListPage checkt zusätzlich
+      // gegen diese Liste. Damit funktioniert die Sichtbarkeit auch für
+      // verschachtelte DLs, die /me/memberOf nicht zurückliefert.
       { title: 'AudienceResolvedEmails', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 8 },
       { title: 'FilterMode', type: 6, choices: ['AND', 'OR'], metaType: 'SP.FieldChoice' },
       { title: 'StartDate', type: 4 },
@@ -2914,7 +2914,7 @@ export class EventService {
       { title: 'MaxParticipants', type: 9 },
       { title: 'WaitlistEnabled', type: 8 },
       { title: 'EventImageUrl', type: 2 },
-      { title: 'EmailImageBase64', type: 3 }, // Base64 Event-Bild fuer E-Mails/Outlook (Flow ersetzt {{ORB_URL}})
+      { title: 'EmailImageBase64', type: 3 }, // Base64 Event-Bild für E-Mails/Outlook (Flow ersetzt {{ORB_URL}})
       // Organizer + OrganizerEmail sind Multi-Line-Text (Note) damit sie auch bei
       // 10+ Co-Organizern nicht abgeschnitten werden (Single-Line-Text ist auf 255
       // Zeichen limitiert — bei ~17 Personen mit Format `vorname.nachname@deloitte.de;`
@@ -2930,35 +2930,35 @@ export class EventService {
       { title: 'EventNumber', type: 9 },
       { title: 'OutlookEventId', type: 2 },
       { title: 'CalendarLink', type: 2 },
-      { title: 'OutlookBody', type: 3 }, // Multiline - Text fuer Outlook-Termin
+      { title: 'OutlookBody', type: 3 }, // Multiline - Text für Outlook-Termin
       { title: 'OutlookSubject', type: 2 }, // v18.42: Single line - Betreff des Outlook-Termins (leer = Titel)
       { title: 'OutlookStart', type: 4 }, // v18.44: DateTime - abweichende Start-Zeit (leer = Event-Start)
       { title: 'OutlookEnd', type: 4 },   // v18.44: DateTime - abweichende End-Zeit (leer = Event-Ende)
-      { title: 'OutlookLocation', type: 2 }, // v18.34: Single line - lesbarer Ort fuer den Outlook-Termin
+      { title: 'OutlookLocation', type: 2 }, // v18.34: Single line - lesbarer Ort für den Outlook-Termin
       { title: 'EmailLanguage', type: 2 }, // DE oder EN
       { title: 'RegistrationLanguage', type: 2 }, // v18.35: erzwungene Anmeldeseiten-Sprache ('de'|'en'|'')
       { title: 'EmailTemplateOverrides', type: 3 }, // JSON mit Event-spezifischen Template-Anpassungen
       { title: 'DisableEmails', type: 8, metaType: 'SP.Field' }, // Boolean - keine E-Mails versenden
-      { title: 'DisableRegistrationEmail', type: 8, metaType: 'SP.Field' }, // v19.21 Boolean - keine Anmelde-Bestaetigung
-      { title: 'DisableCancellationEmail', type: 8, metaType: 'SP.Field' }, // v19.21 Boolean - keine Abmelde-Bestaetigung
+      { title: 'DisableRegistrationEmail', type: 8, metaType: 'SP.Field' }, // v19.21 Boolean - keine Anmelde-Bestätigung
+      { title: 'DisableCancellationEmail', type: 8, metaType: 'SP.Field' }, // v19.21 Boolean - keine Abmelde-Bestätigung
       { title: 'AutoDeregisterOnDecline', type: 8, metaType: 'SP.Field' }, // v19.23 Boolean - Outlook-Absage = Auto-Abmeldung
       { title: 'DisableOutlook', type: 8, metaType: 'SP.Field' }, // Boolean - keine Outlook-Kalendereintraege
       { title: 'OutlookDirty', type: 8, metaType: 'SP.Field' }, // v11.57 Boolean - Outlook-Update ausstehend nach Bearbeitung
       { title: 'AutoSendQRCode', type: 8, metaType: 'SP.Field' }, // v9.15 Boolean - QR-Code automatisch nach Anmeldung versenden
       { title: 'ActiveFrom', type: 4, metaType: 'SP.Field' }, // v9.21 DateTime - Auto-Aktivierungs-Datum
       { title: 'NotifyOrgRegisterMode', type: 6, choices: ['Never', 'Always', 'FromDate'], metaType: 'SP.FieldChoice' }, // v8.5
-      { title: 'NotifyOrgRegisterFromDate', type: 4 }, // v8.5: ISO-Date, nur fuer Mode='FromDate'
+      { title: 'NotifyOrgRegisterFromDate', type: 4 }, // v8.5: ISO-Date, nur für Mode='FromDate'
       { title: 'NotifyOrgCancelMode', type: 6, choices: ['Never', 'Always', 'AfterDeadline'], metaType: 'SP.FieldChoice' }, // v8.5
       { title: 'ExcludedUsers', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 4 }, // v8.6: explizit ausgeschlossene User
       { title: 'IsFictive', type: 8, metaType: 'SP.Field' }, // Boolean - Test-Event (nur Admin + eigene Organizer sichtbar)
       { title: 'DurchstarterCapacity', type: 9 }, // Split-Capacity Gruppe A (historisch B2Run-Durchstarter)
       { title: 'FunstarterCapacity', type: 9 }, // Split-Capacity Gruppe B (historisch B2Run-Funstarter)
-      { title: 'SplitLabelA', type: 2 }, // v10.20: frei waehlbare Bezeichnung Gruppe A (Single line text)
-      { title: 'SplitLabelB', type: 2 }, // v10.20: frei waehlbare Bezeichnung Gruppe B (Single line text)
+      { title: 'SplitLabelA', type: 2 }, // v10.20: frei wählbare Bezeichnung Gruppe A (Single line text)
+      { title: 'SplitLabelB', type: 2 }, // v10.20: frei wählbare Bezeichnung Gruppe B (Single line text)
       { title: 'SplitSharedWaitlist', type: 8, metaType: 'SP.Field' }, // v10.20: Boolean - true = gemeinsame Warteliste
       { title: 'AllowAttendeeUpload', type: 8, metaType: 'SP.Field' }, // v11.0: Boolean - Teilnehmer-PDF-Upload erlauben
       { title: 'AttendeeUploadHint', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 3 }, // v11.0: Hinweistext
-      { title: 'AttendeeUploadLabel', type: 2 }, // v11.0: Single-line Label fuer den Upload-Block in MyEvents
+      { title: 'AttendeeUploadLabel', type: 2 }, // v11.0: Single-line Label für den Upload-Block in MyEvents
       { title: 'AskSalutation', type: 8, metaType: 'SP.Field' }, // v11.80: Boolean - Anrede im Registrierungsformular abfragen
       { title: 'ConfirmDialogEnabled', type: 8, metaType: 'SP.Field' }, // v18.75: Boolean - Sicherheitshinweis vor dem Absenden anzeigen
       { title: 'ConfirmDialogMode', type: 2 }, // v18.75: Single line text - 'summary' (Auswahl-Übersicht) | 'freetext'
@@ -2975,7 +2975,7 @@ export class EventService {
       { title: 'TeamJoinRequiresApproval', type: 8, metaType: 'SP.Field' }, // v11.81: Boolean - Lead muss Beitritt bestätigen
       { title: 'BilingualFields', type: 8, metaType: 'SP.Field' }, // v17.20: Boolean - Custom-Fields zweisprachig (DE + EN) anbieten
       { title: 'CustomFields', type: 3 },
-      { title: 'Agenda', type: 3 }, // JSON-Array mit Agenda-Eintraegen
+      { title: 'Agenda', type: 3 }, // JSON-Array mit Agenda-Einträgen
       { title: 'Transfers', type: 3 }, // JSON-Array mit Transferzeiten
       { title: 'Documents', type: 3 }, // JSON-Array mit Dokumenten
       { title: 'FunZone', type: 3 }, // JSON-Array mit Quiz-Fragen
@@ -2988,7 +2988,7 @@ export class EventService {
   }
 
   /**
-   * Fehlende Spalten auf einer bestehenden DEX_Events-Liste nachtraeglich hinzufuegen.
+   * Fehlende Spalten auf einer bestehenden DEX_Events-Liste nachträglich hinzufügen.
    */
   private async ensureMissingFields(listName: string): Promise<void> {
     const requiredFields = this.getEventsFieldDefinitions();
@@ -3006,7 +3006,7 @@ export class EventService {
 
       for (const f of requiredFields) {
         if (!existingFields.has(f.title)) {
-          // Fehlende Spalte nachtraeglich hinzufuegen
+          // Fehlende Spalte nachträglich hinzufügen
           const payload: Record<string, unknown> = {
             '__metadata': { 'type': f.metaType || 'SP.Field' },
             'Title': f.title,
@@ -3023,7 +3023,7 @@ export class EventService {
           try {
             await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
           } catch {
-            console.warn('[DEX] Konnte Spalte nicht hinzufuegen:', f.title);
+            console.warn('[DEX] Konnte Spalte nicht hinzufügen:', f.title);
           }
         }
       }
@@ -3036,17 +3036,17 @@ export class EventService {
    * Migration: alte Audience-Spalte (Type 2, Single-Line-Text, 255 Zeichen Limit)
    * auf Multi-Line-Text (Type 3, Plain-Text, 63.999 Zeichen) umstellen.
    *
-   * Noetig weil bei Zielgruppen mit vielen Email-Adressen (~10+) der 255-Zeichen-
+   * Nötig weil bei Zielgruppen mit vielen Email-Adressen (~10+) der 255-Zeichen-
    * Cutoff schon griff und Adressen stumm abgeschnitten wurden.
    *
    * Ablauf (idempotent):
    *   1. Check TypeAsString der Audience-Spalte. Wenn schon 'Note' -> skip.
    *   2. Backup aller Event-Werte (id -> audience) im Speicher.
-   *   3. Alte Spalte loeschen.
+   *   3. Alte Spalte löschen.
    *   4. Neue Spalte als SP.FieldMultiLineText (RichText=false, NumberOfLines=4) anlegen.
-   *   5. Werte aus dem Backup zurueckschreiben (MERGE pro Event).
+   *   5. Werte aus dem Backup zurückschreiben (MERGE pro Event).
    *
-   * Laeuft beim App-Start (nur fuer Admins, weil wir Write-Rechte auf DEX_Events brauchen).
+   * Läuft beim App-Start (nur für Admins, weil wir Write-Rechte auf DEX_Events brauchen).
    */
   public async upgradeAudienceFieldToNote(): Promise<void> {
     const listName = 'DEX_Events';
@@ -3084,7 +3084,7 @@ export class EventService {
       }
       console.warn(`[DEX] upgradeAudienceFieldToNote: Backup ${Object.keys(backup).length} von ${items.length} Event-Audience-Werten.`);
 
-      // 3. Alte Spalte loeschen
+      // 3. Alte Spalte löschen
       try {
         await this._post(
           `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('Audience')/deleteObject`,
@@ -3109,11 +3109,11 @@ export class EventService {
           }
         );
       } catch (e) {
-        console.error('[DEX] upgradeAudienceFieldToNote: Konnte neue Audience-Note-Spalte nicht anlegen - Daten koennten verloren gehen:', e, backup);
+        console.error('[DEX] upgradeAudienceFieldToNote: Konnte neue Audience-Note-Spalte nicht anlegen - Daten könnten verloren gehen:', e, backup);
         return;
       }
 
-      // 5. Werte zurueckschreiben per _merge (odata=nometadata, daher kein __metadata im Body noetig)
+      // 5. Werte zurückschreiben per _merge (odata=nometadata, daher kein __metadata im Body nötig)
       let restored = 0;
       let failed = 0;
       for (const idStr of Object.keys(backup)) {
@@ -3127,7 +3127,7 @@ export class EventService {
           else failed += 1;
         } catch { failed += 1; }
       }
-      console.warn(`[DEX] upgradeAudienceFieldToNote: Migration fertig — ${restored} Werte zurueckgeschrieben, ${failed} Fehler.`);
+      console.warn(`[DEX] upgradeAudienceFieldToNote: Migration fertig — ${restored} Werte zurückgeschrieben, ${failed} Fehler.`);
     } catch (e) {
       console.warn('[DEX] upgradeAudienceFieldToNote Error:', e);
     }
@@ -3137,20 +3137,20 @@ export class EventService {
    * Migration: alte `Organizer` + `OrganizerEmail`-Spalten (Type 2, Single-Line-Text,
    * 255 Zeichen Limit) auf Multi-Line-Text (Type 3, Plain-Text, 63.999 Zeichen) umstellen.
    *
-   * Noetig weil bei Events mit 10+ Co-Organizern der 255-Zeichen-Cutoff greift und
+   * Nötig weil bei Events mit 10+ Co-Organizern der 255-Zeichen-Cutoff greift und
    * SharePoint beim Update mit „Invalid text value. A text field contains invalid data."
    * (HTTP 500, Microsoft.SharePoint.SPException) antwortet — der Save bricht komplett ab.
    *
    * Beispiel-Overflow: 17 × `vorname.nachname@deloitte.de;` ≈ 425 Zeichen.
    *
-   * Ablauf pro Feld (idempotent, parallel fuer beide Felder):
+   * Ablauf pro Feld (idempotent, parallel für beide Felder):
    *   1. Check TypeAsString. Wenn schon 'Note' -> skip.
    *   2. Backup aller Event-Werte (id -> wert) im Speicher.
-   *   3. Alte Spalte loeschen.
+   *   3. Alte Spalte löschen.
    *   4. Neue Spalte als SP.FieldMultiLineText (RichText=false, NumberOfLines=4) anlegen.
-   *   5. Werte aus dem Backup zurueckschreiben (MERGE pro Event).
+   *   5. Werte aus dem Backup zurückschreiben (MERGE pro Event).
    *
-   * Laeuft beim App-Start (nur fuer Admins, weil wir Write-Rechte auf DEX_Events brauchen).
+   * Läuft beim App-Start (nur für Admins, weil wir Write-Rechte auf DEX_Events brauchen).
    */
   public async upgradeOrganizerFieldsToNote(): Promise<void> {
     await this._upgradeTextFieldToNote('DEX_Events', 'Organizer');
@@ -3164,8 +3164,8 @@ export class EventService {
    *
    * Wird von `upgradeAudienceFieldToNote()` (existierendes Audience-Feld) und
    * `upgradeOrganizerFieldsToNote()` (Organizer + OrganizerEmail) genutzt. Die alte
-   * `upgradeAudienceFieldToNote()`-Implementierung ist aus Kompatibilitaetsgruenden
-   * unberuehrt geblieben — neue Migrationen sollten diesen Helper nutzen.
+   * `upgradeAudienceFieldToNote()`-Implementierung ist aus Kompatibilitätsgründen
+   * unberührt geblieben — neue Migrationen sollten diesen Helper nutzen.
    */
   private async _upgradeTextFieldToNote(listName: string, fieldName: string): Promise<void> {
     const tag = `_upgradeTextFieldToNote(${listName}.${fieldName})`;
@@ -3222,7 +3222,7 @@ export class EventService {
           }
         );
       } catch (e) {
-        console.error(`[DEX] ${tag}: Konnte neue Note-Spalte nicht anlegen — Daten koennten verloren gehen:`, e, backup);
+        console.error(`[DEX] ${tag}: Konnte neue Note-Spalte nicht anlegen — Daten könnten verloren gehen:`, e, backup);
         return;
       }
 
@@ -3239,14 +3239,14 @@ export class EventService {
           else failed += 1;
         } catch { failed += 1; }
       }
-      console.warn(`[DEX] ${tag}: Migration fertig — ${restored} Werte zurueckgeschrieben, ${failed} Fehler.`);
+      console.warn(`[DEX] ${tag}: Migration fertig — ${restored} Werte zurückgeschrieben, ${failed} Fehler.`);
     } catch (e) {
       console.warn(`[DEX] ${tag} Error:`, e);
     }
   }
 
   /**
-   * Berechtigungen fuer DEX_Events setzen
+   * Berechtigungen für DEX_Events setzen
    */
   private async setEventsListPermissions(listName: string): Promise<void> {
     try {
@@ -3296,7 +3296,7 @@ export class EventService {
           );
         } catch { /* ignore */ }
       } else {
-        // Nur hinzufuegen (behaelt bestehende SP-Felder bei). Duplikate vermeiden.
+        // Nur hinzufügen (behält bestehende SP-Felder bei). Duplikate vermeiden.
         const existingResponse = await this.context.spHttpClient.get(
           `${url}/_api/web/lists/getbytitle('${listName}')/defaultview/viewfields`,
           SPHttpClient.configurations.v1
@@ -3310,7 +3310,7 @@ export class EventService {
       }
 
       for (const fieldName of fieldNames) {
-        // Nur hinzufuegen wenn noch nicht in der View
+        // Nur hinzufügen wenn noch nicht in der View
         if (existingFields.indexOf(fieldName) < 0) {
           await this._post(
             `${url}/_api/web/lists/getbytitle('${listName}')/defaultview/viewfields/addviewfield('${fieldName}')`,
@@ -3324,7 +3324,7 @@ export class EventService {
   }
 
   /**
-   * Column Formatting auf ein Feld setzen (z.B. Bild-Vorschau fuer URL-Spalten)
+   * Column Formatting auf ein Feld setzen (z.B. Bild-Vorschau für URL-Spalten)
    */
   private async setColumnFormatting(listName: string, fieldName: string, formatJson: object): Promise<void> {
     try {
@@ -3374,7 +3374,7 @@ export class EventService {
    */
   public async seedEvents(): Promise<void> {
     try {
-      // Pruefen ob "Assistenz Meeting 2026" schon existiert
+      // Prüfen ob "Assistenz Meeting 2026" schon existiert
       const check = await this.context.spHttpClient.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=Title eq 'Assistenz Meeting 2026'&$top=1&$select=Id`,
         SPHttpClient.configurations.v1
@@ -3509,7 +3509,7 @@ export class EventService {
     outlookLocation?: string; // v18.40: manueller Outlook-Ort (leer = Auto aus Ort + Adresse)
     locationFilter: string;
     audience: string;
-    /** v16.4: Vor-aufgeloeste E-Mails der Audience-DLs, ';'-separiert, lowercase. */
+    /** v16.4: Vor-aufgelöste E-Mails der Audience-DLs, ';'-separiert, lowercase. */
     audienceResolvedEmails?: string;
     filterMode: string;
     startDate: string;
@@ -3527,7 +3527,7 @@ export class EventService {
     contactInfo?: string;
     outlookEventId: string;
     outlookBody: string;
-    agenda?: string; // JSON-Array mit Agenda-Eintraegen
+    agenda?: string; // JSON-Array mit Agenda-Einträgen
     transfers?: string; // JSON-Array mit Transferzeiten
     documents?: string; // JSON-Array mit Dokumenten
     funZone?: string; // JSON-Array mit Quiz-Fragen
@@ -3588,10 +3588,10 @@ export class EventService {
      *  gesetzt sind, wird KEINE neue Subsite und KEINE neue Teilnehmer-
      *  liste angelegt — stattdessen werden die mitgegebenen Werte direkt in
      *  das neue DEX_Events-Item geschrieben. Hintergrund: Outlook-Termin
-     *  nachtraeglich aktivieren ohne Verlust bestehender Anmeldungen — das
+     *  nachträglich aktivieren ohne Verlust bestehender Anmeldungen — das
      *  Sub-Event wird mit `deleteEventItemOnly()` aus DEX_Events entfernt
      *  und hier neu angelegt, wobei die alte Subsite + Teilnehmerliste
-     *  unangetastet bleiben und an die neue Event-Zeile angehaengt werden.
+     *  unangetastet bleiben und an die neue Event-Zeile angehängt werden.
      *  Damit triggert der `DEX_CreateOutlookEvent`-Flow (GetOnNewItems) auf
      *  dem neuen Item und legt den Outlook-Termin an. */
     existingSubsiteUrl?: string;
@@ -3627,7 +3627,7 @@ export class EventService {
     };
     try {
       reportProgress('start');
-      // 0. Naechste EventNumber ermitteln
+      // 0. Nächste EventNumber ermitteln
       let nextEventNumber = 1;
       try {
         const enResp = await this.context.spHttpClient.get(
@@ -3668,11 +3668,11 @@ export class EventService {
       if (reuseSubsite) {
         // v11.69: bestehende Subsite + Teilnehmerliste wiederverwenden.
         subsiteUrl = event.existingSubsiteUrl as string;
-        // Custom-Fields unveraendert uebernehmen — die Liste existiert
-        // bereits, kein neues Schema noetig.
+        // Custom-Fields unverändert uebernehmen — die Liste existiert
+        // bereits, kein neues Schema nötig.
         enrichedCustomFields = event.customFields.map(cf => ({ ...cf }));
       } else {
-        // 1. Subsite fuer das Event erstellen
+        // 1. Subsite für das Event erstellen
         reportProgress('subsite-creating');
         const createdSubsite = await this.createEventSubsite(event.title, event.description);
         if (!createdSubsite) {
@@ -3747,7 +3747,7 @@ export class EventService {
         'ContactEmail': event.contactEmail || '',
         'ContactInfo': event.contactInfo || '',
         'OutlookEventId': event.outlookEventId,
-        // outlookBody kommt bereits vollstaendig gewickelt + mit aufgeloesten Variablen
+        // outlookBody kommt bereits vollständig gewickelt + mit aufgelösten Variablen
         // aus EventCreationPage — hier nur durchreichen.
         'OutlookBody': event.outlookBody || '',
         'EmailLanguage': event.emailLanguage || 'EN',
@@ -3937,10 +3937,10 @@ export class EventService {
   }
 
   /**
-   * Event vollstaendig loeschen:
-   * 1. Subsite loeschen (inkl. Teilnehmerliste) - fuer neue Events
-   * 2. Alte Registrierungsliste loeschen (DEX_Reg_*) - fuer alte Events
-   * 3. Event-Eintrag aus DEX_Events loeschen
+   * Event vollständig löschen:
+   * 1. Subsite löschen (inkl. Teilnehmerliste) - für neue Events
+   * 2. Alte Registrierungsliste löschen (DEX_Reg_*) - für alte Events
+   * 3. Event-Eintrag aus DEX_Events löschen
    */
   public async deleteEvent(eventId: number): Promise<boolean> {
     try {
@@ -3948,9 +3948,9 @@ export class EventService {
       const event = await this.getEvent(eventId);
       if (!event) return false;
 
-      // 0. Outlook-Kalendereintrag per Queue loeschen (VOR allem anderen, damit
+      // 0. Outlook-Kalendereintrag per Queue löschen (VOR allem anderen, damit
       //    CalendarLink noch vorhanden ist). Der DEX_Outlook_Einladungen-Flow
-      //    greift den DeleteEvent-Eintrag auf und loescht den Kalender-Termin
+      //    greift den DeleteEvent-Eintrag auf und löscht den Kalender-Termin
       //    im Shared Mailbox ueber den Flow-Service-Account.
       //    Fehler hier ignorieren - Event-Delete soll trotzdem durchlaufen.
       if (event.CalendarLink) {
@@ -3962,7 +3962,7 @@ export class EventService {
       //    Subsite permanent weg ohne Recycle-Bin-Eintrag. recycle() legt
       //    die Subsite mitsamt Teilnehmerliste 93 Tage in den Site
       //    Collection Recycle Bin → ein Tenant-Admin / Site Collection
-      //    Admin kann sie dort wiederherstellen falls noetig.
+      //    Admin kann sie dort wiederherstellen falls nötig.
       if (event.SubsiteUrl) {
         try {
           await this._post(`${event.SubsiteUrl}/_api/web/recycle`, {});
@@ -3971,7 +3971,7 @@ export class EventService {
         }
       }
 
-      // 2. Event-Bild ebenfalls RECYCEN statt loeschen.
+      // 2. Event-Bild ebenfalls RECYCEN statt löschen.
       if (event.EventImageUrl) {
         try {
           const url = new URL(event.EventImageUrl);
@@ -3999,7 +3999,7 @@ export class EventService {
         }
       }
 
-      // 3. DEX_Participants aufraeumen: EventNumber aus allen Teilnehmern entfernen
+      // 3. DEX_Participants aufräumen: EventNumber aus allen Teilnehmern entfernen
       if (event.EventNumber) {
         try {
           const allParticipants = await this.getAllParticipants();
@@ -4012,15 +4012,15 @@ export class EventService {
               return hasRegistered || hasWaitlist;
             })
             .map(p => this.removeParticipantEvent(p.Email, event.EventNumber));
-          // Promise.all mit individueller Fehlerbehandlung (Promise.allSettled nicht verfuegbar in ES2017)
+          // Promise.all mit individueller Fehlerbehandlung (Promise.allSettled nicht verfügbar in ES2017)
           const safePromises = updatePromises.map(p => p.catch(() => null));
           await Promise.all(safePromises);
         } catch {
-          console.warn('[DEX] DEX_Participants konnte nicht aufgeraeumt werden');
+          console.warn('[DEX] DEX_Participants konnte nicht aufgeräumt werden');
         }
       }
 
-      // 4. Event-Dokumente loeschen (SiteAssets/DEX_EventDocs/Event_{number}_*)
+      // 4. Event-Dokumente löschen (SiteAssets/DEX_EventDocs/Event_{number}_*)
       if (event.EventNumber) {
         try {
           const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
@@ -4045,7 +4045,7 @@ export class EventService {
       );
 
       // 6. Audit-Eintrag in DEX_ChangeLog (v9.0). Best-effort, blockt
-      //    den Loesch-Vorgang nicht falls Logging fehlschlaegt.
+      //    den Lösch-Vorgang nicht falls Logging fehlschlägt.
       try {
         await this.writeChangeLog({
           action: 'EventDeletedTest', // wird vom Aufrufer ueberschrieben
@@ -4069,17 +4069,17 @@ export class EventService {
   }
 
   /**
-   * v11.69: Loescht NUR das DEX_Events-Listenitem — KEIN Cascade auf Subsite,
+   * v11.69: Löscht NUR das DEX_Events-Listenitem — KEIN Cascade auf Subsite,
    * KEIN Outlook-DeleteEvent in die Queue, KEIN EventImage-Recycle, KEIN
-   * DEX_Participants-Cleanup. Gegenstueck zu `deleteEvent()`, das alles
-   * mit-aufraeumt.
+   * DEX_Participants-Cleanup. Gegenstück zu `deleteEvent()`, das alles
+   * mit-aufräumt.
    *
-   * Nutzungs-Szenario: Outlook-Termin nachtraeglich auf einem bereits
+   * Nutzungs-Szenario: Outlook-Termin nachträglich auf einem bereits
    * angelegten Sub-Event aktivieren. Der `DEX_CreateOutlookEvent`-Flow
    * triggert ausschliesslich auf NEUE DEX_Events-Items (GetOnNewItems) —
    * ein MERGE-Update reicht nicht aus. Statt das ganze Sub-Event komplett
    * delete+recreate zu machen (was kaskadierend Subsite + Teilnehmer-
-   * anmeldungen mitloeschen wuerde), wird hier nur die DEX_Events-Zeile
+   * anmeldungen mitlöschen würde), wird hier nur die DEX_Events-Zeile
    * entfernt und gleich darauf eine neue mit `createEvent({ existingSubsiteUrl,
    * existingRegistrationListName })` angelegt. Die alte Subsite mit allen
    * Anmeldungen bleibt unangetastet und wird einfach an die neue Zeile
@@ -4121,9 +4121,9 @@ export class EventService {
   }
 
   /**
-   * Subsite fuer ein Event erstellen.
-   * Versucht mehrere Templates falls eines fehlschlaegt.
-   * Gibt die absolute URL der neuen Subsite zurueck.
+   * Subsite für ein Event erstellen.
+   * Versucht mehrere Templates falls eines fehlschlägt.
+   * Gibt die absolute URL der neuen Subsite zurück.
    */
   private async createEventSubsite(title: string, description: string): Promise<string | null> {
     const urlSuffix = this.generateSubsiteUrl(title);
@@ -4186,7 +4186,7 @@ export class EventService {
     await this._post(`${subsiteUrl}/_api/web/lists`, {
       '__metadata': { 'type': 'SP.List' },
       'Title': REG_LIST_NAME,
-      'Description': 'Teilnehmerliste fuer dieses Event',
+      'Description': 'Teilnehmerliste für dieses Event',
       'BaseTemplate': 100,
       'AllowContentTypes': false,
     });
@@ -4213,25 +4213,25 @@ export class EventService {
       // damit B2Run-Events nicht später nochmal manuell repariert werden müssen.
       { title: 'b2run_leistungsnachweis', type: 2 },
       { title: 'QuizScore', type: 9 }, // Number - Anzahl richtiger Antworten
-      { title: 'QuizAnswers', type: 3 }, // Note - JSON der Antworten (fuer Statistik)
+      { title: 'QuizAnswers', type: 3 }, // Note - JSON der Antworten (für Statistik)
       { title: 'QuizCompletedAt', type: 4 }, // DateTime
       { title: 'RegistrationDate', type: 4 },
-      { title: 'RegisteredByName', type: 2 },  // Audit: Name des Users der die Anmeldung durchgefuehrt hat
-      { title: 'RegisteredByEmail', type: 2 }, // Audit: E-Mail des Users der die Anmeldung durchgefuehrt hat
+      { title: 'RegisteredByName', type: 2 },  // Audit: Name des Users der die Anmeldung durchgeführt hat
+      { title: 'RegisteredByEmail', type: 2 }, // Audit: E-Mail des Users der die Anmeldung durchgeführt hat
       { title: 'ProxyConsent', type: 3 },      // v18.74: Nachweis der Zustimmung bei stellvertretender Anmeldung (Note)
       { title: 'LastModifiedDate', type: 4 },
       { title: 'ChangeLog', type: 3 }, // Note (multiline) - Aenderungshistorie
       { title: 'CancellationDate', type: 4 },
-      { title: 'CancelledByName', type: 2 },   // Audit: Name des Users der die Abmeldung ausgeloest hat
-      { title: 'CancelledByEmail', type: 2 },  // Audit: E-Mail des Users der die Abmeldung ausgeloest hat
+      { title: 'CancelledByName', type: 2 },   // Audit: Name des Users der die Abmeldung ausgelöst hat
+      { title: 'CancelledByEmail', type: 2 },  // Audit: E-Mail des Users der die Abmeldung ausgelöst hat
       { title: 'CheckedInDate', type: 4 },     // v7.16: Check-In-Audit — Zeitpunkt
       { title: 'CheckedInByName', type: 2 },   // v7.16: Check-In-Audit — Helfer-Name
       { title: 'CheckedInByEmail', type: 2 },  // v7.16: Check-In-Audit — Helfer-E-Mail
-      // v17.15: Nachrueck-Audit (siehe SPRegistration-Interface):
-      // - PromotedDate: gesetzt beim Promote auf die nachrueckende Person.
+      // v17.15: Nachrück-Audit (siehe SPRegistration-Interface):
+      // - PromotedDate: gesetzt beim Promote auf die nachrückende Person.
       // - ReplacedParticipantEmail: E-Mail der Person, deren Cancel den
-      //   Promote ausgeloest hat („Ersetzt wen") — auf der promoteten Person.
-      // - ReplacedByParticipantEmail: E-Mail der nachrueckenden Person
+      //   Promote ausgelöst hat („Ersetzt wen") — auf der promoteten Person.
+      // - ReplacedByParticipantEmail: E-Mail der nachrückenden Person
       //   („Ersetzt durch") — auf der cancelnden Person.
       { title: 'PromotedDate', type: 4 },
       { title: 'ReplacedParticipantEmail', type: 2 },
@@ -4241,9 +4241,9 @@ export class EventService {
       // entscheidet pro Person (auf Warteliste / Platz behalten).
       { title: 'OverbookReview', type: 2 },
       // v11.82: Team-Anmeldung — drei Spalten gruppieren Mitglieder eines
-      // gemeinsam angemeldeten Teams. TeamId = UUID (gleicher Wert fuer alle
-      // Mitglieder), TeamLead = true nur fuer die anmeldende Person, TeamName
-      // = optionaler frei waehlbarer Name (nur wenn das Event AskTeamName an
+      // gemeinsam angemeldeten Teams. TeamId = UUID (gleicher Wert für alle
+      // Mitglieder), TeamLead = true nur für die anmeldende Person, TeamName
+      // = optionaler frei wählbarer Name (nur wenn das Event AskTeamName an
       // hat). Bei Nicht-Team-Anmeldungen bleiben alle drei Felder leer.
       { title: 'TeamId', type: 2 },
       { title: 'TeamLead', type: 8 },
@@ -4321,7 +4321,7 @@ export class EventService {
       }
     }
 
-    // FieldMap wird als Rueckgabewert an den Caller zurueckgegeben
+    // FieldMap wird als Rückgabewert an den Caller zurückgegeben
 
     // Default View komplett neu aufbauen (Basis + Custom Fields). Mit rebuild:true
     // werden alle SP-Default-Spalten (Modified, Created, ID, Type, Compliance Asset,
@@ -4330,7 +4330,7 @@ export class EventService {
       'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'ParticipantEmail', 'Department', 'Location', 'JobTitle', 'Phone', 'StarterType', 'PreferredStarterType', 'Status', 'RegistrationDate', 'RegisteredByName', 'RegisteredByEmail', 'ProxyConsent', 'CancellationDate', 'CancelledByName', 'CancelledByEmail',
       ...customFieldViewNames,
       // v11.82: Team-Spalten am Ende der View (nach allen Custom Fields, vor
-      // System-Spalten). So bleibt die View bei Nicht-Team-Events unauffaellig
+      // System-Spalten). So bleibt die View bei Nicht-Team-Events unauffällig
       // und bei Team-Events sieht der Organizer auf einen Blick, wer mit wem
       // angemeldet ist.
       'TeamId', 'TeamLead', 'TeamName',
@@ -4342,7 +4342,7 @@ export class EventService {
     // Berechtigungen
     await this.setRegistrationListPermissions(subsiteUrl, organizerEmail);
 
-    // v7.28: Counter-Liste fuer atomare TeilnehmerID-Vergabe anlegen
+    // v7.28: Counter-Liste für atomare TeilnehmerID-Vergabe anlegen
     // (Race-Condition-Schutz bei parallelen Anmeldungen).
     try {
       await this.ensureCounterList(subsiteUrl);
@@ -4398,7 +4398,7 @@ export class EventService {
   }
 
   /**
-   * Subsite-Berechtigungen: Owners Full Control, Members Read (damit User die Subsite betreten koennen).
+   * Subsite-Berechtigungen: Owners Full Control, Members Read (damit User die Subsite betreten können).
    */
   private async setSubsitePermissions(subsiteUrl: string, organizerEmail: string): Promise<void> {
     try {
@@ -4416,7 +4416,7 @@ export class EventService {
         );
       }
 
-      // Visitors der Hauptsite: Read auf der Subsite (damit User die Subsite betreten koennen)
+      // Visitors der Hauptsite: Read auf der Subsite (damit User die Subsite betreten können)
       const visitorsId = await this.getVisitorsGroupId();
       if (visitorsId) {
         await this._post(
@@ -4480,21 +4480,21 @@ export class EventService {
   }
 
   /**
-   * v20.5: Setzt nachtraeglich den Autor (Created By / SharePoint-Ersteller)
+   * v20.5: Setzt nachträglich den Autor (Created By / SharePoint-Ersteller)
    * einer Teilnehmer-Zeile auf den TEILNEHMER selbst.
    *
    * Hintergrund: Die Teilnehmerlisten laufen mit Item-Level-Security
    * (ReadSecurity=2 / WriteSecurity=2) — ein User darf nur Items LESEN und
-   * BEARBEITEN, die ER ERSTELLT hat (geprueft am Autor, NICHT am Feld
+   * BEARBEITEN, die ER ERSTELLT hat (geprüft am Autor, NICHT am Feld
    * ParticipantEmail). Bei einer stellvertretenden Anmeldung (Organizer/Admin
-   * meldet eine andere Person an) waere sonst der Akteur der Autor — der
-   * angemeldete Teilnehmer saehe seine eigene Anmeldung NICHT in "Meine
-   * Events" und koennte sich nicht selbst abmelden. Indem der Teilnehmer zum
+   * meldet eine andere Person an) wäre sonst der Akteur der Autor — der
+   * angemeldete Teilnehmer sähe seine eigene Anmeldung NICHT in "Meine
+   * Events" und könnte sich nicht selbst abmelden. Indem der Teilnehmer zum
    * Autor wird, bekommt er Lese- + Abmelde-Zugriff auf SEINE Zeile.
    *
    * Best-effort: das Umsetzen von AuthorId erfordert "Listen verwalten" /
    * Full Control auf der Liste. Organizer (eigenes Event) und Admin haben das;
-   * ein normaler Contribute-User (z.B. eine Assistenz) NICHT — dort schlaegt
+   * ein normaler Contribute-User (z.B. eine Assistenz) NICHT — dort schlägt
    * der MERGE mit 403 fehl und wird still ignoriert (die Zeile bleibt beim
    * Akteur als Autor). Der eigentliche Akteur ist ohnehin separat im Feld
    * RegisteredByEmail protokolliert, der Audit-Nachweis bleibt also erhalten.
@@ -4680,7 +4680,7 @@ export class EventService {
   }
 
   /**
-   * Berechtigungen fuer Teilnehmerliste auf der Subsite setzen.
+   * Berechtigungen für Teilnehmerliste auf der Subsite setzen.
    */
   private async setRegistrationListPermissions(subsiteUrl: string, organizerEmail: string): Promise<void> {
     try {
@@ -4702,7 +4702,7 @@ export class EventService {
         );
       }
 
-      // Visitors: Contribute (damit User sich registrieren koennen)
+      // Visitors: Contribute (damit User sich registrieren können)
       const visitorsId = await this.getVisitorsGroupId();
       if (visitorsId) {
         await this._post(
@@ -4739,7 +4739,7 @@ export class EventService {
   // ==================== Registrierungen ====================
 
   /**
-   * Registrierung fuer ein Event erstellen.
+   * Registrierung für ein Event erstellen.
    * Operiert auf der Subsite des Events.
    */
   public async registerForEvent(
@@ -4752,8 +4752,8 @@ export class EventService {
     customFieldMap?: Record<string, string>, // cf.id -> SP InternalName
     starterType?: string, // B2Run: effektiver Typ (nach Fallback)
     preferredStarterType?: string, // B2Run: Wunsch-Typ (was der User eigentlich wollte)
-    registeredByName?: string, // Audit: Name des Users der die Anmeldung ausloest
-    registeredByEmail?: string, // Audit: E-Mail des Users der die Anmeldung ausloest
+    registeredByName?: string, // Audit: Name des Users der die Anmeldung auslöst
+    registeredByEmail?: string, // Audit: E-Mail des Users der die Anmeldung auslöst
     // v18.74: Nachweis der Zustimmung bei stellvertretender Anmeldung — wird in
     // die SP-Spalte ProxyConsent geschrieben (leer bei Selbst-Anmeldung).
     proxyConsent?: string,
@@ -4768,13 +4768,13 @@ export class EventService {
   ): Promise<boolean> {
     try {
       // ---- Permission-Checks (v3.9.2 / v3.9.3) ----
-      // Serverseitige Pruefungen — nicht perfekt (SPFx laeuft im Browser),
+      // Serverseitige Prüfungen — nicht perfekt (SPFx läuft im Browser),
       // aber fangt naiven App-Bypass (F12, direkter Service-Aufruf) ab.
       const sessionEmail = (this.context.pageContext.user.email || '').toLowerCase();
       const targetEmail = (participantEmail || '').toLowerCase();
 
       // Event-Metadaten laden (Deadline + OrganizerEmail) ueber SubsiteUrl.
-      // Beide Checks nutzen die gleiche Abfrage — einmal laden, mehrfach pruefen.
+      // Beide Checks nutzen die gleiche Abfrage — einmal laden, mehrfach prüfen.
       let eventDeadline = '';
       let eventOrganizerEmails: string[] = [];
       try {
@@ -4794,7 +4794,7 @@ export class EventService {
         }
       } catch { /* Bei Load-Fehler konservativ weitermachen — andere Checks greifen */ }
 
-      // Check A: Darf der User fuer eine andere Person registrieren?
+      // Check A: Darf der User für eine andere Person registrieren?
       // v19.9: Wenn der Client bereits bestätigt hat, dass der/die Anmeldende
       // Organizer/Co-Organizer dieses Events ist, vertrauen wir dem (gleiche
       // Datengrundlage wie die Button-Sichtbarkeit) und überspringen die
@@ -4808,8 +4808,8 @@ export class EventService {
         }
       }
 
-      // Check B: Deadline abgelaufen? Nur Event-Organizer + Admin duerfen nach
-      // Deadline registrieren (auch fuer sich selbst). Assistant NICHT — das ist
+      // Check B: Deadline abgelaufen? Nur Event-Organizer + Admin dürfen nach
+      // Deadline registrieren (auch für sich selbst). Assistant NICHT — das ist
       // wie ein normaler User.
       if (eventDeadline) {
         const deadlineDate = new Date(eventDeadline);
@@ -4837,21 +4837,21 @@ export class EventService {
       }
       // ---- Ende Permission-Checks ----
 
-      // v7.28 / v9.10: Naechste TeilnehmerID atomar ueber den Subsite-Counter
+      // v7.28 / v9.10: Nächste TeilnehmerID atomar ueber den Subsite-Counter
       // holen (ETag-CAS, verhindert Race-Conditions bei parallelen Anmeldungen).
       // Counter wird bei Bedarf on-demand angelegt + geseeded.
       //
-      // v9.10: Der alte race-anfaellige Fallback "max+1" wurde entfernt — bei
+      // v9.10: Der alte race-anfällige Fallback "max+1" wurde entfernt — bei
       // Massen-Anmeldungen (Go-Live grosse Events) hat er Duplikate produziert,
       // weil zwei Clients gleichzeitig den gleichen Max-Wert lesen und beide
       // mit Max+1 schreiben. Wenn der atomare Counter ausnahmsweise gar nicht
       // erreichbar ist, lassen wir TeilnehmerID undefined und der Admin
-      // laedt anschliessend "IDs neu vergeben" — Lueckenfreiheit ist nicht
+      // lädt anschliessend "IDs neu vergeben" — Lückenfreiheit ist nicht
       // hart kritisch, Eindeutigkeit ist es.
       const nextId = await this.getNextTeilnehmerId(subsiteUrl);
 
-      // Profildaten laden - fuer den TATSAECHLICHEN Teilnehmer (nicht den eingeloggten User!)
-      // Wenn jemand fuer eine andere Person registriert, muss deren Profil geladen werden,
+      // Profildaten laden - für den TATSAECHLICHEN Teilnehmer (nicht den eingeloggten User!)
+      // Wenn jemand für eine andere Person registriert, muss deren Profil geladen werden,
       // sonst wird der eigene JobTitle/Department/Office in deren Teilnehmer-Eintrag geschrieben.
       const myEmail = (this.context.pageContext.user.email || '').toLowerCase();
       const profile = participantEmail.toLowerCase() === myEmail
@@ -4863,7 +4863,7 @@ export class EventService {
         '__metadata': { 'type': REG_LIST_ITEM_TYPE },
         'Title': participantEmail,
         // v9.10: TeilnehmerID nur setzen wenn der atomare Counter sie geliefert hat.
-        // Bei Counter-Outage bleibt das Feld leer — Admin kann nachtraeglich
+        // Bei Counter-Outage bleibt das Feld leer — Admin kann nachträglich
         // "IDs neu vergeben" laufen lassen, was sequentielle IDs setzt.
         ...(typeof nextId === 'number' ? { 'TeilnehmerID': nextId } : {}),
         'Anrede': customData.salutation || '',
@@ -4880,8 +4880,8 @@ export class EventService {
         'CustomData': JSON.stringify(customData),
       };
 
-      // Audit: wer hat die Anmeldung ausgeloest?
-      // Bei Self-Registration = der User selbst. Bei "Fuer andere Person registrieren"
+      // Audit: wer hat die Anmeldung ausgelöst?
+      // Bei Self-Registration = der User selbst. Bei "Für andere Person registrieren"
       // = der Organizer/Admin der geklickt hat. Fallback wenn nichts uebergeben: aus pageContext.
       const auditName = registeredByName || this.context.pageContext.user.displayName || '';
       const auditEmail = (registeredByEmail || this.context.pageContext.user.email || '').toLowerCase();
@@ -4895,10 +4895,10 @@ export class EventService {
       if (preferredStarterType) payload['PreferredStarterType'] = preferredStarterType;
 
       // Custom Field Werte in die echten SP-Spalten schreiben.
-      // Wichtig: Wenn spInternalName fehlt (z.B. weil der Admin das Feld spaeter
-      // ergaenzt hat ohne Spalte in der Teilnehmerliste), wuerde der Wert
+      // Wichtig: Wenn spInternalName fehlt (z.B. weil der Admin das Feld später
+      // ergänzt hat ohne Spalte in der Teilnehmerliste), würde der Wert
       // SILENT VERLOREN GEHEN — deshalb ein console.warn damit der Admin im
-      // Admin Center per "Custom Fields pruefen" das Mapping fixen kann.
+      // Admin Center per "Custom Fields prüfen" das Mapping fixen kann.
       if (customFieldMap) {
         for (const cfId of Object.keys(customData)) {
           if (cfId === 'salutation') continue;
@@ -4907,7 +4907,7 @@ export class EventService {
           if (spFieldName) {
             payload[spFieldName] = customData[cfId];
           } else {
-            console.warn(`[DEX] Custom-Field '${cfId}' hat keine SharePoint-Spalte (spInternalName fehlt) — Wert wird nicht in Teilnehmerliste geschrieben. Bitte im Admin Center 'Custom Fields pruefen' ausfuehren.`);
+            console.warn(`[DEX] Custom-Field '${cfId}' hat keine SharePoint-Spalte (spInternalName fehlt) — Wert wird nicht in Teilnehmerliste geschrieben. Bitte im Admin Center 'Custom Fields prüfen' ausführen.`);
           }
         }
       }
@@ -4930,7 +4930,7 @@ export class EventService {
       // Admin kann die Spalte per „Spalten fixen" nachrüsten), die Anmeldung
       // selbst gelingt aber.
       if (!response.ok && payload['ProxyConsent']) {
-        console.warn('[DEX] registerForEvent: Insert fehlgeschlagen — Retry OHNE ProxyConsent (Spalte evtl. nicht vorhanden). Bitte im Admin Center "Spalten fixen" ausfuehren.');
+        console.warn('[DEX] registerForEvent: Insert fehlgeschlagen — Retry OHNE ProxyConsent (Spalte evtl. nicht vorhanden). Bitte im Admin Center "Spalten fixen" ausführen.');
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const retryPayload: Record<string, any> = { ...payload };
         delete retryPayload['ProxyConsent'];
@@ -4941,9 +4941,9 @@ export class EventService {
       }
       if (!response.ok) return false;
 
-      // Inserted-Item-Id EINMALIG aus der Response lesen (der Body laesst sich
-      // nur einmal konsumieren) — wird sowohl fuer die Dedup-Pruefung als auch
-      // fuer das Setzen des Autors (stellvertretende Anmeldung) gebraucht.
+      // Inserted-Item-Id EINMALIG aus der Response lesen (der Body lässt sich
+      // nur einmal konsumieren) — wird sowohl für die Dedup-Prüfung als auch
+      // für das Setzen des Autors (stellvertretende Anmeldung) gebraucht.
       let insertedId = 0;
       try {
         const respJson = await response.json();
@@ -4953,9 +4953,9 @@ export class EventService {
       // v9.10: Post-Insert Safety Net — bei Massen-Anmeldungen (Go-Live)
       // gab es trotz ETag-Counter vereinzelt Duplikate. Ursache war der
       // alte max+1-Fallback (jetzt entfernt) und ggf. Edge-Cases im
-      // Counter-Pfad. Als zusaetzliche Versicherung: nach dem Insert
-      // pruefen, ob jetzt zwei Eintraege dieselbe TeilnehmerID haben.
-      // Wenn ja: der mit der HOEHEREN SP-Item-Id verliert (= der spaetere
+      // Counter-Pfad. Als zusätzliche Versicherung: nach dem Insert
+      // prüfen, ob jetzt zwei Einträge dieselbe TeilnehmerID haben.
+      // Wenn ja: der mit der HOEHEREN SP-Item-Id verliert (= der spätere
       // Insert), holt sich frisch eine ID am Counter und patcht sich.
       // So bleiben die zuerst eingetroffenen Anmeldungen stabil.
       if (typeof nextId === 'number' && nextId > 0 && insertedId > 0) {
@@ -5009,7 +5009,7 @@ export class EventService {
    *
    * Unterschied zu `registerForEvent`: kein eigener Permission-Check (der
    * Aufrufer hat schon im Team-Submit alle Mitglieder validiert), kein
-   * Post-Insert Dedup-Loop (der ist im Team-Pfad ueberfluessig — wenn ein
+   * Post-Insert Dedup-Loop (der ist im Team-Pfad überflüssig — wenn ein
    * Member mit Kollision verliert, fixt es der Folge-IDReorder). Nimmt
    * Profil-Daten und Anzeige-Namen direkt entgegen, weil der Lead-Submit
    * pro Member ohnehin schon das Graph-Profil geladen hat.
@@ -5124,9 +5124,9 @@ export class EventService {
 
   /**
    * v11.84: Lead-Rolle innerhalb eines Teams von einer Person auf eine andere
-   * uebergeben. Wird im Admin Center per Dropdown im Teams-Block ausgeloest.
+   * uebergeben. Wird im Admin Center per Dropdown im Teams-Block ausgelöst.
    * Best-effort transaktional: erst die neue Lead-Zeile auf TeamLead=true
-   * setzen, danach die alte auf TeamLead=false. Schlaegt der zweite MERGE
+   * setzen, danach die alte auf TeamLead=false. Schlägt der zweite MERGE
    * fehl, gibt es kurzfristig zwei Leads — der Aufrufer kann dann erneut
    * versuchen oder die Liste manuell reparieren. Keine echte Transaktion,
    * SharePoint bietet sowas auf Listen-Ebene nicht.
@@ -5152,15 +5152,15 @@ export class EventService {
   }
 
   /**
-   * v11.83: Pruefen, ob eine bestimmte Email-Adresse bereits aktiv beim
+   * v11.83: Prüfen, ob eine bestimmte Email-Adresse bereits aktiv beim
    * Event angemeldet ist (Status in Angemeldet/QR versendet/Eingecheckt/
    * Warteliste). Wird vor jedem Team-Add (Initial, Add-Member, Beitritt)
    * benutzt, um Doppel-Anmeldungen sauber abzuweisen, bevor ein Sitzplatz
    * reserviert wird.
    *
-   * Rueckgabe: true = blockieren, false = frei (auch bei SP-Fehlern, weil
-   * der Aufrufer dann auf die strikteren Stellen-internen Checks zurueck-
-   * faellt; ein lauter Throw wuerde den Pfad unnoetig abbrechen).
+   * Rückgabe: true = blockieren, false = frei (auch bei SP-Fehlern, weil
+   * der Aufrufer dann auf die strikteren Stellen-internen Checks zurück-
+   * fällt; ein lauter Throw würde den Pfad unnötig abbrechen).
    */
   public async isUserAlreadyOnEvent(subsiteUrl: string, email: string): Promise<boolean> {
     if (!subsiteUrl || !email) return false;
@@ -5183,9 +5183,9 @@ export class EventService {
   // ==================== DEX_TeamJoinRequests (v11.83) ====================
 
   /**
-   * v11.83: Globale Liste fuer Team-Beitritts-Anfragen (Approve-Queue).
+   * v11.83: Globale Liste für Team-Beitritts-Anfragen (Approve-Queue).
    * Liegt auf der Site-Collection-Ebene (nicht pro Subsite), damit alle
-   * Events darauf zugreifen koennen und der Team-Lead alle ausstehenden
+   * Events darauf zugreifen können und der Team-Lead alle ausstehenden
    * Anfragen in einer einzigen Query findet.
    *
    * Spalten:
@@ -5213,7 +5213,7 @@ export class EventService {
     await this._post(`${this.siteUrl}/_api/web/lists`, {
       '__metadata': { 'type': 'SP.List' },
       'Title': listName,
-      'Description': 'Approve-Queue fuer Team-Beitritts-Anfragen (v11.83+).',
+      'Description': 'Approve-Queue für Team-Beitritts-Anfragen (v11.83+).',
       'BaseTemplate': 100,
       'AllowContentTypes': false,
     });
@@ -5247,7 +5247,7 @@ export class EventService {
       'Status', 'Created', 'DecidedDate', 'DecidedByEmail',
     ]);
 
-    // Schreibrechte fuer alle Authentifizierten (analog zu DEX_Emails-Queue):
+    // Schreibrechte für alle Authentifizierten (analog zu DEX_Emails-Queue):
     // jeder darf eine Anfrage erstellen, aber Item-Level-Security greift
     // sowieso ueber den Lead-Check beim Approve-Pfad.
     try {
@@ -5288,26 +5288,26 @@ export class EventService {
   }
 
   /**
-   * v18.48: Sperr-Liste fuer den Outlook-Einladungs-Flow (DEX_Outlook_Einladungen).
+   * v18.48: Sperr-Liste für den Outlook-Einladungs-Flow (DEX_Outlook_Einladungen).
    *
    * Hintergrund: der Einladungs-Flow patcht pro Anmeldung/Abmeldung die
    * KOMPLETTE Teilnehmerliste eines Outlook-Termins (bei Grossevents bis zu
    * 1500 Personen) an Microsoft Graph. Lief der Flow seriell (Concurrency 1),
-   * standen Anmeldungen fuer voellig UNTERSCHIEDLICHE Events stundenlang in
-   * der Warteschlange. Loesung „Option B": die Trigger-Concurrency wird hoch-
-   * gesetzt (z.B. 25 parallele Laeufe), und ein Pro-Event-Lock verhindert,
-   * dass zwei Laeufe fuer dasSELBE Event gleichzeitig die Teilnehmerliste
-   * lesen-und-schreiben (Race -> verlorene Eintraege).
+   * standen Anmeldungen für völlig UNTERSCHIEDLICHE Events stundenlang in
+   * der Warteschlange. Lösung „Option B": die Trigger-Concurrency wird hoch-
+   * gesetzt (z.B. 25 parallele Läufe), und ein Pro-Event-Lock verhindert,
+   * dass zwei Läufe für dasSELBE Event gleichzeitig die Teilnehmerliste
+   * lesen-und-schreiben (Race -> verlorene Einträge).
    *
    * Die Liste hat eine eindeutige (Enforce-Unique) Spalte `EventId`. Der Flow
    * „erwirbt" den Lock per Create-Item: gelingt das Create, hat er den Lock;
-   * schlaegt es wegen der Eindeutigkeits-Pruefung fehl, haelt gerade ein
+   * schlägt es wegen der Eindeutigkeits-Prüfung fehl, hält gerade ein
    * anderer Lauf desselben Events den Lock -> kurz warten und erneut
-   * versuchen. Am Ende loescht der Flow das Lock-Item wieder (Release).
+   * versuchen. Am Ende löscht der Flow das Lock-Item wieder (Release).
    *
-   * Die UI-Schritt-fuer-Schritt-Anleitung steht in `docs/flow-jsons.md` unter
-   * „UI-Anleitung 2026-06-02 (v18.48) — Option B: Pro-Event-Lock fuer
-   * parallele Outlook-Laeufe".
+   * Die UI-Schritt-für-Schritt-Anleitung steht in `docs/flow-jsons.md` unter
+   * „UI-Anleitung 2026-06-02 (v18.48) — Option B: Pro-Event-Lock für
+   * parallele Outlook-Läufe".
    */
   /**
    * v20.7: Queue-Liste `DEX_AccessFix` (Site-Collection-Root) für den
@@ -5404,21 +5404,21 @@ export class EventService {
     await this._post(`${this.siteUrl}/_api/web/lists`, {
       '__metadata': { 'type': 'SP.List' },
       'Title': listName,
-      'Description': 'Pro-Event-Sperre fuer den Outlook-Einladungs-Flow (v18.48) — verhindert gleichzeitige Laeufe fuer dasselbe Event.',
+      'Description': 'Pro-Event-Sperre für den Outlook-Einladungs-Flow (v18.48) — verhindert gleichzeitige Läufe für dasselbe Event.',
       'BaseTemplate': 100,
       'AllowContentTypes': false,
     });
 
-    // EventId: der Lock-Schluessel. Muss eindeutig + indiziert sein, damit das
+    // EventId: der Lock-Schlüssel. Muss eindeutig + indiziert sein, damit das
     // Create-als-Lock-Erwerb-Muster funktioniert (zweiter gleichzeitiger
-    // Create fuer dieselbe EventId schlaegt fehl -> der Lauf wartet & retryt).
+    // Create für dieselbe EventId schlägt fehl -> der Lauf wartet & retryt).
     await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
       '__metadata': { 'type': 'SP.Field' },
       'Title': 'EventId',
       'FieldTypeKind': 2,
       'Required': false,
     });
-    // LockedAt: rein informativ (Debugging haengengebliebener Locks).
+    // LockedAt: rein informativ (Debugging hängengebliebener Locks).
     await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
       '__metadata': { 'type': 'SP.Field' },
       'Title': 'LockedAt',
@@ -5428,7 +5428,7 @@ export class EventService {
 
     // EventId indizieren und Eindeutigkeit erzwingen. Reihenfolge wichtig:
     // erst Indexed, dann EnforceUniqueValues (SP verlangt eine indizierte
-    // Spalte fuer die Eindeutigkeits-Pruefung). Auf einer frischen, leeren
+    // Spalte für die Eindeutigkeits-Prüfung). Auf einer frischen, leeren
     // Liste ist das unkritisch (keine Duplikate vorhanden).
     const fieldUrl = `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('EventId')`;
     try {
@@ -5441,7 +5441,7 @@ export class EventService {
     await this.configureDefaultView(listName, ['EventId', 'LockedAt']);
 
     // Schreibrechte wie bei den anderen Queue-Listen (DEX_Emails etc.) —
-    // der Flow-Connection-Account muss Lock-Items anlegen/loeschen koennen.
+    // der Flow-Connection-Account muss Lock-Items anlegen/löschen können.
     try {
       await this.setQueueListPermissions(listName);
     } catch { /* best-effort */ }
@@ -5489,7 +5489,7 @@ export class EventService {
 
   /**
    * v11.83: Alle Pending-Beitritts-Anfragen — optional gefiltert nach
-   * Event und/oder Team. Wird fuer die "Beitritts-Anfragen"-Box im
+   * Event und/oder Team. Wird für die "Beitritts-Anfragen"-Box im
    * Team-Lead-UI in MyEventsPage aufgerufen.
    */
   public async listTeamJoinRequests(args: {
@@ -5517,7 +5517,7 @@ export class EventService {
    * v11.83: Approve/Reject einer Beitritts-Anfrage — schreibt Status,
    * DecidedDate und DecidedByEmail. Die Folge-Logik (Member-Insert,
    * Mails) liegt im EventContext, weil dort die Subsite-/Event-Lookups
-   * verfuegbar sind.
+   * verfügbar sind.
    */
   public async decideTeamJoinRequest(
     requestId: number,
@@ -5540,7 +5540,7 @@ export class EventService {
 
   /**
    * Bestehende abgemeldete Registrierung reaktivieren.
-   * Setzt Status zurueck auf Angemeldet/Warteliste, loescht CancellationDate,
+   * Setzt Status zurück auf Angemeldet/Warteliste, löscht CancellationDate,
    * aktualisiert RegistrationDate und CustomData.
    */
   public async reactivateRegistration(
@@ -5551,15 +5551,15 @@ export class EventService {
     customData: Record<string, string>,
     status: string = 'Angemeldet',
     customFieldMap?: Record<string, string>,
-    registeredByName?: string, // Audit: Name des Users der die Re-Anmeldung ausloest
-    registeredByEmail?: string, // Audit: E-Mail des Users der die Re-Anmeldung ausloest
+    registeredByName?: string, // Audit: Name des Users der die Re-Anmeldung auslöst
+    registeredByEmail?: string, // Audit: E-Mail des Users der die Re-Anmeldung auslöst
     proxyConsent?: string // v18.74: Zustimmungs-Nachweis bei stellvertretender Re-Anmeldung
   ): Promise<boolean> {
     try {
       // ---- Permission-Checks (v3.9.2 / v3.9.3) ----
-      // Lade die ParticipantEmail aus dem zu reaktivierenden Item und pruefe,
-      // ob der aktuelle User dafuer berechtigt ist. Plus Deadline-Check.
-      // v7.30: Wir laden hier zusaetzlich die existierende TeilnehmerID, damit
+      // Lade die ParticipantEmail aus dem zu reaktivierenden Item und prüfe,
+      // ob der aktuelle User dafür berechtigt ist. Plus Deadline-Check.
+      // v7.30: Wir laden hier zusätzlich die existierende TeilnehmerID, damit
       // beim Reaktivieren die alte ID erhalten bleibt — Counter wird NUR
       // dann angefasst, wenn die alte ID null/0 ist (Legacy-Edge).
       let existingTeilnehmerId = 0;
@@ -5581,7 +5581,7 @@ export class EventService {
           if (typeof tnId === 'number' && tnId > 0) existingTeilnehmerId = tnId;
         }
 
-        // Check A: fuer andere Person registrieren?
+        // Check A: für andere Person registrieren?
         if (targetEmail && targetEmail !== sessionEmail) {
           const allowed = await this.canRegisterForOthers(subsiteUrl, targetEmail);
           if (!allowed) {
@@ -5634,11 +5634,11 @@ export class EventService {
       // Reaktivierung = funktional eine Neuanmeldung mit existierendem Listen-
       // Item. Deshalb wird hier — analog zu registerForEvent — atomar eine
       // neue TeilnehmerID am Counter gezogen. Wer mal #12 war und reaktiviert,
-      // bekommt jetzt z.B. die #87, also die naechst-freie ID am Ende der
+      // bekommt jetzt z.B. die #87, also die nächst-freie ID am Ende der
       // Liste — exakt wie ein Neuzugang. Ohne diesen Schritt blieb der
-      // Eintrag mit TeilnehmerID=null haengen, weil im Reaktivierungs-Pfad
+      // Eintrag mit TeilnehmerID=null hängen, weil im Reaktivierungs-Pfad
       // niemand den DEX_IDReorder-Flow triggert.
-      // v9.10: race-anfaelliger max+1-Fallback entfernt (siehe Kommentar in
+      // v9.10: race-anfälliger max+1-Fallback entfernt (siehe Kommentar in
       // registerForEvent). Bei Counter-Outage bleibt TeilnehmerID undefined.
       void existingTeilnehmerId;
       const nextId = await this.getNextTeilnehmerId(subsiteUrl);
@@ -5656,8 +5656,8 @@ export class EventService {
         'CustomData': JSON.stringify(customData),
       };
 
-      // Audit: wer hat die Re-Anmeldung ausgeloest? (ueberschreibt den Wert von
-      // der urspruenglichen Anmeldung, weil das faktisch eine neue Anmeldung ist)
+      // Audit: wer hat die Re-Anmeldung ausgelöst? (ueberschreibt den Wert von
+      // der ursprünglichen Anmeldung, weil das faktisch eine neue Anmeldung ist)
       const auditName = registeredByName || this.context.pageContext.user.displayName || '';
       const auditEmail = (registeredByEmail || this.context.pageContext.user.email || '').toLowerCase();
       if (auditName) body['RegisteredByName'] = auditName;
@@ -5673,7 +5673,7 @@ export class EventService {
           if (spFieldName) {
             body[spFieldName] = customData[cfId];
           } else {
-            console.warn(`[DEX] Custom-Field '${cfId}' hat keine SharePoint-Spalte (spInternalName fehlt) — Wert wird nicht in Teilnehmerliste geschrieben. Bitte im Admin Center 'Custom Fields pruefen' ausfuehren.`);
+            console.warn(`[DEX] Custom-Field '${cfId}' hat keine SharePoint-Spalte (spInternalName fehlt) — Wert wird nicht in Teilnehmerliste geschrieben. Bitte im Admin Center 'Custom Fields prüfen' ausführen.`);
           }
         }
       }
@@ -5687,7 +5687,7 @@ export class EventService {
       // Einmal ohne das optionale Audit-Feld wiederholen, damit die
       // Re-Aktivierung nicht an einer fehlenden Spalte scheitert.
       if (!response.ok && body['ProxyConsent']) {
-        console.warn('[DEX] reactivateRegistration: MERGE fehlgeschlagen — Retry OHNE ProxyConsent (Spalte evtl. nicht vorhanden). Bitte im Admin Center "Spalten fixen" ausfuehren.');
+        console.warn('[DEX] reactivateRegistration: MERGE fehlgeschlagen — Retry OHNE ProxyConsent (Spalte evtl. nicht vorhanden). Bitte im Admin Center "Spalten fixen" ausführen.');
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const retryBody: Record<string, any> = { ...body };
         delete retryBody['ProxyConsent'];
@@ -5699,8 +5699,8 @@ export class EventService {
       if (!response.ok) return false;
 
       // v9.10: Post-Update Safety Net (siehe registerForEvent). Bei
-      // Counter-Edge-Cases koennte der naechste Wert kollidieren — der
-      // aeltere Eintrag (kleinere SP-Id) gewinnt, der spaetere bekommt
+      // Counter-Edge-Cases könnte der nächste Wert kollidieren — der
+      // aeltere Eintrag (kleinere SP-Id) gewinnt, der spätere bekommt
       // fresh ID.
       if (typeof nextId === 'number' && nextId > 0) {
         try {
@@ -5855,7 +5855,7 @@ export class EventService {
           if (spFieldName) {
             body[spFieldName] = customData[cfId];
           } else {
-            console.warn(`[DEX] Custom-Field '${cfId}' hat keine SharePoint-Spalte (spInternalName fehlt) — Wert wird nicht in Teilnehmerliste geschrieben. Bitte im Admin Center 'Custom Fields pruefen' ausfuehren.`);
+            console.warn(`[DEX] Custom-Field '${cfId}' hat keine SharePoint-Spalte (spInternalName fehlt) — Wert wird nicht in Teilnehmerliste geschrieben. Bitte im Admin Center 'Custom Fields prüfen' ausführen.`);
           }
         }
       }
@@ -5877,7 +5877,7 @@ export class EventService {
    * automatisch ChangeLog-Eintrag mit Wer/Wann/Was-Diff und setzt
    * LastModifiedDate.
    *
-   * patch: Nur die echten Spalten-Werte (keine __metadata noetig — _merge
+   * patch: Nur die echten Spalten-Werte (keine __metadata nötig — _merge
    * sendet odata=nometadata).
    * actor: Audit-Info des aufrufenden Users.
    * oldValues: zum Diff-Bauen, nur Felder mit oldValues[key] !== patch[key]
@@ -5902,7 +5902,7 @@ export class EventService {
         for (const key of Object.keys(patch)) {
           const oldV = oldValues[key];
           const newV = patch[key];
-          // Vergleich als String, damit number vs string nicht stoert
+          // Vergleich als String, damit number vs string nicht stört
           const oldStr = oldV === null || oldV === undefined ? '' : String(oldV);
           const newStr = newV === null || newV === undefined ? '' : String(newV);
           if (oldStr !== newStr) {
@@ -5918,7 +5918,7 @@ export class EventService {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const body: Record<string, any> = { ...patch, 'LastModifiedDate': new Date().toISOString() };
 
-      // ChangeLog anhaengen (bestehenden Log behalten, neuestes oben)
+      // ChangeLog anhängen (bestehenden Log behalten, neuestes oben)
       if (changeEntry) {
         try {
           const existing = await this.context.spHttpClient.get(
@@ -5949,7 +5949,7 @@ export class EventService {
   }
 
   /**
-   * Eigene Registrierung fuer ein Event laden
+   * Eigene Registrierung für ein Event laden
    */
   public async getMyRegistration(
     subsiteUrl: string,
@@ -5970,17 +5970,17 @@ export class EventService {
   }
 
   /**
-   * Alle Registrierungen fuer ein Event laden (nur fuer Organizer/Admin)
+   * Alle Registrierungen für ein Event laden (nur für Organizer/Admin)
    */
   public async getAllRegistrations(subsiteUrl: string): Promise<SPRegistration[]> {
     const allItems: SPRegistration[] = [];
     // $top=5000 ist das SP-REST-Maximum pro Page. Damit fallen Events bis zu
     // 5000 Teilnehmern in einen einzigen Response — keine Pagination-Edgecases
-    // mit fehlendem nextLink. Bei groesseren Listen folgen wir dem nextLink
+    // mit fehlendem nextLink. Bei größeren Listen folgen wir dem nextLink
     // weiter (Schleife unten). Vorher stand hier $top=500, was bei Events mit
-    // ≥500 Teilnehmern zu fehlenden Eintraegen fuehrte: SharePoint liefert
+    // ≥500 Teilnehmern zu fehlenden Einträgen führte: SharePoint liefert
     // bei $orderby+$top in Kombination mit Item-Level-Security nicht
-    // zuverlaessig nextLink, wenn die erste Page exakt voll ist.
+    // zuverlässig nextLink, wenn die erste Page exakt voll ist.
     let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$orderby=Id asc&$top=5000`;
 
     while (url) {
@@ -5990,7 +5990,7 @@ export class EventService {
         const data = await response.json();
         // Beide OData-Formate abdecken: nometadata (data.value) UND verbose
         // (data.d.results). Vorher nur data.value — bei verbose-Response
-        // waeren null Items dazugekommen.
+        // wären null Items dazugekommen.
         const page = data.value || data.d?.results || [];
         allItems.push(...page);
         url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
@@ -6080,11 +6080,11 @@ export class EventService {
     }
 
     // v7.31 / v9.14: Counter konsistent halten — syncCounterToMax patcht
-    // Counter (monotonic up-only). ensureCounterList wurde hier urspruenglich
-    // (v9.13) ebenfalls gerufen, hat aber Race-Conditions ausgeloest. Die
+    // Counter (monotonic up-only). ensureCounterList wurde hier ursprünglich
+    // (v9.13) ebenfalls gerufen, hat aber Race-Conditions ausgelöst. Die
     // Counter-Liste sollte zum Zeitpunkt eines Reorders ohnehin existieren —
     // sonst hat die App ein anderes Problem das ein expliziter Klick auf
-    // "Counter zurücksetzen" loest.
+    // "Counter zurücksetzen" löst.
     try { await this.syncCounterToMax(subsiteUrl); } catch { /* best-effort */ }
     if (onProgress) { try { onProgress(100); } catch { /* */ } }
 
@@ -6196,8 +6196,8 @@ export class EventService {
       // v18.8: gegen echten Aktiv-Bestand floor-en (siehe Kommentar oben) —
       // fängt eine durch den Nachrück-Flow nach unten gedriftete Zählung ab.
       if (realActive >= 0 && realActive > current) current = realActive;
-      // v11.82: Team-Anmeldungen reservieren N Plaetze atomar. Wenn nicht alle
-      // N in dieselbe Gruppe passen, schlaegt die Reservierung als „full" fehl —
+      // v11.82: Team-Anmeldungen reservieren N Plätze atomar. Wenn nicht alle
+      // N in dieselbe Gruppe passen, schlägt die Reservierung als „full" fehl —
       // der Aufrufer setzt das gesamte Team auf Warteliste (kein Teil-Team
       // aktivieren). Bei count=1 (Solo) ist das Verhalten identisch zu vorher.
       if (current + inc > cap) return 'full';
@@ -6208,7 +6208,7 @@ export class EventService {
       await new Promise(res => setTimeout(res, Math.floor(baseDelay * (0.5 + Math.random()))));
     }
     // Retries erschöpft → fail-closed (Aufrufer setzt Warteliste).
-    console.warn('[DEX] reserveSeat: 40 Retries erschoepft — fail-closed (Warteliste).');
+    console.warn('[DEX] reserveSeat: 40 Retries erschöpft — fail-closed (Warteliste).');
     return 'error';
   }
 
@@ -6466,18 +6466,18 @@ export class EventService {
 
   /**
    * Spalten der Teilnehmerliste fixen: fehlende Spalten anlegen, View-Reihenfolge korrigieren.
-   * Kann auf bestehenden Events ausgefuehrt werden um die Liste nachtraeglich zu aktualisieren.
+   * Kann auf bestehenden Events ausgeführt werden um die Liste nachträglich zu aktualisieren.
    */
   public async fixRegistrationListColumns(
     subsiteUrl: string,
     eventContext?: {
-      isB2Run?: boolean;  // Event hat Durchstarter/Funstarter Kapazitaet
+      isB2Run?: boolean;  // Event hat Durchstarter/Funstarter Kapazität
       hasQuiz?: boolean;  // Event hat Quizfragen
       customFields?: CustomField[]; // Event-spezifische Custom-Fields — fehlende SP-Spalten werden angelegt
     },
     // v11.56: Optionaler Confirm-Callback. Wird aufgerufen, wenn Duplikat-Spalten
-    // erkannt wurden, BEVOR irgendetwas geloescht wird. Liefert der Callback false,
-    // werden die Duplikate uebersprungen (die Hauptfix-Logik laeuft trotzdem).
+    // erkannt wurden, BEVOR irgendetwas gelöscht wird. Liefert der Callback false,
+    // werden die Duplikate uebersprungen (die Hauptfix-Logik läuft trotzdem).
     confirmDeleteDuplicates?: (count: number, titles: string[]) => boolean | Promise<boolean>
   ): Promise<{ added: string[]; removed: string[]; viewFixed: boolean; customFieldMap?: Record<string, string>; duplicatesRemoved?: string[]; duplicatesWithData?: string[] }> {
     const added: string[] = [];
@@ -6486,7 +6486,7 @@ export class EventService {
     const duplicatesWithData: string[] = [];
 
     // Bestehende Felder laden — InternalName + Title beide nehmen, damit wir per Title
-    // dedupen koennen (siehe v11.56: alte Builds haben durch fehlgeschlagene Existenz-
+    // dedupen können (siehe v11.56: alte Builds haben durch fehlgeschlagene Existenz-
     // checks beim wiederholten "Spalten fixen" pro Custom-Field 50+ Duplikate angelegt).
     const fieldsResp = await this.context.spHttpClient.get(
       `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields?$filter=Hidden eq false&$top=500&$select=InternalName,Title`,
@@ -6513,10 +6513,10 @@ export class EventService {
     }
 
     // ===== DEDUPE-PASS (v11.56) =====
-    // Pro Title: wenn mehr als ein Feld diesen Titel hat → die uebrigen Felder loeschen,
+    // Pro Title: wenn mehr als ein Feld diesen Titel hat → die uebrigen Felder löschen,
     // sofern sie leer sind (keine Items mit Wert in der Spalte). Erstes Feld bleibt
     // immer erhalten. Felder mit Daten werden gemeldet (duplicatesWithData) und nicht
-    // automatisch geloescht — der User soll sie manuell pruefen.
+    // automatisch gelöscht — der User soll sie manuell prüfen.
     const duplicateTitles: Array<{ title: string; entries: Array<{ internalName: string }> }> = [];
     existingByTitle.forEach((entries, title) => {
       if (entries.length > 1) {
@@ -6524,7 +6524,7 @@ export class EventService {
       }
     });
     if (duplicateTitles.length > 0) {
-      // Vor dem Loeschen den Aufrufer fragen — Operation ist irreversibel.
+      // Vor dem Löschen den Aufrufer fragen — Operation ist irreversibel.
       if (confirmDeleteDuplicates) {
         const count = duplicateTitles.reduce((sum, d) => sum + (d.entries.length - 1), 0);
         const titles = duplicateTitles.map(d => d.title);
@@ -6536,7 +6536,7 @@ export class EventService {
       }
     }
     if (duplicateTitles.length > 0) {
-      // Pro Duplikat-Set: den ersten Eintrag behalten, fuer alle weiteren pruefen ob leer.
+      // Pro Duplikat-Set: den ersten Eintrag behalten, für alle weiteren prüfen ob leer.
       for (const dup of duplicateTitles) {
         // entries[0] bleibt erhalten
         for (let i = 1; i < dup.entries.length; i++) {
@@ -6547,8 +6547,8 @@ export class EventService {
           // `ADMIN_x0020__x002d__x0020_Who_x00` — die letzten Zeichen `_x00`
           // sind eine angeschnittene `_x0020_`-Sequenz), wirft SP HTTP 400 auf
           // jeden OData-`$filter`-Versuch. Solche Spalten werden hier nicht
-          // geprueft → konservativ als „hat Daten" behandelt (kein Auto-
-          // Loeschen). Der Admin kann sie ueber die SP-Listen-UI manuell
+          // geprüft → konservativ als „hat Daten" behandelt (kein Auto-
+          // Löschen). Der Admin kann sie ueber die SP-Listen-UI manuell
           // entfernen, wenn sie wirklich leer sind.
           const looksTruncated = candidate.internalName.length === 32
             && /_x[0-9a-f]{1,3}$/i.test(candidate.internalName);
@@ -6578,31 +6578,31 @@ export class EventService {
                 const idx = existingFieldsList.indexOf(candidate.internalName);
                 if (idx >= 0) existingFieldsList.splice(idx, 1);
               }
-            } catch { /* loeschen fehlgeschlagen — weiter */ }
+            } catch { /* löschen fehlgeschlagen — weiter */ }
           } else {
-            // Daten vorhanden — Title fuer manuelle Pruefung melden (nur einmal pro Title)
+            // Daten vorhanden — Title für manuelle Prüfung melden (nur einmal pro Title)
             if (duplicatesWithData.indexOf(dup.title) < 0) duplicatesWithData.push(dup.title);
           }
         }
-        // existingByTitle entsprechend bereinigen: nur die nicht-geloeschten Eintraege behalten
+        // existingByTitle entsprechend bereinigen: nur die nicht-gelöschten Einträge behalten
         const remaining = dup.entries.filter(e => existingByInternal.has(e.internalName));
         existingByTitle.set(dup.title, remaining);
       }
     }
 
     // Fehlende Basis-Spalten anlegen. StarterType/Quiz-Felder sind feature-spezifisch:
-    // - StarterType/PreferredStarterType: nur fuer B2Run-Events mit Split-Kapazitaet
-    // - QuizScore/QuizAnswers/QuizCompletedAt: nur fuer Events mit Quizfragen
+    // - StarterType/PreferredStarterType: nur für B2Run-Events mit Split-Kapazität
+    // - QuizScore/QuizAnswers/QuizCompletedAt: nur für Events mit Quizfragen
     // Wird das Event ohne eventContext gefixt (kein Aufrufer-seitiger Flag), lassen wir
-    // feature-spezifische Spalten raus, damit sie nicht unbegruendet auf jedem
+    // feature-spezifische Spalten raus, damit sie nicht unbegründet auf jedem
     // Teilnehmerlisten-Schema auftauchen.
     const requiredFields: Array<{ title: string; type: number; choices?: string[]; metaType?: string }> = [
       { title: 'Anrede', type: 6, choices: ['Frau', 'Herr', 'Divers'], metaType: 'SP.FieldChoice' },
-      { title: 'RegisteredByName', type: 2 },  // Audit: Name des Users der die Anmeldung durchgefuehrt hat
-      { title: 'RegisteredByEmail', type: 2 }, // Audit: E-Mail des Users der die Anmeldung durchgefuehrt hat
+      { title: 'RegisteredByName', type: 2 },  // Audit: Name des Users der die Anmeldung durchgeführt hat
+      { title: 'RegisteredByEmail', type: 2 }, // Audit: E-Mail des Users der die Anmeldung durchgeführt hat
       { title: 'ProxyConsent', type: 3 },      // v18.74: Zustimmungs-Nachweis bei stellvertretender Anmeldung (Note)
-      { title: 'CancelledByName', type: 2 },   // Audit: Name des Users der die Abmeldung ausgeloest hat
-      { title: 'CancelledByEmail', type: 2 },  // Audit: E-Mail des Users der die Abmeldung ausgeloest hat
+      { title: 'CancelledByName', type: 2 },   // Audit: Name des Users der die Abmeldung ausgelöst hat
+      { title: 'CancelledByEmail', type: 2 },  // Audit: E-Mail des Users der die Abmeldung ausgelöst hat
       { title: 'CheckedInDate', type: 4 },     // v7.16: Check-In-Audit — Zeitpunkt
       { title: 'CheckedInByName', type: 2 },   // v7.16: Check-In-Audit — Helfer-Name
       { title: 'CheckedInByEmail', type: 2 },  // v7.16: Check-In-Audit — Helfer-E-Mail
@@ -6614,8 +6614,8 @@ export class EventService {
       { title: 'ReplacedByParticipantEmail', type: 2 },// E-Mail der nachrückenden Person (Spiegelbild)
       { title: 'OverbookReview', type: 2 },    // v11.36: Überbuchungs-Review-Marker
       { title: 'TeamId', type: 2 },            // v11.82: UUID einer Team-Anmeldung (leer = Solo)
-      { title: 'TeamLead', type: 8 },          // v11.82: Boolean — true fuer die anmeldende Person
-      { title: 'TeamName', type: 2 },          // v11.82: optionaler frei waehlbarer Team-Name
+      { title: 'TeamLead', type: 8 },          // v11.82: Boolean — true für die anmeldende Person
+      { title: 'TeamName', type: 2 },          // v11.82: optionaler frei wählbarer Team-Name
     ];
     if (eventContext?.isB2Run) {
       requiredFields.push(
@@ -6640,9 +6640,9 @@ export class EventService {
     }
 
     // Feature-spezifische Spalten, die auf diesem Event NICHT gebraucht werden,
-    // aktiv loeschen (z.B. StarterType auf einem Nicht-B2Run-Event). Das ist
+    // aktiv löschen (z.B. StarterType auf einem Nicht-B2Run-Event). Das ist
     // irreversibel — eventuelle Daten in diesen Spalten gehen verloren. Ist aber
-    // vom User explizit gewuenscht, damit die Teilnehmerliste pro Event-Typ
+    // vom User explizit gewünscht, damit die Teilnehmerliste pro Event-Typ
     // sauber bleibt.
     const deletableFields: string[] = [];
     if (!eventContext?.isB2Run) {
@@ -6665,7 +6665,7 @@ export class EventService {
             const idx = existingFieldsList.indexOf(fieldName);
             if (idx >= 0) existingFieldsList.splice(idx, 1);
           }
-        } catch { /* Feld konnte nicht geloescht werden - weitermachen */ }
+        } catch { /* Feld konnte nicht gelöscht werden - weitermachen */ }
       }
     }
 
@@ -6688,8 +6688,8 @@ export class EventService {
     }
 
     // Custom Fields pro Event: wenn spInternalName leer oder die Spalte fehlt,
-    // jetzt anlegen. Der Aufrufer bekommt customFieldMap zurueck und kann das
-    // Event-Item persistieren (spInternalName fuer jede cf.id).
+    // jetzt anlegen. Der Aufrufer bekommt customFieldMap zurück und kann das
+    // Event-Item persistieren (spInternalName für jede cf.id).
     const customFieldMap: Record<string, string> = {};
     if (eventContext?.customFields && eventContext.customFields.length > 0) {
       // Post-Fix Felder-Snapshot nach Basis-Anlage
@@ -6749,7 +6749,7 @@ export class EventService {
               existingByTitle.set(cf.label, arr);
             }
           }
-        } catch { /* naechstes Feld */ }
+        } catch { /* nächstes Feld */ }
       }
     }
 
@@ -6762,15 +6762,15 @@ export class EventService {
         {}
       );
 
-      // Felder in gewuenschter Reihenfolge hinzufuegen. StarterType/Quiz-Spalten
-      // werden nur eingebaut, wenn sie tatsaechlich auf der Liste existieren —
+      // Felder in gewünschter Reihenfolge hinzufügen. StarterType/Quiz-Spalten
+      // werden nur eingebaut, wenn sie tatsächlich auf der Liste existieren —
       // auf Nicht-B2Run- bzw. Nicht-Quiz-Events sollen sie nicht auftauchen.
       const viewFieldsCore = [
         'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'ParticipantEmail',
         'Department', 'Location', 'JobTitle', 'Phone',
       ];
       const viewFields: string[] = [...viewFieldsCore];
-      // Post-Fix-Feldliste (bestehende + gerade hinzugefuegte) fuer die Existenz-Checks
+      // Post-Fix-Feldliste (bestehende + gerade hinzugefügte) für die Existenz-Checks
       const postFixFields = existingFieldsList.concat(added);
       if (postFixFields.indexOf('StarterType') >= 0) viewFields.push('StarterType');
       if (postFixFields.indexOf('PreferredStarterType') >= 0) viewFields.push('PreferredStarterType');
@@ -6804,7 +6804,7 @@ export class EventService {
         'FileType', 'HTML_x0020_File_x0020_Type', '_EditMenuTableStart',
         '_EditMenuTableStart2', '_EditMenuTableEnd', 'PermMask',
       ]);
-      // Bereits zur View hinzugefuegt — nicht doppelt anfassen
+      // Bereits zur View hinzugefügt — nicht doppelt anfassen
       const alreadyAdded = new Set(viewFields);
       // v11.82: Team-Spalten kommen ans Ende der View — nach allen
       // Custom-Fields, damit sie nicht zwischen den event-spezifischen
@@ -6821,7 +6821,7 @@ export class EventService {
         viewFields.push(fn);
         alreadyAdded.add(fn);
       }
-      // Team-Spalten jetzt am Ende anhaengen (nur die, die tatsaechlich existieren).
+      // Team-Spalten jetzt am Ende anhängen (nur die, die tatsächlich existieren).
       for (const fn of teamTailFields) {
         if (alreadyAdded.has(fn)) continue;
         if (postFixFields.indexOf(fn) < 0) continue;
@@ -6840,7 +6840,7 @@ export class EventService {
       console.warn('[DEX] View-Reihenfolge konnte nicht gesetzt werden');
     }
 
-    // v7.28: Counter-Liste fuer atomare TeilnehmerID-Vergabe anlegen
+    // v7.28: Counter-Liste für atomare TeilnehmerID-Vergabe anlegen
     // (oder seeden mit dem aktuellen Max-Wert wenn schon vorhanden).
     try {
       const counterResult = await this.ensureCounterList(subsiteUrl);
@@ -6860,17 +6860,17 @@ export class EventService {
   /**
    * Quiz-Fortschritt in die Registrierung eines Teilnehmers schreiben.
    *
-   * - answers: ausgewaehlte Antwort-Indices pro Frage (Array von Arrays, weil
-   *   Fragen mehrere richtige Antworten haben koennen). Unbeantwortete Fragen
+   * - answers: ausgewählte Antwort-Indices pro Frage (Array von Arrays, weil
+   *   Fragen mehrere richtige Antworten haben können). Unbeantwortete Fragen
    *   bleiben als leeres Array `[]` stehen, damit der Index-Offset erhalten bleibt.
    * - score: aktuell erreichte Punkte (Anzahl korrekt beantworteter Fragen).
    * - isComplete: true wenn alle Fragen beantwortet sind — dann wird auch
-   *   `QuizCompletedAt` gesetzt. Andernfalls bleibt QuizCompletedAt unveraendert
+   *   `QuizCompletedAt` gesetzt. Andernfalls bleibt QuizCompletedAt unverändert
    *   (null/leer), sodass der Teilnehmer als "teilweise beantwortet" gelistet wird.
    *
-   * Ersetzt die frueher nur-am-Ende aufgerufene `saveQuizResult()`. Wird jetzt
+   * Ersetzt die früher nur-am-Ende aufgerufene `saveQuizResult()`. Wird jetzt
    * bei jedem "Weiter"-Klick im QuizPlayer aufgerufen (Auto-Save), damit der
-   * Teilnehmer beim spaeteren Wiedereintritt an derselben Stelle weitermachen kann.
+   * Teilnehmer beim späteren Wiedereintritt an derselben Stelle weitermachen kann.
    */
   public async saveQuizProgress(
     subsiteUrl: string,
@@ -6886,8 +6886,8 @@ export class EventService {
       // unbekannte Felder stumm und das Save wirkt wie "gespeichert",
       // persistiert aber nichts.
       // Silent: wenn der aktuelle User keine Manage-Lists-Permission auf
-      // der Subsite hat, schlaegt das Anlegen fehl (Regular User). Dann
-      // kann nur ein Admin/Organizer die Spalten anlegen — dafuer gibt's
+      // der Subsite hat, schlägt das Anlegen fehl (Regular User). Dann
+      // kann nur ein Admin/Organizer die Spalten anlegen — dafür gibt's
       // die "Spalten fixen"-Funktion im Admin Center.
       await this.ensureQuizColumnsOnRegList(subsiteUrl);
 
@@ -6952,19 +6952,19 @@ export class EventService {
   }
 
   /**
-   * Ersten Warteliste-Teilnehmer nachruecken: Status -> Angemeldet.
+   * Ersten Warteliste-Teilnehmer nachrücken: Status -> Angemeldet.
    * Wenn inheritStarterType uebergeben wird (B2Run Split-Capacity), wird dieser Typ
-   * dem Nachruecker zugewiesen (er erbt den Platz des Abgemeldeten).
+   * dem Nachrücker zugewiesen (er erbt den Platz des Abgemeldeten).
    *
-   * Wird **client-seitig** ausgefuehrt (von der App beim Abmelden), damit der
-   * Power Automate DEX_IDReorder-Flow keinen doppelten Nachrueck-Versuch macht.
-   * Liefert den nachgerueckten Teilnehmer (Email + Name) zurueck fuer die
-   * Nachrueck-E-Mail.
+   * Wird **client-seitig** ausgeführt (von der App beim Abmelden), damit der
+   * Power Automate DEX_IDReorder-Flow keinen doppelten Nachrück-Versuch macht.
+   * Liefert den nachgerückten Teilnehmer (Email + Name) zurück für die
+   * Nachrück-E-Mail.
    *
    * Schutz gegen Ueberbuchung: Wenn maxParticipants gesetzt ist und die Anzahl
    * der aktuell Angemeldeten (nach der Abmeldung) >= maxParticipants ist, wird
-   * NICHT nachgerueckt. Das verhindert, dass nach einer frueheren Ueberbuchung
-   * der Abbruch der Abmeldung nicht zu einer weiteren Ueberbuchung fuehrt.
+   * NICHT nachgerückt. Das verhindert, dass nach einer früheren Ueberbuchung
+   * der Abbruch der Abmeldung nicht zu einer weiteren Ueberbuchung führt.
    */
   public async promoteFirstWaitlistItem(
     subsiteUrl: string,
@@ -6976,22 +6976,22 @@ export class EventService {
      * Wenn leer: Default-Verhalten (beliebiger Warteliste-Teilnehmer). */
     onlyWithPreferredType?: string,
     /** v17.15: Audit-Tracking — wenn der Promote durch das Cancel einer
-     *  konkreten Person ausgeloest wurde (in der App-Pfad), die E-Mail
-     *  und Item-Id dieser Person mitgeben. Wird auf der nachrueckenden
+     *  konkreten Person ausgelöst wurde (in der App-Pfad), die E-Mail
+     *  und Item-Id dieser Person mitgeben. Wird auf der nachrückenden
      *  Person als ReplacedParticipantEmail + PromotedDate gespeichert,
-     *  und zusaetzlich auf der cancelnden Person als
+     *  und zusätzlich auf der cancelnden Person als
      *  ReplacedByParticipantEmail (zweite MERGE-PATCH). */
     replacedByCancel?: { itemId: number; participantEmail: string },
   ): Promise<{ success: boolean; email?: string; name?: string; itemId?: number; skippedOverbooked?: boolean }> {
     try {
-      // Ueberbuchungs-Schutz: Nur nachruecken, wenn tatsaechlich ein Platz frei ist.
-      // Bei unlimited (maxParticipants === 0 oder undefined) immer nachruecken.
+      // Ueberbuchungs-Schutz: Nur nachrücken, wenn tatsächlich ein Platz frei ist.
+      // Bei unlimited (maxParticipants === 0 oder undefined) immer nachrücken.
       //
       // WICHTIG: '>' statt '>='. Die Abmeldung (Status->Abgemeldet) ist kurz vor
       // diesem Call passiert; falls SharePoint den Statuswechsel noch nicht in
-      // getRegistrationCount reflektiert (stale read), wuerden wir bei einem
-      // vollen Event (z.B. 128/128) mit '>=' faelschlich skippen. Mit '>' ist
-      // 'registered == max' noch erlaubt (= genau ein Platz wird nachgerueckt),
+      // getRegistrationCount reflektiert (stale read), würden wir bei einem
+      // vollen Event (z.B. 128/128) mit '>=' fälschlich skippen. Mit '>' ist
+      // 'registered == max' noch erlaubt (= genau ein Platz wird nachgerückt),
       // und eine echte Ueberbuchung (401 > 128) wird weiterhin abgefangen.
       if (maxParticipants && maxParticipants > 0) {
         const counts = await this.getRegistrationCount(subsiteUrl);
@@ -7056,7 +7056,7 @@ export class EventService {
       );
       if (!(mergeResp.ok || mergeResp.status === 406)) return { success: false };
 
-      // v17.15: Nachrueck-Audit auf der promoteten Person — best-effort, in
+      // v17.15: Nachrück-Audit auf der promoteten Person — best-effort, in
       // einem SEPARATEN MERGE, damit eine fehlende Audit-Spalte (Legacy-Liste)
       // den eigentlichen Promote oben nicht kaputtmacht.
       try {
@@ -7070,7 +7070,7 @@ export class EventService {
           auditBody
         );
       } catch (err) {
-        console.warn('[DEX] promoteFirstWaitlistItem: Nachrueck-Audit (PromotedDate) konnte nicht geschrieben werden — Spalte fehlt evtl. auf einer Legacy-Liste:', err);
+        console.warn('[DEX] promoteFirstWaitlistItem: Nachrück-Audit (PromotedDate) konnte nicht geschrieben werden — Spalte fehlt evtl. auf einer Legacy-Liste:', err);
       }
 
       const vorname = firstWaiting.Vorname || '';
@@ -7086,7 +7086,7 @@ export class EventService {
             { 'ReplacedByParticipantEmail': email }
           );
         } catch (err) {
-          console.warn('[DEX] Nachrueck-Audit auf cancelnder Person fehlgeschlagen:', err);
+          console.warn('[DEX] Nachrück-Audit auf cancelnder Person fehlgeschlagen:', err);
         }
       }
 
@@ -7159,8 +7159,8 @@ export class EventService {
   }
 
   /**
-   * v11.0: Item-Attachment loeschen. Wird sowohl vom User (eigener
-   * Upload zurueckziehen) als auch vom Admin (im Admin Center) genutzt.
+   * v11.0: Item-Attachment löschen. Wird sowohl vom User (eigener
+   * Upload zurückziehen) als auch vom Admin (im Admin Center) genutzt.
    */
   public async deleteRegistrationAttachment(
     subsiteUrl: string,
@@ -7246,15 +7246,15 @@ export class EventService {
   ): Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' | 'Failed'; full: boolean }> {
     try {
       // Counts aktiv-Status pro StarterType ermitteln. Aktiv = Angemeldet,
-      // QR versendet oder Eingecheckt — Abgemeldete und Wartelisten zaehlen
-      // nicht gegen die Kapazitaet.
+      // QR versendet oder Eingecheckt — Abgemeldete und Wartelisten zählen
+      // nicht gegen die Kapazität.
       const allRegs = await this.getAllRegistrations(subsiteUrl);
       const active = allRegs.filter(r => {
         const s = r.Status || '';
         return s === 'Angemeldet' || s === 'QR versendet' || s === 'Eingecheckt';
       });
-      // Den eigenen Eintrag aus der Zaehlung rausnehmen — wenn er heute schon
-      // in der Ziel-Gruppe stuende, wuerden wir einen Slot frei zaehlen, der
+      // Den eigenen Eintrag aus der Zählung rausnehmen — wenn er heute schon
+      // in der Ziel-Gruppe stünde, würden wir einen Slot frei zählen, der
       // gar nicht entsteht. Wenn er in der Quell-Gruppe steht, gibt der
       // Wechsel den Quell-Slot frei und der Zielslot ist relevant.
       const targetCount = active
@@ -7291,7 +7291,7 @@ export class EventService {
     cancelledByEmail?: string
   ): Promise<boolean> {
     try {
-      // Audit: wer hat die Abmeldung ausgeloest?
+      // Audit: wer hat die Abmeldung ausgelöst?
       // Bei Self-Cancel = der User selbst. Bei "Teilnehmer abmelden" durch den
       // Organizer/Admin im Admin Center = der eingeloggte Organizer/Admin.
       const auditName = cancelledByName || this.context.pageContext.user.displayName || '';
@@ -7303,7 +7303,7 @@ export class EventService {
         'TeilnehmerID': null,
       };
       // Audit-Felder optional dazu - aeltere Subsites haben die Spalten evtl. noch
-      // nicht (kommt erst mit Commit a10a608). Ein 400 von SP wuerde dann die
+      // nicht (kommt erst mit Commit a10a608). Ein 400 von SP würde dann die
       // ganze Abmeldung blocken. Strategie: erst mit Audit-Feldern versuchen,
       // bei Misserfolg ohne sie nochmal probieren.
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -7318,8 +7318,8 @@ export class EventService {
         response = await this._merge(url, corePayload);
       }
       // v7.31: Counter mit aktuellem Max syncen, damit er nicht "davonrast"
-      // wenn der hoechste ID-Inhaber sich abmeldet. Best-effort, blockiert
-      // die Abmeldung nicht wenn's fehlschlaegt. syncCounterToMax liest den
+      // wenn der höchste ID-Inhaber sich abmeldet. Best-effort, blockiert
+      // die Abmeldung nicht wenn's fehlschlägt. syncCounterToMax liest den
       // Max-Wert intern frisch (race-frei gegen parallele Anmeldungen).
       if (response.ok) {
         try { await this.syncCounterToMax(subsiteUrl); } catch { /* */ }
@@ -7396,12 +7396,12 @@ export class EventService {
 
   /**
    * Teilnehmer einchecken (Status auf 'Eingecheckt' setzen).
-   * v7.16: Erfasst zusaetzlich, WANN und VON WEM der Check-In ausgeloest
+   * v7.16: Erfasst zusätzlich, WANN und VON WEM der Check-In ausgelöst
    * wurde (CheckedInDate / CheckedInByName / CheckedInByEmail). Diese
    * Spalten werden bei neuen Events ueber createRegistrationList() automatisch
-   * angelegt; fuer bestehende Events muss der Admin einmalig die Kachel
+   * angelegt; für bestehende Events muss der Admin einmalig die Kachel
    * "Spalten fixen" im Admin-Center klicken, damit der Check-In nicht mit
-   * HTTP 400 fehlschlaegt.
+   * HTTP 400 fehlschlägt.
    */
   public async checkInParticipant(
     subsiteUrl: string,
@@ -7425,7 +7425,7 @@ export class EventService {
   }
 
   /**
-   * Teilnehmer auschecken (Status zurueck auf 'Angemeldet' setzen)
+   * Teilnehmer auschecken (Status zurück auf 'Angemeldet' setzen)
    */
   public async checkOutParticipant(
     subsiteUrl: string,
@@ -7488,8 +7488,8 @@ export class EventService {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const allItems: any[] = [];
     // $top=5000 (SP-REST-Maximum) statt 500 — sonst werden bei Events mit
-    // ≥500 Eintraegen die Counts auf den Event-Karten falsch berechnet,
-    // weil SharePoint bei $orderby+$top mit ILS nicht zuverlaessig nextLink
+    // ≥500 Einträgen die Counts auf den Event-Karten falsch berechnet,
+    // weil SharePoint bei $orderby+$top mit ILS nicht zuverlässig nextLink
     // liefert wenn die Page exakt voll ist.
     let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Status&$top=5000`;
 
@@ -7534,7 +7534,7 @@ export class EventService {
   /**
    * SiteAssets-Unterordner sicherstellen:
    * - DEX_EventImages (Event-Bilder)
-   * - DEX_Logos (Deloitte-Logo fuer E-Mail-Templates, manuell hochgeladen)
+   * - DEX_Logos (Deloitte-Logo für E-Mail-Templates, manuell hochgeladen)
    */
   public async ensureAssetsFolders(): Promise<void> {
     const baseUrl = this.context.pageContext.web.serverRelativeUrl;
@@ -7563,16 +7563,16 @@ export class EventService {
   }
 
   /**
-   * Event-Bild als Attachment an ein DEX_Events-Item anhaengen.
-   * Loescht zuerst alle bestehenden Bild-Attachments (Praefix __eventimage__),
+   * Event-Bild als Attachment an ein DEX_Events-Item anhängen.
+   * Löscht zuerst alle bestehenden Bild-Attachments (Präfix __eventimage__),
    * dann wird das neue Bild hochgeladen. Liefert die ServerRelativeUrl als absolute URL.
-   * Vorteil: keine SiteAssets-Berechtigungen noetig - wer das Item editieren darf,
-   * darf auch Attachments hinzufuegen.
+   * Vorteil: keine SiteAssets-Berechtigungen nötig - wer das Item editieren darf,
+   * darf auch Attachments hinzufügen.
    */
   public async uploadEventImageAsAttachment(eventId: number, file: File): Promise<string> {
     const IMAGE_PREFIX = '__eventimage__';
     try {
-      // 1. Bestehende Bild-Attachments loeschen (nur __eventimage__-Praefixe)
+      // 1. Bestehende Bild-Attachments löschen (nur __eventimage__-Präfixe)
       try {
         const listResp = await this.context.spHttpClient.get(
           `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles`,
@@ -7594,7 +7594,7 @@ export class EventService {
         }
       } catch { /* ignore */ }
 
-      // 2. Neues Bild hochladen mit Praefix
+      // 2. Neues Bild hochladen mit Präfix
       const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
       const safeName = `${IMAGE_PREFIX}${Date.now().toString(36)}.${ext}`;
 
@@ -7640,8 +7640,8 @@ export class EventService {
   }
 
   /**
-   * Dokument als Attachment an ein DEX_Events-Item anfuegen.
-   * Nutzt native SharePoint List Item Attachments - keine Ordner noetig.
+   * Dokument als Attachment an ein DEX_Events-Item anfügen.
+   * Nutzt native SharePoint List Item Attachments - keine Ordner nötig.
    */
   public async uploadEventDocument(eventId: number, file: File): Promise<string> {
     try {
@@ -7674,7 +7674,7 @@ export class EventService {
   }
 
   /**
-   * Dokument-Attachment von einem DEX_Events-Item loeschen.
+   * Dokument-Attachment von einem DEX_Events-Item löschen.
    * Wird beim Edit verwendet, wenn der User ein bestehendes Dokument entfernt.
    */
   public async deleteEventDocument(eventId: number, fileName: string): Promise<boolean> {
@@ -7691,7 +7691,7 @@ export class EventService {
 
   /**
    * Attachments eines DEX_Events-Items laden.
-   * Bilder mit Praefix __eventimage__ werden ausgefiltert (nur fuer EventImageUrl).
+   * Bilder mit Präfix __eventimage__ werden ausgefiltert (nur für EventImageUrl).
    */
   public async getEventAttachments(eventId: number): Promise<Array<{ name: string; url: string; size: number }>> {
     try {
@@ -7713,7 +7713,7 @@ export class EventService {
             size: 0,
           }));
       }
-    } catch { /* Attachments nicht verfuegbar */ }
+    } catch { /* Attachments nicht verfügbar */ }
     return [];
   }
 
@@ -7725,19 +7725,19 @@ export class EventService {
    * wenn ParticipantEmail !== session-Email.
    *
    * Erlaubt wenn (OR):
-   *   - DEX_Roles enthaelt den User als 'Admin'
-   *   - Der User ist in event.OrganizerEmail fuer das Event auf der zugehoerigen
+   *   - DEX_Roles enthält den User als 'Admin'
+   *   - Der User ist in event.OrganizerEmail für das Event auf der zugehörigen
    *     Subsite eingetragen (Event-scope Organizer)
-   *   - Der User ist Assistant (JobTitle enthaelt 'assistant') UND der Target
-   *     ist Partner oder Director (JobTitle enthaelt 'partner' oder 'director')
+   *   - Der User ist Assistant (JobTitle enthält 'assistant') UND der Target
+   *     ist Partner oder Director (JobTitle enthält 'partner' oder 'director')
    *
-   * Bei Fehlern lieber konservativ `false` zurueckgeben statt durchlassen.
+   * Bei Fehlern lieber konservativ `false` zurückgeben statt durchlassen.
    */
   private async canRegisterForOthers(subsiteUrl: string, targetParticipantEmail: string): Promise<boolean> {
-    // v19.6: Mehrere moegliche Identitaeten des eingeloggten Users sammeln.
+    // v19.6: Mehrere mögliche Identitäten des eingeloggten Users sammeln.
     // `pageContext.user.email` ist im SharePoint-Mobile-WebView nicht immer
     // gesetzt bzw. weicht vom in OrganizerEmail gespeicherten SMTP-Wert ab —
-    // deshalb zusaetzlich die E-Mail aus dem `loginName` (Claims-Format
+    // deshalb zusätzlich die E-Mail aus dem `loginName` (Claims-Format
     // `i:0#.f|membership|user@domain`) als Fallback heranziehen.
     const sessionIdentities = new Set<string>();
     const rawEmail = (this.context.pageContext.user.email || '').toLowerCase().trim();
@@ -7750,9 +7750,9 @@ export class EventService {
     const matchesSession = (emails: string[]): boolean =>
       emails.some(e => sessionIdentities.has((e || '').toLowerCase().trim()));
 
-    // 1. DEX_Roles pruefen: Admin- ODER Organizer-Rolle haben?
+    // 1. DEX_Roles prüfen: Admin- ODER Organizer-Rolle haben?
     //    v19.6 BUG-FIX: Vorher liess dieser Check NUR die Admin-Rolle durch.
-    //    Die Rollenmatrix sieht „Für andere registrieren" generell fuer
+    //    Die Rollenmatrix sieht „Für andere registrieren" generell für
     //    Organizer vor — deshalb hier Admin UND Organizer akzeptieren.
     try {
       const esc = sessionEmail.replace(/'/g, "''");
@@ -7769,13 +7769,13 @@ export class EventService {
 
     // 2. Event-Organizer ODER Co-Organizer dieses Events?
     //    v19.6 BUG-FIX: Vorher wurde NUR `OrganizerEmail` (Haupt-Organizer)
-    //    geprueft — Co-Organizer stehen aber in `EmailTemplateOverrides._coOrganizers`
-    //    und wurden so faelschlich abgelehnt. Zudem war der Note-Strip auf EINE
+    //    geprüft — Co-Organizer stehen aber in `EmailTemplateOverrides._coOrganizers`
+    //    und wurden so fälschlich abgelehnt. Zudem war der Note-Strip auf EINE
     //    `<div>`-Ebene begrenzt und der Split nur auf `;` — bei mehreren
     //    Organizern (mehrere `<div>`/`<br>` oder Komma-Trennung) schlug der
     //    Match fehl. Jetzt: HTML robust strippen, an `;`/`,`/Zeilenumbruch
     //    splitten und Haupt- + Co-Organizer kombiniert gegen ALLE
-    //    Session-Identitaeten matchen.
+    //    Session-Identitäten matchen.
     try {
       const resp = await this.context.spHttpClient.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$filter=SubsiteUrl eq '${encodeURIComponent(subsiteUrl.replace(/'/g, "''"))}'&$top=1&$select=OrganizerEmail,EmailTemplateOverrides`,
@@ -7803,13 +7803,13 @@ export class EventService {
             const list = (ov as any)._coOrganizers;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             if (Array.isArray(list)) coOrgEmails = list.map((x: any) => String(x?.email || '').toLowerCase().trim()).filter(Boolean);
-          } catch { /* kein/ungueltiges Override-JSON → keine Co-Organizer */ }
+          } catch { /* kein/ungültiges Override-JSON → keine Co-Organizer */ }
           if (matchesSession([...mainOrgEmails, ...coOrgEmails])) return true;
         }
       }
     } catch { /* ignore */ }
 
-    // 3. Assistant-Ausnahme: User-JobTitle enthaelt 'assistant' UND Target ist Partner/Director
+    // 3. Assistant-Ausnahme: User-JobTitle enthält 'assistant' UND Target ist Partner/Director
     try {
       const sessionProfile = await this.getCurrentUserProfile();
       const sessionJt = (sessionProfile.jobTitle || '').toLowerCase();
@@ -7819,7 +7819,7 @@ export class EventService {
         if (targetJt.indexOf('partner') >= 0 || targetJt.indexOf('director') >= 0) {
           return true;
         }
-        // Assistant darf nicht fuer Non-Partner/Director registrieren
+        // Assistant darf nicht für Non-Partner/Director registrieren
         return false;
       }
     } catch { /* ignore */ }
@@ -7828,7 +7828,7 @@ export class EventService {
   }
 
   /**
-   * Profildaten des aktuellen Users laden fuer die Teilnehmerliste.
+   * Profildaten des aktuellen Users laden für die Teilnehmerliste.
    */
   public async getCurrentUserProfile(): Promise<{ department: string; location: string; jobTitle: string; phone: string }> {
     try {
@@ -7857,19 +7857,19 @@ export class EventService {
   }
 
   /**
-   * Cleanup: bei den N juengsten Teilnehmer-Eintraegen jedes Events JobTitle, Department,
+   * Cleanup: bei den N jüngsten Teilnehmer-Einträgen jedes Events JobTitle, Department,
    * Location und Phone aus dem aktuellen Benutzerprofil neu laden und ueberschreiben.
    * Notwendig weil bis v3.0.x diese Felder versehentlich vom EINGELOGGTEN User (statt
-   * vom registrierten Teilnehmer) gezogen wurden, wenn jemand fuer eine andere Person
+   * vom registrierten Teilnehmer) gezogen wurden, wenn jemand für eine andere Person
    * registriert hat.
    *
    * Idempotent: wenn die Daten bereits stimmen (Profil-Lookup liefert dasselbe), passiert
    * nichts. Wird typisch einmalig per LocalStorage-Flag in EventContext getriggert.
    *
-   * Liefert die Anzahl tatsaechlich aktualisierter Items.
+   * Liefert die Anzahl tatsächlich aktualisierter Items.
    */
   /**
-   * Cleanup nur fuer EIN Event: lae alle Teilnehmer-Profile per Email nachladen
+   * Cleanup nur für EIN Event: lae alle Teilnehmer-Profile per Email nachladen
    * und JobTitle/Department/Location/Phone updaten falls abweichend.
    * Wird per Admin-Button im Admin Center pro Event getriggert.
    */
@@ -7994,16 +7994,16 @@ export class EventService {
   }
 
   /**
-   * Profildaten eines bestimmten Users via Email laden (fuer "Register for someone else"
+   * Profildaten eines bestimmten Users via Email laden (für "Register for someone else"
    * und "Profile neu laden"). Robust gegen UPN != SMTP-Mismatches.
    *
    * Strategie:
    *   1. Direkter Lookup mit Claim `i:0#.f|membership|<email>` (funktioniert wenn UPN==SMTP).
-   *   2. Wenn leer: per `siteusers/getbyemail` den echten LoginName aufloesen
+   *   2. Wenn leer: per `siteusers/getbyemail` den echten LoginName auflösen
    *      (deckt UPN != SMTP und Guest-Accounts ab) und GetPropertiesFor mit
    *      diesem LoginName erneut aufrufen.
    *
-   * Rueckgabe ist gefuellt sobald einer der Wege Properties liefert, sonst leer.
+   * Rückgabe ist gefüllt sobald einer der Wege Properties liefert, sonst leer.
    */
   public async getUserProfileByEmail(email: string): Promise<{ department: string; location: string; jobTitle: string; phone: string }> {
     const empty = { department: '', location: '', jobTitle: '', phone: '' };
@@ -8022,7 +8022,7 @@ export class EventService {
       };
     };
 
-    // 1) Direkter Claim per SMTP-Email (schnell, funktioniert fuer Standard-Tenants)
+    // 1) Direkter Claim per SMTP-Email (schnell, funktioniert für Standard-Tenants)
     try {
       const directUrl = `${this.siteUrl}/_api/SP.UserProfiles.PeopleManager/GetPropertiesFor(accountName=@v)?@v='i:0%23.f|membership|${encodeURIComponent(email)}'`;
       const response = await this.context.spHttpClient.get(directUrl, SPHttpClient.configurations.v1);
@@ -8036,7 +8036,7 @@ export class EventService {
       }
     } catch { /* weiter zu Fallback */ }
 
-    // 2) Fallback: echten LoginName (UPN-Claim) ueber siteusers/getbyemail aufloesen
+    // 2) Fallback: echten LoginName (UPN-Claim) ueber siteusers/getbyemail auflösen
     // Deckt UPN != SMTP, Guest-Accounts und Alias-SMTP-Adressen ab.
     try {
       const siteUserUrl = `${this.siteUrl}/_api/web/siteusers/getbyemail('${email.replace(/'/g, "''")}')?$select=LoginName`;
@@ -8105,10 +8105,10 @@ export class EventService {
   }
 
   /**
-   * MERGE-Request fuer Item-Updates.
+   * MERGE-Request für Item-Updates.
    * SharePoint verarbeitet den MERGE korrekt, antwortet aber auf manchen
-   * Subsite-Listen mit 406 (Accept-Format nicht unterstuetzt). Da bei MERGE
-   * kein Response-Body benoetigt wird, behandeln wir 406 als Erfolg.
+   * Subsite-Listen mit 406 (Accept-Format nicht unterstützt). Da bei MERGE
+   * kein Response-Body benötigt wird, behandeln wir 406 als Erfolg.
    */
   private async _merge(url: string, body: object): Promise<SPHttpClientResponse> {
     const options: ISPHttpClientOptions = {
@@ -8122,8 +8122,8 @@ export class EventService {
       body: JSON.stringify(body),
     };
     const response = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, options);
-    // 406: SharePoint hat den MERGE ausgefuehrt, kann aber nicht im
-    // gewuenschten Format antworten. Daten sind trotzdem gespeichert.
+    // 406: SharePoint hat den MERGE ausgeführt, kann aber nicht im
+    // gewünschten Format antworten. Daten sind trotzdem gespeichert.
     if (response.status === 406) {
       return { ok: true, status: 204, statusText: 'No Content' } as unknown as SPHttpClientResponse;
     }
@@ -8133,8 +8133,8 @@ export class EventService {
   // v7.28: Variante von _merge, die den uebergebenen ETag im IF-MATCH-Header
   // mitsendet (statt '*'). SharePoint vergleicht den ETag mit dem aktuellen
   // Stand des Items und antwortet mit HTTP 412 (Precondition Failed), wenn
-  // ein anderer Client zwischenzeitlich geschrieben hat. So koennen wir
-  // optimistic-concurrency-Pattern fuer den TeilnehmerID-Counter umsetzen.
+  // ein anderer Client zwischenzeitlich geschrieben hat. So können wir
+  // optimistic-concurrency-Pattern für den TeilnehmerID-Counter umsetzen.
   private async _mergeIfMatch(url: string, body: object, etag: string): Promise<SPHttpClientResponse> {
     const options: ISPHttpClientOptions = {
       headers: {
@@ -8166,9 +8166,9 @@ export class EventService {
   //   4. Bei Erfolg: NextValue+1 ist die neue TeilnehmerID des aufrufenden Users.
   //
   // Fallback: Wenn die Counter-Liste nicht existiert (z.B. legacy event ohne
-  // "Spalten fixen"-Lauf), kommt undefined zurueck — der Aufrufer faellt dann
-  // auf das alte (race-anfaellige) max+1-Verfahren zurueck. Bestandsschutz.
-  // v7.28 / v9.10: Naechste TeilnehmerID atomar holen.
+  // "Spalten fixen"-Lauf), kommt undefined zurück — der Aufrufer fällt dann
+  // auf das alte (race-anfällige) max+1-Verfahren zurück. Bestandsschutz.
+  // v7.28 / v9.10: Nächste TeilnehmerID atomar holen.
   //   1. Counter-Item GET'en, ETag aus Response-Header lesen.
   //   2. Counter-Item PATCH'en mit IF-MATCH=<ETag>, NextValue=current+1.
   //   3. Bei 412 (ETag-Mismatch = jemand war schneller) → Exponential
@@ -8177,14 +8177,14 @@ export class EventService {
   //
   // v9.10: Counter-Liste wird ON-DEMAND angelegt+geseeded, falls sie fehlt
   // (z.B. weil das Event vor v7.28 erstellt wurde). Vorher gab undefined
-  // zurueck → Aufrufer fiel auf max+1 zurueck → Race-Condition bei
+  // zurück → Aufrufer fiel auf max+1 zurück → Race-Condition bei
   // Massen-Anmeldungen. Jetzt: einmalig ensureCounterList() rufen, dann
-  // erneut versuchen. Damit ist der race-anfaellige Fallback nur noch
+  // erneut versuchen. Damit ist der race-anfällige Fallback nur noch
   // erreicht, wenn auch das Anlegen scheitert (Permission-Issue).
   //
   // v9.10: Retries 8 → 40, Backoff von festem Jitter auf Exponential
   // Backoff mit Full Jitter (Cap 500ms). Bei 50+ parallelen Anmeldungen
-  // wahren 8 Retries praktisch garantiert ausgeschoepft.
+  // wahren 8 Retries praktisch garantiert ausgeschöpft.
   private async getNextTeilnehmerId(subsiteUrl: string): Promise<number | undefined> {
     const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
     const MAX_RETRIES = 40;
@@ -8205,7 +8205,7 @@ export class EventService {
           triedLazyCreate = true;
           try {
             await this.ensureCounterList(subsiteUrl);
-            // Kein delay — direkt naechste Iteration, die das frische Item liest.
+            // Kein delay — direkt nächste Iteration, die das frische Item liest.
             continue;
           } catch {
             return undefined;
@@ -8218,19 +8218,19 @@ export class EventService {
       let data;
       try { data = await getResp.json(); } catch { return undefined; }
       // v9.13: NextValue defensiv parsen — handhabt sowohl number als auch
-      // (in seltenen SP-Konfigurationen) string. Sorgt dafuer dass current
+      // (in seltenen SP-Konfigurationen) string. Sorgt dafür dass current
       // bei einer korrekt gespeicherten 165 nie auf 0 fallback'ed.
       const rawNextValue = data?.NextValue ?? data?.d?.NextValue;
       const current = typeof rawNextValue === 'number'
         ? rawNextValue
         : (typeof rawNextValue === 'string' ? (parseInt(rawNextValue, 10) || 0) : 0);
       // v9.13: Counter ist die Source of Truth. Wir vertrauen ihm und
-      // inkrementieren atomar via ETag-CAS. KEIN zusaetzlicher Lesezugriff
+      // inkrementieren atomar via ETag-CAS. KEIN zusätzlicher Lesezugriff
       // auf die Teilnehmerliste mehr — das Counter-Pattern existiert genau,
       // damit wir hier NICHT max(TID) aus der Teilnehmerliste rechnen
-      // muessen. Wenn der Counter korrupt sein sollte (z.B. von altem
+      // müssen. Wenn der Counter korrupt sein sollte (z.B. von altem
       // syncCounterToMax-Bug auf 0 gepatcht), gibt's den expliziten
-      // "Counter zurücksetzen"-Button im Admin Center fuer den Fix.
+      // "Counter zurücksetzen"-Button im Admin Center für den Fix.
       const next = current + 1;
       const patchResp = await this._mergeIfMatch(counterItemUrl, { 'NextValue': next }, etag);
       if (patchResp.ok) return next;
@@ -8240,20 +8240,20 @@ export class EventService {
       }
       // 412 = ETag-Mismatch = jemand war schneller → Exponential Backoff
       // mit Full Jitter (Cap 500ms). Cluster bei Massen-Anmeldungen
-      // werden so zuverlaessig entzerrt — ohne Backoff laufen alle
-      // Clients sekundengleich in den naechsten Conflict.
+      // werden so zuverlässig entzerrt — ohne Backoff laufen alle
+      // Clients sekundengleich in den nächsten Conflict.
       const baseDelay = Math.min(500, 50 * Math.pow(1.4, attempt));
       const delay = Math.floor(baseDelay * (0.5 + Math.random()));
       await new Promise(res => setTimeout(res, delay));
     }
     // Nach 40 Retries aufgeben — Aufrufer kann die Anmeldung sauber
-    // mit TeilnehmerID=null durchziehen lassen und der Admin laedt
+    // mit TeilnehmerID=null durchziehen lassen und der Admin lädt
     // anschliessend "IDs neu vergeben".
-    console.warn('[DEX] getNextTeilnehmerId: 40 retries erschoepft — TeilnehmerID bleibt unset, Admin sollte IDs neu vergeben.');
+    console.warn('[DEX] getNextTeilnehmerId: 40 retries erschöpft — TeilnehmerID bleibt unset, Admin sollte IDs neu vergeben.');
     return undefined;
   }
 
-  // Hilfsroutine: prueft ob auf der Counter-Liste die NextValue-Spalte
+  // Hilfsroutine: prüft ob auf der Counter-Liste die NextValue-Spalte
   // existiert und legt sie an wenn sie fehlt. Idempotent.
   private async ensureCounterListField(subsiteUrl: string): Promise<void> {
     const fieldsUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/fields`;
@@ -8277,14 +8277,14 @@ export class EventService {
     }
   }
 
-  // v7.28: Counter-Liste fuer ein Event anlegen (1 Liste mit 1 Item) und
+  // v7.28: Counter-Liste für ein Event anlegen (1 Liste mit 1 Item) und
   // direkt mit dem aktuellen Max-Wert seeden — damit bestehende Events ohne
-  // ID-Lueckenproduktion umsteigen koennen.
+  // ID-Lückenproduktion umsteigen können.
   // Idempotent: tut nichts wenn die Liste schon existiert.
   // v7.29-Fix: Item-Inserts nutzen den korrekt _x005f_-encodeten Type-Namen
-  // (genauso wie wir das fuer DEX_Events machen). Vorher wurde der Listen-
+  // (genauso wie wir das für DEX_Events machen). Vorher wurde der Listen-
   // name 1:1 in den Type uebernommen, was bei Unterstrich stillschweigend
-  // zu HTTP 400 fuehrt → leere Counter-Liste.
+  // zu HTTP 400 führt → leere Counter-Liste.
   private async ensureCounterList(subsiteUrl: string): Promise<{ created: boolean; seededValue?: number }> {
     const probe = await this.context.spHttpClient.get(
       `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')`,
@@ -8308,12 +8308,12 @@ export class EventService {
     if (probe.ok) {
       // Liste existiert — sicherstellen dass das Schema komplett ist und ein Item drin liegt.
       try { await this.ensureCounterListField(subsiteUrl); } catch { /* */ }
-      // v9.13/v9.14: setCounterListPermissions wurde hier urspruenglich
+      // v9.13/v9.14: setCounterListPermissions wurde hier ursprünglich
       // mitaufgerufen, hat aber bei laufender Event-Anlage Race-Conditions
-      // ausgeloest (breakroleinheritance gegen frisch provisionierte Liste
+      // ausgelöst (breakroleinheritance gegen frisch provisionierte Liste
       // in derselben Request-Welle). Permissions werden jetzt nur noch
       // explizit ueber den "Counter zurücksetzen"-Button gefixt — siehe
-      // resetCounterToMax. Bestehende Events koennen damit per Admin-Klick
+      // resetCounterToMax. Bestehende Events können damit per Admin-Klick
       // geheilt werden, neue Events bekommen ihre Permissions im
       // create-Branch unten gesetzt.
       const itemListResp = await this.context.spHttpClient.get(
@@ -8337,7 +8337,7 @@ export class EventService {
         '__metadata': { 'type': 'SP.List' },
         'BaseTemplate': 100,
         'Title': COUNTER_LIST_NAME,
-        'Description': 'Atomarer Counter fuer TeilnehmerID-Vergabe (ETag-basiert). Nicht manuell editieren.',
+        'Description': 'Atomarer Counter für TeilnehmerID-Vergabe (ETag-basiert). Nicht manuell editieren.',
         'AllowContentTypes': false,
         'ContentTypesEnabled': false,
         'EnableVersioning': false,
@@ -8346,10 +8346,10 @@ export class EventService {
       }
     );
     await this.ensureCounterListField(subsiteUrl);
-    // v9.13: Counter-Liste muss explizit Contribute-Rechte fuer Visitors
+    // v9.13: Counter-Liste muss explizit Contribute-Rechte für Visitors
     // bekommen, damit normale User die ETag-CAS-Inkrementierung
-    // durchfuehren koennen. Ohne das schlaegt PATCH NextValue mit 401/403
-    // fehl → getNextTeilnehmerId gibt undefined zurueck → TID landet null
+    // durchführen können. Ohne das schlägt PATCH NextValue mit 401/403
+    // fehl → getNextTeilnehmerId gibt undefined zurück → TID landet null
     // (oder im allerersten Lazy-Create-Pfad bei 1).
     try { await this.setCounterListPermissions(subsiteUrl); } catch { /* */ }
     const seededValue = await seedItem();
@@ -8357,7 +8357,7 @@ export class EventService {
   }
 
   /**
-   * Berechtigungen fuer DEX_TeilnehmerCounter setzen — analog zur
+   * Berechtigungen für DEX_TeilnehmerCounter setzen — analog zur
    * Teilnehmerliste:
    *   - Owners der Hauptsite: Full Control (1073741829)
    *   - Visitors (DEALL): Contribute (1073741827) → ETag-CAS-Inkrement
@@ -8389,7 +8389,7 @@ export class EventService {
         }
       }
       // Visitors → Contribute. KRITISCH: damit normale User
-      // den Counter atomar inkrementieren koennen.
+      // den Counter atomar inkrementieren können.
       const visitorsId = await this.getVisitorsGroupId();
       if (visitorsId) {
         await this._post(
@@ -8428,17 +8428,17 @@ export class EventService {
   //
   // **Bugfix v9.13:** Vorher hat $orderby=TeilnehmerID desc&$top=1 unter
   // bestimmten Bedingungen das null-Item zuerst geliefert (SP sortiert NULL-
-  // Werte bei Number-Feldern oft als "groesster Wert" in desc-Order).
+  // Werte bei Number-Feldern oft als "größter Wert" in desc-Order).
   // Sobald irgendjemand abgemeldet war (TID=null) lief die Funktion ins
-  // null-Branch und gab 0 zurueck.
+  // null-Branch und gab 0 zurück.
   //
   // Konsequenz im alten Code (vor v9.12): syncCounterToMax patcht den
-  // Counter auf liveMax=0 RUNTER → naechste Anmeldung kriegt TID=1 →
+  // Counter auf liveMax=0 RUNTER → nächste Anmeldung kriegt TID=1 →
   // Duplikat zu echten aktiven Teilnehmern. Genau der Fall den der User
   // beim Go-Live live gesehen hat (Theresa #1 obwohl 165 aktive Anmeldungen).
   //
   // Fix: $filter=TeilnehmerID gt 0 schliesst NULL und 0 explizit aus —
-  // funktioniert unabhaengig von SP-NULL-Sortier-Konventionen.
+  // funktioniert unabhängig von SP-NULL-Sortier-Konventionen.
   private async getCurrentMaxTeilnehmerId(subsiteUrl: string): Promise<number> {
     try {
       const resp = await this.context.spHttpClient.get(
@@ -8461,7 +8461,7 @@ export class EventService {
   // - current >= liveMax: nichts zu tun (Counter steht bereits hoch genug).
   // - current  < liveMax: Counter HOCH auf liveMax setzen (z.B. nach
   //   reorderParticipantIDs, der die TIDs im Bereich [1..N_active] vergibt
-  //   wo N_active groesser sein kann als der bisherige Counter-Stand).
+  //   wo N_active größer sein kann als der bisherige Counter-Stand).
   //
   // Vorher (Bug bis v9.11): exakt umgekehrt — Counter wurde auf liveMax
   // RUNTER gesetzt wenn current > liveMax. Das produzierte sowohl bei
@@ -8469,19 +8469,19 @@ export class EventService {
   //
   // ETag-CAS mit Retry, damit eine parallele Anmeldung den Counter nicht
   // zwischen Read und Write wegrasselt.
-  // v9.13: Oeffentliche Recovery-Methode fuer den Admin-Button "Counter
+  // v9.13: Oeffentliche Recovery-Methode für den Admin-Button "Counter
   // zurücksetzen". Liest den aktuellen Max-TID aus der Teilnehmerliste und
   // setzt den Counter auf diesen Wert (per ETag-CAS, monotonic up-only via
-  // syncCounterToMax). Gibt den neuen Counter-Wert zurueck damit der Admin
+  // syncCounterToMax). Gibt den neuen Counter-Wert zurück damit der Admin
   // direkt sehen kann auf was es gepatcht wurde.
   public async resetCounterToMax(subsiteUrl: string): Promise<{ counter: number; max: number }> {
     // v11.27: bidirektionaler Reset. Vorher rief diese Methode nur
     // syncCounterToMax auf — das ist monotonic up-only und liess einen
-    // zu hohen Counter unveraendert. Genau das hat der Maintainer beobachtet:
+    // zu hohen Counter unverändert. Genau das hat der Maintainer beobachtet:
     // Counter=11, Max-TID=4, Klick auf "Counter zurücksetzen" → keine
     // Aenderung, weiterhin 11. Jetzt setzen wir den Counter explizit
-    // auf max(TID) — egal ob er drunter (gefaehrlich, Doppel-IDs moeglich)
-    // oder drueber stand (harmlos, nur Luecken-Springen).
+    // auf max(TID) — egal ob er drunter (gefährlich, Doppel-IDs möglich)
+    // oder drüber stand (harmlos, nur Lücken-Springen).
     try { await this.ensureCounterList(subsiteUrl); } catch { /* */ }
     const max = await this.getCurrentMaxTeilnehmerId(subsiteUrl);
     const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
@@ -8630,7 +8630,7 @@ export class EventService {
     const createResp = await this._post(`${this.siteUrl}/_api/web/lists`, {
       '__metadata': { 'type': 'SP.List' },
       'Title': listName,
-      'Description': 'Archiv abgelaufener Event-Zeilen aus den Queue-/Log-Listen (v21). Nur fuer Admins lesbar.',
+      'Description': 'Archiv abgelaufener Event-Zeilen aus den Queue-/Log-Listen (v21). Nur für Admins lesbar.',
       'BaseTemplate': 100,
       'AllowContentTypes': false,
     });

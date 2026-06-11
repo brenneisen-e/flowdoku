@@ -1,7 +1,7 @@
 /**
  * Info-Modal auf der Landing-Page.
  *
- * Erklaert die DEX Event Experience Platform fuer neue User, die noch nicht
+ * Erklärt die DEX Event Experience Platform für neue User, die noch nicht
  * wissen was die App kann. Strukturiert in Abschnitte: Pitch - Zielgruppe -
  * Features - Sicherheit - Status - Kontakt.
  *

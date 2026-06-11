@@ -1,13 +1,13 @@
-// v17.21: A4-Zusammenfassung eines Events fuer Partner / Reviewer.
-// Generiert eine druckfertige HTML-Repraesentation aller Wizard-Sektionen
-// (Grundlagen, Ort & Programm, Kapazitaet & Sichtbarkeit, Team-Anmeldung,
+// v17.21: A4-Zusammenfassung eines Events für Partner / Reviewer.
+// Generiert eine druckfertige HTML-Repräsentation aller Wizard-Sektionen
+// (Grundlagen, Ort & Programm, Kapazität & Sichtbarkeit, Team-Anmeldung,
 // Felder, Kommunikation, Dokumente, Fun-Zone, Sub-Events). Exportiert
 // wahlweise als PDF (per Browser-Druckdialog -> Save as PDF) oder als
 // Word-kompatibles .doc (HTML-Blob mit application/msword-MIME).
 //
 // Bewusst kein neues Dependency — html-to-pdf / docx-Bibliotheken bringen
 // 200-500 KB ins Bundle. Browser-Print + Word-HTML-Trick decken den
-// Use-Case "an Partner zur Durchsicht schicken" zuverlaessig ab.
+// Use-Case "an Partner zur Durchsicht schicken" zuverlässig ab.
 
 export interface SummaryAgendaItem {
   time?: string;
@@ -74,7 +74,7 @@ export interface SummaryData {
   address?: { street?: string; houseNo?: string; zip?: string; city?: string };
   agenda?: SummaryAgendaItem[];
   transfers?: SummaryTransferItem[];
-  // Kapazitaet & Sichtbarkeit
+  // Kapazität & Sichtbarkeit
   locationFilter?: string[];
   audience?: string[];
   filterMode?: 'AND' | 'OR';
@@ -142,20 +142,20 @@ const escapeHtml = (s: string | undefined | null): string => {
 // v17.22: Lightweight Rich-HTML-Sanitizer. Die Felder `description`,
 // `outlookBody` und `se.description` kommen aus dem RichText-Editor und
 // enthalten legitimes Formatierungs-HTML (<p>, <strong>, <ul>, <a> …) —
-// die duerfen NICHT escaped werden, sonst sieht der Reviewer rohe Tags.
-// Aber: ein Organizer (oder eine kompromittierte Quelle) koennte
+// die dürfen NICHT escaped werden, sonst sieht der Reviewer rohe Tags.
+// Aber: ein Organizer (oder eine kompromittierte Quelle) könnte
 // <script>, Event-Handler (onload=…), javascript:-URLs oder
 // <iframe>/<object>/<embed> einschleusen, die im Export-Fenster
-// (gleiche SharePoint-Origin) ausgefuehrt wuerden. Dieser Sanitizer
-// entfernt genau diese gefaehrlichen Konstrukte und laesst harmloses
+// (gleiche SharePoint-Origin) ausgeführt würden. Dieser Sanitizer
+// entfernt genau diese gefährlichen Konstrukte und lässt harmloses
 // Layout-HTML durch. Kein vollwertiger DOMPurify, aber deckt die
-// relevanten Vektoren fuer den reinen Druck-/Word-Export ab.
+// relevanten Vektoren für den reinen Druck-/Word-Export ab.
 const sanitizeRichHtml = (html: string | undefined | null): string => {
   if (!html) return '';
   let out = String(html);
-  // 1. Komplette gefaehrliche Element-Bloecke (inkl. Inhalt) entfernen.
+  // 1. Komplette gefährliche Element-Blöcke (inkl. Inhalt) entfernen.
   out = out.replace(/<\s*(script|style|iframe|object|embed|link|meta|base|form)\b[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, '');
-  // 2. Selbstschliessende / unvollstaendige Varianten derselben Tags.
+  // 2. Selbstschliessende / unvollständige Varianten derselben Tags.
   out = out.replace(/<\s*(script|iframe|object|embed|link|meta|base|form)\b[^>]*\/?>/gi, '');
   // 3. Inline-Event-Handler (onload=, onclick=, onerror=, …) entfernen —
   //    sowohl mit doppelten/einfachen Quotes als auch ohne Quotes.
@@ -314,7 +314,7 @@ export function buildSummaryHtml(d: SummaryData): string {
     `<div class="dex-kv-grid">${ortKv}</div>` + agendaList + transferList
   );
 
-  // ===== Kapazitaet & Sichtbarkeit =====
+  // ===== Kapazität & Sichtbarkeit =====
   const sichtKv = [
     kv(T('Standort-Filter', 'Location filter'),
       (d.locationFilter && d.locationFilter.length > 0)
@@ -322,9 +322,9 @@ export function buildSummaryHtml(d: SummaryData): string {
         : T('alle Standorte', 'all locations'), lc),
     kv(T('Mailverteiler / User', 'Mail audience'),
       (d.audience && d.audience.length > 0)
-        ? `${d.audience.length} ${T('Eintrag/Eintraege', 'entry/entries')}`
+        ? `${d.audience.length} ${T('Eintrag/Einträge', 'entry/entries')}`
         : T('kein Filter', 'no filter'), lc),
-    kv(T('Filter-Verknuepfung', 'Filter combination'), d.filterMode || 'AND', lc),
+    kv(T('Filter-Verknüpfung', 'Filter combination'), d.filterMode || 'AND', lc),
     kv(T('Ausgeschlossene User', 'Excluded users'),
       (d.excludedUsers && d.excludedUsers.length > 0)
         ? `${d.excludedUsers.length}`
@@ -338,7 +338,7 @@ export function buildSummaryHtml(d: SummaryData): string {
 
   if (d.durchstarterCapacity && d.durchstarterCapacity > 0) {
     sichtKv.push(
-      kv(T('Geteilte Kapazitaet', 'Split capacity'), true, lc),
+      kv(T('Geteilte Kapazität', 'Split capacity'), true, lc),
       kv(`${T('Gruppe', 'Group')} A (${d.splitLabelA || 'Durchstarter'})`, d.durchstarterCapacity, lc),
       kv(`${T('Gruppe', 'Group')} B (${d.splitLabelB || 'Funstarter'})`, d.funstarterCapacity ?? 0, lc),
       kv(T('Gemeinsame Warteliste', 'Shared waitlist'), !!d.splitSharedWaitlist, lc),
@@ -350,7 +350,7 @@ export function buildSummaryHtml(d: SummaryData): string {
     : '';
 
   const sectionSichtbarkeit = section(
-    T('3. Kapazitaet & Sichtbarkeit', '3. Capacity & visibility'),
+    T('3. Kapazität & Sichtbarkeit', '3. Capacity & visibility'),
     `<div class="dex-kv-grid">${sichtKv.join('')}</div>` + audienceDetail
   );
 
@@ -359,11 +359,11 @@ export function buildSummaryHtml(d: SummaryData): string {
   if (d.teamRegistrationEnabled) {
     const teamKv = [
       kv(T('Team-Anmeldung aktiv', 'Team registration enabled'), true, lc),
-      kv(T('Team-Groesse', 'Team size'), d.teamSize ?? '—', lc),
+      kv(T('Team-Größe', 'Team size'), d.teamSize ?? '—', lc),
       kv(T('Team-Namen abfragen', 'Ask team name'), !!d.askTeamName, lc),
       kv(T('Teil-Teams erlaubt', 'Partial teams allowed'), !!d.teamPartialAllowed, lc),
       kv(T('Offene Slots oeffentlich sichtbar', 'Open slots publicly visible'), !!d.teamOpenSlotsVisible, lc),
-      kv(T('Beitritt mit Lead-Bestaetigung', 'Join requires lead approval'), !!d.teamJoinRequiresApproval, lc),
+      kv(T('Beitritt mit Lead-Bestätigung', 'Join requires lead approval'), !!d.teamJoinRequiresApproval, lc),
     ].join('');
     sectionTeam = section(
       T('4. Team-Anmeldung', '4. Team registration'),
@@ -372,7 +372,7 @@ export function buildSummaryHtml(d: SummaryData): string {
   } else {
     sectionTeam = section(
       T('4. Team-Anmeldung', '4. Team registration'),
-      `<p class="dex-empty">${T('Team-Anmeldung ist fuer dieses Event deaktiviert.', 'Team registration is disabled for this event.')}</p>`
+      `<p class="dex-empty">${T('Team-Anmeldung ist für dieses Event deaktiviert.', 'Team registration is disabled for this event.')}</p>`
     );
   }
 
@@ -402,10 +402,10 @@ export function buildSummaryHtml(d: SummaryData): string {
       ? `<tr><th>${T('Beschreibung', 'Description')}</th><td>${escapeHtml(f.helpText)}${f.helpTextEn ? `<br/><span class="dex-en">EN: ${escapeHtml(f.helpTextEn)}</span>` : ''}</td></tr>`
       : '';
     const confirmRow = (f.type === 'checkbox' && f.confirmLabel)
-      ? `<tr><th>${T('Bestaetigungs-Text', 'Confirmation text')}</th><td>${escapeHtml(f.confirmLabel)}${f.confirmLabelEn ? `<br/><span class="dex-en">EN: ${escapeHtml(f.confirmLabelEn)}</span>` : ''}</td></tr>`
+      ? `<tr><th>${T('Bestätigungs-Text', 'Confirmation text')}</th><td>${escapeHtml(f.confirmLabel)}${f.confirmLabelEn ? `<br/><span class="dex-en">EN: ${escapeHtml(f.confirmLabelEn)}</span>` : ''}</td></tr>`
       : '';
     const groupRow = (f.onlyForGroup && f.onlyForGroup !== 'all')
-      ? `<tr><th>${T('Sichtbar fuer', 'Visible for')}</th><td>${T('nur Gruppe', 'group')} ${f.onlyForGroup}</td></tr>`
+      ? `<tr><th>${T('Sichtbar für', 'Visible for')}</th><td>${T('nur Gruppe', 'group')} ${f.onlyForGroup}</td></tr>`
       : '';
     const showIfRow = f.showIf
       ? `<tr><th>${T('Sichtbar wenn', 'Visible when')}</th><td>${escapeHtml(f.showIf.fieldId)} = ${escapeHtml(f.showIf.values.join(' | '))}</td></tr>`
@@ -481,7 +481,7 @@ export function buildSummaryHtml(d: SummaryData): string {
   const docsList = (d.documents && d.documents.length > 0)
     ? `<table class="dex-table"><thead><tr>
          <th>${T('Datei', 'File')}</th>
-         <th>${T('Groesse', 'Size')}</th>
+         <th>${T('Größe', 'Size')}</th>
        </tr></thead><tbody>
        ${d.documents.map(doc => `<tr>
          <td>${escapeHtml(doc.name)}</td>
@@ -493,7 +493,7 @@ export function buildSummaryHtml(d: SummaryData): string {
 
   // ===== Fun-Zone =====
   const quizBody = (d.funZone && d.funZone.length > 0)
-    ? `<p>${T('Quiz-Cluster-Groesse', 'Quiz cluster size')}: ${d.quizClusterSize ?? 1}</p>` +
+    ? `<p>${T('Quiz-Cluster-Größe', 'Quiz cluster size')}: ${d.quizClusterSize ?? 1}</p>` +
       d.funZone.map((q, i) => `
         <div class="dex-quiz">
           <div class="dex-quiz-q"><strong>${i + 1}.</strong> ${escapeHtml(q.question)}</div>
@@ -513,7 +513,7 @@ export function buildSummaryHtml(d: SummaryData): string {
           ${kv(T('Beginn', 'Start'), formatDate(se.startDate, lc), lc)}
           ${kv(T('Ende', 'End'), formatDate(se.endDate, lc), lc)}
           ${kv(T('Ort', 'Location'), se.location || '—', lc)}
-          ${kv(T('Plaetze', 'Capacity'), se.maxParticipants ?? '—', lc)}
+          ${kv(T('Plätze', 'Capacity'), se.maxParticipants ?? '—', lc)}
           ${kv(T('Warteliste', 'Waitlist'), !!se.waitlistEnabled, lc)}
         </div>
         ${se.description ? `<div class="dex-rich">${sanitizeRichHtml(se.description)}</div>` : ''}
@@ -532,8 +532,8 @@ export function buildSummaryHtml(d: SummaryData): string {
   const generated = formatDate(d.generatedAt, lc);
   const docTitle = `${d.title || T('Event-Zusammenfassung', 'Event summary')}`;
 
-  // Print-CSS: A4-Seitenbreite, 18mm Rand, Serif-Font fuer den Text. Section-
-  // Headlines in Deloitte-Gruen. Page-Break-Hinweise zwischen den grossen
+  // Print-CSS: A4-Seitenbreite, 18mm Rand, Serif-Font für den Text. Section-
+  // Headlines in Deloitte-Grün. Page-Break-Hinweise zwischen den grossen
   // Sektionen, damit der PDF-Druck pro Sektion sauber paginiert.
   const css = `
     @page { size: A4; margin: 18mm; }
@@ -608,14 +608,14 @@ export function buildSummaryHtml(d: SummaryData): string {
 /**
  * Oeffnet die A4-Zusammenfassung in einem neuen Fenster und triggert sofort
  * den Druckdialog. Im Browser-Druckdialog kann der User „Als PDF speichern"
- * waehlen und das Dokument als PDF ablegen.
+ * wählen und das Dokument als PDF ablegen.
  *
  * Hintergrund: jsPDF + html2canvas oder ein serverseitiger PDF-Renderer
- * waeren saubere Alternativen, kosten aber ~200 KB im Bundle ODER eine
+ * wären saubere Alternativen, kosten aber ~200 KB im Bundle ODER eine
  * extra Power-Automate-Action. Der Browser-Druckdialog ist auf jedem
- * Endgeraet verfuegbar, kann nativ PDF speichern und respektiert das
+ * Endgerät verfügbar, kann nativ PDF speichern und respektiert das
  * @page A4-CSS oben. Trade-off: User muss bewusst „Als PDF speichern"
- * klicken — wir koennen es nicht still im Hintergrund machen.
+ * klicken — wir können es nicht still im Hintergrund machen.
  */
 export function exportSummaryAsPdf(data: SummaryData): void {
   const html = buildSummaryHtml(data);
@@ -634,8 +634,8 @@ export function exportSummaryAsPdf(data: SummaryData): void {
     return;
   }
   // v17.22: opener-Referenz kappen — das neue Fenster teilt die SharePoint-
-  // Origin; ohne diese Zeile koennte darin laufendes Script (falls der
-  // Sanitizer je umgangen wuerde) ueber window.opener auf die Host-Seite
+  // Origin; ohne diese Zeile könnte darin laufendes Script (falls der
+  // Sanitizer je umgangen würde) ueber window.opener auf die Host-Seite
   // zugreifen (Reverse-Tabnabbing / SP-REST im User-Kontext).
   try { w.opener = null; } catch { /* */ }
   w.document.open();
@@ -661,10 +661,10 @@ export function exportSummaryAsPdf(data: SummaryData): void {
       img.addEventListener('load', onSettled);
       img.addEventListener('error', onSettled);
     });
-    // Sicherheits-Deadline: spaetestens nach 4s drucken, egal ob Bilder fertig.
+    // Sicherheits-Deadline: spätestens nach 4s drucken, egal ob Bilder fertig.
     setTimeout(finish, 4000);
   };
-  // Kleiner Initial-Delay, damit document.images nach write/close gefuellt ist.
+  // Kleiner Initial-Delay, damit document.images nach write/close gefüllt ist.
   setTimeout(waitForImages, 150);
 }
 
@@ -672,20 +672,20 @@ export function exportSummaryAsPdf(data: SummaryData): void {
  * Speichert die A4-Zusammenfassung als Word-kompatibles .doc.
  *
  * Trick: Word akzeptiert HTML-Dateien mit der MIME `application/msword` und
- * der Endung `.doc` direkt — keine eigentliche Word-Binary noetig. Das CSS
+ * der Endung `.doc` direkt — keine eigentliche Word-Binary nötig. Das CSS
  * wird mit reingebacken, Word rendert das relativ getreu (Tabellen, Farben,
  * Listen, page-breaks). Das spart eine echte `docx`-Bibliothek (200 KB).
  *
  * Word hat ein paar Eigenheiten:
  *  - `@page` wird ignoriert; das Dokumentlayout kommt aus den Default-
  *    Druckereinstellungen des Users (i.d.R. A4, ist also OK).
- *  - `display:grid` wird nicht unterstuetzt — die KV-Grids brechen dann
+ *  - `display:grid` wird nicht unterstützt — die KV-Grids brechen dann
  *    sauber als Liste um, was visuell weiterhin lesbar bleibt.
  */
 export function exportSummaryAsDoc(data: SummaryData): void {
   const html = buildSummaryHtml(data);
   // v17.22: Robust statt String-Slice. Vorher wurde bei `<head>` geschnitten
-  // (`substring(indexOf('<head>'))`) — faellt indexOf auf -1 (z.B. nach
+  // (`substring(indexOf('<head>'))`) — fällt indexOf auf -1 (z.B. nach
   // einem Refactor ohne <head>), liefert substring(-1) den ganzen String
   // inkl. doppeltem <html>. Jetzt ersetzen wir das oeffnende <html …>-Tag
   // gezielt durch das Word-Prelude; fehlt es, wird das Prelude vorangestellt.

@@ -2,7 +2,7 @@
  * Role Context - Rollenverwaltung ueber SharePoint-Liste
  *
  * Erstellt beim ersten Start automatisch die DEX_Roles-Liste
- * auf dem SharePoint. Admins koennen andere User berechtigen.
+ * auf dem SharePoint. Admins können andere User berechtigen.
  *
  * Rollen: Admin (ehem. SuperAdmin), Organizer (ehem. EventAdmin), User
  *
@@ -170,7 +170,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
         if (role === 'Admin') {
           await spService.grantFullControlOnRolesList(userEmail);
           await spService.grantFullControlOnEventsList(userEmail);
-          await spService.grantOrganizerPermissions(userEmail); // Site-Rechte fuer Subsite-Erstellung
+          await spService.grantOrganizerPermissions(userEmail); // Site-Rechte für Subsite-Erstellung
         } else if (role === 'Organizer') {
           await spService.grantReadOnRolesList(userEmail);
           await spService.grantOrganizerPermissions(userEmail);

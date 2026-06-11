@@ -3,9 +3,9 @@
 // Wird AUSSCHLIESSLICH im Demo-Impersonation-Modus client-seitig in die
 // Event-Liste injiziert (siehe EventContext `eventsForConsumer`). Es
 // existiert NICHT in SharePoint — Anmelden/Abmelden sind No-Ops. Zweck:
-// einem Admin im Demo-Modus auf der Register-Seite alle Faehigkeiten eines
+// einem Admin im Demo-Modus auf der Register-Seite alle Fähigkeiten eines
 // Events in ein-/ausklappbaren Bereichen zeigen (Felder aller Typen,
-// Agenda, Transferzeiten, geteilte Kapazitaet, Team-Anmeldung, Sub-Events,
+// Agenda, Transferzeiten, geteilte Kapazität, Team-Anmeldung, Sub-Events,
 // Zweisprachigkeit, Dokumente, Quiz).
 
 import { DeloitteEvent, AgendaItem, TransferTime, EventSpecificField } from '../types';
@@ -44,18 +44,18 @@ function demoCustomFields(): EventSpecificField[] {
       labelEn: 'Preferred name on the badge',
       type: 'text',
       required: true,
-      helpText: 'Freitextfeld — z.B. fuer den Namen, der auf dem Namensschild erscheinen soll.',
+      helpText: 'Freitextfeld — z.B. für den Namen, der auf dem Namensschild erscheinen soll.',
       helpTextEn: 'Free-text field — e.g. the name to print on your badge.',
     },
     {
       id: 'demo_select',
-      label: 'Essenspraeferenz',
+      label: 'Essenspräferenz',
       labelEn: 'Meal preference',
       type: 'select',
       required: true,
       options: ['Fleisch', 'Vegetarisch', 'Vegan'],
       optionsEn: ['Meat', 'Vegetarian', 'Vegan'],
-      helpText: 'Einfachauswahl-Dropdown — genau eine Option waehlbar.',
+      helpText: 'Einfachauswahl-Dropdown — genau eine Option wählbar.',
       helpTextEn: 'Single-select dropdown — exactly one option.',
     },
     {
@@ -65,7 +65,7 @@ function demoCustomFields(): EventSpecificField[] {
       type: 'select',
       multi: true,
       required: false,
-      options: ['Gluten', 'Laktose', 'Nuesse', 'Meeresfruechte'],
+      options: ['Gluten', 'Laktose', 'Nüsse', 'Meeresfrüchte'],
       optionsEn: ['Gluten', 'Lactose', 'Nuts', 'Seafood'],
       helpText: 'Mehrfachauswahl — beliebig viele Optionen ankreuzbar.',
       helpTextEn: 'Multi-select — tick any number of options.',
@@ -87,18 +87,18 @@ function demoCustomFields(): EventSpecificField[] {
       required: true,
       confirmLabel: 'Ich akzeptiere die Teilnahmebedingungen',
       confirmLabelEn: 'I accept the terms of participation',
-      helpText: 'Pflicht-Checkbox mit individuellem Bestaetigungstext.',
+      helpText: 'Pflicht-Checkbox mit individuellem Bestätigungstext.',
       helpTextEn: 'Required checkbox with a custom confirmation label.',
     },
     {
       id: 'demo_hotel',
-      label: 'Hotel benoetigt?',
+      label: 'Hotel benötigt?',
       labelEn: 'Hotel needed?',
       type: 'checkbox',
       required: false,
       confirmLabel: 'Ja, ich brauche ein Hotelzimmer',
       confirmLabelEn: 'Yes, I need a hotel room',
-      helpText: 'Steuerfeld fuer die folgende Sichtbarkeitsbedingung.',
+      helpText: 'Steuerfeld für die folgende Sichtbarkeitsbedingung.',
       helpTextEn: 'Controls the visibility of the next field.',
     },
     {
@@ -107,7 +107,7 @@ function demoCustomFields(): EventSpecificField[] {
       labelEn: 'Preferred roommate',
       type: 'roommate',
       required: false,
-      helpText: 'Personen-Picker (Roommate) — erscheint nur, wenn „Hotel benoetigt?" angehakt ist. Die gewaehlte Person bekaeme im echten Event eine Info-Mail.',
+      helpText: 'Personen-Picker (Roommate) — erscheint nur, wenn „Hotel benötigt?" angehakt ist. Die gewählte Person bekäme im echten Event eine Info-Mail.',
       helpTextEn: 'Roommate picker — only shown when „Hotel needed?" is ticked. In a real event the selected person would get a notification email.',
       showIf: { fieldId: 'demo_hotel', values: ['true'] },
     },
@@ -126,7 +126,7 @@ function demoCustomFields(): EventSpecificField[] {
       labelEn: 'Running experience',
       type: 'select',
       required: false,
-      options: ['Anfaenger:in', 'Fortgeschritten', 'Profi'],
+      options: ['Anfänger:in', 'Fortgeschritten', 'Profi'],
       optionsEn: ['Beginner', 'Intermediate', 'Pro'],
       helpText: 'Einfaches Dropdown.',
       helpTextEn: 'Simple dropdown.',
@@ -138,7 +138,7 @@ function demoAgenda(): AgendaItem[] {
   const day = ymdInDays(14);
   return [
     { id: 'demo_ag_1', date: day, time: '09:00', endTime: '09:30', icon: 'Coffee', title: 'Ankunft & Registrierung', description: 'Check-in am Empfang, Badge abholen.' },
-    { id: 'demo_ag_2', date: day, time: '09:30', endTime: '10:30', icon: 'Megaphone', title: 'Keynote', description: 'Begruessung und Ausblick.' },
+    { id: 'demo_ag_2', date: day, time: '09:30', endTime: '10:30', icon: 'Megaphone', title: 'Keynote', description: 'Begrüßung und Ausblick.' },
     { id: 'demo_ag_3', date: day, time: '10:30', endTime: '12:00', icon: 'People', title: 'Workshops', description: 'Parallele Sessions in Gruppen.' },
     { id: 'demo_ag_4', date: day, time: '12:00', endTime: '13:00', icon: 'Food', title: 'Mittagessen', description: 'Buffet im Atrium.' },
     { id: 'demo_ag_5', date: day, time: '13:00', endTime: '17:00', icon: 'Running', title: 'Lauf / Aktivprogramm', description: 'B2Run-Strecke oder Spaziergang.' },
@@ -149,12 +149,12 @@ function demoTransfers(): TransferTime[] {
   const day = ymdInDays(14);
   return [
     { id: 'demo_tr_1', location: 'Hauptbahnhof', meetingPoint: 'Gleis 1, Treffpunkt-Schild', address: 'Bahnhofsplatz 1', date: day, departureTime: '08:00', arrivalTime: '08:45', description: 'Shuttle-Bus zum Veranstaltungsort.' },
-    { id: 'demo_tr_2', location: 'Veranstaltungsort', meetingPoint: 'Haupteingang', address: 'Eventstrasse 5', date: day, departureTime: '18:00', arrivalTime: '18:45', description: 'Rueckfahrt zum Hauptbahnhof.' },
+    { id: 'demo_tr_2', location: 'Veranstaltungsort', meetingPoint: 'Haupteingang', address: 'Eventstrasse 5', date: day, departureTime: '18:00', arrivalTime: '18:45', description: 'Rückfahrt zum Hauptbahnhof.' },
   ];
 }
 
 // Ein Sub-Event (Networking-Dinner) mit eigenen Feldern, damit die
-// Sub-Event-Auswahl + die Pro-Sub-Event-Rueckfragen demonstriert werden.
+// Sub-Event-Auswahl + die Pro-Sub-Event-Rückfragen demonstriert werden.
 function demoSubEvents(parentId: string): DeloitteEvent[] {
   return [
     {
@@ -188,7 +188,7 @@ function demoSubEvents(parentId: string): DeloitteEvent[] {
       eventSpecificFields: [
         {
           id: 'demo_dinner_drink',
-          label: 'Getraenkewunsch',
+          label: 'Getränkewunsch',
           labelEn: 'Drink preference',
           type: 'select',
           required: false,
@@ -204,10 +204,10 @@ function demoSubEvents(parentId: string): DeloitteEvent[] {
   ];
 }
 
-// v17.26 / v18: Deterministische synthetische Teilnehmerliste fuer das
+// v17.26 / v18: Deterministische synthetische Teilnehmerliste für das
 // Demo-Event, damit der Admin/Organizer unter „Organizer & Events" die
 // Teilnehmer-Verwaltung mit echten Daten durchspielen kann (~20 Angemeldete,
-// ein paar Abgemeldete, zwei Warteliste-Eintraege, ein Team). Rein
+// ein paar Abgemeldete, zwei Warteliste-Einträge, ein Team). Rein
 // client-seitig — kein SharePoint.
 const DEMO_FIRST_NAMES = ['Anna', 'Ben', 'Clara', 'David', 'Eva', 'Felix', 'Greta', 'Hannes', 'Ida', 'Jonas', 'Klara', 'Lukas', 'Mia', 'Noah', 'Olivia', 'Paul', 'Quirin', 'Rosa', 'Sophie', 'Tom', 'Ulrike', 'Viktor', 'Wanda', 'Xaver', 'Yara', 'Zoe'];
 const DEMO_LAST_NAMES = ['Müller', 'Schmidt', 'Schneider', 'Fischer', 'Weber', 'Meyer', 'Wagner', 'Becker', 'Schulz', 'Hoffmann', 'Koch', 'Bauer', 'Richter', 'Klein', 'Wolf', 'Schröder', 'Neumann', 'Braun', 'Werner', 'Krüger', 'Hofmann', 'Hartmann', 'Lange', 'Schmitt', 'Krause', 'Meier'];
@@ -235,31 +235,31 @@ export function buildDemoRegistrations(): SPRegistration[] {
     return d.toISOString();
   };
   // Roommate-Paare (gegenseitig → „Match"). Nur gerade Indizes (die haben
-  // Hotel=true, daher ist das showIf-abhaengige Roommate-Feld sichtbar):
+  // Hotel=true, daher ist das showIf-abhängige Roommate-Feld sichtbar):
   // 0↔2, 4↔6, 8↔10, 12↔14, 16↔18.
   const roommatePartner = (i: number): number => ((i / 2) % 2 === 0 ? i + 2 : i - 2);
   const MEALS = ['Vegetarisch', 'Fleisch', 'Vegan'];
-  const ALLERGIES = [['Gluten', 'Laktose'], [], ['Nuesse'], ['Meeresfruechte', 'Gluten']];
-  const RUN_LEVELS = ['Anfaenger:in', 'Fortgeschritten', 'Profi'];
+  const ALLERGIES = [['Gluten', 'Laktose'], [], ['Nüsse'], ['Meeresfrüchte', 'Gluten']];
+  const RUN_LEVELS = ['Anfänger:in', 'Fortgeschritten', 'Profi'];
 
   let tid = 1;
   // 20 Angemeldete (= voll bei maxParticipants 20), abwechselnd Gruppe A/B,
-  // ALLE Custom-Fields mit Demo-Daten befuellt.
+  // ALLE Custom-Fields mit Demo-Daten befüllt.
   for (let i = 0; i < 20; i++) {
     const starter = i % 2 === 0 ? 'Durchstarter' : 'Funstarter'; // gerade = Gruppe A
     const hotel = i % 2 === 0; // gerade Indizes brauchen Hotel → Roommate sichtbar
     const cd: Record<string, string> = {
       demo_text: demoFirst(i), // Wunschname auf dem Badge
-      demo_select: MEALS[i % MEALS.length], // Essenspraeferenz
+      demo_select: MEALS[i % MEALS.length], // Essenspräferenz
       demo_multi: ALLERGIES[i % ALLERGIES.length].join(' | '), // Allergien (Multi)
       demo_number: String(i % 3), // Anzahl Begleitpersonen (0..2)
       demo_checkbox: 'true', // Teilnahmebedingungen
-      demo_hotel: hotel ? 'true' : 'false', // Hotel benoetigt?
+      demo_hotel: hotel ? 'true' : 'false', // Hotel benötigt?
       demo_user: pickerValue((i + 3) % 20), // Ansprechpartner:in im Team
     };
-    // Roommate nur wenn Hotel benoetigt (showIf demo_hotel=true) → gegenseitig.
+    // Roommate nur wenn Hotel benötigt (showIf demo_hotel=true) → gegenseitig.
     if (hotel) cd.demo_roommate = pickerValue(roommatePartner(i));
-    // Gruppen-A-Feld (Lauferfahrung) nur fuer Durchstarter.
+    // Gruppen-A-Feld (Lauferfahrung) nur für Durchstarter.
     if (starter === 'Durchstarter') cd.demo_group_a_field = RUN_LEVELS[i % RUN_LEVELS.length];
 
     const row: SPRegistration = {
@@ -281,14 +281,14 @@ export function buildDemoRegistrations(): SPRegistration[] {
     // „Registriert von" demonstrieren: eine Anmeldung stellvertretend durch
     // einen Organizer angelegt.
     if (i === 5) { row.RegisteredByName = 'Beispiel, Anna'; row.RegisteredByEmail = 'anna.beispiel@deloitte.de'; }
-    // Nachrueck-Audit demonstrieren: die letzten zwei Aktiven sind von der
-    // Warteliste nachgerueckt und haben je eine abgemeldete Person ersetzt.
+    // Nachrück-Audit demonstrieren: die letzten zwei Aktiven sind von der
+    // Warteliste nachgerückt und haben je eine abgemeldete Person ersetzt.
     if (i === 18) { row.PromotedDate = mkDate(17); row.ReplacedParticipantEmail = demoEmail(22); }
     if (i === 19) { row.PromotedDate = mkDate(18); row.ReplacedParticipantEmail = demoEmail(23); }
     rows.push(row);
   }
-  // 2 Warteliste-Eintraege (konsistent: Event ist mit 20/20 voll), ebenfalls
-  // mit Custom-Daten gefuellt.
+  // 2 Warteliste-Einträge (konsistent: Event ist mit 20/20 voll), ebenfalls
+  // mit Custom-Daten gefüllt.
   for (let k = 0; k < 2; k++) {
     const i = 20 + k;
     rows.push({
@@ -314,7 +314,7 @@ export function buildDemoRegistrations(): SPRegistration[] {
       }),
     });
   }
-  // 3 Abgemeldete — zwei davon wurden durch die Nachruecker (i=18/19) ersetzt.
+  // 3 Abgemeldete — zwei davon wurden durch die Nachrücker (i=18/19) ersetzt.
   for (let k = 0; k < 3; k++) {
     const i = 22 + k;
     const row: SPRegistration = {
@@ -338,7 +338,7 @@ export function buildDemoRegistrations(): SPRegistration[] {
 }
 
 /**
- * Synthetische Eigen-Anmeldung des Demo-Users fuer die „Meine Events"-Ansicht.
+ * Synthetische Eigen-Anmeldung des Demo-Users für die „Meine Events"-Ansicht.
  * v18: wird im Demo-Modus IMMER angezeigt (nicht an eine echte Anmeldung
  * gekoppelt — die Register-Anmeldung ist im Demo bewusst deaktiviert). Zeigt,
  * wie eine Anmeldung in „Meine Events" aussieht: Team-Badge, Custom-Field-
@@ -411,7 +411,7 @@ export function buildDemoShowcaseEvents(locale: 'de' | 'en' = 'de'): DeloitteEve
     allowAttendeeUpload: true,
     attendeeUploadLabel: isDe ? 'Dokument hochladen (Demo)' : 'Upload document (demo)',
     attendeeUploadHint: isDe ? 'Hier könntest du z.B. einen Nachweis hochladen.' : 'You could upload a proof document here.',
-    // v18: Standardmaessig EINE Teilnehmergruppe (keine geteilte Kapazitaet).
+    // v18: Standardmäßig EINE Teilnehmergruppe (keine geteilte Kapazität).
     // Die „zwei Gruppen"-Funktion wird auf der Register-Seite als
     // einklappbarer Showcase-Bereich illustriert, nicht als Live-Split.
     // v18.6: Team-Anmeldung im Demo-Event deaktiviert (auf Wunsch — keine

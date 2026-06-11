@@ -1,7 +1,7 @@
 /**
- * Registrierungsseite fuer ein einzelnes Event
+ * Registrierungsseite für ein einzelnes Event
  *
- * Drei-Spalten-Layout: Event-Info | persoenliche Daten | eventspezifische Felder
+ * Drei-Spalten-Layout: Event-Info | persönliche Daten | eventspezifische Felder
  * Speichert die Registrierung in der SharePoint-Teilnehmerliste des Events.
  */
 
@@ -138,7 +138,7 @@ export default function RegistrationPage(): React.ReactElement {
   const tEvent = React.useCallback((key: string): string => {
     return appTranslations[eventLocale][key] || appTranslations['en'][key] || appTranslations['de'][key] || t(key) || key;
   }, [eventLocale, t]);
-  // v17.20: Lookup-Helfer fuer die EN-Varianten eines Custom-Fields. Greift
+  // v17.20: Lookup-Helfer für die EN-Varianten eines Custom-Fields. Greift
   // nur, wenn der Bilingual-Toggle des Events an ist UND die App-Locale des
   // Teilnehmers `en` ist. Sonst still Fallback auf den DE-Wert. Index-Mapping
   // der Optionen ist positional — DE-Option i ↔ EN-Option i.
@@ -146,10 +146,10 @@ export default function RegistrationPage(): React.ReactElement {
   // Werte bleiben in JEDEM Fall die kanonischen DE-Originale: Single-Select
   // rendert `<option value={DE-Wert}>{EN-Anzeige}</option>`, Multi-Select gibt
   // `options={field.options}` (DE) als Wert weiter und nutzt `optionLabels`
-  // nur fuer die Darstellung. Deshalb ist auch der „Register-for-Other"-Pfad
+  // nur für die Darstellung. Deshalb ist auch der „Register-for-Other"-Pfad
   // unkritisch: meldet ein EN-Organizer eine DE-Person an, sieht der Organizer
-  // die EN-Labels (er fuellt das Formular), gespeichert wird aber der
-  // DE-Wert — die Zielperson und die Bestaetigungs-Mail (event.emailLanguage)
+  // die EN-Labels (er füllt das Formular), gespeichert wird aber der
+  // DE-Wert — die Zielperson und die Bestätigungs-Mail (event.emailLanguage)
   // bekommen also keine sprachlich falschen Daten.
   const useEnVariants = !!event?.bilingualFields && locale === 'en';
   const pickFieldLabel = React.useCallback((f: EventSpecificField): string =>
@@ -171,8 +171,8 @@ export default function RegistrationPage(): React.ReactElement {
   // Per-Event-Organizer-Check: ist der eingeloggte User Haupt- ODER Co-Organizer
   // dieses Events? Nur dann darf er a) nach Deadline registrieren und b)
   // "Register for another person" nutzen. Ein Organizer von EVENT A darf NICHT
-  // fuer EVENT B solche Admin-Aktionen ausfuehren. Admin darf global alles.
-  // v19.6: Co-Organizer (event.coOrganizerEmails) zaehlen hier ausdruecklich
+  // für EVENT B solche Admin-Aktionen ausführen. Admin darf global alles.
+  // v19.6: Co-Organizer (event.coOrganizerEmails) zählen hier ausdrücklich
   // mit — vorher sah ein Co-Organizer den „Für andere registrieren"-Button
   // nicht, obwohl er das Event mitorganisiert. Serverseitig wird derselbe
   // Personenkreis in canRegisterForOthers() akzeptiert.
@@ -181,13 +181,13 @@ export default function RegistrationPage(): React.ReactElement {
     event.organizerEmails.some(e => (e || '').toLowerCase() === currentEmailLc) ||
     (event.coOrganizerEmails || []).some(e => (e || '').toLowerCase() === currentEmailLc)
   );
-  const isOrganizer = isEventOrganizer; // alten Namen behalten fuer Referenzen unten
+  const isOrganizer = isEventOrganizer; // alten Namen behalten für Referenzen unten
   const canCreateEvents = isEventOrganizer || isAdmin; // statt tenant-weitem Organizer
 
-  // Assistant-Ausnahme: User mit JobTitle "Assistant" / "Senior Assistant" duerfen
-  // "Register for another person" nutzen, allerdings NUR fuer Director/Partner und
-  // NUR fuer Events fuer die sie sich eh selber anmelden koennten (also nicht nach
-  // Deadline). Der Deadline-Schutz greift automatisch, weil RegistrationPage fuer
+  // Assistant-Ausnahme: User mit JobTitle "Assistant" / "Senior Assistant" dürfen
+  // "Register for another person" nutzen, allerdings NUR für Director/Partner und
+  // NUR für Events für die sie sich eh selber anmelden könnten (also nicht nach
+  // Deadline). Der Deadline-Schutz greift automatisch, weil RegistrationPage für
   // normale User nach Deadline komplett die "closed"-Seite zeigt und gar nicht
   // zum Button-Rendering kommt.
   const currentJobTitleLc = (currentUser.jobTitle || '').toLowerCase();
@@ -232,7 +232,7 @@ export default function RegistrationPage(): React.ReactElement {
     });
 
     // Default: AND (Schnittmenge). Nur OR wenn explizit gesetzt.
-    // Wichtig: wenn nur EIN Filter gesetzt ist, zaehlt nur dieser - egal ob AND/OR.
+    // Wichtig: wenn nur EIN Filter gesetzt ist, zählt nur dieser - egal ob AND/OR.
     const mode = event.filterMode || 'AND';
     let visible: boolean;
     if (mode === 'OR') {
@@ -260,9 +260,9 @@ export default function RegistrationPage(): React.ReactElement {
   // Organizer auf CC).
   const [externalPerson, setExternalPerson] = React.useState(false);
 
-  // Wenn die Seite mit Intent 'register-other' geoeffnet wird (z.B. via "Register another person"
-  // Button auf einer Karte, fuer die der Organizer/Admin schon selbst registriert ist),
-  // direkt in den "Fuer andere registrieren"-Modus springen und Felder leeren.
+  // Wenn die Seite mit Intent 'register-other' geöffnet wird (z.B. via "Register another person"
+  // Button auf einer Karte, für die der Organizer/Admin schon selbst registriert ist),
+  // direkt in den "Für andere registrieren"-Modus springen und Felder leeren.
   React.useEffect(() => {
     if (navIntent === 'register-other' && (canCreateEvents)) {
       setRegisterForOther(true);
@@ -355,8 +355,8 @@ export default function RegistrationPage(): React.ReactElement {
   const [sessionsOnlySubmitted, setSessionsOnlySubmitted] = React.useState(false);
   // v18.67: echtes Anmelde-Ergebnis (Angemeldet/Warteliste) aus der
   // Haupt-Registrierung — das Ergebnis-Modal nutzt das statt der gecachten
-  // isFull-Schaetzung, die nach Cancel/Re-Register veraltet sein konnte und
-  // faelschlich „Warteliste" zeigte, obwohl der User angemeldet wurde.
+  // isFull-Schätzung, die nach Cancel/Re-Register veraltet sein konnte und
+  // fälschlich „Warteliste" zeigte, obwohl der User angemeldet wurde.
   const [submittedAsWaitlist, setSubmittedAsWaitlist] = React.useState(false);
 
   // v11.82: Team-Anmeldung — UI-State.
@@ -379,7 +379,7 @@ export default function RegistrationPage(): React.ReactElement {
   const [teamName, setTeamName] = React.useState('');
   const [teamMembers, setTeamMembers] = React.useState<string[]>([]);
   // v18.12: Custom-Field-Antworten pro Team-Mitglied (Slot-Index → {fieldId: value}).
-  // So kann der Lead z.B. die Essenspraeferenz auch fuer jedes Teammitglied angeben.
+  // So kann der Lead z.B. die Essenspräferenz auch für jedes Teammitglied angeben.
   const [teamMemberFields, setTeamMemberFields] = React.useState<Record<number, Record<string, string>>>({});
   const [teamConsentConfirmed, setTeamConsentConfirmed] = React.useState(false);
   // v15.16: Bei „Für andere registrieren" (registerForOther) braucht es
@@ -410,7 +410,7 @@ export default function RegistrationPage(): React.ReactElement {
       setTeamMemberFields({});
     }
   }, [isTeamMode, teamSize]);
-  // Parser fuer People-Picker-Values im Format „DisplayName <email>".
+  // Parser für People-Picker-Values im Format „DisplayName <email>".
   const parseTeamMember = (v: string): { displayName: string; email: string } | null => {
     const m = (v || '').match(/^(.+?)\s*<([^>]+@[^>]+)>\s*$/);
     if (!m) return null;
@@ -419,15 +419,15 @@ export default function RegistrationPage(): React.ReactElement {
   const teamMembersParsed = teamMembers.map(parseTeamMember);
   // v18.12: Custom-Fields, die pro Team-Mitglied abgefragt werden — alle
   // event-spezifischen Felder AUSSER Personen-Pickern (user/roommate) und
-  // B2Run-Spezialfeldern; gruppen-spezifische Felder nur „fuer alle".
+  // B2Run-Spezialfeldern; gruppen-spezifische Felder nur „für alle".
   const teamMemberApplicableFields = (event?.eventSpecificFields || []).filter(f =>
     f.type !== 'user' && f.type !== 'roommate' &&
     f.id !== 'b2run_startblock' && f.id !== 'b2run_mobilnummer' &&
     (!f.onlyForGroup || f.onlyForGroup === 'all')
   );
   // Validation des Team-Submits — Lead-Email darf nicht in der Member-Liste
-  // sein, Member-Emails muessen untereinander disjunkt sein, im Pflicht-Modus
-  // muessen alle Slots gefuellt sein.
+  // sein, Member-Emails müssen untereinander disjunkt sein, im Pflicht-Modus
+  // müssen alle Slots gefüllt sein.
   const teamValidation = ((): { ok: boolean; reason?: string } => {
     if (!isTeamMode) return { ok: true };
     const leadEmail = (email || '').trim().toLowerCase();
@@ -466,7 +466,7 @@ export default function RegistrationPage(): React.ReactElement {
     setPendingJoinTeam(null); // v18.73: Vormerkung beim Event-/Modus-Wechsel zurücksetzen
     if (!event) return;
     if (!event.teamRegistrationEnabled || !event.teamOpenSlotsVisible) return;
-    if (registerForOther) return; // Stellvertreter-Modus nicht unterstuetzt fuer Beitritt
+    if (registerForOther) return; // Stellvertreter-Modus nicht unterstützt für Beitritt
     (async () => {
       try {
         const list = await listOpenTeamsForEvent(event.id);
@@ -575,15 +575,15 @@ export default function RegistrationPage(): React.ReactElement {
   }, [event?.imageUrl]);
 
   // B2Run Split-Capacity: aktuelle Auslastung pro Typ laden
-  // Split-UI nur wenn BEIDE Starter-Typen verfuegbar sind (>0). Wenn der Admin eine
-  // Kapazitaet auf 0 gesetzt hat, gibt es faktisch nur einen Typ — dann keine Auswahl
-  // anzeigen und den einzig verfuegbaren Typ automatisch setzen (siehe useEffect unten).
+  // Split-UI nur wenn BEIDE Starter-Typen verfügbar sind (>0). Wenn der Admin eine
+  // Kapazität auf 0 gesetzt hat, gibt es faktisch nur einen Typ — dann keine Auswahl
+  // anzeigen und den einzig verfügbaren Typ automatisch setzen (siehe useEffect unten).
   const durchCap = (event && typeof event.durchstarterCapacity === 'number') ? event.durchstarterCapacity : 0;
   const funCap = (event && typeof event.funstarterCapacity === 'number') ? event.funstarterCapacity : 0;
   const isSplitGroup = !!event && durchCap > 0 && funCap > 0;
-  // v10.20: frei waehlbare Bezeichnungen aus dem Event laden, mit Fallback auf
+  // v10.20: frei wählbare Bezeichnungen aus dem Event laden, mit Fallback auf
   // die historischen B2Run-Defaults 'Durchstarter' / 'Funstarter'. Die internen
-  // Werte fuer SP-Persistenz (StarterType-Spalte) bleiben unveraendert — das
+  // Werte für SP-Persistenz (StarterType-Spalte) bleiben unverändert — das
   // Label ist reines UI.
   const splitLabelA = (event?.splitLabelA && event.splitLabelA.trim()) || 'Durchstarter';
   const splitLabelB = (event?.splitLabelB && event.splitLabelB.trim()) || 'Funstarter';
@@ -591,9 +591,9 @@ export default function RegistrationPage(): React.ReactElement {
     ? '' // kein B2Run-Event ueberhaupt
     : (durchCap > 0 && funCap <= 0) ? 'Durchstarter'
     : (funCap > 0 && durchCap <= 0) ? 'Funstarter'
-    : ''; // beide > 0 -> User muss waehlen (Split-UI)
+    : ''; // beide > 0 -> User muss wählen (Split-UI)
 
-  // Auto-Set: wenn nur ein Starter-Typ verfuegbar ist, direkt diesen Typ als
+  // Auto-Set: wenn nur ein Starter-Typ verfügbar ist, direkt diesen Typ als
   // preferredStarterType speichern — damit registerForEvent ihn trotzdem auf den
   // Teilnehmer-Eintrag schreiben kann, obwohl das Split-UI nicht angezeigt wird.
   React.useEffect(() => {
@@ -674,7 +674,7 @@ export default function RegistrationPage(): React.ReactElement {
     );
   }
 
-  // Registrierungs-Deadline pruefen
+  // Registrierungs-Deadline prüfen
   const isDeadlinePassed = event.registrationDeadline && new Date(event.registrationDeadline) < new Date();
 
   if (isDeadlinePassed && !isOrganizer && !isAdmin) {
@@ -718,10 +718,10 @@ export default function RegistrationPage(): React.ReactElement {
   // keine Session-Auswahl (siehe Render).
   const isSessionsOnlyMode = !willRegisterParent && !registerForOther && !parentAlreadyRegistered;
 
-  // v9.22: Warning-Modal fuer externe Email-Anmeldung (durch Organizer fuer
+  // v9.22: Warning-Modal für externe Email-Anmeldung (durch Organizer für
   // Drittpersonen die noch kein Deloitte-Postfach haben). Default: nicht
-  // erlaubt; Organizer kann nach Bestaetigung trotzdem fortfahren — die
-  // Bestaetigungsmail geht dann nicht an die externe Adresse, sondern an
+  // erlaubt; Organizer kann nach Bestätigung trotzdem fortfahren — die
+  // Bestätigungsmail geht dann nicht an die externe Adresse, sondern an
   // den Organizer mit Datenschutz-Hinweis-Header.
   const [externalEmailWarning, setExternalEmailWarning] = React.useState(false);
   // v18.75: Sicherheitshinweis vor dem Absenden (pro Event konfiguriert). Der
@@ -739,14 +739,14 @@ export default function RegistrationPage(): React.ReactElement {
   // Co-Organizer oder Assistenz) selbst auf CC der Bestätigungs-Mail gesetzt
   // werden soll. ccSelfDecidedRef merkt sich, dass die Frage in diesem
   // Submit-Durchlauf bereits beantwortet wurde (analog confirmDialogConfirmedRef);
-  // ccSelfRef haelt die Entscheidung (true = auf CC).
+  // ccSelfRef hält die Entscheidung (true = auf CC).
   const [ccSelfModalOpen, setCcSelfModalOpen] = React.useState(false);
   const ccSelfDecidedRef = React.useRef(false);
   const ccSelfRef = React.useRef(false);
 
   const handleSubmit = async (): Promise<void> => {
     // v17.25: Demo-Showcase-Event — keine echte Anmeldung. Freundlicher
-    // Hinweis statt SP-Roundtrip; der Context-Guard wuerde ohnehin no-oppen.
+    // Hinweis statt SP-Roundtrip; der Context-Guard würde ohnehin no-oppen.
     if (event?.isDemoShowcase) {
       setError(locale === 'de'
         ? 'Dies ist ein Demo-Event — es wird keine echte Anmeldung gespeichert. Du kannst die Bereiche oben frei ausprobieren.'
@@ -862,15 +862,15 @@ export default function RegistrationPage(): React.ReactElement {
       || !!pendingJoinTeam;
     if (willCollectMainFields) {
       // v11.80: Anrede ist nur dann Pflichtfeld, wenn das Event das
-      // Anrede-Dropdown auch tatsaechlich abfragt (event.askSalutation === true).
+      // Anrede-Dropdown auch tatsächlich abfragt (event.askSalutation === true).
       // Sonst wird die Anrede gar nicht gerendert und bleibt leer.
       if (event.askSalutation && !salutation) {
         setError(t('reg.requiredfields'));
         return;
       }
 
-      // Pflicht-Custom-Fields validieren. Checkbox-Pflichtfelder muessen 'true' sein,
-      // alle anderen duerfen nach trim nicht leer sein.
+      // Pflicht-Custom-Fields validieren. Checkbox-Pflichtfelder müssen 'true' sein,
+      // alle anderen dürfen nach trim nicht leer sein.
       // B2Run: Mobilnummer ist nur Pflicht wenn Infoservice aktiviert; ansonsten
       // gilt das Feld als versteckt und wird uebersprungen.
       const missingRequired = event.eventSpecificFields
@@ -879,8 +879,8 @@ export default function RegistrationPage(): React.ReactElement {
             if (eventSpecific['b2run_infoservice'] !== 'true') return false;
             return !eventSpecific[f.id]?.trim();
           }
-          // v7.21: Felder mit nicht erfuellter Sichtbarkeitsbedingung sind
-          // ausgeblendet und duerfen die Validation nicht blockieren.
+          // v7.21: Felder mit nicht erfüllter Sichtbarkeitsbedingung sind
+          // ausgeblendet und dürfen die Validation nicht blockieren.
           if (f.showIf && f.showIf.fieldId) {
             const raw = (eventSpecific[f.showIf.fieldId] || '').trim();
             const answers = !raw
@@ -948,7 +948,7 @@ export default function RegistrationPage(): React.ReactElement {
 
     // Assistant-Ausnahme: defense-in-depth check beim Submit — Target muss
     // Partner oder Director sein. Der Fall tritt nur ein wenn der User weder
-    // Organizer des Events noch Admin ist, aber via Assistant-Ausnahme fuer
+    // Organizer des Events noch Admin ist, aber via Assistant-Ausnahme für
     // eine andere Person registrieren will. JobTitle entweder aus dem zuletzt
     // geladenen Search-Result oder per Live-Lookup.
     if (registerForOther && isAssistant && !canCreateEvents) {
@@ -1168,7 +1168,7 @@ export default function RegistrationPage(): React.ReactElement {
 
       // Verfeinerte Progress-Stufen je nach Anzahl Sub-Events:
       // - parent: 5 → 30 → 50 (wenn Parent-Anmeldung lief)
-      // - sub-events: 50 → 90 (gleichmaessig verteilt)
+      // - sub-events: 50 → 90 (gleichmäßig verteilt)
       // - finalize: 90 → 100
       const subOps = childEvents.filter(ce => {
         const wasReg = sessionMeta[ce.id]?.wasRegistered;
@@ -1178,13 +1178,13 @@ export default function RegistrationPage(): React.ReactElement {
 
       // 1) Haupt-Event anmelden (nur wenn Checkbox an und noch nicht angemeldet).
       // v15.25: Im subEventsOnlyMode wird die Parent-Anmeldung trotzdem
-      // durchgefuehrt — als „Schatten-Registrierung" rein zur Daten-
-      // Vollstaendigkeit. Damit hat jeder Teilnehmer auch im Parent-
+      // durchgeführt — als „Schatten-Registrierung" rein zur Daten-
+      // Vollständigkeit. Damit hat jeder Teilnehmer auch im Parent-
       // Teilnehmer-Schema eine Zeile mit den Antworten auf die Hauptevent-
       // Custom-Fields (Food Preferences, Hotel, Travel etc.). Mails +
-      // Outlook werden fuer diese Schatten-Anmeldung in EventContext
-      // unterdrueckt — der User soll keine Bestaetigung fuers Hauptevent
-      // bekommen, da er da gar nicht „teilnimmt", sondern nur fuer Sub-
+      // Outlook werden für diese Schatten-Anmeldung in EventContext
+      // unterdrückt — der User soll keine Bestätigung fürs Hauptevent
+      // bekommen, da er da gar nicht „teilnimmt", sondern nur für Sub-
       // Events.
       const isSubOnlyMode = !!(event && event.subEventsOnlyMode);
       const sessionsBeingAdded = childEvents.some(ce => selectedSessions.has(ce.id) && !sessionMeta[ce.id]?.wasRegistered);
@@ -1210,7 +1210,7 @@ export default function RegistrationPage(): React.ReactElement {
         parentOk = parentResult.ok;
         if (parentOk) {
           anySuccess = true;
-          // v18.67: echten Status fuers Ergebnis-Modal merken (nicht isFull).
+          // v18.67: echten Status fürs Ergebnis-Modal merken (nicht isFull).
           setSubmittedAsWaitlist(parentResult.status === 'Warteliste');
         }
         // v19.6: Bei stellvertretender Anmeldung die personenbezogene Meldung
@@ -1274,7 +1274,7 @@ export default function RegistrationPage(): React.ReactElement {
           // v11.34: Anrede (salutation) zusätzlich mitgeben — vorher fehlte sie
           // bei Sub-Event-Anmeldungen, die Teilnehmerliste hatte dann „-" in
           // der Anrede-Spalte. Salutation kommt aus dem Hauptformular und ist
-          // pro User identisch fuer alle Sub-Event-Anmeldungen.
+          // pro User identisch für alle Sub-Event-Anmeldungen.
           // v15.25: Im subEventsOnlyMode landen die Hauptevent-CF-Antworten
           // jetzt in der Schatten-Parent-Registrierung (s.o.) — die Sub-
           // Events bekommen nur ihre eigenen CFs aus dem Modal-Flow.
@@ -1338,11 +1338,11 @@ export default function RegistrationPage(): React.ReactElement {
     } finally {
       setSubmitProgress(100);
       setSubmitProgressLabel(locale === 'de' ? 'Fertig!' : 'Done!');
-      // v19.6: CC-Frage-Entscheidung zuruecksetzen, damit der naechste
-      // Submit-Durchlauf (z.B. naechste stellvertretende Anmeldung) wieder fragt.
+      // v19.6: CC-Frage-Entscheidung zurücksetzen, damit der nächste
+      // Submit-Durchlauf (z.B. nächste stellvertretende Anmeldung) wieder fragt.
       ccSelfDecidedRef.current = false;
       ccSelfRef.current = false;
-      // Kleine Verzoegerung damit der User die 100%-Anzeige kurz sieht
+      // Kleine Verzögerung damit der User die 100%-Anzeige kurz sieht
       // bevor das Overlay wieder verschwindet.
       setTimeout(() => {
         setIsSubmitting(false);
@@ -1669,7 +1669,7 @@ export default function RegistrationPage(): React.ReactElement {
   // groupSpecificFields- bzw. generalFields-Konstanten.
   // v13.2: fRaw jetzt typsicher als EventSpecificField (vorher any).
   const renderRegField = (fRaw: EventSpecificField, store?: Record<string, string>, setStore?: (next: Record<string, string>) => void): React.ReactElement => {
-    // v18.12: optionaler Wert-Store — fuer die Custom-Fields pro Team-Mitglied.
+    // v18.12: optionaler Wert-Store — für die Custom-Fields pro Team-Mitglied.
     // Default = eventSpecific/setEventSpecific (Lead bzw. Solo-Anmeldung).
     const vals = store || eventSpecific;
     const setVals = setStore || setEventSpecific;
@@ -1697,7 +1697,7 @@ export default function RegistrationPage(): React.ReactElement {
     if ((fRaw.id === 'b2run_laufshirt' || /laufshirt/i.test(fRaw.label || '')) && !fRaw.required) {
       field = { ...field, required: true };
     }
-    // v17.20: vor jedem Render die EN-Variante einziehen, sofern verfuegbar.
+    // v17.20: vor jedem Render die EN-Variante einziehen, sofern verfügbar.
     const displayLabel = pickFieldLabel(field);
     const displayHelp = pickFieldHelp(field);
     const displayConfirmLabel = pickFieldConfirmLabel(field);
@@ -1728,7 +1728,7 @@ export default function RegistrationPage(): React.ReactElement {
         {field.required && <span className="required" style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>}
         {displayLabel}
         {/* v9.17: konsistenter InfoTooltip statt simples i-Icon —
-            gibt schoenes Hover-Popover mit der vom Organizer
+            gibt schönes Hover-Popover mit der vom Organizer
             beim Event-Anlegen hinterlegten Beschreibung.
             v18.18: nur im 'tooltip'-Modus; 'inline' rendert darunter. */}
         {displayHelp && !isInlineHelp && <InfoTooltip text={displayHelp} />}
@@ -1746,7 +1746,7 @@ export default function RegistrationPage(): React.ReactElement {
         const raw = (vals[field.id] || '').trim();
         const selected = raw ? raw.split(sep).map(s => s.trim()).filter(Boolean) : [];
         const isErr = !!(showErrors && field.required && selected.length === 0);
-        // v17.20: Anzeige-Labels fuer den EN-Modus mappen. Der gespeicherte
+        // v17.20: Anzeige-Labels für den EN-Modus mappen. Der gespeicherte
         // Wert bleibt weiterhin der DE-Wert (positional gemappt), damit alle
         // anderen Stellen (Mails, Excel-Export, Admin-Center) konsistent
         // bleiben — wir tauschen ausschliesslich das Display-Label.
@@ -1773,7 +1773,7 @@ export default function RegistrationPage(): React.ReactElement {
     ) : field.type === 'user' || field.type === 'roommate' ? (
       // v7.17: 'roommate' nutzt denselben Picker wie 'user' — der
       // einzige Unterschied ist dass 'roommate' beim Anmelden
-      // automatisch eine Zimmerpartner-Mail an die ausgewaehlte
+      // automatisch eine Zimmerpartner-Mail an die ausgewählte
       // Person triggert (siehe EventContext). 'user' ist der
       // generische Personen-Picker ohne Mail-Versand.
       <UserFieldPicker
@@ -1826,7 +1826,7 @@ export default function RegistrationPage(): React.ReactElement {
             {/* v11.94: Organizer kann den Text neben der Checkbox im Wizard
                 pro Feld setzen (field.confirmLabel). Default: „Ja, bestätigen".
                 v17.20: pickFieldConfirmLabel zieht im EN-Modus den
-                confirmLabelEn-Wert; faellt sonst auf den DE-Wert. */}
+                confirmLabelEn-Wert; fällt sonst auf den DE-Wert. */}
             {(displayConfirmLabel && displayConfirmLabel.trim())
               || (eventLocale === 'de' ? 'Ja, bestätigen' : 'Yes, confirm')}
           </span>
@@ -1920,11 +1920,11 @@ export default function RegistrationPage(): React.ReactElement {
         }}>
           {t('reg.locationnotice')}
           {event && event.locationAudience.length > 0 && <> {t('reg.locationfilter')}: <strong>{event.locationAudience.join(', ')}</strong>.</>}
-          {/* v9.17: bei Einzel-E-Mail-Whitelists in audienceFilter wuerden bei
-              groesseren Verteilern (50+ Adressen) der Banner zugekleistert.
+          {/* v9.17: bei Einzel-E-Mail-Whitelists in audienceFilter würden bei
+              größeren Verteilern (50+ Adressen) der Banner zugekleistert.
               Statt alle Mails auflisten: nur die Anzahl + die ersten 3
               Adressen zeigen, der Rest als "+N weitere". Gruppen-/Group-Namen
-              (ohne "@") werden weiterhin alle aufgefuehrt — die sind kurz. */}
+              (ohne "@") werden weiterhin alle aufgeführt — die sind kurz. */}
           {event && event.audienceFilter && event.audienceFilter.length > 0 && (() => {
             const items = event.audienceFilter;
             const emails = items.filter(s => s.includes('@'));
@@ -1943,9 +1943,9 @@ export default function RegistrationPage(): React.ReactElement {
           {' '}{t('reg.yourlocation')}: {currentUser.location || t('reg.unknown')}.
         </div>
       )}
-      {/* Deadline-Banner fuer Organizer/Admin: die Registrierungsfrist ist abgelaufen,
+      {/* Deadline-Banner für Organizer/Admin: die Registrierungsfrist ist abgelaufen,
           das Formular wird aber trotzdem angezeigt (Admin/Organizer darf weiter registrieren).
-          Der Ton entspricht dem Location-Banner: "als normaler User koenntest du dich nicht registrieren". */}
+          Der Ton entspricht dem Location-Banner: "als normaler User könntest du dich nicht registrieren". */}
       {isDeadlinePassed && (isOrganizer || isAdmin) && (
         <div style={{
           padding: '10px 16px', marginBottom: 16, borderRadius: 'var(--dex-radius-md)',
@@ -1959,8 +1959,8 @@ export default function RegistrationPage(): React.ReactElement {
         </div>
       )}
       {/* v11.33: Submit-Overlay mit Spinner + Prozent + Live-Label.
-          Wird waehrend des gesamten Anmelde-Flows (Parent + alle Sub-Events
-          + Bestaetigungen) eingeblendet, sodass der User auch bei langen
+          Wird während des gesamten Anmelde-Flows (Parent + alle Sub-Events
+          + Bestätigungen) eingeblendet, sodass der User auch bei langen
           Submits klares Feedback bekommt. */}
       {isSubmitting && (
         <div
@@ -2054,8 +2054,8 @@ export default function RegistrationPage(): React.ReactElement {
                   : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
                 borderRadius: 'var(--dex-radius)',
                 overflow: 'hidden',
-                // Hochkant: schmal links + volle Karten-Hoehe
-                // Querformat: volle Breite oben, Hoehe richtet sich nach Bild-Aspect (kein Crop)
+                // Hochkant: schmal links + volle Karten-Höhe
+                // Querformat: volle Breite oben, Höhe richtet sich nach Bild-Aspect (kein Crop)
                 ...(imgOrientation === 'portrait'
                   ? { flex: '0 0 220px', alignSelf: 'stretch', minHeight: 360, display: 'flex' }
                   : { width: '100%', display: 'flex', justifyContent: 'center' }),
@@ -2066,7 +2066,7 @@ export default function RegistrationPage(): React.ReactElement {
                   src={cachedImage}
                   alt={event.title}
                   // v11.56: Auch im Portrait-Modus 'contain', damit das Bild
-                  // vollstaendig sichtbar bleibt (vorher wurde der obere
+                  // vollständig sichtbar bleibt (vorher wurde der obere
                   // Bildteil weggecroppt). Hintergrundfarbe der Hülle ist
                   // bereits gray-100 — das ergibt einen sauberen, neutralen
                   // Letterbox-Rahmen statt eines Bildschnitts.
@@ -2173,8 +2173,8 @@ export default function RegistrationPage(): React.ReactElement {
                   )}
                 </div>
               )}
-              {/* Verfuegbare Plaetze anzeigen — nur wenn es eine Obergrenze gibt.
-                  Gilt sowohl fuer normale Deloitte-Events als auch fuer B2Run
+              {/* Verfügbare Plätze anzeigen — nur wenn es eine Obergrenze gibt.
+                  Gilt sowohl für normale Deloitte-Events als auch für B2Run
                   (dort ist maxParticipants = durchCap + funCap). */}
               {event.maxParticipants > 0 && (() => {
                 const free = Math.max(0, event.maxParticipants - (event.currentParticipants || 0));
@@ -2190,8 +2190,8 @@ export default function RegistrationPage(): React.ReactElement {
                 // waiting list"-Block unter der Beschreibung übernimmt das
                 // bereits, sonst doppelte Meldung.
                 if (isFullAll) return null;
-                // v16.2: Bei Team-Event Anzahl freier Teams zusaetzlich
-                // ausgeben (Plaetze / TeamSize), damit die Quoten-Anzeige
+                // v16.2: Bei Team-Event Anzahl freier Teams zusätzlich
+                // ausgeben (Plätze / TeamSize), damit die Quoten-Anzeige
                 // bei z.B. „80 / 80" auch klar macht „= 20 Teams frei".
                 const isTeamEvent = !!(event.teamRegistrationEnabled && event.teamSize && event.teamSize > 1);
                 const teamsFree = isTeamEvent ? Math.floor(free / (event.teamSize || 1)) : 0;
@@ -2269,7 +2269,7 @@ export default function RegistrationPage(): React.ReactElement {
               ungleich (links wuchs unbegrenzt, rechts gar nichts) und der
               User musste zwischen Spalten hin- und her-springen. Jetzt sind
               alle Anmelde-Inputs (Sessions, Starter-Typ, Custom-Fields) in
-              einer Spalte gebuendelt. */}
+              einer Spalte gebündelt. */}
           {false && (
             <div style={{ marginTop: 16, border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 16 }}>
               <h4 style={{ marginTop: 0, marginBottom: 4, fontSize: '0.95rem' }}>{t('reg.selection.title') || 'Wofür möchtest du dich anmelden?'}</h4>
@@ -2407,9 +2407,9 @@ export default function RegistrationPage(): React.ReactElement {
                             <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
                               {hasCap && (() => {
                                 // v9.8: Klartext-Anzeige damit der User auf einen Blick
-                                // sieht, wie viele Plaetze noch frei sind. Vorher stand
+                                // sieht, wie viele Plätze noch frei sind. Vorher stand
                                 // dort nur "0/25" ohne Label, was die User-Frage
-                                // "warum steht da 0/25?" ausgeloest hat.
+                                // "warum steht da 0/25?" ausgelöst hat.
                                 const sessionFree = Math.max(0, (ce.maxParticipants || 0) - (meta.count || 0));
                                 return (
                                   <> · <span style={{ color: isSessionFull ? 'var(--dex-red)' : 'inherit', fontWeight: 600 }}>
@@ -2498,7 +2498,7 @@ export default function RegistrationPage(): React.ReactElement {
             steht jetzt immer zuerst die persönliche Daten-Karte, dann die
             event-spezifischen Infos. */}
 
-        {/* Persoenliche Daten */}
+        {/* Persönliche Daten */}
         <div className="registration-form">
           {/* v11.97: Section-Header + Register-for-other-Toggle in einer
               Zeile (grünes Section-Header-Pill links, Toggle als Link
@@ -2519,7 +2519,7 @@ export default function RegistrationPage(): React.ReactElement {
                   setPickedUserProfile(null);
                   setOtherConsentConfirmed(false);
                   setExternalPerson(false); // v18.74: Extern-Modus beim Wechsel zurücksetzen
-                  // v19.6: CC-Frage-Entscheidung beim Moduswechsel zuruecksetzen.
+                  // v19.6: CC-Frage-Entscheidung beim Moduswechsel zurücksetzen.
                   ccSelfDecidedRef.current = false;
                   ccSelfRef.current = false;
                   if (!registerForOther) { setFirstName(''); setSurname(''); setEmail(''); setUserSearch(''); setUserResults([]); }
@@ -2649,7 +2649,7 @@ export default function RegistrationPage(): React.ReactElement {
                             uFirstName = parts[0] || '';
                             uSurname = parts.slice(1).join(' ') || '';
                           }
-                          // Assistant-Einschraenkung: User darf nur Partner/Director auswaehlen,
+                          // Assistant-Einschränkung: User darf nur Partner/Director auswählen,
                           // andere Treffer werden grau + nicht-klickbar angezeigt.
                           const assistantOnly = isAssistant && !canCreateEvents;
                           const targetAllowed = !assistantOnly || isAllowedTargetForAssistant(u.jobTitle);
@@ -2686,7 +2686,7 @@ export default function RegistrationPage(): React.ReactElement {
                                     });
                                   }
                                 }).catch(() => { /* silent */ });
-                                // Frueh-Check: bereits angemeldet? Im Verteiler?
+                                // Früh-Check: bereits angemeldet? Im Verteiler?
                                 setThirdPartyCheck(null);
                                 if (event) {
                                   (async () => {
@@ -2736,7 +2736,7 @@ export default function RegistrationPage(): React.ReactElement {
                                       alreadyRegistered,
                                       notInAudience,
                                       // v19.8: Name + Anmeldedatum der bestehenden
-                                      // Registrierung fuer eine konkrete Hinweis-Box.
+                                      // Registrierung für eine konkrete Hinweis-Box.
                                       registeredName: (existing && (existing.ParticipantName || `${existing.Vorname || ''} ${existing.Nachname || ''}`.trim())) || u.displayName || '',
                                       registeredDate: (existing && existing.RegistrationDate) || '',
                                     });
@@ -2976,8 +2976,8 @@ export default function RegistrationPage(): React.ReactElement {
 
             {/* v11.82: Team-Anmeldung-Toggle. Nur sichtbar wenn der Organizer
                 in Schritt 4 die Team-Anmeldung aktiviert hat UND der User sich
-                NICHT für eine andere Person registriert (Team-fuer-Andere wird
-                nicht unterstuetzt — der Stellvertreter-Pfad ist auf eine
+                NICHT für eine andere Person registriert (Team-für-Andere wird
+                nicht unterstützt — der Stellvertreter-Pfad ist auf eine
                 Einzel-Person ausgelegt). */}
             {isTeamCapable && !registerForOther && (
               <div className="form-group" style={{ marginTop: 16, marginBottom: 0 }}>
@@ -3231,7 +3231,7 @@ export default function RegistrationPage(): React.ReactElement {
         )}
 
         {/* Eventspezifische Felder (inkl. Split-Capacity Starter-Typ-Auswahl wenn
-            beide Kapazitaeten > 0; bei nur einem verfuegbaren Typ wird dieser
+            beide Kapazitäten > 0; bei nur einem verfügbaren Typ wird dieser
             automatisch gesetzt und gar nicht angezeigt). v10.20: Sessions-/
             Hauptevent-Auswahl ist hierher gewandert (vorher links unter der
             Event-Karte). */}
@@ -3255,7 +3255,7 @@ export default function RegistrationPage(): React.ReactElement {
               <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
                 <span style={{ color: 'var(--dex-red, #da291c)', fontWeight: 700, marginRight: 2 }}>*</span> = {t('reg.requiredfield')}
               </span>
-              {/* v18.12: „Zurücksetzen" ersetzt den frueheren „Löschen"-Button
+              {/* v18.12: „Zurücksetzen" ersetzt den früheren „Löschen"-Button
                   aus der Aktions-Zeile — leert das Formular (Eingaben). */}
               <button
                 type="button"
@@ -3735,7 +3735,7 @@ export default function RegistrationPage(): React.ReactElement {
           // trotz Hinweis auf „Registrieren" klicken (und es kam danach noch
           // die CC-Frage). Jetzt klare Blockade direkt am Button.
           const targetAlreadyRegistered = registerForOther && !!(thirdPartyCheck && thirdPartyCheck.alreadyRegistered);
-          // v18: Demo-Event — Register-Button ist bewusst NICHT auswaehlbar
+          // v18: Demo-Event — Register-Button ist bewusst NICHT auswählbar
           // (keine echte Anmeldung; reine Showcase-Ansicht).
           const isDemo = !!(event && event.isDemoShowcase);
           const isDisabled = isDemo || isSubmitting || (isTeamMode && !teamValidation.ok) || nothingPicked || needsOtherConsent || targetAlreadyRegistered;
@@ -3842,7 +3842,7 @@ export default function RegistrationPage(): React.ReactElement {
           ariaLabel="Plätze voll"
         >
             {(() => {
-              // v10.20: Label-Mapping fuer die freie Bezeichnung — wunsch/alt
+              // v10.20: Label-Mapping für die freie Bezeichnung — wunsch/alt
               // sind interne IDs ('Durchstarter' / 'Funstarter'); die Anzeige
               // nimmt splitLabelA / splitLabelB.
               const wunschLabel = fallbackDialog.wunsch === 'Durchstarter' ? splitLabelA : splitLabelB;
@@ -3898,7 +3898,7 @@ export default function RegistrationPage(): React.ReactElement {
         </Modal>
       )}
 
-      {/* v9.22: Modal fuer externe Email-Anmeldung */}
+      {/* v9.22: Modal für externe Email-Anmeldung */}
       {/* v18.13: Massenimport-Modal. */}
       {massImportOpen && (
         <Modal

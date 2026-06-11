@@ -174,7 +174,7 @@ export default function AudiencePicker({
             ? <>Wähle <strong>einzelne Personen</strong> oder ganze <strong>Mailverteiler bzw. Security-Gruppen aus Entra</strong> aus. Wenn auch ein Standortfilter gesetzt ist, kannst du unten festlegen, ob beide Bedingungen (UND) oder eine davon (ODER) reichen.</>
             : <>Pick <strong>individual people</strong> or entire <strong>mailing lists / security groups from Entra</strong>. If you also set a location filter, you can decide below whether both conditions (AND) or either of them (OR) is enough.</>}
         </p>
-        {/* v16.4: Hinweis fuer den Organizer, dass Mitglieder zum
+        {/* v16.4: Hinweis für den Organizer, dass Mitglieder zum
             Save-Zeitpunkt eingefroren werden und das Event bei DL-
             Mitglieder-Aenderungen einmal neu gespeichert werden muss,
             damit die neuen Mitglieder die Sichtbarkeit bekommen. */}
@@ -187,8 +187,8 @@ export default function AudiencePicker({
             ? <><strong>Wichtig:</strong> Beim Speichern des Events wird einmal festgehalten, welche Personen aktuell zu den ausgewählten Verteilern gehören. Kommt später eine neue Person in einen dieser Verteiler dazu, wird sie <strong>nicht automatisch</strong> übernommen — <strong>speichere das Event dann einfach noch einmal</strong>, damit auch die neue Person das Event sieht.</>
             : <><strong>Important:</strong> When you save the event, the app records once which people currently belong to the selected distribution lists. If someone is added to one of these lists later, they are <strong>not picked up automatically</strong> — <strong>just save the event once more</strong> so the new person can see the event too.</>}
         </div>
-        {/* Chip-Liste der bereits ausgewaehlten Audience-Eintraege.
-            Bei vielen Eintraegen: Inline-Suche + Pagination (nur 10 sichtbar, 'Mehr anzeigen'-Button). */}
+        {/* Chip-Liste der bereits ausgewählten Audience-Einträge.
+            Bei vielen Einträgen: Inline-Suche + Pagination (nur 10 sichtbar, 'Mehr anzeigen'-Button). */}
         {audience.trim().length > 0 && (() => {
           const allEntries = audience.split(',').map(s => s.trim()).filter(Boolean);
           const chipSearchLc = audienceChipSearch.trim().toLowerCase();
@@ -200,7 +200,7 @@ export default function AudiencePicker({
           const hiddenCount = filtered.length - visible.length;
           return (
             <div style={{ marginBottom: 8 }}>
-              {/* Meta-Zeile mit Anzahl + Such-Input (nur wenn viele Eintraege) */}
+              {/* Meta-Zeile mit Anzahl + Such-Input (nur wenn viele Einträge) */}
               {allEntries.length > visibleLimit && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
                   <span>{allEntries.length} Einträge{chipSearchLc && ` — ${filtered.length} Treffer`}</span>
@@ -395,9 +395,9 @@ export default function AudiencePicker({
             style={{ fontSize: '0.8rem', padding: '6px 14px', whiteSpace: 'nowrap' }}
             onClick={async () => {
               setShowEmailModal(true);
-              // v8.9: Verteiler einmal aufloesen und cachen, damit
+              // v8.9: Verteiler einmal auflösen und cachen, damit
               // jeder Such-Treffer in O(1) gegen die Mailgruppen-
-              // Mitgliedschaft geprueft werden kann.
+              // Mitgliedschaft geprüft werden kann.
               setVisibilityCacheLoading(true);
               const cache = new Set<string>();
               const audItems = audience.split(',').map(s => s.trim()).filter(Boolean);
@@ -405,7 +405,7 @@ export default function AudiencePicker({
                 if (item.indexOf('@') < 0) continue;
                 // Direkter User-Eintrag → in den Cache
                 cache.add(item.toLowerCase());
-                // Verteiler/Gruppe → Members aufloesen
+                // Verteiler/Gruppe → Members auflösen
                 try {
                   const grp = await getGroupMembers(item).catch(() => null);
                   if (grp && grp.members) {
@@ -427,14 +427,14 @@ export default function AudiencePicker({
             className="btn btn-outline"
             style={{ fontSize: '0.8rem', padding: '6px 14px', whiteSpace: 'nowrap' }}
             onClick={async () => {
-              // Resolver: Mailgruppen-Members via Graph aufloesen,
+              // Resolver: Mailgruppen-Members via Graph auflösen,
               // einzelne E-Mails direkt durchreichen, Mitglieds-Quelle
               // markieren (z.B. 'SAPALL@deloitte.com').
               setExcludeModalOpen(true);
               setExcludeResolving(true);
               const resolved: ResolvedUser[] = [];
               const seen = new Set<string>();
-              // v8.9: Standorte zuerst aufloesen — alle User des
+              // v8.9: Standorte zuerst auflösen — alle User des
               // Standorts werden via Graph geholt (officeLocation
               // exact match, Fallback startsWith).
               const locItems = locationFilter.split(',').map(s => s.trim()).filter(Boolean);
@@ -626,7 +626,7 @@ export default function AudiencePicker({
             </p>
 
             {/* Suchfeld — filtert die Tabelle global ueber Email/Vor-/
-                Nachname/Position, und ergaenzt bei Bedarf neue User via
+                Nachname/Position, und ergänzt bei Bedarf neue User via
                 Directory-Suche (z.B. wenn der Gesuchte nicht im Verteiler
                 ist, aber explizit ausgeschlossen werden soll). */}
             <div style={{ marginBottom: 12 }}>
@@ -636,14 +636,14 @@ export default function AudiencePicker({
                 onChange={async e => {
                   const v = e.target.value;
                   setExcludeSearch(v);
-                  // Bei Such-Eingabe immer auf Seite 0 zuruecksetzen,
+                  // Bei Such-Eingabe immer auf Seite 0 zurücksetzen,
                   // damit der Treffer auch sichtbar ist.
                   setExcludePage(0);
                   if (v.trim().length < 2) return;
                   try {
                     const found = await searchUsers(v.trim(), excludeIncludeIntl);
                     // Nur User, die noch nicht in der resolved-Liste stecken,
-                    // anhaengen — sonst Duplikate. seen-Set baut sich durch
+                    // anhängen — sonst Duplikate. seen-Set baut sich durch
                     // resolved + bereits in der Suche gefundene auf.
                     setExcludeResolvedUsers(prev => {
                       const seen = new Set(prev.map(u => u.email.toLowerCase()));
@@ -652,7 +652,7 @@ export default function AudiencePicker({
                         const k = (u.email || '').toLowerCase();
                         if (k && !seen.has(k)) {
                           seen.add(k);
-                          // displayName splitten zu first/last falls noetig (Format
+                          // displayName splitten zu first/last falls nötig (Format
                           // 'Nachname, Vorname' oder 'Vorname Nachname').
                           let fn = '';
                           let ln = '';
@@ -753,7 +753,7 @@ export default function AudiencePicker({
             {(() => {
               const f = excludeFilters;
               // v8.12: Globaler Such-Filter (excludeSearch) wirkt
-              // zusaetzlich zur Spalten-Filter-Logik. Match ueber Email,
+              // zusätzlich zur Spalten-Filter-Logik. Match ueber Email,
               // Vor-/Nachname und Position. Damit landet ein Such-Treffer
               // (z.B. 'brenneisen') sofort als einziger sichtbarer Eintrag
               // in der Tabelle.
@@ -925,9 +925,9 @@ export default function AudiencePicker({
             })()}
 
             {/* Bereits ausgeschlossene User die NICHT in der resolved-Liste sind
-                (z.B. weil sie nur ueber Standortfilter sichtbar waeren und
+                (z.B. weil sie nur ueber Standortfilter sichtbar wären und
                 ueber die Suche manuell ausgeschlossen wurden in einer
-                frueheren Session) — separat darstellen. */}
+                früheren Session) — separat darstellen. */}
             {excludedUsers.filter(e => !excludeResolvedUsers.some(u => u.email.toLowerCase() === e.toLowerCase())).length > 0 && (
               <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
                 <h4 style={{ margin: '0 0 8px', fontSize: '0.85rem', color: 'var(--dex-gray-700)' }}>
