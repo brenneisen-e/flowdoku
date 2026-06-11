@@ -1073,9 +1073,9 @@ Edit-Persistenz + Dirty-Snapshot.
 - **Flow-Umsetzung (UMGESETZT 2026-06-11, UI-Anleitung in `docs/flow-jsons.md`
   v19.23):** Auto-Abmeldung läuft live im `DEX_OutlookDeclineHandler`
   (`Auto_Deregister_On`-Condition: MERGE → Abgemeldet + `DEX_IDReorder`-Item →
-  Nachrücken + `AbmeldungAuto`-Mail, Reminder unterdrückt). **Restpunkt:**
-  `Deregister_Participant`-Body braucht noch `"TeilnehmerID":null` (siehe
-  flow-jsons.md). Ursprüngliches TODO war: im
+  Nachrücken + `AbmeldungAuto`-Mail, Reminder unterdrückt; `Deregister_Participant`
+  nullt auch die `TeilnehmerID` — alles per Export verifiziert).
+  Ursprüngliches TODO war: im
   `Still_Registered`=yes-Zweig eine Condition `Auto_Deregister_On`
   (`first(outputs('Get_DEX_Event')?['body/value'])?['AutoDeregisterOnDecline']` ==
   `true`). Im yes-Zweig statt des Reminders: (1) MERGE auf das Teilnehmer-Item →

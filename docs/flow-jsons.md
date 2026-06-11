@@ -3698,12 +3698,97 @@ Alle weiteren Schritte im **If yes**-Zweig; **If no** bleibt leer.
 > `No_Reminder_Yet`-Bedingung (`AutoDeregisterOnDecline == false`) sauber
 > unterdrückt, wenn die Auto-Abmeldung aktiv ist.
 >
-> **EIN Restpunkt offen:** Im `Deregister_Participant`-Body fehlt
-> `"TeilnehmerID":null` — Fix-Block direkt unten. Optional (bewusst nicht
+> **Restpunkt `"TeilnehmerID":null` am 2026-06-11 nachgezogen und per Export
+> verifiziert — der Zweig ist damit VOLLSTÄNDIG.** Optional (bewusst nicht
 > umgesetzt): `DEX_Outlook`-`Ausladen`-Queue-Item (der Decliner hat den Termin
-> ohnehin selbst abgelehnt).
+> ohnehin selbst abgelehnt). Finaler JSON des Zweigs:
 
-### Restpunkt 2026-06-11 — `Deregister_Participant`: TeilnehmerID mit nullen (OFFEN)
+```json
+"Auto_Deregister_On": {
+  "type": "If",
+  "expression": { "and": [ { "equals": [ "@coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['AutoDeregisterOnDecline'], false)", true ] } ] },
+  "actions": {
+    "Deregister_Participant": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "dataset": "@first(outputs('Get_DEX_Event')?['body/value'])?['SubsiteUrl']",
+          "parameters/method": "POST",
+          "parameters/uri": "@concat('_api/web/lists/getbytitle(''Teilnehmer'')/items(', first(body('Get_Teilnehmer_Entry')?['value'])?['Id'], ')')",
+          "parameters/headers": { "Accept": "application/json;odata=nometadata", "Content-Type": "application/json;odata=nometadata", "IF-MATCH": "*", "X-HTTP-Method": "MERGE" },
+          "parameters/body": "@concat('{\"Status\":\"Abgemeldet\",\"CancellationDate\":\"', utcNow(), '\",\"TeilnehmerID\":null}')"
+        },
+        "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "HttpRequest" }
+      }
+    },
+    "Queue_AutoCancel_IDReorder": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+          "table": "9d46ff77-5fe2-4e1d-9b93-14b9dca1a360",
+          "item/Title": "@concat('Reorder: ', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])",
+          "item/EventId": "@string(first(outputs('Get_DEX_Event')?['body/value'])?['ID'])",
+          "item/EventNumber": "@first(outputs('Get_DEX_Event')?['body/value'])?['EventNumber']",
+          "item/SubsiteUrl": "@first(outputs('Get_DEX_Event')?['body/value'])?['SubsiteUrl']",
+          "item/Status/Value": "Pending",
+          "item/CancelledName": "@trim(concat(coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], ''), ' ', coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Nachname'], '')))",
+          "item/CancelledEmail": "@outputs('Final_Recipient_Email')"
+        },
+        "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
+      },
+      "runAfter": { "Deregister_Participant": [ "Succeeded" ] }
+    },
+    "AutoCancel_Mail_Allowed": {
+      "type": "If",
+      "expression": {
+        "and": [
+          { "equals": [ "@coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['DisableEmails'], false)", false ] },
+          { "equals": [ "@coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['DisableCancellationEmail'], false)", false ] }
+        ]
+      },
+      "actions": {
+        "Get_AutoCancel_Template": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "parameters": {
+              "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+              "table": "2c428d35-e6fb-42f9-8a20-580acd6d05f4",
+              "$filter": "@concat('TemplateType eq ''AbmeldungAuto'' and Language eq ''', coalesce(first(outputs('Get_DEX_Event')?['body/value'])?['EmailLanguage'], 'EN'), '''')",
+              "$top": 1
+            },
+            "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "GetItems" }
+          }
+        },
+        "Create_AutoCancel_Email": {
+          "type": "OpenApiConnection",
+          "inputs": {
+            "parameters": {
+              "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+              "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
+              "item/Title": "@replace(coalesce(first(outputs('Get_AutoCancel_Template')?['body/value'])?['Subject'], concat('Abmeldung: ', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])), '{{EventTitle}}', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])",
+              "item/Recipient": "@outputs('Final_Recipient_Email')",
+              "item/RecipientName": "@coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], outputs('Final_Recipient_Email'))",
+              "item/EmailType/Value": "Abmeldung",
+              "item/EventTitle": "@first(outputs('Get_DEX_Event')?['body/value'])?['Title']",
+              "item/Status/Value": "Pending",
+              "item/Body": "@replace(replace(coalesce(first(outputs('Get_AutoCancel_Template')?['body/value'])?['BodyHtml'], ''), '{{Name}}', coalesce(first(body('Get_Teilnehmer_Entry')?['value'])?['Vorname'], outputs('Final_Recipient_Email'))), '{{EventTitle}}', first(outputs('Get_DEX_Event')?['body/value'])?['Title'])",
+              "item/EventId": "@first(outputs('Get_DEX_Event')?['body/value'])?['ID']"
+            },
+            "host": { "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline", "connection": "shared_sharepointonline", "operationId": "PostItem" }
+          },
+          "runAfter": { "Get_AutoCancel_Template": [ "Succeeded" ] }
+        }
+      },
+      "else": { "actions": {} },
+      "runAfter": { "Queue_AutoCancel_IDReorder": [ "Succeeded" ] }
+    }
+  },
+  "else": { "actions": {} }
+}
+```
+
+### Restpunkt 2026-06-11 — `Deregister_Participant`: TeilnehmerID mit nullen (✅ erledigt 2026-06-11)
 
 | # | Neu / Geändert | Name der Action | Art der Action | Stelle |
 |---|----------------|-----------------|----------------|--------|
