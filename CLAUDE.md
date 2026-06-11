@@ -1636,13 +1636,16 @@ Spalten:
 
 | # | Neu / Geändert | Stelle (Action-Name + Zweig + Vorgänger) | Das machst du (alle Klicks) |
 
-In „Das machst du" stehen sämtliche Klicks ausgeschrieben: Action-Typ und wie
-man ihn findet (Suchbegriff im „Aktion hinzufügen"-Dialog), jedes Feld mit
-exaktem Wert, jeder fx-Ausdruck wörtlich (mit Hinweis „über den
-Expression-Tab/fx eintragen"), ⋮ → Rename auf den Zielnamen, ⋮ → Configure
-run after mit den anzuhakenden Status. Der Maintainer kann kein JSON
-einfügen — alles muss UI-klickbar beschrieben sein. Diese Tabelle steht
-vollständig im Chat UND in `docs/flow-jsons.md`.
+Die Spalte „Das machst du" ist eine **nummerierte Schritt-Liste** (1., 2.,
+3., … — in der Tabellen-Zelle mit `<br>` getrennt), **ein Klick bzw. ein
+Feld pro Schritt** — KEINE Pfeil-Ketten („→ → →"). Enthalten sein müssen:
+Action-Typ und wie man ihn findet (Suchbegriff im „Aktion
+hinzufügen"-Dialog), jedes Feld mit exaktem Wert, jeder fx-Ausdruck
+wörtlich (mit Hinweis „über den Expression-Tab/fx eintragen"), ⋮ →
+Umbenennen auf den Zielnamen, ⋮ → Ausführen nach konfigurieren mit den
+anzuhakenden Status. Der Maintainer kann kein JSON einfügen — alles muss
+UI-klickbar beschrieben sein. Diese Tabelle steht vollständig im Chat UND
+in `docs/flow-jsons.md`.
 
 ### Power Automate Flow-Änderungen Workflow
 
