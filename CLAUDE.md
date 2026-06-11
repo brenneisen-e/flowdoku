@@ -1630,6 +1630,20 @@ eine Zeile/ein Block pro Action**, vollständig im Chat (nicht nur „steht in
 `docs/flow-jsons.md`. NIE auf die Doku verweisen statt im Chat zu antworten —
 beides muss vollständig sein.
 
+**Pflicht-Format: Tabelle (Stand 2026-06-11).** Jede Flow-Anleitung wird als
+Markdown-Tabelle geliefert, **eine Zeile pro Action**, mit genau diesen
+Spalten:
+
+| # | Neu / Geändert | Stelle (Action-Name + Zweig + Vorgänger) | Das machst du (alle Klicks) |
+
+In „Das machst du" stehen sämtliche Klicks ausgeschrieben: Action-Typ und wie
+man ihn findet (Suchbegriff im „Aktion hinzufügen"-Dialog), jedes Feld mit
+exaktem Wert, jeder fx-Ausdruck wörtlich (mit Hinweis „über den
+Expression-Tab/fx eintragen"), ⋮ → Rename auf den Zielnamen, ⋮ → Configure
+run after mit den anzuhakenden Status. Der Maintainer kann kein JSON
+einfügen — alles muss UI-klickbar beschrieben sein. Diese Tabelle steht
+vollständig im Chat UND in `docs/flow-jsons.md`.
+
 ### Power Automate Flow-Änderungen Workflow
 
 **WICHTIG:** Wenn eine Änderung in einem Power Automate Flow nötig ist:

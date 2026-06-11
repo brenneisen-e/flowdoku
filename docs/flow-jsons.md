@@ -60,92 +60,26 @@ Split-Event mit gemeinsamer Warteliste läuft.
 
 ---
 
-#### Fix 1 — Status-Sortierung in der Renummerier-Schleife (4 neue Actions + 1 runAfter)
+#### Klick-Anleitung als Tabelle (Pflicht-Format, eine Zeile pro Action)
 
-Alle vier Actions liegen INNERHALB von `Batch_Until_Clean`, zwischen
-`Set_AllParticipants` und `Generate_Indices`:
+Fix 1 = Zeilen 1–5 (Status-Sortierung), Fix 2 = Zeilen 6–8 (Folge-Reorder),
+Fix 3 = Zeile 9 (+ optional 10–12). Alle fx-Ausdrücke über den
+**Expression-Tab (fx)** eintragen, nie als Text.
 
-1. **`Filter_Sort_Aktive`** · NEU · Typ **Filter array (Array filtern)** ·
-   Position: nach `Set_AllParticipants` (Run after: is successful), vor
-   `Filter_Sort_Warteliste`.
-   - **From** (fx): `variables('AllParticipants')`
-   - **Where** (Erweiterter Modus, fx): `@not(equals(item()?['Status']?['Value'], 'Warteliste'))`
-   - ⋮ → Rename → `Filter_Sort_Aktive`
-2. **`Filter_Sort_Warteliste`** · NEU · Typ **Filter array** · Position:
-   nach `Filter_Sort_Aktive` (Run after: is successful).
-   - **From** (fx): `variables('AllParticipants')`
-   - **Where** (fx): `@equals(item()?['Status']?['Value'], 'Warteliste')`
-   - ⋮ → Rename → `Filter_Sort_Warteliste`
-3. **`Sort_AktiveZuerst`** · NEU · Typ **Compose (Verfassen)** · Position:
-   nach `Filter_Sort_Warteliste` (Run after: is successful).
-   - **Inputs** (fx): `union(body('Filter_Sort_Aktive'), body('Filter_Sort_Warteliste'))`
-   - ⋮ → Rename → `Sort_AktiveZuerst`
-4. **`Set_AllParticipants_Sortiert`** · NEU · Typ **Set variable (Variable
-   festlegen)** · Position: nach `Sort_AktiveZuerst` (Run after: is successful).
-   - **Name:** `AllParticipants`
-   - **Value** (fx): `outputs('Sort_AktiveZuerst')`
-   - ⋮ → Rename → `Set_AllParticipants_Sortiert`
-5. **`Generate_Indices`** · BESTEHEND ändern · ⋮ → Configure run after:
-   Haken bei `Set_AllParticipants` ENTFERNEN, stattdessen
-   `Set_AllParticipants_Sortiert` (is successful) anhaken.
-
-Innerhalb der Gruppen bleibt die Reihenfolge `TeilnehmerID asc` (kommt so
-aus `Load_Participants`) → minimaler Diff, unberührte Aktive behalten ihre
-Nummer. Konvergenz bleibt erhalten: nach dem ersten Schreib-Durchlauf ist
-die TID-Reihenfolge identisch mit der Status-Reihenfolge → Diff leer →
-Schleife endet. Kein `union`-Duplikat-Risiko (Items unterscheiden sich
-mindestens in `ID`).
-
-#### Fix 2 — Folge-Reorder nach jeder Promotion (3 neue Actions, 1 pro Zweig)
-
-Je Promote-Zweig EINE neue Action als neue LETZTE Action des
-Has-Waitlist-JA-Zweigs (nach `Audit_Cancelled_N` / `_D` / `_F`):
-
-- **`Requeue_Reorder_N`** · NEU · Typ **Create item (Element erstellen)** ·
-  Position: nach `Audit_Cancelled_N` · ⋮ → Configure run after:
-  **is successful + has failed + is skipped** ALLE anhaken (damit der
-  Folge-Reorder auch kommt, wenn die Best-effort-Audit-Kette scheitert).
-  - **Site Address:** `https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform` (Root — wie der Trigger, NICHT die Subsite)
-  - **List Name:** `DEX_IDReorder`
-  - **Title:** `Reorder: Folge-Korrektur nach Nachrücken`
-  - **EventId** (fx): `triggerOutputs()?['body/EventId']`
-  - **EventNumber** (fx): `triggerOutputs()?['body/EventNumber']`
-  - **SubsiteUrl** (fx): `triggerOutputs()?['body/SubsiteUrl']`
-  - **Status:** `Pending`
-  - **CancelledName** (fx): `triggerOutputs()?['body/CancelledName']`
-  - **CancelledEmail** (fx): `triggerOutputs()?['body/CancelledEmail']`
-- **`Requeue_Reorder_D`** · NEU · identisch, Position: nach
-  `Audit_Cancelled_D`, gleiche Run-after-Haken.
-- **`Requeue_Reorder_F`** · NEU · identisch, Position: nach
-  `Audit_Cancelled_F`, gleiche Run-after-Haken.
-
-Wirkung: (1) Nach jeder Promotion läuft sofort ein frischer
-Renummerier-Lauf → der Nachgerückte bekommt seine korrekte aktive Nummer
-(mit Fix 1 zusammen heilt das auch die Split-Sandwiches sofort statt erst
-bei der nächsten Abmeldung). (2) Sind mehrere Plätze frei (Mehrfach-
-Abmeldungen, verlorene Läufe), füllt die Kette sie nacheinander auf.
-**Terminierung garantiert:** Ein Folge-Item entsteht NUR nach erfolgreicher
-Promotion; jede Promotion verkleinert die Warteliste bzw. füllt einen
-Platz → sobald nichts mehr nachrückt, entsteht kein neues Item.
-CancelledName/-Email werden durchgereicht: Org-Mail + Audit verhalten sich
-wie heute (der frei gewordene Platz stammt aus genau dieser Absage).
-
-#### Fix 3 — Fehler-Sichtbarkeit (1 Run-after-Änderung + optional 1 Condition)
-
-1. **`Error_Handler`** (bzw. die `Set_Failed`-Action darin) · BESTEHEND
-   ändern · ⋮ → Configure run after (auf `DEX_IDReorder`): zusätzlich zu
-   **has failed** auch **is skipped** anhaken. Dann wird das Queue-Item
-   auch bei Abbrüchen VOR dem Done-Patch (z.B. Batch_Until_Clean-Timeout)
-   auf `Failed` gesetzt statt ewig `Processing` zu bleiben.
-2. **Optional `Check_Renumber_Clean`** · NEU · Typ **Condition** ·
-   Position: direkt nach `Batch_Until_Clean` (Run after: is successful),
-   vor `Filter_Non_Waitlist`; `Filter_Non_Waitlist` Run-after auf den
-   JA-Zweig bzw. nach der Condition umhängen.
-   - Bedingung (fx, linke Seite): `length(body('GenerateSPData'))` ·
-     **is equal to** · `0`
-   - **NEIN-Zweig:** Update item auf das Trigger-Item → `Status` =
-     `Failed` (die Schleife ist 5× gelaufen und der Diff ist immer noch
-     nicht leer → nicht still weitermachen).
+| # | Neu / Geändert | Stelle | Das machst du |
+|---|----------------|--------|---------------|
+| 1 | **NEU** | `Filter_Sort_Aktive` — INNERHALB der Schleife `Batch_Until_Clean`, direkt nach `Set_AllParticipants` (vor `Generate_Indices`) | Auf das **+** zwischen `Set_AllParticipants` und `Generate_Indices` klicken → **Aktion hinzufügen** → nach **„Array filtern"** (Filter array, Kategorie Datenvorgang) suchen → **Von** (fx): `variables('AllParticipants')` → rechts auf **„In erweitertem Modus bearbeiten"** klicken → eintragen: `@not(equals(item()?['Status']?['Value'], 'Warteliste'))` → ⋮ → **Umbenennen** → `Filter_Sort_Aktive` |
+| 2 | **NEU** | `Filter_Sort_Warteliste` — direkt nach `Filter_Sort_Aktive` | **+** unter Zeile-1-Action → **Array filtern** → **Von** (fx): `variables('AllParticipants')` → erweiterter Modus: `@equals(item()?['Status']?['Value'], 'Warteliste')` → ⋮ → **Umbenennen** → `Filter_Sort_Warteliste` |
+| 3 | **NEU** | `Sort_AktiveZuerst` — direkt nach `Filter_Sort_Warteliste` | **+** → **„Verfassen"** (Compose) → **Eingaben** (fx): `union(body('Filter_Sort_Aktive'), body('Filter_Sort_Warteliste'))` → ⋮ → **Umbenennen** → `Sort_AktiveZuerst` |
+| 4 | **NEU** | `Set_AllParticipants_Sortiert` — direkt nach `Sort_AktiveZuerst` | **+** → **„Variable festlegen"** (Set variable) → **Name:** im Dropdown `AllParticipants` wählen → **Wert** (fx): `outputs('Sort_AktiveZuerst')` → ⋮ → **Umbenennen** → `Set_AllParticipants_Sortiert` |
+| 5 | **GEÄNDERT** | `Generate_Indices` — bestehende Compose-Action in `Batch_Until_Clean` | Nur kontrollieren/umhängen: ⋮ → **Ausführen nach konfigurieren** (Configure run after) → es darf NUR `Set_AllParticipants_Sortiert` mit Haken **„ist erfolgreich"** drinstehen (Haken bei `Set_AllParticipants` entfernen, falls noch gesetzt — beim Einfügen über die **+**-Punkte verdrahtet der Designer das meist schon automatisch) |
+| 6 | **NEU** | `Requeue_Reorder_N` — NEIN-Zweig von `Is_B2RunSplit` → `Check_Nachrücken` JA → `Condition_1` JA, als neue LETZTE Action nach `Audit_Cancelled_N` | **+** unter `Audit_Cancelled_N` → **Aktion hinzufügen** → SharePoint **„Element erstellen"** (Create item) → **Websiteadresse:** `https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform` (Root-Site wie der Trigger, NICHT die Subsite) → **Listenname:** `DEX_IDReorder` → Felder: **Title** = `Reorder: Folge-Korrektur nach Nachrücken` · **EventId** (fx) = `triggerOutputs()?['body/EventId']` · **EventNumber** (fx) = `triggerOutputs()?['body/EventNumber']` · **SubsiteUrl** (fx) = `triggerOutputs()?['body/SubsiteUrl']` · **Status** = `Pending` (falls Dropdown: „Benutzerdefinierten Wert eingeben" → `Pending`) · **CancelledName** (fx) = `triggerOutputs()?['body/CancelledName']` · **CancelledEmail** (fx) = `triggerOutputs()?['body/CancelledEmail']` → ⋮ → **Umbenennen** → `Requeue_Reorder_N` → ⋮ → **Ausführen nach konfigurieren** → bei `Audit_Cancelled_N` DREI Haken: **ist erfolgreich + ist fehlgeschlagen + wird übersprungen** (die Audit-Kette ist best-effort — der Folge-Reorder muss trotzdem kommen) |
+| 7 | **NEU** | `Requeue_Reorder_D` — JA-Zweig `Is_B2RunSplit` → `Check_Durchstarter_Free` JA → `Has_Durchstarter_Waitlist` JA, nach `Audit_Cancelled_D` | Identisch zu Zeile 6 (gleiche Felder, gleiche fx-Ausdrücke, gleiche 3 Run-after-Haken — nur bei `Audit_Cancelled_D`) → **Umbenennen** → `Requeue_Reorder_D` |
+| 8 | **NEU** | `Requeue_Reorder_F` — JA-Zweig `Is_B2RunSplit` → `Check_Funstarter_Free` JA → `Has_Funstarter_Waitlist` JA, nach `Audit_Cancelled_F` | Identisch zu Zeile 6, bei `Audit_Cancelled_F` → **Umbenennen** → `Requeue_Reorder_F` |
+| 9 | **GEÄNDERT** | `Error_Handler`-Scope (bzw. die `Set_Failed`-Action darin) — Top-Level, hängt an `DEX_IDReorder` | ⋮ → **Ausführen nach konfigurieren** → bei `DEX_IDReorder` zusätzlich zu **ist fehlgeschlagen** auch **wird übersprungen** anhaken (dann wird das Queue-Item auch bei Abbruch VOR dem Done-Patch auf `Failed` gesetzt statt ewig `Processing`) |
+| 10 | **NEU (optional)** | `Check_Renumber_Clean` — Top-Level zwischen `Batch_Until_Clean` und `Filter_Non_Waitlist` | **+** zwischen den beiden → **„Bedingung"** (Condition) → linke Seite (fx): `length(body('GenerateSPData'))` → Operator **ist gleich** → rechte Seite: `0` → ⋮ → **Umbenennen** → `Check_Renumber_Clean`. (`Filter_Non_Waitlist` bleibt NACH der Condition — Designer verdrahtet automatisch) |
+| 11 | **NEU (optional)** | `Set_Failed_Unclean` — im **NEIN**-Zweig von `Check_Renumber_Clean` | **Aktion hinzufügen** → SharePoint **„Element aktualisieren"** (Update item) → Websiteadresse: Root-Site (wie Zeile 6) → Listenname: `DEX_IDReorder` → **Id** (fx): `triggerOutputs()?['body/ID']` → **Title** (fx): `triggerOutputs()?['body/Title']` (damit der Titel nicht geleert wird) → **Status** = `Failed` → ⋮ → **Umbenennen** → `Set_Failed_Unclean` |
+| 12 | **NEU (optional)** | `Terminate_Unclean` — im **NEIN**-Zweig, nach `Set_Failed_Unclean` | **Aktion hinzufügen** → **„Beenden"** (Terminate) → **Status:** `Fehlgeschlagen` (Failed) → ⋮ → **Umbenennen** → `Terminate_Unclean`. (Verhindert, dass der Flow nach 5 erfolglosen Renummerier-Runden noch mit unfertigen IDs nachrückt) |
 
 **Verifikation nach Umsetzung:** (1) Split-Event mit gemischter Warteliste:
 Person der einen Gruppe abmelden → nach beiden Läufen müssen die Aktiven
