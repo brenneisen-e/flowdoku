@@ -226,6 +226,18 @@ Massenmail, aber **persistiert am Event** statt in localStorage:
   RAW (previewVars escaped die Werte). „Standardtext laden" via
   `defaultBodyHtml`; Speichern mit Default-Vergleich (alles Standard → Key
   wird entfernt).
+- **Nebeneinander statt gestapelt (v22.19):** Das shared `Modal` liegt auf
+  z-index 9999, der `HtmlEditorModal` auf 1200 — zwei offene Modals
+  verdecken sich also (Versand-Modal über dem Editor). Deshalb öffnet
+  „Mail-Text anpassen" den Editor als EINZIGES Overlay und schließt das
+  Versand-Modal; die Versand-Aktionen wandern in das neue
+  `HtmlEditorModal`-Prop **`leftPanel`** (schmale Spalte links: Zähler
+  ohne/mit Code, Test an mich, Massen-Versand, zurück). Layout: Versand |
+  Editor | Live-Vorschau. **Test an mich** nutzt den AKTUELLEN Editor-Text
+  (`qrTestSendAction(liveOverride?)`), der **Massen-Versand** immer den
+  gespeicherten — bei ungespeicherten Änderungen ist er gesperrt (orange
+  Hinweisbox). Editor-Close/„Zurück" öffnet das Versand-Modal wieder
+  (`closeQrMailEditor`).
 
 ### Archivierung abgelaufener Event-Zeilen (v21/v22)
 
