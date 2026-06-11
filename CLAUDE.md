@@ -1669,6 +1669,17 @@ Umbenennen auf den Zielnamen, ⋮ → Ausführen nach konfigurieren mit den
 anzuhakenden Status. Der Maintainer kann kein JSON einfügen — alles muss
 UI-klickbar beschrieben sein.
 
+**Copy-Blöcke für alle fx-Ausdrücke und Feldwerte (Stand 2026-06-11):**
+Unter jeder Anleitungs-Tabelle folgt eine Sektion **„Zum Kopieren"**, in der
+JEDER fx-Ausdruck und jeder exakt zu übernehmende Feldwert (auch scheinbar
+triviale wie `variables('AllParticipants')`, Site-URLs, Listennamen,
+Title-Texte, Status-Werte) in einem EIGENEN fenced Code-Block steht — ein
+Wert pro Block, nichts anderes im Block. Grund: Die Chat-UI zeigt an
+Code-Blöcken einen Kopier-Button (ein Klick → Zwischenablage), an
+Inline-Code in Tabellen-Zellen nicht. Reihenfolge = Abarbeitungs-
+Reihenfolge der Tabelle; Beschriftung pro Block: Tabellen-Zeile + Feldname
+(z.B. „Zeile 6 — EventId (fx):").
+
 **Die Antwort gehört IMMER vollständig in den Chat.** Der Maintainer
 arbeitet Flow-Anleitungen direkt im Chat ab — die komplette Tabelle muss
 also in der Chat-Antwort stehen. `docs/flow-jsons.md` bekommt zusätzlich

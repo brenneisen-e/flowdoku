@@ -81,6 +81,81 @@ Fix 3 = Zeile 9 (+ optional 10–12). Alle fx-Ausdrücke über den
 | 11 | **NEU (optional)** | `Set_Failed_Unclean` | SharePoint — Update item | Im NEIN-Zweig (False) von `Check_Renumber_Clean` | 1. Im **False**-Zweig **Add an action** → SharePoint **„Update item"**.<br>2. **Site Address:** Root-Site (wie Zeile 6, Schritt 2) · **List Name:** `DEX_IDReorder`<br>3. **Id** (fx): `triggerOutputs()?['body/ID']`<br>4. **Title** (fx): `triggerOutputs()?['body/Title']` (sonst wird der Titel geleert).<br>5. **Status:** `Failed`<br>6. ⋮ → **Rename** → `Set_Failed_Unclean` |
 | 12 | **NEU (optional)** | `Terminate_Unclean` | Terminate | Im NEIN-Zweig (False), nach `Set_Failed_Unclean` | 1. **+** unter `Set_Failed_Unclean` → **Add an action** → **„Terminate"**.<br>2. **Status:** `Failed`<br>3. ⋮ → **Rename** → `Terminate_Unclean` — verhindert, dass nach 5 erfolglosen Renummerier-Runden noch mit unfertigen IDs nachgerückt wird. |
 
+#### Zum Kopieren — alle fx-Ausdrücke und Feldwerte (ein Block = ein Wert)
+
+**Zeile 1 + 2 — From (beide Filter-array-Actions):**
+```
+variables('AllParticipants')
+```
+**Zeile 1 — Edit in advanced mode:**
+```
+@not(equals(item()?['Status']?['Value'], 'Warteliste'))
+```
+**Zeile 2 — Edit in advanced mode:**
+```
+@equals(item()?['Status']?['Value'], 'Warteliste')
+```
+**Zeile 3 — Inputs (fx):**
+```
+union(body('Filter_Sort_Aktive'), body('Filter_Sort_Warteliste'))
+```
+**Zeile 4 — Value (fx):**
+```
+outputs('Sort_AktiveZuerst')
+```
+**Zeile 6/7/8 + 11 — Site Address:**
+```
+https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform
+```
+**Zeile 6/7/8 + 11 — List Name:**
+```
+DEX_IDReorder
+```
+**Zeile 6/7/8 — Title (Text):**
+```
+Reorder: Folge-Korrektur nach Nachrücken
+```
+**Zeile 6/7/8 — EventId (fx):**
+```
+triggerOutputs()?['body/EventId']
+```
+**Zeile 6/7/8 — EventNumber (fx):**
+```
+triggerOutputs()?['body/EventNumber']
+```
+**Zeile 6/7/8 — SubsiteUrl (fx):**
+```
+triggerOutputs()?['body/SubsiteUrl']
+```
+**Zeile 6/7/8 — Status (Text):**
+```
+Pending
+```
+**Zeile 6/7/8 — CancelledName (fx):**
+```
+triggerOutputs()?['body/CancelledName']
+```
+**Zeile 6/7/8 — CancelledEmail (fx):**
+```
+triggerOutputs()?['body/CancelledEmail']
+```
+**Zeile 10 — Condition, linke Seite (fx):**
+```
+length(body('GenerateSPData'))
+```
+**Zeile 11 — Id (fx):**
+```
+triggerOutputs()?['body/ID']
+```
+**Zeile 11 — Title (fx):**
+```
+triggerOutputs()?['body/Title']
+```
+**Zeile 11 — Status (Text):**
+```
+Failed
+```
+
 **Verifikation nach Umsetzung:** (1) Split-Event mit gemischter Warteliste:
 Person der einen Gruppe abmelden → nach beiden Läufen müssen die Aktiven
 lückenlos 1..N sein und die Warteliste N+1..M, der Nachgerückte mittendrin
