@@ -1942,27 +1942,35 @@ export default function AdminPage(): React.ReactElement {
   // erfolgte Abmeldung, der DEX_IDReorder-Flow ist noch nicht fertig.
   // Das gibt einen ehrlichen Status — die Box verschwindet automatisch,
   // sobald der Flow durch ist (statt nach willkürlichen 10 Minuten).
-  const recentCancellation = (regs: SPRegistration[]): { recent: boolean; whenIso: string } => {
+  const recentCancellation = (regs: SPRegistration[]): { recent: boolean; whenIso: string; detail: string } => {
     const active = regs.filter(r => r.Status !== 'Abgemeldet');
-    if (active.length === 0) return { recent: false, whenIso: '' };
+    if (active.length === 0) return { recent: false, whenIso: '', detail: '' };
     const ids: number[] = [];
+    let noId = 0;
     for (const r of active) {
       const id = Number(r.TeilnehmerID);
-      if (!isFinite(id) || id <= 0) {
-        // Eintrag ohne gültige ID — IDs sind kaputt, Letzten-Cancel
-        // mitgeben (oder leer wenn keiner).
-        return { recent: true, whenIso: latestCancelIso(regs) };
-      }
+      if (!isFinite(id) || id <= 0) { noId++; continue; }
       ids.push(id);
     }
     ids.sort((a, b) => a - b);
-    // Lückenlos 1..N prüfen
+    // v22.12: konkrete Diagnose statt nur ja/nein — erste Lücke + Duplikate
+    // zählen, damit die Box belegt, WAS in den geladenen Daten falsch ist.
+    let dups = 0;
+    let firstGapAt = 0;
     for (let i = 0; i < ids.length; i++) {
-      if (ids[i] !== i + 1) {
-        return { recent: true, whenIso: latestCancelIso(regs) };
-      }
+      if (i > 0 && ids[i] === ids[i - 1]) dups++;
+      if (firstGapAt === 0 && ids[i] !== i + 1) firstGapAt = i + 1;
     }
-    return { recent: false, whenIso: '' };
+    if (noId === 0 && dups === 0 && firstGapAt === 0) return { recent: false, whenIso: '', detail: '' };
+    const parts: string[] = [];
+    if (firstGapAt > 0) parts.push(`Nummern nicht durchgängig (erwartet Nr. ${firstGapAt})`);
+    if (dups > 0) parts.push(`${dups} doppelte Nummer${dups === 1 ? '' : 'n'}`);
+    if (noId > 0) parts.push(`${noId} Eintr${noId === 1 ? 'ag' : 'äge'} ohne Nummer`);
+    return {
+      recent: true,
+      whenIso: latestCancelIso(regs),
+      detail: `${active.length} aktive Einträge — ${parts.join(', ')}`,
+    };
   };
   // Hilfsfunktion: jüngste CancellationDate aus der Liste (für den
   // optionalen Zeit-Hinweis in der Box).
@@ -1976,6 +1984,42 @@ export default function AdminPage(): React.ReactElement {
     return latest > 0 ? new Date(latest).toISOString() : '';
   };
   const idFixCheckedForRef = React.useRef<string | null>(null);
+  // v22.12: solange die geladenen Daten kaputte IDs zeigen, lädt die App die
+  // Teilnehmerliste automatisch alle 30 Sekunden neu — sobald der
+  // DEX_IDReorder-Flow durch ist, verschwindet die Warn-Box von selbst
+  // (vorher musste man manuell „Aktualisieren" klicken und hielt den
+  // durchgelaufenen Flow fälschlich für kaputt).
+  const idRecheckBusyRef = React.useRef(false);
+  const [idRecheckBusy, setIdRecheckBusy] = React.useState(false);
+  const reloadRegistrationsForIdCheck = React.useCallback(async (): Promise<void> => {
+    if (!selectedEvent || idRecheckBusyRef.current) return;
+    idRecheckBusyRef.current = true;
+    setIdRecheckBusy(true);
+    try {
+      const regs = await getAllRegistrations(selectedEvent.id);
+      setRegistrations(regs);
+    } catch { /* best-effort */ }
+    idRecheckBusyRef.current = false;
+    setIdRecheckBusy(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEvent?.id]);
+  // Max. 10 automatische Neu-Checks (≈5 Min) pro Event — wenn die Lücke dann
+  // immer noch da ist, ist sie echt (Tail-Race, siehe Box-Text) und kein
+  // weiteres Polling nötig.
+  const idRecheckCountRef = React.useRef(0);
+  React.useEffect(() => { idRecheckCountRef.current = 0; }, [selectedEvent?.id]);
+  React.useEffect(() => {
+    if (!selectedEvent) return undefined;
+    if (!recentCancellation(registrations).recent) return undefined;
+    if (idRecheckCountRef.current >= 10) return undefined;
+    const timer = window.setInterval(() => {
+      idRecheckCountRef.current++;
+      if (idRecheckCountRef.current > 10) { window.clearInterval(timer); return; }
+      reloadRegistrationsForIdCheck().catch(() => { /* */ });
+    }, 30000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEvent?.id, registrations, reloadRegistrationsForIdCheck]);
 
   // v11.70: kein Modal mehr beim Event-Oeffnen — der Hinweis steht ab
   // jetzt direkt als Box oben in der Teilnehmerliste, solange die
@@ -6534,6 +6578,16 @@ export default function AdminPage(): React.ReactElement {
           const info = recentCancellation(registrations);
           if (!info.recent) return null;
           const whenStr = info.whenIso ? formatDate(info.whenIso) : '';
+          // v22.12: zweiphasig — innerhalb von ~10 Min nach der letzten
+          // Abmeldung läuft die automatische Korrektur evtl. noch (warten);
+          // danach ist die Lücke ECHT stehengeblieben (typisch: die höchste
+          // Nummer wurde abgemeldet, während gleichzeitig neue Anmeldungen
+          // bereits höhere Nummern gezogen haben — ein späterer automatischer
+          // Lauf kommt nicht, weil nur Abmeldungen die Korrektur anstoßen).
+          const minutesSinceCancel = info.whenIso
+            ? Math.floor((Date.now() - new Date(info.whenIso).getTime()) / 60000)
+            : 999;
+          const probablyStillRunning = minutesSinceCancel >= 0 && minutesSinceCancel < 10;
           return (
             <div style={{
               margin: '0 0 16px',
@@ -6544,11 +6598,28 @@ export default function AdminPage(): React.ReactElement {
               color: 'var(--dex-orange-dark, #b35a00)',
             }}>
               <div style={{ fontWeight: 700, marginBottom: 6, fontSize: '0.9rem' }}>
-                Achtung — TeilnehmerIDs sind aktuell ggf. nicht korrekt
+                {probablyStillRunning
+                  ? 'TeilnehmerIDs sind gerade nicht durchgängig — automatische Korrektur läuft vermutlich noch'
+                  : 'TeilnehmerIDs sind nicht durchgängig — bitte einmal korrigieren'}
               </div>
               <div style={{ fontSize: '0.82rem', lineHeight: 1.5 }}>
-                Es gab gerade eine Abmeldung{whenStr ? <> (zuletzt: <strong>{whenStr}</strong>)</> : ''}. Die automatische Korrektur — <strong>Nachrücken von der Warteliste</strong> und <strong>TeilnehmerID-Neuvergabe</strong> — läuft im Hintergrund und ist evtl. noch nicht fertig. Bitte ein paar Minuten warten, bevor du manuell &bdquo;IDs neu vergeben&ldquo; nutzt — sonst läuft die manuelle Korrektur in die noch laufende automatische Batch-Korrektur hinein und es kann zu Doppel-Nachrücken / Inkonsistenzen kommen. Meist musst du gar nichts tun.
+                <strong>Geprüft an der geladenen Teilnehmerliste:</strong> {info.detail}.{whenStr ? <> Letzte Abmeldung: <strong>{whenStr}</strong>.</> : ''}{' '}
+                {probablyStillRunning ? (
+                  <>Die automatische Korrektur — <strong>Nachrücken von der Warteliste</strong> und <strong>Neu-Nummerierung</strong> — braucht nach einer Abmeldung typischerweise 1–5 Minuten. Die Liste wird hier <strong>automatisch alle 30 Sekunden neu geladen</strong>; diese Box verschwindet von selbst, sobald alles stimmt. Bitte in dieser Phase NICHT manuell korrigieren (sonst laufen zwei Korrekturen ineinander).</>
+                ) : (
+                  <>Die letzte Abmeldung liegt länger zurück — die automatische Korrektur ist also bereits durchgelaufen, die Lücke ist trotzdem geblieben. Das passiert, wenn genau die <strong>höchste Nummer abgemeldet</strong> wurde, während <strong>gleichzeitig neue Anmeldungen</strong> schon höhere Nummern bekommen haben — ein weiterer automatischer Lauf kommt erst bei der nächsten Abmeldung. Das ist rein kosmetisch (Nachrücken/Check-in funktionieren trotzdem) und jetzt <strong>gefahrlos per Klick zu beheben</strong>:</>
+                )}
               </div>
+              {/* v22.12: manueller Sofort-Check (lädt die Liste neu). */}
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={idRecheckBusy}
+                style={{ marginTop: 12, marginRight: 10, fontSize: '0.82rem', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                onClick={() => { reloadRegistrationsForIdCheck().catch(() => { /* */ }); }}
+              >
+                <RefreshCw size={14} /> {idRecheckBusy ? 'Prüft…' : 'Jetzt neu prüfen'}
+              </button>
               {/* v18.60: Direkter Korrektur-Button in der Box — Admin ODER
                   Organizer des Events. Use-Case: die automatische Batch-
                   Korrektur ist offensichtlich NICHT gelaufen (IDs seit längerem
