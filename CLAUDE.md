@@ -385,6 +385,27 @@ Hauptevents/der Klammer (Standortfilter `locationAudience` + Mailverteiler
 
 ### Wizard-UX-Konventionen (v22.23)
 
+- **Verbindliche Farb-Logik (v22.30):** Im Wizard gilt durchgängig —
+  **Grüner gefüllter Schritt-Header** (h2 „Schritt N — Name" + Ein-Satz-Lead,
+  weiße Schrift auf `--dex-green`, wirken als EINE Box via geteilte
+  Border-Radien oben/unten), **pastellgrüne Flächen = Einstellungen**
+  (`zebraS3Bg()` liefert `rgba(134,188,37,0.06)`), **graue einklappbare
+  Boxen = Beschreibungen** (`<WizardHint variant="description">`, Kopfzeile
+  „Beschreibung — …"), **orange einklappbare Boxen = Hinweise**
+  (`<WizardHint>`, Kopfzeile „Hinweis — …"). Längere Erklärtexte gehören in
+  Beschreibungs-Boxen (Default zu), der Schritt-Lead bleibt EIN Satz.
+- **Sticky Tab-Leiste (v22.30):** Die pro-Sub-Event-Tabs (Schritte 3/4/5)
+  rendert die Modul-Komponente `StickyTabStrip` — aktiver Tab **gefüllt
+  grün mit weißer Schrift**; beim Scrollen pinnt die Leiste sich unter den
+  (ebenfalls gepinnten) Header (JS-Pin mit Platzhalter, CSS-sticky wird im
+  SP-Canvas ausgehebelt; versteckte Schritte pinnen nicht —
+  offsetParent-Check).
+- **Aufräum-Pass (v22.29):** `StepBadge` ist ein dezenter Outline-Badge
+  (weiß + grüner Rand) statt gefüllt — die durchlaufenden Nummern bleiben
+  (werden in Tooltips referenziert). Sektions-Überschriften innerhalb eines
+  Schritts einheitlich 1.05rem green-dark. Die frühere blaue Info-Box in
+  Schritt 5 läuft über `WizardHint`.
+
 - **Einheitliche Hinweis-Boxen — `components/WizardHint.tsx`:** JEDE
   Hinweis-Box im Event-Wizard (und im wizard-genutzten `AudiencePicker`)
   läuft über die shared Komponente `<WizardHint isDe title=…>` — Aufbau

@@ -3,18 +3,20 @@ import * as React from 'react';
 /**
  * v22.22: Einheitliche Hinweis-Box für den Event-Wizard.
  *
- * Aufbau immer gleich: fette Kopfzeile „Hinweis — <Überschrift>" (EN:
- * „Note — <title>"), darunter der Text. Eine Schriftgröße (0.8rem), eine
- * Farbwelt (Orange-Palette), volle Breite — egal an welcher Stelle im
- * Wizard. Interaktive Inhalte (Checkboxen, Buttons, Listen) gehören mit in
- * `children`. Kein Emoji, kein Icon (Klartext-Regel).
+ * v22.27: standardmäßig EINGEKLAPPT — sichtbar ist nur die Kopfzeile, ein
+ * Klick klappt auf/zu. Boxen mit Pflicht-Interaktion bekommen
+ * `defaultOpen={true}`.
  *
- * v22.27: Boxen sind standardmäßig EINGEKLAPPT — sichtbar ist nur die
- * Kopfzeile (deshalb müssen die Überschriften für sich allein verständlich
- * sein); ein Klick darauf klappt den Text auf/zu. Ausnahme: Boxen mit
- * Pflicht-Interaktion (z.B. Bestätigungs-Checkbox) bekommen
- * `defaultOpen={true}`, damit der Anwender die Pflicht-Aktion nicht
- * übersieht.
+ * v22.30: Einheitliche Farb-Logik im Wizard (verbindlich):
+ *   - `variant="hint"` (Default): ORANGE — Hinweise/Warnungen,
+ *     Kopfzeile „Hinweis — <Überschrift>".
+ *   - `variant="description"`: GRAU — erklärende Beschreibungen („was
+ *     passiert hier, wie funktioniert das"), Kopfzeile
+ *     „Beschreibung — <Überschrift>".
+ *   - Einstellungs-Sektionen (das, was der Organizer aktiv konfiguriert)
+ *     liegen auf PASTELLGRÜNEN Karten (siehe `zebraS3Bg()` in
+ *     EventCreationPage) — nicht über diese Komponente.
+ * Kein Emoji, kein Icon (Klartext-Regel).
  */
 export default function WizardHint(props: {
   isDe: boolean;
@@ -24,15 +26,22 @@ export default function WizardHint(props: {
   style?: React.CSSProperties;
   /** Aufgeklappt starten — nur für Boxen mit Pflicht-Interaktion nutzen. */
   defaultOpen?: boolean;
+  /** Farb-/Bedeutungs-Variante: 'hint' (orange) | 'description' (grau). */
+  variant?: 'hint' | 'description';
 }): React.ReactElement {
   const [open, setOpen] = React.useState<boolean>(!!props.defaultOpen);
+  const isDesc = props.variant === 'description';
+  const headColor = isDesc ? 'var(--dex-gray-700, #555)' : 'var(--dex-orange-dark, #b35a00)';
+  const prefix = isDesc
+    ? (props.isDe ? 'Beschreibung' : 'Description')
+    : (props.isDe ? 'Hinweis' : 'Note');
   return (
     <div style={{
       width: '100%',
       boxSizing: 'border-box',
       borderRadius: 8,
-      background: 'rgba(237,139,0,0.08)',
-      border: '1px solid var(--dex-orange, #ed8b00)',
+      background: isDesc ? 'var(--dex-gray-50, #fafafa)' : 'rgba(237,139,0,0.08)',
+      border: isDesc ? '1px solid var(--dex-gray-300, #d2d2d2)' : '1px solid var(--dex-orange, #ed8b00)',
       fontSize: '0.8rem',
       color: 'var(--dex-gray-700)',
       lineHeight: 1.5,
@@ -43,18 +52,18 @@ export default function WizardHint(props: {
         onClick={() => setOpen(o => !o)}
         aria-expanded={open}
         title={props.isDe
-          ? (open ? 'Hinweis einklappen' : 'Hinweis aufklappen')
-          : (open ? 'Collapse note' : 'Expand note')}
+          ? (open ? 'Einklappen' : 'Aufklappen')
+          : (open ? 'Collapse' : 'Expand')}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
           width: '100%', boxSizing: 'border-box',
           background: 'none', border: 'none', cursor: 'pointer',
           padding: '10px 14px', margin: 0,
           font: 'inherit', textAlign: 'left',
-          fontWeight: 700, color: 'var(--dex-orange-dark, #b35a00)',
+          fontWeight: 700, color: headColor,
         }}
       >
-        <span>{props.isDe ? 'Hinweis' : 'Note'} — {props.title}</span>
+        <span>{prefix} — {props.title}</span>
         <span aria-hidden="true" style={{ flexShrink: 0, fontSize: '0.7rem', fontWeight: 400 }}>
           {open ? '▲' : '▼'}
         </span>
