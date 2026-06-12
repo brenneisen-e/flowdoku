@@ -9014,43 +9014,9 @@ export default function EventCreationPage(): React.ReactElement {
               {/* v18.57: Anrede-Abfrage-Toggle nach unten verschoben — sitzt jetzt
                   direkt unter den „Vorgeschlagene Felder"-Buttons. */}
 
-              {/* v18.35: Anmeldesprache vorgeben */}
-              <div style={{
-                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
-                padding: '12px 16px', marginBottom: 14,
-                border: '1px solid var(--dex-gray-200)',
-              }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
-                  {isDe ? 'Sprache des Anmeldeformulars' : 'Registration form language'}
-                  <InfoTooltip text={isDe
-                    ? <>
-                        <strong>Was du hier einstellst:</strong> in welcher Sprache die <strong>komplette Anmeldeseite</strong> (alle Texte, Buttons und der <strong>Datenschutz-Disclaimer</strong>) angezeigt wird.<br /><br />
-                        <strong>Anzeige in der App:</strong> bei <strong>Automatisch</strong> folgt die Anmeldeseite der App-Sprache des Teilnehmers. Wählst du <strong>Immer Deutsch</strong> oder <strong>Immer Englisch</strong>, wird die Anmeldeseite <strong>fest in dieser Sprache</strong> angezeigt — auch wenn der Teilnehmer die App z.&nbsp;B. auf Deutsch nutzt. Ein kleiner Hinweis im Kopfbereich zeigt das an.<br /><br />
-                        <strong>Auswirkung für Teilnehmer:</strong> bei einem englischsprachigen Event siehst du die Anmeldung samt Disclaimer auf Englisch, egal welche App-Sprache du eingestellt hast.
-                      </>
-                    : <>
-                        <strong>What you set here:</strong> the language in which the <strong>entire registration page</strong> (all texts, buttons and the <strong>privacy disclaimer</strong>) is shown.<br /><br />
-                        <strong>Where you see it:</strong> with <strong>Automatic</strong> the page follows the attendee&apos;s app language. Choosing <strong>Always German</strong> or <strong>Always English</strong> forces the registration page into that language — even if the attendee uses the app in another language. A small hint in the header indicates this.<br /><br />
-                        <strong>For attendees:</strong> for an English-language event you see the registration and disclaimer in English regardless of your app language.
-                      </>
-                  } />
-                </label>
-                <select
-                  className="form-input"
-                  value={registrationLanguage}
-                  onChange={e => setRegistrationLanguage(e.target.value as '' | 'de' | 'en')}
-                  style={{ width: '100%', maxWidth: 460 }}
-                >
-                  <option value="">{isDe ? 'Automatisch (App-Sprache des Teilnehmers)' : 'Automatic (attendee\'s app language)'}</option>
-                  <option value="de">{isDe ? 'Immer Deutsch' : 'Always German'}</option>
-                  <option value="en">{isDe ? 'Immer Englisch' : 'Always English'}</option>
-                </select>
-                <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 6 }}>
-                  {isDe
-                    ? 'Default: Automatisch. Bei fester Sprache wird die Anmeldeseite inkl. Disclaimer immer in dieser Sprache angezeigt.'
-                    : 'Default: Automatic. With a fixed language the registration page incl. disclaimer is always shown in that language.'}
-                </span>
-              </div>
+              {/* v18.35: Anmeldesprache vorgeben — v22.32: nach unten zu den
+                  Formular-Optionen (Anrede / Deutsch+Englisch) verschoben,
+                  gleicher Look + gleiche Schriftgrößen wie die Toggles dort. */}
 
               {/* v18.57: Deutsch/Englisch-Toggle nach unten verschoben — sitzt jetzt
                   direkt unter den „Vorgeschlagene Felder"-Buttons. */}
@@ -9559,6 +9525,48 @@ export default function EventCreationPage(): React.ReactElement {
                     </span>
                   </span>
                 </label>
+              </div>
+
+              {/* v22.32: Sprache des Anmeldeformulars — gehört inhaltlich zu
+                  den Formular-Optionen hier (vorher eigene Karte weiter oben),
+                  gleicher Look + gleiche Schriftgrößen wie die Toggles. */}
+              <div style={{
+                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                padding: '12px 16px', marginBottom: 14,
+                border: '1px solid var(--dex-gray-200)',
+              }}>
+                <span style={{ display: 'block' }}>
+                  <strong>{isDe ? 'Sprache des Anmeldeformulars' : 'Registration form language'}</strong>
+                  <InfoTooltip text={isDe
+                    ? <>
+                        <strong>Was du hier einstellst:</strong> in welcher Sprache die <strong>komplette Anmeldeseite</strong> (alle Texte, Buttons und der <strong>Datenschutz-Disclaimer</strong>) angezeigt wird.<br /><br />
+                        <strong>Anzeige in der App:</strong> bei <strong>Automatisch</strong> folgt die Anmeldeseite der App-Sprache des Teilnehmers. Wählst du <strong>Immer Deutsch</strong> oder <strong>Immer Englisch</strong>, wird die Anmeldeseite <strong>fest in dieser Sprache</strong> angezeigt — auch wenn der Teilnehmer die App z.&nbsp;B. auf Deutsch nutzt. Ein kleiner Hinweis im Kopfbereich zeigt das an.<br /><br />
+                        <strong>Unsere Empfehlung:</strong> Stellst du deine eigenen Fragen unten <strong>nur in einer Sprache</strong> (z.&nbsp;B. Englisch), dann stelle das Formular <strong>fest auf diese Sprache</strong>. Sonst mischen sich bei Teilnehmern mit anderer App-Sprache die deutschen Standard-Texte (Buttons, Hinweise, Datenschutz) mitten zwischen deine englischen Fragen — das wirkt unsauber.<br /><br />
+                        <strong>Auswirkung für Teilnehmer:</strong> bei einem englischsprachigen Event sehen sie die Anmeldung samt Disclaimer komplett auf Englisch, egal welche App-Sprache eingestellt ist.
+                      </>
+                    : <>
+                        <strong>What you set here:</strong> the language in which the <strong>entire registration page</strong> (all texts, buttons and the <strong>privacy disclaimer</strong>) is shown.<br /><br />
+                        <strong>Where you see it:</strong> with <strong>Automatic</strong> the page follows the attendee&apos;s app language. Choosing <strong>Always German</strong> or <strong>Always English</strong> forces the registration page into that language — even if the attendee uses the app in another language. A small hint in the header indicates this.<br /><br />
+                        <strong>Our recommendation:</strong> if your own questions below are written in <strong>one language only</strong> (e.g. English), <strong>fix the form to that language</strong>. Otherwise attendees with a different app language get the German standard texts (buttons, hints, privacy) mixed in between your English questions — which looks messy.<br /><br />
+                        <strong>For attendees:</strong> for an English-language event they see the registration and disclaimer fully in English regardless of their app language.
+                      </>
+                  } />
+                  <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                    {isDe
+                      ? <>Default: Automatisch — folgt der App-Sprache des Teilnehmers. <strong>Empfehlung:</strong> Stellst du deine Fragen nur in einer Sprache (z.&nbsp;B. Englisch), stelle das Formular fest auf diese Sprache — sonst stehen deutsche Standard-Texte mitten zwischen deinen englischen Fragen.</>
+                      : <>Default: Automatic — follows the attendee&apos;s app language. <strong>Recommendation:</strong> if your questions are in one language only (e.g. English), fix the form to that language — otherwise German standard texts appear in between your English questions.</>}
+                  </span>
+                  <select
+                    className="form-input"
+                    value={registrationLanguage}
+                    onChange={e => setRegistrationLanguage(e.target.value as '' | 'de' | 'en')}
+                    style={{ width: '100%', maxWidth: 380, marginTop: 8, minHeight: 0, padding: '8px 12px', fontSize: '0.85rem' }}
+                  >
+                    <option value="">{isDe ? 'Automatisch (App-Sprache des Teilnehmers)' : 'Automatic (attendee\'s app language)'}</option>
+                    <option value="de">{isDe ? 'Immer Deutsch' : 'Always German'}</option>
+                    <option value="en">{isDe ? 'Immer Englisch' : 'Always English'}</option>
+                  </select>
+                </span>
               </div>
 
                 {/* v7.20: Spalten-Header oberhalb der Feld-Karten — erklärt
