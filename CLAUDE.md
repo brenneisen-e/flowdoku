@@ -385,6 +385,18 @@ Hauptevents/der Klammer (Standortfilter `locationAudience` + Mailverteiler
 
 ### Wizard-UX-Konventionen (v22.23)
 
+- **Aufräum-Pass (v22.29) — ruhige, einheitliche Flächen:** Die Einstellungs-
+  Sektionen der Wizard-Schritte liegen alle auf derselben dezenten Fläche
+  (`zebraS3Bg()` liefert immer `--dex-gray-50` — der frühere Zebra-Wechsel
+  ist raus, die Funktion bleibt als zentrale Farb-Stelle). `StepBadge` ist
+  ein dezenter Outline-Badge (weiß + grüner Rand) statt gefüllt — die
+  durchlaufenden Nummern bleiben (werden in Tooltips referenziert).
+  Sektions-Überschriften innerhalb eines Schritts einheitlich 1.05rem
+  green-dark. Jeder Schritt beginnt mit „Schritt N — Name" (h2, grün) +
+  Ein-Satz-Beschreibung — neue Schritte/Sektionen bitte diesem Raster
+  folgen. Die frühere blaue Info-Box in Schritt 5 läuft jetzt ebenfalls
+  über `WizardHint`.
+
 - **Einheitliche Hinweis-Boxen — `components/WizardHint.tsx`:** JEDE
   Hinweis-Box im Event-Wizard (und im wizard-genutzten `AudiencePicker`)
   läuft über die shared Komponente `<WizardHint isDe title=…>` — Aufbau

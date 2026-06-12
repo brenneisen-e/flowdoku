@@ -298,12 +298,16 @@ function shortSubEventTitle(title: string | undefined, parentTitle?: string): st
 }
 
 function StepBadge({ n }: { n: number }): React.ReactElement {
+  // v22.29: Aufräum-Pass — dezenter Outline-Badge statt gefüllter grüner
+  // Kreis. Die durchlaufenden Nummern bleiben (Tooltips/Support referenzieren
+  // sie), treten optisch aber hinter die eigentlichen Labels zurück.
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      width: 22, height: 22, borderRadius: '50%',
-      background: 'var(--dex-green)', color: '#fff',
-      fontSize: '0.72rem', fontWeight: 700, flexShrink: 0,
+      width: 20, height: 20, borderRadius: '50%',
+      background: '#fff', color: 'var(--dex-green-dark, #4a7c1f)',
+      border: '1.5px solid var(--dex-green, #86bc25)',
+      fontSize: '0.66rem', fontWeight: 700, flexShrink: 0,
     }}>{n}</span>
   );
 }
@@ -4913,9 +4917,12 @@ export default function EventCreationPage(): React.ReactElement {
   // bekommen das in einer späteren Iteration nachgezogen.
   let _zebraS3Idx = 0;
   const zebraS3Bg = (): string => {
-    const c = _zebraS3Idx % 2 === 0 ? 'var(--dex-gray-50, #fafafa)' : '#ffffff';
+    // v22.29: Aufräum-Pass — kein Zebra-Wechsel mehr (wirkte unruhig und
+    // willkürlich), alle Einstellungs-Sektionen liegen einheitlich auf
+    // derselben dezenten Fläche. Funktion bleibt als zentrale Stelle für
+    // die Sektions-Hintergrundfarbe bestehen.
     _zebraS3Idx++;
-    return c;
+    return 'var(--dex-gray-50, #fafafa)';
   };
 
   return (
@@ -9301,26 +9308,23 @@ export default function EventCreationPage(): React.ReactElement {
                   und werden bei JEDER Sub-Event-Anmeldung abgefragt, also
                   in dem Modus besonders relevant. Stattdessen ein info-
                   blauer Hinweis-Banner mit der korrekten Erklärung. */}
+              {/* v22.29: Aufräum-Pass — die frühere blaue Info-Box ist auf das
+                  einheitliche, eingeklappte WizardHint-Muster umgestellt (der
+                  Inhalt doppelte sich zudem mit dem Beschreibungstext der
+                  Sektion direkt darunter). */}
               {subEventsOnlyMode && (() => {
                 const termPl = (childTermPlural || (isDe ? 'Sub-Events' : 'sub-events')).trim() || (isDe ? 'Sub-Events' : 'sub-events');
                 const termSg = (childTermSingular || (isDe ? 'Sub-Event' : 'sub-event')).trim() || (isDe ? 'Sub-Event' : 'sub-event');
                 return (
-                  <div style={{
-                    display: 'flex', alignItems: 'flex-start', gap: 10,
-                    padding: '12px 14px', marginBottom: 16,
-                    background: 'rgba(33,150,243,0.06)',
-                    border: '1px solid var(--dex-info, #2196f3)',
-                    borderRadius: 'var(--dex-radius, 12px)',
-                    fontSize: '0.85rem', color: 'var(--dex-gray-700)',
-                    lineHeight: 1.5,
-                  }}>
-                    <Icon iconName="Info" style={{ fontSize: 18, color: 'var(--dex-info, #2196f3)', flexShrink: 0, marginTop: 2 }} />
-                    <div>
-                      {isDe
-                        ? <><strong>Übergreifende Felder</strong> — diese Fragen werden bei der Anmeldung zu jeder einzelnen {termSg} abgefragt. Trag hier ein, was für alle {termPl} gemeinsam gilt; spezifische Felder pro {termSg} pflegst du in den jeweiligen Tabs rechts daneben.</>
-                        : <><strong>Cross-cutting fields</strong> — these questions are asked once per {termSg} registration. Configure here what applies across all {termPl}; per-{termSg} specifics go into the individual tabs on the right.</>}
-                    </div>
-                  </div>
+                  <WizardHint
+                    isDe={isDe}
+                    title={isDe ? 'Was sind übergreifende Felder?' : 'What are cross-cutting fields?'}
+                    style={{ marginBottom: 16 }}
+                  >
+                    {isDe
+                      ? <>Diese Fragen werden bei der Anmeldung zu jeder einzelnen {termSg} abgefragt. Trag hier ein, was für alle {termPl} gemeinsam gilt; spezifische Felder pro {termSg} pflegst du in den jeweiligen Tabs rechts daneben.</>
+                      : <>These questions are asked once per {termSg} registration. Configure here what applies across all {termPl}; per-{termSg} specifics go into the individual tabs on the right.</>}
+                  </WizardHint>
                 );
               })()}
               <div>
@@ -9330,7 +9334,7 @@ export default function EventCreationPage(): React.ReactElement {
                     Sub-Event-Block weiter unten (v10.11+).
                     v15.0: im subEventsOnlyMode lautet die Ueberschrift
                     „Uebergreifend für alle <childTermPlural>". */}
-                <h3 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.15rem', fontWeight: 700 }}>
+                <h3 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.05rem', fontWeight: 700 }}>
                   {subEventsOnlyMode
                     ? (isDe
                         ? `Übergreifend für alle ${(childTermPlural || 'Sub-Events').trim() || 'Sub-Events'}`
@@ -10232,7 +10236,7 @@ export default function EventCreationPage(): React.ReactElement {
                   und sicherzustellen, dass der Tab-N>0-Code identische
                   Verhaltens-Garantien hat. */}
               <div style={{ display: 'none', marginTop: 32, paddingTop: 24, borderTop: '2px solid var(--dex-gray-200)' }}>
-                <h3 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.15rem', fontWeight: 700 }}>
+                <h3 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.05rem', fontWeight: 700 }}>
                   {isDe ? 'Felder pro Sub-Event' : 'Fields per sub-event'}
                 </h3>
                 <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
