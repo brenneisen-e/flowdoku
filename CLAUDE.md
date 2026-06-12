@@ -346,6 +346,59 @@ Hauptevents/der Klammer (Standortfilter `locationAudience` + Mailverteiler
 - Greift nur, wenn das Hauptevent eine Sichtbarkeit gesetzt hat. Reine Wizard-/
   Persistenz-Logik, kein Runtime-Semantik-Change an `isEventVisibleForUser`.
 
+### Sichtbarkeits-Transparenz im Wizard + Organizer Center (v22.22)
+
+- **Wizard Schritt 4:** Unter der „Sichtbarkeit"-Überschrift (Hauptevent/
+  Klammer UND je Sub-Event-Tab) zeigt eine grüne Box **„Aktuell eingestellt:
+  Sichtbar für …"** live die aktuelle Auswahl (Standorte / N Verteiler/
+  Personen, UND/ODER-Verknüpfung, Ausschluss-Zähler) — gleiche Klartext-Logik
+  wie die „Nächste Schritte"-Box im Organizer Center
+  (`renderVisibilitySummaryBox` in `EventCreationPage.tsx`).
+- **Klammer-Banner korrigiert:** Der orange „Nur Sub-Events"-Hinweis sagte
+  „Sichtbarkeit oben", obwohl die Sichtbarkeits-Sektion UNTER dem Banner
+  steht — jetzt „direkt hier unten"; Schriftgröße an die „Wichtig:"-Box des
+  AudiencePickers angeglichen (0.78rem).
+- **Organizer Center „Nächste Schritte":** Sub-Sections OHNE eigene Filter
+  werden als **„wie das Gesamt-Event (keine eigene Einschränkung)"**
+  ausgewiesen statt irreführend „alle Mitarbeiter von Deloitte Deutschland"
+  (der Zugang läuft zur Laufzeit immer über die Sichtbarkeit des
+  Gesamt-Events — `isEventVisibleForUser` filtert Sub-Events erst auf der
+  RegistrationPage des Parents). Erben ALLE Sub-Sections, kollabiert die
+  Anzeige zu einer Aussage.
+
+### Abmelde-Sperre für vergangene Events + MyEvents-Cluster (v22.22)
+
+Leitlinie: **Nach Event-Ende gibt es keine Selbst-Abmeldung mehr** — und
+Organizer-/Admin-Abmeldungen laufen dann **still** (reine Datenkorrektur).
+
+- **Helper `isEventOver(ev)`** in `utils/eventFormat.ts`: Ende (Fallback:
+  Ende des Start-Tages 23:59:59) < jetzt; ohne Datumsangaben `false`
+  (fail-open).
+- **Selbst-Abmeldung gesperrt:** zentraler Guard in
+  `EventContext.cancelRegistration` (return false + Warn-Log) — fängt damit
+  auch den **Auto-Cancel-Deep-Link** aus Mails (läuft über
+  `MyEventsPage.performCancel`, dort zusätzlich Guard mit `showAlert`) und
+  die Sub-Event-Session-Toggles ab. Auf der MyEvents-Karte ersetzt ein
+  grauer Hinweis den Abmelden-Button; Session-Toggles sind disabled.
+- **Organizer/Admin-Abmeldung bleibt möglich (Admin Center), aber still:**
+  in allen drei AdminPage-Cancel-Pfaden (Teilnehmer-Tabelle, Warteliste-
+  „Entfernen", konsolidierte Sub-Event-Abmeldung) werden bei
+  `isEventOver(event/child)` **Abmelde-Mail, Outlook-`Ausladen`,
+  client-seitiges Nachrücken UND `queueIDReorder`** übersprungen (der
+  IDReorder-Flow würde sonst seinerseits nachrücken + Mails queuen). Der
+  Confirm-Dialog weist auf den stillen Modus hin. Audit-Log und
+  `removeParticipantEvent` laufen weiter.
+- **MyEvents-Cluster:** „Meine Events" zeigt jetzt drei Sektionen —
+  **Aktive Events** (bevorstehend/laufend), **Vergangene Events** (Status
+  aktiv, Event vorbei; mit Hinweis „Abmeldung nicht mehr möglich") und die
+  bestehende einklappbare **Abgemeldete Events**-Sektion. Der Karten-
+  Renderer ist unverändert (`renderMyEventCard`, extrahierte frühere
+  map-Callback-Funktion).
+- **QR-Standard-Mail:** `qrEmailDefaults` (DE/EN) enthält jetzt den Hinweis,
+  dass der QR-Code jederzeit in der App unter „Meine Events" → „Mein
+  QR-Code" abrufbar ist. Gilt für alle Events ohne gespeicherten
+  QR-Mail-Override (Override-Texte bleiben unangetastet).
+
 ### Konten-Aktiv-Check beim Öffnen eines Events (v22.7)
 
 Beim Öffnen der Organizer-Detailansicht prüft die App im Hintergrund, ob die

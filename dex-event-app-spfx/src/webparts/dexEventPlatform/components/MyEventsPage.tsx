@@ -20,6 +20,7 @@ import { isEventVisibleForUser } from './EventListPage';
 import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime, QuizQuestion } from '../types';
 import { SPRegistration } from '../services/EventService';
 import { wrapTemplate } from '../services/EmailTemplates';
+import { isEventOver } from '../utils/eventFormat';
 import { useLanguage } from '../context/LanguageContext';
 // v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
 import { useDialog } from '../context/DialogContext';
@@ -1163,6 +1164,19 @@ export default function MyEventsPage(): React.ReactElement {
   // Wird sowohl von handleCancel (beim 2. Klick) als auch vom Auto-Cancel-
   // Deep-Link (direkt nach Navigation) genutzt.
   const performCancel = async (eventId: string): Promise<void> => {
+    // v22.22: Abmeldung von bereits vergangenen Events ist nicht mehr
+    // möglich — auch nicht über den Auto-Cancel-Deep-Link aus der Mail
+    // (der läuft ebenfalls über performCancel).
+    const guardEntry = myEvents.find(e => e.event.id === eventId);
+    if (guardEntry && isEventOver(guardEntry.event)) {
+      showAlert(isDe
+        ? 'Dieses Event liegt bereits in der Vergangenheit — eine Abmeldung ist nicht mehr möglich.'
+        : 'This event is already in the past — cancelling is no longer possible.',
+        { variant: 'error' });
+      setCancellingId(null);
+      setIsCancelling(false);
+      return;
+    }
     setCancellingId(eventId);
     setIsCancelling(true);
 
@@ -1299,6 +1313,10 @@ export default function MyEventsPage(): React.ReactElement {
 
   const activeEntries = myEvents.filter(e => e.registration.Status !== 'Abgemeldet');
   const cancelledEntries = myEvents.filter(e => e.registration.Status === 'Abgemeldet');
+  // v22.22: Cluster „Aktive Events" / „Vergangene Events" — gleiche Karte,
+  // getrennte Sektionen (plus die bestehende „Abgemeldete Events"-Sektion).
+  const upcomingEntries = activeEntries.filter(e => !isEventOver(e.event));
+  const pastEntries = activeEntries.filter(e => isEventOver(e.event));
 
   if (isLoading) {
     // v11.79: Border-Ring-Spinner (v11.33/v11.70) durch eine saubere
@@ -1374,9 +1392,11 @@ export default function MyEventsPage(): React.ReactElement {
         </div>
       )}
 
-      {activeEntries.length > 0 && (
-        <div className="my-events-list">
-          {activeEntries.map(({ event, registration, sessionsOnly, subEventTitles }) => {
+      {activeEntries.length > 0 && (() => {
+        // v22.22: Der Karten-Renderer ist die frühere map-Callback-Funktion —
+        // unverändert, nur extrahiert, damit „Aktive Events" und „Vergangene
+        // Events" dieselbe Karte in getrennten Clustern rendern können.
+        const renderMyEventCard = ({ event, registration, sessionsOnly, subEventTitles }: MyEventEntry): React.ReactElement | null => {
             // Custom Data parsen und IDs zu Labels mappen
             let customData: Record<string, string> = {};
             try {
@@ -2307,7 +2327,24 @@ export default function MyEventsPage(): React.ReactElement {
                       {/* Abmelden-Button: prominent ausgelegt damit er auf der Karte
                           sofort gefunden wird (User-Feedback v9.8). 2-Klick-Confirm
                           bleibt — der erste Klick färbt rot und blendet den
-                          "Doch behalten"-Button daneben ein. */}
+                          "Doch behalten"-Button daneben ein.
+                          v22.22: Bei bereits vergangenen Events entfällt der Button —
+                          stattdessen ein grauer Hinweis (performCancel blockt
+                          zusätzlich, auch für den Auto-Cancel-Deep-Link). */}
+                      {isEventOver(event) ? (
+                        <span style={{
+                          fontSize: '0.8rem', color: 'var(--dex-gray-500)',
+                          padding: '8px 12px', borderRadius: 8,
+                          background: 'var(--dex-gray-50, #fafafa)',
+                          border: '1px solid var(--dex-gray-200)',
+                          lineHeight: 1.4,
+                        }}>
+                          {isDe
+                            ? 'Dieses Event liegt in der Vergangenheit — eine Abmeldung ist nicht mehr möglich.'
+                            : 'This event is in the past — cancelling is no longer possible.'}
+                        </span>
+                      ) : (
+                        <>
                       <button
                         className={`btn dex-cancel-btn${cancellingId === event.id ? ' dex-cancel-btn--armed' : ''}`}
                         onClick={() => handleCancel(event.id)}
@@ -2333,14 +2370,46 @@ export default function MyEventsPage(): React.ReactElement {
                       {cancellingId === event.id && !isCancelling && (
                         <button className="btn btn-secondary" onClick={() => setCancellingId(null)} style={{ fontSize: '0.85rem', padding: '8px 16px' }}>{t('myevents.keepreg')}</button>
                       )}
+                        </>
+                      )}
                     </div>
                   </div>
                 )}
               </div>
             );
-          })}
-        </div>
-      )}
+          };
+        const clusterHeadingStyle: React.CSSProperties = {
+          margin: '0 0 12px', fontSize: '1.05rem',
+          color: 'var(--dex-gray-700)', display: 'flex', alignItems: 'center', gap: 8,
+        };
+        return (
+          <>
+            {upcomingEntries.length > 0 && (
+              <>
+                <h3 style={clusterHeadingStyle}>
+                  {isDe ? 'Aktive Events' : 'Active events'}
+                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-400)' }}>({upcomingEntries.length})</span>
+                </h3>
+                <div className="my-events-list">{upcomingEntries.map(renderMyEventCard)}</div>
+              </>
+            )}
+            {pastEntries.length > 0 && (
+              <>
+                <h3 style={{ ...clusterHeadingStyle, marginTop: upcomingEntries.length > 0 ? 28 : 0 }}>
+                  {isDe ? 'Vergangene Events' : 'Past events'}
+                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-400)' }}>({pastEntries.length})</span>
+                </h3>
+                <p style={{ margin: '-6px 0 12px', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+                  {isDe
+                    ? 'Diese Events liegen in der Vergangenheit — eine Abmeldung ist hier nicht mehr möglich.'
+                    : 'These events are in the past — cancelling is no longer possible here.'}
+                </p>
+                <div className="my-events-list">{pastEntries.map(renderMyEventCard)}</div>
+              </>
+            )}
+          </>
+        );
+      })()}
 
       {cancelledEntries.length > 0 && (
         // v11.97: Cancelled-Liste einklappbar — Default eingeklappt, damit
@@ -3406,7 +3475,9 @@ function MyEventSubEvents(props: {
           const count = counts[ce.id] || 0;
           const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
           const isFull = hasCap && count >= (ce.maxParticipants || 0);
-          const disabled = isBusy || (deadlinePassed && !isReg) || (isFull && !isReg);
+          // v22.22: Vergangene Sessions sind weder an- noch abmeldbar
+          // (Abmelde-Sperre für vergangene Events; EventContext blockt zusätzlich).
+          const disabled = isBusy || (deadlinePassed && !isReg) || (isFull && !isReg) || isEventOver(ce);
           // v11.31: Custom-Field-Antworten gehören INS Sub-Event-Karten-
           // Layout, nicht ausserhalb. Maintainer-Wunsch: Tags zwischen
           // der Datums-/Adress-Zeile und den Action-Buttons (rechts) als

@@ -18,6 +18,7 @@ import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
 import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2, ChevronUp, ChevronDown, QrCode, Search, Info } from './Icons';
 import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
+import { isEventOver } from '../utils/eventFormat';
 // v20.1: Self-Check-in jederzeit aktivierbar (Token-Erzeugung beim Klick).
 // v20.2: + statische Check-in-URL für die QR-Kachel im Event-Detail.
 // v20.3: + Default-Zeitfenster (2 Std. vor Start bis Event-Ende) zur Vorbelegung.
@@ -1662,7 +1663,10 @@ export default function AdminPage(): React.ReactElement {
           });
         } catch { /* */ }
         // Abmelde-Mail + Outlook 'Ausladen' (event-weite Schalter respektieren).
-        if (reg.ParticipantEmail) {
+        // v22.22: Vergangenes Sub-Event → stille Abmeldung (keine Mail, kein
+        // Outlook, kein Nachrücken, kein ID-Reorder).
+        const childWasOver = isEventOver(child);
+        if (reg.ParticipantEmail && !childWasOver) {
           if (!child.disableEmails && !child.disableCancellationEmail) {
             try {
               const emailData = cancellationEmail(name, child.title);
@@ -1691,6 +1695,7 @@ export default function AdminPage(): React.ReactElement {
           && typeof child.funstarterCapacity === 'number'
           && ((child.durchstarterCapacity || 0) > 0 || (child.funstarterCapacity || 0) > 0);
         const useTypeFilter = isSplitEvent && !child.splitSharedWaitlist;
+        if (!childWasOver) {
         try {
           const promoted = await eventServiceRef.promoteFirstWaitlistItem(
             sub,
@@ -1735,6 +1740,7 @@ export default function AdminPage(): React.ReactElement {
             child.id, child.eventNumber || 0, sub, child.title, name, reg.ParticipantEmail || undefined
           );
         } catch (err) { console.warn('[DEX] queueIDReorder threw:', err); }
+        }
       } catch (err) {
         console.warn('[DEX] consolidated deregister failed for child', child.id, err);
       }
@@ -4945,15 +4951,30 @@ export default function AdminPage(): React.ReactElement {
                   const parentVisText = visText(locs, auds);
                   const visSummary = (isDe ? 'Sichtbar für ' : 'Visible to ') + parentVisText + '.';
                   // Pro Sub-Section die Sichtbarkeit; wenn alle gleich → nur einmal.
-                  const childVis = children.map(c => ({
-                    title: shortSubEventTitle(c.title, selectedEvent.title) || c.title,
-                    text: visText((c.locationAudience || []).filter(Boolean), (c.audienceFilter || []).filter(Boolean)),
-                  }));
+                  // v22.22: Eine Sub-Section OHNE eigene Filter ist zur Laufzeit
+                  // NICHT für „alle Mitarbeiter" sichtbar — der Zugang läuft immer
+                  // über das Gesamt-Event (dessen Sichtbarkeit gilt dann auch für
+                  // die Sub-Section). Das auch so benennen, statt irreführend
+                  // „alle Mitarbeiter von Deloitte Deutschland" anzuzeigen.
+                  const parentRestricted = locs.length > 0 || auds.length > 0;
+                  const childVis = children.map(c => {
+                    const cl = (c.locationAudience || []).filter(Boolean);
+                    const ca = (c.audienceFilter || []).filter(Boolean);
+                    const inherits = cl.length === 0 && ca.length === 0 && parentRestricted;
+                    return {
+                      title: shortSubEventTitle(c.title, selectedEvent.title) || c.title,
+                      inherits,
+                      text: inherits
+                        ? (isDe ? 'wie das Gesamt-Event (keine eigene Einschränkung)' : 'same as the overall event (no own restriction)')
+                        : visText(cl, ca),
+                    };
+                  });
                   const allChildrenSame = childVis.length > 0 && childVis.every(c => c.text === childVis[0].text);
                   // v22.8: Wenn Gesamt-Event UND alle Sub-Sections dieselbe
                   // Sichtbarkeit haben, ist die Unterscheidung überflüssig — dann
-                  // nur EINE Aussage zeigen.
-                  const everythingSame = hasChildren && allChildrenSame && childVis[0].text === parentVisText;
+                  // nur EINE Aussage zeigen. (v22.22: gilt auch, wenn alle
+                  // Sub-Sections die Sichtbarkeit des Gesamt-Events erben.)
+                  const everythingSame = hasChildren && allChildrenSame && (childVis[0].text === parentVisText || childVis[0].inherits);
                   const steps: Array<{ title: string; body: React.ReactNode }> = [
                     {
                       title: isDe ? 'Event finalisieren' : 'Finalize the event',
@@ -8037,16 +8058,26 @@ export default function AdminPage(): React.ReactElement {
                         onClick={async () => {
                           if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
                           const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
-                          if (!(await confirmDialog(isDe ? `${name} (${reg.ParticipantEmail}) wirklich abmelden?` : `Really cancel ${name} (${reg.ParticipantEmail})?`, { danger: true, confirmLabel: isDe ? 'Abmelden' : 'Cancel registration' }))) return;
+                          // v22.22: Vergangenes Event → stille Abmeldung (keine
+                          // Abmelde-Mail, keine Outlook-Absage, kein Nachrücken,
+                          // kein ID-Reorder). Der Confirm sagt das explizit.
+                          const eventWasOver = isEventOver(selectedEvent);
+                          const confirmMsg = eventWasOver
+                            ? (isDe
+                              ? `${name} (${reg.ParticipantEmail}) wirklich abmelden?\n\nDas Event liegt in der Vergangenheit — die Abmeldung läuft still: Es gehen keine Abmelde-Mail und keine Outlook-Absage raus, und es rückt niemand von der Warteliste nach.`
+                              : `Really cancel ${name} (${reg.ParticipantEmail})?\n\nThe event is in the past — the cancellation runs silently: no cancellation email, no Outlook removal, and nobody is promoted from the waitlist.`)
+                            : (isDe ? `${name} (${reg.ParticipantEmail}) wirklich abmelden?` : `Really cancel ${name} (${reg.ParticipantEmail})?`);
+                          if (!(await confirmDialog(confirmMsg, { danger: true, confirmLabel: isDe ? 'Abmelden' : 'Cancel registration' }))) return;
                           // Lade-Toast anzeigen
                           setAdminToast({ kind: 'cancelling', name });
                           // Typ des Abgemeldeten merken — für typ-bewusstes Nachrücken bei B2Run-Split.
                           const cancelledStarterType = reg.StarterType || '';
                           await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id, `${currentUser.firstName} ${currentUser.surname}`.trim(), currentUser.email);
                           // Abmelde-Email und Outlook-Ausladen in Queue eintragen (falls nicht deaktiviert)
-                          if (reg.ParticipantEmail) {
+                          if (reg.ParticipantEmail && !eventWasOver) {
                             // v19.21: disableCancellationEmail unterdrückt auch die
                             // Admin-seitige Abmelde-Mail (event-weite Vorgabe).
+                            // v22.22: bei vergangenem Event komplett still.
                             if (!selectedEvent.disableEmails && !selectedEvent.disableCancellationEmail) {
                               const emailData = cancellationEmail(name, selectedEvent.title);
                               eventServiceRef.queueEmail(
@@ -8081,6 +8112,8 @@ export default function AdminPage(): React.ReactElement {
                             && typeof selectedEvent.funstarterCapacity === 'number'
                             && (selectedEvent.durchstarterCapacity > 0 || selectedEvent.funstarterCapacity > 0);
                           const useTypeFilter = isSplitEvent && !selectedEvent.splitSharedWaitlist;
+                          // v22.22: Vergangenes Event → kein Nachrücken mehr.
+                          if (!eventWasOver) {
                           try {
                             const promoted = await eventServiceRef.promoteFirstWaitlistItem(
                               selectedEvent.subsiteUrl,
@@ -8142,9 +8175,12 @@ export default function AdminPage(): React.ReactElement {
                             // Bei Fehler: "kein Nachrücker" anzeigen (Abmeldung selbst war erfolgreich)
                             setAdminToast({ kind: 'no-promote', name });
                           }
+                          }
                           // IDReorder in Queue eintragen — der Flow macht nur noch Reorder
                           // (Promote ist oben schon passiert, Flow erkennt Count_Active = MaxParticipants).
-                          if (selectedEvent.subsiteUrl) {
+                          // v22.22: bei vergangenem Event auch kein ID-Reorder (der Flow
+                          // würde sonst seinerseits nachrücken/Mails auslösen).
+                          if (selectedEvent.subsiteUrl && !eventWasOver) {
                             try {
                               const ok = await eventServiceRef.queueIDReorder(
                                 selectedEvent.id, selectedEvent.eventNumber || 0,
@@ -8466,9 +8502,12 @@ export default function AdminPage(): React.ReactElement {
                               onClick={async () => {
                                 if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
                                 const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
-                                if (!(await confirmDialog(`${name} von der Warteliste entfernen?`, { danger: true, confirmLabel: isDe ? 'Entfernen' : 'Remove' }))) return;
+                                // v22.22: Vergangenes Event → stilles Entfernen
+                                // (keine Abmelde-Mail, kein ID-Reorder).
+                                const eventWasOver = isEventOver(selectedEvent);
+                                if (!(await confirmDialog(`${name} von der Warteliste entfernen?${eventWasOver ? (isDe ? '\n\nDas Event liegt in der Vergangenheit — es geht keine Abmelde-Mail raus.' : '\n\nThe event is in the past — no cancellation email will be sent.') : ''}`, { danger: true, confirmLabel: isDe ? 'Entfernen' : 'Remove' }))) return;
                                 await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id, `${currentUser.firstName} ${currentUser.surname}`.trim(), currentUser.email);
-                                if (reg.ParticipantEmail && !selectedEvent.disableEmails && !selectedEvent.disableCancellationEmail) {
+                                if (reg.ParticipantEmail && !selectedEvent.disableEmails && !selectedEvent.disableCancellationEmail && !eventWasOver) {
                                   const emailData = cancellationEmail(name, selectedEvent.title);
                                   eventServiceRef.queueEmail(
                                     emailData.subject, reg.ParticipantEmail, name, emailData.body,
@@ -8478,7 +8517,7 @@ export default function AdminPage(): React.ReactElement {
                                 if (reg.ParticipantEmail && selectedEvent.eventNumber) {
                                   eventServiceRef.removeParticipantEvent(reg.ParticipantEmail, selectedEvent.eventNumber).catch(err => console.warn('[DEX]', err));
                                 }
-                                if (selectedEvent.subsiteUrl) {
+                                if (selectedEvent.subsiteUrl && !eventWasOver) {
                                   try {
                                     const ok = await eventServiceRef.queueIDReorder(
                                       selectedEvent.id, selectedEvent.eventNumber || 0,

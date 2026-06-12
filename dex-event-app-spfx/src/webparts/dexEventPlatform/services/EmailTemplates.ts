@@ -596,6 +596,7 @@ export function qrEmailDefaults(lang: string = 'EN'): { subject: string; heading
 <p>hier ist dein persönlicher QR-Code für das Event <strong>{{EventTitle}}</strong>.</p>
 <p>Bitte zeige den QR-Code beim Check-in vor.</p>
 {{QR_BLOCK}}
+<p>Tipp: Du findest deinen QR-Code auch jederzeit in der DEX App unter <strong>„Meine Events"</strong> (Button „Mein QR-Code") — falls du diese Mail am Eventtag nicht zur Hand hast.</p>
 <p style="color:#999;font-size:12px;text-align:center;">Der QR-Code ist persönlich und nicht übertragbar.</p>
 <p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`,
     };
@@ -608,6 +609,7 @@ export function qrEmailDefaults(lang: string = 'EN'): { subject: string; heading
 <p>here is your personal QR code for the event <strong>{{EventTitle}}</strong>.</p>
 <p>Please show this QR code at check-in.</p>
 {{QR_BLOCK}}
+<p>Tip: You can also open your QR code anytime in the DEX app under <strong>“My Events”</strong> (button “My QR code”) — in case you do not have this email at hand on the event day.</p>
 <p style="color:#999;font-size:12px;text-align:center;">This QR code is personal and non-transferable.</p>
 <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`,
   };

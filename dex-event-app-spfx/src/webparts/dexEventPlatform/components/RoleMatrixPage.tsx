@@ -146,7 +146,7 @@ const PERMISSIONS: PermissionRow[] = [
     description: 'Eigene Registrierungsdaten (Custom Fields, T-Shirt-Größe, Notfallkontakt etc.) nachträglich ändern.',
     user: true, assistenz: true, coorganizer: true, testteam: true, checkin: false, organizer: true, admin: true },
   { category: 'Registrierungen', feature: 'Eigene Registrierung stornieren',
-    description: 'Eigene Anmeldung über "Meine Events" wieder zurückziehen; löst automatische Cancellation-Mail aus.',
+    description: 'Eigene Anmeldung über "Meine Events" wieder zurückziehen; löst automatische Cancellation-Mail aus. Seit v22.22 nur bis zum Event-Ende möglich — bei vergangenen Events ist die Selbst-Abmeldung gesperrt (auch über den Abmelde-Link aus Mails); Organizer/Admins können im Organizer Center weiterhin abmelden, dann aber still (ohne Mail, Outlook-Absage und Nachrücken).',
     user: true, assistenz: true, coorganizer: true, testteam: true, checkin: false, organizer: true, admin: true },
   { category: 'Registrierungen', feature: 'Für andere registrieren',
     description: 'Eine andere Person stellvertretend anmelden. Pflicht-Checkbox zur Zustimmung der Person; diese Bestätigung wird seit v18.74 zusätzlich als Nachweis in der Teilnehmerliste gespeichert (Spalte „ProxyConsent", mit Name + Datum des Akteurs). Audit: RegisteredBy wird auf den eingeloggten User gesetzt.',

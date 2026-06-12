@@ -4290,21 +4290,67 @@ export default function EventCreationPage(): React.ReactElement {
         background: 'rgba(237,139,0,0.08)',
         border: '1px solid var(--dex-orange, #ed8b00)',
         borderRadius: 'var(--dex-radius, 12px)',
-        fontSize: '0.85rem', color: 'var(--dex-gray-700)',
+        // v22.22: gleiche Schriftgröße wie die „Wichtig:"-Hinweisbox im
+        // Mailverteiler-Bereich weiter unten (AudiencePicker, 0.78rem).
+        fontSize: '0.78rem', color: 'var(--dex-gray-700)',
         lineHeight: 1.5,
       }}>
         <Icon iconName="Info" style={{ fontSize: 18, color: 'var(--dex-orange, #ed8b00)', flexShrink: 0, marginTop: 2 }} />
         <div>
           {isDe ? (
             <>
-              Du hast für dieses Event eingestellt, dass sich Teilnehmer <strong>nur für die {termPlural} (Sub-Sections) anmelden</strong> — die Klammer selbst ist <strong>nicht buchbar</strong>, sie fasst die {termPlural} nur zusammen. (Eingestellt in Schritt 2 „Ort &amp; Programm“ unter „Wie sollen sich Teilnehmer anmelden?“ → „Nur für {termPlural}“.) <strong>Entscheidend ist die Sichtbarkeit oben</strong> (Standortfilter + Mailverteiler): Sie legt fest, <strong>wer das Event überhaupt sieht und sich für die {termPlural} anmelden kann</strong> — die {termPlural} übernehmen diese Sichtbarkeit standardmäßig. <strong>Plätze und Fristen</strong> stellst du nicht hier auf der Klammer ein, sondern <strong>je {childTermSingular || 'Sub-Event'}-Tab</strong> (wie viele Plätze, bis wann an-/abmelden) — die Felder hier unten sind darum ausgegraut.
+              Du hast für dieses Event eingestellt, dass sich Teilnehmer <strong>nur für die {termPlural} (Sub-Sections) anmelden</strong> — die Klammer selbst ist <strong>nicht buchbar</strong>, sie fasst die {termPlural} nur zusammen. (Eingestellt in Schritt 2 „Ort &amp; Programm“ unter „Wie sollen sich Teilnehmer anmelden?“ → „Nur für {termPlural}“.) <strong>Entscheidend ist die Sichtbarkeit direkt hier unten</strong> (Standortfilter + Mailverteiler): Sie legt fest, <strong>wer das Event überhaupt sieht und sich für die {termPlural} anmelden kann</strong> — die {termPlural} übernehmen diese Sichtbarkeit standardmäßig. <strong>Plätze und Fristen</strong> stellst du nicht hier auf der Klammer ein, sondern <strong>je {childTermSingular || 'Sub-Event'}-Tab</strong> (wie viele Plätze, bis wann an-/abmelden) — die Kapazitäts- und Fristen-Felder weiter unten sind darum ausgegraut.
             </>
           ) : (
             <>
-              You configured this event so that participants <strong>register only for the {termPlural} (sub-sections)</strong> — the bracket itself is <strong>not bookable</strong>, it only groups the {termPlural}. (Set in step 2 “Location &amp; Programme” under “How should participants register?” → “Sub-{termPlural} only”.) <strong>The decisive setting is the visibility above</strong> (location filter + mailing lists): it determines <strong>who can see the event at all and register for the {termPlural}</strong> — the {termPlural} inherit this visibility by default. You set <strong>seats and deadlines</strong> not here on the bracket but <strong>per {childTermSingular || 'sub-event'} tab</strong> (how many seats, until when to register/cancel) — which is why the fields below are greyed out.
+              You configured this event so that participants <strong>register only for the {termPlural} (sub-sections)</strong> — the bracket itself is <strong>not bookable</strong>, it only groups the {termPlural}. (Set in step 2 “Location &amp; Programme” under “How should participants register?” → “Sub-{termPlural} only”.) <strong>The decisive setting is the visibility right below this note</strong> (location filter + mailing lists): it determines <strong>who can see the event at all and register for the {termPlural}</strong> — the {termPlural} inherit this visibility by default. You set <strong>seats and deadlines</strong> not here on the bracket but <strong>per {childTermSingular || 'sub-event'} tab</strong> (how many seats, until when to register/cancel) — which is why the capacity and deadline fields further down are greyed out.
             </>
           )}
         </div>
+      </div>
+    );
+  };
+
+  // v22.22: Live-Zusammenfassung der aktuell eingestellten Sichtbarkeit —
+  // gleiche Klartext-Logik wie die „Nächste Schritte"-Box im Organizer
+  // Center. Wird unter der Sichtbarkeits-Überschrift gerendert (Hauptevent/
+  // Klammer UND je Sub-Event-Tab) und aktualisiert sich live mit der Auswahl.
+  // Render-loses Helper, kein Hook (Rules of Hooks).
+  const renderVisibilitySummaryBox = (
+    locList: string[],
+    audienceStr: string,
+    mode: 'AND' | 'OR',
+    excludedCount: number
+  ): React.ReactElement => {
+    const locs = (locList || []).filter(Boolean);
+    const auds = (audienceStr || '').split(',').map(s => s.trim()).filter(Boolean);
+    let text: string;
+    if (locs.length === 0 && auds.length === 0) {
+      text = isDe ? 'alle Mitarbeiter von Deloitte Deutschland' : 'all Deloitte Germany employees';
+    } else {
+      const parts: string[] = [];
+      if (locs.length) parts.push((isDe ? 'Standorte: ' : 'Locations: ') + locs.join(', '));
+      if (auds.length) parts.push(isDe ? `${auds.length} Verteiler/Personen` : `${auds.length} distribution lists/people`);
+      const joiner = parts.length > 1
+        ? (mode === 'AND' ? (isDe ? ' UND ' : ' AND ') : (isDe ? ' ODER ' : ' OR '))
+        : '';
+      text = parts.join(joiner);
+    }
+    return (
+      <div style={{
+        marginTop: 10, padding: '8px 12px', borderRadius: 8,
+        background: 'rgba(134,188,37,0.07)', border: '1px solid var(--dex-green, #86bc25)',
+        fontSize: '0.78rem', color: 'var(--dex-gray-700)', lineHeight: 1.5,
+      }}>
+        <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>
+          {isDe ? 'Aktuell eingestellt: ' : 'Currently configured: '}
+        </strong>
+        {isDe ? 'Sichtbar für ' : 'Visible to '}{text}.
+        {excludedCount > 0 && (
+          <> {isDe
+            ? `${excludedCount} Person${excludedCount === 1 ? ' ist' : 'en sind'} ausgeschlossen.`
+            : `${excludedCount} ${excludedCount === 1 ? 'person is' : 'people are'} excluded.`}</>
+        )}
       </div>
     );
   };
@@ -7622,6 +7668,14 @@ export default function EventCreationPage(): React.ReactElement {
                           ? <>Dieses Sub-Event übernimmt <strong>standardmäßig die Sichtbarkeit {subEventsOnlyMode ? 'der Klammer' : 'des Hauptevents'}</strong> (Standortfilter + Mailverteiler sind unten vorbefüllt). Du kannst den Empfängerkreis hier aber <strong>jederzeit anpassen</strong> — oder mit „Vom Hauptevent kopieren“ oben erneut übernehmen.</>
                           : <>This sub-event <strong>inherits the visibility {subEventsOnlyMode ? 'of the bracket' : 'of the main event'}</strong> by default (location filter + mailing lists are pre-filled below). You can <strong>change the audience here at any time</strong> — or re-apply it with “Copy from main event” above.</>}
                       </p>
+                      {/* v22.22: Live-Zusammenfassung der aktuellen Sichtbarkeit
+                          dieses Sub-Events. */}
+                      {renderVisibilitySummaryBox(
+                        seLocationFilterList,
+                        se.audience || '',
+                        (se.filterMode as 'AND' | 'OR') || 'OR',
+                        (se.excludedUsers || []).length
+                      )}
                     </div>
 
                     <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
@@ -7885,6 +7939,13 @@ export default function EventCreationPage(): React.ReactElement {
                     </>
                   )}
                 </p>
+                {/* v22.22: Live-Zusammenfassung der aktuellen Sichtbarkeit. */}
+                {renderVisibilitySummaryBox(
+                  locationFilter.split(',').map(s => s.trim()).filter(Boolean),
+                  audience,
+                  filterMode,
+                  (excludedUsers || []).length
+                )}
               </div>
 
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
