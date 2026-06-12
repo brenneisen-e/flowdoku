@@ -417,7 +417,10 @@ function StepBadge({ n }: { n: number }): React.ReactElement {
       width: 20, height: 20, borderRadius: '50%',
       background: '#fff', color: 'var(--dex-green-dark, #4a7c1f)',
       border: '1.5px solid var(--dex-green, #86bc25)',
-      fontSize: '0.66rem', fontWeight: 700, flexShrink: 0,
+      // v22.31: lineHeight 1 — die geerbte line-height (1.5) schob die
+      // Ziffer aus der vertikalen Mitte des Kreises.
+      fontSize: '0.66rem', fontWeight: 700, flexShrink: 0, lineHeight: 1,
+      boxSizing: 'border-box',
     }}>{n}</span>
   );
 }
