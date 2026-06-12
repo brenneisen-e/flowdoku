@@ -13,6 +13,7 @@ import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../types';
 import { EventService, SPEvent, CustomField, SPRegistration, ReseedSummary } from '../services/EventService';
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
+import { isEventOver } from '../utils/eventFormat';
 import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
 import { APP_VERSION } from '../version';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
@@ -2328,6 +2329,17 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   async function cancelRegistration(eventId: string, opts?: { suppressNotifications?: boolean }): Promise<boolean> {
     // v17.25: Demo-Showcase-Event → No-Op.
     if (isDemoShowcaseId(eventId)) return true;
+    // v22.22: Selbst-Abmeldung von bereits vergangenen Events ist gesperrt —
+    // gilt damit auch für den Auto-Cancel-Deep-Link aus Mails und die
+    // Sub-Event-Session-Toggles in Meine Events. Organizer/Admins melden
+    // über das Admin Center ab (eventService.cancelRegistration direkt) —
+    // dieser Pfad ist bewusst NICHT betroffen, läuft bei vergangenen Events
+    // aber still (ohne Mail/Outlook/Nachrücken, siehe AdminPage).
+    const evForGuard = events.find(e => e.id === eventId);
+    if (evForGuard && isEventOver(evForGuard)) {
+      console.warn('[DEX] cancelRegistration blocked: event already in the past', eventId);
+      return false;
+    }
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return false;
 

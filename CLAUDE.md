@@ -63,6 +63,36 @@ WaitlistEnabled sogar im Top-Level-Update). **Regel:** Jedes neue Feld muss in
 3. bei Sub-Event-Relevanz: `childPayload` UND `subUpdates` in
    `persistSubEventsForParent`.
 
+### Geführtes Tutorial / Onboarding-Tour (v22.21)
+
+Die Landing Page hat statt der früheren „DEX für dein Event nutzen?"-CTA-Bubble
+einen **Tutorial-Button** („Neu hier? Starte das Tutorial …"); die DEX-Anfrage
+bleibt über das Mail-Icon daneben erreichbar (InquiryModal unverändert).
+
+- **Infrastruktur:** `components/tutorial/TutorialGuide.tsx` (`TutorialProvider`
+  + `useTutorial()` + Overlay) und `components/tutorial/tutorialTours.ts`
+  (Tour-/Schritt-Definitionen, DE/EN). Der Provider hängt in
+  `DexEventPlatform.tsx` direkt unter dem EventProvider (braucht Navigation-,
+  Language-, Role-, Event- und User-Context).
+- **Rollenbasiert:** User-Tour für alle; Organizer-Tour zusätzlich für
+  `canCreateEvents || isAdmin || Organizer/Co-Organizer eines Events ||
+  isImpersonating` (gleiche Logik wie die Organizer-Kachel der StartPage).
+  Bei mehreren Touren öffnet `openTutorial()` zuerst einen Auswahl-Dialog.
+- **Mechanik:** Jeder Schritt hat `page` (wird per `navigate()` angesteuert)
+  und optional `selector` (CSS). Das Overlay pollt das Ziel-Element (~4 s,
+  Seiten laden lazy), scrollt es in die Mitte und legt einen **Spotlight**
+  darüber (Box-Shadow-Loch + grüner Rand); ohne Selektor/Fund erscheint die
+  Schritt-Karte zentriert. Ein Klick-Fänger blockiert die App-Interaktion
+  während der Tour; ESC beendet sie. **z-index 10800** — bewusst über dem
+  shared Modal (9999).
+- **Anker-Konvention:** Spotlight-Ziele bekommen `data-tour="<key>"`-Attribute
+  (bestehend: `landing-start`, `tile-register`, `tile-myevents`, `tile-admin`,
+  `wizard-demo`) — bei neuen Tour-Schritten bitte demselben Muster folgen
+  statt fragiler nth-child-Selektoren. Stabile CSS-Klassen (`.header-avatar`,
+  `.page-container button.btn-primary`) sind als Selektor ebenfalls ok.
+- **Texte:** „cool, aber inhaltlich korrekt" — Klartext-Regel wie bei
+  Tooltips (kein Tech-Jargon), DE/EN, echte Umlaute.
+
 ### App-Dialoge statt nativer Browser-Boxen (v20.4) — Konvention
 
 **Keine `window.confirm()` / `window.alert()` / `window.prompt()` mehr in der
@@ -315,6 +345,59 @@ Hauptevents/der Klammer (Standortfilter `locationAudience` + Mailverteiler
   Auto-Überschreiben). Danach pro Sub-Event frei änderbar.
 - Greift nur, wenn das Hauptevent eine Sichtbarkeit gesetzt hat. Reine Wizard-/
   Persistenz-Logik, kein Runtime-Semantik-Change an `isEventVisibleForUser`.
+
+### Sichtbarkeits-Transparenz im Wizard + Organizer Center (v22.22)
+
+- **Wizard Schritt 4:** Unter der „Sichtbarkeit"-Überschrift (Hauptevent/
+  Klammer UND je Sub-Event-Tab) zeigt eine grüne Box **„Aktuell eingestellt:
+  Sichtbar für …"** live die aktuelle Auswahl (Standorte / N Verteiler/
+  Personen, UND/ODER-Verknüpfung, Ausschluss-Zähler) — gleiche Klartext-Logik
+  wie die „Nächste Schritte"-Box im Organizer Center
+  (`renderVisibilitySummaryBox` in `EventCreationPage.tsx`).
+- **Klammer-Banner korrigiert:** Der orange „Nur Sub-Events"-Hinweis sagte
+  „Sichtbarkeit oben", obwohl die Sichtbarkeits-Sektion UNTER dem Banner
+  steht — jetzt „direkt hier unten"; Schriftgröße an die „Wichtig:"-Box des
+  AudiencePickers angeglichen (0.78rem).
+- **Organizer Center „Nächste Schritte":** Sub-Sections OHNE eigene Filter
+  werden als **„wie das Gesamt-Event (keine eigene Einschränkung)"**
+  ausgewiesen statt irreführend „alle Mitarbeiter von Deloitte Deutschland"
+  (der Zugang läuft zur Laufzeit immer über die Sichtbarkeit des
+  Gesamt-Events — `isEventVisibleForUser` filtert Sub-Events erst auf der
+  RegistrationPage des Parents). Erben ALLE Sub-Sections, kollabiert die
+  Anzeige zu einer Aussage.
+
+### Abmelde-Sperre für vergangene Events + MyEvents-Cluster (v22.22)
+
+Leitlinie: **Nach Event-Ende gibt es keine Selbst-Abmeldung mehr** — und
+Organizer-/Admin-Abmeldungen laufen dann **still** (reine Datenkorrektur).
+
+- **Helper `isEventOver(ev)`** in `utils/eventFormat.ts`: Ende (Fallback:
+  Ende des Start-Tages 23:59:59) < jetzt; ohne Datumsangaben `false`
+  (fail-open).
+- **Selbst-Abmeldung gesperrt:** zentraler Guard in
+  `EventContext.cancelRegistration` (return false + Warn-Log) — fängt damit
+  auch den **Auto-Cancel-Deep-Link** aus Mails (läuft über
+  `MyEventsPage.performCancel`, dort zusätzlich Guard mit `showAlert`) und
+  die Sub-Event-Session-Toggles ab. Auf der MyEvents-Karte ersetzt ein
+  grauer Hinweis den Abmelden-Button; Session-Toggles sind disabled.
+- **Organizer/Admin-Abmeldung bleibt möglich (Admin Center), aber still:**
+  in allen drei AdminPage-Cancel-Pfaden (Teilnehmer-Tabelle, Warteliste-
+  „Entfernen", konsolidierte Sub-Event-Abmeldung) werden bei
+  `isEventOver(event/child)` **Abmelde-Mail, Outlook-`Ausladen`,
+  client-seitiges Nachrücken UND `queueIDReorder`** übersprungen (der
+  IDReorder-Flow würde sonst seinerseits nachrücken + Mails queuen). Der
+  Confirm-Dialog weist auf den stillen Modus hin. Audit-Log und
+  `removeParticipantEvent` laufen weiter.
+- **MyEvents-Cluster:** „Meine Events" zeigt jetzt drei Sektionen —
+  **Aktive Events** (bevorstehend/laufend), **Vergangene Events** (Status
+  aktiv, Event vorbei; mit Hinweis „Abmeldung nicht mehr möglich") und die
+  bestehende einklappbare **Abgemeldete Events**-Sektion. Der Karten-
+  Renderer ist unverändert (`renderMyEventCard`, extrahierte frühere
+  map-Callback-Funktion).
+- **QR-Standard-Mail:** `qrEmailDefaults` (DE/EN) enthält jetzt den Hinweis,
+  dass der QR-Code jederzeit in der App unter „Meine Events" → „Mein
+  QR-Code" abrufbar ist. Gilt für alle Events ohne gespeicherten
+  QR-Mail-Override (Override-Texte bleiben unangetastet).
 
 ### Konten-Aktiv-Check beim Öffnen eines Events (v22.7)
 

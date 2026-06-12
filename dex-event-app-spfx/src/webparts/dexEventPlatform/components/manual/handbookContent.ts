@@ -7,6 +7,7 @@
 
 import { ManualSection } from './types';
 import { introSection } from './sections/intro';
+import { tutorialSection } from './sections/tutorial';
 import { findEventSection } from './sections/findEvent';
 import { myEventsSection } from './sections/myEvents';
 import { profileSection } from './sections/profile';
@@ -39,6 +40,7 @@ export function getManualSections(locale: Locale): ManualSection[] {
   // weitergereicht, damit einzelne Sektionen zweisprachig zurückgeben können).
   return [
     introSection(locale),
+    tutorialSection(locale),
     findEventSection(locale),
     myEventsSection(locale),
     profileSection(locale),

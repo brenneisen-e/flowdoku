@@ -146,7 +146,7 @@ const PERMISSIONS: PermissionRow[] = [
     description: 'Eigene Registrierungsdaten (Custom Fields, T-Shirt-Größe, Notfallkontakt etc.) nachträglich ändern.',
     user: true, assistenz: true, coorganizer: true, testteam: true, checkin: false, organizer: true, admin: true },
   { category: 'Registrierungen', feature: 'Eigene Registrierung stornieren',
-    description: 'Eigene Anmeldung über "Meine Events" wieder zurückziehen; löst automatische Cancellation-Mail aus.',
+    description: 'Eigene Anmeldung über "Meine Events" wieder zurückziehen; löst automatische Cancellation-Mail aus. Seit v22.22 nur bis zum Event-Ende möglich — bei vergangenen Events ist die Selbst-Abmeldung gesperrt (auch über den Abmelde-Link aus Mails); Organizer/Admins können im Organizer Center weiterhin abmelden, dann aber still (ohne Mail, Outlook-Absage und Nachrücken).',
     user: true, assistenz: true, coorganizer: true, testteam: true, checkin: false, organizer: true, admin: true },
   { category: 'Registrierungen', feature: 'Für andere registrieren',
     description: 'Eine andere Person stellvertretend anmelden. Pflicht-Checkbox zur Zustimmung der Person; diese Bestätigung wird seit v18.74 zusätzlich als Nachweis in der Teilnehmerliste gespeichert (Spalte „ProxyConsent", mit Name + Datum des Akteurs). Audit: RegisteredBy wird auf den eingeloggten User gesetzt.',
@@ -342,6 +342,10 @@ const PERMISSIONS: PermissionRow[] = [
   { category: 'Profil', feature: 'Settings-Seite öffnen',
     description: 'Persönliche Einstellungen (Sprache, Profilbild-Refresh) öffnen.',
     user: true, assistenz: true, coorganizer: true, testteam: true, checkin: false, organizer: true, admin: true },
+  // v22.21: Geführtes Tutorial (Onboarding-Tour) auf der Landing Page.
+  { category: 'Profil', feature: 'Geführtes Tutorial starten',
+    description: 'Interaktive Tour durch die App (Landing Page, grüne Sprechblase). Alle sehen die Teilnehmer-Tour; wer Events anlegen kann oder Organizer/Co-Organizer eines Events ist, bekommt zusätzlich die Organizer-Tour zur Auswahl.',
+    user: 'User-Tour', assistenz: 'User-Tour', coorganizer: 'User- + Organizer-Tour', testteam: 'User-Tour', checkin: 'User-Tour', organizer: 'User- + Organizer-Tour', admin: 'User- + Organizer-Tour' },
 ];
 
 function renderCell(value: boolean | string): React.ReactElement {
