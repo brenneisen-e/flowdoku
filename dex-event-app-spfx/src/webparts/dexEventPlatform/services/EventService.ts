@@ -238,17 +238,25 @@ const ORG_NACHRUECKER_BODY_DE = wrapTemplateForStorage(
 // Per-Event-Customizing) unangetastet bleibt. Flow ersetzt nur {{Name}} +
 // {{EventTitle}}; KEIN {{AppUrl}} (würde der Flow nicht auflösen) — feste
 // App-URL eingebaut. {{LOGO_URL}}/{{ORB_URL}} ersetzt DEX_SEND_MAIL beim Versand.
+// v22.39: Roter Storno-Banner für die Standard-Abmelde-Templates — Event-Titel
+// ausgegraut + durchgestrichen, identisch zum Inline-Fallback
+// `cancellationEmail()` in EmailTemplates.ts (v17.20). Per Reseed kommt das
+// Design in die Tenant-Templates; Event-Overrides bleiben unberührt.
+const CANCEL_BANNER_HTML = '<div style="margin:16px 0 20px;padding:14px 18px;border:2px solid #da291c;background:rgba(218,41,28,0.06);border-radius:8px;text-align:center;"><div style="font-size:0.78rem;font-weight:700;color:#da291c;text-transform:uppercase;letter-spacing:1.5px;">Stornierung &middot; Cancellation</div><div style="margin-top:6px;font-size:1.15rem;font-weight:700;color:#888;text-decoration:line-through;">{{EventTitle}}</div></div>';
+
 const ABMELDUNG_AUTO_BODY_EN = wrapTemplateForStorage(
   '#da291c', 'Cancellation confirmed', 'Event {{EventTitle}}',
   `<p>Dear {{Name}},</p>
-<p>your registration for the event <strong>{{EventTitle}}</strong> has been <strong>cancelled</strong> because you declined the Outlook invitation.</p>
+${CANCEL_BANNER_HTML}
+<p>your registration for the event above has been <strong>cancelled</strong> because you declined the Outlook invitation.</p>
 <p>If you change your mind, you can register again any time via the <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView">DEX App</a>.</p>
 <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
 );
 const ABMELDUNG_AUTO_BODY_DE = wrapTemplateForStorage(
   '#da291c', 'Abmeldung bestätigt', 'Event {{EventTitle}}',
   `<p>Hallo {{Name}},</p>
-<p>deine Anmeldung für das Event <strong>{{EventTitle}}</strong> wurde <strong>storniert</strong>, weil du den Outlook-Termin abgelehnt hast.</p>
+${CANCEL_BANNER_HTML}
+<p>deine Anmeldung für das oben genannte Event wurde <strong>storniert</strong>, weil du den Outlook-Termin abgelehnt hast.</p>
 <p>Du kannst dich jederzeit erneut über die <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView">DEX App</a> anmelden.</p>
 <p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
 );
@@ -1754,7 +1762,7 @@ export class EventService {
       { TemplateType: 'Warteliste', Language: 'EN', Subject: 'Waitlist: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Waitlist confirmation',
         BodyHtml: '<p>Dear {{Name}},</p><p>you have been placed on the <strong>waitlist</strong> for the event <strong>{{EventTitle}}</strong>.</p><p>Your current position: <strong>#{{WaitlistPosition}}</strong></p><p>We will notify you as soon as a spot becomes available. You can always check your current position in the <a href="{{AppUrl}}">DEX App</a> under \u201EMy Events\u201C.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
       { TemplateType: 'Abmeldung', Language: 'EN', Subject: 'Cancellation confirmation: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Cancellation confirmed',
-        BodyHtml: '<p>Dear {{Name}},</p><p>your registration for the event <strong>{{EventTitle}}</strong> has been <strong>cancelled</strong>.</p><p>If you change your mind, you can register again via the <a href="{{AppUrl}}">DEX App</a>.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
+        BodyHtml: '<p>Dear {{Name}},</p>' + CANCEL_BANNER_HTML + '<p>your registration for the event above has been <strong>cancelled</strong>. The Outlook calendar entry will be removed from your calendar shortly.</p><p>If you change your mind, you can register again via the <a href="{{AppUrl}}">DEX App</a>.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
       { TemplateType: 'Nachruecken', Language: 'EN', Subject: 'You’ve got a spot: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'You’ve got a spot!',
         BodyHtml: NACHRUECKEN_BODY_EN },
       { TemplateType: 'EventErstellt', Language: 'EN', Subject: '[Deloitte Eventmanager] - New event created: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event Created',
@@ -1769,7 +1777,7 @@ export class EventService {
       { TemplateType: 'Warteliste', Language: 'DE', Subject: 'Warteliste: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Warteliste-Bestätigung',
         BodyHtml: '<p>Hallo {{Name}},</p><p>du stehst auf der <strong>Warteliste</strong> für das Event <strong>{{EventTitle}}</strong>.</p><p>Deine aktuelle Position: <strong>#{{WaitlistPosition}}</strong></p><p>Wir benachrichtigen dich, sobald ein Platz frei wird. Deinen aktuellen Warteliste-Platz kannst du jederzeit in der <a href="{{AppUrl}}">DEX App</a> unter \u201EMeine Events\u201C sehen.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
       { TemplateType: 'Abmeldung', Language: 'DE', Subject: 'Abmeldebestätigung: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Abmeldung bestätigt',
-        BodyHtml: '<p>Hallo {{Name}},</p><p>deine Anmeldung für das Event <strong>{{EventTitle}}</strong> wurde <strong>storniert</strong>.</p><p>Du kannst dich jederzeit erneut über die <a href="{{AppUrl}}">DEX App</a> anmelden.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
+        BodyHtml: '<p>Hallo {{Name}},</p>' + CANCEL_BANNER_HTML + '<p>deine Anmeldung für das oben genannte Event wurde <strong>storniert</strong>. Der Outlook-Termin wird in Kürze aus deinem Kalender entfernt.</p><p>Du kannst dich jederzeit erneut über die <a href="{{AppUrl}}">DEX App</a> anmelden.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
       { TemplateType: 'Nachruecken', Language: 'DE', Subject: 'Du hast einen Platz: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Du hast einen Platz!',
         BodyHtml: NACHRUECKEN_BODY_DE },
       // v19.25: pre-wrapped Abmelde-Bestätigung für die Flow-getriebene
@@ -1981,7 +1989,7 @@ export class EventService {
       { TemplateType: 'Warteliste', Language: 'EN', Subject: 'Waitlist: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Waitlist confirmation',
         BodyHtml: '<p>Dear {{Name}},</p><p>you have been placed on the <strong>waitlist</strong> for the event <strong>{{EventTitle}}</strong>.</p><p>Your current position: <strong>#{{WaitlistPosition}}</strong></p><p>We will notify you as soon as a spot becomes available. You can always check your current position in the <a href="{{AppUrl}}">DEX App</a> under \u201EMy Events\u201C.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
       { TemplateType: 'Abmeldung', Language: 'EN', Subject: 'Cancellation confirmation: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Cancellation confirmed',
-        BodyHtml: '<p>Dear {{Name}},</p><p>your registration for the event <strong>{{EventTitle}}</strong> has been <strong>cancelled</strong>.</p><p>If you change your mind, you can register again via the <a href="{{AppUrl}}">DEX App</a>.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
+        BodyHtml: '<p>Dear {{Name}},</p>' + CANCEL_BANNER_HTML + '<p>your registration for the event above has been <strong>cancelled</strong>. The Outlook calendar entry will be removed from your calendar shortly.</p><p>If you change your mind, you can register again via the <a href="{{AppUrl}}">DEX App</a>.</p><p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>' },
       { TemplateType: 'Nachruecken', Language: 'EN', Subject: 'You’ve got a spot: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'You’ve got a spot!',
         BodyHtml: NACHRUECKEN_BODY_EN },
       { TemplateType: 'EventErstellt', Language: 'EN', Subject: '[Deloitte Eventmanager] - New event created: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Event Created',
@@ -1994,7 +2002,7 @@ export class EventService {
       { TemplateType: 'Warteliste', Language: 'DE', Subject: 'Warteliste: {{EventTitle}}', HeadingColor: '#ed8b00', Heading: 'Warteliste-Bestätigung',
         BodyHtml: '<p>Hallo {{Name}},</p><p>du stehst auf der <strong>Warteliste</strong> für das Event <strong>{{EventTitle}}</strong>.</p><p>Deine aktuelle Position: <strong>#{{WaitlistPosition}}</strong></p><p>Wir benachrichtigen dich, sobald ein Platz frei wird. Deinen aktuellen Warteliste-Platz kannst du jederzeit in der <a href="{{AppUrl}}">DEX App</a> unter \u201EMeine Events\u201C sehen.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
       { TemplateType: 'Abmeldung', Language: 'DE', Subject: 'Abmeldebestätigung: {{EventTitle}}', HeadingColor: '#da291c', Heading: 'Abmeldung bestätigt',
-        BodyHtml: '<p>Hallo {{Name}},</p><p>deine Anmeldung für das Event <strong>{{EventTitle}}</strong> wurde <strong>storniert</strong>.</p><p>Du kannst dich jederzeit erneut über die <a href="{{AppUrl}}">DEX App</a> anmelden.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
+        BodyHtml: '<p>Hallo {{Name}},</p>' + CANCEL_BANNER_HTML + '<p>deine Anmeldung für das oben genannte Event wurde <strong>storniert</strong>. Der Outlook-Termin wird in Kürze aus deinem Kalender entfernt.</p><p>Du kannst dich jederzeit erneut über die <a href="{{AppUrl}}">DEX App</a> anmelden.</p><p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>' },
       { TemplateType: 'Nachruecken', Language: 'DE', Subject: 'Du hast einen Platz: {{EventTitle}}', HeadingColor: '#86bc25', Heading: 'Du hast einen Platz!',
         BodyHtml: NACHRUECKEN_BODY_DE },
       // v19.25: pre-wrapped Abmelde-Bestätigung für die Flow-getriebene
