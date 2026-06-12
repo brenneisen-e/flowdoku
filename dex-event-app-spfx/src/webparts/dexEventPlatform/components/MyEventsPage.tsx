@@ -2035,10 +2035,18 @@ export default function MyEventsPage(): React.ReactElement {
                     }, {} as Record<string, AgendaItem[]>)
                   ).sort(([a], [b]) => a.localeCompare(b));
                   const dayCount = grouped.length;
+                  // v22.36: Durchlaufende Nummerierung der Agenda-Schritte
+                  // (über alle Tage, sortiert nach Datum + Uhrzeit) — die
+                  // Einzel-Schritte zeigen keine Icons mehr, nur die Sektion.
+                  const agendaOrderIds = event.agenda
+                    .slice()
+                    .sort((a: AgendaItem, b: AgendaItem) => ((a.date || '') + (a.time || '')).localeCompare((b.date || '') + (b.time || '')))
+                    .map((x: AgendaItem) => x.id);
 
                   return (
                     <div style={{ marginTop: 12 }}>
-                      <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-600)', marginBottom: 8 }}>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-600)', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Icon iconName="Calendar" style={{ fontSize: 14, color: 'var(--dex-green-dark, #6b9a1e)' }} />
                         {t('myevents.agenda')} {dayCount > 1 && <span style={{ fontWeight: 400, fontSize: '0.72rem', color: 'var(--dex-gray-400)' }}>· {dayCount} {t('myevents.agenda') === 'Programm' ? 'Tage (seitwärts scrollen)' : 'days (swipe)'}</span>}
                       </div>
                       {/* Horizontal scrollbarer Container - funktioniert auf Desktop und Mobile */}
@@ -2074,8 +2082,8 @@ export default function MyEventsPage(): React.ReactElement {
                                 display: 'flex', alignItems: 'flex-start', gap: 8, padding: '6px 0',
                                 borderLeft: '2px solid var(--dex-green)', marginLeft: 4, paddingLeft: 10,
                               }}>
-                                <span style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--dex-green-dark, #6b9a1e)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                                  <Icon iconName={item.icon || 'Calendar'} style={{ fontSize: 12, color: '#fff' }} />
+                                <span style={{ width: 26, height: 26, borderRadius: '50%', background: 'var(--dex-green-dark, #6b9a1e)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#fff', fontWeight: 700, fontSize: '0.72rem', lineHeight: 1 }}>
+                                  {agendaOrderIds.indexOf(item.id) + 1}
                                 </span>
                                 <div style={{ flex: 1, minWidth: 0 }}>
                                   <div style={{ fontSize: '0.8rem', fontWeight: 600 }}>

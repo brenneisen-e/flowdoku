@@ -40,82 +40,8 @@ import 'react-datepicker/dist/react-datepicker.css';
 // Deutsche Locale registrieren
 registerLocale('de', de);
 
-// Curated Fluent UI Icons für Agenda-Programmpunkte (nur bestätigt vorhandene MDL2 Icons)
-const AGENDA_ICONS: Array<{ name: string; label: string; category: string }> = [
-  // Vorträge & Meetings
-  { name: 'Microphone', label: 'Vortrag', category: 'meeting' },
-  { name: 'People', label: 'Meeting', category: 'meeting' },
-  { name: 'Group', label: 'Team', category: 'meeting' },
-  { name: 'Presentation', label: 'Präsentation', category: 'meeting' },
-  { name: 'Chat', label: 'Diskussion', category: 'meeting' },
-  // Pausen & Essen
-  { name: 'Cafe', label: 'Kaffeepause', category: 'break' },
-  { name: 'EatDrink', label: 'Essen', category: 'break' },
-  { name: 'Brunch', label: 'Brunch', category: 'break' },
-  // Aktivitäten
-  { name: 'Running', label: 'Sport/Lauf', category: 'activity' },
-  { name: 'Trophy', label: 'Award', category: 'activity' },
-  { name: 'Balloons', label: 'Feier', category: 'activity' },
-  { name: 'MusicInCollection', label: 'Musik', category: 'activity' },
-  { name: 'PartyLeader', label: 'Networking', category: 'activity' },
-  // Organisation
-  { name: 'Calendar', label: 'Termin', category: 'org' },
-  { name: 'Clock', label: 'Uhrzeit', category: 'org' },
-  { name: 'CheckMark', label: 'Check-in', category: 'org' },
-  { name: 'MapPin', label: 'Ort', category: 'org' },
-  { name: 'Car', label: 'Anfahrt', category: 'org' },
-  { name: 'Bus', label: 'Bus/Transfer', category: 'org' },
-  { name: 'Airplane', label: 'Flug', category: 'org' },
-  { name: 'Hotel', label: 'Hotel', category: 'org' },
-  // Workshops & Arbeit
-  { name: 'Edit', label: 'Workshop', category: 'work' },
-  { name: 'Lightbulb', label: 'Ideen', category: 'work' },
-  { name: 'Code', label: 'Tech', category: 'work' },
-  { name: 'ReadingMode', label: 'Schulung', category: 'work' },
-  { name: 'Page', label: 'Dokument', category: 'work' },
-  // Allgemein
-  { name: 'Info', label: 'Info', category: 'general' },
-  { name: 'FavoriteStar', label: 'Highlight', category: 'general' },
-  { name: 'Heart', label: 'Social', category: 'general' },
-  { name: 'Camera', label: 'Foto', category: 'general' },
-  { name: 'Flag', label: 'Flagge', category: 'general' },
-];
-
-// Erweiterte Icon-Liste für "Show All"
-const EXTENDED_ICONS: Array<{ name: string; label: string; category: string }> = [
-  { name: 'Home', label: 'Home', category: 'general' },
-  { name: 'Mail', label: 'Mail', category: 'general' },
-  { name: 'Phone', label: 'Telefon', category: 'general' },
-  { name: 'Send', label: 'Senden', category: 'general' },
-  { name: 'Attach', label: 'Anhang', category: 'general' },
-  { name: 'Link', label: 'Link', category: 'general' },
-  { name: 'Globe', label: 'Web', category: 'general' },
-  { name: 'Lock', label: 'Sicherheit', category: 'org' },
-  { name: 'Sunny', label: 'Wetter', category: 'activity' },
-  { name: 'Ringer', label: 'Glocke', category: 'general' },
-  { name: 'Contact', label: 'Kontakt', category: 'meeting' },
-  { name: 'AddFriend', label: 'Person hinzufügen', category: 'meeting' },
-  { name: 'TeamFavorite', label: 'Team-Favorit', category: 'meeting' },
-  { name: 'Handshake', label: 'Handshake', category: 'meeting' },
-  { name: 'Medical', label: 'Medizin', category: 'org' },
-  { name: 'Shield', label: 'Schutz', category: 'org' },
-  { name: 'Settings', label: 'Einstellungen', category: 'org' },
-  { name: 'Toolbox', label: 'Werkzeug', category: 'work' },
-  { name: 'Chart', label: 'Diagramm', category: 'work' },
-  { name: 'BarChart4', label: 'Statistik', category: 'work' },
-  { name: 'TaskList', label: 'Aufgaben', category: 'work' },
-  { name: 'ClipboardList', label: 'Checkliste', category: 'work' },
-  { name: 'Video', label: 'Video', category: 'activity' },
-  { name: 'Photo2', label: 'Foto', category: 'activity' },
-  { name: 'Game', label: 'Spiel', category: 'activity' },
-  { name: 'Rocket', label: 'Rakete', category: 'activity' },
-  { name: 'Emoji2', label: 'Spaß', category: 'activity' },
-  { name: 'Gift', label: 'Geschenk', category: 'activity' },
-  { name: 'Ferry', label: 'Schiff', category: 'org' },
-  { name: 'Train', label: 'Zug', category: 'org' },
-  { name: 'Walk', label: 'Fußweg', category: 'org' },
-  { name: 'Weights', label: 'Fitness', category: 'activity' },
-];
+// v22.36: Die kuratierten Agenda-Icon-Listen (AGENDA_ICONS/EXTENDED_ICONS)
+// sind entfallen — Agenda-Schritte sind durchnummeriert statt bebildert.
 
 /**
  * Komprimiert ein Bild clientseitig via Canvas.
@@ -1745,9 +1671,6 @@ export default function EventCreationPage(): React.ReactElement {
   const [submitted, setSubmitted] = React.useState(false);
   const [error, setError] = React.useState('');
   const [imageUploadError, setImageUploadError] = React.useState('');
-  const [iconPickerOpen, setIconPickerOpen] = React.useState<string | null>(null);
-  const [iconSearch, setIconSearch] = React.useState('');
-  const [showAllIcons, setShowAllIcons] = React.useState(false);
 
   const locationOptions = ['Berlin', 'Dresden', 'Düsseldorf', 'Frankfurt', 'Görlitz', 'Halle', 'Hamburg', 'Hannover', 'Köln', 'Leipzig', 'Magdeburg', 'Mannheim', 'München', 'Nürnberg', 'Stuttgart', 'Walldorf', 'All'];
 
@@ -4577,6 +4500,56 @@ export default function EventCreationPage(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // v22.36: Ausgefüllte Eingaben pastellgrün markieren — gleiche Optik wie
+  // auf der Anmeldeseite (inputStyleGreen, v19.0). Statt ~100 Inputs einzeln
+  // zu verdrahten: delegierte input/change-Listener + periodischer Sweep
+  // (fängt auch programmatische Befüllung wie Demo-Daten/Edit-Hydration ab).
+  // Die Klasse .dex-filled färbt Rand + Hintergrund (CSS im Step-Bar-Style).
+  // v22.36: „Prüfen"-Modal — Übersicht aller Einstellungen inkl. Standards
+  // und noch leerer optionaler Punkte.
+  const [showConfigCheck, setShowConfigCheck] = React.useState(false);
+
+  // v22.36: Sub-Events als Opt-in — Schritt 2 fragt zuerst, OB Sub-Events
+  // genutzt werden sollen (Default: nein); erst dann erscheint die ganze
+  // Konfiguration. Beim Bearbeiten/Demo-Befüllen mit vorhandenen Sub-Events
+  // schaltet der Effekt einmalig automatisch auf „ja" (Ref verhindert, dass
+  // er ein bewusstes Abschalten sofort wieder überschreibt).
+  const [subEventsOptIn, setSubEventsOptIn] = React.useState<boolean>(false);
+  const subOptInHydratedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!subOptInHydratedRef.current && subEvents.length > 0) {
+      subOptInHydratedRef.current = true;
+      setSubEventsOptIn(true);
+    }
+  }, [subEvents.length]);
+
+  const wizardRootRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    const root = wizardRootRef.current;
+    if (!root) return undefined;
+    const SELECTOR = 'input.form-input, textarea.form-input, select.form-select, select.form-input';
+    const apply = (el: Element): void => {
+      const input = el as HTMLInputElement;
+      const type = (input.type || '').toLowerCase();
+      if (type === 'checkbox' || type === 'radio' || type === 'file' || type === 'button') return;
+      input.classList.toggle('dex-filled', !!(input.value || '').trim());
+    };
+    const sweep = (): void => { root.querySelectorAll(SELECTOR).forEach(apply); };
+    const onInput = (e: Event): void => {
+      const t = e.target as HTMLElement;
+      if (t && typeof t.matches === 'function' && t.matches(SELECTOR)) apply(t);
+    };
+    sweep();
+    const iv = window.setInterval(sweep, 1200);
+    root.addEventListener('input', onInput, true);
+    root.addEventListener('change', onInput, true);
+    return () => {
+      window.clearInterval(iv);
+      root.removeEventListener('input', onInput, true);
+      root.removeEventListener('change', onInput, true);
+    };
+  }, []);
+
   if (submitted) {
     return (
       <div className="page-container text-center">
@@ -4998,7 +4971,7 @@ export default function EventCreationPage(): React.ReactElement {
   };
 
   return (
-    <div className="page-container" style={{ maxWidth: 1100, marginLeft: 'auto', marginRight: 'auto' }}>
+    <div ref={wizardRootRef} className="page-container" style={{ maxWidth: 1100, marginLeft: 'auto', marginRight: 'auto' }}>
       {showTermsModal && (
         <div
           style={{
@@ -5332,6 +5305,12 @@ export default function EventCreationPage(): React.ReactElement {
             @media (max-width: 768px) {
               .dex-step-head-title { margin: -20px -16px 0; padding: 14px 16px 4px; }
               .dex-step-head-lead { margin: 0 -16px 16px; padding: 0 16px 12px; }
+            }
+            /* v22.36: Ausgefüllte Eingaben — pastellgrün wie auf der
+               Anmeldeseite (Klasse wird per Sweep/Listener getoggelt). */
+            .dex-filled:not(:focus) {
+              border-color: var(--dex-green, #86bc25) !important;
+              background: rgba(134,188,37,0.07) !important;
             }
           `}</style>
           {(() => {
@@ -7060,79 +7039,23 @@ export default function EventCreationPage(): React.ReactElement {
                 {agenda
                   .slice()
                   .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
-                  .map((item) => (
+                  .map((item, agendaIdx) => (
                   <div key={item.id} style={{
                     display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-start',
                     padding: '10px 12px', marginBottom: 8,
                     background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
                     border: '1px solid var(--dex-gray-200)',
                   }}>
-                    {/* Icon Picker - Grüner Kreis mit weißem Icon */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, position: 'relative' }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.icon')}</label>
-                      <button
-                        type="button"
-                        onClick={() => { setIconPickerOpen(iconPickerOpen === item.id ? null : item.id); setIconSearch(''); setShowAllIcons(false); }}
-                        style={{
-                          width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          border: 'none', borderRadius: '50%',
-                          background: 'var(--dex-green-dark, #6b9a1e)', cursor: 'pointer',
-                        }}
-                        title={item.icon || 'Calendar'}
-                      >
-                        <Icon iconName={item.icon || 'Calendar'} style={{ fontSize: 18, color: '#fff' }} />
-                      </button>
-                      {iconPickerOpen === item.id && (
-                        <div style={{
-                          position: 'absolute', top: '100%', left: 0, zIndex: 100,
-                          background: '#fff', border: '1px solid var(--dex-gray-300)', borderRadius: 12,
-                          boxShadow: '0 6px 20px rgba(0,0,0,0.15)', padding: 10, width: 300,
-                        }}>
-                          <input
-                            type="text"
-                            className="form-input"
-                            placeholder="Icon suchen..."
-                            value={iconSearch}
-                            onChange={e => setIconSearch(e.target.value)}
-                            style={{ fontSize: '0.82rem', padding: '6px 10px', marginBottom: 8, borderRadius: 8 }}
-                            autoFocus
-                          />
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 6, maxHeight: 240, overflowY: 'auto', padding: '2px 0' }}>
-                            {(showAllIcons ? [...AGENDA_ICONS, ...EXTENDED_ICONS] : AGENDA_ICONS)
-                              .filter(ic => !iconSearch || ic.label.toLowerCase().includes(iconSearch.toLowerCase()) || ic.name.toLowerCase().includes(iconSearch.toLowerCase()) || ic.category.includes(iconSearch.toLowerCase()))
-                              .map(ic => (
-                                <button
-                                  key={ic.name}
-                                  type="button"
-                                  title={ic.label}
-                                  onClick={() => { updateAgendaItem(item.id, { icon: ic.name }); setIconPickerOpen(null); }}
-                                  style={{
-                                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                    width: 42, height: 42, border: 'none', borderRadius: '50%', cursor: 'pointer',
-                                    background: item.icon === ic.name ? 'var(--dex-green-dark, #6b9a1e)' : 'var(--dex-gray-100, #f3f3f3)',
-                                    transition: 'background 0.15s, transform 0.1s',
-                                  }}
-                                >
-                                  <Icon iconName={ic.name} style={{ fontSize: 18, color: item.icon === ic.name ? '#fff' : 'var(--dex-gray-700)' }} />
-                                </button>
-                              ))
-                            }
-                          </div>
-                          {!showAllIcons && !iconSearch && (
-                            <button
-                              type="button"
-                              onClick={() => setShowAllIcons(true)}
-                              style={{
-                                width: '100%', marginTop: 8, padding: '6px 0', fontSize: '0.78rem',
-                                background: 'none', border: '1px dashed var(--dex-gray-300)', borderRadius: 8,
-                                color: 'var(--dex-green, #86bc25)', cursor: 'pointer', fontWeight: 600,
-                              }}
-                            >
-                              + {t('create.agenda.icon') === 'Icon' ? 'Show all icons' : 'Alle Icons anzeigen'}
-                            </button>
-                          )}
-                        </div>
-                      )}
+                    {/* v22.36: Laufende Nummer statt Icon-Picker — die
+                        Agenda-Schritte sind durchnummeriert (Sortierung nach
+                        Datum + Uhrzeit), Icons pro Schritt entfallen. */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>Nr.</label>
+                      <span style={{
+                        width: 38, height: 38, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        borderRadius: '50%', background: 'var(--dex-green-dark, #6b9a1e)', color: '#fff',
+                        fontWeight: 700, fontSize: '0.95rem', lineHeight: 1, flexShrink: 0,
+                      }}>{agendaIdx + 1}</span>
                     </div>
 
                     {/* Date */}
@@ -7276,10 +7199,60 @@ export default function EventCreationPage(): React.ReactElement {
               </h2>
               <p className="dex-step-head-lead">
                 {isDe
-                  ? <><strong>Optional</strong> — lege zusätzliche Sessions, Workshops oder Programmpunkte zum Hauptevent an. Hier legst du auch fest, wie diese Bausteine in der App heißen und ob sich Teilnehmer nur für Sub-Events oder zusätzlich auch fürs Hauptevent anmelden können.</>
-                  : <><strong>Optional</strong> — add additional sessions, workshops or program items to the main event. Here you also configure what these building blocks are called in the app and whether attendees register only for sub-events or for the main event as well.</>}
+                  ? <><strong>Optional</strong> — lege zusätzliche Sessions, Workshops oder Programmpunkte zum Hauptevent an. Die meisten Events brauchen das nicht — dann einfach auf „Weiter".</>
+                  : <><strong>Optional</strong> — add additional sessions, workshops or program items to the main event. Most events do not need this — then simply click "Next".</>}
               </p>
 
+              {/* v22.36: Erklärung, was ein Sub-Event ist (graue Beschreibungs-Box). */}
+              <WizardHint
+                isDe={isDe}
+                variant="description"
+                title={isDe ? 'Was ist ein Sub-Event?' : 'What is a sub-event?'}
+                style={{ marginBottom: 12 }}
+              >
+                {isDe
+                  ? <>Ein Sub-Event ist ein <strong>eigenständiger Programmbaustein</strong> innerhalb deines Events — z.&nbsp;B. ein Workshop, eine Session, ein Networking-Dinner oder eine Lauf-Distanz. Jedes Sub-Event hat <strong>eigene Plätze, einen eigenen Termin und eine eigene Teilnehmerliste</strong>, auf Wunsch auch eigene Abfrage-Felder; Teilnehmer wählen ihre Sub-Events direkt im Anmeldeformular. Typische Beispiele: eine Konferenz mit wählbaren Workshops oder ein Sommerfest mit optionalem Abendprogramm. Einfache Events (Meeting, Lunch, Feier) brauchen <strong>keine</strong> Sub-Events.</>
+                  : <>A sub-event is a <strong>separate programme building block</strong> inside your event — e.g. a workshop, a session, a networking dinner or a run distance. Each sub-event has <strong>its own seats, its own schedule and its own attendee list</strong>, optionally its own custom fields; attendees pick their sub-events directly in the registration form. Typical examples: a conference with selectable workshops or a summer party with an optional evening programme. Simple events (meeting, lunch, celebration) do <strong>not</strong> need sub-events.</>}
+              </WizardHint>
+
+              {/* v22.36: Opt-in-Frage — Default nein; erst bei „ja" erscheint
+                  die gesamte Sub-Event-Konfiguration. Abschalten mit
+                  vorhandenen Sub-Events fragt nach und verwirft sie dann. */}
+              <div style={{ background: 'rgba(134,188,37,0.06)', borderRadius: 12, padding: '12px 16px', marginBottom: 12, border: '1px solid var(--dex-gray-100)' }}>
+                <div className="toggle-wrapper" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={subEventsOptIn}
+                      onChange={e => {
+                        const on = e.target.checked;
+                        if (!on && subEvents.length > 0) {
+                          (async () => {
+                            const ok = await confirmDialog(
+                              isDe
+                                ? `Du hast ${subEvents.length} Sub-Event(s) angelegt. Beim Abschalten werden sie aus dem Formular entfernt. Fortfahren?`
+                                : `You created ${subEvents.length} sub-event(s). Turning this off removes them from the form. Continue?`,
+                              { danger: true, confirmLabel: isDe ? 'Sub-Events entfernen' : 'Remove sub-events' }
+                            );
+                            if (ok) { setSubEvents([]); setSubEventsOptIn(false); }
+                          })().catch(() => { /* */ });
+                          return;
+                        }
+                        setSubEventsOptIn(on);
+                      }}
+                    />
+                    <span className="toggle-slider" />
+                  </label>
+                  <span style={{ fontSize: '0.9rem' }}>
+                    <strong>{isDe ? 'Sub-Events nutzen?' : 'Use sub-events?'}</strong>{' '}
+                    {subEventsOptIn
+                      ? (isDe ? '— ja, Konfiguration unten.' : '— yes, configuration below.')
+                      : (isDe ? '— nein (Standard). Zum Aktivieren Schalter umlegen.' : '— no (default). Flip the toggle to enable.')}
+                  </span>
+                </div>
+              </div>
+
+              {subEventsOptIn && (<>
               {/* Bezeichnungs-Dropdown */}
               <div style={{
                 background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
@@ -7700,6 +7673,7 @@ export default function EventCreationPage(): React.ReactElement {
                     <Plus size={14} /> {t('create.subevents.add')}
                   </button>
                 </div>
+              </>)}{/* close subEventsOptIn */}
               </div>{/* close Step 2 (Sub-Events) */}
 
               {/* ===== Step 4 (v14.8: vormals Step 3): Kapazität, Fristen & Sichtbarkeit ===== */}
@@ -8612,7 +8586,17 @@ export default function EventCreationPage(): React.ReactElement {
                         />
                         <span className="toggle-slider" />
                       </label>
-                      <span style={{ fontSize: '0.9rem' }}>{unlimitedParticipants ? (t('create.maxparticipants') === 'Max. Participants' ? 'Unlimited' : 'Unbegrenzt') : (maxParticipants ? `${maxParticipants} Plätze` : 'Anzahl eingeben')}</span>
+                      {/* v22.36: Eindeutiges Label — die graue Pille neben „80
+                          Plätze" las sich wie „deaktiviert". Der Schalter
+                          steht für „Unbegrenzt"; im Aus-Zustand sagt der Text
+                          jetzt explizit „Begrenzt auf X Plätze". */}
+                      <span style={{ fontSize: '0.9rem' }}>
+                        {unlimitedParticipants
+                          ? (isDe ? 'Unbegrenzt — keine maximale Teilnehmerzahl' : 'Unlimited — no maximum')
+                          : (maxParticipants
+                            ? (isDe ? `Begrenzt auf ${maxParticipants} Plätze` : `Limited to ${maxParticipants} seats`)
+                            : (isDe ? 'Begrenzt — Anzahl unten eingeben (Schalter an = unbegrenzt)' : 'Limited — enter the number below (toggle on = unlimited)'))}
+                      </span>
                     </div>
                     {!unlimitedParticipants && (
                       <>
@@ -11990,12 +11974,16 @@ export default function EventCreationPage(): React.ReactElement {
 
           {!isSubmitting && (
             <>
-            {/* v9.27: Action-Row — Zurück (links), Vorschau (mitte), Weiter (rechts)
-                alle auf gleicher Höhe in einer Reihe.
-                v22.22: ref für den schwebenden Weiter-Button (IntersectionObserver). */}
+            {/* v22.36: Aufgeräumte Aktions-Leiste — klare Hierarchie statt
+                drei loser Gruppen: links die Rück-Navigation, rechts erst die
+                ruhigen Werkzeuge (Vorschau / Prüfen), dann durch einen
+                Trenner abgesetzt die Haupt-Aktionen (Speichern als Outline,
+                Weiter/Anlegen als EINZIGER gefüllter Primär-Button).
+                v22.22: ref für den schwebenden Weiter-Button. */}
             <div ref={actionRowRef} style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-              gap: 12, marginTop: 24, flexWrap: 'wrap',
+              gap: 12, marginTop: 28, paddingTop: 16,
+              borderTop: '1px solid var(--dex-gray-200)', flexWrap: 'wrap',
             }}>
               <div style={{ display: 'flex', gap: 8 }}>
                 {currentStep === 0 ? (
@@ -12007,43 +11995,42 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
               </div>
 
-              <button
-                type="button"
-                onClick={() => setShowRegisterPreview(true)}
-                disabled={!title}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 10,
-                  padding: '12px 28px', borderRadius: 999,
-                  border: '2px solid var(--dex-green)',
-                  background: 'linear-gradient(135deg, rgba(134,188,37,0.12), rgba(0,118,168,0.08))',
-                  color: 'var(--dex-green-dark, #4a7c1f)',
-                  fontSize: '0.95rem', fontWeight: 700, letterSpacing: 0.3,
-                  cursor: title ? 'pointer' : 'not-allowed',
-                  opacity: title ? 1 : 0.5,
-                  boxShadow: title ? '0 2px 8px rgba(134,188,37,0.25)' : 'none',
-                  transition: 'transform 0.1s ease, box-shadow 0.1s ease',
-                }}
-                onMouseEnter={e => { if (title) (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(-1px)'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = 'translateY(0)'; }}
-                title={title ? 'So sehen Teilnehmer die Registrierungsseite' : 'Event-Titel eingeben, um die Vorschau zu öffnen'}
-              >
-                👁 {t('create.registerpreview')}
-              </button>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowRegisterPreview(true)}
+                  disabled={!title}
+                  style={{ opacity: title ? 1 : 0.5 }}
+                  title={title ? 'So sehen Teilnehmer die Registrierungsseite' : 'Event-Titel eingeben, um die Vorschau zu öffnen'}
+                >
+                  {t('create.registerpreview')}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => setShowConfigCheck(true)}
+                  disabled={!title}
+                  style={{ opacity: title ? 1 : 0.5 }}
+                  title={isDe ? 'Alle Einstellungen des Events im Überblick prüfen' : 'Review all event settings at a glance'}
+                >
+                  {isDe ? 'Prüfen' : 'Review'}
+                </button>
 
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                {/* v17.5: Im Edit-Modus immer einen Speichern-Button anzeigen,
-                    damit man nicht durch alle Steps klicken muss wenn man
-                    nur eine Sache aendert. Button-Label ist klarer:
-                    „Aenderungen speichern und zurück zum Event" plus
-                    Info-Tooltip mit Erklärung. */}
+                {/* Trenner zwischen Werkzeugen und Haupt-Aktionen */}
+                <span aria-hidden="true" style={{ width: 1, height: 26, background: 'var(--dex-gray-200)', margin: '0 4px' }} />
+
+                {/* v17.5: Im Edit-Modus immer speichern können, ohne durch
+                    alle Steps zu klicken. v22.36: als Outline-Variante —
+                    der gefüllte Primär-Button bleibt Weiter/Anlegen. */}
                 {isEditMode && currentStep < steps.length - 1 && (
                   <button
-                    className="btn btn-primary"
+                    className="btn btn-outline"
                     disabled={!title}
                     onClick={attemptSubmit}
                     style={{ opacity: !title ? 0.5 : 1 }}
                   >
-                    <Send size={16} /> {isDe ? 'Änderungen speichern und zurück zum Event' : 'Save changes and return to event'}
+                    <Send size={16} /> {isDe ? 'Speichern & zurück zum Event' : 'Save & return to event'}
                   </button>
                 )}
 
@@ -12507,6 +12494,15 @@ export default function EventCreationPage(): React.ReactElement {
           // v17.22: Bilingual-Flag an die Vorschau — sonst rendert die
           // Preview die EN-Varianten nie (useEnVariants prüft event.bilingualFields).
           bilingualFields,
+          // v22.36: Geteilte Kapazität an die Vorschau — sonst fehlt die
+          // Gruppenauswahl im Vorschau-Formular.
+          ...(useSplitCapacities ? {
+            durchstarterCapacity: Number(durchstarterCapacity) || 0,
+            funstarterCapacity: Number(funstarterCapacity) || 0,
+            splitLabelA,
+            splitLabelB,
+            splitSharedWaitlist,
+          } : {}),
         }}
       />
 
@@ -12690,6 +12686,153 @@ export default function EventCreationPage(): React.ReactElement {
           </button>
         </div>
       )}
+
+      {/* v22.36: „Prüfen"-Modal — Übersicht aller Einstellungen: was ist
+          gesetzt, wo greifen Standards, welche optionalen Punkte sind leer,
+          welche Pflichtangaben fehlen. Rein lesend aus dem Wizard-State. */}
+      {showConfigCheck && (() => {
+        type CheckStatus = 'ok' | 'default' | 'empty' | 'missing';
+        interface CheckRow { label: string; value: React.ReactNode; status: CheckStatus }
+        const fmtDt = (v: string): string => {
+          if (!v) return '';
+          const d = new Date(v);
+          return Number.isFinite(d.getTime()) ? d.toLocaleString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : v;
+        };
+        const plainDesc = (description || '').replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').trim();
+        const orgList = organizer.split(';').map(s => s.trim()).filter(Boolean);
+        const locList = locationFilter.split(',').map(s => s.trim()).filter(Boolean);
+        const audList = (audience || '').split(',').map(s => s.trim()).filter(Boolean);
+        const sections: Array<{ title: string; rows: CheckRow[] }> = [];
+        sections.push({
+          title: isDe ? 'Schritt 1 — Grundlagen' : 'Step 1 — Basics',
+          rows: [
+            { label: isDe ? 'Event-Titel' : 'Event title', value: title || '—', status: title ? 'ok' : 'missing' },
+            { label: isDe ? 'Zeitraum' : 'Dates', value: startDate ? `${fmtDt(startDate)}${endDate ? ` – ${fmtDt(endDate)}` : (isDe ? ' (kein Ende — Outlook-Termin nicht möglich)' : ' (no end — Outlook invite not possible)')}` : '—', status: !startDate ? 'missing' : (endDate ? 'ok' : 'empty') },
+            { label: isDe ? 'Beschreibung' : 'Description', value: plainDesc ? `${plainDesc.slice(0, 80)}${plainDesc.length > 80 ? '…' : ''}` : '—', status: plainDesc ? 'ok' : 'empty' },
+            { label: isDe ? 'Event-Bild' : 'Event image', value: imagePreview ? (isDe ? 'hochgeladen' : 'uploaded') : '—', status: imagePreview ? 'ok' : 'empty' },
+            { label: 'Organizer', value: orgList.length ? `${orgList.length} ${isDe ? 'Person(en)' : 'person(s)'}` : '—', status: orgList.length ? 'ok' : 'missing' },
+            { label: isDe ? 'Test-Team' : 'Test team', value: testTeamEmails.length ? `${testTeamEmails.length} ${isDe ? 'Person(en)' : 'person(s)'}` : '—', status: testTeamEmails.length ? 'ok' : 'empty' },
+            { label: isDe ? 'Check-In-Team' : 'Check-in team', value: qrScannerEmails.length ? `${qrScannerEmails.length} ${isDe ? 'Person(en)' : 'person(s)'}` : '—', status: qrScannerEmails.length ? 'ok' : 'empty' },
+            { label: 'Status', value: isFictive ? (activeFrom ? (isDe ? `Entwurf — geht automatisch live am ${fmtDt(activeFrom)}` : `Draft — goes live automatically on ${fmtDt(activeFrom)}`) : (isDe ? 'Entwurf (nur Admins, Organizer, Test-Team)' : 'Draft (admins, organizers, test team only)')) : (isDe ? 'Aktiv — für berechtigte Teilnehmer sichtbar' : 'Active — visible to eligible attendees'), status: isFictive ? 'default' : 'ok' },
+          ],
+        });
+        sections.push({
+          title: isDe ? 'Schritt 2 — Sub-Events' : 'Step 2 — Sub-events',
+          rows: subEvents.length === 0
+            ? [{ label: 'Sub-Events', value: isDe ? 'keine' : 'none', status: 'default' }]
+            : [
+                { label: 'Sub-Events', value: `${subEvents.length} (${subEvents.map(s => s.title || '?').join(', ').slice(0, 90)})`, status: 'ok' },
+                { label: isDe ? 'Anmelde-Modus' : 'Registration mode', value: subEventsOnlyMode ? (isDe ? 'Nur für Sub-Events (Klammer nicht buchbar)' : 'Sub-events only (bracket not bookable)') : (isDe ? 'Hauptevent + Sub-Events' : 'Main event + sub-events'), status: 'ok' },
+              ],
+        });
+        sections.push({
+          title: isDe ? 'Schritt 3 — Ort & Programm' : 'Step 3 — Location & programme',
+          rows: [
+            { label: isDe ? 'Veranstaltungsort' : 'Venue', value: location || '—', status: location ? 'ok' : 'empty' },
+            { label: isDe ? 'Adresse' : 'Address', value: (addrStreet || addrCity) ? [addrStreet, addrHouseNo, addrZip, addrCity].filter(Boolean).join(' ') : '—', status: (addrStreet || addrCity) ? 'ok' : 'empty' },
+            { label: 'Agenda', value: agenda.length ? `${agenda.length} ${isDe ? 'Programmpunkte' : 'items'}` : '—', status: agenda.length ? 'ok' : 'empty' },
+            { label: isDe ? 'Transferzeiten' : 'Transfers', value: transferTimes.length ? `${transferTimes.length}` : '—', status: transferTimes.length ? 'ok' : 'empty' },
+          ],
+        });
+        sections.push({
+          title: isDe ? 'Schritt 4 — Kapazität & Sichtbarkeit' : 'Step 4 — Capacity & visibility',
+          rows: [
+            useSplitCapacities
+              ? { label: isDe ? 'Plätze (geteilte Kapazität)' : 'Seats (split capacity)', value: `${splitLabelA || 'Gruppe A'}: ${durchstarterCapacity || 0} · ${splitLabelB || 'Gruppe B'}: ${funstarterCapacity || 0}${splitSharedWaitlist ? (isDe ? ' · gemeinsame Warteliste' : ' · shared waitlist') : ''}`, status: 'ok' }
+              : { label: isDe ? 'Plätze' : 'Seats', value: unlimitedParticipants ? (isDe ? 'Unbegrenzt' : 'Unlimited') : String(maxParticipants || 0), status: unlimitedParticipants ? 'default' : 'ok' },
+            { label: isDe ? 'Warteliste' : 'Waitlist', value: waitlistEnabled ? (isDe ? 'aktiv' : 'on') : (isDe ? 'aus' : 'off'), status: waitlistEnabled ? 'default' : 'ok' },
+            { label: isDe ? 'Anmeldefrist' : 'Registration deadline', value: registrationDeadline ? fmtDt(registrationDeadline) : '—', status: registrationDeadline ? 'ok' : 'empty' },
+            { label: isDe ? 'Abmeldefrist (kommuniziert)' : 'Cancellation deadline (communicated)', value: lastDeregisterDate ? fmtDt(lastDeregisterDate) : '—', status: lastDeregisterDate ? 'ok' : 'empty' },
+            { label: isDe ? 'Sichtbarkeit' : 'Visibility', value: (locList.length === 0 && audList.length === 0) ? (isDe ? 'alle Mitarbeiter von Deloitte Deutschland' : 'all Deloitte Germany employees') : [locList.length ? `${isDe ? 'Standorte' : 'Locations'}: ${locList.join(', ')}` : '', audList.length ? `${audList.length} ${isDe ? 'Verteiler/Personen' : 'lists/people'}` : ''].filter(Boolean).join(filterMode === 'AND' ? ' UND ' : ' ODER '), status: (locList.length === 0 && audList.length === 0) ? 'default' : 'ok' },
+            { label: isDe ? 'Ausgeschlossene Personen' : 'Excluded people', value: excludedUsers.length ? `${excludedUsers.length}` : '—', status: excludedUsers.length ? 'ok' : 'default' },
+          ],
+        });
+        sections.push({
+          title: isDe ? 'Schritt 5 — Felder' : 'Step 5 — Fields',
+          rows: [
+            { label: isDe ? 'Eigene Abfrage-Felder' : 'Custom fields', value: customFields.length ? `${customFields.length}` : (isDe ? 'keine' : 'none'), status: customFields.length ? 'ok' : 'default' },
+            { label: isDe ? 'Anrede abfragen' : 'Ask salutation', value: askSalutation ? (isDe ? 'an' : 'on') : (isDe ? 'aus' : 'off'), status: askSalutation ? 'ok' : 'default' },
+            { label: isDe ? 'Zweisprachige Felder (DE+EN)' : 'Bilingual fields (DE+EN)', value: bilingualFields ? (isDe ? 'an' : 'on') : (isDe ? 'aus' : 'off'), status: bilingualFields ? 'ok' : 'default' },
+            { label: isDe ? 'Formular-Sprache' : 'Form language', value: registrationLanguage === 'de' ? (isDe ? 'Immer Deutsch' : 'Always German') : registrationLanguage === 'en' ? (isDe ? 'Immer Englisch' : 'Always English') : (isDe ? 'Automatisch (App-Sprache)' : 'Automatic (app language)'), status: registrationLanguage ? 'ok' : 'default' },
+          ],
+        });
+        sections.push({
+          title: isDe ? 'Schritt 6 — Kommunikation' : 'Step 6 — Communication',
+          rows: [
+            { label: isDe ? 'Mail-Sprache' : 'Email language', value: (emailLanguage || 'EN').toUpperCase() === 'DE' ? 'Deutsch' : 'English', status: 'ok' },
+            { label: isDe ? 'Bestätigungs-Mails' : 'Confirmation emails', value: disableEmails ? (isDe ? 'deaktiviert' : 'disabled') : (isDe ? 'aktiv' : 'on'), status: disableEmails ? 'ok' : 'default' },
+            ...(!disableEmails && (disableRegistrationEmail || disableCancellationEmail) ? [{ label: isDe ? 'Einzeln deaktiviert' : 'Individually disabled', value: [disableRegistrationEmail ? (isDe ? 'Anmelde-Bestätigung' : 'registration confirmation') : '', disableCancellationEmail ? (isDe ? 'Abmelde-Bestätigung' : 'cancellation confirmation') : ''].filter(Boolean).join(', '), status: 'ok' as CheckStatus }] : []),
+            { label: isDe ? 'Outlook-Termin' : 'Outlook invite', value: disableOutlook ? (isDe ? 'deaktiviert' : 'disabled') : (isDe ? 'aktiv' : 'on'), status: disableOutlook ? 'ok' : 'default' },
+            { label: isDe ? 'Auto-Abmeldung bei Outlook-Absage' : 'Auto-cancel on Outlook decline', value: autoDeregisterOnDecline ? (isDe ? 'an' : 'on') : (isDe ? 'aus' : 'off'), status: autoDeregisterOnDecline ? 'ok' : 'default' },
+          ],
+        });
+        sections.push({
+          title: isDe ? 'Schritt 7 — Team-Anmeldung' : 'Step 7 — Team registration',
+          rows: [{ label: isDe ? 'Team-Anmeldung' : 'Team registration', value: teamRegistrationEnabled ? (isDe ? `aktiv — Teams à ${teamSize}` : `on — teams of ${teamSize}`) : (isDe ? 'aus' : 'off'), status: teamRegistrationEnabled ? 'ok' : 'default' }],
+        });
+        sections.push({
+          title: isDe ? 'Schritt 8 — Dokumente' : 'Step 8 — Documents',
+          rows: [{ label: isDe ? 'Dokumente' : 'Documents', value: documents.length ? `${documents.length}` : '—', status: documents.length ? 'ok' : 'empty' }],
+        });
+        sections.push({
+          title: isDe ? 'Schritt 9 — Fun-Zone' : 'Step 9 — Fun zone',
+          rows: [{ label: 'Quiz', value: quiz.length ? `${quiz.length} ${isDe ? 'Fragen' : 'questions'}` : '—', status: quiz.length ? 'ok' : 'empty' }],
+        });
+        const allRows = sections.reduce((acc, s) => acc + s.rows.length, 0);
+        void allRows;
+        const missingCount = sections.reduce((acc, s) => acc + s.rows.filter(r => r.status === 'missing').length, 0);
+        const emptyCount = sections.reduce((acc, s) => acc + s.rows.filter(r => r.status === 'empty').length, 0);
+        const chip = (st: CheckStatus): React.ReactElement | null => {
+          if (st === 'default') return <span style={{ fontSize: '0.66rem', fontWeight: 700, padding: '1px 8px', borderRadius: 999, background: 'var(--dex-gray-100)', color: 'var(--dex-gray-500)', flexShrink: 0 }}>{isDe ? 'Standard' : 'Default'}</span>;
+          if (st === 'empty') return <span style={{ fontSize: '0.66rem', fontWeight: 700, padding: '1px 8px', borderRadius: 999, background: 'rgba(237,139,0,0.12)', color: 'var(--dex-orange-dark, #b35a00)', flexShrink: 0 }}>{isDe ? 'leer (optional)' : 'empty (optional)'}</span>;
+          if (st === 'missing') return <span style={{ fontSize: '0.66rem', fontWeight: 700, padding: '1px 8px', borderRadius: 999, background: 'rgba(218,41,28,0.12)', color: 'var(--dex-red, #c00)', flexShrink: 0 }}>{isDe ? 'fehlt' : 'missing'}</span>;
+          return null;
+        };
+        return (
+          <div
+            role="dialog"
+            aria-modal="true"
+            onClick={() => setShowConfigCheck(false)}
+            style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 1250,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              className="card"
+              style={{ width: '100%', maxWidth: 760, maxHeight: '88vh', overflow: 'auto', padding: 24, borderRadius: 16, background: '#fff', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{isDe ? 'Event prüfen — alle Einstellungen im Überblick' : 'Review event — all settings at a glance'}</h3>
+                <button type="button" onClick={() => setShowConfigCheck(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4 }} aria-label={isDe ? 'Schließen' : 'Close'}><X size={20} /></button>
+              </div>
+              <p style={{ margin: '0 0 14px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                {missingCount > 0
+                  ? (isDe ? <><strong style={{ color: 'var(--dex-red, #c00)' }}>{missingCount} Pflichtangabe(n) fehlen</strong>{emptyCount > 0 ? <> · {emptyCount} optionale Punkte sind noch leer</> : null}.</> : <><strong style={{ color: 'var(--dex-red, #c00)' }}>{missingCount} required item(s) missing</strong>{emptyCount > 0 ? <> · {emptyCount} optional items still empty</> : null}.</>)
+                  : emptyCount > 0
+                    ? (isDe ? <>Alle Pflichtangaben sind gesetzt — <strong>{emptyCount} optionale Punkte</strong> sind noch leer.</> : <>All required items are set — <strong>{emptyCount} optional items</strong> are still empty.</>)
+                    : (isDe ? 'Alles gesetzt — keine offenen Punkte.' : 'Everything set — nothing open.')}
+              </p>
+              {sections.map((sec, si) => (
+                <div key={si} style={{ marginBottom: 14 }}>
+                  <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--dex-green-dark, #4a7c1f)', borderBottom: '1px solid var(--dex-gray-100)', paddingBottom: 4, marginBottom: 6 }}>{sec.title}</div>
+                  {sec.rows.map((r, ri) => (
+                    <div key={ri} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '4px 0', fontSize: '0.8rem' }}>
+                      <span style={{ flex: '0 0 230px', color: 'var(--dex-gray-500)' }}>{r.label}</span>
+                      <span style={{ flex: 1, color: 'var(--dex-gray-800)', minWidth: 0, overflowWrap: 'anywhere' }}>{r.value}</span>
+                      {chip(r.status)}
+                    </div>
+                  ))}
+                </div>
+              ))}
+              <div style={{ textAlign: 'right', marginTop: 6 }}>
+                <button className="btn btn-primary" onClick={() => setShowConfigCheck(false)}>{isDe ? 'Schließen' : 'Close'}</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {showDemoVariantModal && (
         <div
