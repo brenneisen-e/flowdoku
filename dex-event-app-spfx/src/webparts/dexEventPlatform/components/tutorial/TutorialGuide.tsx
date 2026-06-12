@@ -242,17 +242,31 @@ function TutorialOverlay(props: { tour: TutorialTour; onClose: () => void }): Re
 
   // Karten-Position: unter dem Spotlight wenn Platz, sonst darüber; seitlich
   // an den Viewport geklemmt. Ohne Spotlight: mittig.
+  // v22.25: Ziel-Rechteck auf den Viewport clampen — bei Zielen GRÖSSER als
+  // der Viewport (z.B. das ganze Event-Raster) zeigten „unter dem Ziel" UND
+  // „über dem Ziel" beide aus dem Bildschirm heraus → Karte unsichtbar, Tour
+  // wirkte eingefroren. Reicht der Platz weder unten noch oben, wird die
+  // Karte unten mittig ÜBER dem Spotlight fixiert.
   const vw = window.innerWidth;
   const vh = window.innerHeight;
   const pad = 8; // Luft um das Ziel-Element im Spotlight
   let cardStyle: React.CSSProperties;
   if (rect) {
-    const below = rect.top + rect.height + pad + 16;
-    const placeBelow = below < vh * 0.62;
-    const left = Math.min(Math.max(16, rect.left + rect.width / 2 - CARD_WIDTH / 2), Math.max(16, vw - CARD_WIDTH - 16));
-    cardStyle = placeBelow
-      ? { position: 'fixed', top: below, left, width: Math.min(CARD_WIDTH, vw - 32) }
-      : { position: 'fixed', bottom: vh - rect.top + pad + 16, left, width: Math.min(CARD_WIDTH, vw - 32) };
+    const cardW = Math.min(CARD_WIDTH, vw - 32);
+    const rectTopClamped = Math.max(rect.top, 0);
+    const rectBottomClamped = Math.min(rect.top + rect.height, vh);
+    const spaceBelow = vh - rectBottomClamped;
+    const spaceAbove = rectTopClamped;
+    const left = Math.min(Math.max(16, rect.left + rect.width / 2 - cardW / 2), Math.max(16, vw - cardW - 16));
+    // Großzügig geschätzter Platzbedarf der Karte inkl. Abstand.
+    const CARD_SPACE = 280;
+    if (spaceBelow >= CARD_SPACE) {
+      cardStyle = { position: 'fixed', top: rectBottomClamped + pad + 16, left, width: cardW };
+    } else if (spaceAbove >= CARD_SPACE) {
+      cardStyle = { position: 'fixed', bottom: vh - rectTopClamped + pad + 16, left, width: cardW };
+    } else {
+      cardStyle = { position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', width: cardW };
+    }
   } else {
     cardStyle = {
       position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',

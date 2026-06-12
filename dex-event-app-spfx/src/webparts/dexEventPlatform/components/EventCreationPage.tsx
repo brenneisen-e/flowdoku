@@ -5453,8 +5453,10 @@ export default function EventCreationPage(): React.ReactElement {
               {/* v9.21: Entwurf-Flag als erster Schritt — vor Title.
                   Default ist on, der Organizer kann die Test-Strecke
                   in Ruhe aufbauen, das Test-Team durchspielen lassen,
-                  und ohne Aengste sein Event entwickeln. */}
-              <div className="form-group" style={{ marginTop: 0, marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid var(--dex-gray-100)', maxWidth: 720 }}>
+                  und ohne Aengste sein Event entwickeln.
+                  v22.27: volle Breite wie die übrigen Hinweis-Boxen
+                  (vorher maxWidth 720). */}
+              <div className="form-group" style={{ marginTop: 0, marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: 14, background: isFictive ? 'rgba(237,139,0,0.06)' : 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: `1px solid ${isFictive ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-gray-200)'}` }}>
                   <StepBadge n={1} />
                   <input
@@ -10996,6 +10998,10 @@ export default function EventCreationPage(): React.ReactElement {
                       isDe={isDe}
                       title={isDe ? 'Kommunikation für das Hauptevent ist deaktiviert' : 'Communication for the main event is disabled'}
                       style={{ marginTop: 16 }}
+                      // Pflicht-Checkbox im Inhalt — muss sichtbar starten,
+                      // sonst übersieht der Organizer die Bestätigung und
+                      // wundert sich über den blockierten Save.
+                      defaultOpen={true}
                     >
                       <div style={{ marginBottom: 10 }}>
                         {isDe
@@ -11939,11 +11945,13 @@ export default function EventCreationPage(): React.ReactElement {
 
             {/* v22.22: Schwebender Weiter-Button — sichtbar nur, solange die
                 Aktions-Zeile unten noch nicht im Viewport ist. Blendet beim
-                Erreichen des Seitenendes weich aus (der echte Button übernimmt). */}
+                Erreichen des Seitenendes weich aus (der echte Button übernimmt).
+                v22.26: Position + Look exakt wie die Jump-Buttons im Organizer
+                Center (unten MITTIG, grüne Pille) — bewährtes fixed-Muster,
+                kollidiert nicht mit dem Chat-Icon unten rechts. */}
             {currentStep < steps.length - 1 && (
               <button
                 type="button"
-                className="btn btn-primary"
                 aria-hidden={actionRowVisible}
                 tabIndex={actionRowVisible ? -1 : 0}
                 onClick={() => {
@@ -11954,16 +11962,20 @@ export default function EventCreationPage(): React.ReactElement {
                   }
                 }}
                 style={{
-                  position: 'fixed', right: 28, bottom: 28, zIndex: 950,
-                  borderRadius: 999, padding: '12px 28px',
-                  boxShadow: '0 6px 20px rgba(0,0,0,0.25)',
+                  position: 'fixed', left: '50%', bottom: 20, zIndex: 900,
+                  background: 'var(--dex-green, #86bc25)', color: '#fff',
+                  border: 'none', padding: '10px 16px', borderRadius: 999,
+                  cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  fontFamily: 'inherit',
                   transition: 'opacity 0.3s ease, transform 0.3s ease',
                   opacity: actionRowVisible ? 0 : 1,
-                  transform: actionRowVisible ? 'translateY(14px)' : 'translateY(0)',
+                  transform: actionRowVisible ? 'translate(-50%, 14px)' : 'translate(-50%, 0)',
                   pointerEvents: actionRowVisible ? 'none' : 'auto',
                 }}
               >
-                {t('create.next')}
+                {t('create.next')} ↓
               </button>
             )}
             </>
@@ -12539,9 +12551,11 @@ export default function EventCreationPage(): React.ReactElement {
               fontSize: '0.9rem', fontWeight: 600, lineHeight: 1, whiteSpace: 'nowrap',
             }}
           >
+            {/* v22.27: Help-Icon entfernt — der Text endet selbst mit „?",
+                das Fragezeichen-Icon davor war doppelt gemoppelt. */}
             {powerUserHelpOpen
               ? <><X size={18} /> {isDe ? 'Schließen' : 'Close'}</>
-              : <><Icon iconName="Help" style={{ fontSize: 18 }} /> {isDe ? 'Benötigst du Hilfe?' : 'Need help?'}</>}
+              : <>{isDe ? 'Benötigst du Hilfe?' : 'Need help?'}</>}
           </button>
         </div>
       )}

@@ -397,6 +397,12 @@ Hauptevents/der Klammer (Standortfilter `locationAudience` + Mailverteiler
   Mehrfach-gelistet, Sensible-Daten, Keine-Sub-Events, Komm-deaktiviert-Ack,
   AudiencePicker-Verteiler-Hinweis). **Neue Wizard-Hinweise bitte immer über
   `WizardHint`** — interaktive Inhalte (Checkboxen/Buttons) als children.
+  **Seit v22.27 standardmäßig EINGEKLAPPT:** sichtbar ist nur die Kopfzeile
+  „Hinweis — <Überschrift>" (Klick klappt auf/zu) — die Überschrift muss
+  deshalb für sich allein verständlich sagen, worum es geht. Boxen mit
+  Pflicht-Interaktion (z.B. die Bestätigungs-Checkbox der
+  Komm-deaktiviert-Box) bekommen `defaultOpen={true}`, damit die
+  Pflicht-Aktion nicht im eingeklappten Zustand übersehen wird.
 - **Abmeldedeadline = kommunizierte Frist (Semantik!):** `LastDeregisterDate`
   blockiert die Selbst-Abmeldung NICHT — abmelden geht bis zum Event-Ende
   (Krankheit/Verhinderung), danach greift die v22.22-Sperre. Nach der Frist:
@@ -405,11 +411,14 @@ Hauptevents/der Klammer (Standortfilter `locationAudience` + Mailverteiler
   Tooltips/Step-Hints in Schritt 4 beschreiben genau das — bei Änderungen
   diese Semantik nicht wieder als „Button wird ausgeblendet" dokumentieren.
 - **Schwebender Weiter-Button:** Solange die Aktions-Zeile (Zurück/Vorschau/
-  Weiter) nicht im Viewport ist, schwebt unten rechts ein fixierter
-  Weiter-Button (IntersectionObserver auf `actionRowRef`, threshold 0.3);
-  beim Erreichen des Seitenendes blendet er weich aus (Opacity+Transform,
-  pointer-events none). Auf dem letzten Schritt (Submit) gibt es bewusst
-  KEINEN schwebenden Button.
+  Weiter) nicht im Viewport ist, schwebt **unten mittig** ein fixierter
+  Weiter-Button — Position + Look exakt wie die Jump-Buttons („Nach oben")
+  im Organizer Center (`left: 50%` + `translateX(-50%)`, grüne Pille;
+  unten rechts kollidiert mit dem SP-Chat-Icon). Steuerung per
+  IntersectionObserver auf `actionRowRef` (threshold 0.3); beim Erreichen
+  des Seitenendes blendet er weich aus (Opacity+Transform, pointer-events
+  none). Auf dem letzten Schritt (Submit) gibt es bewusst KEINEN
+  schwebenden Button.
 - **Schritt-Leiste mit Hover:** `.dex-wizard-step:hover` hebt den Schritt an
   und färbt Kreis-Rand (`.dex-step-circle`) + Label (`.dex-step-label`) grün
   (Klickbarkeits-Affordance; CSS im Step-Bar-Container injiziert).
