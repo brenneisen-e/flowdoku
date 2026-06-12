@@ -9403,25 +9403,9 @@ export default function EventCreationPage(): React.ReactElement {
                   und werden bei JEDER Sub-Event-Anmeldung abgefragt, also
                   in dem Modus besonders relevant. Stattdessen ein info-
                   blauer Hinweis-Banner mit der korrekten Erklärung. */}
-              {/* v22.29: Aufräum-Pass — die frühere blaue Info-Box ist auf das
-                  einheitliche, eingeklappte WizardHint-Muster umgestellt (der
-                  Inhalt doppelte sich zudem mit dem Beschreibungstext der
-                  Sektion direkt darunter). */}
-              {subEventsOnlyMode && (() => {
-                const termPl = (childTermPlural || (isDe ? 'Sub-Events' : 'sub-events')).trim() || (isDe ? 'Sub-Events' : 'sub-events');
-                const termSg = (childTermSingular || (isDe ? 'Sub-Event' : 'sub-event')).trim() || (isDe ? 'Sub-Event' : 'sub-event');
-                return (
-                  <WizardHint
-                    isDe={isDe}
-                    title={isDe ? 'Was sind übergreifende Felder?' : 'What are cross-cutting fields?'}
-                    style={{ marginBottom: 16 }}
-                  >
-                    {isDe
-                      ? <>Diese Fragen werden bei der Anmeldung zu jeder einzelnen {termSg} abgefragt. Trag hier ein, was für alle {termPl} gemeinsam gilt; spezifische Felder pro {termSg} pflegst du in den jeweiligen Tabs rechts daneben.</>
-                      : <>These questions are asked once per {termSg} registration. Configure here what applies across all {termPl}; per-{termSg} specifics go into the individual tabs on the right.</>}
-                  </WizardHint>
-                );
-              })()}
+              {/* v22.35: Die frühere „Was sind übergreifende Felder?"-Box ist
+                  entfallen — die Sektions-Beschreibung direkt darunter erklärt
+                  dasselbe (Redundanz). */}
               <div>
               {/* Dynamische Felder */}
               <div>
