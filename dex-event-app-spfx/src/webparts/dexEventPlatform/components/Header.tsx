@@ -138,8 +138,57 @@ export default function Header(): React.ReactElement {
   };
   const rc = roleColors[currentUserRole] || roleColors['User'];
 
+  // v22.28: Header beim Scrollen oben festpinnen. Das CSS-`position: sticky`
+  // auf .header wird im SP-Canvas durch Overflow-Vorfahren ausgehebelt
+  // (gleiche Falle wie bei PageId/fixed) — deshalb JS-Pin: ein Platzhalter-
+  // Div hält die Höhe, der Header wechselt auf `position: fixed`, sobald der
+  // Platzhalter aus dem sichtbaren Bereich scrollt. Der Top-Offset wird
+  // dynamisch unter der SP-Chrome-Leiste gemessen (Suite-Bar ist fixed).
+  const headerPlaceholderRef = React.useRef<HTMLDivElement | null>(null);
+  const [headerPin, setHeaderPin] = React.useState<null | { top: number; left: number; width: number; height: number }>(null);
+  React.useEffect(() => {
+    const chromeTop = (): number => {
+      const candidates = ['[data-automation-id="contentScrollRegion"]', '.SPPageChromeAppDiv', '#spPageCanvasContent'];
+      for (const sel of candidates) {
+        const el = document.querySelector(sel);
+        if (el) return Math.max(0, el.getBoundingClientRect().top);
+      }
+      return 0;
+    };
+    const update = (): void => {
+      const ph = headerPlaceholderRef.current;
+      if (!ph) return;
+      const r = ph.getBoundingClientRect();
+      const top = chromeTop();
+      if (r.top < top) {
+        const height = ph.offsetHeight > 0 ? ph.offsetHeight : 64;
+        setHeaderPin(prev => {
+          const next = { top, left: r.left, width: r.width, height: prev ? prev.height : height };
+          if (prev && prev.top === next.top && prev.left === next.left && prev.width === next.width) return prev;
+          return next;
+        });
+      } else {
+        setHeaderPin(null);
+      }
+    };
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+
   return (
-    <header className="header">
+    <div ref={headerPlaceholderRef} style={headerPin ? { height: headerPin.height } : undefined}>
+    <header
+      className="header"
+      style={headerPin ? {
+        position: 'fixed', top: headerPin.top, left: headerPin.left, width: headerPin.width,
+        zIndex: 1000, boxShadow: '0 2px 10px rgba(0,0,0,0.10)',
+      } : undefined}
+    >
       <div className="header-left">
         {isLanding ? (
           <div className="header-logo">
@@ -147,8 +196,15 @@ export default function Header(): React.ReactElement {
           </div>
         ) : (
           <>
-            <button className="back-btn" onClick={() => navigate(isStart ? 'landing' : 'start')} aria-label="Back">
-              <ChevronLeft size={20} />
+            {/* v22.28: „Zurück"-Beschriftung neben dem Chevron — die runde
+                Icon-Box allein war als Zurück-Navigation nicht klar genug. */}
+            <button
+              className="back-btn"
+              onClick={() => navigate(isStart ? 'landing' : 'start')}
+              aria-label={locale === 'de' ? 'Zurück' : 'Back'}
+              style={{ width: 'auto', borderRadius: 999, padding: '0 16px 0 10px', fontSize: '0.85rem', fontWeight: 600 }}
+            >
+              <ChevronLeft size={20} /> {locale === 'de' ? 'Zurück' : 'Back'}
             </button>
             <span className="header-title" style={{ border: 'none', paddingLeft: 0, fontWeight: 500 }}>
               {getTitle()}
@@ -431,5 +487,6 @@ export default function Header(): React.ReactElement {
       </div>
       <ImpersonateModal open={showImpersonate} onClose={() => setShowImpersonate(false)} />
     </header>
+    </div>
   );
 }
