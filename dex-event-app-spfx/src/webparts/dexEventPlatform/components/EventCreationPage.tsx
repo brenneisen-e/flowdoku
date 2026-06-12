@@ -11939,11 +11939,13 @@ export default function EventCreationPage(): React.ReactElement {
 
             {/* v22.22: Schwebender Weiter-Button — sichtbar nur, solange die
                 Aktions-Zeile unten noch nicht im Viewport ist. Blendet beim
-                Erreichen des Seitenendes weich aus (der echte Button übernimmt). */}
+                Erreichen des Seitenendes weich aus (der echte Button übernimmt).
+                v22.26: Position + Look exakt wie die Jump-Buttons im Organizer
+                Center (unten MITTIG, grüne Pille) — bewährtes fixed-Muster,
+                kollidiert nicht mit dem Chat-Icon unten rechts. */}
             {currentStep < steps.length - 1 && (
               <button
                 type="button"
-                className="btn btn-primary"
                 aria-hidden={actionRowVisible}
                 tabIndex={actionRowVisible ? -1 : 0}
                 onClick={() => {
@@ -11954,16 +11956,20 @@ export default function EventCreationPage(): React.ReactElement {
                   }
                 }}
                 style={{
-                  position: 'fixed', right: 28, bottom: 28, zIndex: 950,
-                  borderRadius: 999, padding: '12px 28px',
-                  boxShadow: '0 6px 20px rgba(0,0,0,0.25)',
+                  position: 'fixed', left: '50%', bottom: 20, zIndex: 900,
+                  background: 'var(--dex-green, #86bc25)', color: '#fff',
+                  border: 'none', padding: '10px 16px', borderRadius: 999,
+                  cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600,
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.18)',
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  fontFamily: 'inherit',
                   transition: 'opacity 0.3s ease, transform 0.3s ease',
                   opacity: actionRowVisible ? 0 : 1,
-                  transform: actionRowVisible ? 'translateY(14px)' : 'translateY(0)',
+                  transform: actionRowVisible ? 'translate(-50%, 14px)' : 'translate(-50%, 0)',
                   pointerEvents: actionRowVisible ? 'none' : 'auto',
                 }}
               >
-                {t('create.next')}
+                {t('create.next')} ↓
               </button>
             )}
             </>
