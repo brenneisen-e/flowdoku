@@ -844,8 +844,12 @@ export default function EventCreationPage(): React.ReactElement {
   const [unlimitedParticipants, setUnlimitedParticipants] = React.useState(
     !editEvent || !editEvent.maxParticipants || editEvent.maxParticipants === 0
   );
+  // v22.37: Neues Event startet UNBEGRENZT → standardmäßig KEINE Warteliste.
+  // Erst wenn der Organizer die Teilnehmerzahl begrenzt, wird die Warteliste
+  // automatisch aktiviert (Default ja bei begrenzter Kapazität — siehe
+  // Unbegrenzt-Toggle-onChange).
   const [waitlistEnabled, setWaitlistEnabled] = React.useState(
-    editEvent && typeof editEvent.waitlistEnabled !== 'undefined' ? editEvent.waitlistEnabled : true
+    editEvent && typeof editEvent.waitlistEnabled !== 'undefined' ? editEvent.waitlistEnabled : false
   );
   const [eventImageUrl, setEventImageUrl] = React.useState(editEvent ? (editEvent.imageUrl || '') : '');
   const [imageFile, setImageFile] = React.useState<File | null>(null);
@@ -8581,21 +8585,22 @@ export default function EventCreationPage(): React.ReactElement {
                             if (unlimited) {
                               setMaxParticipants('');
                               setWaitlistEnabled(false);
+                            } else {
+                              // v22.37: Begrenzte Teilnehmerzahl → Warteliste
+                              // standardmäßig AN (abwählbar). Unbegrenzte Events
+                              // haben keine Warteliste.
+                              setWaitlistEnabled(true);
                             }
                           }}
                         />
                         <span className="toggle-slider" />
                       </label>
-                      {/* v22.36: Eindeutiges Label — die graue Pille neben „80
-                          Plätze" las sich wie „deaktiviert". Der Schalter
-                          steht für „Unbegrenzt"; im Aus-Zustand sagt der Text
-                          jetzt explizit „Begrenzt auf X Plätze". */}
+                      {/* v22.37: Die Pille hat eine feste Ja/Nein-Semantik —
+                          „Teilnehmerzahl unbegrenzt: Ja/Nein". Bei Nein
+                          erscheint darunter das Eingabefeld mit der Anzahl. */}
                       <span style={{ fontSize: '0.9rem' }}>
-                        {unlimitedParticipants
-                          ? (isDe ? 'Unbegrenzt — keine maximale Teilnehmerzahl' : 'Unlimited — no maximum')
-                          : (maxParticipants
-                            ? (isDe ? `Begrenzt auf ${maxParticipants} Plätze` : `Limited to ${maxParticipants} seats`)
-                            : (isDe ? 'Begrenzt — Anzahl unten eingeben (Schalter an = unbegrenzt)' : 'Limited — enter the number below (toggle on = unlimited)'))}
+                        <strong>{isDe ? 'Teilnehmerzahl unbegrenzt:' : 'Unlimited participants:'}</strong>{' '}
+                        {unlimitedParticipants ? (isDe ? 'Ja' : 'Yes') : (isDe ? 'Nein — Anzahl unten festlegen' : 'No — set the number below')}
                       </span>
                     </div>
                     {!unlimitedParticipants && (
