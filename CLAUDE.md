@@ -366,6 +366,37 @@ Hauptevents/der Klammer (Standortfilter `locationAudience` + Mailverteiler
   RegistrationPage des Parents). Erben ALLE Sub-Sections, kollabiert die
   Anzeige zu einer Aussage.
 
+### Wizard-UX-Konventionen (v22.23)
+
+- **Einheitliche Hinweis-Boxen — `components/WizardHint.tsx`:** JEDE
+  Hinweis-Box im Event-Wizard (und im wizard-genutzten `AudiencePicker`)
+  läuft über die shared Komponente `<WizardHint isDe title=…>` — Aufbau
+  immer „**Hinweis — <Überschrift>**" (EN „Note — …") + Text darunter, eine
+  Schriftgröße (0.8rem), eine Farbwelt (Orange-Palette,
+  `rgba(237,139,0,0.08)` + 1px solid `--dex-orange`), volle Breite, kein
+  Emoji/Icon. Die früheren Ad-hoc-Varianten (gelb `#fff8e1`, gestrichelt,
+  ⚠️-Emoji, 0.78–0.95rem) sind migriert (9 Boxen: Klammer-Banner,
+  OutlookDirty, Beschreibungs-Redundanz, Organizer-ohne-Mail,
+  Mehrfach-gelistet, Sensible-Daten, Keine-Sub-Events, Komm-deaktiviert-Ack,
+  AudiencePicker-Verteiler-Hinweis). **Neue Wizard-Hinweise bitte immer über
+  `WizardHint`** — interaktive Inhalte (Checkboxen/Buttons) als children.
+- **Abmeldedeadline = kommunizierte Frist (Semantik!):** `LastDeregisterDate`
+  blockiert die Selbst-Abmeldung NICHT — abmelden geht bis zum Event-Ende
+  (Krankheit/Verhinderung), danach greift die v22.22-Sperre. Nach der Frist:
+  oranger Hinweis beim Abmelden (`myevents.latecancel`) + automatische
+  Late-Cancel-Info-Mail an die Organizer (`performCancel` in MyEventsPage).
+  Tooltips/Step-Hints in Schritt 4 beschreiben genau das — bei Änderungen
+  diese Semantik nicht wieder als „Button wird ausgeblendet" dokumentieren.
+- **Schwebender Weiter-Button:** Solange die Aktions-Zeile (Zurück/Vorschau/
+  Weiter) nicht im Viewport ist, schwebt unten rechts ein fixierter
+  Weiter-Button (IntersectionObserver auf `actionRowRef`, threshold 0.3);
+  beim Erreichen des Seitenendes blendet er weich aus (Opacity+Transform,
+  pointer-events none). Auf dem letzten Schritt (Submit) gibt es bewusst
+  KEINEN schwebenden Button.
+- **Schritt-Leiste mit Hover:** `.dex-wizard-step:hover` hebt den Schritt an
+  und färbt Kreis-Rand (`.dex-step-circle`) + Label (`.dex-step-label`) grün
+  (Klickbarkeits-Affordance; CSS im Step-Bar-Container injiziert).
+
 ### Abmelde-Sperre für vergangene Events + MyEvents-Cluster (v22.22)
 
 Leitlinie: **Nach Event-Ende gibt es keine Selbst-Abmeldung mehr** — und
