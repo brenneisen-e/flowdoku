@@ -297,6 +297,116 @@ function shortSubEventTitle(title: string | undefined, parentTitle?: string): st
   return t;
 }
 
+/**
+ * v22.30: Tab-Leiste der pro-Sub-Event-Schritte (Klammer/Haupt + Sub-Events).
+ * - Sitzt ganz OBEN in der weißen Schritt-Karte (über der Überschrift).
+ * - Bleibt beim Scrollen sichtbar: JS-Pin unter dem (ebenfalls gepinnten)
+ *   Header — CSS-sticky wird im SP-Canvas durch Overflow-Vorfahren
+ *   ausgehebelt (gleiche Falle wie beim Header, siehe Header.tsx v22.28).
+ *   Ein Platzhalter hält die Höhe, die Leiste wechselt auf position:fixed.
+ * - Der AKTIVE Tab ist gefüllt grün mit weißer Schrift.
+ * Versteckte Schritte (display:none) pinnen nicht (offsetParent-Check).
+ */
+function StickyTabStrip(props: {
+  tabs: Array<{ label: string; isMain: boolean }>;
+  activeIdx: number;
+  onChange: (idx: number) => void;
+  ariaLabel: string;
+  mainBadge: string;
+}): React.ReactElement {
+  const phRef = React.useRef<HTMLDivElement | null>(null);
+  const [pin, setPin] = React.useState<null | { top: number; left: number; width: number; height: number }>(null);
+  React.useEffect(() => {
+    const update = (): void => {
+      const ph = phRef.current;
+      if (!ph || ph.offsetParent === null) { setPin(null); return; }
+      const headerEl = document.querySelector('.header');
+      const topEdge = headerEl ? Math.max(0, headerEl.getBoundingClientRect().bottom) : 0;
+      const r = ph.getBoundingClientRect();
+      if (r.top < topEdge) {
+        const height = ph.offsetHeight || 48;
+        setPin(prev => {
+          const next = { top: topEdge, left: r.left, width: r.width, height: prev ? prev.height : height };
+          if (prev && prev.top === next.top && prev.left === next.left && prev.width === next.width) return prev;
+          return next;
+        });
+      } else {
+        setPin(null);
+      }
+    };
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+  return (
+    <div ref={phRef} style={pin ? { height: pin.height } : undefined}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16,
+        ...(pin ? {
+          position: 'fixed', top: pin.top, left: pin.left, width: pin.width,
+          zIndex: 800, background: '#fff', boxSizing: 'border-box',
+          padding: '8px 10px 0', marginBottom: 0,
+          boxShadow: '0 6px 14px rgba(0,0,0,0.08)',
+          borderBottom: '1px solid var(--dex-gray-200)',
+        } : {}),
+      }}>
+        <div
+          role="tablist"
+          aria-label={props.ariaLabel}
+          style={{
+            display: 'flex', flexWrap: 'wrap', gap: 6, flex: 1,
+            borderBottom: pin ? 'none' : '1px solid var(--dex-gray-200)',
+            paddingBottom: 0,
+          }}
+        >
+          {props.tabs.map((tab, tabIdx) => {
+            const active = tabIdx === props.activeIdx;
+            return (
+              <button
+                key={tabIdx}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => props.onChange(tabIdx)}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  padding: '8px 14px',
+                  border: active ? '1px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-200)',
+                  borderRadius: '8px 8px 0 0',
+                  // v22.30: aktiver Tab gefüllt grün mit weißer Schrift.
+                  background: active ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-50, #fafafa)',
+                  color: active ? '#fff' : 'var(--dex-gray-700)',
+                  fontWeight: active ? 700 : 500,
+                  fontSize: '0.85rem',
+                  cursor: 'pointer',
+                  marginBottom: -1,
+                  whiteSpace: 'nowrap',
+                  maxWidth: 280,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  transition: 'background 0.15s, color 0.15s, border-color 0.15s',
+                }}
+                title={tab.label}
+              >
+                {tab.isMain && (
+                  <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 0.4, color: active ? 'rgba(255,255,255,0.85)' : 'var(--dex-gray-400)' }}>
+                    {props.mainBadge}
+                  </span>
+                )}
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StepBadge({ n }: { n: number }): React.ReactElement {
   // v22.29: Aufräum-Pass — dezenter Outline-Badge statt gefüllter grüner
   // Kreis. Die durchlaufenden Nummern bleiben (Tooltips/Support referenzieren
@@ -4850,57 +4960,16 @@ export default function EventCreationPage(): React.ReactElement {
         isMain: false,
       })),
     ];
+    // v22.30: Rendering + Sticky-Pin + gefüllter Aktiv-Tab leben in der
+    // Modul-Komponente StickyTabStrip (Hooks pro Instanz).
     return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-        <div
-          role="tablist"
-          aria-label={ariaLabel}
-          style={{
-            display: 'flex', flexWrap: 'wrap', gap: 6, flex: 1,
-            borderBottom: '1px solid var(--dex-gray-200)',
-            paddingBottom: 0,
-          }}
-        >
-          {tabs.map((tab, tabIdx) => {
-            const active = tabIdx === activeIdx;
-            return (
-              <button
-                key={tabIdx}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                onClick={() => onChange(tabIdx)}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 8,
-                  padding: '8px 14px',
-                  border: '1px solid var(--dex-gray-200)',
-                  borderBottom: active ? '2px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-200)',
-                  borderRadius: '8px 8px 0 0',
-                  background: active ? '#fff' : 'var(--dex-gray-50, #fafafa)',
-                  color: active ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)',
-                  fontWeight: active ? 700 : 500,
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                  marginBottom: -1,
-                  whiteSpace: 'nowrap',
-                  maxWidth: 280,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  transition: 'background 0.15s, color 0.15s, border-color 0.15s',
-                }}
-                title={tab.label}
-              >
-                {tab.isMain && (
-                  <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 0.4, color: active ? 'var(--dex-green-dark)' : 'var(--dex-gray-400)' }}>
-                    {subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt' : 'Main')}
-                  </span>
-                )}
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      <StickyTabStrip
+        tabs={tabs}
+        activeIdx={activeIdx}
+        onChange={onChange}
+        ariaLabel={ariaLabel}
+        mainBadge={subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt' : 'Main')}
+      />
     );
   };
 
@@ -4917,12 +4986,12 @@ export default function EventCreationPage(): React.ReactElement {
   // bekommen das in einer späteren Iteration nachgezogen.
   let _zebraS3Idx = 0;
   const zebraS3Bg = (): string => {
-    // v22.29: Aufräum-Pass — kein Zebra-Wechsel mehr (wirkte unruhig und
-    // willkürlich), alle Einstellungs-Sektionen liegen einheitlich auf
-    // derselben dezenten Fläche. Funktion bleibt als zentrale Stelle für
-    // die Sektions-Hintergrundfarbe bestehen.
+    // v22.29: Aufräum-Pass — kein Zebra-Wechsel mehr (wirkte unruhig).
+    // v22.30: Einheitliche Farb-Logik im Wizard — EINSTELLUNGS-Sektionen
+    // liegen auf PASTELLGRÜNEN Flächen (Beschreibungen grau, Hinweise
+    // orange, siehe WizardHint). Funktion bleibt die zentrale Farb-Stelle.
     _zebraS3Idx++;
-    return 'var(--dex-gray-50, #fafafa)';
+    return 'rgba(134,188,37,0.06)';
   };
 
   return (
@@ -5241,6 +5310,26 @@ export default function EventCreationPage(): React.ReactElement {
             .dex-wizard-step:hover { transform: translateY(-2px); }
             .dex-wizard-step:hover .dex-step-circle { border-color: var(--dex-green, #86bc25) !important; box-shadow: 0 4px 12px rgba(134,188,37,0.35) !important; }
             .dex-wizard-step:hover .dex-step-label { color: var(--dex-green-dark, #4a7c1f) !important; }
+            /* v22.30: Gefüllter grüner Schritt-Header — sitzt bündig als
+               Kopf der weißen Karte (negative Margins überbrücken das
+               Karten-Padding): oben rund wie die Karte, unten gerade Kante,
+               darunter beginnt der Schritt-Inhalt. */
+            .dex-step-head-title {
+              margin: -32px -32px 0; padding: 16px 24px 4px;
+              background: var(--dex-green, #86bc25); color: #fff;
+              font-size: 1.3rem; font-weight: 700;
+              border-radius: 15px 15px 0 0;
+            }
+            .dex-step-head-lead {
+              margin: 0 -32px 20px; padding: 0 24px 14px;
+              background: var(--dex-green, #86bc25); color: rgba(255,255,255,0.95);
+              font-size: 0.85rem; line-height: 1.55;
+              border-radius: 0;
+            }
+            @media (max-width: 768px) {
+              .dex-step-head-title { margin: -20px -16px 0; padding: 14px 16px 4px; }
+              .dex-step-head-lead { margin: 0 -16px 16px; padding: 0 16px 12px; }
+            }
           `}</style>
           {(() => {
             const sidePct = 100 / (steps.length * 2);
@@ -5366,14 +5455,17 @@ export default function EventCreationPage(): React.ReactElement {
         <div>
           <div className="card" style={{ borderRadius: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
             <div className="creation-form">
+              {/* v22.30: marginBottom 48 kompensiert die -32px-Top-Margin
+                  des grünen Schritt-Headers darunter (netto 16px Abstand). */}
               {error && (
-                <div style={{ padding: '10px 16px', background: '#fce4ec', color: '#c62828', borderRadius: 8, marginBottom: 16, fontSize: '0.85rem' }}>
+                <div style={{ padding: '10px 16px', background: '#fce4ec', color: '#c62828', borderRadius: 8, marginBottom: 48, fontSize: '0.85rem' }}>
                   {error}
                 </div>
               )}
 
+              {/* v22.30: marginBottom 48 — siehe Kommentar am Fehler-Banner. */}
               {!isEditMode && currentStep === 0 && (
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 48 }}>
                   <button
                     className="btn btn-outline"
                     data-tour="wizard-demo"
@@ -5390,10 +5482,10 @@ export default function EventCreationPage(): React.ReactElement {
                   v9.32: 1-basierte UI-Nummerierung (in der Logik bleibt
                   currentStep 0-basiert) — siehe CLAUDE.md. */}
               <div style={{ display: currentStep === 0 ? 'block' : 'none' }}>
-              <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
+              <h2 className="dex-step-head-title">
                 {isDe ? 'Schritt 1 — Grundlagen' : 'Step 1 — Basics'}
               </h2>
-              <p style={{ margin: '0 0 20px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+              <p className="dex-step-head-lead">
                 {isDe
                   ? 'Hier definierst du das Fundament des Events: Titel, Datum, Beschreibung, Bild und die Personen, die das Event verantworten oder testen.'
                   : 'Here you define the foundation of the event: title, date, description, image and the people who run or test it.'}
@@ -6591,10 +6683,10 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 3 (v15.0: vormals Step 2): Ort & Programm ===== */}
               <div style={{ display: currentStep === 2 ? 'block' : 'none' }}>
-              <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
+              <h2 className="dex-step-head-title">
                 {isDe ? 'Schritt 3 — Ort & Programm' : 'Step 3 — Location & Programme'}
               </h2>
-              <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+              <p className="dex-step-head-lead">
                 {isDe
                   ? 'Hier sagst du, wo das Event stattfindet, wie der Tagesablauf aussieht und wie Teilnehmer hinkommen.'
                   : 'Here you say where the event takes place, what the schedule looks like and how attendees get there.'}
@@ -7176,10 +7268,10 @@ export default function EventCreationPage(): React.ReactElement {
                   v15.0: vorgezogen vor „Ort & Programm", damit die folgenden
                   Steps pro-Sub-Event-Tabs anbieten können. */}
               <div style={{ display: currentStep === 1 ? 'block' : 'none' }}>
-              <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
+              <h2 className="dex-step-head-title">
                 {isDe ? 'Schritt 2 — Sub-Events' : 'Step 2 — Sub-events'}
               </h2>
-              <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+              <p className="dex-step-head-lead">
                 {isDe
                   ? <><strong>Optional</strong> — lege zusätzliche Sessions, Workshops oder Programmpunkte zum Hauptevent an. Hier legst du auch fest, wie diese Bausteine in der App heißen und ob sich Teilnehmer nur für Sub-Events oder zusätzlich auch fürs Hauptevent anmelden können.</>
                   : <><strong>Optional</strong> — add additional sessions, workshops or program items to the main event. Here you also configure what these building blocks are called in the app and whether attendees register only for sub-events or for the main event as well.</>}
@@ -7609,10 +7701,10 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 4 (v14.8: vormals Step 3): Kapazität, Fristen & Sichtbarkeit ===== */}
               <div style={{ display: currentStep === 3 ? 'block' : 'none' }}>
-              <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
+              <h2 className="dex-step-head-title">
                 {isDe ? 'Schritt 4 — Kapazität & Sichtbarkeit' : 'Step 4 — Capacity & Visibility'}
               </h2>
-              <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+              <p className="dex-step-head-lead">
                 {isDe
                   ? 'Hier legst du fest, wer das Event überhaupt sieht, wie viele Plätze es gibt und bis wann sich Teilnehmer an- bzw. abmelden können.'
                   : 'Here you decide who can see the event in the first place, how many spots there are, and the deadlines for registration and cancellation.'}
@@ -8599,10 +8691,10 @@ export default function EventCreationPage(): React.ReactElement {
                   Team-Name-Frage. v15: Index 4 → 6 (Team kommt jetzt nach
                   Kommunikation). */}
               <div style={{ display: currentStep === 6 ? 'block' : 'none' }}>
-              <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
+              <h2 className="dex-step-head-title">
                 {isDe ? 'Schritt 7 — Team-Anmeldung' : 'Step 7 — Team Registration'}
               </h2>
-              <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+              <p className="dex-step-head-lead">
                 {isDe
                   ? <><strong>Optional</strong> — erlaube einer Person, ein ganzes Team gleichzeitig anzumelden. Praktisch z.B. für Lauf-Teams, Workshop-Gruppen oder Tische bei einer Abendveranstaltung. Default: aus.</>
                   : <><strong>Optional</strong> — let a single person register an entire team in one go. Handy e.g. for running teams, workshop groups or tables at an evening event. Default: off.</>}
@@ -8854,14 +8946,26 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 5 (v15: vormals Step 6): Registrierungsfelder ===== */}
               <div style={{ display: currentStep === 4 ? 'block' : 'none' }}>
-              <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
+              <h2 className="dex-step-head-title">
                 {isDe ? 'Schritt 5 — Felder' : 'Step 5 — Fields'}
               </h2>
-              <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+              <p className="dex-step-head-lead">
                 {isDe
-                  ? <><strong>Optional</strong> — die Standard-Teilnehmerdaten (<strong>Vorname, Nachname, E-Mail</strong>) werden bei jeder Anmeldung automatisch erfasst, dazu kommen aus dem Deloitte-Profil <strong>Job Title, Standort, Department und Telefonnummer</strong>. Hier in Schritt 6 ergänzt du <strong>nur zusätzliche Fragen</strong>, die du speziell für dieses Event brauchst — vom T-Shirt-Größen-Dropdown bis zur Pflicht-Checkbox für AGB / Datenschutz. Optional kannst du oben das <strong>Anrede</strong>-Dropdown einblenden. Wenn dein Event keine Zusatzfragen braucht, kannst du diesen Schritt einfach leer lassen.</>
-                  : <><strong>Optional</strong> — the standard attendee data (<strong>first name, last name, email</strong>) is captured automatically for every registration, plus <strong>job title, location, department and phone</strong> are pulled from the Deloitte profile. In step 6 you only add <strong>extra questions</strong> specific to this event — from a T-shirt size dropdown to a privacy / terms required checkbox. Optionally enable the <strong>salutation</strong> dropdown on top. If your event needs no extra questions, you can simply leave this step empty.</>}
+                  ? <><strong>Optional</strong> — hier ergänzt du eigene Abfrage-Felder für das Anmeldeformular. Braucht dein Event keine Zusatzfragen, lässt du den Schritt einfach leer.</>
+                  : <><strong>Optional</strong> — here you add custom questions to the registration form. If your event needs no extra questions, simply leave this step empty.</>}
               </p>
+              {/* v22.30: Detail-Erklärung als graue, eingeklappte Beschreibungs-
+                  Box (einheitliche Farb-Logik: grau = Beschreibung). */}
+              <WizardHint
+                isDe={isDe}
+                variant="description"
+                title={isDe ? 'Welche Daten werden automatisch erfasst?' : 'Which data is captured automatically?'}
+                style={{ marginBottom: 16 }}
+              >
+                {isDe
+                  ? <>Die Standard-Teilnehmerdaten (<strong>Vorname, Nachname, E-Mail</strong>) werden bei jeder Anmeldung automatisch erfasst, dazu kommen aus dem Deloitte-Profil <strong>Job Title, Standort, Department und Telefonnummer</strong>. Hier ergänzt du <strong>nur zusätzliche Fragen</strong>, die du speziell für dieses Event brauchst — vom T-Shirt-Größen-Dropdown bis zur Pflicht-Checkbox für AGB / Datenschutz. Optional kannst du unten das <strong>Anrede</strong>-Dropdown einblenden.</>
+                  : <>The standard attendee data (<strong>first name, last name, email</strong>) is captured automatically for every registration, plus <strong>job title, location, department and phone</strong> are pulled from the Deloitte profile. Here you only add <strong>extra questions</strong> specific to this event — from a T-shirt size dropdown to a privacy / terms required checkbox. Optionally enable the <strong>salutation</strong> dropdown below.</>}
+              </WizardHint>
 
               {/* v15: Anrede-Toggle ist nach UNTEN den Datenschutz-Hinweis
                   gewandert — Organizer soll erst den Sammle-keine-sensiblen-
@@ -9540,8 +9644,14 @@ export default function EventCreationPage(): React.ReactElement {
                         ref={(el) => { if (el) { el.style.height = 'auto'; el.style.height = `${el.scrollHeight}px`; } }}
                         style={{
                           flex: '1 1 280px', minWidth: 180, maxWidth: 360,
-                          fontSize: '1rem', fontWeight: 600,
-                          padding: '8px 12px',
+                          // v22.30: minHeight 0 hebt die 48px-Mindesthöhe der
+                          // .form-input-Klasse auf — die Auto-Höhe (scrollHeight)
+                          // umschließt den Text dann exakt, der Feld-Name steht
+                          // vertikal zentriert in der Box (vorher klebte er oben).
+                          // Schrift dazu eine Stufe kleiner.
+                          minHeight: 0,
+                          fontSize: '0.9rem', fontWeight: 600,
+                          padding: '10px 12px',
                           resize: 'none', overflow: 'hidden', lineHeight: 1.35,
                           fontFamily: 'inherit',
                           color: field.label ? 'var(--dex-gray-800)' : 'var(--dex-gray-400)',
@@ -10588,10 +10698,10 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 6 (v15: vormals Step 7): Kommunikation ===== */}
               <div style={{ display: currentStep === 5 ? 'block' : 'none' }}>
-                <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
+                <h2 className="dex-step-head-title">
                   {isDe ? 'Schritt 6 — Kommunikation' : 'Step 6 — Communication'}
                 </h2>
-                <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+                <p className="dex-step-head-lead">
                   {isDe
                     ? 'Hier konfigurierst du alle automatischen E-Mails und Outlook-Einladungen — Sprache, Logos, Vorlagen und Versandregeln pro Aktion.'
                     : 'Here you configure all automated emails and Outlook invites — language, logos, templates and per-action send rules.'}
@@ -11343,10 +11453,10 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 8 (v14.8: vormals Step 7): Dokumente ===== */}
               <div style={{ display: currentStep === 7 ? 'block' : 'none' }}>
-                <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
+                <h2 className="dex-step-head-title">
                   {isDe ? 'Schritt 8 — Dokumente' : 'Step 8 — Documents'}
                 </h2>
-                <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+                <p className="dex-step-head-lead">
                   {isDe
                     ? 'Hier lädst du alle Unterlagen hoch, die deine Teilnehmer rund um das Event brauchen — von der Agenda bis zur Anfahrt.'
                     : 'Here you upload all documents attendees might need around the event — from the agenda to the travel directions.'}
@@ -11514,10 +11624,10 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Step 9 (v14.8: vormals Step 8): Fun-Zone ===== */}
               <div style={{ display: currentStep === 8 ? 'block' : 'none' }}>
-                <h2 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.4rem', fontWeight: 700 }}>
+                <h2 className="dex-step-head-title">
                   {isDe ? 'Schritt 9 — Fun-Zone' : 'Step 9 — Fun Zone'}
                 </h2>
-                <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+                <p className="dex-step-head-lead">
                   {isDe
                     ? 'Optional: ein Quiz für die Teilnehmer — Multiple-Choice-Fragen mit Live-Highscore. Perfekt für Networking, Tagungs-Pausen oder Foto-Quiz.'
                     : 'Optional: a quiz for attendees — multiple-choice questions with live highscore. Perfect for networking, breaks at conferences, or photo quizzes.'}
