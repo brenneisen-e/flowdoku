@@ -22,6 +22,7 @@ import * as React from 'react';
 import { X, Users } from './Icons';
 import InternationalSearchToggle from './InternationalSearchToggle';
 import BulkUserImportModal from './BulkUserImportModal';
+import WizardHint from './WizardHint';
 import { useRoles } from '../context/RoleContext';
 
 const EXCLUDE_PAGE_SIZE = 200;
@@ -178,15 +179,15 @@ export default function AudiencePicker({
             Save-Zeitpunkt eingefroren werden und das Event bei DL-
             Mitglieder-Aenderungen einmal neu gespeichert werden muss,
             damit die neuen Mitglieder die Sichtbarkeit bekommen. */}
-        <div style={{
-          fontSize: '0.78rem', color: 'var(--dex-orange-dark, #b35a00)',
-          background: 'rgba(237,139,0,0.08)', border: '1px dashed var(--dex-orange, #ed8b00)',
-          borderRadius: 6, padding: '8px 12px', marginBottom: 12, lineHeight: 1.5,
-        }}>
+        <WizardHint
+          isDe={isDe}
+          title={isDe ? 'Verteiler-Mitglieder werden beim Speichern festgehalten' : 'Distribution list members are captured at save time'}
+          style={{ marginBottom: 12 }}
+        >
           {isDe
-            ? <><strong>Wichtig:</strong> Beim Speichern des Events wird einmal festgehalten, welche Personen aktuell zu den ausgewählten Verteilern gehören. Kommt später eine neue Person in einen dieser Verteiler dazu, wird sie <strong>nicht automatisch</strong> übernommen — <strong>speichere das Event dann einfach noch einmal</strong>, damit auch die neue Person das Event sieht.</>
-            : <><strong>Important:</strong> When you save the event, the app records once which people currently belong to the selected distribution lists. If someone is added to one of these lists later, they are <strong>not picked up automatically</strong> — <strong>just save the event once more</strong> so the new person can see the event too.</>}
-        </div>
+            ? <>Beim Speichern des Events wird einmal festgehalten, welche Personen aktuell zu den ausgewählten Verteilern gehören. Kommt später eine neue Person in einen dieser Verteiler dazu, wird sie <strong>nicht automatisch</strong> übernommen — <strong>speichere das Event dann einfach noch einmal</strong>, damit auch die neue Person das Event sieht.</>
+            : <>When you save the event, the app records once which people currently belong to the selected distribution lists. If someone is added to one of these lists later, they are <strong>not picked up automatically</strong> — <strong>just save the event once more</strong> so the new person can see the event too.</>}
+        </WizardHint>
         {/* Chip-Liste der bereits ausgewählten Audience-Einträge.
             Bei vielen Einträgen: Inline-Suche + Pagination (nur 10 sichtbar, 'Mehr anzeigen'-Button). */}
         {audience.trim().length > 0 && (() => {

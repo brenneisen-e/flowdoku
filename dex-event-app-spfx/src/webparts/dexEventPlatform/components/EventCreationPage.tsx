@@ -22,6 +22,7 @@ import { RichText } from '@pnp/spfx-controls-react/lib/controls/richText';
 import { HtmlEditorModal } from './HtmlEditorModal';
 import { RegisterPreviewModal } from './RegisterPreviewModal';
 import { InfoTooltip } from './InfoTooltip';
+import WizardHint from './WizardHint';
 import BulkUserImportModal from './BulkUserImportModal';
 import AudiencePicker from './AudiencePicker';
 import Modal from './Modal';
@@ -4284,18 +4285,11 @@ export default function EventCreationPage(): React.ReactElement {
     if (!subEventsOnlyMode) return null;
     const termPlural = (childTermPlural || (isDe ? 'Sub-Events' : 'sub-events')).trim() || (isDe ? 'Sub-Events' : 'sub-events');
     return (
-      <div style={{
-        display: 'flex', alignItems: 'flex-start', gap: 10,
-        padding: '12px 14px', marginBottom: 16,
-        background: 'rgba(237,139,0,0.08)',
-        border: '1px solid var(--dex-orange, #ed8b00)',
-        borderRadius: 'var(--dex-radius, 12px)',
-        // v22.22: gleiche Schriftgröße wie die „Wichtig:"-Hinweisbox im
-        // Mailverteiler-Bereich weiter unten (AudiencePicker, 0.78rem).
-        fontSize: '0.78rem', color: 'var(--dex-gray-700)',
-        lineHeight: 1.5,
-      }}>
-        <Icon iconName="Info" style={{ fontSize: 18, color: 'var(--dex-orange, #ed8b00)', flexShrink: 0, marginTop: 2 }} />
+      <WizardHint
+        isDe={isDe}
+        title={isDe ? 'Anmeldung läuft über die Event-Sections' : 'Registration runs via the event sections'}
+        style={{ marginBottom: 16 }}
+      >
         <div>
           {isDe ? (
             <>
@@ -4307,7 +4301,7 @@ export default function EventCreationPage(): React.ReactElement {
             </>
           )}
         </div>
-      </div>
+      </WizardHint>
     );
   };
 
@@ -4428,6 +4422,26 @@ export default function EventCreationPage(): React.ReactElement {
     return () => setNavigationGuard(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [submitted, computeFormSnapshot]);
+
+  // v22.22: Schwebender Weiter-Button — solange die Aktions-Zeile (Zurück /
+  // Vorschau / Weiter) unten noch NICHT im Viewport ist, schwebt unten rechts
+  // ein fixierter Weiter-Button. Sobald die echte Zeile sichtbar wird, blendet
+  // er weich aus (Opacity + Transform) — wirkt wie ein sanftes „Andocken" an
+  // seine eigentliche Stelle.
+  const actionRowRef = React.useRef<HTMLDivElement | null>(null);
+  const [actionRowVisible, setActionRowVisible] = React.useState(true);
+  React.useEffect(() => {
+    const el = actionRowRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      setActionRowVisible(true);
+      return undefined;
+    }
+    const obs = new IntersectionObserver(entries => {
+      setActionRowVisible(entries[0] ? entries[0].isIntersecting : true);
+    }, { threshold: 0.3 });
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [isSubmitting, submitted]);
 
   if (submitted) {
     return (
@@ -4591,7 +4605,7 @@ export default function EventCreationPage(): React.ReactElement {
       // v15 Step 4: Kapazität & Sichtbarkeit (mit Tabs pro Sub-Event)
       'Maximale Teilnehmerzahl festlegen (oder Unbegrenzt) — pro Sub-Event eigene Kapazität per Tab (Default: vom Hauptevent übernehmen)',
       'Anmeldefrist setzen — pro Sub-Event eigene Deadline möglich (leer = Hauptevent-Deadline gilt)',
-      'Optional: Letzte Abmeldemöglichkeit — danach können sich Teilnehmer nicht mehr selbst abmelden',
+      'Optional: Letzte Abmeldemöglichkeit — die kommunizierte Abmeldefrist; danach bleibt die Abmeldung bis zum Event-Ende möglich, die Organizer werden aber automatisch informiert',
       'Warteliste aktivieren — voll besetzte Events nehmen weitere Anmeldungen auf, bis ein Platz frei wird',
       'Optional: Geteilte Kapazität — zwei frei benannte Gruppen mit eigener Platzzahl + eigener oder gemeinsamer Warteliste',
     ],
@@ -4661,7 +4675,7 @@ export default function EventCreationPage(): React.ReactElement {
       // v15 Step 4: Capacity & Visibility (with tabs per sub-event)
       'Set the maximum number of attendees (or Unlimited) — per sub-event own capacity via tab (default: inherit from main event)',
       'Set the registration deadline — per sub-event own deadline possible (empty = main-event deadline applies)',
-      'Optional: last self-cancel date — after that self-cancel is locked (late cancel)',
+      'Optional: last cancellation date — the communicated deadline; cancelling stays possible until the event ends, but organizers are notified automatically',
       'Enable waitlist — full events accept new registrations and promote them once a spot frees up',
       'Optional: split capacity — two freely-named groups with own seat count + own or shared waitlist',
     ],
@@ -5195,6 +5209,15 @@ export default function EventCreationPage(): React.ReactElement {
             Die Linie sitzt bei top=17, height=5 (Mitte bei 19.5 px) —
             das deckt sich exakt mit der Mitte der 40-px-Kreise. */}
         <div style={{ marginBottom: 32 }}>
+          {/* v22.22: Hover-Effekt auf den Schritt-Punkten — hebt den Schritt
+              leicht an und färbt Kreis-Rand + Label grün, damit die
+              Klickbarkeit sofort erkennbar ist. */}
+          <style>{`
+            .dex-wizard-step { transition: transform 0.15s ease; }
+            .dex-wizard-step:hover { transform: translateY(-2px); }
+            .dex-wizard-step:hover .dex-step-circle { border-color: var(--dex-green, #86bc25) !important; box-shadow: 0 4px 12px rgba(134,188,37,0.35) !important; }
+            .dex-wizard-step:hover .dex-step-label { color: var(--dex-green-dark, #4a7c1f) !important; }
+          `}</style>
           {(() => {
             const sidePct = 100 / (steps.length * 2);
             const spanPct = 100 - 2 * sidePct;
@@ -5206,14 +5229,15 @@ export default function EventCreationPage(): React.ReactElement {
             {steps.map((step, idx) => (
               <div
                 key={idx}
+                className="dex-wizard-step"
                 onClick={() => { if (idx <= currentStep || canProceed()) setCurrentStep(idx); }}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
-                  zIndex: 2, cursor: idx <= currentStep ? 'pointer' : 'default',
+                  zIndex: 2, cursor: 'pointer',
                   flex: 1,
                 }}
               >
-                <div style={{
+                <div className="dex-step-circle" style={{
                   width: 40, height: 40, borderRadius: '50%',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontWeight: 700, fontSize: '1rem',
@@ -5225,7 +5249,7 @@ export default function EventCreationPage(): React.ReactElement {
                 }}>
                   {idx < currentStep ? '✓' : step.icon}
                 </div>
-                <span style={{
+                <span className="dex-step-label" style={{
                   fontSize: '0.75rem', fontWeight: idx === currentStep ? 700 : 500,
                   color: idx <= currentStep ? 'var(--dex-green)' : 'var(--dex-gray-400)',
                   transition: 'color 0.3s ease',
@@ -5375,20 +5399,13 @@ export default function EventCreationPage(): React.ReactElement {
                   bodyEn = `Outlook sync is pending: for ${subCount} sub-event${subCount === 1 ? '' : 's'}. On the next save you can decide per invite whether the attendees should receive an “updated meeting” notification.`;
                 }
                 return (
-                  <div style={{
-                    display: 'flex', alignItems: 'flex-start', gap: 12,
-                    border: '2px solid #e0a800', background: '#fff8e1',
-                    color: '#5a3e00', padding: '12px 16px', fontSize: 14,
-                    borderRadius: 8, marginBottom: 16, lineHeight: 1.55,
-                  }}>
-                    <Icon iconName="Warning" style={{ fontSize: 22, color: '#e0a800', flexShrink: 0, marginTop: 2 }} />
-                    <div>
-                      <div style={{ fontWeight: 700, marginBottom: 4 }}>
-                        {isDe ? 'Outlook-Synchronisation steht aus' : 'Outlook sync is pending'}
-                      </div>
-                      <div>{isDe ? bodyDe : bodyEn}</div>
-                    </div>
-                  </div>
+                  <WizardHint
+                    isDe={isDe}
+                    title={isDe ? 'Outlook-Synchronisation steht aus' : 'Outlook sync is pending'}
+                    style={{ marginBottom: 16 }}
+                  >
+                    {isDe ? bodyDe : bodyEn}
+                  </WizardHint>
                 );
               })()}
 
@@ -5667,16 +5684,15 @@ export default function EventCreationPage(): React.ReactElement {
                     ? hits[0]
                     : hits.slice(0, -1).join(', ') + (isDe ? ' und ' : ' and ') + hits[hits.length - 1];
                   return (
-                    <div style={{ marginTop: 12, padding: '12px 14px', background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange, #ed8b00)', borderRadius: 8, fontSize: '0.82rem', color: 'var(--dex-gray-800)', lineHeight: 1.5 }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                        <Icon iconName="Info" style={{ fontSize: 15, color: 'var(--dex-orange, #ed8b00)', marginTop: 2 }} />
-                        <div style={{ flex: 1 }}>
-                          {isDe
-                            ? <>In der Beschreibung steht offenbar <strong>{joined}</strong>. <strong>Name, Datum und Ort</strong> des Events werden bereits <strong>separat</strong> auf der Anmelde-Seite angezeigt — du musst sie hier nicht wiederholen. Nutze die Beschreibung lieber für einen einladenden, inhaltlichen Text. Über <strong>„Bearbeiten &amp; Vorschau“</strong> kannst du einen Beispieltext übernehmen.</>
-                            : <>Your description appears to contain <strong>{joined}</strong>. The event&rsquo;s <strong>name, date and location</strong> are already shown <strong>separately</strong> on the registration page — no need to repeat them here. Use the description for an inviting, substantive text instead. Via <strong>“Edit &amp; Preview”</strong> you can load an example text.</>}
-                        </div>
-                      </div>
-                    </div>
+                    <WizardHint
+                      isDe={isDe}
+                      title={isDe ? 'Beschreibung wiederholt Basis-Infos' : 'Description repeats basic info'}
+                      style={{ marginTop: 12 }}
+                    >
+                      {isDe
+                        ? <>In der Beschreibung steht offenbar <strong>{joined}</strong>. <strong>Name, Datum und Ort</strong> des Events werden bereits <strong>separat</strong> auf der Anmelde-Seite angezeigt — du musst sie hier nicht wiederholen. Nutze die Beschreibung lieber für einen einladenden, inhaltlichen Text. Über <strong>„Bearbeiten &amp; Vorschau“</strong> kannst du einen Beispieltext übernehmen.</>
+                        : <>Your description appears to contain <strong>{joined}</strong>. The event&rsquo;s <strong>name, date and location</strong> are already shown <strong>separately</strong> on the registration page — no need to repeat them here. Use the description for an inviting, substantive text instead. Via <strong>“Edit &amp; Preview”</strong> you can load an example text.</>}
+                    </WizardHint>
                   );
                 })()}
               </div>
@@ -5803,20 +5819,17 @@ export default function EventCreationPage(): React.ReactElement {
                   }, 0);
                   if (missingEmailCount === 0) return null;
                   return (
-                    <div
-                      style={{
-                        background: '#fff8e1',
-                        border: '1px solid #f0c419',
-                        borderRadius: 'var(--dex-radius)',
-                        padding: '10px 12px',
-                        marginBottom: 10,
-                        fontSize: '0.82rem',
-                        lineHeight: 1.5,
-                        color: 'var(--dex-gray-800)',
-                      }}
+                    <WizardHint
+                      isDe={isDe}
+                      title={isDe
+                        ? `${missingEmailCount} Organizer ohne hinterlegte E-Mail-Adresse`
+                        : `${missingEmailCount} organizer(s) without a stored email address`}
+                      style={{ marginBottom: 10 }}
                     >
-                      <strong>⚠️ {missingEmailCount} Organizer ohne hinterlegte Email-Adresse.</strong> Bei diesen Personen fehlen die Mails fürs <strong>BCC</strong> der Anmelde-/Abmelde-Mails, die <strong>Outlook-Einladung</strong> und die <strong>Decline-/Forward-Notifications</strong>. Bitte entferne die betroffenen Chips (X) und füge sie über den Picker oder Massenimport neu ein. <em>(Ursache: Legacy-Daten aus einer früheren App-Version — wird beim nächsten Save geheilt.)</em>
-                    </div>
+                      {isDe
+                        ? <>Bei diesen Personen fehlen die Mails fürs <strong>BCC</strong> der Anmelde-/Abmelde-Mails, die <strong>Outlook-Einladung</strong> und die <strong>Decline-/Forward-Notifications</strong>. Bitte entferne die betroffenen Chips (X) und füge sie über den Picker oder Massenimport neu ein. <em>(Ursache: Legacy-Daten aus einer früheren App-Version — wird beim nächsten Speichern geheilt.)</em></>
+                        : <>For these people the emails for the <strong>BCC</strong> of registration/cancellation mails, the <strong>Outlook invitation</strong> and the <strong>decline/forward notifications</strong> are missing. Please remove the affected chips (X) and re-add them via the picker or bulk import. <em>(Cause: legacy data from an earlier app version — healed on the next save.)</em></>}
+                    </WizardHint>
                   );
                 })()}
                 {/* Organizer-Chips (immer sichtbar wenn 1+ Organizer) */}
@@ -6469,25 +6482,14 @@ export default function EventCreationPage(): React.ReactElement {
                 };
 
                 return (
-                  <div
-                    className="form-group"
-                    style={{
-                      background: '#fff8e1',
-                      border: '1px solid #f0c419',
-                      borderRadius: 'var(--dex-radius)',
-                      padding: '12px 14px',
-                      marginBottom: 20,
-                    }}
+                  <WizardHint
+                    isDe={isDe}
+                    title={dups.length === 1
+                      ? (isDe ? '1 Person ist mehrfach gelistet' : '1 person is listed multiple times')
+                      : (isDe ? `${dups.length} Personen sind mehrfach gelistet` : `${dups.length} people are listed multiple times`)}
+                    style={{ marginBottom: 20 }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-                      <span style={{ fontSize: '1.1rem' }}>⚠️</span>
-                      <strong style={{ fontSize: '0.95rem' }}>
-                        {dups.length === 1
-                          ? '1 Person ist mehrfach gelistet'
-                          : `${dups.length} Personen sind mehrfach gelistet`}
-                      </strong>
-                    </div>
-                    <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                    <p style={{ margin: '0 0 10px' }}>
                       Co-Organizer dürfen automatisch das <strong>Check-In-Tool</strong> nutzen und sehen
                       Events auch im <strong>Entwurfsmodus</strong> — ein zusätzlicher Eintrag im Test-Team oder
                       Check-In-Team ist daher nicht nötig. Du kannst die überflüssigen Einträge hier auf
@@ -6504,7 +6506,7 @@ export default function EventCreationPage(): React.ReactElement {
                             key={d.email}
                             style={{
                               padding: '8px 0',
-                              borderTop: '1px solid #f0c419',
+                              borderTop: '1px solid var(--dex-orange, #ed8b00)',
                               display: 'flex',
                               alignItems: 'center',
                               gap: 10,
@@ -6554,7 +6556,7 @@ export default function EventCreationPage(): React.ReactElement {
                         );
                       })}
                     </ul>
-                  </div>
+                  </WizardHint>
                 );
               })()}
 
@@ -8078,8 +8080,8 @@ export default function EventCreationPage(): React.ReactElement {
                   <StepBadge n={(locationFilter && audience) ? 16 : 15} />
                   {isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}
                   <InfoTooltip text={isDe
-                    ? 'Bis wann können sich Teilnehmer anmelden bzw. ohne Rückfrage abmelden? Beide Werte werden anhand des Event-Datums automatisch vorgeschlagen, du kannst sie jederzeit überschreiben.'
-                    : 'Until when can attendees register / cancel themselves without consequence? Both values are auto-suggested from the event date and can be overridden at any time.'} />
+                    ? 'Bis wann können sich Teilnehmer anmelden bzw. fristgerecht abmelden? Die Abmeldefrist ist die kommunizierte Deadline — abmelden geht danach weiterhin bis zum Event-Ende, die Organizer werden dann aber automatisch informiert. Beide Werte werden anhand des Event-Datums automatisch vorgeschlagen, du kannst sie jederzeit überschreiben.'
+                    : 'Until when can attendees register or cancel within the deadline? The cancellation deadline is the communicated cutoff — cancelling remains possible until the event ends, but organizers are then notified automatically. Both values are auto-suggested from the event date and can be overridden at any time.'} />
                 </label>
               <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
@@ -8122,16 +8124,16 @@ export default function EventCreationPage(): React.ReactElement {
                     {t('create.lastcancel')}
                     <InfoTooltip text={isDe ? (
                       <>
-                        <strong>Letzte Abmeldemöglichkeit</strong> — bis zu diesem Stichtag können sich Teilnehmer <strong>ohne Rückfrage</strong> selbst abmelden.<br /><br />
-                        <strong>Auswirkung für Teilnehmer:</strong> nach dem Stichtag ist der <strong>Abmelden-Button für reguläre User ausgeblendet</strong> — sie müssen aktiv den Organizer kontaktieren, der dann manuell abmeldet. <strong>Organizer und Co-Organizer</strong> können weiterhin jederzeit Teilnehmer abmelden.<br /><br />
-                        <strong>Automatismen:</strong> je nach Einstellung in <strong>Schritt 7 (Kommunikation)</strong> bekommen die Organizer eine <strong>Late-Cancel-Mail</strong> mit Name + Mail des Abmeldenden — damit Hotel, Catering oder Bus angepasst werden können.<br /><br />
+                        <strong>Letzte Abmeldemöglichkeit</strong> — der Stichtag, den du den Teilnehmern als <strong>verbindliche Abmeldefrist kommunizierst</strong>. Bis dahin gilt eine Abmeldung als unproblematisch.<br /><br />
+                        <strong>Auswirkung für Teilnehmer:</strong> Eine Abmeldung bleibt bewusst <strong>bis zum Ende des Events möglich</strong> — wer kurzfristig erkrankt oder verhindert ist, kann sich also weiterhin abmelden. Nach dem Stichtag sieht die Person beim Abmelden einen <strong>deutlichen Hinweis</strong>, dass die Frist abgelaufen ist und die Organizer informiert werden. Erst <strong>nach Event-Ende</strong> ist die Selbst-Abmeldung gesperrt.<br /><br />
+                        <strong>Automatismen:</strong> Bei jeder Abmeldung <strong>nach dem Stichtag</strong> bekommen die Organizer automatisch eine <strong>Info-Mail</strong> mit Name + E-Mail der Person — damit Hotel, Catering oder Transfers angepasst werden können. Zusätzliche Abmelde-Benachrichtigungen kannst du in <strong>Schritt 6 (Kommunikation)</strong> konfigurieren.<br /><br />
                         Vorbefüllt mit <strong>3 Tagen vor Event-Start</strong>.
                       </>
                     ) : (
                       <>
-                        <strong>Last cancellation date</strong> — until this cutoff attendees can <strong>self-cancel without consequences</strong>.<br /><br />
-                        <strong>Effect for attendees:</strong> past the cutoff the <strong>cancel button is hidden for regular users</strong> — they have to actively contact the organizer who then cancels them manually. <strong>Organizers and co-organizers</strong> can still cancel attendees at any time.<br /><br />
-                        <strong>Automation:</strong> depending on the setting in <strong>step 5 (Communication)</strong>, organizers receive a <strong>late-cancel mail</strong> with name + email of the person — so hotel, catering or bus can be adjusted.<br /><br />
+                        <strong>Last cancellation date</strong> — the cutoff you <strong>communicate to attendees as the binding cancellation deadline</strong>. Up to this date a cancellation is considered routine.<br /><br />
+                        <strong>Effect for attendees:</strong> cancelling deliberately stays <strong>possible until the event ends</strong> — anyone who falls ill or is prevented at short notice can still cancel. After the cutoff the person sees a <strong>clear notice</strong> when cancelling that the deadline has passed and the organizers will be informed. Only <strong>after the event has ended</strong> is self-cancellation locked.<br /><br />
+                        <strong>Automation:</strong> for every cancellation <strong>after the cutoff</strong> the organizers automatically receive an <strong>info email</strong> with the person’s name + email — so hotel, catering or transfers can be adjusted. Additional cancellation notifications can be configured in <strong>step 6 (Communication)</strong>.<br /><br />
                         Pre-filled with <strong>3 days before event start</strong>.
                       </>
                     )} />
@@ -8865,28 +8867,15 @@ export default function EventCreationPage(): React.ReactElement {
                   den Nutzungsbedingungen (Sammeln keiner sensiblen Daten),
                   damit Organizer den selben Wortlaut wie bei der initialen
                   Bestätigung sehen. */}
-              <div style={{
-                display: 'flex', alignItems: 'flex-start', gap: 10,
-                padding: '12px 14px', marginBottom: 16,
-                background: 'rgba(237,139,0,0.06)',
-                border: '1px solid var(--dex-orange, #ed8b00)',
-                borderRadius: 'var(--dex-radius, 12px)',
-                fontSize: '0.82rem', color: 'var(--dex-gray-700)',
-                lineHeight: 1.5,
-              }}>
-                <span style={{
-                  flexShrink: 0, fontSize: '1.1rem', lineHeight: 1,
-                  color: 'var(--dex-orange, #ed8b00)', fontWeight: 700,
-                }}>⚠</span>
-                <div>
-                  <strong style={{ color: 'var(--dex-orange, #ed8b00)' }}>
-                    {isDe ? 'Sammle keine sensiblen personenbezogenen Daten' : 'Do not collect sensitive personal data'}
-                  </strong>{' '}
-                  {isDe
-                    ? <>— das heißt: keine Daten bezüglich Rasse oder ethnischer Herkunft, religiöser oder philosophischer Überzeugungen, Gewerkschaftsmitgliedschaft, politischer Meinungen, medizinischer oder gesundheitlicher Zustände oder Informationen über das Sexualleben oder die sexuelle Orientierung einer Person. Falls sensible personenbezogene Daten gesammelt werden müssen, kontaktiere zuerst das Team unter <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange, #ed8b00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>
-                    : <>— that means: no data on race or ethnic origin, religious or philosophical beliefs, trade-union membership, political opinions, medical or health conditions, or information about a person&apos;s sex life or sexual orientation. If sensitive personal data must be collected, contact the team first at <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange, #ed8b00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>}
-                </div>
-              </div>
+              <WizardHint
+                isDe={isDe}
+                title={isDe ? 'Sammle keine sensiblen personenbezogenen Daten' : 'Do not collect sensitive personal data'}
+                style={{ marginBottom: 16 }}
+              >
+                {isDe
+                  ? <>Das heißt: keine Daten bezüglich Rasse oder ethnischer Herkunft, religiöser oder philosophischer Überzeugungen, Gewerkschaftsmitgliedschaft, politischer Meinungen, medizinischer oder gesundheitlicher Zustände oder Informationen über das Sexualleben oder die sexuelle Orientierung einer Person. Falls sensible personenbezogene Daten gesammelt werden müssen, kontaktiere zuerst das Team unter <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>
+                  : <>That means: no data on race or ethnic origin, religious or philosophical beliefs, trade-union membership, political opinions, medical or health conditions, or information about a person&apos;s sex life or sexual orientation. If sensitive personal data must be collected, contact the team first at <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>}
+              </WizardHint>
 
               {/* v18.57: Anrede-Abfrage-Toggle nach unten verschoben — sitzt jetzt
                   direkt unter den „Vorgeschlagene Felder"-Buttons. */}
@@ -10233,18 +10222,14 @@ export default function EventCreationPage(): React.ReactElement {
                 </p>
 
                 {subEvents.length === 0 ? (
-                  <div style={{
-                    padding: '16px 18px',
-                    background: 'rgba(237,139,0,0.08)',
-                    border: '1px dashed var(--dex-orange, #ed8b00)',
-                    borderRadius: 8,
-                    fontSize: '0.85rem',
-                    color: 'var(--dex-gray-700)',
-                  }}>
+                  <WizardHint
+                    isDe={isDe}
+                    title={isDe ? 'Noch keine Sub-Events angelegt' : 'No sub-events yet'}
+                  >
                     {isDe
-                      ? 'Noch keine Sub-Events angelegt. Sub-Events legst du in Schritt 2 (Ort & Programm, ganz unten im Bereich „Sub-Events") an — danach kannst du hier pro Sub-Event eigene Anmelde-Felder definieren.'
-                      : 'No sub-events yet. Add sub-events in Step 2 (Location & Programme, at the bottom in the „Sub-events" block) — then come back here to define per-sub-event registration fields.'}
-                  </div>
+                      ? 'Sub-Events legst du in Schritt 2 (Ort & Programm, ganz unten im Bereich „Sub-Events") an — danach kannst du hier pro Sub-Event eigene Anmelde-Felder definieren.'
+                      : 'Add sub-events in Step 2 (Location & Programme, at the bottom in the „Sub-events" block) — then come back here to define per-sub-event registration fields.'}
+                  </WizardHint>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                     {subEvents.map(se => {
@@ -10989,17 +10974,12 @@ export default function EventCreationPage(): React.ReactElement {
                   {/* v14.4: Acknowledgement-Pflicht bei deaktivierter
                       Hauptevent-Kommunikation + vorhandenen Sub-Events. */}
                   {activeCommTabIdx === 0 && subEvents.length > 0 && (disableEmails || disableOutlook) && (
-                    <div style={{
-                      marginTop: 16, padding: 14,
-                      background: 'rgba(237,139,0,0.10)',
-                      border: '2px solid var(--dex-orange, #ed8b00)',
-                      borderRadius: 10,
-                      display: 'flex', flexDirection: 'column', gap: 10,
-                    }}>
-                      <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--dex-orange-dark, #b35a00)' }}>
-                        {isDe ? '⚠ Hinweis: Kommunikation für das Hauptevent ist deaktiviert' : '⚠ Note: communication for the main event is disabled'}
-                      </div>
-                      <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                    <WizardHint
+                      isDe={isDe}
+                      title={isDe ? 'Kommunikation für das Hauptevent ist deaktiviert' : 'Communication for the main event is disabled'}
+                      style={{ marginTop: 16 }}
+                    >
+                      <div style={{ marginBottom: 10 }}>
                         {isDe
                           ? <>Wer sich <strong>nur für das Hauptevent</strong> anmeldet (und kein Sub-Event auswählt), bekommt damit weder eine Bestätigungs-Mail noch einen Kalender-Termin. Stelle sicher, dass die Teilnehmer im Anmeldeformular <strong>immer mindestens ein Sub-Event</strong> angeben müssen — sonst verlierst du sie kommunikativ.</>
                           : <>Whoever registers <strong>only for the main event</strong> (without picking a sub-event) gets neither a confirmation email nor a calendar invite. Make sure attendees are required to pick <strong>at least one sub-event</strong> in the registration form — otherwise you lose them communication-wise.</>}
@@ -11011,13 +10991,13 @@ export default function EventCreationPage(): React.ReactElement {
                           onChange={e => setMainCommDisabledAck(e.target.checked)}
                           style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 2, flexShrink: 0 }}
                         />
-                        <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--dex-gray-800)' }}>
+                        <span style={{ fontWeight: 600, color: 'var(--dex-gray-800)' }}>
                           {isDe
                             ? 'Ja, mir ist bewusst, dass Teilnehmer sich für mindestens ein Sub-Event anmelden müssen, um Kommunikation zu erhalten.'
                             : 'Yes, I understand attendees need to register for at least one sub-event to receive communication.'}
                         </span>
                       </label>
-                    </div>
+                    </WizardHint>
                   )}
                   </div>
                 </details>
@@ -11856,8 +11836,9 @@ export default function EventCreationPage(): React.ReactElement {
           {!isSubmitting && (
             <>
             {/* v9.27: Action-Row — Zurück (links), Vorschau (mitte), Weiter (rechts)
-                alle auf gleicher Höhe in einer Reihe. */}
-            <div style={{
+                alle auf gleicher Höhe in einer Reihe.
+                v22.22: ref für den schwebenden Weiter-Button (IntersectionObserver). */}
+            <div ref={actionRowRef} style={{
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               gap: 12, marginTop: 24, flexWrap: 'wrap',
             }}>
@@ -11936,6 +11917,36 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
               </div>
             </div>
+
+            {/* v22.22: Schwebender Weiter-Button — sichtbar nur, solange die
+                Aktions-Zeile unten noch nicht im Viewport ist. Blendet beim
+                Erreichen des Seitenendes weich aus (der echte Button übernimmt). */}
+            {currentStep < steps.length - 1 && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                aria-hidden={actionRowVisible}
+                tabIndex={actionRowVisible ? -1 : 0}
+                onClick={() => {
+                  setTriedNext(true);
+                  if (canProceed()) {
+                    setTriedNext(false);
+                    setCurrentStep(currentStep + 1);
+                  }
+                }}
+                style={{
+                  position: 'fixed', right: 28, bottom: 28, zIndex: 950,
+                  borderRadius: 999, padding: '12px 28px',
+                  boxShadow: '0 6px 20px rgba(0,0,0,0.25)',
+                  transition: 'opacity 0.3s ease, transform 0.3s ease',
+                  opacity: actionRowVisible ? 0 : 1,
+                  transform: actionRowVisible ? 'translateY(14px)' : 'translateY(0)',
+                  pointerEvents: actionRowVisible ? 'none' : 'auto',
+                }}
+              >
+                {t('create.next')}
+              </button>
+            )}
             </>
           )}
         </div>
