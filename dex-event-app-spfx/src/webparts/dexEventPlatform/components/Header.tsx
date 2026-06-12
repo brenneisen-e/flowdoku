@@ -321,8 +321,11 @@ export default function Header(): React.ReactElement {
             <Settings size={20} />
           </button>
         )}
-        {/* User-Avatar mit Initialen + Popup */}
-        <div style={{ position: 'relative' }}>
+        {/* User-Avatar mit Initialen + Popup.
+            v22.23: data-tour-Anker auf dem Wrapper — die Klasse .header-avatar
+            existiert nur im Initialen-Fallback (mit Profilfoto rendert ein
+            <img>), der Tutorial-Spotlight braucht aber beide Varianten. */}
+        <div style={{ position: 'relative' }} data-tour="header-avatar">
           {photoUrl ? (
             <img
               src={photoUrl}

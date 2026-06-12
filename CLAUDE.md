@@ -81,15 +81,32 @@ bleibt über das Mail-Icon daneben erreichbar (InquiryModal unverändert).
 - **Mechanik:** Jeder Schritt hat `page` (wird per `navigate()` angesteuert)
   und optional `selector` (CSS). Das Overlay pollt das Ziel-Element (~4 s,
   Seiten laden lazy), scrollt es in die Mitte und legt einen **Spotlight**
-  darüber (Box-Shadow-Loch + grüner Rand); ohne Selektor/Fund erscheint die
-  Schritt-Karte zentriert. Ein Klick-Fänger blockiert die App-Interaktion
-  während der Tour; ESC beendet sie. **z-index 10800** — bewusst über dem
-  shared Modal (9999).
+  darüber (Box-Shadow-Loch + grüner Rand); die Schritt-Karte erscheint
+  spätestens nach **0,7 s** (zentriert) und dockt an den Spotlight an, sobald
+  das Element gefunden ist — ohne Selektor/Fund bleibt sie zentriert. Ein
+  Klick-Fänger blockiert die App-Interaktion während der Tour; ESC beendet
+  sie. **z-index 10800** — bewusst über dem shared Modal (9999).
+- **Wizard-Klick-Through (v22.23):** Tour-Schritte können `wizardStep`
+  (0-basiert) setzen — das Overlay dispatcht dann das CustomEvent
+  `dex-tutorial-wizard-step`, auf das `EventCreationPage` mit
+  `setCurrentStep` reagiert. Die Organizer-Tour führt so durch ALLE 9
+  Wizard-Schritte (Spotlight auf den Schritt-Punkten `wizard-step-<idx>`)
+  plus den Submit-Button (`wizard-submit`, „was passiert beim Anlegen").
+- **Demo-Event in der Organizer-Tour (v22.23):**
+  `EventContext.setTutorialDemoActive(true)` injiziert das Demo-Showcase-
+  Event (read-only, nur client-seitig) mit dem eingeloggten User als
+  Organizer in die Event-Liste — der Organizer sieht während der Tour ein
+  Übungs-Event im Organizer Center. Der TutorialGuide schaltet das Flag beim
+  Start der Organizer-Tour an und beim Beenden wieder aus.
 - **Anker-Konvention:** Spotlight-Ziele bekommen `data-tour="<key>"`-Attribute
   (bestehend: `landing-start`, `tile-register`, `tile-myevents`, `tile-admin`,
-  `wizard-demo`) — bei neuen Tour-Schritten bitte demselben Muster folgen
-  statt fragiler nth-child-Selektoren. Stabile CSS-Klassen (`.header-avatar`,
-  `.page-container button.btn-primary`) sind als Selektor ebenfalls ok.
+  `tile-checkin`, `wizard-demo`, `wizard-step-<idx>`, `wizard-submit`,
+  `header-avatar` — Letzteres auf dem Avatar-WRAPPER im Header, weil die
+  CSS-Klasse `.header-avatar` nur im Initialen-Fallback ohne Profilfoto
+  existiert) — bei neuen Tour-Schritten bitte demselben Muster folgen statt
+  fragiler nth-child-Selektoren. Stabile CSS-Klassen (`.event-grid`,
+  `.my-event-card`, `.page-container button.btn-primary`) sind als Selektor
+  ebenfalls ok.
 - **Texte:** „cool, aber inhaltlich korrekt" — Klartext-Regel wie bei
   Tooltips (kein Tech-Jargon), DE/EN, echte Umlaute.
 

@@ -179,6 +179,7 @@ export default function StartPage(): React.ReactElement {
         {showCheckInTile && (
           <div
             className="card card-clickable start-card start-card--checkin"
+            data-tour="tile-checkin"
             onClick={() => navigate('check-in')}
           >
             <div className="start-card__icon">

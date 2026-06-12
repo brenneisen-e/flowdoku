@@ -4443,6 +4443,23 @@ export default function EventCreationPage(): React.ReactElement {
     return () => obs.disconnect();
   }, [isSubmitting, submitted]);
 
+  // v22.23: Das Organizer-Tutorial steuert den aktiven Wizard-Schritt von
+  // außen (TutorialGuide dispatcht ein CustomEvent pro Tour-Schritt), damit
+  // die Tour alle 9 Schritte nacheinander zeigen kann. Bewusst entkoppelt —
+  // ohne laufende Tour feuert das Event nie.
+  React.useEffect(() => {
+    const onTourStep = (e: Event): void => {
+      const detail = (e as CustomEvent).detail;
+      if (typeof detail === 'number' && detail >= 0 && detail <= 8) {
+        setCurrentStep(detail);
+        setTriedNext(false);
+      }
+    };
+    window.addEventListener('dex-tutorial-wizard-step', onTourStep);
+    return () => window.removeEventListener('dex-tutorial-wizard-step', onTourStep);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   if (submitted) {
     return (
       <div className="page-container text-center">
@@ -5230,6 +5247,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div
                 key={idx}
                 className="dex-wizard-step"
+                data-tour={`wizard-step-${idx}`}
                 onClick={() => { if (idx <= currentStep || canProceed()) setCurrentStep(idx); }}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
@@ -11908,6 +11926,7 @@ export default function EventCreationPage(): React.ReactElement {
                 ) : (
                   <button
                     className="btn btn-primary"
+                    data-tour="wizard-submit"
                     disabled={!title}
                     onClick={attemptSubmit}
                     style={{ opacity: !title ? 0.5 : 1 }}
