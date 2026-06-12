@@ -111,14 +111,15 @@ export default function StartPage(): React.ReactElement {
         }
       `}</style>
       <div className={`start-grid${showAdminTile ? ' start-grid--with-admin' : ''}${showCheckInTile ? ' start-grid--with-checkin' : ''}`}>
-        <div className="card card-clickable start-card" onClick={() => navigate('register')}>
+        {/* v22.21: data-tour-Anker — Spotlight-Ziele des geführten Tutorials. */}
+        <div className="card card-clickable start-card" data-tour="tile-register" onClick={() => navigate('register')}>
           <div className="start-card__icon">
             <Calendar size={64} strokeWidth={1} />
           </div>
           <h2>{t('start.register')}</h2>
           <p style={{ whiteSpace: 'nowrap' }}>{t('start.register.desc')}</p>
         </div>
-        <div className="card card-clickable start-card" onClick={() => navigate('my-events')}>
+        <div className="card card-clickable start-card" data-tour="tile-myevents" onClick={() => navigate('my-events')}>
           <div className="start-card__icon">
             <Pin size={64} strokeWidth={1} />
           </div>
@@ -126,7 +127,7 @@ export default function StartPage(): React.ReactElement {
           <p style={{ whiteSpace: 'nowrap' }}>{t('start.myevents.desc')}</p>
         </div>
         {isOrganizer ? (
-          <div className="card card-clickable start-card start-card--admin" onClick={() => navigate('admin')}>
+          <div className="card card-clickable start-card start-card--admin" data-tour="tile-admin" onClick={() => navigate('admin')}>
             <div className="start-card__icon">
               <Settings size={64} strokeWidth={1} />
             </div>

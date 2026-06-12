@@ -5281,6 +5281,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
                   <button
                     className="btn btn-outline"
+                    data-tour="wizard-demo"
                     onClick={() => setShowDemoVariantModal(true)}
                     style={{ fontSize: '0.8rem', padding: '4px 12px' }}
                     title={isDe ? 'Demo-Vorlage auswählen' : 'Choose demo template'}

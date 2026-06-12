@@ -17,6 +17,8 @@ import { DialogProvider } from '../context/DialogContext';
 import { EventProvider, useEvents } from '../context/EventContext';
 import { UserProvider } from '../context/UserContext';
 import { RoleProvider, useRoles } from '../context/RoleContext';
+// v22.21: Geführtes Tutorial (Onboarding-Tour) — Provider + Overlay.
+import { TutorialProvider } from './tutorial/TutorialGuide';
 import Header from './Header';
 import LandingPage from './LandingPage';
 import StartPage from './StartPage';
@@ -665,7 +667,9 @@ export default function DexEventPlatform(props: IDexEventPlatformProps): React.R
             <RoleProvider context={props.context}>
               <NavigationProvider>
                 <EventProvider context={props.context}>
-                  <AppContent />
+                  <TutorialProvider>
+                    <AppContent />
+                  </TutorialProvider>
                 </EventProvider>
               </NavigationProvider>
             </RoleProvider>

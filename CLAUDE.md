@@ -63,6 +63,36 @@ WaitlistEnabled sogar im Top-Level-Update). **Regel:** Jedes neue Feld muss in
 3. bei Sub-Event-Relevanz: `childPayload` UND `subUpdates` in
    `persistSubEventsForParent`.
 
+### Geführtes Tutorial / Onboarding-Tour (v22.21)
+
+Die Landing Page hat statt der früheren „DEX für dein Event nutzen?"-CTA-Bubble
+einen **Tutorial-Button** („Neu hier? Starte das Tutorial …"); die DEX-Anfrage
+bleibt über das Mail-Icon daneben erreichbar (InquiryModal unverändert).
+
+- **Infrastruktur:** `components/tutorial/TutorialGuide.tsx` (`TutorialProvider`
+  + `useTutorial()` + Overlay) und `components/tutorial/tutorialTours.ts`
+  (Tour-/Schritt-Definitionen, DE/EN). Der Provider hängt in
+  `DexEventPlatform.tsx` direkt unter dem EventProvider (braucht Navigation-,
+  Language-, Role-, Event- und User-Context).
+- **Rollenbasiert:** User-Tour für alle; Organizer-Tour zusätzlich für
+  `canCreateEvents || isAdmin || Organizer/Co-Organizer eines Events ||
+  isImpersonating` (gleiche Logik wie die Organizer-Kachel der StartPage).
+  Bei mehreren Touren öffnet `openTutorial()` zuerst einen Auswahl-Dialog.
+- **Mechanik:** Jeder Schritt hat `page` (wird per `navigate()` angesteuert)
+  und optional `selector` (CSS). Das Overlay pollt das Ziel-Element (~4 s,
+  Seiten laden lazy), scrollt es in die Mitte und legt einen **Spotlight**
+  darüber (Box-Shadow-Loch + grüner Rand); ohne Selektor/Fund erscheint die
+  Schritt-Karte zentriert. Ein Klick-Fänger blockiert die App-Interaktion
+  während der Tour; ESC beendet sie. **z-index 10800** — bewusst über dem
+  shared Modal (9999).
+- **Anker-Konvention:** Spotlight-Ziele bekommen `data-tour="<key>"`-Attribute
+  (bestehend: `landing-start`, `tile-register`, `tile-myevents`, `tile-admin`,
+  `wizard-demo`) — bei neuen Tour-Schritten bitte demselben Muster folgen
+  statt fragiler nth-child-Selektoren. Stabile CSS-Klassen (`.header-avatar`,
+  `.page-container button.btn-primary`) sind als Selektor ebenfalls ok.
+- **Texte:** „cool, aber inhaltlich korrekt" — Klartext-Regel wie bei
+  Tooltips (kein Tech-Jargon), DE/EN, echte Umlaute.
+
 ### App-Dialoge statt nativer Browser-Boxen (v20.4) — Konvention
 
 **Keine `window.confirm()` / `window.alert()` / `window.prompt()` mehr in der

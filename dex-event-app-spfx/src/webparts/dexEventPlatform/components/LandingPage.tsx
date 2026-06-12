@@ -18,6 +18,10 @@ import { useEvents } from '../context/EventContext';
 import { useRoles } from '../context/RoleContext';
 import { useDialog } from '../context/DialogContext';
 import Modal from './Modal';
+// v22.21: Geführtes Tutorial — die grüne CTA-Bubble („DEX für dein Event
+// nutzen?") ist durch einen Tutorial-Start-Button ersetzt; die Anfrage
+// bleibt über das Mail-Icon erreichbar.
+import { useTutorial } from './tutorial/TutorialGuide';
 
 export default function LandingPage(): React.ReactElement {
   const { navigate } = useNavigation();
@@ -30,6 +34,9 @@ export default function LandingPage(): React.ReactElement {
   // v13.3: Inquiry-Modal lebt jetzt komplett in der wiederverwendbaren
   // InquiryModal-Komponente — eigene States hier entfallen.
   const [showInquiry, setShowInquiry] = React.useState(false);
+  // v22.21: Tutorial-Start (rollenbasiert: User-Tour für alle, Organizer-Tour
+  // zusätzlich für Organizer/Admins — Auswahl übernimmt der Provider).
+  const { openTutorial } = useTutorial();
 
   // ==================== v22: Archivierung (Admin) ====================
   const { isAdmin } = useRoles();
@@ -370,7 +377,7 @@ export default function LandingPage(): React.ReactElement {
               </span>
             </button>
           ))}
-          <button className="btn btn-lg btn-block btn-outline" onClick={() => navigate('start')}>
+          <button className="btn btn-lg btn-block btn-outline" data-tour="landing-start" onClick={() => navigate('start')}>
             {t('landing.start')}
           </button>
           <div
@@ -405,9 +412,11 @@ export default function LandingPage(): React.ReactElement {
             >
               <Mail size={18} />
             </button>
+            {/* v22.21: Tutorial-CTA — ersetzt die frühere „DEX für dein
+                Event nutzen?"-Bubble (Anfrage weiterhin über das Mail-Icon). */}
             <button
               type="button"
-              onClick={() => setShowInquiry(true)}
+              onClick={openTutorial}
               className="landing__bubble"
               style={{
                 position: 'relative',
@@ -424,11 +433,11 @@ export default function LandingPage(): React.ReactElement {
                 textAlign: 'left',
                 fontFamily: 'inherit',
               }}
-              title={locale === 'de' ? 'Anfrage senden' : 'Send inquiry'}
+              title={locale === 'de' ? 'Geführtes Tutorial starten' : 'Start the guided tutorial'}
             >
               {locale === 'de'
-                ? 'Möchtest du die DEX App auch für dein Event nutzen? Melde dich gerne bei uns!'
-                : 'Want to use the DEX App for your event too? Just reach out to us!'}
+                ? <><strong>Neu hier?</strong> Starte das Tutorial — wir zeigen dir DEX Schritt für Schritt.</>
+                : <><strong>New here?</strong> Start the tutorial — we will show you DEX step by step.</>}
             </button>
           </div>
 

@@ -342,6 +342,10 @@ const PERMISSIONS: PermissionRow[] = [
   { category: 'Profil', feature: 'Settings-Seite öffnen',
     description: 'Persönliche Einstellungen (Sprache, Profilbild-Refresh) öffnen.',
     user: true, assistenz: true, coorganizer: true, testteam: true, checkin: false, organizer: true, admin: true },
+  // v22.21: Geführtes Tutorial (Onboarding-Tour) auf der Landing Page.
+  { category: 'Profil', feature: 'Geführtes Tutorial starten',
+    description: 'Interaktive Tour durch die App (Landing Page, grüne Sprechblase). Alle sehen die Teilnehmer-Tour; wer Events anlegen kann oder Organizer/Co-Organizer eines Events ist, bekommt zusätzlich die Organizer-Tour zur Auswahl.',
+    user: 'User-Tour', assistenz: 'User-Tour', coorganizer: 'User- + Organizer-Tour', testteam: 'User-Tour', checkin: 'User-Tour', organizer: 'User- + Organizer-Tour', admin: 'User- + Organizer-Tour' },
 ];
 
 function renderCell(value: boolean | string): React.ReactElement {
