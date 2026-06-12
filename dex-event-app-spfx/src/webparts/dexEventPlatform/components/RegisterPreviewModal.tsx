@@ -75,6 +75,13 @@ export interface RegisterPreviewData {
    *  RegistrationPage die EN-Varianten der Felder rendert (useEnVariants
    *  greift nur, wenn event.bilingualFields gesetzt ist). */
   bilingualFields?: boolean;
+  /** v22.36: Geteilte Kapazität an die Vorschau weiterreichen — sonst fehlt
+   *  die Gruppenauswahl im Anmeldeformular der Vorschau komplett. */
+  durchstarterCapacity?: number;
+  funstarterCapacity?: number;
+  splitLabelA?: string;
+  splitLabelB?: string;
+  splitSharedWaitlist?: boolean;
 }
 
 export interface RegisterPreviewModalProps {
@@ -116,6 +123,12 @@ function buildSynthEvent(data: RegisterPreviewData): DeloitteEvent {
     lastDeregisterDate: '',
     description: data.description || '',
     maxParticipants: data.unlimitedParticipants ? 0 : (data.maxParticipants || 0),
+    // v22.36: Geteilte Kapazität → die Vorschau rendert die Gruppenauswahl.
+    ...(data.durchstarterCapacity ? { durchstarterCapacity: data.durchstarterCapacity } : {}),
+    ...(data.funstarterCapacity ? { funstarterCapacity: data.funstarterCapacity } : {}),
+    ...(data.splitLabelA ? { splitLabelA: data.splitLabelA } : {}),
+    ...(data.splitLabelB ? { splitLabelB: data.splitLabelB } : {}),
+    ...(data.splitSharedWaitlist ? { splitSharedWaitlist: true } : {}),
     currentParticipants: 0,
     waitlistCount: 0,
     imageUrl: data.imagePreview || '',
@@ -295,7 +308,11 @@ export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open
                 style={{
                   background: '#fff', borderRadius: 4,
                   pointerEvents: 'auto', userSelect: 'text',
-                  minHeight: 560, maxHeight: '70vh', overflow: 'auto',
+                  // v22.36: Bildschirm im 16:9-Format (vorher wirkte der
+                  // Laptop-Screen durch min/maxHeight eher wie 4:3); der
+                  // Seiteninhalt scrollt innerhalb des Screens.
+                  aspectRatio: '16 / 9',
+                  maxHeight: '78vh', overflow: 'auto',
                 }}
               >
                 <PreviewContextStack
