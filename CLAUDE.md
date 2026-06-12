@@ -385,15 +385,26 @@ Hauptevents/der Klammer (Standortfilter `locationAudience` + Mailverteiler
 
 ### Wizard-UX-Konventionen (v22.23)
 
-- **Verbindliche Farb-Logik (v22.30):** Im Wizard gilt durchgängig —
+- **Verbindliche Farb-Logik (v22.30, justiert v22.38):** Im Wizard gilt —
   **Grüner gefüllter Schritt-Header** (h2 „Schritt N — Name" + Ein-Satz-Lead,
-  weiße Schrift auf `--dex-green`, wirken als EINE Box via geteilte
-  Border-Radien oben/unten), **pastellgrüne Flächen = Einstellungen**
-  (`zebraS3Bg()` liefert `rgba(134,188,37,0.06)`), **graue einklappbare
-  Boxen = Beschreibungen** (`<WizardHint variant="description">`, Kopfzeile
-  „Beschreibung — …"), **orange einklappbare Boxen = Hinweise**
-  (`<WizardHint>`, Kopfzeile „Hinweis — …"). Längere Erklärtexte gehören in
-  Beschreibungs-Boxen (Default zu), der Schritt-Lead bleibt EIN Satz.
+  weiße Schrift auf `--dex-green`, bündig als Karten-Kopf: oben rund, unten
+  gerade — CSS-Klassen `dex-step-head-title`/`-lead`), **pastellgrün = NUR
+  ausgefüllte Eingaben** (`.dex-filled`, Sweep in EventCreationPage),
+  **Sektions-Flächen neutral grau** (`zebraS3Bg()` liefert `--dex-gray-50`),
+  **graue einklappbare Boxen = Beschreibungen** (`<WizardHint
+  variant="description">`), **orange einklappbare Boxen = Hinweise**
+  (`<WizardHint>`). Längere Erklärtexte gehören in Beschreibungs-Boxen
+  (Default zu), der Schritt-Lead bleibt EIN Satz — frühere Step-Banner
+  (z.B. der blaue Schritt-3-Banner) sind in die Leads gewandert.
+- **Schritt 5 (v22.38):** Reihenfolge im Haupt-Tab: Sub-Überschrift
+  „Einstellungen" (Zweisprachigkeit + Formular-Sprache) → „Eigene Abfragen /
+  Felder" DIREKT über der Feld-Liste. Der „Anrede abfragen?"-Toggle ist
+  entfallen — **Anrede ist ein vorgeschlagenes Feld** (Katalog-Sonder-Key
+  `salutation`, schaltet `askSalutation` und rendert eine entfernbare
+  Pseudo-Zeile in der Feld-Liste, KEIN Custom-Field).
+- **Teilnehmerzahl (v22.38):** runde Checkbox „Teilnehmeranzahl begrenzen?"
+  (Default nein = unbegrenzt, keine Warteliste); Anhaken zeigt das
+  Anzahl-Feld und aktiviert die Warteliste automatisch.
 - **Sticky Tab-Leiste (v22.30):** Die pro-Sub-Event-Tabs (Schritte 3/4/5)
   rendert die Modul-Komponente `StickyTabStrip` — aktiver Tab **gefüllt
   grün mit weißer Schrift**; beim Scrollen pinnt die Leiste sich unter den
