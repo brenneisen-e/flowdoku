@@ -365,6 +365,11 @@ interface EventContextType {
    *  auf, validiert Fenster/Frische und setzt die eigene Registrierung auf
    *  „Eingecheckt". Gibt ein strukturiertes Ergebnis für die Ergebnis-UI. */
   selfCheckIn: (params: SelfCheckInParams) => Promise<SelfCheckInResult>;
+  /** v22.23: Organizer-Tutorial — solange aktiv, wird das synthetische
+   *  Demo-Showcase-Event (read-only, nur client-seitig) in die Event-Liste
+   *  injiziert, mit dem eingeloggten User als Organizer. So sieht der
+   *  Organizer während der Tour ein Übungs-Event im Organizer Center. */
+  setTutorialDemoActive: (on: boolean) => void;
   checkRegistrationByEmail: (eventId: string, email: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
   deleteEvent: (eventId: string) => Promise<boolean>;
@@ -3335,11 +3340,27 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   // zuordnen. Wir injizieren die Demo-Mail in das gewählte Event,
   // damit Header/StartPage/AdminPage die übliche Permission-Logik
   // unverändert nutzen können.
+  // v22.23: Organizer-Tutorial — Demo-Showcase-Event auch OHNE Impersonation
+  // injizieren, solange die Tour läuft (TutorialGuide schaltet das Flag).
+  const [tutorialDemoActive, setTutorialDemoActive] = React.useState(false);
   const eventsForConsumer = React.useMemo(() => {
     try {
       if (typeof window === 'undefined') return events;
       const raw = window.localStorage?.getItem('dex_demo_impersonation');
-      if (!raw) return events;
+      if (!raw) {
+        if (tutorialDemoActive && !events.some(e => e.isDemoShowcase)) {
+          const storedLocale = window.localStorage?.getItem('dex-locale');
+          const demoLocale: 'de' | 'en' = storedLocale === 'en' ? 'en' : 'de';
+          // Eingeloggten User als Organizer eintragen, damit das Demo-Event
+          // auch für Nicht-Admins in der Organizer-Center-Liste auftaucht.
+          const demo = buildDemoShowcaseEvents(demoLocale).map(e => ({
+            ...e,
+            organizerEmails: Array.from(new Set([...(e.organizerEmails || []), currentUserEmail].filter(Boolean))),
+          }));
+          return [...demo, ...events];
+        }
+        return events;
+      }
       const payload = JSON.parse(raw);
       // v17.25: Im Demo-Impersonation-Modus das synthetische Showcase-Event
       // (+ Sub-Event) vorne in die Liste hängen, damit der Admin auf der
@@ -3364,7 +3385,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         return { ...e, qrScannerEmails: [...(e.qrScannerEmails || []), demoEmail] };
       });
     } catch { return events; }
-  }, [events]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events, tutorialDemoActive]);
 
   return React.createElement(
     EventContext.Provider,
@@ -3390,7 +3412,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, selfCheckIn, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, getArchivableCount, runArchiveExpired,
+        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, getArchivableCount, runArchiveExpired,
         sendAdminInquiry,
         reseedDefaultEmailTemplates,
         sendOrganizerOnboarding,

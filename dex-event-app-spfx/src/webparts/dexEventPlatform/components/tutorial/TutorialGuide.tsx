@@ -45,7 +45,7 @@ export function useTutorial(): TutorialContextType {
 
 export function TutorialProvider(props: { children: React.ReactNode }): React.ReactElement {
   const { canCreateEvents, isAdmin, isImpersonating } = useRoles();
-  const { events } = useEvents();
+  const { events, setTutorialDemoActive } = useEvents();
   const { currentUser } = useCurrentUser();
   const [chooserOpen, setChooserOpen] = React.useState(false);
   const [activeTour, setActiveTour] = React.useState<TutorialTour | null>(null);
@@ -63,6 +63,9 @@ export function TutorialProvider(props: { children: React.ReactNode }): React.Re
     const availableTours: TutorialTourId[] = hasOrganizerTour ? ['user', 'organizer'] : ['user'];
     const startTour = (id: TutorialTourId): void => {
       setChooserOpen(false);
+      // v22.23: Organizer-Tour blendet ein Demo-Event in die Organizer-Liste
+      // ein (nur client-seitig, verschwindet beim Beenden der Tour wieder).
+      setTutorialDemoActive(id === 'organizer');
       setActiveTour(TUTORIAL_TOURS[id]);
     };
     const openTutorial = (): void => {
@@ -73,7 +76,14 @@ export function TutorialProvider(props: { children: React.ReactNode }): React.Re
       }
     };
     return { openTutorial, startTour, availableTours };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasOrganizerTour]);
+
+  const closeTour = React.useCallback((): void => {
+    setActiveTour(null);
+    setTutorialDemoActive(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <TutorialContext.Provider value={value}>
@@ -85,7 +95,7 @@ export function TutorialProvider(props: { children: React.ReactNode }): React.Re
         />
       )}
       {activeTour && (
-        <TutorialOverlay tour={activeTour} onClose={() => setActiveTour(null)} />
+        <TutorialOverlay tour={activeTour} onClose={closeTour} />
       )}
     </TutorialContext.Provider>
   );
@@ -170,12 +180,24 @@ function TutorialOverlay(props: { tour: TutorialTour; onClose: () => void }): Re
       const t = window.setTimeout(() => setSettled(true), 1500);
       return () => window.clearTimeout(t); // Effekt läuft nach dem Seitenwechsel erneut (currentPage-Dep).
     }
+    // v22.23: Wizard-Klick-Through — auf der create-event-Seite stellt die
+    // Tour den Wizard-Schritt per CustomEvent um, bevor der Spotlight sucht.
+    if (typeof step.wizardStep === 'number') {
+      try {
+        window.dispatchEvent(new CustomEvent('dex-tutorial-wizard-step', { detail: step.wizardStep }));
+      } catch { /* ältere Browser ohne CustomEvent-Konstruktor */ }
+    }
     if (!step.selector) {
       setSettled(true);
       return;
     }
     let cancelled = false;
     let tries = 0;
+    // v22.23: Karte nicht erst nach dem Polling-Ende zeigen — nach 0,7 s
+    // erscheint sie (zunächst zentriert), der Spotlight rückt nach, sobald
+    // das Ziel-Element gefunden ist. Vorher wartete der User bei fehlendem
+    // Element bis zu 4 s auf einen dunklen Bildschirm.
+    const earlyTimer = window.setTimeout(() => { if (!cancelled) setSettled(true); }, 700);
     const poll = (): void => {
       if (cancelled) return;
       const el = document.querySelector(step.selector as string) as HTMLElement | null;
@@ -191,7 +213,7 @@ function TutorialOverlay(props: { tour: TutorialTour; onClose: () => void }): Re
       window.setTimeout(poll, 160);
     };
     poll();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; window.clearTimeout(earlyTimer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stepIdx, currentPage, tour.id]);
 
