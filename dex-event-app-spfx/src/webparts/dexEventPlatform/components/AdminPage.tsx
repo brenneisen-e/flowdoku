@@ -5138,6 +5138,32 @@ export default function AdminPage(): React.ReactElement {
                 : 'Without an image the event card in the list and the email header look much less inviting. Upload one via “Edit event” → step 1 (Basics).',
             });
           }
+          // 4) v22.34: End-Datum fehlt (Hauptevent oder Sub-Event) — ohne Ende
+          // kann der Outlook-Termin nicht angelegt werden (der Kalendereintrag
+          // braucht Start UND Ende; das Sub-Event bekommt dann nie eine
+          // OutlookEventId). Praxisfall: Organizerin vergaß beim Anlegen das
+          // End-Datum eines Sub-Events → kein Outlook-Termin für die Teilnehmer.
+          {
+            const noEndChildren = childEventsOf(selectedEvent.id)
+              .filter(c => !!(c.startDate || '').trim() && !(c.endDate || '').trim());
+            const mainNoEnd = !!(selectedEvent.startDate || '').trim() && !(selectedEvent.endDate || '').trim();
+            if (mainNoEnd || noEndChildren.length > 0) {
+              const names: string[] = [];
+              if (mainNoEnd) names.push(isDe ? 'das Hauptevent' : 'the main event');
+              for (const c of noEndChildren) {
+                names.push(`„${shortSubEventTitle(c.title, selectedEvent.title) || c.title}"`);
+              }
+              hints.push({
+                id: 'no-enddate',
+                title: isDe
+                  ? 'End-Datum fehlt — Outlook-Termin kann nicht erstellt werden'
+                  : 'End date missing — Outlook invite cannot be created',
+                body: isDe
+                  ? <>Ohne End-Datum kann für die Teilnehmer <strong>kein Outlook-Termin</strong> angelegt werden (ein Kalendereintrag braucht Start UND Ende) — betroffen: <strong>{names.join(', ')}</strong>. Bitte über „Event bearbeiten" das End-Datum nachtragen (Hauptevent: Schritt 1 „Grundlagen", Sub-Events: Schritt 2 „Sub-Events"). Beim Speichern fragt die App dann, ob der Outlook-Termin angelegt bzw. aktualisiert werden soll.</>
+                  : <>Without an end date <strong>no Outlook invite</strong> can be created for attendees (a calendar entry needs a start AND an end) — affected: <strong>{names.join(', ')}</strong>. Please add the end date via “Edit event” (main event: step 1 “Basics”, sub-events: step 2 “Sub-events”). When saving, the app then asks whether the Outlook invite should be created or updated.</>,
+              });
+            }
+          }
           const visible = hints.filter(h => !isDismissed(h.id));
           if (visible.length === 0) return null;
           return (
