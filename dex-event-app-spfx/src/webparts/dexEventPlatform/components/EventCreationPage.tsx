@@ -1707,6 +1707,15 @@ export default function EventCreationPage(): React.ReactElement {
   type SuggestedEntry = { key: string; label: string; description: string; category: SuggestedCategory; icon: string; tooltip?: string; build: (_now: number) => CustomFieldInput };
   const SUGGESTED_FIELDS_CATALOG: SuggestedEntry[] = isDe ? [
     {
+      // v22.38: Sonder-Eintrag — schaltet das Standard-Anrede-Feld an
+      // (askSalutation-Flag) statt ein Custom-Field anzulegen. Wird in
+      // addSelectedSuggestedFields gesondert behandelt.
+      key: 'salutation', category: 'general', icon: 'Contact',
+      label: 'Anrede',
+      description: 'Pflicht-Dropdown Frau / Herr / Divers / Keine Angabe — erscheint über dem Vornamen',
+      build: (n) => ({ id: `cf-${n}`, label: 'Anrede', type: 'select', required: true, options: [], visible: true }),
+    },
+    {
       key: 'tshirt', category: 'general', icon: 'Tag',
       label: 'T-Shirt Größe',
       description: 'Dropdown mit Kein T-Shirt / XS–XXL',
@@ -1802,6 +1811,12 @@ export default function EventCreationPage(): React.ReactElement {
       }),
     },
   ] : [
+    {
+      key: 'salutation', category: 'general', icon: 'Contact',
+      label: 'Salutation',
+      description: 'Required dropdown Mrs / Mr / Diverse / Prefer not to say — shown above the first name',
+      build: (n) => ({ id: `cf-${n}`, label: 'Salutation', type: 'select', required: true, options: [], visible: true }),
+    },
     {
       key: 'tshirt', category: 'general', icon: 'Tag',
       label: 'T-Shirt size',
@@ -1913,8 +1928,14 @@ export default function EventCreationPage(): React.ReactElement {
   const addSelectedSuggestedFields = (): void => {
     const selected = SUGGESTED_FIELDS_CATALOG.filter(s => suggestedSelection[s.key]);
     if (selected.length === 0) { setShowSuggestedModal(false); return; }
+    // v22.38: Sonder-Eintrag „Anrede" schaltet das Standard-Anrede-Feld an
+    // (askSalutation-Flag, Pseudo-Zeile in der Feld-Liste) statt ein
+    // Custom-Field anzulegen.
+    if (selected.some(s => s.key === 'salutation')) setAskSalutation(true);
+    const buildable = selected.filter(s => s.key !== 'salutation');
+    if (buildable.length === 0) { setShowSuggestedModal(false); return; }
     const now = Date.now();
-    const newFields: CustomFieldInput[] = selected.map((s, i) => s.build(now + i));
+    const newFields: CustomFieldInput[] = buildable.map((s, i) => s.build(now + i));
     // v10.21: B2Run-Felder haben deterministische IDs (b2run_startblock etc.).
     // Wenn ein Feld mit gleicher ID schon im customFields-Array steht, skippen
     // wir es — sonst entstehen Duplikate, wenn der User das Modal mehrfach
@@ -4967,11 +4988,12 @@ export default function EventCreationPage(): React.ReactElement {
   let _zebraS3Idx = 0;
   const zebraS3Bg = (): string => {
     // v22.29: Aufräum-Pass — kein Zebra-Wechsel mehr (wirkte unruhig).
-    // v22.30: Einheitliche Farb-Logik im Wizard — EINSTELLUNGS-Sektionen
-    // liegen auf PASTELLGRÜNEN Flächen (Beschreibungen grau, Hinweise
-    // orange, siehe WizardHint). Funktion bleibt die zentrale Farb-Stelle.
+    // v22.38: Sektions-Flächen wieder NEUTRAL grau (konsistent zu allen
+    // anderen Wizard-Schritten) — pastellgrün ist seit v22.36 den
+    // AUSGEFÜLLTEN Eingaben vorbehalten (.dex-filled), sonst konkurrieren
+    // die Farben. Funktion bleibt die zentrale Farb-Stelle.
     _zebraS3Idx++;
-    return 'rgba(134,188,37,0.06)';
+    return 'var(--dex-gray-50, #fafafa)';
   };
 
   return (
@@ -6674,8 +6696,8 @@ export default function EventCreationPage(): React.ReactElement {
               </h2>
               <p className="dex-step-head-lead">
                 {isDe
-                  ? 'Hier sagst du, wo das Event stattfindet, wie der Tagesablauf aussieht und wie Teilnehmer hinkommen.'
-                  : 'Here you say where the event takes place, what the schedule looks like and how attendees get there.'}
+                  ? 'Hier sagst du, wo das Event stattfindet, wie der Tagesablauf aussieht und wie Teilnehmer hinkommen — alle Eingaben (Veranstaltungsort, Adresse, Agenda, Transferzeiten) sehen die Teilnehmer direkt auf der Anmelde-Seite und später unter „Meine Events".'
+                  : 'Here you say where the event takes place, what the schedule looks like and how attendees get there — all inputs (venue, address, agenda, transfers) are shown to attendees directly on the registration page and later under "My Events".'}
               </p>
               {renderStepIntro(
                 [
@@ -6689,24 +6711,8 @@ export default function EventCreationPage(): React.ReactElement {
                   'Optional: add transfer times (bus/train/meeting point)',
                 ]
               )}
-              {/* v9.28: Banner — alle Infos in diesem Schritt landen direkt
-                  beim Teilnehmer (Anmelde-Seite + Meine Events). */}
-              <div style={{
-                display: 'flex', alignItems: 'flex-start', gap: 10,
-                padding: '12px 14px', marginBottom: 20,
-                background: 'rgba(0,118,168,0.06)',
-                border: '1px solid #0076a8',
-                borderRadius: 'var(--dex-radius, 12px)',
-                fontSize: '0.85rem', color: 'var(--dex-gray-700)',
-                lineHeight: 1.5,
-              }}>
-                <Icon iconName="Info" style={{ fontSize: 18, color: '#0076a8', flexShrink: 0, marginTop: 2 }} />
-                <div>
-                  {isDe
-                    ? <>Alle Eingaben in diesem Schritt — <strong>Veranstaltungsort, Adresse, Agenda und Transferzeiten</strong> — werden den Teilnehmern direkt auf der <strong>Anmelde-Seite</strong> und später unter <strong>{'„Meine Events“'}</strong> angezeigt.</>
-                    : <>All inputs in this step — <strong>venue, address, agenda and transfer times</strong> — are shown to attendees directly on the <strong>registration page</strong> and later under <strong>{'„My Events“'}</strong>.</>}
-                </div>
-              </div>
+              {/* v22.38: Der frühere blaue Info-Banner ist in die
+                  Schritt-Beschreibung (grüner Header-Lead) gewandert. */}
 
               {/* v15.3: pro-Sub-Event-Tabs für den Ort. Tab 0 = Haupt-Event
                   (komplette Ort/Adresse/Agenda/Transferzeiten-UI bleibt
@@ -7050,17 +7056,15 @@ export default function EventCreationPage(): React.ReactElement {
                     background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
                     border: '1px solid var(--dex-gray-200)',
                   }}>
-                    {/* v22.36: Laufende Nummer statt Icon-Picker — die
-                        Agenda-Schritte sind durchnummeriert (Sortierung nach
-                        Datum + Uhrzeit), Icons pro Schritt entfallen. */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                      <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>Nr.</label>
-                      <span style={{
-                        width: 38, height: 38, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                        borderRadius: '50%', background: 'var(--dex-green-dark, #6b9a1e)', color: '#fff',
-                        fontWeight: 700, fontSize: '0.95rem', lineHeight: 1, flexShrink: 0,
-                      }}>{agendaIdx + 1}</span>
-                    </div>
+                    {/* v22.36: Laufende Nummer statt Icon-Picker.
+                        v22.38: kleiner (24px), vertikal mittig zur Zeile
+                        (alignSelf center) und im Header-Grün (--dex-green). */}
+                    <span style={{
+                      alignSelf: 'center', flexShrink: 0,
+                      width: 24, height: 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      borderRadius: '50%', background: 'var(--dex-green, #86bc25)', color: '#fff',
+                      fontWeight: 700, fontSize: '0.78rem', lineHeight: 1,
+                    }}>{agendaIdx + 1}</span>
 
                     {/* Date */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 120 }}>
@@ -7222,7 +7226,7 @@ export default function EventCreationPage(): React.ReactElement {
               {/* v22.36: Opt-in-Frage — Default nein; erst bei „ja" erscheint
                   die gesamte Sub-Event-Konfiguration. Abschalten mit
                   vorhandenen Sub-Events fragt nach und verwirft sie dann. */}
-              <div style={{ background: 'rgba(134,188,37,0.06)', borderRadius: 12, padding: '12px 16px', marginBottom: 12, border: '1px solid var(--dex-gray-100)' }}>
+              <div style={{ background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: '12px 16px', marginBottom: 12, border: '1px solid var(--dex-gray-200)' }}>
                 <div className="toggle-wrapper" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <label className="toggle">
                     <input
@@ -8574,35 +8578,36 @@ export default function EventCreationPage(): React.ReactElement {
                         </>
                       )} />
                     </label>
-                    <div className="toggle-wrapper" style={{ marginTop: 4, marginBottom: 8 }}>
-                      <label className="toggle">
-                        <input
-                          type="checkbox"
-                          checked={unlimitedParticipants}
-                          onChange={e => {
-                            const unlimited = e.target.checked;
-                            setUnlimitedParticipants(unlimited);
-                            if (unlimited) {
-                              setMaxParticipants('');
-                              setWaitlistEnabled(false);
-                            } else {
-                              // v22.37: Begrenzte Teilnehmerzahl → Warteliste
-                              // standardmäßig AN (abwählbar). Unbegrenzte Events
-                              // haben keine Warteliste.
-                              setWaitlistEnabled(true);
-                            }
-                          }}
-                        />
-                        <span className="toggle-slider" />
-                      </label>
-                      {/* v22.37: Die Pille hat eine feste Ja/Nein-Semantik —
-                          „Teilnehmerzahl unbegrenzt: Ja/Nein". Bei Nein
-                          erscheint darunter das Eingabefeld mit der Anzahl. */}
+                    {/* v22.38: Checkbox statt Schieberegler (konsistent zu den
+                        anderen runden Abfragen) — Frage invertiert:
+                        „Teilnehmeranzahl begrenzen?" (Default: nein =
+                        unbegrenzt). Bei Ja erscheint darunter das Anzahl-Feld
+                        und die Warteliste springt automatisch auf an. */}
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginTop: 4, marginBottom: 8 }}>
+                      <input
+                        type="checkbox"
+                        checked={!unlimitedParticipants}
+                        onChange={e => {
+                          const limited = e.target.checked;
+                          setUnlimitedParticipants(!limited);
+                          if (limited) {
+                            setWaitlistEnabled(true);
+                          } else {
+                            setMaxParticipants('');
+                            setWaitlistEnabled(false);
+                          }
+                        }}
+                        style={{ marginTop: 3, cursor: 'pointer' }}
+                      />
                       <span style={{ fontSize: '0.9rem' }}>
-                        <strong>{isDe ? 'Teilnehmerzahl unbegrenzt:' : 'Unlimited participants:'}</strong>{' '}
-                        {unlimitedParticipants ? (isDe ? 'Ja' : 'Yes') : (isDe ? 'Nein — Anzahl unten festlegen' : 'No — set the number below')}
+                        <strong>{isDe ? 'Teilnehmeranzahl begrenzen?' : 'Limit the number of participants?'}</strong>
+                        <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                          {isDe
+                            ? 'Default: nein — unbegrenzte Teilnehmerzahl. Wenn aktiviert, legst du unten die maximale Platzzahl fest; die Warteliste wird automatisch aktiviert.'
+                            : 'Default: no — unlimited participants. When enabled, set the maximum number of seats below; the waitlist is enabled automatically.'}
+                        </span>
                       </span>
-                    </div>
+                    </label>
                     {!unlimitedParticipants && (
                       <>
                         <input
@@ -9414,78 +9419,15 @@ export default function EventCreationPage(): React.ReactElement {
                     ? 'Diese Felder werden bei jeder Anmeldung abgefragt — egal ob das Event Sub-Events hat oder nicht. Für Sub-Event-spezifische Fragen wechsle oben auf den jeweiligen Sub-Event-Tab.'
                     : 'These fields are asked at every registration — regardless of whether the event has sub-events. For sub-event-specific questions switch to the respective sub-event tab above.'}
                 </p>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                  <StepBadge n={19} />
-                  {isDe ? 'Eigene Abfragen / Felder' : 'Custom fields'}
-                </label>
-                {/* v7.20: "Vorgeschlagene Felder" + "Feld hinzufügen" stehen
-                    nach links (vor dem Custom-Fields-Label), damit alle Action-
-                    Buttons konsistent links aligned sind (wie auch der Typ-
-                    Selector pro Feld). */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={openSuggestedModal}
-                    style={{ fontSize: '0.85rem', padding: '6px 14px' }}
-                    title={isDe ? 'Felder aus einem Katalog wählen' : 'Pick fields from a catalog'}
-                  >
-                    {isDe ? 'Vorgeschlagene Felder' : 'Suggested fields'}
-                  </button>
-                  <button className="btn btn-outline" onClick={addCustomField} style={{ fontSize: '0.85rem', padding: '6px 14px' }}>
-                    <Plus size={14} /> {t('create.addfield')}
-                  </button>
-                  {customFields.length > 1 && (
-                    <button
-                      type="button"
-                      className={reorderMode ? 'btn btn-primary' : 'btn btn-outline'}
-                      onClick={() => setReorderMode(prev => !prev)}
-                      style={{ fontSize: '0.85rem', padding: '6px 14px' }}
-                      title={isDe ? 'Felder per Hoch/Runter-Pfeile sortieren' : 'Reorder fields with up/down arrows'}
-                    >
-                      {reorderMode
-                        ? (isDe ? 'Fertig' : 'Done')
-                        : (isDe ? 'Reihenfolge ändern' : 'Reorder')}
-                    </button>
-                  )}
-                </div>
-
-              {/* v18.57: Anrede-Abfrage + Deutsch/Englisch — von oben hierher
-                  verschoben, direkt unter die „Vorgeschlagene Felder"-Buttons. */}
-              <div style={{
-                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
-                padding: '12px 16px', marginBottom: 14,
-                border: '1px solid var(--dex-gray-200)',
-              }}>
-                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={askSalutation}
-                    onChange={e => setAskSalutation(e.target.checked)}
-                    style={{ marginTop: 3, cursor: 'pointer' }}
-                  />
-                  <span style={{ flex: 1 }}>
-                    <strong>{isDe ? 'Anrede abfragen?' : 'Ask for salutation?'}</strong>
-                    <InfoTooltip text={isDe
-                      ? <>
-                          <strong>Was du hier einstellst:</strong> ob der Teilnehmer bei der Anmeldung sein <strong>Geschlecht / die Anrede</strong> (Frau, Herr, Divers, Keine Angabe) angeben muss. Default: <strong>nein</strong> — viele Events brauchen die Anrede nicht und ersparen den Teilnehmern das Feld.<br /><br />
-                          <strong>Anzeige in der App:</strong> wenn aktiviert, erscheint im Registrierungsformular ein Pflicht-Dropdown <strong>Anrede</strong> direkt über dem Vorname-Feld. Wenn aus, wird das Feld komplett ausgeblendet und die gespeicherte Anrede bleibt leer.<br /><br />
-                          <strong>Auswirkung für Teilnehmer:</strong> wenn aktiv, können sie sich erst anmelden, wenn sie die Anrede gewählt haben. Wenn aus, überspringen sie diesen Schritt komplett.
-                        </>
-                      : <>
-                          <strong>What this controls:</strong> whether attendees have to provide their <strong>salutation / gender</strong> (Mrs, Mr, Diverse, Prefer not to say) when registering. Default: <strong>no</strong> — many events do not need it and skip the field for attendees.<br /><br />
-                          <strong>Where you see it:</strong> when enabled, a required <strong>salutation</strong> dropdown appears in the registration form directly above the first name field. When disabled, the field is hidden completely and the stored salutation stays empty.<br /><br />
-                          <strong>For attendees:</strong> when enabled, they can only submit once they have picked a salutation. When disabled, they skip this step entirely.
-                        </>
-                    } />
-                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-                      {isDe
-                        ? 'Default: nein — Wenn aktiviert, sehen Teilnehmer ein Anrede-Dropdown im Registrierungsformular.'
-                        : 'Default: no — when enabled, attendees see a salutation dropdown in the registration form.'}
-                    </span>
-                  </span>
-                </label>
-              </div>
+                {/* v22.38: Sub-Überschrift „Einstellungen" — die generellen
+                    Formular-Optionen (Zweisprachigkeit, Formular-Sprache)
+                    stehen VOR der Feld-Liste. „Eigene Abfragen / Felder"
+                    sitzt weiter unten DIREKT über den Feld-Zeilen. Der
+                    frühere „Anrede abfragen?"-Toggle ist als vorgeschlagenes
+                    Feld in den Katalog gewandert (Sonder-Key 'salutation'). */}
+                <h3 style={{ margin: '0 0 10px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.05rem', fontWeight: 700 }}>
+                  {isDe ? 'Einstellungen' : 'Settings'}
+                </h3>
 
               <div style={{
                 background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
@@ -9564,15 +9506,69 @@ export default function EventCreationPage(): React.ReactElement {
                 </span>
               </div>
 
-                {/* v7.20: Spalten-Header oberhalb der Feld-Karten — erklärt
-                    auf einen Blick welche Spalte was bedeutet. Nur sichtbar
-                    wenn es mindestens 1 Feld gibt, sonst overhead. */}
-                {/* v11.1: alter Tabellen-Header (Nr / Typ / Frage) entfernt —
-                    seit der Card-Restrukturierung in v10.25 sind die Spalten
-                    in jeder Card selbsterklärend (Nummern-Bubble + Label-
-                    Input mit Placeholder + grüner Typ-Selector + Pflicht-
-                    Pill + Lösch-X). Der Header passte mit den alten Spalten-
-                    Breiten nicht mehr und stiftete optisch Verwirrung. */}
+                {/* v22.38: „Eigene Abfragen / Felder" sitzt jetzt DIREKT über
+                    der Feld-Liste (vorher standen die Einstellungs-Karten
+                    dazwischen). */}
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, marginTop: 6 }}>
+                  <StepBadge n={19} />
+                  {isDe ? 'Eigene Abfragen / Felder' : 'Custom fields'}
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={openSuggestedModal}
+                    style={{ fontSize: '0.85rem', padding: '6px 14px' }}
+                    title={isDe ? 'Felder aus einem Katalog wählen' : 'Pick fields from a catalog'}
+                  >
+                    {isDe ? 'Vorgeschlagene Felder' : 'Suggested fields'}
+                  </button>
+                  <button className="btn btn-outline" onClick={addCustomField} style={{ fontSize: '0.85rem', padding: '6px 14px' }}>
+                    <Plus size={14} /> {t('create.addfield')}
+                  </button>
+                  {customFields.length > 1 && (
+                    <button
+                      type="button"
+                      className={reorderMode ? 'btn btn-primary' : 'btn btn-outline'}
+                      onClick={() => setReorderMode(prev => !prev)}
+                      style={{ fontSize: '0.85rem', padding: '6px 14px' }}
+                      title={isDe ? 'Felder per Hoch/Runter-Pfeile sortieren' : 'Reorder fields with up/down arrows'}
+                    >
+                      {reorderMode
+                        ? (isDe ? 'Fertig' : 'Done')
+                        : (isDe ? 'Reihenfolge ändern' : 'Reorder')}
+                    </button>
+                  )}
+                </div>
+                {/* v22.38: Anrede als Standard-Feld-Zeile — aktiviert über das
+                    Vorgeschlagene-Felder-Modal (Eintrag „Anrede"), entfernbar
+                    über das X. Kein Custom-Field (eigener askSalutation-Flag). */}
+                {askSalutation && (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 16px', marginBottom: 12,
+                    background: 'var(--dex-gray-50, #fafafa)',
+                    borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)',
+                  }}>
+                    <span style={{ flexShrink: 0, width: 26, height: 26, borderRadius: '50%', background: 'var(--dex-green, #86bc25)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.78rem', lineHeight: 1 }}>A</span>
+                    <span style={{ flex: 1, fontSize: '0.88rem' }}>
+                      <strong>{isDe ? 'Anrede' : 'Salutation'}</strong>{' '}
+                      <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>
+                        {isDe
+                          ? '— Standard-Feld: Pflicht-Dropdown (Frau / Herr / Divers / Keine Angabe) über dem Vornamen.'
+                          : '— standard field: required dropdown (Mrs / Mr / Diverse / Prefer not to say) above the first name.'}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setAskSalutation(false)}
+                      title={isDe ? 'Anrede-Abfrage entfernen' : 'Remove salutation'}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)', padding: 4 }}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                )}
                 {customFields.map((field, idx) => {
                   const isExpanded = !!fieldExpandOverride[field.id];
                   return (
