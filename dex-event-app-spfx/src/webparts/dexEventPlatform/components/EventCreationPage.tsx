@@ -8966,8 +8966,30 @@ export default function EventCreationPage(): React.ReactElement {
                 style={{ marginBottom: 16 }}
               >
                 {isDe
-                  ? <>Die Standard-Teilnehmerdaten (<strong>Vorname, Nachname, E-Mail</strong>) werden bei jeder Anmeldung automatisch erfasst, dazu kommen aus dem Deloitte-Profil <strong>Job Title, Standort, Department und Telefonnummer</strong>. Hier ergänzt du <strong>nur zusätzliche Fragen</strong>, die du speziell für dieses Event brauchst — vom T-Shirt-Größen-Dropdown bis zur Pflicht-Checkbox für AGB / Datenschutz. Optional kannst du unten das <strong>Anrede</strong>-Dropdown einblenden.</>
-                  : <>The standard attendee data (<strong>first name, last name, email</strong>) is captured automatically for every registration, plus <strong>job title, location, department and phone</strong> are pulled from the Deloitte profile. Here you only add <strong>extra questions</strong> specific to this event — from a T-shirt size dropdown to a privacy / terms required checkbox. Optionally enable the <strong>salutation</strong> dropdown below.</>}
+                  ? <>
+                      <span style={{ display: 'block', marginBottom: 6 }}>Diese Daten werden bei jeder Anmeldung <strong>automatisch erfasst</strong> — du musst sie nicht abfragen:</span>
+                      <ul style={{ margin: '0 0 8px', paddingLeft: 18 }}>
+                        <li><strong>Vorname</strong></li>
+                        <li><strong>Nachname</strong></li>
+                        <li><strong>E-Mail</strong></li>
+                        <li><strong>Job Title</strong> (aus dem Deloitte-Profil)</li>
+                        <li><strong>Standort</strong> (aus dem Deloitte-Profil)</li>
+                        <li><strong>Department</strong> (aus dem Deloitte-Profil)</li>
+                      </ul>
+                      <span style={{ display: 'block' }}>Hier ergänzt du <strong>nur zusätzliche Fragen</strong>, die du speziell für dieses Event brauchst — vom T-Shirt-Größen-Dropdown bis zur Pflicht-Checkbox für AGB / Datenschutz. Optional kannst du unten das <strong>Anrede</strong>-Dropdown einblenden.</span>
+                    </>
+                  : <>
+                      <span style={{ display: 'block', marginBottom: 6 }}>This data is captured <strong>automatically</strong> for every registration — no need to ask for it:</span>
+                      <ul style={{ margin: '0 0 8px', paddingLeft: 18 }}>
+                        <li><strong>First name</strong></li>
+                        <li><strong>Last name</strong></li>
+                        <li><strong>Email</strong></li>
+                        <li><strong>Job title</strong> (from the Deloitte profile)</li>
+                        <li><strong>Location</strong> (from the Deloitte profile)</li>
+                        <li><strong>Department</strong> (from the Deloitte profile)</li>
+                      </ul>
+                      <span style={{ display: 'block' }}>Here you only add <strong>extra questions</strong> specific to this event — from a T-shirt size dropdown to a privacy / terms required checkbox. Optionally enable the <strong>salutation</strong> dropdown below.</span>
+                    </>}
               </WizardHint>
 
               {/* v15: Anrede-Toggle ist nach UNTEN den Datenschutz-Hinweis
@@ -9520,8 +9542,8 @@ export default function EventCreationPage(): React.ReactElement {
                     } />
                     <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
                       {isDe
-                        ? 'Default: aus — wenn aktiviert, kannst du pro Feld eine englische Variante hinterlegen.'
-                        : 'Default: off — when enabled, each field gets a second input row for the English variant.'}
+                        ? <>Default: aus — wenn aktiviert, hinterlegst du deine Fragen <strong>zweisprachig</strong> (deutsche UND englische Texte pro Feld); Teilnehmer sehen automatisch ihre Sprache. Stellst du deine Fragen nur <strong>einsprachig</strong> (z.&nbsp;B. nur Englisch), lass den Schalter aus und stelle unten die Formular-Sprache fest ein.</>
+                        : <>Default: off — when enabled, you maintain your questions <strong>bilingually</strong> (German AND English texts per field); attendees automatically see their language. If your questions are <strong>monolingual</strong> (e.g. English only), leave this off and fix the form language below instead.</>}
                     </span>
                   </span>
                 </label>
