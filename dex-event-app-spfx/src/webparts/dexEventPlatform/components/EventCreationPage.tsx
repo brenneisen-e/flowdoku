@@ -5453,8 +5453,10 @@ export default function EventCreationPage(): React.ReactElement {
               {/* v9.21: Entwurf-Flag als erster Schritt — vor Title.
                   Default ist on, der Organizer kann die Test-Strecke
                   in Ruhe aufbauen, das Test-Team durchspielen lassen,
-                  und ohne Aengste sein Event entwickeln. */}
-              <div className="form-group" style={{ marginTop: 0, marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid var(--dex-gray-100)', maxWidth: 720 }}>
+                  und ohne Aengste sein Event entwickeln.
+                  v22.27: volle Breite wie die übrigen Hinweis-Boxen
+                  (vorher maxWidth 720). */}
+              <div className="form-group" style={{ marginTop: 0, marginBottom: 20, paddingBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: 14, background: isFictive ? 'rgba(237,139,0,0.06)' : 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: `1px solid ${isFictive ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-gray-200)'}` }}>
                   <StepBadge n={1} />
                   <input
@@ -10996,6 +10998,10 @@ export default function EventCreationPage(): React.ReactElement {
                       isDe={isDe}
                       title={isDe ? 'Kommunikation für das Hauptevent ist deaktiviert' : 'Communication for the main event is disabled'}
                       style={{ marginTop: 16 }}
+                      // Pflicht-Checkbox im Inhalt — muss sichtbar starten,
+                      // sonst übersieht der Organizer die Bestätigung und
+                      // wundert sich über den blockierten Save.
+                      defaultOpen={true}
                     >
                       <div style={{ marginBottom: 10 }}>
                         {isDe
@@ -12545,9 +12551,11 @@ export default function EventCreationPage(): React.ReactElement {
               fontSize: '0.9rem', fontWeight: 600, lineHeight: 1, whiteSpace: 'nowrap',
             }}
           >
+            {/* v22.27: Help-Icon entfernt — der Text endet selbst mit „?",
+                das Fragezeichen-Icon davor war doppelt gemoppelt. */}
             {powerUserHelpOpen
               ? <><X size={18} /> {isDe ? 'Schließen' : 'Close'}</>
-              : <><Icon iconName="Help" style={{ fontSize: 18 }} /> {isDe ? 'Benötigst du Hilfe?' : 'Need help?'}</>}
+              : <>{isDe ? 'Benötigst du Hilfe?' : 'Need help?'}</>}
           </button>
         </div>
       )}

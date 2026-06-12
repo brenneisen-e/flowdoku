@@ -397,6 +397,12 @@ Hauptevents/der Klammer (Standortfilter `locationAudience` + Mailverteiler
   Mehrfach-gelistet, Sensible-Daten, Keine-Sub-Events, Komm-deaktiviert-Ack,
   AudiencePicker-Verteiler-Hinweis). **Neue Wizard-Hinweise bitte immer über
   `WizardHint`** — interaktive Inhalte (Checkboxen/Buttons) als children.
+  **Seit v22.27 standardmäßig EINGEKLAPPT:** sichtbar ist nur die Kopfzeile
+  „Hinweis — <Überschrift>" (Klick klappt auf/zu) — die Überschrift muss
+  deshalb für sich allein verständlich sagen, worum es geht. Boxen mit
+  Pflicht-Interaktion (z.B. die Bestätigungs-Checkbox der
+  Komm-deaktiviert-Box) bekommen `defaultOpen={true}`, damit die
+  Pflicht-Aktion nicht im eingeklappten Zustand übersehen wird.
 - **Abmeldedeadline = kommunizierte Frist (Semantik!):** `LastDeregisterDate`
   blockiert die Selbst-Abmeldung NICHT — abmelden geht bis zum Event-Ende
   (Krankheit/Verhinderung), danach greift die v22.22-Sperre. Nach der Frist:
