@@ -3118,9 +3118,9 @@ export default function EventCreationPage(): React.ReactElement {
         ? `<p>You are registered for the event <strong>${escHtml(title)}</strong>.</p>`
           + `<p>If you are unable to attend, please cancel your registration in time via the <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;My Events&ldquo;).</p>`
           + `<p>For organizational questions please contact <strong>${escHtml(orgNames || 'the organizer')}</strong>.</p>`
-        : `<p>Du bist für das Event <strong>${escHtml(title)}</strong> angemeldet.</p>`
-          + `<p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;Meine Events&ldquo;) ab.</p>`
-          + `<p>Bei organisatorischen Fragen wende dich bitte an <strong>${escHtml(orgNames || 'den Organizer')}</strong>.</p>`;
+        : `<p>Ihr seid für das Event <strong>${escHtml(title)}</strong> angemeldet.</p>`
+          + `<p>Falls ihr nicht teilnehmen könnt, meldet euch bitte rechtzeitig über die <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;Meine Events&ldquo;) ab.</p>`
+          + `<p>Bei organisatorischen Fragen wendet euch bitte an <strong>${escHtml(orgNames || 'den Organizer')}</strong>.</p>`;
       const resolvedBody = effOutlookBody
         ? replacePlaceholders(effOutlookBody, outlookVars)
         : defaultOutlookBody;
@@ -12312,9 +12312,9 @@ export default function EventCreationPage(): React.ReactElement {
           ? '<p>You are registered for the event <strong>{{EventTitle}}</strong>.</p>'
             + '<p>If you are unable to attend, please cancel your registration in time via the <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView" style="color:#86bc25;font-weight:600;">DEX App</a> („My Events").</p>'
             + '<p>For organizational questions please contact <strong>{{Organizer}}</strong>.</p>'
-          : '<p>Du bist für das Event <strong>{{EventTitle}}</strong> angemeldet.</p>'
-            + '<p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView" style="color:#86bc25;font-weight:600;">DEX App</a> („Meine Events") ab.</p>'
-            + '<p>Bei organisatorischen Fragen wende dich bitte an <strong>{{Organizer}}</strong>.</p>';
+          : '<p>Ihr seid für das Event <strong>{{EventTitle}}</strong> angemeldet.</p>'
+            + '<p>Falls ihr nicht teilnehmen könnt, meldet euch bitte rechtzeitig über die <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView" style="color:#86bc25;font-weight:600;">DEX App</a> („Meine Events") ab.</p>'
+            + '<p>Bei organisatorischen Fragen wendet euch bitte an <strong>{{Organizer}}</strong>.</p>';
         // v19.2: Einladender Beispieltext für die Beschreibung — über den
         // „Standardtext laden"-Button im Beschreibungs-Editor übernehmbar (statt
         // wie früher als Inline-Box im Wizard).
