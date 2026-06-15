@@ -1097,6 +1097,9 @@ export default function AdminPage(): React.ReactElement {
   const [adminAddTeamlessPicks, setAdminAddTeamlessPicks] = React.useState<Set<number>>(new Set());
   const [adminAddLeadRegId, setAdminAddLeadRegId] = React.useState<number | null>(null);
   const [adminAddSendMail, setAdminAddSendMail] = React.useState<boolean>(false);
+  // v22.42: Organizer kann die Bestätigungs-/Info-Mail der Team-Zuordnung
+  // optional als Kopie (CC) an sich selbst bekommen.
+  const [adminAddCcOrganizer, setAdminAddCcOrganizer] = React.useState<boolean>(false);
   const [adminAddMemberBusy, setAdminAddMemberBusy] = React.useState(false);
   const [adminAddMemberError, setAdminAddMemberError] = React.useState('');
   const [adminAddMemberIncludeIntl, setAdminAddMemberIncludeIntl] = React.useState(false);
@@ -2752,6 +2755,56 @@ export default function AdminPage(): React.ReactElement {
       handleSelectEvent(match).catch(() => { /* Fehler wird intern gesetzt */ });
     }
   }, [selectedEventId, adminEvents, selectedEvent]);
+
+  // v22.40: Auto-Heilung stale Überbuchungs-Marker. Hat sich seit dem
+  // „Überbuchung prüfen"-Lauf jemand abgemeldet, passt eine vorher als
+  // überbucht markierte Person womöglich wieder in die Kapazität (oder ist
+  // selbst nicht mehr aktiv). Solche `OverbookReview='Pending'`-Marker werden
+  // hier still entfernt — sonst zeigt die Review-Box (und die orange Tabellen-
+  // Markierung) jemanden als „über Kapazität", der längst regulär drinsteht.
+  const overbookHealRef = React.useRef(false);
+  React.useEffect(() => {
+    if (overbookHealRef.current) { overbookHealRef.current = false; return; }
+    if (!selectedEvent || !selectedEvent.subsiteUrl || !eventServiceRef) return;
+    const flagged = registrations.filter(r => r.OverbookReview === 'Pending');
+    if (flagged.length === 0) return;
+    const isSplit = typeof selectedEvent.durchstarterCapacity === 'number'
+      && typeof selectedEvent.funstarterCapacity === 'number'
+      && ((selectedEvent.durchstarterCapacity || 0) > 0 || (selectedEvent.funstarterCapacity || 0) > 0);
+    const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
+    const groupOf = (r: SPRegistration): string => r.StarterType || r.PreferredStarterType || '';
+    const keyOf = (r: SPRegistration): string => isSplit ? (groupOf(r) || '?') : 'all';
+    const capOf = (key: string): number => {
+      if (!isSplit) return selectedEvent.maxParticipants || 0;
+      if (key === 'Durchstarter') return selectedEvent.durchstarterCapacity || 0;
+      if (key === 'Funstarter') return selectedEvent.funstarterCapacity || 0;
+      return 0;
+    };
+    const activeByGroup: Record<string, SPRegistration[]> = {};
+    registrations.filter(r => ACTIVE.indexOf(r.Status) >= 0).slice().sort((a, b) => a.Id - b.Id)
+      .forEach(r => { const k = keyOf(r); (activeByGroup[k] = activeByGroup[k] || []).push(r); });
+    // Stale = nicht (mehr) aktiv ODER Position passt wieder in die Kapazität.
+    const stale = flagged.filter(r => {
+      const k = keyOf(r); const cap = capOf(k); const bucket = activeByGroup[k] || [];
+      const idx = bucket.findIndex(x => x.Id === r.Id);
+      if (idx < 0) return true;
+      return !(cap > 0 && (idx + 1) > cap);
+    });
+    if (stale.length === 0) return;
+    let cancelled = false;
+    (async () => {
+      for (const r of stale) {
+        try { await eventServiceRef.clearOverbookMark(selectedEvent.subsiteUrl, r.Id); }
+        catch (err) { console.warn('[DEX] clearOverbookMark (auto-heal) failed:', err); }
+      }
+      if (cancelled) return;
+      overbookHealRef.current = true; // nächsten Effekt-Lauf nach Reload überspringen
+      const regs = await getAllRegistrations(selectedEvent.id);
+      setRegistrations(regs);
+    })().catch(() => { /* */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registrations, selectedEvent?.id]);
 
   // Soft-Refresh-Sync: wenn `events` durch refreshEvents() aktualisiert wurde
   // (z.B. nach Event-deaktivieren, Event-aktivieren, Edit-save), den lokalen
@@ -6958,8 +7011,8 @@ export default function AdminPage(): React.ReactElement {
           // prüfen" markierten Personen (OverbookReview='Pending') mit
           // Fairness-Kontext + Aktions-Buttons. Erst durch eine Aktion
           // ändert sich der Status.
-          const flagged = registrations.filter(r => r.OverbookReview === 'Pending');
-          if (flagged.length === 0 || !selectedEvent) return null;
+          const flaggedRaw = registrations.filter(r => r.OverbookReview === 'Pending');
+          if (flaggedRaw.length === 0 || !selectedEvent) return null;
           const groupOf = (r: SPRegistration): string => r.StarterType || r.PreferredStarterType || '';
           const ACTIVE_ST = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
           // Gruppen-Key: bei Split die Gruppe, sonst ein gemeinsamer Topf.
@@ -6978,6 +7031,18 @@ export default function AdminPage(): React.ReactElement {
             .slice()
             .sort((a, b) => a.Id - b.Id)
             .forEach(r => { const k = keyOf(r); (activeByGroup[k] = activeByGroup[k] || []).push(r); });
+          // v22.40: Nur Personen anzeigen, die WIRKLICH noch über Kapazität
+          // sind. Hat sich zwischenzeitlich jemand abgemeldet, passt eine
+          // markierte Person ggf. wieder regulär in die Liste (oder ist selbst
+          // nicht mehr aktiv) — solche stale Marker hier ausblenden (der
+          // Auto-Heal-Effekt entfernt sie zusätzlich dauerhaft).
+          const flagged = flaggedRaw.filter(r => {
+            const k = keyOf(r); const cap = capOf(k); const bucket = activeByGroup[k] || [];
+            const idx = bucket.findIndex(x => x.Id === r.Id);
+            if (idx < 0) return false;
+            return cap > 0 && (idx + 1) > cap;
+          });
+          if (flagged.length === 0) return null;
           // Faire Wartelisten-Reihenfolge je Gruppe: die über Kapazität
           // Aktiven + bereits vorhandene Warteliste, nach RegistrationDate.
           const fairWaitByGroup: Record<string, SPRegistration[]> = {};
@@ -7270,6 +7335,7 @@ export default function AdminPage(): React.ReactElement {
                         setAdminAddTeamlessPicks(new Set());
                         setAdminAddLeadRegId(null);
                         setAdminAddSendMail(false);
+                        setAdminAddCcOrganizer(false);
                       }}
                     >
                       <Plus size={14} /> Neues Team anlegen
@@ -7408,6 +7474,63 @@ export default function AdminPage(): React.ReactElement {
                                     fontSize: '0.72rem', fontWeight: 700,
                                   }}>Lead</span>
                                 )}
+                                {/* v22.41: „Aus Team entfernen" — löst NUR die
+                                    Team-Zuordnung (TeamId/Lead/Name leeren), die
+                                    Anmeldung inkl. Status (z.B. Warteliste) bleibt
+                                    bestehen. So lässt sich z.B. ein Warteliste-
+                                    Mitglied aus dem Team nehmen und ein
+                                    angemeldeter Teilnehmer nachrücken. */}
+                                {canManage && eventServiceRef && selectedEvent.subsiteUrl && (
+                                  <button
+                                    type="button"
+                                    title="Aus dem Team entfernen (Anmeldung bleibt bestehen)"
+                                    onClick={async () => {
+                                      const sub = selectedEvent.subsiteUrl;
+                                      if (!sub) return;
+                                      const stHint = m.Status && m.Status !== 'Angemeldet' ? ` (Status: ${m.Status})` : '';
+                                      const ok = await confirmDialog(
+                                        `${name} aus dem Team „${teamName || ''}" entfernen?\n\nDie Anmeldung${stHint} bleibt bestehen — die Person steht danach ohne Team da und kann einem anderen Team zugeordnet werden.`,
+                                        { danger: true, confirmLabel: 'Aus Team entfernen' }
+                                      );
+                                      if (!ok) return;
+                                      try {
+                                        await eventServiceRef.assignRegistrationToTeam(sub, m.Id, '', '', false);
+                                        // Lead entfernt + andere bleiben → frühestes Mitglied nachziehen.
+                                        if (isLead) {
+                                          const rest = members
+                                            .filter(x => x.Id !== m.Id && x.Status !== 'Abgemeldet')
+                                            .sort((a, b) => ((a.TeilnehmerID ?? 9_999_999) as number) - ((b.TeilnehmerID ?? 9_999_999) as number));
+                                          if (rest.length > 0) {
+                                            await eventServiceRef.assignRegistrationToTeam(sub, rest[0].Id, tid, teamName || undefined, true);
+                                          }
+                                        }
+                                        await eventServiceRef.writeChangeLog({
+                                          action: 'TeamMemberRemoved',
+                                          targetType: 'Participant',
+                                          targetId: m.ParticipantEmail,
+                                          targetName: name,
+                                          eventId: selectedEvent.id,
+                                          eventTitle: selectedEvent.title,
+                                          details: { teamId: tid, removedBy: currentUser.email, keptStatus: m.Status },
+                                        }).catch(() => { /* */ });
+                                        setTeamsToast(`${name} wurde aus dem Team entfernt — Anmeldung bleibt bestehen.`);
+                                        window.setTimeout(() => setTeamsToast(''), 4500);
+                                        const regs = await getAllRegistrations(selectedEvent.id);
+                                        setRegistrations(regs);
+                                      } catch (err) {
+                                        console.warn('[DEX] removeFromTeam failed:', err);
+                                        showAlert('Entfernen aus dem Team fehlgeschlagen.', { variant: 'error' });
+                                      }
+                                    }}
+                                    style={{
+                                      background: 'none', border: 'none', cursor: 'pointer',
+                                      color: 'var(--dex-red, #c00)', fontSize: '0.72rem',
+                                      textDecoration: 'underline', padding: '2px 4px', flexShrink: 0,
+                                    }}
+                                  >
+                                    Entfernen
+                                  </button>
+                                )}
                               </div>
                             );
                           })}
@@ -7429,6 +7552,7 @@ export default function AdminPage(): React.ReactElement {
                                   setAdminAddTeamlessPicks(new Set());
                                   setAdminAddLeadRegId(null);
                                   setAdminAddSendMail(false);
+                                  setAdminAddCcOrganizer(false);
                                 }}
                               >
                                 <Plus size={14} /> Person hinzufügen
@@ -10927,6 +11051,7 @@ export default function AdminPage(): React.ReactElement {
           setAdminAddTeamlessPicks(new Set());
           setAdminAddLeadRegId(null);
           setAdminAddSendMail(false);
+          setAdminAddCcOrganizer(false);
         };
         // v17.4: Logik zur Auswertung der Multi-Pick + (optionalem) Graph-Pick.
         const hasMultiPicks = adminAddTeamlessPicks.size > 0;
@@ -10936,6 +11061,12 @@ export default function AdminPage(): React.ReactElement {
         // NEUE Person via Graph-Suche dabei ist, bleibt die Consent-Pflicht.
         const onlyTeamlessPicks = hasMultiPicks && !hasGraphPick;
         const consentRequired = !onlyTeamlessPicks && hasGraphPick;
+        // v22.40: Auswahl-/Kapazitäts-Zählung für Belegung-Anzeige,
+        // Über-Kapazitäts-Sperre und Button-Aktivierung.
+        const totalPicks = adminAddTeamlessPicks.size + (hasGraphPick ? 1 : 0);
+        const freeSlots = adminAddMemberDialog.freeSlots;
+        const atCap = freeSlots > 0 && totalPicks >= freeSlots;
+        const overCap = freeSlots > 0 && totalPicks > freeSlots;
         const submit = async (): Promise<void> => {
           if (!adminAddMemberDialog || adminAddMemberBusy) return;
           if (!hasMultiPicks && !hasGraphPick) return;
@@ -10946,11 +11077,21 @@ export default function AdminPage(): React.ReactElement {
             const tid = adminAddMemberDialog.teamId;
             const tName = adminAddMemberDialog.teamName || undefined;
             let assignedCount = 0;
-            // 1) Teamlose Picks zuordnen (PATCH only).
+            // 1) Teamlose Picks zuordnen (PATCH only). v22.40: Wenn die
+            // „Info-Mail"-Checkbox an ist, bekommt jede zugeordnete Person
+            // die Mail direkt — die Empfänger-Daten kommen aus der bereits
+            // geladenen Registrierungs-Zeile (kein erneutes Eingeben nötig).
             for (const regId of Array.from(adminAddTeamlessPicks)) {
               const isLead = adminAddLeadRegId === regId;
+              const reg = teamlessActiveLocal.find(p => p.Id === regId);
               try {
-                const ok = await assignTeamlessToTeam(selectedEvent.id, tid, tName, regId, isLead);
+                const ok = await assignTeamlessToTeam(selectedEvent.id, tid, tName, regId, isLead, {
+                  sendMail: adminAddSendMail,
+                  recipientEmail: reg?.ParticipantEmail,
+                  recipientFirstName: reg?.Vorname,
+                  recipientLastName: reg?.Nachname,
+                  ccEmail: (adminAddSendMail && adminAddCcOrganizer) ? currentUser.email : undefined,
+                });
                 if (ok) assignedCount++;
               } catch (err) { console.warn('[DEX] assignTeamlessToTeam failed for', regId, err); }
             }
@@ -10998,14 +11139,16 @@ export default function AdminPage(): React.ReactElement {
           >
               <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--dex-gray-800)' }}>
                 {adminAddMemberDialog.isNewTeam
-                  ? 'Neues Team anlegen — erste Person hinzufügen'
+                  ? 'Neues Team anlegen — Mitglieder zuordnen'
                   : adminAddMemberDialog.teamName
-                    ? `Person zum Team „${adminAddMemberDialog.teamName}" hinzufügen`
-                    : 'Person zum Team hinzufügen'}
+                    ? `Mitglieder zum Team „${adminAddMemberDialog.teamName}" hinzufügen`
+                    : 'Mitglieder zum Team hinzufügen'}
               </h3>
-              <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
+              <div style={{ fontSize: '0.85rem', color: overCap ? 'var(--dex-red, #c00)' : 'var(--dex-gray-600)' }}>
+                {/* v22.40: Belegung berücksichtigt die aktuelle Auswahl live
+                    (bisherige Belegung + ausgewählte Personen). */}
                 {(selectedEvent.teamSize || 0) > 0
-                  ? `Team-Belegung: ${(selectedEvent.teamSize || 0) - adminAddMemberDialog.freeSlots}/${selectedEvent.teamSize}`
+                  ? `Team-Belegung: ${((selectedEvent.teamSize || 0) - freeSlots) + totalPicks}/${selectedEvent.teamSize}${totalPicks > 0 ? ' (inkl. Auswahl)' : ''}${overCap ? ' — zu viele ausgewählt!' : ''}`
                   : 'Belegung wird nach dem Hinzufügen aktualisiert.'}
               </div>
               {/* v17.1: Team-Name-Eingabe nur im „Neues Team anlegen"-Flow.
@@ -11096,6 +11239,10 @@ export default function AdminPage(): React.ReactElement {
                             <input
                               type="checkbox"
                               checked={isPicked}
+                              // v22.40: Über-Kapazitäts-Sperre — nicht mehr als
+                              // freie Plätze auswählbar; bereits Gewählte bleiben
+                              // abwählbar.
+                              disabled={!isPicked && atCap}
                               onChange={e => {
                                 setAdminAddTeamlessPicks(prev => {
                                   const next = new Set(prev);
@@ -11106,7 +11253,7 @@ export default function AdminPage(): React.ReactElement {
                                 // Wenn Lead deselektiert wurde: Lead zurücksetzen.
                                 if (!e.target.checked && adminAddLeadRegId === p.Id) setAdminAddLeadRegId(null);
                               }}
-                              style={{ flexShrink: 0 }}
+                              style={{ flexShrink: 0, cursor: (!isPicked && atCap) ? 'not-allowed' : 'pointer' }}
                             />
                             <img
                               src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(p.ParticipantEmail)}&size=S`}
@@ -11135,11 +11282,16 @@ export default function AdminPage(): React.ReactElement {
                       })}
                     </div>
                     {adminAddTeamlessPicks.size > 0 && (
-                      <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: 'var(--dex-gray-700)' }}>
+                      <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.78rem', color: 'var(--dex-gray-700)', flexWrap: 'wrap' }}>
                         <strong>{adminAddTeamlessPicks.size}</strong> ausgewählt
                         {!adminAddLeadRegId && adminAddTeamlessPicks.size > 0 && (
                           <span style={{ color: 'var(--dex-gray-500)' }}>
                             — bitte einen Lead markieren (oder leer = kein Lead).
+                          </span>
+                        )}
+                        {atCap && (
+                          <span style={{ color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 600 }}>
+                            — Team voll ({freeSlots} {freeSlots === 1 ? 'Platz' : 'Plätze'}).
                           </span>
                         )}
                       </div>
@@ -11165,6 +11317,24 @@ export default function AdminPage(): React.ReactElement {
                       Info-Mail an die zugeordneten Team-Mitglieder versenden
                       <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
                         Default aus — die Person ist ja bereits beim Event angemeldet.
+                      </span>
+                    </span>
+                  </label>
+                )}
+                {/* v22.42: CC an den Organizer — nur sinnvoll, wenn die
+                    Info-Mail tatsächlich versendet wird. */}
+                {adminAddTeamlessPicks.size > 0 && adminAddSendMail && (
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, marginLeft: 24, fontSize: '0.82rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={adminAddCcOrganizer}
+                      onChange={e => setAdminAddCcOrganizer(e.target.checked)}
+                      style={{ marginTop: 2 }}
+                    />
+                    <span>
+                      Bestätigungsmail als Kopie (CC) an mich
+                      <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                        {currentUser.email} bekommt jede dieser Mails in Kopie.
                       </span>
                     </span>
                   </label>
@@ -11204,7 +11374,10 @@ export default function AdminPage(): React.ReactElement {
                     <input
                       className="form-input"
                       value={adminAddMemberQuery}
-                      placeholder="Name oder E-Mail eingeben…"
+                      // v22.40: Suche sperren, wenn das Team durch die Auswahl
+                      // bereits voll ist (keine zusätzliche neue Person mehr).
+                      disabled={atCap}
+                      placeholder={atCap ? 'Team voll — keine weitere Person' : 'Name oder E-Mail eingeben…'}
                       onChange={e => {
                         const val = e.target.value;
                         setAdminAddMemberQuery(val);
@@ -11302,16 +11475,30 @@ export default function AdminPage(): React.ReactElement {
                   // der Team-Name Pflicht (analog Self-Registration-Flow).
                   const needName = !!adminAddMemberDialog.isNewTeam && !!selectedEvent.askTeamName;
                   const nameOk = !needName || (adminAddMemberDialog.teamName.trim().length > 0);
-                  const disabled = !adminAddMemberPick || !adminAddMemberConsent || adminAddMemberBusy || !nameOk;
+                  // v22.40-Bugfix: Vorher verlangte `disabled` zwingend einen
+                  // Graph-Pick + Consent — dadurch war der Button bei reiner
+                  // Zuordnung bereits-angemeldeter Personen NIE klickbar. Jetzt:
+                  // mindestens eine Auswahl (teamlos ODER Graph), Consent nur bei
+                  // echtem Graph-Neu-Pick, nicht über Kapazität, Name ok.
+                  const consentOk = !consentRequired || adminAddMemberConsent;
+                  const disabled = totalPicks === 0 || !consentOk || adminAddMemberBusy || !nameOk || overCap;
+                  const title = !nameOk ? 'Bitte einen Team-Namen eingeben.'
+                    : overCap ? `Zu viele ausgewählt — nur noch ${freeSlots} Platz/Plätze frei.`
+                    : totalPicks === 0 ? 'Bitte mindestens eine Person auswählen.'
+                    : (!consentOk ? 'Bitte die Zustimmung bestätigen.' : '');
                   return (
                     <button
                       type="button"
                       className="btn btn-primary"
                       onClick={() => { submit().catch(() => { /* */ }); }}
                       disabled={disabled}
-                      title={!nameOk ? 'Bitte einen Team-Namen eingeben.' : ''}
+                      title={title}
                     >
-                      {adminAddMemberBusy ? 'Wird hinzugefügt…' : (adminAddMemberDialog.isNewTeam ? 'Team anlegen + Person hinzufügen' : 'Hinzufügen')}
+                      {adminAddMemberBusy
+                        ? 'Wird gespeichert…'
+                        : (adminAddMemberDialog.isNewTeam
+                          ? `Team anlegen${totalPicks > 0 ? ` (${totalPicks})` : ''}`
+                          : `Hinzufügen${totalPicks > 0 ? ` (${totalPicks})` : ''}`)}
                     </button>
                   );
                 })()}

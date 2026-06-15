@@ -12094,7 +12094,7 @@ export default function EventCreationPage(): React.ReactElement {
                   pointerEvents: actionRowVisible ? 'none' : 'auto',
                 }}
               >
-                {t('create.next')} ↓
+                {t('create.next')}
               </button>
             )}
             </>

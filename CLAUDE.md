@@ -799,6 +799,65 @@ einer Team-Anmeldung:
   Wird in `registerTeam` (v11.82 konsolidiert auf den Helper),
   `addTeamMember` (v11.83) und `createTeamJoinRequest` (v11.83) genutzt.
 
+### Sichtbarkeits-Auto-Fix beim Admin-Start + Team-CC (v22.42)
+
+- **Auto-Fix der Zeilen-Sichtbarkeit:** `EventContext.autoRepairProxyAccess()`
+  läuft beim **Admin-App-Start** (Effekt in `DexEventPlatform.tsx`, 4 s
+  verzögert, nur `isAdmin`, gedrosselt **1×/24h** via
+  `localStorage['dex_autoaccessfix_lastrun']`). Iteriert alle **aktiven**
+  Subsites (dedupliziert) und ruft pro Subsite das bestehende
+  `eventService.repairProxyRegistrationAccess(sub)` — Fremd-Anmeldungen
+  (Assistenz/Organizer-für-andere) bekommen den **Teilnehmer als Zeilen-Autor**
+  (`AuthorId`), damit dieser seine Anmeldung in „Meine Events" sieht und sich
+  selbst abmelden kann. Komplett still/best-effort, ersetzt für Admins den
+  manuellen Button bzw. den `DEX_AccessFix`-Flow als Routine. Setzt den
+  Throttle-Zeitstempel zu Beginn (kein Hammern bei mehreren Tabs/Reloads);
+  Session-Guard via `autoFixStartedRef`.
+- **Team-Zuordnung CC an Organizer:** Im Team-Modal gibt es unter „Info-Mail
+  versenden" die Sub-Option **„Bestätigungsmail als Kopie (CC) an mich"** —
+  reicht `currentUser.email` als `ccEmail` durch `assignTeamlessToTeam` →
+  `queueEmail(..., cc)`. Nur sichtbar/wirksam, wenn die Info-Mail versendet wird.
+
+### Team-Mitglied aus Team entfernen ohne Abmeldung (v22.41)
+
+Neue Pro-Mitglied-Aktion **„Entfernen"** in der Teams-Sektion des Organizer
+Centers: löst NUR die Team-Zuordnung
+(`assignRegistrationToTeam(sub, regId, '', '', false)` — TeamId/TeamName/
+TeamLead leeren), die **Anmeldung inkl. Status bleibt** (z.B. Warteliste).
+Use-Case: ein Warteliste-Mitglied aus dem Team nehmen, damit ein Slot frei
+wird und ein angemeldeter Teilnehmer per „Person hinzufügen" nachrücken kann
+(Waitlisted zählen voll zur Team-Belegung → blockieren sonst den Slot).
+War der Entfernte der **Lead** und bleiben Mitglieder übrig, rückt das
+früheste (kleinste TeilnehmerID) als neuer Lead nach. Audit:
+`TeamMemberRemoved`. Nur `canManage` (Admin/Organizer). Die Person landet
+danach in „Teilnehmer ohne Team".
+
+### Team-Zuordnungs-Modal + Überbuchungs-Box: Bugfixes (v22.40)
+
+- **Team aus bereits-angemeldeten Personen anlegen war unmöglich:** Die
+  `disabled`-Logik des „Neues Team anlegen"-Buttons verlangte zwingend einen
+  Graph-Pick **und** Consent — die per Checkbox gewählten teamlosen Personen
+  wurden ignoriert, der Button blieb immer grau. Fix: `disabled` greift jetzt
+  auf `totalPicks` (teamlose Picks + optionaler Graph-Pick); Consent nur bei
+  echtem Graph-Neu-Pick. Plus: live Belegungs-Anzeige (inkl. Auswahl),
+  Über-Kapazitäts-Sperre (Checkboxen/Suche disabled bei `atCap`), Titel
+  „… Mitglieder zuordnen".
+- **Info-Mail an zugeordnete Teamlose wurde nie verschickt** (alter TODO):
+  `assignTeamlessToTeam(eventId, teamId, teamName, regId, isLead, opts)` nimmt
+  jetzt `{ sendMail, recipientEmail, recipientFirstName, recipientLastName }`
+  — AdminPage reicht die Empfänger aus der bereits geladenen
+  Registrierungs-Zeile durch (keine erneute Mail-Eingabe nötig). Mail ist im
+  Deloitte-Layout gewrappt (`wrapTemplate` + `teamInfoBlockHtml`,
+  TemplateType `TeamMemberJoined`), gated über `event.disableEmails`.
+- **Überbuchungs-Review zeigte stale Marker:** Hatte sich nach dem
+  „Überbuchung prüfen"-Lauf jemand abgemeldet, blieb eine wieder regulär in
+  die Kapazität passende Person (overBy ≤ 0) in der Box hängen. Fix
+  zweistufig: (1) Box filtert `flaggedRaw` auf wirklich-noch-über-Kapazität
+  (Position > Cap je Gruppe), (2) Auto-Heal-Effekt löscht stale
+  `OverbookReview='Pending'`-Marker via `clearOverbookMark` (auch für
+  inaktive/abgemeldete) und lädt neu — so korrigiert sich auch die orange
+  Tabellen-Markierung + der Zähler. Loop-Schutz über `overbookHealRef`.
+
 ### Team-Anmeldung — Phase 5 (v11.86): Lead bearbeitet sein Team aus MyEvents
 
 Mit v11.86 bekommt der Team-Lead in „Meine Events" einen
