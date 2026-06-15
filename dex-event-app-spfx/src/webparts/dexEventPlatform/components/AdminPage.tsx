@@ -5258,7 +5258,7 @@ export default function AdminPage(): React.ReactElement {
                   ? 'End-Datum fehlt — Outlook-Termin kann nicht erstellt werden'
                   : 'End date missing — Outlook invite cannot be created',
                 body: isDe
-                  ? <>Ohne End-Datum kann für die Teilnehmer <strong>kein Outlook-Termin</strong> angelegt werden (ein Kalendereintrag braucht Start UND Ende) — betroffen: <strong>{names.join(', ')}</strong>. Bitte über „Event bearbeiten" das End-Datum nachtragen (Hauptevent: Schritt 1 „Grundlagen", Sub-Events: Schritt 2 „Sub-Events"). Beim Speichern fragt die App dann, ob der Outlook-Termin angelegt bzw. aktualisiert werden soll.</>
+                  ? <>Ohne End-Datum kann für die Teilnehmer <strong>kein Outlook-Termin</strong> angelegt werden (ein Kalendereintrag braucht Start UND Ende) — betroffen: <strong>{names.join(', ')}</strong>. Bitte über „Event bearbeiten“ das End-Datum nachtragen (Hauptevent: Schritt 1 „Grundlagen“, Sub-Events: Schritt 2 „Sub-Events“). Beim Speichern fragt die App dann, ob der Outlook-Termin angelegt bzw. aktualisiert werden soll.</>
                   : <>Without an end date <strong>no Outlook invite</strong> can be created for attendees (a calendar entry needs a start AND an end) — affected: <strong>{names.join(', ')}</strong>. Please add the end date via “Edit event” (main event: step 1 “Basics”, sub-events: step 2 “Sub-events”). When saving, the app then asks whether the Outlook invite should be created or updated.</>,
               });
             }
@@ -11587,7 +11587,7 @@ export default function AdminPage(): React.ReactElement {
                       <span>
                         Auch die übrigen Team-Mitglieder informieren
                         <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
-                          Schickt den bisherigen Mitgliedern eine „neues Mitglied"-Info.
+                          Schickt den bisherigen Mitgliedern eine „neues Mitglied“-Info.
                         </span>
                       </span>
                     </label>

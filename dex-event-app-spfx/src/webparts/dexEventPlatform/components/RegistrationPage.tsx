@@ -14,6 +14,7 @@ import { useRoles } from '../context/RoleContext';
 // wie die Event-Liste) — sonst sieht jeder Hauptevent-Teilnehmer alle Sub-Events.
 import { isEventVisibleForUser } from './EventListPage';
 import { useCachedImage } from '../utils/imageCache';
+import { isRegistrationFullyClosed } from '../utils/eventFormat';
 import { useLanguage, translations as appTranslations, Locale } from '../context/LanguageContext';
 // v20.4: modernes Alert-Modal statt window.alert.
 import { useDialog } from '../context/DialogContext';
@@ -674,10 +675,15 @@ export default function RegistrationPage(): React.ReactElement {
     );
   }
 
-  // Registrierungs-Deadline prüfen
-  const isDeadlinePassed = event.registrationDeadline && new Date(event.registrationDeadline) < new Date();
+  // Registrierungs-Deadline prüfen.
+  // v22.54: „Anmeldung geschlossen" greift nur, wenn das Hauptevent UND alle
+  // Sub-Events zu sind. Solange mindestens ein Sub-Event noch offen ist, kommt
+  // der Teilnehmer rein und kann sich für die offenen Sub-Events anmelden —
+  // auch wenn die (Klammer-/Hauptevent-)Frist abgelaufen ist.
+  const isDeadlinePassed = !!event.registrationDeadline && new Date(event.registrationDeadline) < new Date();
+  const isFullyClosed = isRegistrationFullyClosed(event, childEvents);
 
-  if (isDeadlinePassed && !isOrganizer && !isAdmin) {
+  if (isFullyClosed && !isOrganizer && !isAdmin) {
     return (
       <div className="page-container">
         <div className="card" style={{ position: 'relative', overflow: 'hidden' }}>
@@ -713,7 +719,11 @@ export default function RegistrationPage(): React.ReactElement {
   // "Hauptevent wird jetzt angemeldet" gilt nur, wenn der Parent-Checkbox an ist
   // UND der User nicht bereits angemeldet ist. Bei bereits angemeldetem Parent
   // wird die Parent-Registrierung nicht nochmal ausgelöst.
-  const willRegisterParent = registerForParent && !parentAlreadyRegistered && !registerForOther && !(event && event.subEventsOnlyMode);
+  // v22.54: Ist die Hauptevent-Frist abgelaufen, kann ein normaler Teilnehmer
+  // das Hauptevent nicht mehr buchen — die offenen Sub-Events bleiben aber
+  // wählbar. Organizer/Admins dürfen weiterhin (manuelle Anmeldung).
+  const parentRegBlocked = isDeadlinePassed && !parentAlreadyRegistered && !isOrganizer && !isAdmin;
+  const willRegisterParent = registerForParent && !parentAlreadyRegistered && !registerForOther && !(event && event.subEventsOnlyMode) && !parentRegBlocked;
   // Fürs Registrieren für andere bleibt der alte Flow: Parent wird immer registriert,
   // keine Session-Auswahl (siehe Render).
   const isSessionsOnlyMode = !willRegisterParent && !registerForOther && !parentAlreadyRegistered;
@@ -2284,14 +2294,15 @@ export default function RegistrationPage(): React.ReactElement {
               <label style={{
                 display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10,
                 borderRadius: 8,
-                border: `1px solid ${registerForParent && !parentAlreadyRegistered ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-                background: registerForParent && !parentAlreadyRegistered ? 'rgba(134,188,37,0.06)' : '#fff',
-                cursor: parentAlreadyRegistered ? 'default' : 'pointer',
+                border: `1px solid ${registerForParent && !parentAlreadyRegistered && !parentRegBlocked ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+                background: registerForParent && !parentAlreadyRegistered && !parentRegBlocked ? 'rgba(134,188,37,0.06)' : '#fff',
+                cursor: (parentAlreadyRegistered || parentRegBlocked) ? 'default' : 'pointer',
+                opacity: parentRegBlocked ? 0.6 : 1,
               }}>
                 <input
                   type="checkbox"
-                  checked={parentAlreadyRegistered ? true : registerForParent}
-                  disabled={parentAlreadyRegistered}
+                  checked={parentAlreadyRegistered ? true : (parentRegBlocked ? false : registerForParent)}
+                  disabled={parentAlreadyRegistered || parentRegBlocked}
                   onChange={e => setRegisterForParent(e.target.checked)}
                   style={{ marginTop: 2 }}
                 />
@@ -2300,6 +2311,11 @@ export default function RegistrationPage(): React.ReactElement {
                   {parentAlreadyRegistered && (
                     <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
                       {t('reg.selection.alreadyregistered') || 'Du bist bereits für das Haupt-Event angemeldet.'}
+                    </div>
+                  )}
+                  {parentRegBlocked && !parentAlreadyRegistered && (
+                    <div style={{ fontSize: '0.75rem', color: 'var(--dex-orange, #ed8b00)', marginTop: 2 }}>
+                      {t('reg.subevents.deadlinepassed') || 'Anmeldefrist abgelaufen — nur noch die offenen Sub-Events sind wählbar.'}
                     </div>
                   )}
                 </div>
@@ -3520,14 +3536,15 @@ export default function RegistrationPage(): React.ReactElement {
                 <label style={{
                   display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10,
                   borderRadius: 8,
-                  border: `1px solid ${registerForParent && !parentAlreadyRegistered ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-                  background: registerForParent && !parentAlreadyRegistered ? 'rgba(134,188,37,0.06)' : '#fff',
-                  cursor: parentAlreadyRegistered ? 'default' : 'pointer',
+                  border: `1px solid ${registerForParent && !parentAlreadyRegistered && !parentRegBlocked ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+                  background: registerForParent && !parentAlreadyRegistered && !parentRegBlocked ? 'rgba(134,188,37,0.06)' : '#fff',
+                  cursor: (parentAlreadyRegistered || parentRegBlocked) ? 'default' : 'pointer',
+                  opacity: parentRegBlocked ? 0.6 : 1,
                 }}>
                   <input
                     type="checkbox"
-                    checked={parentAlreadyRegistered ? true : registerForParent}
-                    disabled={parentAlreadyRegistered}
+                    checked={parentAlreadyRegistered ? true : (parentRegBlocked ? false : registerForParent)}
+                    disabled={parentAlreadyRegistered || parentRegBlocked}
                     onChange={e => setRegisterForParent(e.target.checked)}
                     style={{ marginTop: 2 }}
                   />
@@ -3536,6 +3553,11 @@ export default function RegistrationPage(): React.ReactElement {
                     {parentAlreadyRegistered && (
                       <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
                         {tEvent('reg.selection.alreadyregistered') || 'Du bist bereits für das Haupt-Event angemeldet.'}
+                      </div>
+                    )}
+                    {parentRegBlocked && !parentAlreadyRegistered && (
+                      <div style={{ fontSize: '0.75rem', color: 'var(--dex-orange, #ed8b00)', marginTop: 2 }}>
+                        {tEvent('reg.subevents.deadlinepassed') || 'Anmeldefrist abgelaufen — nur noch die offenen Sub-Events sind wählbar.'}
                       </div>
                     )}
                   </div>

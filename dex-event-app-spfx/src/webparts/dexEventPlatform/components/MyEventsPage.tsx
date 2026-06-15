@@ -1405,8 +1405,8 @@ export default function MyEventsPage(): React.ReactElement {
             </p>
             <p style={{ margin: '0 0 10px' }}>
               {isDe
-                ? <>du hast dich erfolgreich vom Event <strong>„{cancelSuccess.title}"</strong> abgemeldet. Dein Platz ist wieder frei{cancelSuccess.imageUrl ? '' : ''} — falls eine Warteliste besteht, rückt automatisch die nächste Person nach.</>
-                : <>you have successfully cancelled your registration for <strong>"{cancelSuccess.title}"</strong>. Your spot is free again — if there is a waitlist, the next person is promoted automatically.</>}
+                ? <>du hast dich erfolgreich vom Event <strong>„{cancelSuccess.title}“</strong> abgemeldet. Dein Platz ist wieder frei{cancelSuccess.imageUrl ? '' : ''} — falls eine Warteliste besteht, rückt automatisch die nächste Person nach.</>
+                : <>you have successfully cancelled your registration for <strong>“{cancelSuccess.title}”</strong>. Your spot is free again — if there is a waitlist, the next person is promoted automatically.</>}
             </p>
             <p style={{ margin: 0 }}>
               {isDe

@@ -323,25 +323,35 @@ export default function GlobalSearch(): React.ReactElement | null {
     if (manHits.length) out.push({ key: 'manual', label: isDe ? 'Handbuch' : 'Manual', hits: manHits });
 
     // ---- Teilnehmer (aus den Teilnehmerlisten der verwaltbaren Events) ----
+    // Eine Zeile PRO Person × Event — taucht jemand in mehreren Events auf,
+    // stehen alle Events untereinander, damit man gezielt eines anklicken kann.
     if (regParts && regParts.length) {
-      const byPerson = new Map<string, { name: string; email: string; events: Array<{ id: string; title: string }> }>();
+      const seen = new Set<string>();
+      const matched: RegPart[] = [];
       for (const rp of regParts) {
         const hay = norm(`${rp.name} ${rp.email}`);
         if (!matchAll(tokens, hay, words(hay))) continue;
-        const key = (rp.email || rp.name).toLowerCase();
-        let agg = byPerson.get(key);
-        if (!agg) { agg = { name: rp.name, email: rp.email, events: [] }; byPerson.set(key, agg); }
-        if (!agg.events.some(x => x.id === rp.eventId)) agg.events.push({ id: rp.eventId, title: rp.eventTitle });
+        const key = `${(rp.email || rp.name).toLowerCase()}::${rp.eventId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        matched.push(rp);
       }
+      // Gleiche Person zusammen gruppieren (Name, dann Event-Titel).
+      matched.sort((a, b) => {
+        const pa = (a.name || a.email).toLowerCase();
+        const pb = (b.name || b.email).toLowerCase();
+        if (pa !== pb) return pa.localeCompare(pb);
+        return (a.eventTitle || '').localeCompare(b.eventTitle || '');
+      });
       const partHits: SearchHit[] = [];
-      for (const agg of Array.from(byPerson.values())) {
+      for (const rp of matched) {
         partHits.push({
-          id: `part-${(agg.email || agg.name).toLowerCase()}`,
-          primary: agg.name || agg.email,
-          secondary: [agg.email, agg.events.map(e => e.title).slice(0, 3).join(', ')].filter(Boolean).join(' · '),
-          onSelect: () => navigate('admin', agg.events[0].id),
+          id: `part-${(rp.email || rp.name).toLowerCase()}-${rp.eventId}`,
+          primary: rp.name || rp.email,
+          secondary: [rp.email, rp.eventTitle, rp.status].filter(Boolean).join(' · '),
+          onSelect: () => navigate('admin', rp.eventId),
         });
-        if (partHits.length >= 10) break;
+        if (partHits.length >= 12) break;
       }
       if (partHits.length) out.push({ key: 'participants', label: isDe ? 'Teilnehmer' : 'Attendees', hits: partHits });
     }
@@ -358,17 +368,23 @@ export default function GlobalSearch(): React.ReactElement | null {
   // Eingeklappt: nur das Such-Icon.
   if (!expanded) {
     return (
-      <div ref={rootRef} style={{ display: 'flex', alignItems: 'center', marginLeft: 'auto' }}>
+      <div ref={rootRef} style={{ flex: '1 1 420px', maxWidth: 460, minWidth: 0, margin: '0 16px', display: 'flex' }}>
         <button
-          className="header-icon-btn"
           type="button"
           onClick={() => { setExpanded(true); setOpen(true); }}
           title={isDe ? 'Suchen' : 'Search'}
           aria-label={isDe ? 'Suchen' : 'Search'}
-          style={{ width: 'auto', padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 8 }}
+          style={{
+            width: '100%', boxSizing: 'border-box',
+            display: 'inline-flex', alignItems: 'center', gap: 10,
+            padding: '8px 16px', borderRadius: 999,
+            border: '1px solid var(--dex-gray-300)', background: 'var(--dex-gray-100, #eef0f2)',
+            color: 'var(--dex-gray-600)', cursor: 'pointer',
+            fontFamily: 'inherit', fontSize: '0.85rem', fontWeight: 500, textAlign: 'left',
+          }}
         >
-          <Search size={20} />
-          <span style={{ fontSize: '0.85rem', fontWeight: 500, lineHeight: 1 }}>{isDe ? 'Suche' : 'Search'}</span>
+          <Search size={16} />
+          <span>{isDe ? 'Suche' : 'Search'}</span>
         </button>
       </div>
     );

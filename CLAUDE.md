@@ -455,6 +455,27 @@ Hauptevents/der Klammer (Standortfilter `locationAudience` + Mailverteiler
   und färbt Kreis-Rand (`.dex-step-circle`) + Label (`.dex-step-label`) grün
   (Klickbarkeits-Affordance; CSS im Step-Bar-Container injiziert).
 
+### Anmeldung offen, solange Hauptevent ODER ein Sub-Event offen ist (v22.54)
+
+Leitlinie: **Die „Registration closed"-Sperre greift nur, wenn das Hauptevent
+UND alle Sub-Events zu sind.** Eine abgelaufene Klammer-/Hauptevent-Frist darf
+NICHT mehr das ganze Event sperren, wenn die Sub-Events noch offen sind
+(gemeldeter Bug: Klammer-Frist abgelaufen → „Registration closed" trotz offener
+Sub-Events; Frist konnte im Wizard nicht angepasst werden, weil die Klammer-
+Felder ausgegraut sind).
+
+- Helper in `utils/eventFormat.ts`: `isRegistrationOpen(ev)` (Frist nicht
+  abgelaufen UND `!isEventOver`) und `isRegistrationFullyClosed(event,
+  childEvents)` (Hauptevent-Gate rein frist-basiert; wenn Frist durch, nur zu,
+  falls KEIN Sub-Event mehr `isRegistrationOpen`).
+- `EventCard.tsx` (Overlay + Footer-Hinweis) und `RegistrationPage.tsx`
+  (Vollbild-„Anmeldung geschlossen"-Gate) nutzen `isRegistrationFullyClosed`
+  statt der reinen Hauptevent-Frist.
+- `RegistrationPage` blockiert zusätzlich die **Hauptevent-Buchung** für
+  normale Teilnehmer, wenn dessen Frist durch ist (`parentRegBlocked` →
+  Checkbox disabled + Hinweis), die offenen Sub-Events bleiben wählbar.
+  Organizer/Admin dürfen weiter manuell anmelden.
+
 ### Abmelde-Sperre für vergangene Events + MyEvents-Cluster (v22.22)
 
 Leitlinie: **Nach Event-Ende gibt es keine Selbst-Abmeldung mehr** — und

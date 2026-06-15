@@ -9,8 +9,10 @@ import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useRoles } from '../context/RoleContext';
+import { useEvents } from '../context/EventContext';
 import { DeloitteEvent } from '../types';
 import { useCachedImage } from '../utils/imageCache';
+import { isRegistrationFullyClosed } from '../utils/eventFormat';
 
 // Deutsches Datumsformat
 function formatDate(iso: string): string {
@@ -62,6 +64,7 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
   const { navigate } = useNavigation();
   const { t } = useLanguage();
   const { canCreateEvents } = useRoles();
+  const { childEventsOf } = useEvents();
   // v19.22: Event-Bild über den IndexedDB-Cache — beim zweiten App-Aufruf sofort
   // da, ohne SharePoint-Roundtrip.
   const cachedImage = useCachedImage(event.imageUrl);
@@ -77,7 +80,10 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
   const freePlaces = isUnlimited ? Infinity : effectiveMax - event.currentParticipants;
   const isFull = !isUnlimited && freePlaces <= 0;
   const alreadySignedUp = isRegistered || isWaitlisted;
-  const isDeadlinePassed = !!event.registrationDeadline && new Date(event.registrationDeadline) < new Date();
+  // v22.54: Die Anmeldung bleibt offen, solange das Hauptevent ODER mindestens
+  // ein Sub-Event noch offen ist — eine abgelaufene Klammer-/Hauptevent-Frist
+  // sperrt nicht mehr das ganze Event, wenn die Sub-Events noch laufen.
+  const isDeadlinePassed = isRegistrationFullyClosed(event, childEventsOf(event.id));
   // Nur normale User bekommen den Deadline-Overlay. Organizer/Admins dürfen
   // trotzdem reinklicken, um ggf. manuell zu registrieren.
   const showDeadlineOverlay = isDeadlinePassed && !canCreateEvents && !alreadySignedUp;
@@ -211,7 +217,7 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
             {t('events.regopen')} {formatDateOnly(event.registrationDeadline)}
           </div>
         )}
-        {event.registrationDeadline && new Date(event.registrationDeadline) < new Date() && (
+        {isDeadlinePassed && (
           <div style={{
             marginTop: 6,
             padding: '6px 10px',

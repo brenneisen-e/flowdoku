@@ -1419,6 +1419,20 @@ export default function EventCreationPage(): React.ReactElement {
   // lesen, gehen ueber `subEventsRef.current`.
   const subEventsRef = React.useRef<typeof subEvents>(subEvents);
   React.useEffect(() => { subEventsRef.current = subEvents; }, [subEvents]);
+  // v22.54: Im Klammer-Modus ist die Anmeldefrist der Klammer nicht buchbar/
+  // wirkungslos — die effektive Frist ergibt sich aus dem am längsten laufenden
+  // Sub-Event (späteste Sub-Event-Anmeldefrist). Wird im ausgegrauten
+  // Anmeldefrist-Feld der Klammer rein anzeigend gebunden.
+  const effectiveKlammerDeadline = React.useMemo<string>(() => {
+    const times = subEvents
+      .map(s => s.registrationDeadline)
+      .filter((d): d is string => !!d)
+      .map(d => new Date(d).getTime())
+      .filter(n => Number.isFinite(n));
+    if (!times.length) return '';
+    const max = new Date(Math.max(...times));
+    return `${max.getFullYear()}-${String(max.getMonth() + 1).padStart(2, '0')}-${String(max.getDate()).padStart(2, '0')}T${String(max.getHours()).padStart(2, '0')}:${String(max.getMinutes()).padStart(2, '0')}`;
+  }, [subEvents]);
   // Snapshot der beim Edit-Start vorhandenen Sub-Event-DB-IDs, um beim Save
   // entfernte Sub-Events zu löschen.
   const [initialSubEventDbIds] = React.useState<string[]>(() => {
@@ -4997,14 +5011,12 @@ export default function EventCreationPage(): React.ReactElement {
   // sauber bleibt, wenn Filterverknüpfung oder Sichtbarkeit-prüfen-Buttons
   // ausgeblendet sind. Wird bewusst NUR in Schritt 3 verwendet — andere Steps
   // bekommen das in einer späteren Iteration nachgezogen.
-  let _zebraS3Idx = 0;
   const zebraS3Bg = (): string => {
     // v22.29: Aufräum-Pass — kein Zebra-Wechsel mehr (wirkte unruhig).
     // v22.38: Sektions-Flächen wieder NEUTRAL grau (konsistent zu allen
     // anderen Wizard-Schritten) — pastellgrün ist seit v22.36 den
     // AUSGEFÜLLTEN Eingaben vorbehalten (.dex-filled), sonst konkurrieren
     // die Farben. Funktion bleibt die zentrale Farb-Stelle.
-    _zebraS3Idx++;
     return 'var(--dex-gray-50, #fafafa)';
   };
 
@@ -7219,8 +7231,8 @@ export default function EventCreationPage(): React.ReactElement {
               </h2>
               <p className="dex-step-head-lead">
                 {isDe
-                  ? <><strong>Optional</strong> — lege zusätzliche Sessions, Workshops oder Programmpunkte zum Hauptevent an. Die meisten Events brauchen das nicht — dann einfach auf „Weiter".</>
-                  : <><strong>Optional</strong> — add additional sessions, workshops or program items to the main event. Most events do not need this — then simply click "Next".</>}
+                  ? <><strong>Optional</strong> — lege zusätzliche Sessions, Workshops oder Programmpunkte zum Hauptevent an. Die meisten Events brauchen das nicht — dann einfach auf „Weiter“.</>
+                  : <><strong>Optional</strong> — add additional sessions, workshops or program items to the main event. Most events do not need this — then simply click “Next”.</>}
               </p>
 
               {/* v22.36: Erklärung, was ein Sub-Event ist (graue Beschreibungs-Box). */}
@@ -8199,6 +8211,26 @@ export default function EventCreationPage(): React.ReactElement {
                     ? 'Bis wann können sich Teilnehmer anmelden bzw. fristgerecht abmelden? Die Abmeldefrist ist die kommunizierte Deadline — abmelden geht danach weiterhin bis zum Event-Ende, die Organizer werden dann aber automatisch informiert. Beide Werte werden anhand des Event-Datums automatisch vorgeschlagen, du kannst sie jederzeit überschreiben.'
                     : 'Until when can attendees register or cancel within the deadline? The cancellation deadline is the communicated cutoff — cancelling remains possible until the event ends, but organizers are then notified automatically. Both values are auto-suggested from the event date and can be overridden at any time.'} />
                 </label>
+              {subEventsOnlyMode && (
+                <WizardHint
+                  isDe={isDe}
+                  title={isDe ? 'Frist ergibt sich aus den Sub-Events' : 'Deadline derives from the sub-events'}
+                  defaultOpen
+                  style={{ marginBottom: 12 }}
+                >
+                  <div>
+                    {isDe ? (
+                      <>
+                        Die Klammer selbst ist <strong>nicht buchbar</strong>, deshalb haben ihre Fristen hier <strong>keine Wirkung</strong> (Felder ausgegraut). Maßgeblich sind die Fristen <strong>je {childTermSingular || 'Sub-Event'}-Tab</strong>: Die Anmeldung für das Gesamt-Event <strong>bleibt offen, solange mindestens ein {childTermSingular || 'Sub-Event'} noch offen ist</strong> — effektiv endet sie also mit der <strong>spätesten {childTermSingular || 'Sub-Event'}-Frist</strong>. Stell die An-/Abmeldefristen daher pro {childTermSingular || 'Sub-Event'} ein.
+                      </>
+                    ) : (
+                      <>
+                        The bracket itself is <strong>not bookable</strong>, so its deadlines here have <strong>no effect</strong> (fields greyed out). What matters are the deadlines <strong>per {childTermSingular || 'sub-event'} tab</strong>: registration for the overall event <strong>stays open as long as at least one {childTermSingular || 'sub-event'} is still open</strong> — so it effectively ends with the <strong>latest {childTermSingular || 'sub-event'} deadline</strong>. Set the registration/cancellation deadlines per {childTermSingular || 'sub-event'}.
+                      </>
+                    )}
+                  </div>
+                </WizardHint>
+              )}
               <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">
@@ -8218,7 +8250,9 @@ export default function EventCreationPage(): React.ReactElement {
                     )} />
                   </label>
                   <DatePicker
-                    selected={registrationDeadline ? new Date(registrationDeadline) : null}
+                    selected={subEventsOnlyMode
+                      ? (effectiveKlammerDeadline ? new Date(effectiveKlammerDeadline) : null)
+                      : (registrationDeadline ? new Date(registrationDeadline) : null)}
                     onChange={(date: Date | null) => setRegistrationDeadline(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
                     showTimeSelect
                     timeFormat="HH:mm"
@@ -8226,7 +8260,9 @@ export default function EventCreationPage(): React.ReactElement {
                     timeCaption="Uhrzeit"
                     dateFormat="dd.MM.yyyy, HH:mm"
                     locale="de"
-                    placeholderText="Anmelde-Deadline"
+                    placeholderText={subEventsOnlyMode
+                      ? (isDe ? 'Automatisch aus Sub-Events' : 'Automatic from sub-events')
+                      : 'Anmelde-Deadline'}
                     className="form-input"
                     wrapperClassName="dex-datepicker-wrapper"
                     calendarClassName="dex-datepicker-calendar"

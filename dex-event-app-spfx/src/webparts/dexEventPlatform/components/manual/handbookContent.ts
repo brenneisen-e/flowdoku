@@ -16,6 +16,7 @@ import { editEventSection } from './sections/editEvent';
 import { subEventsSection } from './sections/subEvents';
 import { b2runSection } from './sections/b2run';
 import { manageParticipantsSection } from './sections/manageParticipants';
+import { actionsSection } from './sections/actions';
 import { registerForOtherSection } from './sections/registerForOther';
 import { teamRegistrationSection } from './sections/teamRegistration';
 import { checkInSection } from './sections/checkIn';
@@ -51,6 +52,7 @@ export function getManualSections(locale: Locale): ManualSection[] {
     subEventsSection(locale),
     b2runSection(locale),
     manageParticipantsSection(locale),
+    actionsSection(locale),
     registerForOtherSection(locale),
     teamRegistrationSection(locale),
     quizSection(locale),
