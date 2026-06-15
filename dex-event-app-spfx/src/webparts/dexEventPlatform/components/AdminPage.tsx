@@ -815,7 +815,7 @@ export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
   // v14.11: zusätzlich `events` (alle Events inkl. Sub-Events) als `allEvents`
   // für die Parent-Lookup-Logik im konsolidierten View + im Sub-Event-Detail.
-  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, transferTeamLead } = useEvents();
+  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead } = useEvents();
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const handleRefresh = async (): Promise<void> => {
     if (isRefreshing) return;
@@ -1100,6 +1100,12 @@ export default function AdminPage(): React.ReactElement {
   // v22.42: Organizer kann die Bestätigungs-/Info-Mail der Team-Zuordnung
   // optional als Kopie (CC) an sich selbst bekommen.
   const [adminAddCcOrganizer, setAdminAddCcOrganizer] = React.useState<boolean>(false);
+  // v22.49: Kommunikation an die ÜBRIGEN Team-Mitglieder (optional) — Reichweite
+  // alle vs. nur Lead. Plus: bei ganz neuer Person ist die Anmeldebestätigung
+  // (+ Outlook) an die Person ebenfalls optional (Default an).
+  const [adminAddNotifyOthers, setAdminAddNotifyOthers] = React.useState<boolean>(false);
+  const [adminAddNotifyScope, setAdminAddNotifyScope] = React.useState<'all' | 'lead'>('all');
+  const [adminAddNewPersonMail, setAdminAddNewPersonMail] = React.useState<boolean>(true);
   const [adminAddMemberBusy, setAdminAddMemberBusy] = React.useState(false);
   const [adminAddMemberError, setAdminAddMemberError] = React.useState('');
   const [adminAddMemberIncludeIntl, setAdminAddMemberIncludeIntl] = React.useState(false);
@@ -7345,6 +7351,9 @@ export default function AdminPage(): React.ReactElement {
                         setAdminAddLeadRegId(null);
                         setAdminAddSendMail(false);
                         setAdminAddCcOrganizer(false);
+                        setAdminAddNotifyOthers(false);
+                        setAdminAddNotifyScope('all');
+                        setAdminAddNewPersonMail(true);
                       }}
                     >
                       <Plus size={14} /> Neues Team anlegen
@@ -7561,6 +7570,9 @@ export default function AdminPage(): React.ReactElement {
                                   setAdminAddLeadRegId(null);
                                   setAdminAddSendMail(false);
                                   setAdminAddCcOrganizer(false);
+                                  setAdminAddNotifyOthers(false);
+                                  setAdminAddNotifyScope('all');
+                                  setAdminAddNewPersonMail(true);
                                 }}
                               >
                                 <Plus size={14} /> Person hinzufügen
@@ -11084,6 +11096,9 @@ export default function AdminPage(): React.ReactElement {
           setAdminAddLeadRegId(null);
           setAdminAddSendMail(false);
           setAdminAddCcOrganizer(false);
+          setAdminAddNotifyOthers(false);
+          setAdminAddNotifyScope('all');
+          setAdminAddNewPersonMail(true);
         };
         // v17.4: Logik zur Auswertung der Multi-Pick + (optionalem) Graph-Pick.
         const hasMultiPicks = adminAddTeamlessPicks.size > 0;
@@ -11128,8 +11143,15 @@ export default function AdminPage(): React.ReactElement {
               } catch (err) { console.warn('[DEX] assignTeamlessToTeam failed for', regId, err); }
             }
             // 2) Falls noch ein Graph-Pick dabei: addTeamMember (neuer Insert).
+            // v22.49: Kommunikation an die neue Person optional
+            // (adminAddNewPersonMail); die „übrige Mitglieder"-Info wird hier
+            // unterdrückt und unten zentral (mit Reichweite alle/Lead) gesteuert.
             if (hasGraphPick && adminAddMemberPick) {
-              const res = await addTeamMember(selectedEvent.id, tid, tName, adminAddMemberPick);
+              const res = await addTeamMember(selectedEvent.id, tid, tName, adminAddMemberPick, undefined, {
+                suppressMemberMail: !adminAddNewPersonMail,
+                suppressOthersMail: true,
+                ccEmail: (adminAddNewPersonMail && adminAddCcOrganizer) ? currentUser.email : undefined,
+              });
               if (!res.ok) {
                 if (res.reason && res.reason.startsWith('already-registered')) {
                   setAdminAddMemberError('Person bereits beim Event angemeldet — Picker aus „Bereits angemeldet"-Liste benutzen.');
@@ -11142,6 +11164,24 @@ export default function AdminPage(): React.ReactElement {
                 return;
               }
               assignedCount++;
+            }
+            // v22.49: „Neues Mitglied"-Info an die übrigen Team-Mitglieder
+            // (Reichweite alle / nur Lead), sofern gewählt. excludeEmails =
+            // die gerade neu hinzugefügten Personen (nicht sich selbst melden).
+            if (adminAddNotifyOthers) {
+              const assignedRegs = Array.from(adminAddTeamlessPicks)
+                .map(id => teamlessActiveLocal.find(p => p.Id === id))
+                .filter(Boolean) as SPRegistration[];
+              const newNames = assignedRegs.map(r => `${r.Vorname || ''} ${r.Nachname || ''}`.trim() || r.ParticipantName || r.ParticipantEmail);
+              const excludeEmails = assignedRegs.map(r => r.ParticipantEmail || '').filter(Boolean);
+              if (hasGraphPick && adminAddMemberPick) {
+                newNames.push(adminAddMemberPick.displayName || adminAddMemberPick.email);
+                excludeEmails.push(adminAddMemberPick.email);
+              }
+              if (newNames.length > 0) {
+                try { await notifyExistingTeamMembers(selectedEvent.id, tid, tName, newNames, excludeEmails, adminAddNotifyScope); }
+                catch (err) { console.warn('[DEX] notifyExistingTeamMembers failed:', err); }
+              }
             }
             const teamLabel = tName ? `„${tName}"` : 'das Team';
             const toastMsg = adminAddSendMail
@@ -11448,30 +11488,48 @@ export default function AdminPage(): React.ReactElement {
                     )}
                   </div>
                 )}
-                {/* v22.45: 3 · Kommunikation an das Team — Info-Mail an die
-                    zugeordneten (bereits angemeldeten) Personen + optional CC
-                    an den Organizer. Nur relevant, wenn bestehende Teilnehmer
-                    zugeordnet werden. */}
-                {adminAddTeamlessPicks.size > 0 && (
+                {/* v22.45/v22.49: 3 · Kommunikation an das Team. */}
+                {(adminAddTeamlessPicks.size > 0 || hasGraphPick) && (
                   <>
                     <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--dex-green-dark, #4a7c1f)', marginTop: 14, marginBottom: 4 }}>
                       3 · Kommunikation an das Team
                     </div>
-                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, fontSize: '0.82rem', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={adminAddSendMail}
-                        onChange={e => setAdminAddSendMail(e.target.checked)}
-                        style={{ marginTop: 2 }}
-                      />
-                      <span>
-                        Info-Mail an die zugeordneten Team-Mitglieder versenden
-                        <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
-                          Default aus — die Person ist ja bereits beim Event angemeldet.
+                    {/* a) Neue Person (Graph-Pick): Anmeldebestätigung + Outlook
+                        optional (Default an — echte Neu-Anmeldung). */}
+                    {hasGraphPick && (
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, fontSize: '0.82rem', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={adminAddNewPersonMail}
+                          onChange={e => setAdminAddNewPersonMail(e.target.checked)}
+                          style={{ marginTop: 2 }}
+                        />
+                        <span>
+                          Anmeldebestätigung &amp; Kalendereinladung an die neue Person senden
+                          <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                            Default an — die Person wird ja neu angemeldet. Abwählen = still hinzufügen.
+                          </span>
                         </span>
-                      </span>
-                    </label>
-                    {adminAddSendMail && (
+                      </label>
+                    )}
+                    {/* b) Info-Mail an die zugeordneten (bereits angemeldeten) Personen. */}
+                    {adminAddTeamlessPicks.size > 0 && (
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, fontSize: '0.82rem', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={adminAddSendMail}
+                          onChange={e => setAdminAddSendMail(e.target.checked)}
+                          style={{ marginTop: 2 }}
+                        />
+                        <span>
+                          Info-Mail an die zugeordneten Team-Mitglieder versenden
+                          <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                            Default aus — die Person ist ja bereits beim Event angemeldet.
+                          </span>
+                        </span>
+                      </label>
+                    )}
+                    {(adminAddSendMail || (hasGraphPick && adminAddNewPersonMail)) && (
                       <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, marginLeft: 24, fontSize: '0.82rem', cursor: 'pointer' }}>
                         <input
                           type="checkbox"
@@ -11482,10 +11540,37 @@ export default function AdminPage(): React.ReactElement {
                         <span>
                           Bestätigungsmail als Kopie (CC) an mich
                           <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
-                            {currentUser.email} bekommt jede dieser Mails in Kopie.
+                            {currentUser.email} bekommt diese Mail(s) in Kopie.
                           </span>
                         </span>
                       </label>
+                    )}
+                    {/* c) Übrige Team-Mitglieder informieren — Reichweite alle / nur Lead. */}
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 4, fontSize: '0.82rem', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={adminAddNotifyOthers}
+                        onChange={e => setAdminAddNotifyOthers(e.target.checked)}
+                        style={{ marginTop: 2 }}
+                      />
+                      <span>
+                        Auch die übrigen Team-Mitglieder informieren
+                        <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                          Schickt den bisherigen Mitgliedern eine „neues Mitglied"-Info.
+                        </span>
+                      </span>
+                    </label>
+                    {adminAddNotifyOthers && (
+                      <div style={{ display: 'flex', gap: 16, marginLeft: 24, marginBottom: 8, fontSize: '0.82rem' }}>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                          <input type="radio" name="notifyScope" checked={adminAddNotifyScope === 'all'} onChange={() => setAdminAddNotifyScope('all')} style={{ margin: 0 }} />
+                          Alle Mitglieder
+                        </label>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                          <input type="radio" name="notifyScope" checked={adminAddNotifyScope === 'lead'} onChange={() => setAdminAddNotifyScope('lead')} style={{ margin: 0 }} />
+                          Nur den Team-Lead
+                        </label>
+                      </div>
                     )}
                   </>
                 )}

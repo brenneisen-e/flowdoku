@@ -256,6 +256,23 @@ function escapeHtml(str: string): string {
 }
 
 /**
+ * v22.47: Organizer-Namensliste als HTML — jeder NAME fett, die Verbinder
+ * („, " / „ und " / „ and ") bleiben normal. Eingabe ist der bereits
+ * zusammengesetzte Klartext aus formatOrganizerList (z.B. „Franziska
+ * Hasemeier und Anja Helwich"). Namen werden HTML-escaped, die Verbinder
+ * roh übernommen. Robust gegen 0/1/n Namen.
+ */
+function boldOrganizerNames(plain: string): string {
+  const s = (plain || '').trim();
+  if (!s) return '';
+  // Split MIT Erhalt der Verbinder (capturing group).
+  const parts = s.split(/(, | und | and )/);
+  return parts
+    .map(p => (/^(, | und | and )$/.test(p) ? p : (p ? `<strong>${escapeHtml(p)}</strong>` : '')))
+    .join('');
+}
+
+/**
  * Platzhalter in HTML-Body ersetzen (mit HTML-Escaping gegen XSS).
  */
 export function replacePlaceholders(text: string, vars: Record<string, string>): string {
@@ -305,7 +322,13 @@ export function buildEmailFromTemplate(
   const rawSub = (template.subheading && template.subheading.trim()) || '{{EventTitle}}';
   const subheading = replacePlaceholdersPlain(rawSub, vars);
   // Body: HTML, daher Werte escapen
-  const bodyHtml = replacePlaceholders(template.bodyHtml, vars);
+  let bodyHtml = replacePlaceholders(template.bodyHtml, vars);
+  // v22.47: {{OrganizerHtml}} — nur die NAMEN fett, die Verbinder („und"/", ")
+  // bleiben normal. Wird RAW (unescaped) ersetzt, deshalb erst nach
+  // replacePlaceholders (das `OrganizerHtml` mangels vars-Key stehen lässt).
+  if (bodyHtml.indexOf('{{OrganizerHtml}}') >= 0) {
+    bodyHtml = bodyHtml.replace(/\{\{OrganizerHtml\}\}/g, boldOrganizerNames(vars.Organizer || ''));
+  }
   // Pre-wrapped templates (z.B. OutlookDeclineReminder, Nachrücken) enthalten
   // bereits das komplette Deloitte-Design via wrapTemplateForStorage(). Nicht
   // doppelt wrappen — sonst zwei Header/Footer im finalen HTML.

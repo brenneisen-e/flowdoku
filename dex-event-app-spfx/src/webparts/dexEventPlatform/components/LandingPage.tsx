@@ -87,16 +87,19 @@ export default function LandingPage(): React.ReactElement {
       e.status === 'Active' && (e.subsiteUrl || '').trim() && (isAdmin || isOrgOf(e)));
     if (relevant.length === 0) { setInactiveSummary([]); return undefined; }
     const CACHE = 'dex_inactivesummary';
+    // v22.46: Signatur der relevanten Events — ändert sich die Event-Liste
+    // (neues Event, Status-Wechsel), wird neu gescannt statt 24h zu warten.
+    const sig = relevant.map(e => e.id).sort().join('|');
     // Sofort aus dem Cache zeigen (falls vorhanden), auf aktuelle Events gefiltert.
     let stale = true;
     try {
       const raw = window.localStorage.getItem(CACHE);
       if (raw) {
-        const parsed = JSON.parse(raw) as { ts?: number; items?: Array<{ eventId: string; title: string; people: Array<{ email: string; name: string }> }> };
+        const parsed = JSON.parse(raw) as { ts?: number; sig?: string; items?: Array<{ eventId: string; title: string; people: Array<{ email: string; name: string }> }> };
         if (parsed && typeof parsed.ts === 'number' && Array.isArray(parsed.items)) {
           const liveIds = new Set(relevant.map(e => e.id));
           setInactiveSummary(parsed.items.filter(it => liveIds.has(it.eventId)));
-          if (Date.now() - parsed.ts < 24 * 60 * 60 * 1000) stale = false;
+          if (Date.now() - parsed.ts < 24 * 60 * 60 * 1000 && parsed.sig === sig) stale = false;
         }
       }
     } catch { /* */ }
@@ -107,7 +110,7 @@ export default function LandingPage(): React.ReactElement {
         .then(items => {
           if (cancelled) return;
           setInactiveSummary(items);
-          try { window.localStorage.setItem(CACHE, JSON.stringify({ ts: Date.now(), items })); } catch { /* */ }
+          try { window.localStorage.setItem(CACHE, JSON.stringify({ ts: Date.now(), sig, items })); } catch { /* */ }
         })
         .catch(() => { /* best-effort */ });
     }, 3500); // dem Boot Vorrang geben

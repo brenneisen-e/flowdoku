@@ -903,6 +903,11 @@ export default function MyEventsPage(): React.ReactElement {
   const [isLoading, setIsLoading] = React.useState(true);
   const [cancellingId, setCancellingId] = React.useState<string | null>(null);
   const [isCancelling, setIsCancelling] = React.useState(false);
+  // v22.46: Erfolgs-Screen nach erfolgreicher Selbst-Abmeldung — analog zum
+  // Anmelde-Success-Screen (persönliche Ansprache, Event-Bild, Organizer).
+  const [cancelSuccess, setCancelSuccess] = React.useState<null | {
+    title: string; imageUrl?: string; organizers: string[]; organizerEmails: string[];
+  }>(null);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editData, setEditData] = React.useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = React.useState(false);
@@ -1276,6 +1281,15 @@ export default function MyEventsPage(): React.ReactElement {
         catch (err) { console.warn('[DEX] cascade-cancel sub-event failed:', childId, err); }
       }
       await loadMyRegistrations();
+      // v22.46: Erfolgs-Screen mit persönlicher Ansprache anzeigen.
+      if (entry) {
+        setCancelSuccess({
+          title: entry.event.title,
+          imageUrl: entry.event.imageUrl,
+          organizers: entry.event.organizers || [],
+          organizerEmails: entry.event.organizerEmails || [],
+        });
+      }
     }
     setCancellingId(null);
     setIsCancelling(false);
@@ -1353,6 +1367,68 @@ export default function MyEventsPage(): React.ReactElement {
           </p>
         </div>
         <style>{`@keyframes dexProgressSlide { 0% { left: -40%; } 100% { left: 100%; } }`}</style>
+      </div>
+    );
+  }
+
+  // v22.46: Abmelde-Erfolgs-Screen — gleiche Optik wie der Anmelde-Success
+  // (Event-Bild, persönliche Ansprache, Organizer, Buttons).
+  if (cancelSuccess) {
+    const greet = (currentUser?.firstName || '').trim();
+    const orgs = (cancelSuccess.organizers || [])
+      .reduce<string[]>((acc, o) => [...acc, ...o.split(';')], [])
+      .map(o => {
+        const trimmed = o.trim();
+        const parts = trimmed.split(',').map(s => s.trim());
+        return parts.length === 2 ? `${parts[1]} ${parts[0]}` : trimmed;
+      })
+      .filter(Boolean);
+    return (
+      <div className="page-container text-center">
+        <div className="card" style={{ padding: '48px 32px', maxWidth: 720, margin: '0 auto' }}>
+          {cancelSuccess.imageUrl && (
+            <div style={{
+              width: '100%', maxWidth: 480, height: 200, margin: '0 auto 24px',
+              borderRadius: 'var(--dex-radius-lg)',
+              background: `url(${cancelSuccess.imageUrl}) center/cover no-repeat`,
+              filter: 'grayscale(0.4)', opacity: 0.85,
+            }} />
+          )}
+          <h2 style={{ marginTop: 0, color: 'var(--dex-red, #c00)' }}>
+            {isDe ? 'Abmeldung bestätigt' : 'Cancellation confirmed'}
+          </h2>
+          <div className="mt-8" style={{ color: 'var(--dex-gray-700)', textAlign: 'left', maxWidth: 520, margin: '8px auto 0', lineHeight: 1.6 }}>
+            <p style={{ margin: '0 0 10px' }}>
+              {isDe
+                ? <>Hallo{greet ? <> <strong>{greet}</strong></> : ''},</>
+                : <>Hi{greet ? <> <strong>{greet}</strong></> : ''},</>}
+            </p>
+            <p style={{ margin: '0 0 10px' }}>
+              {isDe
+                ? <>du hast dich erfolgreich vom Event <strong>„{cancelSuccess.title}"</strong> abgemeldet. Dein Platz ist wieder frei{cancelSuccess.imageUrl ? '' : ''} — falls eine Warteliste besteht, rückt automatisch die nächste Person nach.</>
+                : <>you have successfully cancelled your registration for <strong>"{cancelSuccess.title}"</strong>. Your spot is free again — if there is a waitlist, the next person is promoted automatically.</>}
+            </p>
+            <p style={{ margin: 0 }}>
+              {isDe
+                ? <>Falls du es dir anders überlegst, kannst du dich jederzeit über den Anmelde-Bereich erneut anmelden.</>
+                : <>If you change your mind, you can register again anytime via the registration area.</>}
+            </p>
+          </div>
+          {orgs.length > 0 && (
+            <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>Organizer</div>
+              <OrganizerList names={orgs} emails={cancelSuccess.organizerEmails} size="md" />
+            </div>
+          )}
+          <div style={{ marginTop: 32, display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
+            <button className="btn btn-primary" onClick={() => setCancelSuccess(null)}>
+              {t('myevents.title')}
+            </button>
+            <button className="btn btn-secondary" onClick={() => { setCancelSuccess(null); navigate('register'); }}>
+              {isDe ? 'Zur Anmeldung' : 'Go to registration'}
+            </button>
+          </div>
+        </div>
       </div>
     );
   }
