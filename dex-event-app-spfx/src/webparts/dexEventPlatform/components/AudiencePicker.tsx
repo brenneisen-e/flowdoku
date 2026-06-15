@@ -19,7 +19,7 @@
  */
 
 import * as React from 'react';
-import { X, Users } from './Icons';
+import { X, Users, Search } from './Icons';
 import InternationalSearchToggle from './InternationalSearchToggle';
 import BulkUserImportModal from './BulkUserImportModal';
 import WizardHint from './WizardHint';
@@ -129,6 +129,8 @@ export default function AudiencePicker({
   // v22.58: aktiver Tab im „Sichtbarkeit prüfen"-Modal (0 = dieses Event/Klammer,
   // >0 = Sub-Event, wenn visibilityTabs übergeben werden).
   const [activeVisTab, setActiveVisTab] = React.useState(0);
+  // v22.59: Suchfeld zum Filtern der aufgelösten Personenliste.
+  const [visListSearch, setVisListSearch] = React.useState('');
 
   // Personen-ausschließen-Modal. Wenn keine externe Persistenz übergeben wird,
   // hält die Komponente die Ausschluss-Liste intern (UI bleibt identisch).
@@ -286,6 +288,7 @@ export default function AudiencePicker({
 
   // v22.58: kompletter Sichtbarkeits-Check für eine Section (Liste + Cache).
   const runVisibilityCheck = (loc: string, aud: string, mode: 'AND' | 'OR'): void => {
+    setVisListSearch('');
     void loadVisibleAudience(loc, aud, mode);
     void buildAudienceCache(aud);
   };
@@ -1191,42 +1194,81 @@ export default function AudiencePicker({
                   {isDe ? 'Personen werden aufgelöst (Standorte + Verteiler)…' : 'Resolving people (locations + distribution lists)…'}
                 </div>
               ) : (
-                <>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
-                    <strong style={{ fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>
-                      {isDe ? `${visAllPeople.length} Personen sehen das Event` : `${visAllPeople.length} people can see the event`}
-                    </strong>
-                  </div>
-                  {visNote && (
-                    <div style={{ marginBottom: 8, padding: '7px 10px', borderRadius: 6, background: 'rgba(237,139,0,0.10)', border: '1px solid var(--dex-orange, #ed8b00)', fontSize: '0.76rem', color: 'var(--dex-orange, #ed8b00)', lineHeight: 1.45 }}>
-                      {isDe ? 'Hinweis: ' : 'Note: '}{visNote}
-                    </div>
-                  )}
-                  {visAllPeople.length > 0 && (
-                    <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 8 }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                        <thead>
-                          <tr style={{ borderBottom: '1px solid var(--dex-gray-200)' }}>
-                            <th style={{ textAlign: 'left', padding: '6px 10px', position: 'sticky', top: 0, background: '#fff' }}>{isDe ? 'Vorname' : 'First name'}</th>
-                            <th style={{ textAlign: 'left', padding: '6px 10px', position: 'sticky', top: 0, background: '#fff' }}>{isDe ? 'Nachname' : 'Last name'}</th>
-                            <th style={{ textAlign: 'left', padding: '6px 10px', position: 'sticky', top: 0, background: '#fff' }}>{isDe ? 'E-Mail' : 'Email'}</th>
-                            <th style={{ textAlign: 'left', padding: '6px 10px', position: 'sticky', top: 0, background: '#fff' }}>{isDe ? 'Position' : 'Position'}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {visAllPeople.map(p => (
-                            <tr key={p.email} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                              <td style={{ padding: '6px 10px', color: 'var(--dex-gray-800)' }}>{p.firstName || '–'}</td>
-                              <td style={{ padding: '6px 10px', color: 'var(--dex-gray-800)' }}>{p.lastName || '–'}</td>
-                              <td style={{ padding: '6px 10px', color: 'var(--dex-gray-600)' }}>{p.email}</td>
-                              <td style={{ padding: '6px 10px', color: 'var(--dex-gray-500)' }}>{p.jobTitle || '–'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                </>
+                (() => {
+                  const q = visListSearch.trim().toLowerCase();
+                  const filtered = q
+                    ? visAllPeople.filter(p => `${p.firstName} ${p.lastName} ${p.email} ${p.jobTitle}`.toLowerCase().indexOf(q) >= 0)
+                    : visAllPeople;
+                  return (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                        <strong style={{ fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>
+                          {q
+                            ? (isDe ? `${filtered.length} von ${visAllPeople.length} Personen` : `${filtered.length} of ${visAllPeople.length} people`)
+                            : (isDe ? `${visAllPeople.length} Personen sehen das Event` : `${visAllPeople.length} people can see the event`)}
+                        </strong>
+                      </div>
+                      {visNote && (
+                        <div style={{ marginBottom: 8, padding: '7px 10px', borderRadius: 6, background: 'rgba(237,139,0,0.10)', border: '1px solid var(--dex-orange, #ed8b00)', fontSize: '0.76rem', color: 'var(--dex-orange, #ed8b00)', lineHeight: 1.45 }}>
+                          {isDe ? 'Hinweis: ' : 'Note: '}{visNote}
+                        </div>
+                      )}
+                      {visAllPeople.length > 0 && (
+                        <>
+                          {/* v22.59: Suchfeld zum Filtern der Liste (wie im Check-in-Modal). */}
+                          <div style={{ position: 'relative', marginBottom: 8 }}>
+                            <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--dex-gray-400)', display: 'inline-flex', pointerEvents: 'none' }}>
+                              <Search size={14} />
+                            </span>
+                            <input
+                              className="form-input"
+                              value={visListSearch}
+                              onChange={e => setVisListSearch(e.target.value)}
+                              placeholder={isDe ? 'In der Liste suchen (Name, E-Mail, Position)…' : 'Search the list (name, email, position)…'}
+                              style={{ paddingLeft: 32, fontSize: '0.82rem' }}
+                            />
+                          </div>
+                          <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 8 }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                              <thead>
+                                <tr style={{ borderBottom: '1px solid var(--dex-gray-200)' }}>
+                                  <th style={{ width: 40, padding: '6px 8px', position: 'sticky', top: 0, background: '#fff' }} aria-label={isDe ? 'Foto' : 'Photo'} />
+                                  <th style={{ textAlign: 'left', padding: '6px 10px', position: 'sticky', top: 0, background: '#fff' }}>{isDe ? 'Vorname' : 'First name'}</th>
+                                  <th style={{ textAlign: 'left', padding: '6px 10px', position: 'sticky', top: 0, background: '#fff' }}>{isDe ? 'Nachname' : 'Last name'}</th>
+                                  <th style={{ textAlign: 'left', padding: '6px 10px', position: 'sticky', top: 0, background: '#fff' }}>{isDe ? 'E-Mail' : 'Email'}</th>
+                                  <th style={{ textAlign: 'left', padding: '6px 10px', position: 'sticky', top: 0, background: '#fff' }}>{isDe ? 'Position' : 'Position'}</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {filtered.map(p => (
+                                  <tr key={p.email} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
+                                    <td style={{ padding: '4px 8px' }}>
+                                      <img
+                                        src={`/_layouts/15/userphoto.aspx?size=L&accountname=${encodeURIComponent(p.email)}`}
+                                        alt=""
+                                        style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100, #eee)', display: 'block' }}
+                                        onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                                      />
+                                    </td>
+                                    <td style={{ padding: '6px 10px', color: 'var(--dex-gray-800)' }}>{p.firstName || '–'}</td>
+                                    <td style={{ padding: '6px 10px', color: 'var(--dex-gray-800)' }}>{p.lastName || '–'}</td>
+                                    <td style={{ padding: '6px 10px', color: 'var(--dex-gray-600)' }}>{p.email}</td>
+                                    <td style={{ padding: '6px 10px', color: 'var(--dex-gray-500)' }}>{p.jobTitle || '–'}</td>
+                                  </tr>
+                                ))}
+                                {filtered.length === 0 && (
+                                  <tr><td colSpan={5} style={{ padding: '10px 12px', fontSize: '0.8rem', color: 'var(--dex-gray-400)' }}>
+                                    {isDe ? 'Kein Treffer in der Liste.' : 'No match in the list.'}
+                                  </td></tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </>
+                      )}
+                    </>
+                  );
+                })()
               )}
             </div>
 

@@ -891,6 +891,9 @@ export default function AdminPage(): React.ReactElement {
   // Sub-Event.
   const [subEventRegsByEventId, setSubEventRegsByEventId] = React.useState<Record<string, SPRegistration[]>>({});
   const [isLoadingSubEventRegs, setIsLoadingSubEventRegs] = React.useState(false);
+  // v22.59: manueller Reload-Trigger für die Sub-Event-Regs (z.B. nach dem
+  // Löschen einer konsolidierten Abmeldung).
+  const [subRegReloadTick, setSubRegReloadTick] = React.useState(0);
   const [expandedConsolidatedEmail, setExpandedConsolidatedEmail] = React.useState<string | null>(null);
   // v14.11: eigene Sort-States für den Matrix-View. `consolidatedSort` kann
   // 'id' | 'vorname' | 'nachname' | 'email' | 'jobTitle' | 'location' |
@@ -969,7 +972,7 @@ export default function AdminPage(): React.ReactElement {
     })().catch(() => { if (!cancelled) setIsLoadingSubEventRegs(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEvent?.id, selectedEvent?.subEventsOnlyMode]);
+  }, [selectedEvent?.id, selectedEvent?.subEventsOnlyMode, subRegReloadTick]);
   // v15.14: Wenn ein Sub-Event direkt selektiert wurde, laden wir die
   // Registrierungen des Parent-Events mit, damit die Pastel-A-Spalten
   // (Custom-Fields des Hauptevents) pro Teilnehmer-Zeile mit den
@@ -4118,7 +4121,6 @@ export default function AdminPage(): React.ReactElement {
     // RegistrationDate. Damit ist die UI-Reihenfolge konsistent mit
     // der Nachrück-Logik in promoteFirstWaitlistItem (siehe EventService).
     .sort((a, b) => (a.TeilnehmerID || 0) - (b.TeilnehmerID || 0));
-  const cancelledRegs = registrations.filter(r => r.Status === 'Abgemeldet').filter(matchesSearch);
   // v14.11: konsolidierte Matrix-Zeilen für den „Nur Sub-Events"-Modus
   // (subEventsOnlyMode). Aggregation per ParticipantEmail (lowercase).
   // Standard-Felder werden aus der ersten gefundenen Sub-Event-
@@ -4130,6 +4132,19 @@ export default function AdminPage(): React.ReactElement {
   const consolidatedChildren: DeloitteEvent[] = isConsolidatedMode
     ? childEventsOf(selectedEvent!.id)
     : [];
+  // v22.59: Abmeldungen-Liste im Klammer-Modus über ALLE Sub-Events
+  // konsolidieren (vorher nur die Klammer-Subsite → KPI „Abgemeldet" und Liste
+  // klafften auseinander). Jede Zeile trägt ihre Subsite + Section-Titel mit,
+  // damit das Löschen die richtige Liste trifft.
+  const cancelledRegs: Array<SPRegistration & { _subsiteUrl?: string; _sectionTitle?: string }> = isConsolidatedMode
+    ? consolidatedChildren.reduce<Array<SPRegistration & { _subsiteUrl?: string; _sectionTitle?: string }>>((acc, ch) => {
+        for (const r of (subEventRegsByEventId[ch.id] || [])) {
+          if (r.Status !== 'Abgemeldet') continue;
+          acc.push({ ...r, _subsiteUrl: ch.subsiteUrl, _sectionTitle: shortSubEventTitle(ch.title, selectedEvent!.title) });
+        }
+        return acc;
+      }, []).filter(matchesSearch)
+    : registrations.filter(r => r.Status === 'Abgemeldet').filter(matchesSearch);
   // v14.11: wenn ein Sub-Event direkt selektiert ist, das Parent-Event
   // ermitteln — der Sub-Event-Detail-View blendet dessen Custom-Fields
   // (Pastel A) zusätzlich neben den eigenen (Pastel B) ein.
@@ -5236,6 +5251,43 @@ export default function AdminPage(): React.ReactElement {
                 ? 'Ohne Bild wirkt die Event-Karte in der Übersicht und der Mail-Kopf deutlich weniger einladend. Über „Event bearbeiten" → Schritt 1 (Grundlagen) hochladen.'
                 : 'Without an image the event card in the list and the email header look much less inviting. Upload one via “Edit event” → step 1 (Basics).',
             });
+          }
+          // 3b) v22.59: Klammer-Sichtbarkeit gilt fürs ganze Event. Wenn die
+          // Sichtbarkeit nur auf der Klammer gesetzt ist, steuert sie, wer das
+          // GESAMTE Event inkl. aller Sub-Events sieht (Sub-Events erben sie).
+          {
+            const kids = childEventsOf(selectedEvent.id);
+            const parentHasVisibility = (selectedEvent.locationAudience || []).length > 0 || (selectedEvent.audienceFilter || []).length > 0;
+            if (kids.length > 0 && parentHasVisibility) {
+              hints.push({
+                id: 'klammer-visibility',
+                title: isDe ? 'Sichtbarkeit steuert das gesamte Event' : 'Visibility controls the whole event',
+                body: isDe
+                  ? <>Die Sichtbarkeit ist auf {selectedEvent.subEventsOnlyMode ? 'der Klammer' : 'dem Hauptevent'} gesetzt — sie legt fest, <strong>wer das gesamte Event inklusive aller Sub-Events sehen kann</strong>. Sub-Events ohne eigene Sichtbarkeit erben diese Einstellung. <strong>Wer hier nicht enthalten ist, sieht auch die Sub-Events nicht.</strong> Achte also darauf, dass die Sichtbarkeit alle einschließt, die irgendein Sub-Event sehen sollen. Wer aktuell dazugehört, siehst du über „Event bearbeiten“ → Schritt 4 → „Sichtbarkeit prüfen“ (dort mit Tabs je Sub-Event).</>
+                  : <>The visibility is set on {selectedEvent.subEventsOnlyMode ? 'the bracket' : 'the main event'} — it determines <strong>who can see the whole event including all sub-events</strong>. Sub-events without their own visibility inherit this setting. <strong>Anyone not included here won’t see the sub-events either.</strong> So make sure the visibility includes everyone who should see any sub-event. You can see who currently belongs via “Edit event” → step 4 → “Check visibility” (with tabs per sub-event).</>,
+              });
+            }
+          }
+          // 3c) v22.59: Sehr kleine Zielgruppe — nur wenige Einzeladressen, kein
+          // Standortfilter und kein „alle Mitarbeiter". Oft hat der Organizer
+          // dann nur sich/die Organizer eingetragen und den eigentlichen Kreis
+          // vergessen.
+          {
+            const aud = selectedEvent.audienceFilter || [];
+            const loc = selectedEvent.locationAudience || [];
+            const hasAllPattern = aud.some(a => { const f = (a || '').toLowerCase(); return f === 'all' || f === 'deall'; });
+            const resolved = (selectedEvent.audienceResolvedEmails || []).map(s => (s || '').trim()).filter(Boolean);
+            const atCount = aud.filter(a => a.indexOf('@') >= 0).length;
+            const effCount = resolved.length > 0 ? resolved.length : atCount;
+            if (aud.length > 0 && loc.length === 0 && !hasAllPattern && effCount > 0 && effCount < 10) {
+              hints.push({
+                id: 'tiny-audience',
+                title: isDe ? 'Sehr kleine Zielgruppe — Absicht?' : 'Very small audience — intended?',
+                body: isDe
+                  ? <>Die Sichtbarkeit umfasst aktuell nur <strong>{effCount} {effCount === 1 ? 'Person' : 'Personen'}</strong> (einzelne Adressen — kein Standortfilter, kein Mailverteiler, nicht „alle Mitarbeiter“). Falls du eigentlich einen größeren Kreis erreichen willst, ergänze einen Standort oder Verteiler über „Event bearbeiten“ → Schritt 4. Ist das Event bewusst nur für diese wenigen Personen, kannst du den Hinweis ausblenden.</>
+                  : <>The visibility currently covers only <strong>{effCount} {effCount === 1 ? 'person' : 'people'}</strong> (individual addresses — no location filter, no mailing list, not “all employees”). If you actually want to reach a larger group, add a location or distribution list via “Edit event” → step 4. If the event is intentionally for these few people only, you can dismiss this hint.</>,
+              });
+            }
           }
           // 4) v22.34: End-Datum fehlt (Hauptevent oder Sub-Event) — ohne Ende
           // kann der Outlook-Termin nicht angelegt werden (der Kalendereintrag
@@ -8831,13 +8883,17 @@ export default function AdminPage(): React.ReactElement {
           // DELETE nach Sicherheits-Confirm; Audit-Eintrag im ChangeLog.
           const canDelete = !!selectedEvent && (isAdmin || isOrganizerFor(selectedEvent)) && !!selectedEvent.subsiteUrl;
           const deleteCancelled = async (reg: SPRegistration): Promise<void> => {
-            if (!selectedEvent || !selectedEvent.subsiteUrl) return;
+            if (!selectedEvent) return;
+            // v22.59: im Klammer-Modus die Subsite der jeweiligen Sub-Section
+            // nutzen (die Zeile trägt sie mit), sonst die Klammer-Subsite.
+            const targetSubsite = (reg as SPRegistration & { _subsiteUrl?: string })._subsiteUrl || selectedEvent.subsiteUrl;
+            if (!targetSubsite) return;
             const nm = `${reg.Vorname || ''} ${reg.Nachname || ''}`.trim() || reg.ParticipantName || reg.ParticipantEmail;
             const msg = isDe
               ? `Diese abgemeldete Registrierung von „${nm}" ENDGÜLTIG löschen?\n\nDie Zeile wird komplett aus der Teilnehmerliste entfernt und kann NICHT wiederhergestellt werden. (Nützlich z.B. zum Aufräumen von Test-Anmeldungen.)`
               : `Permanently DELETE this cancelled registration of „${nm}"?\n\nThe row is removed entirely from the participant list and CANNOT be restored. (Useful e.g. for cleaning up test registrations.)`;
             if (!(await confirmDialog(msg, { danger: true, title: isDe ? 'Registrierung löschen' : 'Delete registration', confirmLabel: isDe ? 'Endgültig löschen' : 'Delete permanently' }))) return;
-            const ok = await eventServiceRef.deleteRegistration(selectedEvent.subsiteUrl, reg.Id);
+            const ok = await eventServiceRef.deleteRegistration(targetSubsite, reg.Id);
             if (ok) {
               try {
                 await eventServiceRef.writeChangeLog({
@@ -8851,8 +8907,15 @@ export default function AdminPage(): React.ReactElement {
                   details: { deletedStatus: reg.Status, cancellationDate: reg.CancellationDate || '' },
                 });
               } catch { /* Audit best-effort */ }
-              const regs = await getAllRegistrations(selectedEvent.id);
-              setRegistrations(regs);
+              // v22.59: im Klammer-Modus die Sub-Event-Listen neu laden
+              // (die gelöschte Zeile lag in einer Sub-Section), sonst die
+              // Klammer-/Event-Registrierungen.
+              if (isConsolidatedMode) {
+                setSubRegReloadTick(t => t + 1);
+              } else {
+                const regs = await getAllRegistrations(selectedEvent.id);
+                setRegistrations(regs);
+              }
             } else {
               // eslint-disable-next-line no-alert
               showAlert(isDe ? 'Löschen fehlgeschlagen.' : 'Delete failed.');
@@ -8878,6 +8941,9 @@ export default function AdminPage(): React.ReactElement {
                       <th style={thClickable} onClick={() => toggleSort('jobtitle')}>Job Title{arrow('jobtitle')}</th>
                       <th style={thClickable} onClick={() => toggleSort('location')}>Standort{arrow('location')}</th>
                       <th style={thClickable} onClick={() => toggleSort('type')}>{isDe ? 'Art' : 'Type'}{arrow('type')}</th>
+                      {isConsolidatedMode && (
+                        <th style={{ ...thClickable, cursor: 'default' }}>{isDe ? 'Sub-Event' : 'Sub-event'}</th>
+                      )}
                       <th style={thClickable} onClick={() => toggleSort('date')}>{isDe ? 'Abgemeldet am' : 'Cancelled on'}{arrow('date')}</th>
                       {/* v19.4: „Wurde ersetzt durch" — die nachgerückte Person, die
                           den frei gewordenen Platz übernommen hat (vom Flow gesetzt).
@@ -8908,6 +8974,9 @@ export default function AdminPage(): React.ReactElement {
                               ? <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(0,118,168,0.10)', color: 'var(--dex-blue, #0076a8)' }}>{isDe ? 'Absage (nicht angemeldet)' : 'Decline (never registered)'}</span>
                               : <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(218,41,28,0.08)', color: 'var(--dex-red, #da291c)' }}>{isDe ? 'Abgemeldet' : 'Cancelled'}</span>}
                           </td>
+                          {isConsolidatedMode && (
+                            <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{(reg as SPRegistration & { _sectionTitle?: string })._sectionTitle || '-'}</td>
+                          )}
                           <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.CancellationDate)}</td>
                           {hasWaitlistActivity && (
                             <td style={{ padding: 8, color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.8rem' }}>
