@@ -114,6 +114,13 @@ export default function AudiencePicker({
   const [emailSearchResults, setEmailSearchResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
   const [emailSearchIncludeIntl, setEmailSearchIncludeIntl] = React.useState(false);
   const [isSearchingEmails, setIsSearchingEmails] = React.useState(false);
+  // v22.56: Sichtbarkeit-prüfen zeigt jetzt die KOMPLETTE Liste aller Personen,
+  // die das Event sehen (Standorte + Verteiler aufgelöst). Bei unbegrenzter
+  // Sichtbarkeit (keine/komplette Einschränkung) wird NICHT aufgelistet (zu viele).
+  const [visAllPeople, setVisAllPeople] = React.useState<ResolvedUser[]>([]);
+  const [visAllLoading, setVisAllLoading] = React.useState(false);
+  const [visUnrestricted, setVisUnrestricted] = React.useState(false);
+  const [visNote, setVisNote] = React.useState('');
 
   // Personen-ausschließen-Modal. Wenn keine externe Persistenz übergeben wird,
   // hält die Komponente die Ausschluss-Liste intern (UI bleibt identisch).
@@ -161,6 +168,89 @@ export default function AudiencePicker({
     }
     setMemberModalGroupName(res.groupName || groupEmail);
     setMemberModalMembers(res.members);
+  };
+
+  // v22.56: Komplette sichtbare Zielgruppe auflösen (Standorte + Verteiler),
+  // nach UND/ODER kombiniert, Ausgeschlossene entfernt. Bei unbegrenzter
+  // Sichtbarkeit (keine Einschränkung oder „alle Mitarbeiter") wird die Liste
+  // bewusst NICHT erzeugt (zu viele Personen).
+  const loadVisibleAudience = async (): Promise<void> => {
+    const locItems = (locationFilter || '').split(',').map(s => s.trim()).filter(Boolean);
+    const audItems = (audience || '').split(',').map(s => s.trim()).filter(Boolean);
+    const hasLoc = locItems.length > 0 && locItems.map(s => s.toLowerCase()).indexOf('all') < 0;
+    const hasAud = audItems.length > 0;
+    const audEveryone = audItems.some(a => { const f = a.toLowerCase(); return f === 'all' || f === 'deall'; });
+    // Keine (einschränkende) Sichtbarkeit ODER Audience = alle Mitarbeiter ohne
+    // UND-Verengung über einen Standort → zu viele, nicht auflisten.
+    if ((!hasLoc && !hasAud) || (audEveryone && !(hasLoc && filterMode === 'AND'))) {
+      setVisUnrestricted(true); setVisAllPeople([]); setVisNote(''); setVisAllLoading(false);
+      return;
+    }
+    setVisUnrestricted(false);
+    setVisAllLoading(true);
+    setVisNote('');
+    const notes: string[] = [];
+    const HARD_CAP = 3000;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const toRU = (u: any, source: string): ResolvedUser => ({
+      email: u.email, displayName: u.displayName || u.email, firstName: u.firstName || '',
+      lastName: u.lastName || '', jobTitle: u.jobTitle || '', location: u.location || '', source,
+    });
+    // Standort-Set
+    const locMap = new Map<string, ResolvedUser>();
+    for (const loc of locItems) {
+      if (loc.toLowerCase() === 'all') continue;
+      const users = await searchUsersByLocation(loc).catch(() => []);
+      for (const u of users) { const k = (u.email || '').toLowerCase(); if (k && !locMap.has(k)) locMap.set(k, toRU(u, loc)); }
+    }
+    // Audience-Set
+    const audMap = new Map<string, ResolvedUser>();
+    for (const item of audItems) {
+      const f = item.toLowerCase();
+      if (f === 'all' || f === 'deall') {
+        notes.push(isDe ? `„${item}“ = alle Mitarbeiter (nicht einzeln aufgelistet)` : `“${item}” = all employees (not listed individually)`);
+        continue;
+      }
+      if (item.indexOf('@') >= 0) {
+        const grp = await getGroupMembers(item).catch(() => null);
+        if (grp && grp.members && grp.members.length > 0) {
+          for (const m of grp.members) { const k = (m.email || '').toLowerCase(); if (k && !audMap.has(k)) audMap.set(k, toRU(m, item)); }
+        } else {
+          // Konnte nicht als Verteiler aufgelöst werden → als direkte Adresse behandeln + warnen.
+          if (!audMap.has(f)) audMap.set(f, { email: item, displayName: item, firstName: '', lastName: '', jobTitle: '', location: '', source: item });
+          notes.push(isDe ? `„${item}“ konnte nicht als Verteiler aufgelöst werden — als einzelne Adresse behandelt` : `“${item}” could not be resolved as a distribution list — treated as a single address`);
+        }
+      } else if (f.startsWith('de')) {
+        const users = await searchUsersByLocation(item).catch(() => []);
+        if (users.length > 0) { for (const u of users) { const k = (u.email || '').toLowerCase(); if (k && !audMap.has(k)) audMap.set(k, toRU(u, item)); } }
+        else notes.push(isDe ? `„${item}“ (Standort-Gruppe) konnte nicht aufgelöst werden` : `“${item}” (location group) could not be resolved`);
+      } else {
+        notes.push(isDe ? `„${item}“ wird zur Laufzeit ausgewertet (nicht aufzählbar)` : `“${item}” is evaluated at runtime (not enumerable)`);
+      }
+    }
+    // Kombinieren nach UND/ODER
+    let combined: Map<string, ResolvedUser>;
+    if (hasLoc && hasAud) {
+      if (filterMode === 'AND') {
+        const inter = new Map<string, ResolvedUser>();
+        locMap.forEach((v, k) => { if (audMap.has(k)) inter.set(k, v); });
+        combined = inter;
+      } else {
+        const uni = new Map<string, ResolvedUser>(locMap);
+        audMap.forEach((v, k) => { if (!uni.has(k)) uni.set(k, v); });
+        combined = uni;
+      }
+    } else if (hasLoc) { combined = locMap; } else { combined = audMap; }
+    // Ausgeschlossene Personen entfernen
+    for (const e of (excludedUsers || [])) combined.delete((e || '').toLowerCase());
+    let list = Array.from(combined.values()).sort((a, b) => (a.displayName || a.email).localeCompare(b.displayName || b.email));
+    if (list.length > HARD_CAP) {
+      notes.push(isDe ? `nur die ersten ${HARD_CAP} angezeigt` : `only the first ${HARD_CAP} shown`);
+      list = list.slice(0, HARD_CAP);
+    }
+    setVisAllPeople(list);
+    setVisNote(notes.join(' · '));
+    setVisAllLoading(false);
   };
 
   return (
@@ -396,6 +486,9 @@ export default function AudiencePicker({
             style={{ fontSize: '0.8rem', padding: '6px 14px', whiteSpace: 'nowrap' }}
             onClick={async () => {
               setShowEmailModal(true);
+              // v22.56: Komplette sichtbare Zielgruppe laden (parallel zum
+              // Member-Cache für die Einzel-Personen-Prüfung).
+              void loadVisibleAudience();
               // v8.9: Verteiler einmal auflösen und cachen, damit
               // jeder Such-Treffer in O(1) gegen die Mailgruppen-
               // Mitgliedschaft geprüft werden kann.
@@ -1006,8 +1099,8 @@ export default function AudiencePicker({
 
             <p style={{ margin: '0 0 12px', fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
               {isDe
-                ? 'Hier kannst du prüfen, ob eine bestimmte Person das Event sehen würde. Tippe einfach den Namen oder die E-Mail einer Testperson ein — die Suche startet automatisch. Die Tabelle darunter zeigt mit Foto, ob die Person das Event in ihrer Übersicht sieht und warum (Standort oder Mitgliedschaft in einem Verteiler).'
-                : 'Check here whether a specific person would see the event. Just type a test person\'s name or email — the search starts automatically. The table below shows, with a photo, whether the person can see the event and why (location or membership in a distribution list).'}
+                ? 'Hier siehst du alle Personen, die das Event aktuell sehen können — die Standorte und Verteiler werden dafür live in einzelne Personen aufgelöst. Darunter kannst du zusätzlich eine einzelne Testperson suchen.'
+                : 'Here you can see everyone who can currently see the event — locations and distribution lists are resolved live into individual people. Below you can additionally search for a single test person.'}
             </p>
 
             <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--dex-gray-100)', borderRadius: 'var(--dex-radius)', fontSize: '0.85rem' }}>
@@ -1035,8 +1128,56 @@ export default function AudiencePicker({
               )}
             </div>
 
+            {/* v22.56: Komplette Liste aller Personen, die das Event sehen. */}
+            <div style={{ marginBottom: 16 }}>
+              {visUnrestricted ? (
+                <div style={{ padding: '10px 14px', borderRadius: 8, background: 'rgba(134,188,37,0.10)', border: '1px solid var(--dex-green, #86bc25)', fontSize: '0.82rem', color: 'var(--dex-green-dark, #4a7c1f)', lineHeight: 1.5 }}>
+                  {isDe
+                    ? 'Sichtbar für alle Mitarbeiter — es ist keine einschränkende Sichtbarkeit gesetzt (oder „alle Mitarbeiter"). Die Personenliste wäre zu lang, um sie hier aufzulisten.'
+                    : 'Visible to all employees — no restricting visibility is set (or “all employees”). The list of people would be too long to show here.'}
+                </div>
+              ) : visAllLoading ? (
+                <div style={{ padding: '10px 14px', fontSize: '0.82rem', color: 'var(--dex-gray-500)' }}>
+                  {isDe ? 'Personen werden aufgelöst (Standorte + Verteiler)…' : 'Resolving people (locations + distribution lists)…'}
+                </div>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                    <strong style={{ fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>
+                      {isDe ? `${visAllPeople.length} Personen sehen das Event` : `${visAllPeople.length} people can see the event`}
+                    </strong>
+                  </div>
+                  {visNote && (
+                    <div style={{ marginBottom: 8, padding: '7px 10px', borderRadius: 6, background: 'rgba(237,139,0,0.10)', border: '1px solid var(--dex-orange, #ed8b00)', fontSize: '0.76rem', color: 'var(--dex-orange, #ed8b00)', lineHeight: 1.45 }}>
+                      {isDe ? 'Hinweis: ' : 'Note: '}{visNote}
+                    </div>
+                  )}
+                  {visAllPeople.length > 0 && (
+                    <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 8 }}>
+                      {visAllPeople.map(p => (
+                        <div key={p.email} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', borderBottom: '1px solid var(--dex-gray-100)' }}>
+                          <img
+                            src={`/_layouts/15/userphoto.aspx?size=L&accountname=${encodeURIComponent(p.email)}`}
+                            alt=""
+                            style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100, #eee)', flexShrink: 0 }}
+                            onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                          />
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-800)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.displayName}</div>
+                            <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {p.email}{p.location ? ` · ${p.location}` : ''}{p.source ? ` · ${isDe ? 'aus' : 'via'} ${p.source}` : ''}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
             <div className="form-group">
-              <label className="form-label">{isDe ? 'Testperson suchen (Name oder E-Mail)' : 'Search test person (name or email)'}</label>
+              <label className="form-label">{isDe ? 'Einzelne Testperson prüfen (Name oder E-Mail)' : 'Check a single test person (name or email)'}</label>
               {/* v22.7: Live-People-Picker — tippen genügt (Vorname Nachname,
                   Nachname Vorname oder E-Mail), die Suche läuft automatisch. */}
               <div style={{ position: 'relative' }}>
