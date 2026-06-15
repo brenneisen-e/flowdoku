@@ -121,6 +121,11 @@ export default function AudiencePicker({
   const [visAllLoading, setVisAllLoading] = React.useState(false);
   const [visUnrestricted, setVisUnrestricted] = React.useState(false);
   const [visNote, setVisNote] = React.useState('');
+  // v22.57: Inline-aufklappbare Mitglieder-Übersicht direkt unter den
+  // Verteilern (Vorname/Nachname/E-Mail/Position, alphabetisch).
+  const [memberOverviewOpen, setMemberOverviewOpen] = React.useState(false);
+  const [memberOverviewLoading, setMemberOverviewLoading] = React.useState(false);
+  const [memberOverviewRows, setMemberOverviewRows] = React.useState<Array<{ firstName: string; lastName: string; email: string; jobTitle: string }>>([]);
 
   // Personen-ausschließen-Modal. Wenn keine externe Persistenz übergeben wird,
   // hält die Komponente die Ausschluss-Liste intern (UI bleibt identisch).
@@ -253,6 +258,37 @@ export default function AudiencePicker({
     setVisAllLoading(false);
   };
 
+  // v22.57: Mitglieder aller hinterlegten Verteiler/E-Mails auflösen — für die
+  // inline aufklappbare Übersicht (Vorname/Nachname/E-Mail/Position),
+  // alphabetisch nach Nachname sortiert.
+  const loadMemberOverview = async (): Promise<void> => {
+    setMemberOverviewLoading(true);
+    const byEmail = new Map<string, { firstName: string; lastName: string; email: string; jobTitle: string }>();
+    const audItems = (audience || '').split(',').map(s => s.trim()).filter(Boolean);
+    for (const item of audItems) {
+      if (item.indexOf('@') < 0) continue; // nur Verteiler / E-Mail-Adressen
+      const grp = await getGroupMembers(item).catch(() => null);
+      if (grp && grp.members && grp.members.length > 0) {
+        for (const m of grp.members) {
+          const k = (m.email || '').toLowerCase();
+          if (!k || byEmail.has(k)) continue;
+          byEmail.set(k, { firstName: m.firstName || '', lastName: m.lastName || '', email: m.email, jobTitle: m.jobTitle || '' });
+        }
+      } else {
+        const k = item.toLowerCase();
+        if (!byEmail.has(k)) byEmail.set(k, { firstName: '', lastName: '', email: item, jobTitle: '' });
+      }
+    }
+    const rows = Array.from(byEmail.values()).sort((a, b) => {
+      const la = (a.lastName || a.email).toLowerCase();
+      const lb = (b.lastName || b.email).toLowerCase();
+      if (la !== lb) return la.localeCompare(lb);
+      return (a.firstName || '').toLowerCase().localeCompare((b.firstName || '').toLowerCase());
+    });
+    setMemberOverviewRows(rows);
+    setMemberOverviewLoading(false);
+  };
+
   return (
     <>
       <div className="form-group" style={{ position: 'relative', padding: '16px 20px', marginBottom: 12, background: cardBgPrimary, borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
@@ -366,6 +402,66 @@ export default function AudiencePicker({
             </div>
           );
         })()}
+        {/* v22.57: Aufklappbare Mitglieder-Übersicht aller hinterlegten
+            Verteiler — Vorname/Nachname/E-Mail/Position, alphabetisch. */}
+        {audience.split(',').some(s => s.indexOf('@') >= 0) && (
+          <div style={{ marginBottom: 10 }}>
+            <button
+              type="button"
+              onClick={() => { const next = !memberOverviewOpen; setMemberOverviewOpen(next); if (next) void loadMemberOverview(); }}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none',
+                border: 'none', cursor: 'pointer', padding: '2px 0', fontFamily: 'inherit',
+                fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-green-dark, #4a7c1f)',
+              }}
+            >
+              <span style={{ fontSize: '0.7rem' }}>{memberOverviewOpen ? '▾' : '▸'}</span>
+              {isDe ? 'Wer gehört zu diesen Verteilern? (aufklappen)' : 'Who belongs to these lists? (expand)'}
+            </button>
+            {memberOverviewOpen && (
+              <div style={{ marginTop: 6, border: '1px solid var(--dex-gray-200)', borderRadius: 8, overflow: 'hidden' }}>
+                {memberOverviewLoading ? (
+                  <div style={{ padding: '10px 12px', fontSize: '0.82rem', color: 'var(--dex-gray-500)' }}>
+                    {isDe ? 'Verteiler werden aufgelöst…' : 'Resolving distribution lists…'}
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ padding: '7px 12px', fontSize: '0.8rem', fontWeight: 600, color: 'var(--dex-gray-700)', background: 'var(--dex-gray-50, #fafafa)', borderBottom: '1px solid var(--dex-gray-200)' }}>
+                      {isDe ? `${memberOverviewRows.length} Personen` : `${memberOverviewRows.length} people`}
+                    </div>
+                    <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '1px solid var(--dex-gray-200)' }}>
+                            <th style={{ textAlign: 'left', padding: '6px 10px', position: 'sticky', top: 0, background: '#fff' }}>{isDe ? 'Vorname' : 'First name'}</th>
+                            <th style={{ textAlign: 'left', padding: '6px 10px', position: 'sticky', top: 0, background: '#fff' }}>{isDe ? 'Nachname' : 'Last name'}</th>
+                            <th style={{ textAlign: 'left', padding: '6px 10px', position: 'sticky', top: 0, background: '#fff' }}>{isDe ? 'E-Mail' : 'Email'}</th>
+                            <th style={{ textAlign: 'left', padding: '6px 10px', position: 'sticky', top: 0, background: '#fff' }}>{isDe ? 'Position' : 'Position'}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {memberOverviewRows.map(r => (
+                            <tr key={r.email} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
+                              <td style={{ padding: '6px 10px', color: 'var(--dex-gray-800)' }}>{r.firstName || '–'}</td>
+                              <td style={{ padding: '6px 10px', color: 'var(--dex-gray-800)' }}>{r.lastName || '–'}</td>
+                              <td style={{ padding: '6px 10px', color: 'var(--dex-gray-600)' }}>{r.email}</td>
+                              <td style={{ padding: '6px 10px', color: 'var(--dex-gray-500)' }}>{r.jobTitle || '–'}</td>
+                            </tr>
+                          ))}
+                          {memberOverviewRows.length === 0 && (
+                            <tr><td colSpan={4} style={{ padding: '10px 12px', fontSize: '0.8rem', color: 'var(--dex-gray-400)' }}>
+                              {isDe ? 'Keine Mitglieder gefunden (Verteiler ließ sich nicht auflösen).' : 'No members found (distribution list could not be resolved).'}
+                            </td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         {/* Such-Input */}
         <input
           className="form-input"
