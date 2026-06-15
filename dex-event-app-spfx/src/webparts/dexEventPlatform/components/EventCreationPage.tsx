@@ -1677,6 +1677,14 @@ export default function EventCreationPage(): React.ReactElement {
   const [showPreview, setShowPreview] = React.useState(false);
   const [showRegisterPreview, setShowRegisterPreview] = React.useState(false);
   const [triedNext, setTriedNext] = React.useState(false);
+  // v22.62/v22.63: Beim „Weiter"/Speichern fragt ein Modal, ob die geänderte
+  // Klammer-/Hauptevent-Sichtbarkeit auf alle Sub-Events übernommen werden soll
+  // — IMMER wenn die Klammer-Sichtbarkeit geändert/neu gesetzt wurde UND von
+  // den Sub-Events abweicht. `visSnapshotRef` hält den zuletzt „abgehandelten"
+  // Sichtbarkeits-Stand (Baseline beim Mount via Effekt unten).
+  const [visCopyModalOpen, setVisCopyModalOpen] = React.useState(false);
+  const visCopyPendingRef = React.useRef<(() => void) | null>(null);
+  const visSnapshotRef = React.useRef<string | null>(null);
   const [previewSections, setPreviewSections] = React.useState<Array<{ id: string; label: string }>>([
     { id: 'event', label: 'Event-Karte' },
     { id: 'personal', label: 'Personal Information' },
@@ -4945,6 +4953,55 @@ export default function EventCreationPage(): React.ReactElement {
 
   const canProceed = (): boolean => getStepErrors().length === 0;
 
+  // v22.62: Klammer-Sichtbarkeit auf alle Sub-Events kopieren.
+  const applyParentVisibilityToSubs = (): void => {
+    setSubEvents(prev => prev.map(se => ({ ...se, locationFilter, audience, filterMode })));
+  };
+  const visKey = (loc: string, aud: string, mode: string): string => `${(loc || '').trim()}${(aud || '').trim()}${mode || 'AND'}`;
+  // Baseline der Klammer-Sichtbarkeit beim Mount festhalten (Original-Stand des
+  // Events bzw. leer bei Neuanlage) — damit später erkannt wird, ob der
+  // Organizer die Sichtbarkeit wirklich geändert/neu gesetzt hat.
+  React.useEffect(() => {
+    if (visSnapshotRef.current === null) visSnapshotRef.current = visKey(locationFilter, audience, filterMode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // v22.63: Fragt, ob die geänderte Klammer-Sichtbarkeit auf die Sub-Events
+  // übernommen werden soll — immer wenn (a) die Klammer eine Sichtbarkeit hat,
+  // (b) sie sich seit der Baseline geändert hat UND (c) sie von mindestens
+  // einem Sub-Event abweicht. Sonst läuft `proceed` direkt.
+  const interceptVisibilityCopy = (proceed: () => void): void => {
+    const curKey = visKey(locationFilter, audience, filterMode);
+    const hasVisibility = locationFilter.trim() !== '' || audience.trim() !== '';
+    const changed = visSnapshotRef.current !== null && curKey !== visSnapshotRef.current;
+    const differsFromSubs = subEvents.some(se => visKey(se.locationFilter || '', se.audience || '', se.filterMode || 'AND') !== curKey);
+    const shouldAsk = subEvents.length > 0 && hasVisibility && changed && differsFromSubs;
+    if (!shouldAsk) {
+      visSnapshotRef.current = curKey; // Stand als „abgehandelt" merken
+      proceed();
+      return;
+    }
+    visCopyPendingRef.current = proceed;
+    setVisCopyModalOpen(true);
+  };
+  // „Weiter" mit Sichtbarkeits-Abfrage.
+  const proceedNext = (): void => {
+    setTriedNext(true);
+    if (!canProceed()) return;
+    setTriedNext(false);
+    interceptVisibilityCopy(() => setCurrentStep(s => s + 1));
+  };
+  const attemptSubmitGuarded = (): void => { interceptVisibilityCopy(attemptSubmit); };
+  const closeVisCopy = (apply: boolean): void => {
+    // Stand als abgehandelt merken — erst eine erneute Klammer-Änderung fragt
+    // wieder. Bei „Übernehmen" matchen die Sub-Events danach ohnehin.
+    visSnapshotRef.current = visKey(locationFilter, audience, filterMode);
+    setVisCopyModalOpen(false);
+    if (apply) applyParentVisibilityToSubs();
+    const cont = visCopyPendingRef.current;
+    visCopyPendingRef.current = null;
+    if (cont) cont();
+  };
+
   const fieldHasError = (fieldName: string): boolean => triedNext && getStepErrors().indexOf(fieldName) >= 0;
 
   const errorBorderStyle = (fieldName: string): React.CSSProperties =>
@@ -8133,6 +8190,10 @@ export default function EventCreationPage(): React.ReactElement {
                 onExcludedUsersChange={setExcludedUsers}
                 stepBadge={<StepBadge n={14} />}
                 cardBgPrimary={zebraS3Bg()}
+                visibilityTabs={subEvents.length > 0 ? [
+                  { id: 'main', title: subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Hauptevent' : 'Main event'), locationFilter, audience, filterMode },
+                  ...subEvents.map(s => ({ id: s.id, title: (shortSubEventTitle(s.title, title) || (isDe ? 'Sub-Event' : 'Sub-event')).trim(), locationFilter: s.locationFilter || '', audience: s.audience || '', filterMode: (s.filterMode || 'AND') as 'AND' | 'OR' })),
+                ] : undefined}
                 middleSlot={(locationFilter && audience) ? (
                   /* Filterverknüpfung: nur sichtbar wenn beide Bereiche
                      (Standortfilter + Mailverteiler) Werte haben — sonst gibt
@@ -12076,7 +12137,7 @@ export default function EventCreationPage(): React.ReactElement {
                   <button
                     className="btn btn-outline"
                     disabled={!title}
-                    onClick={attemptSubmit}
+                    onClick={attemptSubmitGuarded}
                     style={{ opacity: !title ? 0.5 : 1 }}
                   >
                     <Send size={16} /> {isDe ? 'Speichern & zurück zum Event' : 'Save & return to event'}
@@ -12086,13 +12147,7 @@ export default function EventCreationPage(): React.ReactElement {
                 {currentStep < steps.length - 1 ? (
                   <button
                     className="btn btn-primary"
-                    onClick={() => {
-                      setTriedNext(true);
-                      if (canProceed()) {
-                        setTriedNext(false);
-                        setCurrentStep(currentStep + 1);
-                      }
-                    }}
+                    onClick={proceedNext}
                   >
                     {t('create.next')}
                   </button>
@@ -12101,7 +12156,7 @@ export default function EventCreationPage(): React.ReactElement {
                     className="btn btn-primary"
                     data-tour="wizard-submit"
                     disabled={!title}
-                    onClick={attemptSubmit}
+                    onClick={attemptSubmitGuarded}
                     style={{ opacity: !title ? 0.5 : 1 }}
                   >
                     <Send size={16} /> {isEditMode ? t('create.save') : t('create.submit')}
@@ -12121,13 +12176,7 @@ export default function EventCreationPage(): React.ReactElement {
                 type="button"
                 aria-hidden={actionRowVisible}
                 tabIndex={actionRowVisible ? -1 : 0}
-                onClick={() => {
-                  setTriedNext(true);
-                  if (canProceed()) {
-                    setTriedNext(false);
-                    setCurrentStep(currentStep + 1);
-                  }
-                }}
+                onClick={proceedNext}
                 style={{
                   position: 'fixed', left: '50%', bottom: 20, zIndex: 900,
                   background: 'var(--dex-green, #86bc25)', color: '#fff',
@@ -13449,6 +13498,38 @@ export default function EventCreationPage(): React.ReactElement {
                   {isDe ? 'Hinzufügen' : 'Add'}
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* v22.62: „Sichtbarkeit auf Sub-Events übernehmen?" — erscheint beim
+          ersten „Weiter"/Speichern, sobald die Klammer eine Sichtbarkeit hat
+          und Sub-Events existieren. */}
+      <Modal
+        open={visCopyModalOpen}
+        onClose={() => closeVisCopy(false)}
+        maxWidth={560}
+        dismissable={false}
+        ariaLabel={isDe ? 'Sichtbarkeit übernehmen' : 'Apply visibility'}
+      >
+        {visCopyModalOpen && (
+          <div>
+            <h2 style={{ margin: '0 0 10px', fontSize: '1.15rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)' }}>
+              {isDe ? 'Sichtbarkeit auf alle Sub-Events übernehmen?' : 'Apply visibility to all sub-events?'}
+            </h2>
+            <p style={{ margin: '0 0 16px', fontSize: '0.9rem', color: 'var(--dex-gray-700)', lineHeight: 1.55 }}>
+              {isDe
+                ? <>Du hast für {subEventsOnlyMode ? 'die Klammer' : 'das Hauptevent'} eine Sichtbarkeit gesetzt. Sollen <strong>alle {subEvents.length} Sub-Events</strong> dieselbe Sichtbarkeit (Standortfilter + Mailverteiler + Verknüpfung) übernehmen?<br /><br />Das ist meist sinnvoll, damit jeder, der das Event sehen soll, auch die Sub-Events erreicht — der Zugang läuft ohnehin über die Sichtbarkeit des Gesamt-Events. Bereits gesetzte, abweichende Sub-Event-Sichtbarkeiten werden dabei <strong>überschrieben</strong>.</>
+                : <>You set a visibility for {subEventsOnlyMode ? 'the bracket' : 'the main event'}. Should <strong>all {subEvents.length} sub-events</strong> adopt the same visibility (location filter + mailing lists + combination)?<br /><br />This usually makes sense so that everyone who should see the event can also reach the sub-events — access runs through the overall event’s visibility anyway. Any existing, differing sub-event visibilities will be <strong>overwritten</strong>.</>}
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
+              <button className="btn btn-secondary" onClick={() => closeVisCopy(false)}>
+                {isDe ? 'Nein, eigene behalten' : 'No, keep their own'}
+              </button>
+              <button className="btn btn-primary" onClick={() => closeVisCopy(true)}>
+                {isDe ? `Ja, auf alle ${subEvents.length} übernehmen` : `Yes, apply to all ${subEvents.length}`}
+              </button>
             </div>
           </div>
         )}

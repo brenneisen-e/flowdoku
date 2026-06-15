@@ -7386,15 +7386,32 @@ export class EventService {
         ? await this.getCurrentUserProfile()
         : await this.getUserProfileByEmail(participantEmail);
       const nowIso = new Date().toISOString();
-      const auditName = actorName || this.context.pageContext.user.displayName || '';
+      // v22.57: Claims-Token-Schutz. In manchen Kontexten liefert der Browser
+      // als „displayName" das SharePoint-Claims-Login (z.B.
+      // „i:0#.f|membership|user@deloitte.de" bzw. „0#.f|membership|…"). Das
+      // landete bisher 1:1 als Vorname in der Absage-Zeile. Wir verwenden
+      // deshalb bevorzugt den sauberen Namen aus dem Benutzerprofil und filtern
+      // Claims-artige Werte raus.
+      const looksLikeClaim = (s: string): boolean => /\|membership\||0#\.f\||^i:0#/i.test((s || '').trim());
+      const cleanFirst = looksLikeClaim(firstName) ? '' : (firstName || '').trim();
+      const cleanLast = looksLikeClaim(surname) ? '' : (surname || '').trim();
+      const effFirst = (profile.firstName || '').trim() || cleanFirst;
+      const effLast = (profile.lastName || '').trim() || cleanLast;
+      // Anzeigename: bevorzugt Profil-PreferredName, sonst Vor-/Nachname,
+      // sonst die E-Mail (nie das Claims-Token).
+      const effName = (profile.displayName && !looksLikeClaim(profile.displayName) ? profile.displayName : '')
+        || `${effFirst} ${effLast}`.trim()
+        || participantEmail;
+      const auditNameRaw = actorName || this.context.pageContext.user.displayName || '';
+      const auditName = looksLikeClaim(auditNameRaw) ? effName : auditNameRaw;
       const auditEmail = (actorEmail || this.context.pageContext.user.email || '').toLowerCase();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const payload: Record<string, any> = {
         '__metadata': { 'type': REG_LIST_ITEM_TYPE },
         'Title': participantEmail,
-        'Vorname': firstName,
-        'Nachname': surname,
-        'ParticipantName': `${firstName} ${surname}`.trim(),
+        'Vorname': effFirst,
+        'Nachname': effLast,
+        'ParticipantName': effName,
         'ParticipantEmail': participantEmail,
         'Department': profile.department,
         'Location': profile.location,
@@ -7861,13 +7878,14 @@ export class EventService {
   /**
    * Profildaten des aktuellen Users laden für die Teilnehmerliste.
    */
-  public async getCurrentUserProfile(): Promise<{ department: string; location: string; jobTitle: string; phone: string }> {
+  public async getCurrentUserProfile(): Promise<{ department: string; location: string; jobTitle: string; phone: string; firstName: string; lastName: string; displayName: string }> {
+    const empty = { department: '', location: '', jobTitle: '', phone: '', firstName: '', lastName: '', displayName: '' };
     try {
       const response = await this.context.spHttpClient.get(
         `${this.siteUrl}/_api/SP.UserProfiles.PeopleManager/GetMyProperties`,
         SPHttpClient.configurations.v1
       );
-      if (!response.ok) return { department: '', location: '', jobTitle: '', phone: '' };
+      if (!response.ok) return empty;
 
       const data = await response.json();
       const props: Array<{ Key: string; Value: string }> = data.UserProfileProperties || [];
@@ -7881,9 +7899,12 @@ export class EventService {
         location: get('Office'),
         jobTitle: get('Title'),
         phone: get('WorkPhone') || get('CellPhone'),
+        firstName: get('FirstName'),
+        lastName: get('LastName'),
+        displayName: get('PreferredName'),
       };
     } catch {
-      return { department: '', location: '', jobTitle: '', phone: '' };
+      return empty;
     }
   }
 
@@ -7912,22 +7933,25 @@ export class EventService {
     if (!subsiteUrl) return { scanned, updated, failedLookups };
     try {
       const listResp = await this.context.spHttpClient.get(
-        `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items?$select=Id,ParticipantEmail,JobTitle,Department,Location,Phone&$orderby=RegistrationDate desc&$top=${n}`,
+        `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items?$select=Id,ParticipantEmail,Vorname,Nachname,ParticipantName,JobTitle,Department,Location,Phone&$orderby=RegistrationDate desc&$top=${n}`,
         SPHttpClient.configurations.v1
       );
       if (!listResp.ok) return { scanned, updated, failedLookups };
       const listData = await listResp.json();
       const items = listData.value || listData.d?.results || [];
+      // v22.58: erkennt kaputte Namen (SharePoint-Claims-Token), die durch den
+      // sauberen Profil-Namen ersetzt werden müssen.
+      const looksLikeClaim = (s: string): boolean => /\|membership\||0#\.f\||^i:0#/i.test((s || '').trim());
       for (const it of items) {
         scanned += 1;
         const email: string = (it.ParticipantEmail || '').trim();
         if (!email) continue;
-        let profile = { department: '', location: '', jobTitle: '', phone: '' };
+        let profile = { department: '', location: '', jobTitle: '', phone: '', firstName: '', lastName: '', displayName: '' };
         let success = false;
         for (let attempt = 0; attempt < 3; attempt += 1) {
           try {
             const p = await this.getUserProfileByEmail(email);
-            if (p && (p.jobTitle || p.department || p.location)) {
+            if (p && (p.jobTitle || p.department || p.location || p.firstName || p.lastName)) {
               profile = p; success = true; break;
             }
           } catch { /* */ }
@@ -7935,12 +7959,22 @@ export class EventService {
         }
         if (!success) { failedLookups += 1; continue; }
         try {
-          const needsUpdate =
+          // Name-Reparatur: nur wenn der aktuelle Name kaputt (Claims) oder leer
+          // ist UND das Profil einen sauberen Namen liefert.
+          const vornameBroken = looksLikeClaim(it.Vorname) || !(it.Vorname || '').trim();
+          const nameFix = vornameBroken && (profile.firstName || profile.lastName)
+            ? {
+                Vorname: profile.firstName || '',
+                Nachname: profile.lastName || '',
+                ParticipantName: (profile.displayName && !looksLikeClaim(profile.displayName) ? profile.displayName : `${profile.firstName} ${profile.lastName}`.trim()),
+              }
+            : null;
+          const profileUpdate =
             (profile.jobTitle && profile.jobTitle !== (it.JobTitle || '')) ||
             (profile.department && profile.department !== (it.Department || '')) ||
             (profile.location && profile.location !== (it.Location || '')) ||
             (profile.phone && profile.phone !== (it.Phone || ''));
-          if (needsUpdate) {
+          if (nameFix || profileUpdate) {
             const ok = await this._merge(
               `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items(${it.Id})`,
               {
@@ -7948,6 +7982,7 @@ export class EventService {
                 'Department': profile.department || it.Department || '',
                 'Location': profile.location || it.Location || '',
                 'Phone': profile.phone || it.Phone || '',
+                ...(nameFix || {}),
               }
             );
             if (ok && (ok as { ok: boolean }).ok) updated += 1;
@@ -8036,11 +8071,11 @@ export class EventService {
    *
    * Rückgabe ist gefüllt sobald einer der Wege Properties liefert, sonst leer.
    */
-  public async getUserProfileByEmail(email: string): Promise<{ department: string; location: string; jobTitle: string; phone: string }> {
-    const empty = { department: '', location: '', jobTitle: '', phone: '' };
+  public async getUserProfileByEmail(email: string): Promise<{ department: string; location: string; jobTitle: string; phone: string; firstName: string; lastName: string; displayName: string }> {
+    const empty = { department: '', location: '', jobTitle: '', phone: '', firstName: '', lastName: '', displayName: '' };
     if (!email) return empty;
 
-    const extractProfile = (props: Array<{ Key: string; Value: string }>): { department: string; location: string; jobTitle: string; phone: string } => {
+    const extractProfile = (props: Array<{ Key: string; Value: string }>): { department: string; location: string; jobTitle: string; phone: string; firstName: string; lastName: string; displayName: string } => {
       const get = (key: string): string => {
         const p = props.find(x => x.Key === key);
         return p && p.Value ? p.Value : '';
@@ -8050,6 +8085,11 @@ export class EventService {
         location: get('Office') || get('SPS-Location'),
         jobTitle: get('Title') || get('SPS-JobTitle'),
         phone: get('WorkPhone') || get('CellPhone'),
+        // v22.57: Namen mitliefern (für die Absage-Zeile, damit nie ein
+        // Claims-Token wie „0#.f|membership|…" als Vorname landet).
+        firstName: get('FirstName'),
+        lastName: get('LastName'),
+        displayName: get('PreferredName'),
       };
     };
 

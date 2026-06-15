@@ -2883,7 +2883,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return false;
     // Name aus displayName ableiten („Nachname, Vorname" oder „Vorname Nachname").
-    const dn = (currentUserName || '').trim();
+    // v22.57: Claims-Login-Token (z.B. „0#.f|membership|user@…") niemals als
+    // Namen verwenden — declineRegistration zieht in dem Fall den sauberen
+    // Namen aus dem Benutzerprofil.
+    const looksLikeClaim = (s: string): boolean => /\|membership\||0#\.f\||^i:0#/i.test((s || '').trim());
+    const dn = looksLikeClaim(currentUserName) ? '' : (currentUserName || '').trim();
     let firstName = ''; let lastName = '';
     if (dn.indexOf(',') >= 0) {
       const p = dn.split(',').map(s => s.trim());
