@@ -315,7 +315,10 @@ interface EventContextType {
    *  zum bereits angemeldeten Team hinzufügen (Plus-Button in MyEvents).
    *  Atomar einen Sitzplatz reservieren, neuen Member-Eintrag anlegen,
    *  Bestätigungs-Mail + Outlook-Termin queuen. */
-  addTeamMember: (eventId: string, teamId: string, teamName: string | undefined, member: { email: string; displayName: string }, customData?: Record<string, string>) => Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
+  addTeamMember: (eventId: string, teamId: string, teamName: string | undefined, member: { email: string; displayName: string }, customData?: Record<string, string>, opts?: { suppressMemberMail?: boolean; suppressOthersMail?: boolean; ccEmail?: string }) => Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
+  /** v22.49: „Neues Mitglied"-Info an bestehende Team-Mitglieder (scope: alle
+   *  oder nur Lead) — vom Zuordnungs-Modal optional ausgelöst. */
+  notifyExistingTeamMembers: (eventId: string, teamId: string, teamName: string | undefined, newMemberNames: string[], excludeEmails: string[], scope?: 'all' | 'lead') => Promise<void>;
   /** v17.2: Schon angemeldete Person (ohne TeamId) einem Team zuweisen.
    *  PATCHt nur die TeamId/TeamName/TeamLead-Felder, KEINE neue
    *  Registrierung, KEINE Bestätigungsmail, KEIN Outlook. */
@@ -1847,6 +1850,58 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return ok;
   }
 
+  // v22.49: „Neues Mitglied"-Info an die BESTEHENDEN Team-Mitglieder, wenn der
+  // Organizer im Zuordnungs-Modal „auch die übrigen informieren" wählt. scope:
+  // 'all' = alle bisherigen aktiven Mitglieder, 'lead' = nur der Team-Lead.
+  // excludeEmails = die gerade neu zugeordneten Personen (nicht sich selbst
+  // benachrichtigen). Best-effort, gated über event.disableEmails.
+  async function notifyExistingTeamMembers(
+    eventId: string,
+    teamId: string,
+    teamName: string | undefined,
+    newMemberNames: string[],
+    excludeEmails: string[],
+    scope: 'all' | 'lead' = 'all',
+  ): Promise<void> {
+    const event = events.find(e => e.id === eventId);
+    if (!event || !event.subsiteUrl || event.disableEmails) return;
+    try {
+      const lang = event.emailLanguage || 'EN';
+      const isDe = (lang || 'EN').toUpperCase() === 'DE';
+      const members = await eventService.getTeamMembers(event.subsiteUrl, teamId).catch(() => []);
+      const exclude = new Set(excludeEmails.map(e => (e || '').toLowerCase()));
+      let others = members.filter(m => m.Status !== 'Abgemeldet' && !exclude.has((m.ParticipantEmail || '').toLowerCase()));
+      if (scope === 'lead') others = others.filter(m => !!m.TeamLead);
+      if (others.length === 0) return;
+      const tpl = await eventService.getEmailTemplate('TeamMemberJoined', lang).catch(() => null);
+      const newStr = newMemberNames.filter(Boolean).join(isDe ? ' und ' : ' and ');
+      const teamNameStr = teamName ? `„${teamName}"` : '';
+      for (const other of others) {
+        const otherFirst = other.Vorname || '';
+        const otherFull = `${other.Vorname || ''} ${other.Nachname || ''}`.trim() || other.ParticipantEmail;
+        let mail: { subject: string; body: string };
+        if (tpl) {
+          mail = buildEmailFromTemplate(tpl, {
+            Name: otherFirst || otherFull,
+            NewMemberName: newStr,
+            TeamName: teamNameStr,
+            EventTitle: event.title,
+            AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+          });
+        } else {
+          const inner = isDe
+            ? `<p>Hallo ${otherFirst},</p><p><strong>${newStr}</strong> ${newMemberNames.length > 1 ? 'sind' : 'ist'} eurem Team ${teamNameStr} beigetreten.</p>`
+            : `<p>Hello ${otherFirst},</p><p><strong>${newStr}</strong> joined your team ${teamNameStr}.</p>`;
+          mail = {
+            subject: isDe ? `Neues Team-Mitglied — ${event.title}` : `New team member — ${event.title}`,
+            body: wrapTemplate('#86bc25', isDe ? 'Team-Update' : 'Team update', `Event ${event.title}`, inner),
+          };
+        }
+        await eventService.queueEmail(mail.subject, other.ParticipantEmail, otherFull, mail.body, 'TeamMemberJoined', event.title, eventId).catch(() => { /* */ });
+      }
+    } catch (err) { console.warn('[DEX] notifyExistingTeamMembers failed:', err); }
+  }
+
   async function addTeamMember(
     eventId: string,
     teamId: string,
@@ -1856,7 +1911,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // beim Insert mitgeschrieben (vorher immer leer). Genutzt vom Self-Join
     // über die Anmeldeseite, damit der Beitritt die Pflicht-Custom-Felder nicht
     // mehr überspringt.
-    customData?: Record<string, string>
+    customData?: Record<string, string>,
+    // v22.49: Kommunikation optional steuerbar (vom Admin-Zuordnungs-Modal):
+    // suppressMemberMail = keine Anmeldebestätigung + kein Outlook an die neue
+    // Person; suppressOthersMail = die eingebaute „neues Mitglied"-Info an die
+    // übrigen Mitglieder NICHT senden (das übernimmt dann notifyExistingTeam-
+    // Members mit der gewählten Reichweite); ccEmail = CC der Bestätigung.
+    opts?: { suppressMemberMail?: boolean; suppressOthersMail?: boolean; ccEmail?: string }
   ): Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }> {
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return { ok: false, reason: 'event-not-found' };
@@ -1977,14 +2038,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       consentRequired: true,
     });
     const bodyWithHint = injectIntoEmailContent(emailData.body, teamInfoHtml);
-    if (!event.disableEmails) {
+    if (!event.disableEmails && !opts?.suppressMemberMail) {
       const fullName = `${parsed.firstName} ${parsed.lastName}`.trim() || member.email;
       eventService.queueEmail(
         emailData.subject, member.email, fullName, bodyWithHint,
-        templateType, event.title, eventId
+        templateType, event.title, eventId, opts?.ccEmail || undefined
       ).catch(err => console.warn('[DEX] addTeamMember queueEmail failed:', err));
     }
-    if (status !== 'Warteliste' && !event.disableOutlook) {
+    if (status !== 'Warteliste' && !event.disableOutlook && !opts?.suppressMemberMail) {
       eventService.queueOutlookEvent(
         member.email, eventId, event.title, 'Einladen'
       ).catch(err => console.warn('[DEX] addTeamMember queueOutlookEvent failed:', err));
@@ -1998,7 +2059,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // v12.14: Info-Mail an verbleibende Mitglieder kommt jetzt aus
     // DEX_EmailTemplates (TemplateType=TeamMemberJoined). Pre-Wrap +
     // Variable-Substitution durch buildEmailFromTemplate.
-    if (!event.disableEmails) {
+    if (!event.disableEmails && !opts?.suppressOthersMail) {
       const tpl = await eventService.getEmailTemplate('TeamMemberJoined', lang).catch(() => null);
       const newMemberFullName = `${parsed.firstName} ${parsed.lastName}`.trim();
       const teamNameStr = teamName ? `„${teamName}"` : '';
@@ -3512,7 +3573,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           return eventService.getTeamMembers(subsiteUrl, teamId);
         },
         addTeamMember,
-        assignTeamlessToTeam,
+        assignTeamlessToTeam, notifyExistingTeamMembers,
         joinTeam,
         transferTeamLead,
         createTeamJoinRequest,
