@@ -1962,9 +1962,23 @@ export default function RegistrationPage(): React.ReactElement {
           background: 'rgba(237,139,0,0.1)', border: '1px solid var(--dex-orange)',
           color: 'var(--dex-orange)', fontSize: '0.85rem',
         }}>
-          {t('reg.deadlinepassed.adminnotice')}
-          {event && event.registrationDeadline && (
-            <> {t('reg.deadlinepassed.date')}: <strong>{new Date(event.registrationDeadline).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong>.</>
+          {/* v22.55: Nur wenn ALLES zu ist ("kein User käme mehr rein") den
+              harten Hinweis zeigen. Sind Sub-Events noch offen, kann sich ein
+              normaler User weiterhin für diese anmelden — dann ein zutreffender
+              Hinweis statt der irreführenden "keine Anmeldung mehr"-Meldung. */}
+          {isFullyClosed ? (
+            <>
+              {t('reg.deadlinepassed.adminnotice')}
+              {event && event.registrationDeadline && (
+                <> {t('reg.deadlinepassed.date')}: <strong>{new Date(event.registrationDeadline).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong>.</>
+              )}
+            </>
+          ) : (
+            locale === 'de' ? (
+              <>Hinweis: Die Anmeldefrist des Hauptevents ist abgelaufen{event.registrationDeadline ? <> (war <strong>{new Date(event.registrationDeadline).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong>)</> : ''} — die noch offenen Sub-Events sind aber weiterhin buchbar, auch für reguläre User.</>
+            ) : (
+              <>Note: The main event’s registration deadline has passed{event.registrationDeadline ? <> (was <strong>{new Date(event.registrationDeadline).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong>)</> : ''} — but the still-open sub-events remain bookable, also for regular users.</>
+            )
           )}
         </div>
       )}
