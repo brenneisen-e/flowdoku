@@ -3532,6 +3532,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           fixedTotal += r.authorFixed;
         } catch (err) { console.warn('[DEX] autoRepairProxyAccess failed for', s, err); }
       }
+      // eslint-disable-next-line no-console
       if (fixedTotal > 0) console.info(`[DEX] autoRepairProxyAccess: ${fixedTotal} Zeile(n) auf den Teilnehmer als Autor gesetzt (${subs.length} Subsites geprüft).`);
     } catch (err) { console.warn('[DEX] autoRepairProxyAccess error:', err); }
   }

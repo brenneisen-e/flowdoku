@@ -31,7 +31,7 @@ export function actionsSection(locale: 'de' | 'en'): ManualSection {
               <>
                 {isDe ? (
                   <ul style={{ margin: '4px 0 0', paddingLeft: 18, lineHeight: 1.6 }}>
-                    <li><strong>Teilnehmerliste exportieren (Excel)</strong> — lädt die Teilnehmer als Excel-Datei (.xlsx) direkt auf deinen Rechner herunter. Vor dem Export wählst du die <strong>Zielgruppe</strong>: nur Angemeldete, inklusive Warteliste oder <strong>„Alles inkl. Abmeldungen"</strong> (der Status steht dann pro Zeile in einer eigenen Spalte). Bei Events mit Sub-Events (Klammer) kannst du zusätzlich entscheiden, ob du <strong>eine konsolidierte Matrix</strong> (eine Zeile pro Person über alle Sub-Events) und/oder <strong>einzelne Sub-Event-Blätter</strong> bekommst.</li>
+                    <li><strong>Teilnehmerliste exportieren (Excel)</strong> — lädt die Teilnehmer als Excel-Datei (.xlsx) direkt auf deinen Rechner herunter. Vor dem Export wählst du die <strong>Zielgruppe</strong>: nur Angemeldete, inklusive Warteliste oder <strong>„Alles inkl. Abmeldungen“</strong> (der Status steht dann pro Zeile in einer eigenen Spalte). Bei Events mit Sub-Events (Klammer) kannst du zusätzlich entscheiden, ob du <strong>eine konsolidierte Matrix</strong> (eine Zeile pro Person über alle Sub-Events) und/oder <strong>einzelne Sub-Event-Blätter</strong> bekommst.</li>
                     <li><strong>IDs neu vergeben</strong> — vergibt die TeilnehmerIDs sauber neu (Angemeldete 1…N, Warteliste danach). Normalerweise passiert das automatisch — der Knopf ist für den Fall, dass du sofort eine lückenlose Reihenfolge brauchst.</li>
                     <li><strong>Von Warteliste nachrücken</strong> — holt die erste Person von der Warteliste manuell in den Aktiv-Bereich (z.B. wenn ein Platz frei wurde und du nicht auf die Automatik warten willst).</li>
                     <li><strong>Überbuchung prüfen</strong> — findet Personen, die über der Kapazität angemeldet sind, und markiert sie zur Prüfung. Du entscheidest dann pro Person, ob sie auf die Warteliste wandert oder den Platz behält.</li>
@@ -39,9 +39,9 @@ export function actionsSection(locale: 'de' | 'en'): ManualSection {
                   </ul>
                 ) : (
                   <ul style={{ margin: '4px 0 0', paddingLeft: 18, lineHeight: 1.6 }}>
-                    <li><strong>Export attendee list (Excel)</strong> — downloads the attendees as an Excel file (.xlsx) straight to your computer. Before exporting you pick the <strong>target group</strong>: registered only, including the waitlist, or <strong>"All incl. cancellations"</strong> (the status then appears per row in its own column). For events with sub-events (bracket) you can additionally choose a <strong>consolidated matrix</strong> (one row per person across all sub-events) and/or <strong>individual sub-event sheets</strong>.</li>
+                    <li><strong>Export attendee list (Excel)</strong> — downloads the attendees as an Excel file (.xlsx) straight to your computer. Before exporting you pick the <strong>target group</strong>: registered only, including the waitlist, or <strong>“All incl. cancellations”</strong> (the status then appears per row in its own column). For events with sub-events (bracket) you can additionally choose a <strong>consolidated matrix</strong> (one row per person across all sub-events) and/or <strong>individual sub-event sheets</strong>.</li>
                     <li><strong>Reassign attendee IDs</strong> — renumbers the attendee IDs cleanly (registered 1…N, waitlist after). This usually happens automatically — the button is for when you need a gap-free order right away.</li>
-                    <li><strong>Promote from waitlist</strong> — manually pulls the first waitlisted person into the active area (e.g. when a seat opened and you don't want to wait for the automation).</li>
+                    <li><strong>Promote from waitlist</strong> — manually pulls the first waitlisted person into the active area (e.g. when a seat opened and you don’t want to wait for the automation).</li>
                     <li><strong>Check overbooking</strong> — finds people registered above capacity and flags them for review. You then decide per person whether they move to the waitlist or keep the seat.</li>
                     <li><strong>Check Outlook declines</strong> — reconciles who declined the calendar invite without cancelling in the app.</li>
                   </ul>
@@ -110,7 +110,7 @@ export function actionsSection(locale: 'de' | 'en'): ManualSection {
                   <ul style={{ margin: '4px 0 0', paddingLeft: 18, lineHeight: 1.6 }}>
                     <li><strong>Edit event</strong> — opens the wizard to change all settings of the event.</li>
                     <li><strong>Open in SharePoint</strong> — jumps to the SharePoint list behind the event (for edge cases; not needed day-to-day).</li>
-                    <li><strong>Copy deep link</strong> — copies the direct link to the event's registration page, e.g. for your own invitation.</li>
+                    <li><strong>Copy deep link</strong> — copies the direct link to the event’s registration page, e.g. for your own invitation.</li>
                     <li><strong>Audit log / change history</strong> — opens the log of all changes to this event (who changed what and when), pre-filtered to the event.</li>
                   </ul>
                 )}
@@ -125,7 +125,7 @@ export function actionsSection(locale: 'de' | 'en'): ManualSection {
                 {isDe ? (
                   <ul style={{ margin: '4px 0 0', paddingLeft: 18, lineHeight: 1.6 }}>
                     <li><strong>Spalten fixen</strong> — legt fehlende Spalten in der Teilnehmerliste an und bringt sie in die richtige Reihenfolge (nach Schema-Änderungen).</li>
-                    <li><strong>Fremd-Anmeldungen: Zugriff reparieren</strong> — sorgt dafür, dass jemand, der von einer anderen Person angemeldet wurde, seine Anmeldung in „Meine Events" sieht und sich selbst abmelden kann.</li>
+                    <li><strong>Fremd-Anmeldungen: Zugriff reparieren</strong> — sorgt dafür, dass jemand, der von einer anderen Person angemeldet wurde, seine Anmeldung in „Meine Events“ sieht und sich selbst abmelden kann.</li>
                     <li><strong>Counter zurücksetzen</strong> — setzt den internen Platz-Zähler neu auf den echten Bestand (Sonderfall nach Störungen).</li>
                     <li><strong>Legacy-B2Run migrieren</strong> — stellt ein altes B2Run-Event auf das aktuelle Standard-Schema um.</li>
                     <li><strong>Custom-Fields / Felder reparieren</strong> — holt verloren geglaubte eigene Abfragen zurück bzw. repariert beschädigte Feld-Definitionen.</li>
@@ -133,7 +133,7 @@ export function actionsSection(locale: 'de' | 'en'): ManualSection {
                 ) : (
                   <ul style={{ margin: '4px 0 0', paddingLeft: 18, lineHeight: 1.6 }}>
                     <li><strong>Fix columns</strong> — creates missing columns in the attendee list and puts them in the right order (after schema changes).</li>
-                    <li><strong>Repair proxy-registration access</strong> — makes sure someone who was registered by another person sees their registration in "My Events" and can cancel it themselves.</li>
+                    <li><strong>Repair proxy-registration access</strong> — makes sure someone who was registered by another person sees their registration in “My Events” and can cancel it themselves.</li>
                     <li><strong>Reset counter</strong> — resets the internal seat counter to the real headcount (edge case after disruptions).</li>
                     <li><strong>Migrate legacy B2Run</strong> — converts an old B2Run event to the current standard schema.</li>
                     <li><strong>Restore / repair custom fields</strong> — brings back custom questions believed lost or repairs broken field definitions.</li>

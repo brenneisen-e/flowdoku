@@ -30,6 +30,42 @@ export function isEventOver(ev: { startDate?: string; endDate?: string }): boole
   return Number.isFinite(end) && end < Date.now();
 }
 
+/**
+ * v22.54 — Ist die Anmeldung für ein einzelnes Event/Sub-Event noch offen?
+ *
+ * Offen = Anmelde-Frist nicht abgelaufen UND das Event ist nicht vorbei.
+ * Ohne gesetzte Frist gilt es als offen (bis das Event vorbei ist).
+ */
+export function isRegistrationOpen(ev: { registrationDeadline?: string; startDate?: string; endDate?: string }): boolean {
+  const dl = (ev.registrationDeadline || '').trim();
+  const deadlinePassed = !!dl && new Date(dl).getTime() < Date.now();
+  return !deadlinePassed && !isEventOver(ev);
+}
+
+/**
+ * v22.54 — Ist die Anmeldung für das GESAMTE Event geschlossen?
+ *
+ * Leitlinie: Solange das Hauptevent ODER mindestens ein Sub-Event noch offen
+ * ist, bleibt die Anmeldung möglich. Erst wenn das Hauptevent zu ist UND kein
+ * Sub-Event mehr offen ist, gilt das Event als komplett geschlossen.
+ *
+ * Behebt den Bug, dass eine abgelaufene Klammer-/Hauptevent-Frist die ganze
+ * Anmeldung sperrte, obwohl die Sub-Events noch offen waren.
+ */
+export function isRegistrationFullyClosed(
+  event: { registrationDeadline?: string; startDate?: string; endDate?: string },
+  childEvents: Array<{ registrationDeadline?: string; startDate?: string; endDate?: string }>,
+): boolean {
+  // Hauptevent-Gate bleibt rein frist-basiert (wie bisher) — kein
+  // unerwartetes Schließen über die Event-Vorbei-Logik.
+  const dl = (event.registrationDeadline || '').trim();
+  const mainDeadlinePassed = !!dl && new Date(dl).getTime() < Date.now();
+  if (!mainDeadlinePassed) return false;
+  // Hauptevent-Frist abgelaufen: nur geschlossen, wenn auch kein Sub-Event
+  // mehr offen ist.
+  return !(childEvents || []).some(isRegistrationOpen);
+}
+
 interface AddressParts {
   street?: string;
   houseNo?: string;
