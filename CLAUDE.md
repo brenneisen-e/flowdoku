@@ -799,6 +799,20 @@ einer Team-Anmeldung:
   Wird in `registerTeam` (v11.82 konsolidiert auf den Helper),
   `addTeamMember` (v11.83) und `createTeamJoinRequest` (v11.83) genutzt.
 
+### Team-Mitglied aus Team entfernen ohne Abmeldung (v22.41)
+
+Neue Pro-Mitglied-Aktion **„Entfernen"** in der Teams-Sektion des Organizer
+Centers: löst NUR die Team-Zuordnung
+(`assignRegistrationToTeam(sub, regId, '', '', false)` — TeamId/TeamName/
+TeamLead leeren), die **Anmeldung inkl. Status bleibt** (z.B. Warteliste).
+Use-Case: ein Warteliste-Mitglied aus dem Team nehmen, damit ein Slot frei
+wird und ein angemeldeter Teilnehmer per „Person hinzufügen" nachrücken kann
+(Waitlisted zählen voll zur Team-Belegung → blockieren sonst den Slot).
+War der Entfernte der **Lead** und bleiben Mitglieder übrig, rückt das
+früheste (kleinste TeilnehmerID) als neuer Lead nach. Audit:
+`TeamMemberRemoved`. Nur `canManage` (Admin/Organizer). Die Person landet
+danach in „Teilnehmer ohne Team".
+
 ### Team-Zuordnungs-Modal + Überbuchungs-Box: Bugfixes (v22.40)
 
 - **Team aus bereits-angemeldeten Personen anlegen war unmöglich:** Die

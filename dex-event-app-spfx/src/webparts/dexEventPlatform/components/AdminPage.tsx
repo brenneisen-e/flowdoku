@@ -7470,6 +7470,63 @@ export default function AdminPage(): React.ReactElement {
                                     fontSize: '0.72rem', fontWeight: 700,
                                   }}>Lead</span>
                                 )}
+                                {/* v22.41: „Aus Team entfernen" — löst NUR die
+                                    Team-Zuordnung (TeamId/Lead/Name leeren), die
+                                    Anmeldung inkl. Status (z.B. Warteliste) bleibt
+                                    bestehen. So lässt sich z.B. ein Warteliste-
+                                    Mitglied aus dem Team nehmen und ein
+                                    angemeldeter Teilnehmer nachrücken. */}
+                                {canManage && eventServiceRef && selectedEvent.subsiteUrl && (
+                                  <button
+                                    type="button"
+                                    title="Aus dem Team entfernen (Anmeldung bleibt bestehen)"
+                                    onClick={async () => {
+                                      const sub = selectedEvent.subsiteUrl;
+                                      if (!sub) return;
+                                      const stHint = m.Status && m.Status !== 'Angemeldet' ? ` (Status: ${m.Status})` : '';
+                                      const ok = await confirmDialog(
+                                        `${name} aus dem Team „${teamName || ''}" entfernen?\n\nDie Anmeldung${stHint} bleibt bestehen — die Person steht danach ohne Team da und kann einem anderen Team zugeordnet werden.`,
+                                        { danger: true, confirmLabel: 'Aus Team entfernen' }
+                                      );
+                                      if (!ok) return;
+                                      try {
+                                        await eventServiceRef.assignRegistrationToTeam(sub, m.Id, '', '', false);
+                                        // Lead entfernt + andere bleiben → frühestes Mitglied nachziehen.
+                                        if (isLead) {
+                                          const rest = members
+                                            .filter(x => x.Id !== m.Id && x.Status !== 'Abgemeldet')
+                                            .sort((a, b) => ((a.TeilnehmerID ?? 9_999_999) as number) - ((b.TeilnehmerID ?? 9_999_999) as number));
+                                          if (rest.length > 0) {
+                                            await eventServiceRef.assignRegistrationToTeam(sub, rest[0].Id, tid, teamName || undefined, true);
+                                          }
+                                        }
+                                        await eventServiceRef.writeChangeLog({
+                                          action: 'TeamMemberRemoved',
+                                          targetType: 'Participant',
+                                          targetId: m.ParticipantEmail,
+                                          targetName: name,
+                                          eventId: selectedEvent.id,
+                                          eventTitle: selectedEvent.title,
+                                          details: { teamId: tid, removedBy: currentUser.email, keptStatus: m.Status },
+                                        }).catch(() => { /* */ });
+                                        setTeamsToast(`${name} wurde aus dem Team entfernt — Anmeldung bleibt bestehen.`);
+                                        window.setTimeout(() => setTeamsToast(''), 4500);
+                                        const regs = await getAllRegistrations(selectedEvent.id);
+                                        setRegistrations(regs);
+                                      } catch (err) {
+                                        console.warn('[DEX] removeFromTeam failed:', err);
+                                        showAlert('Entfernen aus dem Team fehlgeschlagen.', { variant: 'error' });
+                                      }
+                                    }}
+                                    style={{
+                                      background: 'none', border: 'none', cursor: 'pointer',
+                                      color: 'var(--dex-red, #c00)', fontSize: '0.72rem',
+                                      textDecoration: 'underline', padding: '2px 4px', flexShrink: 0,
+                                    }}
+                                  >
+                                    Entfernen
+                                  </button>
+                                )}
                               </div>
                             );
                           })}
