@@ -12,36 +12,20 @@ import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
-import { ChevronLeft, Settings, Book, QrCode, RefreshCw } from './Icons';
+import { ChevronLeft, Settings, Book, RefreshCw } from './Icons';
 import { Icon } from '@fluentui/react/lib/Icon';
 import ImpersonateModal from './ImpersonateModal';
+import GlobalSearch from './GlobalSearch';
 
 export default function Header(): React.ReactElement {
   const { currentPage, navigate, selectedEventId } = useNavigation();
   const { currentUser, photoUrl } = useCurrentUser();
-  const { currentUserRole, isAdmin, isOrganizer, originalIsAdmin } = useRoles();
+  const { currentUserRole, isAdmin, originalIsAdmin } = useRoles();
   const [showImpersonate, setShowImpersonate] = React.useState(false);
   const { events } = useEvents();
-  // Check-In-Button (Admin / Organizer / QR-Scanner): schneller Einstieg in den
-  // QR-Scanner ohne vorher ein konkretes Event auszuwählen. CheckInPage liest
-  // das Event aus dem gescannten QR-Code selbst (`DEX|<eventNumber>|<email>`).
-  // v6.26: Zugriff auch für User, die per E-Mail in event.qrScannerEmails
-  // mindestens eines Events eingetragen sind — ohne globale Organizer-Rolle.
-  // v9.18: Co-Organizer pro Event ebenfalls Check-In-fähig.
-  // v11.46: Seit v9.20 hat der Wizard nur einen Organizer-Picker, der alle
-  // (Haupt-Organizer wie Co-Organizer) in event.organizerEmails schreibt.
-  // Prüfung deshalb analog zu AdminPage.isOrganizerFor: organizerEmails ODER
-  // coOrganizerEmails (Backward-Compat für alte Events).
-  const currentEmailLc = (currentUser.email || '').toLowerCase();
-  const isQRScannerOfAny = !!currentEmailLc && (events || []).some(
-    e => (e.qrScannerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc),
-  );
-  const isOrganizerOfAnyEvent = !!currentEmailLc && (events || []).some(e => {
-    const inOrg = (e.organizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
-    if (inOrg) return true;
-    return (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
-  });
-  const canCheckIn = isAdmin || isOrganizer || isQRScannerOfAny || isOrganizerOfAnyEvent;
+  // v22.50: Das frühere Check-in-Icon im Header ist entfallen — der Zugang zur
+  // Check-in-Seite läuft jetzt über die globale Such-Leiste (GlobalSearch) bzw.
+  // die Aktionen im Organizer Center.
   const { t, locale, setLocale } = useLanguage();
   const [showPopup, setShowPopup] = React.useState(false);
   const isLanding = currentPage === 'landing';
@@ -212,58 +196,11 @@ export default function Header(): React.ReactElement {
           </>
         )}
       </div>
+      {/* v22.50: Globale Such-Leiste — ersetzt das frühere Check-in-Icon im
+          Header. Self-gated (nur Admin/Organizer eigener Events). Auf der
+          Landing Page ausgeblendet, weil dort der Boot-/Logo-Look gilt. */}
+      {!isLanding && <GlobalSearch />}
       <div className="header-right">
-        {canCheckIn && isLanding && isMobile && (
-          <button
-            type="button"
-            onClick={() => navigate('check-in')}
-            aria-label={t('header.checkin')}
-            style={{
-              background: 'var(--dex-green)', color: '#fff',
-              border: 'none', borderRadius: 12,
-              padding: '6px 10px',
-              fontSize: '0.78rem', fontWeight: 600, lineHeight: 1.2,
-              cursor: 'pointer', marginRight: 6,
-              boxShadow: '0 2px 8px rgba(134,188,37,0.28)',
-              fontFamily: 'inherit', whiteSpace: 'nowrap',
-              position: 'relative',
-            }}
-          >
-            {t('header.checkin.bubble') || 'Jetzt einchecken'}
-            <span style={{
-              position: 'absolute', top: '50%', right: -6, transform: 'translateY(-50%)',
-              width: 0, height: 0,
-              borderTop: '6px solid transparent',
-              borderBottom: '6px solid transparent',
-              borderLeft: '6px solid var(--dex-green)',
-            }} />
-          </button>
-        )}
-        {/* v13.10: Check-In-Button auch auf Desktop sichtbar, damit reine
-            QR-Scanner (ohne Admin-Center-Zugang) den manuellen
-            Namens-Such-Check-In auf der Check-In-Seite erreichen. Der
-            Kamera-Scanner selbst macht am Desktop wenig Sinn (keine
-            Rückkamera), die Teilnehmer-Einchecken-Liste direkt darunter
-            funktioniert dort aber genauso wie auf dem Handy. */}
-        {canCheckIn && (
-          <button
-            className="header-icon-btn"
-            onClick={() => navigate('check-in')}
-            title={t('header.checkin')}
-            style={{
-              ...(currentPage === 'check-in' ? { background: 'var(--dex-gray-200)' } : {}),
-              ...(isMobile ? {} : { width: 'auto', padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 8 }),
-            }}
-            aria-label={t('header.checkin')}
-          >
-            <QrCode size={20} />
-            {!isMobile && (
-              <span style={{ fontSize: '0.85rem', fontWeight: 500, lineHeight: 1 }}>
-                {t('header.checkin')}
-              </span>
-            )}
-          </button>
-        )}
         {/* v9.29: Refresh-Button im Header — ersetzt die alten in-page
             Aktualisieren-Buttons in AdminPage. Nur auf Seiten anzeigen, auf
             denen ein Refresh sinnvoll ist (Admin Center, Event-Liste,
