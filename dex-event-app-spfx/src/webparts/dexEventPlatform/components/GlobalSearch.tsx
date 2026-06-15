@@ -365,8 +365,10 @@ export default function GlobalSearch(): React.ReactElement | null {
           onClick={() => { setExpanded(true); setOpen(true); }}
           title={isDe ? 'Suchen' : 'Search'}
           aria-label={isDe ? 'Suchen' : 'Search'}
+          style={{ width: 'auto', padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 8 }}
         >
           <Search size={20} />
+          <span style={{ fontSize: '0.85rem', fontWeight: 500, lineHeight: 1 }}>{isDe ? 'Suche' : 'Search'}</span>
         </button>
       </div>
     );
