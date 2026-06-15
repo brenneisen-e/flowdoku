@@ -561,6 +561,23 @@ function ActionsRegistryProvider(props: { children: React.ReactNode }): React.Re
   return React.createElement(ActionsRegistryContext.Provider, { value }, props.children);
 }
 
+// v22.50: Sprung aus der globalen Header-Suche in eine konkrete Aktion. Die
+// Suche legt den Aktions-Key in localStorage ab; hier öffnen wir das Dropdown
+// und filtern es auf den passenden Begriff vor. DE-/EN-Seed muss ein
+// Teilstring des registrierten Aktions-Titels sein (Substring-Filter).
+const ACTION_FOCUS_SEED: Record<string, { de: string; en: string }> = {
+  export: { de: 'Excel-Export', en: 'Excel export' },
+  qr: { de: 'QR-Codes versenden', en: 'Send QR codes' },
+  massmail: { de: 'E-Mail versenden', en: 'Send email' },
+  invite: { de: 'Einladungsmail', en: 'Invitation email' },
+  audit: { de: 'Audit-Log', en: 'Audit log' },
+  selfcheckin: { de: 'Self-Check-in', en: 'self check-in' },
+  idreorder: { de: 'IDs neu vergeben', en: 'Reassign IDs' },
+  overbook: { de: 'Überbuchung', en: 'overbooking' },
+  accessfix: { de: 'Zugriff reparieren', en: 'repair access' },
+  fixcols: { de: 'Spalten fixen', en: 'Fix columns' },
+};
+
 function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | null {
   const ctx = React.useContext(ActionsRegistryContext);
   const [open, setOpen] = React.useState(false);
@@ -572,6 +589,7 @@ function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | null {
   // etwas eingetippt ist, werden alle Kategorien automatisch aufgeklappt.
   const [query, setQuery] = React.useState('');
   const rootRef = React.useRef<HTMLDivElement | null>(null);
+  const focusSeededRef = React.useRef(false);
   React.useEffect(() => {
     if (!open) return undefined;
     const onDocClick = (e: MouseEvent): void => {
@@ -584,6 +602,19 @@ function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | null {
   }, [open]);
   // v22.5: Suchfeld leeren, sobald das Dropdown geschlossen wird.
   React.useEffect(() => { if (!open) setQuery(''); }, [open]);
+  // v22.50: Auto-Open + Vorfilter, wenn die Header-Suche eine Aktion angesteuert
+  // hat. Einmalig, sobald Aktionen registriert sind.
+  React.useEffect(() => {
+    if (focusSeededRef.current) return;
+    if (!ctx || ctx.actions.length === 0) return;
+    let hint = '';
+    try { hint = window.localStorage.getItem('dex_search_focus_action') || ''; } catch { /* */ }
+    if (!hint) return;
+    try { window.localStorage.removeItem('dex_search_focus_action'); } catch { /* */ }
+    const seed = ACTION_FOCUS_SEED[hint];
+    focusSeededRef.current = true;
+    if (seed) { setQuery(props.isDe ? seed.de : seed.en); setOpen(true); }
+  }, [ctx, props.isDe]);
   if (!ctx || ctx.actions.length === 0) return null;
   const lang = props.isDe ? 'de' : 'en';
   // v22.5: Kategorien alphabetisch nach lokalisiertem Label sortieren.

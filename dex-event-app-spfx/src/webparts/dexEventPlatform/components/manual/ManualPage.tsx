@@ -66,6 +66,13 @@ export default function ManualPage(): React.ReactElement {
   // sofern der User sie laut Rolle sehen darf. Andernfalls Default-Section.
   const [activeId, setActiveId] = React.useState<string>(() => {
     try {
+      // v22.50: Sprung aus der globalen Admin-Suche — der Ziel-Slug liegt vor
+      // navigate('manual') in localStorage (kein URL-Query nötig).
+      const hinted = window.localStorage.getItem('dex_open_manual_section');
+      if (hinted) {
+        window.localStorage.removeItem('dex_open_manual_section');
+        if (visibleSections.some(s => s.id === hinted)) return hinted;
+      }
       const params = new URLSearchParams(window.location.search);
       const sec = params.get('section');
       if (sec && visibleSections.some(s => s.id === sec)) return sec;

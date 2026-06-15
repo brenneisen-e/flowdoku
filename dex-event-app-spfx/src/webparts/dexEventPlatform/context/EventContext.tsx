@@ -11,7 +11,7 @@
 import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../types';
-import { EventService, SPEvent, CustomField, SPRegistration, ReseedSummary } from '../services/EventService';
+import { EventService, SPEvent, CustomField, SPRegistration, SPParticipant, ReseedSummary } from '../services/EventService';
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
 import { isEventOver } from '../utils/eventFormat';
 import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
@@ -415,6 +415,10 @@ interface EventContextType {
   listFieldDocuments: (eventId: string, fieldId: string, participantEmail?: string) => Promise<Array<{ fileName: string; serverRelativeUrl: string; displayName: string }>>;
   deleteFieldDocument: (eventId: string, fileName: string, participantEmail?: string) => Promise<boolean>;
   getMyEventNumbers: () => Promise<{ registered: number[]; waitlisted: number[] }>;
+  /** v22.50: globale Teilnehmer-Liste (DEX_Participants) für die Admin-Suche.
+   *  Berechtigungs-Scoping (nur Events, die der Nutzer verwalten darf) macht
+   *  der Aufrufer. */
+  getAllParticipants: () => Promise<SPParticipant[]>;
   refreshEvents: () => Promise<void>;
   refreshParticipantCounts: (eventId?: string) => Promise<void>;
   markExpiredEventsAsCompleted: () => Promise<number>;
@@ -3177,6 +3181,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return success;
   }
 
+  // v22.50: Passthrough für die globale Admin-Suche (DEX_Participants).
+  async function getAllParticipants(): Promise<SPParticipant[]> {
+    try { return await eventService.getAllParticipants(); }
+    catch (err) { console.warn('[DEX] getAllParticipants failed:', err); return []; }
+  }
+
   async function getMyEventNumbers(): Promise<{ registered: number[]; waitlisted: number[] }> {
     try {
       const record = await eventService.getParticipantByEmail(currentUserEmail);
@@ -3583,7 +3593,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, scanInactiveAccounts, getArchivableCount, runArchiveExpired,
+        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, scanInactiveAccounts, getArchivableCount, runArchiveExpired,
         sendAdminInquiry,
         reseedDefaultEmailTemplates,
         sendOrganizerOnboarding,
