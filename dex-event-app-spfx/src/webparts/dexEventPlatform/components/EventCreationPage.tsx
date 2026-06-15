@@ -8133,6 +8133,10 @@ export default function EventCreationPage(): React.ReactElement {
                 onExcludedUsersChange={setExcludedUsers}
                 stepBadge={<StepBadge n={14} />}
                 cardBgPrimary={zebraS3Bg()}
+                visibilityTabs={subEvents.length > 0 ? [
+                  { id: 'main', title: subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Hauptevent' : 'Main event'), locationFilter, audience, filterMode },
+                  ...subEvents.map(s => ({ id: s.id, title: (shortSubEventTitle(s.title, title) || (isDe ? 'Sub-Event' : 'Sub-event')).trim(), locationFilter: s.locationFilter || '', audience: s.audience || '', filterMode: (s.filterMode || 'AND') as 'AND' | 'OR' })),
+                ] : undefined}
                 middleSlot={(locationFilter && audience) ? (
                   /* Filterverknüpfung: nur sichtbar wenn beide Bereiche
                      (Standortfilter + Mailverteiler) Werte haben — sonst gibt

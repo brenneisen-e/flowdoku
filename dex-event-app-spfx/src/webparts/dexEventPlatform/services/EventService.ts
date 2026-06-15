@@ -7933,22 +7933,25 @@ export class EventService {
     if (!subsiteUrl) return { scanned, updated, failedLookups };
     try {
       const listResp = await this.context.spHttpClient.get(
-        `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items?$select=Id,ParticipantEmail,JobTitle,Department,Location,Phone&$orderby=RegistrationDate desc&$top=${n}`,
+        `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items?$select=Id,ParticipantEmail,Vorname,Nachname,ParticipantName,JobTitle,Department,Location,Phone&$orderby=RegistrationDate desc&$top=${n}`,
         SPHttpClient.configurations.v1
       );
       if (!listResp.ok) return { scanned, updated, failedLookups };
       const listData = await listResp.json();
       const items = listData.value || listData.d?.results || [];
+      // v22.58: erkennt kaputte Namen (SharePoint-Claims-Token), die durch den
+      // sauberen Profil-Namen ersetzt werden müssen.
+      const looksLikeClaim = (s: string): boolean => /\|membership\||0#\.f\||^i:0#/i.test((s || '').trim());
       for (const it of items) {
         scanned += 1;
         const email: string = (it.ParticipantEmail || '').trim();
         if (!email) continue;
-        let profile = { department: '', location: '', jobTitle: '', phone: '' };
+        let profile = { department: '', location: '', jobTitle: '', phone: '', firstName: '', lastName: '', displayName: '' };
         let success = false;
         for (let attempt = 0; attempt < 3; attempt += 1) {
           try {
             const p = await this.getUserProfileByEmail(email);
-            if (p && (p.jobTitle || p.department || p.location)) {
+            if (p && (p.jobTitle || p.department || p.location || p.firstName || p.lastName)) {
               profile = p; success = true; break;
             }
           } catch { /* */ }
@@ -7956,12 +7959,22 @@ export class EventService {
         }
         if (!success) { failedLookups += 1; continue; }
         try {
-          const needsUpdate =
+          // Name-Reparatur: nur wenn der aktuelle Name kaputt (Claims) oder leer
+          // ist UND das Profil einen sauberen Namen liefert.
+          const vornameBroken = looksLikeClaim(it.Vorname) || !(it.Vorname || '').trim();
+          const nameFix = vornameBroken && (profile.firstName || profile.lastName)
+            ? {
+                Vorname: profile.firstName || '',
+                Nachname: profile.lastName || '',
+                ParticipantName: (profile.displayName && !looksLikeClaim(profile.displayName) ? profile.displayName : `${profile.firstName} ${profile.lastName}`.trim()),
+              }
+            : null;
+          const profileUpdate =
             (profile.jobTitle && profile.jobTitle !== (it.JobTitle || '')) ||
             (profile.department && profile.department !== (it.Department || '')) ||
             (profile.location && profile.location !== (it.Location || '')) ||
             (profile.phone && profile.phone !== (it.Phone || ''));
-          if (needsUpdate) {
+          if (nameFix || profileUpdate) {
             const ok = await this._merge(
               `${subsiteUrl}/_api/web/lists/getbytitle('Teilnehmer')/items(${it.Id})`,
               {
@@ -7969,6 +7982,7 @@ export class EventService {
                 'Department': profile.department || it.Department || '',
                 'Location': profile.location || it.Location || '',
                 'Phone': profile.phone || it.Phone || '',
+                ...(nameFix || {}),
               }
             );
             if (ok && (ok as { ok: boolean }).ok) updated += 1;

@@ -6493,10 +6493,10 @@ export default function AdminPage(): React.ReactElement {
               <ActionTile
                 icon={<RefreshCw size={18} />}
                 category="maintenance"
-                title={isRefreshingProfiles ? (isDe ? 'Profile werden geladen…' : 'Loading profiles…') : (isDe ? 'Profile neu laden' : 'Reload profiles')}
+                title={isRefreshingProfiles ? (isDe ? 'Teilnehmer werden nachgeladen…' : 'Reloading attendees…') : (isDe ? 'Teilnehmer nachladen (Daten reparieren)' : 'Reload attendees (repair data)')}
                 desc={isDe
-                  ? 'Frischt JobTitle, Standort, Department und Telefonnummer der letzten N Teilnehmer aus dem Microsoft-365-Benutzerprofil auf — wenn z.B. nach einem Org-Wechsel die Teilnehmerdaten veraltet sind.'
-                  : 'Refreshes job title, location, department and phone number of the last N participants from the Microsoft 365 user profile — e.g. when participant data is outdated after an org change.'}
+                  ? 'Lädt Name, JobTitle, Standort, Department und Telefonnummer der letzten N Teilnehmer frisch aus dem Microsoft-365-Benutzerprofil. Repariert auch kaputte Namen — z.B. wenn statt des Vornamens ein technisches Anmelde-Kürzel in der Liste steht.'
+                  : 'Reloads name, job title, location, department and phone of the last N attendees from the Microsoft 365 user profile. Also repairs broken names — e.g. when a technical login token appears instead of the first name.'}
                 badge="admin"
                 busy={isRefreshingProfiles}
                 disabled={!selectedEvent?.subsiteUrl}
