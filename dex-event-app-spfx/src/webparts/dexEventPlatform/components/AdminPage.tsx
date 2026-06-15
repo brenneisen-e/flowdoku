@@ -4897,7 +4897,27 @@ export default function AdminPage(): React.ReactElement {
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const tabs: Array<{ id: string; label: string; count: number; isParent: boolean; ev: any }> = [];
                   if (parent) {
-                    tabs.push({ id: parent.id, label: parent.title || (isDe ? 'Hauptevent' : 'Main event'), count: parent.currentParticipants || 0, isParent: true, ev: parent });
+                    // v22.64: Im Klammer-Modus zeigt der HAUPT-Badge die ECHTE
+                    // Zahl eindeutiger aktiver Personen über alle Sub-Events
+                    // (live), nicht den gespeicherten Counter `currentParticipants`
+                    // der Klammer — der zählt nicht buchbare Klammern unzuverlässig
+                    // und kann verrutschen.
+                    let parentCount = parent.currentParticipants || 0;
+                    const pKids = childEventsOf(parent.id);
+                    const haveSubData = parent.subEventsOnlyMode && pKids.length > 0 && pKids.every(c => subEventRegsByEventId[c.id] !== undefined);
+                    if (haveSubData) {
+                      const activeSet = new Set<string>();
+                      for (const c of pKids) {
+                        for (const r of (subEventRegsByEventId[c.id] || [])) {
+                          if (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt') {
+                            const k = (r.ParticipantEmail || '').toLowerCase().trim();
+                            if (k) activeSet.add(k);
+                          }
+                        }
+                      }
+                      parentCount = activeSet.size;
+                    }
+                    tabs.push({ id: parent.id, label: parent.title || (isDe ? 'Hauptevent' : 'Main event'), count: parentCount, isParent: true, ev: parent });
                   }
                   for (const c of siblings) {
                     tabs.push({ id: c.id, label: shortSubEventTitle(c.title, parent?.title) || (isDe ? 'ohne Titel' : 'untitled'), count: c.currentParticipants || 0, isParent: false, ev: c });
