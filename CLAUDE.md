@@ -799,6 +799,32 @@ einer Team-Anmeldung:
   Wird in `registerTeam` (v11.82 konsolidiert auf den Helper),
   `addTeamMember` (v11.83) und `createTeamJoinRequest` (v11.83) genutzt.
 
+### Team-Zuordnungs-Modal + Überbuchungs-Box: Bugfixes (v22.40)
+
+- **Team aus bereits-angemeldeten Personen anlegen war unmöglich:** Die
+  `disabled`-Logik des „Neues Team anlegen"-Buttons verlangte zwingend einen
+  Graph-Pick **und** Consent — die per Checkbox gewählten teamlosen Personen
+  wurden ignoriert, der Button blieb immer grau. Fix: `disabled` greift jetzt
+  auf `totalPicks` (teamlose Picks + optionaler Graph-Pick); Consent nur bei
+  echtem Graph-Neu-Pick. Plus: live Belegungs-Anzeige (inkl. Auswahl),
+  Über-Kapazitäts-Sperre (Checkboxen/Suche disabled bei `atCap`), Titel
+  „… Mitglieder zuordnen".
+- **Info-Mail an zugeordnete Teamlose wurde nie verschickt** (alter TODO):
+  `assignTeamlessToTeam(eventId, teamId, teamName, regId, isLead, opts)` nimmt
+  jetzt `{ sendMail, recipientEmail, recipientFirstName, recipientLastName }`
+  — AdminPage reicht die Empfänger aus der bereits geladenen
+  Registrierungs-Zeile durch (keine erneute Mail-Eingabe nötig). Mail ist im
+  Deloitte-Layout gewrappt (`wrapTemplate` + `teamInfoBlockHtml`,
+  TemplateType `TeamMemberJoined`), gated über `event.disableEmails`.
+- **Überbuchungs-Review zeigte stale Marker:** Hatte sich nach dem
+  „Überbuchung prüfen"-Lauf jemand abgemeldet, blieb eine wieder regulär in
+  die Kapazität passende Person (overBy ≤ 0) in der Box hängen. Fix
+  zweistufig: (1) Box filtert `flaggedRaw` auf wirklich-noch-über-Kapazität
+  (Position > Cap je Gruppe), (2) Auto-Heal-Effekt löscht stale
+  `OverbookReview='Pending'`-Marker via `clearOverbookMark` (auch für
+  inaktive/abgemeldete) und lädt neu — so korrigiert sich auch die orange
+  Tabellen-Markierung + der Zähler. Loop-Schutz über `overbookHealRef`.
+
 ### Team-Anmeldung — Phase 5 (v11.86): Lead bearbeitet sein Team aus MyEvents
 
 Mit v11.86 bekommt der Team-Lead in „Meine Events" einen

@@ -319,7 +319,7 @@ interface EventContextType {
   /** v17.2: Schon angemeldete Person (ohne TeamId) einem Team zuweisen.
    *  PATCHt nur die TeamId/TeamName/TeamLead-Felder, KEINE neue
    *  Registrierung, KEINE Bestätigungsmail, KEIN Outlook. */
-  assignTeamlessToTeam: (eventId: string, teamId: string, teamName: string | undefined, existingRegId: number, isLead?: boolean) => Promise<boolean>;
+  assignTeamlessToTeam: (eventId: string, teamId: string, teamName: string | undefined, existingRegId: number, isLead?: boolean, opts?: { sendMail?: boolean; recipientEmail?: string; recipientFirstName?: string; recipientLastName?: string }) => Promise<boolean>;
   /** v11.83: Direkter Team-Beitritt aus der Anmeldeseite (wenn der
    *  Organizer "Beitritt erfordert Bestätigung" NICHT aktiviert hat).
    *  Verhalten wie `addTeamMember`, aber läuft mit dem eingeloggten User
@@ -1802,10 +1802,42 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     teamName: string | undefined,
     existingRegId: number,
     isLead: boolean = false,
+    // v22.40: optionaler Mail-Versand an die zugeordnete (bereits angemeldete)
+    // Person. Die Empfänger-Daten kommen vom Aufrufer (AdminPage hat die
+    // Registrierungs-Zeile bereits geladen) — so muss niemand die E-Mail
+    // erneut eingeben. Best-effort, blockiert die Zuordnung nicht.
+    opts?: { sendMail?: boolean; recipientEmail?: string; recipientFirstName?: string; recipientLastName?: string },
   ): Promise<boolean> {
-    const event = subsiteMap.current[eventId] ? events.find(e => e.id === eventId) : events.find(e => e.id === eventId);
+    const event = events.find(e => e.id === eventId);
     if (!event || !event.subsiteUrl) return false;
-    return eventService.assignRegistrationToTeam(event.subsiteUrl, existingRegId, teamId, teamName, isLead);
+    const ok = await eventService.assignRegistrationToTeam(event.subsiteUrl, existingRegId, teamId, teamName, isLead);
+    if (ok && opts?.sendMail && opts.recipientEmail && !event.disableEmails) {
+      try {
+        const lang = event.emailLanguage || 'EN';
+        const isDe = (lang || 'EN').toUpperCase() === 'DE';
+        const members = await eventService.getTeamMembers(event.subsiteUrl, teamId).catch(() => []);
+        const active = members.filter(m => m.Status !== 'Abgemeldet');
+        const teamSizeForBlock = (typeof event.teamSize === 'number' && event.teamSize > 0) ? event.teamSize : active.length;
+        const teamInfoHtml = teamInfoBlockHtml({
+          teamName,
+          members: active.map(m => ({ firstName: m.Vorname || '', lastName: m.Nachname || '', isLead: !!m.TeamLead })),
+          teamSize: teamSizeForBlock,
+          isDe,
+          registeredByName: currentUserName,
+          consentRequired: false,
+        });
+        const first = (opts.recipientFirstName || '').trim();
+        const fullName = `${first} ${opts.recipientLastName || ''}`.trim() || opts.recipientEmail;
+        const teamNameStr = teamName ? `„${teamName}"` : (isDe ? 'einem Team' : 'a team');
+        const inner = isDe
+          ? `<p>Hallo ${first || fullName},</p><p>du wurdest für das Event <strong>${event.title}</strong> dem Team ${teamNameStr} zugeordnet. Deine bestehende Anmeldung bleibt unverändert — du musst nichts weiter tun.</p>`
+          : `<p>Hello ${first || fullName},</p><p>you have been assigned to team ${teamNameStr} for the event <strong>${event.title}</strong>. Your existing registration stays unchanged — nothing else to do.</p>`;
+        const subject = isDe ? `Team-Zuordnung: ${event.title}` : `Team assignment: ${event.title}`;
+        const body = wrapTemplate('#86bc25', isDe ? 'Team-Zuordnung' : 'Team assignment', `Event ${event.title}`, inner + teamInfoHtml);
+        await eventService.queueEmail(subject, opts.recipientEmail, fullName, body, 'TeamMemberJoined', event.title, eventId);
+      } catch (err) { console.warn('[DEX] assignTeamlessToTeam mail failed:', err); }
+    }
+    return ok;
   }
 
   async function addTeamMember(
