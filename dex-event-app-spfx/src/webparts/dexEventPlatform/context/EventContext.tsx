@@ -421,9 +421,6 @@ interface EventContextType {
   getAllParticipants: () => Promise<SPParticipant[]>;
   refreshEvents: () => Promise<void>;
   refreshParticipantCounts: (eventId?: string) => Promise<void>;
-  /** v22.65: Teilnehmerzahl eines Events im App-Zustand überschreiben (z.B.
-   *  Klammer-Live-Zahl statt des Schatten-Zähler-Werts). Rein in-memory. */
-  overrideParticipantCount: (eventId: string, count: number) => void;
   markExpiredEventsAsCompleted: () => Promise<number>;
   sendAdminInquiry: (requesterName: string, requesterEmail: string, eventName: string, message: string) => Promise<boolean>;
   /** v12.12: Admin-Aktion zum Re-Seed der Default-Email-Templates in
@@ -749,12 +746,6 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       })
     );
     return results;
-  }
-
-  function overrideParticipantCount(eventId: string, count: number): void {
-    setEvents(prev => prev.map(e => (e.id === eventId && e.currentParticipants !== count)
-      ? { ...e, currentParticipants: count }
-      : e));
   }
 
   async function refreshParticipantCounts(eventId?: string): Promise<void> {
@@ -3607,7 +3598,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, overrideParticipantCount, markExpiredEventsAsCompleted, autoRepairProxyAccess, scanInactiveAccounts, getArchivableCount, runArchiveExpired,
+        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, scanInactiveAccounts, getArchivableCount, runArchiveExpired,
         sendAdminInquiry,
         reseedDefaultEmailTemplates,
         sendOrganizerOnboarding,

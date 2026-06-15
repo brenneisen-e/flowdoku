@@ -846,7 +846,7 @@ export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
   // v14.11: zusätzlich `events` (alle Events inkl. Sub-Events) als `allEvents`
   // für die Parent-Lookup-Logik im konsolidierten View + im Sub-Event-Detail.
-  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent, refreshEvents, overrideParticipantCount, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead } = useEvents();
+  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead } = useEvents();
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const handleRefresh = async (): Promise<void> => {
     if (isRefreshing) return;
@@ -973,29 +973,6 @@ export default function AdminPage(): React.ReactElement {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEvent?.id, selectedEvent?.subEventsOnlyMode, subRegReloadTick]);
-  // v22.65: Sobald die Sub-Event-Daten der geöffneten Klammer geladen sind, die
-  // ECHTE Zahl eindeutiger aktiver Personen in den App-Zustand schreiben
-  // (Write-Back) — damit die Listen-Karte die richtige Teilnehmerzahl zeigt
-  // statt des verrutschten Schatten-Zählers. Rein in-memory, löscht nichts.
-  React.useEffect(() => {
-    if (!selectedEvent || !selectedEvent.subEventsOnlyMode) return;
-    const kids = childEventsOf(selectedEvent.id);
-    if (kids.length === 0) return;
-    if (!kids.every(c => subEventRegsByEventId[c.id] !== undefined)) return;
-    const activeSet = new Set<string>();
-    for (const c of kids) {
-      for (const r of (subEventRegsByEventId[c.id] || [])) {
-        if (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt') {
-          const k = (r.ParticipantEmail || '').toLowerCase().trim();
-          if (k) activeSet.add(k);
-        }
-      }
-    }
-    if (selectedEvent.currentParticipants !== activeSet.size) {
-      overrideParticipantCount(selectedEvent.id, activeSet.size);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedEvent?.id, selectedEvent?.subEventsOnlyMode, subEventRegsByEventId]);
   // v15.14: Wenn ein Sub-Event direkt selektiert wurde, laden wir die
   // Registrierungen des Parent-Events mit, damit die Pastel-A-Spalten
   // (Custom-Fields des Hauptevents) pro Teilnehmer-Zeile mit den
@@ -9074,19 +9051,33 @@ export default function AdminPage(): React.ReactElement {
             const declinePeople = people.filter(p => p.declinedAny).length;
             const deletePerson = async (p: CancelPerson): Promise<void> => {
               if (!selectedEvent) return;
-              const rows = Object.values(p.bySection);
+              const emailLc = p.email.toLowerCase().trim();
+              // v22.66: Person ÜBERALL löschen — nicht nur die Abmelde-Zeilen,
+              // sondern ALLE Zeilen dieser E-Mail über die Klammer UND alle
+              // Sub-Events (inkl. der aktiven „Schatten"-Zeile auf der Klammer,
+              // die beim reinen Abmelden/Löschen sonst verwaist liegen bleibt).
+              const targets: Array<{ sub: string; id: number }> = [];
+              if (selectedEvent.subsiteUrl) {
+                for (const r of registrations) {
+                  if ((r.ParticipantEmail || '').toLowerCase().trim() === emailLc) targets.push({ sub: selectedEvent.subsiteUrl, id: r.Id });
+                }
+              }
+              for (const c of consolidatedChildren) {
+                if (!c.subsiteUrl) continue;
+                for (const r of (subEventRegsByEventId[c.id] || [])) {
+                  if ((r.ParticipantEmail || '').toLowerCase().trim() === emailLc) targets.push({ sub: c.subsiteUrl, id: r.Id });
+                }
+              }
               const nm = `${p.firstName} ${p.lastName}`.trim() || p.email;
               const msg = isDe
-                ? `Alle Abmeldungen von „${nm}" (${rows.length}) endgültig löschen? Die Zeilen werden aus den Teilnehmerlisten entfernt und können nicht wiederhergestellt werden.`
-                : `Permanently delete all cancellations of „${nm}" (${rows.length})? The rows are removed from the participant lists and cannot be restored.`;
-              if (!(await confirmDialog(msg, { danger: true, title: isDe ? 'Abmeldungen löschen' : 'Delete cancellations', confirmLabel: isDe ? 'Endgültig löschen' : 'Delete permanently' }))) return;
-              for (const r of rows) {
-                const sub = r._subsiteUrl || selectedEvent.subsiteUrl;
-                if (!sub) continue;
-                try { await eventServiceRef.deleteRegistration(sub, r.Id); } catch { /* best-effort */ }
+                ? `„${nm}" wirklich überall löschen? Alle ${targets.length} Einträge dieser Person (Gesamt-Event + Sub-Events) werden endgültig entfernt und können nicht wiederhergestellt werden.`
+                : `Permanently delete „${nm}" everywhere? All ${targets.length} entries of this person (overall event + sub-events) will be removed and cannot be restored.`;
+              if (!(await confirmDialog(msg, { danger: true, title: isDe ? 'Person überall löschen' : 'Delete person everywhere', confirmLabel: isDe ? 'Endgültig löschen' : 'Delete permanently' }))) return;
+              for (const t of targets) {
+                try { await eventServiceRef.deleteRegistration(t.sub, t.id); } catch { /* best-effort */ }
               }
               try {
-                await eventServiceRef.writeChangeLog({ action: 'RegistrationDeleted', targetType: 'Participant', targetId: p.email, targetName: nm, eventId: selectedEvent.id, eventTitle: selectedEvent.title, details: { deletedStatus: 'Abgemeldet', count: rows.length } });
+                await eventServiceRef.writeChangeLog({ action: 'RegistrationDeleted', targetType: 'Participant', targetId: p.email, targetName: nm, eventId: selectedEvent.id, eventTitle: selectedEvent.title, details: { deletedStatus: 'Abgemeldet', count: targets.length, everywhere: true } });
               } catch { /* */ }
               setSubRegReloadTick(t => t + 1);
               const regs = await getAllRegistrations(selectedEvent.id);
