@@ -319,7 +319,7 @@ interface EventContextType {
   /** v17.2: Schon angemeldete Person (ohne TeamId) einem Team zuweisen.
    *  PATCHt nur die TeamId/TeamName/TeamLead-Felder, KEINE neue
    *  Registrierung, KEINE Bestätigungsmail, KEIN Outlook. */
-  assignTeamlessToTeam: (eventId: string, teamId: string, teamName: string | undefined, existingRegId: number, isLead?: boolean, opts?: { sendMail?: boolean; recipientEmail?: string; recipientFirstName?: string; recipientLastName?: string }) => Promise<boolean>;
+  assignTeamlessToTeam: (eventId: string, teamId: string, teamName: string | undefined, existingRegId: number, isLead?: boolean, opts?: { sendMail?: boolean; recipientEmail?: string; recipientFirstName?: string; recipientLastName?: string; ccEmail?: string }) => Promise<boolean>;
   /** v11.83: Direkter Team-Beitritt aus der Anmeldeseite (wenn der
    *  Organizer "Beitritt erfordert Bestätigung" NICHT aktiviert hat).
    *  Verhalten wie `addTeamMember`, aber läuft mit dem eingeloggten User
@@ -380,6 +380,10 @@ interface EventContextType {
    *  Anmeldungen bleibt erhalten. */
   deleteEventItemOnly: (eventId: string) => Promise<boolean>;
   updateEvent: (eventId: string, updates: Record<string, unknown>) => Promise<boolean>;
+  /** v22.42: Automatischer Hintergrund-Fix der Zeilen-Autoren (Sichtbarkeit
+   *  von Fremd-Anmeldungen). Läuft beim Admin-Start gedrosselt (1×/24h) über
+   *  alle aktiven Subsites — best-effort, blockiert nichts. */
+  autoRepairProxyAccess: () => Promise<void>;
   /** v21: Archivierung — zählt archivreife Zeilen abgelaufener Events. */
   getArchivableCount: () => Promise<{ total: number; perList: Record<string, number> }>;
   /** v21: Archivierung — verschiebt archivreife Zeilen ins DEX_Archive.
@@ -1806,7 +1810,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // Person. Die Empfänger-Daten kommen vom Aufrufer (AdminPage hat die
     // Registrierungs-Zeile bereits geladen) — so muss niemand die E-Mail
     // erneut eingeben. Best-effort, blockiert die Zuordnung nicht.
-    opts?: { sendMail?: boolean; recipientEmail?: string; recipientFirstName?: string; recipientLastName?: string },
+    opts?: { sendMail?: boolean; recipientEmail?: string; recipientFirstName?: string; recipientLastName?: string; ccEmail?: string },
   ): Promise<boolean> {
     const event = events.find(e => e.id === eventId);
     if (!event || !event.subsiteUrl) return false;
@@ -1834,7 +1838,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           : `<p>Hello ${first || fullName},</p><p>you have been assigned to team ${teamNameStr} for the event <strong>${event.title}</strong>. Your existing registration stays unchanged — nothing else to do.</p>`;
         const subject = isDe ? `Team-Zuordnung: ${event.title}` : `Team assignment: ${event.title}`;
         const body = wrapTemplate('#86bc25', isDe ? 'Team-Zuordnung' : 'Team assignment', `Event ${event.title}`, inner + teamInfoHtml);
-        await eventService.queueEmail(subject, opts.recipientEmail, fullName, body, 'TeamMemberJoined', event.title, eventId);
+        await eventService.queueEmail(subject, opts.recipientEmail, fullName, body, 'TeamMemberJoined', event.title, eventId, opts.ccEmail || undefined);
       } catch (err) { console.warn('[DEX] assignTeamlessToTeam mail failed:', err); }
     }
     return ok;
@@ -3420,6 +3424,44 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [events, tutorialDemoActive]);
 
+  // v22.42: Automatischer Hintergrund-Fix der Zeilen-Sichtbarkeit. Beim
+  // Admin-Start werden Fremd-Anmeldungen (von Assistenz/Organizer für andere
+  // angelegt) so repariert, dass der Teilnehmer Autor seiner Zeile wird und
+  // sie damit in „Meine Events" sieht + sich selbst abmelden kann. Läuft
+  // gedrosselt (1×/24h via localStorage), sequentiell über alle aktiven
+  // Subsites, komplett best-effort — der Admin merkt nichts davon.
+  const autoFixStartedRef = React.useRef(false);
+  async function autoRepairProxyAccess(): Promise<void> {
+    try {
+      if (typeof window === 'undefined') return;
+      if (autoFixStartedRef.current) return; // kein Doppelstart in derselben Session
+      const KEY = 'dex_autoaccessfix_lastrun';
+      const last = Number(window.localStorage.getItem(KEY) || '0');
+      const now = Date.now();
+      if (last && now - last < 24 * 60 * 60 * 1000) return; // max. 1×/Tag
+      autoFixStartedRef.current = true;
+      // Zeitstempel sofort setzen — verhindert Hammern bei mehreren Tabs/Reloads.
+      window.localStorage.setItem(KEY, String(now));
+      // Aktive Events mit Subsite, dedupliziert nach Subsite (inkl. Sub-Events).
+      const seen = new Set<string>();
+      const subs: string[] = [];
+      for (const e of events) {
+        if (e.status !== 'Active') continue;
+        const s = (e.subsiteUrl || '').trim();
+        if (!s || seen.has(s)) continue;
+        seen.add(s); subs.push(s);
+      }
+      let fixedTotal = 0;
+      for (const s of subs) {
+        try {
+          const r = await eventService.repairProxyRegistrationAccess(s);
+          fixedTotal += r.authorFixed;
+        } catch (err) { console.warn('[DEX] autoRepairProxyAccess failed for', s, err); }
+      }
+      if (fixedTotal > 0) console.info(`[DEX] autoRepairProxyAccess: ${fixedTotal} Zeile(n) auf den Teilnehmer als Autor gesetzt (${subs.length} Subsites geprüft).`);
+    } catch (err) { console.warn('[DEX] autoRepairProxyAccess error:', err); }
+  }
+
   return React.createElement(
     EventContext.Provider,
     {
@@ -3444,7 +3486,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, getArchivableCount, runArchiveExpired,
+        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, getArchivableCount, runArchiveExpired,
         sendAdminInquiry,
         reseedDefaultEmailTemplates,
         sendOrganizerOnboarding,

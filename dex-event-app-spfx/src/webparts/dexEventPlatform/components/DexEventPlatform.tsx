@@ -107,7 +107,7 @@ function ImpersonationBanner(props: { currentPage?: string }): React.ReactElemen
 function AppContent(): React.ReactElement {
   const { currentPage, navigate } = useNavigation();
   const { isAdmin, isOrganizer, isRolesLoading } = useRoles();
-  const { markExpiredEventsAsCompleted, isEventsLoading, events, getKpiCache, updateKpiCache } = useEvents();
+  const { markExpiredEventsAsCompleted, autoRepairProxyAccess, isEventsLoading, events, getKpiCache, updateKpiCache } = useEvents();
 
   // v11.52: KPI-Boxen im Boot-Loader. Live-Zählung ueber alle Event-
   // Subsites war zu langsam (Counts kommen erst nach mehreren Sekunden) —
@@ -366,6 +366,25 @@ function AppContent(): React.ReactElement {
     didExpireCheck.current = true;
     markExpiredEventsAsCompleted().catch(err => console.warn('[DEX] expire check failed:', err));
   }, [isAdmin, isEventsLoading]);
+
+  // v22.42: Sichtbarkeits-Auto-Fix beim Admin-Start. Repariert im Hintergrund
+  // die Zeilen-Autoren von Fremd-Anmeldungen (Assistenz/Organizer-für-andere),
+  // damit der betroffene Teilnehmer seine Anmeldung in „Meine Events" sieht
+  // und sich selbst abmelden kann. Gedrosselt 1×/24h (localStorage), läuft
+  // verzögert + best-effort, blockiert den App-Start nicht.
+  const didAutoAccessFix = React.useRef(false);
+  React.useEffect(() => {
+    if (didAutoAccessFix.current) return;
+    if (!isAdmin) return;
+    if (isEventsLoading) return;
+    if (!events || events.length === 0) return;
+    didAutoAccessFix.current = true;
+    // Etwas verzögert, damit der erste Render/Boot Vorrang hat.
+    const t = window.setTimeout(() => {
+      autoRepairProxyAccess().catch(err => console.warn('[DEX] auto access-fix failed:', err));
+    }, 4000);
+    return () => window.clearTimeout(t);
+  }, [isAdmin, isEventsLoading, events]);
 
   // Dynamische Höhe + SharePoint-Scroll unterdrücken
   React.useEffect(() => {

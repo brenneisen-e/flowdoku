@@ -1097,6 +1097,9 @@ export default function AdminPage(): React.ReactElement {
   const [adminAddTeamlessPicks, setAdminAddTeamlessPicks] = React.useState<Set<number>>(new Set());
   const [adminAddLeadRegId, setAdminAddLeadRegId] = React.useState<number | null>(null);
   const [adminAddSendMail, setAdminAddSendMail] = React.useState<boolean>(false);
+  // v22.42: Organizer kann die Bestätigungs-/Info-Mail der Team-Zuordnung
+  // optional als Kopie (CC) an sich selbst bekommen.
+  const [adminAddCcOrganizer, setAdminAddCcOrganizer] = React.useState<boolean>(false);
   const [adminAddMemberBusy, setAdminAddMemberBusy] = React.useState(false);
   const [adminAddMemberError, setAdminAddMemberError] = React.useState('');
   const [adminAddMemberIncludeIntl, setAdminAddMemberIncludeIntl] = React.useState(false);
@@ -7332,6 +7335,7 @@ export default function AdminPage(): React.ReactElement {
                         setAdminAddTeamlessPicks(new Set());
                         setAdminAddLeadRegId(null);
                         setAdminAddSendMail(false);
+                        setAdminAddCcOrganizer(false);
                       }}
                     >
                       <Plus size={14} /> Neues Team anlegen
@@ -7548,6 +7552,7 @@ export default function AdminPage(): React.ReactElement {
                                   setAdminAddTeamlessPicks(new Set());
                                   setAdminAddLeadRegId(null);
                                   setAdminAddSendMail(false);
+                                  setAdminAddCcOrganizer(false);
                                 }}
                               >
                                 <Plus size={14} /> Person hinzufügen
@@ -11046,6 +11051,7 @@ export default function AdminPage(): React.ReactElement {
           setAdminAddTeamlessPicks(new Set());
           setAdminAddLeadRegId(null);
           setAdminAddSendMail(false);
+          setAdminAddCcOrganizer(false);
         };
         // v17.4: Logik zur Auswertung der Multi-Pick + (optionalem) Graph-Pick.
         const hasMultiPicks = adminAddTeamlessPicks.size > 0;
@@ -11084,6 +11090,7 @@ export default function AdminPage(): React.ReactElement {
                   recipientEmail: reg?.ParticipantEmail,
                   recipientFirstName: reg?.Vorname,
                   recipientLastName: reg?.Nachname,
+                  ccEmail: (adminAddSendMail && adminAddCcOrganizer) ? currentUser.email : undefined,
                 });
                 if (ok) assignedCount++;
               } catch (err) { console.warn('[DEX] assignTeamlessToTeam failed for', regId, err); }
@@ -11310,6 +11317,24 @@ export default function AdminPage(): React.ReactElement {
                       Info-Mail an die zugeordneten Team-Mitglieder versenden
                       <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
                         Default aus — die Person ist ja bereits beim Event angemeldet.
+                      </span>
+                    </span>
+                  </label>
+                )}
+                {/* v22.42: CC an den Organizer — nur sinnvoll, wenn die
+                    Info-Mail tatsächlich versendet wird. */}
+                {adminAddTeamlessPicks.size > 0 && adminAddSendMail && (
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, marginLeft: 24, fontSize: '0.82rem', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={adminAddCcOrganizer}
+                      onChange={e => setAdminAddCcOrganizer(e.target.checked)}
+                      style={{ marginTop: 2 }}
+                    />
+                    <span>
+                      Bestätigungsmail als Kopie (CC) an mich
+                      <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                        {currentUser.email} bekommt jede dieser Mails in Kopie.
                       </span>
                     </span>
                   </label>

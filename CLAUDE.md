@@ -799,6 +799,25 @@ einer Team-Anmeldung:
   Wird in `registerTeam` (v11.82 konsolidiert auf den Helper),
   `addTeamMember` (v11.83) und `createTeamJoinRequest` (v11.83) genutzt.
 
+### Sichtbarkeits-Auto-Fix beim Admin-Start + Team-CC (v22.42)
+
+- **Auto-Fix der Zeilen-Sichtbarkeit:** `EventContext.autoRepairProxyAccess()`
+  läuft beim **Admin-App-Start** (Effekt in `DexEventPlatform.tsx`, 4 s
+  verzögert, nur `isAdmin`, gedrosselt **1×/24h** via
+  `localStorage['dex_autoaccessfix_lastrun']`). Iteriert alle **aktiven**
+  Subsites (dedupliziert) und ruft pro Subsite das bestehende
+  `eventService.repairProxyRegistrationAccess(sub)` — Fremd-Anmeldungen
+  (Assistenz/Organizer-für-andere) bekommen den **Teilnehmer als Zeilen-Autor**
+  (`AuthorId`), damit dieser seine Anmeldung in „Meine Events" sieht und sich
+  selbst abmelden kann. Komplett still/best-effort, ersetzt für Admins den
+  manuellen Button bzw. den `DEX_AccessFix`-Flow als Routine. Setzt den
+  Throttle-Zeitstempel zu Beginn (kein Hammern bei mehreren Tabs/Reloads);
+  Session-Guard via `autoFixStartedRef`.
+- **Team-Zuordnung CC an Organizer:** Im Team-Modal gibt es unter „Info-Mail
+  versenden" die Sub-Option **„Bestätigungsmail als Kopie (CC) an mich"** —
+  reicht `currentUser.email` als `ccEmail` durch `assignTeamlessToTeam` →
+  `queueEmail(..., cc)`. Nur sichtbar/wirksam, wenn die Info-Mail versendet wird.
+
 ### Team-Mitglied aus Team entfernen ohne Abmeldung (v22.41)
 
 Neue Pro-Mitglied-Aktion **„Entfernen"** in der Teams-Sektion des Organizer
