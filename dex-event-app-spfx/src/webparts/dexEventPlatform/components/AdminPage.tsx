@@ -846,7 +846,7 @@ export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
   // v14.11: zusätzlich `events` (alle Events inkl. Sub-Events) als `allEvents`
   // für die Parent-Lookup-Logik im konsolidierten View + im Sub-Event-Detail.
-  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead } = useEvents();
+  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent, refreshEvents, overrideParticipantCount, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead } = useEvents();
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const handleRefresh = async (): Promise<void> => {
     if (isRefreshing) return;
@@ -973,6 +973,29 @@ export default function AdminPage(): React.ReactElement {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEvent?.id, selectedEvent?.subEventsOnlyMode, subRegReloadTick]);
+  // v22.65: Sobald die Sub-Event-Daten der geöffneten Klammer geladen sind, die
+  // ECHTE Zahl eindeutiger aktiver Personen in den App-Zustand schreiben
+  // (Write-Back) — damit die Listen-Karte die richtige Teilnehmerzahl zeigt
+  // statt des verrutschten Schatten-Zählers. Rein in-memory, löscht nichts.
+  React.useEffect(() => {
+    if (!selectedEvent || !selectedEvent.subEventsOnlyMode) return;
+    const kids = childEventsOf(selectedEvent.id);
+    if (kids.length === 0) return;
+    if (!kids.every(c => subEventRegsByEventId[c.id] !== undefined)) return;
+    const activeSet = new Set<string>();
+    for (const c of kids) {
+      for (const r of (subEventRegsByEventId[c.id] || [])) {
+        if (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt') {
+          const k = (r.ParticipantEmail || '').toLowerCase().trim();
+          if (k) activeSet.add(k);
+        }
+      }
+    }
+    if (selectedEvent.currentParticipants !== activeSet.size) {
+      overrideParticipantCount(selectedEvent.id, activeSet.size);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEvent?.id, selectedEvent?.subEventsOnlyMode, subEventRegsByEventId]);
   // v15.14: Wenn ein Sub-Event direkt selektiert wurde, laden wir die
   // Registrierungen des Parent-Events mit, damit die Pastel-A-Spalten
   // (Custom-Fields des Hauptevents) pro Teilnehmer-Zeile mit den
