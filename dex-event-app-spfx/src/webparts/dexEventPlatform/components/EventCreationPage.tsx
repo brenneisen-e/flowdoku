@@ -1454,7 +1454,11 @@ export default function EventCreationPage(): React.ReactElement {
   // Werten verglichen — Aenderung löst das Update-Confirm-Modal aus.
   // Im Ref, weil wir das einmal beim Mount fixieren und nicht bei Re-Renders
   // neu setzen wollen.
-  const initialOutlookSnapshot = React.useRef<{ title: string; startDate: string; endDate: string; outlookBody: string; outlookLocation: string; outlookSubject: string; outlookStart: string; outlookEnd: string }>({
+  const initialOutlookSnapshot = React.useRef<{ title: string; startDate: string; endDate: string; outlookBody: string; outlookLocation: string; outlookSubject: string; outlookStart: string; outlookEnd: string; organizers: string }>({
+    // v22.48: Organizer-Namen in den Snapshot — eine Organizer-Änderung ändert
+    // den Outlook-Standardtext („wendet euch bitte an …") und soll daher das
+    // Outlook-Update-Modal öffnen.
+    organizers: (editEvent?.organizers || []).join(';'),
     title: editEvent?.title || '',
     startDate: editEvent?.startDate || '',
     endDate: editEvent?.endDate || '',
@@ -1484,7 +1488,7 @@ export default function EventCreationPage(): React.ReactElement {
     kind: 'top' | 'sub';
     eventId: string;
     title: string;
-    changedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'location' | 'subject' | 'layout'>;
+    changedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'location' | 'subject' | 'layout' | 'organizer'>;
     /** v11.68: Sub-Event hat noch keinen Outlook-Termin (kein CalendarLink in
      *  DEX_Events). Body-/Titel-Change wird beim Save in DEX_Events
      *  persistiert, aber es kann KEIN UpdateEvent gequeuet werden — es gibt
@@ -4035,12 +4039,20 @@ export default function EventCreationPage(): React.ReactElement {
     const layoutChanged = headerImageLayout.width !== initLayout.width
       || headerImageLayout.paddingV !== initLayout.paddingV
       || headerImageLayout.paddingH !== initLayout.paddingH;
-    const topChangedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'location' | 'subject' | 'layout'> = [];
+    const topChangedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'location' | 'subject' | 'layout' | 'organizer'> = [];
     if (currentTitle !== (snap.title || '')) topChangedFields.push('title');
     if (!sameInstant(currentStart, snap.startDate || '')) topChangedFields.push('startDate');
     if (!sameInstant(currentEnd, snap.endDate || '')) topChangedFields.push('endDate');
     if (currentStripped !== initialStripped) topChangedFields.push('outlookBody');
     if (layoutChanged) topChangedFields.push('layout');
+    // v22.48: Organizer-Änderung. Der Outlook-Standardtext enthält die
+    // Organizer-Namen („wendet euch bitte an …"). Solange der Text NICHT
+    // individuell überschrieben ist (Body leer = Default), ändert eine
+    // Organizer-Änderung den Termin-Text → als Outlook-relevant werten. Bei
+    // custom Body bleibt der Text bewusst stehen → nicht melden.
+    const currentOrganizers = organizer.split(';').map(s => s.trim()).filter(Boolean).join(';');
+    const bodyIsDefault = !currentStripped.trim() && !initialStripped.trim();
+    if (bodyIsDefault && currentOrganizers !== (snap.organizers || '')) topChangedFields.push('organizer');
     // v18.34: reine Ort-Aenderung gilt ebenfalls als Outlook-relevant.
     if (currentTopLocation !== (snap.outlookLocation || '')) topChangedFields.push('location');
     // v18.42: reine Betreff-Aenderung gilt ebenfalls als Outlook-relevant.
@@ -13436,7 +13448,7 @@ export default function EventCreationPage(): React.ReactElement {
             }}>
               {outlookConfirmItems.map((it, idx) => {
                 const isLast = idx === outlookConfirmItems.length - 1;
-                const fieldLabelMap: Record<'title'|'startDate'|'endDate'|'outlookBody'|'location'|'subject'|'layout', { de: string; en: string }> = {
+                const fieldLabelMap: Record<'title'|'startDate'|'endDate'|'outlookBody'|'location'|'subject'|'layout'|'organizer', { de: string; en: string }> = {
                   title: { de: 'Titel', en: 'Title' },
                   startDate: { de: 'Startzeit', en: 'Start time' },
                   endDate: { de: 'Endzeit', en: 'End time' },
@@ -13444,6 +13456,7 @@ export default function EventCreationPage(): React.ReactElement {
                   location: { de: 'Ort', en: 'Location' },
                   subject: { de: 'Betreff', en: 'Subject' },
                   layout: { de: 'Kopfbild (Größe/Abstand)', en: 'Header image (size/spacing)' },
+                  organizer: { de: 'Organizer (im Termin-Text)', en: 'Organizer (in calendar body)' },
                 };
                 const changedLabels = it.changedFields.map(f => isDe ? fieldLabelMap[f].de : fieldLabelMap[f].en).join(', ');
                 const checked = !!outlookConfirmChecks[it.eventId];
