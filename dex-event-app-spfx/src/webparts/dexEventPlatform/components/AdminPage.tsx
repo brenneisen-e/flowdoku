@@ -4136,14 +4136,22 @@ export default function AdminPage(): React.ReactElement {
   // konsolidieren (vorher nur die Klammer-Subsite → KPI „Abgemeldet" und Liste
   // klafften auseinander). Jede Zeile trägt ihre Subsite + Section-Titel mit,
   // damit das Löschen die richtige Liste trifft.
-  const cancelledRegs: Array<SPRegistration & { _subsiteUrl?: string; _sectionTitle?: string }> = isConsolidatedMode
-    ? consolidatedChildren.reduce<Array<SPRegistration & { _subsiteUrl?: string; _sectionTitle?: string }>>((acc, ch) => {
-        for (const r of (subEventRegsByEventId[ch.id] || [])) {
-          if (r.Status !== 'Abgemeldet') continue;
-          acc.push({ ...r, _subsiteUrl: ch.subsiteUrl, _sectionTitle: shortSubEventTitle(ch.title, selectedEvent!.title) });
-        }
-        return acc;
-      }, []).filter(matchesSearch)
+  const cancelledRegs: Array<SPRegistration & { _subsiteUrl?: string; _sectionTitle?: string; _sectionId?: string }> = isConsolidatedMode
+    ? [
+        // v22.63: Klammer-eigene Abmeldungen (z.B. „Ich nehme nicht teil"-Absagen
+        // — declineEvent schreibt auf die Klammer-Subsite) MIT aufnehmen, sonst
+        // verschwinden sie aus der Liste.
+        ...registrations
+          .filter(r => r.Status === 'Abgemeldet')
+          .map(r => ({ ...r, _subsiteUrl: selectedEvent!.subsiteUrl, _sectionTitle: isDe ? 'Gesamt-Event' : 'Overall event', _sectionId: '__parent' })),
+        ...consolidatedChildren.reduce<Array<SPRegistration & { _subsiteUrl?: string; _sectionTitle?: string; _sectionId?: string }>>((acc, ch) => {
+          for (const r of (subEventRegsByEventId[ch.id] || [])) {
+            if (r.Status !== 'Abgemeldet') continue;
+            acc.push({ ...r, _subsiteUrl: ch.subsiteUrl, _sectionTitle: shortSubEventTitle(ch.title, selectedEvent!.title), _sectionId: ch.id });
+          }
+          return acc;
+        }, []),
+      ].filter(matchesSearch)
     : registrations.filter(r => r.Status === 'Abgemeldet').filter(matchesSearch);
   // v14.11: wenn ein Sub-Event direkt selektiert ist, das Parent-Event
   // ermitteln — der Sub-Event-Detail-View blendet dessen Custom-Fields
@@ -5252,22 +5260,10 @@ export default function AdminPage(): React.ReactElement {
                 : 'Without an image the event card in the list and the email header look much less inviting. Upload one via “Edit event” → step 1 (Basics).',
             });
           }
-          // 3b) v22.59: Klammer-Sichtbarkeit gilt fürs ganze Event. Wenn die
-          // Sichtbarkeit nur auf der Klammer gesetzt ist, steuert sie, wer das
-          // GESAMTE Event inkl. aller Sub-Events sieht (Sub-Events erben sie).
-          {
-            const kids = childEventsOf(selectedEvent.id);
-            const parentHasVisibility = (selectedEvent.locationAudience || []).length > 0 || (selectedEvent.audienceFilter || []).length > 0;
-            if (kids.length > 0 && parentHasVisibility) {
-              hints.push({
-                id: 'klammer-visibility',
-                title: isDe ? 'Sichtbarkeit steuert das gesamte Event' : 'Visibility controls the whole event',
-                body: isDe
-                  ? <>Die Sichtbarkeit ist auf {selectedEvent.subEventsOnlyMode ? 'der Klammer' : 'dem Hauptevent'} gesetzt — sie legt fest, <strong>wer das gesamte Event inklusive aller Sub-Events sehen kann</strong>. Sub-Events ohne eigene Sichtbarkeit erben diese Einstellung. <strong>Wer hier nicht enthalten ist, sieht auch die Sub-Events nicht.</strong> Achte also darauf, dass die Sichtbarkeit alle einschließt, die irgendein Sub-Event sehen sollen. Wer aktuell dazugehört, siehst du über „Event bearbeiten“ → Schritt 4 → „Sichtbarkeit prüfen“ (dort mit Tabs je Sub-Event).</>
-                  : <>The visibility is set on {selectedEvent.subEventsOnlyMode ? 'the bracket' : 'the main event'} — it determines <strong>who can see the whole event including all sub-events</strong>. Sub-events without their own visibility inherit this setting. <strong>Anyone not included here won’t see the sub-events either.</strong> So make sure the visibility includes everyone who should see any sub-event. You can see who currently belongs via “Edit event” → step 4 → “Check visibility” (with tabs per sub-event).</>,
-              });
-            }
-          }
+          // 3b) v22.63: Der frühere allgemeine „Sichtbarkeit gilt fürs ganze
+          // Event"-Hinweis ist entfallen — er erschien immer und war reines
+          // Erklär-Rauschen. Hinweise kommen jetzt nur noch bei echten
+          // möglichen Inkonsistenzen (3c/3d/3e).
           // 3c) v22.59: Sehr kleine Zielgruppe — nur wenige Einzeladressen, kein
           // Standortfilter und kein „alle Mitarbeiter". Oft hat der Organizer
           // dann nur sich/die Organizer eingetragen und den eigentlichen Kreis
@@ -5346,10 +5342,10 @@ export default function AdminPage(): React.ReactElement {
             if (riskySubs.length > 0) {
               hints.push({
                 id: 'sub-not-in-parent',
-                title: isDe ? 'Sub-Event-Sichtbarkeit weiter als die Klammer?' : 'Sub-event visibility wider than the bracket?',
+                title: isDe ? 'Sub-Event für mehr Leute geöffnet als das Event?' : 'Sub-event open to more people than the event?',
                 body: isDe
-                  ? <>Diese Sub-Events haben eine <strong>eigene, von der Klammer abweichende Sichtbarkeit</strong>: <strong>{riskySubs.join(', ')}</strong>. <strong>Wichtig:</strong> Der Zugang läuft immer über die Klammer-Sichtbarkeit — wer im Sub-Event hinterlegt ist, aber <strong>nicht</strong> in der Klammer, kann das Event gar nicht öffnen und damit das Sub-Event nicht sehen. Stelle sicher, dass die <strong>Klammer-Sichtbarkeit alle einschließt</strong>, die irgendein Sub-Event sehen sollen (am einfachsten: die Klammer mindestens so breit wie die Sub-Events halten). Gegencheck über „Sichtbarkeit prüfen“ (Tabs je Sub-Event).</>
-                  : <>These sub-events have their <strong>own visibility that differs from the bracket</strong>: <strong>{riskySubs.join(', ')}</strong>. <strong>Important:</strong> access always runs through the bracket visibility — anyone listed on the sub-event but <strong>not</strong> on the bracket cannot open the event at all and therefore won’t see the sub-event. Make sure the <strong>bracket visibility includes everyone</strong> who should see any sub-event (simplest: keep the bracket at least as wide as the sub-events). Cross-check via “Check visibility” (tabs per sub-event).</>,
+                  ? <>Bei diesen Sub-Events hast du <strong>andere Leute ausgewählt als beim Event selbst</strong>: <strong>{riskySubs.join(', ')}</strong>. Das kann ein Problem sein: Wer nur beim Sub-Event ausgewählt ist, aber nicht beim Event, <strong>kann das Event gar nicht öffnen</strong> — und sieht das Sub-Event deshalb nie. Damit das passt, sollten beim Event mindestens alle dabei sein, die irgendein Sub-Event sehen sollen. Zum Vergleichen: „Sichtbarkeit prüfen“ (dort pro Sub-Event).</>
+                  : <>For these sub-events you picked <strong>different people than for the event itself</strong>: <strong>{riskySubs.join(', ')}</strong>. That can be a problem: anyone picked only for the sub-event but not for the event <strong>can’t open the event at all</strong> — and therefore never sees the sub-event. To make it work, the event should include at least everyone who should see any sub-event. To compare: “Check visibility” (per sub-event).</>,
               });
             }
           }
@@ -6684,7 +6680,14 @@ export default function AdminPage(): React.ReactElement {
         // über alle Sub-Events. Die Hauptevent-Liste selbst hat hier nur
         // Alt-Daten und würde das echte Bild verfälschen.
         const consolidatedRegs: SPRegistration[] = isConsolidatedMode
-          ? ([] as SPRegistration[]).concat(...Object.values(subEventRegsByEventId))
+          // v22.63: Klammer-eigene Abmeldungen (Absagen auf der Klammer-Subsite)
+          // in die KPI „Abgemeldet" mitzählen, damit KPI und Abmeldungs-Liste
+          // übereinstimmen. Nur Abgemeldet-Zeilen, um die Aktiv-Zahlen nicht zu
+          // verfälschen.
+          ? ([] as SPRegistration[]).concat(
+              registrations.filter(r => r.Status === 'Abgemeldet'),
+              ...Object.values(subEventRegsByEventId),
+            )
           : [];
         const consolidatedActiveByEmail = new Set<string>();
         const consolidatedQRByEmail = new Set<string>();
@@ -8971,11 +8974,13 @@ export default function AdminPage(): React.ReactElement {
                   details: { deletedStatus: reg.Status, cancellationDate: reg.CancellationDate || '' },
                 });
               } catch { /* Audit best-effort */ }
-              // v22.59: im Klammer-Modus die Sub-Event-Listen neu laden
-              // (die gelöschte Zeile lag in einer Sub-Section), sonst die
-              // Klammer-/Event-Registrierungen.
+              // v22.59/v22.63: im Klammer-Modus sowohl die Sub-Event-Listen
+              // (Sub-Section-Abmeldungen) ALS AUCH die Klammer-Registrierungen
+              // (z.B. Absagen auf der Klammer) neu laden, sonst die Event-Regs.
               if (isConsolidatedMode) {
                 setSubRegReloadTick(t => t + 1);
+                const regs = await getAllRegistrations(selectedEvent.id);
+                setRegistrations(regs);
               } else {
                 const regs = await getAllRegistrations(selectedEvent.id);
                 setRegistrations(regs);
@@ -8985,6 +8990,132 @@ export default function AdminPage(): React.ReactElement {
               showAlert(isDe ? 'Löschen fehlgeschlagen.' : 'Delete failed.');
             }
           };
+          // v22.63: Konsolidierte Abmelde-Matrix — EINE Zeile pro Person, mit
+          // einem ✗ je Section (Gesamt-Event + Sub-Events), in der sich die
+          // Person abgemeldet hat. Analog zur konsolidierten Anmelde-Matrix.
+          if (isConsolidatedMode) {
+            const sectionCols: Array<{ id: string; title: string }> = [
+              ...(cancelledRegs.some(r => r._sectionId === '__parent') ? [{ id: '__parent', title: isDe ? 'Gesamt-Event' : 'Overall event' }] : []),
+              ...consolidatedChildren
+                .filter(ch => cancelledRegs.some(r => r._sectionId === ch.id))
+                .map(ch => ({ id: ch.id, title: shortSubEventTitle(ch.title, selectedEvent!.title) })),
+            ];
+            type CancelRow = SPRegistration & { _subsiteUrl?: string; _sectionId?: string };
+            interface CancelPerson { email: string; firstName: string; lastName: string; jobTitle: string; location: string; latest: number; declinedAny: boolean; bySection: Record<string, CancelRow> }
+            const peopleMap = new Map<string, CancelPerson>();
+            for (const r of cancelledRegs) {
+              const key = (r.ParticipantEmail || '').toLowerCase().trim();
+              if (!key) continue;
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const anyR = r as any;
+              let p = peopleMap.get(key);
+              if (!p) { p = { email: r.ParticipantEmail || '', firstName: '', lastName: '', jobTitle: '', location: '', latest: 0, declinedAny: false, bySection: {} }; peopleMap.set(key, p); }
+              if (!p.firstName && r.Vorname) p.firstName = r.Vorname;
+              if (!p.lastName && r.Nachname) p.lastName = r.Nachname;
+              if (!p.jobTitle && anyR.JobTitle) p.jobTitle = anyR.JobTitle;
+              if (!p.location && anyR.Location) p.location = anyR.Location;
+              p.bySection[r._sectionId || '__parent'] = r;
+              const tms = r.CancellationDate ? new Date(r.CancellationDate).getTime() : 0;
+              if (tms > p.latest) p.latest = tms;
+              if (isDeclined(r)) p.declinedAny = true;
+            }
+            const pdir = cancelledSortAsc ? 1 : -1;
+            const people = Array.from(peopleMap.values()).sort((a, b) => {
+              switch (cancelledSortColumn) {
+                case 'nachname': return a.lastName.toLowerCase().localeCompare(b.lastName.toLowerCase(), 'de') * pdir;
+                case 'email': return a.email.toLowerCase().localeCompare(b.email.toLowerCase()) * pdir;
+                case 'date': return (a.latest - b.latest) * pdir;
+                default: return a.firstName.toLowerCase().localeCompare(b.firstName.toLowerCase(), 'de') * pdir;
+              }
+            });
+            const declinePeople = people.filter(p => p.declinedAny).length;
+            const deletePerson = async (p: CancelPerson): Promise<void> => {
+              if (!selectedEvent) return;
+              const rows = Object.values(p.bySection);
+              const nm = `${p.firstName} ${p.lastName}`.trim() || p.email;
+              const msg = isDe
+                ? `Alle Abmeldungen von „${nm}" (${rows.length}) endgültig löschen? Die Zeilen werden aus den Teilnehmerlisten entfernt und können nicht wiederhergestellt werden.`
+                : `Permanently delete all cancellations of „${nm}" (${rows.length})? The rows are removed from the participant lists and cannot be restored.`;
+              if (!(await confirmDialog(msg, { danger: true, title: isDe ? 'Abmeldungen löschen' : 'Delete cancellations', confirmLabel: isDe ? 'Endgültig löschen' : 'Delete permanently' }))) return;
+              for (const r of rows) {
+                const sub = r._subsiteUrl || selectedEvent.subsiteUrl;
+                if (!sub) continue;
+                try { await eventServiceRef.deleteRegistration(sub, r.Id); } catch { /* best-effort */ }
+              }
+              try {
+                await eventServiceRef.writeChangeLog({ action: 'RegistrationDeleted', targetType: 'Participant', targetId: p.email, targetName: nm, eventId: selectedEvent.id, eventTitle: selectedEvent.title, details: { deletedStatus: 'Abgemeldet', count: rows.length } });
+              } catch { /* */ }
+              setSubRegReloadTick(t => t + 1);
+              const regs = await getAllRegistrations(selectedEvent.id);
+              setRegistrations(regs);
+            };
+            return (
+              <>
+                <h4 style={{ marginTop: 24, color: 'var(--dex-gray-400)' }}>
+                  {isDe ? 'Abmeldungen' : 'Cancellations'} ({people.length})
+                  {declinePeople > 0 && (
+                    <span style={{ fontSize: '0.8rem', fontWeight: 400, marginLeft: 8, color: 'var(--dex-gray-500)' }}>
+                      {isDe ? `davon ${declinePeople} Absage(n) ohne Anmeldung` : `incl. ${declinePeople} decline(s) without registration`}
+                    </span>
+                  )}
+                </h4>
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
+                        <th style={thClickable} onClick={() => toggleSort('vorname')}>Vorname{arrow('vorname')}</th>
+                        <th style={thClickable} onClick={() => toggleSort('nachname')}>Nachname{arrow('nachname')}</th>
+                        <th style={thClickable} onClick={() => toggleSort('email')}>Email{arrow('email')}</th>
+                        <th style={{ ...thClickable, cursor: 'default' }}>Job Title</th>
+                        <th style={{ ...thClickable, cursor: 'default' }}>Standort</th>
+                        {sectionCols.map(sc => (
+                          <th key={sc.id} style={{ ...thClickable, cursor: 'default', textAlign: 'center' }} title={sc.title}>{sc.title}</th>
+                        ))}
+                        <th style={thClickable} onClick={() => toggleSort('date')}>{isDe ? 'Letzte Abmeldung' : 'Last cancellation'}{arrow('date')}</th>
+                        {canDelete && (
+                          <th style={{ ...thClickable, cursor: 'default', textAlign: 'right' }}>{isDe ? 'Löschen' : 'Delete'}</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {people.map(p => (
+                        <tr key={p.email} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
+                          <td style={{ padding: 8, fontWeight: 500 }}>{p.firstName || '-'}</td>
+                          <td style={{ padding: 8, fontWeight: 500 }}>{p.lastName || '-'}</td>
+                          <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{p.email}</td>
+                          <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{p.jobTitle || '-'}</td>
+                          <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{p.location || '-'}</td>
+                          {sectionCols.map(sc => {
+                            const r = p.bySection[sc.id];
+                            return (
+                              <td key={sc.id} style={{ padding: 8, textAlign: 'center' }}>
+                                {r
+                                  ? <span title={`${isDeclined(r) ? (isDe ? 'Absage (nicht angemeldet)' : 'Decline (never registered)') : (isDe ? 'Abgemeldet' : 'Cancelled')} — ${formatDate(r.CancellationDate)}`} style={{ color: 'var(--dex-red, #da291c)', fontWeight: 700, fontSize: '1rem' }}>&#10007;</span>
+                                  : <span style={{ color: 'var(--dex-gray-300)' }}>–</span>}
+                              </td>
+                            );
+                          })}
+                          <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{p.latest ? formatDate(new Date(p.latest).toISOString()) : '-'}</td>
+                          {canDelete && (
+                            <td style={{ padding: 8, textAlign: 'right' }}>
+                              <button
+                                type="button"
+                                className="btn btn-outline"
+                                style={{ fontSize: '0.75rem', padding: '4px 10px', color: 'var(--dex-red, #da291c)', borderColor: 'var(--dex-red, #da291c)' }}
+                                onClick={() => { deletePerson(p).catch(() => { /* */ }); }}
+                              >
+                                {isDe ? 'Löschen' : 'Delete'}
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            );
+          }
           return (
             <>
               <h4 style={{ marginTop: 24, color: 'var(--dex-gray-400)' }}>
