@@ -1121,6 +1121,9 @@ export default function AdminPage(): React.ReactElement {
   }, [adminAddMemberIncludeIntl]);
   // Lead-Transfer-Dropdown: pro Team ein offener Dropdown-Index (TeamId-Key).
   const [leadTransferOpenFor, setLeadTransferOpenFor] = React.useState<string | null>(null);
+  // v22.45: Pro-Team „Anpassen"-Modus — erst dann erscheinen die
+  // „Entfernen"-Buttons pro Mitglied (nicht dauerhaft an jedem Namen).
+  const [teamEditOpenFor, setTeamEditOpenFor] = React.useState<string | null>(null);
   const [leadTransferBusy, setLeadTransferBusy] = React.useState(false);
   // Toast nach erfolgreicher Aktion in der Teams-Section.
   const [teamsToast, setTeamsToast] = React.useState<string>('');
@@ -7480,13 +7483,12 @@ export default function AdminPage(): React.ReactElement {
                                     fontSize: '0.72rem', fontWeight: 700,
                                   }}>Lead</span>
                                 )}
-                                {/* v22.41: „Aus Team entfernen" — löst NUR die
-                                    Team-Zuordnung (TeamId/Lead/Name leeren), die
-                                    Anmeldung inkl. Status (z.B. Warteliste) bleibt
-                                    bestehen. So lässt sich z.B. ein Warteliste-
-                                    Mitglied aus dem Team nehmen und ein
-                                    angemeldeter Teilnehmer nachrücken. */}
-                                {canManage && eventServiceRef && selectedEvent.subsiteUrl && (
+                                {/* v22.41/v22.45: „Aus Team entfernen" — löst NUR
+                                    die Team-Zuordnung (TeamId/Lead/Name leeren),
+                                    die Anmeldung inkl. Status (z.B. Warteliste)
+                                    bleibt bestehen. Erscheint erst im „Anpassen"-
+                                    Modus des Teams (nicht dauerhaft an jedem Namen). */}
+                                {canManage && teamEditOpenFor === tid && eventServiceRef && selectedEvent.subsiteUrl && (
                                   <button
                                     type="button"
                                     title="Aus dem Team entfernen (Anmeldung bleibt bestehen)"
@@ -7563,6 +7565,19 @@ export default function AdminPage(): React.ReactElement {
                               >
                                 <Plus size={14} /> Person hinzufügen
                                 {teamSizeCfg > 0 && ` (${free} Slot${free === 1 ? '' : 's'} frei)`}
+                              </button>
+                            )}
+                            {/* v22.45: „Anpassen" schaltet den Bearbeiten-Modus
+                                des Teams ein/aus — erst dann erscheinen die
+                                „Entfernen"-Buttons pro Mitglied. */}
+                            {canManage && (
+                              <button
+                                type="button"
+                                className={teamEditOpenFor === tid ? 'btn btn-primary' : 'btn btn-secondary'}
+                                style={{ fontSize: '0.8rem', padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                                onClick={() => setTeamEditOpenFor(teamEditOpenFor === tid ? null : tid)}
+                              >
+                                <Pencil size={14} /> {teamEditOpenFor === tid ? 'Fertig' : 'Anpassen'}
                               </button>
                             )}
                             {otherMembers.length > 0 && (
@@ -8481,13 +8496,24 @@ export default function AdminPage(): React.ReactElement {
                         <tbody>
                           {rows.map((reg, i) => {
                             const isOverbook = reg.OverbookReview === 'Pending';
+                            // v22.44: Inaktive Deloitte-Konten dauerhaft orange
+                            // markieren (bis zur Abmeldung) — gleiche Optik wie
+                            // die Überbuchungs-Markierung. inactiveAccounts kommt
+                            // aus dem Konten-Aktiv-Check (nur @deloitte-Adressen).
+                            const isInactiveAcct = inactiveAccounts.indexOf((reg.ParticipantEmail || '').trim().toLowerCase()) >= 0;
+                            const highlight = isOverbook || isInactiveAcct;
+                            const rowTitle = isInactiveAcct
+                              ? (isDe ? 'Kein aktives Deloitte-Konto gefunden — Person hat womöglich Deloitte verlassen. Mails/Outlook kommen ggf. nicht an.' : 'No active Deloitte account found — person may have left Deloitte. Emails/Outlook may not arrive.')
+                              : isOverbook
+                                ? (isDe ? 'Über Kapazität angemeldet — siehe Box „Überbuchung – zu prüfen" oben' : 'Registered over capacity — see the „Overbooking – to review" box above')
+                                : undefined;
                             return (
                               <tr
                                 key={reg.Id}
-                                title={isOverbook ? (isDe ? 'Über Kapazität angemeldet — siehe Box „Überbuchung – zu prüfen" oben' : 'Registered over capacity — see the „Overbooking – to review" box above') : undefined}
+                                title={rowTitle}
                                 style={{
                                   borderBottom: '1px solid var(--dex-gray-100)',
-                                  ...(isOverbook
+                                  ...(highlight
                                     ? { background: 'rgba(237,139,0,0.13)', boxShadow: 'inset 3px 0 0 var(--dex-orange, #ed8b00)' }
                                     : {}),
                                 }}
@@ -11215,9 +11241,14 @@ export default function AdminPage(): React.ReactElement {
                 </div>
               ))}
               <div>
-                <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700)', display: 'block', marginBottom: 4 }}>
-                  <span style={{ color: 'var(--dex-red)' }}>*</span> Person auswählen
-                </label>
+                {/* v22.45: Drei klare Abschnitte — 1. Bestehende Teilnehmer
+                    (bereits angemeldet, nur zuordnen), 2. Neue Teilnehmer (per
+                    Suche stellvertretend anmelden), 3. Kommunikation ans Team. */}
+                {teamlessActiveLocal.length > 0 && (
+                  <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--dex-green-dark, #4a7c1f)', marginBottom: 4 }}>
+                    1 · Bestehende Teilnehmer
+                  </div>
+                )}
                 {/* v17.4: Multi-Select aus bereits registrierten Personen
                     ohne Team. Checkbox-Liste; bei Mehrfach-Auswahl
                     erscheint zusätzlich die Lead-Radio-Auswahl. */}
@@ -11307,44 +11338,15 @@ export default function AdminPage(): React.ReactElement {
                     </div>
                   </div>
                 )}
-                {/* v17.4: Mail-Opt-in für die Team-Zuordnung. Nur sinnvoll
-                    wenn mind. eine teamlose Person zugeordnet wird — beim
-                    Graph-Pick läuft die Bestätigungsmail ohnehin via
-                    addTeamMember. */}
-                {adminAddTeamlessPicks.size > 0 && (
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, fontSize: '0.82rem', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={adminAddSendMail}
-                      onChange={e => setAdminAddSendMail(e.target.checked)}
-                      style={{ marginTop: 2 }}
-                    />
-                    <span>
-                      Info-Mail an die zugeordneten Team-Mitglieder versenden
-                      <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
-                        Default aus — die Person ist ja bereits beim Event angemeldet.
-                      </span>
-                    </span>
-                  </label>
-                )}
-                {/* v22.42: CC an den Organizer — nur sinnvoll, wenn die
-                    Info-Mail tatsächlich versendet wird. */}
-                {adminAddTeamlessPicks.size > 0 && adminAddSendMail && (
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, marginLeft: 24, fontSize: '0.82rem', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={adminAddCcOrganizer}
-                      onChange={e => setAdminAddCcOrganizer(e.target.checked)}
-                      style={{ marginTop: 2 }}
-                    />
-                    <span>
-                      Bestätigungsmail als Kopie (CC) an mich
-                      <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
-                        {currentUser.email} bekommt jede dieser Mails in Kopie.
-                      </span>
-                    </span>
-                  </label>
-                )}
+                {/* v22.45: 2 · Neue Teilnehmer — Person, die noch NICHT beim
+                    Event angemeldet ist, per Suche stellvertretend hinzufügen.
+                    (Kommunikation/Info-Mail folgt als Abschnitt 3 weiter unten.) */}
+                <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--dex-green-dark, #4a7c1f)', marginTop: teamlessActiveLocal.length > 0 ? 14 : 0, marginBottom: 2 }}>
+                  {teamlessActiveLocal.length > 0 ? '2 · Neue Teilnehmer' : 'Neue Teilnehmer'}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginBottom: 6 }}>
+                  Jemand, der noch nicht beim Event angemeldet ist — per Suche hinzufügen (wird stellvertretend angemeldet).
+                </div>
                 {adminAddMemberPick ? (
                   <div style={{
                     display: 'inline-flex', alignItems: 'center', gap: 10,
@@ -11445,6 +11447,47 @@ export default function AdminPage(): React.ReactElement {
                       </div>
                     )}
                   </div>
+                )}
+                {/* v22.45: 3 · Kommunikation an das Team — Info-Mail an die
+                    zugeordneten (bereits angemeldeten) Personen + optional CC
+                    an den Organizer. Nur relevant, wenn bestehende Teilnehmer
+                    zugeordnet werden. */}
+                {adminAddTeamlessPicks.size > 0 && (
+                  <>
+                    <div style={{ fontWeight: 700, fontSize: '0.88rem', color: 'var(--dex-green-dark, #4a7c1f)', marginTop: 14, marginBottom: 4 }}>
+                      3 · Kommunikation an das Team
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, fontSize: '0.82rem', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={adminAddSendMail}
+                        onChange={e => setAdminAddSendMail(e.target.checked)}
+                        style={{ marginTop: 2 }}
+                      />
+                      <span>
+                        Info-Mail an die zugeordneten Team-Mitglieder versenden
+                        <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                          Default aus — die Person ist ja bereits beim Event angemeldet.
+                        </span>
+                      </span>
+                    </label>
+                    {adminAddSendMail && (
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, marginLeft: 24, fontSize: '0.82rem', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={adminAddCcOrganizer}
+                          onChange={e => setAdminAddCcOrganizer(e.target.checked)}
+                          style={{ marginTop: 2 }}
+                        />
+                        <span>
+                          Bestätigungsmail als Kopie (CC) an mich
+                          <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                            {currentUser.email} bekommt jede dieser Mails in Kopie.
+                          </span>
+                        </span>
+                      </label>
+                    )}
+                  </>
                 )}
               </div>
               {/* v17.4: Consent-Checkbox nur bei wirklich neuer Person via Graph. */}

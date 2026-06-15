@@ -40,9 +40,12 @@ export default function LandingPage(): React.ReactElement {
 
   // ==================== v22: Archivierung (Admin) ====================
   const { isAdmin } = useRoles();
-  const { isEventsLoading, getArchivableCount, runArchiveExpired } = useEvents();
+  const { isEventsLoading, getArchivableCount, runArchiveExpired, scanInactiveAccounts } = useEvents();
   const { confirmDialog } = useDialog();
   const [archInfo, setArchInfo] = React.useState<{ total: number; perList: Record<string, number> } | null>(null);
+  // v22.45: Warnung über Teilnehmer ohne aktives Deloitte-Konto — pro Event,
+  // für Organizer (eigene Events) und Admins (alle aktiven Events).
+  const [inactiveSummary, setInactiveSummary] = React.useState<Array<{ eventId: string; title: string; people: Array<{ email: string; name: string }> }>>([]);
   const [archModal, setArchModal] = React.useState<null | {
     running: boolean;
     listIdx: number; listTotal: number; listName: string;
@@ -69,6 +72,49 @@ export default function LandingPage(): React.ReactElement {
   // Status 'QR versendet'), zeigt die Landing Page über dem Start-Button eine
   // Hinweisbox „Check-in für <Event>" mit kleinem QR — Klick öffnet ihn groß.
   const { getMyRegistration, events } = useEvents();
+
+  // v22.45: Inaktive-Konten-Scan für Organizer/Admins. Gedrosselt 1×/24h via
+  // localStorage; Ergebnis sofort aus dem Cache angezeigt, im Hintergrund
+  // aktualisiert. Organizer scannen ihre eigenen aktiven Events, Admins alle.
+  React.useEffect(() => {
+    if (isEventsLoading) return undefined;
+    const emailLc = (currentUser?.email || '').toLowerCase();
+    if (!emailLc) return undefined;
+    const isOrgOf = (e: typeof events[number]): boolean =>
+      (e.organizerEmails || []).some(x => (x || '').toLowerCase() === emailLc)
+      || (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === emailLc);
+    const relevant = (events || []).filter(e =>
+      e.status === 'Active' && (e.subsiteUrl || '').trim() && (isAdmin || isOrgOf(e)));
+    if (relevant.length === 0) { setInactiveSummary([]); return undefined; }
+    const CACHE = 'dex_inactivesummary';
+    // Sofort aus dem Cache zeigen (falls vorhanden), auf aktuelle Events gefiltert.
+    let stale = true;
+    try {
+      const raw = window.localStorage.getItem(CACHE);
+      if (raw) {
+        const parsed = JSON.parse(raw) as { ts?: number; items?: Array<{ eventId: string; title: string; people: Array<{ email: string; name: string }> }> };
+        if (parsed && typeof parsed.ts === 'number' && Array.isArray(parsed.items)) {
+          const liveIds = new Set(relevant.map(e => e.id));
+          setInactiveSummary(parsed.items.filter(it => liveIds.has(it.eventId)));
+          if (Date.now() - parsed.ts < 24 * 60 * 60 * 1000) stale = false;
+        }
+      }
+    } catch { /* */ }
+    if (!stale) return undefined;
+    let cancelled = false;
+    const t = window.setTimeout(() => {
+      scanInactiveAccounts(relevant.map(e => ({ id: e.id, title: e.title, subsiteUrl: e.subsiteUrl })))
+        .then(items => {
+          if (cancelled) return;
+          setInactiveSummary(items);
+          try { window.localStorage.setItem(CACHE, JSON.stringify({ ts: Date.now(), items })); } catch { /* */ }
+        })
+        .catch(() => { /* best-effort */ });
+    }, 3500); // dem Boot Vorrang geben
+    return () => { cancelled = true; window.clearTimeout(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEventsLoading, isAdmin, currentUser?.email]);
+
   const [checkInBoxes, setCheckInBoxes] = React.useState<Array<{
     eventId: string; title: string; qrSmall: string; qrData: string;
     name: string; tid?: number;
@@ -192,12 +238,63 @@ export default function LandingPage(): React.ReactElement {
         v{APP_VERSION}
       </span>
 
-      {/* v22: Archivierungs-Info (nur Admin, nur wenn Zeilen anstehen) —
-          rechts oben auf der Landing Page. */}
+      {/* v22 / v22.45: Hinweis-Boxen oben rechts auf der Landing Page —
+          gestapelt in einem gemeinsamen Container (Archivierung für Admin,
+          Inaktive-Konten-Warnung für Organizer/Admin). */}
+      {((isAdmin && archInfo && archInfo.total > 0) || inactiveSummary.length > 0) && (
+      <div style={{
+        position: 'absolute', top: 34, right: 16, width: 300,
+        maxWidth: 'calc(100vw - 32px)', zIndex: 6,
+        display: 'flex', flexDirection: 'column', gap: 12,
+      }}>
+      {/* v22.45: Teilnehmer ohne aktives Deloitte-Konto. */}
+      {inactiveSummary.length > 0 && (() => {
+        const totalPeople = inactiveSummary.reduce((acc, it) => acc + it.people.length, 0);
+        return (
+          <div style={{
+            width: '100%', boxSizing: 'border-box',
+            background: '#fff3e0', border: '1px solid var(--dex-orange, #ed8b00)',
+            borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+            padding: '14px 16px', textAlign: 'left',
+          }}>
+            <div style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--dex-orange-dark, #b35a00)', marginBottom: 6 }}>
+              {isDe ? 'Inaktive Deloitte-Konten' : 'Inactive Deloitte accounts'}
+            </div>
+            <p style={{ margin: '0 0 8px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+              {isDe
+                ? <><strong>{totalPeople}</strong> {totalPeople === 1 ? 'Person hat' : 'Personen haben'} womöglich Deloitte verlassen — Mails/Outlook kommen ggf. nicht an. Bitte im Event prüfen und ggf. abmelden.</>
+                : <><strong>{totalPeople}</strong> {totalPeople === 1 ? 'person has' : 'people have'} possibly left Deloitte — emails/Outlook may not arrive. Please review and deregister in the event.</>}
+            </p>
+            <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {inactiveSummary.map(it => (
+                <li key={it.eventId}>
+                  <button
+                    type="button"
+                    onClick={() => navigate('admin', it.eventId)}
+                    title={isDe ? 'Event im Organizer Center öffnen' : 'Open event in the Organizer Center'}
+                    style={{
+                      display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer',
+                      background: 'rgba(237,139,0,0.08)', border: '1px solid rgba(237,139,0,0.4)',
+                      borderRadius: 8, padding: '6px 10px', fontFamily: 'inherit',
+                    }}
+                  >
+                    <span style={{ display: 'block', fontWeight: 700, fontSize: '0.78rem', color: 'var(--dex-gray-800)' }}>
+                      {it.title} <span style={{ color: 'var(--dex-orange-dark, #b35a00)' }}>({it.people.length})</span>
+                    </span>
+                    <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
+                      {it.people.map(p => p.name).join(', ')}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })()}
+      {/* v22: Archivierungs-Info (nur Admin, nur wenn Zeilen anstehen). */}
       {isAdmin && archInfo && archInfo.total > 0 && (
         <div style={{
-          position: 'absolute', top: 34, right: 16, width: 290,
-          maxWidth: 'calc(100vw - 32px)', zIndex: 6,
+          width: '100%', boxSizing: 'border-box',
           background: '#fff', border: '1px solid rgba(134,188,37,0.5)',
           borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
           padding: '14px 16px', textAlign: 'left',
@@ -229,6 +326,8 @@ export default function LandingPage(): React.ReactElement {
             {isDe ? 'Jetzt archivieren' : 'Archive now'}
           </button>
         </div>
+      )}
+      </div>
       )}
 
       {/* v22: Fortschritts-/Ergebnis-Modal der Archivierung. */}

@@ -384,6 +384,9 @@ interface EventContextType {
    *  von Fremd-Anmeldungen). Läuft beim Admin-Start gedrosselt (1×/24h) über
    *  alle aktiven Subsites — best-effort, blockiert nichts. */
   autoRepairProxyAccess: () => Promise<void>;
+  /** v22.45: Scannt die übergebenen Events auf Teilnehmer ohne aktives
+   *  Deloitte-Konto (für die Landing-Page-Warnung der Organizer/Admins). */
+  scanInactiveAccounts: (evs: Array<{ id: string; title: string; subsiteUrl?: string }>) => Promise<Array<{ eventId: string; title: string; people: Array<{ email: string; name: string }> }>>;
   /** v21: Archivierung — zählt archivreife Zeilen abgelaufener Events. */
   getArchivableCount: () => Promise<{ total: number; perList: Record<string, number> }>;
   /** v21: Archivierung — verschiebt archivreife Zeilen ins DEX_Archive.
@@ -3462,6 +3465,39 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     } catch (err) { console.warn('[DEX] autoRepairProxyAccess error:', err); }
   }
 
+  // v22.45: Scan über mehrere Events — pro Event Teilnehmer laden und auf ein
+  // aktives Deloitte-Konto prüfen. Für die Landing-Page-Warnung (Organizer/
+  // Admin). Sequentiell + best-effort; der Aufrufer (LandingPage) drosselt
+  // den Aufruf via localStorage (1×/24h) und übergibt nur Events, die der
+  // User auch lesen darf (eigene bzw. — als Admin — alle).
+  async function scanInactiveAccounts(
+    evs: Array<{ id: string; title: string; subsiteUrl?: string }>
+  ): Promise<Array<{ eventId: string; title: string; people: Array<{ email: string; name: string }> }>> {
+    const out: Array<{ eventId: string; title: string; people: Array<{ email: string; name: string }> }> = [];
+    const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
+    for (const ev of evs) {
+      const sub = (ev.subsiteUrl || '').trim();
+      if (!sub) continue;
+      try {
+        const regs = await eventService.getAllRegistrations(sub);
+        const active = regs.filter(r => ACTIVE.indexOf(r.Status) >= 0);
+        const emails = Array.from(new Set(active.map(r => (r.ParticipantEmail || '').trim().toLowerCase()).filter(Boolean)));
+        if (emails.length === 0) continue;
+        const res = await eventService.checkAccountsActive(emails);
+        if (!res.ok || res.inactive.length === 0) continue;
+        const people = res.inactive.map(em => {
+          const reg = active.find(r => (r.ParticipantEmail || '').trim().toLowerCase() === em);
+          const name = reg
+            ? ((reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || em))
+            : em;
+          return { email: em, name };
+        });
+        out.push({ eventId: ev.id, title: ev.title, people });
+      } catch (err) { console.warn('[DEX] scanInactiveAccounts failed for', ev.id, err); }
+    }
+    return out;
+  }
+
   return React.createElement(
     EventContext.Provider,
     {
@@ -3486,7 +3522,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, getArchivableCount, runArchiveExpired,
+        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, scanInactiveAccounts, getArchivableCount, runArchiveExpired,
         sendAdminInquiry,
         reseedDefaultEmailTemplates,
         sendOrganizerOnboarding,
