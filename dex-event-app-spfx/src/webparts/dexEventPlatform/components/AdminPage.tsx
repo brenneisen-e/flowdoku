@@ -2103,10 +2103,16 @@ export default function AdminPage(): React.ReactElement {
     try {
       const raw = window.localStorage.getItem(cacheKey);
       if (raw) {
-        const parsed = JSON.parse(raw) as { ts?: number; inactive?: string[] };
-        if (parsed && typeof parsed.ts === 'number' && (Date.now() - parsed.ts) < 24 * 60 * 60 * 1000 && Array.isArray(parsed.inactive)) {
-          // < 24h → Cache nutzen, aber nur Adressen anzeigen, die noch in der Liste sind.
-          setInactiveAccounts(parsed.inactive.filter(e => emails.indexOf(e) >= 0));
+        const parsed = JSON.parse(raw) as { ts?: number; inactive?: string[]; checked?: string[] };
+        const fresh = !!parsed && typeof parsed.ts === 'number' && (Date.now() - parsed.ts) < 24 * 60 * 60 * 1000 && Array.isArray(parsed.inactive);
+        // v22.43: Cache nur nutzen, wenn ALLE aktuellen Adressen schon geprüft
+        // wurden. Sind seit dem letzten Lauf neue Teilnehmer dazugekommen
+        // (Adresse nicht in `checked`), wird frisch geprüft — sonst blieben
+        // neu hinzugefügte Personen bis zu 24h ungeprüft (Bug v22.7–v22.42).
+        const checked = Array.isArray(parsed?.checked) ? (parsed!.checked as string[]) : [];
+        const coversAll = checked.length > 0 && emails.every(e => checked.indexOf(e) >= 0);
+        if (fresh && coversAll) {
+          setInactiveAccounts((parsed!.inactive || []).filter(e => emails.indexOf(e) >= 0));
           return undefined;
         }
       }
@@ -2117,7 +2123,7 @@ export default function AdminPage(): React.ReactElement {
         const res = await eventServiceRef.checkAccountsActive(emails);
         if (cancelled || !res.ok) return;
         setInactiveAccounts(res.inactive);
-        try { window.localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), inactive: res.inactive })); } catch { /* */ }
+        try { window.localStorage.setItem(cacheKey, JSON.stringify({ ts: Date.now(), inactive: res.inactive, checked: emails })); } catch { /* */ }
       } catch { /* best-effort */ }
     })();
     return () => { cancelled = true; };
