@@ -5289,6 +5289,38 @@ export default function AdminPage(): React.ReactElement {
               });
             }
           }
+          // 3d) v22.60: Sub-Events mit EIGENER kleiner Sichtbarkeit. Die Klammer
+          // kann korrekt sein, aber ein Sub-Event hat eine abweichende, sehr
+          // enge Zielgruppe (z.B. nur ein paar Einzeladressen) → eigener Hinweis
+          // pro betroffenem Sub-Event. Nur wenn die Sub-Sichtbarkeit sich von
+          // der Klammer unterscheidet (sonst ist es nur geerbt).
+          {
+            const parentAudKey = (selectedEvent.audienceFilter || []).join('|');
+            const parentLocKey = (selectedEvent.locationAudience || []).join('|');
+            const smallSubs: string[] = [];
+            for (const ch of childEventsOf(selectedEvent.id)) {
+              const cAud = ch.audienceFilter || [];
+              const cLoc = ch.locationAudience || [];
+              if (cAud.length === 0 && cLoc.length === 0) continue; // keine eigene Sichtbarkeit
+              if (cAud.join('|') === parentAudKey && cLoc.join('|') === parentLocKey) continue; // nur geerbt
+              const cHasAll = cAud.some(a => { const f = (a || '').toLowerCase(); return f === 'all' || f === 'deall'; });
+              const cResolved = (ch.audienceResolvedEmails || []).map(s => (s || '').trim()).filter(Boolean);
+              const cAt = cAud.filter(a => a.indexOf('@') >= 0).length;
+              const cEff = cResolved.length > 0 ? cResolved.length : cAt;
+              if (cAud.length > 0 && cLoc.length === 0 && !cHasAll && cEff > 0 && cEff < 10) {
+                smallSubs.push(`${shortSubEventTitle(ch.title, selectedEvent.title)} (${cEff})`);
+              }
+            }
+            if (smallSubs.length > 0) {
+              hints.push({
+                id: 'tiny-sub-audience',
+                title: isDe ? 'Sub-Event mit sehr kleiner Zielgruppe' : 'Sub-event with very small audience',
+                body: isDe
+                  ? <>Diese Sub-Events haben eine <strong>eigene, sehr kleine Sichtbarkeit</strong> (nur wenige Einzeladressen, kein Standort/Verteiler): <strong>{smallSubs.join(', ')}</strong>. Die Klammer-Sichtbarkeit kann passen, aber wer in der jeweiligen Sub-Event-Liste nicht steht, kann sich für dieses Sub-Event nicht anmelden. Prüfen/anpassen über „Event bearbeiten“ → Schritt 4 (Tab des Sub-Events) → „Sichtbarkeit prüfen“.</>
+                  : <>These sub-events have their <strong>own, very small visibility</strong> (only a few individual addresses, no location/distribution list): <strong>{smallSubs.join(', ')}</strong>. The bracket visibility may be fine, but anyone not in the respective sub-event list cannot register for that sub-event. Check/adjust via “Edit event” → step 4 (sub-event tab) → “Check visibility”.</>,
+              });
+            }
+          }
           // 4) v22.34: End-Datum fehlt (Hauptevent oder Sub-Event) — ohne Ende
           // kann der Outlook-Termin nicht angelegt werden (der Kalendereintrag
           // braucht Start UND Ende; das Sub-Event bekommt dann nie eine
