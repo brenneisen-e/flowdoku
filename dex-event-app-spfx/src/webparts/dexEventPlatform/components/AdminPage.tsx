@@ -5321,6 +5321,38 @@ export default function AdminPage(): React.ReactElement {
               });
             }
           }
+          // 3e) v22.61: Person nur im Sub-Event, aber nicht in der Klammer →
+          // kann das Event gar nicht öffnen (Zugang läuft zur Laufzeit über die
+          // Klammer-Sichtbarkeit; Sub-Events werden erst auf der Anmeldeseite
+          // der Klammer gefiltert). Risiko besteht, wenn die Klammer eingeschränkt
+          // ist UND ein Sub-Event eine abweichende eigene Sichtbarkeit hat.
+          {
+            const pAud = selectedEvent.audienceFilter || [];
+            const pLoc = selectedEvent.locationAudience || [];
+            const parentShowsAll = (pAud.length === 0 && pLoc.length === 0)
+              || pAud.some(a => { const f = (a || '').toLowerCase(); return f === 'all' || f === 'deall'; });
+            const pAudKey = pAud.join('|');
+            const pLocKey = pLoc.join('|');
+            const riskySubs: string[] = [];
+            if (!parentShowsAll) {
+              for (const ch of childEventsOf(selectedEvent.id)) {
+                const cAud = ch.audienceFilter || [];
+                const cLoc = ch.locationAudience || [];
+                if (cAud.length === 0 && cLoc.length === 0) continue; // erbt die Klammer → kein zusätzliches Publikum
+                if (cAud.join('|') === pAudKey && cLoc.join('|') === pLocKey) continue; // identisch zur Klammer
+                riskySubs.push(shortSubEventTitle(ch.title, selectedEvent.title));
+              }
+            }
+            if (riskySubs.length > 0) {
+              hints.push({
+                id: 'sub-not-in-parent',
+                title: isDe ? 'Sub-Event-Sichtbarkeit weiter als die Klammer?' : 'Sub-event visibility wider than the bracket?',
+                body: isDe
+                  ? <>Diese Sub-Events haben eine <strong>eigene, von der Klammer abweichende Sichtbarkeit</strong>: <strong>{riskySubs.join(', ')}</strong>. <strong>Wichtig:</strong> Der Zugang läuft immer über die Klammer-Sichtbarkeit — wer im Sub-Event hinterlegt ist, aber <strong>nicht</strong> in der Klammer, kann das Event gar nicht öffnen und damit das Sub-Event nicht sehen. Stelle sicher, dass die <strong>Klammer-Sichtbarkeit alle einschließt</strong>, die irgendein Sub-Event sehen sollen (am einfachsten: die Klammer mindestens so breit wie die Sub-Events halten). Gegencheck über „Sichtbarkeit prüfen“ (Tabs je Sub-Event).</>
+                  : <>These sub-events have their <strong>own visibility that differs from the bracket</strong>: <strong>{riskySubs.join(', ')}</strong>. <strong>Important:</strong> access always runs through the bracket visibility — anyone listed on the sub-event but <strong>not</strong> on the bracket cannot open the event at all and therefore won’t see the sub-event. Make sure the <strong>bracket visibility includes everyone</strong> who should see any sub-event (simplest: keep the bracket at least as wide as the sub-events). Cross-check via “Check visibility” (tabs per sub-event).</>,
+              });
+            }
+          }
           // 4) v22.34: End-Datum fehlt (Hauptevent oder Sub-Event) — ohne Ende
           // kann der Outlook-Termin nicht angelegt werden (der Kalendereintrag
           // braucht Start UND Ende; das Sub-Event bekommt dann nie eine
