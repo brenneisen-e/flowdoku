@@ -2096,6 +2096,9 @@ export default function AdminPage(): React.ReactElement {
   React.useEffect(() => { idRecheckCountRef.current = 0; }, [selectedEvent?.id]);
   React.useEffect(() => {
     if (!selectedEvent) return undefined;
+    // v22.67: kein ID-Durchgängigkeits-Polling im Klammer-Modus (Schatten-Zeilen
+    // haben keine fortlaufenden Nummern — das war ein Fehlalarm).
+    if (selectedEvent.subEventsOnlyMode) return undefined;
     if (!recentCancellation(registrations).recent) return undefined;
     if (idRecheckCountRef.current >= 10) return undefined;
     const timer = window.setInterval(() => {
@@ -2989,6 +2992,17 @@ export default function AdminPage(): React.ReactElement {
       // Badge sofort umschalten — selectedEvent ist lokaler State und wird
       // durch refreshEvents nicht automatisch ersetzt.
       setSelectedEvent(prev => prev ? { ...prev, isFictive: nextIsFictive, ...(nextIsFictive ? {} : { status: 'Active' }) } : prev);
+      // v22.67: Beim Live-Schalten eines Events mit Sub-Events werden die
+      // Sub-Events automatisch mit live geschaltet (Entwurf → Aktiv) — sonst
+      // bliebe das Event sichtbar, aber die Sub-Events wären für Teilnehmer
+      // nicht buchbar.
+      if (!nextIsFictive) {
+        for (const c of childEventsOf(selectedEvent.id)) {
+          if (c.isFictive) {
+            try { await updateEvent(c.id, { 'IsFictive': false, 'EventStatus': 'Active' }); } catch { /* best-effort */ }
+          }
+        }
+      }
       await refreshEvents();
     } else {
       // v22.14: vorher scheiterte der Klick STUMM — der Organizer dachte,
@@ -7120,6 +7134,12 @@ export default function AdminPage(): React.ReactElement {
             parallel manuell „IDs neu vergeben" anstoßen. */}
         {(() => {
           if (!selectedEvent) return null;
+          // v22.67: Im Klammer-Modus („Nur Sub-Events") greift die
+          // TeilnehmerID-Durchgängigkeits-Prüfung NICHT — die geprüfte Liste
+          // sind die Schatten-Zeilen der Klammer (ohne fortlaufende Nummern);
+          // die echten TeilnehmerIDs leben pro Sub-Event. Die Warnung war hier
+          // ein Fehlalarm.
+          if (selectedEvent.subEventsOnlyMode) return null;
           const info = recentCancellation(registrations);
           if (!info.recent) return null;
           const whenStr = info.whenIso ? formatDate(info.whenIso) : '';
