@@ -17,6 +17,10 @@ interface Props {
   open: boolean;
   locale: 'de' | 'en';
   onClose: () => void;
+  /** v22.77: Admin sieht zusätzlich einen „Onepager"-Button (Querformat-
+   *  Funktionsübersicht). */
+  isAdmin?: boolean;
+  onOpenOnePager?: () => void;
 }
 
 interface Feature {
@@ -66,7 +70,7 @@ function SectionHeading({ children }: { children: React.ReactNode }): React.Reac
   );
 }
 
-export default function LandingInfoModal({ open, locale, onClose }: Props): React.ReactElement | null {
+export default function LandingInfoModal({ open, locale, onClose, isAdmin, onOpenOnePager }: Props): React.ReactElement | null {
   if (!open) return null;
 
   const isDE = locale === 'de';
@@ -157,6 +161,23 @@ export default function LandingInfoModal({ open, locale, onClose }: Props): Reac
               ? 'Von der Ausschreibung bis zum Check-In in einer App. Registrierung, Outlook-Einladungen, Warteliste, Mass-Mails, QR-Codes, Dokumente — alles integriert in den Deloitte-SharePoint-Tenant.'
               : 'From announcement to check-in in a single app. Registration, Outlook invites, waitlist, mass emails, QR codes, documents — all integrated in the Deloitte SharePoint tenant.'}
           </p>
+          {/* v22.77: Onepager-Button (nur Admin) — Querformat-Funktionsübersicht
+              mit echten Demo-Screens + Deloitte-Mails. */}
+          {isAdmin && onOpenOnePager && (
+            <button
+              type="button"
+              onClick={onOpenOnePager}
+              style={{
+                marginTop: 16, display: 'inline-flex', alignItems: 'center', gap: 8,
+                padding: '9px 18px', borderRadius: 8, border: 'none', cursor: 'pointer',
+                background: '#fff', color: GREEN_DARK, fontWeight: 700, fontSize: '0.9rem', fontFamily: 'inherit',
+                boxShadow: '0 2px 10px rgba(0,0,0,0.15)',
+              }}
+            >
+              <Icon iconName="DocumentSet" style={{ fontSize: 16 }} />
+              {isDE ? 'Onepager öffnen (Funktionen auf einen Blick)' : 'Open one-pager (features at a glance)'}
+            </button>
+          )}
         </div>
 
         <div style={{ padding: '8px 32px 32px' }}>
