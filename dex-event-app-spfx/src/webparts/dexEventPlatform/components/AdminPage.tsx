@@ -4936,6 +4936,109 @@ export default function AdminPage(): React.ReactElement {
                   for (const c of siblings) {
                     tabs.push({ id: c.id, label: shortSubEventTitle(c.title, parent?.title) || (isDe ? 'ohne Titel' : 'untitled'), count: c.currentParticipants || 0, isParent: false, ev: c });
                   }
+                  // v22.70: Einzelnen Tab-Button rendern (für flaches Layout
+                  // UND die Sub-Event-Reihe im Klammer-Layout wiederverwendet).
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const renderTab = (t: { id: string; label: string; count: number; isParent: boolean; ev: any }): React.ReactElement => {
+                    const active = t.id === selectedEvent.id;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        onClick={() => handleSelectEvent(t.ev).catch(() => { /* */ })}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 8,
+                          padding: '8px 14px',
+                          border: '1px solid var(--dex-gray-200)',
+                          borderBottom: active ? '2px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-200)',
+                          borderRadius: '8px 8px 0 0',
+                          background: active ? '#fff' : 'var(--dex-gray-50, #fafafa)',
+                          color: active ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)',
+                          fontWeight: active ? 700 : 500,
+                          fontSize: '0.85rem',
+                          cursor: 'pointer',
+                          marginBottom: -1,
+                          whiteSpace: 'nowrap',
+                          maxWidth: 280,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          transition: 'background 0.15s, color 0.15s, border-color 0.15s',
+                        }}
+                        title={t.label}
+                      >
+                        {t.isParent && (
+                          <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 0.4, color: active ? 'var(--dex-green-dark)' : 'var(--dex-gray-400)' }}>
+                            {isDe ? 'Haupt' : 'Main'}
+                          </span>
+                        )}
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</span>
+                        <span
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            minWidth: 24, height: 20, padding: '0 6px',
+                            borderRadius: 999,
+                            background: active ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)',
+                            color: active ? '#fff' : 'var(--dex-gray-700)',
+                            fontSize: '0.72rem', fontWeight: 700,
+                          }}
+                        >
+                          {t.count}
+                        </span>
+                      </button>
+                    );
+                  };
+                  const parentTab = tabs.find(tb => tb.isParent);
+                  const childTabs = tabs.filter(tb => !tb.isParent);
+                  // v22.70: Im Klammer-Modus die Klammer als ECHTE Klammer ÜBER
+                  // den Sub-Event-Tabs darstellen (oben volle Breite, darunter die
+                  // eingerückten Sub-Events). Normales Hauptevent bleibt flach.
+                  const klammerLayout = !!(parentTab && parentTab.ev && parentTab.ev.subEventsOnlyMode && childTabs.length > 0);
+                  if (klammerLayout && parentTab) {
+                    const pActive = parentTab.id === selectedEvent.id;
+                    return (
+                      <div role="tablist" aria-label={isDe ? 'Event wechseln' : 'Switch event'} style={{ marginBottom: 16 }}>
+                        {/* Klammer-Ebene oben — volle Breite, gefüllter Kopf. */}
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={pActive}
+                          onClick={() => handleSelectEvent(parentTab.ev).catch(() => { /* */ })}
+                          title={parentTab.label}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                            padding: '10px 16px', cursor: 'pointer', textAlign: 'left',
+                            border: `1.5px solid ${pActive ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                            borderRadius: '10px 10px 0 0',
+                            background: pActive ? 'var(--dex-green, #86bc25)' : 'rgba(134,188,37,0.10)',
+                            color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
+                            fontWeight: 700, fontSize: '0.9rem',
+                          }}
+                        >
+                          <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: 0.6, opacity: 0.9 }}>
+                            {isDe ? '⟦ Klammer ⟧' : '⟦ Bracket ⟧'}
+                          </span>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{parentTab.label}</span>
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            minWidth: 26, height: 22, padding: '0 8px', borderRadius: 999,
+                            background: pActive ? 'rgba(255,255,255,0.25)' : 'var(--dex-green, #86bc25)',
+                            color: '#fff', fontSize: '0.74rem', fontWeight: 700, flexShrink: 0,
+                          }}>{parentTab.count}</span>
+                        </button>
+                        {/* Sub-Events darunter — eingerückt unter einer Klammer-Linie. */}
+                        <div style={{
+                          display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'flex-end',
+                          marginLeft: 18, paddingLeft: 16, paddingTop: 10,
+                          borderLeft: '2px solid var(--dex-green, #86bc25)',
+                          borderBottom: '1px solid var(--dex-gray-200)',
+                        }}>
+                          {childTabs.map(t => renderTab(t))}
+                        </div>
+                      </div>
+                    );
+                  }
                   return (
                     <div
                       role="tablist"
@@ -4947,56 +5050,7 @@ export default function AdminPage(): React.ReactElement {
                         paddingBottom: 0,
                       }}
                     >
-                      {tabs.map(t => {
-                        const active = t.id === selectedEvent.id;
-                        return (
-                          <button
-                            key={t.id}
-                            type="button"
-                            role="tab"
-                            aria-selected={active}
-                            onClick={() => handleSelectEvent(t.ev).catch(() => { /* */ })}
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 8,
-                              padding: '8px 14px',
-                              border: '1px solid var(--dex-gray-200)',
-                              borderBottom: active ? '2px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-200)',
-                              borderRadius: '8px 8px 0 0',
-                              background: active ? '#fff' : 'var(--dex-gray-50, #fafafa)',
-                              color: active ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)',
-                              fontWeight: active ? 700 : 500,
-                              fontSize: '0.85rem',
-                              cursor: 'pointer',
-                              marginBottom: -1,
-                              whiteSpace: 'nowrap',
-                              maxWidth: 280,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              transition: 'background 0.15s, color 0.15s, border-color 0.15s',
-                            }}
-                            title={t.label}
-                          >
-                            {t.isParent && (
-                              <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 0.4, color: active ? 'var(--dex-green-dark)' : 'var(--dex-gray-400)' }}>
-                                {isDe ? 'Haupt' : 'Main'}
-                              </span>
-                            )}
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</span>
-                            <span
-                              style={{
-                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                minWidth: 24, height: 20, padding: '0 6px',
-                                borderRadius: 999,
-                                background: active ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)',
-                                color: active ? '#fff' : 'var(--dex-gray-700)',
-                                fontSize: '0.72rem', fontWeight: 700,
-                              }}
-                            >
-                              {t.count}
-                            </span>
-                          </button>
-                        );
-                      })}
+                      {tabs.map(t => renderTab(t))}
                     </div>
                   );
                 })()}
