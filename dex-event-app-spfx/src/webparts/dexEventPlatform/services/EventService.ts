@@ -7559,6 +7559,37 @@ export class EventService {
   }
 
   /**
+   * v22.74: Aktive + Warteliste-E-Mails einer Teilnehmerliste (lowercase) —
+   * für die EINDEUTIGE Personenzählung einer Klammer über alle Sub-Events
+   * (eine Person, die sich für mehrere Sub-Events anmeldet, zählt einmal).
+   */
+  public async getParticipantEmailsByStatus(subsiteUrl: string): Promise<{ active: string[]; waitlist: string[] }> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const allItems: any[] = [];
+    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=ParticipantEmail,Status&$top=5000`;
+    while (url) {
+      try {
+        const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        if (!response.ok) break;
+        const data = await response.json();
+        allItems.push(...(data.value || data.d?.results || []));
+        url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
+      } catch {
+        break;
+      }
+    }
+    const active: string[] = [];
+    const waitlist: string[] = [];
+    for (const i of allItems) {
+      const email = (i.ParticipantEmail || '').toLowerCase().trim();
+      if (!email) continue;
+      if (i.Status === 'Angemeldet' || i.Status === 'QR versendet' || i.Status === 'Eingecheckt') active.push(email);
+      else if (i.Status === 'Warteliste') waitlist.push(email);
+    }
+    return { active, waitlist };
+  }
+
+  /**
    * Title-Feld (= Teilnehmer-ID) aktualisieren
    */
   public async updateRegistrationTitle(

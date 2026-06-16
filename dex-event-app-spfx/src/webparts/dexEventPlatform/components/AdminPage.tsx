@@ -5016,16 +5016,23 @@ export default function AdminPage(): React.ReactElement {
                             fontWeight: 700, fontSize: '0.9rem',
                           }}
                         >
-                          <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: 0.6, opacity: 0.9 }}>
-                            {isDe ? '⟦ Klammer ⟧' : '⟦ Bracket ⟧'}
-                          </span>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{parentTab.label}</span>
+                          {/* v22.73: Zahl LINKS, dann Event-Name, dann „(Klammer)"
+                              + Info-Icon mit Erklärung. */}
                           <span style={{
                             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                             minWidth: 26, height: 22, padding: '0 8px', borderRadius: 999,
                             background: pActive ? 'rgba(255,255,255,0.25)' : 'var(--dex-green, #86bc25)',
                             color: '#fff', fontSize: '0.74rem', fontWeight: 700, flexShrink: 0,
                           }}>{parentTab.count}</span>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{parentTab.label}</span>
+                            <span style={{ fontWeight: 600, opacity: 0.9, flexShrink: 0 }}>({isDe ? 'Klammer' : 'Bracket'})</span>
+                            <span style={{ flexShrink: 0, display: 'inline-flex', color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }} onClick={e => e.stopPropagation()}>
+                              <InfoTooltip placement="bottom" text={isDe
+                                ? <>Das <strong>Klammer-Event selbst wird nicht gebucht</strong> — Teilnehmer melden sich nur für die einzelnen <strong>Sub-Events</strong> an. Die Klammer fasst die Sub-Events nur zusammen. Die Zahl links zeigt, <strong>wie viele Personen sich insgesamt (kumuliert) für die Sub-Events angemeldet haben</strong>.</>
+                                : <>The <strong>bracket event itself is not booked</strong> — attendees only register for the individual <strong>sub-events</strong>. The bracket just groups them. The number on the left shows <strong>how many people registered for the sub-events in total (cumulative)</strong>.</>} />
+                            </span>
+                          </span>
                         </button>
                         {/* Sub-Events darunter — eingerückt unter einer Klammer-Linie. */}
                         <div style={{
