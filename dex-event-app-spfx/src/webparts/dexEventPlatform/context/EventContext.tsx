@@ -745,20 +745,41 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         }
       })
     );
-    // v22.72: Klammer-Events („Nur Sub-Events") zeigen in der Listen-Karte die
-    // SUMME der Sub-Event-Teilnehmer — der eigene Subsite-Counter zählt nur die
-    // (unvollständigen) Schatten-Zeilen der Klammer und ist deshalb falsch. Die
-    // Sub-Event-Zahlen sind oben bereits geladen → kein Extra-Roundtrip.
-    const childSumByParent = new Map<string, number>();
-    const childWaitlistByParent = new Map<string, number>();
+    // v22.74: Klammer-Events („Nur Sub-Events") zeigen in der Listen-Karte die
+    // EINDEUTIGE Personenzahl über alle Sub-Events — eine Person, die sich für
+    // mehrere Sub-Events anmeldet, zählt EINMAL (nicht die Summe). Der eigene
+    // Subsite-Counter der Klammer (Schatten-Zeilen) ist falsch; deshalb werden
+    // die Sub-Event-Teilnehmer-Mails geladen und entdoppelt. Nur für Klammern
+    // (Minderheit) → vertretbarer Extra-Aufwand.
+    const klammerParents = results.filter(e => e.subEventsOnlyMode);
+    if (klammerParents.length === 0) return results;
+    const childrenByParent = new Map<string, DeloitteEvent[]>();
     for (const e of results) {
       if (e.parentEventId) {
-        childSumByParent.set(e.parentEventId, (childSumByParent.get(e.parentEventId) || 0) + (e.currentParticipants || 0));
-        childWaitlistByParent.set(e.parentEventId, (childWaitlistByParent.get(e.parentEventId) || 0) + (e.waitlistCount || 0));
+        const arr = childrenByParent.get(e.parentEventId) || [];
+        arr.push(e);
+        childrenByParent.set(e.parentEventId, arr);
       }
     }
-    return results.map(e => (e.subEventsOnlyMode && childSumByParent.has(e.id))
-      ? { ...e, currentParticipants: childSumByParent.get(e.id) || 0, waitlistCount: childWaitlistByParent.get(e.id) || 0 }
+    const uniqueByParent = new Map<string, { active: number; waitlist: number }>();
+    await Promise.all(klammerParents.map(async (p) => {
+      const kids = childrenByParent.get(p.id) || [];
+      const activeSet = new Set<string>();
+      const waitSet = new Set<string>();
+      await Promise.all(kids.map(async (c) => {
+        if (!c.subsiteUrl) return;
+        try {
+          const r = await eventService.getParticipantEmailsByStatus(c.subsiteUrl);
+          for (const em of r.active) activeSet.add(em);
+          for (const em of r.waitlist) waitSet.add(em);
+        } catch { /* best-effort */ }
+      }));
+      // Warteliste nur Personen, die NIRGENDS aktiv sind.
+      for (const a of Array.from(activeSet)) waitSet.delete(a);
+      uniqueByParent.set(p.id, { active: activeSet.size, waitlist: waitSet.size });
+    }));
+    return results.map(e => uniqueByParent.has(e.id)
+      ? { ...e, currentParticipants: uniqueByParent.get(e.id)!.active, waitlistCount: uniqueByParent.get(e.id)!.waitlist }
       : e);
   }
 
