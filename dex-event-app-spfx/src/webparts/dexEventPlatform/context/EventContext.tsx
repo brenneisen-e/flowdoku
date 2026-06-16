@@ -745,7 +745,21 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         }
       })
     );
-    return results;
+    // v22.72: Klammer-Events („Nur Sub-Events") zeigen in der Listen-Karte die
+    // SUMME der Sub-Event-Teilnehmer — der eigene Subsite-Counter zählt nur die
+    // (unvollständigen) Schatten-Zeilen der Klammer und ist deshalb falsch. Die
+    // Sub-Event-Zahlen sind oben bereits geladen → kein Extra-Roundtrip.
+    const childSumByParent = new Map<string, number>();
+    const childWaitlistByParent = new Map<string, number>();
+    for (const e of results) {
+      if (e.parentEventId) {
+        childSumByParent.set(e.parentEventId, (childSumByParent.get(e.parentEventId) || 0) + (e.currentParticipants || 0));
+        childWaitlistByParent.set(e.parentEventId, (childWaitlistByParent.get(e.parentEventId) || 0) + (e.waitlistCount || 0));
+      }
+    }
+    return results.map(e => (e.subEventsOnlyMode && childSumByParent.has(e.id))
+      ? { ...e, currentParticipants: childSumByParent.get(e.id) || 0, waitlistCount: childWaitlistByParent.get(e.id) || 0 }
+      : e);
   }
 
   async function refreshParticipantCounts(eventId?: string): Promise<void> {
