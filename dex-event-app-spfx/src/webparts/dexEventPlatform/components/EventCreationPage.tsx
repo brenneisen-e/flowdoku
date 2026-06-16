@@ -239,6 +239,14 @@ function StickyTabStrip(props: {
   onChange: (idx: number) => void;
   ariaLabel: string;
   mainBadge: string;
+  /** v22.71: Klammer-Modus — der Haupt-Tab wird als echte Klammer ÜBER den
+   *  Sub-Event-Tabs dargestellt (oben volle Breite, darunter eingerückt). */
+  klammer?: boolean;
+  /** v22.71: Haupt-/Klammer-Tab nicht anklickbar (z.B. Schritt 6: im
+   *  „Nur Sub-Events"-Modus ist die Klammer-Kommunikation nicht relevant). */
+  mainDisabled?: boolean;
+  /** Optionaler Hinweis-Text neben dem deaktivierten Klammer-Tab. */
+  mainDisabledNote?: string;
 }): React.ReactElement {
   const phRef = React.useRef<HTMLDivElement | null>(null);
   const [pin, setPin] = React.useState<null | { top: number; left: number; width: number; height: number }>(null);
@@ -280,16 +288,8 @@ function StickyTabStrip(props: {
           borderBottom: '1px solid var(--dex-gray-200)',
         } : {}),
       }}>
-        <div
-          role="tablist"
-          aria-label={props.ariaLabel}
-          style={{
-            display: 'flex', flexWrap: 'wrap', gap: 6, flex: 1,
-            borderBottom: pin ? 'none' : '1px solid var(--dex-gray-200)',
-            paddingBottom: 0,
-          }}
-        >
-          {props.tabs.map((tab, tabIdx) => {
+        {(() => {
+          const renderTabBtn = (tab: { label: string; isMain: boolean }, tabIdx: number): React.ReactElement => {
             const active = tabIdx === props.activeIdx;
             return (
               <button
@@ -303,7 +303,6 @@ function StickyTabStrip(props: {
                   padding: '8px 14px',
                   border: active ? '1px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-200)',
                   borderRadius: '8px 8px 0 0',
-                  // v22.30: aktiver Tab gefüllt grün mit weißer Schrift.
                   background: active ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-50, #fafafa)',
                   color: active ? '#fff' : 'var(--dex-gray-700)',
                   fontWeight: active ? 700 : 500,
@@ -326,8 +325,66 @@ function StickyTabStrip(props: {
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.label}</span>
               </button>
             );
-          })}
-        </div>
+          };
+          const klammerLayout = !!props.klammer && props.tabs.length > 1 && !!props.tabs[0] && props.tabs[0].isMain;
+          if (klammerLayout) {
+            const dis = !!props.mainDisabled;
+            const pActive = !dis && props.activeIdx === 0;
+            return (
+              <div role="tablist" aria-label={props.ariaLabel} style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: 0 }}>
+                {/* Klammer-Ebene oben — volle Breite. */}
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={pActive}
+                  aria-disabled={dis}
+                  onClick={() => { if (!dis) props.onChange(0); }}
+                  title={dis ? (props.mainDisabledNote || props.tabs[0].label) : props.tabs[0].label}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                    padding: '10px 16px', cursor: dis ? 'not-allowed' : 'pointer', textAlign: 'left',
+                    border: `1.5px solid ${pActive ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                    borderRadius: '10px 10px 0 0',
+                    background: pActive ? 'var(--dex-green, #86bc25)' : 'rgba(134,188,37,0.10)',
+                    color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
+                    fontWeight: 700, fontSize: '0.9rem',
+                    opacity: dis ? 0.55 : 1,
+                  }}
+                >
+                  <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: 0.6, opacity: 0.9 }}>⟦ {props.mainBadge} ⟧</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{props.tabs[0].label}</span>
+                  {dis && props.mainDisabledNote && (
+                    <span style={{ fontSize: '0.65rem', fontWeight: 600, padding: '2px 6px', borderRadius: 8, background: 'var(--dex-gray-200, #e0e0e0)', color: 'var(--dex-gray-600)', flexShrink: 0 }}>
+                      {props.mainDisabledNote}
+                    </span>
+                  )}
+                </button>
+                {/* Sub-Events darunter — eingerückt unter einer Klammer-Linie. */}
+                <div style={{
+                  display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'flex-end',
+                  marginLeft: 18, paddingLeft: 16, paddingTop: 10,
+                  borderLeft: '2px solid var(--dex-green, #86bc25)',
+                  borderBottom: pin ? 'none' : '1px solid var(--dex-gray-200)',
+                }}>
+                  {props.tabs.slice(1).map((tab, i) => renderTabBtn(tab, i + 1))}
+                </div>
+              </div>
+            );
+          }
+          return (
+            <div
+              role="tablist"
+              aria-label={props.ariaLabel}
+              style={{
+                display: 'flex', flexWrap: 'wrap', gap: 6, flex: 1,
+                borderBottom: pin ? 'none' : '1px solid var(--dex-gray-200)',
+                paddingBottom: 0,
+              }}
+            >
+              {props.tabs.map((tab, tabIdx) => renderTabBtn(tab, tabIdx))}
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
@@ -5053,6 +5110,7 @@ export default function EventCreationPage(): React.ReactElement {
         onChange={onChange}
         ariaLabel={ariaLabel}
         mainBadge={subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt' : 'Main')}
+        klammer={subEventsOnlyMode}
       />
     );
   };
@@ -10842,72 +10900,21 @@ export default function EventCreationPage(): React.ReactElement {
                     Sub-Events existieren, blenden wir die Tabs komplett aus. */}
                 {subEvents.length > 0 && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                    <div
-                      role="tablist"
-                      aria-label={isDe ? 'Event-Tab wechseln (Kommunikations-Einstellungen)' : 'Switch event tab (communication settings)'}
-                      style={{
-                        display: 'flex', flexWrap: 'wrap', gap: 6, flex: 1,
-                        borderBottom: '1px solid var(--dex-gray-200)',
-                        paddingBottom: 0,
-                      }}
-                    >
-                      {[{ label: `${subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt-Event' : 'Main event')}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`, isMain: true }, ...subEvents.map(s => ({ label: (shortSubEventTitle(s.title, title) || (isDe ? 'Sub-Event ohne Titel' : 'Untitled sub-event')).trim(), isMain: false }))].map((tab, tabIdx) => {
-                        const active = tabIdx === activeCommTabIdx;
-                        // v14.8: Haupt-Event-Tab visuell deaktivieren, wenn der
-                        // „Nur Sub-Events"-Modus aktiv ist — kein Click, keine
-                        // Sichtbarkeit als Ziel der Konfiguration.
-                        const isDisabledMain = tab.isMain && subEventsOnlyMode;
-                        return (
-                          <button
-                            key={tabIdx}
-                            type="button"
-                            role="tab"
-                            aria-selected={active}
-                            aria-disabled={isDisabledMain}
-                            onClick={() => { if (!isDisabledMain) switchCommTab(tabIdx); }}
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 8,
-                              padding: '8px 14px',
-                              border: '1px solid var(--dex-gray-200)',
-                              borderBottom: active ? '2px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-200)',
-                              borderRadius: '8px 8px 0 0',
-                              background: active ? '#fff' : 'var(--dex-gray-50, #fafafa)',
-                              color: active ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)',
-                              fontWeight: active ? 700 : 500,
-                              fontSize: '0.85rem',
-                              cursor: isDisabledMain ? 'not-allowed' : 'pointer',
-                              opacity: isDisabledMain ? 0.4 : 1,
-                              marginBottom: -1,
-                              whiteSpace: 'nowrap',
-                              maxWidth: 280,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              transition: 'background 0.15s, color 0.15s, border-color 0.15s',
-                            }}
-                            title={isDisabledMain
-                              ? (isDe ? 'Hauptevent-Kommunikation nicht relevant — „Nur Sub-Events"-Modus aktiv' : 'Main-event communication not relevant — „sub-events only" mode active')
-                              : tab.label}
-                          >
-                            {tab.isMain && (
-                              <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 0.4, color: active ? 'var(--dex-green-dark)' : 'var(--dex-gray-400)' }}>
-                                {subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt' : 'Main')}
-                              </span>
-                            )}
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.label}</span>
-                            {isDisabledMain && (
-                              <span style={{
-                                fontSize: '0.65rem', fontWeight: 600,
-                                padding: '2px 6px', borderRadius: 8,
-                                background: 'var(--dex-gray-200, #e0e0e0)',
-                                color: 'var(--dex-gray-600)',
-                                marginLeft: 4,
-                              }}>
-                                {isDe ? 'nicht relevant — nur Sub-Events' : 'not relevant — sub-events only'}
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
+                    {/* v22.71: Schritt 6 nutzt jetzt ebenfalls StickyTabStrip
+                        (Sticky-Verhalten + Klammer-Bracket-Layout). Im
+                        „Nur Sub-Events"-Modus ist der Klammer-Tab deaktiviert
+                        (Klammer-Kommunikation nicht relevant). */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <StickyTabStrip
+                        tabs={[{ label: `${subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt-Event' : 'Main event')}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`, isMain: true }, ...subEvents.map(s => ({ label: (shortSubEventTitle(s.title, title) || (isDe ? 'Sub-Event ohne Titel' : 'Untitled sub-event')).trim(), isMain: false }))]}
+                        activeIdx={activeCommTabIdx}
+                        onChange={switchCommTab}
+                        ariaLabel={isDe ? 'Event-Tab wechseln (Kommunikations-Einstellungen)' : 'Switch event tab (communication settings)'}
+                        mainBadge={subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt' : 'Main')}
+                        klammer={subEventsOnlyMode}
+                        mainDisabled={subEventsOnlyMode}
+                        mainDisabledNote={isDe ? 'nicht relevant — nur Sub-Events' : 'not relevant — sub-events only'}
+                      />
                     </div>
                     <InfoTooltip text={isDe ? (
                       <>
