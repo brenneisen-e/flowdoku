@@ -327,7 +327,11 @@ export default function RegistrationPage(): React.ReactElement {
     if (!event) return [];
     const all = childEventsOf(event.id);
     if (canCreateEvents || registerForOther) return all;
-    return all.filter(ce => isEventVisibleForUser(ce, currentUser.email, currentUser.location, groupEmails));
+    // v22.68: Sub-Events im Entwurf (isFictive) sind für reguläre Teilnehmer
+    // NICHT buchbar — vorher wurden sie nicht gefiltert und waren trotz
+    // „Entwurf" buchbar, solange die Klammer sichtbar war. Organizer/
+    // Stellvertreter (oben) sehen Entwürfe weiterhin.
+    return all.filter(ce => !ce.isFictive && isEventVisibleForUser(ce, currentUser.email, currentUser.location, groupEmails));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [event?.id, canCreateEvents, registerForOther, currentUser.email, currentUser.location, groupEmails]);
   // v15.10: vom Organizer konfigurierbare Bezeichnung (z.B. „Event-Sections",
