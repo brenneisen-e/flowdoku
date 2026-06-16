@@ -820,6 +820,37 @@ einer Team-Anmeldung:
   Wird in `registerTeam` (v11.82 konsolidiert auf den Helper),
   `addTeamMember` (v11.83) und `createTeamJoinRequest` (v11.83) genutzt.
 
+### Teams: frei benennbar, DnD-Zuordnung, Sperre, Per-Team-Mail (v23.0)
+
+Vier zusammenhängende Erweiterungen rund um die Team-Anmeldung — alle ohne
+neue SP-Spalten (Piggyback in `EmailTemplateOverrides`, Key `_teamTerm` +
+`_teamMembersCannotCreate`):
+
+- **Frei benennbarer Team-Begriff:** Der Organizer benennt „Teams" im Wizard
+  (Schritt 4) frei um (z.B. „Break-Out Session") — Singular + Plural getrennt.
+  Felder `teamTermSingular`/`teamTermPlural` (types/index.ts), geparst in
+  `EventContext.mapSPEventToDeloitteEvent` aus dem `_teamTerm`-Piggyback,
+  persistiert in Create-/Update-Payload (`EventCreationPage`). Verwendet in
+  allen Team-Labels (Wizard, Organizer Center Teams-Sektion, „ohne <Term>"-Box,
+  My-Events-Badge inkl. „<Term>-Lead").
+- **Teilnehmer dürfen keine neuen Teams anlegen:** Toggle im Wizard
+  (Schritt 4) → `teamMembersCannotCreate`. Greift in `RegistrationPage`
+  (`isTeamCapable`-Gate) — die „Ich melde mich + mein Team an"-Karte
+  verschwindet, der Organizer ordnet die Gruppen dann selbst zu.
+- **Drag & Drop im Organizer Center:** In der Teams-Sektion (`AdminPage.tsx`)
+  zieht der Organizer Personen per HTML5-DnD zwischen den Teams und der „ohne
+  <Term>"-Box. State `dragRegId`/`dragOverTid`, Handler `moveRegToTeam` (ruft
+  `assignRegistrationToTeam`, promotet bei Bedarf einen neuen Lead, schreibt
+  `writeChangeLog`, lädt neu) + `onTeamDrop`. Drop-Ziele highlighten grün.
+- **Per-Team-Info-Mail:** Button „Mail an <TermPlural>" (nur `canManage`,
+  nur wenn aktive Teams existieren) öffnet ein Modal — Betreff + Body
+  (Platzhalter `{{Vorname}}`/`{{Name}}`/`{{TeamName}}`/`{{EventTitle}}`/
+  `{{TeamInfo}}`) plus **pro Team ein eigenes Info-Feld** (z.B. ein dedizierter
+  Teams-Einwahllink). `sendTeamMails` queued **pro aktivem Mitglied eine eigene
+  Mail** (`{{TeamInfo}}` linkifiziert URLs), im Deloitte-Layout via
+  `wrapTemplate`, emailType `TeamInfo`, gated über `!event.disableEmails`.
+  Handler `getActiveTeams`/`openTeamMailDialog`/`sendTeamMails` in `AdminPage.tsx`.
+
 ### Sichtbarkeits-Auto-Fix beim Admin-Start + Team-CC (v22.42)
 
 - **Auto-Fix der Zeilen-Sichtbarkeit:** `EventContext.autoRepairProxyAccess()`

@@ -33,6 +33,7 @@ import { HtmlEditorModal } from './HtmlEditorModal';
 import { InfoTooltip } from './InfoTooltip';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 import Modal from './Modal';
+import { Icon } from '@fluentui/react/lib/Icon';
 import InternationalSearchToggle from './InternationalSearchToggle';
 // v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
 import { useDialog } from '../context/DialogContext';
@@ -1165,6 +1166,16 @@ export default function AdminPage(): React.ReactElement {
   // „Entfernen"-Buttons pro Mitglied (nicht dauerhaft an jedem Namen).
   const [teamEditOpenFor, setTeamEditOpenFor] = React.useState<string | null>(null);
   const [leadTransferBusy, setLeadTransferBusy] = React.useState(false);
+  // v23.0: Drag&Drop-Zuordnung in der Teams-Sektion. dragRegId = gezogene
+  // Registrierung, dragOverTid = aktuelles Drop-Ziel ('' = „ohne Team").
+  const [dragRegId, setDragRegId] = React.useState<number | null>(null);
+  const [dragOverTid, setDragOverTid] = React.useState<string | null>(null);
+  // v23.0: Per-Team-Info-Mail (z.B. Teams-Einwahllink je Break-Out-Session).
+  const [teamMailOpen, setTeamMailOpen] = React.useState(false);
+  const [teamMailSubject, setTeamMailSubject] = React.useState('');
+  const [teamMailBody, setTeamMailBody] = React.useState('');
+  const [teamMailInfoByTid, setTeamMailInfoByTid] = React.useState<Record<string, string>>({});
+  const [teamMailSending, setTeamMailSending] = React.useState(false);
   // Toast nach erfolgreicher Aktion in der Teams-Section.
   const [teamsToast, setTeamsToast] = React.useState<string>('');
   const [isRefreshingProfiles, setIsRefreshingProfiles] = React.useState(false);
@@ -2089,6 +2100,113 @@ export default function AdminPage(): React.ReactElement {
     setIdRecheckBusy(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEvent?.id]);
+
+  // v23.0: Eine Registrierung per Drag&Drop in ein Team/eine Break-Out-Session
+  // (targetTid) oder zurück „ohne Team" ('') verschieben. War die Person Lead
+  // ihres alten Teams und bleiben Mitglieder, rückt die früheste nach.
+  const moveRegToTeam = async (reg: SPRegistration, targetTid: string, targetTeamName: string | undefined): Promise<void> => {
+    if (!selectedEvent?.subsiteUrl || !eventServiceRef) return;
+    const sub = selectedEvent.subsiteUrl;
+    const curTid = reg.TeamId || '';
+    if (curTid === (targetTid || '')) return;
+    try {
+      await eventServiceRef.assignRegistrationToTeam(sub, reg.Id, targetTid || '', targetTeamName || '', false);
+      if (curTid && reg.TeamLead) {
+        const rest = registrations.filter(x => x.Id !== reg.Id && (x.TeamId || '') === curTid && x.Status !== 'Abgemeldet');
+        if (rest.length > 0) {
+          rest.sort((a, b) => ((a.TeilnehmerID ?? 9_999_999) as number) - ((b.TeilnehmerID ?? 9_999_999) as number));
+          const tn = rest.find(x => x.TeamName)?.TeamName || '';
+          try { await eventServiceRef.assignRegistrationToTeam(sub, rest[0].Id, curTid, tn || '', true); } catch { /* */ }
+        }
+      }
+      const nm = `${reg.Vorname || ''} ${reg.Nachname || ''}`.trim() || reg.ParticipantName || reg.ParticipantEmail;
+      eventServiceRef.writeChangeLog({
+        action: targetTid ? 'TeamMemberAssigned' : 'TeamMemberRemoved',
+        targetType: 'Participant', targetId: reg.ParticipantEmail, targetName: nm,
+        eventId: selectedEvent.id, eventTitle: selectedEvent.title,
+        details: { fromTeam: curTid, toTeam: targetTid, via: 'dragdrop' },
+      }).catch(() => { /* */ });
+      const regs = await getAllRegistrations(selectedEvent.id);
+      setRegistrations(regs);
+    } catch (err) { console.warn('[DEX] moveRegToTeam failed:', err); }
+  };
+  // Drop-Handler: gezogene Registrierung ermitteln + verschieben.
+  const onTeamDrop = (targetTid: string, targetTeamName: string | undefined): void => {
+    setDragOverTid(null);
+    const id = dragRegId;
+    setDragRegId(null);
+    if (id === null) return;
+    const reg = registrations.find(r => r.Id === id);
+    if (reg) moveRegToTeam(reg, targetTid, targetTeamName).catch(() => { /* */ });
+  };
+
+  // v23.0: Aktive Teams aus den geladenen Registrierungen gruppieren
+  // (für die Per-Team-Mail).
+  const getActiveTeams = (): Array<{ tid: string; teamName: string; members: SPRegistration[] }> => {
+    const map: Record<string, SPRegistration[]> = {};
+    for (const r of registrations) {
+      if (r.Status === 'Abgemeldet') continue;
+      const tid = r.TeamId || '';
+      if (!tid) continue;
+      (map[tid] = map[tid] || []).push(r);
+    }
+    return Object.entries(map).map(([tid, members]) => ({ tid, members, teamName: members.find(m => m.TeamName)?.TeamName || '' }));
+  };
+  // Mail-Dialog mit vorausgefülltem Text öffnen.
+  const openTeamMailDialog = (): void => {
+    if (!selectedEvent) return;
+    const termS = selectedEvent.teamTermSingular || 'Team';
+    setTeamMailSubject(isDe ? `Deine ${termS}: ${selectedEvent.title}` : `Your ${termS}: ${selectedEvent.title}`);
+    setTeamMailBody(isDe
+      ? `<p>Hallo {{Vorname}},</p>\n<p>hier sind die Infos zu deiner <strong>${termS}</strong> beim Event <strong>{{EventTitle}}</strong>:</p>\n<p><strong>{{TeamName}}</strong></p>\n<p>{{TeamInfo}}</p>\n<p>Viele Grüße<br />Dein Event-Team</p>`
+      : `<p>Hi {{Vorname}},</p>\n<p>here is the info for your <strong>${termS}</strong> at <strong>{{EventTitle}}</strong>:</p>\n<p><strong>{{TeamName}}</strong></p>\n<p>{{TeamInfo}}</p>\n<p>Best regards<br />Your event team</p>`);
+    const init: Record<string, string> = {};
+    for (const t of getActiveTeams()) init[t.tid] = teamMailInfoByTid[t.tid] || '';
+    setTeamMailInfoByTid(init);
+    setTeamMailOpen(true);
+  };
+  // Pro Team: jedes aktive Mitglied bekommt eine eigene Mail mit team-
+  // spezifischer Info (z.B. Teams-Einwahllink). Im Deloitte-Layout gewrappt.
+  const sendTeamMails = async (): Promise<void> => {
+    if (!selectedEvent || !eventServiceRef) return;
+    if (selectedEvent.disableEmails) {
+      showAlert(isDe ? 'E-Mails sind für dieses Event deaktiviert (Schritt 6 „Kommunikation").' : 'Emails are disabled for this event (step 6 “Communication”).', { variant: 'error' });
+      return;
+    }
+    setTeamMailSending(true);
+    const escHtml = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // URLs in der Team-Info klickbar machen + Zeilenumbrüche zu <br>.
+    const linkify = (raw: string): string => escHtml(raw)
+      .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" style="color:#86bc25;font-weight:600;">$1</a>')
+      .replace(/\n/g, '<br />');
+    const termS = selectedEvent.teamTermSingular || 'Team';
+    let sent = 0;
+    for (const t of getActiveTeams()) {
+      const infoHtml = linkify((teamMailInfoByTid[t.tid] || '').trim());
+      const tName = t.teamName || termS;
+      for (const m of t.members) {
+        const first = (m.Vorname && m.Vorname.trim()) || (m.ParticipantName || '').split(/\s+/)[0] || '';
+        const fullName = `${m.Vorname || ''} ${m.Nachname || ''}`.trim() || m.ParticipantName || m.ParticipantEmail;
+        const bodyFilled = teamMailBody
+          .replace(/\{\{Vorname\}\}/g, escHtml(first))
+          .replace(/\{\{Name\}\}/g, escHtml(fullName))
+          .replace(/\{\{TeamName\}\}/g, escHtml(tName))
+          .replace(/\{\{EventTitle\}\}/g, escHtml(selectedEvent.title))
+          .replace(/\{\{TeamInfo\}\}/g, infoHtml || (isDe ? '<em>(keine zusätzlichen Infos)</em>' : '<em>(no additional info)</em>'));
+        const subjectFilled = teamMailSubject
+          .replace(/\{\{TeamName\}\}/g, tName)
+          .replace(/\{\{EventTitle\}\}/g, selectedEvent.title);
+        const wrapped = wrapTemplate('#86bc25', subjectFilled, tName, bodyFilled);
+        try {
+          const ok = await eventServiceRef.queueEmail(subjectFilled, m.ParticipantEmail, fullName, wrapped, 'TeamInfo', selectedEvent.title, selectedEvent.id);
+          if (ok) sent += 1;
+        } catch { /* best-effort pro Empfänger */ }
+      }
+    }
+    setTeamMailSending(false);
+    setTeamMailOpen(false);
+    showAlert(isDe ? `${sent} Mail(s) in die Warteschlange gelegt — sie werden in Kürze versendet.` : `${sent} mail(s) queued — they will be sent shortly.`, { variant: 'success' });
+  };
   // Max. 10 automatische Neu-Checks (≈5 Min) pro Event — wenn die Lücke dann
   // immer noch da ist, ist sie echt (Tail-Race, siehe Box-Text) und kein
   // weiteres Polling nötig.
@@ -7600,44 +7718,72 @@ export default function AdminPage(): React.ReactElement {
               </div>
               {!teamsCollapsed && (
                 <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {/* v23.0: Drag&Drop-Hinweis. */}
+                  {canManage && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', color: 'var(--dex-gray-600)', background: 'rgba(134,188,37,0.08)', border: '1px solid var(--dex-green, #86bc25)', borderRadius: 8, padding: '7px 12px' }}>
+                      <Icon iconName="DragObject" style={{ fontSize: 15, color: 'var(--dex-green-dark, #4a7c1f)' }} />
+                      {isDe
+                        ? `Tipp: Personen per Drag & Drop zwischen ${(selectedEvent?.teamTermPlural || 'Teams')} und „ohne ${(selectedEvent?.teamTermSingular || 'Team')}" verschieben.`
+                        : `Tip: drag & drop people between ${(selectedEvent?.teamTermPlural || 'teams')} and “no ${(selectedEvent?.teamTermSingular || 'team')}”.`}
+                    </div>
+                  )}
                   {teamEntries.length === 0 && (
                     <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.88rem', fontStyle: 'italic' }}>
                       Keine Team-Anmeldungen bisher.
                     </div>
                   )}
-                  {/* v16.2: „Neues Team anlegen"-Button + Teamless-Sektion. */}
+                  {/* v16.2: „Neues Team anlegen"-Button + Teamless-Sektion.
+                      v23.0: zusätzlich „Mail an <Teams>"-Button (Per-Team-Info-Mail). */}
                   {canManage && (
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      style={{ alignSelf: 'flex-start', fontSize: '0.85rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                      onClick={() => {
-                        // Neue lokale TeamID generieren und Add-Member-Dialog
-                        // direkt damit oeffnen. Sobald die erste Person hinzu-
-                        // gefügt wird, wird die TeamId im SP-Item gespeichert.
-                        const newTid = (typeof crypto !== 'undefined' && crypto.randomUUID)
-                          ? crypto.randomUUID()
-                          : `team-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
-                        setAdminAddMemberDialog({ teamId: newTid, teamName: '', freeSlots: teamSizeCfg || 99, isNewTeam: true });
-                        setAdminAddMemberPick(null);
-                        setAdminAddMemberQuery('');
-                        setAdminAddMemberResults([]);
-                        setAdminAddMemberConsent(false);
-                        setAdminAddMemberError('');
-                        setAdminAddTeamlessPicks(new Set());
-                        setAdminAddLeadRegId(null);
-                        setAdminAddSendMail(false);
-                        setAdminAddCcOrganizer(false);
-                        setAdminAddNotifyOthers(false);
-                        setAdminAddNotifyScope('all');
-                        setAdminAddNewPersonMail(true);
-                      }}
-                    >
-                      <Plus size={14} /> Neues Team anlegen
-                    </button>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.85rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                        onClick={() => {
+                          // Neue lokale TeamID generieren und Add-Member-Dialog
+                          // direkt damit oeffnen. Sobald die erste Person hinzu-
+                          // gefügt wird, wird die TeamId im SP-Item gespeichert.
+                          const newTid = (typeof crypto !== 'undefined' && crypto.randomUUID)
+                            ? crypto.randomUUID()
+                            : `team-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
+                          setAdminAddMemberDialog({ teamId: newTid, teamName: '', freeSlots: teamSizeCfg || 99, isNewTeam: true });
+                          setAdminAddMemberPick(null);
+                          setAdminAddMemberQuery('');
+                          setAdminAddMemberResults([]);
+                          setAdminAddMemberConsent(false);
+                          setAdminAddMemberError('');
+                          setAdminAddTeamlessPicks(new Set());
+                          setAdminAddLeadRegId(null);
+                          setAdminAddSendMail(false);
+                          setAdminAddCcOrganizer(false);
+                          setAdminAddNotifyOthers(false);
+                          setAdminAddNotifyScope('all');
+                          setAdminAddNewPersonMail(true);
+                        }}
+                      >
+                        <Plus size={14} /> {isDe ? `Neue ${selectedEvent?.teamTermSingular || 'Team'} anlegen` : `Create new ${selectedEvent?.teamTermSingular || 'team'}`}
+                      </button>
+                      {getActiveTeams().length > 0 && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ fontSize: '0.85rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                          onClick={openTeamMailDialog}
+                          title={isDe ? 'Jedem Mitglied eine eigene Mail mit team-spezifischer Info senden (z.B. Teams-Einwahllink).' : 'Send each member an individual mail with team-specific info (e.g. a Teams join link).'}
+                        >
+                          <Icon iconName="Mail" style={{ fontSize: 14 }} /> {isDe ? `Mail an ${selectedEvent?.teamTermPlural || 'Teams'}` : `Mail to ${selectedEvent?.teamTermPlural || 'teams'}`}
+                        </button>
+                      )}
+                    </div>
                   )}
                   {teamlessActive.length > 0 && (
-                    <div style={{ padding: 14, border: '1px dashed var(--dex-orange, #ed8b00)', borderRadius: 10, background: 'rgba(237,139,0,0.04)' }}>
+                    <div
+                      onDragOver={canManage ? (e => { e.preventDefault(); setDragOverTid(''); }) : undefined}
+                      onDragLeave={canManage ? (() => setDragOverTid(prev => (prev === '' ? null : prev))) : undefined}
+                      onDrop={canManage ? (() => onTeamDrop('', undefined)) : undefined}
+                      style={{ padding: 14, border: dragOverTid === '' ? '2px dashed var(--dex-green, #86bc25)' : '1px dashed var(--dex-orange, #ed8b00)', borderRadius: 10, background: dragOverTid === '' ? 'rgba(134,188,37,0.10)' : 'rgba(237,139,0,0.04)' }}
+                    >
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
                         <strong style={{ fontSize: '0.95rem', color: 'var(--dex-orange-dark, #b35a00)' }}>
                           {isDe ? `Teilnehmer ohne ${selectedEvent?.teamTermSingular || 'Team'}` : `Attendees without ${selectedEvent?.teamTermSingular || 'team'}`} ({teamlessActive.length})
@@ -7652,7 +7798,14 @@ export default function AdminPage(): React.ReactElement {
                           // eslint-disable-next-line @typescript-eslint/no-explicit-any
                           const dept = (m as any).Department || '';
                           return (
-                            <div key={m.Id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 0' }}>
+                            <div
+                              key={m.Id}
+                              draggable={canManage}
+                              onDragStart={canManage ? (() => setDragRegId(m.Id)) : undefined}
+                              onDragEnd={canManage ? (() => { setDragRegId(null); setDragOverTid(null); }) : undefined}
+                              title={canManage ? (isDe ? 'Ziehen, um zuzuordnen' : 'Drag to assign') : undefined}
+                              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 6px', borderRadius: 6, cursor: canManage ? 'grab' : 'default', opacity: dragRegId === m.Id ? 0.4 : 1, background: dragRegId === m.Id ? 'var(--dex-gray-100)' : 'transparent' }}
+                            >
                               <img
                                 src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(m.ParticipantEmail)}&size=L`}
                                 alt={name}
@@ -7684,14 +7837,18 @@ export default function AdminPage(): React.ReactElement {
                     // damit der Organizer auf einen Blick sieht, welche Teams noch
                     // nicht voll belegt sind.
                     const hasFreeSlots = free > 0;
+                    const isDropTarget = dragOverTid === tid;
                     return (
                       <div
                         key={tid}
+                        onDragOver={canManage ? (e => { e.preventDefault(); setDragOverTid(tid); }) : undefined}
+                        onDragLeave={canManage ? (() => setDragOverTid(prev => (prev === tid ? null : prev))) : undefined}
+                        onDrop={canManage ? (() => onTeamDrop(tid, teamName || undefined)) : undefined}
                         style={{
                           padding: 14,
-                          border: hasFreeSlots ? '1px solid var(--dex-orange, #ed8b00)' : '1px solid var(--dex-gray-200)',
+                          border: isDropTarget ? '2px solid var(--dex-green, #86bc25)' : (hasFreeSlots ? '1px solid var(--dex-orange, #ed8b00)' : '1px solid var(--dex-gray-200)'),
                           borderRadius: 10,
-                          background: hasFreeSlots ? 'rgba(237,139,0,0.06)' : 'var(--dex-gray-50, #f7f7f7)',
+                          background: isDropTarget ? 'rgba(134,188,37,0.12)' : (hasFreeSlots ? 'rgba(237,139,0,0.06)' : 'var(--dex-gray-50, #f7f7f7)'),
                           // v19.19: Flex-Spalte, damit der Aktions-Block (u.a.
                           // „Lead-Rolle übergeben") per marginTop:auto immer am
                           // unteren Kartenrand sitzt → alle Karten gleich hoch.
@@ -7721,9 +7878,16 @@ export default function AdminPage(): React.ReactElement {
                             return (
                               <div
                                 key={m.Id}
+                                draggable={canManage}
+                                onDragStart={canManage ? (() => setDragRegId(m.Id)) : undefined}
+                                onDragEnd={canManage ? (() => { setDragRegId(null); setDragOverTid(null); }) : undefined}
+                                title={canManage ? (isDe ? 'Ziehen, um in ein anderes Team / „ohne Team" zu verschieben' : 'Drag to move to another team / “no team”') : undefined}
                                 style={{
                                   display: 'flex', alignItems: 'center', gap: 10,
-                                  padding: '4px 0',
+                                  padding: '4px 6px', borderRadius: 6,
+                                  cursor: canManage ? 'grab' : 'default',
+                                  opacity: dragRegId === m.Id ? 0.4 : 1,
+                                  background: dragRegId === m.Id ? 'var(--dex-gray-100)' : 'transparent',
                                 }}
                               >
                                 <div style={{ position: 'relative', width: 32, height: 32, flexShrink: 0 }}>
@@ -7973,6 +8137,92 @@ export default function AdminPage(): React.ReactElement {
           }}>
             {teamsToast}
           </div>
+        )}
+
+        {/* v23.0: Per-Team-Info-Mail. Jedes aktive Mitglied bekommt eine eigene
+            Mail; pro Team trägt der Organizer eine team-spezifische Info ein
+            (z.B. einen eigenen Teams-Einwahllink). */}
+        {teamMailOpen && selectedEvent && (
+          <Modal
+            open={true}
+            onClose={() => { if (!teamMailSending) setTeamMailOpen(false); }}
+            dismissable={!teamMailSending}
+            maxWidth={720}
+            padding={24}
+            ariaLabel={isDe ? 'Mail an Teams' : 'Mail to teams'}
+          >
+            <h3 style={{ marginTop: 0, marginBottom: 6, color: 'var(--dex-green-dark, #4a7c1f)' }}>
+              {isDe ? `Mail an ${selectedEvent.teamTermPlural || 'Teams'}` : `Mail to ${selectedEvent.teamTermPlural || 'teams'}`}
+            </h3>
+            <p style={{ marginTop: 0, fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
+              {isDe
+                ? 'Jedes aktive Mitglied bekommt eine eigene Mail. Pro Gruppe trägst du unten eine eigene Info ein (z.B. einen Teams-Einwahllink) — sie ersetzt den Platzhalter {{TeamInfo}}. Verfügbare Platzhalter: {{Vorname}}, {{Name}}, {{TeamName}}, {{EventTitle}}, {{TeamInfo}}.'
+                : 'Each active member receives an individual mail. Per group you enter its own info below (e.g. a Teams join link) — it replaces the {{TeamInfo}} placeholder. Available placeholders: {{Vorname}}, {{Name}}, {{TeamName}}, {{EventTitle}}, {{TeamInfo}}.'}
+            </p>
+
+            <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginTop: 10 }}>{isDe ? 'Betreff' : 'Subject'}</label>
+            <input
+              type="text"
+              value={teamMailSubject}
+              onChange={e => setTeamMailSubject(e.target.value)}
+              disabled={teamMailSending}
+              style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--dex-gray-300)', fontSize: '0.9rem', boxSizing: 'border-box' }}
+            />
+
+            <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginTop: 12 }}>{isDe ? 'Mail-Text (HTML erlaubt)' : 'Mail body (HTML allowed)'}</label>
+            <textarea
+              value={teamMailBody}
+              onChange={e => setTeamMailBody(e.target.value)}
+              disabled={teamMailSending}
+              rows={8}
+              style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--dex-gray-300)', fontSize: '0.85rem', fontFamily: 'monospace', boxSizing: 'border-box', resize: 'vertical' }}
+            />
+
+            <div style={{ marginTop: 14, fontWeight: 600, fontSize: '0.85rem' }}>
+              {isDe ? 'Info pro Gruppe' : 'Info per group'}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8, maxHeight: 280, overflowY: 'auto' }}>
+              {getActiveTeams().map(t => {
+                const tName = t.teamName || (selectedEvent.teamTermSingular || 'Team');
+                return (
+                  <div key={t.tid} style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: '10px 12px', background: 'var(--dex-gray-50, #f7f7f7)' }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.86rem', marginBottom: 6 }}>
+                      {tName} <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)' }}>· {t.members.length} {isDe ? 'Mitglieder' : 'members'}</span>
+                    </div>
+                    <textarea
+                      value={teamMailInfoByTid[t.tid] || ''}
+                      onChange={e => setTeamMailInfoByTid(prev => ({ ...prev, [t.tid]: e.target.value }))}
+                      disabled={teamMailSending}
+                      rows={3}
+                      placeholder={isDe ? 'z.B. https://teams.microsoft.com/l/meetup-join/…' : 'e.g. https://teams.microsoft.com/l/meetup-join/…'}
+                      style={{ width: '100%', padding: '7px 9px', borderRadius: 6, border: '1px solid var(--dex-gray-300)', fontSize: '0.83rem', boxSizing: 'border-box', resize: 'vertical' }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setTeamMailOpen(false)}
+                disabled={teamMailSending}
+              >
+                {isDe ? 'Abbrechen' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => { sendTeamMails().catch(() => { /* */ }); }}
+                disabled={teamMailSending || !teamMailSubject.trim() || !teamMailBody.trim()}
+              >
+                {teamMailSending
+                  ? (isDe ? 'Wird gesendet…' : 'Sending…')
+                  : (isDe ? 'Mails senden' : 'Send mails')}
+              </button>
+            </div>
+          </Modal>
         )}
 
         {regLoadError ? (
