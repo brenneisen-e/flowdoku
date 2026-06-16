@@ -4908,6 +4908,12 @@ export default function AdminPage(): React.ReactElement {
                     : childEventsOf(selectedEvent.id);
                   if (!isChild && siblings.length === 0) return null;
                   const parent = isChild ? events.find(e => e.id === selectedEvent.parentEventId) : selectedEvent;
+                  // v22.75: Der aktuell GEWÄHLTE Tab zeigt die LIVE-Zahl aus den
+                  // gerade geladenen Registrierungen (registrations) — die
+                  // Tab-Badges stammen sonst aus dem zwischengespeicherten
+                  // Event-Zustand (letzter Listen-Load) und hinken neuen
+                  // Anmeldungen hinterher (Badge 112 vs. Tabelle 126).
+                  const liveSelectedActive = registrations.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length;
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const tabs: Array<{ id: string; label: string; count: number; isParent: boolean; ev: any }> = [];
                   if (parent) {
@@ -4930,11 +4936,14 @@ export default function AdminPage(): React.ReactElement {
                         }
                       }
                       parentCount = activeSet.size;
+                    } else if (parent.id === selectedEvent.id) {
+                      // Normales Hauptevent ist selbst gewählt → Live-Zahl.
+                      parentCount = liveSelectedActive;
                     }
                     tabs.push({ id: parent.id, label: parent.title || (isDe ? 'Hauptevent' : 'Main event'), count: parentCount, isParent: true, ev: parent });
                   }
                   for (const c of siblings) {
-                    tabs.push({ id: c.id, label: shortSubEventTitle(c.title, parent?.title) || (isDe ? 'ohne Titel' : 'untitled'), count: c.currentParticipants || 0, isParent: false, ev: c });
+                    tabs.push({ id: c.id, label: shortSubEventTitle(c.title, parent?.title) || (isDe ? 'ohne Titel' : 'untitled'), count: c.id === selectedEvent.id ? liveSelectedActive : (c.currentParticipants || 0), isParent: false, ev: c });
                   }
                   // v22.70: Einzelnen Tab-Button rendern (für flaches Layout
                   // UND die Sub-Event-Reihe im Klammer-Layout wiederverwendet).

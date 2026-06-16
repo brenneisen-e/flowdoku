@@ -332,8 +332,16 @@ export function buildEmailFromTemplate(
   // Pre-wrapped templates (z.B. OutlookDeclineReminder, Nachrücken) enthalten
   // bereits das komplette Deloitte-Design via wrapTemplateForStorage(). Nicht
   // doppelt wrappen — sonst zwei Header/Footer im finalen HTML.
-  const trimmed = (template.bodyHtml || '').trimLeft();
-  const isPreWrapped = /^<!DOCTYPE|^<html/i.test(trimmed);
+  // v22.76: Erkennung robust — NICHT nur am String-Anfang prüfen. Ältere oder
+  // im Tenant überschriebene Templates können führende Zeichen/Whitespace/BOM
+  // vor dem <!DOCTYPE haben, wodurch die alte ^-Prüfung fehlschlug und die Mail
+  // ein zweites Mal gewrappt wurde (zwei Deloitte-Header). Ein bereits
+  // gewrappter Body enthält IMMER die HTML-Hülle bzw. den Logo-Platzhalter.
+  const rawBodyForCheck = template.bodyHtml || '';
+  const lowerBodyForCheck = rawBodyForCheck.toLowerCase();
+  const isPreWrapped = lowerBodyForCheck.indexOf('<!doctype') >= 0
+    || lowerBodyForCheck.indexOf('<html') >= 0
+    || rawBodyForCheck.indexOf('{{LOGO_URL}}') >= 0;
   return {
     subject,
     body: isPreWrapped
