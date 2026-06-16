@@ -5409,6 +5409,23 @@ export default function AdminPage(): React.ReactElement {
               });
             }
           }
+          // 5) v22.69: Hauptevent/Klammer ist live, aber ein Sub-Event steht
+          // noch auf Entwurf — Entwurf-Sub-Events sind für reguläre Teilnehmer
+          // NICHT buchbar (seit v22.68). Der Organizer denkt sonst, alles sei
+          // buchbar.
+          if (!selectedEvent.isFictive) {
+            const draftKids = childEventsOf(selectedEvent.id).filter(c => c.isFictive);
+            if (draftKids.length > 0) {
+              const draftNames = draftKids.map(c => shortSubEventTitle(c.title, selectedEvent.title)).join(', ');
+              hints.push({
+                id: 'draft-subevent-live-parent',
+                title: isDe ? 'Sub-Event noch im Entwurf — nicht buchbar' : 'Sub-event still a draft — not bookable',
+                body: isDe
+                  ? <>Das Event ist live, aber diese Sub-Events stehen noch auf <strong>Entwurf</strong>: <strong>{draftNames}</strong>. Entwurf-Sub-Events sind für reguläre Teilnehmer <strong>nicht sichtbar und nicht buchbar</strong>. Wenn sie buchbar sein sollen, schalte sie über den Status-Badge oben (Entwurf ⇄ Aktiv) auf den jeweiligen Sub-Event-Tab live.</>
+                  : <>The event is live, but these sub-events are still in <strong>draft</strong>: <strong>{draftNames}</strong>. Draft sub-events are <strong>not visible and not bookable</strong> for regular attendees. If they should be bookable, publish them via the status badge (draft ⇄ active) on the respective sub-event tab.</>,
+              });
+            }
+          }
           const visible = hints.filter(h => !isDismissed(h.id));
           if (visible.length === 0) return null;
           return (
