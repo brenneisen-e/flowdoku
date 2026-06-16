@@ -165,6 +165,38 @@ export function teamRegistrationSection(locale: 'de' | 'en'): ManualSection {
               'In the admin center, events with team registration enabled get a dedicated „Teams (N)" section above the participant table, listing all active teams. Per team you see the team name (if any), the occupancy (e.g. „3/4 taken"), and every member including profile picture, name, email, status badge and lead badge. Two buttons let you intervene: „Add person" (only visible if the team has free slots) opens the same modal the team lead uses in „My Events" — orange consent box, people picker, required confirmation checkbox; the new person is immediately registered, receives a confirmation email + Outlook invite, and the other team members get the „X joined your team" info mail. „Transfer lead role" opens a dropdown with the other active members — picking one demotes the old lead and promotes the new one; everyone receives an info email in the Deloitte layout, the new lead with an extra note that they can now add members and decide on join requests. Visible only to admin or the event organizer.'
             ),
           },
+          {
+            number: 6,
+            title: isDe ? 'Teams frei benennen — z.B. „Break-Out Session" (v23.0)' : 'Rename teams freely — e.g. „break-out session" (v23.0)',
+            description: D(
+              'In Schritt 4 kannst du den Begriff „Team" frei umbenennen — getrennt für Einzahl und Mehrzahl. Trägst du z.B. „Break-Out Session" (Einzahl) und „Break-Out Sessions" (Mehrzahl) ein, heißt die Funktion überall in der App so: im Anmeldeformular, im Organizer Center (Sektion „Break-Out Sessions (N)", „ohne Break-Out Session"-Box), in „Meine Events" (Badge „Break-Out Session „… " — N/M belegt" inkl. „du bist Break-Out Session-Lead"). Lässt du die Felder leer, bleibt es bei „Team"/„Teams".',
+              'In step 4 you can freely rename the term „team" — separately for singular and plural. Enter e.g. „break-out session" (singular) and „break-out sessions" (plural), and the feature is labelled that way everywhere: in the registration form, in the organizer center (section „Break-out sessions (N)", „without break-out session" box), and in „My Events" (badge „Break-out session „… " — N/M taken" including „you are break-out session lead"). Leave the fields empty to keep „team"/„teams".'
+            ),
+          },
+          {
+            number: 7,
+            title: isDe ? 'Teilnehmer dürfen keine eigenen Teams anlegen (v23.0)' : 'Participants may not create their own teams (v23.0)',
+            description: D(
+              'Direkt darunter in Schritt 4 gibt es den Schalter „Teilnehmer dürfen keine neuen Teams/Gruppen erstellen". Ist er aktiv, verschwindet die „Ich melde mich + mein Team an"-Karte auf der Anmeldeseite komplett — jeder meldet sich einzeln an, und DU teilst die Personen danach selbst in die Gruppen ein (siehe nächster Schritt). Use-Case: Du willst die Break-Out-Aufteilung kontrollieren statt sie den Teilnehmern zu überlassen.',
+              'Right below it in step 4 there is a toggle „Participants may not create new teams/groups". When active, the „Register me + my team" card disappears entirely from the registration page — everyone registers individually, and YOU assign people to the groups afterwards (see next step). Use case: you want to control the break-out split instead of leaving it to the participants.'
+            ),
+          },
+          {
+            number: 8,
+            title: isDe ? 'Personen per Drag & Drop zuordnen (v23.0)' : 'Assign people via drag & drop (v23.0)',
+            description: D(
+              'In der Teams-Sektion des Organizer Centers kannst du Personen mit der Maus packen und zwischen den Teams/Break-Out-Sessions und der „ohne Team"-Box hin- und herziehen. Das Ziel-Feld färbt sich beim Drüberziehen grün. Loslassen ordnet die Person dem Team zu (oder löst die Zuordnung, wenn du sie in die „ohne Team"-Box ziehst). War der Gezogene ein Team-Lead und bleiben Mitglieder übrig, rückt automatisch das früheste verbleibende Mitglied als neuer Lead nach. Jede Verschiebung wird im Änderungsprotokoll festgehalten.',
+              'In the teams section of the organizer center you can grab people with the mouse and drag them between the teams/break-out sessions and the „without team" box. The target area turns green while you hover over it. Dropping assigns the person to the team (or clears the assignment if you drop them into the „without team" box). If the dragged person was a team lead and members remain, the earliest remaining member is auto-promoted to the new lead. Every move is recorded in the change log.'
+            ),
+          },
+          {
+            number: 9,
+            title: isDe ? 'Per-Team-Mail mit eigenem Einwahllink (v23.0)' : 'Per-team mail with its own join link (v23.0)',
+            description: D(
+              'Sobald aktive Teams existieren, erscheint in der Teams-Sektion der Button „Mail an <Teams>". Er öffnet ein Modal: oben Betreff + Mail-Text (mit den Platzhaltern {{Vorname}}, {{Name}}, {{TeamName}}, {{EventTitle}} und {{TeamInfo}}), darunter pro Team ein eigenes Info-Feld. In dieses Info-Feld trägst du die team-spezifische Information ein — typischerweise einen eigenen Microsoft-Teams-Einwahllink je Break-Out-Session. Beim Versand bekommt jedes aktive Mitglied eine EIGENE Mail im Deloitte-Layout, in der {{TeamInfo}} durch die Info SEINES Teams ersetzt ist (Links werden automatisch klickbar). Ideal, um nach der Aufteilung allen Gruppen in einem Rutsch ihren jeweiligen Treffpunkt/Link zu schicken. Die Mail respektiert den E-Mail-Schalter aus Schritt 6 — sind E-Mails fürs Event deaktiviert, wird nichts versendet.',
+              'As soon as active teams exist, the teams section shows a „Mail to <teams>" button. It opens a modal: subject + mail body at the top (with the placeholders {{Vorname}}, {{Name}}, {{TeamName}}, {{EventTitle}} and {{TeamInfo}}), and below it one info field per team. Into that info field you enter the team-specific information — typically a dedicated Microsoft Teams join link per break-out session. On send, each active member receives their OWN mail in the Deloitte layout, with {{TeamInfo}} replaced by THEIR team\'s info (links are made clickable automatically). Perfect for sending every group its own meeting point/link in one go after the split. The mail respects the email switch from step 6 — if emails are disabled for the event, nothing is sent.'
+            ),
+          },
         ],
       },
     ],

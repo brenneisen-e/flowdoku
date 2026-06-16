@@ -5151,9 +5151,9 @@ export default function AdminPage(): React.ReactElement {
                             background: pActive ? 'rgba(255,255,255,0.25)' : 'var(--dex-green, #86bc25)',
                             color: '#fff', fontSize: '0.74rem', fontWeight: 700, flexShrink: 0,
                           }}>{parentTab.count}</span>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{parentTab.label}</span>
-                            <span style={{ fontWeight: 600, opacity: 0.9, flexShrink: 0 }}>({isDe ? 'Klammer' : 'Bracket'})</span>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }}>{parentTab.label}</span>
+                            <span style={{ fontWeight: 600, opacity: 0.9, flexShrink: 0, color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }}>({isDe ? 'Klammer' : 'Bracket'})</span>
                             <span style={{ flexShrink: 0, display: 'inline-flex', color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }} onClick={e => e.stopPropagation()}>
                               <InfoTooltip placement="bottom" text={isDe
                                 ? <>Das <strong>Klammer-Event selbst wird nicht gebucht</strong> — Teilnehmer melden sich nur für die einzelnen <strong>Sub-Events</strong> an. Die Klammer fasst die Sub-Events nur zusammen. Die Zahl links zeigt, <strong>wie viele Personen sich insgesamt (kumuliert) für die Sub-Events angemeldet haben</strong>.</>

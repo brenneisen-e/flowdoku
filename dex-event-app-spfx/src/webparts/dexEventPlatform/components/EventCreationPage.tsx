@@ -351,8 +351,8 @@ function StickyTabStrip(props: {
                     opacity: dis ? 0.55 : 1,
                   }}
                 >
-                  <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: 0.6, opacity: 0.9 }}>⟦ {props.mainBadge} ⟧</span>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{props.tabs[0].label}</span>
+                  <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: 0.6, opacity: 0.9, color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }}>⟦ {props.mainBadge} ⟧</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }}>{props.tabs[0].label}</span>
                   {dis && props.mainDisabledNote && (
                     <span style={{ fontSize: '0.65rem', fontWeight: 600, padding: '2px 6px', borderRadius: 8, background: 'var(--dex-gray-200, #e0e0e0)', color: 'var(--dex-gray-600)', flexShrink: 0 }}>
                       {props.mainDisabledNote}
