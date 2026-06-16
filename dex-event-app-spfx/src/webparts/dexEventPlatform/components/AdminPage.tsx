@@ -2096,6 +2096,9 @@ export default function AdminPage(): React.ReactElement {
   React.useEffect(() => { idRecheckCountRef.current = 0; }, [selectedEvent?.id]);
   React.useEffect(() => {
     if (!selectedEvent) return undefined;
+    // v22.67: kein ID-Durchgängigkeits-Polling im Klammer-Modus (Schatten-Zeilen
+    // haben keine fortlaufenden Nummern — das war ein Fehlalarm).
+    if (selectedEvent.subEventsOnlyMode) return undefined;
     if (!recentCancellation(registrations).recent) return undefined;
     if (idRecheckCountRef.current >= 10) return undefined;
     const timer = window.setInterval(() => {
@@ -2989,6 +2992,17 @@ export default function AdminPage(): React.ReactElement {
       // Badge sofort umschalten — selectedEvent ist lokaler State und wird
       // durch refreshEvents nicht automatisch ersetzt.
       setSelectedEvent(prev => prev ? { ...prev, isFictive: nextIsFictive, ...(nextIsFictive ? {} : { status: 'Active' }) } : prev);
+      // v22.67: Beim Live-Schalten eines Events mit Sub-Events werden die
+      // Sub-Events automatisch mit live geschaltet (Entwurf → Aktiv) — sonst
+      // bliebe das Event sichtbar, aber die Sub-Events wären für Teilnehmer
+      // nicht buchbar.
+      if (!nextIsFictive) {
+        for (const c of childEventsOf(selectedEvent.id)) {
+          if (c.isFictive) {
+            try { await updateEvent(c.id, { 'IsFictive': false, 'EventStatus': 'Active' }); } catch { /* best-effort */ }
+          }
+        }
+      }
       await refreshEvents();
     } else {
       // v22.14: vorher scheiterte der Klick STUMM — der Organizer dachte,
@@ -4897,10 +4911,133 @@ export default function AdminPage(): React.ReactElement {
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const tabs: Array<{ id: string; label: string; count: number; isParent: boolean; ev: any }> = [];
                   if (parent) {
-                    tabs.push({ id: parent.id, label: parent.title || (isDe ? 'Hauptevent' : 'Main event'), count: parent.currentParticipants || 0, isParent: true, ev: parent });
+                    // v22.64: Im Klammer-Modus zeigt der HAUPT-Badge die ECHTE
+                    // Zahl eindeutiger aktiver Personen über alle Sub-Events
+                    // (live), nicht den gespeicherten Counter `currentParticipants`
+                    // der Klammer — der zählt nicht buchbare Klammern unzuverlässig
+                    // und kann verrutschen.
+                    let parentCount = parent.currentParticipants || 0;
+                    const pKids = childEventsOf(parent.id);
+                    const haveSubData = parent.subEventsOnlyMode && pKids.length > 0 && pKids.every(c => subEventRegsByEventId[c.id] !== undefined);
+                    if (haveSubData) {
+                      const activeSet = new Set<string>();
+                      for (const c of pKids) {
+                        for (const r of (subEventRegsByEventId[c.id] || [])) {
+                          if (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt') {
+                            const k = (r.ParticipantEmail || '').toLowerCase().trim();
+                            if (k) activeSet.add(k);
+                          }
+                        }
+                      }
+                      parentCount = activeSet.size;
+                    }
+                    tabs.push({ id: parent.id, label: parent.title || (isDe ? 'Hauptevent' : 'Main event'), count: parentCount, isParent: true, ev: parent });
                   }
                   for (const c of siblings) {
                     tabs.push({ id: c.id, label: shortSubEventTitle(c.title, parent?.title) || (isDe ? 'ohne Titel' : 'untitled'), count: c.currentParticipants || 0, isParent: false, ev: c });
+                  }
+                  // v22.70: Einzelnen Tab-Button rendern (für flaches Layout
+                  // UND die Sub-Event-Reihe im Klammer-Layout wiederverwendet).
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const renderTab = (t: { id: string; label: string; count: number; isParent: boolean; ev: any }): React.ReactElement => {
+                    const active = t.id === selectedEvent.id;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        onClick={() => handleSelectEvent(t.ev).catch(() => { /* */ })}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 8,
+                          padding: '8px 14px',
+                          border: '1px solid var(--dex-gray-200)',
+                          borderBottom: active ? '2px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-200)',
+                          borderRadius: '8px 8px 0 0',
+                          background: active ? '#fff' : 'var(--dex-gray-50, #fafafa)',
+                          color: active ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)',
+                          fontWeight: active ? 700 : 500,
+                          fontSize: '0.85rem',
+                          cursor: 'pointer',
+                          marginBottom: -1,
+                          whiteSpace: 'nowrap',
+                          maxWidth: 280,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          transition: 'background 0.15s, color 0.15s, border-color 0.15s',
+                        }}
+                        title={t.label}
+                      >
+                        {t.isParent && (
+                          <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 0.4, color: active ? 'var(--dex-green-dark)' : 'var(--dex-gray-400)' }}>
+                            {isDe ? 'Haupt' : 'Main'}
+                          </span>
+                        )}
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</span>
+                        <span
+                          style={{
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            minWidth: 24, height: 20, padding: '0 6px',
+                            borderRadius: 999,
+                            background: active ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)',
+                            color: active ? '#fff' : 'var(--dex-gray-700)',
+                            fontSize: '0.72rem', fontWeight: 700,
+                          }}
+                        >
+                          {t.count}
+                        </span>
+                      </button>
+                    );
+                  };
+                  const parentTab = tabs.find(tb => tb.isParent);
+                  const childTabs = tabs.filter(tb => !tb.isParent);
+                  // v22.70: Im Klammer-Modus die Klammer als ECHTE Klammer ÜBER
+                  // den Sub-Event-Tabs darstellen (oben volle Breite, darunter die
+                  // eingerückten Sub-Events). Normales Hauptevent bleibt flach.
+                  const klammerLayout = !!(parentTab && parentTab.ev && parentTab.ev.subEventsOnlyMode && childTabs.length > 0);
+                  if (klammerLayout && parentTab) {
+                    const pActive = parentTab.id === selectedEvent.id;
+                    return (
+                      <div role="tablist" aria-label={isDe ? 'Event wechseln' : 'Switch event'} style={{ marginBottom: 16 }}>
+                        {/* Klammer-Ebene oben — volle Breite, gefüllter Kopf. */}
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={pActive}
+                          onClick={() => handleSelectEvent(parentTab.ev).catch(() => { /* */ })}
+                          title={parentTab.label}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                            padding: '10px 16px', cursor: 'pointer', textAlign: 'left',
+                            border: `1.5px solid ${pActive ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                            borderRadius: '10px 10px 0 0',
+                            background: pActive ? 'var(--dex-green, #86bc25)' : 'rgba(134,188,37,0.10)',
+                            color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
+                            fontWeight: 700, fontSize: '0.9rem',
+                          }}
+                        >
+                          <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: 0.6, opacity: 0.9 }}>
+                            {isDe ? '⟦ Klammer ⟧' : '⟦ Bracket ⟧'}
+                          </span>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{parentTab.label}</span>
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                            minWidth: 26, height: 22, padding: '0 8px', borderRadius: 999,
+                            background: pActive ? 'rgba(255,255,255,0.25)' : 'var(--dex-green, #86bc25)',
+                            color: '#fff', fontSize: '0.74rem', fontWeight: 700, flexShrink: 0,
+                          }}>{parentTab.count}</span>
+                        </button>
+                        {/* Sub-Events darunter — eingerückt unter einer Klammer-Linie. */}
+                        <div style={{
+                          display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'flex-end',
+                          marginLeft: 18, paddingLeft: 16, paddingTop: 10,
+                          borderLeft: '2px solid var(--dex-green, #86bc25)',
+                          borderBottom: '1px solid var(--dex-gray-200)',
+                        }}>
+                          {childTabs.map(t => renderTab(t))}
+                        </div>
+                      </div>
+                    );
                   }
                   return (
                     <div
@@ -4913,56 +5050,7 @@ export default function AdminPage(): React.ReactElement {
                         paddingBottom: 0,
                       }}
                     >
-                      {tabs.map(t => {
-                        const active = t.id === selectedEvent.id;
-                        return (
-                          <button
-                            key={t.id}
-                            type="button"
-                            role="tab"
-                            aria-selected={active}
-                            onClick={() => handleSelectEvent(t.ev).catch(() => { /* */ })}
-                            style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 8,
-                              padding: '8px 14px',
-                              border: '1px solid var(--dex-gray-200)',
-                              borderBottom: active ? '2px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-200)',
-                              borderRadius: '8px 8px 0 0',
-                              background: active ? '#fff' : 'var(--dex-gray-50, #fafafa)',
-                              color: active ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)',
-                              fontWeight: active ? 700 : 500,
-                              fontSize: '0.85rem',
-                              cursor: 'pointer',
-                              marginBottom: -1,
-                              whiteSpace: 'nowrap',
-                              maxWidth: 280,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              transition: 'background 0.15s, color 0.15s, border-color 0.15s',
-                            }}
-                            title={t.label}
-                          >
-                            {t.isParent && (
-                              <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 0.4, color: active ? 'var(--dex-green-dark)' : 'var(--dex-gray-400)' }}>
-                                {isDe ? 'Haupt' : 'Main'}
-                              </span>
-                            )}
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.label}</span>
-                            <span
-                              style={{
-                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                                minWidth: 24, height: 20, padding: '0 6px',
-                                borderRadius: 999,
-                                background: active ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)',
-                                color: active ? '#fff' : 'var(--dex-gray-700)',
-                                fontSize: '0.72rem', fontWeight: 700,
-                              }}
-                            >
-                              {t.count}
-                            </span>
-                          </button>
-                        );
-                      })}
+                      {tabs.map(t => renderTab(t))}
                     </div>
                   );
                 })()}
@@ -5372,6 +5460,23 @@ export default function AdminPage(): React.ReactElement {
                 body: isDe
                   ? <>Ohne End-Datum kann für die Teilnehmer <strong>kein Outlook-Termin</strong> angelegt werden (ein Kalendereintrag braucht Start UND Ende) — betroffen: <strong>{names.join(', ')}</strong>. Bitte über „Event bearbeiten“ das End-Datum nachtragen (Hauptevent: Schritt 1 „Grundlagen“, Sub-Events: Schritt 2 „Sub-Events“). Beim Speichern fragt die App dann, ob der Outlook-Termin angelegt bzw. aktualisiert werden soll.</>
                   : <>Without an end date <strong>no Outlook invite</strong> can be created for attendees (a calendar entry needs a start AND an end) — affected: <strong>{names.join(', ')}</strong>. Please add the end date via “Edit event” (main event: step 1 “Basics”, sub-events: step 2 “Sub-events”). When saving, the app then asks whether the Outlook invite should be created or updated.</>,
+              });
+            }
+          }
+          // 5) v22.69: Hauptevent/Klammer ist live, aber ein Sub-Event steht
+          // noch auf Entwurf — Entwurf-Sub-Events sind für reguläre Teilnehmer
+          // NICHT buchbar (seit v22.68). Der Organizer denkt sonst, alles sei
+          // buchbar.
+          if (!selectedEvent.isFictive) {
+            const draftKids = childEventsOf(selectedEvent.id).filter(c => c.isFictive);
+            if (draftKids.length > 0) {
+              const draftNames = draftKids.map(c => shortSubEventTitle(c.title, selectedEvent.title)).join(', ');
+              hints.push({
+                id: 'draft-subevent-live-parent',
+                title: isDe ? 'Sub-Event noch im Entwurf — nicht buchbar' : 'Sub-event still a draft — not bookable',
+                body: isDe
+                  ? <>Das Event ist live, aber diese Sub-Events stehen noch auf <strong>Entwurf</strong>: <strong>{draftNames}</strong>. Entwurf-Sub-Events sind für reguläre Teilnehmer <strong>nicht sichtbar und nicht buchbar</strong>. Wenn sie buchbar sein sollen, schalte sie über den Status-Badge oben (Entwurf ⇄ Aktiv) auf den jeweiligen Sub-Event-Tab live.</>
+                  : <>The event is live, but these sub-events are still in <strong>draft</strong>: <strong>{draftNames}</strong>. Draft sub-events are <strong>not visible and not bookable</strong> for regular attendees. If they should be bookable, publish them via the status badge (draft ⇄ active) on the respective sub-event tab.</>,
               });
             }
           }
@@ -7100,6 +7205,12 @@ export default function AdminPage(): React.ReactElement {
             parallel manuell „IDs neu vergeben" anstoßen. */}
         {(() => {
           if (!selectedEvent) return null;
+          // v22.67: Im Klammer-Modus („Nur Sub-Events") greift die
+          // TeilnehmerID-Durchgängigkeits-Prüfung NICHT — die geprüfte Liste
+          // sind die Schatten-Zeilen der Klammer (ohne fortlaufende Nummern);
+          // die echten TeilnehmerIDs leben pro Sub-Event. Die Warnung war hier
+          // ein Fehlalarm.
+          if (selectedEvent.subEventsOnlyMode) return null;
           const info = recentCancellation(registrations);
           if (!info.recent) return null;
           const whenStr = info.whenIso ? formatDate(info.whenIso) : '';
@@ -9031,19 +9142,33 @@ export default function AdminPage(): React.ReactElement {
             const declinePeople = people.filter(p => p.declinedAny).length;
             const deletePerson = async (p: CancelPerson): Promise<void> => {
               if (!selectedEvent) return;
-              const rows = Object.values(p.bySection);
+              const emailLc = p.email.toLowerCase().trim();
+              // v22.66: Person ÜBERALL löschen — nicht nur die Abmelde-Zeilen,
+              // sondern ALLE Zeilen dieser E-Mail über die Klammer UND alle
+              // Sub-Events (inkl. der aktiven „Schatten"-Zeile auf der Klammer,
+              // die beim reinen Abmelden/Löschen sonst verwaist liegen bleibt).
+              const targets: Array<{ sub: string; id: number }> = [];
+              if (selectedEvent.subsiteUrl) {
+                for (const r of registrations) {
+                  if ((r.ParticipantEmail || '').toLowerCase().trim() === emailLc) targets.push({ sub: selectedEvent.subsiteUrl, id: r.Id });
+                }
+              }
+              for (const c of consolidatedChildren) {
+                if (!c.subsiteUrl) continue;
+                for (const r of (subEventRegsByEventId[c.id] || [])) {
+                  if ((r.ParticipantEmail || '').toLowerCase().trim() === emailLc) targets.push({ sub: c.subsiteUrl, id: r.Id });
+                }
+              }
               const nm = `${p.firstName} ${p.lastName}`.trim() || p.email;
               const msg = isDe
-                ? `Alle Abmeldungen von „${nm}" (${rows.length}) endgültig löschen? Die Zeilen werden aus den Teilnehmerlisten entfernt und können nicht wiederhergestellt werden.`
-                : `Permanently delete all cancellations of „${nm}" (${rows.length})? The rows are removed from the participant lists and cannot be restored.`;
-              if (!(await confirmDialog(msg, { danger: true, title: isDe ? 'Abmeldungen löschen' : 'Delete cancellations', confirmLabel: isDe ? 'Endgültig löschen' : 'Delete permanently' }))) return;
-              for (const r of rows) {
-                const sub = r._subsiteUrl || selectedEvent.subsiteUrl;
-                if (!sub) continue;
-                try { await eventServiceRef.deleteRegistration(sub, r.Id); } catch { /* best-effort */ }
+                ? `„${nm}" wirklich überall löschen? Alle ${targets.length} Einträge dieser Person (Gesamt-Event + Sub-Events) werden endgültig entfernt und können nicht wiederhergestellt werden.`
+                : `Permanently delete „${nm}" everywhere? All ${targets.length} entries of this person (overall event + sub-events) will be removed and cannot be restored.`;
+              if (!(await confirmDialog(msg, { danger: true, title: isDe ? 'Person überall löschen' : 'Delete person everywhere', confirmLabel: isDe ? 'Endgültig löschen' : 'Delete permanently' }))) return;
+              for (const t of targets) {
+                try { await eventServiceRef.deleteRegistration(t.sub, t.id); } catch { /* best-effort */ }
               }
               try {
-                await eventServiceRef.writeChangeLog({ action: 'RegistrationDeleted', targetType: 'Participant', targetId: p.email, targetName: nm, eventId: selectedEvent.id, eventTitle: selectedEvent.title, details: { deletedStatus: 'Abgemeldet', count: rows.length } });
+                await eventServiceRef.writeChangeLog({ action: 'RegistrationDeleted', targetType: 'Participant', targetId: p.email, targetName: nm, eventId: selectedEvent.id, eventTitle: selectedEvent.title, details: { deletedStatus: 'Abgemeldet', count: targets.length, everywhere: true } });
               } catch { /* */ }
               setSubRegReloadTick(t => t + 1);
               const regs = await getAllRegistrations(selectedEvent.id);
