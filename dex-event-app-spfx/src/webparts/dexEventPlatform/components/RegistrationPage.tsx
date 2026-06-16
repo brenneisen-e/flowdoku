@@ -377,6 +377,9 @@ export default function RegistrationPage(): React.ReactElement {
   // nicht erst entsteht.
   const isTeamCapable = !!event?.teamRegistrationEnabled
     && (event?.teamSize || 0) >= 2
+    // v22.78: Wenn Teilnehmer keine neuen Teams erstellen dürfen, wird der
+    // „Ich melde mich + mein Team an"-Toggle ausgeblendet (Organizer ordnet zu).
+    && !event?.teamMembersCannotCreate
     && !(event?.requireSubEventSelection && childEvents.length > 0);
   const teamSize = event?.teamSize || 0;
   const teamPartialAllowed = !!event?.teamPartialAllowed;

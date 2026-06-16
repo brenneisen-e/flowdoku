@@ -961,6 +961,28 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           return v || undefined;
         } catch { return undefined; }
       })(),
+      // v22.78: frei benennbarer Team-Begriff + „keine neuen Teams"-Flag
+      // (Piggyback im EmailTemplateOverrides-JSON, analog _childEventTerm).
+      teamTermSingular: ((): string | undefined => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          const v = ov && ov._teamTerm && typeof ov._teamTerm.singular === 'string' ? ov._teamTerm.singular : '';
+          return v || undefined;
+        } catch { return undefined; }
+      })(),
+      teamTermPlural: ((): string | undefined => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          const v = ov && ov._teamTerm && typeof ov._teamTerm.plural === 'string' ? ov._teamTerm.plural : '';
+          return v || undefined;
+        } catch { return undefined; }
+      })(),
+      teamMembersCannotCreate: ((): boolean => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          return !!(ov && ov._teamMembersCannotCreate);
+        } catch { return false; }
+      })(),
       // v11.57: bei alten Tenants kann die SP-Spalte fehlen — undefined wird
       // als false interpretiert (kein Hinweis anzeigen).
       outlookDirty: !!e.OutlookDirty,

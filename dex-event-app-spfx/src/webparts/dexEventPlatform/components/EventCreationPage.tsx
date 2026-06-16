@@ -1706,6 +1706,11 @@ export default function EventCreationPage(): React.ReactElement {
   const [teamJoinRequiresApproval, setTeamJoinRequiresApproval] = React.useState<boolean>(
     !!editEvent?.teamJoinRequiresApproval
   );
+  // v22.78: frei benennbarer Team-Begriff (z.B. „Break-Out Session") +
+  // „Teilnehmer dürfen keine neuen Teams erstellen".
+  const [teamTermSingular, setTeamTermSingular] = React.useState<string>(editEvent?.teamTermSingular || '');
+  const [teamTermPlural, setTeamTermPlural] = React.useState<string>(editEvent?.teamTermPlural || '');
+  const [teamMembersCannotCreate, setTeamMembersCannotCreate] = React.useState<boolean>(!!editEvent?.teamMembersCannotCreate);
   // v17.20: Bilingual-Toggle — wenn an, kann der Organizer pro Custom-Field
   // (Label, Help-Text, Checkbox-Confirm-Text, Dropdown-Optionen) eine
   // englische Variante hinterlegen. Wird im Wizard-Schritt 5 ganz oben als
@@ -3276,7 +3281,12 @@ export default function EventCreationPage(): React.ReactElement {
         : {};
       // v18.9: Organizer-Anzeige ausblenden (Piggyback).
       const hideOrganizerConfig = hideOrganizer ? { _hideOrganizer: true } : {};
-      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0 || Object.keys(headerImageLayoutConfig).length > 0)
+      // v22.78: Team-Begriff + „keine neuen Teams"-Flag (Piggyback).
+      const teamTermConfig = (teamTermSingular.trim() || teamTermPlural.trim())
+        ? { _teamTerm: { singular: teamTermSingular.trim(), plural: teamTermPlural.trim() } }
+        : {};
+      const teamNoCreateConfig = teamMembersCannotCreate ? { _teamMembersCannotCreate: true } : {};
+      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(teamTermConfig).length > 0 || Object.keys(teamNoCreateConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0 || Object.keys(headerImageLayoutConfig).length > 0)
         ? JSON.stringify({
             ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
             ...(effOutlookLogo ? { _outlookLogo: effOutlookLogo } : {}),
@@ -3288,6 +3298,8 @@ export default function EventCreationPage(): React.ReactElement {
             ...requireSubEventConfig,
             ...subEventsOnlyConfig,
             ...childTermConfig,
+            ...teamTermConfig,
+            ...teamNoCreateConfig,
             ...hideOrganizerConfig,
             // v18.73: Header-Bild-Layout (Breite + Innenabstand) — event-weit.
             ...headerImageLayoutConfig,
@@ -3837,8 +3849,13 @@ export default function EventCreationPage(): React.ReactElement {
             : {};
           // v18.9: Organizer-Anzeige ausblenden (Piggyback).
           const hideOrganizerExtra = hideOrganizer ? { _hideOrganizer: true } : {};
+          // v22.78: Team-Begriff + „keine neuen Teams"-Flag (Piggyback).
+          const teamTermExtra = (teamTermSingular.trim() || teamTermPlural.trim())
+            ? { _teamTerm: { singular: teamTermSingular.trim(), plural: teamTermPlural.trim() } }
+            : {};
+          const teamNoCreateExtra = teamMembersCannotCreate ? { _teamMembersCannotCreate: true } : {};
           // v11.93: Top-Level-Logos aus dem Resolver lesen.
-          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0 || Object.keys(hideOrganizerExtra).length > 0 || Object.keys(headerImageLayoutConfig).length > 0;
+          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0 || Object.keys(teamTermExtra).length > 0 || Object.keys(teamNoCreateExtra).length > 0 || Object.keys(hideOrganizerExtra).length > 0 || Object.keys(headerImageLayoutConfig).length > 0;
           return hasAny
             ? JSON.stringify({
                 ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
@@ -3851,6 +3868,8 @@ export default function EventCreationPage(): React.ReactElement {
                 ...reqSubEvtExtra,
                 ...subEvtsOnlyExtra,
                 ...childTermExtra,
+                ...teamTermExtra,
+                ...teamNoCreateExtra,
                 ...hideOrganizerExtra,
                 // v18.73: Header-Bild-Layout (Breite + Innenabstand) — event-weit.
                 ...headerImageLayoutConfig,
@@ -8970,6 +8989,55 @@ export default function EventCreationPage(): React.ReactElement {
                 </label>
               </div>
 
+              {/* v22.78: Eigener Team-Begriff (frei benennbar wie Event-Sections)
+                  + „Teilnehmer dürfen keine neuen Teams erstellen". */}
+              <div style={{
+                background: teamRegistrationEnabled ? '#ffffff' : 'var(--dex-gray-50, #fafafa)',
+                borderRadius: 12, padding: '14px 16px', marginBottom: 12,
+                border: '1px solid var(--dex-gray-200)',
+                opacity: teamRegistrationEnabled ? 1 : 0.55, transition: 'opacity 0.2s ease',
+              }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <strong>{isDe ? 'Bezeichnung (statt „Team")' : 'Label (instead of “Team”)'}</strong>
+                  <InfoTooltip text={isDe
+                    ? <><strong>Was du hier einstellst:</strong> einen eigenen Begriff für die Teams — z.B. <strong>„Break-Out Session“</strong>, „Gruppe“ oder „Tisch“. Leer = Standard „Team“.<br /><br /><strong>Anzeige in der App:</strong> ersetzt das Wort „Team“ überall (Organizer Center, „Meine Events“, Anmeldeformular).</>
+                    : <><strong>What this controls:</strong> a custom term for the teams — e.g. <strong>“Break-Out session”</strong>, “group” or “table”. Empty = default “Team”.<br /><br /><strong>Where you see it:</strong> replaces the word “Team” everywhere (organizer center, “My Events”, registration form).</>} />
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <input
+                    type="text" className="form-input"
+                    value={teamTermSingular}
+                    disabled={!teamRegistrationEnabled}
+                    onChange={e => setTeamTermSingular(e.target.value)}
+                    placeholder={isDe ? 'Einzahl, z.B. Break-Out Session' : 'Singular, e.g. Break-out session'}
+                  />
+                  <input
+                    type="text" className="form-input"
+                    value={teamTermPlural}
+                    disabled={!teamRegistrationEnabled}
+                    onChange={e => setTeamTermPlural(e.target.value)}
+                    placeholder={isDe ? 'Mehrzahl, z.B. Break-Out Sessions' : 'Plural, e.g. Break-out sessions'}
+                  />
+                </div>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 14, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}>
+                  <input
+                    type="checkbox"
+                    checked={teamMembersCannotCreate}
+                    disabled={!teamRegistrationEnabled}
+                    onChange={e => setTeamMembersCannotCreate(e.target.checked)}
+                    style={{ marginTop: 3, cursor: teamRegistrationEnabled ? 'pointer' : 'not-allowed' }}
+                  />
+                  <span style={{ flex: 1 }}>
+                    <strong>{isDe ? 'Teilnehmer dürfen keine neuen Teams erstellen' : 'Participants cannot create new teams'}</strong>
+                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                      {isDe
+                        ? 'Empfohlen für Break-Out-Sessions: Die Teilnehmer melden sich normal an, die Zuordnung in die Teams/Break-outs nimmst DU als Organizer vor (per Drag & Drop im Organizer Center).'
+                        : 'Recommended for break-out sessions: participants register normally, and YOU assign them to teams/break-outs as the organizer (drag & drop in the Organizer Center).'}
+                    </span>
+                  </span>
+                </label>
+              </div>
+
               {/* v11.81: Beitritts-Modus — Sub-Box mit Modus + Sichtbarkeit + Approval */}
               <div style={{
                 background: teamRegistrationEnabled ? '#ffffff' : 'var(--dex-gray-50, #fafafa)',
@@ -8977,6 +9045,9 @@ export default function EventCreationPage(): React.ReactElement {
                 border: '1px solid var(--dex-gray-200)',
                 opacity: teamRegistrationEnabled ? 1 : 0.55,
                 transition: 'opacity 0.2s ease',
+                // v22.78: Beitritts-Modus ist irrelevant, wenn Teilnehmer keine
+                // Teams erstellen/beitreten (Organizer ordnet zu) — dann ausgrauen.
+                ...(teamMembersCannotCreate ? { opacity: 0.45 } : {}),
               }}>
                 <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: 10, color: 'var(--dex-gray-800)' }}>
                   {isDe ? 'Beitritts-Modus' : 'Join mode'}

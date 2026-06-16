@@ -7592,7 +7592,7 @@ export default function AdminPage(): React.ReactElement {
               >
                 <Users size={20} />
                 <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1rem' }}>
-                  Teams ({count})
+                  {(selectedEvent?.teamTermPlural || 'Teams')} ({count})
                 </strong>
                 <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   {teamsCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
@@ -7640,7 +7640,7 @@ export default function AdminPage(): React.ReactElement {
                     <div style={{ padding: 14, border: '1px dashed var(--dex-orange, #ed8b00)', borderRadius: 10, background: 'rgba(237,139,0,0.04)' }}>
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
                         <strong style={{ fontSize: '0.95rem', color: 'var(--dex-orange-dark, #b35a00)' }}>
-                          Teilnehmer ohne Team ({teamlessActive.length})
+                          {isDe ? `Teilnehmer ohne ${selectedEvent?.teamTermSingular || 'Team'}` : `Attendees without ${selectedEvent?.teamTermSingular || 'team'}`} ({teamlessActive.length})
                         </strong>
                         <span style={{ color: 'var(--dex-gray-600)', fontSize: '0.82rem' }}>
                           — Einzel-Anmeldungen ohne Team-Zuordnung
