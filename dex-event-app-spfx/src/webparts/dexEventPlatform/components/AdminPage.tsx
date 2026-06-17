@@ -2837,10 +2837,15 @@ export default function AdminPage(): React.ReactElement {
       });
     } else {
       // Deloitte View: alle internen Felder
+      // v23.7: Team-Spalte nur bei Team-Events (oder wenn überhaupt eine
+      // Team-Zuordnung existiert) — der frei benannte Begriff als Spaltenkopf.
+      const includeTeam = !!selectedEvent.teamRegistrationEnabled || activeRegsForExport.some(r => !!r.TeamId);
+      const teamHeader = selectedEvent.teamTermSingular || 'Team';
       headers = [
         'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'Email',
         'Department', 'Location', 'JobTitle', 'Phone',
         'Status', 'RegistrationDate',
+        ...(includeTeam ? [teamHeader, `${teamHeader}-Lead`] : []),
       ];
       // Dynamisch alle Custom Field Labels aus dem Event sammeln
       const customLabels: Array<{ id: string; label: string }> = (selectedEvent.eventSpecificFields || []).map(f => ({ id: f.id, label: f.label }));
@@ -2862,6 +2867,7 @@ export default function AdminPage(): React.ReactElement {
           anyReg.Phone || '',
           r.Status || '',
           r.RegistrationDate ? new Date(r.RegistrationDate).toLocaleString('de-DE') : '',
+          ...(includeTeam ? [r.TeamName || '', r.TeamLead ? 'Ja' : ''] : []),
         ];
         const customValues = customLabels.map(cf => {
           const v = cd[cf.id];
@@ -2956,6 +2962,7 @@ export default function AdminPage(): React.ReactElement {
       const parentFields = (selectedEvent.eventSpecificFields || []).filter(f => f.label);
       type PersonRow = {
         vorname: string; nachname: string; email: string; jobTitle: string; location: string;
+        teamName: string;
         parentCd: Record<string, unknown>;
         perChild: Record<string, SPRegistration | undefined>;
         hasMatch: boolean;
@@ -2970,9 +2977,12 @@ export default function AdminPage(): React.ReactElement {
             vorname: r.Vorname || '', nachname: r.Nachname || '',
             email: r.ParticipantEmail || '',
             jobTitle: anyReg.JobTitle || '', location: anyReg.Location || '',
+            teamName: '',
             parentCd: {}, perChild: {}, hasMatch: false,
           };
         }
+        // v23.7: Team-Name aus der ersten Zeile übernehmen, die einen hat.
+        if (r.TeamName && !persons[key].teamName) persons[key].teamName = r.TeamName;
         return persons[key];
       };
       for (const r of registrations) {
@@ -2990,7 +3000,11 @@ export default function AdminPage(): React.ReactElement {
           }
         }
       }
+      // v23.7: Team-Spalte nur, wenn überhaupt Team-Zuordnungen existieren.
+      const anyTeam = Object.keys(persons).some(k => !!persons[k].teamName);
+      const teamHdr = selectedEvent.teamTermSingular || 'Team';
       const matrixHeaders: string[] = ['Vorname', 'Nachname', 'Email', 'JobTitle', 'Standort']
+        .concat(anyTeam ? [teamHdr] : [])
         .concat(parentFields.map(f => f.label));
       for (const child of consolidatedChildren) {
         const short = shortSubEventTitle(child.title, selectedEvent.title) || child.title || '?';
@@ -3005,6 +3019,7 @@ export default function AdminPage(): React.ReactElement {
         .sort((a, b) => (a.nachname || '').localeCompare(b.nachname || '', 'de') || (a.vorname || '').localeCompare(b.vorname || '', 'de'))
         .map(p => {
           const row: string[] = [p.vorname, p.nachname, p.email, p.jobTitle, p.location]
+            .concat(anyTeam ? [p.teamName || ''] : [])
             .concat(parentFields.map(f => fieldVal(p.parentCd, f.id)));
           for (const child of consolidatedChildren) {
             const reg = p.perChild[child.id];
@@ -3025,7 +3040,11 @@ export default function AdminPage(): React.ReactElement {
         .slice()
         .sort((a, b) => (a.TeilnehmerID || 0) - (b.TeilnehmerID || 0));
       const childFields = (child.eventSpecificFields || []).filter(f => f.label);
+      // v23.7: Team-Spalte je Sub-Event-Blatt, wenn dort Team-Zuordnungen sind.
+      const childAnyTeam = regs.some(r => !!r.TeamName);
+      const childTeamHdr = selectedEvent.teamTermSingular || 'Team';
       const headers = ['TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'Email', 'Department', 'Location', 'JobTitle', 'Status', 'RegistrationDate']
+        .concat(childAnyTeam ? [childTeamHdr] : [])
         .concat(childFields.map(f => f.label));
       const rows = regs.map(r => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -3035,7 +3054,7 @@ export default function AdminPage(): React.ReactElement {
           String(r.TeilnehmerID || ''), r.Anrede || '', r.Vorname || '', r.Nachname || '',
           r.ParticipantEmail || '', anyReg.Department || '', anyReg.Location || '', anyReg.JobTitle || '',
           r.Status || '', r.RegistrationDate ? new Date(r.RegistrationDate).toLocaleString('de-DE') : '',
-        ].concat(childFields.map(f => fieldVal(cd, f.id)));
+        ].concat(childAnyTeam ? [r.TeamName || ''] : []).concat(childFields.map(f => fieldVal(cd, f.id)));
       });
       sheets.push({ name: sanitizeSheet(shortSubEventTitle(child.title, selectedEvent.title) || child.title || 'Sub-Event'), headers, rows });
     }
@@ -4626,8 +4645,74 @@ export default function AdminPage(): React.ReactElement {
     // angemeldet sein.)
     const hasParentReg = (emailKey: string): boolean =>
       registrations.some(r => (r.ParticipantEmail || '').toLowerCase().trim() === emailKey);
+    // v23.7: „Verwaiste" Klammer-/Schatten-Anmeldungen erkennen — eine aktive
+    // Zeile auf der KLAMMER-Subsite (registrations), deren Person in KEINEM
+    // Sub-Event aktiv angemeldet ist. Das ist typischerweise ein Geist aus einer
+    // abgebrochenen Anmeldung: unsichtbar in der Matrix (die nur Sub-Event-
+    // Anmeldungen zeigt), blockiert aber jede neue (auch stellvertretende)
+    // Anmeldung, weil die Doppel-Anmelde-Prüfung die Klammer-Subsite liest.
+    // v23.7: Geist = aktive Klammer-Zeile, deren Person in KEINEM Sub-Event
+    // IRGENDEINE Zeile hat (auch keine abgemeldete). Wer sich aus allen
+    // Sub-Events ABGEMELDET hat, hat dort abgemeldete Zeilen → wird bewusst
+    // NICHT als Geist erkannt (das ist eine normale Voll-Abmeldung, kein Rest
+    // aus einer abgebrochenen Anmeldung). So vermeiden wir Fehlalarme.
+    const anySubEmails = new Set<string>();
+    for (const ch of consolidatedChildren) {
+      for (const r of (subEventRegsByEventId[ch.id] || [])) {
+        const em = (r.ParticipantEmail || '').toLowerCase().trim();
+        if (em) anySubEmails.add(em);
+      }
+    }
+    const orphanShadowRegs = registrations.filter(r => {
+      if ((r.Status || '') === 'Abgemeldet') return false;
+      const em = (r.ParticipantEmail || '').toLowerCase().trim();
+      return !!em && !anySubEmails.has(em);
+    });
     return (
       <div style={{ overflowX: 'auto' }}>
+        {/* v23.7: Geister-/verwaiste Klammer-Anmeldungen — sichtbar machen +
+            still entfernbar, damit eine blockierte (Neu-)Anmeldung wieder geht. */}
+        {orphanShadowRegs.length > 0 && (
+          <div style={{ marginBottom: 16, padding: 14, borderRadius: 10, border: '1px solid var(--dex-red, #c00)', background: 'rgba(200,0,0,0.06)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <Icon iconName="Warning" style={{ fontSize: 16, color: 'var(--dex-red, #c00)' }} />
+              <strong style={{ color: 'var(--dex-red, #c00)', fontSize: '0.9rem' }}>
+                {isDe ? `Verwaiste Anmeldungen (${orphanShadowRegs.length})` : `Orphaned registrations (${orphanShadowRegs.length})`}
+              </strong>
+            </div>
+            <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+              {isDe
+                ? 'Diese Personen haben eine Klammer-Anmeldung, sind aber in KEINEM Sub-Event aktiv angemeldet — meist ein Rest aus einer abgebrochenen Anmeldung. Solche Geister tauchen in der Liste oben nicht auf, blockieren aber eine erneute (auch stellvertretende) Anmeldung der Person. Hier still entfernen, dann ist die Anmeldung wieder möglich.'
+                : 'These people have a bracket registration but are NOT actively registered for any sub-event — usually a leftover from an interrupted registration. Such ghosts don’t show in the list above but block re-registering the person (also on their behalf). Remove them silently here to make registration possible again.'}
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {orphanShadowRegs.map(r => {
+                const nm = (r.Vorname && r.Nachname) ? `${r.Vorname} ${r.Nachname}` : (r.ParticipantName || r.ParticipantEmail);
+                return (
+                  <div key={r.Id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.84rem' }}>
+                    <strong>{nm}</strong>
+                    <span style={{ color: 'var(--dex-gray-500)' }}>{r.ParticipantEmail}</span>
+                    <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.78rem' }}>· {translateStatus(r.Status, isDe)}</span>
+                    {canManage && (
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        style={{ marginLeft: 'auto', fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-red, #c00)', borderColor: 'var(--dex-red, #c00)' }}
+                        onClick={async () => {
+                          if (!(await confirmDialog(isDe ? `Verwaiste Anmeldung von ${nm} still entfernen?` : `Silently remove the orphaned registration of ${nm}?`, { danger: true, confirmLabel: isDe ? 'Entfernen' : 'Remove' }))) return;
+                          await performSilentDuplicateDelete(r);
+                          showAlert(isDe ? 'Verwaiste Anmeldung entfernt — die Person kann jetzt wieder angemeldet werden.' : 'Orphaned registration removed — the person can be registered again now.', { variant: 'success' });
+                        }}
+                      >
+                        {isDe ? 'Geist entfernen' : 'Remove ghost'}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {/* v15.3.1: Legende für die Pastell-Spalten — sonst rät der Organizer,
             was die zwei Hintergrundfarben bedeuten. */}
         {(parentCustomFields.length > 0 || childCustomFieldsByChild.some(x => x.fields.length > 0)) && (
