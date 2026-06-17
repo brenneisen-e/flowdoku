@@ -6189,10 +6189,13 @@ export default function EventCreationPage(): React.ReactElement {
                                     style={{ position: 'absolute', top: '50%', left: '50%', transform: `translate(-50%, -50%) scale(${v.zoom})`, maxWidth: '100%', maxHeight: Math.round((heroH / 500) * view.h), objectFit: 'contain' }}
                                   />
                                 ) : (
+                                  // Event-Liste/Karte: volles Bild (contain, kein
+                                  // Crop — der Kreis wird nie abgeschnitten),
+                                  // Größe per Skalierung.
                                   <img
                                     src={imagePreview}
                                     alt={view.label}
-                                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: `center ${v.posY}%`, transform: `scale(${v.zoom})`, transformOrigin: `center ${v.posY}%` }}
+                                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', transform: `scale(${v.zoom})`, transformOrigin: 'center center' }}
                                   />
                                 )}
                               </div>
@@ -6207,10 +6210,8 @@ export default function EventCreationPage(): React.ReactElement {
                                   </>
                                 ) : (
                                   <>
-                                    <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Zoom (unter 1 = kleiner, weißer Rand)' : 'Zoom (below 1 = smaller, white margin)'}</label>
-                                    <input type="range" min={0.3} max={3} step={0.01} value={v.zoom} onChange={e => setV({ ...v, zoom: parseFloat(e.target.value) })} style={{ width: '100%' }} />
-                                    <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Vertikale Position' : 'Vertical position'}</label>
-                                    <input type="range" min={0} max={100} step={1} value={v.posY} onChange={e => setV({ ...v, posY: parseInt(e.target.value, 10) })} style={{ width: '100%' }} />
+                                    <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Größe (kleiner = mehr weißer Rand)' : 'Size (smaller = more white margin)'}</label>
+                                    <input type="range" min={0.3} max={1.5} step={0.01} value={v.zoom} onChange={e => setV({ ...v, zoom: parseFloat(e.target.value) })} style={{ width: '100%' }} />
                                   </>
                                 )}
                                 <button type="button" className="btn btn-secondary" style={{ fontSize: '0.74rem', padding: '3px 10px', marginTop: 4 }} onClick={() => setImageDisplay(prev => { const n = { ...prev }; delete n[view.key]; return n; })}>
