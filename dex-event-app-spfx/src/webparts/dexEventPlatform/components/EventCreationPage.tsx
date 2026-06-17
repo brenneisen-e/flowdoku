@@ -1108,6 +1108,9 @@ export default function EventCreationPage(): React.ReactElement {
   // dann, wenn Standort-/Verteiler-Filter sie sonst ausschließen würden —
   // damit sie stellvertretend (z.B. für einen Partner) anmelden können.
   const [assistantsCanSee, setAssistantsCanSee] = React.useState(editEvent ? !!editEvent.assistantsCanSee : false);
+  // v23.25: Organizer auf der Anmeldeseite groß (Foto + Mail + Rolle direkt
+  // sichtbar) statt klein als Chip mit Hover (Piggyback _organizerDisplayLarge).
+  const [organizerDisplayLarge, setOrganizerDisplayLarge] = React.useState(editEvent ? !!editEvent.organizerDisplayLarge : false);
   // Nur im Edit-Modus: standardmäßig wird der Outlook-Termin NICHT angefasst,
   // damit bei kleinen Aenderungen (z.B. Description) nicht unnötig eine
   // "Updated meeting"-Benachrichtigung an alle Teilnehmer geht. Der Organizer
@@ -1138,6 +1141,7 @@ export default function EventCreationPage(): React.ReactElement {
           // beim Edit-Save (letzter Spread `...topOverrides`) das frisch
           // berechnete Flag, d.h. Abwählen bliebe ohne Wirkung.
           _teamTerm, _teamMembersCannotCreate, _assistantsCanSee, _previewBeforeActive, _imageDisplay,
+          _organizerDisplayLarge,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -1148,6 +1152,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _subEventsOnlyMode; void _childEventTerm;
         void _inheritFlags; void _hideOrganizer; void _headerImageLayout;
         void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee; void _previewBeforeActive; void _imageDisplay;
+        void _organizerDisplayLarge;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
     })() : {}
@@ -3318,6 +3323,8 @@ export default function EventCreationPage(): React.ReactElement {
       const teamNoCreateConfig = teamMembersCannotCreate ? { _teamMembersCannotCreate: true } : {};
       // v23.6: Assistenz-Sichtbarkeit (Piggyback).
       const assistantsCanSeeConfig = assistantsCanSee ? { _assistantsCanSee: true } : {};
+      // v23.25: Organizer groß darstellen (Piggyback).
+      const organizerDisplayLargeConfig = organizerDisplayLarge ? { _organizerDisplayLarge: true } : {};
       // v23.14: Vorschau vor Aktivierung (nur sinnvoll mit activeFrom).
       const previewBeforeActiveConfig = (previewBeforeActive && activeFrom) ? { _previewBeforeActive: true } : {};
       // v23.19: Pro-Ansicht-Bilddarstellung — nur Views speichern, die vom
@@ -3333,7 +3340,7 @@ export default function EventCreationPage(): React.ReactElement {
         });
         return Object.keys(out).length ? { _imageDisplay: out } : {};
       })();
-      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(teamTermConfig).length > 0 || Object.keys(teamNoCreateConfig).length > 0 || Object.keys(assistantsCanSeeConfig).length > 0 || Object.keys(previewBeforeActiveConfig).length > 0 || Object.keys(imageDisplayConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0 || Object.keys(headerImageLayoutConfig).length > 0)
+      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(teamTermConfig).length > 0 || Object.keys(teamNoCreateConfig).length > 0 || Object.keys(assistantsCanSeeConfig).length > 0 || Object.keys(organizerDisplayLargeConfig).length > 0 || Object.keys(previewBeforeActiveConfig).length > 0 || Object.keys(imageDisplayConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0 || Object.keys(headerImageLayoutConfig).length > 0)
         ? JSON.stringify({
             ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
             ...(effOutlookLogo ? { _outlookLogo: effOutlookLogo } : {}),
@@ -3348,6 +3355,7 @@ export default function EventCreationPage(): React.ReactElement {
             ...teamTermConfig,
             ...teamNoCreateConfig,
             ...assistantsCanSeeConfig,
+            ...organizerDisplayLargeConfig,
             ...previewBeforeActiveConfig,
             ...imageDisplayConfig,
             ...hideOrganizerConfig,
@@ -3906,6 +3914,8 @@ export default function EventCreationPage(): React.ReactElement {
           const teamNoCreateExtra = teamMembersCannotCreate ? { _teamMembersCannotCreate: true } : {};
           // v23.6: Assistenz-Sichtbarkeit (Piggyback).
           const assistantsCanSeeExtra = assistantsCanSee ? { _assistantsCanSee: true } : {};
+          // v23.25: Organizer groß darstellen (Piggyback).
+          const organizerDisplayLargeExtra = organizerDisplayLarge ? { _organizerDisplayLarge: true } : {};
           // v23.14: Vorschau vor Aktivierung (nur sinnvoll mit activeFrom).
           const previewBeforeActiveExtra = (previewBeforeActive && activeFrom) ? { _previewBeforeActive: true } : {};
           // v23.19: Pro-Ansicht-Bilddarstellung (nur abweichende Views).
@@ -3921,7 +3931,7 @@ export default function EventCreationPage(): React.ReactElement {
             return Object.keys(out).length ? { _imageDisplay: out } : {};
           })();
           // v11.93: Top-Level-Logos aus dem Resolver lesen.
-          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0 || Object.keys(teamTermExtra).length > 0 || Object.keys(teamNoCreateExtra).length > 0 || Object.keys(assistantsCanSeeExtra).length > 0 || Object.keys(previewBeforeActiveExtra).length > 0 || Object.keys(imageDisplayExtra).length > 0 || Object.keys(hideOrganizerExtra).length > 0 || Object.keys(headerImageLayoutConfig).length > 0;
+          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0 || Object.keys(teamTermExtra).length > 0 || Object.keys(teamNoCreateExtra).length > 0 || Object.keys(assistantsCanSeeExtra).length > 0 || Object.keys(organizerDisplayLargeExtra).length > 0 || Object.keys(previewBeforeActiveExtra).length > 0 || Object.keys(imageDisplayExtra).length > 0 || Object.keys(hideOrganizerExtra).length > 0 || Object.keys(headerImageLayoutConfig).length > 0;
           return hasAny
             ? JSON.stringify({
                 ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
@@ -3937,6 +3947,7 @@ export default function EventCreationPage(): React.ReactElement {
                 ...teamTermExtra,
                 ...teamNoCreateExtra,
                 ...assistantsCanSeeExtra,
+                ...organizerDisplayLargeExtra,
                 ...previewBeforeActiveExtra,
                 ...imageDisplayExtra,
                 ...hideOrganizerExtra,
@@ -6137,7 +6148,9 @@ export default function EventCreationPage(): React.ReactElement {
                   </div>
                 )}
                 {/* v23.15: Bild-Zuschnitt-Modal — liefert das Ergebnis als
-                    Data-URL (Vorschau) + File (Upload) zurück. */}
+                    Data-URL (Vorschau) + File (Upload) zurück.
+                    v23.25: „Darstellung pro Ansicht" lebt jetzt IN diesem Modal
+                    (children), damit alle Bild-Einstellungen an einem Ort sind. */}
                 <ImageCropModal
                   open={imageEditOpen}
                   src={imagePreview}
@@ -6148,12 +6161,11 @@ export default function EventCreationPage(): React.ReactElement {
                     setImageFile(file);
                     setImageEditOpen(false);
                   }}
-                />
-                {/* v23.19: Optional & einklappbar — Bild pro Ansicht anders
-                    zoomen/positionieren. Default zu; wer einfach nur ein Foto
-                    hochlädt, muss hier nichts tun (Standard = cover, zentriert). */}
-                {imagePreview && (
-                  <div style={{ marginTop: 10, border: '1px solid var(--dex-gray-200)', borderRadius: 8, overflow: 'hidden' }}>
+                >
+                  {/* v23.19/v23.25: Optional & einklappbar — Bild pro Ansicht
+                      anders zoomen/skalieren. Default zu; wer einfach nur ein
+                      Foto hochlädt, muss hier nichts tun. */}
+                  <div style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 8, overflow: 'hidden' }}>
                     <button
                       type="button"
                       onClick={() => setImageDisplayOpen(o => !o)}
@@ -6232,7 +6244,7 @@ export default function EventCreationPage(): React.ReactElement {
                       </div>
                     )}
                   </div>
-                )}
+                </ImageCropModal>
                 <label style={{
                   display: 'inline-flex', alignItems: 'center', gap: 8,
                   padding: '8px 16px', borderRadius: 'var(--dex-radius)',
@@ -6528,6 +6540,43 @@ export default function EventCreationPage(): React.ReactElement {
                   </span>
                 </label>
               </div>
+
+              {/* v23.25: Darstellungs-Größe der Organizer auf der Anmeldeseite.
+                  Klein (Chip mit Hover) ODER groß (Foto + Mail + Rolle direkt
+                  sichtbar). Nur relevant, wenn die Organizer überhaupt angezeigt
+                  werden (also nicht „ausgeblendet"). */}
+              {!hideOrganizer && (
+                <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={organizerDisplayLarge}
+                      onChange={e => setOrganizerDisplayLarge(e.target.checked)}
+                      style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 2 }}
+                    />
+                    <span style={{ flex: 1 }}>
+                      <strong>{isDe ? 'Organizer groß anzeigen' : 'Show organizers large'}</strong>
+                      <InfoTooltip text={isDe
+                        ? <>
+                            <strong>Was du hier einstellst:</strong> wie die <strong>Organizer</strong> auf der Anmelde-Seite dargestellt werden.<br /><br />
+                            <strong>Aus (Standard):</strong> kleiner <strong>Chip</strong> mit Foto + Name — die Mail-Adresse und Rolle erscheinen erst beim <strong>Drüberfahren</strong> mit der Maus.<br /><br />
+                            <strong>An:</strong> die Organizer werden <strong>dauerhaft groß</strong> gezeigt (großes Foto, Name, klickbare <strong>E-Mail-Adresse</strong>, Rolle &amp; Standort) — Teilnehmer sehen die Kontaktdaten <strong>sofort</strong>, ohne die Maus darüber zu bewegen.
+                          </>
+                        : <>
+                            <strong>What this controls:</strong> how the <strong>organizers</strong> are displayed on the registration page.<br /><br />
+                            <strong>Off (default):</strong> small <strong>chip</strong> with photo + name — email and role only appear on <strong>hover</strong>.<br /><br />
+                            <strong>On:</strong> organizers are shown <strong>large permanently</strong> (big photo, name, clickable <strong>email</strong>, role &amp; location) — attendees see the contact details <strong>right away</strong>, no hover needed.
+                          </>
+                      } />
+                      <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                        {isDe
+                          ? 'Default: aus — kleiner Chip, Details beim Drüberfahren.'
+                          : 'Default: off — small chip, details on hover.'}
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              )}
 
               {/* v10.16: Optionaler Ansprechpartner. Reines Anzeige-Feld
                   (kein Login, keine SP-Permissions) — z.B. die Person vor Ort

@@ -11,12 +11,16 @@
 
 import * as React from 'react';
 import { useRoles } from '../context/RoleContext';
+import { useLanguage } from '../context/LanguageContext';
 
 export interface OrganizerListProps {
   names: string[];
   emails: string[];
   size?: 'sm' | 'md';
   compact?: boolean;
+  /** v23.25: 'card' = Organizer dauerhaft groß (Foto + Name + Mail + Rolle
+   *  direkt sichtbar). Default 'chip' = klein mit Hover-Popup. */
+  display?: 'chip' | 'card';
 }
 
 // v11.95: pro Email einmalig profile-lookup, Ergebnis App-weit gecached
@@ -36,7 +40,7 @@ function photoUrl(email: string, size: 'S' | 'M' | 'L'): string {
   return `/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(email)}&size=${size}`;
 }
 
-function OrganizerChip({ name, email, sizeClass }: { name: string; email: string; sizeClass: 'sm' | 'md' }): React.ReactElement {
+function OrganizerChip({ name, email, sizeClass, expanded }: { name: string; email: string; sizeClass: 'sm' | 'md'; expanded?: boolean }): React.ReactElement {
   const [hovered, setHovered] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
   // SP /_layouts/15/userphoto.aspx liefert sporadisch transient 404 — z.B. wenn die
@@ -51,7 +55,18 @@ function OrganizerChip({ name, email, sizeClass }: { name: string; email: string
     email && profileCache.has(email.toLowerCase()) ? profileCache.get(email.toLowerCase()) as { jobTitle: string; location: string } : null
   );
   const { searchUser } = useRoles();
+  const { locale } = useLanguage();
+  const isDe = locale === 'de';
   const wrapperRef = React.useRef<HTMLSpanElement>(null);
+  // v23.25: verzögertes Schließen, damit die Maus vom kleinen Chip über die
+  // 8px-Lücke in die große Karte wandern kann, ohne dass sie sofort zuklappt.
+  const closeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelClose = (): void => { if (closeTimerRef.current) { clearTimeout(closeTimerRef.current); closeTimerRef.current = null; } };
+  const scheduleClose = (): void => {
+    cancelClose();
+    closeTimerRef.current = setTimeout(() => { setHovered(false); setCoords(null); }, 200);
+  };
+  React.useEffect(() => () => cancelClose(), []);
   const avatarSize = sizeClass === 'sm' ? 24 : 32;
   const enlargedSize = 120;
   const popoverHeight = 180; // ungefähre Popover-Höhe für Flip-Entscheidung
@@ -86,6 +101,65 @@ function OrganizerChip({ name, email, sizeClass }: { name: string; email: string
     }
   };
 
+  // v23.25: Im „card"-Modus das Profil (Rolle + Standort) sofort laden, damit
+  // E-Mail + Infos ohne Hover sichtbar sind.
+  React.useEffect(() => {
+    if (!expanded || !email || profile) return;
+    const cacheKey = email.toLowerCase();
+    const cached = profileCache.get(cacheKey);
+    if (cached) { setProfile(cached); return; }
+    searchUser(email).then(res => {
+      if (res) {
+        const entry = { jobTitle: res.jobTitle || '', location: res.location || '' };
+        profileCache.set(cacheKey, entry);
+        setProfile(entry);
+      }
+    }).catch(() => { /* silent */ });
+  }, [expanded, email, profile, searchUser]);
+
+  // v23.25: Dauerhaft große Karte (Foto + Name + Mail + Rolle), wenn der
+  // Organizer das im Wizard so eingestellt hat.
+  if (expanded) {
+    return (
+      <div
+        style={{
+          display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+          background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 12,
+          padding: '14px 18px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', textAlign: 'center',
+          minWidth: 180,
+        }}
+      >
+        <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
+          {isDe ? 'Bei Fragen wende dich gerne an:' : 'If you have any questions, feel free to reach out:'}
+        </span>
+        {!failed && email ? (
+          <img
+            src={`${photoUrl(email, 'L')}${cacheBust}`}
+            alt={name}
+            onError={() => { if (retryAttempt < 1) setRetryAttempt(retryAttempt + 1); else setFailed(true); }}
+            style={{ width: enlargedSize, height: enlargedSize, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-200)' }}
+          />
+        ) : (
+          <span style={{ width: enlargedSize, height: enlargedSize, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #86bc25, #0076a8)', color: '#fff', fontSize: enlargedSize * 0.36, fontWeight: 700 }}>{initials}</span>
+        )}
+        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--dex-gray-800)' }}>{name}</span>
+        {email && (
+          <a
+            href={`mailto:${email}`}
+            style={{ fontSize: '0.78rem', color: 'var(--dex-green, #86bc25)', textDecoration: 'none', fontWeight: 600 }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
+          >{email}</a>
+        )}
+        {profile && (profile.jobTitle || profile.location) && (
+          <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
+            {[profile.jobTitle, profile.location].filter(Boolean).join(' · ')}
+          </span>
+        )}
+      </div>
+    );
+  }
+
   return (
     <span
       ref={wrapperRef}
@@ -99,8 +173,8 @@ function OrganizerChip({ name, email, sizeClass }: { name: string; email: string
         position: 'relative',
         cursor: 'default',
       }}
-      onMouseEnter={openPopover}
-      onMouseLeave={() => { setHovered(false); setCoords(null); }}
+      onMouseEnter={() => { cancelClose(); openPopover(); }}
+      onMouseLeave={scheduleClose}
     >
       {!failed && email ? (
         <img
@@ -132,6 +206,8 @@ function OrganizerChip({ name, email, sizeClass }: { name: string; email: string
       {/* Hover-Vergrößerung: fixed positioning damit Container-Overflow nichts abschneidet */}
       {hovered && email && !failed && coords && (
         <span
+          onMouseEnter={cancelClose}
+          onMouseLeave={scheduleClose}
           style={{
             position: 'fixed',
             top: coords.above ? undefined : coords.y,
@@ -139,13 +215,18 @@ function OrganizerChip({ name, email, sizeClass }: { name: string; email: string
             left: coords.x,
             transform: 'translateX(-50%)',
             zIndex: 2000,
-            background: '#fff', borderRadius: 10, padding: 10,
+            background: '#fff', borderRadius: 10, padding: 12,
             boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
             border: '1px solid var(--dex-gray-200)',
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-            pointerEvents: 'none',
+            // v23.25: pointerEvents aktiv, damit die Maus in die Karte fahren
+            // und auf die Mail-Adresse klicken kann.
           }}
         >
+          {/* v23.25: freundlicher Hinweis-Kopf. */}
+          <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap', marginBottom: 2 }}>
+            {isDe ? 'Bei Fragen wende dich gerne an:' : 'If you have any questions, feel free to reach out:'}
+          </span>
           <img
             src={photoUrl(email, 'L')}
             alt={name}
@@ -155,7 +236,13 @@ function OrganizerChip({ name, email, sizeClass }: { name: string; email: string
             }}
           />
           <span style={{ fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap' }}>{name}</span>
-          <span style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>{email}</span>
+          {/* v23.25: klickbarer Mailto-Link. */}
+          <a
+            href={`mailto:${email}`}
+            style={{ fontSize: '0.72rem', color: 'var(--dex-green, #86bc25)', whiteSpace: 'nowrap', textDecoration: 'none', fontWeight: 600 }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
+          >{email}</a>
           {/* v11.95: JobTitle + Standort aus dem SP-Profil — lazy beim
               ersten Hover geladen, danach gecached. */}
           {profile && (profile.jobTitle || profile.location) && (
@@ -241,13 +328,14 @@ function pairNamesEmails(names: string[], emails: string[]): Array<{ name: strin
   return result;
 }
 
-export default function OrganizerList({ names, emails, size = 'md', compact = false }: OrganizerListProps): React.ReactElement | null {
+export default function OrganizerList({ names, emails, size = 'md', compact = false, display = 'chip' }: OrganizerListProps): React.ReactElement | null {
   const items = pairNamesEmails(names, emails).filter(o => !!o.name);
   if (items.length === 0) return null;
+  const isCard = display === 'card';
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: compact ? 4 : 6 }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: isCard ? 12 : (compact ? 4 : 6) }}>
       {items.map((o, i) => (
-        <OrganizerChip key={`${o.email || o.name}-${i}`} name={o.name} email={o.email} sizeClass={size} />
+        <OrganizerChip key={`${o.email || o.name}-${i}`} name={o.name} email={o.email} sizeClass={size} expanded={isCard} />
       ))}
     </div>
   );

@@ -967,6 +967,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           return !!(ov && ov._previewBeforeActive);
         } catch { return false; }
       })(),
+      // v23.25: Organizer groß (Foto + Mail direkt sichtbar) statt klein
+      // (Chip mit Hover) — Piggyback _organizerDisplayLarge.
+      organizerDisplayLarge: ((): boolean => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          return !!(ov && ov._organizerDisplayLarge);
+        } catch { return false; }
+      })(),
       // v23.19: Pro-Ansicht-Darstellung des Event-Bildes (Piggyback _imageDisplay).
       imageDisplay: ((): { card?: { zoom: number; posY: number }; hero?: { zoom: number; posY: number } } | undefined => {
         try {
