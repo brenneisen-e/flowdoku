@@ -1183,6 +1183,32 @@ export default function AdminPage(): React.ReactElement {
   // (klein→groß-Flackern). null = keine Reservierung aktiv.
   const detailCardRef = React.useRef<HTMLDivElement>(null);
   const [reservedDetailHeight, setReservedDetailHeight] = React.useState<number | undefined>(undefined);
+  // v23.6: Breiten-Reservierung gegen das „Springen" der Detail-Karte beim
+  // Wechsel zwischen Klammer und Sub-Events (manche Tabs sind breiter, z.B.
+  // konsolidierte Matrix vs. schmales Sub-Event). Die Karte wächst auf die
+  // größte Inhaltsbreite INNERHALB derselben Event-Gruppe (Hauptevent + seine
+  // Sub-Events) und schrumpft danach nicht mehr — das breiteste Event gibt die
+  // Breite vor. Reset bei Wechsel auf eine andere Event-Gruppe.
+  const [reservedDetailWidth, setReservedDetailWidth] = React.useState<number | undefined>(undefined);
+  const widthGroupRef = React.useRef<string>('');
+  // v23.6: Misst nach jedem relevanten Render die tatsächliche Inhaltsbreite
+  // (scrollWidth inkl. überlaufender Tabelle) und hält das Maximum pro
+  // Event-Gruppe (Hauptevent-ID = parentEventId || id) fest. Wird als minWidth
+  // an die Karte gelegt → schmale Tabs bleiben so breit wie der breiteste,
+  // und während des Nachladens schrumpft nichts (kein „erst klein, dann breit").
+  React.useLayoutEffect(() => {
+    if (!selectedEvent || !detailCardRef.current) return;
+    const groupId = selectedEvent.parentEventId || selectedEvent.id;
+    const w = detailCardRef.current.scrollWidth;
+    if (widthGroupRef.current !== groupId) {
+      // Neue Event-Gruppe → frisch mit der natürlichen Breite starten.
+      widthGroupRef.current = groupId;
+      setReservedDetailWidth(w || undefined);
+    } else {
+      setReservedDetailWidth(prev => (prev && prev >= w ? prev : w));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEvent?.id, isLoadingRegs, registrations]);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   // v9.0: Danger-Zone-Modal — User muss den Event-Titel exakt (lowercase)
   // eintippen bevor der Lösch-Button aktiv wird. Schutz gegen versehentliche
@@ -5056,7 +5082,7 @@ export default function AdminPage(): React.ReactElement {
             stapelt auf Mobile via flex-wrap). Die Box erscheint nur für Entwürfe
             und nur für Admin/Organizer. */}
         <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div ref={detailCardRef} className="card" style={{ padding: 24, minHeight: reservedDetailHeight, flex: '1 1 420px', minWidth: 0 }}>
+        <div ref={detailCardRef} className="card" style={{ padding: 24, minHeight: reservedDetailHeight, flex: '1 1 420px', minWidth: reservedDetailWidth || 0 }}>
           {/* Header: Event-Titel + Status-Badge + Schnellaktionen (v13.11) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
             <h2 style={{ margin: 0, fontSize: '1.2rem', lineHeight: 1.2 }}>{selectedEvent.title}</h2>
@@ -5702,8 +5728,10 @@ export default function AdminPage(): React.ReactElement {
                 : 'The event has (almost) no description — participants see very little about it on the registration page. Add one via “Edit event” → step 1 (Basics).',
             });
           }
-          // 3) Event-Bild fehlt.
-          if (!selectedEvent.imageUrl) {
+          // 3) Event-Bild fehlt. v23.6: Bei einem Sub-Event NICHT meckern, wenn
+          // die Klammer/das Hauptevent bereits ein Bild hat — Sub-Events nutzen
+          // den Bild-/Hero-Kontext des Parents, ein eigenes Bild ist optional.
+          if (!selectedEvent.imageUrl && !(parentEventForSelected && parentEventForSelected.imageUrl)) {
             hints.push({
               id: 'no-image',
               title: isDe ? 'Event-Bild hochladen' : 'Upload an event image',
@@ -9690,19 +9718,29 @@ export default function AdminPage(): React.ReactElement {
                           <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{p.location || '-'}</td>
                           {sectionCols.map(sc => {
                             const r = p.bySection[sc.id];
-                            // v23.2: In der „Gesamt-Event"-Spalte kein nacktes X,
-                            // sondern ein sprechender Badge — die Person hat erklärt,
-                            // dass sie nicht (am Gesamt-Event) teilnehmen wird.
+                            // v23.2/v23.6: In der „Gesamt-Event"-Spalte kein nacktes
+                            // X, sondern dieselbe Darstellung wie in der Status-
+                            // Spalte der Teilnehmerliste: blaue Pille „Absage (nicht
+                            // angemeldet)" für Leute, die sich NIE angemeldet, aber
+                            // hinterlegt haben, dass sie nicht teilnehmen können;
+                            // rotes „Abgemeldet" für echte Abmeldungen vom Gesamt-Event.
                             if (sc.id === '__parent') {
                               return (
                                 <td key={sc.id} style={{ padding: 8, textAlign: 'center' }}>
                                   {r
-                                    ? <span
-                                        title={`${isDeclined(r) ? (isDe ? 'Absage ohne vorherige Anmeldung' : 'Decline without prior registration') : (isDe ? 'Vom Gesamt-Event abgemeldet' : 'Cancelled from the overall event')} — ${formatDate(r.CancellationDate)}`}
-                                        style={{ display: 'inline-block', fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(218,41,28,0.10)', color: 'var(--dex-red, #da291c)', whiteSpace: 'nowrap' }}
-                                      >
-                                        {isDe ? 'Nimmt nicht teil' : 'Will not attend'}
-                                      </span>
+                                    ? (isDeclined(r)
+                                        ? <span
+                                            title={`${isDe ? 'Diese Person hat sich NICHT angemeldet, sondern hinterlegt, dass sie nicht am Event teilnehmen kann (Absage ohne Anmeldung).' : 'This person did NOT register but recorded that they cannot attend the event (decline without registration).'} — ${formatDate(r.CancellationDate)}`}
+                                            style={{ display: 'inline-block', fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(0,118,168,0.10)', color: 'var(--dex-blue, #0076a8)', whiteSpace: 'nowrap' }}
+                                          >
+                                            {isDe ? 'Absage (nicht angemeldet)' : 'Decline (never registered)'}
+                                          </span>
+                                        : <span
+                                            title={`${isDe ? 'Diese Person war für das Gesamt-Event angemeldet und hat sich wieder abgemeldet.' : 'This person was registered for the overall event and later cancelled.'} — ${formatDate(r.CancellationDate)}`}
+                                            style={{ display: 'inline-block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--dex-red, #da291c)', whiteSpace: 'nowrap' }}
+                                          >
+                                            {isDe ? 'Abgemeldet' : 'Cancelled'}
+                                          </span>)
                                     : <span style={{ color: 'var(--dex-gray-300)' }}>–</span>}
                                 </td>
                               );

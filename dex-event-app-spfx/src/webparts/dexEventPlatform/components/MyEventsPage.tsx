@@ -3528,7 +3528,7 @@ function MyEventSubEvents(props: {
     ? props.childEvents
     : props.childEvents.filter(ce =>
         registeredSet.has(ce.id)
-        || isEventVisibleForUser(ce, currentUser.email, currentUser.location, groupEmails));
+        || isEventVisibleForUser(ce, currentUser.email, currentUser.location, groupEmails, currentUser.jobTitle));
 
   if (visibleChildren.length === 0) return null;
 

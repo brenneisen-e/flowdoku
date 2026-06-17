@@ -947,6 +947,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           return !!(ov && ov._hideOrganizer);
         } catch { return false; }
       })(),
+      // v23.6: Assistenz-Sichtbarkeit (Piggyback _assistantsCanSee).
+      assistantsCanSee: ((): boolean => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          return !!(ov && ov._assistantsCanSee);
+        } catch { return false; }
+      })(),
       childEventTermSingular: ((): string | undefined => {
         try {
           const ov = JSON.parse(e.EmailTemplateOverrides || '{}');

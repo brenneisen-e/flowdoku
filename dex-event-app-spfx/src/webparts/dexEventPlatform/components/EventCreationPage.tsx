@@ -1084,6 +1084,11 @@ export default function EventCreationPage(): React.ReactElement {
   // v18.9: Organizer-Anzeige (Chips mit Name + Foto) auf Anmelde-Seite +
   // „Meine Events" ausblenden. Rein visuell — Rechte/Mails unberührt.
   const [hideOrganizer, setHideOrganizer] = React.useState(editEvent ? !!editEvent.hideOrganizer : false);
+  // v23.6: „Assistenzen sehen das Event generell" (Piggyback _assistantsCanSee).
+  // Wenn aktiv, sehen Personen mit dem Job-Title „Assistenz" das Event auch
+  // dann, wenn Standort-/Verteiler-Filter sie sonst ausschließen würden —
+  // damit sie stellvertretend (z.B. für einen Partner) anmelden können.
+  const [assistantsCanSee, setAssistantsCanSee] = React.useState(editEvent ? !!editEvent.assistantsCanSee : false);
   // Nur im Edit-Modus: standardmäßig wird der Outlook-Termin NICHT angefasst,
   // damit bei kleinen Aenderungen (z.B. Description) nicht unnötig eine
   // "Updated meeting"-Benachrichtigung an alle Teilnehmer geht. Der Organizer
@@ -1109,6 +1114,11 @@ export default function EventCreationPage(): React.ReactElement {
           _requireSubEventSelection,
           _subEventsOnlyMode, _childEventTerm,
           _inheritFlags, _hideOrganizer, _headerImageLayout,
+          // v22.78/v23.6: diese Piggyback-Keys MÜSSEN ebenfalls gestrippt
+          // werden — sonst überschreibt der stale Wert aus dem geladenen Blob
+          // beim Edit-Save (letzter Spread `...topOverrides`) das frisch
+          // berechnete Flag, d.h. Abwählen bliebe ohne Wirkung.
+          _teamTerm, _teamMembersCannotCreate, _assistantsCanSee,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -1118,6 +1128,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _splitDisplayOrderReversed; void _requireSubEventSelection;
         void _subEventsOnlyMode; void _childEventTerm;
         void _inheritFlags; void _hideOrganizer; void _headerImageLayout;
+        void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
     })() : {}
@@ -3286,7 +3297,9 @@ export default function EventCreationPage(): React.ReactElement {
         ? { _teamTerm: { singular: teamTermSingular.trim(), plural: teamTermPlural.trim() } }
         : {};
       const teamNoCreateConfig = teamMembersCannotCreate ? { _teamMembersCannotCreate: true } : {};
-      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(teamTermConfig).length > 0 || Object.keys(teamNoCreateConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0 || Object.keys(headerImageLayoutConfig).length > 0)
+      // v23.6: Assistenz-Sichtbarkeit (Piggyback).
+      const assistantsCanSeeConfig = assistantsCanSee ? { _assistantsCanSee: true } : {};
+      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(teamTermConfig).length > 0 || Object.keys(teamNoCreateConfig).length > 0 || Object.keys(assistantsCanSeeConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0 || Object.keys(headerImageLayoutConfig).length > 0)
         ? JSON.stringify({
             ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
             ...(effOutlookLogo ? { _outlookLogo: effOutlookLogo } : {}),
@@ -3300,6 +3313,7 @@ export default function EventCreationPage(): React.ReactElement {
             ...childTermConfig,
             ...teamTermConfig,
             ...teamNoCreateConfig,
+            ...assistantsCanSeeConfig,
             ...hideOrganizerConfig,
             // v18.73: Header-Bild-Layout (Breite + Innenabstand) — event-weit.
             ...headerImageLayoutConfig,
@@ -3854,8 +3868,10 @@ export default function EventCreationPage(): React.ReactElement {
             ? { _teamTerm: { singular: teamTermSingular.trim(), plural: teamTermPlural.trim() } }
             : {};
           const teamNoCreateExtra = teamMembersCannotCreate ? { _teamMembersCannotCreate: true } : {};
+          // v23.6: Assistenz-Sichtbarkeit (Piggyback).
+          const assistantsCanSeeExtra = assistantsCanSee ? { _assistantsCanSee: true } : {};
           // v11.93: Top-Level-Logos aus dem Resolver lesen.
-          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0 || Object.keys(teamTermExtra).length > 0 || Object.keys(teamNoCreateExtra).length > 0 || Object.keys(hideOrganizerExtra).length > 0 || Object.keys(headerImageLayoutConfig).length > 0;
+          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0 || Object.keys(teamTermExtra).length > 0 || Object.keys(teamNoCreateExtra).length > 0 || Object.keys(assistantsCanSeeExtra).length > 0 || Object.keys(hideOrganizerExtra).length > 0 || Object.keys(headerImageLayoutConfig).length > 0;
           return hasAny
             ? JSON.stringify({
                 ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
@@ -3870,6 +3886,7 @@ export default function EventCreationPage(): React.ReactElement {
                 ...childTermExtra,
                 ...teamTermExtra,
                 ...teamNoCreateExtra,
+                ...assistantsCanSeeExtra,
                 ...hideOrganizerExtra,
                 // v18.73: Header-Bild-Layout (Breite + Innenabstand) — event-weit.
                 ...headerImageLayoutConfig,
@@ -5629,27 +5646,29 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               )}
 
-              {/* v22.30: marginBottom 48 — siehe Kommentar am Fehler-Banner. */}
-              {!isEditMode && currentStep === 0 && (
-                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 48 }}>
-                  <button
-                    className="btn btn-outline"
-                    data-tour="wizard-demo"
-                    onClick={() => setShowDemoVariantModal(true)}
-                    style={{ fontSize: '0.8rem', padding: '4px 12px' }}
-                    title={isDe ? 'Demo-Vorlage auswählen' : 'Choose demo template'}
-                  >
-                    {isDe ? 'Demo' : 'Demo'}
-                  </button>
-                </div>
-              )}
-
               {/* ===== Schritt 1: Grundlagen =====
                   v9.32: 1-basierte UI-Nummerierung (in der Logik bleibt
                   currentStep 0-basiert) — siehe CLAUDE.md. */}
               <div style={{ display: currentStep === 0 ? 'block' : 'none' }}>
-              <h2 className="dex-step-head-title">
-                {isDe ? 'Schritt 1 — Grundlagen' : 'Step 1 — Basics'}
+              {/* v23.6: Demo-Button sitzt jetzt IM grünen Schritt-1-Header
+                  (oben rechts), nicht mehr in einer eigenen Zeile darüber. */}
+              <h2 className="dex-step-head-title" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <span>{isDe ? 'Schritt 1 — Grundlagen' : 'Step 1 — Basics'}</span>
+                {!isEditMode && (
+                  <button
+                    type="button"
+                    data-tour="wizard-demo"
+                    onClick={() => setShowDemoVariantModal(true)}
+                    title={isDe ? 'Demo-Vorlage auswählen' : 'Choose demo template'}
+                    style={{
+                      flexShrink: 0, background: '#fff', color: 'var(--dex-green-dark, #4a7c1f)',
+                      border: 'none', borderRadius: 999, padding: '4px 14px',
+                      fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer',
+                    }}
+                  >
+                    {isDe ? 'Demo' : 'Demo'}
+                  </button>
+                )}
               </h2>
               <p className="dex-step-head-lead">
                 {isDe
@@ -8337,6 +8356,26 @@ export default function EventCreationPage(): React.ReactElement {
                 ) : null}
                 cardBgSecondary={(locationFilter || audience) ? zebraS3Bg() : '#fff'}
               />
+
+              {/* v23.6: Assistenz-Sichtbarkeit — eigener Baustein zwischen
+                  „Mailverteiler / einzelne User" und „Anmeldefristen". Bewusst
+                  AUSSERHALB des Greyout-Wrappers (laufzeit-/sichtbarkeitsrelevant,
+                  wie der AudiencePicker oben — auch im Klammer-Modus editierbar). */}
+              <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Icon iconName="People" style={{ fontSize: 16, color: 'var(--dex-green-dark, #4a7c1f)' }} />
+                  {isDe ? 'Sichtbarkeit für Assistenzen' : 'Visibility for assistants'}
+                </label>
+                <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginTop: -4, marginBottom: 12, lineHeight: 1.55 }}>
+                  {isDe
+                    ? <>Standardmäßig sieht eine <strong>Assistenz</strong> (Personen mit dem Job-Title „Assistenz“) nur Events, die sie auch als normale Nutzerin/normaler Nutzer sehen würde — also nur, wenn sie selbst in den oben gesetzten Standort-/Verteiler-Kreis fällt. Aktivierst du diese Option, sehen <strong>alle Assistenzen</strong> dieses Event in ihrer Übersicht, unabhängig von den Filtern oben — damit sie z.B. stellvertretend einen Partner oder eine Direktorin anmelden können.</>
+                    : <>By default an <strong>assistant</strong> (people whose job title is „Assistenz“) only sees events they would see as a regular user — i.e. only if they themselves fall within the location/distribution audience set above. Enable this option to let <strong>all assistants</strong> see this event in their overview regardless of the filters above — so they can register a partner or director on their behalf, for example.</>}
+                </p>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.9rem' }}>
+                  <input type="checkbox" checked={assistantsCanSee} onChange={e => setAssistantsCanSee(e.target.checked)} />
+                  <span>{isDe ? 'Assistenzen dürfen dieses Event generell sehen (auch außerhalb des Filterkreises)' : 'Assistants may see this event in general (even outside the filter audience)'}</span>
+                </label>
+              </div>
 
               {/* v19.27: Greyout-Wrapper beginnt erst HIER (Fristen + Teilnehmerzahl).
                   Die Sichtbarkeit oben bleibt für die Klammer editierbar. */}

@@ -114,6 +114,7 @@ export function isEventVisibleForUser(
   userEmail: string,
   userLocation: string,
   userGroupEmails: string[] = [],
+  userJobTitle: string = '',
 ): boolean {
   // v8.6: Exclude-Liste hat Vorrang. Wer hier drin ist, sieht das Event NIE
   // — egal ob er ueber Standortfilter oder Verteiler-Mitgliedschaft sonst
@@ -124,6 +125,13 @@ export function isEventVisibleForUser(
     const emailLc = userEmail.toLowerCase().trim();
     if (excluded.some(e => (e || '').toLowerCase().trim() === emailLc)) return false;
   }
+
+  // v23.6: Wenn der Organizer „Assistenzen sehen das Event generell" aktiviert
+  // hat, sehen Personen mit dem Job-Title „Assistenz" das Event unabhängig vom
+  // Standort-/Verteiler-Filter (für stellvertretende Anmeldungen). Die
+  // Exclude-Liste oben sticht weiterhin. Das Match ist bewusst tolerant
+  // (Assistenz, Assistant, Team Assistant, Executive Assistant …).
+  if (event.assistantsCanSee && /assisten|assistant/i.test(userJobTitle || '')) return true;
 
   const hasLocationFilter = event.locationAudience.length > 0;
   const normalizedAud = normalizeAudience(event.audienceFilter);
@@ -249,7 +257,7 @@ export default function EventListPage(): React.ReactElement {
     return (isAdmin
       ? fictiveFiltered
       : fictiveFiltered.filter((e: DeloitteEvent) =>
-          isEventVisibleForUser(e, currentUser.email, currentUser.location, groupEmails)
+          isEventVisibleForUser(e, currentUser.email, currentUser.location, groupEmails, currentUser.jobTitle)
           || e.organizerEmails.some((em: string) => (em || '').toLowerCase() === currentEmailLc)
         )
     ).slice().sort((a: DeloitteEvent, b: DeloitteEvent) => {
