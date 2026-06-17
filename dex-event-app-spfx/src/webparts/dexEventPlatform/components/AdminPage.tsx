@@ -891,6 +891,17 @@ export default function AdminPage(): React.ReactElement {
     Object.keys(counts).forEach(em => { if (counts[em] > 1) dup.add(em); });
     return dup;
   }, [registrations]);
+  // v23.3: Aktive Zeilen OHNE gueltige E-Mail. Solche Anmeldungen belegen einen
+  // Platz, zaehlen aber in den entdoppelten Zahlen (Kachel/Klammer/KPI) frueher
+  // nicht mit (E-Mail = Dedup-Schluessel) → „188 statt 190". Ausserdem bekommen
+  // sie KEINE Bestaetigung/QR/Outlook. Oben als Hinweis-Box surfacen.
+  const missingEmailRegs = React.useMemo<SPRegistration[]>(() => {
+    return registrations.filter(r => {
+      if ((r.Status || '') === 'Abgemeldet') return false;
+      const em = (r.ParticipantEmail || '').trim();
+      return !em || em.indexOf('@') < 0;
+    });
+  }, [registrations]);
   // v23.2: Duplikat-Abmelde-Modal — gezogene Zeile + Entscheidung still löschen
   // (Duplikat entfernen, keine Mail/Outlook/Nachrücken) vs. normal abmelden.
   const [dupCancelReg, setDupCancelReg] = React.useState<SPRegistration | null>(null);
@@ -5205,8 +5216,11 @@ export default function AdminPage(): React.ReactElement {
                       for (const c of pKids) {
                         for (const r of (subEventRegsByEventId[c.id] || [])) {
                           if (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt') {
-                            const k = (r.ParticipantEmail || '').toLowerCase().trim();
-                            if (k) activeSet.add(k);
+                            // v23.3: emaillose Zeile = trotzdem ein Kopf → per
+                            // Zeilen-Id mitzaehlen statt verschlucken (sonst zeigt
+                            // die Klammer weniger als die Sub-Event-Tabelle).
+                            const k = (r.ParticipantEmail || '').toLowerCase().trim() || `__noemail#${c.id}#${r.Id}`;
+                            activeSet.add(k);
                           }
                         }
                       }
@@ -7103,8 +7117,9 @@ export default function AdminPage(): React.ReactElement {
         const consolidatedCancelledByEmail = new Set<string>();
         const consolidatedAnyByEmail = new Set<string>();
         for (const r of consolidatedRegs) {
-          const key = (r.ParticipantEmail || '').toLowerCase().trim();
-          if (!key) continue;
+          // v23.3: emaillose Zeile zaehlt als eigener Kopf (Zeilen-Id-Fallback),
+          // statt aus den KPIs zu verschwinden — sonst KPI < Tabelle.
+          const key = (r.ParticipantEmail || '').toLowerCase().trim() || `__noemail#${r.Id}`;
           consolidatedAnyByEmail.add(key);
           if (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt') consolidatedActiveByEmail.add(key);
           if (r.Status === 'QR versendet') consolidatedQRByEmail.add(key);
@@ -7626,6 +7641,42 @@ export default function AdminPage(): React.ReactElement {
                         {isDe ? `${g.rows.length}× angemeldet` : `${g.rows.length}× registered`}
                       </span>
                       <span style={{ color: 'var(--dex-gray-600)' }}>— {teamList}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
+        {(() => {
+          // v23.3: Hinweis auf aktive Anmeldungen ohne gültige E-Mail. Diese
+          // belegen einen Platz (zählen also in „Aktuell registriert"/Tabelle),
+          // bekommen aber KEINE Bestätigung/QR/Outlook und tauchen in den
+          // entdoppelten Zahlen sonst nicht auf (E-Mail = Dedup-Schlüssel).
+          if (missingEmailRegs.length === 0 || !selectedEvent) return null;
+          return (
+            <div style={{ marginBottom: 20, padding: 16, borderRadius: 12, border: '1px solid var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.07)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+                <Icon iconName="Mail" style={{ fontSize: 18, color: 'var(--dex-orange-dark, #b35a00)' }} />
+                <strong style={{ color: 'var(--dex-orange-dark, #b35a00)', fontSize: '0.95rem' }}>
+                  {isDe ? `Anmeldungen ohne gültige E-Mail (${missingEmailRegs.length})` : `Registrations without a valid email (${missingEmailRegs.length})`}
+                </strong>
+                <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                  {isDe
+                    ? 'Diese Personen belegen einen Platz, bekommen aber keine Bestätigung/QR/Outlook. Über „Felder" bzw. „Details" die E-Mail-Adresse nachtragen.'
+                    : 'These people occupy a seat but receive no confirmation/QR/Outlook. Add their email address via „Fields" or „Details".'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {missingEmailRegs.map(r => {
+                  const nm = (r.Vorname && r.Nachname) ? `${r.Vorname} ${r.Nachname}` : (r.ParticipantName || (isDe ? '(ohne Namen)' : '(no name)'));
+                  return (
+                    <div key={r.Id} style={{ fontSize: '0.84rem', color: 'var(--dex-gray-800)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
+                      <strong>{nm}</strong>
+                      {typeof r.TeilnehmerID === 'number' && <span style={{ color: 'var(--dex-gray-500)' }}>#{r.TeilnehmerID}</span>}
+                      {r.TeamName && <span style={{ color: 'var(--dex-gray-600)' }}>— „{r.TeamName}“</span>}
+                      <span style={{ color: 'var(--dex-gray-400)', fontSize: '0.78rem' }}>{r.ParticipantEmail ? `(${r.ParticipantEmail})` : (isDe ? '(keine E-Mail)' : '(no email)')}</span>
                     </div>
                   );
                 })}
