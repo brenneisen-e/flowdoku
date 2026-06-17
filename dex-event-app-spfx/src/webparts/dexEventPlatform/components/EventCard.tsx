@@ -146,7 +146,7 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, zIndex: 6,
           padding: '5px 10px',
-          background: 'rgba(74,124,31,0.95)', color: '#fff',
+          background: 'var(--dex-green)', color: '#fff',
           fontSize: '0.72rem', fontWeight: 700, textAlign: 'center',
           borderTopLeftRadius: 'var(--dex-radius)', borderTopRightRadius: 'var(--dex-radius)',
         }}>
@@ -250,13 +250,14 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
             }}
           />
         )}
-        <div className="event-card__overlay">
+        {/* v23.24: position+z-index, damit der Titel-Overlay IMMER über dem
+            absolut positionierten (angepassten) Bild liegt — sonst überdeckt
+            das Bild den Event-Namen. Freie Plätze stehen nur noch im grünen
+            Badge im Karten-Body (kein doppelter Zähler mehr). */}
+        <div className="event-card__overlay" style={{ position: 'relative', zIndex: 1 }}>
           <h3 className="event-card__title">{event.title}</h3>
           <div className="event-card__meta">
             <span>{event.location}</span>
-            <span className="event-card__places">
-              {isUnlimited ? '' : isFull ? '' : `${freePlaces} free`}
-            </span>
           </div>
         </div>
       </div>

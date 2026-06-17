@@ -6177,43 +6177,51 @@ export default function EventCreationPage(): React.ReactElement {
                           const setV = (next: ImgView): void => setImageDisplay(prev => ({ ...prev, [view.key]: next }));
                           const isHero = view.key === 'hero';
                           const heroH = v.height ?? 340;
+                          if (isHero) {
+                            // v23.24: Anmeldeseite-Vorschau 1:1 wie die echte
+                            // Registrierungsseite rendern — weiße Hülle volle
+                            // Breite, Bild „contain" mit der eingestellten max.
+                            // Höhe + Zoom (identische Style-Logik wie
+                            // RegistrationPage Hero). So sieht der Organizer die
+                            // tatsächliche Größe, nicht nur eine Mini-Annäherung.
+                            return (
+                              <div key={view.key} style={{ marginBottom: 16 }}>
+                                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 6 }}>{view.label}</div>
+                                <div style={{ width: '100%', background: '#fff', borderRadius: 'var(--dex-radius)', overflow: 'hidden', display: 'flex', justifyContent: 'center', boxShadow: 'inset 0 0 0 1px var(--dex-gray-200)', padding: 4 }}>
+                                  <img
+                                    src={imagePreview}
+                                    alt={view.label}
+                                    style={{ display: 'block', margin: '0 auto', maxWidth: '100%', maxHeight: heroH, width: 'auto', height: 'auto', objectFit: 'contain', transform: `scale(${v.zoom})`, transformOrigin: 'center center' }}
+                                  />
+                                </div>
+                                <div style={{ marginTop: 8 }}>
+                                  <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Größe (max. Höhe)' : 'Size (max. height)'}</label>
+                                  <input type="range" min={140} max={500} step={5} value={heroH} onChange={e => setV({ ...v, height: parseInt(e.target.value, 10) })} style={{ width: '100%' }} />
+                                  <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Zoom' : 'Zoom'}</label>
+                                  <input type="range" min={0.3} max={3} step={0.01} value={v.zoom} onChange={e => setV({ ...v, zoom: parseFloat(e.target.value) })} style={{ width: '100%' }} />
+                                  <button type="button" className="btn btn-secondary" style={{ fontSize: '0.74rem', padding: '3px 10px', marginTop: 4 }} onClick={() => setImageDisplay(prev => { const n = { ...prev }; delete n[view.key]; return n; })}>
+                                    {isDe ? 'Zurücksetzen' : 'Reset'}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          }
                           return (
                             <div key={view.key} style={{ display: 'flex', gap: 14, alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap' }}>
                               <div style={{ width: view.w, height: view.h, flexShrink: 0, overflow: 'hidden', borderRadius: 6, background: '#fff', position: 'relative', boxShadow: 'inset 0 0 0 1px var(--dex-gray-200)' }}>
-                                {isHero ? (
-                                  // Anmeldeseite: volles Bild (contain), Größe + Zoom — Vorschau
-                                  // skaliert die Höhe relativ (max. Höhe / 500 * Box-Höhe).
-                                  <img
-                                    src={imagePreview}
-                                    alt={view.label}
-                                    style={{ position: 'absolute', top: '50%', left: '50%', transform: `translate(-50%, -50%) scale(${v.zoom})`, maxWidth: '100%', maxHeight: Math.round((heroH / 500) * view.h), objectFit: 'contain' }}
-                                  />
-                                ) : (
-                                  // Event-Liste/Karte: volles Bild (contain, kein
-                                  // Crop — der Kreis wird nie abgeschnitten),
-                                  // Größe per Skalierung.
-                                  <img
-                                    src={imagePreview}
-                                    alt={view.label}
-                                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', transform: `scale(${v.zoom})`, transformOrigin: 'center center' }}
-                                  />
-                                )}
+                                {/* Event-Liste/Karte: volles Bild (contain, kein
+                                    Crop — der Kreis wird nie abgeschnitten),
+                                    Größe per Skalierung. */}
+                                <img
+                                  src={imagePreview}
+                                  alt={view.label}
+                                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', transform: `scale(${v.zoom})`, transformOrigin: 'center center' }}
+                                />
                               </div>
                               <div style={{ flex: 1, minWidth: 160 }}>
                                 <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 6 }}>{view.label}</div>
-                                {isHero ? (
-                                  <>
-                                    <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Größe (max. Höhe)' : 'Size (max. height)'}</label>
-                                    <input type="range" min={140} max={500} step={5} value={heroH} onChange={e => setV({ ...v, height: parseInt(e.target.value, 10) })} style={{ width: '100%' }} />
-                                    <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Zoom' : 'Zoom'}</label>
-                                    <input type="range" min={0.3} max={3} step={0.01} value={v.zoom} onChange={e => setV({ ...v, zoom: parseFloat(e.target.value) })} style={{ width: '100%' }} />
-                                  </>
-                                ) : (
-                                  <>
-                                    <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Größe (kleiner = mehr weißer Rand)' : 'Size (smaller = more white margin)'}</label>
-                                    <input type="range" min={0.3} max={1.5} step={0.01} value={v.zoom} onChange={e => setV({ ...v, zoom: parseFloat(e.target.value) })} style={{ width: '100%' }} />
-                                  </>
-                                )}
+                                <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Größe (kleiner = mehr weißer Rand)' : 'Size (smaller = more white margin)'}</label>
+                                <input type="range" min={0.3} max={1.5} step={0.01} value={v.zoom} onChange={e => setV({ ...v, zoom: parseFloat(e.target.value) })} style={{ width: '100%' }} />
                                 <button type="button" className="btn btn-secondary" style={{ fontSize: '0.74rem', padding: '3px 10px', marginTop: 4 }} onClick={() => setImageDisplay(prev => { const n = { ...prev }; delete n[view.key]; return n; })}>
                                   {isDe ? 'Zurücksetzen' : 'Reset'}
                                 </button>
