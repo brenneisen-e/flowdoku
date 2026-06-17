@@ -6167,7 +6167,7 @@ export default function EventCreationPage(): React.ReactElement {
                           const setV = (next: ImgView): void => setImageDisplay(prev => ({ ...prev, [view.key]: next }));
                           return (
                             <div key={view.key} style={{ display: 'flex', gap: 14, alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap' }}>
-                              <div style={{ width: view.w, height: view.h, flexShrink: 0, overflow: 'hidden', borderRadius: 6, background: 'var(--dex-gray-100)', position: 'relative', boxShadow: 'inset 0 0 0 1px var(--dex-gray-200)' }}>
+                              <div style={{ width: view.w, height: view.h, flexShrink: 0, overflow: 'hidden', borderRadius: 6, background: '#fff', position: 'relative', boxShadow: 'inset 0 0 0 1px var(--dex-gray-200)' }}>
                                 <img
                                   src={imagePreview}
                                   alt={view.label}
@@ -6176,8 +6176,8 @@ export default function EventCreationPage(): React.ReactElement {
                               </div>
                               <div style={{ flex: 1, minWidth: 160 }}>
                                 <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 6 }}>{view.label}</div>
-                                <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Zoom' : 'Zoom'}</label>
-                                <input type="range" min={1} max={3} step={0.01} value={v.zoom} onChange={e => setV({ ...v, zoom: parseFloat(e.target.value) })} style={{ width: '100%' }} />
+                                <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Zoom (unter 1 = kleiner, weißer Rand)' : 'Zoom (below 1 = smaller, white margin)'}</label>
+                                <input type="range" min={0.3} max={3} step={0.01} value={v.zoom} onChange={e => setV({ ...v, zoom: parseFloat(e.target.value) })} style={{ width: '100%' }} />
                                 <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Vertikale Position' : 'Vertical position'}</label>
                                 <input type="range" min={0} max={100} step={1} value={v.posY} onChange={e => setV({ ...v, posY: parseInt(e.target.value, 10) })} style={{ width: '100%' }} />
                                 <button type="button" className="btn btn-secondary" style={{ fontSize: '0.74rem', padding: '3px 10px', marginTop: 4 }} onClick={() => setImageDisplay(prev => { const n = { ...prev }; delete n[view.key]; return n; })}>

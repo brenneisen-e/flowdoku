@@ -225,9 +225,14 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
         </div>
       )}
       <div className="event-card__image" style={{
-        background: event.imageUrl
-          ? `url(${cachedImage}) center/cover no-repeat`
-          : getEventGradient(event.type, index),
+        // v23.19/v23.20: Bei eigener Karten-Darstellung weißer Hintergrund, damit
+        // ein Minus-Zoom (Bild kleiner) drumherum WEISS zeigt statt des
+        // Cover-Bildes. Sonst wie bisher (cover bzw. Gradient-Fallback).
+        background: (event.imageUrl && event.imageDisplay?.card)
+          ? '#fff'
+          : event.imageUrl
+            ? `url(${cachedImage}) center/cover no-repeat`
+            : getEventGradient(event.type, index),
         position: 'relative',
       }}>
         {/* v23.19: Optionale Pro-Ansicht-Darstellung (Karte) — überlagert das
