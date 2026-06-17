@@ -7566,7 +7566,7 @@ export class EventService {
   public async getParticipantEmailsByStatus(subsiteUrl: string): Promise<{ active: string[]; waitlist: string[] }> {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const allItems: any[] = [];
-    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=ParticipantEmail,Status&$top=5000`;
+    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,ParticipantEmail,Status&$top=5000`;
     while (url) {
       try {
         const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
@@ -7581,10 +7581,16 @@ export class EventService {
     const active: string[] = [];
     const waitlist: string[] = [];
     for (const i of allItems) {
+      // v23.3: Zeilen OHNE (gueltige) ParticipantEmail wurden frueher komplett
+      // uebersprungen — dadurch zaehlte die entdoppelte Klammer-/Kachel-Zahl
+      // weniger Koepfe als die Tabelle Zeilen hat (z.B. 188 statt 190). Eine
+      // Anmeldung ohne E-Mail ist trotzdem ein realer Kopf (belegt einen Platz),
+      // bekommt nur keine Mails. Deshalb als eigener Schluessel (Zeilen-Id)
+      // mitzaehlen, statt sie zu verschlucken.
       const email = (i.ParticipantEmail || '').toLowerCase().trim();
-      if (!email) continue;
-      if (i.Status === 'Angemeldet' || i.Status === 'QR versendet' || i.Status === 'Eingecheckt') active.push(email);
-      else if (i.Status === 'Warteliste') waitlist.push(email);
+      const key = email || `__noemail#${i.Id}`;
+      if (i.Status === 'Angemeldet' || i.Status === 'QR versendet' || i.Status === 'Eingecheckt') active.push(key);
+      else if (i.Status === 'Warteliste') waitlist.push(key);
     }
     return { active, waitlist };
   }

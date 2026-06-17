@@ -289,6 +289,13 @@ export interface DeloitteEvent {
    *  Ablehnen-Buttons. Default false (Beitritt sofort gültig). Nur sinnvoll
    *  wenn teamOpenSlotsVisible aktiv ist. */
   teamJoinRequiresApproval?: boolean;
+  /** v22.78: Frei benennbarer Team-Begriff (wie Event-Sections), z.B.
+   *  „Break-Out Session". Leer = Default „Team". */
+  teamTermSingular?: string;
+  teamTermPlural?: string;
+  /** v22.78: Wenn true, dürfen Teilnehmer KEINE neuen Teams selbst erstellen —
+   *  die Zuordnung übernimmt der Organizer (z.B. Break-Out-Sessions). */
+  teamMembersCannotCreate?: boolean;
   agenda: AgendaItem[];
   transferTimes: TransferTime[];
   documents: EventDocument[];

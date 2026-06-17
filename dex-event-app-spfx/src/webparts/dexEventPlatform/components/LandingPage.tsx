@@ -10,6 +10,10 @@ import { useCurrentUser } from '../context/UserContext';
 import { APP_VERSION } from '../version';
 import { Info, Mail } from './Icons';
 import LandingInfoModal from './LandingInfoModal';
+// v22.77: OnePager lazy laden — er zieht schwere Seiten (AdminPage,
+// EventCreationPage) für die echten Screen-Vorschauen nach; die dürfen NICHT
+// ins Haupt-/Boot-Bundle (Route-Level-Splitting, siehe CLAUDE.md).
+const OnePager = React.lazy(() => import('./OnePager'));
 import InquiryModal from './InquiryModal';
 // v22: Archivierungs-Info für Admins (rechts auf der Landing Page) —
 // zählt beim App-Start die archivreifen Zeilen abgelaufener Events und
@@ -31,6 +35,7 @@ export default function LandingPage(): React.ReactElement {
   const { currentUser } = useCurrentUser();
   const firstName = (currentUser?.firstName || '').trim();
   const [showInfo, setShowInfo] = React.useState(false);
+  const [showOnePager, setShowOnePager] = React.useState(false);
   // v13.3: Inquiry-Modal lebt jetzt komplett in der wiederverwendbaren
   // InquiryModal-Komponente — eigene States hier entfallen.
   const [showInquiry, setShowInquiry] = React.useState(false);
@@ -602,7 +607,18 @@ export default function LandingPage(): React.ReactElement {
         </Modal>
       )}
 
-      <LandingInfoModal open={showInfo} locale={locale === 'de' ? 'de' : 'en'} onClose={() => setShowInfo(false)} />
+      <LandingInfoModal
+        open={showInfo}
+        locale={locale === 'de' ? 'de' : 'en'}
+        onClose={() => setShowInfo(false)}
+        isAdmin={isAdmin}
+        onOpenOnePager={() => { setShowInfo(false); setShowOnePager(true); }}
+      />
+      {showOnePager && (
+        <React.Suspense fallback={null}>
+          <OnePager open locale={locale === 'de' ? 'de' : 'en'} onClose={() => setShowOnePager(false)} />
+        </React.Suspense>
+      )}
       {/* v13.3: Inquiry-Modal aus der wiederverwendbaren Komponente. */}
       <InquiryModal open={showInquiry} onClose={() => setShowInquiry(false)} />
     </div>

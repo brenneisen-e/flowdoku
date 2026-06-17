@@ -33,6 +33,7 @@ import { HtmlEditorModal } from './HtmlEditorModal';
 import { InfoTooltip } from './InfoTooltip';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 import Modal from './Modal';
+import { Icon } from '@fluentui/react/lib/Icon';
 import InternationalSearchToggle from './InternationalSearchToggle';
 // v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
 import { useDialog } from '../context/DialogContext';
@@ -874,6 +875,174 @@ export default function AdminPage(): React.ReactElement {
   // Deloitte-Konto nicht mehr aktiv ist (Person hat womöglich das Unternehmen
   // verlassen). Wird im Hintergrund max. 1×/Tag pro Event geprüft.
   const [inactiveAccounts, setInactiveAccounts] = React.useState<string[]>([]);
+  // v23.2: Doppel-Anmeldungen erkennen. Eine E-Mail mit ≥2 NICHT-abgemeldeten
+  // Zeilen in derselben Teilnehmerliste = Duplikat (z.B. dieselbe Person in
+  // zwei Teams). Wird oben in einer Hinweis-Box surfaced + die Zeilen werden
+  // rot markiert. duplicateEmails = Set der betroffenen Adressen (lowercase).
+  const duplicateEmails = React.useMemo<Set<string>>(() => {
+    const counts: Record<string, number> = {};
+    for (const r of registrations) {
+      if ((r.Status || '') === 'Abgemeldet') continue;
+      const em = (r.ParticipantEmail || '').trim().toLowerCase();
+      if (!em) continue;
+      counts[em] = (counts[em] || 0) + 1;
+    }
+    const dup = new Set<string>();
+    Object.keys(counts).forEach(em => { if (counts[em] > 1) dup.add(em); });
+    return dup;
+  }, [registrations]);
+  // v23.3: Aktive Zeilen OHNE gueltige E-Mail. Solche Anmeldungen belegen einen
+  // Platz, zaehlen aber in den entdoppelten Zahlen (Kachel/Klammer/KPI) frueher
+  // nicht mit (E-Mail = Dedup-Schluessel) → „188 statt 190". Ausserdem bekommen
+  // sie KEINE Bestaetigung/QR/Outlook. Oben als Hinweis-Box surfacen.
+  const missingEmailRegs = React.useMemo<SPRegistration[]>(() => {
+    return registrations.filter(r => {
+      if ((r.Status || '') === 'Abgemeldet') return false;
+      const em = (r.ParticipantEmail || '').trim();
+      return !em || em.indexOf('@') < 0;
+    });
+  }, [registrations]);
+  // v23.2: Duplikat-Abmelde-Modal — gezogene Zeile + Entscheidung still löschen
+  // (Duplikat entfernen, keine Mail/Outlook/Nachrücken) vs. normal abmelden.
+  const [dupCancelReg, setDupCancelReg] = React.useState<SPRegistration | null>(null);
+  const [dupCancelBusy, setDupCancelBusy] = React.useState(false);
+
+  // v23.2: Standard-Abmeldung einer Teilnehmer-Zeile (extrahiert aus dem
+  // Abmelden-Button, damit das Duplikat-Modal denselben „normal abmelden"-Pfad
+  // wiederverwenden kann). Enthält KEINEN Confirm — der Aufrufer bestätigt.
+  // Spiegelt das bisherige Inline-Verhalten 1:1 (vergangenes Event → still,
+  // sonst Abmelde-Mail + Outlook-Ausladen + Nachrücken + ID-Reorder).
+  const performStandardCancel = async (reg: SPRegistration): Promise<void> => {
+    if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+    const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+    const eventWasOver = isEventOver(selectedEvent);
+    setAdminToast({ kind: 'cancelling', name });
+    const cancelledStarterType = reg.StarterType || '';
+    await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id, `${currentUser.firstName} ${currentUser.surname}`.trim(), currentUser.email);
+    if (reg.ParticipantEmail && !eventWasOver) {
+      if (!selectedEvent.disableEmails && !selectedEvent.disableCancellationEmail) {
+        const emailData = cancellationEmail(name, selectedEvent.title);
+        eventServiceRef.queueEmail(
+          emailData.subject, reg.ParticipantEmail, name, emailData.body,
+          'Abmeldung', selectedEvent.title, selectedEvent.id
+        ).catch(err => console.warn('[DEX]', err));
+      }
+      if (!selectedEvent.disableOutlook) {
+        eventServiceRef.queueOutlookEvent(
+          reg.ParticipantEmail, selectedEvent.id, selectedEvent.title, 'Ausladen'
+        ).catch(err => console.warn('[DEX]', err));
+      }
+    }
+    if (reg.ParticipantEmail && selectedEvent.eventNumber) {
+      eventServiceRef.removeParticipantEvent(
+        reg.ParticipantEmail, selectedEvent.eventNumber
+      ).catch(err => console.warn('[DEX]', err));
+    }
+    const isSplitEvent = typeof selectedEvent.durchstarterCapacity === 'number'
+      && typeof selectedEvent.funstarterCapacity === 'number'
+      && (selectedEvent.durchstarterCapacity > 0 || selectedEvent.funstarterCapacity > 0);
+    const useTypeFilter = isSplitEvent && !selectedEvent.splitSharedWaitlist;
+    if (!eventWasOver) {
+      try {
+        const promoted = await eventServiceRef.promoteFirstWaitlistItem(
+          selectedEvent.subsiteUrl,
+          cancelledStarterType || undefined,
+          selectedEvent.maxParticipants,
+          (useTypeFilter && cancelledStarterType) ? cancelledStarterType : undefined,
+          { itemId: reg.Id, participantEmail: reg.ParticipantEmail || '' },
+        );
+        if (promoted && promoted.success && promoted.email) {
+          setAdminToast({ kind: 'promoted', name: promoted.name || promoted.email, email: promoted.email, type: cancelledStarterType || undefined });
+          if (!selectedEvent.disableEmails) {
+            try {
+              const lang = selectedEvent.emailLanguage || 'EN';
+              const promotedFirstName = (promoted.name || '').trim().split(/\s+/)[0] || '';
+              const promoteVars = {
+                Name: promotedFirstName,
+                EventTitle: selectedEvent.title,
+                Organizer: formatOrganizerList(selectedEvent.organizers, lang),
+                AppUrl: `${eventServiceRef.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+                WaitlistPosition: '',
+              };
+              let emailData: { subject: string; body: string };
+              const spTplRaw = await eventServiceRef.getEmailTemplate('Nachruecken', lang).catch(() => null);
+              const spTpl = applyEventTemplateOverride(spTplRaw, selectedEvent.emailTemplateOverrides, 'Nachruecken');
+              if (spTpl) { emailData = buildEmailFromTemplate(spTpl, promoteVars); }
+              else { emailData = promotionEmail(promotedFirstName, selectedEvent.title); }
+              await eventServiceRef.queueEmail(
+                emailData.subject, promoted.email, promoted.name || '', emailData.body,
+                'Nachruecken', selectedEvent.title, selectedEvent.id
+              );
+            } catch (err) { console.warn('[DEX] promote-email failed:', err); }
+          }
+          if (!selectedEvent.disableOutlook) {
+            try { await eventServiceRef.queueOutlookEvent(promoted.email, selectedEvent.id, selectedEvent.title, 'Einladen'); }
+            catch (err) { console.warn('[DEX] promote-outlook failed:', err); }
+          }
+        } else {
+          setAdminToast({ kind: 'no-promote', name });
+        }
+      } catch (err) {
+        console.warn('[DEX] promoteFirstWaitlistItem failed:', err);
+        setAdminToast({ kind: 'no-promote', name });
+      }
+    }
+    if (selectedEvent.subsiteUrl && !eventWasOver) {
+      try {
+        const ok = await eventServiceRef.queueIDReorder(
+          selectedEvent.id, selectedEvent.eventNumber || 0,
+          selectedEvent.subsiteUrl, selectedEvent.title, name, reg.ParticipantEmail || undefined
+        );
+        if (!ok) {
+          console.warn('[DEX] queueIDReorder returned false');
+          showAlert(isDe ? 'Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.' : 'Cancellation successful, but the ID reorder entry could not be written to the queue. Please click "Reassign IDs" once.');
+        }
+      } catch (err) {
+        console.warn('[DEX] queueIDReorder threw:', err);
+        showAlert('Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.');
+      }
+    }
+    const regs = await getAllRegistrations(selectedEvent.id);
+    setRegistrations(regs);
+  };
+
+  // v23.2: Stilles Löschen einer doppelten Anmelde-Zeile. Anders als die
+  // normale Abmeldung wird die Zeile HART gelöscht (kein „Abgemeldet"-Status,
+  // der die Abmeldungs-Liste aufblähen würde) und es laufen KEINE Seiteneffekte
+  // (keine Abmelde-Mail, kein Outlook-Ausladen, kein Nachrücken, kein
+  // ID-Reorder, kein DEX_Participants-Cleanup) — die Person bleibt über ihre
+  // andere Zeile regulär angemeldet. Sitzplatz-Counter wird nachgezogen.
+  const performSilentDuplicateDelete = async (reg: SPRegistration): Promise<void> => {
+    if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+    const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+    setAdminToast({ kind: 'cancelling', name });
+    try {
+      await eventServiceRef.deleteRegistration(selectedEvent.subsiteUrl, reg.Id);
+      try {
+        await eventServiceRef.writeChangeLog({
+          action: 'RegistrationDeleted',
+          targetType: 'Participant',
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          targetId: ((reg as any).ParticipantEmail || '') + '#' + reg.Id,
+          targetName: name,
+          eventId: selectedEvent.id,
+          eventTitle: selectedEvent.title,
+          details: { note: 'Doppel-Anmeldung still entfernt (Duplikat). Person bleibt über die zweite Zeile angemeldet.' },
+        });
+      } catch (err) { console.warn('[DEX] writeChangeLog (dup delete) failed:', err); }
+      try {
+        const isSplit = typeof selectedEvent.durchstarterCapacity === 'number'
+          && typeof selectedEvent.funstarterCapacity === 'number'
+          && (selectedEvent.durchstarterCapacity > 0 || selectedEvent.funstarterCapacity > 0);
+        await eventServiceRef.syncSeatsToActiveCount(selectedEvent.subsiteUrl, { isSplit });
+      } catch { /* best-effort */ }
+    } catch (err) {
+      console.warn('[DEX] performSilentDuplicateDelete failed:', err);
+    }
+    const regs = await getAllRegistrations(selectedEvent.id);
+    setRegistrations(regs);
+    setAdminToast(null);
+  };
   // v22.16: „Hinweise"-Box für aktive Events — Busy-State für den 1-Klick-
   // Sprach-Fix + Tick, damit „Ausblenden" (localStorage) sofort re-rendert.
   const [hintLangBusy, setHintLangBusy] = React.useState(false);
@@ -1165,6 +1334,16 @@ export default function AdminPage(): React.ReactElement {
   // „Entfernen"-Buttons pro Mitglied (nicht dauerhaft an jedem Namen).
   const [teamEditOpenFor, setTeamEditOpenFor] = React.useState<string | null>(null);
   const [leadTransferBusy, setLeadTransferBusy] = React.useState(false);
+  // v23.0: Drag&Drop-Zuordnung in der Teams-Sektion. dragRegId = gezogene
+  // Registrierung, dragOverTid = aktuelles Drop-Ziel ('' = „ohne Team").
+  const [dragRegId, setDragRegId] = React.useState<number | null>(null);
+  const [dragOverTid, setDragOverTid] = React.useState<string | null>(null);
+  // v23.0: Per-Team-Info-Mail (z.B. Teams-Einwahllink je Break-Out-Session).
+  const [teamMailOpen, setTeamMailOpen] = React.useState(false);
+  const [teamMailSubject, setTeamMailSubject] = React.useState('');
+  const [teamMailBody, setTeamMailBody] = React.useState('');
+  const [teamMailInfoByTid, setTeamMailInfoByTid] = React.useState<Record<string, string>>({});
+  const [teamMailSending, setTeamMailSending] = React.useState(false);
   // Toast nach erfolgreicher Aktion in der Teams-Section.
   const [teamsToast, setTeamsToast] = React.useState<string>('');
   const [isRefreshingProfiles, setIsRefreshingProfiles] = React.useState(false);
@@ -2089,6 +2268,113 @@ export default function AdminPage(): React.ReactElement {
     setIdRecheckBusy(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEvent?.id]);
+
+  // v23.0: Eine Registrierung per Drag&Drop in ein Team/eine Break-Out-Session
+  // (targetTid) oder zurück „ohne Team" ('') verschieben. War die Person Lead
+  // ihres alten Teams und bleiben Mitglieder, rückt die früheste nach.
+  const moveRegToTeam = async (reg: SPRegistration, targetTid: string, targetTeamName: string | undefined): Promise<void> => {
+    if (!selectedEvent?.subsiteUrl || !eventServiceRef) return;
+    const sub = selectedEvent.subsiteUrl;
+    const curTid = reg.TeamId || '';
+    if (curTid === (targetTid || '')) return;
+    try {
+      await eventServiceRef.assignRegistrationToTeam(sub, reg.Id, targetTid || '', targetTeamName || '', false);
+      if (curTid && reg.TeamLead) {
+        const rest = registrations.filter(x => x.Id !== reg.Id && (x.TeamId || '') === curTid && x.Status !== 'Abgemeldet');
+        if (rest.length > 0) {
+          rest.sort((a, b) => ((a.TeilnehmerID ?? 9_999_999) as number) - ((b.TeilnehmerID ?? 9_999_999) as number));
+          const tn = rest.find(x => x.TeamName)?.TeamName || '';
+          try { await eventServiceRef.assignRegistrationToTeam(sub, rest[0].Id, curTid, tn || '', true); } catch { /* */ }
+        }
+      }
+      const nm = `${reg.Vorname || ''} ${reg.Nachname || ''}`.trim() || reg.ParticipantName || reg.ParticipantEmail;
+      eventServiceRef.writeChangeLog({
+        action: targetTid ? 'TeamMemberAssigned' : 'TeamMemberRemoved',
+        targetType: 'Participant', targetId: reg.ParticipantEmail, targetName: nm,
+        eventId: selectedEvent.id, eventTitle: selectedEvent.title,
+        details: { fromTeam: curTid, toTeam: targetTid, via: 'dragdrop' },
+      }).catch(() => { /* */ });
+      const regs = await getAllRegistrations(selectedEvent.id);
+      setRegistrations(regs);
+    } catch (err) { console.warn('[DEX] moveRegToTeam failed:', err); }
+  };
+  // Drop-Handler: gezogene Registrierung ermitteln + verschieben.
+  const onTeamDrop = (targetTid: string, targetTeamName: string | undefined): void => {
+    setDragOverTid(null);
+    const id = dragRegId;
+    setDragRegId(null);
+    if (id === null) return;
+    const reg = registrations.find(r => r.Id === id);
+    if (reg) moveRegToTeam(reg, targetTid, targetTeamName).catch(() => { /* */ });
+  };
+
+  // v23.0: Aktive Teams aus den geladenen Registrierungen gruppieren
+  // (für die Per-Team-Mail).
+  const getActiveTeams = (): Array<{ tid: string; teamName: string; members: SPRegistration[] }> => {
+    const map: Record<string, SPRegistration[]> = {};
+    for (const r of registrations) {
+      if (r.Status === 'Abgemeldet') continue;
+      const tid = r.TeamId || '';
+      if (!tid) continue;
+      (map[tid] = map[tid] || []).push(r);
+    }
+    return Object.entries(map).map(([tid, members]) => ({ tid, members, teamName: members.find(m => m.TeamName)?.TeamName || '' }));
+  };
+  // Mail-Dialog mit vorausgefülltem Text öffnen.
+  const openTeamMailDialog = (): void => {
+    if (!selectedEvent) return;
+    const termS = selectedEvent.teamTermSingular || 'Team';
+    setTeamMailSubject(isDe ? `Deine ${termS}: ${selectedEvent.title}` : `Your ${termS}: ${selectedEvent.title}`);
+    setTeamMailBody(isDe
+      ? `<p>Hallo {{Vorname}},</p>\n<p>hier sind die Infos zu deiner <strong>${termS}</strong> beim Event <strong>{{EventTitle}}</strong>:</p>\n<p><strong>{{TeamName}}</strong></p>\n<p>{{TeamInfo}}</p>\n<p>Viele Grüße<br />Dein Event-Team</p>`
+      : `<p>Hi {{Vorname}},</p>\n<p>here is the info for your <strong>${termS}</strong> at <strong>{{EventTitle}}</strong>:</p>\n<p><strong>{{TeamName}}</strong></p>\n<p>{{TeamInfo}}</p>\n<p>Best regards<br />Your event team</p>`);
+    const init: Record<string, string> = {};
+    for (const t of getActiveTeams()) init[t.tid] = teamMailInfoByTid[t.tid] || '';
+    setTeamMailInfoByTid(init);
+    setTeamMailOpen(true);
+  };
+  // Pro Team: jedes aktive Mitglied bekommt eine eigene Mail mit team-
+  // spezifischer Info (z.B. Teams-Einwahllink). Im Deloitte-Layout gewrappt.
+  const sendTeamMails = async (): Promise<void> => {
+    if (!selectedEvent || !eventServiceRef) return;
+    if (selectedEvent.disableEmails) {
+      showAlert(isDe ? 'E-Mails sind für dieses Event deaktiviert (Schritt 6 „Kommunikation").' : 'Emails are disabled for this event (step 6 “Communication”).', { variant: 'error' });
+      return;
+    }
+    setTeamMailSending(true);
+    const escHtml = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // URLs in der Team-Info klickbar machen + Zeilenumbrüche zu <br>.
+    const linkify = (raw: string): string => escHtml(raw)
+      .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" style="color:#86bc25;font-weight:600;">$1</a>')
+      .replace(/\n/g, '<br />');
+    const termS = selectedEvent.teamTermSingular || 'Team';
+    let sent = 0;
+    for (const t of getActiveTeams()) {
+      const infoHtml = linkify((teamMailInfoByTid[t.tid] || '').trim());
+      const tName = t.teamName || termS;
+      for (const m of t.members) {
+        const first = (m.Vorname && m.Vorname.trim()) || (m.ParticipantName || '').split(/\s+/)[0] || '';
+        const fullName = `${m.Vorname || ''} ${m.Nachname || ''}`.trim() || m.ParticipantName || m.ParticipantEmail;
+        const bodyFilled = teamMailBody
+          .replace(/\{\{Vorname\}\}/g, escHtml(first))
+          .replace(/\{\{Name\}\}/g, escHtml(fullName))
+          .replace(/\{\{TeamName\}\}/g, escHtml(tName))
+          .replace(/\{\{EventTitle\}\}/g, escHtml(selectedEvent.title))
+          .replace(/\{\{TeamInfo\}\}/g, infoHtml || (isDe ? '<em>(keine zusätzlichen Infos)</em>' : '<em>(no additional info)</em>'));
+        const subjectFilled = teamMailSubject
+          .replace(/\{\{TeamName\}\}/g, tName)
+          .replace(/\{\{EventTitle\}\}/g, selectedEvent.title);
+        const wrapped = wrapTemplate('#86bc25', subjectFilled, tName, bodyFilled);
+        try {
+          const ok = await eventServiceRef.queueEmail(subjectFilled, m.ParticipantEmail, fullName, wrapped, 'TeamInfo', selectedEvent.title, selectedEvent.id);
+          if (ok) sent += 1;
+        } catch { /* best-effort pro Empfänger */ }
+      }
+    }
+    setTeamMailSending(false);
+    setTeamMailOpen(false);
+    showAlert(isDe ? `${sent} Mail(s) in die Warteschlange gelegt — sie werden in Kürze versendet.` : `${sent} mail(s) queued — they will be sent shortly.`, { variant: 'success' });
+  };
   // Max. 10 automatische Neu-Checks (≈5 Min) pro Event — wenn die Lücke dann
   // immer noch da ist, ist sie echt (Tail-Race, siehe Box-Text) und kein
   // weiteres Polling nötig.
@@ -4930,8 +5216,11 @@ export default function AdminPage(): React.ReactElement {
                       for (const c of pKids) {
                         for (const r of (subEventRegsByEventId[c.id] || [])) {
                           if (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt') {
-                            const k = (r.ParticipantEmail || '').toLowerCase().trim();
-                            if (k) activeSet.add(k);
+                            // v23.3: emaillose Zeile = trotzdem ein Kopf → per
+                            // Zeilen-Id mitzaehlen statt verschlucken (sonst zeigt
+                            // die Klammer weniger als die Sub-Event-Tabelle).
+                            const k = (r.ParticipantEmail || '').toLowerCase().trim() || `__noemail#${c.id}#${r.Id}`;
+                            activeSet.add(k);
                           }
                         }
                       }
@@ -4943,7 +5232,18 @@ export default function AdminPage(): React.ReactElement {
                     tabs.push({ id: parent.id, label: parent.title || (isDe ? 'Hauptevent' : 'Main event'), count: parentCount, isParent: true, ev: parent });
                   }
                   for (const c of siblings) {
-                    tabs.push({ id: c.id, label: shortSubEventTitle(c.title, parent?.title) || (isDe ? 'ohne Titel' : 'untitled'), count: c.id === selectedEvent.id ? liveSelectedActive : (c.currentParticipants || 0), isParent: false, ev: c });
+                    // v23.2: Nicht-gewählte Sub-Tabs zeigen — sofern die Liste
+                    // bereits geladen ist — die LIVE-Zeilenzahl aus
+                    // subEventRegsByEventId statt des veralteten Counters
+                    // `currentParticipants`. Sonst „springt" der Badge je nach
+                    // gewähltem Tab (gewählt = live, sonst = Cache), siehe der
+                    // 188-vs-190-Effekt. Gewählter Tab bleibt die Live-Zahl der
+                    // aktuell geladenen Tabelle.
+                    const subRegs = subEventRegsByEventId[c.id];
+                    const subLiveCount = subRegs
+                      ? subRegs.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length
+                      : (c.currentParticipants || 0);
+                    tabs.push({ id: c.id, label: shortSubEventTitle(c.title, parent?.title) || (isDe ? 'ohne Titel' : 'untitled'), count: c.id === selectedEvent.id ? liveSelectedActive : subLiveCount, isParent: false, ev: c });
                   }
                   // v22.70: Einzelnen Tab-Button rendern (für flaches Layout
                   // UND die Sub-Event-Reihe im Klammer-Layout wiederverwendet).
@@ -5033,9 +5333,9 @@ export default function AdminPage(): React.ReactElement {
                             background: pActive ? 'rgba(255,255,255,0.25)' : 'var(--dex-green, #86bc25)',
                             color: '#fff', fontSize: '0.74rem', fontWeight: 700, flexShrink: 0,
                           }}>{parentTab.count}</span>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{parentTab.label}</span>
-                            <span style={{ fontWeight: 600, opacity: 0.9, flexShrink: 0 }}>({isDe ? 'Klammer' : 'Bracket'})</span>
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, display: 'inline-flex', alignItems: 'center', gap: 6, minWidth: 0, color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }}>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }}>{parentTab.label}</span>
+                            <span style={{ fontWeight: 600, opacity: 0.9, flexShrink: 0, color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }}>({isDe ? 'Klammer' : 'Bracket'})</span>
                             <span style={{ flexShrink: 0, display: 'inline-flex', color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }} onClick={e => e.stopPropagation()}>
                               <InfoTooltip placement="bottom" text={isDe
                                 ? <>Das <strong>Klammer-Event selbst wird nicht gebucht</strong> — Teilnehmer melden sich nur für die einzelnen <strong>Sub-Events</strong> an. Die Klammer fasst die Sub-Events nur zusammen. Die Zahl links zeigt, <strong>wie viele Personen sich insgesamt (kumuliert) für die Sub-Events angemeldet haben</strong>.</>
@@ -6817,8 +7117,9 @@ export default function AdminPage(): React.ReactElement {
         const consolidatedCancelledByEmail = new Set<string>();
         const consolidatedAnyByEmail = new Set<string>();
         for (const r of consolidatedRegs) {
-          const key = (r.ParticipantEmail || '').toLowerCase().trim();
-          if (!key) continue;
+          // v23.3: emaillose Zeile zaehlt als eigener Kopf (Zeilen-Id-Fallback),
+          // statt aus den KPIs zu verschwinden — sonst KPI < Tabelle.
+          const key = (r.ParticipantEmail || '').toLowerCase().trim() || `__noemail#${r.Id}`;
           consolidatedAnyByEmail.add(key);
           if (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt') consolidatedActiveByEmail.add(key);
           if (r.Status === 'QR versendet') consolidatedQRByEmail.add(key);
@@ -7299,6 +7600,92 @@ export default function AdminPage(): React.ReactElement {
         })()}
 
         {(() => {
+          // v23.2: Doppel-Anmelde-Hinweis. Listet jede Person, die mit
+          // derselben E-Mail ≥2 nicht-abgemeldete Zeilen hat (z.B. dieselbe
+          // Person in zwei Teams). Die betroffenen Zeilen sind in der Tabelle
+          // zusätzlich rot markiert; pro Person kann der Organizer über den
+          // „Abmelden"-Button das Duplikat still entfernen.
+          if (duplicateEmails.size === 0 || !selectedEvent) return null;
+          // Pro betroffener E-Mail die aktiven Zeilen sammeln (Name + Teams).
+          const dupGroups: Array<{ email: string; rows: SPRegistration[] }> = [];
+          duplicateEmails.forEach(em => {
+            const rows = registrations.filter(r => (r.Status || '') !== 'Abgemeldet' && (r.ParticipantEmail || '').trim().toLowerCase() === em);
+            if (rows.length > 1) dupGroups.push({ email: em, rows });
+          });
+          if (dupGroups.length === 0) return null;
+          return (
+            <div style={{ marginBottom: 20, padding: 16, borderRadius: 12, border: '1px solid var(--dex-red, #c00)', background: 'rgba(200,0,0,0.06)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+                <Icon iconName="Warning" style={{ fontSize: 18, color: 'var(--dex-red, #c00)' }} />
+                <strong style={{ color: 'var(--dex-red, #c00)', fontSize: '0.95rem' }}>
+                  {isDe ? `Doppel-Anmeldungen erkannt (${dupGroups.length})` : `Duplicate registrations detected (${dupGroups.length})`}
+                </strong>
+                <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                  {isDe
+                    ? 'Dieselbe Person ist mehrfach angemeldet. Die betroffenen Zeilen sind unten rot markiert — über „Abmelden" kannst du die doppelte Zeile still entfernen.'
+                    : 'The same person is registered more than once. The affected rows are marked red below — use „Cancel" to silently remove the duplicate row.'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {dupGroups.map(g => {
+                  const first = g.rows[0];
+                  const dispName = (first.Vorname && first.Nachname) ? `${first.Vorname} ${first.Nachname}` : (first.ParticipantName || g.email);
+                  const teamList = g.rows
+                    .map(r => r.TeamName ? `„${r.TeamName}"` : (r.TeamId ? (isDe ? '(Team ohne Namen)' : '(unnamed team)') : (isDe ? '(Einzel-Anmeldung)' : '(individual)')))
+                    .join(', ');
+                  return (
+                    <div key={g.email} style={{ fontSize: '0.84rem', color: 'var(--dex-gray-800)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
+                      <strong>{dispName}</strong>
+                      <span style={{ color: 'var(--dex-gray-500)' }}>{g.email}</span>
+                      <span style={{ padding: '1px 8px', borderRadius: 999, background: 'var(--dex-red, #c00)', color: '#fff', fontSize: '0.72rem', fontWeight: 700 }}>
+                        {isDe ? `${g.rows.length}× angemeldet` : `${g.rows.length}× registered`}
+                      </span>
+                      <span style={{ color: 'var(--dex-gray-600)' }}>— {teamList}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
+        {(() => {
+          // v23.3: Hinweis auf aktive Anmeldungen ohne gültige E-Mail. Diese
+          // belegen einen Platz (zählen also in „Aktuell registriert"/Tabelle),
+          // bekommen aber KEINE Bestätigung/QR/Outlook und tauchen in den
+          // entdoppelten Zahlen sonst nicht auf (E-Mail = Dedup-Schlüssel).
+          if (missingEmailRegs.length === 0 || !selectedEvent) return null;
+          return (
+            <div style={{ marginBottom: 20, padding: 16, borderRadius: 12, border: '1px solid var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.07)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+                <Icon iconName="Mail" style={{ fontSize: 18, color: 'var(--dex-orange-dark, #b35a00)' }} />
+                <strong style={{ color: 'var(--dex-orange-dark, #b35a00)', fontSize: '0.95rem' }}>
+                  {isDe ? `Anmeldungen ohne gültige E-Mail (${missingEmailRegs.length})` : `Registrations without a valid email (${missingEmailRegs.length})`}
+                </strong>
+                <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                  {isDe
+                    ? 'Diese Personen belegen einen Platz, bekommen aber keine Bestätigung/QR/Outlook. Über „Felder" bzw. „Details" die E-Mail-Adresse nachtragen.'
+                    : 'These people occupy a seat but receive no confirmation/QR/Outlook. Add their email address via „Fields" or „Details".'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {missingEmailRegs.map(r => {
+                  const nm = (r.Vorname && r.Nachname) ? `${r.Vorname} ${r.Nachname}` : (r.ParticipantName || (isDe ? '(ohne Namen)' : '(no name)'));
+                  return (
+                    <div key={r.Id} style={{ fontSize: '0.84rem', color: 'var(--dex-gray-800)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
+                      <strong>{nm}</strong>
+                      {typeof r.TeilnehmerID === 'number' && <span style={{ color: 'var(--dex-gray-500)' }}>#{r.TeilnehmerID}</span>}
+                      {r.TeamName && <span style={{ color: 'var(--dex-gray-600)' }}>— „{r.TeamName}“</span>}
+                      <span style={{ color: 'var(--dex-gray-400)', fontSize: '0.78rem' }}>{r.ParticipantEmail ? `(${r.ParticipantEmail})` : (isDe ? '(keine E-Mail)' : '(no email)')}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
+        {(() => {
           // v11.36: Überbuchungs-Review-Box. Zeigt alle per „Überbuchung
           // prüfen" markierten Personen (OverbookReview='Pending') mit
           // Fairness-Kontext + Aktions-Buttons. Erst durch eine Aktion
@@ -7592,7 +7979,7 @@ export default function AdminPage(): React.ReactElement {
               >
                 <Users size={20} />
                 <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1rem' }}>
-                  Teams ({count})
+                  {(selectedEvent?.teamTermPlural || 'Teams')} ({count})
                 </strong>
                 <span style={{ marginLeft: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                   {teamsCollapsed ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
@@ -7600,47 +7987,75 @@ export default function AdminPage(): React.ReactElement {
               </div>
               {!teamsCollapsed && (
                 <div style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {/* v23.0: Drag&Drop-Hinweis. */}
+                  {canManage && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem', color: 'var(--dex-gray-600)', background: 'rgba(134,188,37,0.08)', border: '1px solid var(--dex-green, #86bc25)', borderRadius: 8, padding: '7px 12px' }}>
+                      <Icon iconName="DragObject" style={{ fontSize: 15, color: 'var(--dex-green-dark, #4a7c1f)' }} />
+                      {isDe
+                        ? `Tipp: Personen per Drag & Drop zwischen ${(selectedEvent?.teamTermPlural || 'Teams')} und „ohne ${(selectedEvent?.teamTermSingular || 'Team')}" verschieben.`
+                        : `Tip: drag & drop people between ${(selectedEvent?.teamTermPlural || 'teams')} and “no ${(selectedEvent?.teamTermSingular || 'team')}”.`}
+                    </div>
+                  )}
                   {teamEntries.length === 0 && (
                     <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.88rem', fontStyle: 'italic' }}>
                       Keine Team-Anmeldungen bisher.
                     </div>
                   )}
-                  {/* v16.2: „Neues Team anlegen"-Button + Teamless-Sektion. */}
+                  {/* v16.2: „Neues Team anlegen"-Button + Teamless-Sektion.
+                      v23.0: zusätzlich „Mail an <Teams>"-Button (Per-Team-Info-Mail). */}
                   {canManage && (
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      style={{ alignSelf: 'flex-start', fontSize: '0.85rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
-                      onClick={() => {
-                        // Neue lokale TeamID generieren und Add-Member-Dialog
-                        // direkt damit oeffnen. Sobald die erste Person hinzu-
-                        // gefügt wird, wird die TeamId im SP-Item gespeichert.
-                        const newTid = (typeof crypto !== 'undefined' && crypto.randomUUID)
-                          ? crypto.randomUUID()
-                          : `team-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
-                        setAdminAddMemberDialog({ teamId: newTid, teamName: '', freeSlots: teamSizeCfg || 99, isNewTeam: true });
-                        setAdminAddMemberPick(null);
-                        setAdminAddMemberQuery('');
-                        setAdminAddMemberResults([]);
-                        setAdminAddMemberConsent(false);
-                        setAdminAddMemberError('');
-                        setAdminAddTeamlessPicks(new Set());
-                        setAdminAddLeadRegId(null);
-                        setAdminAddSendMail(false);
-                        setAdminAddCcOrganizer(false);
-                        setAdminAddNotifyOthers(false);
-                        setAdminAddNotifyScope('all');
-                        setAdminAddNewPersonMail(true);
-                      }}
-                    >
-                      <Plus size={14} /> Neues Team anlegen
-                    </button>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.85rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                        onClick={() => {
+                          // Neue lokale TeamID generieren und Add-Member-Dialog
+                          // direkt damit oeffnen. Sobald die erste Person hinzu-
+                          // gefügt wird, wird die TeamId im SP-Item gespeichert.
+                          const newTid = (typeof crypto !== 'undefined' && crypto.randomUUID)
+                            ? crypto.randomUUID()
+                            : `team-${Date.now()}-${Math.floor(Math.random() * 1e9)}`;
+                          setAdminAddMemberDialog({ teamId: newTid, teamName: '', freeSlots: teamSizeCfg || 99, isNewTeam: true });
+                          setAdminAddMemberPick(null);
+                          setAdminAddMemberQuery('');
+                          setAdminAddMemberResults([]);
+                          setAdminAddMemberConsent(false);
+                          setAdminAddMemberError('');
+                          setAdminAddTeamlessPicks(new Set());
+                          setAdminAddLeadRegId(null);
+                          setAdminAddSendMail(false);
+                          setAdminAddCcOrganizer(false);
+                          setAdminAddNotifyOthers(false);
+                          setAdminAddNotifyScope('all');
+                          setAdminAddNewPersonMail(true);
+                        }}
+                      >
+                        <Plus size={14} /> {isDe ? `Neue ${selectedEvent?.teamTermSingular || 'Team'} anlegen` : `Create new ${selectedEvent?.teamTermSingular || 'team'}`}
+                      </button>
+                      {getActiveTeams().length > 0 && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ fontSize: '0.85rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                          onClick={openTeamMailDialog}
+                          title={isDe ? 'Jedem Mitglied eine eigene Mail mit team-spezifischer Info senden (z.B. Teams-Einwahllink).' : 'Send each member an individual mail with team-specific info (e.g. a Teams join link).'}
+                        >
+                          <Icon iconName="Mail" style={{ fontSize: 14 }} /> {isDe ? `Mail an ${selectedEvent?.teamTermPlural || 'Teams'}` : `Mail to ${selectedEvent?.teamTermPlural || 'teams'}`}
+                        </button>
+                      )}
+                    </div>
                   )}
                   {teamlessActive.length > 0 && (
-                    <div style={{ padding: 14, border: '1px dashed var(--dex-orange, #ed8b00)', borderRadius: 10, background: 'rgba(237,139,0,0.04)' }}>
+                    <div
+                      onDragOver={canManage ? (e => { e.preventDefault(); setDragOverTid(''); }) : undefined}
+                      onDragLeave={canManage ? (() => setDragOverTid(prev => (prev === '' ? null : prev))) : undefined}
+                      onDrop={canManage ? (() => onTeamDrop('', undefined)) : undefined}
+                      style={{ padding: 14, border: dragOverTid === '' ? '2px dashed var(--dex-green, #86bc25)' : '1px dashed var(--dex-orange, #ed8b00)', borderRadius: 10, background: dragOverTid === '' ? 'rgba(134,188,37,0.10)' : 'rgba(237,139,0,0.04)' }}
+                    >
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
                         <strong style={{ fontSize: '0.95rem', color: 'var(--dex-orange-dark, #b35a00)' }}>
-                          Teilnehmer ohne Team ({teamlessActive.length})
+                          {isDe ? `Teilnehmer ohne ${selectedEvent?.teamTermSingular || 'Team'}` : `Attendees without ${selectedEvent?.teamTermSingular || 'team'}`} ({teamlessActive.length})
                         </strong>
                         <span style={{ color: 'var(--dex-gray-600)', fontSize: '0.82rem' }}>
                           — Einzel-Anmeldungen ohne Team-Zuordnung
@@ -7652,7 +8067,14 @@ export default function AdminPage(): React.ReactElement {
                           // eslint-disable-next-line @typescript-eslint/no-explicit-any
                           const dept = (m as any).Department || '';
                           return (
-                            <div key={m.Id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 0' }}>
+                            <div
+                              key={m.Id}
+                              draggable={canManage}
+                              onDragStart={canManage ? (() => setDragRegId(m.Id)) : undefined}
+                              onDragEnd={canManage ? (() => { setDragRegId(null); setDragOverTid(null); }) : undefined}
+                              title={canManage ? (isDe ? 'Ziehen, um zuzuordnen' : 'Drag to assign') : undefined}
+                              style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 6px', borderRadius: 6, cursor: canManage ? 'grab' : 'default', opacity: dragRegId === m.Id ? 0.4 : 1, background: dragRegId === m.Id ? 'var(--dex-gray-100)' : 'transparent' }}
+                            >
                               <img
                                 src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(m.ParticipantEmail)}&size=L`}
                                 alt={name}
@@ -7684,14 +8106,18 @@ export default function AdminPage(): React.ReactElement {
                     // damit der Organizer auf einen Blick sieht, welche Teams noch
                     // nicht voll belegt sind.
                     const hasFreeSlots = free > 0;
+                    const isDropTarget = dragOverTid === tid;
                     return (
                       <div
                         key={tid}
+                        onDragOver={canManage ? (e => { e.preventDefault(); setDragOverTid(tid); }) : undefined}
+                        onDragLeave={canManage ? (() => setDragOverTid(prev => (prev === tid ? null : prev))) : undefined}
+                        onDrop={canManage ? (() => onTeamDrop(tid, teamName || undefined)) : undefined}
                         style={{
                           padding: 14,
-                          border: hasFreeSlots ? '1px solid var(--dex-orange, #ed8b00)' : '1px solid var(--dex-gray-200)',
+                          border: isDropTarget ? '2px solid var(--dex-green, #86bc25)' : (hasFreeSlots ? '1px solid var(--dex-orange, #ed8b00)' : '1px solid var(--dex-gray-200)'),
                           borderRadius: 10,
-                          background: hasFreeSlots ? 'rgba(237,139,0,0.06)' : 'var(--dex-gray-50, #f7f7f7)',
+                          background: isDropTarget ? 'rgba(134,188,37,0.12)' : (hasFreeSlots ? 'rgba(237,139,0,0.06)' : 'var(--dex-gray-50, #f7f7f7)'),
                           // v19.19: Flex-Spalte, damit der Aktions-Block (u.a.
                           // „Lead-Rolle übergeben") per marginTop:auto immer am
                           // unteren Kartenrand sitzt → alle Karten gleich hoch.
@@ -7721,9 +8147,16 @@ export default function AdminPage(): React.ReactElement {
                             return (
                               <div
                                 key={m.Id}
+                                draggable={canManage}
+                                onDragStart={canManage ? (() => setDragRegId(m.Id)) : undefined}
+                                onDragEnd={canManage ? (() => { setDragRegId(null); setDragOverTid(null); }) : undefined}
+                                title={canManage ? (isDe ? 'Ziehen, um in ein anderes Team / „ohne Team" zu verschieben' : 'Drag to move to another team / “no team”') : undefined}
                                 style={{
                                   display: 'flex', alignItems: 'center', gap: 10,
-                                  padding: '4px 0',
+                                  padding: '4px 6px', borderRadius: 6,
+                                  cursor: canManage ? 'grab' : 'default',
+                                  opacity: dragRegId === m.Id ? 0.4 : 1,
+                                  background: dragRegId === m.Id ? 'var(--dex-gray-100)' : 'transparent',
                                 }}
                               >
                                 <div style={{ position: 'relative', width: 32, height: 32, flexShrink: 0 }}>
@@ -7973,6 +8406,92 @@ export default function AdminPage(): React.ReactElement {
           }}>
             {teamsToast}
           </div>
+        )}
+
+        {/* v23.0: Per-Team-Info-Mail. Jedes aktive Mitglied bekommt eine eigene
+            Mail; pro Team trägt der Organizer eine team-spezifische Info ein
+            (z.B. einen eigenen Teams-Einwahllink). */}
+        {teamMailOpen && selectedEvent && (
+          <Modal
+            open={true}
+            onClose={() => { if (!teamMailSending) setTeamMailOpen(false); }}
+            dismissable={!teamMailSending}
+            maxWidth={720}
+            padding={24}
+            ariaLabel={isDe ? 'Mail an Teams' : 'Mail to teams'}
+          >
+            <h3 style={{ marginTop: 0, marginBottom: 6, color: 'var(--dex-green-dark, #4a7c1f)' }}>
+              {isDe ? `Mail an ${selectedEvent.teamTermPlural || 'Teams'}` : `Mail to ${selectedEvent.teamTermPlural || 'teams'}`}
+            </h3>
+            <p style={{ marginTop: 0, fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
+              {isDe
+                ? 'Jedes aktive Mitglied bekommt eine eigene Mail. Pro Gruppe trägst du unten eine eigene Info ein (z.B. einen Teams-Einwahllink) — sie ersetzt den Platzhalter {{TeamInfo}}. Verfügbare Platzhalter: {{Vorname}}, {{Name}}, {{TeamName}}, {{EventTitle}}, {{TeamInfo}}.'
+                : 'Each active member receives an individual mail. Per group you enter its own info below (e.g. a Teams join link) — it replaces the {{TeamInfo}} placeholder. Available placeholders: {{Vorname}}, {{Name}}, {{TeamName}}, {{EventTitle}}, {{TeamInfo}}.'}
+            </p>
+
+            <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginTop: 10 }}>{isDe ? 'Betreff' : 'Subject'}</label>
+            <input
+              type="text"
+              value={teamMailSubject}
+              onChange={e => setTeamMailSubject(e.target.value)}
+              disabled={teamMailSending}
+              style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--dex-gray-300)', fontSize: '0.9rem', boxSizing: 'border-box' }}
+            />
+
+            <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginTop: 12 }}>{isDe ? 'Mail-Text (HTML erlaubt)' : 'Mail body (HTML allowed)'}</label>
+            <textarea
+              value={teamMailBody}
+              onChange={e => setTeamMailBody(e.target.value)}
+              disabled={teamMailSending}
+              rows={8}
+              style={{ width: '100%', padding: '8px 10px', borderRadius: 8, border: '1px solid var(--dex-gray-300)', fontSize: '0.85rem', fontFamily: 'monospace', boxSizing: 'border-box', resize: 'vertical' }}
+            />
+
+            <div style={{ marginTop: 14, fontWeight: 600, fontSize: '0.85rem' }}>
+              {isDe ? 'Info pro Gruppe' : 'Info per group'}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8, maxHeight: 280, overflowY: 'auto' }}>
+              {getActiveTeams().map(t => {
+                const tName = t.teamName || (selectedEvent.teamTermSingular || 'Team');
+                return (
+                  <div key={t.tid} style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: '10px 12px', background: 'var(--dex-gray-50, #f7f7f7)' }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.86rem', marginBottom: 6 }}>
+                      {tName} <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)' }}>· {t.members.length} {isDe ? 'Mitglieder' : 'members'}</span>
+                    </div>
+                    <textarea
+                      value={teamMailInfoByTid[t.tid] || ''}
+                      onChange={e => setTeamMailInfoByTid(prev => ({ ...prev, [t.tid]: e.target.value }))}
+                      disabled={teamMailSending}
+                      rows={3}
+                      placeholder={isDe ? 'z.B. https://teams.microsoft.com/l/meetup-join/…' : 'e.g. https://teams.microsoft.com/l/meetup-join/…'}
+                      style={{ width: '100%', padding: '7px 9px', borderRadius: 6, border: '1px solid var(--dex-gray-300)', fontSize: '0.83rem', boxSizing: 'border-box', resize: 'vertical' }}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setTeamMailOpen(false)}
+                disabled={teamMailSending}
+              >
+                {isDe ? 'Abbrechen' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => { sendTeamMails().catch(() => { /* */ }); }}
+                disabled={teamMailSending || !teamMailSubject.trim() || !teamMailBody.trim()}
+              >
+                {teamMailSending
+                  ? (isDe ? 'Wird gesendet…' : 'Sending…')
+                  : (isDe ? 'Mails senden' : 'Send mails')}
+              </button>
+            </div>
+          </Modal>
         )}
 
         {regLoadError ? (
@@ -8517,6 +9036,9 @@ export default function AdminPage(): React.ReactElement {
                         style={{ fontSize: '0.75rem', padding: '4px 10px', color: 'var(--dex-red, #c00)' }}
                         onClick={async () => {
                           if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                          // v23.2: Doppel-Anmeldung? Statt direkt abzumelden das
+                          // Duplikat-Modal öffnen (still löschen vs. normal abmelden).
+                          if (duplicateEmails.has((reg.ParticipantEmail || '').trim().toLowerCase())) { setDupCancelReg(reg); return; }
                           const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
                           // v22.22: Vergangenes Event → stille Abmeldung (keine
                           // Abmelde-Mail, keine Outlook-Absage, kein Nachrücken,
@@ -8528,135 +9050,7 @@ export default function AdminPage(): React.ReactElement {
                               : `Really cancel ${name} (${reg.ParticipantEmail})?\n\nThe event is in the past — the cancellation runs silently: no cancellation email, no Outlook removal, and nobody is promoted from the waitlist.`)
                             : (isDe ? `${name} (${reg.ParticipantEmail}) wirklich abmelden?` : `Really cancel ${name} (${reg.ParticipantEmail})?`);
                           if (!(await confirmDialog(confirmMsg, { danger: true, confirmLabel: isDe ? 'Abmelden' : 'Cancel registration' }))) return;
-                          // Lade-Toast anzeigen
-                          setAdminToast({ kind: 'cancelling', name });
-                          // Typ des Abgemeldeten merken — für typ-bewusstes Nachrücken bei B2Run-Split.
-                          const cancelledStarterType = reg.StarterType || '';
-                          await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id, `${currentUser.firstName} ${currentUser.surname}`.trim(), currentUser.email);
-                          // Abmelde-Email und Outlook-Ausladen in Queue eintragen (falls nicht deaktiviert)
-                          if (reg.ParticipantEmail && !eventWasOver) {
-                            // v19.21: disableCancellationEmail unterdrückt auch die
-                            // Admin-seitige Abmelde-Mail (event-weite Vorgabe).
-                            // v22.22: bei vergangenem Event komplett still.
-                            if (!selectedEvent.disableEmails && !selectedEvent.disableCancellationEmail) {
-                              const emailData = cancellationEmail(name, selectedEvent.title);
-                              eventServiceRef.queueEmail(
-                                emailData.subject, reg.ParticipantEmail, name, emailData.body,
-                                'Abmeldung', selectedEvent.title, selectedEvent.id
-                              ).catch(err => console.warn('[DEX]', err));
-                            }
-                            if (!selectedEvent.disableOutlook) {
-                              eventServiceRef.queueOutlookEvent(
-                                reg.ParticipantEmail, selectedEvent.id, selectedEvent.title, 'Ausladen'
-                              ).catch(err => console.warn('[DEX]', err));
-                            }
-                          }
-                          // DEX_Participants aufräumen
-                          if (reg.ParticipantEmail && selectedEvent.eventNumber) {
-                            eventServiceRef.removeParticipantEvent(
-                              reg.ParticipantEmail, selectedEvent.eventNumber
-                            ).catch(err => console.warn('[DEX]', err));
-                          }
-                          // Seit v6.8: Bei Admin/Organizer-Cancel direkt client-seitig
-                          // den Nachrücker promoten — so sieht der Admin/Organizer sofort
-                          // wer nachgerückt ist. Der Flow später sieht Count_Active =
-                          // MaxParticipants und überspringt seinen eigenen Promote-Zweig.
-                          // Typ-bewusst: bei aktiver Split-Capacity (DurchstarterCapacity > 0
-                          // UND FunstarterCapacity > 0) wird per Default nur ein
-                          // Warteliste-Teilnehmer mit passendem PreferredStarterType
-                          // nachgerückt — es sei denn, das Event ist auf
-                          // splitSharedWaitlist=true gesetzt (v10.20). Dann fällt der
-                          // Filter weg und der aelteste Wartelistler rückt nach,
-                          // unabhängig vom Typ.
-                          const isSplitEvent = typeof selectedEvent.durchstarterCapacity === 'number'
-                            && typeof selectedEvent.funstarterCapacity === 'number'
-                            && (selectedEvent.durchstarterCapacity > 0 || selectedEvent.funstarterCapacity > 0);
-                          const useTypeFilter = isSplitEvent && !selectedEvent.splitSharedWaitlist;
-                          // v22.22: Vergangenes Event → kein Nachrücken mehr.
-                          if (!eventWasOver) {
-                          try {
-                            const promoted = await eventServiceRef.promoteFirstWaitlistItem(
-                              selectedEvent.subsiteUrl,
-                              cancelledStarterType || undefined,
-                              selectedEvent.maxParticipants,
-                              (useTypeFilter && cancelledStarterType) ? cancelledStarterType : undefined,
-                              // v17.15: Audit-Tracking — promotete Person merkt sich,
-                              // wessen Cancel sie ersetzt; cancelnde Person bekommt
-                              // „ReplacedByParticipantEmail" mitgeschrieben.
-                              { itemId: reg.Id, participantEmail: reg.ParticipantEmail || '' },
-                            );
-                            if (promoted && promoted.success && promoted.email) {
-                              // Erfolgs-Toast anzeigen
-                              setAdminToast({
-                                kind: 'promoted',
-                                name: promoted.name || promoted.email,
-                                email: promoted.email,
-                                type: cancelledStarterType || undefined,
-                              });
-                              // Nachrück-Mail + Outlook-Einladung queuen
-                              if (!selectedEvent.disableEmails) {
-                                try {
-                                  const lang = selectedEvent.emailLanguage || 'EN';
-                                  const promotedFirstName = (promoted.name || '').trim().split(/\s+/)[0] || '';
-                                  const promoteVars = {
-                                    Name: promotedFirstName,
-                                    EventTitle: selectedEvent.title,
-                                    Organizer: formatOrganizerList(selectedEvent.organizers, lang),
-                                    AppUrl: `${eventServiceRef.siteUrl}/SitePages/DEX.aspx?env=WebView`,
-                                    WaitlistPosition: '',
-                                  };
-                                  let emailData: { subject: string; body: string };
-                                  const spTplRaw = await eventServiceRef.getEmailTemplate('Nachruecken', lang).catch(() => null);
-                                  const spTpl = applyEventTemplateOverride(spTplRaw, selectedEvent.emailTemplateOverrides, 'Nachruecken');
-                                  if (spTpl) {
-                                    emailData = buildEmailFromTemplate(spTpl, promoteVars);
-                                  } else {
-                                    emailData = promotionEmail(promotedFirstName, selectedEvent.title);
-                                  }
-                                  await eventServiceRef.queueEmail(
-                                    emailData.subject, promoted.email, promoted.name || '', emailData.body,
-                                    'Nachruecken', selectedEvent.title, selectedEvent.id
-                                  );
-                                } catch (err) { console.warn('[DEX] promote-email failed:', err); }
-                              }
-                              if (!selectedEvent.disableOutlook) {
-                                try {
-                                  await eventServiceRef.queueOutlookEvent(
-                                    promoted.email, selectedEvent.id, selectedEvent.title, 'Einladen'
-                                  );
-                                } catch (err) { console.warn('[DEX] promote-outlook failed:', err); }
-                              }
-                            } else {
-                              // Kein passender Warteliste-Teilnehmer — grauer Info-Toast
-                              setAdminToast({ kind: 'no-promote', name });
-                            }
-                          } catch (err) {
-                            console.warn('[DEX] promoteFirstWaitlistItem failed:', err);
-                            // Bei Fehler: "kein Nachrücker" anzeigen (Abmeldung selbst war erfolgreich)
-                            setAdminToast({ kind: 'no-promote', name });
-                          }
-                          }
-                          // IDReorder in Queue eintragen — der Flow macht nur noch Reorder
-                          // (Promote ist oben schon passiert, Flow erkennt Count_Active = MaxParticipants).
-                          // v22.22: bei vergangenem Event auch kein ID-Reorder (der Flow
-                          // würde sonst seinerseits nachrücken/Mails auslösen).
-                          if (selectedEvent.subsiteUrl && !eventWasOver) {
-                            try {
-                              const ok = await eventServiceRef.queueIDReorder(
-                                selectedEvent.id, selectedEvent.eventNumber || 0,
-                                selectedEvent.subsiteUrl, selectedEvent.title, name, reg.ParticipantEmail || undefined
-                              );
-                              if (!ok) {
-                                console.warn('[DEX] queueIDReorder returned false');
-                                showAlert(isDe ? 'Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.' : 'Cancellation successful, but the ID reorder entry could not be written to the queue. Please click "Reassign IDs" once.');
-                              }
-                            } catch (err) {
-                              console.warn('[DEX] queueIDReorder threw:', err);
-                              showAlert('Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.');
-                            }
-                          }
-                          const regs = await getAllRegistrations(selectedEvent.id);
-                          setRegistrations(regs);
+                          await performStandardCancel(reg);
                         }}
                       >
                         {isDe ? 'Abmelden' : 'Cancel'}
@@ -8790,8 +9184,14 @@ export default function AdminPage(): React.ReactElement {
                             // die Überbuchungs-Markierung. inactiveAccounts kommt
                             // aus dem Konten-Aktiv-Check (nur @deloitte-Adressen).
                             const isInactiveAcct = inactiveAccounts.indexOf((reg.ParticipantEmail || '').trim().toLowerCase()) >= 0;
+                            // v23.2: Doppel-Anmeldung — rote Markierung (hat Vorrang
+                            // vor der orangen Überbuchungs-/Inaktiv-Markierung).
+                            const isDuplicate = (reg.Status || '') !== 'Abgemeldet'
+                              && duplicateEmails.has((reg.ParticipantEmail || '').trim().toLowerCase());
                             const highlight = isOverbook || isInactiveAcct;
-                            const rowTitle = isInactiveAcct
+                            const rowTitle = isDuplicate
+                              ? (isDe ? 'Doppel-Anmeldung — diese Person ist mehrfach angemeldet. Über „Abmelden" lässt sich die doppelte Zeile still entfernen.' : 'Duplicate registration — this person is registered more than once. Use „Cancel" to silently remove the duplicate row.')
+                              : isInactiveAcct
                               ? (isDe ? 'Kein aktives Deloitte-Konto gefunden — Person hat womöglich Deloitte verlassen. Mails/Outlook kommen ggf. nicht an.' : 'No active Deloitte account found — person may have left Deloitte. Emails/Outlook may not arrive.')
                               : isOverbook
                                 ? (isDe ? 'Über Kapazität angemeldet — siehe Box „Überbuchung – zu prüfen" oben' : 'Registered over capacity — see the „Overbooking – to review" box above')
@@ -8802,7 +9202,9 @@ export default function AdminPage(): React.ReactElement {
                                 title={rowTitle}
                                 style={{
                                   borderBottom: '1px solid var(--dex-gray-100)',
-                                  ...(highlight
+                                  ...(isDuplicate
+                                    ? { background: 'rgba(200,0,0,0.10)', boxShadow: 'inset 3px 0 0 var(--dex-red, #c00)' }
+                                    : highlight
                                     ? { background: 'rgba(237,139,0,0.13)', boxShadow: 'inset 3px 0 0 var(--dex-orange, #ed8b00)' }
                                     : {}),
                                 }}
@@ -9228,6 +9630,23 @@ export default function AdminPage(): React.ReactElement {
                           <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{p.location || '-'}</td>
                           {sectionCols.map(sc => {
                             const r = p.bySection[sc.id];
+                            // v23.2: In der „Gesamt-Event"-Spalte kein nacktes X,
+                            // sondern ein sprechender Badge — die Person hat erklärt,
+                            // dass sie nicht (am Gesamt-Event) teilnehmen wird.
+                            if (sc.id === '__parent') {
+                              return (
+                                <td key={sc.id} style={{ padding: 8, textAlign: 'center' }}>
+                                  {r
+                                    ? <span
+                                        title={`${isDeclined(r) ? (isDe ? 'Absage ohne vorherige Anmeldung' : 'Decline without prior registration') : (isDe ? 'Vom Gesamt-Event abgemeldet' : 'Cancelled from the overall event')} — ${formatDate(r.CancellationDate)}`}
+                                        style={{ display: 'inline-block', fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(218,41,28,0.10)', color: 'var(--dex-red, #da291c)', whiteSpace: 'nowrap' }}
+                                      >
+                                        {isDe ? 'Nimmt nicht teil' : 'Will not attend'}
+                                      </span>
+                                    : <span style={{ color: 'var(--dex-gray-300)' }}>–</span>}
+                                </td>
+                              );
+                            }
                             return (
                               <td key={sc.id} style={{ padding: 8, textAlign: 'center' }}>
                                 {r
@@ -11386,6 +11805,79 @@ export default function AdminPage(): React.ReactElement {
       {/* v11.70: kein Modal mehr — der Hinweis wird inline ueber der
           Teilnehmerliste angezeigt (siehe Render-Block oberhalb der
           Teilnehmer-Tabelle). */}
+
+      {/* v23.2: Duplikat-Abmelde-Modal — beim Abmelden einer doppelt
+          angemeldeten Person fragt die App, ob die Zeile STILL entfernt werden
+          soll (Duplikat löschen, ohne Mail/Outlook/Nachrücken — die Person
+          bleibt über ihre zweite Zeile angemeldet) oder normal abgemeldet. */}
+      {dupCancelReg && selectedEvent && (() => {
+        const reg = dupCancelReg;
+        const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+        const teamLabel = reg.TeamName ? `„${reg.TeamName}"` : (reg.TeamId ? (isDe ? 'Team ohne Namen' : 'unnamed team') : (isDe ? 'Einzel-Anmeldung' : 'individual registration'));
+        return (
+          <Modal
+            open={true}
+            onClose={() => { if (!dupCancelBusy) setDupCancelReg(null); }}
+            dismissable={!dupCancelBusy}
+            maxWidth={540}
+            padding={24}
+            ariaLabel={isDe ? 'Doppel-Anmeldung entfernen' : 'Remove duplicate registration'}
+          >
+            <h3 style={{ marginTop: 0, marginBottom: 8, color: 'var(--dex-red, #c00)' }}>
+              {isDe ? 'Doppel-Anmeldung entfernen' : 'Remove duplicate registration'}
+            </h3>
+            <p style={{ marginTop: 0, fontSize: '0.88rem', lineHeight: 1.5 }}>
+              {isDe
+                ? <><strong>{name}</strong> ({reg.ParticipantEmail}) ist mehrfach für dieses Event angemeldet. Du entfernst gerade die Zeile <strong>{teamLabel}</strong>.</>
+                : <><strong>{name}</strong> ({reg.ParticipantEmail}) is registered more than once for this event. You are removing the row <strong>{teamLabel}</strong>.</>}
+            </p>
+            <p style={{ fontSize: '0.84rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+              {isDe
+                ? 'Bei einer Dublette ist die stille Entfernung richtig: Die Zeile wird gelöscht, ohne dass eine Abmelde-Mail oder eine Outlook-Absage rausgeht und ohne dass jemand von der Warteliste nachrückt — die Person bleibt über ihre andere Anmeldung regulär dabei. Nur falls es KEINE Dublette ist, sondern eine echte Abmeldung, wähle „Normal abmelden".'
+                : 'For a duplicate, silent removal is the right choice: the row is deleted without a cancellation email or Outlook removal and without promoting anyone from the waitlist — the person stays registered via their other entry. Only if this is NOT a duplicate but a real cancellation, choose „Cancel normally".'}
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 18 }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ background: 'var(--dex-red, #c00)', borderColor: 'var(--dex-red, #c00)' }}
+                disabled={dupCancelBusy}
+                onClick={async () => {
+                  setDupCancelBusy(true);
+                  await performSilentDuplicateDelete(reg);
+                  setDupCancelBusy(false);
+                  setDupCancelReg(null);
+                  showAlert(isDe ? 'Doppelte Anmeldung still entfernt.' : 'Duplicate registration silently removed.', { variant: 'success' });
+                }}
+              >
+                {dupCancelBusy ? (isDe ? 'Wird entfernt…' : 'Removing…') : (isDe ? 'Duplikat still entfernen (empfohlen)' : 'Silently remove duplicate (recommended)')}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={dupCancelBusy}
+                onClick={async () => {
+                  setDupCancelBusy(true);
+                  await performStandardCancel(reg);
+                  setDupCancelBusy(false);
+                  setDupCancelReg(null);
+                }}
+              >
+                {isDe ? 'Normal abmelden (mit Mail & Nachrücken)' : 'Cancel normally (with email & promotion)'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ border: 'none' }}
+                disabled={dupCancelBusy}
+                onClick={() => setDupCancelReg(null)}
+              >
+                {isDe ? 'Abbrechen' : 'Cancel'}
+              </button>
+            </div>
+          </Modal>
+        );
+      })()}
 
       {/* v11.36: Überbuchungs-Entscheidungs-Modal (Bestätigen / Platz behalten) */}
       {overbookModal && selectedEvent && (

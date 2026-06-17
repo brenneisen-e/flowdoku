@@ -1649,6 +1649,7 @@ export default function MyEventsPage(): React.ReactElement {
                       const total = activeMembers.length;
                       const teamSizeCfg = event.teamSize || total;
                       const tn = registration.TeamName || (cached.find(m => m.TeamName)?.TeamName) || '';
+                      const teamTermS = event.teamTermSingular || 'Team';
                       const isLead = !!registration.TeamLead;
                       // v11.86: Sortierung — Lead zuerst, dann nach TeilnehmerID,
                       // dann nach Id. Abgemeldete Mitglieder werden ausgegraut
@@ -1672,8 +1673,8 @@ export default function MyEventsPage(): React.ReactElement {
                             <Icon iconName="People" style={{ fontSize: 14 }} />
                             <strong>
                               {isDe
-                                ? `Team „${tn || 'Unbenannt'}" — ${total}/${teamSizeCfg} belegt`
-                                : `Team „${tn || 'Unnamed'}" — ${total}/${teamSizeCfg} taken`}
+                                ? `${teamTermS} „${tn || 'Unbenannt'}" — ${total}/${teamSizeCfg} belegt`
+                                : `${teamTermS} „${tn || 'Unnamed'}" — ${total}/${teamSizeCfg} taken`}
                             </strong>
                             {isLead && (
                               <span style={{
@@ -1681,7 +1682,7 @@ export default function MyEventsPage(): React.ReactElement {
                                 background: 'var(--dex-green, #86bc25)', color: '#fff',
                                 fontSize: '0.7rem', fontWeight: 600,
                               }}>
-                                {isDe ? 'du bist Team-Lead' : 'you are team lead'}
+                                {isDe ? `du bist ${teamTermS}-Lead` : `you are ${teamTermS} lead`}
                               </span>
                             )}
                           </div>
