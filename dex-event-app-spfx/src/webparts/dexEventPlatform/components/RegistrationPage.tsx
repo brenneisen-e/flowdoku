@@ -2175,9 +2175,13 @@ export default function RegistrationPage(): React.ReactElement {
                   // Bildteil weggecroppt). Hintergrundfarbe der Hülle ist
                   // bereits gray-100 — das ergibt einen sauberen, neutralen
                   // Letterbox-Rahmen statt eines Bildschnitts.
-                  style={imgOrientation === 'portrait'
-                    ? { width: '100%', height: '100%', objectFit: 'contain', display: 'block' }
-                    : { width: '100%', height: 'auto', maxHeight: 480, objectFit: 'contain', display: 'block' }
+                  style={event.imageDisplay?.hero
+                    // v23.19: Pro-Ansicht-Darstellung (Hero) — fester Cover-
+                    // Ausschnitt mit individuellem Zoom + vertikaler Position.
+                    ? { width: '100%', height: 340, objectFit: 'cover', display: 'block', objectPosition: `center ${event.imageDisplay.hero.posY}%`, transform: `scale(${event.imageDisplay.hero.zoom})`, transformOrigin: `center ${event.imageDisplay.hero.posY}%` }
+                    : imgOrientation === 'portrait'
+                      ? { width: '100%', height: '100%', objectFit: 'contain', display: 'block' }
+                      : { width: '100%', height: 'auto', maxHeight: 480, objectFit: 'contain', display: 'block' }
                   }
                 />
               )}

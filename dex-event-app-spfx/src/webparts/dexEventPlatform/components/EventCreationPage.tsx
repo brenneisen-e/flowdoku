@@ -925,6 +925,11 @@ export default function EventCreationPage(): React.ReactElement {
   const [imagePreview, setImagePreview] = React.useState(editEvent ? (editEvent.imageUrl || '') : '');
   // v23.15: Bild-Editor (Zuschneiden / Kreis) offen?
   const [imageEditOpen, setImageEditOpen] = React.useState(false);
+  // v23.19: Optionale Pro-Ansicht-Darstellung (Zoom + vertikale Position).
+  // Default leer = Standard (cover/zentriert) — nur auf Wunsch eingestellt.
+  type ImgView = { zoom: number; posY: number };
+  const [imageDisplay, setImageDisplay] = React.useState<{ card?: ImgView; hero?: ImgView }>(editEvent && editEvent.imageDisplay ? editEvent.imageDisplay : {});
+  const [imageDisplayOpen, setImageDisplayOpen] = React.useState(false);
   // v11.20: Re-sync useEffect aus v11.19 wieder rausgenommen — der hat
   // den Wizard-State mit stale-editEvent-Daten ueberschrieben (re-sync 2
   // mit helpText="" wurde im Maintainer-DevTools beobachtet, obwohl SP
@@ -1132,7 +1137,7 @@ export default function EventCreationPage(): React.ReactElement {
           // werden — sonst überschreibt der stale Wert aus dem geladenen Blob
           // beim Edit-Save (letzter Spread `...topOverrides`) das frisch
           // berechnete Flag, d.h. Abwählen bliebe ohne Wirkung.
-          _teamTerm, _teamMembersCannotCreate, _assistantsCanSee, _previewBeforeActive,
+          _teamTerm, _teamMembersCannotCreate, _assistantsCanSee, _previewBeforeActive, _imageDisplay,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -1142,7 +1147,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _splitDisplayOrderReversed; void _requireSubEventSelection;
         void _subEventsOnlyMode; void _childEventTerm;
         void _inheritFlags; void _hideOrganizer; void _headerImageLayout;
-        void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee; void _previewBeforeActive;
+        void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee; void _previewBeforeActive; void _imageDisplay;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
     })() : {}
@@ -3315,7 +3320,15 @@ export default function EventCreationPage(): React.ReactElement {
       const assistantsCanSeeConfig = assistantsCanSee ? { _assistantsCanSee: true } : {};
       // v23.14: Vorschau vor Aktivierung (nur sinnvoll mit activeFrom).
       const previewBeforeActiveConfig = (previewBeforeActive && activeFrom) ? { _previewBeforeActive: true } : {};
-      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(teamTermConfig).length > 0 || Object.keys(teamNoCreateConfig).length > 0 || Object.keys(assistantsCanSeeConfig).length > 0 || Object.keys(previewBeforeActiveConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0 || Object.keys(headerImageLayoutConfig).length > 0)
+      // v23.19: Pro-Ansicht-Bilddarstellung — nur Views speichern, die vom
+      // Standard (zoom 1, posY 50) abweichen.
+      const imageDisplayConfig = (() => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const out: any = {};
+        (['card', 'hero'] as const).forEach(k => { const v = imageDisplay[k]; if (v && (v.zoom !== 1 || v.posY !== 50)) out[k] = { zoom: v.zoom, posY: v.posY }; });
+        return Object.keys(out).length ? { _imageDisplay: out } : {};
+      })();
+      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(teamTermConfig).length > 0 || Object.keys(teamNoCreateConfig).length > 0 || Object.keys(assistantsCanSeeConfig).length > 0 || Object.keys(previewBeforeActiveConfig).length > 0 || Object.keys(imageDisplayConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0 || Object.keys(headerImageLayoutConfig).length > 0)
         ? JSON.stringify({
             ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
             ...(effOutlookLogo ? { _outlookLogo: effOutlookLogo } : {}),
@@ -3331,6 +3344,7 @@ export default function EventCreationPage(): React.ReactElement {
             ...teamNoCreateConfig,
             ...assistantsCanSeeConfig,
             ...previewBeforeActiveConfig,
+            ...imageDisplayConfig,
             ...hideOrganizerConfig,
             // v18.73: Header-Bild-Layout (Breite + Innenabstand) — event-weit.
             ...headerImageLayoutConfig,
@@ -3889,8 +3903,15 @@ export default function EventCreationPage(): React.ReactElement {
           const assistantsCanSeeExtra = assistantsCanSee ? { _assistantsCanSee: true } : {};
           // v23.14: Vorschau vor Aktivierung (nur sinnvoll mit activeFrom).
           const previewBeforeActiveExtra = (previewBeforeActive && activeFrom) ? { _previewBeforeActive: true } : {};
+          // v23.19: Pro-Ansicht-Bilddarstellung (nur abweichende Views).
+          const imageDisplayExtra = (() => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const out: any = {};
+            (['card', 'hero'] as const).forEach(k => { const v = imageDisplay[k]; if (v && (v.zoom !== 1 || v.posY !== 50)) out[k] = { zoom: v.zoom, posY: v.posY }; });
+            return Object.keys(out).length ? { _imageDisplay: out } : {};
+          })();
           // v11.93: Top-Level-Logos aus dem Resolver lesen.
-          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0 || Object.keys(teamTermExtra).length > 0 || Object.keys(teamNoCreateExtra).length > 0 || Object.keys(assistantsCanSeeExtra).length > 0 || Object.keys(previewBeforeActiveExtra).length > 0 || Object.keys(hideOrganizerExtra).length > 0 || Object.keys(headerImageLayoutConfig).length > 0;
+          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0 || Object.keys(teamTermExtra).length > 0 || Object.keys(teamNoCreateExtra).length > 0 || Object.keys(assistantsCanSeeExtra).length > 0 || Object.keys(previewBeforeActiveExtra).length > 0 || Object.keys(imageDisplayExtra).length > 0 || Object.keys(hideOrganizerExtra).length > 0 || Object.keys(headerImageLayoutConfig).length > 0;
           return hasAny
             ? JSON.stringify({
                 ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
@@ -3907,6 +3928,7 @@ export default function EventCreationPage(): React.ReactElement {
                 ...teamNoCreateExtra,
                 ...assistantsCanSeeExtra,
                 ...previewBeforeActiveExtra,
+                ...imageDisplayExtra,
                 ...hideOrganizerExtra,
                 // v18.73: Header-Bild-Layout (Breite + Innenabstand) — event-weit.
                 ...headerImageLayoutConfig,
@@ -6117,6 +6139,58 @@ export default function EventCreationPage(): React.ReactElement {
                     setImageEditOpen(false);
                   }}
                 />
+                {/* v23.19: Optional & einklappbar — Bild pro Ansicht anders
+                    zoomen/positionieren. Default zu; wer einfach nur ein Foto
+                    hochlädt, muss hier nichts tun (Standard = cover, zentriert). */}
+                {imagePreview && (
+                  <div style={{ marginTop: 10, border: '1px solid var(--dex-gray-200)', borderRadius: 8, overflow: 'hidden' }}>
+                    <button
+                      type="button"
+                      onClick={() => setImageDisplayOpen(o => !o)}
+                      style={{ width: '100%', textAlign: 'left', background: 'var(--dex-gray-50, #f7f7f5)', border: 'none', cursor: 'pointer', padding: '10px 12px', fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700)', display: 'flex', alignItems: 'center', gap: 8 }}
+                    >
+                      <Icon iconName={imageDisplayOpen ? 'ChevronDown' : 'ChevronRight'} style={{ fontSize: 12 }} />
+                      {isDe ? 'Darstellung pro Ansicht (optional)' : 'Per-view display (optional)'}
+                    </button>
+                    {imageDisplayOpen && (
+                      <div style={{ padding: '12px 14px' }}>
+                        <p style={{ margin: '0 0 12px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                          {isDe
+                            ? 'Optional: Du kannst das Bild pro Ansicht unterschiedlich zoomen und vertikal verschieben, damit es überall gut sitzt. Standard (nichts einstellen) = das Bild füllt den Bereich zentriert.'
+                            : 'Optional: zoom and vertically position the image differently per view so it sits well everywhere. Default (leave untouched) = the image fills the area centered.'}
+                        </p>
+                        {([
+                          { key: 'card' as const, label: isDe ? 'Event-Liste / Karte' : 'Event list / card', w: 240, h: 135 },
+                          { key: 'hero' as const, label: isDe ? 'Anmeldeseite (Bild oben)' : 'Registration page (top image)', w: 200, h: 200 },
+                        ]).map(view => {
+                          const v: ImgView = imageDisplay[view.key] || { zoom: 1, posY: 50 };
+                          const setV = (next: ImgView): void => setImageDisplay(prev => ({ ...prev, [view.key]: next }));
+                          return (
+                            <div key={view.key} style={{ display: 'flex', gap: 14, alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap' }}>
+                              <div style={{ width: view.w, height: view.h, flexShrink: 0, overflow: 'hidden', borderRadius: 6, background: 'var(--dex-gray-100)', position: 'relative', boxShadow: 'inset 0 0 0 1px var(--dex-gray-200)' }}>
+                                <img
+                                  src={imagePreview}
+                                  alt={view.label}
+                                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: `center ${v.posY}%`, transform: `scale(${v.zoom})`, transformOrigin: `center ${v.posY}%` }}
+                                />
+                              </div>
+                              <div style={{ flex: 1, minWidth: 160 }}>
+                                <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 6 }}>{view.label}</div>
+                                <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Zoom' : 'Zoom'}</label>
+                                <input type="range" min={1} max={3} step={0.01} value={v.zoom} onChange={e => setV({ ...v, zoom: parseFloat(e.target.value) })} style={{ width: '100%' }} />
+                                <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Vertikale Position' : 'Vertical position'}</label>
+                                <input type="range" min={0} max={100} step={1} value={v.posY} onChange={e => setV({ ...v, posY: parseInt(e.target.value, 10) })} style={{ width: '100%' }} />
+                                <button type="button" className="btn btn-secondary" style={{ fontSize: '0.74rem', padding: '3px 10px', marginTop: 4 }} onClick={() => setImageDisplay(prev => { const n = { ...prev }; delete n[view.key]; return n; })}>
+                                  {isDe ? 'Zurücksetzen' : 'Reset'}
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <label style={{
                   display: 'inline-flex', alignItems: 'center', gap: 8,
                   padding: '8px 16px', borderRadius: 'var(--dex-radius)',
@@ -6472,6 +6546,44 @@ export default function EventCreationPage(): React.ReactElement {
                       ? 'z.B. „Vor Ort am Eventtag ab 7:30 Uhr, mobil unter +49 151 123 456" oder „Bei Fragen vor dem Event direkt per Mail."'
                       : 'e.g. „On-site from 7:30 am on event day, mobile +49 151 123 456" or „For questions before the event, email directly."'}
                   />
+                  {/* v23.18: Hinweis, wenn der Ansprechpartner-Freitext den
+                      Event-Titel/Datum/Ort wiederholt — die stehen bereits
+                      separat auf der Anmelde-Seite. Gleiche Logik wie der
+                      Beschreibungs-Hinweis. */}
+                  {(() => {
+                    const plain = (contactInfo || '').replace(/\s+/g, ' ').toLowerCase();
+                    if (plain.trim().length < 4) return null;
+                    const hits: string[] = [];
+                    const tl = title.trim().toLowerCase();
+                    if (tl.length >= 4 && plain.indexOf(tl) >= 0) hits.push(isDe ? 'der Event-Name' : 'the event name');
+                    const locl = location.trim().toLowerCase();
+                    if (locl.length >= 4 && plain.indexOf(locl) >= 0) hits.push(isDe ? 'der Ort' : 'the location');
+                    if (startDate) {
+                      const d = new Date(startDate);
+                      if (!isNaN(d.getTime())) {
+                        const dd = String(d.getDate()).padStart(2, '0');
+                        const mm = String(d.getMonth() + 1).padStart(2, '0');
+                        const monthsDe = ['januar', 'februar', 'märz', 'april', 'mai', 'juni', 'juli', 'august', 'september', 'oktober', 'november', 'dezember'];
+                        const monthsEn = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+                        const mn = (isDe ? monthsDe : monthsEn)[d.getMonth()];
+                        const pats = [`${dd}.${mm}.${d.getFullYear()}`, `${dd}.${mm}.`, `${d.getDate()}. ${mn}`, `${d.getDate()} ${mn}`];
+                        if (pats.some(p => plain.indexOf(p) >= 0)) hits.push(isDe ? 'das Datum' : 'the date');
+                      }
+                    }
+                    if (hits.length === 0) return null;
+                    const joined = hits.length === 1 ? hits[0] : hits.slice(0, -1).join(', ') + (isDe ? ' und ' : ' and ') + hits[hits.length - 1];
+                    return (
+                      <WizardHint
+                        isDe={isDe}
+                        title={isDe ? 'Ansprechpartner-Text wiederholt Basis-Infos' : 'Contact text repeats basic info'}
+                        style={{ marginTop: 8 }}
+                      >
+                        {isDe
+                          ? <>Hier steht offenbar <strong>{joined}</strong>. <strong>Event-Titel, Datum und Ort</strong> werden bereits <strong>separat</strong> auf der Anmelde-Seite angezeigt — du musst sie beim Ansprechpartner nicht wiederholen. Nutze dieses Feld nur für die <strong>Erreichbarkeit</strong> (z.B. Telefon/„ab wann vor Ort“).</>
+                          : <>This appears to contain <strong>{joined}</strong>. The <strong>event title, date and location</strong> are already shown <strong>separately</strong> on the registration page — no need to repeat them in the contact field. Use it only for <strong>availability</strong> (e.g. phone / „on-site from …“).</>}
+                      </WizardHint>
+                    );
+                  })()}
                 </div>
               </div>
 
