@@ -1925,6 +1925,21 @@ nicht erschöpfend, sondern Beispiele:
   Umlaute selber **nicht** als `&auml;`/`&ouml;` etc. — direkt `ä`/`ö`
   schreiben.
 
+**WICHTIG — Anführungszeichen in JSX-Text (wiederkehrender Build-Fehler!):**
+In **JSX-Text** (zwischen Tags, inkl. `<>…</>`-Fragmenten) bricht ein **gerades
+doppeltes Anführungszeichen `"`** den Build über die ESLint-Regel
+`react/no-unescaped-entities` (`error … `"` can be escaped with …`). Das ist in
+v23.x **mehrfach** passiert. Regel:
+- In deutschen UI-Texten **immer typografische Anführungszeichen** verwenden:
+  **`„` (öffnend, U+201E)** und **`"` (schließend, U+201C)** — NICHT das gerade
+  `"`. Häufigste Falle: das **schließende** Zeichen wird versehentlich als
+  gerades `"` geschrieben (z.B. `„Anmeldung ab …"` statt `„Anmeldung ab …"`).
+- Das gilt für JSX-**Text**. In JS-**Strings** (z.B. `t('…')`, `title={'…'}`,
+  `setError('…')`, `style`-Werte) ist `"` unkritisch — nur als nackter Text
+  zwischen JSX-Tags ist es ein Problem.
+- **Selbst-Check vor jedem Save einer berührten `.tsx`:** im neuen JSX-Text
+  nach geradem `"` suchen und durch `„…"` ersetzen. Spart eine Build-Iteration.
+
 **Examples:**
 - ✅ `Löschen`, `öffnen`, `Übersicht`, `ausfüllen`, `hinzufügen`, `Zurück`,
   `für`, `Grüße`, `Bestätigung`, `zurückziehen`, `nächste`, `zusätzlich`,

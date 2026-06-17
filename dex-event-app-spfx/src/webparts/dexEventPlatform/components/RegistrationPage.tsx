@@ -690,6 +690,38 @@ export default function RegistrationPage(): React.ReactElement {
   const isDeadlinePassed = !!event.registrationDeadline && new Date(event.registrationDeadline) < new Date();
   const isFullyClosed = isRegistrationFullyClosed(event, childEvents);
 
+  // v23.14: Vorschau vor Aktivierung — reguläre User dürfen die Anmeldeseite
+  // erst ab dem „Aktiv ab"-Zeitpunkt öffnen (Deep-Link-Schutz; die Karte
+  // blockiert den Klick ohnehin). Organizer/Admin dürfen vorbereiten.
+  const notYetActive = !!event.activeFrom && new Date(event.activeFrom) > new Date();
+  if (notYetActive && !isOrganizer && !isAdmin) {
+    const activeFromStr = new Date(event.activeFrom as string).toLocaleString(locale === 'de' ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return (
+      <div className="page-container">
+        <div className="card" style={{ position: 'relative', overflow: 'hidden' }}>
+          <div style={{
+            height: 200,
+            background: event.imageUrl ? `url(${cachedImage}) center/cover no-repeat` : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+            borderRadius: '16px 16px 0 0',
+          }} />
+          <div style={{ padding: 32, textAlign: 'center' }}>
+            <Icon iconName="Clock" style={{ fontSize: 48, color: 'var(--dex-orange)', marginBottom: 16 }} />
+            <h2 style={{ marginBottom: 8 }}>{event.title}</h2>
+            <p style={{ color: 'var(--dex-gray-700)', marginBottom: 8, fontWeight: 600 }}>
+              {locale === 'de' ? 'Die Anmeldung ist noch nicht geöffnet.' : 'Registration is not open yet.'}
+            </p>
+            <p style={{ color: 'var(--dex-gray-500)', fontSize: '0.9rem' }}>
+              {locale === 'de' ? 'Anmeldung ab' : 'Registration opens'}: <strong>{activeFromStr}</strong>
+            </p>
+            <button className="btn btn-primary mt-24" onClick={() => navigate('register')}>
+              {t('reg.backtoevents')}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (isFullyClosed && !isOrganizer && !isAdmin) {
     return (
       <div className="page-container">
