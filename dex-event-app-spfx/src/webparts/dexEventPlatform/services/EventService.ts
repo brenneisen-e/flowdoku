@@ -4773,7 +4773,10 @@ export class EventService {
     // pageContext-Identität), die im Tenant gelegentlich fehlschlug und
     // legitime Organizer mit „bereits angemeldet" ablehnte.
     actorIsEventOrganizer: boolean = false
-  ): Promise<boolean> {
+  // v23.9: Statt nacktem boolean ein konkreter Grund bei Misserfolg, damit die
+  // UI nicht mehr pauschal „bereits registriert" anzeigt (irreführend, wenn der
+  // echte Grund Berechtigung/Deadline/Insert-Fehler war).
+  ): Promise<{ ok: boolean; reason?: 'not-allowed' | 'deadline' | 'insert-failed' | 'error' }> {
     try {
       // ---- Permission-Checks (v3.9.2 / v3.9.3) ----
       // Serverseitige Prüfungen — nicht perfekt (SPFx läuft im Browser),
@@ -4812,7 +4815,7 @@ export class EventService {
         const allowed = actorIsEventOrganizer || await this.canRegisterForOthers(subsiteUrl, participantEmail);
         if (!allowed) {
           console.warn(`[DEX] registerForEvent DENIED: ${sessionEmail} versuchte ${targetEmail} zu registrieren — weder Organizer noch Admin noch erlaubter Assistant-Fall.`);
-          return false;
+          return { ok: false, reason: 'not-allowed' };
         }
       }
 
@@ -4839,7 +4842,7 @@ export class EventService {
 
           if (!isEventOrganizer && !isAdmin) {
             console.warn(`[DEX] registerForEvent DENIED (deadline): ${sessionEmail} versuchte nach Deadline ${eventDeadline} zu registrieren — weder Event-Organizer noch Admin.`);
-            return false;
+            return { ok: false, reason: 'deadline' };
           }
         }
       }
@@ -4947,7 +4950,7 @@ export class EventService {
           retryPayload
         );
       }
-      if (!response.ok) return false;
+      if (!response.ok) return { ok: false, reason: 'insert-failed' };
 
       // Inserted-Item-Id EINMALIG aus der Response lesen (der Body lässt sich
       // nur einmal konsumieren) — wird sowohl für die Dedup-Prüfung als auch
@@ -5006,9 +5009,9 @@ export class EventService {
         await this.trySetItemAuthor(subsiteUrl, REG_LIST_NAME, insertedId, participantEmail);
       }
 
-      return true;
+      return { ok: true };
     } catch {
-      return false;
+      return { ok: false, reason: 'error' };
     }
   }
 
@@ -7894,11 +7897,19 @@ export class EventService {
       }
     } catch { /* ignore */ }
 
-    // 3. Assistant-Ausnahme: User-JobTitle enthält 'assistant' UND Target ist Partner/Director
+    // 3. Assistant-Ausnahme: User-JobTitle ist eine Assistenz UND Target ist
+    //    Partner/Director.
+    //    v23.9 BUG-FIX: Vorher nur `indexOf('assistant')` — das matcht das
+    //    ENGLISCHE „Assistant", aber NICHT das deutsche „Assistenz" (und auch
+    //    nicht „Assistentin"/„Teamassistenz"). Eine Assistenz mit dem Job-Title
+    //    „Assistenz" fiel deshalb durch und durfte NICHT stellvertretend
+    //    anmelden — die Anmeldung schlug mit der generischen (irreführenden)
+    //    „bereits registriert"-Meldung fehl. Jetzt beide Schreibweisen matchen
+    //    (gleiche Logik wie isEventVisibleForUser).
     try {
       const sessionProfile = await this.getCurrentUserProfile();
       const sessionJt = (sessionProfile.jobTitle || '').toLowerCase();
-      if (sessionJt.indexOf('assistant') >= 0) {
+      if (sessionJt.indexOf('assisten') >= 0 || sessionJt.indexOf('assistan') >= 0) {
         const targetProfile = await this.getUserProfileByEmail(targetParticipantEmail);
         const targetJt = (targetProfile.jobTitle || '').toLowerCase();
         if (targetJt.indexOf('partner') >= 0 || targetJt.indexOf('director') >= 0) {

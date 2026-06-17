@@ -4682,8 +4682,13 @@ export default function AdminPage(): React.ReactElement {
             </div>
             <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
               {isDe
-                ? 'Diese Personen haben eine Klammer-Anmeldung, sind aber in KEINEM Sub-Event aktiv angemeldet — meist ein Rest aus einer abgebrochenen Anmeldung. Solche Geister tauchen in der Liste oben nicht auf, blockieren aber eine erneute (auch stellvertretende) Anmeldung der Person. Hier still entfernen, dann ist die Anmeldung wieder möglich.'
-                : 'These people have a bracket registration but are NOT actively registered for any sub-event — usually a leftover from an interrupted registration. Such ghosts don’t show in the list above but block re-registering the person (also on their behalf). Remove them silently here to make registration possible again.'}
+                ? 'Diese Personen haben eine Klammer-Anmeldung, sind aber in KEINEM Sub-Event aktiv angemeldet — meist ein Rest aus einer abgebrochenen Anmeldung. Solche Geister tauchen in der Teilnehmerliste unten nicht auf, blockieren aber eine erneute (auch stellvertretende) Anmeldung der Person. Hier still entfernen, dann ist die Anmeldung wieder möglich.'
+                : 'These people have a bracket registration but are NOT actively registered for any sub-event — usually a leftover from an interrupted registration. Such ghosts don’t show in the participant list below but block re-registering the person (also on their behalf). Remove them silently here to make registration possible again.'}
+            </p>
+            <p style={{ margin: '0 0 10px', padding: '8px 10px', borderRadius: 6, background: 'rgba(237,139,0,0.10)', border: '1px solid var(--dex-orange, #ed8b00)', fontSize: '0.8rem', color: 'var(--dex-orange-dark, #b35a00)', lineHeight: 1.5 }}>
+              {isDe
+                ? <><strong>Wichtig:</strong> Nach dem Entfernen ist die Person <strong>nicht</strong> angemeldet. Bitte gib der Person — bzw. der Person, die sie angemeldet hat (siehe „Versuch von …“) — Bescheid, dass sie sich <strong>erneut anmelden</strong> muss.</>
+                : <><strong>Important:</strong> After removal the person is <strong>not</strong> registered. Please let the person — or whoever registered them (see „attempted by …“) — know that they need to <strong>register again</strong>.</>}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {orphanShadowRegs.map(r => {

@@ -1195,6 +1195,28 @@ export default function RegistrationPage(): React.ReactElement {
 
       let anySuccess = false;
       let parentOk = true;
+      let lastSubReason: string | undefined;
+      // v23.9: Übersetzt den konkreten Misserfolgs-Grund aus registerForEvent in
+      // eine verständliche Meldung — statt pauschal „bereits registriert".
+      const regFailMessage = (reason?: string): string => {
+        if (reason === 'not-allowed') {
+          return locale === 'de'
+            ? 'Du bist nicht berechtigt, diese Person für dieses Event anzumelden. Bitte wende dich an die Organizer des Events.'
+            : 'You are not allowed to register this person for this event. Please contact the event organizers.';
+        }
+        if (reason === 'deadline') {
+          return locale === 'de'
+            ? 'Die Anmeldefrist dieses Events ist abgelaufen — eine Anmeldung ist nicht mehr möglich. Organizer und Admins können nach Ablauf weiterhin anmelden.'
+            : 'The registration deadline for this event has passed — registration is no longer possible. Organizers and admins can still register after the deadline.';
+        }
+        if (reason === 'insert-failed') {
+          return locale === 'de'
+            ? 'Die Anmeldung konnte nicht gespeichert werden (technischer Fehler an der Teilnehmerliste). Bitte erneut versuchen; hält es an, im Organizer Center „Spalten fixen" ausführen.'
+            : 'The registration could not be saved (technical error on the participant list). Please try again; if it persists, run „Fix columns" in the organizer center.';
+        }
+        // Fallback (unbekannt / kein Grund) — bisherige generische Meldung.
+        return t(registerForOther ? 'reg.error.other' : 'reg.error');
+      };
 
       // Verfeinerte Progress-Stufen je nach Anzahl Sub-Events:
       // - parent: 5 → 30 → 50 (wenn Parent-Anmeldung lief)
@@ -1243,10 +1265,10 @@ export default function RegistrationPage(): React.ReactElement {
           // v18.67: echten Status fürs Ergebnis-Modal merken (nicht isFull).
           setSubmittedAsWaitlist(parentResult.status === 'Warteliste');
         }
-        // v19.6: Bei stellvertretender Anmeldung die personenbezogene Meldung
-        // („Diese Person ist möglicherweise bereits angemeldet") statt der
-        // Selbst-Meldung („du bist bereits angemeldet") zeigen.
-        else setError(t(registerForOther ? 'reg.error.other' : 'reg.error'));
+        // v23.9: KONKRETE Fehlermeldung statt pauschal „bereits registriert" —
+        // der echte Grund (Berechtigung / Deadline / technischer Fehler) wird
+        // jetzt aus registerForEvent durchgereicht.
+        else setError(regFailMessage(parentResult.reason));
         setSubmitProgress(50);
       } else if (isSubOnlyMode && parentAlreadyHasRow && sessionsBeingAdded && !registerForOther) {
         // v18.59: Die Schatten-Parent-Zeile existiert bereits (frühere
@@ -1317,8 +1339,9 @@ export default function RegistrationPage(): React.ReactElement {
           const seOpts = (seExtraCc || registerForOther)
             ? { ...(seExtraCc ? { extraCc: seExtraCc } : {}), ...(registerForOther ? { proxyConsentConfirmed: true } : {}) }
             : undefined;
-          const ok = (await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType, seOpts)).ok;
-          if (ok) anySuccess = true;
+          const subRes = await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType, seOpts);
+          if (subRes.ok) anySuccess = true;
+          else lastSubReason = subRes.reason;
           subOpsDone++;
           setSubmitProgress(50 + Math.floor((subOpsDone / Math.max(subOps, 1)) * 40));
         } else if (!isSel && wasReg && !registerForOther) {
@@ -1361,7 +1384,7 @@ export default function RegistrationPage(): React.ReactElement {
       } else if (!parentOk) {
         // Parent-Fehler wurde schon in setError oben gesetzt.
       } else {
-        setError(t(registerForOther ? 'reg.error.other' : 'reg.error'));
+        setError(regFailMessage(lastSubReason));
       }
     } catch {
       setError(t('reg.genericerror'));
@@ -4145,7 +4168,12 @@ export default function RegistrationPage(): React.ReactElement {
         // v18.76: ALLE Sub-Events zeigen (auch nicht ausgewählte), damit der
         // Teilnehmer im Dialog ab- UND zuwählen kann.
         const allChildren = childEvents;
-        const showParent = willRegisterParent || registerForOther;
+        // v23.9: Im Klammer-Modus (subEventsOnlyMode) ist das Hauptevent nicht
+        // buchbar — es wird nur als Schatten mitgeführt. Deshalb NICHT als
+        // wählbare „(Haupt-Event)"-Zeile im Bestätigungs-Dialog zeigen (auch
+        // nicht im Stellvertreter-Modus, wo es sonst über registerForOther
+        // fälschlich auftauchte).
+        const showParent = (willRegisterParent || registerForOther) && !(event && event.subEventsOnlyMode);
         const parentEditable = willRegisterParent && !registerForOther; // proxy: Parent fix
         const canConfirm = isFree
           ? confirmDialogAck
