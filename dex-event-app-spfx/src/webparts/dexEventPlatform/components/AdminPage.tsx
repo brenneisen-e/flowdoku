@@ -1064,6 +1064,10 @@ export default function AdminPage(): React.ReactElement {
   // Löschen einer konsolidierten Abmeldung).
   const [subRegReloadTick, setSubRegReloadTick] = React.useState(0);
   const [expandedConsolidatedEmail, setExpandedConsolidatedEmail] = React.useState<string | null>(null);
+  // v23.5: Personen-Spalten (Vorname/Nachname/Email/Job Title/Standort) in der
+  // konsolidierten Matrix einklappbar — eingeklappt steht nur Foto + Name, damit
+  // die Event-spezifischen Spalten mehr Platz bekommen.
+  const [personalColsCollapsed, setPersonalColsCollapsed] = React.useState(false);
   // v14.11: eigene Sort-States für den Matrix-View. `consolidatedSort` kann
   // 'id' | 'vorname' | 'nachname' | 'email' | 'jobTitle' | 'location' |
   // 'child:<eventId>' sein. Default: 'nachname' aufsteigend.
@@ -4579,7 +4583,10 @@ export default function AdminPage(): React.ReactElement {
     const sortArrow = (key: string): string => key === consolidatedSort ? (consolidatedSortAsc ? ' ▲' : ' ▼') : '';
     const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
     const abbreviate = (s: string, max: number): string => s.length > max ? s.substring(0, max - 1) + '…' : s;
-    const totalColSpan = 6 + parentCustomFields.length + childCustomFieldsByChild.reduce((sum, x) => sum + 1 + x.fields.length, 0) + 1;
+    // v23.5: 6 Personen-Spalten (#, Vorname, Nachname, Email, Job Title,
+    // Standort) — eingeklappt nur 2 (#, „Teilnehmer").
+    const personalColCount = personalColsCollapsed ? 2 : 6;
+    const totalColSpan = personalColCount + parentCustomFields.length + childCustomFieldsByChild.reduce((sum, x) => sum + 1 + x.fields.length, 0) + 1;
     // v19.30: Aktionen (Hauptevent-Felder bearbeiten / abmelden) nur für
     // berechtigte Rollen (Admin oder Organizer dieses Events).
     const canManage = isAdmin || isOrganizerFor(selectedEvent);
@@ -4617,11 +4624,33 @@ export default function AdminPage(): React.ReactElement {
           <thead>
             <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
               <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('id')}>#{sortArrow('id')}</th>
-              <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('vorname')}>{isDe ? 'Vorname' : 'First name'}{sortArrow('vorname')}</th>
-              <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('nachname')}>{isDe ? 'Nachname' : 'Last name'}{sortArrow('nachname')}</th>
-              <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('email')}>Email{sortArrow('email')}</th>
-              <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('jobTitle')}>Job Title{sortArrow('jobTitle')}</th>
-              <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('location')}>{isDe ? 'Standort' : 'Location'}{sortArrow('location')}</th>
+              {personalColsCollapsed ? (
+                <th style={{ textAlign: 'left', padding: 8, userSelect: 'none', whiteSpace: 'nowrap' }}>
+                  <span style={{ cursor: 'pointer' }} onClick={() => handleSortConsolidated('nachname')}>{isDe ? 'Teilnehmer' : 'Participant'}{sortArrow('nachname')}</span>
+                  <button
+                    type="button"
+                    onClick={() => setPersonalColsCollapsed(false)}
+                    title={isDe ? 'Personen-Spalten ausklappen' : 'Expand personal columns'}
+                    style={{ marginLeft: 8, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.85rem', fontWeight: 700 }}
+                  >»</button>
+                </th>
+              ) : (
+                <>
+                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('vorname')}>
+                    {isDe ? 'Vorname' : 'First name'}{sortArrow('vorname')}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setPersonalColsCollapsed(true); }}
+                      title={isDe ? 'Personen-Spalten einklappen (nur Foto + Name)' : 'Collapse personal columns (photo + name only)'}
+                      style={{ marginLeft: 6, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.85rem', fontWeight: 700 }}
+                    >«</button>
+                  </th>
+                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('nachname')}>{isDe ? 'Nachname' : 'Last name'}{sortArrow('nachname')}</th>
+                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('email')}>Email{sortArrow('email')}</th>
+                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('jobTitle')}>Job Title{sortArrow('jobTitle')}</th>
+                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('location')}>{isDe ? 'Standort' : 'Location'}{sortArrow('location')}</th>
+                </>
+              )}
               {parentCustomFields.map(f => (
                 <th key={`pf-${f.id}`} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 150, verticalAlign: 'top', lineHeight: 1.25, ...PASTEL_A_HEADER }} title={`${f.label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
                   {f.label}
@@ -4660,11 +4689,30 @@ export default function AdminPage(): React.ReactElement {
                         TID pro Sub-Event hat — sortbar bleibt es ueber
                         Vorname/Nachname/Email-Spalten. */}
                     <td style={{ padding: 8, color: 'var(--dex-gray-400)' }}>{idx + 1}</td>
-                    <td style={{ padding: 8, fontWeight: 500 }}>{row.vorname || '-'}</td>
-                    <td style={{ padding: 8, fontWeight: 500 }}>{row.nachname || '-'}</td>
-                    <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{row.email}</td>
-                    <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{row.jobTitle || '-'}</td>
-                    <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{row.location || '-'}</td>
+                    {personalColsCollapsed ? (
+                      <td style={{ padding: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                          <img
+                            src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(row.email)}&size=L`}
+                            alt={`${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email}
+                            title={`${`${row.vorname || ''} ${row.nachname || ''}`.trim()}${row.email ? ` · ${row.email}` : ''}${row.jobTitle ? ` · ${row.jobTitle}` : ''}${row.location ? ` · ${row.location}` : ''}`}
+                            onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                            onMouseEnter={e => { const t = e.currentTarget as HTMLImageElement; t.style.transform = 'scale(2.6)'; t.style.zIndex = '20'; t.style.position = 'relative'; t.style.boxShadow = '0 4px 16px rgba(0,0,0,0.25)'; }}
+                            onMouseLeave={e => { const t = e.currentTarget as HTMLImageElement; t.style.transform = 'scale(1)'; t.style.zIndex = 'auto'; t.style.boxShadow = 'none'; }}
+                            style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0, transition: 'transform 0.15s ease', transformOrigin: 'left center', cursor: 'zoom-in' }}
+                          />
+                          <span style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{`${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email || '-'}</span>
+                        </div>
+                      </td>
+                    ) : (
+                      <>
+                        <td style={{ padding: 8, fontWeight: 500 }}>{row.vorname || '-'}</td>
+                        <td style={{ padding: 8, fontWeight: 500 }}>{row.nachname || '-'}</td>
+                        <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{row.email}</td>
+                        <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{row.jobTitle || '-'}</td>
+                        <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{row.location || '-'}</td>
+                      </>
+                    )}
                     {parentCustomFields.map(f => {
                       let val = '';
                       // v15.3.1: Parent-Level-Custom-Fields zuerst aus der
@@ -8046,7 +8094,12 @@ export default function AdminPage(): React.ReactElement {
                       )}
                     </div>
                   )}
-                  {teamlessActive.length > 0 && (
+                  {/* v23.5: „ohne Team"-Box ist jetzt IMMER ein Drop-Ziel (für
+                      canManage), auch wenn gerade niemand teamlos ist — sonst
+                      konnte man eine Person per Drag&Drop nicht aus ihrem Team
+                      nehmen (die Box war nur bei vorhandenen teamlosen Personen
+                      da). Leerer Zustand zeigt einen Hinweis als Drop-Fläche. */}
+                  {(canManage || teamlessActive.length > 0) && (
                     <div
                       onDragOver={canManage ? (e => { e.preventDefault(); setDragOverTid(''); }) : undefined}
                       onDragLeave={canManage ? (() => setDragOverTid(prev => (prev === '' ? null : prev))) : undefined}
@@ -8061,6 +8114,13 @@ export default function AdminPage(): React.ReactElement {
                           — Einzel-Anmeldungen ohne Team-Zuordnung
                         </span>
                       </div>
+                      {teamlessActive.length === 0 && (
+                        <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-500)', fontStyle: 'italic', padding: '6px 2px' }}>
+                          {isDe
+                            ? `Aktuell ist niemand ohne ${selectedEvent?.teamTermSingular || 'Team'}. Zieh eine Person aus einem ${selectedEvent?.teamTermSingular || 'Team'} hierher, um die Zuordnung zu lösen.`
+                            : `Nobody is currently without a ${selectedEvent?.teamTermSingular || 'team'}. Drag a person from a ${selectedEvent?.teamTermSingular || 'team'} here to remove their assignment.`}
+                        </div>
+                      )}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {teamlessActive.map(m => {
                           const name = `${m.Vorname || ''} ${m.Nachname || ''}`.trim() || m.ParticipantName || m.ParticipantEmail;
