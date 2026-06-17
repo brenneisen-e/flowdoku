@@ -967,6 +967,15 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           return !!(ov && ov._previewBeforeActive);
         } catch { return false; }
       })(),
+      // v23.19: Pro-Ansicht-Darstellung des Event-Bildes (Piggyback _imageDisplay).
+      imageDisplay: ((): { card?: { zoom: number; posY: number }; hero?: { zoom: number; posY: number } } | undefined => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          const d = ov && ov._imageDisplay;
+          if (d && typeof d === 'object' && (d.card || d.hero)) return d;
+          return undefined;
+        } catch { return undefined; }
+      })(),
       childEventTermSingular: ((): string | undefined => {
         try {
           const ov = JSON.parse(e.EmailTemplateOverrides || '{}');

@@ -228,7 +228,22 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
         background: event.imageUrl
           ? `url(${cachedImage}) center/cover no-repeat`
           : getEventGradient(event.type, index),
+        position: 'relative',
       }}>
+        {/* v23.19: Optionale Pro-Ansicht-Darstellung (Karte) — überlagert das
+            Hintergrund-Bild mit individuellem Zoom/Position. Nur wenn gesetzt. */}
+        {event.imageUrl && event.imageDisplay?.card && (
+          <img
+            src={cachedImage}
+            alt=""
+            style={{
+              position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
+              objectPosition: `center ${event.imageDisplay.card.posY}%`,
+              transform: `scale(${event.imageDisplay.card.zoom})`,
+              transformOrigin: `center ${event.imageDisplay.card.posY}%`,
+            }}
+          />
+        )}
         <div className="event-card__overlay">
           <h3 className="event-card__title">{event.title}</h3>
           <div className="event-card__meta">
