@@ -3715,11 +3715,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       `;
       const subject = `DEX Wochenbericht — ${fmtD(toIso)}`;
       const body = wrapTemplate('#86bc25', 'DEX Wochenbericht', `${fmtD(fromIso)} – ${fmtD(toIso)}`, inner);
-      for (const adminEmail of admins) {
-        try {
-          await eventService.queueEmail(subject, adminEmail, 'Admin', body, 'WeeklyReport', '', '');
-        } catch (err) { console.warn('[DEX] weekly report queueEmail failed for', adminEmail, err); }
-      }
+      // v23.11: EINE Mail an ALLE Admins (alle im To, Semikolon-getrennt) —
+      // der DEX_SEND_MAIL-Flow mappt Recipient direkt aufs To-Feld, das mehrere
+      // Empfänger akzeptiert (genau wie OrganizerEmail mit mehreren Organizern).
+      try {
+        await eventService.queueEmail(subject, admins.join('; '), 'Admins', body, 'WeeklyReport', '', '');
+      } catch (err) { console.warn('[DEX] weekly report queueEmail failed:', err); }
     } catch (err) { console.warn('[DEX] maybeSendWeeklyReport error:', err); }
   }
 

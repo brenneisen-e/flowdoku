@@ -844,7 +844,9 @@ ausgelöst **durch das Öffnen der App** (kein Power-Automate-Flow nötig):
   (Anmeldungen pro Subsite: total + seit-Zeitpunkt, Status-gefiltert).
   Anmeldungszählung läuft über alle **deduplizierten** Subsites der geladenen
   Events. Mail im Deloitte-Layout (`wrapTemplate`), emailType `WeeklyReport`,
-  pro Admin eine eigene Mail. Komplett best-effort (Fehler blocken nie den Boot).
+  **eine Mail an alle Admins** (alle Adressen im To, Semikolon-getrennt — der
+  `DEX_SEND_MAIL`-Flow mappt Recipient direkt aufs To). Komplett best-effort
+  (Fehler blocken nie den Boot).
 
 ### Teams: frei benennbar, DnD-Zuordnung, Sperre, Per-Team-Mail (v23.0)
 
