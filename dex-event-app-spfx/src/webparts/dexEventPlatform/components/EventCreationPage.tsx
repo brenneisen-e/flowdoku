@@ -63,6 +63,13 @@ async function compressImage(file: File, maxWidth: number = 1200, quality: numbe
       const ctx = canvas.getContext('2d');
       if (!ctx) { resolve(file); return; }
       ctx.drawImage(img, 0, 0, width, height);
+      // v23.16: PNG-Quellen als PNG ausgeben — sonst gehen transparente Bereiche
+      // (z.B. die per Kreis-Zuschnitt freigeschnittenen Ecken) bei der
+      // JPEG-Konvertierung verloren und werden SCHWARZ gefüllt. Nur Nicht-PNG
+      // (Fotos) werden zu JPEG komprimiert.
+      const isPng = (file.type || '').toLowerCase() === 'image/png';
+      const outType = isPng ? 'image/png' : 'image/jpeg';
+      const outExt = isPng ? '.png' : '.jpg';
       canvas.toBlob(
         (blob) => {
           if (!blob || blob.size >= file.size) {
@@ -70,10 +77,10 @@ async function compressImage(file: File, maxWidth: number = 1200, quality: numbe
             resolve(file);
             return;
           }
-          const compressed = new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' });
+          const compressed = new File([blob], file.name.replace(/\.[^.]+$/, outExt), { type: outType });
           resolve(compressed);
         },
-        'image/jpeg',
+        outType,
         quality
       );
     };

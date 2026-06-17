@@ -146,7 +146,7 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, zIndex: 6,
           padding: '5px 10px',
-          background: 'rgba(237,139,0,0.92)', color: '#fff',
+          background: 'rgba(74,124,31,0.95)', color: '#fff',
           fontSize: '0.72rem', fontWeight: 700, textAlign: 'center',
           borderTopLeftRadius: 'var(--dex-radius)', borderTopRightRadius: 'var(--dex-radius)',
         }}>
