@@ -388,8 +388,10 @@ interface EventContextType {
    *  alle aktiven Subsites — best-effort, blockiert nichts. */
   autoRepairProxyAccess: () => Promise<void>;
   /** v23.8: Wöchentlichen Admin-Bericht versenden, falls fällig (≥7 Tage seit
-   *  dem letzten). Beim App-Start für Admins aufgerufen. Best-effort. */
-  maybeSendWeeklyReport: () => Promise<void>;
+   *  dem letzten). Beim App-Start für Admins aufgerufen. Mit `force:true`
+   *  (Settings-Testbutton) wird die 7-Tage-Sperre übersprungen. Best-effort;
+   *  liefert ein kleines Ergebnis für UI-Feedback. */
+  maybeSendWeeklyReport: (opts?: { force?: boolean }) => Promise<{ sent: boolean; admins: number; reason?: string }>;
   /** v22.45: Scannt die übergebenen Events auf Teilnehmer ohne aktives
    *  Deloitte-Konto (für die Landing-Page-Warnung der Organizer/Admins). */
   scanInactiveAccounts: (evs: Array<{ id: string; title: string; subsiteUrl?: string }>) => Promise<Array<{ eventId: string; title: string; people: Array<{ email: string; name: string }> }>>;
@@ -3652,17 +3654,18 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   // (+ von wem), Anmeldungen im Zeitraum, neu ernannte Organizer — plus
   // Gesamt-KPIs (Events insgesamt, aktive Anmeldungen insgesamt, hinterlegte
   // Organizer). Best-effort; Fehler blocken nie den Boot.
-  async function maybeSendWeeklyReport(): Promise<void> {
+  async function maybeSendWeeklyReport(opts?: { force?: boolean }): Promise<{ sent: boolean; admins: number; reason?: string }> {
+    const force = !!opts?.force;
     try {
       const SEVEN = 7 * 24 * 60 * 60 * 1000;
       const now = new Date();
       const last = await eventService.getLastWeeklyReport();
-      if (last && last.created) {
+      if (!force && last && last.created) {
         const lastTs = new Date(last.created).getTime();
-        if (isFinite(lastTs) && (now.getTime() - lastTs) < SEVEN) return; // noch keine 7 Tage
+        if (isFinite(lastTs) && (now.getTime() - lastTs) < SEVEN) return { sent: false, admins: 0, reason: 'not-due' }; // noch keine 7 Tage
       }
       const admins = await eventService.getRoleEmails('Admin');
-      if (admins.length === 0) return; // niemand zum Versenden
+      if (admins.length === 0) return { sent: false, admins: 0, reason: 'no-admins' }; // niemand zum Versenden
       const periodFrom = (last && last.periodTo) ? new Date(last.periodTo) : new Date(now.getTime() - SEVEN);
       const fromIso = periodFrom.toISOString();
       const toIso = now.toISOString();
@@ -3682,10 +3685,6 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         catch { /* einzelne Subsite-Fehler ignorieren */ }
       }
       const totalEvents = events.length;
-
-      // SP-seitig zuerst protokollieren (claim) — verhindert Doppelversand,
-      // wenn mehrere Admins fast gleichzeitig booten.
-      await eventService.recordWeeklyReport(fromIso, toIso);
 
       // E-Mail bauen.
       const fmtD = (iso: string): string => { try { return new Date(iso).toLocaleDateString('de-DE'); } catch { return iso.slice(0, 10); } };
@@ -3718,10 +3717,22 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // v23.11: EINE Mail an ALLE Admins (alle im To, Semikolon-getrennt) —
       // der DEX_SEND_MAIL-Flow mappt Recipient direkt aufs To-Feld, das mehrere
       // Empfänger akzeptiert (genau wie OrganizerEmail mit mehreren Organizern).
-      try {
-        await eventService.queueEmail(subject, admins.join('; '), 'Admins', body, 'WeeklyReport', '', '');
-      } catch (err) { console.warn('[DEX] weekly report queueEmail failed:', err); }
-    } catch (err) { console.warn('[DEX] maybeSendWeeklyReport error:', err); }
+      // v23.12: Erst queuen, NUR bei Erfolg protokollieren (recordWeeklyReport).
+      // Vorher wurde zuerst „geclaimt" — schlug das Queuen dann fehl, war der
+      // Bericht trotzdem als versendet vermerkt und wurde 7 Tage nicht erneut
+      // versucht. Jetzt retry-sicher: kein erfolgreiches Queuen → kein Eintrag →
+      // nächster Boot versucht es erneut.
+      const queued = await eventService.queueEmail(subject, admins.join('; '), 'Admins', body, 'WeeklyReport', '', '');
+      if (queued) {
+        await eventService.recordWeeklyReport(fromIso, toIso);
+        return { sent: true, admins: admins.length };
+      }
+      console.warn('[DEX] Wochenbericht: queueEmail meldete Misserfolg — kein Protokolleintrag, Retry beim nächsten Boot.');
+      return { sent: false, admins: admins.length, reason: 'queue-failed' };
+    } catch (err) {
+      console.warn('[DEX] maybeSendWeeklyReport error:', err);
+      return { sent: false, admins: 0, reason: 'error' };
+    }
   }
 
   // v22.45: Scan über mehrere Events — pro Event Teilnehmer laden und auf ein

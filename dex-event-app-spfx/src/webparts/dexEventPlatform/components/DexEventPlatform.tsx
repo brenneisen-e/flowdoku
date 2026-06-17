@@ -407,10 +407,15 @@ function AppContent(): React.ReactElement {
     try { localStorage.setItem('dex_weeklyreport_lastcheck', String(Date.now())); } catch { /* */ }
     // Deutlich verzögert — Boot/erste Interaktion haben Vorrang, der Bericht
     // ist unkritisch.
-    const t = window.setTimeout(() => {
+    // v23.12 BUG-FIX: KEIN clearTimeout-Cleanup zurückgeben. `events` ist in
+    // den Deps und ändert sich nach dem ersten Render fast immer nochmal
+    // innerhalb der 8 s (z.B. Teilnehmerzahlen-Refresh) — das Cleanup hätte den
+    // Timer abgebrochen, `didWeeklyReport=true` verhindert ein Neu-Planen → der
+    // Bericht wurde NIE ausgelöst. Der Timer darf jetzt durchlaufen (best-effort,
+    // setzt keinen React-State, daher auch nach Unmount unkritisch).
+    window.setTimeout(() => {
       maybeSendWeeklyReport().catch(err => console.warn('[DEX] weekly report failed:', err));
     }, 8000);
-    return () => window.clearTimeout(t);
   }, [isAdmin, isEventsLoading, events]);
 
   // Dynamische Höhe + SharePoint-Scroll unterdrücken

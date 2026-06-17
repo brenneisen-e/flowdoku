@@ -779,6 +779,9 @@ export default function SettingsPage(): React.ReactElement {
             Nachrücken-Mail in v12.11/v12.12). */}
         {isAdmin && <ReseedTemplatesCard />}
 
+        {/* v23.12: Wochenbericht-Test (nur Admin) */}
+        {isAdmin && <WeeklyReportTestCard />}
+
         {/* Berechtigungs-Übersicht - nur für Admin */}
         {isAdmin && <PermissionsViewer siteUrl={siteUrl} />}
 
@@ -916,6 +919,70 @@ function ReseedTemplatesCard(): React.ReactElement {
               )}
             </ul>
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// v23.12: Admin-Testbutton für den Wochenbericht — sendet ihn SOFORT (überspringt
+// die 7-Tage-Sperre) an alle Admins und zeigt das Ergebnis. So lässt sich
+// verifizieren, dass Admins gefunden werden und die Mail in die Queue geht.
+function WeeklyReportTestCard(): React.ReactElement {
+  const { maybeSendWeeklyReport } = useEvents();
+  const { locale } = useLanguage();
+  const isDe = locale === 'de';
+  const { confirmDialog } = useDialog();
+  const [busy, setBusy] = React.useState(false);
+  const [result, setResult] = React.useState<{ sent: boolean; admins: number; reason?: string } | null>(null);
+  const handleSend = async (): Promise<void> => {
+    const msg = isDe
+      ? 'Den Wochenbericht JETZT (sofort, ohne 7-Tage-Sperre) an alle Admins versenden? Nutze das nur zum Testen — der nächste reguläre Bericht zählt dann ab jetzt.'
+      : 'Send the weekly report NOW (immediately, bypassing the 7-day lock) to all admins? Use this only for testing — the next regular report counts from now.';
+    if (!(await confirmDialog(msg, { confirmLabel: isDe ? 'Jetzt senden' : 'Send now' }))) return;
+    setBusy(true);
+    setResult(null);
+    try {
+      const r = await maybeSendWeeklyReport({ force: true });
+      setResult(r);
+    } catch {
+      setResult({ sent: false, admins: 0, reason: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const reasonText = (reason?: string): string => {
+    if (reason === 'no-admins') return isDe ? 'Keine Admins in DEX_Roles gefunden (Rolle „Admin"). Bitte Rollen prüfen.' : 'No admins found in DEX_Roles (role „Admin"). Please check the roles.';
+    if (reason === 'queue-failed') return isDe ? 'Die Mail konnte nicht in die Warteschlange (DEX_Emails) geschrieben werden.' : 'The mail could not be written to the queue (DEX_Emails).';
+    if (reason === 'error') return isDe ? 'Unerwarteter Fehler — bitte Browser-Konsole prüfen.' : 'Unexpected error — please check the browser console.';
+    return '';
+  };
+  return (
+    <div className="card" style={{ padding: '20px 24px', marginBottom: 24 }}>
+      <h3 style={{ margin: '0 0 6px', fontSize: '1.05rem' }}>
+        {isDe ? 'Wochenbericht — Test-Versand' : 'Weekly report — test send'}
+      </h3>
+      <p style={{ margin: '0 0 12px', color: 'var(--dex-gray-600)', fontSize: '0.85rem', lineHeight: 1.5 }}>
+        {isDe
+          ? 'Der Wochenbericht geht automatisch 1×/Woche an alle Admins (ausgelöst beim Öffnen der App). Hier kannst du ihn sofort auslösen, um zu prüfen, ob er ankommt — die 7-Tage-Sperre wird übersprungen. Die Mail landet wie alle Mails zunächst in DEX_Emails und wird vom DEX_SEND_MAIL-Flow versendet.'
+          : 'The weekly report is sent automatically once a week to all admins (triggered when the app opens). Here you can trigger it immediately to verify delivery — the 7-day lock is bypassed. The mail goes into DEX_Emails first (like all mails) and is sent by the DEX_SEND_MAIL flow.'}
+      </p>
+      <button
+        type="button"
+        className="btn btn-secondary"
+        onClick={handleSend}
+        disabled={busy}
+        style={{ fontSize: '0.85rem' }}
+      >
+        {busy ? (isDe ? 'Wird gesendet…' : 'Sending…') : (isDe ? 'Wochenbericht jetzt senden' : 'Send weekly report now')}
+      </button>
+      {result && (
+        <div style={{ marginTop: 10, fontSize: '0.85rem', color: result.sent ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-red, #c00)' }}>
+          {result.sent
+            ? (isDe
+                ? `In die Warteschlange gelegt — eine Mail an ${result.admins} Admin(s). Sie wird in Kürze vom DEX_SEND_MAIL-Flow versendet.`
+                : `Queued — one mail to ${result.admins} admin(s). It will be sent shortly by the DEX_SEND_MAIL flow.`)
+            : reasonText(result.reason) || (isDe ? 'Versand fehlgeschlagen.' : 'Sending failed.')}
         </div>
       )}
     </div>
