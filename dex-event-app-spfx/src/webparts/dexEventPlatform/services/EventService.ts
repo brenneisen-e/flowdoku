@@ -4773,7 +4773,10 @@ export class EventService {
     // pageContext-Identität), die im Tenant gelegentlich fehlschlug und
     // legitime Organizer mit „bereits angemeldet" ablehnte.
     actorIsEventOrganizer: boolean = false
-  ): Promise<boolean> {
+  // v23.9: Statt nacktem boolean ein konkreter Grund bei Misserfolg, damit die
+  // UI nicht mehr pauschal „bereits registriert" anzeigt (irreführend, wenn der
+  // echte Grund Berechtigung/Deadline/Insert-Fehler war).
+  ): Promise<{ ok: boolean; reason?: 'not-allowed' | 'deadline' | 'insert-failed' | 'error' }> {
     try {
       // ---- Permission-Checks (v3.9.2 / v3.9.3) ----
       // Serverseitige Prüfungen — nicht perfekt (SPFx läuft im Browser),
@@ -4812,7 +4815,7 @@ export class EventService {
         const allowed = actorIsEventOrganizer || await this.canRegisterForOthers(subsiteUrl, participantEmail);
         if (!allowed) {
           console.warn(`[DEX] registerForEvent DENIED: ${sessionEmail} versuchte ${targetEmail} zu registrieren — weder Organizer noch Admin noch erlaubter Assistant-Fall.`);
-          return false;
+          return { ok: false, reason: 'not-allowed' };
         }
       }
 
@@ -4839,7 +4842,7 @@ export class EventService {
 
           if (!isEventOrganizer && !isAdmin) {
             console.warn(`[DEX] registerForEvent DENIED (deadline): ${sessionEmail} versuchte nach Deadline ${eventDeadline} zu registrieren — weder Event-Organizer noch Admin.`);
-            return false;
+            return { ok: false, reason: 'deadline' };
           }
         }
       }
@@ -4947,7 +4950,7 @@ export class EventService {
           retryPayload
         );
       }
-      if (!response.ok) return false;
+      if (!response.ok) return { ok: false, reason: 'insert-failed' };
 
       // Inserted-Item-Id EINMALIG aus der Response lesen (der Body lässt sich
       // nur einmal konsumieren) — wird sowohl für die Dedup-Prüfung als auch
@@ -5006,9 +5009,9 @@ export class EventService {
         await this.trySetItemAuthor(subsiteUrl, REG_LIST_NAME, insertedId, participantEmail);
       }
 
-      return true;
+      return { ok: true };
     } catch {
-      return false;
+      return { ok: false, reason: 'error' };
     }
   }
 
@@ -7894,11 +7897,19 @@ export class EventService {
       }
     } catch { /* ignore */ }
 
-    // 3. Assistant-Ausnahme: User-JobTitle enthält 'assistant' UND Target ist Partner/Director
+    // 3. Assistant-Ausnahme: User-JobTitle ist eine Assistenz UND Target ist
+    //    Partner/Director.
+    //    v23.9 BUG-FIX: Vorher nur `indexOf('assistant')` — das matcht das
+    //    ENGLISCHE „Assistant", aber NICHT das deutsche „Assistenz" (und auch
+    //    nicht „Assistentin"/„Teamassistenz"). Eine Assistenz mit dem Job-Title
+    //    „Assistenz" fiel deshalb durch und durfte NICHT stellvertretend
+    //    anmelden — die Anmeldung schlug mit der generischen (irreführenden)
+    //    „bereits registriert"-Meldung fehl. Jetzt beide Schreibweisen matchen
+    //    (gleiche Logik wie isEventVisibleForUser).
     try {
       const sessionProfile = await this.getCurrentUserProfile();
       const sessionJt = (sessionProfile.jobTitle || '').toLowerCase();
-      if (sessionJt.indexOf('assistant') >= 0) {
+      if (sessionJt.indexOf('assisten') >= 0 || sessionJt.indexOf('assistan') >= 0) {
         const targetProfile = await this.getUserProfileByEmail(targetParticipantEmail);
         const targetJt = (targetProfile.jobTitle || '').toLowerCase();
         if (targetJt.indexOf('partner') >= 0 || targetJt.indexOf('director') >= 0) {
@@ -8781,6 +8792,141 @@ export class EventService {
         await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments/addroleassignment(principalid=${d.Id}, roledefid=1073741829)`, {});
       }
     } catch (e) { console.warn('[DEX] setArchiveListPermissions failed:', e); }
+  }
+
+  // ==================== Wochenbericht (v23.8) ====================
+
+  /** Tracking-Liste für den wöchentlichen Admin-Bericht. Pro versendetem
+   *  Bericht eine Zeile (Created = Versandzeit; PeriodFrom/PeriodTo = der
+   *  abgedeckte Zeitraum). Quelle der Wahrheit für „wann lief der letzte
+   *  Bericht". */
+  public async ensureWeeklyReportsList(): Promise<void> {
+    const listName = 'DEX_WeeklyReports';
+    const exists = await this.listExists(listName);
+    if (exists) return;
+    const createResp = await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'Versand-Protokoll des wöchentlichen Admin-Berichts (v23.8).',
+      'BaseTemplate': 100,
+      'AllowContentTypes': false,
+    });
+    if (!createResp.ok) {
+      console.warn('[DEX] DEX_WeeklyReports konnte nicht angelegt werden — vermutlich fehlen Owner-Rechte.');
+      return;
+    }
+    for (const f of [{ title: 'PeriodFrom', type: 4 }, { title: 'PeriodTo', type: 4 }]) {
+      try {
+        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
+          '__metadata': { 'type': 'SP.Field' }, 'Title': f.title, 'FieldTypeKind': f.type, 'Required': false,
+        });
+      } catch { /* einzelne Feld-Fehler ignorieren */ }
+    }
+    try { await this.configureDefaultView(listName, ['PeriodFrom', 'PeriodTo']); } catch { /* */ }
+  }
+
+  /** Letzter Bericht: Created (Versandzeit) + PeriodTo. null = noch keiner. */
+  public async getLastWeeklyReport(): Promise<{ created: string; periodTo: string } | null> {
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_WeeklyReports')/items?$select=Created,PeriodTo&$orderby=Created desc&$top=1`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      if (items.length === 0) return null;
+      return { created: items[0].Created || '', periodTo: items[0].PeriodTo || items[0].Created || '' };
+    } catch { return null; }
+  }
+
+  /** Versand des Berichts protokollieren (eine Zeile). */
+  public async recordWeeklyReport(fromIso: string, toIso: string): Promise<void> {
+    try {
+      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_WeeklyReports')/items`, {
+        '__metadata': { 'type': 'SP.Data.DEX_x005f_WeeklyReportsListItem' },
+        'Title': `Weekly ${toIso.slice(0, 10)}`,
+        'PeriodFrom': fromIso,
+        'PeriodTo': toIso,
+      });
+    } catch (e) { console.warn('[DEX] recordWeeklyReport failed:', e); }
+  }
+
+  /** E-Mail-Adressen (Title) aller DEX_Roles-Einträge mit der gegebenen Rolle. */
+  public async getRoleEmails(role: string): Promise<string[]> {
+    try {
+      const esc = role.replace(/'/g, "''");
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=Role eq '${encodeURIComponent(esc)}'&$select=Title&$top=5000`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      const set = new Set<string>();
+      for (const i of items) { const e = (i.Title || '').trim().toLowerCase(); if (e) set.add(e); }
+      return Array.from(set);
+    } catch { return []; }
+  }
+
+  /** DEX_Roles-Einträge einer Rolle, die seit `fromIso` neu angelegt wurden. */
+  public async getRoleItemsCreatedSince(role: string, fromIso: string): Promise<Array<{ email: string; created: string }>> {
+    try {
+      const esc = role.replace(/'/g, "''");
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=Role eq '${encodeURIComponent(esc)}' and Created ge '${fromIso}'&$select=Title,Created&$orderby=Created desc&$top=500`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      return items.map((i: { Title?: string; Created?: string }) => ({ email: (i.Title || '').trim(), created: i.Created || '' }));
+    } catch { return []; }
+  }
+
+  /** DEX_Events-Items, die seit `fromIso` erstellt wurden — mit Ersteller
+   *  (SP-Author) + Titel. */
+  public async getEventsCreatedSince(fromIso: string): Promise<Array<{ title: string; author: string; created: string }>> {
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=Title,Created,Author/Title&$expand=Author&$filter=Created ge '${fromIso}'&$orderby=Created desc&$top=500`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return items.map((i: any) => ({ title: i.Title || '(ohne Titel)', author: (i.Author && i.Author.Title) || '—', created: i.Created || '' }));
+    } catch { return []; }
+  }
+
+  /** Aktive Anmeldungen einer Teilnehmer-Subsite zählen: total (alle aktiven)
+   *  + since (RegistrationDate ≥ fromIso). Status-Filter = Angemeldet/QR
+   *  versendet/Eingecheckt/Warteliste (keine Abgemeldeten). */
+  public async countRegistrations(subsiteUrl: string, fromIso: string): Promise<{ total: number; since: number }> {
+    if (!subsiteUrl) return { total: 0, since: 0 };
+    const active = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
+    let total = 0; let since = 0;
+    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Status,RegistrationDate&$top=5000`;
+    let guard = 0;
+    const fromTs = new Date(fromIso).getTime();
+    while (url && guard < 50) {
+      guard++;
+      try {
+        const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        if (!resp.ok) break;
+        const data = await resp.json();
+        const items = data.value || data.d?.results || [];
+        for (const i of items) {
+          if (active.indexOf(i.Status) < 0) continue;
+          total++;
+          const ts = i.RegistrationDate ? new Date(i.RegistrationDate).getTime() : 0;
+          if (ts && ts >= fromTs) since++;
+        }
+        url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
+      } catch { break; }
+    }
+    return { total, since };
   }
 
   /** Lädt alle Zeilen einer Liste (paged, nometadata). `select` schränkt die

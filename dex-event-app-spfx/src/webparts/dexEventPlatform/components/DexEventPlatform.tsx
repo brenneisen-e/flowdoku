@@ -107,7 +107,7 @@ function ImpersonationBanner(props: { currentPage?: string }): React.ReactElemen
 function AppContent(): React.ReactElement {
   const { currentPage, navigate } = useNavigation();
   const { isAdmin, isOrganizer, isRolesLoading } = useRoles();
-  const { markExpiredEventsAsCompleted, autoRepairProxyAccess, isEventsLoading, events, getKpiCache, updateKpiCache } = useEvents();
+  const { markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, isEventsLoading, events, getKpiCache, updateKpiCache } = useEvents();
 
   // v11.52: KPI-Boxen im Boot-Loader. Live-Zählung ueber alle Event-
   // Subsites war zu langsam (Counts kommen erst nach mehreren Sekunden) —
@@ -383,6 +383,33 @@ function AppContent(): React.ReactElement {
     const t = window.setTimeout(() => {
       autoRepairProxyAccess().catch(err => console.warn('[DEX] auto access-fix failed:', err));
     }, 4000);
+    return () => window.clearTimeout(t);
+  }, [isAdmin, isEventsLoading, events]);
+
+  // v23.8: Wöchentlicher Admin-Bericht. Beim Admin-Start prüfen, ob seit dem
+  // letzten Bericht ≥7 Tage vergangen sind (Quelle: SP-Liste DEX_WeeklyReports)
+  // und ggf. den Bericht an alle Admins versenden. Der lokale 12h-Throttle
+  // verhindert nur unnötige SP-Roundtrips bei häufigen Reloads — die echte
+  // 7-Tage-Logik + der Doppelversand-Schutz liegen serverseitig in der Liste.
+  const didWeeklyReport = React.useRef(false);
+  React.useEffect(() => {
+    if (didWeeklyReport.current) return;
+    if (!isAdmin) return;
+    if (isEventsLoading) return;
+    if (!events || events.length === 0) return;
+    didWeeklyReport.current = true;
+    let throttled = false;
+    try {
+      const last = Number(localStorage.getItem('dex_weeklyreport_lastcheck') || '0');
+      if (last && (Date.now() - last) < 12 * 60 * 60 * 1000) throttled = true;
+    } catch { /* localStorage nicht verfügbar → trotzdem laufen lassen */ }
+    if (throttled) return;
+    try { localStorage.setItem('dex_weeklyreport_lastcheck', String(Date.now())); } catch { /* */ }
+    // Deutlich verzögert — Boot/erste Interaktion haben Vorrang, der Bericht
+    // ist unkritisch.
+    const t = window.setTimeout(() => {
+      maybeSendWeeklyReport().catch(err => console.warn('[DEX] weekly report failed:', err));
+    }, 8000);
     return () => window.clearTimeout(t);
   }, [isAdmin, isEventsLoading, events]);
 

@@ -298,7 +298,7 @@ interface EventContextType {
   childEventsOf: (parentEventId: string) => DeloitteEvent[];
   isEventsLoading: boolean;
   createEvent: (event: CreateEventInput) => Promise<number | null>;
-  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' }>;
+  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste'; reason?: string }>;
   /** v11.82: Team-Anmeldung — Lead + N-1 Mitglieder gleichzeitig anmelden.
    *  Reserviert N Plätze atomar; bei Vollbelegung geht das ganze Team auf
    *  die Warteliste (keine Teil-Anmeldungen aus Kapazitätsmangel). */
@@ -387,6 +387,9 @@ interface EventContextType {
    *  von Fremd-Anmeldungen). Läuft beim Admin-Start gedrosselt (1×/24h) über
    *  alle aktiven Subsites — best-effort, blockiert nichts. */
   autoRepairProxyAccess: () => Promise<void>;
+  /** v23.8: Wöchentlichen Admin-Bericht versenden, falls fällig (≥7 Tage seit
+   *  dem letzten). Beim App-Start für Admins aufgerufen. Best-effort. */
+  maybeSendWeeklyReport: () => Promise<void>;
   /** v22.45: Scannt die übergebenen Events auf Teilnehmer ohne aktives
    *  Deloitte-Konto (für die Landing-Page-Warnung der Organizer/Admins). */
   scanInactiveAccounts: (evs: Array<{ id: string; title: string; subsiteUrl?: string }>) => Promise<Array<{ eventId: string; title: string; people: Array<{ email: string; name: string }> }>>;
@@ -654,6 +657,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         safeRun('ensureOutlookLocksList', () => eventService.ensureOutlookLocksList(), parallelMarks),
         safeRun('ensureAccessFixList', () => eventService.ensureAccessFixList(), parallelMarks),
         safeRun('ensureArchiveList', () => eventService.ensureArchiveList(), parallelMarks),
+        safeRun('ensureWeeklyReportsList', () => eventService.ensureWeeklyReportsList(), parallelMarks),
         safeRun('ensureAssetsFolders', () => eventService.ensureAssetsFolders(), parallelMarks),
         safeRun('ensureLogosInConfig', () => eventService.ensureLogosInConfig(), parallelMarks),
       ]);
@@ -1198,7 +1202,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // Zustimmung der Person bestätigt (Pflicht-Checkbox auf der Anmeldeseite).
     // Wird als Nachweis in die SP-Spalte ProxyConsent geschrieben.
     opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean }
-  ): Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' }> {
+  ): Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste'; reason?: string }> {
     // v17.25: Demo-Showcase-Event → No-Op, kein SP-Roundtrip. Die Register-
     // Seite blockt den Submit ohnehin mit einem Demo-Hinweis; dieser Guard
     // ist die zweite Verteidigungslinie.
@@ -1231,11 +1235,25 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const nameToUse = `${firstNameToUse} ${lastNameToUse}`.trim();
 
     // Prüfen ob schon registriert
+    const event = events.find(e => e.id === eventId);
     const existing = await eventService.getMyRegistration(subsiteUrl, emailToUse);
-    if (existing && existing.Status !== 'Abgemeldet') return { ok: false, status: 'Warteliste' };
+    if (existing && existing.Status !== 'Abgemeldet') {
+      // v23.9: Im Klammer-Modus (subEventsOnlyMode) ist die Parent-Zeile NUR
+      // ein Schatten zur Datenvollständigkeit — die echte Anmeldung sind die
+      // Sub-Events. Ein bereits vorhandener (nicht abgemeldeter) Schatten darf
+      // deshalb die (Sub-Event-)Anmeldung NICHT blockieren. Das war die Ursache
+      // des „bereits registriert"-Falls: eine Person mit aktiver Schatten-Zeile
+      // (z.B. aus einer abgebrochenen Anmeldung), die in den Sub-Events nur eine
+      // ABGEMELDETE Zeile hat, tauchte weder in der Liste noch im Geister-Kasten
+      // auf, blockierte aber jede Neu-Anmeldung. Jetzt: Schatten als „schon da"
+      // behandeln (ok:true, kein zweiter Insert), Sub-Events laufen weiter.
+      if (event && event.subEventsOnlyMode) {
+        return { ok: true, status: existing.Status === 'Warteliste' ? 'Warteliste' : 'Angemeldet' };
+      }
+      return { ok: false, status: 'Warteliste' };
+    }
 
     // Prüfen ob Platz frei oder Waitlist
-    const event = events.find(e => e.id === eventId);
     let status: 'Angemeldet' | 'Warteliste' = 'Angemeldet';
     let effectiveStarterType: string | undefined = preferredStarterType;
 
@@ -1318,14 +1336,18 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       (event.coOrganizerEmails || []).some(e => (e || '').toLowerCase() === actorEmailLc)
     );
     let success: boolean;
+    let failReason: string | undefined;
     if (existing && existing.Status === 'Abgemeldet') {
       success = await eventService.reactivateRegistration(subsiteUrl, existing.Id, firstNameToUse, lastNameToUse, customData, status, fieldMap, actorName, actorEmail, proxyConsentStr);
+      if (!success) failReason = 'error';
     } else {
-      success = await eventService.registerForEvent(
+      const r = await eventService.registerForEvent(
         subsiteUrl, firstNameToUse, lastNameToUse, emailToUse, customData, status, fieldMap,
         effectiveStarterType, preferredStarterType, actorName, actorEmail, proxyConsentStr,
         actorIsEventOrganizer
       );
+      success = r.ok;
+      failReason = r.reason;
     }
 
     if (success && event) {
@@ -1596,7 +1618,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // RegistrationPage das Ergebnis-Modal nicht mehr aus der gecachten
     // currentParticipants-Schätzung (isFull) ableiten muss — die war nach
     // Cancel/Re-Register veraltet und zeigte fälschlich "Warteliste".
-    return { ok: success, status };
+    return { ok: success, status, reason: success ? undefined : failReason };
   }
 
   /**
@@ -3622,6 +3644,85 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     } catch (err) { console.warn('[DEX] autoRepairProxyAccess error:', err); }
   }
 
+  // v23.8: Wöchentlicher Admin-Bericht. Wird beim App-Start (nur Admins,
+  // gedrosselt) angestoßen. Quelle der Wahrheit für „wann lief der letzte
+  // Bericht" ist die SP-Liste DEX_WeeklyReports — erst wenn der letzte Bericht
+  // ≥ 7 Tage her ist, wird ein neuer geschrieben (Vergleichszeitraum = seit dem
+  // letzten Bericht; allererster Bericht = letzte 7 Tage). Inhalt: neue Events
+  // (+ von wem), Anmeldungen im Zeitraum, neu ernannte Organizer — plus
+  // Gesamt-KPIs (Events insgesamt, aktive Anmeldungen insgesamt, hinterlegte
+  // Organizer). Best-effort; Fehler blocken nie den Boot.
+  async function maybeSendWeeklyReport(): Promise<void> {
+    try {
+      const SEVEN = 7 * 24 * 60 * 60 * 1000;
+      const now = new Date();
+      const last = await eventService.getLastWeeklyReport();
+      if (last && last.created) {
+        const lastTs = new Date(last.created).getTime();
+        if (isFinite(lastTs) && (now.getTime() - lastTs) < SEVEN) return; // noch keine 7 Tage
+      }
+      const admins = await eventService.getRoleEmails('Admin');
+      if (admins.length === 0) return; // niemand zum Versenden
+      const periodFrom = (last && last.periodTo) ? new Date(last.periodTo) : new Date(now.getTime() - SEVEN);
+      const fromIso = periodFrom.toISOString();
+      const toIso = now.toISOString();
+
+      // Daten sammeln.
+      const [newEvents, newOrganizers, organizerEmails] = await Promise.all([
+        eventService.getEventsCreatedSince(fromIso),
+        eventService.getRoleItemsCreatedSince('Organizer', fromIso),
+        eventService.getRoleEmails('Organizer'),
+      ]);
+      // Anmeldungen über alle (deduplizierten) Subsites zählen.
+      const subs = new Set<string>();
+      for (const e of events) { if (e.subsiteUrl) subs.add(e.subsiteUrl); }
+      let regSince = 0; let regTotal = 0;
+      for (const sub of Array.from(subs)) {
+        try { const c = await eventService.countRegistrations(sub, fromIso); regSince += c.since; regTotal += c.total; }
+        catch { /* einzelne Subsite-Fehler ignorieren */ }
+      }
+      const totalEvents = events.length;
+
+      // SP-seitig zuerst protokollieren (claim) — verhindert Doppelversand,
+      // wenn mehrere Admins fast gleichzeitig booten.
+      await eventService.recordWeeklyReport(fromIso, toIso);
+
+      // E-Mail bauen.
+      const fmtD = (iso: string): string => { try { return new Date(iso).toLocaleDateString('de-DE'); } catch { return iso.slice(0, 10); } };
+      const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const eventsHtml = newEvents.length > 0
+        ? `<ul style="margin:6px 0 0 18px;padding:0;">${newEvents.map(e => `<li style="margin-bottom:4px;"><strong>${esc(e.title)}</strong> — ${esc(e.author)} (${fmtD(e.created)})</li>`).join('')}</ul>`
+        : '<p style="margin:6px 0 0;color:#666;">Keine neuen Events in diesem Zeitraum.</p>';
+      const orgHtml = newOrganizers.length > 0
+        ? `<ul style="margin:6px 0 0 18px;padding:0;">${newOrganizers.map(o => `<li style="margin-bottom:4px;">${esc(o.email)} (${fmtD(o.created)})</li>`).join('')}</ul>`
+        : '<p style="margin:6px 0 0;color:#666;">Keine neuen Organizer in diesem Zeitraum.</p>';
+      const inner = `
+        <p style="margin:0 0 14px;">Zeitraum dieses Berichts: <strong>${fmtD(fromIso)}</strong> bis <strong>${fmtD(toIso)}</strong>.</p>
+        <h3 style="margin:18px 0 0;font-size:15px;color:#2d4a06;">Neue Events (${newEvents.length})</h3>
+        ${eventsHtml}
+        <h3 style="margin:18px 0 0;font-size:15px;color:#2d4a06;">Anmeldungen im Zeitraum</h3>
+        <p style="margin:6px 0 0;font-size:22px;font-weight:700;color:#86bc25;">${regSince}</p>
+        <h3 style="margin:18px 0 0;font-size:15px;color:#2d4a06;">Neu ernannte Organizer (${newOrganizers.length})</h3>
+        ${orgHtml}
+        <hr style="border:none;border-top:1px solid #e0e0e0;margin:22px 0;">
+        <h3 style="margin:0 0 6px;font-size:15px;color:#2d4a06;">Gesamt-Überblick (seit jeher)</h3>
+        <table style="border-collapse:collapse;font-size:14px;">
+          <tr><td style="padding:3px 16px 3px 0;color:#555;">Events insgesamt</td><td style="padding:3px 0;font-weight:700;">${totalEvents}</td></tr>
+          <tr><td style="padding:3px 16px 3px 0;color:#555;">Aktive Anmeldungen insgesamt</td><td style="padding:3px 0;font-weight:700;">${regTotal}</td></tr>
+          <tr><td style="padding:3px 16px 3px 0;color:#555;">Hinterlegte Organizer</td><td style="padding:3px 0;font-weight:700;">${organizerEmails.length}</td></tr>
+        </table>
+        <p style="margin:22px 0 0;font-size:12px;color:#999;">Dieser Bericht wird automatisch einmal pro Woche an alle Admins der DEX Event Experience Platform versendet.</p>
+      `;
+      const subject = `DEX Wochenbericht — ${fmtD(toIso)}`;
+      const body = wrapTemplate('#86bc25', 'DEX Wochenbericht', `${fmtD(fromIso)} – ${fmtD(toIso)}`, inner);
+      for (const adminEmail of admins) {
+        try {
+          await eventService.queueEmail(subject, adminEmail, 'Admin', body, 'WeeklyReport', '', '');
+        } catch (err) { console.warn('[DEX] weekly report queueEmail failed for', adminEmail, err); }
+      }
+    } catch (err) { console.warn('[DEX] maybeSendWeeklyReport error:', err); }
+  }
+
   // v22.45: Scan über mehrere Events — pro Event Teilnehmer laden und auf ein
   // aktives Deloitte-Konto prüfen. Für die Landing-Page-Warnung (Organizer/
   // Admin). Sequentiell + best-effort; der Aufrufer (LandingPage) drosselt
@@ -3679,7 +3780,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, scanInactiveAccounts, getArchivableCount, runArchiveExpired,
+        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, scanInactiveAccounts, getArchivableCount, runArchiveExpired,
         sendAdminInquiry,
         reseedDefaultEmailTemplates,
         sendOrganizerOnboarding,

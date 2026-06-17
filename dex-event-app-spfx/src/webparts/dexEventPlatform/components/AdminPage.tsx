@@ -4682,17 +4682,33 @@ export default function AdminPage(): React.ReactElement {
             </div>
             <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
               {isDe
-                ? 'Diese Personen haben eine Klammer-Anmeldung, sind aber in KEINEM Sub-Event aktiv angemeldet — meist ein Rest aus einer abgebrochenen Anmeldung. Solche Geister tauchen in der Liste oben nicht auf, blockieren aber eine erneute (auch stellvertretende) Anmeldung der Person. Hier still entfernen, dann ist die Anmeldung wieder möglich.'
-                : 'These people have a bracket registration but are NOT actively registered for any sub-event — usually a leftover from an interrupted registration. Such ghosts don’t show in the list above but block re-registering the person (also on their behalf). Remove them silently here to make registration possible again.'}
+                ? 'Diese Personen haben eine Klammer-Anmeldung, sind aber in KEINEM Sub-Event aktiv angemeldet — meist ein Rest aus einer abgebrochenen Anmeldung. Solche Geister tauchen in der Teilnehmerliste unten nicht auf, blockieren aber eine erneute (auch stellvertretende) Anmeldung der Person. Hier still entfernen, dann ist die Anmeldung wieder möglich.'
+                : 'These people have a bracket registration but are NOT actively registered for any sub-event — usually a leftover from an interrupted registration. Such ghosts don’t show in the participant list below but block re-registering the person (also on their behalf). Remove them silently here to make registration possible again.'}
+            </p>
+            <p style={{ margin: '0 0 10px', padding: '8px 10px', borderRadius: 6, background: 'rgba(237,139,0,0.10)', border: '1px solid var(--dex-orange, #ed8b00)', fontSize: '0.8rem', color: 'var(--dex-orange-dark, #b35a00)', lineHeight: 1.5 }}>
+              {isDe
+                ? <><strong>Wichtig:</strong> Nach dem Entfernen ist die Person <strong>nicht</strong> angemeldet. Bitte gib der Person — bzw. der Person, die sie angemeldet hat (siehe „Versuch von …“) — Bescheid, dass sie sich <strong>erneut anmelden</strong> muss.</>
+                : <><strong>Important:</strong> After removal the person is <strong>not</strong> registered. Please let the person — or whoever registered them (see „attempted by …“) — know that they need to <strong>register again</strong>.</>}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {orphanShadowRegs.map(r => {
                 const nm = (r.Vorname && r.Nachname) ? `${r.Vorname} ${r.Nachname}` : (r.ParticipantName || r.ParticipantEmail);
+                // v23.8: Bei Fremd-Anmeldung (RegisteredBy ≠ Teilnehmer) zeigen,
+                // WER die Anmeldung versucht hat — hilft, die Assistenz/den
+                // Organizer zu identifizieren, der den Geist erzeugt hat.
+                const actorEmail = (r.RegisteredByEmail || '').trim();
+                const isProxy = !!actorEmail && actorEmail.toLowerCase() !== (r.ParticipantEmail || '').trim().toLowerCase();
+                const actorLabel = (r.RegisteredByName || '').trim() || actorEmail;
                 return (
                   <div key={r.Id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.84rem' }}>
                     <strong>{nm}</strong>
                     <span style={{ color: 'var(--dex-gray-500)' }}>{r.ParticipantEmail}</span>
                     <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.78rem' }}>· {translateStatus(r.Status, isDe)}</span>
+                    {isProxy && (
+                      <span style={{ color: 'var(--dex-gray-600)', fontSize: '0.78rem' }}>
+                        · {isDe ? 'Versuch von' : 'attempted by'} <strong>{actorLabel}</strong>
+                      </span>
+                    )}
                     {canManage && (
                       <button
                         type="button"
