@@ -2,15 +2,17 @@ import * as React from 'react';
 import Modal from './Modal';
 
 /**
- * v23.15: Bild-Editor zum Zuschneiden des Event-Bildes.
+ * v23.15/v23.17: Bild-Editor zum Zuschneiden des Event-Bildes.
  *
- * - Zoom (Slider) + Verschieben (Ziehen mit der Maus) positionieren das Bild
- *   im quadratischen Zuschnitt-Rahmen.
- * - Form: Rechteck/Quadrat ODER Kreis (Kreis schneidet die Ecken transparent
- *   weg — praktisch, um z.B. einen schwarzen Rand loszuwerden).
- * - „Übernehmen" rendert den sichtbaren Ausschnitt auf ein Canvas und liefert
- *   das Ergebnis als Data-URL + File zurück (PNG, damit der transparente
- *   Kreis-Hintergrund erhalten bleibt).
+ * - Live-Canvas-Vorschau: zeigt GENAU das Ergebnis, das gespeichert und überall
+ *   (Anmeldeseite, Karte, Mail) verwendet wird — so kann der Organizer Zoom,
+ *   Position und Form direkt beurteilen.
+ * - Zoom (Slider) + Verschieben (Maus-Drag).
+ * - Form: Rechteck/Quadrat ODER Kreis. Beim Kreis zusätzlich ein „Rand"-Regler:
+ *   0 = Kreis füllt den Rahmen (Ecken transparent), höher = Kreis kleiner und
+ *   zentriert mit WEISSEM Rand außen herum (sieht „von weiter weg" sauber aus).
+ * - „Übernehmen" liefert das Ergebnis als PNG-Data-URL + File zurück (PNG, damit
+ *   transparente Kreis-Ecken erhalten bleiben).
  *
  * Hinweis: Bei bereits hochgeladenen Bildern (SharePoint-URL) kann das Canvas
  * aus CORS-Gründen „tainted" sein — dann scheitert das Exportieren und wir
@@ -25,39 +27,78 @@ interface Props {
   onApply: (dataUrl: string, file: File) => void;
 }
 
-const FRAME = 320; // Anzeige-Kantenlänge des Zuschnitt-Rahmens (px)
+const FRAME = 320; // Anzeige-Kantenlänge der Vorschau (px)
 const OUT = 700;   // Ausgabe-Kantenlänge (px)
 
 export default function ImageCropModal({ open, src, isDe, onClose, onApply }: Props): React.ReactElement | null {
   const [shape, setShape] = React.useState<'rect' | 'circle'>('circle');
   const [zoom, setZoom] = React.useState(1);
+  const [padding, setPadding] = React.useState(0); // 0..0.35 — weißer Rand um den Kreis
   const [offset, setOffset] = React.useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [nat, setNat] = React.useState<{ w: number; h: number } | null>(null);
   const [error, setError] = React.useState('');
+  const imgRef = React.useRef<HTMLImageElement | null>(null);
+  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const dragRef = React.useRef<{ startX: number; startY: number; baseX: number; baseY: number } | null>(null);
 
-  // Bild-Naturgröße laden, State zurücksetzen beim Öffnen.
+  // Bild laden, State zurücksetzen beim Öffnen.
   React.useEffect(() => {
     if (!open || !src) return;
     setError('');
     setZoom(1);
+    setPadding(0);
     setOffset({ x: 0, y: 0 });
     setNat(null);
+    imgRef.current = null;
     const img = new Image();
-    img.onload = () => setNat({ w: img.naturalWidth || 1, h: img.naturalHeight || 1 });
+    img.crossOrigin = 'anonymous';
+    img.onload = () => { imgRef.current = img; setNat({ w: img.naturalWidth || 1, h: img.naturalHeight || 1 }); };
     img.onerror = () => setError(isDe ? 'Bild konnte nicht geladen werden.' : 'Could not load image.');
     img.src = src;
   }, [open, src, isDe]);
 
-  if (!open) return null;
+  // Zeichen-Routine — identisch für Live-Vorschau (size=FRAME) und Export (size=OUT).
+  const drawTo = React.useCallback((canvas: HTMLCanvasElement | null, size: number): void => {
+    if (!canvas || !nat || !imgRef.current) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    canvas.width = size;
+    canvas.height = size;
+    ctx.clearRect(0, 0, size, size);
+    const isCircle = shape === 'circle';
+    const pad = isCircle ? padding : 0;
+    // Weißer Hintergrund nur, wenn ein Kreis-Rand gewünscht ist (sonst
+    // transparente Ecken bzw. randloses Rechteck).
+    if (isCircle && pad > 0) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, size, size);
+    }
+    // Bild-Geometrie in FRAME-Einheiten berechnen, dann auf `size` skalieren.
+    const baseScaleF = Math.max(FRAME / nat.w, FRAME / nat.h);
+    const effF = baseScaleF * zoom;
+    const dwF = nat.w * effF;
+    const dhF = nat.h * effF;
+    const imgLeftF = (FRAME - dwF) / 2 + offset.x;
+    const imgTopF = (FRAME - dhF) / 2 + offset.y;
+    const k = size / FRAME;
+    ctx.save();
+    if (isCircle) {
+      const r = (size / 2) * (1 - pad);
+      ctx.beginPath();
+      ctx.arc(size / 2, size / 2, r, 0, Math.PI * 2);
+      ctx.closePath();
+      ctx.clip();
+    }
+    ctx.drawImage(imgRef.current, imgLeftF * k, imgTopF * k, dwF * k, dhF * k);
+    ctx.restore();
+  }, [nat, shape, padding, zoom, offset]);
 
-  // baseScale = „cover" bei Zoom 1 (Bild füllt den Rahmen vollständig).
-  const baseScale = nat ? Math.max(FRAME / nat.w, FRAME / nat.h) : 1;
-  const eff = baseScale * zoom;
-  const dw = nat ? nat.w * eff : FRAME;
-  const dh = nat ? nat.h * eff : FRAME;
-  const imgLeft = (FRAME - dw) / 2 + offset.x;
-  const imgTop = (FRAME - dh) / 2 + offset.y;
+  // Live-Vorschau neu zeichnen, wenn sich etwas ändert.
+  React.useEffect(() => {
+    drawTo(canvasRef.current, FRAME);
+  }, [drawTo]);
+
+  if (!open) return null;
 
   const onPointerDown = (e: React.MouseEvent): void => {
     dragRef.current = { startX: e.clientX, startY: e.clientY, baseX: offset.x, baseY: offset.y };
@@ -72,82 +113,52 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply }: Pr
   const endDrag = (): void => { dragRef.current = null; };
 
   const apply = (): void => {
-    if (!nat) return;
+    if (!nat || !imgRef.current) return;
     try {
       const canvas = document.createElement('canvas');
-      canvas.width = OUT;
-      canvas.height = OUT;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) { setError(isDe ? 'Zuschneiden nicht möglich.' : 'Cropping not possible.'); return; }
-      const k = OUT / FRAME;
-      if (shape === 'circle') {
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(OUT / 2, OUT / 2, OUT / 2, 0, Math.PI * 2);
-        ctx.closePath();
-        ctx.clip();
-      }
-      const img = new Image();
-      img.onload = () => {
-        try {
-          ctx.drawImage(img, imgLeft * k, imgTop * k, dw * k, dh * k);
-          if (shape === 'circle') ctx.restore();
-          const dataUrl = canvas.toDataURL('image/png');
-          // Data-URL → File (für den Upload-Pfad).
-          const byteString = atob(dataUrl.split(',')[1]);
-          const ab = new ArrayBuffer(byteString.length);
-          const ia = new Uint8Array(ab);
-          for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
-          const blob = new Blob([ab], { type: 'image/png' });
-          const file = new File([blob], 'event-image.png', { type: 'image/png' });
-          onApply(dataUrl, file);
-        } catch {
-          setError(isDe
-            ? 'Export fehlgeschlagen (vermutlich CORS bei einem bereits hochgeladenen Bild). Bitte das Bild neu auswählen und dann zuschneiden.'
-            : 'Export failed (likely CORS on an already uploaded image). Please re-select the image and then crop.');
-        }
-      };
-      img.onerror = () => setError(isDe ? 'Bild konnte nicht geladen werden.' : 'Could not load image.');
-      img.crossOrigin = 'anonymous';
-      img.src = src;
+      drawTo(canvas, OUT);
+      const dataUrl = canvas.toDataURL('image/png');
+      const byteString = atob(dataUrl.split(',')[1]);
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+      const blob = new Blob([ab], { type: 'image/png' });
+      const file = new File([blob], 'event-image.png', { type: 'image/png' });
+      onApply(dataUrl, file);
     } catch {
-      setError(isDe ? 'Zuschneiden fehlgeschlagen.' : 'Cropping failed.');
+      setError(isDe
+        ? 'Export fehlgeschlagen (vermutlich CORS bei einem bereits hochgeladenen Bild). Bitte das Bild neu auswählen und dann zuschneiden.'
+        : 'Export failed (likely CORS on an already uploaded image). Please re-select the image and then crop.');
     }
   };
 
   return (
-    <Modal open={open} onClose={onClose} maxWidth={420} padding={24} ariaLabel={isDe ? 'Bild zuschneiden' : 'Crop image'}>
+    <Modal open={open} onClose={onClose} maxWidth={440} padding={24} ariaLabel={isDe ? 'Bild zuschneiden' : 'Crop image'}>
       <h3 style={{ marginTop: 0, marginBottom: 4, color: 'var(--dex-green-dark, #4a7c1f)' }}>
         {isDe ? 'Bild zuschneiden' : 'Crop image'}
       </h3>
       <p style={{ marginTop: 0, fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
         {isDe
-          ? 'Ziehen zum Verschieben, Slider zum Zoomen. Mit „Kreis" werden die Ecken transparent zugeschnitten (z.B. um einen schwarzen Rand zu entfernen).'
-          : 'Drag to move, slider to zoom. „Circle" crops the corners transparently (e.g. to remove a black border).'}
+          ? 'So wird das Bild gespeichert und überall angezeigt (Anmeldeseite, Karte, Mail). Ziehen zum Verschieben, Slider zum Zoomen.'
+          : 'This is exactly how the image will be saved and shown everywhere (registration page, card, mail). Drag to move, slider to zoom.'}
       </p>
 
-      {/* Zuschnitt-Vorschau */}
-      <div
-        onMouseDown={onPointerDown}
-        onMouseMove={onPointerMove}
-        onMouseUp={endDrag}
-        onMouseLeave={endDrag}
-        style={{
-          width: FRAME, height: FRAME, margin: '0 auto', position: 'relative', overflow: 'hidden',
-          borderRadius: shape === 'circle' ? '50%' : 12,
-          background: '#0000000d', cursor: 'grab', userSelect: 'none',
-          boxShadow: 'inset 0 0 0 2px var(--dex-green, #86bc25)',
-          touchAction: 'none',
-        }}
-      >
-        {nat && (
-          <img
-            src={src}
-            alt={isDe ? 'Zuschnitt-Vorschau' : 'Crop preview'}
-            draggable={false}
-            style={{ position: 'absolute', left: imgLeft, top: imgTop, width: dw, height: dh, maxWidth: 'none', pointerEvents: 'none' }}
-          />
-        )}
+      {/* Live-Canvas-Vorschau = exaktes Ergebnis */}
+      <div style={{ display: 'flex', justifyContent: 'center' }}>
+        <canvas
+          ref={canvasRef}
+          width={FRAME}
+          height={FRAME}
+          onMouseDown={onPointerDown}
+          onMouseMove={onPointerMove}
+          onMouseUp={endDrag}
+          onMouseLeave={endDrag}
+          style={{
+            width: FRAME, height: FRAME, cursor: 'grab', userSelect: 'none',
+            borderRadius: 12, boxShadow: 'inset 0 0 0 1px var(--dex-gray-200)',
+            background: '#f3f3f1', touchAction: 'none',
+          }}
+        />
       </div>
 
       {/* Form-Wahl */}
@@ -163,12 +174,18 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply }: Pr
       {/* Zoom */}
       <div style={{ marginTop: 14 }}>
         <label style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Zoom' : 'Zoom'}</label>
-        <input
-          type="range" min={1} max={4} step={0.01} value={zoom}
-          onChange={e => setZoom(parseFloat(e.target.value))}
-          style={{ width: '100%' }}
-        />
+        <input type="range" min={1} max={4} step={0.01} value={zoom} onChange={e => setZoom(parseFloat(e.target.value))} style={{ width: '100%' }} />
       </div>
+
+      {/* Kreis-Rand (nur im Kreis-Modus) */}
+      {shape === 'circle' && (
+        <div style={{ marginTop: 10 }}>
+          <label style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
+            {isDe ? 'Weißer Rand um den Kreis' : 'White margin around the circle'}
+          </label>
+          <input type="range" min={0} max={0.35} step={0.01} value={padding} onChange={e => setPadding(parseFloat(e.target.value))} style={{ width: '100%' }} />
+        </div>
+      )}
 
       {error && <p style={{ color: 'var(--dex-red, #c00)', fontSize: '0.8rem', marginTop: 8 }}>{error}</p>}
 
