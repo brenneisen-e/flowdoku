@@ -116,6 +116,11 @@ export interface DeloitteEvent {
    *  Organizer-Rechte, Mails und BCC bleiben unberührt. Persistiert als
    *  Piggyback `_hideOrganizer` in EmailTemplateOverrides. */
   hideOrganizer?: boolean;
+  /** v23.6: Wenn true, sehen Personen mit dem Job-Title „Assistenz" dieses
+   *  Event generell — auch wenn der Standort-/Verteiler-Filter sie sonst
+   *  ausschließen würde (damit sie stellvertretend anmelden können).
+   *  Persistiert als Piggyback `_assistantsCanSee` in EmailTemplateOverrides. */
+  assistantsCanSee?: boolean;
   /** v17.20: Wenn true UND der Organizer hat pro Custom-Field die
    *  EN-Variante hinterlegt (`labelEn` etc.), zeigt die Anmeldeseite die
    *  Felder in der **Locale des Teilnehmers** (App-Spracheinstellung) statt

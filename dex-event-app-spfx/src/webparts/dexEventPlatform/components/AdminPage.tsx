@@ -1064,6 +1064,10 @@ export default function AdminPage(): React.ReactElement {
   // Löschen einer konsolidierten Abmeldung).
   const [subRegReloadTick, setSubRegReloadTick] = React.useState(0);
   const [expandedConsolidatedEmail, setExpandedConsolidatedEmail] = React.useState<string | null>(null);
+  // v23.5: Personen-Spalten (Vorname/Nachname/Email/Job Title/Standort) in der
+  // konsolidierten Matrix einklappbar — eingeklappt steht nur Foto + Name, damit
+  // die Event-spezifischen Spalten mehr Platz bekommen.
+  const [personalColsCollapsed, setPersonalColsCollapsed] = React.useState(false);
   // v14.11: eigene Sort-States für den Matrix-View. `consolidatedSort` kann
   // 'id' | 'vorname' | 'nachname' | 'email' | 'jobTitle' | 'location' |
   // 'child:<eventId>' sein. Default: 'nachname' aufsteigend.
@@ -1179,6 +1183,32 @@ export default function AdminPage(): React.ReactElement {
   // (klein→groß-Flackern). null = keine Reservierung aktiv.
   const detailCardRef = React.useRef<HTMLDivElement>(null);
   const [reservedDetailHeight, setReservedDetailHeight] = React.useState<number | undefined>(undefined);
+  // v23.6: Breiten-Reservierung gegen das „Springen" der Detail-Karte beim
+  // Wechsel zwischen Klammer und Sub-Events (manche Tabs sind breiter, z.B.
+  // konsolidierte Matrix vs. schmales Sub-Event). Die Karte wächst auf die
+  // größte Inhaltsbreite INNERHALB derselben Event-Gruppe (Hauptevent + seine
+  // Sub-Events) und schrumpft danach nicht mehr — das breiteste Event gibt die
+  // Breite vor. Reset bei Wechsel auf eine andere Event-Gruppe.
+  const [reservedDetailWidth, setReservedDetailWidth] = React.useState<number | undefined>(undefined);
+  const widthGroupRef = React.useRef<string>('');
+  // v23.6: Misst nach jedem relevanten Render die tatsächliche Inhaltsbreite
+  // (scrollWidth inkl. überlaufender Tabelle) und hält das Maximum pro
+  // Event-Gruppe (Hauptevent-ID = parentEventId || id) fest. Wird als minWidth
+  // an die Karte gelegt → schmale Tabs bleiben so breit wie der breiteste,
+  // und während des Nachladens schrumpft nichts (kein „erst klein, dann breit").
+  React.useLayoutEffect(() => {
+    if (!selectedEvent || !detailCardRef.current) return;
+    const groupId = selectedEvent.parentEventId || selectedEvent.id;
+    const w = detailCardRef.current.scrollWidth;
+    if (widthGroupRef.current !== groupId) {
+      // Neue Event-Gruppe → frisch mit der natürlichen Breite starten.
+      widthGroupRef.current = groupId;
+      setReservedDetailWidth(w || undefined);
+    } else {
+      setReservedDetailWidth(prev => (prev && prev >= w ? prev : w));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEvent?.id, isLoadingRegs, registrations]);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   // v9.0: Danger-Zone-Modal — User muss den Event-Titel exakt (lowercase)
   // eintippen bevor der Lösch-Button aktiv wird. Schutz gegen versehentliche
@@ -2807,10 +2837,15 @@ export default function AdminPage(): React.ReactElement {
       });
     } else {
       // Deloitte View: alle internen Felder
+      // v23.7: Team-Spalte nur bei Team-Events (oder wenn überhaupt eine
+      // Team-Zuordnung existiert) — der frei benannte Begriff als Spaltenkopf.
+      const includeTeam = !!selectedEvent.teamRegistrationEnabled || activeRegsForExport.some(r => !!r.TeamId);
+      const teamHeader = selectedEvent.teamTermSingular || 'Team';
       headers = [
         'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'Email',
         'Department', 'Location', 'JobTitle', 'Phone',
         'Status', 'RegistrationDate',
+        ...(includeTeam ? [teamHeader, `${teamHeader}-Lead`] : []),
       ];
       // Dynamisch alle Custom Field Labels aus dem Event sammeln
       const customLabels: Array<{ id: string; label: string }> = (selectedEvent.eventSpecificFields || []).map(f => ({ id: f.id, label: f.label }));
@@ -2832,6 +2867,7 @@ export default function AdminPage(): React.ReactElement {
           anyReg.Phone || '',
           r.Status || '',
           r.RegistrationDate ? new Date(r.RegistrationDate).toLocaleString('de-DE') : '',
+          ...(includeTeam ? [r.TeamName || '', r.TeamLead ? 'Ja' : ''] : []),
         ];
         const customValues = customLabels.map(cf => {
           const v = cd[cf.id];
@@ -2926,6 +2962,7 @@ export default function AdminPage(): React.ReactElement {
       const parentFields = (selectedEvent.eventSpecificFields || []).filter(f => f.label);
       type PersonRow = {
         vorname: string; nachname: string; email: string; jobTitle: string; location: string;
+        teamName: string;
         parentCd: Record<string, unknown>;
         perChild: Record<string, SPRegistration | undefined>;
         hasMatch: boolean;
@@ -2940,9 +2977,12 @@ export default function AdminPage(): React.ReactElement {
             vorname: r.Vorname || '', nachname: r.Nachname || '',
             email: r.ParticipantEmail || '',
             jobTitle: anyReg.JobTitle || '', location: anyReg.Location || '',
+            teamName: '',
             parentCd: {}, perChild: {}, hasMatch: false,
           };
         }
+        // v23.7: Team-Name aus der ersten Zeile übernehmen, die einen hat.
+        if (r.TeamName && !persons[key].teamName) persons[key].teamName = r.TeamName;
         return persons[key];
       };
       for (const r of registrations) {
@@ -2960,7 +3000,11 @@ export default function AdminPage(): React.ReactElement {
           }
         }
       }
+      // v23.7: Team-Spalte nur, wenn überhaupt Team-Zuordnungen existieren.
+      const anyTeam = Object.keys(persons).some(k => !!persons[k].teamName);
+      const teamHdr = selectedEvent.teamTermSingular || 'Team';
       const matrixHeaders: string[] = ['Vorname', 'Nachname', 'Email', 'JobTitle', 'Standort']
+        .concat(anyTeam ? [teamHdr] : [])
         .concat(parentFields.map(f => f.label));
       for (const child of consolidatedChildren) {
         const short = shortSubEventTitle(child.title, selectedEvent.title) || child.title || '?';
@@ -2975,6 +3019,7 @@ export default function AdminPage(): React.ReactElement {
         .sort((a, b) => (a.nachname || '').localeCompare(b.nachname || '', 'de') || (a.vorname || '').localeCompare(b.vorname || '', 'de'))
         .map(p => {
           const row: string[] = [p.vorname, p.nachname, p.email, p.jobTitle, p.location]
+            .concat(anyTeam ? [p.teamName || ''] : [])
             .concat(parentFields.map(f => fieldVal(p.parentCd, f.id)));
           for (const child of consolidatedChildren) {
             const reg = p.perChild[child.id];
@@ -2995,7 +3040,11 @@ export default function AdminPage(): React.ReactElement {
         .slice()
         .sort((a, b) => (a.TeilnehmerID || 0) - (b.TeilnehmerID || 0));
       const childFields = (child.eventSpecificFields || []).filter(f => f.label);
+      // v23.7: Team-Spalte je Sub-Event-Blatt, wenn dort Team-Zuordnungen sind.
+      const childAnyTeam = regs.some(r => !!r.TeamName);
+      const childTeamHdr = selectedEvent.teamTermSingular || 'Team';
       const headers = ['TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'Email', 'Department', 'Location', 'JobTitle', 'Status', 'RegistrationDate']
+        .concat(childAnyTeam ? [childTeamHdr] : [])
         .concat(childFields.map(f => f.label));
       const rows = regs.map(r => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -3005,7 +3054,7 @@ export default function AdminPage(): React.ReactElement {
           String(r.TeilnehmerID || ''), r.Anrede || '', r.Vorname || '', r.Nachname || '',
           r.ParticipantEmail || '', anyReg.Department || '', anyReg.Location || '', anyReg.JobTitle || '',
           r.Status || '', r.RegistrationDate ? new Date(r.RegistrationDate).toLocaleString('de-DE') : '',
-        ].concat(childFields.map(f => fieldVal(cd, f.id)));
+        ].concat(childAnyTeam ? [r.TeamName || ''] : []).concat(childFields.map(f => fieldVal(cd, f.id)));
       });
       sheets.push({ name: sanitizeSheet(shortSubEventTitle(child.title, selectedEvent.title) || child.title || 'Sub-Event'), headers, rows });
     }
@@ -4579,7 +4628,10 @@ export default function AdminPage(): React.ReactElement {
     const sortArrow = (key: string): string => key === consolidatedSort ? (consolidatedSortAsc ? ' ▲' : ' ▼') : '';
     const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
     const abbreviate = (s: string, max: number): string => s.length > max ? s.substring(0, max - 1) + '…' : s;
-    const totalColSpan = 6 + parentCustomFields.length + childCustomFieldsByChild.reduce((sum, x) => sum + 1 + x.fields.length, 0) + 1;
+    // v23.5: 6 Personen-Spalten (#, Vorname, Nachname, Email, Job Title,
+    // Standort) — eingeklappt nur 2 (#, „Teilnehmer").
+    const personalColCount = personalColsCollapsed ? 2 : 6;
+    const totalColSpan = personalColCount + parentCustomFields.length + childCustomFieldsByChild.reduce((sum, x) => sum + 1 + x.fields.length, 0) + 1;
     // v19.30: Aktionen (Hauptevent-Felder bearbeiten / abmelden) nur für
     // berechtigte Rollen (Admin oder Organizer dieses Events).
     const canManage = isAdmin || isOrganizerFor(selectedEvent);
@@ -4593,8 +4645,74 @@ export default function AdminPage(): React.ReactElement {
     // angemeldet sein.)
     const hasParentReg = (emailKey: string): boolean =>
       registrations.some(r => (r.ParticipantEmail || '').toLowerCase().trim() === emailKey);
+    // v23.7: „Verwaiste" Klammer-/Schatten-Anmeldungen erkennen — eine aktive
+    // Zeile auf der KLAMMER-Subsite (registrations), deren Person in KEINEM
+    // Sub-Event aktiv angemeldet ist. Das ist typischerweise ein Geist aus einer
+    // abgebrochenen Anmeldung: unsichtbar in der Matrix (die nur Sub-Event-
+    // Anmeldungen zeigt), blockiert aber jede neue (auch stellvertretende)
+    // Anmeldung, weil die Doppel-Anmelde-Prüfung die Klammer-Subsite liest.
+    // v23.7: Geist = aktive Klammer-Zeile, deren Person in KEINEM Sub-Event
+    // IRGENDEINE Zeile hat (auch keine abgemeldete). Wer sich aus allen
+    // Sub-Events ABGEMELDET hat, hat dort abgemeldete Zeilen → wird bewusst
+    // NICHT als Geist erkannt (das ist eine normale Voll-Abmeldung, kein Rest
+    // aus einer abgebrochenen Anmeldung). So vermeiden wir Fehlalarme.
+    const anySubEmails = new Set<string>();
+    for (const ch of consolidatedChildren) {
+      for (const r of (subEventRegsByEventId[ch.id] || [])) {
+        const em = (r.ParticipantEmail || '').toLowerCase().trim();
+        if (em) anySubEmails.add(em);
+      }
+    }
+    const orphanShadowRegs = registrations.filter(r => {
+      if ((r.Status || '') === 'Abgemeldet') return false;
+      const em = (r.ParticipantEmail || '').toLowerCase().trim();
+      return !!em && !anySubEmails.has(em);
+    });
     return (
       <div style={{ overflowX: 'auto' }}>
+        {/* v23.7: Geister-/verwaiste Klammer-Anmeldungen — sichtbar machen +
+            still entfernbar, damit eine blockierte (Neu-)Anmeldung wieder geht. */}
+        {orphanShadowRegs.length > 0 && (
+          <div style={{ marginBottom: 16, padding: 14, borderRadius: 10, border: '1px solid var(--dex-red, #c00)', background: 'rgba(200,0,0,0.06)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <Icon iconName="Warning" style={{ fontSize: 16, color: 'var(--dex-red, #c00)' }} />
+              <strong style={{ color: 'var(--dex-red, #c00)', fontSize: '0.9rem' }}>
+                {isDe ? `Verwaiste Anmeldungen (${orphanShadowRegs.length})` : `Orphaned registrations (${orphanShadowRegs.length})`}
+              </strong>
+            </div>
+            <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+              {isDe
+                ? 'Diese Personen haben eine Klammer-Anmeldung, sind aber in KEINEM Sub-Event aktiv angemeldet — meist ein Rest aus einer abgebrochenen Anmeldung. Solche Geister tauchen in der Liste oben nicht auf, blockieren aber eine erneute (auch stellvertretende) Anmeldung der Person. Hier still entfernen, dann ist die Anmeldung wieder möglich.'
+                : 'These people have a bracket registration but are NOT actively registered for any sub-event — usually a leftover from an interrupted registration. Such ghosts don’t show in the list above but block re-registering the person (also on their behalf). Remove them silently here to make registration possible again.'}
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {orphanShadowRegs.map(r => {
+                const nm = (r.Vorname && r.Nachname) ? `${r.Vorname} ${r.Nachname}` : (r.ParticipantName || r.ParticipantEmail);
+                return (
+                  <div key={r.Id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.84rem' }}>
+                    <strong>{nm}</strong>
+                    <span style={{ color: 'var(--dex-gray-500)' }}>{r.ParticipantEmail}</span>
+                    <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.78rem' }}>· {translateStatus(r.Status, isDe)}</span>
+                    {canManage && (
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        style={{ marginLeft: 'auto', fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-red, #c00)', borderColor: 'var(--dex-red, #c00)' }}
+                        onClick={async () => {
+                          if (!(await confirmDialog(isDe ? `Verwaiste Anmeldung von ${nm} still entfernen?` : `Silently remove the orphaned registration of ${nm}?`, { danger: true, confirmLabel: isDe ? 'Entfernen' : 'Remove' }))) return;
+                          await performSilentDuplicateDelete(r);
+                          showAlert(isDe ? 'Verwaiste Anmeldung entfernt — die Person kann jetzt wieder angemeldet werden.' : 'Orphaned registration removed — the person can be registered again now.', { variant: 'success' });
+                        }}
+                      >
+                        {isDe ? 'Geist entfernen' : 'Remove ghost'}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {/* v15.3.1: Legende für die Pastell-Spalten — sonst rät der Organizer,
             was die zwei Hintergrundfarben bedeuten. */}
         {(parentCustomFields.length > 0 || childCustomFieldsByChild.some(x => x.fields.length > 0)) && (
@@ -4617,11 +4735,33 @@ export default function AdminPage(): React.ReactElement {
           <thead>
             <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
               <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('id')}>#{sortArrow('id')}</th>
-              <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('vorname')}>{isDe ? 'Vorname' : 'First name'}{sortArrow('vorname')}</th>
-              <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('nachname')}>{isDe ? 'Nachname' : 'Last name'}{sortArrow('nachname')}</th>
-              <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('email')}>Email{sortArrow('email')}</th>
-              <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('jobTitle')}>Job Title{sortArrow('jobTitle')}</th>
-              <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('location')}>{isDe ? 'Standort' : 'Location'}{sortArrow('location')}</th>
+              {personalColsCollapsed ? (
+                <th style={{ textAlign: 'left', padding: 8, userSelect: 'none', whiteSpace: 'nowrap' }}>
+                  <span style={{ cursor: 'pointer' }} onClick={() => handleSortConsolidated('nachname')}>{isDe ? 'Teilnehmer' : 'Participant'}{sortArrow('nachname')}</span>
+                  <button
+                    type="button"
+                    onClick={() => setPersonalColsCollapsed(false)}
+                    title={isDe ? 'Personen-Spalten ausklappen' : 'Expand personal columns'}
+                    style={{ marginLeft: 8, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.85rem', fontWeight: 700 }}
+                  >»</button>
+                </th>
+              ) : (
+                <>
+                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('vorname')}>
+                    {isDe ? 'Vorname' : 'First name'}{sortArrow('vorname')}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setPersonalColsCollapsed(true); }}
+                      title={isDe ? 'Personen-Spalten einklappen (nur Foto + Name)' : 'Collapse personal columns (photo + name only)'}
+                      style={{ marginLeft: 6, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.85rem', fontWeight: 700 }}
+                    >«</button>
+                  </th>
+                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('nachname')}>{isDe ? 'Nachname' : 'Last name'}{sortArrow('nachname')}</th>
+                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('email')}>Email{sortArrow('email')}</th>
+                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('jobTitle')}>Job Title{sortArrow('jobTitle')}</th>
+                  <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('location')}>{isDe ? 'Standort' : 'Location'}{sortArrow('location')}</th>
+                </>
+              )}
               {parentCustomFields.map(f => (
                 <th key={`pf-${f.id}`} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 150, verticalAlign: 'top', lineHeight: 1.25, ...PASTEL_A_HEADER }} title={`${f.label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
                   {f.label}
@@ -4660,11 +4800,30 @@ export default function AdminPage(): React.ReactElement {
                         TID pro Sub-Event hat — sortbar bleibt es ueber
                         Vorname/Nachname/Email-Spalten. */}
                     <td style={{ padding: 8, color: 'var(--dex-gray-400)' }}>{idx + 1}</td>
-                    <td style={{ padding: 8, fontWeight: 500 }}>{row.vorname || '-'}</td>
-                    <td style={{ padding: 8, fontWeight: 500 }}>{row.nachname || '-'}</td>
-                    <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{row.email}</td>
-                    <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{row.jobTitle || '-'}</td>
-                    <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{row.location || '-'}</td>
+                    {personalColsCollapsed ? (
+                      <td style={{ padding: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                          <img
+                            src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(row.email)}&size=L`}
+                            alt={`${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email}
+                            title={`${`${row.vorname || ''} ${row.nachname || ''}`.trim()}${row.email ? ` · ${row.email}` : ''}${row.jobTitle ? ` · ${row.jobTitle}` : ''}${row.location ? ` · ${row.location}` : ''}`}
+                            onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                            onMouseEnter={e => { const t = e.currentTarget as HTMLImageElement; t.style.transform = 'scale(2.6)'; t.style.zIndex = '20'; t.style.position = 'relative'; t.style.boxShadow = '0 4px 16px rgba(0,0,0,0.25)'; }}
+                            onMouseLeave={e => { const t = e.currentTarget as HTMLImageElement; t.style.transform = 'scale(1)'; t.style.zIndex = 'auto'; t.style.boxShadow = 'none'; }}
+                            style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0, transition: 'transform 0.15s ease', transformOrigin: 'left center', cursor: 'zoom-in' }}
+                          />
+                          <span style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{`${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email || '-'}</span>
+                        </div>
+                      </td>
+                    ) : (
+                      <>
+                        <td style={{ padding: 8, fontWeight: 500 }}>{row.vorname || '-'}</td>
+                        <td style={{ padding: 8, fontWeight: 500 }}>{row.nachname || '-'}</td>
+                        <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{row.email}</td>
+                        <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{row.jobTitle || '-'}</td>
+                        <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{row.location || '-'}</td>
+                      </>
+                    )}
                     {parentCustomFields.map(f => {
                       let val = '';
                       // v15.3.1: Parent-Level-Custom-Fields zuerst aus der
@@ -5008,7 +5167,7 @@ export default function AdminPage(): React.ReactElement {
             stapelt auf Mobile via flex-wrap). Die Box erscheint nur für Entwürfe
             und nur für Admin/Organizer. */}
         <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start', flexWrap: 'wrap' }}>
-        <div ref={detailCardRef} className="card" style={{ padding: 24, minHeight: reservedDetailHeight, flex: '1 1 420px', minWidth: 0 }}>
+        <div ref={detailCardRef} className="card" style={{ padding: 24, minHeight: reservedDetailHeight, flex: '1 1 420px', minWidth: reservedDetailWidth || 0 }}>
           {/* Header: Event-Titel + Status-Badge + Schnellaktionen (v13.11) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
             <h2 style={{ margin: 0, fontSize: '1.2rem', lineHeight: 1.2 }}>{selectedEvent.title}</h2>
@@ -5654,8 +5813,10 @@ export default function AdminPage(): React.ReactElement {
                 : 'The event has (almost) no description — participants see very little about it on the registration page. Add one via “Edit event” → step 1 (Basics).',
             });
           }
-          // 3) Event-Bild fehlt.
-          if (!selectedEvent.imageUrl) {
+          // 3) Event-Bild fehlt. v23.6: Bei einem Sub-Event NICHT meckern, wenn
+          // die Klammer/das Hauptevent bereits ein Bild hat — Sub-Events nutzen
+          // den Bild-/Hero-Kontext des Parents, ein eigenes Bild ist optional.
+          if (!selectedEvent.imageUrl && !(parentEventForSelected && parentEventForSelected.imageUrl)) {
             hints.push({
               id: 'no-image',
               title: isDe ? 'Event-Bild hochladen' : 'Upload an event image',
@@ -8046,7 +8207,12 @@ export default function AdminPage(): React.ReactElement {
                       )}
                     </div>
                   )}
-                  {teamlessActive.length > 0 && (
+                  {/* v23.5: „ohne Team"-Box ist jetzt IMMER ein Drop-Ziel (für
+                      canManage), auch wenn gerade niemand teamlos ist — sonst
+                      konnte man eine Person per Drag&Drop nicht aus ihrem Team
+                      nehmen (die Box war nur bei vorhandenen teamlosen Personen
+                      da). Leerer Zustand zeigt einen Hinweis als Drop-Fläche. */}
+                  {(canManage || teamlessActive.length > 0) && (
                     <div
                       onDragOver={canManage ? (e => { e.preventDefault(); setDragOverTid(''); }) : undefined}
                       onDragLeave={canManage ? (() => setDragOverTid(prev => (prev === '' ? null : prev))) : undefined}
@@ -8061,6 +8227,13 @@ export default function AdminPage(): React.ReactElement {
                           — Einzel-Anmeldungen ohne Team-Zuordnung
                         </span>
                       </div>
+                      {teamlessActive.length === 0 && (
+                        <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-500)', fontStyle: 'italic', padding: '6px 2px' }}>
+                          {isDe
+                            ? `Aktuell ist niemand ohne ${selectedEvent?.teamTermSingular || 'Team'}. Zieh eine Person aus einem ${selectedEvent?.teamTermSingular || 'Team'} hierher, um die Zuordnung zu lösen.`
+                            : `Nobody is currently without a ${selectedEvent?.teamTermSingular || 'team'}. Drag a person from a ${selectedEvent?.teamTermSingular || 'team'} here to remove their assignment.`}
+                        </div>
+                      )}
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {teamlessActive.map(m => {
                           const name = `${m.Vorname || ''} ${m.Nachname || ''}`.trim() || m.ParticipantName || m.ParticipantEmail;
@@ -9630,19 +9803,29 @@ export default function AdminPage(): React.ReactElement {
                           <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{p.location || '-'}</td>
                           {sectionCols.map(sc => {
                             const r = p.bySection[sc.id];
-                            // v23.2: In der „Gesamt-Event"-Spalte kein nacktes X,
-                            // sondern ein sprechender Badge — die Person hat erklärt,
-                            // dass sie nicht (am Gesamt-Event) teilnehmen wird.
+                            // v23.2/v23.6: In der „Gesamt-Event"-Spalte kein nacktes
+                            // X, sondern dieselbe Darstellung wie in der Status-
+                            // Spalte der Teilnehmerliste: blaue Pille „Absage (nicht
+                            // angemeldet)" für Leute, die sich NIE angemeldet, aber
+                            // hinterlegt haben, dass sie nicht teilnehmen können;
+                            // rotes „Abgemeldet" für echte Abmeldungen vom Gesamt-Event.
                             if (sc.id === '__parent') {
                               return (
                                 <td key={sc.id} style={{ padding: 8, textAlign: 'center' }}>
                                   {r
-                                    ? <span
-                                        title={`${isDeclined(r) ? (isDe ? 'Absage ohne vorherige Anmeldung' : 'Decline without prior registration') : (isDe ? 'Vom Gesamt-Event abgemeldet' : 'Cancelled from the overall event')} — ${formatDate(r.CancellationDate)}`}
-                                        style={{ display: 'inline-block', fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(218,41,28,0.10)', color: 'var(--dex-red, #da291c)', whiteSpace: 'nowrap' }}
-                                      >
-                                        {isDe ? 'Nimmt nicht teil' : 'Will not attend'}
-                                      </span>
+                                    ? (isDeclined(r)
+                                        ? <span
+                                            title={`${isDe ? 'Diese Person hat sich NICHT angemeldet, sondern hinterlegt, dass sie nicht am Event teilnehmen kann (Absage ohne Anmeldung).' : 'This person did NOT register but recorded that they cannot attend the event (decline without registration).'} — ${formatDate(r.CancellationDate)}`}
+                                            style={{ display: 'inline-block', fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(0,118,168,0.10)', color: 'var(--dex-blue, #0076a8)', whiteSpace: 'nowrap' }}
+                                          >
+                                            {isDe ? 'Absage (nicht angemeldet)' : 'Decline (never registered)'}
+                                          </span>
+                                        : <span
+                                            title={`${isDe ? 'Diese Person war für das Gesamt-Event angemeldet und hat sich wieder abgemeldet.' : 'This person was registered for the overall event and later cancelled.'} — ${formatDate(r.CancellationDate)}`}
+                                            style={{ display: 'inline-block', fontSize: '0.72rem', fontWeight: 700, color: 'var(--dex-red, #da291c)', whiteSpace: 'nowrap' }}
+                                          >
+                                            {isDe ? 'Abgemeldet' : 'Cancelled'}
+                                          </span>)
                                     : <span style={{ color: 'var(--dex-gray-300)' }}>–</span>}
                                 </td>
                               );
