@@ -132,7 +132,7 @@ export interface DeloitteEvent {
    *  sitzt. Leer/undefined = Standard (cover, zentriert) — der Default-Flow ist
    *  „einfach Foto hochladen", ohne hier etwas einzustellen. Piggyback
    *  `_imageDisplay` in EmailTemplateOverrides. zoom: 1..3, posY: 0..100 (%). */
-  imageDisplay?: { card?: { zoom: number; posY: number }; hero?: { zoom: number; posY: number } };
+  imageDisplay?: { card?: { zoom: number; posY: number; height?: number }; hero?: { zoom: number; posY: number; height?: number } };
   /** v17.20: Wenn true UND der Organizer hat pro Custom-Field die
    *  EN-Variante hinterlegt (`labelEn` etc.), zeigt die Anmeldeseite die
    *  Felder in der **Locale des Teilnehmers** (App-Spracheinstellung) statt

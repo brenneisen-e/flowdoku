@@ -5841,6 +5841,34 @@ export default function AdminPage(): React.ReactElement {
                 : 'Without an image the event card in the list and the email header look much less inviting. Upload one via “Edit event” → step 1 (Basics).',
             });
           }
+          // v23.21: Ansprechpartner-Freitext wiederholt Titel/Datum/Ort —
+          // gleicher Hinweis wie im Wizard, hier auch im Organizer Center, damit
+          // der Organizer es ohne Öffnen des Wizards sieht.
+          {
+            const ci = (selectedEvent.contactInfo || '').replace(/\s+/g, ' ').toLowerCase();
+            if (ci.trim().length >= 4) {
+              const tl = (selectedEvent.title || '').trim().toLowerCase();
+              const locl = (selectedEvent.location || '').trim().toLowerCase();
+              let redundant = (tl.length >= 4 && ci.indexOf(tl) >= 0) || (locl.length >= 4 && ci.indexOf(locl) >= 0);
+              if (!redundant && selectedEvent.startDate) {
+                const d = new Date(selectedEvent.startDate);
+                if (!isNaN(d.getTime())) {
+                  const dd = String(d.getDate()).padStart(2, '0');
+                  const mm = String(d.getMonth() + 1).padStart(2, '0');
+                  if ([`${dd}.${mm}.${d.getFullYear()}`, `${dd}.${mm}.`].some(p => ci.indexOf(p) >= 0)) redundant = true;
+                }
+              }
+              if (redundant) {
+                hints.push({
+                  id: 'contact-redundant',
+                  title: isDe ? 'Ansprechpartner-Text kürzen' : 'Shorten the contact text',
+                  body: isDe
+                    ? 'Beim Ansprechpartner steht offenbar der Event-Titel, das Datum oder der Ort — die werden bereits separat auf der Anmeldeseite angezeigt. Das Feld ist nur für die Erreichbarkeit gedacht. Über „Event bearbeiten" → Schritt 1 (Grundlagen) kürzen.'
+                    : 'The contact text appears to repeat the event title, date or location — these are already shown separately on the registration page. The field is only for availability. Shorten it via “Edit event” → step 1 (Basics).',
+                });
+              }
+            }
+          }
           // 3b) v22.63: Der frühere allgemeine „Sichtbarkeit gilt fürs ganze
           // Event"-Hinweis ist entfallen — er erschien immer und war reines
           // Erklär-Rauschen. Hinweise kommen jetzt nur noch bei echten

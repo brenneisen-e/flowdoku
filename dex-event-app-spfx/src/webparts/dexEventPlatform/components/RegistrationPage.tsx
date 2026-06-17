@@ -2176,9 +2176,10 @@ export default function RegistrationPage(): React.ReactElement {
                   // bereits gray-100 — das ergibt einen sauberen, neutralen
                   // Letterbox-Rahmen statt eines Bildschnitts.
                   style={event.imageDisplay?.hero
-                    // v23.19: Pro-Ansicht-Darstellung (Hero) — fester Cover-
-                    // Ausschnitt mit individuellem Zoom + vertikaler Position.
-                    ? { width: '100%', height: 340, objectFit: 'cover', display: 'block', objectPosition: `center ${event.imageDisplay.hero.posY}%`, transform: `scale(${event.imageDisplay.hero.zoom})`, transformOrigin: `center ${event.imageDisplay.hero.posY}%` }
+                    // v23.22: Pro-Ansicht-Darstellung (Hero) — volles Bild
+                    // (contain), Größe über max. Höhe steuerbar (behebt „Foto zu
+                    // groß") + optionaler Zoom. Zentriert auf weißem Hintergrund.
+                    ? { display: 'block', margin: '0 auto', maxWidth: '100%', maxHeight: (event.imageDisplay.hero.height ?? 340), width: 'auto', height: 'auto', objectFit: 'contain', transform: `scale(${event.imageDisplay.hero.zoom})`, transformOrigin: 'center center' }
                     : imgOrientation === 'portrait'
                       ? { width: '100%', height: '100%', objectFit: 'contain', display: 'block' }
                       : { width: '100%', height: 'auto', maxHeight: 480, objectFit: 'contain', display: 'block' }
