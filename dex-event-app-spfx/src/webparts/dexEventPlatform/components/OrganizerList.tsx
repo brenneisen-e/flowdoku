@@ -10,6 +10,7 @@
  */
 
 import * as React from 'react';
+import { Icon } from '@fluentui/react/lib/Icon';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -40,7 +41,92 @@ function photoUrl(email: string, size: 'S' | 'M' | 'L'): string {
   return `/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(email)}&size=${size}`;
 }
 
-function OrganizerChip({ name, email, sizeClass, expanded }: { name: string; email: string; sizeClass: 'sm' | 'md'; expanded?: boolean }): React.ReactElement {
+// v23.26: Deep-Link in einen 1:1-MS-Teams-Chat mit der Person.
+function teamsChatUrl(email: string): string {
+  return `https://teams.microsoft.com/l/chat/0/0?users=${encodeURIComponent(email)}`;
+}
+
+/** v23.26: Mail- + MS-Teams-Chat-Link, in Popup und großer Karte gleich. */
+function ContactLinks({ email, isDe }: { email: string; isDe: boolean }): React.ReactElement | null {
+  if (!email) return null;
+  return (
+    <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+      <a
+        href={`mailto:${email}`}
+        style={{ fontSize: '0.75rem', color: 'var(--dex-green, #86bc25)', textDecoration: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
+        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
+        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
+      >{email}</a>
+      <a
+        href={teamsChatUrl(email)}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', color: '#6264A7', textDecoration: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
+        onMouseEnter={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
+        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
+      >
+        <Icon iconName="TeamsLogo" style={{ fontSize: 13 }} /> {isDe ? 'Teams-Chat' : 'Teams chat'}
+      </a>
+    </span>
+  );
+}
+
+/**
+ * v23.26: Eine Person als großer Eintrag (Foto + Name + Kontakt + Rolle) —
+ * für den „card"-Modus, wo mehrere Organizer NEBENEINANDER in EINER Kachel
+ * stehen. Lädt Rolle + Standort sofort (ohne Hover).
+ */
+function OrganizerCardEntry({ name, email }: { name: string; email: string }): React.ReactElement {
+  const [failed, setFailed] = React.useState(false);
+  const [retryAttempt, setRetryAttempt] = React.useState(0);
+  const [profile, setProfile] = React.useState<{ jobTitle: string; location: string } | null>(
+    email && profileCache.has(email.toLowerCase()) ? profileCache.get(email.toLowerCase()) as { jobTitle: string; location: string } : null
+  );
+  const { searchUser } = useRoles();
+  const { locale } = useLanguage();
+  const isDe = locale === 'de';
+  const size = 96;
+  const initials = getInitials(name);
+  const cacheBust = retryAttempt > 0 ? `&_r=${retryAttempt}` : '';
+
+  React.useEffect(() => {
+    if (!email || profile) return;
+    const cacheKey = email.toLowerCase();
+    const cached = profileCache.get(cacheKey);
+    if (cached) { setProfile(cached); return; }
+    searchUser(email).then(res => {
+      if (res) {
+        const entry = { jobTitle: res.jobTitle || '', location: res.location || '' };
+        profileCache.set(cacheKey, entry);
+        setProfile(entry);
+      }
+    }).catch(() => { /* silent */ });
+  }, [email, profile, searchUser]);
+
+  return (
+    <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 5, textAlign: 'center', minWidth: 150, maxWidth: 200 }}>
+      {!failed && email ? (
+        <img
+          src={`${photoUrl(email, 'L')}${cacheBust}`}
+          alt={name}
+          onError={() => { if (retryAttempt < 1) setRetryAttempt(retryAttempt + 1); else setFailed(true); }}
+          style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-200)' }}
+        />
+      ) : (
+        <span style={{ width: size, height: size, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #86bc25, #0076a8)', color: '#fff', fontSize: size * 0.36, fontWeight: 700 }}>{initials}</span>
+      )}
+      <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--dex-gray-800)' }}>{name}</span>
+      <ContactLinks email={email} isDe={isDe} />
+      {profile && (profile.jobTitle || profile.location) && (
+        <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
+          {[profile.jobTitle, profile.location].filter(Boolean).join(' · ')}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function OrganizerChip({ name, email, sizeClass }: { name: string; email: string; sizeClass: 'sm' | 'md' }): React.ReactElement {
   const [hovered, setHovered] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
   // SP /_layouts/15/userphoto.aspx liefert sporadisch transient 404 — z.B. wenn die
@@ -100,65 +186,6 @@ function OrganizerChip({ name, email, sizeClass, expanded }: { name: string; ema
       }
     }
   };
-
-  // v23.25: Im „card"-Modus das Profil (Rolle + Standort) sofort laden, damit
-  // E-Mail + Infos ohne Hover sichtbar sind.
-  React.useEffect(() => {
-    if (!expanded || !email || profile) return;
-    const cacheKey = email.toLowerCase();
-    const cached = profileCache.get(cacheKey);
-    if (cached) { setProfile(cached); return; }
-    searchUser(email).then(res => {
-      if (res) {
-        const entry = { jobTitle: res.jobTitle || '', location: res.location || '' };
-        profileCache.set(cacheKey, entry);
-        setProfile(entry);
-      }
-    }).catch(() => { /* silent */ });
-  }, [expanded, email, profile, searchUser]);
-
-  // v23.25: Dauerhaft große Karte (Foto + Name + Mail + Rolle), wenn der
-  // Organizer das im Wizard so eingestellt hat.
-  if (expanded) {
-    return (
-      <div
-        style={{
-          display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-          background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 12,
-          padding: '14px 18px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', textAlign: 'center',
-          minWidth: 180,
-        }}
-      >
-        <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
-          {isDe ? 'Bei Fragen wende dich gerne an:' : 'If you have any questions, feel free to reach out:'}
-        </span>
-        {!failed && email ? (
-          <img
-            src={`${photoUrl(email, 'L')}${cacheBust}`}
-            alt={name}
-            onError={() => { if (retryAttempt < 1) setRetryAttempt(retryAttempt + 1); else setFailed(true); }}
-            style={{ width: enlargedSize, height: enlargedSize, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-200)' }}
-          />
-        ) : (
-          <span style={{ width: enlargedSize, height: enlargedSize, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #86bc25, #0076a8)', color: '#fff', fontSize: enlargedSize * 0.36, fontWeight: 700 }}>{initials}</span>
-        )}
-        <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--dex-gray-800)' }}>{name}</span>
-        {email && (
-          <a
-            href={`mailto:${email}`}
-            style={{ fontSize: '0.78rem', color: 'var(--dex-green, #86bc25)', textDecoration: 'none', fontWeight: 600 }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
-          >{email}</a>
-        )}
-        {profile && (profile.jobTitle || profile.location) && (
-          <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
-            {[profile.jobTitle, profile.location].filter(Boolean).join(' · ')}
-          </span>
-        )}
-      </div>
-    );
-  }
 
   return (
     <span
@@ -236,13 +263,8 @@ function OrganizerChip({ name, email, sizeClass, expanded }: { name: string; ema
             }}
           />
           <span style={{ fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap' }}>{name}</span>
-          {/* v23.25: klickbarer Mailto-Link. */}
-          <a
-            href={`mailto:${email}`}
-            style={{ fontSize: '0.72rem', color: 'var(--dex-green, #86bc25)', whiteSpace: 'nowrap', textDecoration: 'none', fontWeight: 600 }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
-          >{email}</a>
+          {/* v23.25/v23.26: klickbarer Mailto- + Teams-Chat-Link. */}
+          <ContactLinks email={email} isDe={isDe} />
           {/* v11.95: JobTitle + Standort aus dem SP-Profil — lazy beim
               ersten Hover geladen, danach gecached. */}
           {profile && (profile.jobTitle || profile.location) && (
@@ -328,14 +350,40 @@ function pairNamesEmails(names: string[], emails: string[]): Array<{ name: strin
   return result;
 }
 
+function OrganizerCardTile({ items }: { items: Array<{ name: string; email: string }> }): React.ReactElement {
+  const { locale } = useLanguage();
+  const isDe = locale === 'de';
+  // v23.26: EINE Kachel mit allen Organizern nebeneinander (statt einzeln
+  // beim Mouse-Over). Ein Hinweis-Kopf, dann die Personen in einer Reihe.
+  return (
+    <div
+      style={{
+        display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 12,
+        background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 12,
+        padding: '14px 20px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', maxWidth: '100%',
+      }}
+    >
+      <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
+        {isDe ? 'Bei Fragen wende dich gerne an:' : 'If you have any questions, feel free to reach out:'}
+      </span>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, justifyContent: 'center', alignItems: 'flex-start' }}>
+        {items.map((o, i) => (
+          <OrganizerCardEntry key={`${o.email || o.name}-${i}`} name={o.name} email={o.email} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function OrganizerList({ names, emails, size = 'md', compact = false, display = 'chip' }: OrganizerListProps): React.ReactElement | null {
   const items = pairNamesEmails(names, emails).filter(o => !!o.name);
   if (items.length === 0) return null;
-  const isCard = display === 'card';
+  // v23.26: Großer Modus = EINE gemeinsame Kachel mit allen Organizern.
+  if (display === 'card') return <OrganizerCardTile items={items} />;
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: isCard ? 12 : (compact ? 4 : 6) }}>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: compact ? 4 : 6 }}>
       {items.map((o, i) => (
-        <OrganizerChip key={`${o.email || o.name}-${i}`} name={o.name} email={o.email} sizeClass={size} expanded={isCard} />
+        <OrganizerChip key={`${o.email || o.name}-${i}`} name={o.name} email={o.email} sizeClass={size} />
       ))}
     </div>
   );
