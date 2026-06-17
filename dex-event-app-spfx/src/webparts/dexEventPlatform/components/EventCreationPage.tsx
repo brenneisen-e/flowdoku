@@ -25,6 +25,7 @@ import { InfoTooltip } from './InfoTooltip';
 import WizardHint from './WizardHint';
 import BulkUserImportModal from './BulkUserImportModal';
 import AudiencePicker from './AudiencePicker';
+import ImageCropModal from './ImageCropModal';
 import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
 // v20.2: Self-Check-in ist aus dem Wizard ausgezogen — Aktivierung läuft
@@ -915,6 +916,8 @@ export default function EventCreationPage(): React.ReactElement {
   const [eventImageUrl, setEventImageUrl] = React.useState(editEvent ? (editEvent.imageUrl || '') : '');
   const [imageFile, setImageFile] = React.useState<File | null>(null);
   const [imagePreview, setImagePreview] = React.useState(editEvent ? (editEvent.imageUrl || '') : '');
+  // v23.15: Bild-Editor (Zuschneiden / Kreis) offen?
+  const [imageEditOpen, setImageEditOpen] = React.useState(false);
   // v11.20: Re-sync useEffect aus v11.19 wieder rausgenommen — der hat
   // den Wizard-State mit stale-editEvent-Daten ueberschrieben (re-sync 2
   // mit helpText="" wurde im Maintainer-DevTools beobachtet, obwohl SP
@@ -6079,8 +6082,34 @@ export default function EventCreationPage(): React.ReactElement {
                     >
                       <X size={14} />
                     </button>
+                    {/* v23.15: Bild editieren (zuschneiden / auf Kreis). */}
+                    <button
+                      type="button"
+                      onClick={() => setImageEditOpen(true)}
+                      style={{
+                        position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,0.6)',
+                        color: '#fff', border: 'none', borderRadius: 999, padding: '4px 12px',
+                        cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                      }}
+                    >
+                      <Icon iconName="Crop" style={{ fontSize: 13 }} /> {isDe ? 'Bild editieren' : 'Edit image'}
+                    </button>
                   </div>
                 )}
+                {/* v23.15: Bild-Zuschnitt-Modal — liefert das Ergebnis als
+                    Data-URL (Vorschau) + File (Upload) zurück. */}
+                <ImageCropModal
+                  open={imageEditOpen}
+                  src={imagePreview}
+                  isDe={isDe}
+                  onClose={() => setImageEditOpen(false)}
+                  onApply={(dataUrl, file) => {
+                    setImagePreview(dataUrl);
+                    setImageFile(file);
+                    setImageEditOpen(false);
+                  }}
+                />
                 <label style={{
                   display: 'inline-flex', alignItems: 'center', gap: 8,
                   padding: '8px 16px', borderRadius: 'var(--dex-radius)',

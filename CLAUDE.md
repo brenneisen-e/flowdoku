@@ -848,6 +848,19 @@ ausgelöst **durch das Öffnen der App** (kein Power-Automate-Flow nötig):
   `DEX_SEND_MAIL`-Flow mappt Recipient direkt aufs To). Komplett best-effort
   (Fehler blocken nie den Boot).
 
+### Event-Bild zuschneiden (Kreis/Quadrat) (v23.15)
+
+Nach dem Hochladen/Auswählen eines Event-Bildes gibt es in Schritt 1 (über dem
+Bild, Button „Bild editieren") einen Zuschnitt-Editor: `components/ImageCropModal.tsx`.
+Zoom (Slider) + Verschieben (Maus-Drag) positionieren das Bild im quadratischen
+Rahmen; Form **Kreis** (schneidet die Ecken transparent weg — z.B. um einen
+schwarzen Rand zu entfernen) oder **Quadrat**. „Übernehmen" rendert den
+Ausschnitt auf ein Canvas (PNG, für transparente Kreis-Ecken) und liefert
+`(dataUrl, File)` zurück — EventCreationPage setzt `imagePreview` (Vorschau) +
+`imageFile` (Upload-Pfad). Bei bereits hochgeladenen Bildern kann das Canvas
+CORS-„tainted" sein → Export scheitert mit Hinweis (Bild neu auswählen); bei
+frisch gewählten Bildern (Data-URL) kein Problem.
+
 ### Teams: frei benennbar, DnD-Zuordnung, Sperre, Per-Team-Mail (v23.0)
 
 Vier zusammenhängende Erweiterungen rund um die Team-Anmeldung — alle ohne
