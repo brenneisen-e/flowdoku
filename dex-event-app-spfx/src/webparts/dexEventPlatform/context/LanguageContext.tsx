@@ -69,6 +69,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'events.until': 'bis',
     'events.regopen': 'Anmeldung bis:',
     'events.deadlinepassed': 'Frist abgelaufen',
+    'events.previewsoon': 'Vorschau — Anmeldung bald möglich',
+    'events.regfrom': 'Anmeldung ab',
     'events.deadlinepassed.hint': 'Bitte wende dich an den Organizer, wenn du dich noch anmelden möchtest.',
 
     // Registration Page
@@ -509,6 +511,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'events.until': 'until',
     'events.regopen': 'Registration open until:',
     'events.deadlinepassed': 'Registration closed',
+    'events.previewsoon': 'Preview — registration opens soon',
+    'events.regfrom': 'Registration opens',
     'events.deadlinepassed.hint': 'Please contact the organizer if you still want to register.',
 
     // Registration Page

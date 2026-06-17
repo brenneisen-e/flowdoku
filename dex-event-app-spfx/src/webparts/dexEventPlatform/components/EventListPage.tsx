@@ -239,9 +239,15 @@ export default function EventListPage(): React.ReactElement {
       ? events.filter((e) => e.status === 'Active')
       : events;
     const fictiveFiltered = statusFiltered.filter((e: DeloitteEvent) => {
-      // Effektiv "noch im Entwurf": entweder isFictive oder ActiveFrom in der Zukunft
+      // Effektiv "noch im Entwurf": entweder isFictive oder ActiveFrom in der Zukunft.
+      // v23.14: Ist „Vorschau vor Aktivierung" (previewBeforeActive) gesetzt UND
+      // der einzige Grund die zukünftige Aktiv-ab-Zeit (NICHT isFictive), dann
+      // gilt das Event NICHT als Entwurf — reguläre User sehen es als Vorschau
+      // (Audience-Filter unten greift weiter; die Karte/Anmeldeseite sperren das
+      // Buchen bis zum Aktiv-ab-Zeitpunkt).
       const activeFromTs = e.activeFrom ? new Date(e.activeFrom).getTime() : 0;
-      const isInDraftMode = e.isFictive || (activeFromTs > 0 && activeFromTs > nowTs);
+      const futureActive = activeFromTs > 0 && activeFromTs > nowTs;
+      const isInDraftMode = e.isFictive || (futureActive && !e.previewBeforeActive);
       if (!isInDraftMode) return true;
       if (isAdmin) return true;
       if (e.organizerEmails.some((em: string) => (em || '').toLowerCase() === currentEmailLc)) return true;

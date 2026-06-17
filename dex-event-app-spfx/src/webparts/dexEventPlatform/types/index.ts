@@ -121,6 +121,12 @@ export interface DeloitteEvent {
    *  ausschließen würde (damit sie stellvertretend anmelden können).
    *  Persistiert als Piggyback `_assistantsCanSee` in EmailTemplateOverrides. */
   assistantsCanSee?: boolean;
+  /** v23.14: Nur relevant, wenn `activeFrom` in der Zukunft liegt. true = das
+   *  Event ist für reguläre Teilnehmer schon VOR dem Aktivierungszeitpunkt in
+   *  der Event-Liste als Vorschau sichtbar (mit Hinweis „Anmeldung ab …", aber
+   *  noch nicht buchbar). false/undefined = vor `activeFrom` für reguläre User
+   *  komplett unsichtbar (bisheriges Verhalten). Piggyback `_previewBeforeActive`. */
+  previewBeforeActive?: boolean;
   /** v17.20: Wenn true UND der Organizer hat pro Custom-Field die
    *  EN-Variante hinterlegt (`labelEn` etc.), zeigt die Anmeldeseite die
    *  Felder in der **Locale des Teilnehmers** (App-Spracheinstellung) statt

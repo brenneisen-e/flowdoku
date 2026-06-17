@@ -848,6 +848,19 @@ ausgelöst **durch das Öffnen der App** (kein Power-Automate-Flow nötig):
   `DEX_SEND_MAIL`-Flow mappt Recipient direkt aufs To). Komplett best-effort
   (Fehler blocken nie den Boot).
 
+### Event-Bild zuschneiden (Kreis/Quadrat) (v23.15)
+
+Nach dem Hochladen/Auswählen eines Event-Bildes gibt es in Schritt 1 (über dem
+Bild, Button „Bild editieren") einen Zuschnitt-Editor: `components/ImageCropModal.tsx`.
+Zoom (Slider) + Verschieben (Maus-Drag) positionieren das Bild im quadratischen
+Rahmen; Form **Kreis** (schneidet die Ecken transparent weg — z.B. um einen
+schwarzen Rand zu entfernen) oder **Quadrat**. „Übernehmen" rendert den
+Ausschnitt auf ein Canvas (PNG, für transparente Kreis-Ecken) und liefert
+`(dataUrl, File)` zurück — EventCreationPage setzt `imagePreview` (Vorschau) +
+`imageFile` (Upload-Pfad). Bei bereits hochgeladenen Bildern kann das Canvas
+CORS-„tainted" sein → Export scheitert mit Hinweis (Bild neu auswählen); bei
+frisch gewählten Bildern (Data-URL) kein Problem.
+
 ### Teams: frei benennbar, DnD-Zuordnung, Sperre, Per-Team-Mail (v23.0)
 
 Vier zusammenhängende Erweiterungen rund um die Team-Anmeldung — alle ohne
@@ -1924,6 +1937,21 @@ nicht erschöpfend, sondern Beispiele:
 - HTML-entitiy-escaped Anführungszeichen (`&bdquo;…&ldquo;`) sind OK, aber
   Umlaute selber **nicht** als `&auml;`/`&ouml;` etc. — direkt `ä`/`ö`
   schreiben.
+
+**WICHTIG — Anführungszeichen in JSX-Text (wiederkehrender Build-Fehler!):**
+In **JSX-Text** (zwischen Tags, inkl. `<>…</>`-Fragmenten) bricht ein **gerades
+doppeltes Anführungszeichen `"`** den Build über die ESLint-Regel
+`react/no-unescaped-entities` (`error … `"` can be escaped with …`). Das ist in
+v23.x **mehrfach** passiert. Regel:
+- In deutschen UI-Texten **immer typografische Anführungszeichen** verwenden:
+  **`„` (öffnend, U+201E)** und **`"` (schließend, U+201C)** — NICHT das gerade
+  `"`. Häufigste Falle: das **schließende** Zeichen wird versehentlich als
+  gerades `"` geschrieben (z.B. `„Anmeldung ab …"` statt `„Anmeldung ab …"`).
+- Das gilt für JSX-**Text**. In JS-**Strings** (z.B. `t('…')`, `title={'…'}`,
+  `setError('…')`, `style`-Werte) ist `"` unkritisch — nur als nackter Text
+  zwischen JSX-Tags ist es ein Problem.
+- **Selbst-Check vor jedem Save einer berührten `.tsx`:** im neuen JSX-Text
+  nach geradem `"` suchen und durch `„…"` ersetzen. Spart eine Build-Iteration.
 
 **Examples:**
 - ✅ `Löschen`, `öffnen`, `Übersicht`, `ausfüllen`, `hinzufügen`, `Zurück`,

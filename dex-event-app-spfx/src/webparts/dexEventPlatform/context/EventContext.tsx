@@ -960,6 +960,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           return !!(ov && ov._assistantsCanSee);
         } catch { return false; }
       })(),
+      // v23.14: Vorschau vor Aktivierung (Piggyback _previewBeforeActive).
+      previewBeforeActive: ((): boolean => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          return !!(ov && ov._previewBeforeActive);
+        } catch { return false; }
+      })(),
       childEventTermSingular: ((): string | undefined => {
         try {
           const ov = JSON.parse(e.EmailTemplateOverrides || '{}');

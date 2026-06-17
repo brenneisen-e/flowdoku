@@ -25,6 +25,7 @@ import { InfoTooltip } from './InfoTooltip';
 import WizardHint from './WizardHint';
 import BulkUserImportModal from './BulkUserImportModal';
 import AudiencePicker from './AudiencePicker';
+import ImageCropModal from './ImageCropModal';
 import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
 // v20.2: Self-Check-in ist aus dem Wizard ausgezogen — Aktivierung läuft
@@ -832,6 +833,10 @@ export default function EventCreationPage(): React.ReactElement {
 
   // v9.21: Active-From-Datum (optional) — Event auto-aktiv ab diesem Zeitpunkt.
   const [activeFrom, setActiveFrom] = React.useState(editEvent ? (editEvent.activeFrom || '') : '');
+  // v23.14: Vorschau vor Aktivierung — nur relevant bei gesetztem „Aktiv ab".
+  // true = Teilnehmer sehen das Event schon vorher als Vorschau (mit Hinweis
+  // „Anmeldung ab …", noch nicht buchbar); false = vorher komplett unsichtbar.
+  const [previewBeforeActive, setPreviewBeforeActive] = React.useState(editEvent ? !!editEvent.previewBeforeActive : false);
   const [location, setLocation] = React.useState(editEvent ? editEvent.location : '');
   // Strukturierte Adresse (Straße, Hausnummer, PLZ, Ort) - separat zum freien Location-Feld
   const [addrStreet, setAddrStreet] = React.useState(editEvent?.locationAddress?.street || '');
@@ -911,6 +916,8 @@ export default function EventCreationPage(): React.ReactElement {
   const [eventImageUrl, setEventImageUrl] = React.useState(editEvent ? (editEvent.imageUrl || '') : '');
   const [imageFile, setImageFile] = React.useState<File | null>(null);
   const [imagePreview, setImagePreview] = React.useState(editEvent ? (editEvent.imageUrl || '') : '');
+  // v23.15: Bild-Editor (Zuschneiden / Kreis) offen?
+  const [imageEditOpen, setImageEditOpen] = React.useState(false);
   // v11.20: Re-sync useEffect aus v11.19 wieder rausgenommen — der hat
   // den Wizard-State mit stale-editEvent-Daten ueberschrieben (re-sync 2
   // mit helpText="" wurde im Maintainer-DevTools beobachtet, obwohl SP
@@ -1118,7 +1125,7 @@ export default function EventCreationPage(): React.ReactElement {
           // werden — sonst überschreibt der stale Wert aus dem geladenen Blob
           // beim Edit-Save (letzter Spread `...topOverrides`) das frisch
           // berechnete Flag, d.h. Abwählen bliebe ohne Wirkung.
-          _teamTerm, _teamMembersCannotCreate, _assistantsCanSee,
+          _teamTerm, _teamMembersCannotCreate, _assistantsCanSee, _previewBeforeActive,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -1128,7 +1135,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _splitDisplayOrderReversed; void _requireSubEventSelection;
         void _subEventsOnlyMode; void _childEventTerm;
         void _inheritFlags; void _hideOrganizer; void _headerImageLayout;
-        void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee;
+        void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee; void _previewBeforeActive;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
     })() : {}
@@ -3299,7 +3306,9 @@ export default function EventCreationPage(): React.ReactElement {
       const teamNoCreateConfig = teamMembersCannotCreate ? { _teamMembersCannotCreate: true } : {};
       // v23.6: Assistenz-Sichtbarkeit (Piggyback).
       const assistantsCanSeeConfig = assistantsCanSee ? { _assistantsCanSee: true } : {};
-      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(teamTermConfig).length > 0 || Object.keys(teamNoCreateConfig).length > 0 || Object.keys(assistantsCanSeeConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0 || Object.keys(headerImageLayoutConfig).length > 0)
+      // v23.14: Vorschau vor Aktivierung (nur sinnvoll mit activeFrom).
+      const previewBeforeActiveConfig = (previewBeforeActive && activeFrom) ? { _previewBeforeActive: true } : {};
+      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(teamTermConfig).length > 0 || Object.keys(teamNoCreateConfig).length > 0 || Object.keys(assistantsCanSeeConfig).length > 0 || Object.keys(previewBeforeActiveConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0 || Object.keys(headerImageLayoutConfig).length > 0)
         ? JSON.stringify({
             ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
             ...(effOutlookLogo ? { _outlookLogo: effOutlookLogo } : {}),
@@ -3314,6 +3323,7 @@ export default function EventCreationPage(): React.ReactElement {
             ...teamTermConfig,
             ...teamNoCreateConfig,
             ...assistantsCanSeeConfig,
+            ...previewBeforeActiveConfig,
             ...hideOrganizerConfig,
             // v18.73: Header-Bild-Layout (Breite + Innenabstand) — event-weit.
             ...headerImageLayoutConfig,
@@ -3870,8 +3880,10 @@ export default function EventCreationPage(): React.ReactElement {
           const teamNoCreateExtra = teamMembersCannotCreate ? { _teamMembersCannotCreate: true } : {};
           // v23.6: Assistenz-Sichtbarkeit (Piggyback).
           const assistantsCanSeeExtra = assistantsCanSee ? { _assistantsCanSee: true } : {};
+          // v23.14: Vorschau vor Aktivierung (nur sinnvoll mit activeFrom).
+          const previewBeforeActiveExtra = (previewBeforeActive && activeFrom) ? { _previewBeforeActive: true } : {};
           // v11.93: Top-Level-Logos aus dem Resolver lesen.
-          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0 || Object.keys(teamTermExtra).length > 0 || Object.keys(teamNoCreateExtra).length > 0 || Object.keys(assistantsCanSeeExtra).length > 0 || Object.keys(hideOrganizerExtra).length > 0 || Object.keys(headerImageLayoutConfig).length > 0;
+          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0 || Object.keys(teamTermExtra).length > 0 || Object.keys(teamNoCreateExtra).length > 0 || Object.keys(assistantsCanSeeExtra).length > 0 || Object.keys(previewBeforeActiveExtra).length > 0 || Object.keys(hideOrganizerExtra).length > 0 || Object.keys(headerImageLayoutConfig).length > 0;
           return hasAny
             ? JSON.stringify({
                 ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
@@ -3887,6 +3899,7 @@ export default function EventCreationPage(): React.ReactElement {
                 ...teamTermExtra,
                 ...teamNoCreateExtra,
                 ...assistantsCanSeeExtra,
+                ...previewBeforeActiveExtra,
                 ...hideOrganizerExtra,
                 // v18.73: Header-Bild-Layout (Breite + Innenabstand) — event-weit.
                 ...headerImageLayoutConfig,
@@ -5795,6 +5808,26 @@ export default function EventCreationPage(): React.ReactElement {
                     isClearable
                     autoComplete="off"
                   />
+                  {/* v23.14: Vorschau-Wahl — nur sinnvoll bei gesetztem „Aktiv ab". */}
+                  {activeFrom && (
+                    <div style={{ marginTop: 12, padding: '12px 14px', background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
+                      <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--dex-gray-800)', marginBottom: 6 }}>
+                        {isDe ? 'Vor dem Aktivierungszeitpunkt …' : 'Before the activation time …'}
+                      </div>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.84rem', marginBottom: 6 }}>
+                        <input type="radio" name="previewBeforeActive" checked={!previewBeforeActive} onChange={() => setPreviewBeforeActive(false)} style={{ marginTop: 3 }} />
+                        <span>{isDe
+                          ? <>… <strong>komplett unsichtbar</strong> für Teilnehmer (Standard). Nur Admins/Organizer/Test-Team sehen es vorher.</>
+                          : <>… <strong>completely hidden</strong> from attendees (default). Only admins/organizers/test team see it beforehand.</>}</span>
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', fontSize: '0.84rem' }}>
+                        <input type="radio" name="previewBeforeActive" checked={previewBeforeActive} onChange={() => setPreviewBeforeActive(true)} style={{ marginTop: 3 }} />
+                        <span>{isDe
+                          ? <>… schon als <strong>Vorschau sichtbar</strong> in der Event-Liste — mit dem Hinweis „Anmeldung ab …“. Die Anmeldeseite lässt sich aber erst ab dem Aktivierungszeitpunkt öffnen.</>
+                          : <>… already shown as a <strong>preview</strong> in the event list — with the note „Registration opens …“. The registration page can only be opened from the activation time onwards.</>}</span>
+                      </label>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -6049,8 +6082,34 @@ export default function EventCreationPage(): React.ReactElement {
                     >
                       <X size={14} />
                     </button>
+                    {/* v23.15: Bild editieren (zuschneiden / auf Kreis). */}
+                    <button
+                      type="button"
+                      onClick={() => setImageEditOpen(true)}
+                      style={{
+                        position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,0.6)',
+                        color: '#fff', border: 'none', borderRadius: 999, padding: '4px 12px',
+                        cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600,
+                        display: 'inline-flex', alignItems: 'center', gap: 6,
+                      }}
+                    >
+                      <Icon iconName="Crop" style={{ fontSize: 13 }} /> {isDe ? 'Bild editieren' : 'Edit image'}
+                    </button>
                   </div>
                 )}
+                {/* v23.15: Bild-Zuschnitt-Modal — liefert das Ergebnis als
+                    Data-URL (Vorschau) + File (Upload) zurück. */}
+                <ImageCropModal
+                  open={imageEditOpen}
+                  src={imagePreview}
+                  isDe={isDe}
+                  onClose={() => setImageEditOpen(false)}
+                  onApply={(dataUrl, file) => {
+                    setImagePreview(dataUrl);
+                    setImageFile(file);
+                    setImageEditOpen(false);
+                  }}
+                />
                 <label style={{
                   display: 'inline-flex', alignItems: 'center', gap: 8,
                   padding: '8px 16px', borderRadius: 'var(--dex-radius)',

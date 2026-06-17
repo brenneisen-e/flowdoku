@@ -87,9 +87,18 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
   // Nur normale User bekommen den Deadline-Overlay. Organizer/Admins dürfen
   // trotzdem reinklicken, um ggf. manuell zu registrieren.
   const showDeadlineOverlay = isDeadlinePassed && !canCreateEvents && !alreadySignedUp;
+  // v23.14: Vorschau vor Aktivierung („Aktiv ab" in der Zukunft + previewBeforeActive).
+  // Reguläre User sehen die Karte, dürfen aber NICHT in die Anmeldeseite —
+  // blockierender Overlay „Anmeldung ab …". Organizer/Admins dürfen weiterhin
+  // rein (zum Vorbereiten) und bekommen stattdessen nur einen Hinweis-Badge.
+  const activeFromTs = event.activeFrom ? new Date(event.activeFrom).getTime() : 0;
+  const notYetActive = activeFromTs > 0 && activeFromTs > Date.now();
+  const showPreviewOverlay = notYetActive && !canCreateEvents && !isOwnOrganizer && !alreadySignedUp;
+  const showOrganizerActiveBadge = notYetActive && (canCreateEvents || isOwnOrganizer);
+  const blockClick = showDeadlineOverlay || showPreviewOverlay;
 
   return (
-    <div className="event-card" style={{ position: 'relative', cursor: showDeadlineOverlay ? 'not-allowed' : 'pointer', ...(event.isDemoShowcase ? { outline: '2px dashed var(--dex-blue, #0076a8)', outlineOffset: 2 } : {}) }} onClick={() => (!alreadySignedUp && !showDeadlineOverlay) ? navigate('registration', event.id) : undefined}>
+    <div className="event-card" style={{ position: 'relative', cursor: blockClick ? 'not-allowed' : 'pointer', ...(event.isDemoShowcase ? { outline: '2px dashed var(--dex-blue, #0076a8)', outlineOffset: 2 } : {}) }} onClick={() => (!alreadySignedUp && !blockClick) ? navigate('registration', event.id) : undefined}>
       {/* v17.25: Demo-Showcase-Event deutlich markieren (blaues DEMO-Badge
           oben rechts, gestrichelter Rahmen). Nur im Demo-Impersonation-Modus
           ueberhaupt in der Liste. */}
@@ -129,6 +138,21 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
           Organizer
         </div>
       )}
+      {/* v23.14: Organizer/Admin sehen bei „Aktiv ab" in der Zukunft einen
+          Hinweis-Banner „Anmeldung ab …" (nicht blockierend — sie dürfen rein,
+          um das Event vorzubereiten). Regulären Usern wird stattdessen der
+          blockierende Vorschau-Overlay gezeigt. */}
+      {showOrganizerActiveBadge && (
+        <div style={{
+          position: 'absolute', top: 0, left: 0, right: 0, zIndex: 6,
+          padding: '5px 10px',
+          background: 'rgba(237,139,0,0.92)', color: '#fff',
+          fontSize: '0.72rem', fontWeight: 700, textAlign: 'center',
+          borderTopLeftRadius: 'var(--dex-radius)', borderTopRightRadius: 'var(--dex-radius)',
+        }}>
+          {t('events.regfrom')} {formatDate(event.activeFrom || '')}
+        </div>
+      )}
       {showDeadlineOverlay && (
         <div style={{
           position: 'absolute', inset: 0, zIndex: 10, borderRadius: 'var(--dex-radius)',
@@ -140,6 +164,25 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
           </div>
           <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.85rem', marginBottom: 4, maxWidth: 320, lineHeight: 1.4 }}>
             {t('events.deadlinepassed.hint')}
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', marginTop: 4 }}>
+            {event.title}
+          </div>
+        </div>
+      )}
+      {/* v23.14: Vorschau-Overlay für reguläre User — sichtbar, aber Anmeldung
+          erst ab dem Aktivierungszeitpunkt (Anmeldeseite nicht öffenbar). */}
+      {showPreviewOverlay && (
+        <div style={{
+          position: 'absolute', inset: 0, zIndex: 10, borderRadius: 'var(--dex-radius)',
+          background: 'rgba(0,0,0,0.65)', display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center',
+        }}>
+          <div style={{ color: '#fff', fontWeight: 700, fontSize: '1rem', marginBottom: 4 }}>
+            {t('events.previewsoon')}
+          </div>
+          <div style={{ color: 'rgba(255,255,255,0.9)', fontSize: '0.9rem', marginBottom: 4 }}>
+            {t('events.regfrom')} {formatDate(event.activeFrom || '')}
           </div>
           <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', marginTop: 4 }}>
             {event.title}
