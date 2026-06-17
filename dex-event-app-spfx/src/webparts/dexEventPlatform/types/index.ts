@@ -127,6 +127,11 @@ export interface DeloitteEvent {
    *  noch nicht buchbar). false/undefined = vor `activeFrom` für reguläre User
    *  komplett unsichtbar (bisheriges Verhalten). Piggyback `_previewBeforeActive`. */
   previewBeforeActive?: boolean;
+  /** v23.25: Organizer auf der Anmeldeseite groß darstellen (Foto + Name +
+   *  E-Mail + Rolle direkt sichtbar, wie das Hover-Popup) statt klein als Chip
+   *  mit Hover. false/undefined = kleiner Chip (bisheriges Verhalten).
+   *  Piggyback `_organizerDisplayLarge` in EmailTemplateOverrides. */
+  organizerDisplayLarge?: boolean;
   /** v23.19: Optionale, pro Ansicht unterschiedliche Darstellung des
    *  Event-Bildes (Zoom + vertikale Position), damit es in jeder Ansicht gut
    *  sitzt. Leer/undefined = Standard (cover, zentriert) — der Default-Flow ist

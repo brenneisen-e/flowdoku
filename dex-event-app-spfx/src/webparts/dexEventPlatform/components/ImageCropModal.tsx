@@ -25,12 +25,15 @@ interface Props {
   isDe: boolean;
   onClose: () => void;
   onApply: (dataUrl: string, file: File) => void;
+  /** v23.25: optionaler Zusatzblock (z.B. „Darstellung pro Ansicht") —
+      wird unter den Zuschnitt-Reglern, über den Aktions-Buttons gerendert. */
+  children?: React.ReactNode;
 }
 
 const FRAME = 320; // Anzeige-Kantenlänge der Vorschau (px)
 const OUT = 700;   // Ausgabe-Kantenlänge (px)
 
-export default function ImageCropModal({ open, src, isDe, onClose, onApply }: Props): React.ReactElement | null {
+export default function ImageCropModal({ open, src, isDe, onClose, onApply, children }: Props): React.ReactElement | null {
   const [shape, setShape] = React.useState<'rect' | 'circle'>('circle');
   const [zoom, setZoom] = React.useState(1);
   const [padding, setPadding] = React.useState(0); // 0..0.35 — weißer Rand um den Kreis
@@ -133,7 +136,7 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply }: Pr
   };
 
   return (
-    <Modal open={open} onClose={onClose} maxWidth={440} padding={24} ariaLabel={isDe ? 'Bild zuschneiden' : 'Crop image'}>
+    <Modal open={open} onClose={onClose} maxWidth={560} padding={24} ariaLabel={isDe ? 'Bild zuschneiden' : 'Crop image'}>
       <h3 style={{ marginTop: 0, marginBottom: 4, color: 'var(--dex-green-dark, #4a7c1f)' }}>
         {isDe ? 'Bild zuschneiden' : 'Crop image'}
       </h3>
@@ -188,6 +191,13 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply }: Pr
       )}
 
       {error && <p style={{ color: 'var(--dex-red, #c00)', fontSize: '0.8rem', marginTop: 8 }}>{error}</p>}
+
+      {/* v23.25: Zusatzblock (Darstellung pro Ansicht), abgesetzt mit Trennlinie. */}
+      {children && (
+        <div style={{ marginTop: 18, paddingTop: 16, borderTop: '1px solid var(--dex-gray-200)' }}>
+          {children}
+        </div>
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 18 }}>
         <button type="button" className="btn btn-secondary" onClick={onClose}>{isDe ? 'Abbrechen' : 'Cancel'}</button>

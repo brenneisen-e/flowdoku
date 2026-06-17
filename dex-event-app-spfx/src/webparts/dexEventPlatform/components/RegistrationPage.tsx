@@ -1736,7 +1736,7 @@ export default function RegistrationPage(): React.ReactElement {
             return (
               <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                 <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>Organizer</div>
-                <OrganizerList names={orgs} emails={event.organizerEmails} size="md" />
+                <OrganizerList names={orgs} emails={event.organizerEmails} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} />
               </div>
             );
           })()}
@@ -2255,7 +2255,7 @@ export default function RegistrationPage(): React.ReactElement {
                 return (
                   <div style={{ marginTop: 6 }}>
                     <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, fontWeight: 600 }}>Organizer</div>
-                    <OrganizerList names={orgs} emails={event.organizerEmails} size="md" />
+                    <OrganizerList names={orgs} emails={event.organizerEmails} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} />
                   </div>
                 );
               })()}
@@ -2283,44 +2283,8 @@ export default function RegistrationPage(): React.ReactElement {
                   )}
                 </div>
               )}
-              {/* Verfügbare Plätze anzeigen — nur wenn es eine Obergrenze gibt.
-                  Gilt sowohl für normale Deloitte-Events als auch für B2Run
-                  (dort ist maxParticipants = durchCap + funCap). */}
-              {event.maxParticipants > 0 && (() => {
-                const free = Math.max(0, event.maxParticipants - (event.currentParticipants || 0));
-                const isFullAll = free <= 0;
-                const nearlyFull = !isFullAll && free <= Math.max(1, Math.round(event.maxParticipants * 0.1));
-                const color = isFullAll
-                  ? 'var(--dex-red, #c00)'
-                  : nearlyFull
-                    ? 'var(--dex-orange, #ff8c00)'
-                    : 'var(--dex-green-dark, #6b9a1e)';
-                // v11.93: "Event voll"-Hinweis nicht mehr hier rendern —
-                // der ausführliche "All places are taken. Currently X on
-                // waiting list"-Block unter der Beschreibung übernimmt das
-                // bereits, sonst doppelte Meldung.
-                if (isFullAll) return null;
-                // v16.2: Bei Team-Event Anzahl freier Teams zusätzlich
-                // ausgeben (Plätze / TeamSize), damit die Quoten-Anzeige
-                // bei z.B. „80 / 80" auch klar macht „= 20 Teams frei".
-                const isTeamEvent = !!(event.teamRegistrationEnabled && event.teamSize && event.teamSize > 1);
-                const teamsFree = isTeamEvent ? Math.floor(free / (event.teamSize || 1)) : 0;
-                return (
-                  <div style={{
-                    fontSize: '0.78rem',
-                    color,
-                    marginTop: 6,
-                    fontWeight: 600,
-                  }}>
-                    {`${free} / ${event.maxParticipants} ${t('reg.seats.available') || 'Plätze frei'}`}
-                    {isTeamEvent && (
-                      <span style={{ marginLeft: 6, color: 'var(--dex-gray-600)', fontWeight: 500 }}>
-                        ({teamsFree} {teamsFree === 1 ? (locale === 'de' ? 'Team' : 'team') : (locale === 'de' ? 'Teams' : 'teams')} {locale === 'de' ? 'frei' : 'free'})
-                      </span>
-                    )}
-                  </div>
-                );
-              })()}
+              {/* v23.25: Die „X / Y Plätze frei"-Anzeige steht jetzt direkt
+                  über dem Registrieren-Button (siehe registration-actions). */}
             </div>
           </div>
           {/* v11.91: Beschreibung immer ausgeklappt — kein Toggle mehr. */}
@@ -3870,7 +3834,32 @@ export default function RegistrationPage(): React.ReactElement {
       )}
 
       {/* Buttons */}
-      <div className="registration-actions mt-24" style={{ maxWidth: 1100, margin: '24px auto 0' }}>
+      {/* v23.25: „X / Y Plätze frei" direkt über dem Registrieren-Button. */}
+      {event.maxParticipants > 0 && (() => {
+        const free = Math.max(0, event.maxParticipants - (event.currentParticipants || 0));
+        const isFullAll = free <= 0;
+        const nearlyFull = !isFullAll && free <= Math.max(1, Math.round(event.maxParticipants * 0.1));
+        const color = isFullAll
+          ? 'var(--dex-red, #c00)'
+          : nearlyFull
+            ? 'var(--dex-orange, #ff8c00)'
+            : 'var(--dex-green-dark, #6b9a1e)';
+        // "Event voll"-Hinweis übernimmt der Block unter der Beschreibung.
+        if (isFullAll) return null;
+        const isTeamEvent = !!(event.teamRegistrationEnabled && event.teamSize && event.teamSize > 1);
+        const teamsFree = isTeamEvent ? Math.floor(free / (event.teamSize || 1)) : 0;
+        return (
+          <div style={{ maxWidth: 1100, margin: '24px auto 0', textAlign: 'right', fontSize: '0.82rem', color, fontWeight: 600 }}>
+            {`${free} / ${event.maxParticipants} ${t('reg.seats.available') || 'Plätze frei'}`}
+            {isTeamEvent && (
+              <span style={{ marginLeft: 6, color: 'var(--dex-gray-600)', fontWeight: 500 }}>
+                ({teamsFree} {teamsFree === 1 ? (locale === 'de' ? 'Team' : 'team') : (locale === 'de' ? 'Teams' : 'teams')} {locale === 'de' ? 'frei' : 'free'})
+              </span>
+            )}
+          </div>
+        );
+      })()}
+      <div className="registration-actions mt-8" style={{ maxWidth: 1100, margin: '8px auto 0' }}>
         {(() => {
           // v15.11: im subEventsOnlyMode (Hauptevent nicht anmeldbar) muss
           // mindestens ein Sub-Event ausgewählt sein, sonst Button ausgrauen
