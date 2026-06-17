@@ -875,6 +875,163 @@ export default function AdminPage(): React.ReactElement {
   // Deloitte-Konto nicht mehr aktiv ist (Person hat womöglich das Unternehmen
   // verlassen). Wird im Hintergrund max. 1×/Tag pro Event geprüft.
   const [inactiveAccounts, setInactiveAccounts] = React.useState<string[]>([]);
+  // v23.2: Doppel-Anmeldungen erkennen. Eine E-Mail mit ≥2 NICHT-abgemeldeten
+  // Zeilen in derselben Teilnehmerliste = Duplikat (z.B. dieselbe Person in
+  // zwei Teams). Wird oben in einer Hinweis-Box surfaced + die Zeilen werden
+  // rot markiert. duplicateEmails = Set der betroffenen Adressen (lowercase).
+  const duplicateEmails = React.useMemo<Set<string>>(() => {
+    const counts: Record<string, number> = {};
+    for (const r of registrations) {
+      if ((r.Status || '') === 'Abgemeldet') continue;
+      const em = (r.ParticipantEmail || '').trim().toLowerCase();
+      if (!em) continue;
+      counts[em] = (counts[em] || 0) + 1;
+    }
+    const dup = new Set<string>();
+    Object.keys(counts).forEach(em => { if (counts[em] > 1) dup.add(em); });
+    return dup;
+  }, [registrations]);
+  // v23.2: Duplikat-Abmelde-Modal — gezogene Zeile + Entscheidung still löschen
+  // (Duplikat entfernen, keine Mail/Outlook/Nachrücken) vs. normal abmelden.
+  const [dupCancelReg, setDupCancelReg] = React.useState<SPRegistration | null>(null);
+  const [dupCancelBusy, setDupCancelBusy] = React.useState(false);
+
+  // v23.2: Standard-Abmeldung einer Teilnehmer-Zeile (extrahiert aus dem
+  // Abmelden-Button, damit das Duplikat-Modal denselben „normal abmelden"-Pfad
+  // wiederverwenden kann). Enthält KEINEN Confirm — der Aufrufer bestätigt.
+  // Spiegelt das bisherige Inline-Verhalten 1:1 (vergangenes Event → still,
+  // sonst Abmelde-Mail + Outlook-Ausladen + Nachrücken + ID-Reorder).
+  const performStandardCancel = async (reg: SPRegistration): Promise<void> => {
+    if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+    const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+    const eventWasOver = isEventOver(selectedEvent);
+    setAdminToast({ kind: 'cancelling', name });
+    const cancelledStarterType = reg.StarterType || '';
+    await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id, `${currentUser.firstName} ${currentUser.surname}`.trim(), currentUser.email);
+    if (reg.ParticipantEmail && !eventWasOver) {
+      if (!selectedEvent.disableEmails && !selectedEvent.disableCancellationEmail) {
+        const emailData = cancellationEmail(name, selectedEvent.title);
+        eventServiceRef.queueEmail(
+          emailData.subject, reg.ParticipantEmail, name, emailData.body,
+          'Abmeldung', selectedEvent.title, selectedEvent.id
+        ).catch(err => console.warn('[DEX]', err));
+      }
+      if (!selectedEvent.disableOutlook) {
+        eventServiceRef.queueOutlookEvent(
+          reg.ParticipantEmail, selectedEvent.id, selectedEvent.title, 'Ausladen'
+        ).catch(err => console.warn('[DEX]', err));
+      }
+    }
+    if (reg.ParticipantEmail && selectedEvent.eventNumber) {
+      eventServiceRef.removeParticipantEvent(
+        reg.ParticipantEmail, selectedEvent.eventNumber
+      ).catch(err => console.warn('[DEX]', err));
+    }
+    const isSplitEvent = typeof selectedEvent.durchstarterCapacity === 'number'
+      && typeof selectedEvent.funstarterCapacity === 'number'
+      && (selectedEvent.durchstarterCapacity > 0 || selectedEvent.funstarterCapacity > 0);
+    const useTypeFilter = isSplitEvent && !selectedEvent.splitSharedWaitlist;
+    if (!eventWasOver) {
+      try {
+        const promoted = await eventServiceRef.promoteFirstWaitlistItem(
+          selectedEvent.subsiteUrl,
+          cancelledStarterType || undefined,
+          selectedEvent.maxParticipants,
+          (useTypeFilter && cancelledStarterType) ? cancelledStarterType : undefined,
+          { itemId: reg.Id, participantEmail: reg.ParticipantEmail || '' },
+        );
+        if (promoted && promoted.success && promoted.email) {
+          setAdminToast({ kind: 'promoted', name: promoted.name || promoted.email, email: promoted.email, type: cancelledStarterType || undefined });
+          if (!selectedEvent.disableEmails) {
+            try {
+              const lang = selectedEvent.emailLanguage || 'EN';
+              const promotedFirstName = (promoted.name || '').trim().split(/\s+/)[0] || '';
+              const promoteVars = {
+                Name: promotedFirstName,
+                EventTitle: selectedEvent.title,
+                Organizer: formatOrganizerList(selectedEvent.organizers, lang),
+                AppUrl: `${eventServiceRef.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+                WaitlistPosition: '',
+              };
+              let emailData: { subject: string; body: string };
+              const spTplRaw = await eventServiceRef.getEmailTemplate('Nachruecken', lang).catch(() => null);
+              const spTpl = applyEventTemplateOverride(spTplRaw, selectedEvent.emailTemplateOverrides, 'Nachruecken');
+              if (spTpl) { emailData = buildEmailFromTemplate(spTpl, promoteVars); }
+              else { emailData = promotionEmail(promotedFirstName, selectedEvent.title); }
+              await eventServiceRef.queueEmail(
+                emailData.subject, promoted.email, promoted.name || '', emailData.body,
+                'Nachruecken', selectedEvent.title, selectedEvent.id
+              );
+            } catch (err) { console.warn('[DEX] promote-email failed:', err); }
+          }
+          if (!selectedEvent.disableOutlook) {
+            try { await eventServiceRef.queueOutlookEvent(promoted.email, selectedEvent.id, selectedEvent.title, 'Einladen'); }
+            catch (err) { console.warn('[DEX] promote-outlook failed:', err); }
+          }
+        } else {
+          setAdminToast({ kind: 'no-promote', name });
+        }
+      } catch (err) {
+        console.warn('[DEX] promoteFirstWaitlistItem failed:', err);
+        setAdminToast({ kind: 'no-promote', name });
+      }
+    }
+    if (selectedEvent.subsiteUrl && !eventWasOver) {
+      try {
+        const ok = await eventServiceRef.queueIDReorder(
+          selectedEvent.id, selectedEvent.eventNumber || 0,
+          selectedEvent.subsiteUrl, selectedEvent.title, name, reg.ParticipantEmail || undefined
+        );
+        if (!ok) {
+          console.warn('[DEX] queueIDReorder returned false');
+          showAlert(isDe ? 'Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.' : 'Cancellation successful, but the ID reorder entry could not be written to the queue. Please click "Reassign IDs" once.');
+        }
+      } catch (err) {
+        console.warn('[DEX] queueIDReorder threw:', err);
+        showAlert('Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.');
+      }
+    }
+    const regs = await getAllRegistrations(selectedEvent.id);
+    setRegistrations(regs);
+  };
+
+  // v23.2: Stilles Löschen einer doppelten Anmelde-Zeile. Anders als die
+  // normale Abmeldung wird die Zeile HART gelöscht (kein „Abgemeldet"-Status,
+  // der die Abmeldungs-Liste aufblähen würde) und es laufen KEINE Seiteneffekte
+  // (keine Abmelde-Mail, kein Outlook-Ausladen, kein Nachrücken, kein
+  // ID-Reorder, kein DEX_Participants-Cleanup) — die Person bleibt über ihre
+  // andere Zeile regulär angemeldet. Sitzplatz-Counter wird nachgezogen.
+  const performSilentDuplicateDelete = async (reg: SPRegistration): Promise<void> => {
+    if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+    const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+    setAdminToast({ kind: 'cancelling', name });
+    try {
+      await eventServiceRef.deleteRegistration(selectedEvent.subsiteUrl, reg.Id);
+      try {
+        await eventServiceRef.writeChangeLog({
+          action: 'RegistrationDeleted',
+          targetType: 'Participant',
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          targetId: ((reg as any).ParticipantEmail || '') + '#' + reg.Id,
+          targetName: name,
+          eventId: selectedEvent.id,
+          eventTitle: selectedEvent.title,
+          details: { note: 'Doppel-Anmeldung still entfernt (Duplikat). Person bleibt über die zweite Zeile angemeldet.' },
+        });
+      } catch (err) { console.warn('[DEX] writeChangeLog (dup delete) failed:', err); }
+      try {
+        const isSplit = typeof selectedEvent.durchstarterCapacity === 'number'
+          && typeof selectedEvent.funstarterCapacity === 'number'
+          && (selectedEvent.durchstarterCapacity > 0 || selectedEvent.funstarterCapacity > 0);
+        await eventServiceRef.syncSeatsToActiveCount(selectedEvent.subsiteUrl, { isSplit });
+      } catch { /* best-effort */ }
+    } catch (err) {
+      console.warn('[DEX] performSilentDuplicateDelete failed:', err);
+    }
+    const regs = await getAllRegistrations(selectedEvent.id);
+    setRegistrations(regs);
+    setAdminToast(null);
+  };
   // v22.16: „Hinweise"-Box für aktive Events — Busy-State für den 1-Klick-
   // Sprach-Fix + Tick, damit „Ausblenden" (localStorage) sofort re-rendert.
   const [hintLangBusy, setHintLangBusy] = React.useState(false);
@@ -5061,7 +5218,18 @@ export default function AdminPage(): React.ReactElement {
                     tabs.push({ id: parent.id, label: parent.title || (isDe ? 'Hauptevent' : 'Main event'), count: parentCount, isParent: true, ev: parent });
                   }
                   for (const c of siblings) {
-                    tabs.push({ id: c.id, label: shortSubEventTitle(c.title, parent?.title) || (isDe ? 'ohne Titel' : 'untitled'), count: c.id === selectedEvent.id ? liveSelectedActive : (c.currentParticipants || 0), isParent: false, ev: c });
+                    // v23.2: Nicht-gewählte Sub-Tabs zeigen — sofern die Liste
+                    // bereits geladen ist — die LIVE-Zeilenzahl aus
+                    // subEventRegsByEventId statt des veralteten Counters
+                    // `currentParticipants`. Sonst „springt" der Badge je nach
+                    // gewähltem Tab (gewählt = live, sonst = Cache), siehe der
+                    // 188-vs-190-Effekt. Gewählter Tab bleibt die Live-Zahl der
+                    // aktuell geladenen Tabelle.
+                    const subRegs = subEventRegsByEventId[c.id];
+                    const subLiveCount = subRegs
+                      ? subRegs.filter(r => r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length
+                      : (c.currentParticipants || 0);
+                    tabs.push({ id: c.id, label: shortSubEventTitle(c.title, parent?.title) || (isDe ? 'ohne Titel' : 'untitled'), count: c.id === selectedEvent.id ? liveSelectedActive : subLiveCount, isParent: false, ev: c });
                   }
                   // v22.70: Einzelnen Tab-Button rendern (für flaches Layout
                   // UND die Sub-Event-Reihe im Klammer-Layout wiederverwendet).
@@ -7417,6 +7585,56 @@ export default function AdminPage(): React.ReactElement {
         })()}
 
         {(() => {
+          // v23.2: Doppel-Anmelde-Hinweis. Listet jede Person, die mit
+          // derselben E-Mail ≥2 nicht-abgemeldete Zeilen hat (z.B. dieselbe
+          // Person in zwei Teams). Die betroffenen Zeilen sind in der Tabelle
+          // zusätzlich rot markiert; pro Person kann der Organizer über den
+          // „Abmelden"-Button das Duplikat still entfernen.
+          if (duplicateEmails.size === 0 || !selectedEvent) return null;
+          // Pro betroffener E-Mail die aktiven Zeilen sammeln (Name + Teams).
+          const dupGroups: Array<{ email: string; rows: SPRegistration[] }> = [];
+          duplicateEmails.forEach(em => {
+            const rows = registrations.filter(r => (r.Status || '') !== 'Abgemeldet' && (r.ParticipantEmail || '').trim().toLowerCase() === em);
+            if (rows.length > 1) dupGroups.push({ email: em, rows });
+          });
+          if (dupGroups.length === 0) return null;
+          return (
+            <div style={{ marginBottom: 20, padding: 16, borderRadius: 12, border: '1px solid var(--dex-red, #c00)', background: 'rgba(200,0,0,0.06)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+                <Icon iconName="Warning" style={{ fontSize: 18, color: 'var(--dex-red, #c00)' }} />
+                <strong style={{ color: 'var(--dex-red, #c00)', fontSize: '0.95rem' }}>
+                  {isDe ? `Doppel-Anmeldungen erkannt (${dupGroups.length})` : `Duplicate registrations detected (${dupGroups.length})`}
+                </strong>
+                <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                  {isDe
+                    ? 'Dieselbe Person ist mehrfach angemeldet. Die betroffenen Zeilen sind unten rot markiert — über „Abmelden" kannst du die doppelte Zeile still entfernen.'
+                    : 'The same person is registered more than once. The affected rows are marked red below — use „Cancel" to silently remove the duplicate row.'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {dupGroups.map(g => {
+                  const first = g.rows[0];
+                  const dispName = (first.Vorname && first.Nachname) ? `${first.Vorname} ${first.Nachname}` : (first.ParticipantName || g.email);
+                  const teamList = g.rows
+                    .map(r => r.TeamName ? `„${r.TeamName}"` : (r.TeamId ? (isDe ? '(Team ohne Namen)' : '(unnamed team)') : (isDe ? '(Einzel-Anmeldung)' : '(individual)')))
+                    .join(', ');
+                  return (
+                    <div key={g.email} style={{ fontSize: '0.84rem', color: 'var(--dex-gray-800)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
+                      <strong>{dispName}</strong>
+                      <span style={{ color: 'var(--dex-gray-500)' }}>{g.email}</span>
+                      <span style={{ padding: '1px 8px', borderRadius: 999, background: 'var(--dex-red, #c00)', color: '#fff', fontSize: '0.72rem', fontWeight: 700 }}>
+                        {isDe ? `${g.rows.length}× angemeldet` : `${g.rows.length}× registered`}
+                      </span>
+                      <span style={{ color: 'var(--dex-gray-600)' }}>— {teamList}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+
+        {(() => {
           // v11.36: Überbuchungs-Review-Box. Zeigt alle per „Überbuchung
           // prüfen" markierten Personen (OverbookReview='Pending') mit
           // Fairness-Kontext + Aktions-Buttons. Erst durch eine Aktion
@@ -8767,6 +8985,9 @@ export default function AdminPage(): React.ReactElement {
                         style={{ fontSize: '0.75rem', padding: '4px 10px', color: 'var(--dex-red, #c00)' }}
                         onClick={async () => {
                           if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                          // v23.2: Doppel-Anmeldung? Statt direkt abzumelden das
+                          // Duplikat-Modal öffnen (still löschen vs. normal abmelden).
+                          if (duplicateEmails.has((reg.ParticipantEmail || '').trim().toLowerCase())) { setDupCancelReg(reg); return; }
                           const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
                           // v22.22: Vergangenes Event → stille Abmeldung (keine
                           // Abmelde-Mail, keine Outlook-Absage, kein Nachrücken,
@@ -8778,135 +8999,7 @@ export default function AdminPage(): React.ReactElement {
                               : `Really cancel ${name} (${reg.ParticipantEmail})?\n\nThe event is in the past — the cancellation runs silently: no cancellation email, no Outlook removal, and nobody is promoted from the waitlist.`)
                             : (isDe ? `${name} (${reg.ParticipantEmail}) wirklich abmelden?` : `Really cancel ${name} (${reg.ParticipantEmail})?`);
                           if (!(await confirmDialog(confirmMsg, { danger: true, confirmLabel: isDe ? 'Abmelden' : 'Cancel registration' }))) return;
-                          // Lade-Toast anzeigen
-                          setAdminToast({ kind: 'cancelling', name });
-                          // Typ des Abgemeldeten merken — für typ-bewusstes Nachrücken bei B2Run-Split.
-                          const cancelledStarterType = reg.StarterType || '';
-                          await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id, `${currentUser.firstName} ${currentUser.surname}`.trim(), currentUser.email);
-                          // Abmelde-Email und Outlook-Ausladen in Queue eintragen (falls nicht deaktiviert)
-                          if (reg.ParticipantEmail && !eventWasOver) {
-                            // v19.21: disableCancellationEmail unterdrückt auch die
-                            // Admin-seitige Abmelde-Mail (event-weite Vorgabe).
-                            // v22.22: bei vergangenem Event komplett still.
-                            if (!selectedEvent.disableEmails && !selectedEvent.disableCancellationEmail) {
-                              const emailData = cancellationEmail(name, selectedEvent.title);
-                              eventServiceRef.queueEmail(
-                                emailData.subject, reg.ParticipantEmail, name, emailData.body,
-                                'Abmeldung', selectedEvent.title, selectedEvent.id
-                              ).catch(err => console.warn('[DEX]', err));
-                            }
-                            if (!selectedEvent.disableOutlook) {
-                              eventServiceRef.queueOutlookEvent(
-                                reg.ParticipantEmail, selectedEvent.id, selectedEvent.title, 'Ausladen'
-                              ).catch(err => console.warn('[DEX]', err));
-                            }
-                          }
-                          // DEX_Participants aufräumen
-                          if (reg.ParticipantEmail && selectedEvent.eventNumber) {
-                            eventServiceRef.removeParticipantEvent(
-                              reg.ParticipantEmail, selectedEvent.eventNumber
-                            ).catch(err => console.warn('[DEX]', err));
-                          }
-                          // Seit v6.8: Bei Admin/Organizer-Cancel direkt client-seitig
-                          // den Nachrücker promoten — so sieht der Admin/Organizer sofort
-                          // wer nachgerückt ist. Der Flow später sieht Count_Active =
-                          // MaxParticipants und überspringt seinen eigenen Promote-Zweig.
-                          // Typ-bewusst: bei aktiver Split-Capacity (DurchstarterCapacity > 0
-                          // UND FunstarterCapacity > 0) wird per Default nur ein
-                          // Warteliste-Teilnehmer mit passendem PreferredStarterType
-                          // nachgerückt — es sei denn, das Event ist auf
-                          // splitSharedWaitlist=true gesetzt (v10.20). Dann fällt der
-                          // Filter weg und der aelteste Wartelistler rückt nach,
-                          // unabhängig vom Typ.
-                          const isSplitEvent = typeof selectedEvent.durchstarterCapacity === 'number'
-                            && typeof selectedEvent.funstarterCapacity === 'number'
-                            && (selectedEvent.durchstarterCapacity > 0 || selectedEvent.funstarterCapacity > 0);
-                          const useTypeFilter = isSplitEvent && !selectedEvent.splitSharedWaitlist;
-                          // v22.22: Vergangenes Event → kein Nachrücken mehr.
-                          if (!eventWasOver) {
-                          try {
-                            const promoted = await eventServiceRef.promoteFirstWaitlistItem(
-                              selectedEvent.subsiteUrl,
-                              cancelledStarterType || undefined,
-                              selectedEvent.maxParticipants,
-                              (useTypeFilter && cancelledStarterType) ? cancelledStarterType : undefined,
-                              // v17.15: Audit-Tracking — promotete Person merkt sich,
-                              // wessen Cancel sie ersetzt; cancelnde Person bekommt
-                              // „ReplacedByParticipantEmail" mitgeschrieben.
-                              { itemId: reg.Id, participantEmail: reg.ParticipantEmail || '' },
-                            );
-                            if (promoted && promoted.success && promoted.email) {
-                              // Erfolgs-Toast anzeigen
-                              setAdminToast({
-                                kind: 'promoted',
-                                name: promoted.name || promoted.email,
-                                email: promoted.email,
-                                type: cancelledStarterType || undefined,
-                              });
-                              // Nachrück-Mail + Outlook-Einladung queuen
-                              if (!selectedEvent.disableEmails) {
-                                try {
-                                  const lang = selectedEvent.emailLanguage || 'EN';
-                                  const promotedFirstName = (promoted.name || '').trim().split(/\s+/)[0] || '';
-                                  const promoteVars = {
-                                    Name: promotedFirstName,
-                                    EventTitle: selectedEvent.title,
-                                    Organizer: formatOrganizerList(selectedEvent.organizers, lang),
-                                    AppUrl: `${eventServiceRef.siteUrl}/SitePages/DEX.aspx?env=WebView`,
-                                    WaitlistPosition: '',
-                                  };
-                                  let emailData: { subject: string; body: string };
-                                  const spTplRaw = await eventServiceRef.getEmailTemplate('Nachruecken', lang).catch(() => null);
-                                  const spTpl = applyEventTemplateOverride(spTplRaw, selectedEvent.emailTemplateOverrides, 'Nachruecken');
-                                  if (spTpl) {
-                                    emailData = buildEmailFromTemplate(spTpl, promoteVars);
-                                  } else {
-                                    emailData = promotionEmail(promotedFirstName, selectedEvent.title);
-                                  }
-                                  await eventServiceRef.queueEmail(
-                                    emailData.subject, promoted.email, promoted.name || '', emailData.body,
-                                    'Nachruecken', selectedEvent.title, selectedEvent.id
-                                  );
-                                } catch (err) { console.warn('[DEX] promote-email failed:', err); }
-                              }
-                              if (!selectedEvent.disableOutlook) {
-                                try {
-                                  await eventServiceRef.queueOutlookEvent(
-                                    promoted.email, selectedEvent.id, selectedEvent.title, 'Einladen'
-                                  );
-                                } catch (err) { console.warn('[DEX] promote-outlook failed:', err); }
-                              }
-                            } else {
-                              // Kein passender Warteliste-Teilnehmer — grauer Info-Toast
-                              setAdminToast({ kind: 'no-promote', name });
-                            }
-                          } catch (err) {
-                            console.warn('[DEX] promoteFirstWaitlistItem failed:', err);
-                            // Bei Fehler: "kein Nachrücker" anzeigen (Abmeldung selbst war erfolgreich)
-                            setAdminToast({ kind: 'no-promote', name });
-                          }
-                          }
-                          // IDReorder in Queue eintragen — der Flow macht nur noch Reorder
-                          // (Promote ist oben schon passiert, Flow erkennt Count_Active = MaxParticipants).
-                          // v22.22: bei vergangenem Event auch kein ID-Reorder (der Flow
-                          // würde sonst seinerseits nachrücken/Mails auslösen).
-                          if (selectedEvent.subsiteUrl && !eventWasOver) {
-                            try {
-                              const ok = await eventServiceRef.queueIDReorder(
-                                selectedEvent.id, selectedEvent.eventNumber || 0,
-                                selectedEvent.subsiteUrl, selectedEvent.title, name, reg.ParticipantEmail || undefined
-                              );
-                              if (!ok) {
-                                console.warn('[DEX] queueIDReorder returned false');
-                                showAlert(isDe ? 'Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.' : 'Cancellation successful, but the ID reorder entry could not be written to the queue. Please click "Reassign IDs" once.');
-                              }
-                            } catch (err) {
-                              console.warn('[DEX] queueIDReorder threw:', err);
-                              showAlert('Abmeldung erfolgreich, aber der ID-Reorder-Eintrag konnte nicht in die Queue geschrieben werden. Bitte einmal "IDs neu vergeben" klicken.');
-                            }
-                          }
-                          const regs = await getAllRegistrations(selectedEvent.id);
-                          setRegistrations(regs);
+                          await performStandardCancel(reg);
                         }}
                       >
                         {isDe ? 'Abmelden' : 'Cancel'}
@@ -9040,8 +9133,14 @@ export default function AdminPage(): React.ReactElement {
                             // die Überbuchungs-Markierung. inactiveAccounts kommt
                             // aus dem Konten-Aktiv-Check (nur @deloitte-Adressen).
                             const isInactiveAcct = inactiveAccounts.indexOf((reg.ParticipantEmail || '').trim().toLowerCase()) >= 0;
+                            // v23.2: Doppel-Anmeldung — rote Markierung (hat Vorrang
+                            // vor der orangen Überbuchungs-/Inaktiv-Markierung).
+                            const isDuplicate = (reg.Status || '') !== 'Abgemeldet'
+                              && duplicateEmails.has((reg.ParticipantEmail || '').trim().toLowerCase());
                             const highlight = isOverbook || isInactiveAcct;
-                            const rowTitle = isInactiveAcct
+                            const rowTitle = isDuplicate
+                              ? (isDe ? 'Doppel-Anmeldung — diese Person ist mehrfach angemeldet. Über „Abmelden" lässt sich die doppelte Zeile still entfernen.' : 'Duplicate registration — this person is registered more than once. Use „Cancel" to silently remove the duplicate row.')
+                              : isInactiveAcct
                               ? (isDe ? 'Kein aktives Deloitte-Konto gefunden — Person hat womöglich Deloitte verlassen. Mails/Outlook kommen ggf. nicht an.' : 'No active Deloitte account found — person may have left Deloitte. Emails/Outlook may not arrive.')
                               : isOverbook
                                 ? (isDe ? 'Über Kapazität angemeldet — siehe Box „Überbuchung – zu prüfen" oben' : 'Registered over capacity — see the „Overbooking – to review" box above')
@@ -9052,7 +9151,9 @@ export default function AdminPage(): React.ReactElement {
                                 title={rowTitle}
                                 style={{
                                   borderBottom: '1px solid var(--dex-gray-100)',
-                                  ...(highlight
+                                  ...(isDuplicate
+                                    ? { background: 'rgba(200,0,0,0.10)', boxShadow: 'inset 3px 0 0 var(--dex-red, #c00)' }
+                                    : highlight
                                     ? { background: 'rgba(237,139,0,0.13)', boxShadow: 'inset 3px 0 0 var(--dex-orange, #ed8b00)' }
                                     : {}),
                                 }}
@@ -9478,6 +9579,23 @@ export default function AdminPage(): React.ReactElement {
                           <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{p.location || '-'}</td>
                           {sectionCols.map(sc => {
                             const r = p.bySection[sc.id];
+                            // v23.2: In der „Gesamt-Event"-Spalte kein nacktes X,
+                            // sondern ein sprechender Badge — die Person hat erklärt,
+                            // dass sie nicht (am Gesamt-Event) teilnehmen wird.
+                            if (sc.id === '__parent') {
+                              return (
+                                <td key={sc.id} style={{ padding: 8, textAlign: 'center' }}>
+                                  {r
+                                    ? <span
+                                        title={`${isDeclined(r) ? (isDe ? 'Absage ohne vorherige Anmeldung' : 'Decline without prior registration') : (isDe ? 'Vom Gesamt-Event abgemeldet' : 'Cancelled from the overall event')} — ${formatDate(r.CancellationDate)}`}
+                                        style={{ display: 'inline-block', fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(218,41,28,0.10)', color: 'var(--dex-red, #da291c)', whiteSpace: 'nowrap' }}
+                                      >
+                                        {isDe ? 'Nimmt nicht teil' : 'Will not attend'}
+                                      </span>
+                                    : <span style={{ color: 'var(--dex-gray-300)' }}>–</span>}
+                                </td>
+                              );
+                            }
                             return (
                               <td key={sc.id} style={{ padding: 8, textAlign: 'center' }}>
                                 {r
@@ -11636,6 +11754,79 @@ export default function AdminPage(): React.ReactElement {
       {/* v11.70: kein Modal mehr — der Hinweis wird inline ueber der
           Teilnehmerliste angezeigt (siehe Render-Block oberhalb der
           Teilnehmer-Tabelle). */}
+
+      {/* v23.2: Duplikat-Abmelde-Modal — beim Abmelden einer doppelt
+          angemeldeten Person fragt die App, ob die Zeile STILL entfernt werden
+          soll (Duplikat löschen, ohne Mail/Outlook/Nachrücken — die Person
+          bleibt über ihre zweite Zeile angemeldet) oder normal abgemeldet. */}
+      {dupCancelReg && selectedEvent && (() => {
+        const reg = dupCancelReg;
+        const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
+        const teamLabel = reg.TeamName ? `„${reg.TeamName}"` : (reg.TeamId ? (isDe ? 'Team ohne Namen' : 'unnamed team') : (isDe ? 'Einzel-Anmeldung' : 'individual registration'));
+        return (
+          <Modal
+            open={true}
+            onClose={() => { if (!dupCancelBusy) setDupCancelReg(null); }}
+            dismissable={!dupCancelBusy}
+            maxWidth={540}
+            padding={24}
+            ariaLabel={isDe ? 'Doppel-Anmeldung entfernen' : 'Remove duplicate registration'}
+          >
+            <h3 style={{ marginTop: 0, marginBottom: 8, color: 'var(--dex-red, #c00)' }}>
+              {isDe ? 'Doppel-Anmeldung entfernen' : 'Remove duplicate registration'}
+            </h3>
+            <p style={{ marginTop: 0, fontSize: '0.88rem', lineHeight: 1.5 }}>
+              {isDe
+                ? <><strong>{name}</strong> ({reg.ParticipantEmail}) ist mehrfach für dieses Event angemeldet. Du entfernst gerade die Zeile <strong>{teamLabel}</strong>.</>
+                : <><strong>{name}</strong> ({reg.ParticipantEmail}) is registered more than once for this event. You are removing the row <strong>{teamLabel}</strong>.</>}
+            </p>
+            <p style={{ fontSize: '0.84rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+              {isDe
+                ? 'Bei einer Dublette ist die stille Entfernung richtig: Die Zeile wird gelöscht, ohne dass eine Abmelde-Mail oder eine Outlook-Absage rausgeht und ohne dass jemand von der Warteliste nachrückt — die Person bleibt über ihre andere Anmeldung regulär dabei. Nur falls es KEINE Dublette ist, sondern eine echte Abmeldung, wähle „Normal abmelden".'
+                : 'For a duplicate, silent removal is the right choice: the row is deleted without a cancellation email or Outlook removal and without promoting anyone from the waitlist — the person stays registered via their other entry. Only if this is NOT a duplicate but a real cancellation, choose „Cancel normally".'}
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 18 }}>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ background: 'var(--dex-red, #c00)', borderColor: 'var(--dex-red, #c00)' }}
+                disabled={dupCancelBusy}
+                onClick={async () => {
+                  setDupCancelBusy(true);
+                  await performSilentDuplicateDelete(reg);
+                  setDupCancelBusy(false);
+                  setDupCancelReg(null);
+                  showAlert(isDe ? 'Doppelte Anmeldung still entfernt.' : 'Duplicate registration silently removed.', { variant: 'success' });
+                }}
+              >
+                {dupCancelBusy ? (isDe ? 'Wird entfernt…' : 'Removing…') : (isDe ? 'Duplikat still entfernen (empfohlen)' : 'Silently remove duplicate (recommended)')}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={dupCancelBusy}
+                onClick={async () => {
+                  setDupCancelBusy(true);
+                  await performStandardCancel(reg);
+                  setDupCancelBusy(false);
+                  setDupCancelReg(null);
+                }}
+              >
+                {isDe ? 'Normal abmelden (mit Mail & Nachrücken)' : 'Cancel normally (with email & promotion)'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ border: 'none' }}
+                disabled={dupCancelBusy}
+                onClick={() => setDupCancelReg(null)}
+              >
+                {isDe ? 'Abbrechen' : 'Cancel'}
+              </button>
+            </div>
+          </Modal>
+        );
+      })()}
 
       {/* v11.36: Überbuchungs-Entscheidungs-Modal (Bestätigen / Platz behalten) */}
       {overbookModal && selectedEvent && (

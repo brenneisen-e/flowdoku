@@ -1633,6 +1633,23 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // `isUserAlreadyOnEvent`, der genau die blockierenden Status-Werte
     // berücksichtigt (Angemeldet/QR versendet/Eingecheckt/Warteliste). Pfad
     // ist nicht performance-kritisch — sequentiell ist OK bei N ≤ 20.
+    // v23.2: Der Lead ist (fast immer) der eingeloggte User selbst — und für
+    // die EIGENE Anmeldung haben wir einen verlässlichen Self-Read
+    // (`getMyRegistration` liest die eigene Zeile auch unter Item-Level-
+    // Security). Das ist der harte Riegel gegen die Team-Doppel-Anmeldung:
+    // `isUserAlreadyOnEvent` fällt bei transienten SP-Fehlern (Throttling
+    // während einer Anmelde-Welle) auf „nicht blockieren" zurück — der
+    // Self-Read tut das nicht. Wenn die eigene Anmeldung aktiv ist, hart
+    // abweisen, BEVOR ein Sitzplatz reserviert wird.
+    if (leadData.email.trim().toLowerCase() === currentUserEmail.trim().toLowerCase()) {
+      try {
+        const myReg = await getMyRegistration(eventId);
+        if (myReg && myReg.Status !== 'Abgemeldet') {
+          return { ok: false, reason: `already-registered:${leadData.email}` };
+        }
+      } catch { /* Self-Read fehlgeschlagen → fällt unten auf isUserAlreadyOnEvent zurück */ }
+    }
+
     const allEmails = [leadData.email, ...members.map(m => m.email)];
     for (const em of allEmails) {
       const blocked = await eventService.isUserAlreadyOnEvent(subsiteUrl, em);

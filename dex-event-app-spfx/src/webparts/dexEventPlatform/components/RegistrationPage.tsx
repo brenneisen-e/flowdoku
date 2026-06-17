@@ -1055,6 +1055,19 @@ export default function RegistrationPage(): React.ReactElement {
   // (siehe Manual). Lead und Member bekommen jeweils nur den Hauptevent.
   const performTeamRegistration = async (starterTypeToUse: string): Promise<void> => {
     setError('');
+    // v23.2: Harter Riegel gegen Doppel-Anmeldung über den Team-Pfad. Wer als
+    // eingeloggte Person bereits aktiv beim Event angemeldet ist (solo oder in
+    // einem anderen Team), darf NICHT erneut ein Team anlegen — der Solo-Pfad
+    // ist seit jeher so abgesichert, der Team-Pfad war es nicht (Ursache der
+    // Doppel-Anmeldung bei Team-Events). Die Team-Karte ist in dem Fall bereits
+    // ausgeblendet; das hier ist das Sicherheitsnetz, falls der Status erst
+    // nach dem Aufklappen geladen wurde.
+    if (parentAlreadyRegistered) {
+      setError(locale === 'de'
+        ? 'Du bist bereits für dieses Event angemeldet — eine zusätzliche Team-Anmeldung ist nicht möglich. Bitte zuerst über „Meine Events" abmelden, falls du in ein anderes Team wechseln möchtest.'
+        : 'You are already registered for this event — an additional team registration is not possible. Please cancel via „My Events" first if you want to switch to another team.');
+      return;
+    }
     setIsSubmitting(true);
     setSubmitProgress(5);
     setSubmitProgressLabel(locale === 'de' ? 'Team-Anmeldung wird vorbereitet…' : 'Preparing team registration…');
@@ -3016,7 +3029,7 @@ export default function RegistrationPage(): React.ReactElement {
                 NICHT für eine andere Person registriert (Team-für-Andere wird
                 nicht unterstützt — der Stellvertreter-Pfad ist auf eine
                 Einzel-Person ausgelegt). */}
-            {isTeamCapable && !registerForOther && (
+            {isTeamCapable && !registerForOther && !parentAlreadyRegistered && (
               <div className="form-group" style={{ marginTop: 16, marginBottom: 0 }}>
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
                   <input
@@ -3045,7 +3058,7 @@ export default function RegistrationPage(): React.ReactElement {
 
         {/* v11.82: Team-Anmeldung-Card — separat unter „Persönliche Daten",
             nur sichtbar wenn der Toggle aktiv ist. */}
-        {isTeamCapable && isTeamMode && !registerForOther && (
+        {isTeamCapable && isTeamMode && !registerForOther && !parentAlreadyRegistered && (
           <div className="registration-form" style={{ marginTop: 24 }}>
             <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
               <Icon iconName="People" style={{ fontSize: 16 }} />
