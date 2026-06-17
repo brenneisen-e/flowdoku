@@ -1196,6 +1196,12 @@ export default function RegistrationPage(): React.ReactElement {
       let anySuccess = false;
       let parentOk = true;
       let lastSubReason: string | undefined;
+      // v23.10: Assistenz-Proxy-Anmeldung — der Client hat (Picker-Greyout +
+      // Submit-Validierung oben) bereits sichergestellt, dass eine Assistenz nur
+      // Partner/Director anmeldet. Dieses Flag wird der Registrierung als
+      // vertrauenswürdig durchgereicht, damit die fragile serverseitige
+      // Job-Title-Ableitung legitime Assistenzen nicht mehr fälschlich ablehnt.
+      const actorAllowedAsAssistant = registerForOther && isAssistant && !canCreateEvents;
       // v23.9: Übersetzt den konkreten Misserfolgs-Grund aus registerForEvent in
       // eine verständliche Meldung — statt pauschal „bereits registriert".
       const regFailMessage = (reason?: string): string => {
@@ -1256,7 +1262,7 @@ export default function RegistrationPage(): React.ReactElement {
           // mitschreiben (Pflicht-Checkbox wurde oben validiert).
           // v19.6: ccSelfEmail (Anmeldende:r auf CC der Bestätigungs-Mail).
           registerForOther
-            ? { proxyConsentConfirmed: true, ...(ccSelfEmail ? { extraCc: ccSelfEmail } : {}) }
+            ? { proxyConsentConfirmed: true, actorAllowedAsAssistant, ...(ccSelfEmail ? { extraCc: ccSelfEmail } : {}) }
             : undefined
         );
         parentOk = parentResult.ok;
@@ -1337,7 +1343,7 @@ export default function RegistrationPage(): React.ReactElement {
           // mergen (deduppt serverseitig).
           const seExtraCc = [crossCutCc, ccSelfEmail].filter(Boolean).join(';');
           const seOpts = (seExtraCc || registerForOther)
-            ? { ...(seExtraCc ? { extraCc: seExtraCc } : {}), ...(registerForOther ? { proxyConsentConfirmed: true } : {}) }
+            ? { ...(seExtraCc ? { extraCc: seExtraCc } : {}), ...(registerForOther ? { proxyConsentConfirmed: true, actorAllowedAsAssistant } : {}) }
             : undefined;
           const subRes = await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType, seOpts);
           if (subRes.ok) anySuccess = true;

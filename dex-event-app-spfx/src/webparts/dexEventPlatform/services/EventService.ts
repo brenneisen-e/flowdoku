@@ -4772,7 +4772,16 @@ export class EventService {
     // serverseitigen Ableitung (SubsiteUrl-Filter + Note-Feld-Parsing +
     // pageContext-Identität), die im Tenant gelegentlich fehlschlug und
     // legitime Organizer mit „bereits angemeldet" ablehnte.
-    actorIsEventOrganizer: boolean = false
+    actorIsEventOrganizer: boolean = false,
+    // v23.10: Der CLIENT hat bereits validiert, dass der/die Anmeldende eine
+    // Assistenz ist UND das Ziel Partner/Director (RegistrationPage prüft das
+    // beim Submit gegen den Picker-JobTitle). Diesem Flag vertrauen wir — die
+    // serverseitige Ableitung in canRegisterForOthers hängt an
+    // Profil-Lookups (Title/SPS-JobTitle), die im Tenant unzuverlässig leer
+    // zurückkamen und legitime Assistenzen mit „nicht berechtigt" ablehnten.
+    // Gilt NUR für Check A (Berechtigung) — NICHT für die Deadline (Assistenz
+    // darf wie ein normaler User nicht nach Frist anmelden).
+    clientAssistantAllowed: boolean = false
   // v23.9: Statt nacktem boolean ein konkreter Grund bei Misserfolg, damit die
   // UI nicht mehr pauschal „bereits registriert" anzeigt (irreführend, wenn der
   // echte Grund Berechtigung/Deadline/Insert-Fehler war).
@@ -4812,7 +4821,7 @@ export class EventService {
       // fragile serverseitige Ableitung. Sonst Fallback auf canRegisterForOthers
       // (deckt Admin-Rolle + Assistant-Ausnahme zuverlässig ab).
       if (targetEmail && targetEmail !== sessionEmail) {
-        const allowed = actorIsEventOrganizer || await this.canRegisterForOthers(subsiteUrl, participantEmail);
+        const allowed = actorIsEventOrganizer || clientAssistantAllowed || await this.canRegisterForOthers(subsiteUrl, participantEmail);
         if (!allowed) {
           console.warn(`[DEX] registerForEvent DENIED: ${sessionEmail} versuchte ${targetEmail} zu registrieren — weder Organizer noch Admin noch erlaubter Assistant-Fall.`);
           return { ok: false, reason: 'not-allowed' };
