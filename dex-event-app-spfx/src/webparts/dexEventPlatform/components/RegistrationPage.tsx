@@ -3834,32 +3834,33 @@ export default function RegistrationPage(): React.ReactElement {
       )}
 
       {/* Buttons */}
-      {/* v23.25: „X / Y Plätze frei" direkt über dem Registrieren-Button. */}
-      {event.maxParticipants > 0 && (() => {
-        const free = Math.max(0, event.maxParticipants - (event.currentParticipants || 0));
-        const isFullAll = free <= 0;
-        const nearlyFull = !isFullAll && free <= Math.max(1, Math.round(event.maxParticipants * 0.1));
-        const color = isFullAll
-          ? 'var(--dex-red, #c00)'
-          : nearlyFull
-            ? 'var(--dex-orange, #ff8c00)'
-            : 'var(--dex-green-dark, #6b9a1e)';
-        // "Event voll"-Hinweis übernimmt der Block unter der Beschreibung.
-        if (isFullAll) return null;
-        const isTeamEvent = !!(event.teamRegistrationEnabled && event.teamSize && event.teamSize > 1);
-        const teamsFree = isTeamEvent ? Math.floor(free / (event.teamSize || 1)) : 0;
-        return (
-          <div style={{ maxWidth: 1100, margin: '24px auto 0', textAlign: 'right', fontSize: '0.82rem', color, fontWeight: 600 }}>
-            {`${free} / ${event.maxParticipants} ${t('reg.seats.available') || 'Plätze frei'}`}
-            {isTeamEvent && (
-              <span style={{ marginLeft: 6, color: 'var(--dex-gray-600)', fontWeight: 500 }}>
-                ({teamsFree} {teamsFree === 1 ? (locale === 'de' ? 'Team' : 'team') : (locale === 'de' ? 'Teams' : 'teams')} {locale === 'de' ? 'frei' : 'free'})
-              </span>
-            )}
-          </div>
-        );
-      })()}
-      <div className="registration-actions mt-8" style={{ maxWidth: 1100, margin: '8px auto 0' }}>
+      <div className="registration-actions mt-24" style={{ maxWidth: 1100, margin: '24px auto 0', alignItems: 'center' }}>
+        {/* v23.26: „X / Y Plätze frei" links neben dem Registrieren-Button
+            (marginRight:auto schiebt die Buttons nach rechts). */}
+        {event.maxParticipants > 0 && (() => {
+          const free = Math.max(0, event.maxParticipants - (event.currentParticipants || 0));
+          const isFullAll = free <= 0;
+          const nearlyFull = !isFullAll && free <= Math.max(1, Math.round(event.maxParticipants * 0.1));
+          const color = isFullAll
+            ? 'var(--dex-red, #c00)'
+            : nearlyFull
+              ? 'var(--dex-orange, #ff8c00)'
+              : 'var(--dex-green-dark, #6b9a1e)';
+          // "Event voll"-Hinweis übernimmt der Block unter der Beschreibung.
+          if (isFullAll) return null;
+          const isTeamEvent = !!(event.teamRegistrationEnabled && event.teamSize && event.teamSize > 1);
+          const teamsFree = isTeamEvent ? Math.floor(free / (event.teamSize || 1)) : 0;
+          return (
+            <span style={{ marginRight: 'auto', fontSize: '0.82rem', color, fontWeight: 600 }}>
+              {`${free} / ${event.maxParticipants} ${t('reg.seats.available') || 'Plätze frei'}`}
+              {isTeamEvent && (
+                <span style={{ marginLeft: 6, color: 'var(--dex-gray-600)', fontWeight: 500 }}>
+                  ({teamsFree} {teamsFree === 1 ? (locale === 'de' ? 'Team' : 'team') : (locale === 'de' ? 'Teams' : 'teams')} {locale === 'de' ? 'frei' : 'free'})
+                </span>
+              )}
+            </span>
+          );
+        })()}
         {(() => {
           // v15.11: im subEventsOnlyMode (Hauptevent nicht anmeldbar) muss
           // mindestens ein Sub-Event ausgewählt sein, sonst Button ausgrauen
@@ -3947,9 +3948,9 @@ export default function RegistrationPage(): React.ReactElement {
             title={locale === 'de'
               ? 'Melde zurück, dass du nicht teilnehmen wirst (keine Anmeldung).'
               : 'Let us know you will not attend (no registration).'}
-            style={{ color: 'var(--dex-red, #c00)' }}
+            style={{ color: 'var(--dex-gray-700, #444)' }}
           >
-            {isDeclining
+            <X size={16} /> {isDeclining
               ? (locale === 'de' ? 'Wird gesendet…' : 'Submitting…')
               : (locale === 'de' ? 'Ich nehme nicht teil' : 'I will not attend')}
           </button>
