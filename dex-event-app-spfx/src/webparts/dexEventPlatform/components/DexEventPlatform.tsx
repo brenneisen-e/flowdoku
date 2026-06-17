@@ -386,11 +386,10 @@ function AppContent(): React.ReactElement {
     return () => window.clearTimeout(t);
   }, [isAdmin, isEventsLoading, events]);
 
-  // v23.8: Wöchentlicher Admin-Bericht. Beim Admin-Start prüfen, ob seit dem
-  // letzten Bericht ≥7 Tage vergangen sind (Quelle: SP-Liste DEX_WeeklyReports)
-  // und ggf. den Bericht an alle Admins versenden. Der lokale 12h-Throttle
-  // verhindert nur unnötige SP-Roundtrips bei häufigen Reloads — die echte
-  // 7-Tage-Logik + der Doppelversand-Schutz liegen serverseitig in der Liste.
+  // v23.8: Wöchentlicher Admin-Bericht. Beim Admin-Start (einmal pro App-
+  // Session) wird geprüft, ob seit dem letzten Bericht ≥7 Tage vergangen sind —
+  // die 7-Tage-Logik + der Doppelversand-Schutz liegen serverseitig in der Liste
+  // DEX_WeeklyReports (plus ein localStorage-Backstop in maybeSendWeeklyReport).
   const didWeeklyReport = React.useRef(false);
   React.useEffect(() => {
     if (didWeeklyReport.current) return;
@@ -398,21 +397,13 @@ function AppContent(): React.ReactElement {
     if (isEventsLoading) return;
     if (!events || events.length === 0) return;
     didWeeklyReport.current = true;
-    let throttled = false;
-    try {
-      const last = Number(localStorage.getItem('dex_weeklyreport_lastcheck') || '0');
-      if (last && (Date.now() - last) < 12 * 60 * 60 * 1000) throttled = true;
-    } catch { /* localStorage nicht verfügbar → trotzdem laufen lassen */ }
-    if (throttled) return;
-    try { localStorage.setItem('dex_weeklyreport_lastcheck', String(Date.now())); } catch { /* */ }
-    // Deutlich verzögert — Boot/erste Interaktion haben Vorrang, der Bericht
-    // ist unkritisch.
-    // v23.12 BUG-FIX: KEIN clearTimeout-Cleanup zurückgeben. `events` ist in
-    // den Deps und ändert sich nach dem ersten Render fast immer nochmal
-    // innerhalb der 8 s (z.B. Teilnehmerzahlen-Refresh) — das Cleanup hätte den
-    // Timer abgebrochen, `didWeeklyReport=true` verhindert ein Neu-Planen → der
-    // Bericht wurde NIE ausgelöst. Der Timer darf jetzt durchlaufen (best-effort,
-    // setzt keinen React-State, daher auch nach Unmount unkritisch).
+    // v23.13: Der frühere 12h-localStorage-Throttle ist ENTFERNT — er wurde bei
+    // jedem Boot gesetzt und drosselte (bei häufigem Öffnen) den Check dauerhaft,
+    // sodass der Bericht nie lief. Der eigentliche Schutz vor Mehrfachversand ist
+    // ohnehin serverseitig (DEX_WeeklyReports ≥7 Tage) + localStorage-Backstop.
+    // Deutlich verzögert — Boot/erste Interaktion haben Vorrang.
+    // v23.12 BUG-FIX: KEIN clearTimeout-Cleanup zurückgeben (siehe unten) — sonst
+    // bricht ein Re-Render (events-Änderung) den Timer ab und er feuert nie.
     window.setTimeout(() => {
       maybeSendWeeklyReport().catch(err => console.warn('[DEX] weekly report failed:', err));
     }, 8000);

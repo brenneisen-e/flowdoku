@@ -3660,9 +3660,16 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       const SEVEN = 7 * 24 * 60 * 60 * 1000;
       const now = new Date();
       const last = await eventService.getLastWeeklyReport();
-      if (!force && last && last.created) {
-        const lastTs = new Date(last.created).getTime();
-        if (isFinite(lastTs) && (now.getTime() - lastTs) < SEVEN) return { sent: false, admins: 0, reason: 'not-due' }; // noch keine 7 Tage
+      if (!force) {
+        // v23.13: Fälligkeit aus BEIDEN Quellen — Server-Record (DEX_WeeklyReports,
+        // gilt über alle Admins) UND localStorage-Backstop (falls der Server-Record
+        // mal nicht geschrieben werden konnte, verhindert er pro Browser, dass bei
+        // jedem Boot erneut gesendet wird). Jüngerer Zeitpunkt gewinnt.
+        const serverLastTs = (last && last.created) ? new Date(last.created).getTime() : 0;
+        let localLastTs = 0;
+        try { localLastTs = Number(window.localStorage?.getItem('dex_weeklyreport_lastsent') || '0'); } catch { /* */ }
+        const lastTs = Math.max(isFinite(serverLastTs) ? serverLastTs : 0, isFinite(localLastTs) ? localLastTs : 0);
+        if (lastTs && (now.getTime() - lastTs) < SEVEN) return { sent: false, admins: 0, reason: 'not-due' }; // noch keine 7 Tage
       }
       const admins = await eventService.getRoleEmails('Admin');
       if (admins.length === 0) return { sent: false, admins: 0, reason: 'no-admins' }; // niemand zum Versenden
@@ -3725,6 +3732,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       const queued = await eventService.queueEmail(subject, admins.join('; '), 'Admins', body, 'WeeklyReport', '', '');
       if (queued) {
         await eventService.recordWeeklyReport(fromIso, toIso);
+        // v23.13: localStorage-Backstop setzen — falls recordWeeklyReport
+        // serverseitig fehlschlug (Rechte/Liste), verhindert das pro Browser den
+        // erneuten Versand bei jedem Boot.
+        try { window.localStorage?.setItem('dex_weeklyreport_lastsent', String(now.getTime())); } catch { /* */ }
         return { sent: true, admins: admins.length };
       }
       console.warn('[DEX] Wochenbericht: queueEmail meldete Misserfolg — kein Protokolleintrag, Retry beim nächsten Boot.');
