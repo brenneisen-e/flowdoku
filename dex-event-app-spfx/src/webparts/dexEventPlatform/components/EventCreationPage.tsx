@@ -6472,6 +6472,44 @@ export default function EventCreationPage(): React.ReactElement {
                       ? 'z.B. „Vor Ort am Eventtag ab 7:30 Uhr, mobil unter +49 151 123 456" oder „Bei Fragen vor dem Event direkt per Mail."'
                       : 'e.g. „On-site from 7:30 am on event day, mobile +49 151 123 456" or „For questions before the event, email directly."'}
                   />
+                  {/* v23.18: Hinweis, wenn der Ansprechpartner-Freitext den
+                      Event-Titel/Datum/Ort wiederholt — die stehen bereits
+                      separat auf der Anmelde-Seite. Gleiche Logik wie der
+                      Beschreibungs-Hinweis. */}
+                  {(() => {
+                    const plain = (contactInfo || '').replace(/\s+/g, ' ').toLowerCase();
+                    if (plain.trim().length < 4) return null;
+                    const hits: string[] = [];
+                    const tl = title.trim().toLowerCase();
+                    if (tl.length >= 4 && plain.indexOf(tl) >= 0) hits.push(isDe ? 'der Event-Name' : 'the event name');
+                    const locl = location.trim().toLowerCase();
+                    if (locl.length >= 4 && plain.indexOf(locl) >= 0) hits.push(isDe ? 'der Ort' : 'the location');
+                    if (startDate) {
+                      const d = new Date(startDate);
+                      if (!isNaN(d.getTime())) {
+                        const dd = String(d.getDate()).padStart(2, '0');
+                        const mm = String(d.getMonth() + 1).padStart(2, '0');
+                        const monthsDe = ['januar', 'februar', 'märz', 'april', 'mai', 'juni', 'juli', 'august', 'september', 'oktober', 'november', 'dezember'];
+                        const monthsEn = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+                        const mn = (isDe ? monthsDe : monthsEn)[d.getMonth()];
+                        const pats = [`${dd}.${mm}.${d.getFullYear()}`, `${dd}.${mm}.`, `${d.getDate()}. ${mn}`, `${d.getDate()} ${mn}`];
+                        if (pats.some(p => plain.indexOf(p) >= 0)) hits.push(isDe ? 'das Datum' : 'the date');
+                      }
+                    }
+                    if (hits.length === 0) return null;
+                    const joined = hits.length === 1 ? hits[0] : hits.slice(0, -1).join(', ') + (isDe ? ' und ' : ' and ') + hits[hits.length - 1];
+                    return (
+                      <WizardHint
+                        isDe={isDe}
+                        title={isDe ? 'Ansprechpartner-Text wiederholt Basis-Infos' : 'Contact text repeats basic info'}
+                        style={{ marginTop: 8 }}
+                      >
+                        {isDe
+                          ? <>Hier steht offenbar <strong>{joined}</strong>. <strong>Event-Titel, Datum und Ort</strong> werden bereits <strong>separat</strong> auf der Anmelde-Seite angezeigt — du musst sie beim Ansprechpartner nicht wiederholen. Nutze dieses Feld nur für die <strong>Erreichbarkeit</strong> (z.B. Telefon/„ab wann vor Ort“).</>
+                          : <>This appears to contain <strong>{joined}</strong>. The <strong>event title, date and location</strong> are already shown <strong>separately</strong> on the registration page — no need to repeat them in the contact field. Use it only for <strong>availability</strong> (e.g. phone / „on-site from …“).</>}
+                      </WizardHint>
+                    );
+                  })()}
                 </div>
               </div>
 
