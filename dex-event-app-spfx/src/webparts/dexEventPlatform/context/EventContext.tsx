@@ -298,7 +298,7 @@ interface EventContextType {
   childEventsOf: (parentEventId: string) => DeloitteEvent[];
   isEventsLoading: boolean;
   createEvent: (event: CreateEventInput) => Promise<number | null>;
-  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste'; reason?: string }>;
+  registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean; actorAllowedAsAssistant?: boolean }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste'; reason?: string }>;
   /** v11.82: Team-Anmeldung — Lead + N-1 Mitglieder gleichzeitig anmelden.
    *  Reserviert N Plätze atomar; bei Vollbelegung geht das ganze Team auf
    *  die Warteliste (keine Teil-Anmeldungen aus Kapazitätsmangel). */
@@ -1201,7 +1201,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // v18.74: proxyConsentConfirmed — bei stellvertretender Anmeldung wurde die
     // Zustimmung der Person bestätigt (Pflicht-Checkbox auf der Anmeldeseite).
     // Wird als Nachweis in die SP-Spalte ProxyConsent geschrieben.
-    opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean }
+    opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean; actorAllowedAsAssistant?: boolean }
   ): Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste'; reason?: string }> {
     // v17.25: Demo-Showcase-Event → No-Op, kein SP-Roundtrip. Die Register-
     // Seite blockt den Submit ohnehin mit einem Demo-Hinweis; dieser Guard
@@ -1344,7 +1344,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       const r = await eventService.registerForEvent(
         subsiteUrl, firstNameToUse, lastNameToUse, emailToUse, customData, status, fieldMap,
         effectiveStarterType, preferredStarterType, actorName, actorEmail, proxyConsentStr,
-        actorIsEventOrganizer
+        actorIsEventOrganizer, !!opts?.actorAllowedAsAssistant
       );
       success = r.ok;
       failReason = r.reason;
