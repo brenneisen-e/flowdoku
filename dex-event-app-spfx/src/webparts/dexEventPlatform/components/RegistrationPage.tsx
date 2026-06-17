@@ -2576,12 +2576,19 @@ export default function RegistrationPage(): React.ReactElement {
                   else { setFirstName(currentUser.firstName); setSurname(currentUser.surname); setEmail(currentUser.email); setUserSearch(''); setUserResults([]); }
                 }}
                 style={{
-                  background: 'none', border: 'none', padding: '4px 12px',
-                  color: 'var(--dex-green-dark)', fontSize: '0.85rem',
-                  textDecoration: 'underline', cursor: 'pointer',
-                  fontWeight: 600,
+                  // v23.4: als netter grüner Button statt unterstrichenem Link.
+                  // Standard (für andere anmelden) = gefüllt grün; aktiv
+                  // (zurück zur Selbst-Anmeldung) = grüner Outline.
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '7px 16px', borderRadius: 999,
+                  fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
+                  transition: 'background 0.15s ease, color 0.15s ease',
+                  ...(registerForOther
+                    ? { background: '#fff', border: '1.5px solid var(--dex-green, #86bc25)', color: 'var(--dex-green-dark, #4a7c1f)' }
+                    : { background: 'var(--dex-green, #86bc25)', border: '1.5px solid var(--dex-green, #86bc25)', color: '#fff' }),
                 }}
               >
+                <Icon iconName={registerForOther ? 'Contact' : 'AddFriend'} style={{ fontSize: 14 }} />
                 {registerForOther ? t('reg.registerself') : t('reg.registerother')}
               </button>
             )}
@@ -2612,31 +2619,10 @@ export default function RegistrationPage(): React.ReactElement {
                     As an Assistant you can only register <strong>Partners</strong> or <strong>Directors</strong> for this event.
                   </div>
                 )}
-                {/* v18.74: Umschalter „Person außerhalb Deloitte" — nur für
-                    Organizer/Admins (nicht für Assistenten, die auf interne
-                    Partner/Directors beschränkt sind). Blendet den People-Picker
-                    aus und macht Vorname/Nachname/E-Mail frei eintragbar. */}
-                {registerForOther && canCreateEvents && (
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, cursor: 'pointer', fontSize: '0.85rem', color: 'var(--dex-gray-800)' }}>
-                    <input
-                      type="checkbox"
-                      checked={externalPerson}
-                      onChange={e => {
-                        const on = e.target.checked;
-                        setExternalPerson(on);
-                        // Picker- und Feld-State frisch zurücksetzen (manuelle Eingabe).
-                        setUserSearch(''); setUserResults([]); setPickedUserProfile(null);
-                        setThirdPartyCheck(null); setOtherConsentConfirmed(false);
-                        setFirstName(''); setSurname(''); setEmail('');
-                      }}
-                    />
-                    <span>
-                      {locale === 'de'
-                        ? <>Person <strong>außerhalb Deloitte</strong> anmelden (externe E-Mail-Adresse)</>
-                        : <>Register a person <strong>outside Deloitte</strong> (external email address)</>}
-                    </span>
-                  </label>
-                )}
+                {/* v23.4: Der „Person außerhalb Deloitte"-Umschalter ist nach
+                    UNTEN gewandert (direkt unter die „@deloitte.com"-Such-Zeile,
+                    siehe weiter unten) und in der Schriftgröße an diese Zeile
+                    angeglichen. */}
                 {registerForOther && !externalPerson && (
                   <div className="form-group" style={{ position: 'relative', marginBottom: 20 }}>
                     {/* v11.97: Label entfernt — Suche ist selbsterklärend (Placeholder). */}
@@ -2649,6 +2635,21 @@ export default function RegistrationPage(): React.ReactElement {
                         if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
                         if (val.length >= 2) {
                           searchTimerRef.current = setTimeout(async () => {
+                            // v23.4: Wird eine vollständige EXTERNE E-Mail-Adresse
+                            // eingegeben (nicht @deloitte.de/.com), automatisch in
+                            // den Extern-Modus wechseln und die Adresse übernehmen
+                            // — der Organizer muss den Toggle nicht mehr von Hand
+                            // setzen. Greift erst, wenn die Eingabe eine plausible
+                            // komplette Adresse ist (also nach dem Tippen).
+                            const v = val.trim();
+                            const isDeloitte = /@(.*\.)?deloitte\.(de|com)$/i.test(v);
+                            if (canCreateEvents && isPlausibleEmail(v) && !isDeloitte) {
+                              setExternalPerson(true);
+                              setUserSearch(''); setUserResults([]); setPickedUserProfile(null);
+                              setThirdPartyCheck(null); setOtherConsentConfirmed(false);
+                              setFirstName(''); setSurname(''); setEmail(v);
+                              return;
+                            }
                             setIsSearchingUser(true);
                             const results = await searchUsers(val, userSearchIncludeIntl);
                             setUserResults(results);
@@ -2820,6 +2821,32 @@ export default function RegistrationPage(): React.ReactElement {
                       </div>
                     )}
                   </div>
+                )}
+                {/* v23.4: „Person außerhalb Deloitte"-Umschalter — jetzt UNTER
+                    der Such-Zeile (inkl. „@deloitte.com"-Hinweis), gleiche
+                    Schriftgröße (12px) wie der International-Toggle. Nur für
+                    Organizer/Admins (nicht Assistenten). Blendet den People-
+                    Picker aus und macht Vorname/Nachname/E-Mail frei eintragbar. */}
+                {registerForOther && canCreateEvents && (
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 4, marginBottom: 16, cursor: 'pointer', fontSize: 12, color: 'var(--dex-gray-700, #444)', userSelect: 'none' }}>
+                    <input
+                      type="checkbox"
+                      checked={externalPerson}
+                      onChange={e => {
+                        const on = e.target.checked;
+                        setExternalPerson(on);
+                        // Picker- und Feld-State frisch zurücksetzen (manuelle Eingabe).
+                        setUserSearch(''); setUserResults([]); setPickedUserProfile(null);
+                        setThirdPartyCheck(null); setOtherConsentConfirmed(false);
+                        setFirstName(''); setSurname(''); setEmail('');
+                      }}
+                    />
+                    <span>
+                      {locale === 'de'
+                        ? <>Person <strong>außerhalb Deloitte</strong> anmelden (externe E-Mail-Adresse)</>
+                        : <>Register a person <strong>outside Deloitte</strong> (external email address)</>}
+                    </span>
+                  </label>
                 )}
                 {/* v15.16: Pflicht-Bestätigungs-Box bei „Für andere
                     registrieren" — analog zur Team-Anmeldung. Erscheint
