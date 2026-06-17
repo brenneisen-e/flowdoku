@@ -242,10 +242,11 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
             src={cachedImage}
             alt=""
             style={{
-              position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover',
-              objectPosition: `center ${event.imageDisplay.card.posY}%`,
+              // v23.23: contain statt cover — der (Kreis-)Bildinhalt wird nie
+              // abgeschnitten; „Größe" < 1 verkleinert mit weißem Rand drumherum.
+              position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain',
               transform: `scale(${event.imageDisplay.card.zoom})`,
-              transformOrigin: `center ${event.imageDisplay.card.posY}%`,
+              transformOrigin: 'center center',
             }}
           />
         )}
