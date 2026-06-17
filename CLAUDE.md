@@ -820,6 +820,32 @@ einer Team-Anmeldung:
   Wird in `registerTeam` (v11.82 konsolidiert auf den Helper),
   `addTeamMember` (v11.83) und `createTeamJoinRequest` (v11.83) genutzt.
 
+### Wöchentlicher Admin-Bericht (v23.8)
+
+Einmal pro Woche bekommen alle Admins automatisch einen Bericht per Mail —
+ausgelöst **durch das Öffnen der App** (kein Power-Automate-Flow nötig):
+
+- **Trigger:** Boot-Effekt in `DexEventPlatform.tsx` (nur `isAdmin`, 8 s
+  verzögert, lokaler 12h-Throttle gegen unnötige SP-Roundtrips). Ruft
+  `EventContext.maybeSendWeeklyReport()`.
+- **Fälligkeit + Doppelversand-Schutz serverseitig:** SP-Liste
+  **`DEX_WeeklyReports`** (Site-Collection-Root, `ensureWeeklyReportsList` im
+  Boot; Spalten `PeriodFrom`/`PeriodTo` DateTime, `Created` = Versandzeit).
+  Bericht läuft nur, wenn der letzte ≥ 7 Tage her ist. Vergleichszeitraum =
+  `[letzter PeriodTo, jetzt]`; allererster Bericht = letzte 7 Tage. Es wird
+  **zuerst protokolliert** (`recordWeeklyReport`, claim), dann versendet —
+  booten zwei Admins fast gleichzeitig, sieht der zweite den frischen Eintrag
+  und überspringt.
+- **Inhalt:** neue Events (+ Ersteller via SP-Author), Anmeldungen im
+  Zeitraum, neu ernannte Organizer — plus Gesamt-KPIs (Events insgesamt,
+  aktive Anmeldungen insgesamt, hinterlegte Organizer). EventService-Helfer:
+  `getLastWeeklyReport`/`recordWeeklyReport`/`getRoleEmails`/
+  `getRoleItemsCreatedSince`/`getEventsCreatedSince`/`countRegistrations`
+  (Anmeldungen pro Subsite: total + seit-Zeitpunkt, Status-gefiltert).
+  Anmeldungszählung läuft über alle **deduplizierten** Subsites der geladenen
+  Events. Mail im Deloitte-Layout (`wrapTemplate`), emailType `WeeklyReport`,
+  pro Admin eine eigene Mail. Komplett best-effort (Fehler blocken nie den Boot).
+
 ### Teams: frei benennbar, DnD-Zuordnung, Sperre, Per-Team-Mail (v23.0)
 
 Vier zusammenhängende Erweiterungen rund um die Team-Anmeldung — alle ohne

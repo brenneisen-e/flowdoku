@@ -4688,11 +4688,22 @@ export default function AdminPage(): React.ReactElement {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {orphanShadowRegs.map(r => {
                 const nm = (r.Vorname && r.Nachname) ? `${r.Vorname} ${r.Nachname}` : (r.ParticipantName || r.ParticipantEmail);
+                // v23.8: Bei Fremd-Anmeldung (RegisteredBy ≠ Teilnehmer) zeigen,
+                // WER die Anmeldung versucht hat — hilft, die Assistenz/den
+                // Organizer zu identifizieren, der den Geist erzeugt hat.
+                const actorEmail = (r.RegisteredByEmail || '').trim();
+                const isProxy = !!actorEmail && actorEmail.toLowerCase() !== (r.ParticipantEmail || '').trim().toLowerCase();
+                const actorLabel = (r.RegisteredByName || '').trim() || actorEmail;
                 return (
                   <div key={r.Id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.84rem' }}>
                     <strong>{nm}</strong>
                     <span style={{ color: 'var(--dex-gray-500)' }}>{r.ParticipantEmail}</span>
                     <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.78rem' }}>· {translateStatus(r.Status, isDe)}</span>
+                    {isProxy && (
+                      <span style={{ color: 'var(--dex-gray-600)', fontSize: '0.78rem' }}>
+                        · {isDe ? 'Versuch von' : 'attempted by'} <strong>{actorLabel}</strong>
+                      </span>
+                    )}
                     {canManage && (
                       <button
                         type="button"
