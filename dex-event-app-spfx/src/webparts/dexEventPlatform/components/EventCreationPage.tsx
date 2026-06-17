@@ -927,7 +927,7 @@ export default function EventCreationPage(): React.ReactElement {
   const [imageEditOpen, setImageEditOpen] = React.useState(false);
   // v23.19: Optionale Pro-Ansicht-Darstellung (Zoom + vertikale Position).
   // Default leer = Standard (cover/zentriert) — nur auf Wunsch eingestellt.
-  type ImgView = { zoom: number; posY: number };
+  type ImgView = { zoom: number; posY: number; height?: number };
   const [imageDisplay, setImageDisplay] = React.useState<{ card?: ImgView; hero?: ImgView }>(editEvent && editEvent.imageDisplay ? editEvent.imageDisplay : {});
   const [imageDisplayOpen, setImageDisplayOpen] = React.useState(false);
   // v11.20: Re-sync useEffect aus v11.19 wieder rausgenommen — der hat
@@ -3325,7 +3325,12 @@ export default function EventCreationPage(): React.ReactElement {
       const imageDisplayConfig = (() => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const out: any = {};
-        (['card', 'hero'] as const).forEach(k => { const v = imageDisplay[k]; if (v && (v.zoom !== 1 || v.posY !== 50)) out[k] = { zoom: v.zoom, posY: v.posY }; });
+        (['card', 'hero'] as const).forEach(k => {
+          const v = imageDisplay[k];
+          if (!v) return;
+          const hSet = typeof v.height === 'number' && v.height !== 340;
+          if (v.zoom !== 1 || v.posY !== 50 || hSet) out[k] = { zoom: v.zoom, posY: v.posY, ...(hSet ? { height: v.height } : {}) };
+        });
         return Object.keys(out).length ? { _imageDisplay: out } : {};
       })();
       updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(teamTermConfig).length > 0 || Object.keys(teamNoCreateConfig).length > 0 || Object.keys(assistantsCanSeeConfig).length > 0 || Object.keys(previewBeforeActiveConfig).length > 0 || Object.keys(imageDisplayConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0 || Object.keys(headerImageLayoutConfig).length > 0)
@@ -3907,7 +3912,12 @@ export default function EventCreationPage(): React.ReactElement {
           const imageDisplayExtra = (() => {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const out: any = {};
-            (['card', 'hero'] as const).forEach(k => { const v = imageDisplay[k]; if (v && (v.zoom !== 1 || v.posY !== 50)) out[k] = { zoom: v.zoom, posY: v.posY }; });
+            (['card', 'hero'] as const).forEach(k => {
+              const v = imageDisplay[k];
+              if (!v) return;
+              const hSet = typeof v.height === 'number' && v.height !== 340;
+              if (v.zoom !== 1 || v.posY !== 50 || hSet) out[k] = { zoom: v.zoom, posY: v.posY, ...(hSet ? { height: v.height } : {}) };
+            });
             return Object.keys(out).length ? { _imageDisplay: out } : {};
           })();
           // v11.93: Top-Level-Logos aus dem Resolver lesen.
@@ -6165,21 +6175,44 @@ export default function EventCreationPage(): React.ReactElement {
                         ]).map(view => {
                           const v: ImgView = imageDisplay[view.key] || { zoom: 1, posY: 50 };
                           const setV = (next: ImgView): void => setImageDisplay(prev => ({ ...prev, [view.key]: next }));
+                          const isHero = view.key === 'hero';
+                          const heroH = v.height ?? 340;
                           return (
                             <div key={view.key} style={{ display: 'flex', gap: 14, alignItems: 'flex-start', marginBottom: 14, flexWrap: 'wrap' }}>
                               <div style={{ width: view.w, height: view.h, flexShrink: 0, overflow: 'hidden', borderRadius: 6, background: '#fff', position: 'relative', boxShadow: 'inset 0 0 0 1px var(--dex-gray-200)' }}>
-                                <img
-                                  src={imagePreview}
-                                  alt={view.label}
-                                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: `center ${v.posY}%`, transform: `scale(${v.zoom})`, transformOrigin: `center ${v.posY}%` }}
-                                />
+                                {isHero ? (
+                                  // Anmeldeseite: volles Bild (contain), Größe + Zoom — Vorschau
+                                  // skaliert die Höhe relativ (max. Höhe / 500 * Box-Höhe).
+                                  <img
+                                    src={imagePreview}
+                                    alt={view.label}
+                                    style={{ position: 'absolute', top: '50%', left: '50%', transform: `translate(-50%, -50%) scale(${v.zoom})`, maxWidth: '100%', maxHeight: Math.round((heroH / 500) * view.h), objectFit: 'contain' }}
+                                  />
+                                ) : (
+                                  <img
+                                    src={imagePreview}
+                                    alt={view.label}
+                                    style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', objectPosition: `center ${v.posY}%`, transform: `scale(${v.zoom})`, transformOrigin: `center ${v.posY}%` }}
+                                  />
+                                )}
                               </div>
                               <div style={{ flex: 1, minWidth: 160 }}>
                                 <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 6 }}>{view.label}</div>
-                                <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Zoom (unter 1 = kleiner, weißer Rand)' : 'Zoom (below 1 = smaller, white margin)'}</label>
-                                <input type="range" min={0.3} max={3} step={0.01} value={v.zoom} onChange={e => setV({ ...v, zoom: parseFloat(e.target.value) })} style={{ width: '100%' }} />
-                                <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Vertikale Position' : 'Vertical position'}</label>
-                                <input type="range" min={0} max={100} step={1} value={v.posY} onChange={e => setV({ ...v, posY: parseInt(e.target.value, 10) })} style={{ width: '100%' }} />
+                                {isHero ? (
+                                  <>
+                                    <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Größe (max. Höhe)' : 'Size (max. height)'}</label>
+                                    <input type="range" min={140} max={500} step={5} value={heroH} onChange={e => setV({ ...v, height: parseInt(e.target.value, 10) })} style={{ width: '100%' }} />
+                                    <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Zoom' : 'Zoom'}</label>
+                                    <input type="range" min={0.3} max={3} step={0.01} value={v.zoom} onChange={e => setV({ ...v, zoom: parseFloat(e.target.value) })} style={{ width: '100%' }} />
+                                  </>
+                                ) : (
+                                  <>
+                                    <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Zoom (unter 1 = kleiner, weißer Rand)' : 'Zoom (below 1 = smaller, white margin)'}</label>
+                                    <input type="range" min={0.3} max={3} step={0.01} value={v.zoom} onChange={e => setV({ ...v, zoom: parseFloat(e.target.value) })} style={{ width: '100%' }} />
+                                    <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)' }}>{isDe ? 'Vertikale Position' : 'Vertical position'}</label>
+                                    <input type="range" min={0} max={100} step={1} value={v.posY} onChange={e => setV({ ...v, posY: parseInt(e.target.value, 10) })} style={{ width: '100%' }} />
+                                  </>
+                                )}
                                 <button type="button" className="btn btn-secondary" style={{ fontSize: '0.74rem', padding: '3px 10px', marginTop: 4 }} onClick={() => setImageDisplay(prev => { const n = { ...prev }; delete n[view.key]; return n; })}>
                                   {isDe ? 'Zurücksetzen' : 'Reset'}
                                 </button>
