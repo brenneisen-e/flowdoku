@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.9.0 | 2026-06-18 | Feature | Eigenes Event als Vorlage (Teil 8 von v24): In Schritt 1 erscheint für Organizer mit bisherigen Events ein prominenter Bild-„Fächer"; Auswahl lädt Einstellungen + Bild ins neue Event (Datum/Anmeldungen/Sub-Events bleiben frisch). |
 | 24.8.0 | 2026-06-18 | Feature | Archivierungsschutz (Teil 7 von v24): Abgeschlossene/vergangene Events sind im Organizer Center schreibgeschützt — keine Abmeldungen, keine Feld-Bearbeitung, kein Bearbeiten (nur No-Show über den Check-in bleibt). Admins behalten vollen Zugriff. |
 | 24.8.0 | 2026-06-18 | Feature | Admin-Hinweis beim App-Start: Events, deren Ende > 1 Jahr zurückliegt, können (inkl. Teilnehmerliste) endgültig gelöscht werden — mit Sprung ins Organizer Center. |
 | 24.8.0 | 2026-06-18 | Feature | Einzelne Organizer können im Wizard per Klick auf den Namen von der Anmeldeseite ausgeblendet werden (Rechte/Mails bleiben). Tipp-Text + durchgestrichene Darstellung; teilnehmer-seitige Anzeigen filtern ausgeblendete Organizer. |

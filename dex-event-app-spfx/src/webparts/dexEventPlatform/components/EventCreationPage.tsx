@@ -1065,6 +1065,10 @@ export default function EventCreationPage(): React.ReactElement {
   // Mit Sub-Event + Team). Klick auf eine Karte füllt das Formular
   // mit der jeweiligen Variante und schliesst das Modal.
   const [showDemoVariantModal, setShowDemoVariantModal] = React.useState<boolean>(false);
+  // v24.9 (E): „Eigenes Event als Vorlage" — aufklappbare Kachelgalerie der
+  // bisherigen Events des Organizers; Auswahl lädt Einstellungen + Bild.
+  const [showTemplatePicker, setShowTemplatePicker] = React.useState<boolean>(false);
+  const [templateLoadingId, setTemplateLoadingId] = React.useState<string | null>(null);
   // v17.21: Modal nach erfolgreichem Speichern — fragt den Organizer, ob er
   // eine A4-Zusammenfassung des Events herunterladen möchte. Pending-Payload
   // hält die Info für den `dex-event-submit-success`-Dispatch, der erst
@@ -2318,6 +2322,73 @@ export default function EventCreationPage(): React.ReactElement {
     setContactInfo('');
     setWaitlistEnabled(true);
     setEmailLanguage('DE');
+  };
+
+  // v24.9 (E): bestehendes Event als Vorlage übernehmen — Einstellungen + Bild
+  // ins neue Formular laden (KEINE Datumswerte, KEINE Sub-Events — die legt der
+  // Organizer fürs neue Event frisch fest). Das Bild wird vom (gleichen
+  // SharePoint-)Anhang gefetcht und als Datei für den Re-Upload übernommen.
+  const applyEventTemplate = async (ev: (typeof events)[number]): Promise<void> => {
+    setTemplateLoadingId(ev.id);
+    try {
+      resetDemoVariantBaseState();
+      setTitle(`${ev.title || ''} (Kopie)`.trim());
+      setDescription(ev.description || '');
+      setLocation(ev.location || '');
+      setAddrStreet(ev.locationAddress?.street || '');
+      setAddrHouseNo(ev.locationAddress?.houseNo || '');
+      setAddrZip(ev.locationAddress?.zip || '');
+      setAddrCity(ev.locationAddress?.city || '');
+      setLocationFilter((ev.locationAudience || []).join(', '));
+      setAudience((ev.audienceFilter || []).join(', '));
+      setFilterMode(ev.filterMode || 'OR');
+      if (ev.maxParticipants && ev.maxParticipants > 0) { setUnlimitedParticipants(false); setMaxParticipants(String(ev.maxParticipants)); }
+      else { setUnlimitedParticipants(true); setMaxParticipants(''); }
+      setWaitlistEnabled(!!ev.waitlistEnabled);
+      setAskSalutation(!!ev.askSalutation);
+      if (ev.agenda && ev.agenda.length > 0) setAgenda([...ev.agenda]);
+      // Geteilte Kapazität übernehmen, falls vorhanden.
+      if ((ev.splitLabelA || '').trim() || (ev.splitLabelB || '').trim() || (ev.durchstarterCapacity || 0) > 0 || (ev.funstarterCapacity || 0) > 0) {
+        setUseSplitCapacities(true);
+        setSplitLabelA(ev.splitLabelA || '');
+        setSplitLabelB(ev.splitLabelB || '');
+        setDurchstarterCapacity(String(ev.durchstarterCapacity || 0));
+        setFunstarterCapacity(String(ev.funstarterCapacity || 0));
+        setSplitSharedWaitlist(!!ev.splitSharedWaitlist);
+      }
+      setCustomFields((ev.eventSpecificFields || []).map(f => ({
+        id: f.id, label: f.label, type: f.type, required: f.required,
+        options: f.options ? [...f.options] : [], visible: true,
+        ...(f.multi ? { multi: true } : {}),
+        ...(f.helpText ? { helpText: f.helpText } : {}),
+        ...(f.helpTextStyle === 'inline' ? { helpTextStyle: 'inline' as const } : {}),
+        ...(f.showIf ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } } : {}),
+        ...(f.onlyForGroup ? { onlyForGroup: f.onlyForGroup } : {}),
+        ...(f.confirmLabel ? { confirmLabel: f.confirmLabel } : {}),
+        ...(f.labelEn ? { labelEn: f.labelEn } : {}),
+        ...(f.helpTextEn ? { helpTextEn: f.helpTextEn } : {}),
+        ...(f.confirmLabelEn ? { confirmLabelEn: f.confirmLabelEn } : {}),
+        ...(f.optionsEn && f.optionsEn.length > 0 ? { optionsEn: [...f.optionsEn] } : {}),
+        ...(f.externalLinks && f.externalLinks.length > 0 ? { externalLinks: f.externalLinks.map(x => ({ ...x })) } : {}),
+        ...(f.ccOnEmails ? { ccOnEmails: true } : {}),
+      })));
+      // Bild: Vorschau sofort, Datei best-effort vom SP-Anhang nachladen.
+      if (ev.imageUrl) {
+        setImagePreview(ev.imageUrl);
+        try {
+          const resp = await fetch(ev.imageUrl);
+          if (resp.ok) {
+            const blob = await resp.blob();
+            const ext = (blob.type && blob.type.indexOf('png') >= 0) ? 'png' : 'jpg';
+            setImageFile(new File([blob], `vorlage-bild.${ext}`, { type: blob.type || 'image/jpeg' }));
+          }
+        } catch { /* nur Vorschau, kein Re-Upload */ }
+      }
+      setShowTemplatePicker(false);
+      setCurrentStep(0);
+    } finally {
+      setTemplateLoadingId(null);
+    }
   };
 
   // v24.5: Demo-Events finden immer am NÄCHSTEN Samstag statt.
@@ -5761,6 +5832,105 @@ export default function EventCreationPage(): React.ReactElement {
                   ? 'Hier definierst du das Fundament des Events: Titel, Datum, Beschreibung, Bild und die Personen, die das Event verantworten oder testen.'
                   : 'Here you define the foundation of the event: title, date, description, image and the people who run or test it.'}
               </p>
+
+              {/* v24.9 (E): „Eigenes Event als Vorlage" — prominenter Fächer aus
+                  Bildern bisheriger Events. Nur im NEU-Modus, nur wenn der
+                  Organizer schon eigene Events hat. */}
+              {!isEditMode && (() => {
+                const meLc = (currentUser?.email || '').toLowerCase();
+                const tmpl = (events || []).filter(e => {
+                  if (e.parentEventId || e.isDemoShowcase) return false;
+                  return (e.organizerEmails || []).some(x => (x || '').toLowerCase() === meLc)
+                    || (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === meLc);
+                }).sort((a, b) => {
+                  const ai = a.imageUrl ? 1 : 0, bi = b.imageUrl ? 1 : 0;
+                  if (ai !== bi) return bi - ai;
+                  const at = a.startDate ? new Date(a.startDate).getTime() : 0;
+                  const bt = b.startDate ? new Date(b.startDate).getTime() : 0;
+                  return bt - at;
+                });
+                if (tmpl.length === 0) return null;
+                const fan = tmpl.filter(e => e.imageUrl).slice(0, 5);
+                const fanItems = fan.length > 0 ? fan : tmpl.slice(0, 5);
+                return (
+                  <div style={{ margin: '0 0 22px', border: '2px solid var(--dex-green, #86bc25)', borderRadius: 16, background: 'linear-gradient(135deg, rgba(134,188,37,0.10), rgba(0,118,168,0.06))', overflow: 'hidden' }}>
+                    {!showTemplatePicker ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowTemplatePicker(true)}
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 20, padding: '18px 22px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                      >
+                        {/* Fächer aus Event-Bildern */}
+                        <div style={{ position: 'relative', width: 132, height: 92, flexShrink: 0 }}>
+                          {fanItems.map((e, i) => {
+                            const n = fanItems.length;
+                            const spread = 16; // Grad pro Karte
+                            const rot = (i - (n - 1) / 2) * spread;
+                            const tx = (i - (n - 1) / 2) * 22;
+                            return (
+                              <div key={e.id} style={{
+                                position: 'absolute', left: '50%', top: 6, width: 64, height: 80, marginLeft: -32,
+                                borderRadius: 10, border: '3px solid #fff', boxShadow: '0 4px 10px rgba(0,0,0,0.18)',
+                                transform: `translateX(${tx}px) rotate(${rot}deg)`, transformOrigin: 'bottom center',
+                                background: e.imageUrl ? `url(${e.imageUrl}) center/cover no-repeat` : 'linear-gradient(135deg, var(--dex-green, #86bc25), var(--dex-blue, #0076a8))',
+                                zIndex: i,
+                              }} />
+                            );
+                          })}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--dex-green-dark, #4a7c1f)', marginBottom: 4 }}>
+                            {isDe ? 'Eigenes Event als Vorlage nutzen?' : 'Use one of your events as a template?'}
+                          </div>
+                          <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                            {isDe
+                              ? <>Übernimm Einstellungen und Bild aus einem deiner <strong>{tmpl.length}</strong> bisherigen Events — Datum und Anmeldungen legst du danach neu fest. <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700 }}>Klicken zum Auswählen ▸</span></>
+                              : <>Reuse settings and image from one of your <strong>{tmpl.length}</strong> past events. <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700 }}>Click to choose ▸</span></>}
+                          </div>
+                        </div>
+                      </button>
+                    ) : (
+                      <div style={{ padding: '16px 20px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+                          <span style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                            {isDe ? 'Vorlage wählen' : 'Choose a template'}
+                          </span>
+                          <button type="button" onClick={() => setShowTemplatePicker(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-gray-500)', fontSize: '0.82rem', fontWeight: 600 }}>
+                            {isDe ? 'Abbrechen' : 'Cancel'}
+                          </button>
+                        </div>
+                        <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 6 }}>
+                          {tmpl.map(e => (
+                            <button
+                              key={e.id}
+                              type="button"
+                              disabled={!!templateLoadingId}
+                              onClick={() => { void applyEventTemplate(e); }}
+                              style={{
+                                flex: '0 0 auto', width: 150, textAlign: 'left', cursor: templateLoadingId ? 'wait' : 'pointer',
+                                background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 12, padding: 0, overflow: 'hidden',
+                                boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                              }}
+                            >
+                              <div style={{ width: '100%', height: 90, background: e.imageUrl ? `url(${e.imageUrl}) center/cover no-repeat` : 'linear-gradient(135deg, var(--dex-green, #86bc25), var(--dex-blue, #0076a8))' }} />
+                              <div style={{ padding: '8px 10px' }}>
+                                <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--dex-gray-800)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {templateLoadingId === e.id ? (isDe ? 'Wird geladen…' : 'Loading…') : e.title}
+                                </div>
+                                {e.startDate && (
+                                  <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                                    {new Date(e.startDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                  </div>
+                                )}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* v11.57 / v11.63: Hinweisbox bei ausstehendem Outlook-Sync.
                   Sichtbar bei editEvent, wenn OutlookDirty=true auf dem
