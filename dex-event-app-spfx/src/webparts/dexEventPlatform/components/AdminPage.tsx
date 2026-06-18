@@ -4174,18 +4174,22 @@ export default function AdminPage(): React.ReactElement {
         ) : (
           <>
           {(() => {
-            const renderEventCard = (event: DeloitteEvent, opts?: { muted?: boolean }): React.ReactElement => (
+            const renderEventCard = (event: DeloitteEvent, opts?: { muted?: boolean }): React.ReactElement => {
+              // v24.7 (Q/R): moderne Status-Leiste links über die volle Karten-
+              // höhe (statt Eck-Winkel). Farbe: blau = abgeschlossen/vergangen,
+              // orange = Entwurf, grün = aktiv. Bedeutung erklärt die Legende.
+              const past = isPastEvent(event);
+              const statusColor = past ? 'var(--dex-blue, #0076a8)' : event.isFictive ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)';
+              const statusLabel = past ? (isDe ? 'Abgeschlossen' : 'Completed') : event.isFictive ? (isDe ? 'Entwurf' : 'Draft') : (isDe ? 'Aktiv' : 'Active');
+              return (
               <div
                 key={event.id}
                 className="card card-clickable"
-                style={{ position: 'relative', padding: '26px 24px 22px', cursor: 'pointer', opacity: opts?.muted ? 0.85 : 1, overflow: 'hidden' }}
+                style={{ position: 'relative', padding: '26px 24px 22px 28px', cursor: 'pointer', opacity: opts?.muted ? 0.85 : 1, overflow: 'hidden' }}
               >
-                {/* v23.44: Status-Farbmarker (ohne Text) in der oberen linken
-                    Ecke — grün = aktiv, orange = Entwurf. Bedeutung erklärt die
-                    Legende über der Liste. */}
                 <span
-                  title={event.isFictive ? (isDe ? 'Entwurf' : 'Draft') : (isDe ? 'Aktiv' : 'Active')}
-                  style={{ position: 'absolute', top: 0, left: 0, width: 18, height: 18, borderTopLeftRadius: 'var(--dex-radius)', borderBottomRightRadius: 9, background: event.isFictive ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)' }}
+                  title={statusLabel}
+                  style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 6, borderTopLeftRadius: 'var(--dex-radius)', borderBottomLeftRadius: 'var(--dex-radius)', background: statusColor }}
                 />
                 <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                   <div onClick={() => handleSelectEvent(event)} style={{ flex: '1 1 260px', display: 'flex', alignItems: 'center', gap: 16, cursor: 'pointer' }}>
@@ -4461,7 +4465,8 @@ export default function AdminPage(): React.ReactElement {
                   </div>
                 </div>
               </div>
-            );
+              );
+            };
             return (
               <>
                 {/* v18.2: Sortier- + Entwurf-Filter-Leiste ueber der Event-Liste. */}
@@ -4507,8 +4512,8 @@ export default function AdminPage(): React.ReactElement {
                     </label>
                   )}
                 </div>
-                {/* v23.44: Farb-Legende für den Status-Eckmarker der Karten. */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 18, margin: '0 4px 10px', fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
+                {/* v23.44/v24.7: Farb-Legende für die Status-Leiste links an den Karten. */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 18, margin: '0 4px 10px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', flexWrap: 'wrap' }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ width: 12, height: 12, borderRadius: 3, background: 'var(--dex-green, #86bc25)', display: 'inline-block' }} />
                     {isDe ? 'Aktiv (für Teilnehmer sichtbar)' : 'Active (visible to attendees)'}
@@ -4516,6 +4521,10 @@ export default function AdminPage(): React.ReactElement {
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ width: 12, height: 12, borderRadius: 3, background: 'var(--dex-orange, #ed8b00)', display: 'inline-block' }} />
                     {isDe ? 'Entwurf (noch nicht sichtbar)' : 'Draft (not yet visible)'}
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 12, height: 12, borderRadius: 3, background: 'var(--dex-blue, #0076a8)', display: 'inline-block' }} />
+                    {isDe ? 'Abgeschlossen (vorbei)' : 'Completed (past)'}
                   </span>
                 </div>
                 <div className="my-events-list">
@@ -5564,7 +5573,28 @@ export default function AdminPage(): React.ReactElement {
                     <button
                       type="button"
                       className="btn btn-secondary"
-                      onClick={() => navigate('edit-event', selectedEvent.id)}
+                      onClick={async () => {
+                        // Admins bearbeiten direkt (voller Zugriff).
+                        if (isAdmin) { navigate('edit-event', selectedEvent.id); return; }
+                        // v24.7 (O): abgeschlossene/vergangene Events sind für
+                        // Organizer als Archivierungsschutz NICHT mehr bearbeitbar.
+                        if (isEventOver(selectedEvent)) {
+                          const ok = await confirmDialog(
+                            isDe
+                              ? 'Dieses Event ist bereits vorbei und damit abgeschlossen — Bearbeiten ist als Archivierungsschutz nicht mehr möglich. Möchtest du stattdessen ein neues Event anlegen (du kannst ein bestehendes als Vorlage nutzen)?'
+                              : 'This event is over and therefore completed — editing is locked (archival protection). Would you like to create a new event instead?',
+                            { confirmLabel: isDe ? 'Neues Event anlegen' : 'Create new event', cancelLabel: isDe ? 'Abbrechen' : 'Cancel' });
+                          if (ok) navigate('create-event');
+                          return;
+                        }
+                        // v24.7 (P): bei aktiven Events sanfter Hinweis — lieber neu anlegen?
+                        const wantNew = await confirmDialog(
+                          isDe
+                            ? 'Möchtest du lieber ein neues Event anlegen, statt dieses zu bearbeiten? Für eine neue Veranstaltung ist ein eigenes Event meist besser — du kannst ein bestehendes als Vorlage nutzen.'
+                            : 'Would you rather create a new event instead of editing this one? You can use an existing event as a template.',
+                          { confirmLabel: isDe ? 'Neues Event anlegen' : 'Create new', cancelLabel: isDe ? 'Dieses Event bearbeiten' : 'Edit this event' });
+                        if (wantNew) navigate('create-event'); else navigate('edit-event', selectedEvent.id);
+                      }}
                       style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', padding: '6px 12px' }}
                       title={t('admin.editbutton') || (isDe ? 'Event bearbeiten' : 'Edit event')}
                     >
