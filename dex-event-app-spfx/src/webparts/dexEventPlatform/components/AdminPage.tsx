@@ -1068,7 +1068,9 @@ export default function AdminPage(): React.ReactElement {
   // v23.5: Personen-Spalten (Vorname/Nachname/Email/Job Title/Standort) in der
   // konsolidierten Matrix einklappbar — eingeklappt steht nur Foto + Name, damit
   // die Event-spezifischen Spalten mehr Platz bekommen.
-  const [personalColsCollapsed, setPersonalColsCollapsed] = React.useState(false);
+  // v23.32: Standard = eingeklappt (Foto + zweizeilige Person: Name fett,
+  // darunter „Position • Standort"). Gilt für konsolidierte UND normale Tabelle.
+  const [personalColsCollapsed, setPersonalColsCollapsed] = React.useState(true);
   // v14.11: eigene Sort-States für den Matrix-View. `consolidatedSort` kann
   // 'id' | 'vorname' | 'nachname' | 'email' | 'jobTitle' | 'location' |
   // 'child:<eventId>' sein. Default: 'nachname' aufsteigend.
@@ -4422,12 +4424,50 @@ export default function AdminPage(): React.ReactElement {
 
   // Event ausgewählt - Detail-Ansicht
   const query = searchQuery.toLowerCase().trim();
+  // v23.32: Standort ohne Länder-Präfix („DE - Köln" → „Köln").
+  const stripLocPrefix = (loc: string): string => (loc || '').replace(/^[A-Za-z]{2}\s*[-–—]\s*/, '').trim();
+  // v23.32: Suchtreffer im Text hervorheben (grün markiert). Gibt einen
+  // React-Knoten zurück; ohne aktive Suche einfach den Text.
+  const highlightMatch = (text: unknown): React.ReactNode => {
+    const s = text == null ? '' : String(text);
+    if (!query || !s) return s;
+    const lower = s.toLowerCase();
+    let idx = lower.indexOf(query);
+    if (idx < 0) return s;
+    const parts: React.ReactNode[] = [];
+    let i = 0; let k = 0;
+    while (idx >= 0) {
+      if (idx > i) parts.push(s.slice(i, idx));
+      parts.push(<mark key={k++} style={{ background: 'rgba(134,188,37,0.5)', color: 'inherit', padding: 0, borderRadius: 2 }}>{s.slice(idx, idx + query.length)}</mark>);
+      i = idx + query.length;
+      idx = lower.indexOf(query, i);
+    }
+    if (i < s.length) parts.push(s.slice(i));
+    return <>{parts}</>;
+  };
+  // v23.32: durchsucht ALLE Spalten (Name, E-Mail, ID, Job Title, Standort,
+  // Status und alle Custom-Field-Antworten).
   const matchesSearch = (reg: SPRegistration): boolean => {
     if (!query) return true;
     const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || '');
-    return name.toLowerCase().includes(query)
-      || (reg.ParticipantEmail || '').toLowerCase().includes(query)
-      || String(reg.TeilnehmerID || '').includes(query);
+    if (name.toLowerCase().includes(query)) return true;
+    if ((reg.ParticipantEmail || '').toLowerCase().includes(query)) return true;
+    if (String(reg.TeilnehmerID || '').includes(query)) return true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const anyReg = reg as any;
+    if (String(anyReg.JobTitle || '').toLowerCase().includes(query)) return true;
+    if (String(anyReg.Location || '').toLowerCase().includes(query)) return true;
+    if (String(reg.Status || '').toLowerCase().includes(query)) return true;
+    if (reg.CustomData) {
+      try {
+        const cd = JSON.parse(reg.CustomData);
+        for (const ck of Object.keys(cd)) {
+          const v = cd[ck];
+          if (v != null && String(v).toLowerCase().includes(query)) return true;
+        }
+      } catch { /* */ }
+    }
+    return false;
   };
 
   const sortRegs = (a: SPRegistration, b: SPRegistration): number => {
@@ -4573,12 +4613,32 @@ export default function AdminPage(): React.ReactElement {
   // v14.11: Such-Filter + Sort für die konsolidierten Zeilen.
   const consolidatedFiltered: ConsolidatedRow[] = (() => {
     const q = (searchQuery || '').toLowerCase().trim();
+    // v23.32: CustomData-Wert pro Feld-ID lesen.
+    const cdVal = (cdStr: string | undefined, fid: string): string => {
+      if (!cdStr) return '';
+      try { const v = JSON.parse(cdStr)[fid]; return (v === undefined || v === null) ? '' : String(v); } catch { return ''; }
+    };
+    const parentRegOf = (row: ConsolidatedRow): SPRegistration | undefined =>
+      registrations.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === row.emailKey);
+    const scanCd = (cdStr?: string): boolean => {
+      if (!cdStr) return false;
+      try { const cd = JSON.parse(cdStr); for (const ck of Object.keys(cd)) { const v = cd[ck]; if (v != null && String(v).toLowerCase().indexOf(q) >= 0) return true; } } catch { /* */ }
+      return false;
+    };
+    // v23.32: konsolidierte Suche über ALLE Spalten (inkl. Job Title, Standort,
+    // Parent- + Sub-Event-Custom-Felder).
     const matches = (row: ConsolidatedRow): boolean => {
       if (!q) return true;
-      return row.vorname.toLowerCase().indexOf(q) >= 0
-        || row.nachname.toLowerCase().indexOf(q) >= 0
-        || row.email.toLowerCase().indexOf(q) >= 0
-        || String(row.teilnehmerId || '').indexOf(q) >= 0;
+      if (row.vorname.toLowerCase().indexOf(q) >= 0) return true;
+      if (row.nachname.toLowerCase().indexOf(q) >= 0) return true;
+      if (row.email.toLowerCase().indexOf(q) >= 0) return true;
+      if (String(row.teilnehmerId || '').indexOf(q) >= 0) return true;
+      if ((row.jobTitle || '').toLowerCase().indexOf(q) >= 0) return true;
+      if ((row.location || '').toLowerCase().indexOf(q) >= 0) return true;
+      const pReg = parentRegOf(row);
+      if (pReg && scanCd(pReg.CustomData)) return true;
+      for (const cid of Object.keys(row.perChild)) { const r = row.perChild[cid]; if (r && scanCd(r.CustomData)) return true; }
+      return false;
     };
     const filtered = consolidatedRows.filter(matches);
     const cs = consolidatedSort;
@@ -4598,6 +4658,19 @@ export default function AdminPage(): React.ReactElement {
         const ra = a.perChild[cid] ? 1 : 0;
         const rb = b.perChild[cid] ? 1 : 0;
         return (rb - ra) * dir;
+      }
+      // v23.32: nach Parent-Custom-Feld sortieren (Key „pf:<fieldId>").
+      if (cs && cs.indexOf('pf:') === 0) {
+        const fid = cs.substring(3);
+        return cdVal(parentRegOf(a)?.CustomData, fid).localeCompare(cdVal(parentRegOf(b)?.CustomData, fid), 'de') * dir;
+      }
+      // v23.32: nach Sub-Event-Custom-Feld sortieren (Key „cf:<childId>|<fieldId>").
+      if (cs && cs.indexOf('cf:') === 0) {
+        const rest = cs.substring(3);
+        const sep = rest.indexOf('|');
+        const cid = sep >= 0 ? rest.slice(0, sep) : rest;
+        const fid = sep >= 0 ? rest.slice(sep + 1) : '';
+        return cdVal(a.perChild[cid]?.CustomData, fid).localeCompare(cdVal(b.perChild[cid]?.CustomData, fid), 'de') * dir;
       }
       return 0;
     };
@@ -4623,6 +4696,9 @@ export default function AdminPage(): React.ReactElement {
     const PASTEL_B_HEADER: React.CSSProperties = { background: 'rgba(255, 191, 0, 0.18)' };
     const PASTEL_B_CELL: React.CSSProperties = { background: 'rgba(255, 191, 0, 0.10)' };
     const parentCustomFields = (selectedEvent.eventSpecificFields || []).filter(f => f.type !== 'user' && f.label && f.label.trim());
+    // v23.32: People-Picker-Felder des Hauptevents (z.B. „Assistenz") werden
+    // jetzt als eigene Spalten mit Foto + Name gezeigt (vorher ganz ausgeblendet).
+    const parentUserFields = (selectedEvent.eventSpecificFields || []).filter(f => (f.type === 'user' || f.type === 'roommate') && f.label && f.label.trim());
     const parentIds = new Set(parentCustomFields.map(f => f.id));
     const childCustomFieldsByChild: Array<{ child: DeloitteEvent; fields: typeof parentCustomFields }> = consolidatedChildren.map(c => {
       const own = (c.eventSpecificFields || []).filter(f => f.type !== 'user' && f.label && f.label.trim() && !parentIds.has(f.id));
@@ -4638,7 +4714,7 @@ export default function AdminPage(): React.ReactElement {
     // v23.5: 6 Personen-Spalten (#, Vorname, Nachname, Email, Job Title,
     // Standort) — eingeklappt nur 2 (#, „Teilnehmer").
     const personalColCount = personalColsCollapsed ? 2 : 6;
-    const totalColSpan = personalColCount + parentCustomFields.length + childCustomFieldsByChild.reduce((sum, x) => sum + 1 + x.fields.length, 0) + 1;
+    const totalColSpan = personalColCount + parentCustomFields.length + parentUserFields.length + childCustomFieldsByChild.reduce((sum, x) => sum + 1 + x.fields.length, 0) + 1;
     // v19.30: Aktionen (Hauptevent-Felder bearbeiten / abmelden) nur für
     // berechtigte Rollen (Admin oder Organizer dieses Events).
     const canManage = isAdmin || isOrganizerFor(selectedEvent);
@@ -4765,7 +4841,7 @@ export default function AdminPage(): React.ReactElement {
                     type="button"
                     onClick={() => setPersonalColsCollapsed(false)}
                     title={isDe ? 'Personen-Spalten ausklappen' : 'Expand personal columns'}
-                    style={{ marginLeft: 8, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.85rem', fontWeight: 700 }}
+                    style={{ marginLeft: 8, border: 'none', cursor: 'pointer', background: 'var(--dex-green)', color: '#fff', width: 20, height: 20, borderRadius: '50%', fontSize: '0.8rem', fontWeight: 700, lineHeight: '20px', textAlign: 'center', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', verticalAlign: 'middle' }}
                   >»</button>
                 </th>
               ) : (
@@ -4776,7 +4852,7 @@ export default function AdminPage(): React.ReactElement {
                       type="button"
                       onClick={(e) => { e.stopPropagation(); setPersonalColsCollapsed(true); }}
                       title={isDe ? 'Personen-Spalten einklappen (nur Foto + Name)' : 'Collapse personal columns (photo + name only)'}
-                      style={{ marginLeft: 6, border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.85rem', fontWeight: 700 }}
+                      style={{ marginLeft: 6, border: 'none', cursor: 'pointer', background: 'var(--dex-green)', color: '#fff', width: 20, height: 20, borderRadius: '50%', fontSize: '0.8rem', fontWeight: 700, lineHeight: '20px', textAlign: 'center', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', verticalAlign: 'middle' }}
                     >«</button>
                   </th>
                   <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('nachname')}>{isDe ? 'Nachname' : 'Last name'}{sortArrow('nachname')}</th>
@@ -4786,7 +4862,13 @@ export default function AdminPage(): React.ReactElement {
                 </>
               )}
               {parentCustomFields.map(f => (
-                <th key={`pf-${f.id}`} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 150, verticalAlign: 'top', lineHeight: 1.25, ...PASTEL_A_HEADER }} title={`${f.label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
+                <th key={`pf-${f.id}`} onClick={() => handleSortConsolidated(`pf:${f.id}`)} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 150, verticalAlign: 'top', lineHeight: 1.25, cursor: 'pointer', userSelect: 'none', ...PASTEL_A_HEADER }} title={`${f.label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
+                  {f.label}{sortArrow(`pf:${f.id}`)}
+                </th>
+              ))}
+              {/* v23.32: People-Picker-Felder des Hauptevents (Foto + Name). */}
+              {parentUserFields.map(f => (
+                <th key={`puf-${f.id}`} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 170, verticalAlign: 'top', lineHeight: 1.25, ...PASTEL_A_HEADER }} title={`${f.label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
                   {f.label}
                 </th>
               ))}
@@ -4801,9 +4883,9 @@ export default function AdminPage(): React.ReactElement {
                     <div style={{ fontSize: '0.68rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>{isDe ? 'angemeldet?' : 'registered?'}{sortArrow(`child:${child.id}`)}</div>
                   </th>
                   {fields.map(f => (
-                    <th key={`scf-${child.id}-${f.id}`} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 150, verticalAlign: 'top', lineHeight: 1.25, ...PASTEL_B_HEADER }} title={`${f.label} — ${child.title}`}>
+                    <th key={`scf-${child.id}-${f.id}`} onClick={() => handleSortConsolidated(`cf:${child.id}|${f.id}`)} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 150, verticalAlign: 'top', lineHeight: 1.25, cursor: 'pointer', userSelect: 'none', ...PASTEL_B_HEADER }} title={`${f.label} — ${child.title}`}>
                       <div style={{ color: 'var(--dex-gray-500)', fontWeight: 400, fontSize: '0.68rem' }}>{abbreviate(shortSubEventTitle(child.title, selectedEvent?.title) || '?', 18)}</div>
-                      <div style={{ fontWeight: 600 }}>{f.label}</div>
+                      <div style={{ fontWeight: 600 }}>{f.label}{sortArrow(`cf:${child.id}|${f.id}`)}</div>
                     </th>
                   ))}
                 </React.Fragment>
@@ -4835,16 +4917,27 @@ export default function AdminPage(): React.ReactElement {
                             onMouseLeave={e => { const t = e.currentTarget as HTMLImageElement; t.style.transform = 'scale(1)'; t.style.zIndex = 'auto'; t.style.boxShadow = 'none'; }}
                             style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0, transition: 'transform 0.15s ease', transformOrigin: 'left center', cursor: 'zoom-in' }}
                           />
-                          <span style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>{`${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email || '-'}</span>
+                          {/* v23.32: zweizeilig — Name fett, darunter „Position • Standort" (ohne DE). */}
+                          {(() => {
+                            const fullName = `${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email || '-';
+                            const loc = stripLocPrefix(row.location || '');
+                            const sub = [row.jobTitle || '', loc].filter(Boolean).join(' • ');
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.25 }}>
+                                <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{highlightMatch(fullName)}</span>
+                                {sub && <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>{highlightMatch(sub)}</span>}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </td>
                     ) : (
                       <>
-                        <td style={{ padding: 8, fontWeight: 500 }}>{row.vorname || '-'}</td>
-                        <td style={{ padding: 8, fontWeight: 500 }}>{row.nachname || '-'}</td>
-                        <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{row.email}</td>
-                        <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{row.jobTitle || '-'}</td>
-                        <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{row.location || '-'}</td>
+                        <td style={{ padding: 8, fontWeight: 500 }}>{highlightMatch(row.vorname || '-')}</td>
+                        <td style={{ padding: 8, fontWeight: 500 }}>{highlightMatch(row.nachname || '-')}</td>
+                        <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{highlightMatch(row.email)}</td>
+                        <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{highlightMatch(row.jobTitle || '-')}</td>
+                        <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{row.location ? highlightMatch(stripLocPrefix(row.location)) : '-'}</td>
                       </>
                     )}
                     {parentCustomFields.map(f => {
@@ -4884,7 +4977,52 @@ export default function AdminPage(): React.ReactElement {
                       }
                       return (
                         <td key={`pcv-${f.id}`} style={{ padding: 8, fontSize: '0.8rem', color: 'var(--dex-gray-700)', whiteSpace: 'nowrap', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', ...PASTEL_A_CELL }} title={val}>
-                          {val || '-'}
+                          {val ? highlightMatch(val) : '-'}
+                        </td>
+                      );
+                    })}
+                    {/* v23.32: People-Picker-Felder des Hauptevents — Foto + Name. */}
+                    {parentUserFields.map(f => {
+                      let raw = '';
+                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                      const parentReg = registrations.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === row.emailKey) as any;
+                      if (parentReg && parentReg.CustomData) {
+                        try { const v = JSON.parse(parentReg.CustomData)[f.id]; if (v !== undefined && v !== null && v !== '') raw = String(v); } catch { /* */ }
+                      }
+                      // Fallback: Sub-Event-CustomData (kopierte Parent-Felder).
+                      if (!raw) {
+                        for (const ch of consolidatedChildren) {
+                          const r = row.perChild[ch.id];
+                          if (!r || !r.CustomData) continue;
+                          try { const v = JSON.parse(r.CustomData)[f.id]; if (v !== undefined && v !== null && v !== '') { raw = String(v); break; } } catch { /* */ }
+                        }
+                      }
+                      // Wert-Format „Anzeigename <email>", ggf. mehrere per „;".
+                      const persons = raw.split(';').map(s => s.trim()).filter(Boolean).map(part => {
+                        const m = part.match(/<([^>]+@[^>]+)>/);
+                        const email = m ? m[1].trim() : '';
+                        const name = (m ? part.slice(0, part.indexOf('<')) : part).trim() || email;
+                        return { name, email };
+                      });
+                      return (
+                        <td key={`puv-${f.id}`} style={{ padding: 8, fontSize: '0.8rem', color: 'var(--dex-gray-700)', maxWidth: 190, ...PASTEL_A_CELL }} title={raw}>
+                          {persons.length === 0 ? '-' : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                              {persons.map((p, pi) => (
+                                <span key={pi} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+                                  {p.email ? (
+                                    <img
+                                      src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(p.email)}&size=S`}
+                                      alt={p.name}
+                                      onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                                      style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-200)', flexShrink: 0 }}
+                                    />
+                                  ) : null}
+                                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{highlightMatch(p.name)}</span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
                         </td>
                       );
                     })}
@@ -4917,7 +5055,7 @@ export default function AdminPage(): React.ReactElement {
                             }
                             return (
                               <td key={`scv-${child.id}-${f.id}`} style={{ padding: 8, fontSize: '0.8rem', color: 'var(--dex-gray-700)', whiteSpace: 'nowrap', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', ...PASTEL_B_CELL }} title={val}>
-                                {val || (r ? '-' : '')}
+                                {val ? highlightMatch(val) : (r ? '-' : '')}
                               </td>
                             );
                           })}
