@@ -4938,7 +4938,6 @@ export default function AdminPage(): React.ReactElement {
                           <img
                             src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(row.email)}&size=L`}
                             alt={`${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email}
-                            title={`${`${row.vorname || ''} ${row.nachname || ''}`.trim()}${row.email ? ` · ${row.email}` : ''}${row.jobTitle ? ` · ${row.jobTitle}` : ''}${row.location ? ` · ${row.location}` : ''}`}
                             onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
                             onMouseEnter={e => { const t = e.currentTarget as HTMLImageElement; t.style.transform = 'scale(2.6)'; t.style.zIndex = '20'; t.style.position = 'relative'; t.style.boxShadow = '0 4px 16px rgba(0,0,0,0.25)'; }}
                             onMouseLeave={e => { const t = e.currentTarget as HTMLImageElement; t.style.transform = 'scale(1)'; t.style.zIndex = 'auto'; t.style.boxShadow = 'none'; }}
@@ -9135,7 +9134,6 @@ export default function AdminPage(): React.ReactElement {
                         <img
                           src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(email)}&size=L`}
                           alt={fullName}
-                          title={`${fullName}${email ? ` · ${email}` : ''}${jt ? ` · ${jt}` : ''}`}
                           onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
                           onMouseEnter={e => { const t = e.currentTarget as HTMLImageElement; t.style.transform = 'scale(2.6)'; t.style.zIndex = '20'; t.style.position = 'relative'; t.style.boxShadow = '0 4px 16px rgba(0,0,0,0.25)'; }}
                           onMouseLeave={e => { const t = e.currentTarget as HTMLImageElement; t.style.transform = 'scale(1)'; t.style.zIndex = 'auto'; t.style.boxShadow = 'none'; }}
