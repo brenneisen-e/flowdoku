@@ -1272,7 +1272,9 @@ export default function AdminPage(): React.ReactElement {
   const [qrEditSaving, setQrEditSaving] = React.useState(false);
   const [qrEditSampleBlock, setQrEditSampleBlock] = React.useState('');
   const [searchQuery, setSearchQuery] = React.useState('');
-  const [sortColumn, setSortColumn] = React.useState<'id' | 'anrede' | 'vorname' | 'nachname' | 'email' | 'status' | 'date'>('id');
+  // v23.33: string statt fixer Union — erlaubt Sortierung nach Custom-Field-
+  // Spalten (Keys „cf-…"/„cfp-…") und Job Title / Standort.
+  const [sortColumn, setSortColumn] = React.useState<string>('id');
   const [sortAsc, setSortAsc] = React.useState(true);
   // v17.8: Sortierung der Warteliste (analog Teilnehmerliste). Default 'pos'
   // = Reihenfolge nach TeilnehmerID asc (FIFO-Position der Warteliste).
@@ -4497,11 +4499,36 @@ export default function AdminPage(): React.ReactElement {
       case 'email': cmp = (a.ParticipantEmail || '').localeCompare(b.ParticipantEmail || ''); break;
       case 'status': cmp = (a.Status || '').localeCompare(b.Status || ''); break;
       case 'date': cmp = new Date(a.RegistrationDate || 0).getTime() - new Date(b.RegistrationDate || 0).getTime(); break;
+      // v23.33: Job Title / Standort sortierbar.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      case 'jobTitle': cmp = String((a as any).JobTitle || '').localeCompare(String((b as any).JobTitle || ''), 'de'); break;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      case 'location': cmp = String((a as any).Location || '').localeCompare(String((b as any).Location || ''), 'de'); break;
+      default: {
+        // v23.33: nach Custom-Field-Spalte sortieren (Key „cf-…" eigenes Event,
+        // „cfp-…" Parent-Feld im Sub-Event-Detail).
+        if (sortColumn.indexOf('cf-') === 0 || sortColumn.indexOf('cfp-') === 0) {
+          const cfId = sortColumn.replace(/^cfp?-/, '');
+          const valOf = (r: SPRegistration): string => {
+            let v: unknown = undefined;
+            if (r.CustomData) { try { v = JSON.parse(r.CustomData)[cfId]; } catch { /* */ } }
+            // cfp-: Parent-Feld evtl. nur in der Parent-Registrierung.
+            if ((v === undefined || v === null || v === '') && sortColumn.indexOf('cfp-') === 0) {
+              const pk = (r.ParticipantEmail || '').toLowerCase().trim();
+              const pr = pk ? parentRegsByEmail[pk] : undefined;
+              if (pr && pr.CustomData) { try { v = JSON.parse(pr.CustomData)[cfId]; } catch { /* */ } }
+            }
+            return (v === undefined || v === null) ? '' : String(v);
+          };
+          cmp = valOf(a).localeCompare(valOf(b), 'de');
+        }
+        break;
+      }
     }
     return sortAsc ? cmp : -cmp;
   };
 
-  const handleSort = (col: 'id' | 'anrede' | 'vorname' | 'nachname' | 'email' | 'status' | 'date'): void => {
+  const handleSort = (col: string): void => {
     if (sortColumn === col) { setSortAsc(!sortAsc); }
     else { setSortColumn(col); setSortAsc(true); }
   };
@@ -8884,6 +8911,25 @@ export default function AdminPage(): React.ReactElement {
               // selbst (Sort-Buttons, Badges, Custom-Field-Anzeige etc.) bleibt gleich,
               // nur die Iteration ist umgebaut.
               const visibleColumnIds = columnOrder.filter(id => hiddenColumns.indexOf(id) < 0);
+              // v23.33: Eingeklappt = die Personen-Spalten zu EINER „person"-
+              // Spalte (Foto + zweizeilig) zusammenfassen. Die synthetische
+              // 'person'-Spalte ersetzt die erste sichtbare Personen-Spalte,
+              // die übrigen entfallen.
+              const PERSONAL_IDS = ['anrede', 'vorname', 'nachname', 'email', 'jobTitle', 'location'];
+              const effectiveColumnIds = (() => {
+                if (!personalColsCollapsed) return visibleColumnIds;
+                const out: string[] = [];
+                let inserted = false;
+                for (const cid of visibleColumnIds) {
+                  if (PERSONAL_IDS.indexOf(cid) >= 0) {
+                    if (!inserted) { out.push('person'); inserted = true; }
+                    continue;
+                  }
+                  out.push(cid);
+                }
+                if (!inserted) out.unshift('person');
+                return out;
+              })();
 
               const sortableCols: Record<string, 'id' | 'anrede' | 'vorname' | 'nachname' | 'email' | 'status' | 'date'> = {
                 id: 'id', anrede: 'anrede', vorname: 'vorname', nachname: 'nachname', email: 'email', status: 'status', date: 'date',
@@ -8937,6 +8983,20 @@ export default function AdminPage(): React.ReactElement {
                   zIndex: 5,
                   borderBottom: '2px solid var(--dex-gray-200)',
                 };
+                // v23.33: eingeklappte „Teilnehmer"-Spalte (Foto + zweizeilig).
+                if (id === 'person') {
+                  return (
+                    <th key="person" style={{ ...baseStyle, whiteSpace: 'nowrap', userSelect: 'none' }}>
+                      <span style={{ cursor: 'pointer' }} onClick={() => handleSort('nachname')}>{isDe ? 'Teilnehmer' : 'Participant'}{sortIcon('nachname')}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setPersonalColsCollapsed(false); }}
+                        title={isDe ? 'Personen-Spalten ausklappen' : 'Expand personal columns'}
+                        style={{ marginLeft: 8, border: 'none', cursor: 'pointer', background: 'var(--dex-green)', color: '#fff', width: 20, height: 20, borderRadius: '50%', fontSize: '0.8rem', fontWeight: 700, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', verticalAlign: 'middle' }}
+                      >»</button>
+                    </th>
+                  );
+                }
                 const sortable = sortableCols[id];
                 if (sortable) {
                   return (
@@ -8947,12 +9007,21 @@ export default function AdminPage(): React.ReactElement {
                     >
                       {id === 'id' ? '#' : id === 'anrede' ? (isDe ? 'Anrede' : 'Salutation') : id === 'vorname' ? (isDe ? 'Vorname' : 'First name') : id === 'nachname' ? (isDe ? 'Nachname' : 'Last name') : id === 'email' ? 'Email' : id === 'status' ? 'Status' : (isDe ? 'Registriert am' : 'Registered on')}
                       {sortIcon(sortable)}
+                      {/* v23.33: bei „Vorname" der grüne Einklapp-Chevron. */}
+                      {id === 'vorname' && (
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setPersonalColsCollapsed(true); }}
+                          title={isDe ? 'Personen-Spalten einklappen (Foto + Name)' : 'Collapse personal columns (photo + name)'}
+                          style={{ marginLeft: 6, border: 'none', cursor: 'pointer', background: 'var(--dex-green)', color: '#fff', width: 20, height: 20, borderRadius: '50%', fontSize: '0.8rem', fontWeight: 700, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', verticalAlign: 'middle' }}
+                        >«</button>
+                      )}
                       {hideButton(id)}
                     </th>
                   );
                 }
-                if (id === 'jobTitle') return <th key={id} style={baseStyle}>Job Title{hideButton(id)}</th>;
-                if (id === 'location') return <th key={id} style={baseStyle}>{isDe ? 'Standort' : 'Location'}{hideButton(id)}</th>;
+                if (id === 'jobTitle') return <th key={id} style={{ ...baseStyle, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('jobTitle')}>Job Title{sortIcon('jobTitle')}{hideButton(id)}</th>;
+                if (id === 'location') return <th key={id} style={{ ...baseStyle, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('location')}>{isDe ? 'Standort' : 'Location'}{sortIcon('location')}{hideButton(id)}</th>;
                 if (id === 'starterType') {
                   return (
                     <th key={id} style={baseStyle} title={isDe ? "Starter-Typ: Durchstarter oder Funstarter. Wird bei der Anmeldung gewählt und steuert die Split-Kapazität + Warteliste. Der eigentliche Startblock steht in der Custom-Field-Spalte 'Start block'." : "Starter type: Durchstarter or Funstarter. Chosen at registration and controls the split capacity + waitlist. The actual start block is in the custom field column 'Start block'."}>
@@ -9022,8 +9091,8 @@ export default function AdminPage(): React.ReactElement {
                   if (!field) return null;
                   const label = field.label || '';
                   return (
-                    <th key={id} style={{ ...baseStyle, fontSize: '0.78rem', ...pastelAHeader }} title={`${label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
-                      {label}
+                    <th key={id} onClick={() => handleSort(id)} style={{ ...baseStyle, fontSize: '0.78rem', cursor: 'pointer', userSelect: 'none', ...pastelAHeader }} title={`${label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
+                      {label}{sortIcon(id)}
                       {hideButton(id)}
                     </th>
                   );
@@ -9034,8 +9103,8 @@ export default function AdminPage(): React.ReactElement {
                   if (!field) return null;
                   const label = field.label || '';
                   return (
-                    <th key={id} style={{ ...baseStyle, fontSize: '0.78rem', ...pastelBHeader }} title={inSubEventDetail ? `${label} — ${isDe ? 'Sub-Event-Feld' : 'sub-event field'}` : label}>
-                      {label}
+                    <th key={id} onClick={() => handleSort(id)} style={{ ...baseStyle, fontSize: '0.78rem', cursor: 'pointer', userSelect: 'none', ...pastelBHeader }} title={inSubEventDetail ? `${label} — ${isDe ? 'Sub-Event-Feld' : 'sub-event field'}` : label}>
+                      {label}{sortIcon(id)}
                       {hideButton(id)}
                     </th>
                   );
@@ -9047,13 +9116,46 @@ export default function AdminPage(): React.ReactElement {
                 if (id === 'id') {
                   return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-400)' }}>{reg.TeilnehmerID || (i + 1)}</td>;
                 }
+                // v23.33: eingeklappte „Teilnehmer"-Zelle — Foto + zweizeilig
+                // (Name fett, darunter „Position • Standort" ohne Länder-Präfix).
+                if (id === 'person') {
+                  const vn = reg.Vorname || ((reg.ParticipantName || '').split(' ')[0] || '');
+                  let nn = reg.Nachname || '';
+                  if (!nn && reg.ParticipantName) { const p = reg.ParticipantName.trim().split(/\s+/); if (p.length > 1) nn = p.slice(1).join(' '); }
+                  const fullName = `${vn} ${nn}`.trim() || reg.ParticipantEmail || '-';
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const jt = String((reg as any).JobTitle || '');
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const loc = stripLocPrefix(String((reg as any).Location || ''));
+                  const sub = [jt, loc].filter(Boolean).join(' • ');
+                  const email = reg.ParticipantEmail || '';
+                  return (
+                    <td key="person" style={{ padding: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                        <img
+                          src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(email)}&size=L`}
+                          alt={fullName}
+                          title={`${fullName}${email ? ` · ${email}` : ''}${jt ? ` · ${jt}` : ''}`}
+                          onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                          onMouseEnter={e => { const t = e.currentTarget as HTMLImageElement; t.style.transform = 'scale(2.6)'; t.style.zIndex = '20'; t.style.position = 'relative'; t.style.boxShadow = '0 4px 16px rgba(0,0,0,0.25)'; }}
+                          onMouseLeave={e => { const t = e.currentTarget as HTMLImageElement; t.style.transform = 'scale(1)'; t.style.zIndex = 'auto'; t.style.boxShadow = 'none'; }}
+                          style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0, transition: 'transform 0.15s ease', transformOrigin: 'left center', cursor: 'zoom-in' }}
+                        />
+                        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.25 }}>
+                          <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{highlightMatch(fullName)}</span>
+                          {sub && <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>{highlightMatch(sub)}</span>}
+                        </div>
+                      </div>
+                    </td>
+                  );
+                }
                 if (id === 'anrede') {
                   return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{reg.Anrede || '-'}</td>;
                 }
                 if (id === 'vorname') {
                   // Fallback für Alt-Daten: erstes Wort aus ParticipantName.
                   const v = reg.Vorname || ((reg.ParticipantName || '').split(' ')[0] || '');
-                  return <td key={id} style={{ padding: 8, fontWeight: 500 }}>{v || '-'}</td>;
+                  return <td key={id} style={{ padding: 8, fontWeight: 500 }}>{v ? highlightMatch(v) : '-'}</td>;
                 }
                 if (id === 'nachname') {
                   // Fallback für Alt-Daten: alles ausser dem ersten Wort als Nachname.
@@ -9062,18 +9164,20 @@ export default function AdminPage(): React.ReactElement {
                     const parts = reg.ParticipantName.trim().split(/\s+/);
                     if (parts.length > 1) n = parts.slice(1).join(' ');
                   }
-                  return <td key={id} style={{ padding: 8, fontWeight: 500 }}>{n || '-'}</td>;
+                  return <td key={id} style={{ padding: 8, fontWeight: 500 }}>{n ? highlightMatch(n) : '-'}</td>;
                 }
                 if (id === 'email') {
-                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>;
+                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{highlightMatch(reg.ParticipantEmail)}</td>;
                 }
                 if (id === 'jobTitle') {
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{(reg as any).JobTitle || '-'}</td>;
+                  const jt = String((reg as any).JobTitle || '');
+                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{jt ? highlightMatch(jt) : '-'}</td>;
                 }
                 if (id === 'location') {
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{(reg as any).Location || '-'}</td>;
+                  const lc = String((reg as any).Location || '');
+                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{lc ? highlightMatch(lc) : '-'}</td>;
                 }
                 if (id === 'starterType') {
                   return (
@@ -9265,9 +9369,9 @@ export default function AdminPage(): React.ReactElement {
                       const truthy = val === true || val === 'true' || val === 1 || val === '1';
                       display = <span style={{ color: truthy ? 'var(--dex-green-dark)' : 'var(--dex-gray-400)' }}>{truthy ? '✓' : '–'}</span>;
                     } else if (field.type === 'select' && field.multi) {
-                      display = String(val).split(' | ').map(s => s.trim()).filter(Boolean).join(', ');
+                      display = highlightMatch(String(val).split(' | ').map(s => s.trim()).filter(Boolean).join(', '));
                     } else {
-                      display = String(val);
+                      display = highlightMatch(String(val));
                     }
                   }
                   return (
@@ -9330,9 +9434,9 @@ export default function AdminPage(): React.ReactElement {
                       // v7.11: Mehrfachauswahl wird " | "-getrennt gespeichert.
                       // In der Admin-Tabelle als Komma-Liste anzeigen, damit
                       // der Spalten-Inhalt sauberer scanbar ist.
-                      display = String(val).split(' | ').map(s => s.trim()).filter(Boolean).join(', ');
+                      display = highlightMatch(String(val).split(' | ').map(s => s.trim()).filter(Boolean).join(', '));
                     } else {
-                      display = String(val);
+                      display = highlightMatch(String(val));
                     }
                   }
                   return (
@@ -9536,7 +9640,7 @@ export default function AdminPage(): React.ReactElement {
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                         <thead>
                           <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
-                            {visibleColumnIds.map(id => renderHeader(id))}
+                            {effectiveColumnIds.map(id => renderHeader(id))}
                           </tr>
                         </thead>
                         <tbody>
@@ -9572,7 +9676,7 @@ export default function AdminPage(): React.ReactElement {
                                     : {}),
                                 }}
                               >
-                                {visibleColumnIds.map(id => renderCell(id, reg, indexOffset + i))}
+                                {effectiveColumnIds.map(id => renderCell(id, reg, indexOffset + i))}
                               </tr>
                             );
                           })}
