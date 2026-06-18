@@ -8841,53 +8841,148 @@ export class EventService {
   public async ensureWeeklyReportsList(): Promise<void> {
     const listName = 'DEX_WeeklyReports';
     const exists = await this.listExists(listName);
-    if (exists) return;
-    const createResp = await this._post(`${this.siteUrl}/_api/web/lists`, {
-      '__metadata': { 'type': 'SP.List' },
-      'Title': listName,
-      'Description': 'Versand-Protokoll des wöchentlichen Admin-Berichts (v23.8).',
-      'BaseTemplate': 100,
-      'AllowContentTypes': false,
-    });
-    if (!createResp.ok) {
-      console.warn('[DEX] DEX_WeeklyReports konnte nicht angelegt werden — vermutlich fehlen Owner-Rechte.');
-      return;
+    if (!exists) {
+      const createResp = await this._post(`${this.siteUrl}/_api/web/lists`, {
+        '__metadata': { 'type': 'SP.List' },
+        'Title': listName,
+        'Description': 'Versand-Protokoll des wöchentlichen Admin-Berichts (v23.8).',
+        'BaseTemplate': 100,
+        'AllowContentTypes': false,
+      });
+      if (!createResp.ok) {
+        console.warn('[DEX] DEX_WeeklyReports konnte nicht angelegt werden — vermutlich fehlen Owner-Rechte.');
+        return;
+      }
+      for (const f of [{ title: 'PeriodFrom', type: 4 }, { title: 'PeriodTo', type: 4 }]) {
+        try {
+          await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
+            '__metadata': { 'type': 'SP.Field' }, 'Title': f.title, 'FieldTypeKind': f.type, 'Required': false,
+          });
+        } catch { /* einzelne Feld-Fehler ignorieren */ }
+      }
+      try { await this.configureDefaultView(listName, ['PeriodFrom', 'PeriodTo']); } catch { /* */ }
     }
-    for (const f of [{ title: 'PeriodFrom', type: 4 }, { title: 'PeriodTo', type: 4 }]) {
-      try {
+    // v23.36: DraftEventIds-Snapshot (JSON-Array der Event-IDs, die beim letzten
+    // Bericht noch Entwürfe waren) — idempotent nachziehen, auch auf Bestands-
+    // Listen. So erkennt der nächste Bericht „Entwurf ist live gegangen".
+    try {
+      const fieldsResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName&$filter=InternalName eq 'DraftEventIds'&$top=1`,
+        SPHttpClient.configurations.v1
+      );
+      const fieldsData = fieldsResp.ok ? await fieldsResp.json() : null;
+      const has = fieldsData && (fieldsData.value || fieldsData.d?.results || []).length > 0;
+      if (!has) {
         await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
-          '__metadata': { 'type': 'SP.Field' }, 'Title': f.title, 'FieldTypeKind': f.type, 'Required': false,
+          '__metadata': { 'type': 'SP.Field' }, 'Title': 'DraftEventIds', 'FieldTypeKind': 3, 'Required': false,
         });
-      } catch { /* einzelne Feld-Fehler ignorieren */ }
-    }
-    try { await this.configureDefaultView(listName, ['PeriodFrom', 'PeriodTo']); } catch { /* */ }
+      }
+    } catch { /* best-effort */ }
   }
 
-  /** Letzter Bericht: Created (Versandzeit) + PeriodTo. null = noch keiner. */
-  public async getLastWeeklyReport(): Promise<{ created: string; periodTo: string } | null> {
+  /** Letzter Bericht: Created (Versandzeit) + PeriodTo + Entwurfs-Snapshot. */
+  public async getLastWeeklyReport(): Promise<{ created: string; periodTo: string; draftEventIds: string[] } | null> {
     try {
       const resp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_WeeklyReports')/items?$select=Created,PeriodTo&$orderby=Created desc&$top=1`,
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_WeeklyReports')/items?$select=Created,PeriodTo,DraftEventIds&$orderby=Created desc&$top=1`,
         SPHttpClient.configurations.v1
       );
       if (!resp.ok) return null;
       const data = await resp.json();
       const items = data.value || data.d?.results || [];
       if (items.length === 0) return null;
-      return { created: items[0].Created || '', periodTo: items[0].PeriodTo || items[0].Created || '' };
+      let draftEventIds: string[] = [];
+      try { const arr = JSON.parse(items[0].DraftEventIds || '[]'); if (Array.isArray(arr)) draftEventIds = arr.map((x: unknown) => String(x)); } catch { /* */ }
+      return { created: items[0].Created || '', periodTo: items[0].PeriodTo || items[0].Created || '', draftEventIds };
     } catch { return null; }
   }
 
-  /** Versand des Berichts protokollieren (eine Zeile). */
-  public async recordWeeklyReport(fromIso: string, toIso: string): Promise<void> {
+  /** Versand des Berichts protokollieren (eine Zeile) + Entwurfs-Snapshot. */
+  public async recordWeeklyReport(fromIso: string, toIso: string, draftEventIds?: string[]): Promise<void> {
     try {
       await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_WeeklyReports')/items`, {
         '__metadata': { 'type': 'SP.Data.DEX_x005f_WeeklyReportsListItem' },
         'Title': `Weekly ${toIso.slice(0, 10)}`,
         'PeriodFrom': fromIso,
         'PeriodTo': toIso,
+        'DraftEventIds': JSON.stringify(draftEventIds || []),
       });
     } catch (e) { console.warn('[DEX] recordWeeklyReport failed:', e); }
+  }
+
+  // ==================== DEX_OrganizerRequests (v23.37) ====================
+  // Anträge „Organizer werden". Jeder authentifizierte User darf einen Antrag
+  // anlegen (setQueueListPermissions); Admins sehen offene Anträge in der App
+  // und bestätigen sie (→ Organizer-Rolle wird vergeben).
+
+  public async ensureOrganizerRequestsList(): Promise<void> {
+    const listName = 'DEX_OrganizerRequests';
+    const exists = await this.listExists(listName);
+    if (exists) return;
+    const cr = await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'Anträge „Organizer werden" (v23.37) — Admins bestätigen in der App.',
+      'BaseTemplate': 100,
+      'AllowContentTypes': false,
+    });
+    if (!cr.ok) { console.warn('[DEX] DEX_OrganizerRequests konnte nicht angelegt werden.'); return; }
+    const fields: Array<{ title: string; type: number; choices?: string[]; metaType?: string }> = [
+      { title: 'RequesterEmail', type: 2 },
+      { title: 'RequesterName', type: 2 },
+      { title: 'RequesterLocation', type: 2 },
+      { title: 'Message', type: 3 },
+      { title: 'Status', type: 6, choices: ['Pending', 'Approved', 'Rejected'], metaType: 'SP.FieldChoice' },
+      { title: 'DecidedDate', type: 4 },
+      { title: 'DecidedByEmail', type: 2 },
+    ];
+    for (const f of fields) {
+      const payload: Record<string, unknown> = { '__metadata': { 'type': f.metaType || 'SP.Field' }, 'Title': f.title, 'FieldTypeKind': f.type, 'Required': false };
+      if (f.choices) payload['Choices'] = { 'results': f.choices };
+      try { await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload); } catch { /* */ }
+    }
+    try { await this.configureDefaultView(listName, ['RequesterName', 'RequesterEmail', 'RequesterLocation', 'Status', 'Created', 'DecidedByEmail']); } catch { /* */ }
+    try { await this.setQueueListPermissions(listName); } catch { /* */ }
+  }
+
+  public async createOrganizerRequest(email: string, name: string, location: string, message: string): Promise<{ ok: boolean; itemId?: number }> {
+    try {
+      const resp = await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerRequests')/items`, {
+        '__metadata': { 'type': 'SP.Data.DEX_x005f_OrganizerRequestsListItem' },
+        'Title': (name || email || 'Antrag').slice(0, 250),
+        'RequesterEmail': email,
+        'RequesterName': name,
+        'RequesterLocation': location || '',
+        'Message': message || '',
+        'Status': 'Pending',
+      });
+      if (!resp.ok) return { ok: false };
+      try { const j = await resp.json(); return { ok: true, itemId: j?.d?.Id || j?.Id || 0 }; } catch { return { ok: true }; }
+    } catch { return { ok: false }; }
+  }
+
+  public async getOrganizerRequests(onlyPending: boolean = true): Promise<Array<{ id: number; email: string; name: string; location: string; message: string; status: string; created: string }>> {
+    try {
+      const filter = onlyPending ? `&$filter=Status eq 'Pending'` : '';
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerRequests')/items?$select=Id,RequesterEmail,RequesterName,RequesterLocation,Message,Status,Created&$orderby=Created desc&$top=200${filter}`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return items.map((i: any) => ({ id: i.Id, email: i.RequesterEmail || '', name: i.RequesterName || '', location: i.RequesterLocation || '', message: i.Message || '', status: i.Status || '', created: i.Created || '' }));
+    } catch { return []; }
+  }
+
+  public async updateOrganizerRequestStatus(id: number, status: 'Approved' | 'Rejected', decidedByEmail: string): Promise<boolean> {
+    try {
+      const r = await this._merge(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerRequests')/items(${id})`, {
+        'Status': status, 'DecidedDate': new Date().toISOString(), 'DecidedByEmail': decidedByEmail,
+      });
+      return r.ok;
+    } catch { return false; }
   }
 
   /** E-Mail-Adressen (Title) aller DEX_Roles-Einträge mit der gegebenen Rolle. */
@@ -8924,17 +9019,17 @@ export class EventService {
 
   /** DEX_Events-Items, die seit `fromIso` erstellt wurden — mit Ersteller
    *  (SP-Author) + Titel. */
-  public async getEventsCreatedSince(fromIso: string): Promise<Array<{ title: string; author: string; created: string }>> {
+  public async getEventsCreatedSince(fromIso: string): Promise<Array<{ title: string; author: string; created: string; isDraft: boolean }>> {
     try {
       const resp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=Title,Created,Author/Title&$expand=Author&$filter=Created ge '${fromIso}'&$orderby=Created desc&$top=500`,
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=Title,Created,IsFictive,Author/Title&$expand=Author&$filter=Created ge '${fromIso}'&$orderby=Created desc&$top=500`,
         SPHttpClient.configurations.v1
       );
       if (!resp.ok) return [];
       const data = await resp.json();
       const items = data.value || data.d?.results || [];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return items.map((i: any) => ({ title: i.Title || '(ohne Titel)', author: (i.Author && i.Author.Title) || '—', created: i.Created || '' }));
+      return items.map((i: any) => ({ title: i.Title || '(ohne Titel)', author: (i.Author && i.Author.Title) || '—', created: i.Created || '', isDraft: !!i.IsFictive }));
     } catch { return []; }
   }
 

@@ -11,7 +11,7 @@ import InquiryModal from './InquiryModal';
 
 export default function StartPage(): React.ReactElement {
   const { navigate } = useNavigation();
-  const { canCreateEvents, isAdmin, isImpersonating } = useRoles();
+  const { canCreateEvents, isAdmin } = useRoles();
   const { events } = useEvents();
   const { currentUser } = useCurrentUser();
   const { t, locale } = useLanguage();
@@ -41,10 +41,12 @@ export default function StartPage(): React.ReactElement {
     if (inOrg) return true;
     return (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
   });
-  // v18.3: Im Demo-Modus ist die Organizer-Kachel klickbar (führt ins
-  // Admin-Center mit dem read-only Demo-Event), obwohl der Demo-Account
-  // formal nur „User" ist.
-  const isOrganizer = canCreateEvents || isOrganizerOfAnyEvent || isImpersonating;
+  // v23.36: Im Demo-Modus sieht der Demo-User die Start-Kacheln EXAKT wie ein
+  // normaler User — d.h. die Organizer-Kachel ist ausgegraut (mit „Organizer
+  // werden?"-Hinweis) und die Check-In-Kachel fehlt. Früher (v18.3) war die
+  // Organizer-Kachel im Demo-Modus klickbar (`|| isImpersonating`) — das
+  // widersprach dem Zweck „so sieht es ein echter User".
+  const isOrganizer = canCreateEvents || isOrganizerOfAnyEvent;
   // v13.12: Check-In-Team-Mitgliedschaft = User ist in qrScannerEmails
   // mindestens eines AKTIVEN Events. Wenn ja: eine eigene 4. Kachel
   // „Check-In" erscheint mit QrCode-Icon + Pulse-Animation. Die
@@ -194,7 +196,9 @@ export default function StartPage(): React.ReactElement {
           </div>
         )}
       </div>
-      <InquiryModal open={showInquiry} onClose={() => setShowInquiry(false)} />
+      {/* v23.37: „Organizer werden?" stellt jetzt einen nachverfolgbaren
+          Antrag (Admins bestätigen ihn in der App), keine allgemeine Anfrage. */}
+      <InquiryModal open={showInquiry} onClose={() => setShowInquiry(false)} organizerMode />
     </div>
   );
 }

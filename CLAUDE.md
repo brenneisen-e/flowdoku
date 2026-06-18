@@ -573,6 +573,37 @@ noch fuer Hotfixes auf einer bereits deployten Version nutzen, wenn der Tenant
 SharePoint-seitig bereit ist, Patch-Updates zu akzeptieren (was meistens NICHT der
 Fall ist — im Zweifel immer Minor-Bump).
 
+### Release Notes — Pflicht bei JEDEM Release (Stand v23.36)
+
+**Bei jedem Versions-Bump MUSS eine Release-Notes-Zeile ergaenzt werden** — neue
+Funktionalitaeten UND Bugfixes, als **Tabelle** gepflegt in
+**`docs/release-notes.md`**. Das ist Review-/Release-Kriterium, nicht optional
+(analog zu den Pflicht-Artefakten weiter unten).
+
+- **Format:** eine Markdown-Tabelle mit den Spalten
+  **`Version | Datum | Art | Beschreibung`**.
+  - `Art` = **`Feature`** (neue Funktionalitaet) oder **`Bugfix`** (Fehlerbehebung);
+    bei gemischten Releases pro Punkt eine eigene Zeile (gleiche Version mehrfach).
+  - `Beschreibung` = Klartext auf **Deutsch**, der **gut erklaert, was neu ist
+    bzw. was behoben wurde — NICHT zu technisch**. Aus Sicht des Nutzers
+    schreiben (was kann man jetzt / was funktioniert wieder / was hat man
+    davon), in ganzen Saetzen. **Keine Tech-Begriffe** wie „Flow", „Queue",
+    „OData", „Piggyback", „MERGE", Spalten-/Feldnamen o.ae. Bei einem Bugfix
+    kurz sagen, was vorher nicht ging und dass/wie es jetzt geht.
+- **Reihenfolge:** neueste Version **oben** (absteigend).
+- **Wann:** im selben Commit wie der Build/Bump — die Tabelle ist nie aelter als
+  die deployte Version.
+- Echte deutsche Sonderzeichen + typografische Anfuehrungszeichen wie ueberall
+  (siehe „German Text"-Regel).
+
+### Versioning Strategy — Vorgehen pro Build (Kurz-Checkliste)
+
+Zusaetzlich zu den drei Versions-Dateien oben bei JEDEM Build:
+1. Versionen bumpen (package.json / package-solution.json / version.ts).
+2. **`docs/release-notes.md`** um die neue(n) Zeile(n) ergaenzen (Feature/Bugfix).
+3. Clean-Build + `.sppkg` nach `dist/` kopieren.
+4. Source + `dist/dex-event-platform.sppkg` + `docs/release-notes.md` committen.
+
 ### SharePoint Site
 
 - Site URL: `https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform`
