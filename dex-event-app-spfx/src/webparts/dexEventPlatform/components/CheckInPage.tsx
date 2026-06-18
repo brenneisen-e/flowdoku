@@ -241,7 +241,11 @@ export default function CheckInPage(): React.ReactElement {
       setResultMessage(isDe ? `${name} — als No-Show markiert.` : `${name} — marked as no-show.`);
       setResultType('info');
     } else {
-      setResultMessage(isDe ? `${name} — No-Show konnte nicht gesetzt werden.` : `${name} — could not set no-show.`);
+      // v23.29: No-Show gibt es nur für Events, die ab v23.28 NEU angelegt
+      // wurden — Bestands-Events kennen die Choice nicht (HTTP 400).
+      setResultMessage(isDe
+        ? `${name} — No-Show ist für dieses Event nicht verfügbar (nur für neu angelegte Events).`
+        : `${name} — no-show is not available for this event (only for newly created events).`);
       setResultType('error');
     }
   };

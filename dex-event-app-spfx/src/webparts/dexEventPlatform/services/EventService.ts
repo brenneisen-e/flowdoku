@@ -6718,10 +6718,6 @@ export class EventService {
       }
     }
 
-    // v23.28: 'No-Show'-Choice auf dem bestehenden Status-Feld nachziehen,
-    // damit das Check-in-Team Teilnehmer als „nicht erschienen" markieren kann.
-    await this.ensureRegistrationStatusChoice(subsiteUrl, 'No-Show');
-
     // Custom Fields pro Event: wenn spInternalName leer oder die Spalte fehlt,
     // jetzt anlegen. Der Aufrufer bekommt customFieldMap zurück und kann das
     // Event-Item persistieren (spInternalName für jede cf.id).
@@ -7489,67 +7485,18 @@ export class EventService {
   }
 
   /**
-   * v23.28: Stellt sicher, dass das Choice-Feld 'Status' der Teilnehmerliste
-   * den Wert 'No-Show' kennt — sonst lehnt SharePoint das Schreiben mit HTTP
-   * 400 ab. Idempotent + pro Subsite gecacht. Wird vor jedem No-Show-Schreiben
-   * (lazy) UND beim „Spalten fixen" aufgerufen, damit Bestands-Events ohne
-   * manuelle Schema-Migration funktionieren.
-   */
-  private static readonly _noShowChoiceEnsured = new Set<string>();
-  public async ensureRegistrationStatusChoice(subsiteUrl: string, choice: string = 'No-Show'): Promise<boolean> {
-    const cacheKey = `${subsiteUrl}__${choice}`;
-    if (EventService._noShowChoiceEnsured.has(cacheKey)) return true;
-    try {
-      const fieldUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields/getbytitle('Status')`;
-      const getResp = await this.context.spHttpClient.get(
-        `${fieldUrl}?$select=Choices`,
-        SPHttpClient.configurations.v1,
-        { headers: { 'Accept': 'application/json;odata=nometadata' } }
-      );
-      if (!getResp.ok) return false;
-      const data = await getResp.json();
-      // nometadata liefert Choices als reines Array.
-      const choices: string[] = Array.isArray(data.Choices) ? data.Choices : (data.Choices?.results || []);
-      if (choices.indexOf(choice) >= 0) {
-        EventService._noShowChoiceEnsured.add(cacheKey);
-        return true;
-      }
-      const next = [...choices, choice];
-      const mergeResp = await this.context.spHttpClient.post(
-        fieldUrl,
-        SPHttpClient.configurations.v1,
-        {
-          headers: {
-            'Accept': 'application/json;odata=verbose',
-            'Content-Type': 'application/json;odata=verbose',
-            'IF-MATCH': '*',
-            'X-HTTP-Method': 'MERGE',
-          },
-          body: JSON.stringify({ '__metadata': { 'type': 'SP.FieldChoice' }, 'Choices': { 'results': next } }),
-        }
-      );
-      if (mergeResp.ok) {
-        EventService._noShowChoiceEnsured.add(cacheKey);
-        return true;
-      }
-      return false;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * v23.28: Teilnehmer als „No-Show" markieren (war angemeldet, aber nicht
-   * erschienen). Reuse der Check-in-Audit-Spalten (CheckedInBy*), damit kein
-   * neues Schema nötig ist — sie dokumentieren, WER den Status zuletzt am
-   * Event-Tag gesetzt hat. Stellt vorher die 'No-Show'-Choice sicher.
+   * v23.28/v23.29: Teilnehmer als „No-Show" markieren (war angemeldet, aber
+   * nicht erschienen). Reuse der Check-in-Audit-Spalten (CheckedInBy*), damit
+   * kein neues Schema nötig ist. **Nur für Events, deren Teilnehmerliste die
+   * 'No-Show'-Choice kennt** (= ab v23.28 NEU angelegte Events). Bestehende
+   * Events werden bewusst NICHT automatisch migriert — dort lehnt SharePoint
+   * den Wert ab (HTTP 400) und die Methode liefert `false`.
    */
   public async markNoShowParticipant(
     subsiteUrl: string,
     itemId: number
   ): Promise<boolean> {
     try {
-      await this.ensureRegistrationStatusChoice(subsiteUrl, 'No-Show');
       const me = this.context.pageContext.user;
       const response = await this._merge(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
