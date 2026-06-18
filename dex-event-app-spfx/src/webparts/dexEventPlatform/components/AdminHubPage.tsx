@@ -31,7 +31,7 @@ const LIST_DOCS: Array<{ name: string; de: string }> = [
   { name: 'DEX_TeamJoinRequests', de: 'Beitritts-Anfragen für Team-Anmeldungen, die der Team-Kapitän bestätigen muss.' },
   { name: 'DEX_OrganizerRequests', de: 'Anträge „Organizer werden" — Admins sehen offene Anträge in der App und geben sie frei.' },
   { name: 'DEX_WeeklyReports', de: 'Protokoll des automatischen Wochenberichts: hält fest, wann zuletzt ein Bericht verschickt wurde (damit er nicht doppelt kommt).' },
-  { name: 'DEX_Archive', de: 'End-Ablage: hierhin werden alte Zeilen aus den Arbeitslisten verschoben, damit diese schlank bleiben. Einträge älter als 6 Monate können gelöscht werden.' },
+  { name: 'DEX_Archive', de: 'End-Ablage: hierhin werden alte Zeilen aus den Arbeitslisten verschoben, damit diese schlank bleiben. Einträge älter als 1 Jahr können gelöscht werden.' },
 ];
 
 export default function AdminHubPage(): React.ReactElement {
@@ -96,7 +96,7 @@ export default function AdminHubPage(): React.ReactElement {
 
   const doDelete = async (): Promise<void> => {
     if (busy || delTotal === 0) return;
-    if (!(await confirmDialog(isDe ? `${delTotal} Archiv-Einträge älter als 6 Monate endgültig löschen?` : `Permanently delete ${delTotal} archive entries older than 6 months?`, { danger: true, confirmLabel: isDe ? 'Endgültig löschen' : 'Delete permanently' }))) return;
+    if (!(await confirmDialog(isDe ? `${delTotal} Archiv-Einträge älter als 1 Jahr endgültig löschen?` : `Permanently delete ${delTotal} archive entries older than 1 year?`, { danger: true, confirmLabel: isDe ? 'Endgültig löschen' : 'Delete permanently' }))) return;
     setBusy('del');
     try {
       const r = await runDeleteOldArchive();
@@ -176,8 +176,8 @@ export default function AdminHubPage(): React.ReactElement {
           </div>
           <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
             {isDe
-              ? <><strong>{delTotal}</strong> Archiv-Einträge sind älter als 6 Monate und können endgültig gelöscht werden.</>
-              : <><strong>{delTotal}</strong> archive entries are older than 6 months and can be permanently deleted.</>}
+              ? <><strong>{delTotal}</strong> Archiv-Einträge sind älter als 1 Jahr und können endgültig gelöscht werden.</>
+              : <><strong>{delTotal}</strong> archive entries are older than 1 year and can be permanently deleted.</>}
           </p>
           <button className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%', color: 'var(--dex-red, #c00)' }} disabled={busy !== '' || delTotal === 0} onClick={() => { void doDelete(); }}>
             {busy === 'del' ? (isDe ? 'Wird gelöscht…' : 'Deleting…') : (isDe ? 'Alte Einträge löschen' : 'Delete old entries')}

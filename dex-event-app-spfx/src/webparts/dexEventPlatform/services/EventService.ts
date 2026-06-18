@@ -8766,9 +8766,14 @@ export class EventService {
   // hasStatus: Liste besitzt eine Status-Spalte → Zeilen mit 'Pending'
   // (Flow hat sie noch nicht verarbeitet) werden NICHT archiviert, damit
   // keine unversendete Mail / kein offener Auftrag aus der Queue verschwindet.
+  // v23.47: select MUSS den GESAMTEN Inhalt der Zeile abdecken — das Archiv
+  // ist die End-Ablage, der Originaldatensatz wird nach dem Insert gelöscht.
+  // Frühere Selects ließen Inhalte weg: DEX_Emails OHNE `Body` (kompletter
+  // Mailtext!) und DEX_Outlook OHNE `CalendarLink` — die fehlten damit im
+  // Payload und gingen beim Löschen verloren. Jetzt: vollständige Feldlisten.
   private static readonly ARCHIVE_SOURCES: Array<{ list: string; matchBy: 'eventId' | 'subsiteUrl'; select: string; hasStatus: boolean }> = [
-    { list: 'DEX_Emails', matchBy: 'eventId', select: 'Id,Title,Recipient,RecipientName,EmailType,EventTitle,EventId,Status,Cc,Bcc,Importance,Created', hasStatus: true },
-    { list: 'DEX_Outlook', matchBy: 'eventId', select: 'Id,Title,Attendee,EventId,ActionType,Status,Created', hasStatus: true },
+    { list: 'DEX_Emails', matchBy: 'eventId', select: 'Id,Title,Recipient,RecipientName,Body,EmailType,EventTitle,EventId,Status,Cc,Bcc,Importance,Created', hasStatus: true },
+    { list: 'DEX_Outlook', matchBy: 'eventId', select: 'Id,Title,Attendee,EventId,ActionType,Status,CalendarLink,Created', hasStatus: true },
     { list: 'DEX_IDReorder', matchBy: 'eventId', select: 'Id,Title,EventId,EventNumber,SubsiteUrl,Status,CancelledName,CancelledEmail,Created', hasStatus: true },
     { list: 'DEX_ChangeLog', matchBy: 'eventId', select: 'Id,Title,Action,TargetType,TargetId,TargetName,EventId,EventTitle,ActorName,ActorEmail,Details,Created', hasStatus: false },
     { list: 'DEX_AccessFix', matchBy: 'subsiteUrl', select: 'Id,Title,SubsiteUrl,ItemId,ParticipantEmail,Status,Created', hasStatus: true },
@@ -9176,13 +9181,16 @@ export class EventService {
   ): Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number> }> {
     const result = { archived: 0, failed: 0, cancelled: false, perList: {} as Record<string, number> };
     const sources = EventService.ARCHIVE_SOURCES;
-    // v22.2: Payload-Werte kürzen — einzelne Felder (z.B. ChangeLog-Details)
-    // können lang sein; das Archiv braucht keine Romane.
+    // v23.47: Payload soll den Inhalt vollständig festhalten (vorher bei 4000
+    // Zeichen gekappt — ein kompletter HTML-Mailtext ist länger und wurde so
+    // abgeschnitten). Großzügiger Sicherheits-Cap (60000), der praktisch jeden
+    // Mailtext komplett aufnimmt, aber pathologische Riesenwerte begrenzt.
+    const MAX_FIELD = 60000;
     const buildPayload = (r: Record<string, unknown>): string => {
       const out: Record<string, unknown> = {};
       for (const k of Object.keys(r)) {
         const v = r[k];
-        out[k] = (typeof v === 'string' && v.length > 4000) ? `${v.slice(0, 4000)}… [gekürzt]` : v;
+        out[k] = (typeof v === 'string' && v.length > MAX_FIELD) ? `${v.slice(0, MAX_FIELD)}… [gekürzt]` : v;
       }
       return JSON.stringify(out);
     };
@@ -9234,7 +9242,7 @@ export class EventService {
   // ==================== Archiv-Löschkonzept (v23.40) ====================
   // DEX_Archive-Einträge sind die End-Ablage. Damit die Liste nicht unendlich
   // wächst, können Admins Einträge löschen, die älter als ein Stichdatum sind
-  // (standardmäßig ein halbes Jahr). „ArchivedAt" ist der Ablage-Zeitpunkt.
+  // (v23.47: standardmäßig ein Jahr). „ArchivedAt" ist der Ablage-Zeitpunkt.
 
   /** Zählt DEX_Archive-Zeilen mit ArchivedAt älter als `olderThanIso`. */
   public async countDeletableArchiveRows(olderThanIso: string): Promise<number> {

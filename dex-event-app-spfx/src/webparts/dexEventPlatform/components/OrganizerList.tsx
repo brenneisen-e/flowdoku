@@ -128,8 +128,14 @@ function OrganizerCardEntry({ name, email }: { name: string; email: string }): R
   );
 }
 
-function OrganizerChip({ name, email, sizeClass }: { name: string; email: string; sizeClass: 'sm' | 'md' }): React.ReactElement {
-  const [hovered, setHovered] = React.useState(false);
+function OrganizerChip({ name, email, sizeClass, isOpen, onOpen, onScheduleClose, onCancelClose }: {
+  name: string; email: string; sizeClass: 'sm' | 'md';
+  // v23.47: Auf/Zu-Status wird vom Eltern-Container gesteuert, damit IMMER nur
+  // EIN Popover gleichzeitig offen ist (schnelles Wechseln zwischen Organizern
+  // zeigte vorher kurz beide — der verzögerte Close des ersten überlappte mit
+  // dem Open des zweiten).
+  isOpen: boolean; onOpen: () => void; onScheduleClose: () => void; onCancelClose: () => void;
+}): React.ReactElement {
   const [failed, setFailed] = React.useState(false);
   // SP /_layouts/15/userphoto.aspx liefert sporadisch transient 404 — z.B. wenn die
   // Mailbox gerade geprovisioned wird oder die Anfrage parallel zu vielen anderen
@@ -146,15 +152,6 @@ function OrganizerChip({ name, email, sizeClass }: { name: string; email: string
   const { locale } = useLanguage();
   const isDe = locale === 'de';
   const wrapperRef = React.useRef<HTMLSpanElement>(null);
-  // v23.25: verzögertes Schließen, damit die Maus vom kleinen Chip über die
-  // 8px-Lücke in die große Karte wandern kann, ohne dass sie sofort zuklappt.
-  const closeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cancelClose = (): void => { if (closeTimerRef.current) { clearTimeout(closeTimerRef.current); closeTimerRef.current = null; } };
-  const scheduleClose = (): void => {
-    cancelClose();
-    closeTimerRef.current = setTimeout(() => { setHovered(false); setCoords(null); }, 200);
-  };
-  React.useEffect(() => () => cancelClose(), []);
   const avatarSize = sizeClass === 'sm' ? 24 : 32;
   const enlargedSize = 120;
   const popoverHeight = 180; // ungefähre Popover-Höhe für Flip-Entscheidung
@@ -169,7 +166,8 @@ function OrganizerChip({ name, email, sizeClass }: { name: string; email: string
     const y = above ? r.top - 8 : r.bottom + 8;
     const x = r.left + r.width / 2;
     setCoords({ x, y, above });
-    setHovered(true);
+    // v23.47: Eltern-Container öffnet dieses (und schließt jedes andere) Popover.
+    onOpen();
     // v11.95: beim ersten Hover JobTitle + Standort lazy nachladen.
     // Cache pro Email — beim wiederholten Hover sofort verfügbar.
     if (email && !profile) {
@@ -202,8 +200,8 @@ function OrganizerChip({ name, email, sizeClass }: { name: string; email: string
         position: 'relative',
         cursor: 'default',
       }}
-      onMouseEnter={() => { cancelClose(); openPopover(); }}
-      onMouseLeave={scheduleClose}
+      onMouseEnter={() => { onCancelClose(); openPopover(); }}
+      onMouseLeave={onScheduleClose}
     >
       {!failed && email ? (
         <img
@@ -233,10 +231,10 @@ function OrganizerChip({ name, email, sizeClass }: { name: string; email: string
       <span style={{ whiteSpace: 'nowrap' }}>{name}</span>
 
       {/* Hover-Vergrößerung: fixed positioning damit Container-Overflow nichts abschneidet */}
-      {hovered && email && !failed && coords && (
+      {isOpen && email && !failed && coords && (
         <span
-          onMouseEnter={cancelClose}
-          onMouseLeave={scheduleClose}
+          onMouseEnter={onCancelClose}
+          onMouseLeave={onScheduleClose}
           style={{
             position: 'fixed',
             top: coords.above ? undefined : coords.y,
@@ -377,16 +375,50 @@ function OrganizerCardTile({ items }: { items: Array<{ name: string; email: stri
   );
 }
 
+/**
+ * v23.47: Container für die Chip-Variante. Hält EINEN gemeinsamen „offen"-Index
+ * + EINEN gemeinsamen Close-Timer. Dadurch ist immer nur ein Hover-Popover
+ * sichtbar: Fährt die Maus von einem Organizer-Chip zum nächsten, schließt das
+ * vorige sofort (statt erst nach dem 200ms-Verzögerungs-Close — der vorher kurz
+ * BEIDE Popover gleichzeitig zeigte).
+ */
+function OrganizerChipRow({ items, sizeClass, compact }: {
+  items: Array<{ name: string; email: string }>; sizeClass: 'sm' | 'md'; compact: boolean;
+}): React.ReactElement {
+  const [openIdx, setOpenIdx] = React.useState<number | null>(null);
+  // Verzögertes Schließen, damit die Maus über die 8px-Lücke vom Chip in die
+  // große Karte wandern kann, ohne dass sie sofort zuklappt.
+  const closeTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelClose = React.useCallback((): void => {
+    if (closeTimerRef.current) { clearTimeout(closeTimerRef.current); closeTimerRef.current = null; }
+  }, []);
+  const scheduleClose = React.useCallback((): void => {
+    cancelClose();
+    closeTimerRef.current = setTimeout(() => setOpenIdx(null), 200);
+  }, [cancelClose]);
+  React.useEffect(() => () => cancelClose(), [cancelClose]);
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: compact ? 4 : 6 }}>
+      {items.map((o, i) => (
+        <OrganizerChip
+          key={`${o.email || o.name}-${i}`}
+          name={o.name}
+          email={o.email}
+          sizeClass={sizeClass}
+          isOpen={openIdx === i}
+          onOpen={() => { cancelClose(); setOpenIdx(i); }}
+          onScheduleClose={scheduleClose}
+          onCancelClose={cancelClose}
+        />
+      ))}
+    </div>
+  );
+}
+
 export default function OrganizerList({ names, emails, size = 'md', compact = false, display = 'chip' }: OrganizerListProps): React.ReactElement | null {
   const items = pairNamesEmails(names, emails).filter(o => !!o.name);
   if (items.length === 0) return null;
   // v23.26: Großer Modus = EINE gemeinsame Kachel mit allen Organizern.
   if (display === 'card') return <OrganizerCardTile items={items} />;
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: compact ? 4 : 6 }}>
-      {items.map((o, i) => (
-        <OrganizerChip key={`${o.email || o.name}-${i}`} name={o.name} email={o.email} sizeClass={size} />
-      ))}
-    </div>
-  );
+  return <OrganizerChipRow items={items} sizeClass={size} compact={compact} />;
 }

@@ -408,9 +408,9 @@ interface EventContextType {
   /** v21: Archivierung — verschiebt archivreife Zeilen ins DEX_Archive.
    *  v22.2: shouldCancel = Abbruch-Check aus dem Fortschrittsmodal. */
   runArchiveExpired: (onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void, shouldCancel?: () => boolean) => Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number> }>;
-  /** v23.40: Löschkonzept — zählt DEX_Archive-Einträge älter als 6 Monate. */
+  /** v23.40: Löschkonzept — zählt DEX_Archive-Einträge älter als 1 Jahr (v23.47). */
   getDeletableArchiveCount: () => Promise<number>;
-  /** v23.40: Löschkonzept — löscht DEX_Archive-Einträge älter als 6 Monate. */
+  /** v23.40: Löschkonzept — löscht DEX_Archive-Einträge älter als 1 Jahr (v23.47). */
   runDeleteOldArchive: (onProgress?: (done: number, total: number) => void, shouldCancel?: () => boolean) => Promise<{ deleted: number; failed: number; cancelled: boolean }>;
   updateMyRegistration: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
   /** v10.27: Split-Capacity-Gruppen-Wechsel für die eigene Registrierung.
@@ -3239,10 +3239,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return eventService.archiveExpiredRows(ids, subs, titles, onProgress, shouldCancel, allIds, allSubs);
   }
 
-  // v23.40: Löschkonzept — Stichdatum „vor einem halben Jahr".
+  // v23.40: Löschkonzept — Stichdatum.
+  // v23.47: Frist von 6 Monaten auf 1 Jahr verlängert (Wunsch Maintainer).
   function archiveDeleteCutoffIso(): string {
     const d = new Date();
-    d.setMonth(d.getMonth() - 6);
+    d.setFullYear(d.getFullYear() - 1);
     return d.toISOString();
   }
   async function getDeletableArchiveCount(): Promise<number> {
