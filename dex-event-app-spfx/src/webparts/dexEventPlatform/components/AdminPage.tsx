@@ -189,6 +189,7 @@ function translateStatus(status: string, isDe: boolean): string {
     case 'QR versendet': return 'QR sent';
     case 'Warteliste': return 'Waitlist';
     case 'Eingecheckt': return 'Checked in';
+    case 'No-Show': return 'No-show';
     case 'Abgemeldet': return 'Cancelled';
     default: return status;
   }

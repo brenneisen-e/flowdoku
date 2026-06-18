@@ -195,6 +195,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'status.qrsent': 'QR versendet',
     'status.waitlist': 'Warteliste',
     'status.checkedin': 'Eingecheckt',
+    'status.noshow': 'No-Show',
     'status.cancelled': 'Abgemeldet',
 
     // Event Creation
@@ -637,6 +638,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'status.qrsent': 'QR sent',
     'status.waitlist': 'Waitlist',
     'status.checkedin': 'Checked in',
+    'status.noshow': 'No-show',
     'status.cancelled': 'Cancelled',
 
     // Event Creation
