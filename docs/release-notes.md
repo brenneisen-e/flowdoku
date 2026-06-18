@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 23.40.0 | 2026-06-18 | Feature | Löschkonzept fürs Archiv: Archiv-Einträge, die älter als ein halbes Jahr sind, können von Admins endgültig gelöscht werden. Beim Öffnen der App sieht ein Admin einen Hinweis, wie viele alte Einträge zum Löschen bereitstehen — so bleibt die Ablage dauerhaft handhabbar. |
 | 23.39.0 | 2026-06-18 | Feature | Die Archivierung räumt jetzt auch alte Mails und Protokoll-Einträge von Events weg, die bereits gelöscht wurden (nicht nur von abgelaufenen). So bleiben die Hintergrund-Listen dauerhaft schlank. |
 | 23.38.0 | 2026-06-18 | Feature | Der Wochenbericht geht als EINE Mail an alle Admins gemeinsam; als Empfänger stehen jetzt die echten Namen der Admins statt eines generischen „Admin". |
 | 23.38.0 | 2026-06-18 | Bugfix | Der automatische Wochenbericht wird jetzt zuverlässig selbst ausgelöst. Vorher konnte ein alter Merker im Browser die Auslösung dauerhaft verhindern, sodass nie ein Bericht kam — jetzt entscheidet allein der zentrale Versand-Eintrag, ob ein neuer Bericht fällig ist. |

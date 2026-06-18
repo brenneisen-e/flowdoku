@@ -407,6 +407,10 @@ interface EventContextType {
   /** v21: Archivierung — verschiebt archivreife Zeilen ins DEX_Archive.
    *  v22.2: shouldCancel = Abbruch-Check aus dem Fortschrittsmodal. */
   runArchiveExpired: (onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void, shouldCancel?: () => boolean) => Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number> }>;
+  /** v23.40: Löschkonzept — zählt DEX_Archive-Einträge älter als 6 Monate. */
+  getDeletableArchiveCount: () => Promise<number>;
+  /** v23.40: Löschkonzept — löscht DEX_Archive-Einträge älter als 6 Monate. */
+  runDeleteOldArchive: (onProgress?: (done: number, total: number) => void, shouldCancel?: () => boolean) => Promise<{ deleted: number; failed: number; cancelled: boolean }>;
   updateMyRegistration: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
   /** v10.27: Split-Capacity-Gruppen-Wechsel für die eigene Registrierung.
    *  Nimmt die App-internen Wert-IDs ('Durchstarter' | 'Funstarter') —
@@ -3234,6 +3238,24 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return eventService.archiveExpiredRows(ids, subs, titles, onProgress, shouldCancel, allIds, allSubs);
   }
 
+  // v23.40: Löschkonzept — Stichdatum „vor einem halben Jahr".
+  function archiveDeleteCutoffIso(): string {
+    const d = new Date();
+    d.setMonth(d.getMonth() - 6);
+    return d.toISOString();
+  }
+  async function getDeletableArchiveCount(): Promise<number> {
+    if (!eventService) return 0;
+    return eventService.countDeletableArchiveRows(archiveDeleteCutoffIso());
+  }
+  async function runDeleteOldArchive(
+    onProgress?: (done: number, total: number) => void,
+    shouldCancel?: () => boolean
+  ): Promise<{ deleted: number; failed: number; cancelled: boolean }> {
+    if (!eventService) return { deleted: 0, failed: 0, cancelled: false };
+    return eventService.deleteOldArchiveRows(archiveDeleteCutoffIso(), onProgress, shouldCancel);
+  }
+
   async function deleteEvent(eventId: string): Promise<boolean> {
     // v18.3: Demo-Showcase-Event → No-Op (kein SP-Backend). Defense in depth;
     // die UI blendet den Löschen-Button für das Demo-Event ohnehin aus.
@@ -3979,7 +4001,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, scanInactiveAccounts, getArchivableCount, runArchiveExpired,
+        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, scanInactiveAccounts, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive,
         sendAdminInquiry,
         requestOrganizerRole, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,

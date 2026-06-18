@@ -40,9 +40,12 @@ export default function LandingPage(): React.ReactElement {
 
   // ==================== v22: Archivierung (Admin) ====================
   const { isAdmin } = useRoles();
-  const { isEventsLoading, getArchivableCount, runArchiveExpired, scanInactiveAccounts } = useEvents();
-  const { confirmDialog } = useDialog();
+  const { isEventsLoading, getArchivableCount, runArchiveExpired, scanInactiveAccounts, getDeletableArchiveCount, runDeleteOldArchive } = useEvents();
+  const { confirmDialog, showAlert } = useDialog();
   const [archInfo, setArchInfo] = React.useState<{ total: number; perList: Record<string, number> } | null>(null);
+  // v23.40: Löschkonzept — Anzahl DEX_Archive-Einträge älter als 6 Monate.
+  const [delArchCount, setDelArchCount] = React.useState(0);
+  const [delArchBusy, setDelArchBusy] = React.useState(false);
   // v22.45: Warnung über Teilnehmer ohne aktives Deloitte-Konto — pro Event,
   // für Organizer (eigene Events) und Admins (alle aktiven Events).
   const [inactiveSummary, setInactiveSummary] = React.useState<Array<{ eventId: string; title: string; people: Array<{ email: string; name: string }> }>>([]);
@@ -64,9 +67,39 @@ export default function LandingPage(): React.ReactElement {
     getArchivableCount()
       .then(r => { if (!cancelled) setArchInfo(r); })
       .catch(() => { /* Zählung best-effort — Box bleibt dann aus */ });
+    // v23.40: parallel die löschbaren (alten) Archiv-Einträge zählen.
+    getDeletableArchiveCount()
+      .then(n => { if (!cancelled) setDelArchCount(n); })
+      .catch(() => { /* best-effort */ });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, isEventsLoading]);
+
+  // v23.40: Alte Archiv-Einträge (älter als 6 Monate) löschen.
+  const startDeleteOldArchive = async (): Promise<void> => {
+    if (delArchBusy || delArchCount === 0) return;
+    const ok = await confirmDialog(
+      isDe
+        ? `${delArchCount} Archiv-Einträge, die älter als 6 Monate sind, endgültig löschen?\n\nDas Archiv (DEX_Archive) ist die letzte Ablage — diese alten Einträge werden unwiderruflich entfernt.`
+        : `Permanently delete ${delArchCount} archive entries older than 6 months?\n\nThe archive (DEX_Archive) is the final storage — these old entries are removed irreversibly.`,
+      { danger: true, confirmLabel: isDe ? 'Endgültig löschen' : 'Delete permanently' },
+    );
+    if (!ok) return;
+    setDelArchBusy(true);
+    try {
+      const r = await runDeleteOldArchive();
+      setDelArchCount(0);
+      showAlert(
+        isDe
+          ? `${r.deleted} alte Archiv-Einträge gelöscht${r.failed ? `, ${r.failed} fehlgeschlagen` : ''}.`
+          : `${r.deleted} old archive entries deleted${r.failed ? `, ${r.failed} failed` : ''}.`,
+        { variant: r.failed ? 'error' : 'success' },
+      );
+      try { const n = await getDeletableArchiveCount(); setDelArchCount(n); } catch { /* */ }
+    } catch {
+      showAlert(isDe ? 'Löschen fehlgeschlagen — bitte erneut versuchen.' : 'Deletion failed — please try again.', { variant: 'error' });
+    } finally { setDelArchBusy(false); }
+  };
   // ==================== v22.1: Check-in-Hinweisbox (Landing) ====================
   // Ab 2 Tagen vor Event-Start UND sobald der QR-Massen-Versand lief (eigener
   // Status 'QR versendet'), zeigt die Landing Page über dem Start-Button eine
@@ -244,7 +277,7 @@ export default function LandingPage(): React.ReactElement {
       {/* v22 / v22.45: Hinweis-Boxen oben rechts auf der Landing Page —
           gestapelt in einem gemeinsamen Container (Archivierung für Admin,
           Inaktive-Konten-Warnung für Organizer/Admin). */}
-      {((isAdmin && archInfo && archInfo.total > 0) || inactiveSummary.length > 0) && (
+      {((isAdmin && archInfo && archInfo.total > 0) || (isAdmin && delArchCount > 0) || inactiveSummary.length > 0) && (
       <div style={{
         position: 'absolute', top: 34, right: 16, width: 300,
         maxWidth: 'calc(100vw - 32px)', zIndex: 6,
@@ -327,6 +360,38 @@ export default function LandingPage(): React.ReactElement {
             onClick={() => { startArchive().catch(() => { /* */ }); }}
           >
             {isDe ? 'Jetzt archivieren' : 'Archive now'}
+          </button>
+        </div>
+      )}
+      {/* v23.40: Löschkonzept — alte Archiv-Einträge (älter als 6 Monate). */}
+      {isAdmin && delArchCount > 0 && (
+        <div style={{
+          width: '100%', boxSizing: 'border-box',
+          background: '#fff', border: '1px solid rgba(218,41,28,0.4)',
+          borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+          padding: '14px 16px', textAlign: 'left',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>
+              {isDe ? 'Archiv aufräumen' : 'Clean up archive'}
+            </span>
+            <span style={{
+              fontSize: '0.66rem', padding: '1px 7px', borderRadius: 999, fontWeight: 700,
+              background: 'rgba(237,139,0,0.12)', color: 'var(--dex-orange, #ed8b00)',
+            }}>{isDe ? 'Nur Admin' : 'Admin only'}</span>
+          </div>
+          <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+            {isDe
+              ? <><strong>{delArchCount}</strong> Archiv-Einträge sind älter als 6 Monate und können endgültig gelöscht werden.</>
+              : <><strong>{delArchCount}</strong> archive entries are older than 6 months and can be permanently deleted.</>}
+          </p>
+          <button
+            className="btn btn-secondary"
+            style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%', color: 'var(--dex-red, #c00)' }}
+            disabled={delArchBusy}
+            onClick={() => { startDeleteOldArchive().catch(() => { /* */ }); }}
+          >
+            {delArchBusy ? (isDe ? 'Wird gelöscht…' : 'Deleting…') : (isDe ? 'Alte Einträge löschen' : 'Delete old entries')}
           </button>
         </div>
       )}

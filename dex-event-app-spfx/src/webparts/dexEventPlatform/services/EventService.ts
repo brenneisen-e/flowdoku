@@ -9231,6 +9231,59 @@ export class EventService {
     return result;
   }
 
+  // ==================== Archiv-Löschkonzept (v23.40) ====================
+  // DEX_Archive-Einträge sind die End-Ablage. Damit die Liste nicht unendlich
+  // wächst, können Admins Einträge löschen, die älter als ein Stichdatum sind
+  // (standardmäßig ein halbes Jahr). „ArchivedAt" ist der Ablage-Zeitpunkt.
+
+  /** Zählt DEX_Archive-Zeilen mit ArchivedAt älter als `olderThanIso`. */
+  public async countDeletableArchiveRows(olderThanIso: string): Promise<number> {
+    try {
+      const cutoff = new Date(olderThanIso).getTime();
+      if (!isFinite(cutoff)) return 0;
+      const rows = await this.loadAllListRows('DEX_Archive', 'Id,ArchivedAt');
+      let c = 0;
+      for (const r of rows) {
+        const a = r['ArchivedAt'] ? new Date(String(r['ArchivedAt'])).getTime() : 0;
+        if (a > 0 && a < cutoff) c++;
+      }
+      return c;
+    } catch { return 0; }
+  }
+
+  /** Löscht DEX_Archive-Zeilen älter als `olderThanIso` (sequentiell, mit
+   *  Fortschritt + Abbruch). Hartes DELETE — bewusst (das Archiv ist die
+   *  letzte Stufe; ältere Einträge braucht niemand mehr). */
+  public async deleteOldArchiveRows(
+    olderThanIso: string,
+    onProgress?: (done: number, total: number) => void,
+    shouldCancel?: () => boolean
+  ): Promise<{ deleted: number; failed: number; cancelled: boolean }> {
+    const result = { deleted: 0, failed: 0, cancelled: false };
+    try {
+      const cutoff = new Date(olderThanIso).getTime();
+      if (!isFinite(cutoff)) return result;
+      const rows = await this.loadAllListRows('DEX_Archive', 'Id,ArchivedAt');
+      const targets = rows.filter(r => {
+        const a = r['ArchivedAt'] ? new Date(String(r['ArchivedAt'])).getTime() : 0;
+        return a > 0 && a < cutoff;
+      });
+      if (onProgress) onProgress(0, targets.length);
+      for (let i = 0; i < targets.length; i++) {
+        if (shouldCancel && shouldCancel()) { result.cancelled = true; break; }
+        const id = Number(targets[i]['Id'] || 0);
+        if (id > 0) {
+          try {
+            const del = await this._delete(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_Archive')/items(${id})`);
+            if (del.ok) result.deleted++; else result.failed++;
+          } catch { result.failed++; }
+        }
+        if (onProgress) onProgress(i + 1, targets.length);
+      }
+    } catch { /* Liste evtl. nicht vorhanden */ }
+    return result;
+  }
+
   private async _delete(url: string): Promise<SPHttpClientResponse> {
     const options: ISPHttpClientOptions = {
       headers: {
