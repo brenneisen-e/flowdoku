@@ -26,7 +26,7 @@ import type QrScanner from 'qr-scanner';
 export default function CheckInPage(): React.ReactElement {
   const { events, getAllRegistrations, updateEvent } = useEvents();
   // v20.4: App-Modal statt nativem Browser-Alert.
-  const { showAlert } = useDialog();
+  const { showAlert, confirmDialog } = useDialog();
   const { selectedEventId, navigate } = useNavigation();
   const { isAdmin, isOrganizer, siteUrl } = useRoles();
   const { currentUser } = useCurrentUser();
@@ -131,15 +131,17 @@ export default function CheckInPage(): React.ReactElement {
   // KPI-Zähler: angemeldet (= Status Angemeldet/QR versendet/Eingecheckt)
   // und eingecheckt. Wird im KPI-Bereich der Check-In-Page angezeigt.
   const checkInKpis = React.useMemo(() => {
-    if (!nameSearchEventId) return { registered: 0, checkedIn: 0 };
+    if (!nameSearchEventId) return { registered: 0, checkedIn: 0, noShow: 0 };
     const regs = searchRegsCache[nameSearchEventId] || [];
     let registered = 0;
     let checkedIn = 0;
+    let noShow = 0;
     for (const r of regs) {
       if (r.Status === 'Angemeldet' || r.Status === 'QR versendet' || r.Status === 'Eingecheckt') registered++;
       if (r.Status === 'Eingecheckt') checkedIn++;
+      if (r.Status === 'No-Show') noShow++;
     }
-    return { registered, checkedIn };
+    return { registered, checkedIn, noShow };
   }, [nameSearchEventId, searchRegsCache]);
 
   // v7.14: Live-Filter ueber die ganze Liste — leerer Query zeigt alle
@@ -215,6 +217,37 @@ export default function CheckInPage(): React.ReactElement {
     setTimeout(() => {
       confirmCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 100);
+  };
+
+  // v23.28: Teilnehmer als „No-Show" markieren (nicht erschienen). Direkt aus
+  // der Suchliste; nach Bestätigung wird der lokale Cache aktualisiert.
+  const markNoShowFromSearch = async (reg: import('../services/EventService').SPRegistration): Promise<void> => {
+    const ev = events.find(e => e.id === nameSearchEventId);
+    if (!ev || !ev.subsiteUrl || !eventService) return;
+    const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || reg.ParticipantEmail || '-');
+    const ok = await confirmDialog(
+      isDe
+        ? `„${name}" als nicht erschienen (No-Show) markieren?`
+        : `Mark „${name}" as a no-show?`,
+      { confirmLabel: isDe ? 'Als No-Show markieren' : 'Mark as no-show' }
+    );
+    if (!ok) return;
+    const success = await eventService.markNoShowParticipant(ev.subsiteUrl, reg.Id);
+    if (success) {
+      setSearchRegsCache(prev => {
+        const list = prev[nameSearchEventId] || [];
+        return { ...prev, [nameSearchEventId]: list.map(r => r.Id === reg.Id ? { ...r, Status: 'No-Show' } : r) };
+      });
+      setResultMessage(isDe ? `${name} — als No-Show markiert.` : `${name} — marked as no-show.`);
+      setResultType('info');
+    } else {
+      // v23.29: No-Show gibt es nur für Events, die ab v23.28 NEU angelegt
+      // wurden — Bestands-Events kennen die Choice nicht (HTTP 400).
+      setResultMessage(isDe
+        ? `${name} — No-Show ist für dieses Event nicht verfügbar (nur für neu angelegte Events).`
+        : `${name} — no-show is not available for this event (only for newly created events).`);
+      setResultType('error');
+    }
   };
 
   // Erkennen ob die App in der SharePoint Mobile App läuft
@@ -899,7 +932,7 @@ export default function CheckInPage(): React.ReactElement {
             reduziert. Sichtbar nur wenn Event gewählt + Liste geladen. */}
         {nameSearchEventId && (searchRegsCache[nameSearchEventId] || []).length > 0 && (
           <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8,
+            display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8,
             marginBottom: 10,
           }}>
             <div style={{
@@ -925,6 +958,18 @@ export default function CheckInPage(): React.ReactElement {
               </div>
               <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-600)', marginTop: 4 }}>
                 Eingecheckt
+              </div>
+            </div>
+            {/* v23.28: No-Show-Zähler. */}
+            <div style={{
+              padding: '10px 12px', borderRadius: 10,
+              background: 'rgba(96,96,96,0.10)', textAlign: 'center',
+            }}>
+              <div style={{ fontSize: '1.4rem', fontWeight: 700, color: 'var(--dex-gray-700, #444)', lineHeight: 1 }}>
+                {checkInKpis.noShow}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-600)', marginTop: 4 }}>
+                No-Show
               </div>
             </div>
           </div>
@@ -998,12 +1043,15 @@ export default function CheckInPage(): React.ReactElement {
                     const alreadyIn = status === 'Eingecheckt';
                     const cancelled = status === 'Abgemeldet';
                     const waitlist = status === 'Warteliste';
+                    const noShow = status === 'No-Show';
                     const statusBg = alreadyIn ? 'rgba(134,188,37,0.15)'
                       : cancelled ? 'rgba(204,0,0,0.10)'
+                      : noShow ? 'rgba(96,96,96,0.14)'
                       : waitlist ? 'rgba(237,139,0,0.12)'
                       : 'rgba(21,101,192,0.10)';
                     const statusFg = alreadyIn ? 'var(--dex-green-dark, #4a7c1f)'
                       : cancelled ? 'var(--dex-red, #c00)'
+                      : noShow ? 'var(--dex-gray-700, #444)'
                       : waitlist ? 'var(--dex-orange, #ed8b00)'
                       : '#1565c0';
                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1069,15 +1117,28 @@ export default function CheckInPage(): React.ReactElement {
                           fontSize: '0.7rem', padding: '3px 8px', borderRadius: 999,
                           background: statusBg, color: statusFg, fontWeight: 600, whiteSpace: 'nowrap',
                         }}>{status}</span>
-                        <button
-                          type="button"
-                          className="btn btn-primary"
-                          style={{ fontSize: '0.78rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
-                          disabled={alreadyIn || cancelled || isProcessing}
-                          onClick={() => startManualCheckInFromSearch(reg)}
-                        >
-                          {alreadyIn ? '✓ Eingecheckt' : cancelled ? 'Abgemeldet' : 'Einchecken'}
-                        </button>
+                        {/* v23.28: Check-in UND No-Show nebeneinander. */}
+                        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            style={{ fontSize: '0.78rem', padding: '6px 12px', whiteSpace: 'nowrap' }}
+                            disabled={alreadyIn || cancelled || isProcessing}
+                            onClick={() => startManualCheckInFromSearch(reg)}
+                          >
+                            {alreadyIn ? '✓ Eingecheckt' : cancelled ? 'Abgemeldet' : 'Einchecken'}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ fontSize: '0.78rem', padding: '6px 12px', whiteSpace: 'nowrap', color: 'var(--dex-gray-700, #444)' }}
+                            disabled={cancelled || noShow || isProcessing}
+                            onClick={() => { void markNoShowFromSearch(reg); }}
+                            title={isDe ? 'Teilnehmer als nicht erschienen markieren' : 'Mark attendee as a no-show'}
+                          >
+                            {noShow ? (isDe ? 'No-Show' : 'No-show') : 'No-Show'}
+                          </button>
+                        </div>
                       </div>
                     );
                   })}

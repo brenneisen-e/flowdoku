@@ -41,9 +41,13 @@ function photoUrl(email: string, size: 'S' | 'M' | 'L'): string {
   return `/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(email)}&size=${size}`;
 }
 
-// v23.26: Deep-Link in einen 1:1-MS-Teams-Chat mit der Person.
+// v23.26/v23.27: Deep-Link in einen 1:1-MS-Teams-Chat mit der Person.
+// Wir nutzen das `msteams:`-Protokoll statt der `https://teams.microsoft.com/l/…`-
+// URL — letztere zwingt den Browser über die „Stay better connected …"-
+// Launcher-Zwischenseite. Das Protokoll öffnet die installierte Teams-App
+// direkt (im Deloitte-Tenant überall vorhanden).
 function teamsChatUrl(email: string): string {
-  return `https://teams.microsoft.com/l/chat/0/0?users=${encodeURIComponent(email)}`;
+  return `msteams:/l/chat/0/0?users=${encodeURIComponent(email)}`;
 }
 
 /** v23.26: Mail- + MS-Teams-Chat-Link, in Popup und großer Karte gleich. */
@@ -59,8 +63,6 @@ function ContactLinks({ email, isDe }: { email: string; isDe: boolean }): React.
       >{email}</a>
       <a
         href={teamsChatUrl(email)}
-        target="_blank"
-        rel="noopener noreferrer"
         style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: '0.72rem', color: '#6264A7', textDecoration: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
         onMouseLeave={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}

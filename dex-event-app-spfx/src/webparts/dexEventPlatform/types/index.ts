@@ -6,7 +6,9 @@ export type EventType = 'B2Run' | 'JPMorgan' | 'Other';
 // Der „Entwurf"-Zustand eines Events lebt jetzt ausschließlich auf
 // IsFictive — EventStatus beschreibt nur noch den Lebenszyklus.
 export type EventStatus = 'Active' | 'Completed' | 'Cancelled';
-export type RegistrationStatus = 'Angemeldet' | 'QR versendet' | 'Warteliste' | 'Eingecheckt' | 'Abgemeldet';
+// v23.28: 'No-Show' = war angemeldet/eingeladen, ist aber nicht erschienen
+// (vom Check-in-Team beim Event vergeben).
+export type RegistrationStatus = 'Angemeldet' | 'QR versendet' | 'Warteliste' | 'Eingecheckt' | 'No-Show' | 'Abgemeldet';
 export type Salutation = 'Herr' | 'Frau' | 'Divers' | 'Keine Angabe';
 
 export interface DeloitteEvent {

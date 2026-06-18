@@ -4211,7 +4211,7 @@ export class EventService {
       { title: 'Location', type: 2 },
       { title: 'JobTitle', type: 2 },
       { title: 'Phone', type: 2 },
-      { title: 'Status', type: 6, choices: ['Angemeldet', 'QR versendet', 'Warteliste', 'Eingecheckt', 'Abgemeldet'], metaType: 'SP.FieldChoice' },
+      { title: 'Status', type: 6, choices: ['Angemeldet', 'QR versendet', 'Warteliste', 'Eingecheckt', 'No-Show', 'Abgemeldet'], metaType: 'SP.FieldChoice' },
       { title: 'StarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' }, // B2Run: Typ-Auswahl
       { title: 'PreferredStarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' }, // B2Run: Wunsch-Typ (wenn Fallback oder Warteliste)
       // v10.13: B2Run-Leistungsnachweis-Bestätigung. Virtuelles Feld der
@@ -7473,6 +7473,35 @@ export class EventService {
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
         {
           'Status': 'Eingecheckt',
+          'CheckedInDate': new Date().toISOString(),
+          'CheckedInByName': me.displayName || '',
+          'CheckedInByEmail': me.email || me.loginName || '',
+        }
+      );
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * v23.28/v23.29: Teilnehmer als „No-Show" markieren (war angemeldet, aber
+   * nicht erschienen). Reuse der Check-in-Audit-Spalten (CheckedInBy*), damit
+   * kein neues Schema nötig ist. **Nur für Events, deren Teilnehmerliste die
+   * 'No-Show'-Choice kennt** (= ab v23.28 NEU angelegte Events). Bestehende
+   * Events werden bewusst NICHT automatisch migriert — dort lehnt SharePoint
+   * den Wert ab (HTTP 400) und die Methode liefert `false`.
+   */
+  public async markNoShowParticipant(
+    subsiteUrl: string,
+    itemId: number
+  ): Promise<boolean> {
+    try {
+      const me = this.context.pageContext.user;
+      const response = await this._merge(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+        {
+          'Status': 'No-Show',
           'CheckedInDate': new Date().toISOString(),
           'CheckedInByName': me.displayName || '',
           'CheckedInByEmail': me.email || me.loginName || '',
