@@ -16,6 +16,7 @@ import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn'
 import { isEventOver } from '../utils/eventFormat';
 import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
 import { APP_VERSION } from '../version';
+import { RELEASE_NOTES } from '../data/releaseNotes';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
 
 /**
@@ -3769,12 +3770,19 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       const draftBadge = '<span style="margin-left:6px;padding:1px 7px;border-radius:8px;background:#fff3e0;color:#b35a00;font-size:11px;font-weight:600;">noch im Entwurf</span>';
       const eventsHtml = newEvents.length > 0
         ? `<p style="margin:6px 0 0;">${newEvents.length === 1 ? 'In dieser Woche wurde <strong>1 neues Event</strong> angelegt:' : `In dieser Woche wurden <strong>${newEvents.length} neue Events</strong> angelegt:`}</p>
-           <ul style="margin:8px 0 0 18px;padding:0;">${newEvents.map(e => `<li style="margin-bottom:6px;"><strong>${esc(e.title)}</strong>${e.isDraft ? draftBadge : ''}<br><span style="color:#777;font-size:13px;">angelegt von ${esc(e.author)} am ${fmtD(e.created)}</span></li>`).join('')}</ul>`
+           <ul style="margin:8px 0 0 18px;padding:0;">${newEvents.map(e => `<li style="margin-bottom:6px;"><strong>${esc(e.title)}</strong>${e.isDraft ? '&nbsp;' + draftBadge : ''}<br><span style="color:#777;font-size:13px;">angelegt von ${esc(e.author)} am ${fmtD(e.created)}</span></li>`).join('')}</ul>`
         : '<p style="margin:6px 0 0;color:#666;">In dieser Woche wurde kein neues Event angelegt.</p>';
       const orgHtml = newOrganizers.length > 0
         ? `<p style="margin:6px 0 0;">${newOrganizers.length === 1 ? 'Eine Person wurde neu als Organizer berechtigt:' : `${newOrganizers.length} Personen wurden neu als Organizer berechtigt:`}</p>
            <ul style="margin:8px 0 0 18px;padding:0;">${newOrganizers.map(o => `<li style="margin-bottom:4px;">${esc(o.email)} <span style="color:#777;font-size:13px;">(seit ${fmtD(o.created)})</span></li>`).join('')}</ul>`
         : '<p style="margin:6px 0 0;color:#666;">In dieser Woche wurde niemand neu als Organizer berechtigt.</p>';
+      // v23.44: Release Notes der Berichtswoche (aus dem TS-Modul, datums-gefiltert).
+      const relFromTs = new Date(fromIso).getTime();
+      const relToTs = new Date(toIso).getTime();
+      const relNotes = RELEASE_NOTES.filter(n => { const t = new Date(n.date).getTime(); return isFinite(t) && t >= relFromTs && t <= relToTs; });
+      const relNotesHtml = relNotes.length > 0
+        ? `<ul style="margin:8px 0 0 18px;padding:0;">${relNotes.map(n => `<li style="margin-bottom:6px;"><strong>${n.type === 'Bugfix' ? 'Behoben' : 'Neu'}:</strong> ${esc(n.text)}</li>`).join('')}</ul>`
+        : '';
       const draftCount = newEvents.filter(e => e.isDraft).length;
       const draftHint = draftCount > 0
         ? `<p style="margin:6px 0 0;color:#777;font-size:13px;">Davon ${draftCount === 1 ? 'ist 1 Event noch ein Entwurf' : `sind ${draftCount} Events noch Entwürfe`} und damit für Teilnehmer noch nicht sichtbar.</p>`
@@ -3816,6 +3824,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       const inner = `
         <p style="margin:0 0 6px;">Hallo __GREETING_NAME__,</p>
         <p style="margin:0 0 16px;">hier ist euer wöchentlicher Überblick über die DEX Event Experience Platform — was in den letzten Tagen passiert ist, vom <strong>${fmtD(fromIso)}</strong> bis <strong>${fmtD(toIso)}</strong>.</p>
+        ${relNotes.length > 0 ? `<h3 style="margin:18px 0 0;font-size:15px;color:#2d4a06;">Neues in der App</h3><p style="margin:6px 0 0;color:#555;">Diese Verbesserungen sind in dieser Woche live gegangen:</p>${relNotesHtml}` : ''}
         <h3 style="margin:18px 0 0;font-size:15px;color:#2d4a06;">Neue Events</h3>
         ${eventsHtml}
         ${draftHint}

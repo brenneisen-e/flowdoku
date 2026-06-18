@@ -19,9 +19,23 @@ import { useCurrentUser } from '../context/UserContext';
 import { EventService } from '../services/EventService';
 import { useLanguage } from '../context/LanguageContext';
 import OrganizerList from './OrganizerList';
+import { ChevronDown, ChevronUp } from './Icons';
 // v20.0 (Audit): qr-scanner nur noch als Typ statisch importieren — die
 // eigentliche Bibliothek wird erst beim Kamera-Start dynamisch nachgeladen.
 import type QrScanner from 'qr-scanner';
+
+// v23.45: zeigt nur den reinen Sub-Namen (Teil nach dem letzten „|") —
+// gleiche Logik wie im Organizer Center.
+function shortSubEventTitle(title: string | undefined): string {
+  const t = (title || '').trim();
+  if (!t) return t;
+  const pipe = t.lastIndexOf('|');
+  if (pipe >= 0) {
+    const after = t.substring(pipe + 1).trim();
+    if (after) return after;
+  }
+  return t;
+}
 
 export default function CheckInPage(): React.ReactElement {
   const { events, getAllRegistrations, updateEvent } = useEvents();
@@ -64,6 +78,24 @@ export default function CheckInPage(): React.ReactElement {
       return true;
     });
   }, [accessibleEvents, onlyActiveCheckIn]);
+  // v23.45: Sub-Events werden im Picker unter ihrem Hauptevent gruppiert und
+  // standardmäßig eingeklappt — statt flacher Liste. Ein Hauptevent mit
+  // Sub-Events bekommt einen Aufklapp-Pfeil; Klick auf die Karte selbst checkt
+  // weiterhin direkt in das (Haupt-)Event ein.
+  const groupedCheckInEvents = React.useMemo(() => {
+    const visibleIds = new Set(visibleCheckInEvents.map(e => e.id));
+    const childrenByParent: Record<string, typeof visibleCheckInEvents> = {};
+    visibleCheckInEvents.forEach(e => {
+      if (e.parentEventId && visibleIds.has(e.parentEventId)) {
+        (childrenByParent[e.parentEventId] = childrenByParent[e.parentEventId] || []).push(e);
+      }
+    });
+    // Top-Level = Events ohne sichtbaren Parent (echte Hauptevents ODER
+    // verwaiste Sub-Events, deren Parent ausgeblendet/gefiltert ist).
+    const topLevel = visibleCheckInEvents.filter(e => !(e.parentEventId && visibleIds.has(e.parentEventId)));
+    return topLevel.map(parent => ({ parent, children: childrenByParent[parent.id] || [] }));
+  }, [visibleCheckInEvents]);
+  const [expandedCheckInParents, setExpandedCheckInParents] = React.useState<Record<string, boolean>>({});
   const scannerRef = React.useRef<QrScanner | null>(null);
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const [resultMessage, setResultMessage] = React.useState('');
@@ -540,6 +572,67 @@ export default function CheckInPage(): React.ReactElement {
     );
   }
 
+  // v23.45: gemeinsamer Karten-Renderer für Haupt- und Sub-Events im Picker.
+  // `isChild` rendert eine kompaktere, eingerückte Variante.
+  const renderCheckInEventCard = (ev: typeof events[number], isChild: boolean): React.ReactElement => {
+    const thumb = isChild ? 60 : 84;
+    return (
+      <button
+        key={ev.id}
+        className="card"
+        onClick={() => navigate('check-in', ev.id)}
+        style={{
+          textAlign: 'left', padding: isChild ? 12 : 14, width: '100%',
+          background: isChild ? 'var(--dex-gray-50, #f7f8f9)' : '#fff',
+          border: '1px solid var(--dex-gray-200)',
+          borderRadius: 12, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', gap: 14,
+          transition: 'border-color 0.15s, box-shadow 0.15s, transform 0.1s',
+        }}
+        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--dex-green, #86bc25)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(134,188,37,0.12)'; }}
+        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--dex-gray-200)'; e.currentTarget.style.boxShadow = 'none'; }}
+      >
+        {/* v15.3: Event-Bild als Thumbnail links — Fallback grünes Gradient mit Initialen. */}
+        <div style={{
+          flex: '0 0 auto', width: thumb, height: thumb, borderRadius: 10,
+          background: ev.imageUrl
+            ? `url(${ev.imageUrl}) center/cover no-repeat`
+            : 'linear-gradient(135deg, var(--dex-green, #86bc25), var(--dex-blue, #0076a8))',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: '#fff', fontWeight: 700, fontSize: isChild ? '1.1rem' : '1.4rem',
+          overflow: 'hidden', flexShrink: 0,
+        }}>
+          {!ev.imageUrl && ev.title ? ev.title.charAt(0).toUpperCase() : ''}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {isChild && (
+            <span style={{
+              display: 'inline-block', fontSize: '0.66rem', fontWeight: 700, letterSpacing: 0.3,
+              color: 'var(--dex-green-dark, #4a7c1f)', background: 'rgba(134,188,37,0.14)',
+              borderRadius: 6, padding: '1px 7px', marginBottom: 4, textTransform: 'uppercase',
+            }}>{isDe ? 'Sub-Event' : 'Sub-event'}</span>
+          )}
+          <div style={{ fontWeight: 700, fontSize: isChild ? '0.92rem' : '1rem', color: 'var(--dex-gray-800)', marginBottom: 2 }}>{shortSubEventTitle(ev.title)}</div>
+          <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
+            {ev.startDate ? new Date(ev.startDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}
+            {ev.location ? ` · ${ev.location}` : ''}
+          </div>
+          {/* v15.3: Organizer-Chips mit Hover-Profilfoto (gleiches OrganizerList wie auf der Registrierungsseite). */}
+          {!isChild && (ev.organizers && ev.organizers.length > 0) && (
+            <div style={{ marginTop: 6 }}>
+              <OrganizerList
+                names={ev.organizers}
+                emails={ev.organizerEmails || []}
+                size="sm"
+                compact
+              />
+            </div>
+          )}
+        </div>
+      </button>
+    );
+  };
+
   // Kein Event ausgewählt → Event-Picker (nur relevante Events: nur die, die
   // der User einchecken darf; bei exakt einem Event wird automatisch weiter
   // navigiert, weil die LandingPage das schon macht. Wir fangen hier aber
@@ -581,53 +674,39 @@ export default function CheckInPage(): React.ReactElement {
           </p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {visibleCheckInEvents.map(ev => (
-              <button
-                key={ev.id}
-                className="card"
-                onClick={() => navigate('check-in', ev.id)}
-                style={{
-                  textAlign: 'left', padding: 14,
-                  background: '#fff', border: '1px solid var(--dex-gray-200)',
-                  borderRadius: 12, cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', gap: 14,
-                  transition: 'border-color 0.15s, box-shadow 0.15s, transform 0.1s',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--dex-green, #86bc25)'; e.currentTarget.style.boxShadow = '0 4px 12px rgba(134,188,37,0.12)'; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--dex-gray-200)'; e.currentTarget.style.boxShadow = 'none'; }}
-              >
-                {/* v15.3: Event-Bild als Thumbnail links — Fallback grünes Gradient mit Initialen. */}
-                <div style={{
-                  flex: '0 0 auto', width: 84, height: 84, borderRadius: 10,
-                  background: ev.imageUrl
-                    ? `url(${ev.imageUrl}) center/cover no-repeat`
-                    : 'linear-gradient(135deg, var(--dex-green, #86bc25), var(--dex-blue, #0076a8))',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#fff', fontWeight: 700, fontSize: '1.4rem',
-                  overflow: 'hidden', flexShrink: 0,
-                }}>
-                  {!ev.imageUrl && ev.title ? ev.title.charAt(0).toUpperCase() : ''}
-                </div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--dex-gray-800)', marginBottom: 2 }}>{ev.title}</div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
-                    {ev.startDate ? new Date(ev.startDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) : ''}
-                    {ev.location ? ` · ${ev.location}` : ''}
+            {groupedCheckInEvents.map(({ parent, children }) => {
+              const expanded = !!expandedCheckInParents[parent.id];
+              const hasChildren = children.length > 0;
+              return (
+                <div key={parent.id} style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div style={{ position: 'relative' }}>
+                    {renderCheckInEventCard(parent, false)}
+                    {hasChildren && (
+                      <button
+                        type="button"
+                        onClick={e => { e.stopPropagation(); setExpandedCheckInParents(p => ({ ...p, [parent.id]: !p[parent.id] })); }}
+                        title={isDe ? (expanded ? 'Sub-Events einklappen' : 'Sub-Events anzeigen') : (expanded ? 'Collapse sub-events' : 'Show sub-events')}
+                        style={{
+                          position: 'absolute', top: '50%', right: 14, transform: 'translateY(-50%)',
+                          display: 'inline-flex', alignItems: 'center', gap: 6,
+                          background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 999,
+                          padding: '6px 12px', cursor: 'pointer', color: 'var(--dex-gray-700)',
+                          fontSize: '0.78rem', fontWeight: 600,
+                        }}
+                      >
+                        <span>{children.length} {isDe ? 'Sub-Events' : 'sub-events'}</span>
+                        {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </button>
+                    )}
                   </div>
-                  {/* v15.3: Organizer-Chips mit Hover-Profilfoto (gleiches OrganizerList wie auf der Registrierungsseite). */}
-                  {(ev.organizers && ev.organizers.length > 0) && (
-                    <div style={{ marginTop: 6 }}>
-                      <OrganizerList
-                        names={ev.organizers}
-                        emails={ev.organizerEmails || []}
-                        size="sm"
-                        compact
-                      />
+                  {expanded && hasChildren && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginLeft: 18, paddingLeft: 18, borderLeft: '2px solid var(--dex-gray-200)' }}>
+                      {children.map(ch => renderCheckInEventCard(ch, true))}
                     </div>
                   )}
                 </div>
-              </button>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
