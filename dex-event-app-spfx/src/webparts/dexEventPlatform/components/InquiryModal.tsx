@@ -16,12 +16,16 @@ import { Info } from './Icons';
 interface InquiryModalProps {
   open: boolean;
   onClose: () => void;
+  /** v23.37: „Organizer werden"-Antrag statt allgemeiner DEX-Anfrage.
+   *  Legt einen nachverfolgbaren Antrag an (Admins bestätigen ihn in der App). */
+  organizerMode?: boolean;
 }
 
-export default function InquiryModal({ open, onClose }: InquiryModalProps): React.ReactElement | null {
-  const { sendAdminInquiry } = useEvents();
+export default function InquiryModal({ open, onClose, organizerMode }: InquiryModalProps): React.ReactElement | null {
+  const { sendAdminInquiry, requestOrganizerRole } = useEvents();
   const { currentUser } = useCurrentUser();
   const { locale } = useLanguage();
+  const isDe = locale === 'de';
   const userFullName = `${currentUser.firstName} ${currentUser.surname}`.trim();
   const [name, setName] = React.useState(userFullName);
   const [eventName, setEventName] = React.useState('');
@@ -34,16 +38,23 @@ export default function InquiryModal({ open, onClose }: InquiryModalProps): Reac
     if (open && !name && userFullName) setName(userFullName);
   }, [open, userFullName]);
 
+  // v23.37: im Organizer-Modus reicht der Name (Nachricht optional, kein
+  // Event-Name) — die allgemeine Anfrage braucht Event-Name + Nachricht.
+  const canSubmit = organizerMode ? true : (!!eventName.trim() && !!message.trim());
+
   async function handleSubmit(): Promise<void> {
-    if (!eventName.trim() || !message.trim() || sending) return;
+    if (!canSubmit || sending) return;
     setSending(true);
     setStatus('');
-    const ok = await sendAdminInquiry(
-      name.trim() || userFullName,
-      currentUser.email || '',
-      eventName.trim(),
-      message.trim(),
-    );
+    let ok = false;
+    if (organizerMode) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const loc = (currentUser as any).location || '';
+      const res = await requestOrganizerRole(currentUser.email || '', name.trim() || userFullName, loc, message.trim());
+      ok = res.ok;
+    } else {
+      ok = await sendAdminInquiry(name.trim() || userFullName, currentUser.email || '', eventName.trim(), message.trim());
+    }
     setSending(false);
     if (ok) {
       setStatus('success');
@@ -61,17 +72,23 @@ export default function InquiryModal({ open, onClose }: InquiryModalProps): Reac
       open={open}
       onClose={onClose}
       dismissable={!sending}
-      ariaLabel={locale === 'de' ? 'DEX-Anfrage' : 'DEX inquiry'}
+      ariaLabel={organizerMode ? (isDe ? 'Organizer werden' : 'Become an organizer') : (isDe ? 'DEX-Anfrage' : 'DEX inquiry')}
     >
         <h2 style={{ margin: 0, fontSize: '1.3rem', color: 'var(--dex-gray-800)' }}>
-          {locale === 'de' ? 'DEX App für dein Event anfragen' : 'Request the DEX App for your event'}
+          {organizerMode
+            ? (isDe ? 'Organizer werden' : 'Become an organizer')
+            : (isDe ? 'DEX App für dein Event anfragen' : 'Request the DEX App for your event')}
         </h2>
         <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>
-          {locale === 'de'
-            ? 'Wir melden uns kurz bei dir und besprechen, wie wir dein Event unterstützen können.'
-            : 'We will get back to you and discuss how we can support your event.'}
+          {organizerMode
+            ? (isDe
+                ? 'Stelle einen Antrag, Organizer zu werden — dann kannst du eigene Events anlegen und verwalten. Die Admins prüfen deinen Antrag und schalten dich frei.'
+                : 'Request to become an organizer — you can then create and manage your own events. The admins review your request and grant access.')
+            : (isDe
+                ? 'Wir melden uns kurz bei dir und besprechen, wie wir dein Event unterstützen können.'
+                : 'We will get back to you and discuss how we can support your event.')}
         </p>
-        <button
+        {!organizerMode && <button
           type="button"
           onClick={() => setShowInfo(true)}
           style={{
@@ -103,7 +120,7 @@ export default function InquiryModal({ open, onClose }: InquiryModalProps): Reac
               ? 'Hier klicken — alle Funktionen, Zielgruppen und Beispiel-Events im Überblick.'
               : 'Click here — all features, audiences and example events at a glance.'}
           </span>
-        </button>
+        </button>}
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
           {locale === 'de' ? 'Dein Name' : 'Your name'}
           {/* v13.0: form-input statt inline-style — konsistente Höhe / Border. */}
@@ -115,33 +132,41 @@ export default function InquiryModal({ open, onClose }: InquiryModalProps): Reac
             disabled={sending}
           />
         </label>
+        {!organizerMode && (
+          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
+            {locale === 'de' ? 'Event-Name' : 'Event name'}
+            <input
+              type="text"
+              className="form-input"
+              value={eventName}
+              onChange={e => setEventName(e.target.value)}
+              disabled={sending}
+              placeholder={locale === 'de' ? 'z.B. Summer Party 2026' : 'e.g. Summer Party 2026'}
+            />
+          </label>
+        )}
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
-          {locale === 'de' ? 'Event-Name' : 'Event name'}
-          <input
-            type="text"
-            className="form-input"
-            value={eventName}
-            onChange={e => setEventName(e.target.value)}
-            disabled={sending}
-            placeholder={locale === 'de' ? 'z.B. Summer Party 2026' : 'e.g. Summer Party 2026'}
-          />
-        </label>
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
-          {locale === 'de' ? 'Was brauchst du?' : 'What do you need?'}
+          {organizerMode
+            ? (isDe ? 'Warum möchtest du Organizer werden? (optional)' : 'Why do you want to become an organizer? (optional)')
+            : (isDe ? 'Was brauchst du?' : 'What do you need?')}
           <textarea
             className="form-textarea"
             value={message}
             onChange={e => setMessage(e.target.value)}
             disabled={sending}
-            rows={5}
-            placeholder={locale === 'de'
-              ? 'Kurz beschreiben: Anzahl Teilnehmer, Termin, gewünschte Funktionen...'
-              : 'Briefly describe: number of participants, date, features needed...'}
+            rows={organizerMode ? 3 : 5}
+            placeholder={organizerMode
+              ? (isDe ? 'Optional: kurz, worum es geht …' : 'Optional: briefly what it is about …')
+              : (isDe
+                ? 'Kurz beschreiben: Anzahl Teilnehmer, Termin, gewünschte Funktionen...'
+                : 'Briefly describe: number of participants, date, features needed...')}
           />
         </label>
         {status === 'success' && (
           <div style={{ color: 'var(--dex-green)', fontSize: '0.85rem' }}>
-            {locale === 'de' ? 'Anfrage gesendet — wir melden uns!' : 'Request sent — we will get back to you!'}
+            {organizerMode
+              ? (isDe ? 'Antrag gesendet — die Admins prüfen ihn und schalten dich frei.' : 'Request sent — the admins will review and grant access.')
+              : (isDe ? 'Anfrage gesendet — wir melden uns!' : 'Request sent — we will get back to you!')}
           </div>
         )}
         {status === 'error' && (
@@ -157,11 +182,13 @@ export default function InquiryModal({ open, onClose }: InquiryModalProps): Reac
             type="button"
             className="btn btn-primary"
             onClick={handleSubmit}
-            disabled={sending || !eventName.trim() || !message.trim()}
+            disabled={sending || !canSubmit}
           >
             {sending
-              ? (locale === 'de' ? 'Wird gesendet...' : 'Sending...')
-              : (locale === 'de' ? 'Anfrage senden' : 'Send inquiry')}
+              ? (isDe ? 'Wird gesendet...' : 'Sending...')
+              : organizerMode
+                ? (isDe ? 'Antrag senden' : 'Send request')
+                : (isDe ? 'Anfrage senden' : 'Send inquiry')}
           </button>
         </div>
       <LandingInfoModal

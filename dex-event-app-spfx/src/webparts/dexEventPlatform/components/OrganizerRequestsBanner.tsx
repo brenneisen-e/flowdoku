@@ -1,0 +1,154 @@
+/**
+ * v23.37: Hinweis-Banner für Admins bei offenen „Organizer werden"-Anträgen.
+ *
+ * - Sichtbar nur für Admins (auch im Demo-Modus via originalIsAdmin), wenn es
+ *   mindestens einen offenen Antrag gibt.
+ * - Klick öffnet ein Modal mit allen offenen Anträgen; pro Antrag kann der
+ *   Admin direkt „Freigeben" (vergibt die Organizer-Rolle) oder „Ablehnen".
+ * - Deep-Link aus der Antrags-Mail (?action=approveorg&request=<id>) öffnet das
+ *   Modal automatisch — funktioniert aber nur als Admin.
+ */
+import * as React from 'react';
+import { useRoles } from '../context/RoleContext';
+import { useEvents } from '../context/EventContext';
+import { useLanguage } from '../context/LanguageContext';
+import Modal from './Modal';
+import { Settings, Check, X } from './Icons';
+
+type Req = { id: number; email: string; name: string; location: string; message: string; created: string };
+
+export default function OrganizerRequestsBanner(): React.ReactElement | null {
+  const { isAdmin, originalIsAdmin, addRole, refreshRoles } = useRoles();
+  const { getOpenOrganizerRequests, markOrganizerRequestDecided } = useEvents();
+  const { locale } = useLanguage();
+  const isDe = locale === 'de';
+  const adminLike = isAdmin || originalIsAdmin;
+
+  const [requests, setRequests] = React.useState<Req[]>([]);
+  const [open, setOpen] = React.useState(false);
+  const [busyId, setBusyId] = React.useState<number | null>(null);
+  const [loaded, setLoaded] = React.useState(false);
+
+  const reload = React.useCallback(async (): Promise<void> => {
+    if (!adminLike) return;
+    try { const r = await getOpenOrganizerRequests(); setRequests(r); } catch { /* */ }
+    setLoaded(true);
+  }, [adminLike, getOpenOrganizerRequests]);
+
+  React.useEffect(() => { void reload(); }, [reload]);
+
+  // Deep-Link aus der Antrags-Mail: Modal automatisch öffnen (nur als Admin).
+  React.useEffect(() => {
+    if (!adminLike) return;
+    try {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get('action') === 'approveorg') setOpen(true);
+    } catch { /* */ }
+  }, [adminLike]);
+
+  if (!adminLike || !loaded || requests.length === 0) return null;
+
+  const decide = async (r: Req, approve: boolean): Promise<void> => {
+    setBusyId(r.id);
+    try {
+      if (approve) {
+        const ok = await addRole(r.email, r.name || r.email, 'Organizer', r.location || '');
+        if (!ok) { setBusyId(null); return; }
+        await markOrganizerRequestDecided(r.id, 'Approved', r.email, r.name || r.email);
+        try { await refreshRoles(); } catch { /* */ }
+      } else {
+        await markOrganizerRequestDecided(r.id, 'Rejected', r.email, r.name || r.email);
+      }
+      setRequests(prev => prev.filter(x => x.id !== r.id));
+    } finally { setBusyId(null); }
+  };
+
+  const count = requests.length;
+
+  return (
+    <>
+      <div
+        onClick={() => setOpen(true)}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer',
+          margin: '0 0 12px', padding: '10px 16px', borderRadius: 10,
+          background: 'rgba(134,188,37,0.12)', border: '1px solid var(--dex-green, #86bc25)',
+          color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600, fontSize: '0.9rem',
+        }}
+      >
+        <Settings size={18} />
+        <span>
+          {count === 1
+            ? (isDe ? '1 offener Antrag „Organizer werden"' : '1 open request to become an organizer')
+            : (isDe ? `${count} offene Anträge „Organizer werden"` : `${count} open requests to become an organizer`)}
+        </span>
+        <span style={{ marginLeft: 'auto', textDecoration: 'underline' }}>
+          {isDe ? 'Ansehen & bestätigen' : 'Review & approve'}
+        </span>
+      </div>
+
+      <Modal open={open} onClose={() => setOpen(false)} maxWidth={620} padding={24} ariaLabel={isDe ? 'Organizer-Anträge' : 'Organizer requests'}>
+        <h2 style={{ marginTop: 0, marginBottom: 4, color: 'var(--dex-green-dark, #4a7c1f)' }}>
+          {isDe ? 'Anträge „Organizer werden"' : 'Requests to become an organizer'}
+        </h2>
+        <p style={{ marginTop: 0, fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
+          {isDe
+            ? 'Mit „Freigeben" bekommt die Person die Organizer-Rolle und kann eigene Events anlegen. Sie wird per Mail informiert.'
+            : 'With “Approve” the person gets the organizer role and can create their own events. They are notified by email.'}
+        </p>
+        {requests.length === 0 ? (
+          <p style={{ color: 'var(--dex-gray-500)' }}>{isDe ? 'Keine offenen Anträge mehr.' : 'No open requests left.'}</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+            {requests.map(r => (
+              <div key={r.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '12px 14px', border: '1px solid var(--dex-gray-200)', borderRadius: 10, background: '#fff' }}>
+                {r.email ? (
+                  <img
+                    src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(r.email)}&size=M`}
+                    alt={r.name}
+                    onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
+                    style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
+                  />
+                ) : null}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, color: 'var(--dex-gray-800)' }}>{r.name || r.email}</div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
+                    {r.email}{r.location ? ` · ${r.location}` : ''}
+                  </div>
+                  {r.message ? (
+                    <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-700)', marginTop: 4, whiteSpace: 'pre-wrap' }}>{r.message}</div>
+                  ) : null}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, flexShrink: 0 }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    style={{ fontSize: '0.78rem', padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                    disabled={busyId === r.id}
+                    onClick={() => { void decide(r, true); }}
+                  >
+                    <Check size={14} /> {busyId === r.id ? (isDe ? 'Bitte warten…' : 'Please wait…') : (isDe ? 'Freigeben' : 'Approve')}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.78rem', padding: '6px 12px', color: 'var(--dex-gray-700)', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                    disabled={busyId === r.id}
+                    onClick={() => { void decide(r, false); }}
+                  >
+                    <X size={14} /> {isDe ? 'Ablehnen' : 'Reject'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+          <button type="button" className="btn btn-secondary" onClick={() => setOpen(false)}>
+            {isDe ? 'Schließen' : 'Close'}
+          </button>
+        </div>
+      </Modal>
+    </>
+  );
+}

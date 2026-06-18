@@ -196,7 +196,9 @@ export default function StartPage(): React.ReactElement {
           </div>
         )}
       </div>
-      <InquiryModal open={showInquiry} onClose={() => setShowInquiry(false)} />
+      {/* v23.37: „Organizer werden?" stellt jetzt einen nachverfolgbaren
+          Antrag (Admins bestätigen ihn in der App), keine allgemeine Anfrage. */}
+      <InquiryModal open={showInquiry} onClose={() => setShowInquiry(false)} organizerMode />
     </div>
   );
 }

@@ -27,6 +27,7 @@ import RegistrationPage from './RegistrationPage';
 import MyEventsPage from './MyEventsPage';
 import ProfilePage from './ProfilePage';
 import SelfCheckInPage from './SelfCheckInPage';
+import OrganizerRequestsBanner from './OrganizerRequestsBanner';
 import { KpiRow } from './LandingPage';
 
 // v20.0 (Audit): Route-Level-Code-Splitting. Die schweren Sekundär-Seiten
@@ -145,7 +146,10 @@ function AppContent(): React.ReactElement {
     let alreadyDoneThisSession = false;
     try { alreadyDoneThisSession = sessionStorage.getItem(SESSION_KEY) === '1'; } catch { /* */ }
     const hosted = events.filter(e => !e.isFictive && e.status !== 'Cancelled');
-    const eventsCount = hosted.length;
+    // v23.37: Events-KPI zählt nur Klammern/Hauptevents — Sub-Events (mit
+    // parentEventId) werden NICHT einzeln mitgezählt. Die Teilnehmer-KPI zählt
+    // dagegen weiterhin ALLE (inkl. Sub-Events).
+    const eventsCount = hosted.filter(e => !e.parentEventId).length;
     const participantsCount = hosted.reduce((s, e) => s + (e.currentParticipants || 0), 0);
     setKpiCache({ participants: participantsCount, events: eventsCount });
     if (alreadyDoneThisSession) return;
@@ -649,6 +653,12 @@ function AppContent(): React.ReactElement {
     <div className="app-layout" ref={layoutRef}>
       {!isBootLoading && <Header />}
       <ImpersonationBanner currentPage={currentPage} />
+      {/* v23.37: Admin-Hinweis auf offene „Organizer werden"-Anträge (+ Deep-Link). */}
+      {!isBootLoading && (
+        <div style={{ padding: '12px 24px 0' }}>
+          <OrganizerRequestsBanner />
+        </div>
+      )}
 
       {successBanner && (
         <div

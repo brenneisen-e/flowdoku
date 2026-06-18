@@ -392,6 +392,13 @@ interface EventContextType {
    *  (Settings-Testbutton) wird die 7-Tage-Sperre übersprungen. Best-effort;
    *  liefert ein kleines Ergebnis für UI-Feedback. */
   maybeSendWeeklyReport: (opts?: { force?: boolean }) => Promise<{ sent: boolean; admins: number; reason?: string }>;
+  /** v23.37: Antrag „Organizer werden" anlegen (+ Admin-Mail mit Deep-Link). */
+  requestOrganizerRole: (email: string, name: string, location: string, message?: string) => Promise<{ ok: boolean; reason?: string }>;
+  /** v23.37: offene Organizer-Anträge (für den Admin-Hinweis beim App-Start). */
+  getOpenOrganizerRequests: () => Promise<Array<{ id: number; email: string; name: string; location: string; message: string; created: string }>>;
+  /** v23.37: Antrag entscheiden — Status setzen + Antragsteller informieren.
+   *  Die eigentliche Rollenvergabe macht der Aufrufer über useRoles().addRole. */
+  markOrganizerRequestDecided: (id: number, status: 'Approved' | 'Rejected', email: string, name: string) => Promise<boolean>;
   /** v22.45: Scannt die übergebenen Events auf Teilnehmer ohne aktives
    *  Deloitte-Konto (für die Landing-Page-Warnung der Organizer/Admins). */
   scanInactiveAccounts: (evs: Array<{ id: string; title: string; subsiteUrl?: string }>) => Promise<Array<{ eventId: string; title: string; people: Array<{ email: string; name: string }> }>>;
@@ -660,6 +667,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         safeRun('ensureAccessFixList', () => eventService.ensureAccessFixList(), parallelMarks),
         safeRun('ensureArchiveList', () => eventService.ensureArchiveList(), parallelMarks),
         safeRun('ensureWeeklyReportsList', () => eventService.ensureWeeklyReportsList(), parallelMarks),
+        safeRun('ensureOrganizerRequestsList', () => eventService.ensureOrganizerRequestsList(), parallelMarks),
         safeRun('ensureAssetsFolders', () => eventService.ensureAssetsFolders(), parallelMarks),
         safeRun('ensureLogosInConfig', () => eventService.ensureLogosInConfig(), parallelMarks),
       ]);
@@ -3828,6 +3836,88 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     }
   }
 
+  // ==================== Organizer-Antrag (v23.37) ====================
+
+  async function requestOrganizerRole(email: string, name: string, location: string, message?: string): Promise<{ ok: boolean; reason?: string }> {
+    const mail = (email || '').trim();
+    if (!mail) return { ok: false, reason: 'no-email' };
+    try {
+      // Doppel-Antrag vermeiden: existiert schon ein offener Antrag dieser Person?
+      const open = await eventService.getOrganizerRequests(true);
+      if (open.some(r => (r.email || '').toLowerCase() === mail.toLowerCase())) {
+        return { ok: true, reason: 'already-pending' };
+      }
+      const created = await eventService.createOrganizerRequest(mail, name || mail, location || '', message || '');
+      if (!created.ok) return { ok: false, reason: 'create-failed' };
+      // Admins per Mail informieren — mit Deep-Link zum Bestätigen (greift nur als Admin).
+      try {
+        const admins = await eventService.getRoleEmails('Admin');
+        if (admins.length > 0) {
+          const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          const appBase = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`;
+          const approveUrl = created.itemId ? `${appBase}&action=approveorg&request=${created.itemId}` : appBase;
+          const inner = `
+            <p style="margin:0 0 12px;">Hallo zusammen,</p>
+            <p style="margin:0 0 12px;"><strong>${esc(name || mail)}</strong> möchte <strong>Organizer</strong> werden und kann dann eigene Events anlegen und verwalten.</p>
+            <table style="border-collapse:collapse;font-size:14px;margin:8px 0;">
+              <tr><td style="padding:3px 16px 3px 0;color:#555;">Name:</td><td>${esc(name || '—')}</td></tr>
+              <tr><td style="padding:3px 16px 3px 0;color:#555;">E-Mail:</td><td><a href="mailto:${esc(mail)}">${esc(mail)}</a></td></tr>
+              <tr><td style="padding:3px 16px 3px 0;color:#555;">Standort:</td><td>${esc(location || '—')}</td></tr>
+            </table>
+            ${message ? `<p style="margin:8px 0 0;color:#555;">Nachricht:</p><p style="margin:4px 0 0;">${esc(message).replace(/\r?\n/g, '<br>')}</p>` : ''}
+            <p style="margin:20px 0;text-align:center;"><a href="${approveUrl}" style="display:inline-block;padding:12px 26px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Antrag in der App öffnen &amp; bestätigen</a></p>
+            <p style="margin:0;color:#777;font-size:13px;">Bestätigen geht nur als Admin. Du findest offene Anträge auch direkt nach dem Öffnen der App oben als Hinweis.</p>
+          `;
+          const body = wrapTemplate('#86bc25', 'Neuer Organizer-Antrag', esc(name || mail), inner);
+          await eventService.queueEmail(`Organizer-Antrag: ${name || mail}`, admins.join('; '), 'Admins', body, 'OrganizerRequest', '', '0');
+        }
+      } catch (e) { console.warn('[DEX] requestOrganizerRole admin mail failed:', e); }
+      return { ok: true, reason: created.itemId ? undefined : 'no-id' };
+    } catch (err) {
+      console.warn('[DEX] requestOrganizerRole error:', err);
+      return { ok: false, reason: 'error' };
+    }
+  }
+
+  async function getOpenOrganizerRequests(): Promise<Array<{ id: number; email: string; name: string; location: string; message: string; created: string }>> {
+    try {
+      const list = await eventService.getOrganizerRequests(true);
+      return list.map(r => ({ id: r.id, email: r.email, name: r.name, location: r.location, message: r.message, created: r.created }));
+    } catch { return []; }
+  }
+
+  async function markOrganizerRequestDecided(id: number, status: 'Approved' | 'Rejected', email: string, name: string): Promise<boolean> {
+    try {
+      const ok = await eventService.updateOrganizerRequestStatus(id, status, currentUserEmail || '');
+      // Antragsteller informieren (best-effort, EventId='0').
+      try {
+        const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const appBase = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`;
+        if (status === 'Approved') {
+          const inner = `
+            <p style="margin:0 0 12px;">Hallo ${esc((name || '').split(' ')[0] || '')},</p>
+            <p style="margin:0 0 12px;">gute Nachricht — du bist jetzt <strong>Organizer</strong> der DEX Event Experience Platform und kannst eigene Events anlegen und verwalten.</p>
+            <p style="margin:20px 0;text-align:center;"><a href="${appBase}" style="display:inline-block;padding:12px 26px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Zur DEX App</a></p>
+            <p style="margin:0;color:#777;font-size:13px;">Über die Kachel „Organizer" auf der Startseite kommst du in dein Organizer Center.</p>
+          `;
+          const body = wrapTemplate('#86bc25', 'Du bist jetzt Organizer', '', inner);
+          await eventService.queueEmail('Dein Organizer-Zugang ist da', email, name || email, body, 'OrganizerApproved', '', '0');
+        } else {
+          const inner = `
+            <p style="margin:0 0 12px;">Hallo ${esc((name || '').split(' ')[0] || '')},</p>
+            <p style="margin:0 0 12px;">vielen Dank für dein Interesse. Dein Antrag, Organizer zu werden, wurde aktuell <strong>nicht freigegeben</strong>. Bei Fragen wende dich gerne an das DEX-Team.</p>
+          `;
+          const body = wrapTemplate('#86bc25', 'Zu deinem Organizer-Antrag', '', inner);
+          await eventService.queueEmail('Zu deinem Organizer-Antrag', email, name || email, body, 'OrganizerRejected', '', '0');
+        }
+      } catch (e) { console.warn('[DEX] markOrganizerRequestDecided mail failed:', e); }
+      return ok;
+    } catch (err) {
+      console.warn('[DEX] markOrganizerRequestDecided error:', err);
+      return false;
+    }
+  }
+
   // v22.45: Scan über mehrere Events — pro Event Teilnehmer laden und auf ein
   // aktives Deloitte-Konto prüfen. Für die Landing-Page-Warnung (Organizer/
   // Admin). Sequentiell + best-effort; der Aufrufer (LandingPage) drosselt
@@ -3887,6 +3977,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelTeamMember,
         getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, scanInactiveAccounts, getArchivableCount, runArchiveExpired,
         sendAdminInquiry,
+        requestOrganizerRole, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,
         sendOrganizerOnboarding,
         getKpiCache: () => eventService.getKpiCache(),
