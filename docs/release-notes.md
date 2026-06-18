@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 23.39.0 | 2026-06-18 | Feature | Die Archivierung räumt jetzt auch alte Mails und Protokoll-Einträge von Events weg, die bereits gelöscht wurden (nicht nur von abgelaufenen). So bleiben die Hintergrund-Listen dauerhaft schlank. |
 | 23.38.0 | 2026-06-18 | Feature | Der Wochenbericht geht als EINE Mail an alle Admins gemeinsam; als Empfänger stehen jetzt die echten Namen der Admins statt eines generischen „Admin". |
 | 23.38.0 | 2026-06-18 | Bugfix | Der automatische Wochenbericht wird jetzt zuverlässig selbst ausgelöst. Vorher konnte ein alter Merker im Browser die Auslösung dauerhaft verhindern, sodass nie ein Bericht kam — jetzt entscheidet allein der zentrale Versand-Eintrag, ob ein neuer Bericht fällig ist. |
 | 23.38.0 | 2026-06-18 | Bugfix | Ergänzung zur Events-Kennzahl: Beim Anlegen eines Sub-Events wird die „Events"-Zahl auf dem Startbildschirm nicht mehr mit hochgezählt — so bleibt sie dauerhaft korrekt (zählt nur eigenständige Veranstaltungen). |

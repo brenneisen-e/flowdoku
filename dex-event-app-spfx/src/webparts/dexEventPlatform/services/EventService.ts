@@ -9111,7 +9111,12 @@ export class EventService {
 
   private rowMatchesExpired(
     r: Record<string, unknown>, matchBy: 'eventId' | 'subsiteUrl',
-    expiredEventIds: Set<string>, expiredSubsiteUrls: Set<string>
+    expiredEventIds: Set<string>, expiredSubsiteUrls: Set<string>,
+    // v23.39: ALLE aktuell existierenden Event-IDs / Subsites. Eine Zeile, deren
+    // Bezug NICHT mehr darin vorkommt, gehört zu einem gelöschten Event
+    // (verwaist) und ist ebenfalls archivreif. Die size>0-Wächter verhindern,
+    // dass bei (noch) nicht geladenen Events fälschlich ALLES als verwaist gilt.
+    allEventIds: Set<string>, allSubsiteUrls: Set<string>
   ): boolean {
     // v22.2: 'Pending' = der Flow hat die Zeile noch nicht verarbeitet —
     // niemals archivieren (sonst verschwindet z.B. eine unversendete Mail
@@ -9120,16 +9125,20 @@ export class EventService {
     if (String(r['Status'] || '') === 'Pending') return false;
     if (matchBy === 'eventId') {
       const id = String(r['EventId'] || '').trim();
-      return !!id && expiredEventIds.has(id);
+      if (!id) return false;
+      // archivreif = Event abgelaufen ODER nicht mehr existent (gelöscht/verwaist).
+      return expiredEventIds.has(id) || (allEventIds.size > 0 && !allEventIds.has(id));
     }
     const su = String(r['SubsiteUrl'] || '').toLowerCase().trim();
-    return !!su && expiredSubsiteUrls.has(su);
+    if (!su) return false;
+    return expiredSubsiteUrls.has(su) || (allSubsiteUrls.size > 0 && !allSubsiteUrls.has(su));
   }
 
   /** v21: Zählt die archivreifen Zeilen pro Quell-Liste (leichtgewichtig:
    *  nur Id+EventId bzw. Id+SubsiteUrl). */
   public async countArchivableRows(
-    expiredEventIds: Set<string>, expiredSubsiteUrls: Set<string>
+    expiredEventIds: Set<string>, expiredSubsiteUrls: Set<string>,
+    allEventIds: Set<string> = new Set(), allSubsiteUrls: Set<string> = new Set()
   ): Promise<{ total: number; perList: Record<string, number> }> {
     const perList: Record<string, number> = {};
     let total = 0;
@@ -9142,7 +9151,7 @@ export class EventService {
         const select = src.hasStatus ? `${base},Status` : base;
         const rows = await this.loadAllListRows(src.list, select);
         for (const r of rows) {
-          if (this.rowMatchesExpired(r, src.matchBy, expiredEventIds, expiredSubsiteUrls)) c++;
+          if (this.rowMatchesExpired(r, src.matchBy, expiredEventIds, expiredSubsiteUrls, allEventIds, allSubsiteUrls)) c++;
         }
       } catch { /* Liste evtl. nicht vorhanden */ }
       perList[src.list] = c;
@@ -9161,7 +9170,9 @@ export class EventService {
     // v22.2: Abbruch-Check (UI-Button). Sauber: bereits verschobene Zeilen
     // bleiben im Archiv (jede Zeile ist atomar Insert→Delete), der Rest
     // bleibt in der Quelle und kommt beim nächsten Lauf dran.
-    shouldCancel?: () => boolean
+    shouldCancel?: () => boolean,
+    // v23.39: alle aktuellen Event-IDs / Subsites (für die Verwaist-Erkennung).
+    allEventIds: Set<string> = new Set(), allSubsiteUrls: Set<string> = new Set()
   ): Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number> }> {
     const result = { archived: 0, failed: 0, cancelled: false, perList: {} as Record<string, number> };
     const sources = EventService.ARCHIVE_SOURCES;
@@ -9184,7 +9195,7 @@ export class EventService {
         // nach dem Komplett-Laden — das Modal wirkte eingefroren).
         if (onProgress) onProgress(si, sources.length, src.list, 0, 0);
         const rows = await this.loadAllListRows(src.list, src.select);
-        const matching = rows.filter(r => this.rowMatchesExpired(r, src.matchBy, expiredEventIds, expiredSubsiteUrls));
+        const matching = rows.filter(r => this.rowMatchesExpired(r, src.matchBy, expiredEventIds, expiredSubsiteUrls, allEventIds, allSubsiteUrls));
         if (onProgress) onProgress(si, sources.length, src.list, 0, matching.length);
         for (let i = 0; i < matching.length; i++) {
           if (shouldCancel && shouldCancel()) { result.cancelled = true; break; }

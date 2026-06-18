@@ -3188,12 +3188,19 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   // ==================== v21: Archivierung ====================
   // Abgelaufen = End-Datum (Fallback Start-Datum) liegt in der Vergangenheit.
   // Liefert Event-Ids + Subsite-URLs + Titel-Map für die Archiv-Funktionen.
-  function getExpiredEventSets(): { ids: Set<string>; subs: Set<string>; titles: Record<string, string> } {
+  function getExpiredEventSets(): { ids: Set<string>; subs: Set<string>; titles: Record<string, string>; allIds: Set<string>; allSubs: Set<string> } {
     const now = Date.now();
     const ids = new Set<string>();
     const subs = new Set<string>();
     const titles: Record<string, string> = {};
+    // v23.39: zusätzlich ALLE aktuell existierenden Event-IDs/Subsites — damit
+    // die Archivierung Zeilen GELÖSCHTER Events (verwaist) ebenfalls erfasst
+    // (deren Bezug taucht in allIds/allSubs nicht mehr auf).
+    const allIds = new Set<string>();
+    const allSubs = new Set<string>();
     for (const e of events) {
+      allIds.add(String(e.id));
+      if (e.subsiteUrl) allSubs.add(e.subsiteUrl.toLowerCase());
       const endRef = e.endDate || e.startDate;
       const t = endRef ? new Date(endRef).getTime() : 0;
       if (t > 0 && t < now) {
@@ -3202,15 +3209,18 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         if (e.subsiteUrl) subs.add(e.subsiteUrl.toLowerCase());
       }
     }
-    return { ids, subs, titles };
+    return { ids, subs, titles, allIds, allSubs };
   }
 
   /** v21: Zählt archivreife Zeilen (Queue-/Log-Listen abgelaufener Events). */
   async function getArchivableCount(): Promise<{ total: number; perList: Record<string, number> }> {
     if (!eventService) return { total: 0, perList: {} };
-    const { ids, subs } = getExpiredEventSets();
-    if (ids.size === 0) return { total: 0, perList: {} };
-    return eventService.countArchivableRows(ids, subs);
+    const { ids, subs, allIds, allSubs } = getExpiredEventSets();
+    // v23.39: Events müssen geladen sein (allIds>0), sonst würde die
+    // Verwaist-Erkennung ALLES als gelöscht ansehen. Archivreif sind jetzt
+    // Zeilen abgelaufener UND gelöschter (verwaister) Events.
+    if (allIds.size === 0) return { total: 0, perList: {} };
+    return eventService.countArchivableRows(ids, subs, allIds, allSubs);
   }
 
   /** v21: Verschiebt alle archivreifen Zeilen ins DEX_Archive (Admin).
@@ -3220,8 +3230,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     shouldCancel?: () => boolean
   ): Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number> }> {
     if (!eventService) return { archived: 0, failed: 0, cancelled: false, perList: {} };
-    const { ids, subs, titles } = getExpiredEventSets();
-    return eventService.archiveExpiredRows(ids, subs, titles, onProgress, shouldCancel);
+    const { ids, subs, titles, allIds, allSubs } = getExpiredEventSets();
+    return eventService.archiveExpiredRows(ids, subs, titles, onProgress, shouldCancel, allIds, allSubs);
   }
 
   async function deleteEvent(eventId: string): Promise<boolean> {
