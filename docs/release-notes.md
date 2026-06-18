@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 23.42.0 | 2026-06-18 | Feature | Event-Übersicht der Organizer/Admins neu gestaltet: höhere Zeilen, Datum und Ort mit Icons (wie auf der Anmeldeseite), die Organizer mit Foto und Name (Detail beim Drüberfahren), die Warteliste steht jetzt unter der Teilnehmerzahl, und der Status sitzt als farbiges Eck-Etikett oben links (grün = aktiv, orange = Entwurf). |
 | 23.41.0 | 2026-06-18 | Feature | Neue „Admin"-Kachel auf der Startseite (für Admins, rechts neben Check-In) als zentrale Anlaufstelle: Prozessübersicht, Rollenverwaltung, Einstellungen, Handbuch, Organizer Center, Archivieren/Löschen — plus eine verständliche Erklärung aller Hintergrund-Listen (mit Direkt-Sprung in die jeweilige SharePoint-Liste). In der Prozessübersicht gibt es jetzt zusätzlich den Ablauf „Archivierung und Löschung". |
 | 23.40.0 | 2026-06-18 | Feature | Löschkonzept fürs Archiv: Archiv-Einträge, die älter als ein halbes Jahr sind, können von Admins endgültig gelöscht werden. Beim Öffnen der App sieht ein Admin einen Hinweis, wie viele alte Einträge zum Löschen bereitstehen — so bleibt die Ablage dauerhaft handhabbar. |
 | 23.39.0 | 2026-06-18 | Feature | Die Archivierung räumt jetzt auch alte Mails und Protokoll-Einträge von Events weg, die bereits gelöscht wurden (nicht nur von abgelaufenen). So bleiben die Hintergrund-Listen dauerhaft schlank. |
