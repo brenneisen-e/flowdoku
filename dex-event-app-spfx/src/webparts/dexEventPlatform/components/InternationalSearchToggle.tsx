@@ -5,9 +5,15 @@ interface Props {
   onChange: (next: boolean) => void;
   isDe?: boolean;
   compact?: boolean;
+  /** v24.3: Aktueller Sucheingabe-Wert. Wenn übergeben, erscheint der Toggle
+   *  erst, sobald mindestens ein Zeichen eingetippt wurde (app-weit einheitlich).
+   *  Ohne diese Prop bleibt das alte Verhalten (immer sichtbar). */
+  query?: string;
 }
 
-const InternationalSearchToggle: React.FC<Props> = ({ checked, onChange, isDe = true, compact = false }) => {
+const InternationalSearchToggle: React.FC<Props> = ({ checked, onChange, isDe = true, compact = false, query }) => {
+  // v24.3: erst ab dem ersten eingetippten Zeichen anzeigen.
+  if (query !== undefined && query.trim().length === 0) return null;
   const label = isDe
     ? 'Auch international suchen (@deloitte.com)'
     : 'Search internationally too (@deloitte.com)';

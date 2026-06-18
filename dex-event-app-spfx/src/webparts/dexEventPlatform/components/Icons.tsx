@@ -43,6 +43,13 @@ export const Mail = ({ size = 20 }: IconProps): React.ReactElement => (
   </svg>
 );
 
+export const Star = ({ size = 20, strokeWidth = 2 }: IconProps): React.ReactElement => (
+  // Stern (Outline) — „cooles" Symbol für die Admin-Kachel.
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 2.5l2.9 6.1 6.6.9-4.8 4.5 1.2 6.6L12 18l-5.9 3.1 1.2-6.6L2.5 9.5l6.6-.9z" />
+  </svg>
+);
+
 export const Book = ({ size = 20 }: IconProps): React.ReactElement => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20" />

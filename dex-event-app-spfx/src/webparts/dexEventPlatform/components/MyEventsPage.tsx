@@ -1904,6 +1904,7 @@ export default function MyEventsPage(): React.ReactElement {
                             return parts.length === 2 ? `${parts[1]} ${parts[0]}` : trimmed;
                           }).filter(Boolean)}
                           emails={event.organizerEmails}
+                          hiddenEmails={event.hiddenOrganizerEmails}
                           size="sm"
                         />
                       </div>
@@ -2619,7 +2620,7 @@ export default function MyEventsPage(): React.ReactElement {
                     }}
                   />
                   <div style={{ marginTop: 2 }}>
-                    <InternationalSearchToggle checked={addMemberIncludeIntl} onChange={setAddMemberIncludeIntl} isDe={isDe} />
+                    <InternationalSearchToggle query={addMemberQuery} checked={addMemberIncludeIntl} onChange={setAddMemberIncludeIntl} isDe={isDe} />
                   </div>
                   {(addMemberResults.length > 0 || addMemberSearching) && (
                     <div style={{

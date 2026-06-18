@@ -849,7 +849,7 @@ export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
   // v14.11: zusätzlich `events` (alle Events inkl. Sub-Events) als `allEvents`
   // für die Parent-Lookup-Logik im konsolidierten View + im Sub-Event-Detail.
-  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead } = useEvents();
+  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead } = useEvents();
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const handleRefresh = async (): Promise<void> => {
     if (isRefreshing) return;
@@ -1219,6 +1219,50 @@ export default function AdminPage(): React.ReactElement {
   // Löschungen (früher: Click-to-Confirm-Pattern, war zu schwach).
   const [confirmDeleteEvent, setConfirmDeleteEvent] = React.useState<DeloitteEvent | null>(null);
   const [confirmDeleteText, setConfirmDeleteText] = React.useState('');
+  // v24.0: Lösch-Berechtigungs-Prüfung. Beim Öffnen des Lösch-Dialogs wird
+  // ermittelt, ob das Event Anmeldungen über das Organizer-Team hinaus hat
+  // ("ehemals aktiv"). Wenn ja: nur Admins, und frühestens 1 Jahr nach
+  // Event-Ende. Ohne Fremd-Anmeldungen (Entwurf/leer): einfaches Ja genügt.
+  const [deletePolicy, setDeletePolicy] = React.useState<
+    { loading: true } |
+    { loading: false; allowed: boolean; requiresTitle: boolean; externalCount: number; reason?: string }
+    | null
+  >(null);
+  React.useEffect(() => {
+    if (!confirmDeleteEvent) { setDeletePolicy(null); return; }
+    let cancelled = false;
+    setDeletePolicy({ loading: true });
+    (async () => {
+      let externalCount = 0;
+      try { externalCount = await countExternalRegistrations(confirmDeleteEvent); } catch { externalCount = 0; }
+      if (cancelled) return;
+      const endRaw = confirmDeleteEvent.endDate || confirmDeleteEvent.startDate;
+      const endTs = endRaw ? new Date(endRaw).getTime() : 0;
+      const oneYearAgo = Date.now() - 365 * 24 * 60 * 60 * 1000;
+      const overOneYear = endTs > 0 && endTs < oneYearAgo;
+      if (externalCount > 0) {
+        // Ehemals aktiv (echte Teilnehmer) → geschützt.
+        if (!isAdmin) {
+          setDeletePolicy({ loading: false, allowed: false, requiresTitle: false, externalCount,
+            reason: isDe
+              ? 'Dieses Event hatte Anmeldungen über das Organizer-Team hinaus. Es darf nur von einem Admin gelöscht werden — und das frühestens ein Jahr nach dem Event (Aufbewahrung der Teilnehmerliste). Du kannst das Event stattdessen archivieren (aus deiner Übersicht ausblenden).'
+              : 'This event had registrations beyond the organizer team. Only an admin may delete it — and only one year after the event at the earliest. You can archive it instead (hide from your overview).' });
+        } else if (!overOneYear) {
+          setDeletePolicy({ loading: false, allowed: false, requiresTitle: false, externalCount,
+            reason: isDe
+              ? 'Dieses Event hat Anmeldungen über das Organizer-Team hinaus. Die Teilnehmerliste muss ein Jahr aufbewahrt werden — Löschen ist erst ein Jahr nach dem Event-Ende möglich.'
+              : 'This event has registrations beyond the organizer team. The attendee list must be kept for a year — deletion is only possible one year after the event ends.' });
+        } else {
+          setDeletePolicy({ loading: false, allowed: true, requiresTitle: true, externalCount });
+        }
+      } else {
+        // Keine Fremd-Anmeldungen (Entwurf/leer) → einfaches Ja genügt.
+        setDeletePolicy({ loading: false, allowed: true, requiresTitle: false, externalCount });
+      }
+    })().catch(() => { /* */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmDeleteEvent, isAdmin]);
   // v9.0: ChangeLog-Modal — Admin/Organizer sehen den Audit-Log aller
   // Event- und Teilnehmer-Aenderungen (DEX_ChangeLog).
   const [showChangeLogModal, setShowChangeLogModal] = React.useState(false);
@@ -2547,9 +2591,40 @@ export default function AdminPage(): React.ReactElement {
   const now = Date.now();
   const isPastEvent = (e: DeloitteEvent): boolean =>
     !!e.endDate && new Date(e.endDate).getTime() < now;
+  // v24.8 (O): abgeschlossene/vergangene Events sind für Organizer gesperrt —
+  // keine Abmeldung/Löschung/Feld-Bearbeitung mehr (Archivierungsschutz; nur
+  // No-Show über den Check-in bleibt). Admins behalten vollen Zugriff.
+  const orgPastLock = !isAdmin && !!selectedEvent && isEventOver(selectedEvent);
   const currentEventsRaw = isAdmin ? adminEvents.filter(e => !isPastEvent(e)) : adminEvents;
   const pastEventsRaw = isAdmin ? adminEvents.filter(isPastEvent) : [];
   const [showPastEvents, setShowPastEvents] = React.useState(false);
+  // v24.6: Organizer-Archiv — abgelaufene Events aus DER EIGENEN Übersicht
+  // ausblenden (pro Person, reiner Anzeige-Filter; Event/Daten bleiben).
+  const [archivedEventIds, setArchivedEventIds] = React.useState<Set<string>>(new Set());
+  const [showArchivedEvents, setShowArchivedEvents] = React.useState(false);
+  const [archiveBusyId, setArchiveBusyId] = React.useState<string | null>(null);
+  const archivedLoadedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (archivedLoadedRef.current) return;
+    archivedLoadedRef.current = true;
+    getOrganizerArchivedEventIds().then(setArchivedEventIds).catch(() => { /* best-effort */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const handleArchiveEvent = async (event: DeloitteEvent): Promise<void> => {
+    setArchiveBusyId(event.id);
+    try {
+      const ok = await archiveEventForOrganizer(event.id);
+      if (ok) setArchivedEventIds(prev => { const n = new Set(prev); n.add(event.id); return n; });
+    } catch { /* */ } finally { setArchiveBusyId(null); }
+  };
+  const handleUnarchiveEvent = async (event: DeloitteEvent): Promise<void> => {
+    setArchiveBusyId(event.id);
+    try {
+      const ok = await unarchiveEventForOrganizer(event.id);
+      if (ok) setArchivedEventIds(prev => { const n = new Set(prev); n.delete(event.id); return n; });
+    } catch { /* */ } finally { setArchiveBusyId(null); }
+  };
+  const archivedCount = adminEvents.filter(e => archivedEventIds.has(e.id)).length;
   // v18.2: Entwurf-Filter + Sortierung der Admin/Organizer-Event-Liste.
   // Default-Sortierung alphabetisch nach Titel; alternativ nach Startdatum
   // aufsteigend. „Entwürfe ausblenden" filtert isFictive-Events raus.
@@ -2559,6 +2634,9 @@ export default function AdminPage(): React.ReactElement {
   const sortAndFilterEvents = React.useCallback((list: DeloitteEvent[]): DeloitteEvent[] => {
     let arr = list.slice();
     if (hideDrafts) arr = arr.filter(e => !e.isFictive);
+    // v24.6: archivierte (für mich ausgeblendete) Events nur zeigen, wenn der
+    // „Archivierte anzeigen"-Schalter an ist.
+    if (!showArchivedEvents) arr = arr.filter(e => !archivedEventIds.has(e.id));
     arr.sort((a, b) => {
       if (eventSortMode === 'date') {
         const am = a.startDate ? new Date(a.startDate).getTime() : Number.POSITIVE_INFINITY;
@@ -2569,7 +2647,7 @@ export default function AdminPage(): React.ReactElement {
       return (a.title || '').localeCompare(b.title || '', isDe ? 'de' : 'en');
     });
     return arr;
-  }, [hideDrafts, eventSortMode, isDe]);
+  }, [hideDrafts, eventSortMode, isDe, showArchivedEvents, archivedEventIds]);
   const currentEvents = sortAndFilterEvents(currentEventsRaw);
   const pastEvents = sortAndFilterEvents(pastEventsRaw);
 
@@ -3721,6 +3799,16 @@ export default function AdminPage(): React.ReactElement {
     const typed = confirmDeleteText.trim().toLowerCase();
     const matches = !!expected && expected === typed;
     const close = (): void => { setConfirmDeleteEvent(null); setConfirmDeleteText(''); };
+    // v24.0: Narrowing in Primitive auflösen — sonst verliert TS die
+    // Discriminated-Union-Verengung in den verschachtelten JSX-Closures.
+    const pol = deletePolicy;
+    const polLoaded = pol && pol.loading === false ? pol : null;
+    const polLoading = !pol || pol.loading === true;
+    const polAllowed = !!polLoaded && polLoaded.allowed;
+    const polRequiresTitle = !!polLoaded && polLoaded.requiresTitle;
+    const polExternalCount = polLoaded ? polLoaded.externalCount : 0;
+    const polReason = polLoaded ? polLoaded.reason : undefined;
+    const canDelete = polAllowed && (polRequiresTitle ? matches : true);
     return (
       <div
         style={{
@@ -3744,68 +3832,96 @@ export default function AdminPage(): React.ReactElement {
               style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: isDeleting ? 'not-allowed' : 'pointer', color: 'var(--dex-gray-500)' }}
             ><X size={20} /></button>
           </div>
-          <p style={{ margin: '0 0 12px', fontSize: '0.88rem', lineHeight: 1.55 }}>
-            {isDe
-              ? <>Du bist dabei das Event <strong>&bdquo;{confirmDeleteEvent.title}&ldquo;</strong> zu löschen.</>
-              : <>You are about to delete the event <strong>&bdquo;{confirmDeleteEvent.title}&ldquo;</strong>.</>}
-          </p>
-          <ul style={{ margin: '0 0 16px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.55, paddingLeft: 18 }}>
-            <li>{isDe ? 'Subsite (inkl. Teilnehmerliste) und Event-Item wandern in den SharePoint-Papierkorb.' : 'Subsite (incl. attendee list) and event item move to the SharePoint recycle bin.'}</li>
-            <li>{isDe ? 'Wiederherstellung durch einen Admin innerhalb von 93 Tagen möglich (zweistufig).' : 'A site collection admin can restore within 93 days (two-stage).'}</li>
-            <li>{isDe ? 'Outlook-Termin wird über den Power-Automate-Flow gelöscht.' : 'Outlook calendar event will be deleted via the Power Automate flow.'}</li>
-            <li>{isDe ? 'Diese Aktion wird im DEX_ChangeLog mit deinem Namen + Datum protokolliert.' : 'This action is logged in DEX_ChangeLog with your name + date.'}</li>
-          </ul>
-          <div style={{ background: 'rgba(218,41,28,0.06)', border: '1px solid var(--dex-red, #c00)', padding: 12, borderRadius: 8, marginBottom: 16 }}>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 6 }}>
-              {isDe
-                ? <>Tippe zur Bestätigung den Event-Titel <strong>kleingeschrieben</strong> ein:</>
-                : <>Type the event title <strong>in lowercase</strong> to confirm:</>}
-            </label>
-            <code style={{ display: 'inline-block', padding: '4px 8px', background: '#fff', borderRadius: 4, fontSize: '0.85rem', marginBottom: 8, wordBreak: 'break-all' }}>{expected}</code>
-            <input
-              className="form-input"
-              value={confirmDeleteText}
-              onChange={e => setConfirmDeleteText(e.target.value)}
-              placeholder={isDe ? 'Event-Titel kleingeschrieben…' : 'Event title in lowercase…'}
-              disabled={isDeleting}
-              autoFocus
-              style={{ width: '100%' }}
-            />
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-            <button
-              type="button"
-              className="btn btn-outline"
-              onClick={close}
-              disabled={isDeleting}
-            >{isDe ? 'Abbrechen' : 'Cancel'}</button>
-            <button
-              type="button"
-              className="btn btn-danger"
-              disabled={!matches || isDeleting}
-              style={{
-                background: matches && !isDeleting ? 'var(--dex-red, #c00)' : 'var(--dex-gray-300)',
-                color: '#fff',
-                border: 'none',
-                cursor: matches && !isDeleting ? 'pointer' : 'not-allowed',
-                padding: '8px 16px',
-              }}
-              onClick={async () => {
-                if (!matches || !confirmDeleteEvent) return;
-                setIsDeleting(true);
-                setDeletingId(confirmDeleteEvent.id);
-                try {
-                  await deleteEvent(confirmDeleteEvent.id);
-                } finally {
-                  setIsDeleting(false);
-                  setDeletingId(null);
-                  close();
-                }
-              }}
-            >
-              <Trash2 size={14} /> {isDeleting ? (isDe ? 'Wird gelöscht…' : 'Deleting…') : (isDe ? 'Endgültig löschen' : 'Delete')}
-            </button>
-          </div>
+          {polLoading ? (
+            <div style={{ padding: '16px 0', fontSize: '0.88rem', color: 'var(--dex-gray-600)' }}>
+              {isDe ? 'Prüfe, ob das Event gelöscht werden darf …' : 'Checking whether this event may be deleted …'}
+            </div>
+          ) : !polAllowed ? (
+            <>
+              <div style={{ background: 'rgba(218,41,28,0.06)', border: '1px solid var(--dex-red, #c00)', padding: 14, borderRadius: 8, marginBottom: 16, fontSize: '0.85rem', lineHeight: 1.55 }}>
+                <strong>{isDe ? 'Löschen nicht möglich' : 'Deletion not possible'}</strong>
+                <p style={{ margin: '6px 0 0' }}>{polReason}</p>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button type="button" className="btn btn-outline" onClick={close}>{isDe ? 'Schließen' : 'Close'}</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p style={{ margin: '0 0 12px', fontSize: '0.88rem', lineHeight: 1.55 }}>
+                {isDe
+                  ? <>Du bist dabei das Event <strong>&bdquo;{confirmDeleteEvent.title}&ldquo;</strong> zu löschen.</>
+                  : <>You are about to delete the event <strong>&bdquo;{confirmDeleteEvent.title}&ldquo;</strong>.</>}
+              </p>
+              <ul style={{ margin: '0 0 16px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.55, paddingLeft: 18 }}>
+                <li>{isDe ? 'Subsite (inkl. Teilnehmerliste) und Event-Item wandern in den SharePoint-Papierkorb.' : 'Subsite (incl. attendee list) and event item move to the SharePoint recycle bin.'}</li>
+                <li>{isDe ? 'Wiederherstellung durch einen Admin innerhalb von 93 Tagen möglich (zweistufig).' : 'A site collection admin can restore within 93 days (two-stage).'}</li>
+                <li>{isDe ? 'Outlook-Termin wird über den Power-Automate-Flow gelöscht.' : 'Outlook calendar event will be deleted via the Power Automate flow.'}</li>
+                <li>{isDe ? 'Diese Aktion wird im DEX_ChangeLog mit deinem Namen + Datum protokolliert.' : 'This action is logged in DEX_ChangeLog with your name + date.'}</li>
+              </ul>
+              {polRequiresTitle ? (
+                <div style={{ background: 'rgba(218,41,28,0.06)', border: '1px solid var(--dex-red, #c00)', padding: 12, borderRadius: 8, marginBottom: 16 }}>
+                  <p style={{ margin: '0 0 8px', fontSize: '0.82rem', color: 'var(--dex-gray-700)' }}>
+                    {isDe
+                      ? <>Dieses Event hatte <strong>{polExternalCount}</strong> Anmeldung(en) über das Organizer-Team hinaus und ist älter als ein Jahr. Zur Sicherheit:</>
+                      : <>This event had <strong>{polExternalCount}</strong> registration(s) beyond the organizer team and is older than a year. For safety:</>}
+                  </p>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 6 }}>
+                    {isDe
+                      ? <>Tippe zur Bestätigung den Event-Titel <strong>kleingeschrieben</strong> ein:</>
+                      : <>Type the event title <strong>in lowercase</strong> to confirm:</>}
+                  </label>
+                  <code style={{ display: 'inline-block', padding: '4px 8px', background: '#fff', borderRadius: 4, fontSize: '0.85rem', marginBottom: 8, wordBreak: 'break-all' }}>{expected}</code>
+                  <input
+                    className="form-input"
+                    value={confirmDeleteText}
+                    onChange={e => setConfirmDeleteText(e.target.value)}
+                    placeholder={isDe ? 'Event-Titel kleingeschrieben…' : 'Event title in lowercase…'}
+                    disabled={isDeleting}
+                    autoFocus
+                    style={{ width: '100%' }}
+                  />
+                </div>
+              ) : (
+                <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-700)' }}>
+                  {isDe ? 'Dieses Event hat keine Anmeldungen über das Organizer-Team hinaus. Wirklich löschen?' : 'This event has no registrations beyond the organizer team. Delete it?'}
+                </p>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={close}
+                  disabled={isDeleting}
+                >{isDe ? 'Abbrechen' : 'Cancel'}</button>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  disabled={!canDelete || isDeleting}
+                  style={{
+                    background: canDelete && !isDeleting ? 'var(--dex-red, #c00)' : 'var(--dex-gray-300)',
+                    color: '#fff', border: 'none',
+                    cursor: canDelete && !isDeleting ? 'pointer' : 'not-allowed',
+                    padding: '8px 16px',
+                  }}
+                  onClick={async () => {
+                    if (!canDelete || !confirmDeleteEvent) return;
+                    setIsDeleting(true);
+                    setDeletingId(confirmDeleteEvent.id);
+                    try {
+                      await deleteEvent(confirmDeleteEvent.id);
+                    } finally {
+                      setIsDeleting(false);
+                      setDeletingId(null);
+                      close();
+                    }
+                  }}
+                >
+                  <Trash2 size={14} /> {isDeleting ? (isDe ? 'Wird gelöscht…' : 'Deleting…') : (isDe ? 'Endgültig löschen' : 'Delete')}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
@@ -4062,18 +4178,22 @@ export default function AdminPage(): React.ReactElement {
         ) : (
           <>
           {(() => {
-            const renderEventCard = (event: DeloitteEvent, opts?: { muted?: boolean }): React.ReactElement => (
+            const renderEventCard = (event: DeloitteEvent, opts?: { muted?: boolean }): React.ReactElement => {
+              // v24.7 (Q/R): moderne Status-Leiste links über die volle Karten-
+              // höhe (statt Eck-Winkel). Farbe: blau = abgeschlossen/vergangen,
+              // orange = Entwurf, grün = aktiv. Bedeutung erklärt die Legende.
+              const past = isPastEvent(event);
+              const statusColor = past ? 'var(--dex-blue, #0076a8)' : event.isFictive ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)';
+              const statusLabel = past ? (isDe ? 'Abgeschlossen' : 'Completed') : event.isFictive ? (isDe ? 'Entwurf' : 'Draft') : (isDe ? 'Aktiv' : 'Active');
+              return (
               <div
                 key={event.id}
                 className="card card-clickable"
-                style={{ position: 'relative', padding: '26px 24px 22px', cursor: 'pointer', opacity: opts?.muted ? 0.85 : 1, overflow: 'hidden' }}
+                style={{ position: 'relative', padding: '26px 24px 22px 28px', cursor: 'pointer', opacity: opts?.muted ? 0.85 : 1, overflow: 'hidden' }}
               >
-                {/* v23.44: Status-Farbmarker (ohne Text) in der oberen linken
-                    Ecke — grün = aktiv, orange = Entwurf. Bedeutung erklärt die
-                    Legende über der Liste. */}
                 <span
-                  title={event.isFictive ? (isDe ? 'Entwurf' : 'Draft') : (isDe ? 'Aktiv' : 'Active')}
-                  style={{ position: 'absolute', top: 0, left: 0, width: 18, height: 18, borderTopLeftRadius: 'var(--dex-radius)', borderBottomRightRadius: 9, background: event.isFictive ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)' }}
+                  title={statusLabel}
+                  style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 6, borderTopLeftRadius: 'var(--dex-radius)', borderBottomLeftRadius: 'var(--dex-radius)', background: statusColor }}
                 />
                 <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                   <div onClick={() => handleSelectEvent(event)} style={{ flex: '1 1 260px', display: 'flex', alignItems: 'center', gap: 16, cursor: 'pointer' }}>
@@ -4133,6 +4253,27 @@ export default function AdminPage(): React.ReactElement {
                         </span>
                       )}
                     </div>
+                    {/* v24.6: abgelaufene Events aus der EIGENEN Übersicht aus-/einblenden. */}
+                    {isPastEvent(event) && (
+                      archivedEventIds.has(event.id) ? (
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ fontSize: '0.74rem', padding: '4px 10px' }}
+                          disabled={archiveBusyId === event.id}
+                          onClick={e => { e.stopPropagation(); void handleUnarchiveEvent(event); }}
+                        >{archiveBusyId === event.id ? '…' : (isDe ? 'Einblenden' : 'Unhide')}</button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ fontSize: '0.74rem', padding: '4px 10px' }}
+                          title={isDe ? 'Aus meiner Übersicht ausblenden — das Event bleibt erhalten und für andere sichtbar.' : 'Hide from my overview — the event is kept and stays visible to others.'}
+                          disabled={archiveBusyId === event.id}
+                          onClick={e => { e.stopPropagation(); void handleArchiveEvent(event); }}
+                        >{archiveBusyId === event.id ? '…' : (isDe ? 'Archivieren' : 'Archive')}</button>
+                      )
+                    )}
                     {/* v10.20 / v11.9: Migrations-Button für Legacy-B2Run-Events.
                         Erkennt das Event als 'altes B2Run' wenn entweder
                         type === 'B2Run' (alte EventType-Spalte) ODER mind.
@@ -4328,7 +4469,8 @@ export default function AdminPage(): React.ReactElement {
                   </div>
                 </div>
               </div>
-            );
+              );
+            };
             return (
               <>
                 {/* v18.2: Sortier- + Entwurf-Filter-Leiste ueber der Event-Liste. */}
@@ -4361,9 +4503,21 @@ export default function AdminPage(): React.ReactElement {
                       {isDe ? `Entwürfe ausblenden (${draftCount})` : `Hide drafts (${draftCount})`}
                     </label>
                   )}
+                  {/* v24.6: Archivierte (für mich ausgeblendete) Events einblenden. */}
+                  {archivedCount > 0 && (
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', color: 'var(--dex-gray-700)', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={showArchivedEvents}
+                        onChange={e => setShowArchivedEvents(e.target.checked)}
+                        style={{ accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer' }}
+                      />
+                      {isDe ? `Archivierte anzeigen (${archivedCount})` : `Show archived (${archivedCount})`}
+                    </label>
+                  )}
                 </div>
-                {/* v23.44: Farb-Legende für den Status-Eckmarker der Karten. */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 18, margin: '0 4px 10px', fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
+                {/* v23.44/v24.7: Farb-Legende für die Status-Leiste links an den Karten. */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 18, margin: '0 4px 10px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', flexWrap: 'wrap' }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ width: 12, height: 12, borderRadius: 3, background: 'var(--dex-green, #86bc25)', display: 'inline-block' }} />
                     {isDe ? 'Aktiv (für Teilnehmer sichtbar)' : 'Active (visible to attendees)'}
@@ -4371,6 +4525,10 @@ export default function AdminPage(): React.ReactElement {
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ width: 12, height: 12, borderRadius: 3, background: 'var(--dex-orange, #ed8b00)', display: 'inline-block' }} />
                     {isDe ? 'Entwurf (noch nicht sichtbar)' : 'Draft (not yet visible)'}
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 12, height: 12, borderRadius: 3, background: 'var(--dex-blue, #0076a8)', display: 'inline-block' }} />
+                    {isDe ? 'Abgeschlossen (vorbei)' : 'Completed (past)'}
                   </span>
                 </div>
                 <div className="my-events-list">
@@ -5097,7 +5255,7 @@ export default function AdminPage(): React.ReactElement {
                         {/* v19.30 (Feature A): Hauptevent-Felder bearbeiten —
                             nur wenn es Hauptevent-Custom-Felder gibt UND die
                             Person eine Hauptevent-Registrierung hat. */}
-                        {canManage && editableParentFieldCount > 0 && hasParentReg(row.emailKey) && (
+                        {canManage && !orgPastLock && editableParentFieldCount > 0 && hasParentReg(row.emailKey) && (
                           <button
                             type="button"
                             className="btn btn-secondary"
@@ -5108,8 +5266,9 @@ export default function AdminPage(): React.ReactElement {
                             <Pencil size={12} /> {isDe ? 'Felder' : 'Fields'}
                           </button>
                         )}
-                        {/* v19.30 (Feature B): Abmelden mit Sub-Event-Auswahl. */}
-                        {canManage && (
+                        {/* v19.30 (Feature B): Abmelden mit Sub-Event-Auswahl.
+                            v24.8 (O): bei abgeschlossenen Events für Organizer gesperrt. */}
+                        {canManage && !orgPastLock && (
                           <button
                             type="button"
                             className="btn btn-secondary"
@@ -5419,7 +5578,25 @@ export default function AdminPage(): React.ReactElement {
                     <button
                       type="button"
                       className="btn btn-secondary"
-                      onClick={() => navigate('edit-event', selectedEvent.id)}
+                      onClick={async () => {
+                        // Admins bearbeiten direkt (voller Zugriff).
+                        if (isAdmin) { navigate('edit-event', selectedEvent.id); return; }
+                        // v24.7 (O): abgeschlossene/vergangene Events sind für
+                        // Organizer als Archivierungsschutz NICHT mehr bearbeitbar.
+                        if (isEventOver(selectedEvent)) {
+                          const ok = await confirmDialog(
+                            isDe
+                              ? 'Dieses Event ist bereits vorbei und damit abgeschlossen — Bearbeiten ist als Archivierungsschutz nicht mehr möglich. Möchtest du stattdessen ein neues Event anlegen (du kannst ein bestehendes als Vorlage nutzen)?'
+                              : 'This event is over and therefore completed — editing is locked (archival protection). Would you like to create a new event instead?',
+                            { confirmLabel: isDe ? 'Neues Event anlegen' : 'Create new event', cancelLabel: isDe ? 'Abbrechen' : 'Cancel' });
+                          if (ok) navigate('create-event');
+                          return;
+                        }
+                        // v24.8 (P korrigiert): aktive Events direkt bearbeiten —
+                        // der „lieber neues Event?"-Hinweis erscheint NUR bei
+                        // abgeschlossenen Events (siehe Zweig oben).
+                        navigate('edit-event', selectedEvent.id);
+                      }}
                       style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', padding: '6px 12px' }}
                       title={t('admin.editbutton') || (isDe ? 'Event bearbeiten' : 'Edit event')}
                     >
@@ -9491,6 +9668,7 @@ export default function AdminPage(): React.ReactElement {
                           {isDe ? 'Einchecken' : 'Check in'}
                         </button>
                       )}
+                      {!orgPastLock && (
                       <button
                         className="btn btn-secondary"
                         style={{ fontSize: '0.75rem', padding: '4px 10px', color: 'var(--dex-red, #c00)' }}
@@ -9515,6 +9693,7 @@ export default function AdminPage(): React.ReactElement {
                       >
                         {isDe ? 'Abmelden' : 'Cancel'}
                       </button>
+                      )}
                     </td>
                   );
                 }
@@ -12843,6 +13022,7 @@ export default function AdminPage(): React.ReactElement {
                       }}
                     />
                     <InternationalSearchToggle
+                      query={adminAddMemberQuery}
                       checked={adminAddMemberIncludeIntl}
                       onChange={setAdminAddMemberIncludeIntl}
                       isDe={isDe}

@@ -1065,6 +1065,10 @@ export default function EventCreationPage(): React.ReactElement {
   // Mit Sub-Event + Team). Klick auf eine Karte füllt das Formular
   // mit der jeweiligen Variante und schliesst das Modal.
   const [showDemoVariantModal, setShowDemoVariantModal] = React.useState<boolean>(false);
+  // v24.9 (E): „Eigenes Event als Vorlage" — aufklappbare Kachelgalerie der
+  // bisherigen Events des Organizers; Auswahl lädt Einstellungen + Bild.
+  const [showTemplatePicker, setShowTemplatePicker] = React.useState<boolean>(false);
+  const [templateLoadingId, setTemplateLoadingId] = React.useState<string | null>(null);
   // v17.21: Modal nach erfolgreichem Speichern — fragt den Organizer, ob er
   // eine A4-Zusammenfassung des Events herunterladen möchte. Pending-Payload
   // hält die Info für den `dex-event-submit-success`-Dispatch, der erst
@@ -1111,6 +1115,17 @@ export default function EventCreationPage(): React.ReactElement {
   // v23.25: Organizer auf der Anmeldeseite groß (Foto + Mail + Rolle direkt
   // sichtbar) statt klein als Chip mit Hover (Piggyback _organizerDisplayLarge).
   const [organizerDisplayLarge, setOrganizerDisplayLarge] = React.useState(editEvent ? !!editEvent.organizerDisplayLarge : false);
+  // v24.8 (J): EINZELNE Organizer von der Anzeige ausnehmen (Klick auf den Chip).
+  // Sie behalten alle Rechte/Mails — sie werden nur nicht als Ansprechpartner
+  // auf der Anmelde-Seite gezeigt. Piggyback `_hiddenOrganizers` (E-Mails, lc).
+  const [hiddenOrganizerEmails, setHiddenOrganizerEmails] = React.useState<string[]>(
+    editEvent && editEvent.hiddenOrganizerEmails ? editEvent.hiddenOrganizerEmails.map(e => (e || '').toLowerCase()).filter(Boolean) : []
+  );
+  const toggleOrganizerHidden = (email: string): void => {
+    const lc = (email || '').toLowerCase();
+    if (!lc) return;
+    setHiddenOrganizerEmails(prev => prev.indexOf(lc) >= 0 ? prev.filter(x => x !== lc) : [...prev, lc]);
+  };
   // Nur im Edit-Modus: standardmäßig wird der Outlook-Termin NICHT angefasst,
   // damit bei kleinen Aenderungen (z.B. Description) nicht unnötig eine
   // "Updated meeting"-Benachrichtigung an alle Teilnehmer geht. Der Organizer
@@ -1141,7 +1156,7 @@ export default function EventCreationPage(): React.ReactElement {
           // beim Edit-Save (letzter Spread `...topOverrides`) das frisch
           // berechnete Flag, d.h. Abwählen bliebe ohne Wirkung.
           _teamTerm, _teamMembersCannotCreate, _assistantsCanSee, _previewBeforeActive, _imageDisplay,
-          _organizerDisplayLarge,
+          _organizerDisplayLarge, _hiddenOrganizers,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -1152,7 +1167,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _subEventsOnlyMode; void _childEventTerm;
         void _inheritFlags; void _hideOrganizer; void _headerImageLayout;
         void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee; void _previewBeforeActive; void _imageDisplay;
-        void _organizerDisplayLarge;
+        void _organizerDisplayLarge; void _hiddenOrganizers;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
     })() : {}
@@ -2309,12 +2324,87 @@ export default function EventCreationPage(): React.ReactElement {
     setEmailLanguage('DE');
   };
 
-  // v11.88: Berechnet einen Demo-Termin relativ zu „heute".
-  // daysAhead = Anzahl Tage in der Zukunft, hour/minute = Start.
-  const demoDate = (daysAhead: number, hour: number, minute: number): Date => {
+  // v24.9 (E): bestehendes Event als Vorlage übernehmen — Einstellungen + Bild
+  // ins neue Formular laden (KEINE Datumswerte, KEINE Sub-Events — die legt der
+  // Organizer fürs neue Event frisch fest). Das Bild wird vom (gleichen
+  // SharePoint-)Anhang gefetcht und als Datei für den Re-Upload übernommen.
+  const applyEventTemplate = async (ev: (typeof events)[number]): Promise<void> => {
+    setTemplateLoadingId(ev.id);
+    try {
+      resetDemoVariantBaseState();
+      setTitle(`${ev.title || ''} (Kopie)`.trim());
+      setDescription(ev.description || '');
+      setLocation(ev.location || '');
+      setAddrStreet(ev.locationAddress?.street || '');
+      setAddrHouseNo(ev.locationAddress?.houseNo || '');
+      setAddrZip(ev.locationAddress?.zip || '');
+      setAddrCity(ev.locationAddress?.city || '');
+      setLocationFilter((ev.locationAudience || []).join(', '));
+      setAudience((ev.audienceFilter || []).join(', '));
+      setFilterMode(ev.filterMode || 'OR');
+      if (ev.maxParticipants && ev.maxParticipants > 0) { setUnlimitedParticipants(false); setMaxParticipants(String(ev.maxParticipants)); }
+      else { setUnlimitedParticipants(true); setMaxParticipants(''); }
+      setWaitlistEnabled(!!ev.waitlistEnabled);
+      setAskSalutation(!!ev.askSalutation);
+      if (ev.agenda && ev.agenda.length > 0) setAgenda([...ev.agenda]);
+      // Geteilte Kapazität übernehmen, falls vorhanden.
+      if ((ev.splitLabelA || '').trim() || (ev.splitLabelB || '').trim() || (ev.durchstarterCapacity || 0) > 0 || (ev.funstarterCapacity || 0) > 0) {
+        setUseSplitCapacities(true);
+        setSplitLabelA(ev.splitLabelA || '');
+        setSplitLabelB(ev.splitLabelB || '');
+        setDurchstarterCapacity(String(ev.durchstarterCapacity || 0));
+        setFunstarterCapacity(String(ev.funstarterCapacity || 0));
+        setSplitSharedWaitlist(!!ev.splitSharedWaitlist);
+      }
+      setCustomFields((ev.eventSpecificFields || []).map(f => ({
+        id: f.id, label: f.label, type: f.type, required: f.required,
+        options: f.options ? [...f.options] : [], visible: true,
+        ...(f.multi ? { multi: true } : {}),
+        ...(f.helpText ? { helpText: f.helpText } : {}),
+        ...(f.helpTextStyle === 'inline' ? { helpTextStyle: 'inline' as const } : {}),
+        ...(f.showIf ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } } : {}),
+        ...(f.onlyForGroup ? { onlyForGroup: f.onlyForGroup } : {}),
+        ...(f.confirmLabel ? { confirmLabel: f.confirmLabel } : {}),
+        ...(f.labelEn ? { labelEn: f.labelEn } : {}),
+        ...(f.helpTextEn ? { helpTextEn: f.helpTextEn } : {}),
+        ...(f.confirmLabelEn ? { confirmLabelEn: f.confirmLabelEn } : {}),
+        ...(f.optionsEn && f.optionsEn.length > 0 ? { optionsEn: [...f.optionsEn] } : {}),
+        ...(f.externalLinks && f.externalLinks.length > 0 ? { externalLinks: f.externalLinks.map(x => ({ ...x })) } : {}),
+        ...(f.ccOnEmails ? { ccOnEmails: true } : {}),
+      })));
+      // Bild: Vorschau sofort, Datei best-effort vom SP-Anhang nachladen.
+      if (ev.imageUrl) {
+        setImagePreview(ev.imageUrl);
+        try {
+          const resp = await fetch(ev.imageUrl);
+          if (resp.ok) {
+            const blob = await resp.blob();
+            const ext = (blob.type && blob.type.indexOf('png') >= 0) ? 'png' : 'jpg';
+            setImageFile(new File([blob], `vorlage-bild.${ext}`, { type: blob.type || 'image/jpeg' }));
+          }
+        } catch { /* nur Vorschau, kein Re-Upload */ }
+      }
+      setShowTemplatePicker(false);
+      setCurrentStep(0);
+    } finally {
+      setTemplateLoadingId(null);
+    }
+  };
+
+  // v24.5: Demo-Events finden immer am NÄCHSTEN Samstag statt.
+  const nextSaturdayAt = (hour: number, minute: number): Date => {
     const d = new Date();
-    d.setDate(d.getDate() + daysAhead);
+    const day = d.getDay(); // 0=So … 6=Sa
+    let add = (6 - day + 7) % 7; // Tage bis zum kommenden Samstag
+    if (add === 0) add = 7;      // heute Samstag → nächster Samstag
+    d.setDate(d.getDate() + add);
     d.setHours(hour, minute, 0, 0);
+    return d;
+  };
+  // Tag(e) vor dem nächsten Samstag — für Anmelde-/Abmeldefristen.
+  const beforeNextSaturday = (daysBefore: number, hour: number, minute: number): Date => {
+    const d = nextSaturdayAt(hour, minute);
+    d.setDate(d.getDate() - daysBefore);
     return d;
   };
 
@@ -2323,9 +2413,9 @@ export default function EventCreationPage(): React.ReactElement {
   // Felder, die diese Variante NICHT setzt).
   const loadDemoStandard = (): void => {
     resetDemoVariantBaseState();
-    const start = demoDate(14, 10, 0);
-    const end = demoDate(14, 12, 0);
-    const deadline = demoDate(13, 23, 59);
+    const start = nextSaturdayAt(10, 0);
+    const end = nextSaturdayAt(12, 0);
+    const deadline = beforeNextSaturday(1, 23, 59);
     setTitle('Demo-Meeting Standard');
     setDescription('Beispielhaftes einfaches Meeting ohne Gruppen und ohne Sub-Events.');
     setLocation('Heinrich Campus Düsseldorf, 6. Etage');
@@ -2347,9 +2437,9 @@ export default function EventCreationPage(): React.ReactElement {
 
   const loadDemoGroups = (): void => {
     resetDemoVariantBaseState();
-    const start = demoDate(14, 9, 0);
-    const end = demoDate(14, 17, 0);
-    const deadline = demoDate(12, 23, 59);
+    const start = nextSaturdayAt(9, 0);
+    const end = nextSaturdayAt(17, 0);
+    const deadline = beforeNextSaturday(2, 23, 59);
     setTitle('Demo-Workshop mit Gruppen');
     setDescription('Workshop mit zwei Teilnehmer-Gruppen (Vormittag/Nachmittag) und gemeinsamer Warteliste.');
     setLocation('Deloitte Office Köln');
@@ -2371,9 +2461,9 @@ export default function EventCreationPage(): React.ReactElement {
 
   const loadDemoSubEvent = (): void => {
     resetDemoVariantBaseState();
-    const start = demoDate(21, 9, 0);
-    const end = demoDate(21, 17, 0);
-    const deadline = demoDate(18, 23, 59);
+    const start = nextSaturdayAt(9, 0);
+    const end = nextSaturdayAt(17, 0);
+    const deadline = beforeNextSaturday(3, 23, 59);
     setTitle('Demo-Conference mit Dinner');
     setDescription('Hauptkonferenz + abendliches Dinner als getrenntes Sub-Event mit eigener Anmeldung.');
     setLocation('Deloitte Office Hamburg');
@@ -2390,8 +2480,8 @@ export default function EventCreationPage(): React.ReactElement {
       { id: `cf-${tDemo}`, label: 'Hotel-Buchung', type: 'select', required: false,
         options: ['Ja, ich brauche ein Hotel', 'Nein, ich reise abends ab'], visible: true },
     ]);
-    const dinnerStart = demoDate(21, 18, 0);
-    const dinnerEnd = demoDate(21, 22, 0);
+    const dinnerStart = nextSaturdayAt(18, 0);
+    const dinnerEnd = nextSaturdayAt(22, 0);
     setSubEvents([
       {
         id: `se-${tDemo}`,
@@ -2412,9 +2502,9 @@ export default function EventCreationPage(): React.ReactElement {
 
   const loadDemoSubEventTeam = (): void => {
     resetDemoVariantBaseState();
-    const start = demoDate(14, 18, 0);
-    const end = demoDate(14, 22, 0);
-    const deadline = demoDate(9, 23, 59);
+    const start = nextSaturdayAt(18, 0);
+    const end = nextSaturdayAt(22, 0);
+    const deadline = beforeNextSaturday(5, 23, 59);
     setTitle('Demo-Kneipenquiz mit Team-Anmeldung');
     setDescription('Quizabend, bei dem ganze Teams über das Anmeldeformular angemeldet werden.');
     setLocation('Heinrich Campus Düsseldorf, 6. Etage, Dachterrasse');
@@ -2437,8 +2527,8 @@ export default function EventCreationPage(): React.ReactElement {
       { id: `cf-${tDemo}`, label: 'Essenspräferenz', type: 'select', required: true,
         options: ['Vegetarisch', 'Vegan', 'Keine Einschränkungen'], visible: true },
     ]);
-    const briefStart = demoDate(14, 17, 0);
-    const briefEnd = demoDate(14, 17, 30);
+    const briefStart = nextSaturdayAt(17, 0);
+    const briefEnd = nextSaturdayAt(17, 30);
     setSubEvents([
       {
         id: `se-${tDemo}`,
@@ -3316,6 +3406,7 @@ export default function EventCreationPage(): React.ReactElement {
         : {};
       // v18.9: Organizer-Anzeige ausblenden (Piggyback).
       const hideOrganizerConfig = hideOrganizer ? { _hideOrganizer: true } : {};
+      const hiddenOrganizersConfig: Record<string, unknown> = hiddenOrganizerEmails.length > 0 ? { _hiddenOrganizers: hiddenOrganizerEmails } : {};
       // v22.78: Team-Begriff + „keine neuen Teams"-Flag (Piggyback).
       const teamTermConfig = (teamTermSingular.trim() || teamTermPlural.trim())
         ? { _teamTerm: { singular: teamTermSingular.trim(), plural: teamTermPlural.trim() } }
@@ -3340,7 +3431,7 @@ export default function EventCreationPage(): React.ReactElement {
         });
         return Object.keys(out).length ? { _imageDisplay: out } : {};
       })();
-      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(teamTermConfig).length > 0 || Object.keys(teamNoCreateConfig).length > 0 || Object.keys(assistantsCanSeeConfig).length > 0 || Object.keys(organizerDisplayLargeConfig).length > 0 || Object.keys(previewBeforeActiveConfig).length > 0 || Object.keys(imageDisplayConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0 || Object.keys(headerImageLayoutConfig).length > 0)
+      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(teamTermConfig).length > 0 || Object.keys(teamNoCreateConfig).length > 0 || Object.keys(assistantsCanSeeConfig).length > 0 || Object.keys(organizerDisplayLargeConfig).length > 0 || Object.keys(previewBeforeActiveConfig).length > 0 || Object.keys(imageDisplayConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0 || Object.keys(hiddenOrganizersConfig).length > 0 || Object.keys(headerImageLayoutConfig).length > 0)
         ? JSON.stringify({
             ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
             ...(effOutlookLogo ? { _outlookLogo: effOutlookLogo } : {}),
@@ -3359,6 +3450,7 @@ export default function EventCreationPage(): React.ReactElement {
             ...previewBeforeActiveConfig,
             ...imageDisplayConfig,
             ...hideOrganizerConfig,
+            ...hiddenOrganizersConfig,
             // v18.73: Header-Bild-Layout (Breite + Innenabstand) — event-weit.
             ...headerImageLayoutConfig,
             ...topOverrides,
@@ -3907,6 +3999,7 @@ export default function EventCreationPage(): React.ReactElement {
             : {};
           // v18.9: Organizer-Anzeige ausblenden (Piggyback).
           const hideOrganizerExtra = hideOrganizer ? { _hideOrganizer: true } : {};
+          const hiddenOrganizersExtra: Record<string, unknown> = hiddenOrganizerEmails.length > 0 ? { _hiddenOrganizers: hiddenOrganizerEmails } : {};
           // v22.78: Team-Begriff + „keine neuen Teams"-Flag (Piggyback).
           const teamTermExtra = (teamTermSingular.trim() || teamTermPlural.trim())
             ? { _teamTerm: { singular: teamTermSingular.trim(), plural: teamTermPlural.trim() } }
@@ -3931,7 +4024,7 @@ export default function EventCreationPage(): React.ReactElement {
             return Object.keys(out).length ? { _imageDisplay: out } : {};
           })();
           // v11.93: Top-Level-Logos aus dem Resolver lesen.
-          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0 || Object.keys(teamTermExtra).length > 0 || Object.keys(teamNoCreateExtra).length > 0 || Object.keys(assistantsCanSeeExtra).length > 0 || Object.keys(organizerDisplayLargeExtra).length > 0 || Object.keys(previewBeforeActiveExtra).length > 0 || Object.keys(imageDisplayExtra).length > 0 || Object.keys(hideOrganizerExtra).length > 0 || Object.keys(headerImageLayoutConfig).length > 0;
+          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0 || Object.keys(teamTermExtra).length > 0 || Object.keys(teamNoCreateExtra).length > 0 || Object.keys(assistantsCanSeeExtra).length > 0 || Object.keys(organizerDisplayLargeExtra).length > 0 || Object.keys(previewBeforeActiveExtra).length > 0 || Object.keys(imageDisplayExtra).length > 0 || Object.keys(hideOrganizerExtra).length > 0 || Object.keys(hiddenOrganizersExtra).length > 0 || Object.keys(headerImageLayoutConfig).length > 0;
           return hasAny
             ? JSON.stringify({
                 ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
@@ -3951,6 +4044,7 @@ export default function EventCreationPage(): React.ReactElement {
                 ...previewBeforeActiveExtra,
                 ...imageDisplayExtra,
                 ...hideOrganizerExtra,
+                ...hiddenOrganizersExtra,
                 // v18.73: Header-Bild-Layout (Breite + Innenabstand) — event-weit.
                 ...headerImageLayoutConfig,
                 ...emailTemplateOverrides,
@@ -5739,6 +5833,105 @@ export default function EventCreationPage(): React.ReactElement {
                   : 'Here you define the foundation of the event: title, date, description, image and the people who run or test it.'}
               </p>
 
+              {/* v24.9 (E): „Eigenes Event als Vorlage" — prominenter Fächer aus
+                  Bildern bisheriger Events. Nur im NEU-Modus, nur wenn der
+                  Organizer schon eigene Events hat. */}
+              {!isEditMode && (() => {
+                const meLc = (currentUser?.email || '').toLowerCase();
+                const tmpl = (events || []).filter(e => {
+                  if (e.parentEventId || e.isDemoShowcase) return false;
+                  return (e.organizerEmails || []).some(x => (x || '').toLowerCase() === meLc)
+                    || (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === meLc);
+                }).sort((a, b) => {
+                  const ai = a.imageUrl ? 1 : 0, bi = b.imageUrl ? 1 : 0;
+                  if (ai !== bi) return bi - ai;
+                  const at = a.startDate ? new Date(a.startDate).getTime() : 0;
+                  const bt = b.startDate ? new Date(b.startDate).getTime() : 0;
+                  return bt - at;
+                });
+                if (tmpl.length === 0) return null;
+                const fan = tmpl.filter(e => e.imageUrl).slice(0, 5);
+                const fanItems = fan.length > 0 ? fan : tmpl.slice(0, 5);
+                return (
+                  <div style={{ margin: '0 0 22px', border: '2px solid var(--dex-green, #86bc25)', borderRadius: 16, background: 'linear-gradient(135deg, rgba(134,188,37,0.10), rgba(0,118,168,0.06))', overflow: 'hidden' }}>
+                    {!showTemplatePicker ? (
+                      <button
+                        type="button"
+                        onClick={() => setShowTemplatePicker(true)}
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 20, padding: '18px 22px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left' }}
+                      >
+                        {/* Fächer aus Event-Bildern */}
+                        <div style={{ position: 'relative', width: 132, height: 92, flexShrink: 0 }}>
+                          {fanItems.map((e, i) => {
+                            const n = fanItems.length;
+                            const spread = 16; // Grad pro Karte
+                            const rot = (i - (n - 1) / 2) * spread;
+                            const tx = (i - (n - 1) / 2) * 22;
+                            return (
+                              <div key={e.id} style={{
+                                position: 'absolute', left: '50%', top: 6, width: 64, height: 80, marginLeft: -32,
+                                borderRadius: 10, border: '3px solid #fff', boxShadow: '0 4px 10px rgba(0,0,0,0.18)',
+                                transform: `translateX(${tx}px) rotate(${rot}deg)`, transformOrigin: 'bottom center',
+                                background: e.imageUrl ? `url(${e.imageUrl}) center/cover no-repeat` : 'linear-gradient(135deg, var(--dex-green, #86bc25), var(--dex-blue, #0076a8))',
+                                zIndex: i,
+                              }} />
+                            );
+                          })}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 800, fontSize: '1.05rem', color: 'var(--dex-green-dark, #4a7c1f)', marginBottom: 4 }}>
+                            {isDe ? 'Eigenes Event als Vorlage nutzen?' : 'Use one of your events as a template?'}
+                          </div>
+                          <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                            {isDe
+                              ? <>Übernimm Einstellungen und Bild aus einem deiner <strong>{tmpl.length}</strong> bisherigen Events — Datum und Anmeldungen legst du danach neu fest. <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700 }}>Klicken zum Auswählen ▸</span></>
+                              : <>Reuse settings and image from one of your <strong>{tmpl.length}</strong> past events. <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700 }}>Click to choose ▸</span></>}
+                          </div>
+                        </div>
+                      </button>
+                    ) : (
+                      <div style={{ padding: '16px 20px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+                          <span style={{ fontWeight: 800, fontSize: '1rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                            {isDe ? 'Vorlage wählen' : 'Choose a template'}
+                          </span>
+                          <button type="button" onClick={() => setShowTemplatePicker(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-gray-500)', fontSize: '0.82rem', fontWeight: 600 }}>
+                            {isDe ? 'Abbrechen' : 'Cancel'}
+                          </button>
+                        </div>
+                        <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 6 }}>
+                          {tmpl.map(e => (
+                            <button
+                              key={e.id}
+                              type="button"
+                              disabled={!!templateLoadingId}
+                              onClick={() => { void applyEventTemplate(e); }}
+                              style={{
+                                flex: '0 0 auto', width: 150, textAlign: 'left', cursor: templateLoadingId ? 'wait' : 'pointer',
+                                background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 12, padding: 0, overflow: 'hidden',
+                                boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                              }}
+                            >
+                              <div style={{ width: '100%', height: 90, background: e.imageUrl ? `url(${e.imageUrl}) center/cover no-repeat` : 'linear-gradient(135deg, var(--dex-green, #86bc25), var(--dex-blue, #0076a8))' }} />
+                              <div style={{ padding: '8px 10px' }}>
+                                <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--dex-gray-800)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {templateLoadingId === e.id ? (isDe ? 'Wird geladen…' : 'Loading…') : e.title}
+                                </div>
+                                {e.startDate && (
+                                  <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                                    {new Date(e.startDate).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                  </div>
+                                )}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {/* v11.57 / v11.63: Hinweisbox bei ausstehendem Outlook-Sync.
                   Sichtbar bei editEvent, wenn OutlookDirty=true auf dem
                   Hauptevent ODER auf mindestens einem Sub-Event gesetzt ist
@@ -6276,6 +6469,15 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
 
 
+              {/* v24.4 (G): Zwischenüberschrift „Organizer" mit grünem Balken. */}
+              <div style={{ borderLeft: '4px solid var(--dex-green)', padding: '4px 0 4px 12px', margin: '4px 0 18px' }}>
+                <div style={{ fontWeight: 800, fontSize: '1.02rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Organizer' : 'Organizers'}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
+                  {isDe
+                    ? 'Diese Personen können die Teilnehmerliste sehen und das Event einstellen.'
+                    : 'These people can see the attendee list and configure the event.'}
+                </div>
+              </div>
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={6} />
@@ -6368,14 +6570,16 @@ export default function EventCreationPage(): React.ReactElement {
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
                       {orgList.map((name, i) => {
                         const email = organizerEmails[i] || '';
+                        const orgHidden = !!email && hiddenOrganizerEmails.indexOf(email.toLowerCase()) >= 0;
                         return (
                         <span
                           key={`${name}-${i}`}
                           style={{
                             display: 'inline-flex', alignItems: 'center', gap: 6,
                             padding: '3px 6px 3px 4px',
-                            background: 'var(--dex-green)', color: '#fff',
+                            background: orgHidden ? 'var(--dex-gray-400, #9aa0a6)' : 'var(--dex-green)', color: '#fff',
                             borderRadius: 999, fontSize: '0.85rem', fontWeight: 500,
+                            opacity: orgHidden ? 0.85 : 1,
                           }}
                         >
                           {email ? (
@@ -6383,10 +6587,17 @@ export default function EventCreationPage(): React.ReactElement {
                               src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(email)}&size=S`}
                               alt={name}
                               onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                              style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', background: 'rgba(255,255,255,0.25)' }}
+                              style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', background: 'rgba(255,255,255,0.25)', filter: orgHidden ? 'grayscale(1)' : 'none' }}
                             />
                           ) : null}
-                          <span>{name}</span>
+                          {/* v24.8 (J): Klick auf den Namen blendet diesen Organizer
+                              auf der Anmelde-Seite aus/ein (Rechte bleiben). */}
+                          <span
+                            onClick={() => { if (email) toggleOrganizerHidden(email); }}
+                            title={email ? (isDe ? (orgHidden ? 'Wird auf der Anmeldeseite NICHT angezeigt — klicken zum Einblenden (Rechte bleiben)' : 'Klicken, um diesen Organizer auf der Anmeldeseite auszublenden (Rechte bleiben)') : (orgHidden ? 'Hidden on the registration page — click to show' : 'Click to hide this organizer on the registration page')) : undefined}
+                            style={{ cursor: email ? 'pointer' : 'default', textDecoration: orgHidden ? 'line-through' : 'none' }}
+                          >{name}</span>
+                          {orgHidden && <span style={{ fontSize: '0.68rem', fontStyle: 'italic', opacity: 0.95 }}>{isDe ? '(ausgeblendet)' : '(hidden)'}</span>}
                           {orgList.length > 1 && i > 0 && (
                             <button
                               type="button"
@@ -6412,6 +6623,12 @@ export default function EventCreationPage(): React.ReactElement {
                         </span>
                       );
                       })}
+                      {/* v24.8 (J): Tipp unter den Organizer-Namen. */}
+                      <span style={{ flexBasis: '100%', fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                        {isDe
+                          ? 'Tipp: Auf einen Namen klicken blendet diese Person auf der Anmeldeseite aus (sie behält alle Rechte). Erneut klicken zeigt sie wieder.'
+                          : 'Tip: click a name to hide that person on the registration page (they keep all rights). Click again to show.'}
+                      </span>
                     </div>
                   );
                 })()}
@@ -6442,6 +6659,7 @@ export default function EventCreationPage(): React.ReactElement {
                   style={errorBorderStyle('organizer')}
                 />
                 <InternationalSearchToggle
+                  query={organizerSearch}
                   checked={organizerIncludeIntl}
                   onChange={async next => {
                     setOrganizerIncludeIntl(next);
@@ -6547,34 +6765,58 @@ export default function EventCreationPage(): React.ReactElement {
                   werden (also nicht „ausgeblendet"). */}
               {!hideOrganizer && (
                 <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={organizerDisplayLarge}
-                      onChange={e => setOrganizerDisplayLarge(e.target.checked)}
-                      style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 2 }}
-                    />
-                    <span style={{ flex: 1 }}>
-                      <strong>{isDe ? 'Organizer groß anzeigen' : 'Show organizers large'}</strong>
-                      <InfoTooltip text={isDe
-                        ? <>
-                            <strong>Was du hier einstellst:</strong> wie die <strong>Organizer</strong> auf der Anmelde-Seite dargestellt werden.<br /><br />
-                            <strong>Aus (Standard):</strong> kleiner <strong>Chip</strong> mit Foto + Name — die Mail-Adresse und Rolle erscheinen erst beim <strong>Drüberfahren</strong> mit der Maus.<br /><br />
-                            <strong>An:</strong> die Organizer werden <strong>dauerhaft groß</strong> gezeigt (großes Foto, Name, klickbare <strong>E-Mail-Adresse</strong>, Rolle &amp; Standort) — Teilnehmer sehen die Kontaktdaten <strong>sofort</strong>, ohne die Maus darüber zu bewegen.
-                          </>
-                        : <>
-                            <strong>What this controls:</strong> how the <strong>organizers</strong> are displayed on the registration page.<br /><br />
-                            <strong>Off (default):</strong> small <strong>chip</strong> with photo + name — email and role only appear on <strong>hover</strong>.<br /><br />
-                            <strong>On:</strong> organizers are shown <strong>large permanently</strong> (big photo, name, clickable <strong>email</strong>, role &amp; location) — attendees see the contact details <strong>right away</strong>, no hover needed.
-                          </>
-                      } />
-                      <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-                        {isDe
-                          ? 'Default: aus — kleiner Chip, Details beim Drüberfahren.'
-                          : 'Default: off — small chip, details on hover.'}
-                      </span>
-                    </span>
+                  {/* v24.4 (I): explizite Wahl klein/groß statt einzelnem Toggle. */}
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {isDe ? 'Anzeige im Register-Screen:' : 'Display on the registration screen:'}
+                    <InfoTooltip text={isDe
+                      ? <>
+                          <strong>Was du hier einstellst:</strong> wie die <strong>Organizer</strong> auf der Anmelde-Seite dargestellt werden.<br /><br />
+                          <strong>Klein (Standard):</strong> kleiner <strong>Chip</strong> mit Foto + Name — die Mail-Adresse und Rolle erscheinen erst beim <strong>Drüberfahren</strong> mit der Maus.<br /><br />
+                          <strong>Groß:</strong> die Organizer werden <strong>dauerhaft groß</strong> gezeigt (großes Foto, Name, klickbare <strong>E-Mail-Adresse</strong>, Rolle &amp; Standort) — Teilnehmer sehen die Kontaktdaten <strong>sofort</strong>, ohne die Maus darüber zu bewegen.
+                        </>
+                      : <>
+                          <strong>What this controls:</strong> how the <strong>organizers</strong> are displayed on the registration page.<br /><br />
+                          <strong>Small (default):</strong> small <strong>chip</strong> with photo + name — email and role only appear on <strong>hover</strong>.<br /><br />
+                          <strong>Large:</strong> organizers are shown <strong>large permanently</strong> (big photo, name, clickable <strong>email</strong>, role &amp; location).
+                        </>
+                    } />
                   </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="organizerDisplaySize"
+                        checked={!organizerDisplayLarge}
+                        onChange={() => setOrganizerDisplayLarge(false)}
+                        style={{ marginTop: 3, cursor: 'pointer' }}
+                      />
+                      <span style={{ flex: 1 }}>
+                        <strong>{isDe ? 'Klein (Chip)' : 'Small (chip)'}</strong>
+                        <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                          {isDe
+                            ? 'Kompakter Chip mit Foto + Name. Mail-Adresse und Rolle erscheinen beim Drüberfahren mit der Maus (Mouse-over) groß.'
+                            : 'Compact chip with photo + name. Email and role appear large on mouse-over.'}
+                        </span>
+                      </span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="organizerDisplaySize"
+                        checked={organizerDisplayLarge}
+                        onChange={() => setOrganizerDisplayLarge(true)}
+                        style={{ marginTop: 3, cursor: 'pointer' }}
+                      />
+                      <span style={{ flex: 1 }}>
+                        <strong>{isDe ? 'Groß' : 'Large'}</strong>
+                        <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                          {isDe
+                            ? 'Großes Foto, Name, klickbare E-Mail-Adresse und Rolle direkt sichtbar — ohne Mouse-over.'
+                            : 'Large photo, name, clickable email and role visible right away — no mouse-over.'}
+                        </span>
+                      </span>
+                    </label>
+                  </div>
                 </div>
               )}
 
@@ -6681,6 +6923,15 @@ export default function EventCreationPage(): React.ReactElement {
               {/* v9.21: Test-Team pro Event — sieht das Event im Entwurfsmodus
                   und kann sich anmelden, ohne globale Organizer-Rolle. Picker
                   via Graph-Search, beliebige Deloitte-User. */}
+              {/* v24.4 (G): Zwischenüberschrift „Erweitertes Organisations-Team". */}
+              <div style={{ borderLeft: '4px solid var(--dex-green)', padding: '4px 0 4px 12px', margin: '4px 0 18px' }}>
+                <div style={{ fontWeight: 800, fontSize: '1.02rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Erweitertes Organisations-Team' : 'Extended organization team'}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
+                  {isDe
+                    ? 'Test-Team (sieht das Event schon im Entwurf) und Check-in-Team (bedient am Event-Tag nur das Check-in-Tool).'
+                    : 'Test team (sees the draft early) and check-in team (operates only the check-in tool on the event day).'}
+                </div>
+              </div>
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={7} />
@@ -6711,6 +6962,12 @@ export default function EventCreationPage(): React.ReactElement {
                     </span>
                   </button>
                 </label>
+                {/* v24.4 (L): Kernaussage inline (ohne Mouse-over), Rest im Info-Symbol. */}
+                <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                  {isDe
+                    ? 'Eine kleine Gruppe, die das Event schon im Entwurfsmodus sieht und sich testweise anmelden darf — bevor du es für die echte Zielgruppe freigibst.'
+                    : 'A small group that can see the event already in draft mode and register as a test — before you publish it to the real audience.'}
+                </p>
                 {testTeamNames.length > 0 && (() => {
                   const remove = (idx: number): void => {
                     setTestTeamNames(testTeamNames.filter((_, i) => i !== idx));
@@ -6765,6 +7022,7 @@ export default function EventCreationPage(): React.ReactElement {
                   placeholder="Name oder E-Mail eingeben (alle Deloitte-User)"
                 />
                 <InternationalSearchToggle
+                  query={testTeamSearch}
                   checked={testTeamIncludeIntl}
                   onChange={async next => {
                     setTestTeamIncludeIntl(next);
@@ -6855,6 +7113,12 @@ export default function EventCreationPage(): React.ReactElement {
                     </span>
                   </button>
                 </label>
+                {/* v24.4 (L): Kernaussage inline (ohne Mouse-over), Rest im Info-Symbol. */}
+                <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                  {isDe
+                    ? 'Personen, die am Event-Tag nur das Check-in-Tool bedienen dürfen (QR-Codes scannen, Teilnehmer ein-/auschecken) — sonst keine weiteren Rechte.'
+                    : 'People who may only operate the check-in tool on the event day (scan QR codes, check attendees in/out) — no other rights.'}
+                </p>
                 {qrScannerNames.length > 0 && (() => {
                   const move = (idx: number, dir: -1 | 1): void => {
                     const target = idx + dir;
@@ -6930,6 +7194,7 @@ export default function EventCreationPage(): React.ReactElement {
                   placeholder={t('create.qrscanners.placeholder') || 'Name oder E-Mail eingeben (alle Deloitte-User)'}
                 />
                 <InternationalSearchToggle
+                  query={qrScannerSearch}
                   checked={qrScannerIncludeIntl}
                   onChange={async next => {
                     setQrScannerIncludeIntl(next);
@@ -9154,7 +9419,11 @@ export default function EventCreationPage(): React.ReactElement {
               {/* v9.17: Split-Capacity-Toggle UNTER dem Teilnehmerzahl-Block,
                   bewusst subtil — der Großteil der Events nutzt eine einzige
                   Teilnehmerzahl. Nur wer einen Lauf mit getrennten Starter-
-                  Töpfen anlegt, klickt diesen Toggle. */}
+                  Töpfen anlegt, klickt diesen Toggle.
+                  v24.4 (K): erst sichtbar, wenn „Teilnehmeranzahl begrenzen"
+                  aktiv ist (bzw. die geteilte Kapazität bereits an ist) —
+                  ohne Begrenzung ergibt eine geteilte Kapazität keinen Sinn. */}
+              {(!unlimitedParticipants || useSplitCapacities) && (
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: '0.8rem', color: 'var(--dex-gray-600)', cursor: 'pointer', padding: '8px 0', marginTop: 4 }}>
                 <input
                   type="checkbox"
@@ -9169,6 +9438,7 @@ export default function EventCreationPage(): React.ReactElement {
                   </span>
                 </span>
               </label>
+              )}
               </div>
 
               </div>{/* v15.6: close hauptGreyoutWrapperStyle div (Step 4) */}

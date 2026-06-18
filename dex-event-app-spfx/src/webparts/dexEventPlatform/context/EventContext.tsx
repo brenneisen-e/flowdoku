@@ -377,6 +377,14 @@ interface EventContextType {
   checkRegistrationByEmail: (eventId: string, email: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
   deleteEvent: (eventId: string) => Promise<boolean>;
+  /** v24.0: Anzahl der Anmeldungen über das Organizer-Team hinaus (echte
+   *  Teilnehmer, Haupt- + Sub-Events, status-unabhängig). >0 ⇒ Lösch-Sperre
+   *  (nur Admin, frühestens 1 Jahr nach Event-Ende). */
+  countExternalRegistrations: (event: DeloitteEvent) => Promise<number>;
+  /** v24.6: Organizer-Archiv (pro Person ausblenden, reiner Anzeige-Filter). */
+  getOrganizerArchivedEventIds: () => Promise<Set<string>>;
+  archiveEventForOrganizer: (eventId: string) => Promise<boolean>;
+  unarchiveEventForOrganizer: (eventId: string) => Promise<boolean>;
   /** v11.69: Löscht NUR das DEX_Events-Listenitem, ohne Subsite-/Teilnehmer-
    *  Liste-Recycle und ohne Outlook-DeleteEvent-Queue. Wird gebraucht, um ein
    *  Sub-Event mit `existingSubsiteUrl` neu anzulegen, damit der
@@ -393,6 +401,9 @@ interface EventContextType {
    *  (Settings-Testbutton) wird die 7-Tage-Sperre übersprungen. Best-effort;
    *  liefert ein kleines Ergebnis für UI-Feedback. */
   maybeSendWeeklyReport: (opts?: { force?: boolean }) => Promise<{ sent: boolean; admins: number; reason?: string }>;
+  /** v24.2: „Danke, wir hoffen es lief gut"-Mail an den Organizer beim
+   *  App-Öffnen nach dem Event-Tag (1×/Event/Organizer, localStorage-Drossel). */
+  maybeSendPostEventOrganizerMails: () => Promise<void>;
   /** v23.37: Antrag „Organizer werden" anlegen (+ Admin-Mail mit Deep-Link). */
   requestOrganizerRole: (email: string, name: string, location: string, message?: string) => Promise<{ ok: boolean; reason?: string }>;
   /** v23.37: offene Organizer-Anträge (für den Admin-Hinweis beim App-Start). */
@@ -408,9 +419,9 @@ interface EventContextType {
   /** v21: Archivierung — verschiebt archivreife Zeilen ins DEX_Archive.
    *  v22.2: shouldCancel = Abbruch-Check aus dem Fortschrittsmodal. */
   runArchiveExpired: (onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void, shouldCancel?: () => boolean) => Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number> }>;
-  /** v23.40: Löschkonzept — zählt DEX_Archive-Einträge älter als 6 Monate. */
+  /** v23.40: Löschkonzept — zählt DEX_Archive-Einträge älter als 1 Monat (v23.48). */
   getDeletableArchiveCount: () => Promise<number>;
-  /** v23.40: Löschkonzept — löscht DEX_Archive-Einträge älter als 6 Monate. */
+  /** v23.40: Löschkonzept — löscht DEX_Archive-Einträge älter als 1 Monat (v23.48). */
   runDeleteOldArchive: (onProgress?: (done: number, total: number) => void, shouldCancel?: () => boolean) => Promise<{ deleted: number; failed: number; cancelled: boolean }>;
   updateMyRegistration: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
   /** v10.27: Split-Capacity-Gruppen-Wechsel für die eigene Registrierung.
@@ -673,6 +684,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         safeRun('ensureArchiveList', () => eventService.ensureArchiveList(), parallelMarks),
         safeRun('ensureWeeklyReportsList', () => eventService.ensureWeeklyReportsList(), parallelMarks),
         safeRun('ensureOrganizerRequestsList', () => eventService.ensureOrganizerRequestsList(), parallelMarks),
+        safeRun('ensureOrganizerArchivedList', () => eventService.ensureOrganizerArchivedList(), parallelMarks),
         safeRun('ensureAssetsFolders', () => eventService.ensureAssetsFolders(), parallelMarks),
         safeRun('ensureLogosInConfig', () => eventService.ensureLogosInConfig(), parallelMarks),
       ]);
@@ -965,6 +977,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
           return !!(ov && ov._hideOrganizer);
         } catch { return false; }
+      })(),
+      // v24.8 (J): einzelne ausgeblendete Organizer (Piggyback _hiddenOrganizers).
+      hiddenOrganizerEmails: ((): string[] => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          const arr = ov && ov._hiddenOrganizers;
+          return Array.isArray(arr) ? arr.map((x: unknown) => String(x || '').toLowerCase()).filter(Boolean) : [];
+        } catch { return []; }
       })(),
       // v23.6: Assistenz-Sichtbarkeit (Piggyback _assistantsCanSee).
       assistantsCanSee: ((): boolean => {
@@ -3154,6 +3174,53 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return eventService.getAllRegistrations(subsiteUrl);
   }
 
+  // v24.0: Team-E-Mails eines Events (Organizer + Co-Organizer + Test-Team +
+  // Check-in-/QR-Team) — alles, was NICHT als „echter Teilnehmer" zählt.
+  function teamEmailSetFor(ev: DeloitteEvent): Set<string> {
+    const s = new Set<string>();
+    const add = (arr?: string[]): void => { (arr || []).forEach(e => { const x = (e || '').toLowerCase().trim(); if (x) s.add(x); }); };
+    add(ev.organizerEmails); add(ev.coOrganizerEmails); add(ev.testTeamEmails); add(ev.qrScannerEmails);
+    return s;
+  }
+
+  // v24.0: Zählt Anmeldungen, die ÜBER das Organizer-Team hinausgehen — also
+  // „echte" Teilnehmer. Status-unabhängig (auch Abmeldungen zählen: eine fremde
+  // Person, die sich je angemeldet hatte, belegt, dass das Event aktiv/öffentlich
+  // war). Hauptevent UND alle Sub-Events werden geprüft. Grundlage für die
+  // Lösch-Sperre: solche Events darf nur ein Admin und frühestens 1 Jahr nach
+  // dem Event-Ende löschen.
+  async function countExternalRegistrations(event: DeloitteEvent): Promise<number> {
+    if (isDemoShowcaseId(event.id)) return 0;
+    const children = events.filter(e => e.parentEventId === event.id);
+    const baseTeam = teamEmailSetFor(event);
+    let count = 0;
+    for (const ev of [event, ...children]) {
+      const team = new Set<string>(baseTeam);
+      teamEmailSetFor(ev).forEach(e => team.add(e));
+      let regs: SPRegistration[] = [];
+      try { regs = await getAllRegistrations(ev.id); } catch { regs = []; }
+      for (const r of regs) {
+        const email = (r.ParticipantEmail || '').toLowerCase().trim();
+        if (email && !team.has(email)) count++;
+      }
+    }
+    return count;
+  }
+
+  // v24.6: Organizer-Archiv (pro Person ausblenden) — reiner Anzeige-Filter.
+  async function getOrganizerArchivedEventIds(): Promise<Set<string>> {
+    if (!currentUserEmail) return new Set<string>();
+    return eventService.getOrganizerArchivedEventIds(currentUserEmail);
+  }
+  async function archiveEventForOrganizer(eventId: string): Promise<boolean> {
+    if (!currentUserEmail) return false;
+    return eventService.archiveEventForOrganizer(eventId, currentUserEmail);
+  }
+  async function unarchiveEventForOrganizer(eventId: string): Promise<boolean> {
+    if (!currentUserEmail) return false;
+    return eventService.unarchiveEventForOrganizer(eventId, currentUserEmail);
+  }
+
   async function updateEvent(eventId: string, updates: Record<string, unknown>): Promise<boolean> {
     // v19.33: Roh-Stand VOR dem Update holen, damit das Audit-Log nur die
     // WIRKLICH geänderten Felder protokolliert (Vorher → Nachher). Vorher loggte
@@ -3239,10 +3306,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return eventService.archiveExpiredRows(ids, subs, titles, onProgress, shouldCancel, allIds, allSubs);
   }
 
-  // v23.40: Löschkonzept — Stichdatum „vor einem halben Jahr".
+  // v23.40: Löschkonzept — Stichdatum.
+  // v23.48: Frist auf 1 Monat (Wunsch Maintainer) — die archivierten Daten
+  // (DEX_Emails/DEX_Outlook/… im DEX_Archive) sollen rund einen Monat nach
+  // Ablauf des Events weg. Da sofort archiviert wird, fällt ArchivedAt mit dem
+  // Event-Ablauf zusammen.
   function archiveDeleteCutoffIso(): string {
     const d = new Date();
-    d.setMonth(d.getMonth() - 6);
+    d.setMonth(d.getMonth() - 1);
     return d.toISOString();
   }
   async function getDeletableArchiveCount(): Promise<number> {
@@ -3722,6 +3793,52 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   // (+ von wem), Anmeldungen im Zeitraum, neu ernannte Organizer — plus
   // Gesamt-KPIs (Events insgesamt, aktive Anmeldungen insgesamt, hinterlegte
   // Organizer). Best-effort; Fehler blocken nie den Boot.
+  // v24.2: „Danke, wir hoffen es lief gut"-Mail an den Organizer, wenn er die
+  // App nach dem Event-Tag öffnet. Einmal pro Event und Organizer (localStorage-
+  // Drosselung pro Browser). Enthält den Hinweis auf die 1-jährige Aufbewahrung
+  // der Teilnehmerübersicht (Datenschutz) + Verweis auf Excel-Export / App.
+  async function maybeSendPostEventOrganizerMails(): Promise<void> {
+    try {
+      const meLc = (currentUserEmail || '').toLowerCase();
+      if (!meLc) return;
+      const overEvents = (events || []).filter(e => {
+        if (e.parentEventId) return false; // nur Hauptevents
+        if (e.isFictive) return false;     // keine Entwürfe
+        const isOrg = (e.organizerEmails || []).some(x => (x || '').toLowerCase() === meLc)
+          || (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === meLc);
+        if (!isOrg) return false;
+        return isEventOver(e);
+      });
+      if (overEvents.length === 0) return;
+      let appUrl = '';
+      try { appUrl = `${props.context.pageContext.web.absoluteUrl}/SitePages/DEX.aspx`; } catch { appUrl = ''; }
+      const greetName = (currentUserName || '').split(' ')[0] || (currentUserName || '');
+      for (const ev of overEvents) {
+        const key = `dex_posteventmail_${ev.id}_${meLc}`;
+        let already = false;
+        try { already = !!window.localStorage.getItem(key); } catch { already = false; }
+        if (already) continue;
+        const linkLine = appUrl
+          ? `<p style="margin:0 0 12px;">Du findest die Teilnehmerübersicht jederzeit im <a href="${appUrl}" style="color:#86bc25;font-weight:600;">Organizer Center der DEX App</a> — dort kannst du sie auch als Excel exportieren.</p>`
+          : `<p style="margin:0 0 12px;">Du findest die Teilnehmerübersicht jederzeit im Organizer Center der DEX App — dort kannst du sie auch als Excel exportieren.</p>`;
+        const inner = `
+          <p style="margin:0 0 12px;">Hallo ${greetName || 'zusammen'},</p>
+          <p style="margin:0 0 12px;">wir hoffen, dein Event <strong>&bdquo;${ev.title}&ldquo;</strong> ist gut verlaufen und alle hatten eine schöne Zeit!</p>
+          <p style="margin:0 0 12px;">Ein kurzer Hinweis zur Aufbewahrung: Die <strong>Teilnehmerübersicht bleibt noch ein Jahr gespeichert</strong> (Datenschutz-/Aufbewahrungsvorgabe). Danach wird sie entfernt.</p>
+          ${linkLine}
+          <p style="margin:0 0 12px;">Vielen Dank, dass du das Event organisiert hast!</p>`;
+        const body = wrapTemplate('#86bc25', 'Danke für dein Event!', ev.title, inner);
+        try {
+          await eventService.queueEmail(
+            `Dein Event „${ev.title}" — danke & Hinweis zur Aufbewahrung`,
+            currentUserEmail, currentUserName, body, 'PostEventOrganizer', ev.title, ev.id,
+          );
+          try { window.localStorage.setItem(key, String(Date.now())); } catch { /* */ }
+        } catch { /* einzelne Mail-Fehler ignorieren */ }
+      }
+    } catch (e) { console.warn('[DEX] post-event organizer mail failed:', e); }
+  }
+
   async function maybeSendWeeklyReport(opts?: { force?: boolean }): Promise<{ sent: boolean; admins: number; reason?: string }> {
     const force = !!opts?.force;
     try {
@@ -4010,7 +4127,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, scanInactiveAccounts, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive,
+        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive,
         sendAdminInquiry,
         requestOrganizerRole, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,

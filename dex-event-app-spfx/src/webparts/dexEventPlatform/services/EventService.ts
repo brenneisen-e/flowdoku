@@ -8766,9 +8766,14 @@ export class EventService {
   // hasStatus: Liste besitzt eine Status-Spalte → Zeilen mit 'Pending'
   // (Flow hat sie noch nicht verarbeitet) werden NICHT archiviert, damit
   // keine unversendete Mail / kein offener Auftrag aus der Queue verschwindet.
+  // v23.47: select MUSS den GESAMTEN Inhalt der Zeile abdecken — das Archiv
+  // ist die End-Ablage, der Originaldatensatz wird nach dem Insert gelöscht.
+  // Frühere Selects ließen Inhalte weg: DEX_Emails OHNE `Body` (kompletter
+  // Mailtext!) und DEX_Outlook OHNE `CalendarLink` — die fehlten damit im
+  // Payload und gingen beim Löschen verloren. Jetzt: vollständige Feldlisten.
   private static readonly ARCHIVE_SOURCES: Array<{ list: string; matchBy: 'eventId' | 'subsiteUrl'; select: string; hasStatus: boolean }> = [
-    { list: 'DEX_Emails', matchBy: 'eventId', select: 'Id,Title,Recipient,RecipientName,EmailType,EventTitle,EventId,Status,Cc,Bcc,Importance,Created', hasStatus: true },
-    { list: 'DEX_Outlook', matchBy: 'eventId', select: 'Id,Title,Attendee,EventId,ActionType,Status,Created', hasStatus: true },
+    { list: 'DEX_Emails', matchBy: 'eventId', select: 'Id,Title,Recipient,RecipientName,Body,EmailType,EventTitle,EventId,Status,Cc,Bcc,Importance,Created', hasStatus: true },
+    { list: 'DEX_Outlook', matchBy: 'eventId', select: 'Id,Title,Attendee,EventId,ActionType,Status,CalendarLink,Created', hasStatus: true },
     { list: 'DEX_IDReorder', matchBy: 'eventId', select: 'Id,Title,EventId,EventNumber,SubsiteUrl,Status,CancelledName,CancelledEmail,Created', hasStatus: true },
     { list: 'DEX_ChangeLog', matchBy: 'eventId', select: 'Id,Title,Action,TargetType,TargetId,TargetName,EventId,EventTitle,ActorName,ActorEmail,Details,Created', hasStatus: false },
     { list: 'DEX_AccessFix', matchBy: 'subsiteUrl', select: 'Id,Title,SubsiteUrl,ItemId,ParticipantEmail,Status,Created', hasStatus: true },
@@ -8943,6 +8948,76 @@ export class EventService {
     }
     try { await this.configureDefaultView(listName, ['RequesterName', 'RequesterEmail', 'RequesterLocation', 'Status', 'Created', 'DecidedByEmail']); } catch { /* */ }
     try { await this.setQueueListPermissions(listName); } catch { /* */ }
+  }
+
+  // ==================== v24.6: Organizer-Archiv (pro Person ausblenden) ====================
+  // Reiner Anzeige-Filter: ein abgelaufenes Event kann der Organizer aus SEINER
+  // Übersicht ausblenden (eine Zeile pro Event+Person). Das Event selbst bleibt
+  // mit allen Daten erhalten und für andere sichtbar — KEINE Datenlöschung.
+  public async ensureOrganizerArchivedList(): Promise<void> {
+    const listName = 'DEX_OrganizerArchived';
+    const exists = await this.listExists(listName);
+    if (exists) return;
+    const cr = await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'Pro Organizer ausgeblendete (archivierte) Events (v24.6) — reiner Anzeige-Filter, keine Datenlöschung.',
+      'BaseTemplate': 100,
+      'AllowContentTypes': false,
+    });
+    if (!cr.ok) { console.warn('[DEX] DEX_OrganizerArchived konnte nicht angelegt werden.'); return; }
+    for (const f of [{ title: 'EventId', type: 2 }, { title: 'OrganizerEmail', type: 2 }]) {
+      try { await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, { '__metadata': { 'type': 'SP.Field' }, 'Title': f.title, 'FieldTypeKind': f.type, 'Required': false }); } catch { /* */ }
+    }
+    try { await this.configureDefaultView(listName, ['EventId', 'OrganizerEmail', 'Created']); } catch { /* */ }
+    try { await this.setQueueListPermissions(listName); } catch { /* */ }
+  }
+
+  public async getOrganizerArchivedEventIds(email: string): Promise<Set<string>> {
+    const out = new Set<string>();
+    try {
+      const e = (email || '').replace(/'/g, "''");
+      if (!e) return out;
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerArchived')/items?$select=Id,EventId,OrganizerEmail&$filter=OrganizerEmail eq '${e}'&$top=2000`,
+        SPHttpClient.configurations.v1);
+      if (resp.ok) {
+        const d = await resp.json();
+        const rows = d.value || d.d?.results || [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const r of rows) { const id = String((r as any).EventId || ''); if (id) out.add(id); }
+      }
+    } catch { /* best-effort */ }
+    return out;
+  }
+
+  public async archiveEventForOrganizer(eventId: string, email: string): Promise<boolean> {
+    try {
+      const resp = await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerArchived')/items`, {
+        '__metadata': { 'type': 'SP.Data.DEX_x005f_OrganizerArchivedListItem' },
+        'Title': String(eventId).slice(0, 250),
+        'EventId': String(eventId),
+        'OrganizerEmail': email,
+      });
+      return resp.ok;
+    } catch { return false; }
+  }
+
+  public async unarchiveEventForOrganizer(eventId: string, email: string): Promise<boolean> {
+    try {
+      const e = (email || '').replace(/'/g, "''");
+      const idEsc = String(eventId).replace(/'/g, "''");
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerArchived')/items?$select=Id&$filter=OrganizerEmail eq '${e}' and EventId eq '${idEsc}'&$top=50`,
+        SPHttpClient.configurations.v1);
+      if (!resp.ok) return false;
+      const d = await resp.json();
+      const rows = d.value || d.d?.results || [];
+      let okAll = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const r of rows) { const del = await this._delete(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerArchived')/items(${(r as any).Id})`); if (!del.ok) okAll = false; }
+      return okAll;
+    } catch { return false; }
   }
 
   public async createOrganizerRequest(email: string, name: string, location: string, message: string): Promise<{ ok: boolean; itemId?: number }> {
@@ -9176,13 +9251,16 @@ export class EventService {
   ): Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number> }> {
     const result = { archived: 0, failed: 0, cancelled: false, perList: {} as Record<string, number> };
     const sources = EventService.ARCHIVE_SOURCES;
-    // v22.2: Payload-Werte kürzen — einzelne Felder (z.B. ChangeLog-Details)
-    // können lang sein; das Archiv braucht keine Romane.
+    // v23.47: Payload soll den Inhalt vollständig festhalten (vorher bei 4000
+    // Zeichen gekappt — ein kompletter HTML-Mailtext ist länger und wurde so
+    // abgeschnitten). Großzügiger Sicherheits-Cap (60000), der praktisch jeden
+    // Mailtext komplett aufnimmt, aber pathologische Riesenwerte begrenzt.
+    const MAX_FIELD = 60000;
     const buildPayload = (r: Record<string, unknown>): string => {
       const out: Record<string, unknown> = {};
       for (const k of Object.keys(r)) {
         const v = r[k];
-        out[k] = (typeof v === 'string' && v.length > 4000) ? `${v.slice(0, 4000)}… [gekürzt]` : v;
+        out[k] = (typeof v === 'string' && v.length > MAX_FIELD) ? `${v.slice(0, MAX_FIELD)}… [gekürzt]` : v;
       }
       return JSON.stringify(out);
     };
@@ -9234,7 +9312,7 @@ export class EventService {
   // ==================== Archiv-Löschkonzept (v23.40) ====================
   // DEX_Archive-Einträge sind die End-Ablage. Damit die Liste nicht unendlich
   // wächst, können Admins Einträge löschen, die älter als ein Stichdatum sind
-  // (standardmäßig ein halbes Jahr). „ArchivedAt" ist der Ablage-Zeitpunkt.
+  // (v23.48: standardmäßig 1 Monat nach Ablauf). „ArchivedAt" ist der Ablage-Zeitpunkt.
 
   /** Zählt DEX_Archive-Zeilen mit ArchivedAt älter als `olderThanIso`. */
   public async countDeletableArchiveRows(olderThanIso: string): Promise<number> {

@@ -310,7 +310,7 @@ const BulkUserImportModal: React.FC<Props> = ({ open, onClose, title, descriptio
           onChange={e => setText(e.target.value)}
           disabled={running}
         />
-        <InternationalSearchToggle checked={includeIntl} onChange={setIncludeIntl} isDe={isDe} />
+        <InternationalSearchToggle query={text} checked={includeIntl} onChange={setIncludeIntl} isDe={isDe} />
 
         {report && (
           <div style={{ marginTop: 16, padding: 12, background: 'var(--dex-gray-50)', borderRadius: 'var(--dex-radius)', fontSize: '0.8rem' }}>

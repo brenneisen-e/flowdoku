@@ -170,6 +170,7 @@ export function UserFieldPicker(props: {
       )}
       {!hasSelection && (
         <InternationalSearchToggle
+          query={query}
           checked={includeIntl}
           onChange={async next => {
             setIncludeIntl(next);
