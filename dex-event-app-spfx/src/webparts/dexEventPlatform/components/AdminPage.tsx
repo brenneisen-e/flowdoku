@@ -4128,6 +4128,12 @@ export default function AdminPage(): React.ReactElement {
                         return `${shown}/${eff || '∞'} Teilnehmer`;
                       })()}
                     </span>
+                    {/* v23.30: Anzahl auf der Warteliste in der Listenzeile. */}
+                    {event.waitlistCount > 0 && (
+                      <span style={{ fontSize: '0.85rem', color: 'var(--dex-orange, #ed8b00)', fontWeight: 600 }}>
+                        {event.waitlistCount} {isDe ? 'auf Warteliste' : 'on waitlist'}
+                      </span>
+                    )}
                     {/* v9.20: Status-Badge mit Entwurfs-Override.
                         Wenn das Event als Entwurf markiert ist, wird "ENTWURF"
                         statt des EventStatus angezeigt — für den Organizer
@@ -7376,6 +7382,15 @@ export default function AdminPage(): React.ReactElement {
                 </div>
               )}
             </div>
+            {/* v23.30: Warteliste direkt rechts neben „Angemeldet". */}
+            {hasWaitlistKPI && (
+              <div className="card" style={{ padding: 16, textAlign: 'center' }}>
+                <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-orange)' }}>
+                  {isConsolidatedMode ? consolidatedWaitlistByEmail.size : registrations.filter(r => r.Status === 'Warteliste').length}
+                </div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.waitlist')}</div>
+              </div>
+            )}
             <div className="card" style={{ padding: 16, textAlign: 'center' }}>
               <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#6a1b9a' }}>
                 {isConsolidatedMode ? consolidatedQRByEmail.size : registrations.filter(r => r.Status === 'QR versendet').length}
@@ -7388,14 +7403,6 @@ export default function AdminPage(): React.ReactElement {
               </div>
               <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.checkedin')}</div>
             </div>
-            {hasWaitlistKPI && (
-              <div className="card" style={{ padding: 16, textAlign: 'center' }}>
-                <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-orange)' }}>
-                  {isConsolidatedMode ? consolidatedWaitlistByEmail.size : registrations.filter(r => r.Status === 'Warteliste').length}
-                </div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>{t('status.waitlist')}</div>
-              </div>
-            )}
             <div className="card" style={{ padding: 16, textAlign: 'center' }}>
               <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--dex-gray-400)' }}>
                 {isConsolidatedMode ? consolidatedCancelledByEmail.size : registrations.filter(r => r.Status === 'Abgemeldet').length}
