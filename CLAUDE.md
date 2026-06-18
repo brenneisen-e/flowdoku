@@ -584,8 +584,12 @@ Funktionalitaeten UND Bugfixes, als **Tabelle** gepflegt in
   **`Version | Datum | Art | Beschreibung`**.
   - `Art` = **`Feature`** (neue Funktionalitaet) oder **`Bugfix`** (Fehlerbehebung);
     bei gemischten Releases pro Punkt eine eigene Zeile (gleiche Version mehrfach).
-  - `Beschreibung` = Klartext auf **Deutsch**, kurz und nutzerverstaendlich
-    (was hat sich fuer Organizer/Teilnehmer geaendert), keine Tech-Internas.
+  - `Beschreibung` = Klartext auf **Deutsch**, der **gut erklaert, was neu ist
+    bzw. was behoben wurde — NICHT zu technisch**. Aus Sicht des Nutzers
+    schreiben (was kann man jetzt / was funktioniert wieder / was hat man
+    davon), in ganzen Saetzen. **Keine Tech-Begriffe** wie „Flow", „Queue",
+    „OData", „Piggyback", „MERGE", Spalten-/Feldnamen o.ae. Bei einem Bugfix
+    kurz sagen, was vorher nicht ging und dass/wie es jetzt geht.
 - **Reihenfolge:** neueste Version **oben** (absteigend).
 - **Wann:** im selben Commit wie der Build/Bump — die Tabelle ist nie aelter als
   die deployte Version.

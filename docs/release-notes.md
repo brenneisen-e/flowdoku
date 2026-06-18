@@ -8,7 +8,9 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
-| 23.35.0 | 2026-06-18 | Bugfix | Der automatische Wochenbericht kam nie an: Er wurde mit leerem Event-Bezug in die Mail-Queue geschrieben, woran der Versand-Flow scheiterte. Behoben — der Bericht wird jetzt korrekt an alle Admins versendet. |
+| 23.36.0 | 2026-06-18 | Feature | Der wöchentliche Admin-Bericht ist jetzt viel verständlicher geschrieben und zeigt mehr: Events, die noch Entwurf sind, werden klar als solche gekennzeichnet; es gibt einen Abschnitt für Events, die seit dem letzten Bericht veröffentlicht wurden, und einen für Events, die in der Woche stattgefunden haben — inklusive Teilnehmerzahl, wobei zusammengehörige Haupt- und Sub-Events übersichtlich zusammen aufgeführt werden. Die Mail heißt jetzt „Automatischer Wochenbericht". |
+| 23.36.0 | 2026-06-18 | Feature | Im Demo-Modus („als Nutzer testen") sieht die Startseite jetzt genau so aus wie für einen echten Nutzer: Die Kachel „Organizer" ist ausgegraut (mit dem Hinweis „Organizer werden?") und die Check-In-Kachel wird ausgeblendet — vorher waren beide fälschlich verfügbar. |
+| 23.35.0 | 2026-06-18 | Bugfix | Der automatische Wochenbericht wurde nie verschickt — durch einen technischen Fehler blieb er im Versand hängen, obwohl die App ihn als „erledigt" vermerkte. Behoben: Der Bericht kommt jetzt wieder zuverlässig bei allen Admins an. |
 | 23.34.0 | 2026-06-18 | Feature | Teilnehmerlisten: Kein überflüssiger Tooltip mehr beim Überfahren der Teilnehmer-Fotos (Name + Position stehen ohnehin daneben); der Hover-Zoom bleibt. |
 | 23.33.0 | 2026-06-18 | Feature | Normale Teilnehmerliste: standardmäßig eingeklappte „Teilnehmer"-Spalte (Foto + Name fett, darunter „Position • Standort"), Suchtreffer werden grün markiert, und alle Spalten inkl. eigener Abfragefelder sind sortierbar. |
 | 23.32.0 | 2026-06-18 | Feature | Konsolidierte Teilnehmer-Matrix: People-Picker-Felder (z.B. „Assistenz") werden mit Foto + Name angezeigt; Personen-Spalte zweizeilig; Suche über alle Spalten mit grüner Markierung; event-spezifische Spalten sortierbar. |

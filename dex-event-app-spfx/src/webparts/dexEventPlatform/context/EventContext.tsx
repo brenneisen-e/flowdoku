@@ -3717,34 +3717,82 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       }
       const totalEvents = events.length;
 
-      // E-Mail bauen.
+      // E-Mail bauen — bewusst anwenderfreundlich formuliert (ganze Sätze,
+      // Singular/Plural, „(noch im Entwurf)" hinter Entwurfs-Events).
       const fmtD = (iso: string): string => { try { return new Date(iso).toLocaleDateString('de-DE'); } catch { return iso.slice(0, 10); } };
       const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const draftBadge = '<span style="margin-left:6px;padding:1px 7px;border-radius:8px;background:#fff3e0;color:#b35a00;font-size:11px;font-weight:600;">noch im Entwurf</span>';
       const eventsHtml = newEvents.length > 0
-        ? `<ul style="margin:6px 0 0 18px;padding:0;">${newEvents.map(e => `<li style="margin-bottom:4px;"><strong>${esc(e.title)}</strong> — ${esc(e.author)} (${fmtD(e.created)})</li>`).join('')}</ul>`
-        : '<p style="margin:6px 0 0;color:#666;">Keine neuen Events in diesem Zeitraum.</p>';
+        ? `<p style="margin:6px 0 0;">${newEvents.length === 1 ? 'In dieser Woche wurde <strong>1 neues Event</strong> angelegt:' : `In dieser Woche wurden <strong>${newEvents.length} neue Events</strong> angelegt:`}</p>
+           <ul style="margin:8px 0 0 18px;padding:0;">${newEvents.map(e => `<li style="margin-bottom:6px;"><strong>${esc(e.title)}</strong>${e.isDraft ? draftBadge : ''}<br><span style="color:#777;font-size:13px;">angelegt von ${esc(e.author)} am ${fmtD(e.created)}</span></li>`).join('')}</ul>`
+        : '<p style="margin:6px 0 0;color:#666;">In dieser Woche wurde kein neues Event angelegt.</p>';
       const orgHtml = newOrganizers.length > 0
-        ? `<ul style="margin:6px 0 0 18px;padding:0;">${newOrganizers.map(o => `<li style="margin-bottom:4px;">${esc(o.email)} (${fmtD(o.created)})</li>`).join('')}</ul>`
-        : '<p style="margin:6px 0 0;color:#666;">Keine neuen Organizer in diesem Zeitraum.</p>';
+        ? `<p style="margin:6px 0 0;">${newOrganizers.length === 1 ? 'Eine Person wurde neu als Organizer berechtigt:' : `${newOrganizers.length} Personen wurden neu als Organizer berechtigt:`}</p>
+           <ul style="margin:8px 0 0 18px;padding:0;">${newOrganizers.map(o => `<li style="margin-bottom:4px;">${esc(o.email)} <span style="color:#777;font-size:13px;">(seit ${fmtD(o.created)})</span></li>`).join('')}</ul>`
+        : '<p style="margin:6px 0 0;color:#666;">In dieser Woche wurde niemand neu als Organizer berechtigt.</p>';
+      const draftCount = newEvents.filter(e => e.isDraft).length;
+      const draftHint = draftCount > 0
+        ? `<p style="margin:6px 0 0;color:#777;font-size:13px;">Davon ${draftCount === 1 ? 'ist 1 Event noch ein Entwurf' : `sind ${draftCount} Events noch Entwürfe`} und damit für Teilnehmer noch nicht sichtbar.</p>`
+        : '';
+
+      // v23.36: Events, die seit dem letzten Bericht von Entwurf auf LIVE
+      // gewechselt sind (Snapshot der Entwurfs-IDs aus dem letzten Bericht).
+      // Nur Top-Level (Klammern/Hauptevents).
+      const lastDraftIds = (last && last.draftEventIds) || [];
+      const wentLive = events.filter(e => !e.isFictive && !e.parentEventId && lastDraftIds.indexOf(String(e.id)) >= 0);
+      const wentLiveHtml = wentLive.length > 0
+        ? `<h3 style="margin:20px 0 0;font-size:15px;color:#2d4a06;">Live gegangene Events</h3>
+           <p style="margin:6px 0 0;">${wentLive.length === 1 ? 'Ein zuvor als Entwurf gespeichertes Event ist jetzt <strong>live</strong> und für Teilnehmer sichtbar:' : `${wentLive.length} zuvor als Entwurf gespeicherte Events sind jetzt <strong>live</strong> und für Teilnehmer sichtbar:`}</p>
+           <ul style="margin:8px 0 0 18px;padding:0;">${wentLive.map(e => `<li style="margin-bottom:4px;"><strong>${esc(e.title)}</strong></li>`).join('')}</ul>`
+        : '';
+
+      // v23.36: Events, die IM ZEITRAUM stattgefunden haben — Klammern/
+      // Hauptevents als EINE Zeile mit Auflistung der Sub-Events + Teilnehmerzahl.
+      const fromTs = new Date(fromIso).getTime();
+      const toTs = new Date(toIso).getTime();
+      const shortSub = (t: string): string => { const p = (t || '').split('|'); return (p.length > 1 ? p[p.length - 1] : t).trim(); };
+      const evDateTs = (e: DeloitteEvent): number => {
+        const end = e.endDate ? new Date(e.endDate).getTime() : 0;
+        const start = e.startDate ? new Date(e.startDate).getTime() : 0;
+        return (isFinite(end) && end) ? end : ((isFinite(start) && start) ? start : 0);
+      };
+      const cnt = (e: DeloitteEvent): number => Math.max(0, e.currentParticipants || 0);
+      const heldRows = events.filter(e => !e.parentEventId && !e.isFictive).map(e => {
+        const kids = events.filter(c => c.parentEventId === e.id);
+        let ts = evDateTs(e);
+        if (!ts && kids.length) ts = Math.max(0, ...kids.map(evDateTs));
+        return { e, kids, ts };
+      }).filter(r => r.ts >= fromTs && r.ts <= toTs).sort((a, b) => a.ts - b.ts);
+      const heldHtml = heldRows.length > 0
+        ? `<p style="margin:6px 0 0;">${heldRows.length === 1 ? 'In diesem Zeitraum hat <strong>1 Event</strong> stattgefunden:' : `In diesem Zeitraum haben <strong>${heldRows.length} Events</strong> stattgefunden:`}</p>
+           <ul style="margin:8px 0 0 18px;padding:0;">${heldRows.map(r => `<li style="margin-bottom:6px;"><strong>${esc(r.e.title)}</strong> — ${cnt(r.e)} Teilnehmer <span style="color:#777;font-size:13px;">(${fmtD(new Date(r.ts).toISOString())})</span>${r.kids.length ? `<ul style="margin:4px 0 0 18px;padding:0;color:#555;font-size:13px;">${r.kids.map(k => `<li style="margin-bottom:2px;">${esc(shortSub(k.title))} — ${cnt(k)} Teilnehmer</li>`).join('')}</ul>` : ''}</li>`).join('')}</ul>`
+        : '<p style="margin:6px 0 0;color:#666;">In diesem Zeitraum hat kein Event stattgefunden.</p>';
+
       const inner = `
-        <p style="margin:0 0 14px;">Zeitraum dieses Berichts: <strong>${fmtD(fromIso)}</strong> bis <strong>${fmtD(toIso)}</strong>.</p>
-        <h3 style="margin:18px 0 0;font-size:15px;color:#2d4a06;">Neue Events (${newEvents.length})</h3>
+        <p style="margin:0 0 6px;">Hallo zusammen,</p>
+        <p style="margin:0 0 16px;">hier ist euer wöchentlicher Überblick über die DEX Event Experience Platform — was in den letzten Tagen passiert ist, vom <strong>${fmtD(fromIso)}</strong> bis <strong>${fmtD(toIso)}</strong>.</p>
+        <h3 style="margin:18px 0 0;font-size:15px;color:#2d4a06;">Neue Events</h3>
         ${eventsHtml}
-        <h3 style="margin:18px 0 0;font-size:15px;color:#2d4a06;">Anmeldungen im Zeitraum</h3>
-        <p style="margin:6px 0 0;font-size:22px;font-weight:700;color:#86bc25;">${regSince}</p>
-        <h3 style="margin:18px 0 0;font-size:15px;color:#2d4a06;">Neu ernannte Organizer (${newOrganizers.length})</h3>
+        ${draftHint}
+        ${wentLiveHtml}
+        <h3 style="margin:20px 0 0;font-size:15px;color:#2d4a06;">Stattgefundene Events</h3>
+        ${heldHtml}
+        <h3 style="margin:20px 0 0;font-size:15px;color:#2d4a06;">Neue Anmeldungen</h3>
+        <p style="margin:6px 0 0;">In diesem Zeitraum ${regSince === 1 ? 'ist <strong>1 Anmeldung</strong> eingegangen.' : `sind <strong>${regSince} Anmeldungen</strong> eingegangen.`}</p>
+        <h3 style="margin:20px 0 0;font-size:15px;color:#2d4a06;">Neue Organizer</h3>
         ${orgHtml}
-        <hr style="border:none;border-top:1px solid #e0e0e0;margin:22px 0;">
-        <h3 style="margin:0 0 6px;font-size:15px;color:#2d4a06;">Gesamt-Überblick (seit jeher)</h3>
+        <hr style="border:none;border-top:1px solid #e0e0e0;margin:24px 0;">
+        <h3 style="margin:0 0 6px;font-size:15px;color:#2d4a06;">Die Plattform auf einen Blick</h3>
+        <p style="margin:0 0 8px;color:#777;font-size:13px;">Gesamtzahlen über alle Events hinweg:</p>
         <table style="border-collapse:collapse;font-size:14px;">
           <tr><td style="padding:3px 16px 3px 0;color:#555;">Events insgesamt</td><td style="padding:3px 0;font-weight:700;">${totalEvents}</td></tr>
           <tr><td style="padding:3px 16px 3px 0;color:#555;">Aktive Anmeldungen insgesamt</td><td style="padding:3px 0;font-weight:700;">${regTotal}</td></tr>
-          <tr><td style="padding:3px 16px 3px 0;color:#555;">Hinterlegte Organizer</td><td style="padding:3px 0;font-weight:700;">${organizerEmails.length}</td></tr>
+          <tr><td style="padding:3px 16px 3px 0;color:#555;">Berechtigte Organizer</td><td style="padding:3px 0;font-weight:700;">${organizerEmails.length}</td></tr>
         </table>
-        <p style="margin:22px 0 0;font-size:12px;color:#999;">Dieser Bericht wird automatisch einmal pro Woche an alle Admins der DEX Event Experience Platform versendet.</p>
+        <p style="margin:24px 0 0;font-size:12px;color:#999;">Diesen Bericht bekommt ihr automatisch einmal pro Woche, weil ihr Admin der DEX Event Experience Platform seid.</p>
       `;
-      const subject = `DEX Wochenbericht — ${fmtD(toIso)}`;
-      const body = wrapTemplate('#86bc25', 'DEX Wochenbericht', `${fmtD(fromIso)} – ${fmtD(toIso)}`, inner);
+      const subject = `Automatischer Wochenbericht — ${fmtD(toIso)}`;
+      const body = wrapTemplate('#86bc25', 'Automatischer Wochenbericht', `${fmtD(fromIso)} – ${fmtD(toIso)}`, inner);
       // v23.11: EINE Mail an ALLE Admins (alle im To, Semikolon-getrennt) —
       // der DEX_SEND_MAIL-Flow mappt Recipient direkt aufs To-Feld, das mehrere
       // Empfänger akzeptiert (genau wie OrganizerEmail mit mehreren Organizern).
@@ -3762,7 +3810,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // Wochenbericht ankam.
       const queued = await eventService.queueEmail(subject, admins.join('; '), 'Admins', body, 'WeeklyReport', '', '0');
       if (queued) {
-        await eventService.recordWeeklyReport(fromIso, toIso);
+        // v23.36: aktuellen Entwurfs-Snapshot mitspeichern, damit der NÄCHSTE
+        // Bericht „live gegangen" erkennt (Entwurf jetzt → live beim nächsten Mal).
+        const currentDraftIds = events.filter(e => e.isFictive && !e.parentEventId).map(e => String(e.id));
+        await eventService.recordWeeklyReport(fromIso, toIso, currentDraftIds);
         // v23.13: localStorage-Backstop setzen — falls recordWeeklyReport
         // serverseitig fehlschlug (Rechte/Liste), verhindert das pro Browser den
         // erneuten Versand bei jedem Boot.
