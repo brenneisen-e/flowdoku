@@ -6276,6 +6276,15 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
 
 
+              {/* v24.4 (G): Zwischenüberschrift „Organizer" mit grünem Balken. */}
+              <div style={{ borderLeft: '4px solid var(--dex-green)', padding: '4px 0 4px 12px', margin: '4px 0 18px' }}>
+                <div style={{ fontWeight: 800, fontSize: '1.02rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Organizer' : 'Organizers'}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
+                  {isDe
+                    ? 'Diese Personen können die Teilnehmerliste sehen und das Event einstellen.'
+                    : 'These people can see the attendee list and configure the event.'}
+                </div>
+              </div>
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={6} />
@@ -6548,34 +6557,58 @@ export default function EventCreationPage(): React.ReactElement {
                   werden (also nicht „ausgeblendet"). */}
               {!hideOrganizer && (
                 <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
-                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={organizerDisplayLarge}
-                      onChange={e => setOrganizerDisplayLarge(e.target.checked)}
-                      style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 2 }}
-                    />
-                    <span style={{ flex: 1 }}>
-                      <strong>{isDe ? 'Organizer groß anzeigen' : 'Show organizers large'}</strong>
-                      <InfoTooltip text={isDe
-                        ? <>
-                            <strong>Was du hier einstellst:</strong> wie die <strong>Organizer</strong> auf der Anmelde-Seite dargestellt werden.<br /><br />
-                            <strong>Aus (Standard):</strong> kleiner <strong>Chip</strong> mit Foto + Name — die Mail-Adresse und Rolle erscheinen erst beim <strong>Drüberfahren</strong> mit der Maus.<br /><br />
-                            <strong>An:</strong> die Organizer werden <strong>dauerhaft groß</strong> gezeigt (großes Foto, Name, klickbare <strong>E-Mail-Adresse</strong>, Rolle &amp; Standort) — Teilnehmer sehen die Kontaktdaten <strong>sofort</strong>, ohne die Maus darüber zu bewegen.
-                          </>
-                        : <>
-                            <strong>What this controls:</strong> how the <strong>organizers</strong> are displayed on the registration page.<br /><br />
-                            <strong>Off (default):</strong> small <strong>chip</strong> with photo + name — email and role only appear on <strong>hover</strong>.<br /><br />
-                            <strong>On:</strong> organizers are shown <strong>large permanently</strong> (big photo, name, clickable <strong>email</strong>, role &amp; location) — attendees see the contact details <strong>right away</strong>, no hover needed.
-                          </>
-                      } />
-                      <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
-                        {isDe
-                          ? 'Default: aus — kleiner Chip, Details beim Drüberfahren.'
-                          : 'Default: off — small chip, details on hover.'}
-                      </span>
-                    </span>
+                  {/* v24.4 (I): explizite Wahl klein/groß statt einzelnem Toggle. */}
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {isDe ? 'Anzeige im Register-Screen:' : 'Display on the registration screen:'}
+                    <InfoTooltip text={isDe
+                      ? <>
+                          <strong>Was du hier einstellst:</strong> wie die <strong>Organizer</strong> auf der Anmelde-Seite dargestellt werden.<br /><br />
+                          <strong>Klein (Standard):</strong> kleiner <strong>Chip</strong> mit Foto + Name — die Mail-Adresse und Rolle erscheinen erst beim <strong>Drüberfahren</strong> mit der Maus.<br /><br />
+                          <strong>Groß:</strong> die Organizer werden <strong>dauerhaft groß</strong> gezeigt (großes Foto, Name, klickbare <strong>E-Mail-Adresse</strong>, Rolle &amp; Standort) — Teilnehmer sehen die Kontaktdaten <strong>sofort</strong>, ohne die Maus darüber zu bewegen.
+                        </>
+                      : <>
+                          <strong>What this controls:</strong> how the <strong>organizers</strong> are displayed on the registration page.<br /><br />
+                          <strong>Small (default):</strong> small <strong>chip</strong> with photo + name — email and role only appear on <strong>hover</strong>.<br /><br />
+                          <strong>Large:</strong> organizers are shown <strong>large permanently</strong> (big photo, name, clickable <strong>email</strong>, role &amp; location).
+                        </>
+                    } />
                   </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="organizerDisplaySize"
+                        checked={!organizerDisplayLarge}
+                        onChange={() => setOrganizerDisplayLarge(false)}
+                        style={{ marginTop: 3, cursor: 'pointer' }}
+                      />
+                      <span style={{ flex: 1 }}>
+                        <strong>{isDe ? 'Klein (Chip)' : 'Small (chip)'}</strong>
+                        <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                          {isDe
+                            ? 'Kompakter Chip mit Foto + Name. Mail-Adresse und Rolle erscheinen beim Drüberfahren mit der Maus (Mouse-over) groß.'
+                            : 'Compact chip with photo + name. Email and role appear large on mouse-over.'}
+                        </span>
+                      </span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="organizerDisplaySize"
+                        checked={organizerDisplayLarge}
+                        onChange={() => setOrganizerDisplayLarge(true)}
+                        style={{ marginTop: 3, cursor: 'pointer' }}
+                      />
+                      <span style={{ flex: 1 }}>
+                        <strong>{isDe ? 'Groß' : 'Large'}</strong>
+                        <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                          {isDe
+                            ? 'Großes Foto, Name, klickbare E-Mail-Adresse und Rolle direkt sichtbar — ohne Mouse-over.'
+                            : 'Large photo, name, clickable email and role visible right away — no mouse-over.'}
+                        </span>
+                      </span>
+                    </label>
+                  </div>
                 </div>
               )}
 
@@ -6682,6 +6715,15 @@ export default function EventCreationPage(): React.ReactElement {
               {/* v9.21: Test-Team pro Event — sieht das Event im Entwurfsmodus
                   und kann sich anmelden, ohne globale Organizer-Rolle. Picker
                   via Graph-Search, beliebige Deloitte-User. */}
+              {/* v24.4 (G): Zwischenüberschrift „Erweitertes Organisations-Team". */}
+              <div style={{ borderLeft: '4px solid var(--dex-green)', padding: '4px 0 4px 12px', margin: '4px 0 18px' }}>
+                <div style={{ fontWeight: 800, fontSize: '1.02rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Erweitertes Organisations-Team' : 'Extended organization team'}</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
+                  {isDe
+                    ? 'Test-Team (sieht das Event schon im Entwurf) und Check-in-Team (bedient am Event-Tag nur das Check-in-Tool).'
+                    : 'Test team (sees the draft early) and check-in team (operates only the check-in tool on the event day).'}
+                </div>
+              </div>
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={7} />
@@ -6712,6 +6754,12 @@ export default function EventCreationPage(): React.ReactElement {
                     </span>
                   </button>
                 </label>
+                {/* v24.4 (L): Kernaussage inline (ohne Mouse-over), Rest im Info-Symbol. */}
+                <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                  {isDe
+                    ? 'Eine kleine Gruppe, die das Event schon im Entwurfsmodus sieht und sich testweise anmelden darf — bevor du es für die echte Zielgruppe freigibst.'
+                    : 'A small group that can see the event already in draft mode and register as a test — before you publish it to the real audience.'}
+                </p>
                 {testTeamNames.length > 0 && (() => {
                   const remove = (idx: number): void => {
                     setTestTeamNames(testTeamNames.filter((_, i) => i !== idx));
@@ -6857,6 +6905,12 @@ export default function EventCreationPage(): React.ReactElement {
                     </span>
                   </button>
                 </label>
+                {/* v24.4 (L): Kernaussage inline (ohne Mouse-over), Rest im Info-Symbol. */}
+                <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                  {isDe
+                    ? 'Personen, die am Event-Tag nur das Check-in-Tool bedienen dürfen (QR-Codes scannen, Teilnehmer ein-/auschecken) — sonst keine weiteren Rechte.'
+                    : 'People who may only operate the check-in tool on the event day (scan QR codes, check attendees in/out) — no other rights.'}
+                </p>
                 {qrScannerNames.length > 0 && (() => {
                   const move = (idx: number, dir: -1 | 1): void => {
                     const target = idx + dir;
@@ -9157,7 +9211,11 @@ export default function EventCreationPage(): React.ReactElement {
               {/* v9.17: Split-Capacity-Toggle UNTER dem Teilnehmerzahl-Block,
                   bewusst subtil — der Großteil der Events nutzt eine einzige
                   Teilnehmerzahl. Nur wer einen Lauf mit getrennten Starter-
-                  Töpfen anlegt, klickt diesen Toggle. */}
+                  Töpfen anlegt, klickt diesen Toggle.
+                  v24.4 (K): erst sichtbar, wenn „Teilnehmeranzahl begrenzen"
+                  aktiv ist (bzw. die geteilte Kapazität bereits an ist) —
+                  ohne Begrenzung ergibt eine geteilte Kapazität keinen Sinn. */}
+              {(!unlimitedParticipants || useSplitCapacities) && (
               <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: '0.8rem', color: 'var(--dex-gray-600)', cursor: 'pointer', padding: '8px 0', marginTop: 4 }}>
                 <input
                   type="checkbox"
@@ -9172,6 +9230,7 @@ export default function EventCreationPage(): React.ReactElement {
                   </span>
                 </span>
               </label>
+              )}
               </div>
 
               </div>{/* v15.6: close hauptGreyoutWrapperStyle div (Step 4) */}

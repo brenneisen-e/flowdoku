@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.4.0 | 2026-06-18 | Feature | Wizard Schritt 1 übersichtlicher (Teil 4 von v24): Zwischenüberschrift „Organizer" (grüner Balken + Hinweis: sehen die Teilnehmerliste, stellen das Event ein) und „Erweitertes Organisations-Team" über Test-/Check-in-Team; deren Kernaussage steht jetzt inline (Details im Info-Symbol). Organizer-Anzeige als klare Wahl „Klein (Chip)" / „Groß" (klein = groß per Mouse-over). „Geteilte Kapazität" erscheint erst, wenn „Teilnehmeranzahl begrenzen" aktiviert ist. |
 | 24.3.0 | 2026-06-18 | Feature | Die Option „Auch international suchen (@deloitte.com)" erscheint app-weit erst, sobald mindestens ein Zeichen ins Suchfeld getippt wurde (vorher immer sichtbar). Betrifft alle Personensuchen (Sichtbarkeit, Organizer/Test-/Check-in-Team, Anmeldung für andere, Team-Mitglieder, Rollenverwaltung, Massenimport). |
 | 24.3.0 | 2026-06-18 | Feature | Die „Admin"-Kachel auf der Startseite hat jetzt ein Stern-Symbol statt der Kapitänsmütze. |
 | 24.2.0 | 2026-06-18 | Feature | Post-Event-Mail (Teil 3 von v24): Nach einem Event bekommt der Organizer beim nächsten Öffnen der App automatisch eine freundliche Mail („Wir hoffen, dein Event ist gut verlaufen") mit dem Hinweis, dass die Teilnehmerübersicht aus Datenschutzgründen noch ein Jahr gespeichert bleibt und jederzeit als Excel exportiert oder in der App eingesehen werden kann. Einmal pro Event und Organizer. |
