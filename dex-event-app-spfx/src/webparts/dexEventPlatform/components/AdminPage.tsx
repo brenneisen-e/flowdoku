@@ -849,7 +849,7 @@ export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
   // v14.11: zusätzlich `events` (alle Events inkl. Sub-Events) als `allEvents`
   // für die Parent-Lookup-Logik im konsolidierten View + im Sub-Event-Detail.
-  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, countExternalRegistrations, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead } = useEvents();
+  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead } = useEvents();
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const handleRefresh = async (): Promise<void> => {
     if (isRefreshing) return;
@@ -2594,6 +2594,33 @@ export default function AdminPage(): React.ReactElement {
   const currentEventsRaw = isAdmin ? adminEvents.filter(e => !isPastEvent(e)) : adminEvents;
   const pastEventsRaw = isAdmin ? adminEvents.filter(isPastEvent) : [];
   const [showPastEvents, setShowPastEvents] = React.useState(false);
+  // v24.6: Organizer-Archiv — abgelaufene Events aus DER EIGENEN Übersicht
+  // ausblenden (pro Person, reiner Anzeige-Filter; Event/Daten bleiben).
+  const [archivedEventIds, setArchivedEventIds] = React.useState<Set<string>>(new Set());
+  const [showArchivedEvents, setShowArchivedEvents] = React.useState(false);
+  const [archiveBusyId, setArchiveBusyId] = React.useState<string | null>(null);
+  const archivedLoadedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (archivedLoadedRef.current) return;
+    archivedLoadedRef.current = true;
+    getOrganizerArchivedEventIds().then(setArchivedEventIds).catch(() => { /* best-effort */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const handleArchiveEvent = async (event: DeloitteEvent): Promise<void> => {
+    setArchiveBusyId(event.id);
+    try {
+      const ok = await archiveEventForOrganizer(event.id);
+      if (ok) setArchivedEventIds(prev => { const n = new Set(prev); n.add(event.id); return n; });
+    } catch { /* */ } finally { setArchiveBusyId(null); }
+  };
+  const handleUnarchiveEvent = async (event: DeloitteEvent): Promise<void> => {
+    setArchiveBusyId(event.id);
+    try {
+      const ok = await unarchiveEventForOrganizer(event.id);
+      if (ok) setArchivedEventIds(prev => { const n = new Set(prev); n.delete(event.id); return n; });
+    } catch { /* */ } finally { setArchiveBusyId(null); }
+  };
+  const archivedCount = adminEvents.filter(e => archivedEventIds.has(e.id)).length;
   // v18.2: Entwurf-Filter + Sortierung der Admin/Organizer-Event-Liste.
   // Default-Sortierung alphabetisch nach Titel; alternativ nach Startdatum
   // aufsteigend. „Entwürfe ausblenden" filtert isFictive-Events raus.
@@ -2603,6 +2630,9 @@ export default function AdminPage(): React.ReactElement {
   const sortAndFilterEvents = React.useCallback((list: DeloitteEvent[]): DeloitteEvent[] => {
     let arr = list.slice();
     if (hideDrafts) arr = arr.filter(e => !e.isFictive);
+    // v24.6: archivierte (für mich ausgeblendete) Events nur zeigen, wenn der
+    // „Archivierte anzeigen"-Schalter an ist.
+    if (!showArchivedEvents) arr = arr.filter(e => !archivedEventIds.has(e.id));
     arr.sort((a, b) => {
       if (eventSortMode === 'date') {
         const am = a.startDate ? new Date(a.startDate).getTime() : Number.POSITIVE_INFINITY;
@@ -2613,7 +2643,7 @@ export default function AdminPage(): React.ReactElement {
       return (a.title || '').localeCompare(b.title || '', isDe ? 'de' : 'en');
     });
     return arr;
-  }, [hideDrafts, eventSortMode, isDe]);
+  }, [hideDrafts, eventSortMode, isDe, showArchivedEvents, archivedEventIds]);
   const currentEvents = sortAndFilterEvents(currentEventsRaw);
   const pastEvents = sortAndFilterEvents(pastEventsRaw);
 
@@ -4215,6 +4245,27 @@ export default function AdminPage(): React.ReactElement {
                         </span>
                       )}
                     </div>
+                    {/* v24.6: abgelaufene Events aus der EIGENEN Übersicht aus-/einblenden. */}
+                    {isPastEvent(event) && (
+                      archivedEventIds.has(event.id) ? (
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ fontSize: '0.74rem', padding: '4px 10px' }}
+                          disabled={archiveBusyId === event.id}
+                          onClick={e => { e.stopPropagation(); void handleUnarchiveEvent(event); }}
+                        >{archiveBusyId === event.id ? '…' : (isDe ? 'Einblenden' : 'Unhide')}</button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ fontSize: '0.74rem', padding: '4px 10px' }}
+                          title={isDe ? 'Aus meiner Übersicht ausblenden — das Event bleibt erhalten und für andere sichtbar.' : 'Hide from my overview — the event is kept and stays visible to others.'}
+                          disabled={archiveBusyId === event.id}
+                          onClick={e => { e.stopPropagation(); void handleArchiveEvent(event); }}
+                        >{archiveBusyId === event.id ? '…' : (isDe ? 'Archivieren' : 'Archive')}</button>
+                      )
+                    )}
                     {/* v10.20 / v11.9: Migrations-Button für Legacy-B2Run-Events.
                         Erkennt das Event als 'altes B2Run' wenn entweder
                         type === 'B2Run' (alte EventType-Spalte) ODER mind.
@@ -4441,6 +4492,18 @@ export default function AdminPage(): React.ReactElement {
                         style={{ accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer' }}
                       />
                       {isDe ? `Entwürfe ausblenden (${draftCount})` : `Hide drafts (${draftCount})`}
+                    </label>
+                  )}
+                  {/* v24.6: Archivierte (für mich ausgeblendete) Events einblenden. */}
+                  {archivedCount > 0 && (
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', color: 'var(--dex-gray-700)', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={showArchivedEvents}
+                        onChange={e => setShowArchivedEvents(e.target.checked)}
+                        style={{ accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer' }}
+                      />
+                      {isDe ? `Archivierte anzeigen (${archivedCount})` : `Show archived (${archivedCount})`}
                     </label>
                   )}
                 </div>

@@ -8950,6 +8950,76 @@ export class EventService {
     try { await this.setQueueListPermissions(listName); } catch { /* */ }
   }
 
+  // ==================== v24.6: Organizer-Archiv (pro Person ausblenden) ====================
+  // Reiner Anzeige-Filter: ein abgelaufenes Event kann der Organizer aus SEINER
+  // Übersicht ausblenden (eine Zeile pro Event+Person). Das Event selbst bleibt
+  // mit allen Daten erhalten und für andere sichtbar — KEINE Datenlöschung.
+  public async ensureOrganizerArchivedList(): Promise<void> {
+    const listName = 'DEX_OrganizerArchived';
+    const exists = await this.listExists(listName);
+    if (exists) return;
+    const cr = await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'Pro Organizer ausgeblendete (archivierte) Events (v24.6) — reiner Anzeige-Filter, keine Datenlöschung.',
+      'BaseTemplate': 100,
+      'AllowContentTypes': false,
+    });
+    if (!cr.ok) { console.warn('[DEX] DEX_OrganizerArchived konnte nicht angelegt werden.'); return; }
+    for (const f of [{ title: 'EventId', type: 2 }, { title: 'OrganizerEmail', type: 2 }]) {
+      try { await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, { '__metadata': { 'type': 'SP.Field' }, 'Title': f.title, 'FieldTypeKind': f.type, 'Required': false }); } catch { /* */ }
+    }
+    try { await this.configureDefaultView(listName, ['EventId', 'OrganizerEmail', 'Created']); } catch { /* */ }
+    try { await this.setQueueListPermissions(listName); } catch { /* */ }
+  }
+
+  public async getOrganizerArchivedEventIds(email: string): Promise<Set<string>> {
+    const out = new Set<string>();
+    try {
+      const e = (email || '').replace(/'/g, "''");
+      if (!e) return out;
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerArchived')/items?$select=Id,EventId,OrganizerEmail&$filter=OrganizerEmail eq '${e}'&$top=2000`,
+        SPHttpClient.configurations.v1);
+      if (resp.ok) {
+        const d = await resp.json();
+        const rows = d.value || d.d?.results || [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const r of rows) { const id = String((r as any).EventId || ''); if (id) out.add(id); }
+      }
+    } catch { /* best-effort */ }
+    return out;
+  }
+
+  public async archiveEventForOrganizer(eventId: string, email: string): Promise<boolean> {
+    try {
+      const resp = await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerArchived')/items`, {
+        '__metadata': { 'type': 'SP.Data.DEX_x005f_OrganizerArchivedListItem' },
+        'Title': String(eventId).slice(0, 250),
+        'EventId': String(eventId),
+        'OrganizerEmail': email,
+      });
+      return resp.ok;
+    } catch { return false; }
+  }
+
+  public async unarchiveEventForOrganizer(eventId: string, email: string): Promise<boolean> {
+    try {
+      const e = (email || '').replace(/'/g, "''");
+      const idEsc = String(eventId).replace(/'/g, "''");
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerArchived')/items?$select=Id&$filter=OrganizerEmail eq '${e}' and EventId eq '${idEsc}'&$top=50`,
+        SPHttpClient.configurations.v1);
+      if (!resp.ok) return false;
+      const d = await resp.json();
+      const rows = d.value || d.d?.results || [];
+      let okAll = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const r of rows) { const del = await this._delete(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerArchived')/items(${(r as any).Id})`); if (!del.ok) okAll = false; }
+      return okAll;
+    } catch { return false; }
+  }
+
   public async createOrganizerRequest(email: string, name: string, location: string, message: string): Promise<{ ok: boolean; itemId?: number }> {
     try {
       const resp = await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerRequests')/items`, {

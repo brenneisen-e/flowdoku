@@ -381,6 +381,10 @@ interface EventContextType {
    *  Teilnehmer, Haupt- + Sub-Events, status-unabhängig). >0 ⇒ Lösch-Sperre
    *  (nur Admin, frühestens 1 Jahr nach Event-Ende). */
   countExternalRegistrations: (event: DeloitteEvent) => Promise<number>;
+  /** v24.6: Organizer-Archiv (pro Person ausblenden, reiner Anzeige-Filter). */
+  getOrganizerArchivedEventIds: () => Promise<Set<string>>;
+  archiveEventForOrganizer: (eventId: string) => Promise<boolean>;
+  unarchiveEventForOrganizer: (eventId: string) => Promise<boolean>;
   /** v11.69: Löscht NUR das DEX_Events-Listenitem, ohne Subsite-/Teilnehmer-
    *  Liste-Recycle und ohne Outlook-DeleteEvent-Queue. Wird gebraucht, um ein
    *  Sub-Event mit `existingSubsiteUrl` neu anzulegen, damit der
@@ -680,6 +684,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         safeRun('ensureArchiveList', () => eventService.ensureArchiveList(), parallelMarks),
         safeRun('ensureWeeklyReportsList', () => eventService.ensureWeeklyReportsList(), parallelMarks),
         safeRun('ensureOrganizerRequestsList', () => eventService.ensureOrganizerRequestsList(), parallelMarks),
+        safeRun('ensureOrganizerArchivedList', () => eventService.ensureOrganizerArchivedList(), parallelMarks),
         safeRun('ensureAssetsFolders', () => eventService.ensureAssetsFolders(), parallelMarks),
         safeRun('ensureLogosInConfig', () => eventService.ensureLogosInConfig(), parallelMarks),
       ]);
@@ -3194,6 +3199,20 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return count;
   }
 
+  // v24.6: Organizer-Archiv (pro Person ausblenden) — reiner Anzeige-Filter.
+  async function getOrganizerArchivedEventIds(): Promise<Set<string>> {
+    if (!currentUserEmail) return new Set<string>();
+    return eventService.getOrganizerArchivedEventIds(currentUserEmail);
+  }
+  async function archiveEventForOrganizer(eventId: string): Promise<boolean> {
+    if (!currentUserEmail) return false;
+    return eventService.archiveEventForOrganizer(eventId, currentUserEmail);
+  }
+  async function unarchiveEventForOrganizer(eventId: string): Promise<boolean> {
+    if (!currentUserEmail) return false;
+    return eventService.unarchiveEventForOrganizer(eventId, currentUserEmail);
+  }
+
   async function updateEvent(eventId: string, updates: Record<string, unknown>): Promise<boolean> {
     // v19.33: Roh-Stand VOR dem Update holen, damit das Audit-Log nur die
     // WIRKLICH geänderten Felder protokolliert (Vorher → Nachher). Vorher loggte
@@ -4100,7 +4119,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive,
+        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive,
         sendAdminInquiry,
         requestOrganizerRole, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,

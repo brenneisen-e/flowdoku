@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.6.0 | 2026-06-18 | Feature | Event archivieren/ausblenden (Teil 5 von v24): Abgelaufene Events kann der Organizer „archivieren" — sie verschwinden nur aus SEINER Übersicht (Event + Daten bleiben, für andere sichtbar). Schalter „Archivierte anzeigen" holt sie zurück. Pro Person gespeichert. |
 | 24.5.0 | 2026-06-18 | Feature | Die Demo-Vorlagen im Wizard sind jetzt immer auf den nächsten Samstag datiert (Event, Fristen und Sub-Events passend dazu) — die Beispiel-Events liegen nie in der Vergangenheit. |
 | 24.4.0 | 2026-06-18 | Feature | Wizard Schritt 1 übersichtlicher (Teil 4 von v24): Zwischenüberschrift „Organizer" (grüner Balken + Hinweis: sehen die Teilnehmerliste, stellen das Event ein) und „Erweitertes Organisations-Team" über Test-/Check-in-Team; deren Kernaussage steht jetzt inline (Details im Info-Symbol). Organizer-Anzeige als klare Wahl „Klein (Chip)" / „Groß" (klein = groß per Mouse-over). „Geteilte Kapazität" erscheint erst, wenn „Teilnehmeranzahl begrenzen" aktiviert ist. |
 | 24.3.0 | 2026-06-18 | Feature | Die Option „Auch international suchen (@deloitte.com)" erscheint app-weit erst, sobald mindestens ein Zeichen ins Suchfeld getippt wurde (vorher immer sichtbar). Betrifft alle Personensuchen (Sichtbarkeit, Organizer/Test-/Check-in-Team, Anmeldung für andere, Team-Mitglieder, Rollenverwaltung, Massenimport). |
