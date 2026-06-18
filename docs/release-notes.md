@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 23.48.0 | 2026-06-18 | Feature | Löschkonzept angepasst: Die archivierten Daten (Mails, Kalender-Einträge usw. im Archiv) werden jetzt schon rund einen Monat nach Ablauf des Events zum endgültigen Löschen vorgeschlagen — vorher erst nach einem Jahr. Da sofort beim Ablauf archiviert wird, entspricht der Ablage-Zeitpunkt praktisch dem Event-Ende. |
 | 23.47.0 | 2026-06-18 | Bugfix | Beim Archivieren wird jetzt der vollständige Inhalt jeder Zeile gesichert — vor allem der komplette Mailtext (Body) und bei Kalender-Einträgen die Termin-Verknüpfung (CalendarLink). Diese fehlten vorher im Archiv (der Inhalt wurde beim Archiv-Lauf nicht mit übernommen und beim anschließenden Löschen der Original-Zeile verworfen). Empfänger, CC, BCC, Betreff, Status und Datum waren bereits enthalten. |
 | 23.47.0 | 2026-06-18 | Feature | Löschkonzept angepasst: Archiv-Einträge werden erst nach einem Jahr (statt nach einem halben Jahr) zum endgültigen Löschen vorgeschlagen. |
 | 23.47.0 | 2026-06-18 | Bugfix | Organizer-Karten: beim schnellen Wechseln zwischen zwei Organizern war kurz die Info-Karte beider gleichzeitig sichtbar — jetzt ist immer nur eine geöffnet. |

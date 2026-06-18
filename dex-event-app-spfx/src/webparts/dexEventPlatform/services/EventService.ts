@@ -9242,7 +9242,7 @@ export class EventService {
   // ==================== Archiv-Löschkonzept (v23.40) ====================
   // DEX_Archive-Einträge sind die End-Ablage. Damit die Liste nicht unendlich
   // wächst, können Admins Einträge löschen, die älter als ein Stichdatum sind
-  // (v23.47: standardmäßig ein Jahr). „ArchivedAt" ist der Ablage-Zeitpunkt.
+  // (v23.48: standardmäßig 1 Monat nach Ablauf). „ArchivedAt" ist der Ablage-Zeitpunkt.
 
   /** Zählt DEX_Archive-Zeilen mit ArchivedAt älter als `olderThanIso`. */
   public async countDeletableArchiveRows(olderThanIso: string): Promise<number> {

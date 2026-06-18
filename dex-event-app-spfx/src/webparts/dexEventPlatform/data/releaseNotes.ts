@@ -44,6 +44,7 @@ export interface ReleaseNote {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '23.48.0', date: '2026-06-18', bereich: 'Verwaltung', type: 'Feature', text: 'Löschkonzept angepasst: Die archivierten Daten (Mails, Kalender-Einträge usw. im Archiv) werden jetzt schon rund einen Monat nach Ablauf des Events zum endgültigen Löschen vorgeschlagen — vorher erst nach einem Jahr. So bleibt die Ablage dauerhaft schlank.' },
   { version: '23.47.0', date: '2026-06-18', bereich: 'Verwaltung', type: 'Bugfix', text: 'Beim Archivieren wird jetzt der vollständige Inhalt jeder Zeile gesichert — insbesondere der komplette Mailtext (Body) und bei Kalender-Einträgen die Termin-Verknüpfung; vorher fehlten diese im Archiv. Empfänger, Kopie (CC), Blindkopie und Betreff waren bereits enthalten.' },
   { version: '23.47.0', date: '2026-06-18', bereich: 'Verwaltung', type: 'Feature', text: 'Löschkonzept angepasst: Archiv-Einträge werden erst nach einem Jahr (statt nach einem halben Jahr) zum endgültigen Löschen vorgeschlagen.' },
   { version: '23.47.0', date: '2026-06-18', bereich: 'Organizer Center', type: 'Bugfix', text: 'Beim schnellen Wechseln zwischen zwei Organizern war kurz die Info-Karte beider gleichzeitig zu sehen — jetzt ist immer nur eine offen.' },

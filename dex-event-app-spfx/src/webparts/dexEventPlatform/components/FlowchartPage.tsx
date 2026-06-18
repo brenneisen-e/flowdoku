@@ -1011,9 +1011,9 @@ function ArchiveDeleteFlow(): React.ReactElement {
       <FlowNode type="end" color="var(--dex-green)" label="Arbeitslisten sind wieder schlank, alte Einträge liegen im Archiv" />
       <Arrow />
       <FlowNode type="process" label="STUFE 2 — Altes Archiv löschen"
-        details="Das Archiv ist die letzte Ablage. Einträge, die älter als ein Jahr sind, braucht in der Regel niemand mehr und können endgültig entfernt werden." />
+        details="Das Archiv ist die letzte Ablage. Rund einen Monat nach Ablauf des Events braucht die Daten in der Regel niemand mehr — sie können endgültig entfernt werden." />
       <Arrow />
-      <FlowNode type="decision" label="Einträge älter als 1 Jahr vorhanden?" />
+      <FlowNode type="decision" label="Einträge älter als 1 Monat vorhanden?" />
       <BranchContainer>
         <Branch label="Nein">
           <FlowNode type="process" color="#f5f5f5" label="Archiv ist aktuell — nichts löschen" />
