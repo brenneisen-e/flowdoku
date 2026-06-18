@@ -16,7 +16,8 @@ import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
-import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2, ChevronUp, ChevronDown, QrCode, Search, Info } from './Icons';
+import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2, ChevronUp, ChevronDown, QrCode, Search, Info, Calendar, Pin } from './Icons';
+import OrganizerList from './OrganizerList';
 import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
 import { isEventOver } from '../utils/eventFormat';
 // v20.1: Self-Check-in jederzeit aktivierbar (Token-Erzeugung beim Klick).
@@ -4086,15 +4087,18 @@ export default function AdminPage(): React.ReactElement {
               <div
                 key={event.id}
                 className="card card-clickable"
-                style={{ padding: '20px 24px', cursor: 'pointer', opacity: opts?.muted ? 0.85 : 1 }}
+                style={{ position: 'relative', padding: '26px 24px 22px', cursor: 'pointer', opacity: opts?.muted ? 0.85 : 1, overflow: 'hidden' }}
               >
+                {/* v23.42: Status-Badge fest in der oberen linken Ecke
+                    (grün = aktiv, orange = Entwurf). */}
+                <span style={{ position: 'absolute', top: 0, left: 0, padding: '4px 12px', borderBottomRightRadius: 10, fontSize: '0.68rem', fontWeight: 800, letterSpacing: 0.4, background: event.isFictive ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)', color: '#fff' }}>
+                  {event.isFictive ? (isDe ? 'ENTWURF' : 'DRAFT') : (isDe ? localizeStatus(event.status) : event.status).toUpperCase()}
+                </span>
                 <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                  <div onClick={() => handleSelectEvent(event)} style={{ flex: '1 1 200px', display: 'flex', alignItems: 'center', gap: 16, cursor: 'pointer' }}>
-                    {/* v9.11: Thumbnail-Container immer rendern (auch wenn kein Bild
-                        gesetzt ist) — sonst rutscht der Text nach links und die
-                        Reihen wirken inkonsistent neben Reihen mit Bild. */}
+                  <div onClick={() => handleSelectEvent(event)} style={{ flex: '1 1 260px', display: 'flex', alignItems: 'center', gap: 16, cursor: 'pointer' }}>
+                    {/* v23.42: größeres Thumbnail. */}
                     <div style={{
-                      width: 60, height: 40, borderRadius: 'var(--dex-radius)', flexShrink: 0,
+                      width: 84, height: 60, borderRadius: 'var(--dex-radius)', flexShrink: 0,
                       background: event.imageUrl
                         ? `url(${event.imageUrl}) center/cover no-repeat`
                         : 'linear-gradient(135deg, var(--dex-gray-200), var(--dex-gray-100))',
@@ -4104,51 +4108,50 @@ export default function AdminPage(): React.ReactElement {
                     }}>
                       {!event.imageUrl && '—'}
                     </div>
-                    <div>
-                    <h3 style={{ marginBottom: 4 }}>{event.title}</h3>
-                    <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', margin: 0 }}>
-                      {formatDate(event.startDate)} - {formatDate(event.endDate)}
-                      {event.location ? ` · ${event.location}` : ''}
-                    </p>
-                    <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)', margin: '2px 0 0' }}>
-                      Organizer: {event.organizers.map(o => { const p = o.split(',').map(s => s.trim()); return p.length === 2 ? `${p[1]} ${p[0]}` : o; }).join(', ')}
-                    </p>
+                    <div style={{ minWidth: 0 }}>
+                      <h3 style={{ margin: '0 0 6px' }}>{event.title}</h3>
+                      {/* v23.42: Datum + Ort mit Icon (wie auf der Anmeldeseite). */}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
+                          <Calendar size={14} />
+                          {formatDate(event.startDate)} {isDe ? 'bis' : 'until'} {formatDate(event.endDate)}
+                        </span>
+                        {event.location && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
+                            <Pin size={14} />
+                            {event.location}
+                          </span>
+                        )}
+                        {/* v23.42: Organizer mit Foto + Hover (wie Anmeldeseite). */}
+                        <div onClick={e => e.stopPropagation()} style={{ marginTop: 4 }}>
+                          <OrganizerList
+                            names={event.organizers.reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map(o => o.trim()).filter(Boolean)}
+                            emails={event.organizerEmails}
+                            size="sm"
+                            compact
+                          />
+                        </div>
+                      </div>
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
-                      {/* v9.10: B2Run-Events haben maxParticipants=0 weil die Kapazität
-                          auf durchstarter+funstarter aufgeteilt ist — Summe als
-                          effektive Kapazität anzeigen statt "∞". */}
-                      {(() => {
-                        const split = (event.durchstarterCapacity || 0) + (event.funstarterCapacity || 0);
-                        const isSplitEv = (event.durchstarterCapacity || 0) > 0 && (event.funstarterCapacity || 0) > 0;
-                        const eff = event.maxParticipants && event.maxParticipants > 0 ? event.maxParticipants : split;
-                        // v22.5: Bei Events mit zwei Teilnehmergruppen keine Überbuchung
-                        // in der Listenzeile zeigen — die belegte Zahl auf die Kapazität
-                        // deckeln (die echte Überbuchungszahl bleibt dem Werkzeug
-                        // „Überbuchung prüfen" im Event-Detail vorbehalten).
-                        const shown = (isSplitEv && eff > 0) ? Math.min(event.currentParticipants, eff) : event.currentParticipants;
-                        return `${shown}/${eff || '∞'} Teilnehmer`;
-                      })()}
-                    </span>
-                    {/* v23.30: Anzahl auf der Warteliste in der Listenzeile. */}
-                    {event.waitlistCount > 0 && (
-                      <span style={{ fontSize: '0.85rem', color: 'var(--dex-orange, #ed8b00)', fontWeight: 600 }}>
-                        {event.waitlistCount} {isDe ? 'auf Warteliste' : 'on waitlist'}
+                    {/* v23.42: Teilnehmerzahl + Warteliste UNTEREINANDER. */}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2 }}>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
+                        {(() => {
+                          const split = (event.durchstarterCapacity || 0) + (event.funstarterCapacity || 0);
+                          const isSplitEv = (event.durchstarterCapacity || 0) > 0 && (event.funstarterCapacity || 0) > 0;
+                          const eff = event.maxParticipants && event.maxParticipants > 0 ? event.maxParticipants : split;
+                          const shown = (isSplitEv && eff > 0) ? Math.min(event.currentParticipants, eff) : event.currentParticipants;
+                          return `${shown}/${eff || '∞'} ${isDe ? 'Teilnehmer' : 'attendees'}`;
+                        })()}
                       </span>
-                    )}
-                    {/* v9.20: Status-Badge mit Entwurfs-Override.
-                        Wenn das Event als Entwurf markiert ist, wird "ENTWURF"
-                        statt des EventStatus angezeigt — für den Organizer
-                        ist dieser Hinweis wichtiger als der technische Status. */}
-                    <span className="badge" style={{
-                      background: event.isFictive ? 'rgba(237,139,0,0.15)' : getStatusColor(event.status) + '22',
-                      color: event.isFictive ? 'var(--dex-orange-dark, #b35a00)' : getStatusColor(event.status),
-                      fontWeight: 600,
-                    }}>
-                      {event.isFictive ? 'ENTWURF' : (isDe ? localizeStatus(event.status) : event.status)}
-                    </span>
+                      {event.waitlistCount > 0 && (
+                        <span style={{ fontSize: '0.8rem', color: 'var(--dex-orange, #ed8b00)', fontWeight: 600 }}>
+                          {event.waitlistCount} {isDe ? 'auf Warteliste' : 'on waitlist'}
+                        </span>
+                      )}
+                    </div>
                     {/* v10.20 / v11.9: Migrations-Button für Legacy-B2Run-Events.
                         Erkennt das Event als 'altes B2Run' wenn entweder
                         type === 'B2Run' (alte EventType-Spalte) ODER mind.

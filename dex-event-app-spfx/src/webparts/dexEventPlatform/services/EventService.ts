@@ -8986,6 +8986,32 @@ export class EventService {
   }
 
   /** E-Mail-Adressen (Title) aller DEX_Roles-Einträge mit der gegebenen Rolle. */
+  /** v23.38: Rollen-Empfänger mit E-Mail UND Anzeigename (für personalisierte
+   *  Mails wie den Wochenbericht — „Hallo <Name>" statt generisch „Admin"). */
+  public async getRoleRecipients(role: string): Promise<Array<{ email: string; name: string }>> {
+    try {
+      const esc = role.replace(/'/g, "''");
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=Role eq '${encodeURIComponent(esc)}'&$select=Title,UserName&$top=5000`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      const seen = new Set<string>();
+      const out: Array<{ email: string; name: string }> = [];
+      for (const i of items) {
+        const email = (i.Title || '').trim();
+        if (!email) continue;
+        const key = email.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ email, name: (i.UserName || '').trim() || email });
+      }
+      return out;
+    } catch { return []; }
+  }
+
   public async getRoleEmails(role: string): Promise<string[]> {
     try {
       const esc = role.replace(/'/g, "''");
@@ -9085,7 +9111,12 @@ export class EventService {
 
   private rowMatchesExpired(
     r: Record<string, unknown>, matchBy: 'eventId' | 'subsiteUrl',
-    expiredEventIds: Set<string>, expiredSubsiteUrls: Set<string>
+    expiredEventIds: Set<string>, expiredSubsiteUrls: Set<string>,
+    // v23.39: ALLE aktuell existierenden Event-IDs / Subsites. Eine Zeile, deren
+    // Bezug NICHT mehr darin vorkommt, gehört zu einem gelöschten Event
+    // (verwaist) und ist ebenfalls archivreif. Die size>0-Wächter verhindern,
+    // dass bei (noch) nicht geladenen Events fälschlich ALLES als verwaist gilt.
+    allEventIds: Set<string>, allSubsiteUrls: Set<string>
   ): boolean {
     // v22.2: 'Pending' = der Flow hat die Zeile noch nicht verarbeitet —
     // niemals archivieren (sonst verschwindet z.B. eine unversendete Mail
@@ -9094,16 +9125,20 @@ export class EventService {
     if (String(r['Status'] || '') === 'Pending') return false;
     if (matchBy === 'eventId') {
       const id = String(r['EventId'] || '').trim();
-      return !!id && expiredEventIds.has(id);
+      if (!id) return false;
+      // archivreif = Event abgelaufen ODER nicht mehr existent (gelöscht/verwaist).
+      return expiredEventIds.has(id) || (allEventIds.size > 0 && !allEventIds.has(id));
     }
     const su = String(r['SubsiteUrl'] || '').toLowerCase().trim();
-    return !!su && expiredSubsiteUrls.has(su);
+    if (!su) return false;
+    return expiredSubsiteUrls.has(su) || (allSubsiteUrls.size > 0 && !allSubsiteUrls.has(su));
   }
 
   /** v21: Zählt die archivreifen Zeilen pro Quell-Liste (leichtgewichtig:
    *  nur Id+EventId bzw. Id+SubsiteUrl). */
   public async countArchivableRows(
-    expiredEventIds: Set<string>, expiredSubsiteUrls: Set<string>
+    expiredEventIds: Set<string>, expiredSubsiteUrls: Set<string>,
+    allEventIds: Set<string> = new Set(), allSubsiteUrls: Set<string> = new Set()
   ): Promise<{ total: number; perList: Record<string, number> }> {
     const perList: Record<string, number> = {};
     let total = 0;
@@ -9116,7 +9151,7 @@ export class EventService {
         const select = src.hasStatus ? `${base},Status` : base;
         const rows = await this.loadAllListRows(src.list, select);
         for (const r of rows) {
-          if (this.rowMatchesExpired(r, src.matchBy, expiredEventIds, expiredSubsiteUrls)) c++;
+          if (this.rowMatchesExpired(r, src.matchBy, expiredEventIds, expiredSubsiteUrls, allEventIds, allSubsiteUrls)) c++;
         }
       } catch { /* Liste evtl. nicht vorhanden */ }
       perList[src.list] = c;
@@ -9135,7 +9170,9 @@ export class EventService {
     // v22.2: Abbruch-Check (UI-Button). Sauber: bereits verschobene Zeilen
     // bleiben im Archiv (jede Zeile ist atomar Insert→Delete), der Rest
     // bleibt in der Quelle und kommt beim nächsten Lauf dran.
-    shouldCancel?: () => boolean
+    shouldCancel?: () => boolean,
+    // v23.39: alle aktuellen Event-IDs / Subsites (für die Verwaist-Erkennung).
+    allEventIds: Set<string> = new Set(), allSubsiteUrls: Set<string> = new Set()
   ): Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number> }> {
     const result = { archived: 0, failed: 0, cancelled: false, perList: {} as Record<string, number> };
     const sources = EventService.ARCHIVE_SOURCES;
@@ -9158,7 +9195,7 @@ export class EventService {
         // nach dem Komplett-Laden — das Modal wirkte eingefroren).
         if (onProgress) onProgress(si, sources.length, src.list, 0, 0);
         const rows = await this.loadAllListRows(src.list, src.select);
-        const matching = rows.filter(r => this.rowMatchesExpired(r, src.matchBy, expiredEventIds, expiredSubsiteUrls));
+        const matching = rows.filter(r => this.rowMatchesExpired(r, src.matchBy, expiredEventIds, expiredSubsiteUrls, allEventIds, allSubsiteUrls));
         if (onProgress) onProgress(si, sources.length, src.list, 0, matching.length);
         for (let i = 0; i < matching.length; i++) {
           if (shouldCancel && shouldCancel()) { result.cancelled = true; break; }
@@ -9191,6 +9228,59 @@ export class EventService {
       result.perList[src.list] = listArchived;
       if (result.cancelled) break;
     }
+    return result;
+  }
+
+  // ==================== Archiv-Löschkonzept (v23.40) ====================
+  // DEX_Archive-Einträge sind die End-Ablage. Damit die Liste nicht unendlich
+  // wächst, können Admins Einträge löschen, die älter als ein Stichdatum sind
+  // (standardmäßig ein halbes Jahr). „ArchivedAt" ist der Ablage-Zeitpunkt.
+
+  /** Zählt DEX_Archive-Zeilen mit ArchivedAt älter als `olderThanIso`. */
+  public async countDeletableArchiveRows(olderThanIso: string): Promise<number> {
+    try {
+      const cutoff = new Date(olderThanIso).getTime();
+      if (!isFinite(cutoff)) return 0;
+      const rows = await this.loadAllListRows('DEX_Archive', 'Id,ArchivedAt');
+      let c = 0;
+      for (const r of rows) {
+        const a = r['ArchivedAt'] ? new Date(String(r['ArchivedAt'])).getTime() : 0;
+        if (a > 0 && a < cutoff) c++;
+      }
+      return c;
+    } catch { return 0; }
+  }
+
+  /** Löscht DEX_Archive-Zeilen älter als `olderThanIso` (sequentiell, mit
+   *  Fortschritt + Abbruch). Hartes DELETE — bewusst (das Archiv ist die
+   *  letzte Stufe; ältere Einträge braucht niemand mehr). */
+  public async deleteOldArchiveRows(
+    olderThanIso: string,
+    onProgress?: (done: number, total: number) => void,
+    shouldCancel?: () => boolean
+  ): Promise<{ deleted: number; failed: number; cancelled: boolean }> {
+    const result = { deleted: 0, failed: 0, cancelled: false };
+    try {
+      const cutoff = new Date(olderThanIso).getTime();
+      if (!isFinite(cutoff)) return result;
+      const rows = await this.loadAllListRows('DEX_Archive', 'Id,ArchivedAt');
+      const targets = rows.filter(r => {
+        const a = r['ArchivedAt'] ? new Date(String(r['ArchivedAt'])).getTime() : 0;
+        return a > 0 && a < cutoff;
+      });
+      if (onProgress) onProgress(0, targets.length);
+      for (let i = 0; i < targets.length; i++) {
+        if (shouldCancel && shouldCancel()) { result.cancelled = true; break; }
+        const id = Number(targets[i]['Id'] || 0);
+        if (id > 0) {
+          try {
+            const del = await this._delete(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_Archive')/items(${id})`);
+            if (del.ok) result.deleted++; else result.failed++;
+          } catch { result.failed++; }
+        }
+        if (onProgress) onProgress(i + 1, targets.length);
+      }
+    } catch { /* Liste evtl. nicht vorhanden */ }
     return result;
   }
 

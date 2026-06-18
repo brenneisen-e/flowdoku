@@ -11,7 +11,7 @@ import InquiryModal from './InquiryModal';
 
 export default function StartPage(): React.ReactElement {
   const { navigate } = useNavigation();
-  const { canCreateEvents, isAdmin } = useRoles();
+  const { canCreateEvents, isAdmin, originalIsAdmin } = useRoles();
   const { events } = useEvents();
   const { currentUser } = useCurrentUser();
   const { t, locale } = useLanguage();
@@ -68,6 +68,8 @@ export default function StartPage(): React.ReactElement {
   // sehen, nicht erst über den Header-Button suchen müssen.
   const showAdminTile = true;
   const showCheckInTile = isCheckInTeamOfActive || isAdmin || isOrganizer;
+  // v23.41: „Admin"-Kachel (Hub) — nur echte Admins (auch im Demo-Modus).
+  const showAdminHubTile = isAdmin || originalIsAdmin;
 
   return (
     <div className="page-container">
@@ -111,8 +113,20 @@ export default function StartPage(): React.ReactElement {
           .start-grid--with-checkin { grid-template-columns: 1fr 1fr !important; }
           .start-grid--with-checkin .start-card--checkin { grid-column: 1 / -1; }
         }
+        /* v23.41: 5-Spalten-Variante mit Admin-Hub-Kachel. */
+        .start-grid--with-adminhub {
+          grid-template-columns: repeat(5, 1fr) !important;
+          max-width: 1360px !important;
+        }
+        .start-grid--with-adminhub .start-card { width: 100%; }
+        @media (max-width: 1100px) {
+          .start-grid--with-adminhub { grid-template-columns: 1fr 1fr 1fr !important; }
+        }
+        @media (max-width: 760px) {
+          .start-grid--with-adminhub { grid-template-columns: 1fr 1fr !important; }
+        }
       `}</style>
-      <div className={`start-grid${showAdminTile ? ' start-grid--with-admin' : ''}${showCheckInTile ? ' start-grid--with-checkin' : ''}`}>
+      <div className={`start-grid${showAdminTile ? ' start-grid--with-admin' : ''}${showCheckInTile ? ' start-grid--with-checkin' : ''}${showAdminHubTile ? ' start-grid--with-adminhub' : ''}`}>
         {/* v22.21: data-tour-Anker — Spotlight-Ziele des geführten Tutorials. */}
         <div className="card card-clickable start-card" data-tour="tile-register" onClick={() => navigate('register')}>
           <div className="start-card__icon">
@@ -192,6 +206,22 @@ export default function StartPage(): React.ReactElement {
               {locale === 'de'
                 ? 'Teilnehmer einchecken'
                 : 'Check in attendees'}
+            </p>
+          </div>
+        )}
+        {/* v23.41: „Admin"-Kachel rechts neben Check-In — Hub für Prozesse,
+            Rollen, Listen-Erklärung, Archiv/Löschung (nur echte Admins). */}
+        {showAdminHubTile && (
+          <div
+            className="card card-clickable start-card"
+            onClick={() => navigate('admin-hub')}
+          >
+            <div className="start-card__icon">
+              <Settings size={64} strokeWidth={1} />
+            </div>
+            <h2>Admin</h2>
+            <p style={{ whiteSpace: 'nowrap' }}>
+              {locale === 'de' ? 'Verwaltung & Prozesse' : 'Administration & processes'}
             </p>
           </div>
         )}
