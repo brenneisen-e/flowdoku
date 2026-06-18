@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 23.46.0 | 2026-06-18 | Feature | Im Admin-Bereich sind jetzt alle Release Notes der App als durchsuchbare Tabelle einsehbar (Spalten: Version, Datum, Bereich, Art, Beschreibung) — mit Volltext-Suche und Filter nach Bereich/Art. Die in der App hinterlegte Historie reicht bis zur ersten Version zurück (lückenlos ab v18.65, ältere Einträge als dokumentierte Meilensteine). |
 | 23.45.0 | 2026-06-18 | Feature | Im Check-in-Auswahlbildschirm werden Sub-Events jetzt unter ihrem Hauptevent gruppiert und sind standardmäßig eingeklappt — ein Pfeil neben dem Hauptevent klappt sie auf. So bleibt die Liste auch bei Events mit vielen Sub-Events übersichtlich. |
 | 23.45.0 | 2026-06-18 | Feature | Die „Admin"-Kachel auf der Startseite hat jetzt eine Kapitänsmütze als Symbol; die Organizer-Eventübersicht trägt den klaren Titel „Organizer – Eventübersicht". |
 | 23.44.0 | 2026-06-18 | Feature | Prozessübersicht in saubere, verständliche Ablaufdiagramme (BPMN) überführt: Kreise für Start/Ende, abgerundete Rechtecke für Schritte, Rauten für Entscheidungen — durchgehend ohne Technik-Begriffe. Eigene Kachel zum direkten Öffnen einer SharePoint-Liste; die Organizer-Eventübersicht zeigt nur noch „Neues Event erstellen". Der Wochenbericht enthält ab sofort die Neuerungen der Woche, und alle Release Notes sind im Admin-Bereich einsehbar. |

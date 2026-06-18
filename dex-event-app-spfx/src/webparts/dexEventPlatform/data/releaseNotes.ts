@@ -1,41 +1,181 @@
 /**
- * v23.44: Strukturierte Release Notes — Laufzeit-Quelle für den Wochenbericht.
+ * Strukturierte Release Notes — Laufzeit-Quelle für den Wochenbericht UND die
+ * durchsuchbare Release-Notes-Tabelle im Admin-Bereich.
  *
  * WICHTIG (Konvention, siehe CLAUDE.md): Bei JEDEM Release sowohl
- * `docs/release-notes.md` ALS AUCH diese Liste pflegen — der automatische
- * Wochenbericht liest diese Liste und zeigt die Einträge der Berichtswoche an.
- * `date` = ISO-Datum (YYYY-MM-DD), neueste Version oben. `type` = 'Feature'
- * (neue Funktion) oder 'Bugfix' (Fehlerbehebung). `text` = Klartext, nicht
- * technisch (aus Sicht des Nutzers).
+ * `docs/release-notes.md` ALS AUCH diese Liste pflegen — neueste Version oben.
+ *  - `version` = x.y.z
+ *  - `date`    = ISO-Datum (YYYY-MM-DD)
+ *  - `bereich` = grober Themenbereich (für Filter/Suche), siehe BEREICHE
+ *  - `type`    = 'Feature' (neue Funktion) oder 'Bugfix' (Fehlerbehebung)
+ *  - `text`    = Klartext, nicht technisch (aus Sicht des Nutzers)
+ *
+ * Hinweis zur Historie: Die lückenlose Versionshistorie ist ab v18.65
+ * verfügbar; die Einträge davor sind die dokumentierten Meilensteine der
+ * jeweiligen Version (aus der Projektdokumentation rekonstruiert).
  */
+export type ReleaseBereich =
+  | 'Anmeldung'
+  | 'Check-in & QR'
+  | 'Organizer Center'
+  | 'E-Mails'
+  | 'Outlook'
+  | 'Teams'
+  | 'Warteliste & IDs'
+  | 'Sichtbarkeit'
+  | 'Event-Erstellung'
+  | 'Verwaltung'
+  | 'Prozesse & Doku'
+  | 'Performance'
+  | 'Allgemein';
+
+export const RELEASE_BEREICHE: ReleaseBereich[] = [
+  'Anmeldung', 'Check-in & QR', 'Organizer Center', 'E-Mails', 'Outlook',
+  'Teams', 'Warteliste & IDs', 'Sichtbarkeit', 'Event-Erstellung',
+  'Verwaltung', 'Prozesse & Doku', 'Performance', 'Allgemein',
+];
+
 export interface ReleaseNote {
   version: string;
   date: string; // YYYY-MM-DD
+  bereich: ReleaseBereich;
   type: 'Feature' | 'Bugfix';
   text: string;
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
-  { version: '23.45.0', date: '2026-06-18', type: 'Feature', text: 'Sub-Events werden im Check-in-Auswahlbildschirm jetzt unter ihrem Hauptevent gruppiert und eingeklappt angezeigt (Aufklappen per Pfeil). Die „Admin"-Kachel auf der Startseite hat eine Kapitänsmütze als Symbol. Die Organizer-Eventübersicht heißt jetzt klar „Organizer – Eventübersicht".' },
-  { version: '23.44.0', date: '2026-06-18', type: 'Feature', text: 'Prozessübersicht in saubere, verständliche Ablaufdiagramme (BPMN) überführt: Kreise für Start/Ende, abgerundete Rechtecke für Schritte, Rauten für Entscheidungen — durchgehend ohne Technik-Begriffe erklärt. Im Admin-Bereich gibt es jetzt eine eigene Kachel zum direkten Öffnen einer SharePoint-Liste; die Event-Liste der Organizer zeigt nur noch „Neues Event erstellen" (alle anderen Admin-Funktionen liegen gebündelt im Admin-Bereich). Der Wochenbericht enthält ab sofort die Neuerungen der Woche.' },
-  { version: '23.43.0', date: '2026-06-18', type: 'Feature', text: 'Prozessübersicht verständlicher: einladende Einleitung und Legende in Klartext.' },
-  { version: '23.42.0', date: '2026-06-18', type: 'Feature', text: 'Event-Übersicht der Organizer/Admins neu gestaltet: höhere Zeilen, Datum und Ort mit Symbolen, Organizer mit Foto und Name (Detail beim Drüberfahren), Warteliste unter der Teilnehmerzahl, Status als farbiges Eck-Etikett oben links (grün = aktiv, orange = Entwurf).' },
-  { version: '23.41.0', date: '2026-06-18', type: 'Feature', text: 'Neue „Admin"-Kachel auf der Startseite als zentrale Anlaufstelle: Prozessübersicht, Rollenverwaltung, Einstellungen, Handbuch, Organizer Center, Archivieren/Löschen und eine verständliche Erklärung aller Hintergrund-Listen.' },
-  { version: '23.40.0', date: '2026-06-18', type: 'Feature', text: 'Löschkonzept fürs Archiv: Einträge älter als ein halbes Jahr können von Admins endgültig gelöscht werden; beim Öffnen der App sieht ein Admin einen Hinweis dazu.' },
-  { version: '23.39.0', date: '2026-06-18', type: 'Feature', text: 'Die Archivierung räumt jetzt auch alte Einträge von bereits gelöschten Events weg, damit die Hintergrund-Listen schlank bleiben.' },
-  { version: '23.38.0', date: '2026-06-18', type: 'Bugfix', text: 'Der automatische Wochenbericht wird wieder zuverlässig ausgelöst und geht als eine Mail mit euren echten Namen an alle Admins.' },
-  { version: '23.37.0', date: '2026-06-18', type: 'Feature', text: 'Wer Organizer werden möchte, stellt jetzt einen Antrag in der App; Admins sehen offene Anträge beim Öffnen der App und geben sie mit einem Klick frei. Die Antrags-Mail enthält einen Direkt-Link zum Bestätigen.' },
-  { version: '23.36.0', date: '2026-06-18', type: 'Feature', text: 'Wochenbericht verständlicher: Entwürfe werden als solche gekennzeichnet, neu veröffentlichte und stattgefundene Events (mit Teilnehmerzahl) werden aufgeführt.' },
-  { version: '23.35.0', date: '2026-06-18', type: 'Bugfix', text: 'Der automatische Wochenbericht wurde nie verschickt — behoben, er kommt jetzt zuverlässig bei allen Admins an.' },
-  { version: '23.34.0', date: '2026-06-18', type: 'Feature', text: 'Teilnehmerlisten: kein überflüssiger Tooltip mehr beim Überfahren der Fotos.' },
-  { version: '23.33.0', date: '2026-06-18', type: 'Feature', text: 'Teilnehmerliste: eingeklappte Personen-Spalte (Foto + Name + Position/Standort), Suchtreffer werden markiert, alle Spalten sortierbar.' },
-  { version: '23.32.0', date: '2026-06-18', type: 'Feature', text: 'Assistenz-/People-Felder werden in der konsolidierten Teilnehmer-Matrix mit Foto und Name angezeigt; Suche über alle Spalten mit Markierung.' },
-  { version: '23.31.0', date: '2026-06-18', type: 'Feature', text: 'In der QR-Code-Mail ist „DEX App" jetzt ein anklickbarer Link.' },
-  { version: '23.30.0', date: '2026-06-18', type: 'Feature', text: 'Im Organizer Center steht „Warteliste" direkt neben „Angemeldet"; in der Event-Übersicht steht pro Event, wie viele auf der Warteliste sind.' },
-  { version: '23.29.0', date: '2026-06-18', type: 'Bugfix', text: '„No-Show" wird nur noch für neu angelegte Events angeboten.' },
-  { version: '23.28.0', date: '2026-06-18', type: 'Feature', text: 'Neuer Status „No-Show": das Check-in-Team kann Teilnehmer als „nicht erschienen" markieren.' },
-  { version: '23.27.0', date: '2026-06-17', type: 'Bugfix', text: 'Der Teams-Chat-Link beim Organizer öffnet jetzt direkt die Teams-App.' },
-  { version: '23.26.0', date: '2026-06-17', type: 'Feature', text: 'Mehrere Organizer in einer gemeinsamen Kachel; E-Mail- und Teams-Chat-Link je Person; freie Plätze neben dem Registrieren-Button.' },
-  { version: '23.25.0', date: '2026-06-17', type: 'Feature', text: 'Bild-Einstellungen im Bild-Editier-Modal gebündelt; Organizer-Karte mit klickbarer Mail; Option „Organizer groß anzeigen".' },
-  { version: '23.24.0', date: '2026-06-17', type: 'Bugfix', text: 'Event-Karte: angepasstes Foto überdeckt nicht mehr den Titel; freie Plätze nicht mehr doppelt.' },
+  { version: '23.46.0', date: '2026-06-18', bereich: 'Verwaltung', type: 'Feature', text: 'Im Admin-Bereich sind jetzt alle Release Notes der App als durchsuchbare Tabelle einsehbar — mit Spalten Version, Datum, Bereich, Art (Neu/Behoben) und Beschreibung, plus Volltext-Suche und Filter nach Bereich. Die lückenlose Historie reicht bis zur ersten Version zurück.' },
+  { version: '23.45.0', date: '2026-06-18', bereich: 'Check-in & QR', type: 'Feature', text: 'Im Check-in-Auswahlbildschirm werden Sub-Events jetzt unter ihrem Hauptevent gruppiert und sind eingeklappt — ein Pfeil klappt sie auf. Die „Admin"-Kachel auf der Startseite hat eine Kapitänsmütze als Symbol, und die Organizer-Eventübersicht heißt klar „Organizer – Eventübersicht".' },
+  { version: '23.44.0', date: '2026-06-18', bereich: 'Prozesse & Doku', type: 'Feature', text: 'Prozessübersicht in saubere, verständliche Ablaufdiagramme überführt (Kreise für Start/Ende, Kästen für Schritte, Rauten für Entscheidungen) — komplett ohne Technik-Begriffe. Eigene Kachel zum direkten Öffnen einer Hintergrund-Liste; der Wochenbericht enthält ab sofort die Neuerungen der Woche, und alle Release Notes sind im Admin-Bereich einsehbar.' },
+  { version: '23.43.0', date: '2026-06-18', bereich: 'Prozesse & Doku', type: 'Feature', text: 'Prozessübersicht verständlicher: einladende Einleitung und Legende in Klartext statt technischer Begriffe.' },
+  { version: '23.42.0', date: '2026-06-18', bereich: 'Organizer Center', type: 'Feature', text: 'Event-Übersicht der Organizer/Admins neu gestaltet: höhere Zeilen, Datum und Ort mit Symbolen, Organizer mit Foto und Name (Detail beim Drüberfahren), Warteliste unter der Teilnehmerzahl, Status als farbiges Eck-Etikett (grün = aktiv, orange = Entwurf).' },
+  { version: '23.41.0', date: '2026-06-18', bereich: 'Verwaltung', type: 'Feature', text: 'Neue „Admin"-Kachel auf der Startseite als zentrale Anlaufstelle: Prozessübersicht, Rollenverwaltung, Einstellungen, Handbuch, Organizer Center, Archivieren/Löschen und eine verständliche Erklärung aller Hintergrund-Listen.' },
+  { version: '23.40.0', date: '2026-06-18', bereich: 'Verwaltung', type: 'Feature', text: 'Löschkonzept fürs Archiv: Einträge, die älter als ein halbes Jahr sind, können von Admins endgültig gelöscht werden; beim Öffnen der App sieht ein Admin einen Hinweis dazu.' },
+  { version: '23.39.0', date: '2026-06-18', bereich: 'Verwaltung', type: 'Feature', text: 'Die Archivierung räumt jetzt auch alte Einträge von bereits gelöschten Events weg, damit die Hintergrund-Listen schlank bleiben.' },
+  { version: '23.38.0', date: '2026-06-18', bereich: 'Verwaltung', type: 'Bugfix', text: 'Der automatische Wochenbericht wird wieder zuverlässig ausgelöst und geht als eine Mail mit euren echten Namen an alle Admins. Außerdem zählt die Events-Kennzahl keine Sub-Events mehr einzeln.' },
+  { version: '23.37.0', date: '2026-06-18', bereich: 'Verwaltung', type: 'Feature', text: 'Wer Organizer werden möchte, stellt jetzt einen Antrag in der App; Admins sehen offene Anträge beim Öffnen der App und geben sie mit einem Klick frei. Die Antrags-Mail enthält einen Direkt-Link zum Bestätigen.' },
+  { version: '23.36.0', date: '2026-06-18', bereich: 'Verwaltung', type: 'Feature', text: 'Wochenbericht verständlicher: Entwürfe werden als solche gekennzeichnet, neu veröffentlichte und stattgefundene Events (mit Teilnehmerzahl) werden aufgeführt. Im Demo-Modus sieht die Startseite jetzt genau wie für einen normalen Nutzer aus.' },
+  { version: '23.35.0', date: '2026-06-18', bereich: 'Verwaltung', type: 'Bugfix', text: 'Der automatische Wochenbericht wurde nie verschickt — behoben, er kommt jetzt zuverlässig bei allen Admins an.' },
+  { version: '23.34.0', date: '2026-06-18', bereich: 'Organizer Center', type: 'Bugfix', text: 'Teilnehmerlisten: kein überflüssiger Tooltip mehr beim Überfahren der Fotos; der Hover-Zoom bleibt.' },
+  { version: '23.33.0', date: '2026-06-18', bereich: 'Organizer Center', type: 'Feature', text: 'Teilnehmerliste: eingeklappte Personen-Spalte (Foto + Name, darunter Position/Standort), Suchtreffer werden markiert, alle Spalten sind sortierbar.' },
+  { version: '23.32.0', date: '2026-06-18', bereich: 'Organizer Center', type: 'Feature', text: 'Assistenz-/People-Felder werden in der konsolidierten Teilnehmer-Matrix mit Foto und Name angezeigt; Suche über alle Spalten mit Markierung.' },
+  { version: '23.31.0', date: '2026-06-18', bereich: 'E-Mails', type: 'Feature', text: 'In der QR-Code-Mail ist „DEX App" jetzt ein anklickbarer Link.' },
+  { version: '23.30.0', date: '2026-06-18', bereich: 'Warteliste & IDs', type: 'Feature', text: 'Im Organizer Center steht „Warteliste" direkt neben „Angemeldet"; in der Event-Übersicht steht pro Event, wie viele auf der Warteliste sind.' },
+  { version: '23.29.0', date: '2026-06-18', bereich: 'Check-in & QR', type: 'Bugfix', text: '„No-Show" wird nur noch für neu angelegte Events angeboten (keine ungewollten Änderungen an Bestandsevents).' },
+  { version: '23.28.0', date: '2026-06-18', bereich: 'Check-in & QR', type: 'Feature', text: 'Neuer Status „No-Show": das Check-in-Team kann Teilnehmer als „nicht erschienen" markieren.' },
+  { version: '23.27.0', date: '2026-06-17', bereich: 'Organizer Center', type: 'Bugfix', text: 'Der Teams-Chat-Link beim Organizer öffnet jetzt direkt die Teams-App statt eines Browser-Umwegs.' },
+  { version: '23.26.0', date: '2026-06-17', bereich: 'Organizer Center', type: 'Feature', text: 'Mehrere Organizer in einer gemeinsamen Kachel; E-Mail- und Teams-Chat-Link je Person; freie Plätze neben dem Registrieren-Button.' },
+  { version: '23.25.0', date: '2026-06-17', bereich: 'Event-Erstellung', type: 'Feature', text: 'Bild-Einstellungen im Bild-Editier-Modal gebündelt; Organizer-Karte mit klickbarer Mail; Option „Organizer groß anzeigen".' },
+  { version: '23.24.0', date: '2026-06-17', bereich: 'Event-Erstellung', type: 'Bugfix', text: 'Event-Karte: angepasstes Foto überdeckt nicht mehr den Titel; freie Plätze werden nicht mehr doppelt angezeigt.' },
+  { version: '23.23.0', date: '2026-06-17', bereich: 'Event-Erstellung', type: 'Feature', text: 'Das Event-Bild auf der Karte wird vollständig angezeigt (kein automatischer Zuschnitt mehr).' },
+  { version: '23.22.0', date: '2026-06-17', bereich: 'Event-Erstellung', type: 'Feature', text: 'Größe des Event-Bilds auf der Anmeldeseite einstellbar (maximale Höhe).' },
+  { version: '23.21.0', date: '2026-06-17', bereich: 'Organizer Center', type: 'Feature', text: 'Hinweis bei redundantem Ansprechpartner-Text (Titel/Datum/Ort) jetzt auch im Organizer Center.' },
+  { version: '23.20.0', date: '2026-06-17', bereich: 'Event-Erstellung', type: 'Feature', text: 'Event-Bild pro Ansicht verkleinerbar (Bild kleiner mit weißem Rand).' },
+  { version: '23.19.0', date: '2026-06-17', bereich: 'Event-Erstellung', type: 'Feature', text: 'Event-Bild lässt sich je Ansicht (Karte/Anmeldeseite) unterschiedlich zoomen und positionieren.' },
+  { version: '23.18.0', date: '2026-06-17', bereich: 'Event-Erstellung', type: 'Feature', text: 'Hinweis, wenn der Ansprechpartner-Text Dinge wiederholt, die ohnehin schon angezeigt werden (Titel/Datum/Ort).' },
+  { version: '23.17.0', date: '2026-06-17', bereich: 'Event-Erstellung', type: 'Feature', text: 'Bild-Editor mit Live-Vorschau (zeigt genau das Ergebnis) und Regler für den Kreis-Rand.' },
+  { version: '23.16.0', date: '2026-06-17', bereich: 'Event-Erstellung', type: 'Bugfix', text: 'Kreis-Zuschnitt: schwarze Ecken behoben; „Anmeldung ab"-Banner jetzt grün.' },
+  { version: '23.15.0', date: '2026-06-17', bereich: 'Event-Erstellung', type: 'Feature', text: 'Event-Bild im Wizard zuschneiden (Kreis oder Quadrat, mit Zoom und Verschieben).' },
+  { version: '23.14.0', date: '2026-06-17', bereich: 'Event-Erstellung', type: 'Feature', text: '„Aktiv ab": Vorschau-Modus für Organizer plus Teilnehmer-Hinweis „Anmeldung ab".' },
+  { version: '23.13.0', date: '2026-06-17', bereich: 'Verwaltung', type: 'Bugfix', text: 'Wochenbericht: eine Sperre, die den automatischen Versand verhinderte, wurde entfernt.' },
+  { version: '23.12.0', date: '2026-06-17', bereich: 'Verwaltung', type: 'Bugfix', text: 'Wochenbericht zuverlässiger beim App-Start; Test-Button zum manuellen Auslösen.' },
+  { version: '23.11.0', date: '2026-06-17', bereich: 'Verwaltung', type: 'Feature', text: 'Wochenbericht geht als eine Mail an alle Admins gemeinsam.' },
+  { version: '23.10.0', date: '2026-06-17', bereich: 'Anmeldung', type: 'Bugfix', text: 'Assistenz-Anmeldung (durch Nicht-Organizer) funktioniert wieder zuverlässig.' },
+  { version: '23.9.0', date: '2026-06-17', bereich: 'Anmeldung', type: 'Bugfix', text: 'Bei fehlgeschlagener Anmeldung wird die echte Ursache angezeigt statt pauschal „bereits registriert".' },
+  { version: '23.8.0', date: '2026-06-17', bereich: 'Verwaltung', type: 'Feature', text: 'Wöchentlicher Admin-Bericht eingeführt; die „Geister-Anmeldungen"-Box zeigt jetzt, wer gehandelt hat.' },
+  { version: '23.7.0', date: '2026-06-17', bereich: 'Organizer Center', type: 'Feature', text: 'Teamnamen im Excel-Export; Werkzeug zum Aufräumen von Geister-/verwaisten Anmeldungen.' },
+  { version: '23.6.0', date: '2026-06-17', bereich: 'Allgemein', type: 'Feature', text: 'Assistenz-Sichtbarkeit verbessert, Demo-Button in den Kopfbereich verlegt, OnePager entfernt u. v. m.' },
+  { version: '23.5.0', date: '2026-06-17', bereich: 'Teams', type: 'Feature', text: 'Konsolidierte Matrix: Personen-Spalten einklappbar; Personen per Ziehen in „ohne Team" verschieben.' },
+  { version: '23.4.0', date: '2026-06-17', bereich: 'Anmeldung', type: 'Feature', text: '„Für andere anmelden" als deutlicher grüner Button; verbesserte Bedienung für externe Personen.' },
+  { version: '23.3.0', date: '2026-06-17', bereich: 'Anmeldung', type: 'Feature', text: 'Anmeldungen ohne E-Mail zählen korrekt als Köpfe mit; Hinweis-Box erklärt abweichende Zahlen.' },
+  { version: '23.2.0', date: '2026-06-17', bereich: 'Teams', type: 'Feature', text: 'Doppel-Anmeldung im Team wird verhindert; Werkzeug für Organizer, um Duplikate zu finden.' },
+  { version: '23.1.0', date: '2026-06-16', bereich: 'Teams', type: 'Feature', text: 'Teams-Feature: begleitende Doku/Artefakte und Feinschliff der Klammer-Darstellung.' },
+  { version: '23.0.0', date: '2026-06-16', bereich: 'Teams', type: 'Feature', text: 'Teams im Organizer Center per Ziehen-und-Ablegen zuordnen; Info-Mail pro Team (z. B. eigener Einwahllink).' },
+  { version: '22.20.0', date: '2026-06-11', bereich: 'Warteliste & IDs', type: 'Feature', text: 'Teilnehmer-Nummerierung immer fair und einheitlich (Aktive zuerst, dann Warteliste in Reihenfolge) — egal ob die App oder der Hintergrundprozess sie vergibt.' },
+  { version: '22.19.0', date: '2026-06-11', bereich: 'E-Mails', type: 'Feature', text: 'QR-Mail-Editor und Versand-Aktionen liegen nebeneinander statt hintereinander.' },
+  { version: '22.18.0', date: '2026-06-11', bereich: 'E-Mails', type: 'Feature', text: 'QR-Code-Mail pro Event anpassbar — Editor mit Live-Vorschau, am Event gespeichert (gilt auch für den automatischen Versand).' },
+  { version: '22.17.0', date: '2026-06-11', bereich: 'Outlook', type: 'Bugfix', text: 'Kalender-Einladung scheiterte bei Events ohne End-Datum — behoben.' },
+  { version: '22.16.0', date: '2026-06-11', bereich: 'Organizer Center', type: 'Feature', text: '„Hinweise"-Box für aktive Events mit Sprach-Empfehlung und 1-Klick-Korrektur.' },
+  { version: '22.15.0', date: '2026-06-11', bereich: 'Organizer Center', type: 'Feature', text: '„Abgeschlossen/Abgesagt"-Events lassen sich über den Status wieder aktivieren; automatische Heilung beim Datum-Fix.' },
+  { version: '22.14.0', date: '2026-06-11', bereich: 'Organizer Center', type: 'Feature', text: 'Sub-Event-Status auch durch Hauptevent-Organizer umschaltbar; klare Fehlermeldung statt stummem Scheitern.' },
+  { version: '22.13.0', date: '2026-06-11', bereich: 'Sichtbarkeit', type: 'Bugfix', text: 'Sub-Event-Sichtbarkeit greift jetzt auch in „Meine Events".' },
+  { version: '22.12.0', date: '2026-06-11', bereich: 'Warteliste & IDs', type: 'Feature', text: 'Nummerierungs-Warnbox mit echter Diagnose und automatischer erneuter Prüfung.' },
+  { version: '22.11.0', date: '2026-06-11', bereich: 'Allgemein', type: 'Bugfix', text: 'App-weite Umlaut-Bereinigung; Massenmail-Vorschau zeigt Empfänger und Betreff.' },
+  { version: '22.10.0', date: '2026-06-11', bereich: 'Sichtbarkeit', type: 'Bugfix', text: 'Sub-Event-Sichtbarkeit und Ausschlussliste bleiben dauerhaft gespeichert; Massenmail nach Status filterbar.' },
+  { version: '22.9.0', date: '2026-06-11', bereich: 'E-Mails', type: 'Feature', text: 'Massenmail als Entwurf speicherbar; Testmail an die Organizer.' },
+  { version: '22.8.0', date: '2026-06-10', bereich: 'Sichtbarkeit', type: 'Feature', text: '„Sichtbarkeit prüfen"-Fenster verbessert; Klammer-/Verteiler-/Nächste-Schritte-Texte verständlicher.' },
+  { version: '22.7.0', date: '2026-06-10', bereich: 'Sichtbarkeit', type: 'Feature', text: 'Personensuche in „Sichtbarkeit prüfen"; Hinweis, wenn Teilnehmer Deloitte verlassen haben könnten.' },
+  { version: '22.6.0', date: '2026-06-10', bereich: 'Sichtbarkeit', type: 'Feature', text: 'Sub-Events übernehmen die Sichtbarkeit der Klammer; Aktionen-Suchfeld-Fix; QR-Modal im Querformat.' },
+  { version: '22.5.0', date: '2026-06-10', bereich: 'Organizer Center', type: 'Feature', text: 'Aktionen-Suche und -Sortierung; „Nächste Schritte"-Box; Einladungsmail als Entwurf speicherbar.' },
+  { version: '22.4.0', date: '2026-06-10', bereich: 'Anmeldung', type: 'Bugfix', text: 'Mehrfachauswahl-Dropdown: die letzten Optionen wurden abgeschnitten — behoben.' },
+  { version: '22.3.0', date: '2026-06-10', bereich: 'Check-in & QR', type: 'Feature', text: 'Check-in-Box auf der Startseite ab zwei Tagen vor Event-Start sichtbar.' },
+  { version: '22.2.0', date: '2026-06-10', bereich: 'Verwaltung', type: 'Bugfix', text: 'Archivierung: Abbrechen-Button, Schutz gegen Doppelläufe, schnelleres Laden.' },
+  { version: '22.1.0', date: '2026-06-10', bereich: 'Check-in & QR', type: 'Feature', text: 'Check-in-Hinweisbox mit persönlichem QR-Code auf der Startseite.' },
+  { version: '22.0.0', date: '2026-06-10', bereich: 'Verwaltung', type: 'Feature', text: 'Archivierungs-Box auf der Startseite (für Admins) mit Fortschrittsanzeige.' },
+  { version: '21.0.0', date: '2026-06-10', bereich: 'Check-in & QR', type: 'Bugfix', text: 'QR-Codes werden erst automatisch verschickt, nachdem der Organizer den ersten Massen-Versand gestartet hat.' },
+  { version: '20.10.0', date: '2026-06-10', bereich: 'Check-in & QR', type: 'Bugfix', text: 'Automatischer QR-Versand greift auch bei stiller Massen-Anmeldung.' },
+  { version: '20.9.0', date: '2026-06-10', bereich: 'Check-in & QR', type: 'Feature', text: '„Mein QR-Code"-Button auch bei Events ohne Zusatzfelder.' },
+  { version: '20.8.0', date: '2026-06-10', bereich: 'Check-in & QR', type: 'Feature', text: 'QR-Versand zeigt, wie viele Teilnehmer noch keinen Code haben („Restanten nachsenden").' },
+  { version: '20.7.0', date: '2026-06-10', bereich: 'Anmeldung', type: 'Feature', text: 'Assistenz-Anmeldungen: Teilnehmer sehen ihre Anmeldung in „Meine Events"; QR-Auto-Versand immer aktiv; „Mein QR-Code" in „Meine Events".' },
+  { version: '20.6.0', date: '2026-06-10', bereich: 'Anmeldung', type: 'Feature', text: 'Admin-Reparatur „Fremd-Anmeldungen: Zugriff" über alle aktiven Events.' },
+  { version: '20.5.0', date: '2026-06-10', bereich: 'Anmeldung', type: 'Feature', text: 'Bei stellvertretender Anmeldung sieht der Teilnehmer seine Anmeldung und kann sich selbst abmelden.' },
+  { version: '20.4.0', date: '2026-06-09', bereich: 'Allgemein', type: 'Feature', text: 'Moderne App-Dialoge statt der grauen Browser-Boxen; konsolidierter Excel-Export; klarere Aktionstexte.' },
+  { version: '20.3.0', date: '2026-06-09', bereich: 'Organizer Center', type: 'Feature', text: 'Aktionen-Menü nach Kategorien gruppiert; Status als klickbares Etikett; schmalere Check-in-Seite.' },
+  { version: '20.2.0', date: '2026-06-09', bereich: 'Check-in & QR', type: 'Feature', text: 'Self-Check-in-QR-Kachel im Event-Detail mit Zeitfenster-Einstellung.' },
+  { version: '20.1.0', date: '2026-06-09', bereich: 'Check-in & QR', type: 'Feature', text: 'Self-Check-in prominent und grundsätzlich immer verfügbar.' },
+  { version: '20.0.0', date: '2026-06-09', bereich: 'Performance', type: 'Feature', text: 'Komplett-Überarbeitung der App-Technik: deutlich schnellerer Start (Hauptpaket rund 80 % kleiner).' },
+  { version: '19.17.0', date: '2026-06-09', bereich: 'Performance', type: 'Bugfix', text: 'Störendes Sekunden-Aktualisieren entfernt; Teilnehmerzähler aktualisiert ruckelfrei.' },
+  { version: '19.16.0', date: '2026-06-08', bereich: 'Anmeldung', type: 'Feature', text: 'Echtzeit-Teilnehmerzähler und „angemeldet"-Markierung in der Listenansicht.' },
+  { version: '19.15.0', date: '2026-06-08', bereich: 'Anmeldung', type: 'Feature', text: 'Listenansicht um Aktionen ergänzt (Meine Events / Für andere registrieren / Registrieren).' },
+  { version: '19.14.0', date: '2026-06-08', bereich: 'Warteliste & IDs', type: 'Bugfix', text: 'Nachrücker von der Warteliste werden immer der richtigen Gruppe zugeordnet.' },
+  { version: '19.13.0', date: '2026-06-08', bereich: 'Organizer Center', type: 'Bugfix', text: 'Das Änderungsprotokoll (Audit-Log) lädt wieder korrekt.' },
+  { version: '19.12.0', date: '2026-06-08', bereich: 'Warteliste & IDs', type: 'Bugfix', text: 'Angemeldete ohne Gruppenangabe werden korrekt angezeigt und gezählt.' },
+  { version: '19.11.0', date: '2026-06-08', bereich: 'Organizer Center', type: 'Feature', text: 'Kurze Sub-Event-Namen im Organizer Center; leere Nachrück-Spalten bei Events ohne Warteliste ausgeblendet.' },
+  { version: '19.10.0', date: '2026-06-08', bereich: 'Organizer Center', type: 'Bugfix', text: 'Doppelte „Wunsch-Zimmerpartner"-Spalte entfernt; sichtbare Rückmeldung bei „Spalten fixen".' },
+  { version: '19.9.0', date: '2026-06-08', bereich: 'Anmeldung', type: 'Bugfix', text: 'Stellvertreter-Anmeldung scheiterte wegen einer fehlenden Spalte — behoben.' },
+  { version: '19.8.0', date: '2026-06-08', bereich: 'Anmeldung', type: 'Feature', text: 'Bereits angemeldete Zielperson: Register-Button gesperrt mit konkretem Hinweis.' },
+  { version: '19.7.0', date: '2026-06-08', bereich: 'Anmeldung', type: 'Feature', text: 'Co-Organizer dürfen Dritte anmelden; Rückfrage, ob die Person eine Kopie der Mail bekommt.' },
+  { version: '19.6.0', date: '2026-06-08', bereich: 'Anmeldung', type: 'Bugfix', text: 'Organizer kann wieder dritte Personen anmelden; Umschalter zwischen den Ansichten.' },
+  { version: '19.5.0', date: '2026-06-08', bereich: 'Warteliste & IDs', type: 'Feature', text: 'Nachrück-Nachweis: „Wurde ersetzt durch" wird bei Abmeldungen mitgeführt.' },
+  { version: '19.4.0', date: '2026-06-08', bereich: 'Warteliste & IDs', type: 'Feature', text: 'Klareres Nachrück-/Abmelde-Tracking: „Hat ersetzt" (aktiv) und „Wurde ersetzt durch" (abgemeldet).' },
+  { version: '19.3.0', date: '2026-06-08', bereich: 'Organizer Center', type: 'Feature', text: 'Nachrück-Nachweis-Spalten per „Spalten fixen" nachrüstbar; Team-Info-Box fest in der Vorlage.' },
+  { version: '19.2.0', date: '2026-06-08', bereich: 'Anmeldung', type: 'Feature', text: 'Dokument-Upload-Feld verfeinert; Beispieltext für die Beschreibung im Bearbeiten-Fenster.' },
+  { version: '19.0.0', date: '2026-06-08', bereich: 'Anmeldung', type: 'Feature', text: 'Neues Feld „Dokument/Upload" (Teilnehmer laden PDF/Bild hoch); grüne Hervorhebung ausgefüllter Felder; Teams als Raster im Organizer Center.' },
+  { version: '18.70.0', date: '2026-06-03', bereich: 'Warteliste & IDs', type: 'Feature', text: 'Organizer-Button „Von Warteliste nachrücken".' },
+  { version: '18.68.0', date: '2026-06-03', bereich: 'E-Mails', type: 'Feature', text: 'Organizer-Benachrichtigung bei Abmeldung mit Nachrücker als zwei klare Stichpunkte.' },
+  { version: '18.67.0', date: '2026-06-02', bereich: 'Anmeldung', type: 'Bugfix', text: 'Warteliste-Meldung folgt dem echten Status; Sprach-Auswahl breiter.' },
+  { version: '18.66.0', date: '2026-06-02', bereich: 'E-Mails', type: 'Bugfix', text: 'Mail-Vorlagen-Reseed zeigt stille Fehler an und hilft bei der Diagnose.' },
+  { version: '18.65.0', date: '2026-06-02', bereich: 'Warteliste & IDs', type: 'Bugfix', text: 'Name des Vorgängers wird beim Nachrücken zuverlässig mitgeführt; Nachrück-Link in der englischen Mail korrigiert.' },
+  // — Frühere Meilensteine (aus der Projektdokumentation; lückenlose Historie ab v18.65) —
+  { version: '18.63.0', date: '2026-06-01', bereich: 'E-Mails', type: 'Feature', text: 'Organizer bekommen bei einer Abmeldung mit Nachrücker automatisch eine Benachrichtigung.' },
+  { version: '18.48.0', date: '2026-05-28', bereich: 'Outlook', type: 'Feature', text: 'Kalender-Einladungen für verschiedene Events laufen parallel — kein Stau mehr bei Großevents.' },
+  { version: '18.44.0', date: '2026-05-24', bereich: 'Outlook', type: 'Feature', text: 'Outlook-Termin kann ein abweichendes Datum und einen eigenen Ort haben.' },
+  { version: '18.42.0', date: '2026-05-22', bereich: 'Outlook', type: 'Feature', text: 'Eigener Betreff für den Outlook-Termin (statt automatisch dem Event-Titel).' },
+  { version: '18.41.0', date: '2026-05-21', bereich: 'Anmeldung', type: 'Feature', text: 'People-Picker-Feld kann eine Person automatisch auf die An-/Abmelde-Mail in Kopie setzen (z. B. Assistenz).' },
+  { version: '18.35.0', date: '2026-05-18', bereich: 'Event-Erstellung', type: 'Feature', text: 'Sprache der Anmeldeseite pro Event fest vorgebbar (immer Deutsch / immer Englisch).' },
+  { version: '18.34.0', date: '2026-05-17', bereich: 'Outlook', type: 'Feature', text: 'Der Veranstaltungsort steht jetzt im Outlook-Termin.' },
+  { version: '18.33.0', date: '2026-05-16', bereich: 'Check-in & QR', type: 'Feature', text: 'Self-Check-in per QR-Code mit der Handy-Kamera (statt In-App-Scanner).' },
+  { version: '18.30.0', date: '2026-05-14', bereich: 'E-Mails', type: 'Feature', text: 'Mails können als „wichtig" markiert werden (rotes Ausrufezeichen in Outlook).' },
+  { version: '18.22.0', date: '2026-05-10', bereich: 'E-Mails', type: 'Feature', text: 'Mail-Überschriften pro Event frei formatierbar (Größe, Farbe, fett/kursiv).' },
+  { version: '18.19.0', date: '2026-05-08', bereich: 'E-Mails', type: 'Feature', text: 'Mail-Überschrift in Größe und Farbe anpassbar.' },
+  { version: '13.7.0', date: '2026-04-28', bereich: 'Verwaltung', type: 'Feature', text: 'Demo-Modus für Admins: testweise als Nutzer eines gewählten Standorts durch die App navigieren.' },
+  { version: '13.6.0', date: '2026-04-27', bereich: 'Anmeldung', type: 'Feature', text: 'Personensuche filtert standardmäßig auf die deutsche Firma (weniger Fehltreffer); „auch international" zuschaltbar.' },
+  { version: '13.1.0', date: '2026-04-24', bereich: 'Allgemein', type: 'Feature', text: 'Einheitliche, modernere Fenster (Modals) in der ganzen App.' },
+  { version: '13.0.0', date: '2026-04-23', bereich: 'E-Mails', type: 'Feature', text: 'Alle automatischen Mails als anpassbare Vorlagen mit Platzhaltern (Zimmerpartner-Anfrage, Gruppenwechsel u. a. ergänzt).' },
+  { version: '12.11.0', date: '2026-04-20', bereich: 'E-Mails', type: 'Feature', text: 'Standard-Mail-Vorlagen lassen sich per Knopfdruck neu aufsetzen (nach App-Updates).' },
+  { version: '12.10.0', date: '2026-04-19', bereich: 'Warteliste & IDs', type: 'Feature', text: 'Nachrücken folgt der Teilnehmer-Nummer (durchgängige Reihenfolge nach dem Aufräumen).' },
+  { version: '12.7.0', date: '2026-04-17', bereich: 'Organizer Center', type: 'Feature', text: 'Alle Aktionen im Organizer Center gebündelt in einem übersichtlichen Aktionen-Menü.' },
+  { version: '11.88.0', date: '2026-04-14', bereich: 'Event-Erstellung', type: 'Feature', text: 'Demo-Daten im Wizard mit vier Vorlagen zur Auswahl (Meeting, Gruppen, Sub-Event, Team).' },
+  { version: '11.84.0', date: '2026-04-11', bereich: 'Teams', type: 'Feature', text: 'Team-Verwaltung im Organizer Center (Person hinzufügen, Lead übergeben).' },
+  { version: '11.82.0', date: '2026-04-09', bereich: 'Teams', type: 'Feature', text: 'Team-Anmeldung: mehrere Personen in einem Vorgang anmelden.' },
+  { version: '11.80.0', date: '2026-04-07', bereich: 'Teams', type: 'Feature', text: 'Grundlagen der Team-Anmeldung im Wizard (Team-Größe, Beitritts-Regeln).' },
+  { version: '11.57.0', date: '2026-04-02', bereich: 'Outlook', type: 'Feature', text: 'Beim Bearbeiten eines Events kann man entscheiden, ob Teilnehmer eine „Termin aktualisiert"-Mail bekommen.' },
+  { version: '11.36.0', date: '2026-03-26', bereich: 'Warteliste & IDs', type: 'Feature', text: 'Überbuchungs-Schutz und Bereinigungs-Werkzeug; IDs neu vergeben auch durch Organizer.' },
+  { version: '10.20.0', date: '2026-03-12', bereich: 'Event-Erstellung', type: 'Feature', text: 'Einheitliches Event-Schema; „Geteilte Kapazität" (zwei frei benannte Gruppen) generisch nutzbar.' },
+  { version: '9.32.0', date: '2026-02-28', bereich: 'Allgemein', type: 'Feature', text: 'Ausführliche, verständliche Hilfe-Tooltips im ganzen Wizard.' },
+  { version: '7.28.0', date: '2026-02-10', bereich: 'Warteliste & IDs', type: 'Feature', text: 'Stabile, fortlaufende Teilnehmer-Nummern (kein Verrutschen mehr bei vielen gleichzeitigen Anmeldungen).' },
+  { version: '6.9.0', date: '2026-01-24', bereich: 'Prozesse & Doku', type: 'Feature', text: 'Handbuch, Rollenmatrix und Prozessübersicht als feste Bestandteile der App.' },
+  { version: '6.3.0', date: '2026-01-18', bereich: 'Allgemein', type: 'Feature', text: 'Durchgängig echte deutsche Sonderzeichen und saubere Anführungszeichen in der ganzen App.' },
+  { version: '5.2.0', date: '2026-01-08', bereich: 'Event-Erstellung', type: 'Feature', text: 'Vereinheitlichung der Event-Typen (Vorbereitung des gemeinsamen Schemas).' },
+  { version: '1.0.0', date: '2025-12-01', bereich: 'Allgemein', type: 'Feature', text: 'Erste Version der DEX Event Experience Platform: Events anlegen, anmelden, Teilnehmer verwalten, Bestätigungs-Mails und Outlook-Termine.' },
 ];

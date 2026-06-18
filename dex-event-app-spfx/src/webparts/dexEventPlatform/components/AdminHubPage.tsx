@@ -14,7 +14,7 @@ import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useDialog } from '../context/DialogContext';
 import { Settings, Users, Mail, Book, FileText, Trash2 } from './Icons';
-import { RELEASE_NOTES } from '../data/releaseNotes';
+import { RELEASE_NOTES, RELEASE_BEREICHE } from '../data/releaseNotes';
 
 // Erklärung aller DEX_*-Listen in Klartext (was tut die Liste, warum gibt es sie).
 const LIST_DOCS: Array<{ name: string; de: string }> = [
@@ -47,6 +47,29 @@ export default function AdminHubPage(): React.ReactElement {
   const [archTotal, setArchTotal] = React.useState(0);
   const [delTotal, setDelTotal] = React.useState(0);
   const [busy, setBusy] = React.useState<'' | 'arch' | 'del'>('');
+  // Release-Notes: Volltext-Suche + Bereichs-Filter + Art-Filter.
+  const [rnSearch, setRnSearch] = React.useState('');
+  const [rnBereich, setRnBereich] = React.useState<string>('');
+  const [rnType, setRnType] = React.useState<string>('');
+  const filteredNotes = React.useMemo(() => {
+    const q = rnSearch.trim().toLowerCase();
+    return RELEASE_NOTES.filter(n => {
+      if (rnBereich && n.bereich !== rnBereich) return false;
+      if (rnType && n.type !== rnType) return false;
+      if (!q) return true;
+      return (
+        n.text.toLowerCase().indexOf(q) >= 0 ||
+        n.bereich.toLowerCase().indexOf(q) >= 0 ||
+        ('v' + n.version).toLowerCase().indexOf(q) >= 0
+      );
+    });
+  }, [rnSearch, rnBereich, rnType]);
+  const fmtDate = (iso: string): string => {
+    const d = new Date(iso);
+    return isFinite(d.getTime())
+      ? d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : iso;
+  };
 
   React.useEffect(() => {
     if (!adminLike) { navigate('start'); return; }
@@ -179,16 +202,54 @@ export default function AdminHubPage(): React.ReactElement {
         ))}
       </div>
 
-      {/* v23.44: Release Notes / Neuerungen — komplette Liste im Admin Center. */}
+      {/* Release Notes / Neuerungen — vollständige, durchsuchbare Tabelle. */}
       <h2 style={{ fontSize: '1.15rem', color: 'var(--dex-green-dark, #4a7c1f)', marginTop: 28 }}>{isDe ? 'Neuerungen (Release Notes)' : 'What’s new (release notes)'}</h2>
       <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', marginTop: 6 }}>
-        {isDe ? 'Was in den letzten Versionen neu kam oder behoben wurde (neueste oben):' : 'What was added or fixed in the latest versions (newest first):'}
+        {isDe
+          ? 'Alle Versionen — durchsuchbar und nach Bereich filterbar (neueste oben). Die lückenlose Historie ist ab v18.65 verfügbar; ältere Einträge sind die dokumentierten Meilensteine.'
+          : 'All versions — searchable and filterable by area (newest first).'}
       </p>
+      {/* Filter-Zeile: Suche + Bereich + Art */}
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, margin: '10px 0 12px', alignItems: 'center' }}>
+        <input
+          type="text"
+          value={rnSearch}
+          onChange={e => setRnSearch(e.target.value)}
+          placeholder={isDe ? 'Suchen (Text, Bereich, Version) …' : 'Search …'}
+          style={{ flex: '1 1 240px', minWidth: 180, padding: '8px 12px', border: '1px solid var(--dex-gray-300)', borderRadius: 8, fontSize: '0.85rem' }}
+        />
+        <select value={rnBereich} onChange={e => setRnBereich(e.target.value)} style={{ padding: '8px 10px', border: '1px solid var(--dex-gray-300)', borderRadius: 8, fontSize: '0.85rem' }}>
+          <option value="">{isDe ? 'Alle Bereiche' : 'All areas'}</option>
+          {RELEASE_BEREICHE.map(b => <option key={b} value={b}>{b}</option>)}
+        </select>
+        <select value={rnType} onChange={e => setRnType(e.target.value)} style={{ padding: '8px 10px', border: '1px solid var(--dex-gray-300)', borderRadius: 8, fontSize: '0.85rem' }}>
+          <option value="">{isDe ? 'Neu & Behoben' : 'All types'}</option>
+          <option value="Feature">{isDe ? 'Nur Neu' : 'Features'}</option>
+          <option value="Bugfix">{isDe ? 'Nur Behoben' : 'Fixes'}</option>
+        </select>
+        <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>
+          {filteredNotes.length} / {RELEASE_NOTES.length}
+        </span>
+      </div>
       <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
-        {RELEASE_NOTES.map((n, i) => (
-          <div key={`${n.version}-${i}`} style={{ display: 'flex', gap: 12, padding: '12px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--dex-gray-100)', alignItems: 'baseline' }}>
-            <code style={{ flexShrink: 0, fontFamily: 'Consolas, monospace', fontSize: '0.78rem', color: 'var(--dex-gray-500)', minWidth: 64 }}>v{n.version}</code>
-            <span style={{ flexShrink: 0, fontSize: '0.66rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999, minWidth: 56, textAlign: 'center', background: n.type === 'Bugfix' ? 'rgba(218,41,28,0.12)' : 'rgba(134,188,37,0.15)', color: n.type === 'Bugfix' ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)' }}>
+        {/* Tabellenkopf */}
+        <div style={{ display: 'grid', gridTemplateColumns: '70px 92px 150px 78px 1fr', gap: 12, padding: '10px 16px', background: 'var(--dex-gray-50, #f7f8f9)', borderBottom: '1px solid var(--dex-gray-200)', fontSize: '0.72rem', fontWeight: 700, color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.3 }}>
+          <span>{isDe ? 'Version' : 'Version'}</span>
+          <span>{isDe ? 'Datum' : 'Date'}</span>
+          <span>{isDe ? 'Bereich' : 'Area'}</span>
+          <span>{isDe ? 'Art' : 'Type'}</span>
+          <span>{isDe ? 'Beschreibung' : 'Description'}</span>
+        </div>
+        {filteredNotes.length === 0 ? (
+          <div style={{ padding: '18px 16px', fontSize: '0.85rem', color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>
+            {isDe ? 'Keine Treffer für diese Filter.' : 'No matches for these filters.'}
+          </div>
+        ) : filteredNotes.map((n, i) => (
+          <div key={`${n.version}-${i}`} style={{ display: 'grid', gridTemplateColumns: '70px 92px 150px 78px 1fr', gap: 12, padding: '11px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--dex-gray-100)', alignItems: 'baseline' }}>
+            <code style={{ fontFamily: 'Consolas, monospace', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>v{n.version}</code>
+            <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>{fmtDate(n.date)}</span>
+            <span style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--dex-gray-700)' }}>{n.bereich}</span>
+            <span style={{ fontSize: '0.66rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999, textAlign: 'center', alignSelf: 'start', background: n.type === 'Bugfix' ? 'rgba(218,41,28,0.12)' : 'rgba(134,188,37,0.15)', color: n.type === 'Bugfix' ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)' }}>
               {n.type === 'Bugfix' ? (isDe ? 'Behoben' : 'Fix') : (isDe ? 'Neu' : 'New')}
             </span>
             <span style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', lineHeight: 1.45 }}>{n.text}</span>
