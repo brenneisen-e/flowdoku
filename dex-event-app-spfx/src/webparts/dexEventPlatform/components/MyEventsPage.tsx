@@ -2619,7 +2619,7 @@ export default function MyEventsPage(): React.ReactElement {
                     }}
                   />
                   <div style={{ marginTop: 2 }}>
-                    <InternationalSearchToggle checked={addMemberIncludeIntl} onChange={setAddMemberIncludeIntl} isDe={isDe} />
+                    <InternationalSearchToggle query={addMemberQuery} checked={addMemberIncludeIntl} onChange={setAddMemberIncludeIntl} isDe={isDe} />
                   </div>
                   {(addMemberResults.length > 0 || addMemberSearching) && (
                     <div style={{

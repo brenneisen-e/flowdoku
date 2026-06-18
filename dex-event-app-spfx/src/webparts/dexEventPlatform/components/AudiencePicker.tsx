@@ -445,6 +445,7 @@ export default function AudiencePicker({
           placeholder="Personen oder Gruppen suchen (z.B. SAPAlliance, max@deloitte.de, DEKOELN)"
         />
         <InternationalSearchToggle
+          query={audienceSearch}
           checked={audienceIncludeIntl}
           onChange={async next => {
             setAudienceIncludeIntl(next);
@@ -808,6 +809,7 @@ export default function AudiencePicker({
                 style={{ width: '100%' }}
               />
               <InternationalSearchToggle
+                query={excludeSearch}
                 checked={excludeIncludeIntl}
                 onChange={async next => {
                   setExcludeIncludeIntl(next);
@@ -1307,6 +1309,7 @@ export default function AudiencePicker({
                 )}
               </div>
               <InternationalSearchToggle
+                query={emailSearch}
                 checked={emailSearchIncludeIntl}
                 onChange={async next => {
                   setEmailSearchIncludeIntl(next);

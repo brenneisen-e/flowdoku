@@ -6442,6 +6442,7 @@ export default function EventCreationPage(): React.ReactElement {
                   style={errorBorderStyle('organizer')}
                 />
                 <InternationalSearchToggle
+                  query={organizerSearch}
                   checked={organizerIncludeIntl}
                   onChange={async next => {
                     setOrganizerIncludeIntl(next);
@@ -6765,6 +6766,7 @@ export default function EventCreationPage(): React.ReactElement {
                   placeholder="Name oder E-Mail eingeben (alle Deloitte-User)"
                 />
                 <InternationalSearchToggle
+                  query={testTeamSearch}
                   checked={testTeamIncludeIntl}
                   onChange={async next => {
                     setTestTeamIncludeIntl(next);
@@ -6930,6 +6932,7 @@ export default function EventCreationPage(): React.ReactElement {
                   placeholder={t('create.qrscanners.placeholder') || 'Name oder E-Mail eingeben (alle Deloitte-User)'}
                 />
                 <InternationalSearchToggle
+                  query={qrScannerSearch}
                   checked={qrScannerIncludeIntl}
                   onChange={async next => {
                     setQrScannerIncludeIntl(next);

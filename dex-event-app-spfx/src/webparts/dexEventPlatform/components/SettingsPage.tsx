@@ -433,7 +433,7 @@ export default function SettingsPage(): React.ReactElement {
                         </span>
                       )}
                       <div style={{ marginTop: 2 }}>
-                        <InternationalSearchToggle checked={includeIntl} onChange={setIncludeIntl} isDe={isDe} />
+                        <InternationalSearchToggle query={newEmail} checked={includeIntl} onChange={setIncludeIntl} isDe={isDe} />
                       </div>
                       {/* v11.75: explizite „Keine Treffer"-Box wenn die Suche
                           fertig ist und 0 Treffer hat — sonst wirkt der Picker

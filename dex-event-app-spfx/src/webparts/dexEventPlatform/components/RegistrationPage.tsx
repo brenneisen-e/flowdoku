@@ -2692,6 +2692,7 @@ export default function RegistrationPage(): React.ReactElement {
                       placeholder={t('reg.searchplaceholder') || 'Name oder E-Mail eingeben...'}
                     />
                     <InternationalSearchToggle
+                      query={userSearch}
                       checked={userSearchIncludeIntl}
                       onChange={async next => {
                         setUserSearchIncludeIntl(next);

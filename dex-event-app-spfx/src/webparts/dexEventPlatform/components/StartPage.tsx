@@ -6,7 +6,7 @@ import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useLanguage } from '../context/LanguageContext';
-import { Calendar, Pin, Settings, QrCode, CaptainHat } from './Icons';
+import { Calendar, Pin, Settings, QrCode, Star } from './Icons';
 import InquiryModal from './InquiryModal';
 
 export default function StartPage(): React.ReactElement {
@@ -217,7 +217,7 @@ export default function StartPage(): React.ReactElement {
             onClick={() => navigate('admin-hub')}
           >
             <div className="start-card__icon">
-              <CaptainHat size={64} strokeWidth={1} />
+              <Star size={64} strokeWidth={1} />
             </div>
             <h2>Admin</h2>
             <p style={{ whiteSpace: 'nowrap' }}>

@@ -12925,6 +12925,7 @@ export default function AdminPage(): React.ReactElement {
                       }}
                     />
                     <InternationalSearchToggle
+                      query={adminAddMemberQuery}
                       checked={adminAddMemberIncludeIntl}
                       onChange={setAdminAddMemberIncludeIntl}
                       isDe={isDe}
