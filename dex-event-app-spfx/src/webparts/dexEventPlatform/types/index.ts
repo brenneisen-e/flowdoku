@@ -118,6 +118,10 @@ export interface DeloitteEvent {
    *  Organizer-Rechte, Mails und BCC bleiben unberührt. Persistiert als
    *  Piggyback `_hideOrganizer` in EmailTemplateOverrides. */
   hideOrganizer?: boolean;
+  /** v24.8 (J): EINZELNE Organizer (E-Mails, lowercase), die auf der
+   *  Anmelde-Seite nicht als Ansprechpartner gezeigt werden — Rechte bleiben.
+   *  Piggyback `_hiddenOrganizers` in EmailTemplateOverrides. */
+  hiddenOrganizerEmails?: string[];
   /** v23.6: Wenn true, sehen Personen mit dem Job-Title „Assistenz" dieses
    *  Event generell — auch wenn der Standort-/Verteiler-Filter sie sonst
    *  ausschließen würde (damit sie stellvertretend anmelden können).

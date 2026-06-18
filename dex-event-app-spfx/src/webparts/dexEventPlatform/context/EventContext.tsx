@@ -978,6 +978,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           return !!(ov && ov._hideOrganizer);
         } catch { return false; }
       })(),
+      // v24.8 (J): einzelne ausgeblendete Organizer (Piggyback _hiddenOrganizers).
+      hiddenOrganizerEmails: ((): string[] => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          const arr = ov && ov._hiddenOrganizers;
+          return Array.isArray(arr) ? arr.map((x: unknown) => String(x || '').toLowerCase()).filter(Boolean) : [];
+        } catch { return []; }
+      })(),
       // v23.6: Assistenz-Sichtbarkeit (Piggyback _assistantsCanSee).
       assistantsCanSee: ((): boolean => {
         try {

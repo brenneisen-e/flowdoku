@@ -1904,6 +1904,7 @@ export default function MyEventsPage(): React.ReactElement {
                             return parts.length === 2 ? `${parts[1]} ${parts[0]}` : trimmed;
                           }).filter(Boolean)}
                           emails={event.organizerEmails}
+                          hiddenEmails={event.hiddenOrganizerEmails}
                           size="sm"
                         />
                       </div>

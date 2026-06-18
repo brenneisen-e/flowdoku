@@ -2591,6 +2591,10 @@ export default function AdminPage(): React.ReactElement {
   const now = Date.now();
   const isPastEvent = (e: DeloitteEvent): boolean =>
     !!e.endDate && new Date(e.endDate).getTime() < now;
+  // v24.8 (O): abgeschlossene/vergangene Events sind für Organizer gesperrt —
+  // keine Abmeldung/Löschung/Feld-Bearbeitung mehr (Archivierungsschutz; nur
+  // No-Show über den Check-in bleibt). Admins behalten vollen Zugriff.
+  const orgPastLock = !isAdmin && !!selectedEvent && isEventOver(selectedEvent);
   const currentEventsRaw = isAdmin ? adminEvents.filter(e => !isPastEvent(e)) : adminEvents;
   const pastEventsRaw = isAdmin ? adminEvents.filter(isPastEvent) : [];
   const [showPastEvents, setShowPastEvents] = React.useState(false);
@@ -5251,7 +5255,7 @@ export default function AdminPage(): React.ReactElement {
                         {/* v19.30 (Feature A): Hauptevent-Felder bearbeiten —
                             nur wenn es Hauptevent-Custom-Felder gibt UND die
                             Person eine Hauptevent-Registrierung hat. */}
-                        {canManage && editableParentFieldCount > 0 && hasParentReg(row.emailKey) && (
+                        {canManage && !orgPastLock && editableParentFieldCount > 0 && hasParentReg(row.emailKey) && (
                           <button
                             type="button"
                             className="btn btn-secondary"
@@ -5262,8 +5266,9 @@ export default function AdminPage(): React.ReactElement {
                             <Pencil size={12} /> {isDe ? 'Felder' : 'Fields'}
                           </button>
                         )}
-                        {/* v19.30 (Feature B): Abmelden mit Sub-Event-Auswahl. */}
-                        {canManage && (
+                        {/* v19.30 (Feature B): Abmelden mit Sub-Event-Auswahl.
+                            v24.8 (O): bei abgeschlossenen Events für Organizer gesperrt. */}
+                        {canManage && !orgPastLock && (
                           <button
                             type="button"
                             className="btn btn-secondary"
@@ -5587,13 +5592,10 @@ export default function AdminPage(): React.ReactElement {
                           if (ok) navigate('create-event');
                           return;
                         }
-                        // v24.7 (P): bei aktiven Events sanfter Hinweis — lieber neu anlegen?
-                        const wantNew = await confirmDialog(
-                          isDe
-                            ? 'Möchtest du lieber ein neues Event anlegen, statt dieses zu bearbeiten? Für eine neue Veranstaltung ist ein eigenes Event meist besser — du kannst ein bestehendes als Vorlage nutzen.'
-                            : 'Would you rather create a new event instead of editing this one? You can use an existing event as a template.',
-                          { confirmLabel: isDe ? 'Neues Event anlegen' : 'Create new', cancelLabel: isDe ? 'Dieses Event bearbeiten' : 'Edit this event' });
-                        if (wantNew) navigate('create-event'); else navigate('edit-event', selectedEvent.id);
+                        // v24.8 (P korrigiert): aktive Events direkt bearbeiten —
+                        // der „lieber neues Event?"-Hinweis erscheint NUR bei
+                        // abgeschlossenen Events (siehe Zweig oben).
+                        navigate('edit-event', selectedEvent.id);
                       }}
                       style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', padding: '6px 12px' }}
                       title={t('admin.editbutton') || (isDe ? 'Event bearbeiten' : 'Edit event')}
@@ -9666,6 +9668,7 @@ export default function AdminPage(): React.ReactElement {
                           {isDe ? 'Einchecken' : 'Check in'}
                         </button>
                       )}
+                      {!orgPastLock && (
                       <button
                         className="btn btn-secondary"
                         style={{ fontSize: '0.75rem', padding: '4px 10px', color: 'var(--dex-red, #c00)' }}
@@ -9690,6 +9693,7 @@ export default function AdminPage(): React.ReactElement {
                       >
                         {isDe ? 'Abmelden' : 'Cancel'}
                       </button>
+                      )}
                     </td>
                   );
                 }

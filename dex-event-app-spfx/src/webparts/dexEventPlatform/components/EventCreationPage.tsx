@@ -1111,6 +1111,17 @@ export default function EventCreationPage(): React.ReactElement {
   // v23.25: Organizer auf der Anmeldeseite groß (Foto + Mail + Rolle direkt
   // sichtbar) statt klein als Chip mit Hover (Piggyback _organizerDisplayLarge).
   const [organizerDisplayLarge, setOrganizerDisplayLarge] = React.useState(editEvent ? !!editEvent.organizerDisplayLarge : false);
+  // v24.8 (J): EINZELNE Organizer von der Anzeige ausnehmen (Klick auf den Chip).
+  // Sie behalten alle Rechte/Mails — sie werden nur nicht als Ansprechpartner
+  // auf der Anmelde-Seite gezeigt. Piggyback `_hiddenOrganizers` (E-Mails, lc).
+  const [hiddenOrganizerEmails, setHiddenOrganizerEmails] = React.useState<string[]>(
+    editEvent && editEvent.hiddenOrganizerEmails ? editEvent.hiddenOrganizerEmails.map(e => (e || '').toLowerCase()).filter(Boolean) : []
+  );
+  const toggleOrganizerHidden = (email: string): void => {
+    const lc = (email || '').toLowerCase();
+    if (!lc) return;
+    setHiddenOrganizerEmails(prev => prev.indexOf(lc) >= 0 ? prev.filter(x => x !== lc) : [...prev, lc]);
+  };
   // Nur im Edit-Modus: standardmäßig wird der Outlook-Termin NICHT angefasst,
   // damit bei kleinen Aenderungen (z.B. Description) nicht unnötig eine
   // "Updated meeting"-Benachrichtigung an alle Teilnehmer geht. Der Organizer
@@ -1141,7 +1152,7 @@ export default function EventCreationPage(): React.ReactElement {
           // beim Edit-Save (letzter Spread `...topOverrides`) das frisch
           // berechnete Flag, d.h. Abwählen bliebe ohne Wirkung.
           _teamTerm, _teamMembersCannotCreate, _assistantsCanSee, _previewBeforeActive, _imageDisplay,
-          _organizerDisplayLarge,
+          _organizerDisplayLarge, _hiddenOrganizers,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -1152,7 +1163,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _subEventsOnlyMode; void _childEventTerm;
         void _inheritFlags; void _hideOrganizer; void _headerImageLayout;
         void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee; void _previewBeforeActive; void _imageDisplay;
-        void _organizerDisplayLarge;
+        void _organizerDisplayLarge; void _hiddenOrganizers;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
     })() : {}
@@ -3324,6 +3335,7 @@ export default function EventCreationPage(): React.ReactElement {
         : {};
       // v18.9: Organizer-Anzeige ausblenden (Piggyback).
       const hideOrganizerConfig = hideOrganizer ? { _hideOrganizer: true } : {};
+      const hiddenOrganizersConfig: Record<string, unknown> = hiddenOrganizerEmails.length > 0 ? { _hiddenOrganizers: hiddenOrganizerEmails } : {};
       // v22.78: Team-Begriff + „keine neuen Teams"-Flag (Piggyback).
       const teamTermConfig = (teamTermSingular.trim() || teamTermPlural.trim())
         ? { _teamTerm: { singular: teamTermSingular.trim(), plural: teamTermPlural.trim() } }
@@ -3348,7 +3360,7 @@ export default function EventCreationPage(): React.ReactElement {
         });
         return Object.keys(out).length ? { _imageDisplay: out } : {};
       })();
-      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(teamTermConfig).length > 0 || Object.keys(teamNoCreateConfig).length > 0 || Object.keys(assistantsCanSeeConfig).length > 0 || Object.keys(organizerDisplayLargeConfig).length > 0 || Object.keys(previewBeforeActiveConfig).length > 0 || Object.keys(imageDisplayConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0 || Object.keys(headerImageLayoutConfig).length > 0)
+      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(teamTermConfig).length > 0 || Object.keys(teamNoCreateConfig).length > 0 || Object.keys(assistantsCanSeeConfig).length > 0 || Object.keys(organizerDisplayLargeConfig).length > 0 || Object.keys(previewBeforeActiveConfig).length > 0 || Object.keys(imageDisplayConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0 || Object.keys(hiddenOrganizersConfig).length > 0 || Object.keys(headerImageLayoutConfig).length > 0)
         ? JSON.stringify({
             ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
             ...(effOutlookLogo ? { _outlookLogo: effOutlookLogo } : {}),
@@ -3367,6 +3379,7 @@ export default function EventCreationPage(): React.ReactElement {
             ...previewBeforeActiveConfig,
             ...imageDisplayConfig,
             ...hideOrganizerConfig,
+            ...hiddenOrganizersConfig,
             // v18.73: Header-Bild-Layout (Breite + Innenabstand) — event-weit.
             ...headerImageLayoutConfig,
             ...topOverrides,
@@ -3915,6 +3928,7 @@ export default function EventCreationPage(): React.ReactElement {
             : {};
           // v18.9: Organizer-Anzeige ausblenden (Piggyback).
           const hideOrganizerExtra = hideOrganizer ? { _hideOrganizer: true } : {};
+          const hiddenOrganizersExtra: Record<string, unknown> = hiddenOrganizerEmails.length > 0 ? { _hiddenOrganizers: hiddenOrganizerEmails } : {};
           // v22.78: Team-Begriff + „keine neuen Teams"-Flag (Piggyback).
           const teamTermExtra = (teamTermSingular.trim() || teamTermPlural.trim())
             ? { _teamTerm: { singular: teamTermSingular.trim(), plural: teamTermPlural.trim() } }
@@ -3939,7 +3953,7 @@ export default function EventCreationPage(): React.ReactElement {
             return Object.keys(out).length ? { _imageDisplay: out } : {};
           })();
           // v11.93: Top-Level-Logos aus dem Resolver lesen.
-          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0 || Object.keys(teamTermExtra).length > 0 || Object.keys(teamNoCreateExtra).length > 0 || Object.keys(assistantsCanSeeExtra).length > 0 || Object.keys(organizerDisplayLargeExtra).length > 0 || Object.keys(previewBeforeActiveExtra).length > 0 || Object.keys(imageDisplayExtra).length > 0 || Object.keys(hideOrganizerExtra).length > 0 || Object.keys(headerImageLayoutConfig).length > 0;
+          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0 || Object.keys(teamTermExtra).length > 0 || Object.keys(teamNoCreateExtra).length > 0 || Object.keys(assistantsCanSeeExtra).length > 0 || Object.keys(organizerDisplayLargeExtra).length > 0 || Object.keys(previewBeforeActiveExtra).length > 0 || Object.keys(imageDisplayExtra).length > 0 || Object.keys(hideOrganizerExtra).length > 0 || Object.keys(hiddenOrganizersExtra).length > 0 || Object.keys(headerImageLayoutConfig).length > 0;
           return hasAny
             ? JSON.stringify({
                 ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
@@ -3959,6 +3973,7 @@ export default function EventCreationPage(): React.ReactElement {
                 ...previewBeforeActiveExtra,
                 ...imageDisplayExtra,
                 ...hideOrganizerExtra,
+                ...hiddenOrganizersExtra,
                 // v18.73: Header-Bild-Layout (Breite + Innenabstand) — event-weit.
                 ...headerImageLayoutConfig,
                 ...emailTemplateOverrides,
@@ -6385,14 +6400,16 @@ export default function EventCreationPage(): React.ReactElement {
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
                       {orgList.map((name, i) => {
                         const email = organizerEmails[i] || '';
+                        const orgHidden = !!email && hiddenOrganizerEmails.indexOf(email.toLowerCase()) >= 0;
                         return (
                         <span
                           key={`${name}-${i}`}
                           style={{
                             display: 'inline-flex', alignItems: 'center', gap: 6,
                             padding: '3px 6px 3px 4px',
-                            background: 'var(--dex-green)', color: '#fff',
+                            background: orgHidden ? 'var(--dex-gray-400, #9aa0a6)' : 'var(--dex-green)', color: '#fff',
                             borderRadius: 999, fontSize: '0.85rem', fontWeight: 500,
+                            opacity: orgHidden ? 0.85 : 1,
                           }}
                         >
                           {email ? (
@@ -6400,10 +6417,17 @@ export default function EventCreationPage(): React.ReactElement {
                               src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(email)}&size=S`}
                               alt={name}
                               onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                              style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', background: 'rgba(255,255,255,0.25)' }}
+                              style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', background: 'rgba(255,255,255,0.25)', filter: orgHidden ? 'grayscale(1)' : 'none' }}
                             />
                           ) : null}
-                          <span>{name}</span>
+                          {/* v24.8 (J): Klick auf den Namen blendet diesen Organizer
+                              auf der Anmelde-Seite aus/ein (Rechte bleiben). */}
+                          <span
+                            onClick={() => { if (email) toggleOrganizerHidden(email); }}
+                            title={email ? (isDe ? (orgHidden ? 'Wird auf der Anmeldeseite NICHT angezeigt — klicken zum Einblenden (Rechte bleiben)' : 'Klicken, um diesen Organizer auf der Anmeldeseite auszublenden (Rechte bleiben)') : (orgHidden ? 'Hidden on the registration page — click to show' : 'Click to hide this organizer on the registration page')) : undefined}
+                            style={{ cursor: email ? 'pointer' : 'default', textDecoration: orgHidden ? 'line-through' : 'none' }}
+                          >{name}</span>
+                          {orgHidden && <span style={{ fontSize: '0.68rem', fontStyle: 'italic', opacity: 0.95 }}>{isDe ? '(ausgeblendet)' : '(hidden)'}</span>}
                           {orgList.length > 1 && i > 0 && (
                             <button
                               type="button"
@@ -6429,6 +6453,12 @@ export default function EventCreationPage(): React.ReactElement {
                         </span>
                       );
                       })}
+                      {/* v24.8 (J): Tipp unter den Organizer-Namen. */}
+                      <span style={{ flexBasis: '100%', fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                        {isDe
+                          ? 'Tipp: Auf einen Namen klicken blendet diese Person auf der Anmeldeseite aus (sie behält alle Rechte). Erneut klicken zeigt sie wieder.'
+                          : 'Tip: click a name to hide that person on the registration page (they keep all rights). Click again to show.'}
+                      </span>
                     </div>
                   );
                 })()}

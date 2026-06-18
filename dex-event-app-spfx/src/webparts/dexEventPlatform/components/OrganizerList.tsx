@@ -19,6 +19,10 @@ export interface OrganizerListProps {
   emails: string[];
   size?: 'sm' | 'md';
   compact?: boolean;
+  /** v24.8 (J): E-Mails (lowercase), die NICHT angezeigt werden sollen
+   *  (einzeln ausgeblendete Organizer). Nur für teilnehmer-seitige Anzeigen
+   *  übergeben — in Verwaltungs-Ansichten weglassen. */
+  hiddenEmails?: string[];
   /** v23.25: 'card' = Organizer dauerhaft groß (Foto + Name + Mail + Rolle
    *  direkt sichtbar). Default 'chip' = klein mit Hover-Popup. */
   display?: 'chip' | 'card';
@@ -415,8 +419,13 @@ function OrganizerChipRow({ items, sizeClass, compact }: {
   );
 }
 
-export default function OrganizerList({ names, emails, size = 'md', compact = false, display = 'chip' }: OrganizerListProps): React.ReactElement | null {
-  const items = pairNamesEmails(names, emails).filter(o => !!o.name);
+export default function OrganizerList({ names, emails, size = 'md', compact = false, display = 'chip', hiddenEmails }: OrganizerListProps): React.ReactElement | null {
+  let items = pairNamesEmails(names, emails).filter(o => !!o.name);
+  // v24.8 (J): einzeln ausgeblendete Organizer aus der Anzeige nehmen (Rechte bleiben).
+  if (hiddenEmails && hiddenEmails.length > 0) {
+    const hidden = new Set(hiddenEmails.map(e => (e || '').toLowerCase()));
+    items = items.filter(o => !(o.email && hidden.has(o.email.toLowerCase())));
+  }
   if (items.length === 0) return null;
   // v23.26: Großer Modus = EINE gemeinsame Kachel mit allen Organizern.
   if (display === 'card') return <OrganizerCardTile items={items} />;

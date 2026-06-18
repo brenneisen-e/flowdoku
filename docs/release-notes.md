@@ -8,6 +8,9 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.8.0 | 2026-06-18 | Feature | Archivierungsschutz (Teil 7 von v24): Abgeschlossene/vergangene Events sind im Organizer Center schreibgeschützt — keine Abmeldungen, keine Feld-Bearbeitung, kein Bearbeiten (nur No-Show über den Check-in bleibt). Admins behalten vollen Zugriff. |
+| 24.8.0 | 2026-06-18 | Feature | Admin-Hinweis beim App-Start: Events, deren Ende > 1 Jahr zurückliegt, können (inkl. Teilnehmerliste) endgültig gelöscht werden — mit Sprung ins Organizer Center. |
+| 24.8.0 | 2026-06-18 | Feature | Einzelne Organizer können im Wizard per Klick auf den Namen von der Anmeldeseite ausgeblendet werden (Rechte/Mails bleiben). Tipp-Text + durchgestrichene Darstellung; teilnehmer-seitige Anzeigen filtern ausgeblendete Organizer. |
 | 24.7.0 | 2026-06-18 | Feature | Event-Übersicht: Status-Marker als moderne farbige Leiste an der linken Kartenkante (statt Eck-Winkel); vergangene/abgeschlossene Events blau, Entwürfe orange, aktive grün. |
 | 24.7.0 | 2026-06-18 | Feature | Archivierungsschutz (Teil 6 von v24): Vergangene/abgeschlossene Events können Organizer nicht mehr bearbeiten — beim Klick auf „Event bearbeiten" kommt der Hinweis, stattdessen ein neues Event anzulegen. Auch bei aktiven Events fragt die App nach, ob man lieber ein neues Event anlegen will (bestehendes als Vorlage nutzbar). Admins behalten vollen Zugriff. (Folgt: für abgeschlossene Events im Organizer Center nur noch No-Show setzen/entfernen, keine Teilnehmer-Löschung.) |
 | 24.6.0 | 2026-06-18 | Feature | Event archivieren/ausblenden (Teil 5 von v24): Abgelaufene Events kann der Organizer „archivieren" — sie verschwinden nur aus SEINER Übersicht (Event + Daten bleiben, für andere sichtbar). Schalter „Archivierte anzeigen" holt sie zurück. Pro Person gespeichert. |
