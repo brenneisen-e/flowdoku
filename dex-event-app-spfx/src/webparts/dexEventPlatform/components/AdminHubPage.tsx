@@ -1,0 +1,177 @@
+/**
+ * v23.41: Admin-Hub — zentrale Anlaufstelle für Admin-Themen.
+ *
+ * Erreichbar über die „Admin"-Kachel der Startseite (nur Admins, auch im
+ * Demo-Modus via originalIsAdmin). Bündelt:
+ *  - Werkzeuge: Prozessübersicht, Rollenverwaltung, Einstellungen/Templates, Handbuch
+ *  - Erklärung aller SharePoint-Listen (was macht welche Liste)
+ *  - Archiv & Löschung (archivieren + alte Archiv-Einträge löschen)
+ */
+import * as React from 'react';
+import { useNavigation } from '../context/NavigationContext';
+import { useRoles } from '../context/RoleContext';
+import { useEvents } from '../context/EventContext';
+import { useLanguage } from '../context/LanguageContext';
+import { useDialog } from '../context/DialogContext';
+import { Settings, Users, Mail, Book, FileText, Trash2 } from './Icons';
+
+// Erklärung aller DEX_*-Listen in Klartext (was tut die Liste, warum gibt es sie).
+const LIST_DOCS: Array<{ name: string; de: string }> = [
+  { name: 'DEX_Events', de: 'Das Herzstück: ein Eintrag pro Event (und pro Sub-Event). Enthält Titel, Datum, Ort, Sichtbarkeit, Kapazität, Kommunikations-Einstellungen usw.' },
+  { name: 'DEX_Roles', de: 'Wer welche Rolle hat: User, Organizer oder Admin. Steuert, wer Events anlegen/verwalten darf.' },
+  { name: 'DEX_Participants', de: 'Übergreifendes Register aller Personen, die sich jemals für ein Event angemeldet haben (für Statistik/KPIs).' },
+  { name: 'DEX_Emails', de: 'Warteschlange für alle ausgehenden Mails (Bestätigungen, Erinnerungen, Wochenbericht …). Ein Hintergrundprozess verschickt sie und setzt den Status auf „Sent".' },
+  { name: 'DEX_EmailTemplates', de: 'Die anpassbaren Mail-Vorlagen plus zentrale Konfiguration (Logo, Standardbild, KPI-Zähler).' },
+  { name: 'DEX_Outlook', de: 'Warteschlange für Outlook-Kalendereinladungen: Teilnehmer ein-/ausladen, Termin aktualisieren/löschen.' },
+  { name: 'DEX_OutlookLocks', de: 'Technische Sperre, damit zwei Kalender-Vorgänge desselben Events sich nicht in die Quere kommen.' },
+  { name: 'DEX_IDReorder', de: 'Aufträge zum Neu-Durchnummerieren der Teilnehmer-IDs und zum Nachrücken von der Warteliste.' },
+  { name: 'DEX_ChangeLog', de: 'Änderungsprotokoll: wer hat wann was getan (Anmeldung, Abmeldung, Check-in, Bearbeitung …) — der Nachweis pro Event.' },
+  { name: 'DEX_AccessFix', de: 'Aufträge, damit bei stellvertretenden Anmeldungen die richtige Person ihre Anmeldung sieht und sich selbst abmelden kann.' },
+  { name: 'DEX_TeamJoinRequests', de: 'Beitritts-Anfragen für Team-Anmeldungen, die der Team-Kapitän bestätigen muss.' },
+  { name: 'DEX_OrganizerRequests', de: 'Anträge „Organizer werden" — Admins sehen offene Anträge in der App und geben sie frei.' },
+  { name: 'DEX_WeeklyReports', de: 'Protokoll des automatischen Wochenberichts: hält fest, wann zuletzt ein Bericht verschickt wurde (damit er nicht doppelt kommt).' },
+  { name: 'DEX_Archive', de: 'End-Ablage: hierhin werden alte Zeilen aus den Arbeitslisten verschoben, damit diese schlank bleiben. Einträge älter als 6 Monate können gelöscht werden.' },
+];
+
+export default function AdminHubPage(): React.ReactElement {
+  const { navigate } = useNavigation();
+  const { isAdmin, originalIsAdmin, siteUrl } = useRoles();
+  const listUrl = (name: string): string => `${siteUrl}/Lists/${name}`;
+  const { getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive } = useEvents();
+  const { locale } = useLanguage();
+  const { confirmDialog, showAlert } = useDialog();
+  const isDe = locale === 'de';
+  const adminLike = isAdmin || originalIsAdmin;
+
+  const [archTotal, setArchTotal] = React.useState(0);
+  const [delTotal, setDelTotal] = React.useState(0);
+  const [busy, setBusy] = React.useState<'' | 'arch' | 'del'>('');
+
+  React.useEffect(() => {
+    if (!adminLike) { navigate('start'); return; }
+    let cancelled = false;
+    getArchivableCount().then(r => { if (!cancelled) setArchTotal(r.total); }).catch(() => { /* */ });
+    getDeletableArchiveCount().then(n => { if (!cancelled) setDelTotal(n); }).catch(() => { /* */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminLike]);
+
+  if (!adminLike) return <div className="page-container" />;
+
+  const doArchive = async (): Promise<void> => {
+    if (busy || archTotal === 0) return;
+    if (!(await confirmDialog(isDe ? `${archTotal} Zeilen abgelaufener/gelöschter Events ins Archiv verschieben?` : `Move ${archTotal} rows of expired/deleted events to the archive?`, { confirmLabel: isDe ? 'Archivieren' : 'Archive' }))) return;
+    setBusy('arch');
+    try {
+      const r = await runArchiveExpired();
+      showAlert(isDe ? `${r.archived} Zeilen archiviert${r.failed ? `, ${r.failed} fehlgeschlagen` : ''}.` : `${r.archived} rows archived${r.failed ? `, ${r.failed} failed` : ''}.`, { variant: r.failed ? 'error' : 'success' });
+      try { const a = await getArchivableCount(); setArchTotal(a.total); const d = await getDeletableArchiveCount(); setDelTotal(d); } catch { /* */ }
+    } catch { showAlert(isDe ? 'Archivierung fehlgeschlagen.' : 'Archiving failed.', { variant: 'error' }); }
+    finally { setBusy(''); }
+  };
+
+  const doDelete = async (): Promise<void> => {
+    if (busy || delTotal === 0) return;
+    if (!(await confirmDialog(isDe ? `${delTotal} Archiv-Einträge älter als 6 Monate endgültig löschen?` : `Permanently delete ${delTotal} archive entries older than 6 months?`, { danger: true, confirmLabel: isDe ? 'Endgültig löschen' : 'Delete permanently' }))) return;
+    setBusy('del');
+    try {
+      const r = await runDeleteOldArchive();
+      showAlert(isDe ? `${r.deleted} alte Archiv-Einträge gelöscht${r.failed ? `, ${r.failed} fehlgeschlagen` : ''}.` : `${r.deleted} old archive entries deleted${r.failed ? `, ${r.failed} failed` : ''}.`, { variant: r.failed ? 'error' : 'success' });
+      try { const d = await getDeletableArchiveCount(); setDelTotal(d); } catch { /* */ }
+    } catch { showAlert(isDe ? 'Löschen fehlgeschlagen.' : 'Deletion failed.', { variant: 'error' }); }
+    finally { setBusy(''); }
+  };
+
+  const tools: Array<{ icon: React.ReactNode; title: string; desc: string; onClick: () => void }> = [
+    { icon: <Users size={28} />, title: isDe ? 'Organizer Center' : 'Organizer center', desc: isDe ? 'Teilnehmer, Prozesse, Audit-Log, SharePoint-Liste — alle Event-Werkzeuge pro Event.' : 'Attendees, processes, audit log, SharePoint list — all per-event tools.', onClick: () => navigate('admin') },
+    { icon: <Settings size={28} />, title: isDe ? 'Prozessübersicht' : 'Process overview', desc: isDe ? 'Wie die Abläufe in DEX funktionieren — verständlich erklärt.' : 'How the DEX processes work — explained simply.', onClick: () => navigate('flowcharts') },
+    { icon: <Users size={28} />, title: isDe ? 'Rollenverwaltung' : 'Role management', desc: isDe ? 'User, Organizer und Admins verwalten (Rollen-Matrix).' : 'Manage users, organizers and admins (role matrix).', onClick: () => navigate('role-matrix') },
+    { icon: <Mail size={28} />, title: isDe ? 'Einstellungen & Templates' : 'Settings & templates', desc: isDe ? 'Globale Mail-Vorlagen, Logos und weitere Einstellungen.' : 'Global mail templates, logos and more settings.', onClick: () => navigate('settings') },
+    { icon: <Book size={28} />, title: isDe ? 'Handbuch' : 'Manual', desc: isDe ? 'Ausführliche Anleitung zu allen Funktionen.' : 'Detailed guide for all features.', onClick: () => navigate('manual') },
+  ];
+
+  const cardStyle: React.CSSProperties = { background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 12, padding: 18, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' };
+
+  return (
+    <div className="page-container">
+      <h1 style={{ marginTop: 0 }}>{isDe ? 'Admin' : 'Admin'}</h1>
+      <p style={{ color: 'var(--dex-gray-600)', marginTop: 0 }}>
+        {isDe ? 'Zentrale Anlaufstelle für Admin-Themen.' : 'Central place for admin topics.'}
+      </p>
+
+      {/* Werkzeuge */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14, marginBottom: 28 }}>
+        {tools.map((t, i) => (
+          <div key={i} className="card-clickable" style={{ ...cardStyle, cursor: 'pointer', display: 'flex', gap: 14, alignItems: 'flex-start' }} onClick={t.onClick}>
+            <span style={{ color: 'var(--dex-green, #86bc25)', flexShrink: 0 }}>{t.icon}</span>
+            <span>
+              <span style={{ display: 'block', fontWeight: 700, color: 'var(--dex-gray-800)', marginBottom: 2 }}>{t.title}</span>
+              <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.4 }}>{t.desc}</span>
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {/* Archiv & Löschung */}
+      <h2 style={{ fontSize: '1.15rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Archiv & Löschung' : 'Archive & deletion'}</h2>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14, marginBottom: 28 }}>
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><FileText size={18} /></span>
+            <span style={{ fontWeight: 700 }}>{isDe ? 'Archivieren' : 'Archive'}</span>
+          </div>
+          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
+            {isDe
+              ? <><strong>{archTotal}</strong> Zeilen aus abgelaufenen oder gelöschten Events stehen zur Archivierung an. Sie wandern aus den Arbeitslisten ins Archiv.</>
+              : <><strong>{archTotal}</strong> rows from expired or deleted events are ready to archive. They move from the working lists into the archive.</>}
+          </p>
+          <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== '' || archTotal === 0} onClick={() => { void doArchive(); }}>
+            {busy === 'arch' ? (isDe ? 'Wird archiviert…' : 'Archiving…') : (isDe ? 'Jetzt archivieren' : 'Archive now')}
+          </button>
+        </div>
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ color: 'var(--dex-red, #c00)', display: 'inline-flex' }}><Trash2 size={18} /></span>
+            <span style={{ fontWeight: 700 }}>{isDe ? 'Altes Archiv löschen' : 'Delete old archive'}</span>
+          </div>
+          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
+            {isDe
+              ? <><strong>{delTotal}</strong> Archiv-Einträge sind älter als 6 Monate und können endgültig gelöscht werden.</>
+              : <><strong>{delTotal}</strong> archive entries are older than 6 months and can be permanently deleted.</>}
+          </p>
+          <button className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%', color: 'var(--dex-red, #c00)' }} disabled={busy !== '' || delTotal === 0} onClick={() => { void doDelete(); }}>
+            {busy === 'del' ? (isDe ? 'Wird gelöscht…' : 'Deleting…') : (isDe ? 'Alte Einträge löschen' : 'Delete old entries')}
+          </button>
+        </div>
+      </div>
+
+      {/* Listen-Erklärung */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <h2 style={{ fontSize: '1.15rem', color: 'var(--dex-green-dark, #4a7c1f)', margin: 0 }}>{isDe ? 'SharePoint-Listen — was macht was' : 'SharePoint lists — what does what'}</h2>
+        {/* v23.41: Dropdown zum direkten Springen in eine SharePoint-Liste. */}
+        <select
+          defaultValue=""
+          onChange={e => { const v = e.target.value; if (v) { window.open(listUrl(v), '_blank', 'noopener'); e.target.value = ''; } }}
+          style={{ marginLeft: 'auto', padding: '6px 10px', borderRadius: 8, border: '1px solid var(--dex-gray-300)', fontSize: '0.82rem', cursor: 'pointer' }}
+        >
+          <option value="">{isDe ? 'Zu Liste springen…' : 'Jump to list…'}</option>
+          {LIST_DOCS.map(l => <option key={l.name} value={l.name}>{l.name}</option>)}
+        </select>
+      </div>
+      <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', marginTop: 6 }}>
+        {isDe ? 'Alle Hintergrund-Listen der DEX-Plattform und wofür sie da sind (Klick öffnet die Liste in SharePoint):' : 'All background lists of the DEX platform and what they are for (click opens the list in SharePoint):'}
+      </p>
+      <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
+        {LIST_DOCS.map((l, i) => (
+          <div key={l.name} style={{ display: 'flex', gap: 14, padding: '12px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--dex-gray-100)', alignItems: 'baseline' }}>
+            <a href={listUrl(l.name)} target="_blank" rel="noopener noreferrer" style={{ flexShrink: 0, fontFamily: 'Consolas, monospace', fontSize: '0.82rem', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700, minWidth: 190, textDecoration: 'none' }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
+            >{l.name}</a>
+            <span style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', lineHeight: 1.45 }}>{l.de}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

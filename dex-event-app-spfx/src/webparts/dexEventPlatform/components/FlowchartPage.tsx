@@ -955,6 +955,52 @@ function ColumnFixFlow(): React.ReactElement {
   );
 }
 
+// v23.41: Archivierung und Löschung — bewusst nicht-technisch erklärt.
+function ArchiveDeleteFlow(): React.ReactElement {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <FlowNode type="start" label="Ein Admin öffnet die App"
+        details="Im Hintergrund laufen viele Arbeitslisten voll (verschickte Mails, Kalender-Aufgaben, Protokolle). Damit sie nicht endlos wachsen, gibt es zwei Aufräum-Stufen: Archivieren und danach Löschen." />
+      <Arrow />
+      <FlowNode type="decision" label="Gibt es alte Einträge zum Aufräumen?"
+        details="Beim App-Start zählt die App im Hintergrund, wie viele Zeilen aufgeräumt werden können. Nur dann erscheint oben rechts (und in der Admin-Kachel) ein Hinweis." />
+      <BranchContainer>
+        <Branch label="Nein">
+          <FlowNode type="process" color="#f5f5f5" label="Nichts zu tun — kein Hinweis" />
+        </Branch>
+        <Branch label="Ja">
+          <FlowNode type="process" label="Admin sieht den Aufräum-Hinweis (mit Anzahl)"
+            details="Zwei getrennte Aktionen, jeweils mit Anzahl: 1) Archivieren (verschieben), 2) altes Archiv löschen." />
+        </Branch>
+      </BranchContainer>
+      <Arrow />
+      <FlowNode type="process" label="STUFE 1 — Archivieren"
+        details="Was passiert: Zeilen von Events, die schon vorbei ODER bereits gelöscht sind, werden aus den Arbeitslisten in eine eigene Archiv-Ablage verschoben. Wichtig: Noch nicht verschickte Mails (Status offen) bleiben unangetastet." />
+      <Arrow />
+      <FlowNode type="data" label="Verschieben statt kopieren — Schritt für Schritt"
+        details="Jede Zeile wird zuerst sicher ins Archiv geschrieben und ERST DANN aus der Arbeitsliste entfernt. So kann nichts verloren gehen. Ein Fortschrittsbalken zeigt den Stand; abbrechen ist jederzeit möglich (schon Verschobenes bleibt im Archiv)." />
+      <Arrow />
+      <FlowNode type="end" color="var(--dex-green)" label="Arbeitslisten sind wieder schlank, alte Einträge liegen im Archiv" />
+      <Arrow />
+      <FlowNode type="process" label="STUFE 2 — Altes Archiv löschen"
+        details="Das Archiv ist die letzte Ablage. Einträge, die älter als ein halbes Jahr sind, braucht in der Regel niemand mehr und können endgültig entfernt werden." />
+      <Arrow />
+      <FlowNode type="decision" label="Einträge älter als 6 Monate vorhanden?" />
+      <BranchContainer>
+        <Branch label="Nein">
+          <FlowNode type="process" color="#f5f5f5" label="Archiv ist aktuell — nichts löschen" />
+        </Branch>
+        <Branch label="Ja">
+          <FlowNode type="process" label="Admin bestätigt das Löschen (Sicherheitsabfrage)"
+            details="Weil Löschen endgültig ist, kommt eine rot markierte Sicherheitsabfrage mit der genauen Anzahl." />
+        </Branch>
+      </BranchContainer>
+      <Arrow />
+      <FlowNode type="end" color="var(--dex-green)" label="Alte Archiv-Einträge sind entfernt — das Archiv bleibt dauerhaft handhabbar" />
+    </div>
+  );
+}
+
 // ==================== Hauptkomponente ====================
 
 export default function FlowchartPage(): React.ReactElement {
@@ -963,13 +1009,14 @@ export default function FlowchartPage(): React.ReactElement {
   const flows = [
     { id: 'registration', label: 'Anmeldung', icon: '→' },
     { id: 'cancellation', label: 'Abmeldung', icon: '←' },
-    { id: 'reorder', label: 'ID-Korrektur (Power Automate)', icon: '↻' },
+    { id: 'reorder', label: 'ID-Korrektur & Nachrücken', icon: '↻' },
     { id: 'creation', label: 'Event-Erstellung', icon: '+' },
     { id: 'massemail', label: 'Massenmail', icon: '✉' },
-    { id: 'teamjoin', label: 'Team-Beitritt (v11.83)', icon: '+' },
-    { id: 'selfcheckin', label: 'Self-Check-in (v18.33)', icon: '✓' },
+    { id: 'teamjoin', label: 'Team-Beitritt', icon: '+' },
+    { id: 'selfcheckin', label: 'Self-Check-in', icon: '✓' },
     { id: 'idmanual', label: 'IDs neu vergeben (Admin)', icon: '#' },
     { id: 'columnfix', label: 'Spalten fixen (Admin)', icon: '⚙' },
+    { id: 'archive', label: 'Archivierung und Löschung', icon: '🗄' },
   ];
 
   const renderFlow = (): React.ReactElement => {
@@ -983,6 +1030,7 @@ export default function FlowchartPage(): React.ReactElement {
       case 'selfcheckin': return <SelfCheckInFlow />;
       case 'idmanual': return <IDReorderManualFlow />;
       case 'columnfix': return <ColumnFixFlow />;
+      case 'archive': return <ArchiveDeleteFlow />;
       default: return <RegistrationFlow />;
     }
   };

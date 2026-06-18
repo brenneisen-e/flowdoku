@@ -45,6 +45,7 @@ const AdminPage = React.lazy(() => import('./AdminPage'));
 const RoleMatrixPage = React.lazy(() => import('./RoleMatrixPage'));
 const ParticipantsPage = React.lazy(() => import('./ParticipantsPage'));
 const FlowchartPage = React.lazy(() => import('./FlowchartPage'));
+const AdminHubPage = React.lazy(() => import('./AdminHubPage'));
 const CheckInPage = React.lazy(() => import('./CheckInPage'));
 const SelfCheckInDisplayPage = React.lazy(() => import('./SelfCheckInDisplayPage'));
 const ManualPage = React.lazy(() => import('./manual/ManualPage'));
@@ -625,6 +626,8 @@ function AppContent(): React.ReactElement {
         return <SettingsPage />;
       case 'admin':
         return <AdminPage />;
+      case 'admin-hub':
+        return <AdminHubPage />;
       case 'profile':
         return <ProfilePage />;
       case 'role-matrix':
