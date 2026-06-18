@@ -849,7 +849,7 @@ export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
   // v14.11: zusätzlich `events` (alle Events inkl. Sub-Events) als `allEvents`
   // für die Parent-Lookup-Logik im konsolidierten View + im Sub-Event-Detail.
-  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead } = useEvents();
+  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, countExternalRegistrations, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead } = useEvents();
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const handleRefresh = async (): Promise<void> => {
     if (isRefreshing) return;
@@ -1219,6 +1219,50 @@ export default function AdminPage(): React.ReactElement {
   // Löschungen (früher: Click-to-Confirm-Pattern, war zu schwach).
   const [confirmDeleteEvent, setConfirmDeleteEvent] = React.useState<DeloitteEvent | null>(null);
   const [confirmDeleteText, setConfirmDeleteText] = React.useState('');
+  // v24.0: Lösch-Berechtigungs-Prüfung. Beim Öffnen des Lösch-Dialogs wird
+  // ermittelt, ob das Event Anmeldungen über das Organizer-Team hinaus hat
+  // ("ehemals aktiv"). Wenn ja: nur Admins, und frühestens 1 Jahr nach
+  // Event-Ende. Ohne Fremd-Anmeldungen (Entwurf/leer): einfaches Ja genügt.
+  const [deletePolicy, setDeletePolicy] = React.useState<
+    { loading: true } |
+    { loading: false; allowed: boolean; requiresTitle: boolean; externalCount: number; reason?: string }
+    | null
+  >(null);
+  React.useEffect(() => {
+    if (!confirmDeleteEvent) { setDeletePolicy(null); return; }
+    let cancelled = false;
+    setDeletePolicy({ loading: true });
+    (async () => {
+      let externalCount = 0;
+      try { externalCount = await countExternalRegistrations(confirmDeleteEvent); } catch { externalCount = 0; }
+      if (cancelled) return;
+      const endRaw = confirmDeleteEvent.endDate || confirmDeleteEvent.startDate;
+      const endTs = endRaw ? new Date(endRaw).getTime() : 0;
+      const oneYearAgo = Date.now() - 365 * 24 * 60 * 60 * 1000;
+      const overOneYear = endTs > 0 && endTs < oneYearAgo;
+      if (externalCount > 0) {
+        // Ehemals aktiv (echte Teilnehmer) → geschützt.
+        if (!isAdmin) {
+          setDeletePolicy({ loading: false, allowed: false, requiresTitle: false, externalCount,
+            reason: isDe
+              ? 'Dieses Event hatte Anmeldungen über das Organizer-Team hinaus. Es darf nur von einem Admin gelöscht werden — und das frühestens ein Jahr nach dem Event (Aufbewahrung der Teilnehmerliste). Du kannst das Event stattdessen archivieren (aus deiner Übersicht ausblenden).'
+              : 'This event had registrations beyond the organizer team. Only an admin may delete it — and only one year after the event at the earliest. You can archive it instead (hide from your overview).' });
+        } else if (!overOneYear) {
+          setDeletePolicy({ loading: false, allowed: false, requiresTitle: false, externalCount,
+            reason: isDe
+              ? 'Dieses Event hat Anmeldungen über das Organizer-Team hinaus. Die Teilnehmerliste muss ein Jahr aufbewahrt werden — Löschen ist erst ein Jahr nach dem Event-Ende möglich.'
+              : 'This event has registrations beyond the organizer team. The attendee list must be kept for a year — deletion is only possible one year after the event ends.' });
+        } else {
+          setDeletePolicy({ loading: false, allowed: true, requiresTitle: true, externalCount });
+        }
+      } else {
+        // Keine Fremd-Anmeldungen (Entwurf/leer) → einfaches Ja genügt.
+        setDeletePolicy({ loading: false, allowed: true, requiresTitle: false, externalCount });
+      }
+    })().catch(() => { /* */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [confirmDeleteEvent, isAdmin]);
   // v9.0: ChangeLog-Modal — Admin/Organizer sehen den Audit-Log aller
   // Event- und Teilnehmer-Aenderungen (DEX_ChangeLog).
   const [showChangeLogModal, setShowChangeLogModal] = React.useState(false);
@@ -3721,6 +3765,16 @@ export default function AdminPage(): React.ReactElement {
     const typed = confirmDeleteText.trim().toLowerCase();
     const matches = !!expected && expected === typed;
     const close = (): void => { setConfirmDeleteEvent(null); setConfirmDeleteText(''); };
+    // v24.0: Narrowing in Primitive auflösen — sonst verliert TS die
+    // Discriminated-Union-Verengung in den verschachtelten JSX-Closures.
+    const pol = deletePolicy;
+    const polLoaded = pol && pol.loading === false ? pol : null;
+    const polLoading = !pol || pol.loading === true;
+    const polAllowed = !!polLoaded && polLoaded.allowed;
+    const polRequiresTitle = !!polLoaded && polLoaded.requiresTitle;
+    const polExternalCount = polLoaded ? polLoaded.externalCount : 0;
+    const polReason = polLoaded ? polLoaded.reason : undefined;
+    const canDelete = polAllowed && (polRequiresTitle ? matches : true);
     return (
       <div
         style={{
@@ -3744,68 +3798,96 @@ export default function AdminPage(): React.ReactElement {
               style={{ background: 'none', border: 'none', fontSize: '1.2rem', cursor: isDeleting ? 'not-allowed' : 'pointer', color: 'var(--dex-gray-500)' }}
             ><X size={20} /></button>
           </div>
-          <p style={{ margin: '0 0 12px', fontSize: '0.88rem', lineHeight: 1.55 }}>
-            {isDe
-              ? <>Du bist dabei das Event <strong>&bdquo;{confirmDeleteEvent.title}&ldquo;</strong> zu löschen.</>
-              : <>You are about to delete the event <strong>&bdquo;{confirmDeleteEvent.title}&ldquo;</strong>.</>}
-          </p>
-          <ul style={{ margin: '0 0 16px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.55, paddingLeft: 18 }}>
-            <li>{isDe ? 'Subsite (inkl. Teilnehmerliste) und Event-Item wandern in den SharePoint-Papierkorb.' : 'Subsite (incl. attendee list) and event item move to the SharePoint recycle bin.'}</li>
-            <li>{isDe ? 'Wiederherstellung durch einen Admin innerhalb von 93 Tagen möglich (zweistufig).' : 'A site collection admin can restore within 93 days (two-stage).'}</li>
-            <li>{isDe ? 'Outlook-Termin wird über den Power-Automate-Flow gelöscht.' : 'Outlook calendar event will be deleted via the Power Automate flow.'}</li>
-            <li>{isDe ? 'Diese Aktion wird im DEX_ChangeLog mit deinem Namen + Datum protokolliert.' : 'This action is logged in DEX_ChangeLog with your name + date.'}</li>
-          </ul>
-          <div style={{ background: 'rgba(218,41,28,0.06)', border: '1px solid var(--dex-red, #c00)', padding: 12, borderRadius: 8, marginBottom: 16 }}>
-            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 6 }}>
-              {isDe
-                ? <>Tippe zur Bestätigung den Event-Titel <strong>kleingeschrieben</strong> ein:</>
-                : <>Type the event title <strong>in lowercase</strong> to confirm:</>}
-            </label>
-            <code style={{ display: 'inline-block', padding: '4px 8px', background: '#fff', borderRadius: 4, fontSize: '0.85rem', marginBottom: 8, wordBreak: 'break-all' }}>{expected}</code>
-            <input
-              className="form-input"
-              value={confirmDeleteText}
-              onChange={e => setConfirmDeleteText(e.target.value)}
-              placeholder={isDe ? 'Event-Titel kleingeschrieben…' : 'Event title in lowercase…'}
-              disabled={isDeleting}
-              autoFocus
-              style={{ width: '100%' }}
-            />
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-            <button
-              type="button"
-              className="btn btn-outline"
-              onClick={close}
-              disabled={isDeleting}
-            >{isDe ? 'Abbrechen' : 'Cancel'}</button>
-            <button
-              type="button"
-              className="btn btn-danger"
-              disabled={!matches || isDeleting}
-              style={{
-                background: matches && !isDeleting ? 'var(--dex-red, #c00)' : 'var(--dex-gray-300)',
-                color: '#fff',
-                border: 'none',
-                cursor: matches && !isDeleting ? 'pointer' : 'not-allowed',
-                padding: '8px 16px',
-              }}
-              onClick={async () => {
-                if (!matches || !confirmDeleteEvent) return;
-                setIsDeleting(true);
-                setDeletingId(confirmDeleteEvent.id);
-                try {
-                  await deleteEvent(confirmDeleteEvent.id);
-                } finally {
-                  setIsDeleting(false);
-                  setDeletingId(null);
-                  close();
-                }
-              }}
-            >
-              <Trash2 size={14} /> {isDeleting ? (isDe ? 'Wird gelöscht…' : 'Deleting…') : (isDe ? 'Endgültig löschen' : 'Delete')}
-            </button>
-          </div>
+          {polLoading ? (
+            <div style={{ padding: '16px 0', fontSize: '0.88rem', color: 'var(--dex-gray-600)' }}>
+              {isDe ? 'Prüfe, ob das Event gelöscht werden darf …' : 'Checking whether this event may be deleted …'}
+            </div>
+          ) : !polAllowed ? (
+            <>
+              <div style={{ background: 'rgba(218,41,28,0.06)', border: '1px solid var(--dex-red, #c00)', padding: 14, borderRadius: 8, marginBottom: 16, fontSize: '0.85rem', lineHeight: 1.55 }}>
+                <strong>{isDe ? 'Löschen nicht möglich' : 'Deletion not possible'}</strong>
+                <p style={{ margin: '6px 0 0' }}>{polReason}</p>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button type="button" className="btn btn-outline" onClick={close}>{isDe ? 'Schließen' : 'Close'}</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p style={{ margin: '0 0 12px', fontSize: '0.88rem', lineHeight: 1.55 }}>
+                {isDe
+                  ? <>Du bist dabei das Event <strong>&bdquo;{confirmDeleteEvent.title}&ldquo;</strong> zu löschen.</>
+                  : <>You are about to delete the event <strong>&bdquo;{confirmDeleteEvent.title}&ldquo;</strong>.</>}
+              </p>
+              <ul style={{ margin: '0 0 16px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.55, paddingLeft: 18 }}>
+                <li>{isDe ? 'Subsite (inkl. Teilnehmerliste) und Event-Item wandern in den SharePoint-Papierkorb.' : 'Subsite (incl. attendee list) and event item move to the SharePoint recycle bin.'}</li>
+                <li>{isDe ? 'Wiederherstellung durch einen Admin innerhalb von 93 Tagen möglich (zweistufig).' : 'A site collection admin can restore within 93 days (two-stage).'}</li>
+                <li>{isDe ? 'Outlook-Termin wird über den Power-Automate-Flow gelöscht.' : 'Outlook calendar event will be deleted via the Power Automate flow.'}</li>
+                <li>{isDe ? 'Diese Aktion wird im DEX_ChangeLog mit deinem Namen + Datum protokolliert.' : 'This action is logged in DEX_ChangeLog with your name + date.'}</li>
+              </ul>
+              {polRequiresTitle ? (
+                <div style={{ background: 'rgba(218,41,28,0.06)', border: '1px solid var(--dex-red, #c00)', padding: 12, borderRadius: 8, marginBottom: 16 }}>
+                  <p style={{ margin: '0 0 8px', fontSize: '0.82rem', color: 'var(--dex-gray-700)' }}>
+                    {isDe
+                      ? <>Dieses Event hatte <strong>{polExternalCount}</strong> Anmeldung(en) über das Organizer-Team hinaus und ist älter als ein Jahr. Zur Sicherheit:</>
+                      : <>This event had <strong>{polExternalCount}</strong> registration(s) beyond the organizer team and is older than a year. For safety:</>}
+                  </p>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: 6 }}>
+                    {isDe
+                      ? <>Tippe zur Bestätigung den Event-Titel <strong>kleingeschrieben</strong> ein:</>
+                      : <>Type the event title <strong>in lowercase</strong> to confirm:</>}
+                  </label>
+                  <code style={{ display: 'inline-block', padding: '4px 8px', background: '#fff', borderRadius: 4, fontSize: '0.85rem', marginBottom: 8, wordBreak: 'break-all' }}>{expected}</code>
+                  <input
+                    className="form-input"
+                    value={confirmDeleteText}
+                    onChange={e => setConfirmDeleteText(e.target.value)}
+                    placeholder={isDe ? 'Event-Titel kleingeschrieben…' : 'Event title in lowercase…'}
+                    disabled={isDeleting}
+                    autoFocus
+                    style={{ width: '100%' }}
+                  />
+                </div>
+              ) : (
+                <p style={{ margin: '0 0 16px', fontSize: '0.85rem', color: 'var(--dex-gray-700)' }}>
+                  {isDe ? 'Dieses Event hat keine Anmeldungen über das Organizer-Team hinaus. Wirklich löschen?' : 'This event has no registrations beyond the organizer team. Delete it?'}
+                </p>
+              )}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+                <button
+                  type="button"
+                  className="btn btn-outline"
+                  onClick={close}
+                  disabled={isDeleting}
+                >{isDe ? 'Abbrechen' : 'Cancel'}</button>
+                <button
+                  type="button"
+                  className="btn btn-danger"
+                  disabled={!canDelete || isDeleting}
+                  style={{
+                    background: canDelete && !isDeleting ? 'var(--dex-red, #c00)' : 'var(--dex-gray-300)',
+                    color: '#fff', border: 'none',
+                    cursor: canDelete && !isDeleting ? 'pointer' : 'not-allowed',
+                    padding: '8px 16px',
+                  }}
+                  onClick={async () => {
+                    if (!canDelete || !confirmDeleteEvent) return;
+                    setIsDeleting(true);
+                    setDeletingId(confirmDeleteEvent.id);
+                    try {
+                      await deleteEvent(confirmDeleteEvent.id);
+                    } finally {
+                      setIsDeleting(false);
+                      setDeletingId(null);
+                      close();
+                    }
+                  }}
+                >
+                  <Trash2 size={14} /> {isDeleting ? (isDe ? 'Wird gelöscht…' : 'Deleting…') : (isDe ? 'Endgültig löschen' : 'Delete')}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     );

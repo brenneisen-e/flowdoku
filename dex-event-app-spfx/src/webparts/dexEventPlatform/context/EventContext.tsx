@@ -377,6 +377,10 @@ interface EventContextType {
   checkRegistrationByEmail: (eventId: string, email: string) => Promise<SPRegistration | null>;
   getAllRegistrations: (eventId: string) => Promise<SPRegistration[]>;
   deleteEvent: (eventId: string) => Promise<boolean>;
+  /** v24.0: Anzahl der Anmeldungen über das Organizer-Team hinaus (echte
+   *  Teilnehmer, Haupt- + Sub-Events, status-unabhängig). >0 ⇒ Lösch-Sperre
+   *  (nur Admin, frühestens 1 Jahr nach Event-Ende). */
+  countExternalRegistrations: (event: DeloitteEvent) => Promise<number>;
   /** v11.69: Löscht NUR das DEX_Events-Listenitem, ohne Subsite-/Teilnehmer-
    *  Liste-Recycle und ohne Outlook-DeleteEvent-Queue. Wird gebraucht, um ein
    *  Sub-Event mit `existingSubsiteUrl` neu anzulegen, damit der
@@ -3154,6 +3158,39 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return eventService.getAllRegistrations(subsiteUrl);
   }
 
+  // v24.0: Team-E-Mails eines Events (Organizer + Co-Organizer + Test-Team +
+  // Check-in-/QR-Team) — alles, was NICHT als „echter Teilnehmer" zählt.
+  function teamEmailSetFor(ev: DeloitteEvent): Set<string> {
+    const s = new Set<string>();
+    const add = (arr?: string[]): void => { (arr || []).forEach(e => { const x = (e || '').toLowerCase().trim(); if (x) s.add(x); }); };
+    add(ev.organizerEmails); add(ev.coOrganizerEmails); add(ev.testTeamEmails); add(ev.qrScannerEmails);
+    return s;
+  }
+
+  // v24.0: Zählt Anmeldungen, die ÜBER das Organizer-Team hinausgehen — also
+  // „echte" Teilnehmer. Status-unabhängig (auch Abmeldungen zählen: eine fremde
+  // Person, die sich je angemeldet hatte, belegt, dass das Event aktiv/öffentlich
+  // war). Hauptevent UND alle Sub-Events werden geprüft. Grundlage für die
+  // Lösch-Sperre: solche Events darf nur ein Admin und frühestens 1 Jahr nach
+  // dem Event-Ende löschen.
+  async function countExternalRegistrations(event: DeloitteEvent): Promise<number> {
+    if (isDemoShowcaseId(event.id)) return 0;
+    const children = events.filter(e => e.parentEventId === event.id);
+    const baseTeam = teamEmailSetFor(event);
+    let count = 0;
+    for (const ev of [event, ...children]) {
+      const team = new Set<string>(baseTeam);
+      teamEmailSetFor(ev).forEach(e => team.add(e));
+      let regs: SPRegistration[] = [];
+      try { regs = await getAllRegistrations(ev.id); } catch { regs = []; }
+      for (const r of regs) {
+        const email = (r.ParticipantEmail || '').toLowerCase().trim();
+        if (email && !team.has(email)) count++;
+      }
+    }
+    return count;
+  }
+
   async function updateEvent(eventId: string, updates: Record<string, unknown>): Promise<boolean> {
     // v19.33: Roh-Stand VOR dem Update holen, damit das Audit-Log nur die
     // WIRKLICH geänderten Felder protokolliert (Vorher → Nachher). Vorher loggte
@@ -4014,7 +4051,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, scanInactiveAccounts, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive,
+        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, scanInactiveAccounts, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive,
         sendAdminInquiry,
         requestOrganizerRole, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,
