@@ -2309,12 +2309,20 @@ export default function EventCreationPage(): React.ReactElement {
     setEmailLanguage('DE');
   };
 
-  // v11.88: Berechnet einen Demo-Termin relativ zu „heute".
-  // daysAhead = Anzahl Tage in der Zukunft, hour/minute = Start.
-  const demoDate = (daysAhead: number, hour: number, minute: number): Date => {
+  // v24.5: Demo-Events finden immer am NÄCHSTEN Samstag statt.
+  const nextSaturdayAt = (hour: number, minute: number): Date => {
     const d = new Date();
-    d.setDate(d.getDate() + daysAhead);
+    const day = d.getDay(); // 0=So … 6=Sa
+    let add = (6 - day + 7) % 7; // Tage bis zum kommenden Samstag
+    if (add === 0) add = 7;      // heute Samstag → nächster Samstag
+    d.setDate(d.getDate() + add);
     d.setHours(hour, minute, 0, 0);
+    return d;
+  };
+  // Tag(e) vor dem nächsten Samstag — für Anmelde-/Abmeldefristen.
+  const beforeNextSaturday = (daysBefore: number, hour: number, minute: number): Date => {
+    const d = nextSaturdayAt(hour, minute);
+    d.setDate(d.getDate() - daysBefore);
     return d;
   };
 
@@ -2323,9 +2331,9 @@ export default function EventCreationPage(): React.ReactElement {
   // Felder, die diese Variante NICHT setzt).
   const loadDemoStandard = (): void => {
     resetDemoVariantBaseState();
-    const start = demoDate(14, 10, 0);
-    const end = demoDate(14, 12, 0);
-    const deadline = demoDate(13, 23, 59);
+    const start = nextSaturdayAt(10, 0);
+    const end = nextSaturdayAt(12, 0);
+    const deadline = beforeNextSaturday(1, 23, 59);
     setTitle('Demo-Meeting Standard');
     setDescription('Beispielhaftes einfaches Meeting ohne Gruppen und ohne Sub-Events.');
     setLocation('Heinrich Campus Düsseldorf, 6. Etage');
@@ -2347,9 +2355,9 @@ export default function EventCreationPage(): React.ReactElement {
 
   const loadDemoGroups = (): void => {
     resetDemoVariantBaseState();
-    const start = demoDate(14, 9, 0);
-    const end = demoDate(14, 17, 0);
-    const deadline = demoDate(12, 23, 59);
+    const start = nextSaturdayAt(9, 0);
+    const end = nextSaturdayAt(17, 0);
+    const deadline = beforeNextSaturday(2, 23, 59);
     setTitle('Demo-Workshop mit Gruppen');
     setDescription('Workshop mit zwei Teilnehmer-Gruppen (Vormittag/Nachmittag) und gemeinsamer Warteliste.');
     setLocation('Deloitte Office Köln');
@@ -2371,9 +2379,9 @@ export default function EventCreationPage(): React.ReactElement {
 
   const loadDemoSubEvent = (): void => {
     resetDemoVariantBaseState();
-    const start = demoDate(21, 9, 0);
-    const end = demoDate(21, 17, 0);
-    const deadline = demoDate(18, 23, 59);
+    const start = nextSaturdayAt(9, 0);
+    const end = nextSaturdayAt(17, 0);
+    const deadline = beforeNextSaturday(3, 23, 59);
     setTitle('Demo-Conference mit Dinner');
     setDescription('Hauptkonferenz + abendliches Dinner als getrenntes Sub-Event mit eigener Anmeldung.');
     setLocation('Deloitte Office Hamburg');
@@ -2390,8 +2398,8 @@ export default function EventCreationPage(): React.ReactElement {
       { id: `cf-${tDemo}`, label: 'Hotel-Buchung', type: 'select', required: false,
         options: ['Ja, ich brauche ein Hotel', 'Nein, ich reise abends ab'], visible: true },
     ]);
-    const dinnerStart = demoDate(21, 18, 0);
-    const dinnerEnd = demoDate(21, 22, 0);
+    const dinnerStart = nextSaturdayAt(18, 0);
+    const dinnerEnd = nextSaturdayAt(22, 0);
     setSubEvents([
       {
         id: `se-${tDemo}`,
@@ -2412,9 +2420,9 @@ export default function EventCreationPage(): React.ReactElement {
 
   const loadDemoSubEventTeam = (): void => {
     resetDemoVariantBaseState();
-    const start = demoDate(14, 18, 0);
-    const end = demoDate(14, 22, 0);
-    const deadline = demoDate(9, 23, 59);
+    const start = nextSaturdayAt(18, 0);
+    const end = nextSaturdayAt(22, 0);
+    const deadline = beforeNextSaturday(5, 23, 59);
     setTitle('Demo-Kneipenquiz mit Team-Anmeldung');
     setDescription('Quizabend, bei dem ganze Teams über das Anmeldeformular angemeldet werden.');
     setLocation('Heinrich Campus Düsseldorf, 6. Etage, Dachterrasse');
@@ -2437,8 +2445,8 @@ export default function EventCreationPage(): React.ReactElement {
       { id: `cf-${tDemo}`, label: 'Essenspräferenz', type: 'select', required: true,
         options: ['Vegetarisch', 'Vegan', 'Keine Einschränkungen'], visible: true },
     ]);
-    const briefStart = demoDate(14, 17, 0);
-    const briefEnd = demoDate(14, 17, 30);
+    const briefStart = nextSaturdayAt(17, 0);
+    const briefEnd = nextSaturdayAt(17, 30);
     setSubEvents([
       {
         id: `se-${tDemo}`,
