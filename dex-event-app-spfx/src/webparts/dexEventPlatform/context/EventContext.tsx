@@ -1200,7 +1200,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       }).catch(() => { /* */ });
       // v11.53: KPI-Counter sofort hochzählen — nur für nicht-fictive Events
       // (Test-Events zählen nicht in der LandingPage-KPI).
-      if (!input.isFictive) {
+      // v23.38: Sub-Events (parentEventId) NICHT mitzählen — die Events-KPI
+      // zählt nur eigenständige Haupt-/Klammer-Events (sonst bläht jedes
+      // Sub-Event den Zähler wieder auf, gegen den die Boot-Neuberechnung läuft).
+      if (!input.isFictive && !input.parentEventId) {
         eventService.bumpKpiEvents(1).catch(() => { /* best-effort */ });
       }
       // v9.41: KEIN Auto-Refresh mehr direkt nach Create. Grund: SharePoint braucht
@@ -3693,18 +3696,20 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       const now = new Date();
       const last = await eventService.getLastWeeklyReport();
       if (!force) {
-        // v23.13: Fälligkeit aus BEIDEN Quellen — Server-Record (DEX_WeeklyReports,
-        // gilt über alle Admins) UND localStorage-Backstop (falls der Server-Record
-        // mal nicht geschrieben werden konnte, verhindert er pro Browser, dass bei
-        // jedem Boot erneut gesendet wird). Jüngerer Zeitpunkt gewinnt.
+        // v23.38: Fälligkeit AUSSCHLIESSLICH am Server-Eintrag (DEX_WeeklyReports)
+        // festmachen. Der frühere per-Browser-localStorage-Backstop konnte die
+        // automatische Auslösung dauerhaft blockieren (ein alter „lastsent"-
+        // Merker aus einem früheren Versuch, bei dem nie eine Mail rausging) —
+        // das war der Grund, warum nie ein Bericht kam. Ohne Server-Eintrag (oder
+        // wenn der letzte ≥ 7 Tage her ist) wird jetzt zuverlässig gesendet; der
+        // Doppelversand-Schutz pro App-Session liegt im Boot-Effekt (didWeeklyReport).
         const serverLastTs = (last && last.created) ? new Date(last.created).getTime() : 0;
-        let localLastTs = 0;
-        try { localLastTs = Number(window.localStorage?.getItem('dex_weeklyreport_lastsent') || '0'); } catch { /* */ }
-        const lastTs = Math.max(isFinite(serverLastTs) ? serverLastTs : 0, isFinite(localLastTs) ? localLastTs : 0);
-        if (lastTs && (now.getTime() - lastTs) < SEVEN) return { sent: false, admins: 0, reason: 'not-due' }; // noch keine 7 Tage
+        if (serverLastTs && (now.getTime() - serverLastTs) < SEVEN) return { sent: false, admins: 0, reason: 'not-due' }; // noch keine 7 Tage
       }
-      const admins = await eventService.getRoleEmails('Admin');
-      if (admins.length === 0) return { sent: false, admins: 0, reason: 'no-admins' }; // niemand zum Versenden
+      // v23.38: pro Admin eine eigene Mail mit ECHTEM Namen + persönlicher
+      // Anrede (vorher eine Sammelmail mit generischem „Admin").
+      const adminRecipients = await eventService.getRoleRecipients('Admin');
+      if (adminRecipients.length === 0) return { sent: false, admins: 0, reason: 'no-admins' }; // niemand zum Versenden
       const periodFrom = (last && last.periodTo) ? new Date(last.periodTo) : new Date(now.getTime() - SEVEN);
       const fromIso = periodFrom.toISOString();
       const toIso = now.toISOString();
@@ -3777,7 +3782,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         : '<p style="margin:6px 0 0;color:#666;">In diesem Zeitraum hat kein Event stattgefunden.</p>';
 
       const inner = `
-        <p style="margin:0 0 6px;">Hallo zusammen,</p>
+        <p style="margin:0 0 6px;">Hallo __GREETING_NAME__,</p>
         <p style="margin:0 0 16px;">hier ist euer wöchentlicher Überblick über die DEX Event Experience Platform — was in den letzten Tagen passiert ist, vom <strong>${fmtD(fromIso)}</strong> bis <strong>${fmtD(toIso)}</strong>.</p>
         <h3 style="margin:18px 0 0;font-size:15px;color:#2d4a06;">Neue Events</h3>
         ${eventsHtml}
@@ -3800,36 +3805,25 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         <p style="margin:24px 0 0;font-size:12px;color:#999;">Diesen Bericht bekommt ihr automatisch einmal pro Woche, weil ihr Admin der DEX Event Experience Platform seid.</p>
       `;
       const subject = `Automatischer Wochenbericht — ${fmtD(toIso)}`;
-      const body = wrapTemplate('#86bc25', 'Automatischer Wochenbericht', `${fmtD(fromIso)} – ${fmtD(toIso)}`, inner);
-      // v23.11: EINE Mail an ALLE Admins (alle im To, Semikolon-getrennt) —
-      // der DEX_SEND_MAIL-Flow mappt Recipient direkt aufs To-Feld, das mehrere
-      // Empfänger akzeptiert (genau wie OrganizerEmail mit mehreren Organizern).
-      // v23.12: Erst queuen, NUR bei Erfolg protokollieren (recordWeeklyReport).
-      // Vorher wurde zuerst „geclaimt" — schlug das Queuen dann fehl, war der
-      // Bericht trotzdem als versendet vermerkt und wurde 7 Tage nicht erneut
-      // versucht. Jetzt retry-sicher: kein erfolgreiches Queuen → kein Eintrag →
-      // nächster Boot versucht es erneut.
-      // v23.35 BUGFIX: EventId MUSS '0' sein (nicht ''), sonst baut der
-      // DEX_SEND_MAIL-Flow den OData-Filter „ID eq " (leer) → Get_Event failed
-      // → der ganze Flow-Lauf bricht ab → die Mail wird NIE versendet, obwohl
-      // queueEmail erfolgreich war (Zeile in DEX_Emails liegt Pending). Genau
-      // wie sendAdminInquiry/sendOrganizerOnboarding (EventId='0' → „ID eq 0",
-      // gültig, 0 Treffer, Default-Bild). Das war die Ursache, warum nie ein
-      // Wochenbericht ankam.
-      const queued = await eventService.queueEmail(subject, admins.join('; '), 'Admins', body, 'WeeklyReport', '', '0');
+      // v23.38: EINE Sammelmail an ALLE Admins (alle Adressen im To,
+      // Semikolon-getrennt — der DEX_SEND_MAIL-Flow mappt Recipient direkt aufs
+      // To-Feld). RecipientName = echte Namen der Admins (statt generisch
+      // „Admin"); Anrede generisch „Hallo zusammen". EventId='0' (gültiger
+      // OData-Filter im Flow; '' würde den ganzen Lauf abbrechen → keine Mail).
+      const toAll = adminRecipients.map(a => a.email).join('; ');
+      const namesAll = adminRecipients.map(a => a.name || a.email).join('; ');
+      const groupInner = inner.replace('__GREETING_NAME__', 'zusammen');
+      const body = wrapTemplate('#86bc25', 'Automatischer Wochenbericht', `${fmtD(fromIso)} – ${fmtD(toIso)}`, groupInner);
+      const queued = await eventService.queueEmail(subject, toAll, namesAll, body, 'WeeklyReport', '', '0');
       if (queued) {
         // v23.36: aktuellen Entwurfs-Snapshot mitspeichern, damit der NÄCHSTE
         // Bericht „live gegangen" erkennt (Entwurf jetzt → live beim nächsten Mal).
         const currentDraftIds = events.filter(e => e.isFictive && !e.parentEventId).map(e => String(e.id));
         await eventService.recordWeeklyReport(fromIso, toIso, currentDraftIds);
-        // v23.13: localStorage-Backstop setzen — falls recordWeeklyReport
-        // serverseitig fehlschlug (Rechte/Liste), verhindert das pro Browser den
-        // erneuten Versand bei jedem Boot.
-        try { window.localStorage?.setItem('dex_weeklyreport_lastsent', String(now.getTime())); } catch { /* */ }
-        return { sent: true, admins: admins.length };
+        return { sent: true, admins: adminRecipients.length };
       }
       console.warn('[DEX] Wochenbericht: queueEmail meldete Misserfolg — kein Protokolleintrag, Retry beim nächsten Boot.');
-      return { sent: false, admins: admins.length, reason: 'queue-failed' };
+      return { sent: false, admins: adminRecipients.length, reason: 'queue-failed' };
     } catch (err) {
       console.warn('[DEX] maybeSendWeeklyReport error:', err);
       return { sent: false, admins: 0, reason: 'error' };

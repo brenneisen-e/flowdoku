@@ -8986,6 +8986,32 @@ export class EventService {
   }
 
   /** E-Mail-Adressen (Title) aller DEX_Roles-Einträge mit der gegebenen Rolle. */
+  /** v23.38: Rollen-Empfänger mit E-Mail UND Anzeigename (für personalisierte
+   *  Mails wie den Wochenbericht — „Hallo <Name>" statt generisch „Admin"). */
+  public async getRoleRecipients(role: string): Promise<Array<{ email: string; name: string }>> {
+    try {
+      const esc = role.replace(/'/g, "''");
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=Role eq '${encodeURIComponent(esc)}'&$select=Title,UserName&$top=5000`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      const seen = new Set<string>();
+      const out: Array<{ email: string; name: string }> = [];
+      for (const i of items) {
+        const email = (i.Title || '').trim();
+        if (!email) continue;
+        const key = email.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ email, name: (i.UserName || '').trim() || email });
+      }
+      return out;
+    } catch { return []; }
+  }
+
   public async getRoleEmails(role: string): Promise<string[]> {
     try {
       const esc = role.replace(/'/g, "''");
