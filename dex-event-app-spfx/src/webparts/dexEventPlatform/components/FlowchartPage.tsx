@@ -1038,8 +1038,9 @@ export default function FlowchartPage(): React.ReactElement {
   return (
     <div className="page-container">
       <h2 style={{ marginBottom: 8 }}>Prozess-Übersicht</h2>
-      <p style={{ color: 'var(--dex-gray-500)', fontSize: '0.85rem', marginBottom: 16 }}>
-        Visualisierung der Abläufe in der DEX Event Experience Platform.
+      <p style={{ color: 'var(--dex-gray-600)', fontSize: '0.88rem', marginBottom: 16, lineHeight: 1.5, maxWidth: 760 }}>
+        Hier siehst du Schritt für Schritt, was bei den wichtigsten Abläufen passiert — verständlich erklärt, ohne Technik-Begriffe.
+        Wähle oben einen Ablauf und fahre mit der Maus über einen Schritt, um mehr zu erfahren.
       </p>
 
       {/* Tab-Navigation */}
@@ -1061,10 +1062,10 @@ export default function FlowchartPage(): React.ReactElement {
       <div className="card" style={{ padding: 12, marginBottom: 16 }}>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '0.75rem' }}>
           <span><span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 12, background: 'var(--dex-green)', marginRight: 4, verticalAlign: 'middle' }} /> Start / Ende</span>
-          <span><span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: '#e3f2fd', border: '1px solid #90caf9', marginRight: 4, verticalAlign: 'middle' }} /> App-Aktion</span>
-          <span><span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: '#e8f5e9', border: '1px solid #a5d6a7', borderLeft: '3px solid #66bb6a', marginRight: 4, verticalAlign: 'middle' }} /> SharePoint-Schreibvorgang</span>
+          <span><span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: '#e3f2fd', border: '1px solid #90caf9', marginRight: 4, verticalAlign: 'middle' }} /> Schritt in der App</span>
+          <span><span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: '#e8f5e9', border: '1px solid #a5d6a7', borderLeft: '3px solid #66bb6a', marginRight: 4, verticalAlign: 'middle' }} /> Wird gespeichert</span>
           <span><span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: '#fff3e0', border: '1px solid #ffcc80', marginRight: 4, verticalAlign: 'middle' }} /> Entscheidung</span>
-          <span><span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: '#f3e5f5', border: '1px solid #ce93d8', marginRight: 4, verticalAlign: 'middle' }} /> Queue / Async</span>
+          <span><span style={{ display: 'inline-block', width: 12, height: 12, borderRadius: 3, background: '#f3e5f5', border: '1px solid #ce93d8', marginRight: 4, verticalAlign: 'middle' }} /> Läuft automatisch im Hintergrund</span>
         </div>
       </div>
 
