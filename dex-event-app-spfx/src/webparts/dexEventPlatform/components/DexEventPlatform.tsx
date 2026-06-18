@@ -109,7 +109,7 @@ function ImpersonationBanner(props: { currentPage?: string }): React.ReactElemen
 function AppContent(): React.ReactElement {
   const { currentPage, navigate } = useNavigation();
   const { isAdmin, isOrganizer, isRolesLoading } = useRoles();
-  const { markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, isEventsLoading, events, getKpiCache, updateKpiCache } = useEvents();
+  const { markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, isEventsLoading, events, getKpiCache, updateKpiCache } = useEvents();
 
   // v11.52: KPI-Boxen im Boot-Loader. Live-Zählung ueber alle Event-
   // Subsites war zu langsam (Counts kommen erst nach mehreren Sekunden) —
@@ -413,6 +413,20 @@ function AppContent(): React.ReactElement {
       maybeSendWeeklyReport().catch(err => console.warn('[DEX] weekly report failed:', err));
     }, 8000);
   }, [isAdmin, isEventsLoading, events]);
+
+  // v24.2: Post-Event-Mail an den Organizer — beim App-Öffnen nach dem
+  // Event-Tag. Für JEDEN (nicht nur Admins); die Funktion filtert intern auf
+  // die eigenen, abgelaufenen Events und drosselt 1×/Event/Organizer.
+  const didPostEventMail = React.useRef(false);
+  React.useEffect(() => {
+    if (didPostEventMail.current) return;
+    if (isEventsLoading) return;
+    if (!events || events.length === 0) return;
+    didPostEventMail.current = true;
+    window.setTimeout(() => {
+      maybeSendPostEventOrganizerMails().catch(err => console.warn('[DEX] post-event mail failed:', err));
+    }, 9000);
+  }, [isEventsLoading, events]);
 
   // Dynamische Höhe + SharePoint-Scroll unterdrücken
   React.useEffect(() => {

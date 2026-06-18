@@ -397,6 +397,9 @@ interface EventContextType {
    *  (Settings-Testbutton) wird die 7-Tage-Sperre übersprungen. Best-effort;
    *  liefert ein kleines Ergebnis für UI-Feedback. */
   maybeSendWeeklyReport: (opts?: { force?: boolean }) => Promise<{ sent: boolean; admins: number; reason?: string }>;
+  /** v24.2: „Danke, wir hoffen es lief gut"-Mail an den Organizer beim
+   *  App-Öffnen nach dem Event-Tag (1×/Event/Organizer, localStorage-Drossel). */
+  maybeSendPostEventOrganizerMails: () => Promise<void>;
   /** v23.37: Antrag „Organizer werden" anlegen (+ Admin-Mail mit Deep-Link). */
   requestOrganizerRole: (email: string, name: string, location: string, message?: string) => Promise<{ ok: boolean; reason?: string }>;
   /** v23.37: offene Organizer-Anträge (für den Admin-Hinweis beim App-Start). */
@@ -3763,6 +3766,52 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   // (+ von wem), Anmeldungen im Zeitraum, neu ernannte Organizer — plus
   // Gesamt-KPIs (Events insgesamt, aktive Anmeldungen insgesamt, hinterlegte
   // Organizer). Best-effort; Fehler blocken nie den Boot.
+  // v24.2: „Danke, wir hoffen es lief gut"-Mail an den Organizer, wenn er die
+  // App nach dem Event-Tag öffnet. Einmal pro Event und Organizer (localStorage-
+  // Drosselung pro Browser). Enthält den Hinweis auf die 1-jährige Aufbewahrung
+  // der Teilnehmerübersicht (Datenschutz) + Verweis auf Excel-Export / App.
+  async function maybeSendPostEventOrganizerMails(): Promise<void> {
+    try {
+      const meLc = (currentUserEmail || '').toLowerCase();
+      if (!meLc) return;
+      const overEvents = (events || []).filter(e => {
+        if (e.parentEventId) return false; // nur Hauptevents
+        if (e.isFictive) return false;     // keine Entwürfe
+        const isOrg = (e.organizerEmails || []).some(x => (x || '').toLowerCase() === meLc)
+          || (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === meLc);
+        if (!isOrg) return false;
+        return isEventOver(e);
+      });
+      if (overEvents.length === 0) return;
+      let appUrl = '';
+      try { appUrl = `${props.context.pageContext.web.absoluteUrl}/SitePages/DEX.aspx`; } catch { appUrl = ''; }
+      const greetName = (currentUserName || '').split(' ')[0] || (currentUserName || '');
+      for (const ev of overEvents) {
+        const key = `dex_posteventmail_${ev.id}_${meLc}`;
+        let already = false;
+        try { already = !!window.localStorage.getItem(key); } catch { already = false; }
+        if (already) continue;
+        const linkLine = appUrl
+          ? `<p style="margin:0 0 12px;">Du findest die Teilnehmerübersicht jederzeit im <a href="${appUrl}" style="color:#86bc25;font-weight:600;">Organizer Center der DEX App</a> — dort kannst du sie auch als Excel exportieren.</p>`
+          : `<p style="margin:0 0 12px;">Du findest die Teilnehmerübersicht jederzeit im Organizer Center der DEX App — dort kannst du sie auch als Excel exportieren.</p>`;
+        const inner = `
+          <p style="margin:0 0 12px;">Hallo ${greetName || 'zusammen'},</p>
+          <p style="margin:0 0 12px;">wir hoffen, dein Event <strong>&bdquo;${ev.title}&ldquo;</strong> ist gut verlaufen und alle hatten eine schöne Zeit!</p>
+          <p style="margin:0 0 12px;">Ein kurzer Hinweis zur Aufbewahrung: Die <strong>Teilnehmerübersicht bleibt noch ein Jahr gespeichert</strong> (Datenschutz-/Aufbewahrungsvorgabe). Danach wird sie entfernt.</p>
+          ${linkLine}
+          <p style="margin:0 0 12px;">Vielen Dank, dass du das Event organisiert hast!</p>`;
+        const body = wrapTemplate('#86bc25', 'Danke für dein Event!', ev.title, inner);
+        try {
+          await eventService.queueEmail(
+            `Dein Event „${ev.title}" — danke & Hinweis zur Aufbewahrung`,
+            currentUserEmail, currentUserName, body, 'PostEventOrganizer', ev.title, ev.id,
+          );
+          try { window.localStorage.setItem(key, String(Date.now())); } catch { /* */ }
+        } catch { /* einzelne Mail-Fehler ignorieren */ }
+      }
+    } catch (e) { console.warn('[DEX] post-event organizer mail failed:', e); }
+  }
+
   async function maybeSendWeeklyReport(opts?: { force?: boolean }): Promise<{ sent: boolean; admins: number; reason?: string }> {
     const force = !!opts?.force;
     try {
@@ -4051,7 +4100,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, scanInactiveAccounts, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive,
+        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive,
         sendAdminInquiry,
         requestOrganizerRole, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,
