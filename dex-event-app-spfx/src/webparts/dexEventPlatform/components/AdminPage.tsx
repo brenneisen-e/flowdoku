@@ -4031,32 +4031,11 @@ export default function AdminPage(): React.ReactElement {
     return (
       <div className="page-container" role="main" style={{ maxWidth: 1200, marginLeft: 'auto', marginRight: 'auto' }}>
         <style>{`@keyframes dex-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-        <h2 style={{ margin: '0 0 16px' }}>{t('admin.title')}</h2>
+        <h2 style={{ margin: '0 0 16px' }}>{locale === 'de' ? 'Organizer – Eventübersicht' : 'Organizer – Event overview'}</h2>
+        {/* v23.44: Nur noch „Neues Event erstellen" — Teilnehmer, Prozesse,
+            Audit-Log und SharePoint-Liste sind Admin-Funktionen und leben jetzt
+            zentral in der Admin-Kachel (admin-hub). */}
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-          {isAdmin && (
-            <button className="btn btn-secondary" onClick={() => navigate('participants')} style={{ fontSize: '0.85rem' }}>
-              <Users size={16} /> {t('admin.participants')}
-            </button>
-          )}
-          {isAdmin && (
-            <button className="btn btn-secondary" onClick={() => navigate('flowcharts')} style={{ fontSize: '0.85rem' }}>
-              ↻ {t('admin.processes')}
-            </button>
-          )}
-          {isAdmin && (
-            <button className="btn btn-secondary" onClick={openChangeLog} style={{ fontSize: '0.85rem' }}>
-              <FileText size={16} /> {isDe ? 'Audit-Log' : 'Audit log'}
-            </button>
-          )}
-          <a
-            href={`${siteUrl}/Lists/DEX_Events/AllItems.aspx`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn btn-secondary"
-            style={{ fontSize: '0.85rem', textDecoration: 'none' }}
-          >
-            <FileText size={16} /> {t('admin.splist')}
-          </a>
           <button className="btn btn-primary" onClick={() => navigate('create-event')} style={{ fontSize: '0.85rem' }}>
             <Plus size={16} /> {t('admin.newevent')}
           </button>
@@ -4089,11 +4068,13 @@ export default function AdminPage(): React.ReactElement {
                 className="card card-clickable"
                 style={{ position: 'relative', padding: '26px 24px 22px', cursor: 'pointer', opacity: opts?.muted ? 0.85 : 1, overflow: 'hidden' }}
               >
-                {/* v23.42: Status-Badge fest in der oberen linken Ecke
-                    (grün = aktiv, orange = Entwurf). */}
-                <span style={{ position: 'absolute', top: 0, left: 0, padding: '4px 12px', borderBottomRightRadius: 10, fontSize: '0.68rem', fontWeight: 800, letterSpacing: 0.4, background: event.isFictive ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)', color: '#fff' }}>
-                  {event.isFictive ? (isDe ? 'ENTWURF' : 'DRAFT') : (isDe ? localizeStatus(event.status) : event.status).toUpperCase()}
-                </span>
+                {/* v23.44: Status-Farbmarker (ohne Text) in der oberen linken
+                    Ecke — grün = aktiv, orange = Entwurf. Bedeutung erklärt die
+                    Legende über der Liste. */}
+                <span
+                  title={event.isFictive ? (isDe ? 'Entwurf' : 'Draft') : (isDe ? 'Aktiv' : 'Active')}
+                  style={{ position: 'absolute', top: 0, left: 0, width: 18, height: 18, borderTopLeftRadius: 'var(--dex-radius)', borderBottomRightRadius: 9, background: event.isFictive ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)' }}
+                />
                 <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                   <div onClick={() => handleSelectEvent(event)} style={{ flex: '1 1 260px', display: 'flex', alignItems: 'center', gap: 16, cursor: 'pointer' }}>
                     {/* v23.42: größeres Thumbnail. */}
@@ -4380,6 +4361,17 @@ export default function AdminPage(): React.ReactElement {
                       {isDe ? `Entwürfe ausblenden (${draftCount})` : `Hide drafts (${draftCount})`}
                     </label>
                   )}
+                </div>
+                {/* v23.44: Farb-Legende für den Status-Eckmarker der Karten. */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 18, margin: '0 4px 10px', fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 12, height: 12, borderRadius: 3, background: 'var(--dex-green, #86bc25)', display: 'inline-block' }} />
+                    {isDe ? 'Aktiv (für Teilnehmer sichtbar)' : 'Active (visible to attendees)'}
+                  </span>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ width: 12, height: 12, borderRadius: 3, background: 'var(--dex-orange, #ed8b00)', display: 'inline-block' }} />
+                    {isDe ? 'Entwurf (noch nicht sichtbar)' : 'Draft (not yet visible)'}
+                  </span>
                 </div>
                 <div className="my-events-list">
                   {currentEvents.map(ev => renderEventCard(ev))}

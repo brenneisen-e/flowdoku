@@ -27,6 +27,16 @@ export const Settings = ({ size = 20, strokeWidth = 2 }: IconProps): React.React
   </svg>
 );
 
+export const CaptainHat = ({ size = 20, strokeWidth = 2 }: IconProps): React.ReactElement => (
+  // Kapitänsmütze (Schirmmütze): runde Krone, Band mit Emblem, breiter Schirm.
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5 12.5C5 7.5 8 5 12 5s7 2.5 7 7.5" />
+    <path d="M3.5 16c2-1 5.5-1.5 8.5-1.5s6.5.5 8.5 1.5c-2 1-5.5 1.5-8.5 1.5S5.5 17 3.5 16Z" />
+    <path d="M4.8 12.5h14.4" />
+    <circle cx="12" cy="9.4" r="1.3" />
+  </svg>
+);
+
 export const Mail = ({ size = 20 }: IconProps): React.ReactElement => (
   <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" />

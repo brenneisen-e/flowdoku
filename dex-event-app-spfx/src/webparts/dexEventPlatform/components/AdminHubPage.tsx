@@ -14,6 +14,7 @@ import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useDialog } from '../context/DialogContext';
 import { Settings, Users, Mail, Book, FileText, Trash2 } from './Icons';
+import { RELEASE_NOTES } from '../data/releaseNotes';
 
 // Erklärung aller DEX_*-Listen in Klartext (was tut die Liste, warum gibt es sie).
 const LIST_DOCS: Array<{ name: string; de: string }> = [
@@ -110,6 +111,22 @@ export default function AdminHubPage(): React.ReactElement {
             </span>
           </div>
         ))}
+        {/* v23.44: eigene Kachel zum direkten Springen in eine SharePoint-Liste. */}
+        <div style={{ ...cardStyle, display: 'flex', gap: 14, alignItems: 'flex-start' }}>
+          <span style={{ color: 'var(--dex-green, #86bc25)', flexShrink: 0 }}><FileText size={28} /></span>
+          <span style={{ flex: 1, minWidth: 0 }}>
+            <span style={{ display: 'block', fontWeight: 700, color: 'var(--dex-gray-800)', marginBottom: 2 }}>{isDe ? 'SharePoint-Liste öffnen' : 'Open SharePoint list'}</span>
+            <span style={{ display: 'block', fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.4, marginBottom: 8 }}>{isDe ? 'Direkt in eine der Hintergrund-Listen springen.' : 'Jump straight into one of the background lists.'}</span>
+            <select
+              defaultValue=""
+              onChange={e => { const v = e.target.value; if (v) { window.open(listUrl(v), '_blank', 'noopener'); e.target.value = ''; } }}
+              style={{ width: '100%', padding: '6px 10px', borderRadius: 8, border: '1px solid var(--dex-gray-300)', fontSize: '0.82rem', cursor: 'pointer' }}
+            >
+              <option value="">{isDe ? 'Zu Liste springen…' : 'Jump to list…'}</option>
+              {LIST_DOCS.map(l => <option key={l.name} value={l.name}>{l.name}</option>)}
+            </select>
+          </span>
+        </div>
       </div>
 
       {/* Archiv & Löschung */}
@@ -146,18 +163,7 @@ export default function AdminHubPage(): React.ReactElement {
       </div>
 
       {/* Listen-Erklärung */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <h2 style={{ fontSize: '1.15rem', color: 'var(--dex-green-dark, #4a7c1f)', margin: 0 }}>{isDe ? 'SharePoint-Listen — was macht was' : 'SharePoint lists — what does what'}</h2>
-        {/* v23.41: Dropdown zum direkten Springen in eine SharePoint-Liste. */}
-        <select
-          defaultValue=""
-          onChange={e => { const v = e.target.value; if (v) { window.open(listUrl(v), '_blank', 'noopener'); e.target.value = ''; } }}
-          style={{ marginLeft: 'auto', padding: '6px 10px', borderRadius: 8, border: '1px solid var(--dex-gray-300)', fontSize: '0.82rem', cursor: 'pointer' }}
-        >
-          <option value="">{isDe ? 'Zu Liste springen…' : 'Jump to list…'}</option>
-          {LIST_DOCS.map(l => <option key={l.name} value={l.name}>{l.name}</option>)}
-        </select>
-      </div>
+      <h2 style={{ fontSize: '1.15rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'SharePoint-Listen — was macht was' : 'SharePoint lists — what does what'}</h2>
       <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', marginTop: 6 }}>
         {isDe ? 'Alle Hintergrund-Listen der DEX-Plattform und wofür sie da sind (Klick öffnet die Liste in SharePoint):' : 'All background lists of the DEX platform and what they are for (click opens the list in SharePoint):'}
       </p>
@@ -169,6 +175,23 @@ export default function AdminHubPage(): React.ReactElement {
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
             >{l.name}</a>
             <span style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', lineHeight: 1.45 }}>{l.de}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* v23.44: Release Notes / Neuerungen — komplette Liste im Admin Center. */}
+      <h2 style={{ fontSize: '1.15rem', color: 'var(--dex-green-dark, #4a7c1f)', marginTop: 28 }}>{isDe ? 'Neuerungen (Release Notes)' : 'What’s new (release notes)'}</h2>
+      <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', marginTop: 6 }}>
+        {isDe ? 'Was in den letzten Versionen neu kam oder behoben wurde (neueste oben):' : 'What was added or fixed in the latest versions (newest first):'}
+      </p>
+      <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
+        {RELEASE_NOTES.map((n, i) => (
+          <div key={`${n.version}-${i}`} style={{ display: 'flex', gap: 12, padding: '12px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--dex-gray-100)', alignItems: 'baseline' }}>
+            <code style={{ flexShrink: 0, fontFamily: 'Consolas, monospace', fontSize: '0.78rem', color: 'var(--dex-gray-500)', minWidth: 64 }}>v{n.version}</code>
+            <span style={{ flexShrink: 0, fontSize: '0.66rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999, minWidth: 56, textAlign: 'center', background: n.type === 'Bugfix' ? 'rgba(218,41,28,0.12)' : 'rgba(134,188,37,0.15)', color: n.type === 'Bugfix' ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)' }}>
+              {n.type === 'Bugfix' ? (isDe ? 'Behoben' : 'Fix') : (isDe ? 'Neu' : 'New')}
+            </span>
+            <span style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', lineHeight: 1.45 }}>{n.text}</span>
           </div>
         ))}
       </div>
