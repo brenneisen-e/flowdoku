@@ -3753,7 +3753,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // Bericht trotzdem als versendet vermerkt und wurde 7 Tage nicht erneut
       // versucht. Jetzt retry-sicher: kein erfolgreiches Queuen → kein Eintrag →
       // nächster Boot versucht es erneut.
-      const queued = await eventService.queueEmail(subject, admins.join('; '), 'Admins', body, 'WeeklyReport', '', '');
+      // v23.35 BUGFIX: EventId MUSS '0' sein (nicht ''), sonst baut der
+      // DEX_SEND_MAIL-Flow den OData-Filter „ID eq " (leer) → Get_Event failed
+      // → der ganze Flow-Lauf bricht ab → die Mail wird NIE versendet, obwohl
+      // queueEmail erfolgreich war (Zeile in DEX_Emails liegt Pending). Genau
+      // wie sendAdminInquiry/sendOrganizerOnboarding (EventId='0' → „ID eq 0",
+      // gültig, 0 Treffer, Default-Bild). Das war die Ursache, warum nie ein
+      // Wochenbericht ankam.
+      const queued = await eventService.queueEmail(subject, admins.join('; '), 'Admins', body, 'WeeklyReport', '', '0');
       if (queued) {
         await eventService.recordWeeklyReport(fromIso, toIso);
         // v23.13: localStorage-Backstop setzen — falls recordWeeklyReport
