@@ -319,12 +319,12 @@ export default function AudiencePicker({
             damit die neuen Mitglieder die Sichtbarkeit bekommen. */}
         <WizardHint
           isDe={isDe}
-          title={isDe ? 'Verteiler-Mitglieder werden beim Speichern festgehalten' : 'Distribution list members are captured at save time'}
+          title={isDe ? 'E-Mail-Verteiler: Mitglieder werden beim Speichern hinterlegt' : 'Distribution lists: members are stored when you save'}
           style={{ marginBottom: 12 }}
         >
           {isDe
-            ? <>Beim Speichern des Events wird einmal festgehalten, welche Personen aktuell zu den ausgewählten Verteilern gehören. Kommt später eine neue Person in einen dieser Verteiler dazu, wird sie <strong>nicht automatisch</strong> übernommen — <strong>speichere das Event dann einfach noch einmal</strong>, damit auch die neue Person das Event sieht.</>
-            : <>When you save the event, the app records once which people currently belong to the selected distribution lists. If someone is added to one of these lists later, they are <strong>not picked up automatically</strong> — <strong>just save the event once more</strong> so the new person can see the event too.</>}
+            ? <>Die Mitglieder eines E-Mail-Verteilers werden zum Zeitpunkt des Speicherns hinterlegt. Falls sich der Verteiler während des Events ändern sollte, muss das Event einmalig neu gespeichert werden, um die aktualisierte Liste zu hinterlegen.</>
+            : <>The members of an email distribution list are stored at the time you save. If the distribution list changes during the event, the event must be saved once more to store the updated list.</>}
         </WizardHint>
         {/* Chip-Liste der bereits ausgewählten Audience-Einträge.
             Bei vielen Einträgen: Inline-Suche + Pagination (nur 10 sichtbar, 'Mehr anzeigen'-Button). */}

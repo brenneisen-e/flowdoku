@@ -8,6 +8,9 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.12.0 | 2026-06-18 | Feature | Organizer-Einstellungen als eigener Wizard-Schritt („Schritt 2 — Organizer & Team": Organizer, Ansprechpartner, Test-/Check-in-Team). Alle Folgeschritte neu nummeriert (inkl. geführter Tour und „Prüfen"-Übersicht). |
+| 24.12.0 | 2026-06-18 | Feature | Einzelne Organizer ausblenden geht erst nach Aktivierung von „Organizer einzeln ausblenden" (kein versehentliches Ausblenden per Klick). |
+| 24.12.0 | 2026-06-18 | Feature | Verständlichere Wizard-Texte: klarere Sub-Event-Erklärung; präziser Hinweis zur E-Mail-Verteiler-Speicherung. |
 | 24.11.0 | 2026-06-18 | Bugfix | Fest auf Englisch gestellte Anmeldeformulare werden jetzt vollständig englisch angezeigt (inkl. Organizer-Popup). Der Sprachumschalter zeigt die feste Sprache als aktiv; grüner Hinweis rechts daneben („Organizer set the language to English for this registration form"); Klick auf die andere Sprache meldet, dass der Organizer sie aus Einheitlichkeit festgelegt hat. |
 | 24.11.0 | 2026-06-18 | Feature | Hinweis auf löschbare abgelaufene Entwürfe jetzt auch in der Organizer-Eventübersicht (nicht nur auf der Startseite). |
 | 24.10.0 | 2026-06-18 | Feature | Rollen-Matrix als PDF herunterladbar (Querformat, Deloitte-Logo oben links, DEX-App-Logo oben rechts, komplette Berechtigungstabelle). |
