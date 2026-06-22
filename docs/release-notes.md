@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.17.0 | 2026-06-22 | Feature | App-Header: eigene Header-Variante des offiziellen Deloitte-Logos (sauberer schwarzer Schriftzug mit grünem Punkt, transparenter Hintergrund). |
 | 24.16.0 | 2026-06-22 | Bugfix | Sub-Event-Felder: Fragen, die nur bei einer bestimmten Antwort auf eine andere Frage erscheinen sollen, lassen sich jetzt auch im Sub-Event einstellen — und werden auf dem Anmeldeformular erst dann angezeigt (vorher standen alle bedingten Fragen immer offen da). |
 | 24.15.0 | 2026-06-18 | Feature | Organizer-Anzeige: erst „Organizer ausblenden" (alle aus); bei mehreren Organizern zusätzlich „Nur einzelne Organizer ausblenden" (per Klick auf Namen) — kein versehentliches Einzel-Ausblenden mehr. |
 | 24.14.0 | 2026-06-18 | Bugfix | Sub-Event-Felder: Wahl „i"-Info vs. „Text unter dem Feld" wird jetzt gespeichert (fehlte bisher, blieb immer „i"). |
