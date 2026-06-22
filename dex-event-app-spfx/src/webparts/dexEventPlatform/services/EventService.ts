@@ -4604,6 +4604,40 @@ export class EventService {
    * Akteur als Autor). Der eigentliche Akteur ist ohnehin separat im Feld
    * RegisteredByEmail protokolliert, der Audit-Nachweis bleibt also erhalten.
    */
+  /**
+   * v24.40: Eine Teilnehmer-Zeile einer **Assistenz** zuordnen — der Admin
+   * übergibt damit die Verwaltung der (Fremd-)Anmeldung an eine bestimmte
+   * Assistenz. Setzt ZWEI Dinge:
+   *  1. `RegisteredByEmail`/`RegisteredByName` auf die Assistenz (Audit + Filter
+   *     der „Assistenz"-Kachel).
+   *  2. Den **Zeilen-Autor** (`Created By` / `AuthorId`) auf die Assistenz —
+   *     unter Item-Level-Security („nur eigene Elemente") ist das die
+   *     Voraussetzung, damit eine NORMALE Assistenz die Zeile überhaupt
+   *     lesen/bearbeiten darf (sonst sieht sie sie in ihrer Kachel nicht).
+   * Best-effort: Schlägt der Autor-Wechsel mangels Rechten fehl, landet er in
+   * der `DEX_AccessFix`-Queue (Flow setzt ihn nach). Gibt zurück, ob der
+   * RegisteredBy-Schreibvorgang gelang.
+   */
+  public async assignRegistrationToAssistant(
+    subsiteUrl: string,
+    itemId: number,
+    assistantEmail: string,
+    assistantName: string
+  ): Promise<boolean> {
+    try {
+      const merge = await this._merge(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+        { 'RegisteredByEmail': assistantEmail, 'RegisteredByName': assistantName }
+      );
+      // Zeilen-Autor auf die Assistenz (Voraussetzung für ILS-Lesezugriff).
+      await this.trySetItemAuthor(subsiteUrl, REG_LIST_NAME, itemId, assistantEmail);
+      return merge.ok;
+    } catch (err) {
+      console.warn('[DEX] assignRegistrationToAssistant error:', err);
+      return false;
+    }
+  }
+
   private async trySetItemAuthor(subsiteUrl: string, listName: string, itemId: number, participantEmail: string): Promise<void> {
     try {
       // 1. Teilnehmer als SP-User der Subsite sicherstellen + dessen Id holen.

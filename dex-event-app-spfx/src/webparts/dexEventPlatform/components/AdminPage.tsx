@@ -36,6 +36,7 @@ import { MultiSelectDropdown } from './MultiSelectDropdown';
 import Modal from './Modal';
 import { Icon } from '@fluentui/react/lib/Icon';
 import InternationalSearchToggle from './InternationalSearchToggle';
+import { UserFieldPicker } from './UserFieldPicker';
 // v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
 import { useDialog } from '../context/DialogContext';
 
@@ -853,6 +854,11 @@ export default function AdminPage(): React.ReactElement {
   const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead, registerForEvent } = useEvents();
   // v24.38: läuft gerade ein „Zur Klammer hinzufügen" für diese E-Mail?
   const [addingToKlammer, setAddingToKlammer] = React.useState<string | null>(null);
+  // v24.40: Modal „Assistenz zuordnen" — Person an eine gewählte Assistenz
+  // übergeben (RegisteredBy + Zeilen-Autor auf Klammer + alle Sub-Events).
+  const [assignAssistRow, setAssignAssistRow] = React.useState<ConsolidatedRow | null>(null);
+  const [assignAssistValue, setAssignAssistValue] = React.useState('');
+  const [assignAssistBusy, setAssignAssistBusy] = React.useState(false);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const handleRefresh = async (): Promise<void> => {
     if (isRefreshing) return;
@@ -1883,6 +1889,72 @@ export default function AdminPage(): React.ReactElement {
       showAlert(isDe ? 'Unerwarteter Fehler beim Hinzufügen.' : 'Unexpected error while adding.', { variant: 'error' });
     } finally {
       setAddingToKlammer(null);
+    }
+  };
+
+  // v24.40: Eine Person (Klammer + alle aktiven Sub-Event-Anmeldungen) einer
+  // gewählten Assistenz zuordnen, damit diese die Anmeldung in ihrer
+  // „Assistenz"-Kachel vollständig verwalten kann. Setzt pro betroffener Zeile
+  // RegisteredBy + Zeilen-Autor auf die Assistenz (eventService-Helfer).
+  const submitAssignAssistant = async (): Promise<void> => {
+    if (!assignAssistRow || !selectedEvent || !eventServiceRef) return;
+    const m = (assignAssistValue || '').match(/^(.+?)\s*<([^>]+@[^>]+)>\s*$/);
+    if (!m) {
+      showAlert(isDe ? 'Bitte eine Assistenz aus der Suche auswählen.' : 'Please select an assistant from the search.', { variant: 'error' });
+      return;
+    }
+    const assistName = m[1].trim();
+    const assistEmail = m[2].trim();
+    const row = assignAssistRow;
+    const personName = `${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email;
+    if ((assistEmail || '').toLowerCase() === (row.emailKey || '')) {
+      showAlert(isDe ? 'Die Assistenz darf nicht dieselbe Person wie die angemeldete Person sein.' : 'The assistant must not be the same person as the registered person.', { variant: 'error' });
+      return;
+    }
+    setAssignAssistBusy(true);
+    try {
+      let done = 0;
+      let failed = 0;
+      // 1) Klammer-/Hauptevent-Zeile.
+      const parentReg = registrations.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === row.emailKey);
+      if (parentReg && selectedEvent.subsiteUrl) {
+        const ok = await eventServiceRef.assignRegistrationToAssistant(selectedEvent.subsiteUrl, parentReg.Id, assistEmail, assistName);
+        if (ok) done += 1; else failed += 1;
+      }
+      // 2) Alle aktiven Sub-Event-Zeilen der Person.
+      const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
+      for (const ch of consolidatedChildren) {
+        const r = row.perChild[ch.id];
+        if (!r || ACTIVE.indexOf(r.Status) < 0 || !ch.subsiteUrl) continue;
+        const ok = await eventServiceRef.assignRegistrationToAssistant(ch.subsiteUrl, r.Id, assistEmail, assistName);
+        if (ok) done += 1; else failed += 1;
+      }
+      try {
+        await eventServiceRef.writeChangeLog({
+          action: 'ParticipantUpdated',
+          targetType: 'Participant',
+          targetId: (row.email || '') + '#assistant',
+          targetName: personName,
+          eventId: selectedEvent.id,
+          eventTitle: selectedEvent.title,
+          details: { scope: 'assignedAssistant', assistantEmail: assistEmail, actorEmail: currentUser.email, rowsUpdated: done },
+        });
+      } catch { /* */ }
+      const regs = await getAllRegistrations(selectedEvent.id);
+      setRegistrations(regs);
+      setSubRegReloadTick(t => t + 1);
+      setAssignAssistRow(null);
+      setAssignAssistValue('');
+      if (failed === 0) {
+        showAlert(isDe ? `„${personName}" wurde der Assistenz „${assistName}" zugeordnet (${done} Anmeldung(en)). Sie kann die Anmeldung jetzt in ihrer „Assistenz"-Kachel verwalten.` : `„${personName}" was assigned to assistant „${assistName}" (${done} registration(s)). They can now manage it in their „Assistant" tile.`, { variant: 'success' });
+      } else {
+        showAlert(isDe ? `Teilweise zugeordnet: ${done} erfolgreich, ${failed} fehlgeschlagen (evtl. fehlende Rechte). Bei externen/nicht auffindbaren Konten ist die Zuordnung nicht möglich.` : `Partially assigned: ${done} ok, ${failed} failed (possibly missing permissions).`, { variant: 'error' });
+      }
+    } catch (err) {
+      console.warn('[DEX] submitAssignAssistant error:', err);
+      showAlert(isDe ? 'Unerwarteter Fehler bei der Zuordnung.' : 'Unexpected error during assignment.', { variant: 'error' });
+    } finally {
+      setAssignAssistBusy(false);
     }
   };
 
@@ -5710,6 +5782,19 @@ export default function AdminPage(): React.ReactElement {
                             onClick={() => { void addToKlammer(row); }}
                           >
                             <Plus size={12} /> {addingToKlammer === row.emailKey ? '…' : (isDe ? 'Zur Klammer hinzufügen' : 'Add to umbrella')}
+                          </button>
+                        )}
+                        {/* v24.40: Assistenz zuordnen — Person an eine gewählte
+                            Assistenz übergeben (Klammer + alle Sub-Events). */}
+                        {canManage && !orgPastLock && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                            title={isDe ? 'Diese Anmeldung (Klammer + Sub-Events) einer Assistenz übergeben, damit sie sie in ihrer „Assistenz"-Kachel verwalten kann.' : 'Hand this registration (umbrella + sub-events) to an assistant so they can manage it in their „Assistant" tile.'}
+                            onClick={() => { setAssignAssistRow(row); setAssignAssistValue(''); }}
+                          >
+                            <Users size={12} /> {isDe ? 'Assistenz zuordnen' : 'Assign assistant'}
                           </button>
                         )}
                         {/* v19.30 (Feature B): Abmelden mit Sub-Event-Auswahl.
@@ -11824,6 +11909,63 @@ export default function AdminPage(): React.ReactElement {
                 </>
               );
             })()}
+          </Modal>
+        )}
+        {/* v24.40: „Assistenz zuordnen"-Modal. */}
+        {assignAssistRow && (
+          <Modal
+            open={true}
+            onClose={() => { if (!assignAssistBusy) { setAssignAssistRow(null); setAssignAssistValue(''); } }}
+            maxWidth={520}
+            dismissable={!assignAssistBusy}
+            ariaLabel={isDe ? 'Assistenz zuordnen' : 'Assign assistant'}
+          >
+            <h3 style={{ margin: 0, display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <Users size={18} /> {isDe ? 'Assistenz zuordnen' : 'Assign assistant'}
+            </h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', marginTop: 10 }}>
+              {isDe
+                ? <>Person: <strong>{`${assignAssistRow.vorname || ''} ${assignAssistRow.nachname || ''}`.trim() || assignAssistRow.email}</strong> · {assignAssistRow.email}</>
+                : <>Person: <strong>{`${assignAssistRow.vorname || ''} ${assignAssistRow.nachname || ''}`.trim() || assignAssistRow.email}</strong> · {assignAssistRow.email}</>}
+            </p>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange, #ed8b00)', borderRadius: 8, padding: '10px 12px', margin: '4px 0 14px' }}>
+              <Icon iconName="Info" style={{ fontSize: 16, color: 'var(--dex-orange, #ed8b00)', marginTop: 1, flexShrink: 0 }} />
+              <div style={{ fontSize: '0.8rem', color: '#5a4a20', lineHeight: 1.5 }}>
+                {isDe
+                  ? <>Die gewählte Assistenz übernimmt die Verwaltung dieser Anmeldung — die <strong>Klammer-Anmeldung UND alle aktiven Sub-Event-Anmeldungen</strong> werden ihr zugeschrieben. Danach erscheint die Person in der <strong>„Assistenz“-Kachel</strong> der Assistenz und kann dort Angaben anpassen, ab- und anmelden. Es werden <strong>keine Mails</strong> versendet.</>
+                  : <>The selected assistant takes over managing this registration — the <strong>umbrella registration AND all active sub-event registrations</strong> are attributed to them. The person then appears in the assistant&apos;s <strong>„Assistant“ tile</strong>. <strong>No emails</strong> are sent.</>}
+              </div>
+            </div>
+            <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: 6 }}>
+              {isDe ? 'Assistenz (Person suchen)' : 'Assistant (search person)'}
+            </label>
+            <UserFieldPicker
+              value={assignAssistValue}
+              onChange={setAssignAssistValue}
+              searchUsers={searchUsers}
+              searchUserByEmail={searchUser}
+              placeholder={isDe ? 'Name oder E-Mail der Assistenz…' : 'Assistant name or email…'}
+              errorStyle={{}}
+              forcedIsDe={isDe}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={assignAssistBusy}
+                onClick={() => { setAssignAssistRow(null); setAssignAssistValue(''); }}
+              >
+                {isDe ? 'Abbrechen' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={assignAssistBusy || !assignAssistValue}
+                onClick={() => { void submitAssignAssistant(); }}
+              >
+                {assignAssistBusy ? '…' : (isDe ? 'Zuordnen' : 'Assign')}
+              </button>
+            </div>
           </Modal>
         )}
         {mainFieldsEditReg && selectedEvent && (
