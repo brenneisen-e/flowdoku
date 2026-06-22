@@ -112,6 +112,20 @@ export function registerForOtherSection(locale: 'de' | 'en'): ManualSection {
               ? 'Die Bestätigungs-Mail geht direkt an die externe Person, mit den Organizern auf CC. Ein Outlook-Termin wird an externe Adressen NICHT versendet — der Termin muss manuell in den Kalender eingetragen werden.'
               : 'The confirmation email is sent directly to the external person, with the organizers on CC. An Outlook invite is NOT sent to external addresses — the appointment must be added to the calendar manually.',
           },
+          {
+            number: 7,
+            title: isDe ? 'Später verwalten: Kachel „Assistenz" (v24.36)' : 'Manage later: „Assistant" tile (v24.36)',
+            description: (
+              <>
+                {isDe
+                  ? 'Anmeldungen, die du stellvertretend für andere durchgeführt hast, verwaltest du danach gebündelt über die Startseiten-Kachel „Assistenz": Angaben einsehen und anpassen, die Person bei Sub-Events nachträglich an- oder abmelden und ganz abmelden — ähnlich wie „Meine Events", nur eben für die Personen, die du angemeldet hast. Die Kachel erscheint nur, wenn du wirklich solche Anmeldungen hast (Admins sehen sie immer).'
+                  : 'Registrations you made on behalf of others can afterwards be managed in one place via the start-page tile „Assistant": view and edit details, register or cancel the person for sub-events, or cancel entirely — similar to „My events", but for the people you registered. The tile only appears if you actually have such registrations (admins always see it).'}
+              </>
+            ),
+            tip: isDe
+              ? 'Wichtig: Hier siehst du NUR Anmeldungen, die du selbst stellvertretend gemacht hast. Hat sich die Person (z.B. dein Partner oder Director) selbst angemeldet, ist diese Anmeldung hier nicht sichtbar — dann verwaltet die Person sie selbst über „Meine Events".'
+              : 'Important: you only see registrations you made on someone\'s behalf yourself. If the person (e.g. your partner or director) registered themselves, that registration is not visible here — they manage it themselves via „My events".',
+          },
         ],
       },
     ],

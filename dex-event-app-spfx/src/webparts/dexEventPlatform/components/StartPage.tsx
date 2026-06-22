@@ -6,13 +6,13 @@ import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useLanguage } from '../context/LanguageContext';
-import { Calendar, Pin, Settings, QrCode, Star } from './Icons';
+import { Calendar, Pin, Settings, QrCode, Star, Users } from './Icons';
 import InquiryModal from './InquiryModal';
 
 export default function StartPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { canCreateEvents, isAdmin } = useRoles();
-  const { events } = useEvents();
+  const { events, isEventsLoading, getMyProxyRegistrations } = useEvents();
   const { currentUser } = useCurrentUser();
   const { t, locale } = useLanguage();
   // v12.5: Organizer-Kachel wird jetzt IMMER gerendert. Wer keine Organizer-
@@ -73,6 +73,42 @@ export default function StartPage(): React.ReactElement {
   // normalen User-Ansicht entspricht (vorher zeigte `|| originalIsAdmin` die
   // Kachel auch im Demo-Modus).
   const showAdminHubTile = isAdmin;
+
+  // v24.36: „Assistenz"-Kachel — nur sichtbar, wenn der User STELLVERTRETEND
+  // für eine andere Person angemeldet hat (also tatsächlich „Assistenz" ist),
+  // oder Admin ist. Admins sehen die Kachel immer und finden darin ebenfalls
+  // ihre eigenen Fremd-Anmeldungen. Die Erkennung läuft im Hintergrund über
+  // alle Teilnehmerlisten — Ergebnis wird pro Tag gecacht (localStorage), damit
+  // nicht bei jedem Start-Aufruf alle Subsites abgefragt werden. Der teure
+  // Scan läuft NUR für Nicht-Admins (Admins sehen die Kachel ohnehin) und auch
+  // nur, wenn der Cache abgelaufen ist.
+  const [hasProxyRegs, setHasProxyRegs] = React.useState<boolean>(false);
+  const proxyScanStartedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (isAdmin) return; // Admin sieht die Kachel immer — kein Scan nötig.
+    if (isEventsLoading || (events || []).length === 0) return;
+    if (proxyScanStartedRef.current) return;
+    const key = `dex_assist_${currentEmailLc}`;
+    try {
+      const raw = window.localStorage.getItem(key);
+      if (raw) {
+        const cached = JSON.parse(raw) as { ts: number; has: boolean };
+        if (cached && Date.now() - cached.ts < 24 * 60 * 60 * 1000) {
+          setHasProxyRegs(!!cached.has);
+          return; // frischer Cache — kein erneuter Scan.
+        }
+      }
+    } catch { /* */ }
+    proxyScanStartedRef.current = true;
+    getMyProxyRegistrations()
+      .then(list => {
+        const has = (list || []).length > 0;
+        setHasProxyRegs(has);
+        try { window.localStorage.setItem(key, JSON.stringify({ ts: Date.now(), has })); } catch { /* */ }
+      })
+      .catch(() => { /* best-effort */ });
+  }, [isAdmin, isEventsLoading, events, currentEmailLc, getMyProxyRegistrations]);
+  const showAssistTile = isAdmin || hasProxyRegs;
 
   return (
     <div className="page-container">
@@ -225,6 +261,23 @@ export default function StartPage(): React.ReactElement {
             <h2>Admin</h2>
             <p style={{ whiteSpace: 'nowrap' }}>
               {locale === 'de' ? 'Verwaltung & Prozesse' : 'Administration & processes'}
+            </p>
+          </div>
+        )}
+        {/* v24.36: „Assistenz"-Kachel — nur für User, die stellvertretend für
+            andere angemeldet haben (oder Admins). Führt zur Verwaltung dieser
+            Fremd-Anmeldungen (einsehen, Angaben anpassen, ab-/anmelden). */}
+        {showAssistTile && (
+          <div
+            className="card card-clickable start-card"
+            onClick={() => navigate('assistant')}
+          >
+            <div className="start-card__icon">
+              <Users size={64} />
+            </div>
+            <h2>{locale === 'de' ? 'Assistenz' : 'Assistant'}</h2>
+            <p style={{ whiteSpace: 'nowrap' }}>
+              {locale === 'de' ? 'Anmeldungen für andere' : 'Registrations for others'}
             </p>
           </div>
         )}

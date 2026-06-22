@@ -6109,6 +6109,48 @@ export class EventService {
   }
 
   /**
+   * v24.36: Alle Anmeldungen einer Teilnehmerliste, die der eingeloggte User
+   * STELLVERTRETEND für eine andere Person durchgeführt hat (Assistenz-Funktion).
+   * Filter: `RegisteredByEmail = Akteur` UND `ParticipantEmail ≠ Akteur`.
+   *
+   * Hinweis zur Item-Level-Security: Auf den Teilnehmerlisten greift
+   * ReadSecurity=2 („nur eigene Elemente"). Eine Assistenz (Contribute-User)
+   * sieht daher nur die Zeilen, deren SharePoint-Autor sie selbst ist. Nach dem
+   * v20.5-Autor-Wechsel (AuthorId → Teilnehmer) verliert die Assistenz den
+   * Lesezugriff auf genau diese Zeilen — solange der `DEX_AccessFix`-Autor-Flow
+   * NICHT eingerichtet ist (häufigster Fall), bleibt die Assistenz Autor und
+   * sieht ihre Fremd-Anmeldungen weiterhin. Admin/Organizer eigener Events
+   * sehen ohnehin alle Zeilen. Best-effort: liefert nur, was der Server
+   * tatsächlich zurückgibt.
+   */
+  public async getProxyRegistrationsByActor(
+    subsiteUrl: string,
+    actorEmail: string
+  ): Promise<SPRegistration[]> {
+    const me = (actorEmail || '').toLowerCase().trim();
+    if (!me) return [];
+    const out: SPRegistration[] = [];
+    const esc = me.replace(/'/g, "''");
+    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=RegisteredByEmail eq '${esc}'&$orderby=Id asc&$top=5000`;
+    while (url) {
+      try {
+        const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        if (!response.ok) break;
+        const data = await response.json();
+        const page: SPRegistration[] = data.value || data.d?.results || [];
+        for (const r of page) {
+          const pe = (r.ParticipantEmail || '').toLowerCase().trim();
+          if (pe && pe !== me) out.push(r);
+        }
+        url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
+      } catch {
+        break;
+      }
+    }
+    return out;
+  }
+
+  /**
    * Alle Registrierungen für ein Event laden (nur für Organizer/Admin)
    */
   public async getAllRegistrations(subsiteUrl: string): Promise<SPRegistration[]> {

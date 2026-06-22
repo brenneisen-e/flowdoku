@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.36.0 | 2026-06-22 | Feature | Neue Kachel „Assistenz" auf der Startseite: Wer für andere Personen Anmeldungen durchgeführt hat (z.B. eine Assistenz für ihre Führungskraft), verwaltet diese hier zentral — Angaben einsehen und anpassen, die Person bei Sub-Events an- und abmelden, ganz abmelden. Angezeigt werden nur die Anmeldungen, die man selbst stellvertretend für eine andere Person vorgenommen hat. Die Kachel erscheint nur, wenn man wirklich solche Anmeldungen hat (Admins sehen sie immer und finden darin auch ihre eigenen Fremd-Anmeldungen). |
 | 24.35.0 | 2026-06-22 | Feature | Organizer Center: Neue Aktion „Angaben-Nachtrag anfordern" — findet aktive Teilnehmer ohne eventspezifische Angaben und schickt ihnen eine freundliche Erinnerung im Deloitte-Layout (du bist angemeldet, wir freuen uns; bei der Anmeldung gab es ein kleines technisches Problem, bitte die Infos in „Meine Events" nachtragen). |
 | 24.35.0 | 2026-06-22 | Bugfix | Teilnehmerliste: In der konsolidierten Ansicht eines Klammer-/Hauptevents wird die Spalte „Unternehmen" jetzt ebenfalls angezeigt (fehlte bisher dort). |
 | 24.34.0 | 2026-06-22 | Bugfix | Hotfix: Der Unternehmens-Abruf (Backfill) schlug bisher immer fehl, weil die Abfrage an Microsoft zu viele Bedingungen auf einmal stellte. Jetzt werden kleinere Pakete abgefragt — die Unternehmenszugehörigkeit wird dadurch korrekt geladen und nachgetragen. |
