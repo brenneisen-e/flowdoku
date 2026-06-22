@@ -3434,8 +3434,18 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   // dem Event-Ende löschen.
   async function countExternalRegistrations(event: DeloitteEvent): Promise<number> {
     if (isDemoShowcaseId(event.id)) return 0;
+    // v24.47: Entwürfe (isFictive = nie live geschaltet) waren nie öffentlich
+    // sichtbar — etwaige Anmeldungen sind reine Test-Daten des Organizer-Teams
+    // (z.B. der Organizer meldet sich selbst probehalber an). Für solche Events
+    // greift die Aufbewahrungs-Sperre nicht → immer löschbar.
+    if (event.isFictive) return 0;
     const children = events.filter(e => e.parentEventId === event.id);
     const baseTeam = teamEmailSetFor(event);
+    // v24.47: NUR aktive Anmeldungen zählen. Abgemeldete Zeilen (z.B. ein
+    // Test-Anmelden + wieder Abmelden auf einem Entwurf) blockierten sonst
+    // fälschlich die Löschung („Anmeldungen über das Organizer-Team hinaus",
+    // obwohl 0 aktive Teilnehmer).
+    const ACTIVE = new Set(['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste']);
     let count = 0;
     for (const ev of [event, ...children]) {
       const team = new Set<string>(baseTeam);
@@ -3443,6 +3453,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       let regs: SPRegistration[] = [];
       try { regs = await getAllRegistrations(ev.id); } catch { regs = []; }
       for (const r of regs) {
+        if (!ACTIVE.has(r.Status || '')) continue;
         const email = (r.ParticipantEmail || '').toLowerCase().trim();
         if (email && !team.has(email)) count++;
       }
