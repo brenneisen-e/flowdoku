@@ -364,6 +364,18 @@ interface EventContextType {
     memberRegistration: SPRegistration
   ) => Promise<boolean>;
   getMyRegistration: (eventId: string) => Promise<SPRegistration | null>;
+  /** v24.36: Assistenz — alle Anmeldungen (Haupt- + Sub-Events), die der
+   *  eingeloggte User STELLVERTRETEND für eine andere Person durchgeführt hat
+   *  (RegisteredByEmail = ich, ParticipantEmail ≠ ich). Liefert Event +
+   *  Registrierung pro Treffer, dedupliziert über alle Subsites. */
+  getMyProxyRegistrations: () => Promise<Array<{ event: DeloitteEvent; registration: SPRegistration }>>;
+  /** v24.36: Stellvertretende Abmeldung einer Fremd-Anmeldung durch die
+   *  Assistenz — voller Side-Effect-Pfad (Abmelde-Mail, Outlook-Ausladen,
+   *  ID-Reorder, Sitzplatz-Sync), Audit als Akteur „assistant". */
+  cancelProxyRegistration: (eventId: string, registration: SPRegistration) => Promise<boolean>;
+  /** v24.36: Custom-Field-Antworten einer Fremd-Anmeldung aktualisieren
+   *  (Assistenz). Schreibt CustomData + die gemappten SP-Spalten. */
+  updateProxyRegistration: (eventId: string, registration: SPRegistration, customData: Record<string, string>) => Promise<boolean>;
   /** v18.33: Self-Check-in über einen gescannten QR-Deep-Link. Löst das Event
    *  per Token (statischer QR) oder Event-Nummer + HMAC-Code (rotierender QR)
    *  auf, validiert Fenster/Frische und setzt die eigene Registrierung auf
@@ -2937,6 +2949,174 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   }
 
   /**
+   * v24.36: Assistenz — alle Fremd-Anmeldungen des eingeloggten Users über
+   * alle Subsites (Haupt- + Sub-Events) einsammeln. Dedupliziert pro Subsite
+   * (mehrere Events teilen sich keine Subsite, aber Sub-Events haben eigene),
+   * sodass jede Teilnehmerliste nur einmal abgefragt wird.
+   */
+  async function getMyProxyRegistrations(): Promise<Array<{ event: DeloitteEvent; registration: SPRegistration }>> {
+    const me = (currentUserEmail || '').toLowerCase().trim();
+    if (!me) return [];
+    // Subsite → Event-Liste (mehrere Events können theoretisch dieselbe Subsite
+    // teilen — z.B. recreate-Pfad; dann ordnen wir die Treffer dem passenden
+    // Event über die Event-Nummer in der Zeile nicht zu, sondern nehmen das
+    // erste Event der Subsite. In der Praxis = 1:1 Event↔Subsite.)
+    const subsiteToEvents = new Map<string, DeloitteEvent[]>();
+    for (const ev of events) {
+      const sub = subsiteMap.current[ev.id];
+      if (!sub) continue;
+      const arr = subsiteToEvents.get(sub) || [];
+      arr.push(ev);
+      subsiteToEvents.set(sub, arr);
+    }
+    const results: Array<{ event: DeloitteEvent; registration: SPRegistration }> = [];
+    const subs = Array.from(subsiteToEvents.keys());
+    // Parallel je Subsite abfragen (best-effort, Fehler je Subsite ignorieren).
+    await Promise.all(subs.map(async (sub) => {
+      let regs: SPRegistration[] = [];
+      try { regs = await eventService.getProxyRegistrationsByActor(sub, me); }
+      catch { regs = []; }
+      if (regs.length === 0) return;
+      const evs = subsiteToEvents.get(sub) || [];
+      const primary = evs[0];
+      if (!primary) return;
+      for (const r of regs) {
+        results.push({ event: primary, registration: r });
+      }
+    }));
+    return results;
+  }
+
+  /**
+   * v24.36: Stellvertretende Abmeldung einer Fremd-Anmeldung durch die
+   * Assistenz. Spiegelt den Side-Effect-Pfad von `cancelTeamMember`
+   * (Abmelde-Mail, Outlook-Ausladen, ID-Reorder, Sitzplatz-Sync), aber ohne
+   * Team-Logik. Audit als Akteur „assistant".
+   */
+  async function cancelProxyRegistration(eventId: string, registration: SPRegistration): Promise<boolean> {
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl || !registration?.Id) return false;
+    // Self-Schutz: über diesen Pfad meldet sich niemand selbst ab.
+    if ((registration.ParticipantEmail || '').toLowerCase() === (currentUserEmail || '').toLowerCase()) {
+      console.warn('[DEX] cancelProxyRegistration: cannot cancel own registration via this path');
+      return false;
+    }
+    const event = events.find(e => e.id === eventId);
+    // v22.22: Nach Event-Ende keine Abmeldung mehr.
+    if (event && isEventOver(event)) {
+      console.warn('[DEX] cancelProxyRegistration: event is over, blocked');
+      return false;
+    }
+    const wasActive = registration.Status === 'Angemeldet';
+    const ok = await eventService.cancelRegistration(
+      subsiteUrl, registration.Id, currentUserName, currentUserEmail
+    );
+    if (!ok) return false;
+    if (wasActive) {
+      eventService.bumpKpiParticipants(-1).catch(() => { /* */ });
+    }
+    eventService.writeChangeLog({
+      action: 'RegistrationCancelled',
+      targetType: 'Participant',
+      targetId: registration.ParticipantEmail,
+      targetName: `${registration.Vorname || ''} ${registration.Nachname || ''}`.trim() || registration.ParticipantEmail,
+      eventId: eventId,
+      eventTitle: event?.title || '',
+      details: { participantId: registration.Id, asActor: 'assistant', actorEmail: currentUserEmail },
+    }).catch(() => { /* */ });
+    if (event) {
+      if (event.eventNumber) {
+        try { await eventService.removeParticipantEvent(registration.ParticipantEmail, event.eventNumber); }
+        catch (err) { console.warn('[DEX] removeParticipantEvent failed:', err); }
+      }
+      // Abmelde-Mail an die abgemeldete Person.
+      if (!event.disableEmails && !event.disableCancellationEmail) {
+        try {
+          const lang = event.emailLanguage || 'EN';
+          const cancelledFirst = registration.Vorname
+            || (registration.ParticipantName || '').split(/[ ,]+/)[0] || '';
+          const cancelVars = {
+            Name: cancelledFirst,
+            EventTitle: event.title,
+            AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+          };
+          let emailData: { subject: string; body: string };
+          const spTplRaw = await eventService.getEmailTemplate('Abmeldung', lang).catch(() => null);
+          const spTpl = applyEventTemplateOverride(spTplRaw, event.emailTemplateOverrides, 'Abmeldung');
+          if (spTpl) emailData = buildEmailFromTemplate(spTpl, cancelVars);
+          else emailData = cancellationEmail(cancelledFirst, event.title);
+          let bcc: string | undefined;
+          const mode = event.notifyOrgCancelMode || 'never';
+          if (mode === 'always' || (mode === 'afterDeadline' && event.lastDeregisterDate && new Date() > new Date(event.lastDeregisterDate))) {
+            const orgEmails = (event.organizerEmails || []).filter(Boolean);
+            if (orgEmails.length > 0) bcc = orgEmails.join(';');
+          }
+          let memberCc: string | undefined;
+          try {
+            const cd = registration.CustomData ? JSON.parse(registration.CustomData) as Record<string, string> : {};
+            memberCc = collectCcEmailsFromFields(event.eventSpecificFields, cd, registration.ParticipantEmail) || undefined;
+          } catch { memberCc = undefined; }
+          await eventService.queueEmail(
+            emailData.subject,
+            registration.ParticipantEmail,
+            `${registration.Vorname || ''} ${registration.Nachname || ''}`.trim() || registration.ParticipantEmail,
+            emailData.body,
+            'Abmeldung', event.title, eventId, memberCc, bcc
+          );
+        } catch (err) { console.warn('[DEX] queueEmail for proxy cancel failed:', err); }
+      }
+      // Outlook-Ausladung.
+      if (!event.disableOutlook) {
+        try {
+          await eventService.queueOutlookEvent(registration.ParticipantEmail, eventId, event.title, 'Ausladen');
+        } catch (err) { console.warn('[DEX] queueOutlookEvent (proxy cancel) failed:', err); }
+      }
+      // ID-Reorder + Sitzplatz-Sync (treibt das Nachrücken der Warteliste).
+      try {
+        await eventService.queueIDReorder(
+          eventId, event.eventNumber || 0, subsiteUrl, event.title,
+          `${registration.Vorname || ''} ${registration.Nachname || ''}`.trim() || registration.ParticipantName || undefined,
+          registration.ParticipantEmail || undefined
+        );
+      } catch (err) { console.warn('[DEX] queueIDReorder (proxy cancel) failed:', err); }
+      try {
+        const isSplit = typeof event.durchstarterCapacity === 'number'
+          && typeof event.funstarterCapacity === 'number'
+          && ((event.durchstarterCapacity || 0) > 0 || (event.funstarterCapacity || 0) > 0);
+        await eventService.syncSeatsToActiveCount(subsiteUrl, { isSplit });
+      } catch { /* best-effort */ }
+    }
+    await loadEvents();
+    return true;
+  }
+
+  /**
+   * v24.36: Custom-Field-Antworten einer Fremd-Anmeldung aktualisieren
+   * (Assistenz). Operiert direkt auf der übergebenen Registrierungs-Zeile.
+   */
+  async function updateProxyRegistration(eventId: string, registration: SPRegistration, customData: Record<string, string>): Promise<boolean> {
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl || !registration?.Id) return false;
+    const event = events.find(e => e.id === eventId);
+    const fieldMap: Record<string, string> = {};
+    const fieldLabelMap: Record<string, string> = {};
+    if (event) {
+      for (const f of event.eventSpecificFields) {
+        if (f.spInternalName) fieldMap[f.id] = f.spInternalName;
+        fieldLabelMap[f.id] = f.label;
+      }
+    }
+    let oldCustomData: Record<string, string> = {};
+    try { if (registration.CustomData) oldCustomData = JSON.parse(registration.CustomData); }
+    catch { /* */ }
+    const success = await eventService.updateRegistrationData(
+      subsiteUrl, registration.Id, customData, fieldMap, oldCustomData, fieldLabelMap
+    );
+    if (success) await loadEvents();
+    return success;
+  }
+
+  /**
    * v11.83: Nach einem Team-Mitglied-Cancel (Self-Cancel) erledigt diese
    * Routine:
    *   1) Verbleibende aktive Team-Mitglieder laden (ohne den gerade
@@ -4190,7 +4370,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns,
         sendAdminInquiry,
         requestOrganizerRole, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,

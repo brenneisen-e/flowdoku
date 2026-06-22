@@ -2463,6 +2463,74 @@ export default function AdminPage(): React.ReactElement {
     setTeamMailOpen(false);
     showAlert(isDe ? `${sent} Mail(s) in die Warteschlange gelegt — sie werden in Kürze versendet.` : `${sent} mail(s) queued — they will be sent shortly.`, { variant: 'success' });
   };
+
+  // v24.35: Erinnerungs-Mail an aktive Teilnehmer OHNE eventspezifische Angaben
+  // („kleines technisches Problem bei der Anmeldung — bitte in Meine Events
+  // nachtragen"). Deloitte-Layout, gated über event.disableEmails.
+  const sendMissingInfoReminders = async (): Promise<void> => {
+    if (!selectedEvent || !eventServiceRef) return;
+    if (selectedEvent.disableEmails) {
+      showAlert(isDe ? 'E-Mails sind für dieses Event deaktiviert (Schritt 6 „Kommunikation").' : 'Emails are disabled for this event (step 6 “Communication”).', { variant: 'error' });
+      return;
+    }
+    const fields = (selectedEvent.eventSpecificFields || []).filter(f => f.label && f.type !== 'document');
+    if (fields.length === 0) {
+      showAlert(isDe ? 'Dieses Event hat keine eventspezifischen Felder — es gibt nichts nachzutragen.' : 'This event has no event-specific fields — nothing to complete.', { variant: 'error' });
+      return;
+    }
+    const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
+    const parse = (s: string | undefined): Record<string, unknown> => { try { return (JSON.parse(s || '{}') as Record<string, unknown>) || {}; } catch { return {}; } };
+    const hasInfo = (reg: SPRegistration): boolean => {
+      const cd = parse(reg.CustomData);
+      for (const f of fields) {
+        const v1 = cd[f.id];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const v2 = (f as any).spInternalName ? (reg as any)[(f as any).spInternalName] : undefined;
+        if ((v1 !== undefined && v1 !== null && String(v1).trim()) || (v2 !== undefined && v2 !== null && String(v2).trim())) return true;
+      }
+      return false;
+    };
+    const targets = registrations.filter(r => ACTIVE.indexOf(r.Status) >= 0 && !hasInfo(r));
+    if (targets.length === 0) {
+      showAlert(isDe ? 'Alle aktiven Teilnehmer haben ihre eventspezifischen Angaben gemacht — keine Erinnerung nötig.' : 'All active attendees have provided their event-specific info — no reminder needed.', { variant: 'success' });
+      return;
+    }
+    const nameOf = (r: SPRegistration): string => `${r.Vorname || ''} ${r.Nachname || ''}`.trim() || r.ParticipantName || r.ParticipantEmail || '?';
+    const namesPreview = targets.slice(0, 8).map(nameOf).join(', ');
+    const more = targets.length > 8 ? (isDe ? ` …und ${targets.length - 8} weitere` : ` …and ${targets.length - 8} more`) : '';
+    if (!(await confirmDialog(
+      isDe
+        ? `${targets.length} aktive(r) Teilnehmer ohne eventspezifische Angaben gefunden:\n\n${namesPreview}${more}\n\nIhnen jetzt eine freundliche Erinnerungs-Mail (Deloitte-Layout) senden, ihre Angaben in „Meine Events" nachzutragen?`
+        : `Found ${targets.length} active attendee(s) without event-specific info:\n\n${namesPreview}${more}\n\nSend them a friendly reminder email (Deloitte layout) to complete their details in “My Events”?`,
+      { confirmLabel: isDe ? 'Erinnerung senden' : 'Send reminder' }
+    ))) return;
+    const escHtml = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    let sent = 0;
+    for (const r of targets) {
+      const first = (r.Vorname && r.Vorname.trim()) || (r.ParticipantName || '').split(/\s+/)[0] || '';
+      const fullName = nameOf(r);
+      const heading = isDe ? `Du bist angemeldet — ${selectedEvent.title}` : `You're registered — ${selectedEvent.title}`;
+      const sub = isDe ? 'Bitte ergänze noch kurz deine Angaben' : 'Please complete your details';
+      const body = isDe
+        ? `<p>Hallo ${escHtml(first)},</p>
+           <p>schön, dass du bei <strong>${escHtml(selectedEvent.title)}</strong> dabei bist — wir freuen uns sehr auf dich!</p>
+           <p>Bei deiner Anmeldung gab es leider ein kleines technisches Problem, sodass deine <strong>eventspezifischen Angaben</strong> (z.&nbsp;B. Verpflegung, Anreise o.&nbsp;Ä.) nicht gespeichert wurden.</p>
+           <p>Bitte hol das kurz nach: Öffne die DEX-App, gehe zu <strong>„Meine Events"</strong>, wähle dieses Event und fülle die noch offenen Felder aus. Das dauert nur eine Minute.</p>
+           <p>Vielen Dank und bis bald!</p>`
+        : `<p>Hi ${escHtml(first)},</p>
+           <p>great to have you at <strong>${escHtml(selectedEvent.title)}</strong> — we're really looking forward to it!</p>
+           <p>Unfortunately a small technical problem occurred during your registration, so your <strong>event-specific details</strong> (e.g. catering, travel) were not saved.</p>
+           <p>Please complete them quickly: open the DEX app, go to <strong>“My Events”</strong>, select this event and fill in the remaining fields. It only takes a minute.</p>
+           <p>Many thanks and see you soon!</p>`;
+      const subject = isDe ? `Bitte ergänze deine Angaben — ${selectedEvent.title}` : `Please complete your details — ${selectedEvent.title}`;
+      const wrapped = wrapTemplate('#86bc25', heading, sub, body);
+      try {
+        const ok = await eventServiceRef.queueEmail(subject, r.ParticipantEmail, fullName, wrapped, 'Info', selectedEvent.title, selectedEvent.id);
+        if (ok) sent += 1;
+      } catch { /* best-effort pro Empfänger */ }
+    }
+    showAlert(isDe ? `${sent} Erinnerungs-Mail(s) in die Warteschlange gelegt — sie werden in Kürze versendet.` : `${sent} reminder mail(s) queued — they will be sent shortly.`, { variant: 'success' });
+  };
   // Max. 10 automatische Neu-Checks (≈5 Min) pro Event — wenn die Lücke dann
   // immer noch da ist, ist sie echt (Tail-Race, siehe Box-Text) und kein
   // weiteres Polling nötig.
@@ -4829,6 +4897,9 @@ export default function AdminPage(): React.ReactElement {
           const anyR = r as any;
           if (!row.jobTitle && anyR.JobTitle) row.jobTitle = anyR.JobTitle;
           if (!row.location && anyR.Location) row.location = anyR.Location;
+          // v24.35: Unternehmen aus späteren (Sub-)Registrierungen nachfüllen,
+          // falls die erste Zeile noch keins hatte.
+          if (!row.company && anyR.Company) row.company = anyR.Company;
           if (!row.vorname && r.Vorname) row.vorname = r.Vorname;
           if (!row.nachname && r.Nachname) row.nachname = r.Nachname;
           // Früheste RegistrationDate uebernehmen (min).
@@ -5090,6 +5161,7 @@ export default function AdminPage(): React.ReactElement {
                   <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('email')}>Email{sortArrow('email')}</th>
                   <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('jobTitle')}>Job Title{sortArrow('jobTitle')}</th>
                   <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('location')}>{isDe ? 'Standort' : 'Location'}{sortArrow('location')}</th>
+                  <th style={{ textAlign: 'left', padding: 8 }}>{isDe ? 'Unternehmen' : 'Company'}</th>
                 </>
               )}
               {parentCustomFields.map(f => (
@@ -5172,6 +5244,7 @@ export default function AdminPage(): React.ReactElement {
                         <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{highlightMatch(row.email)}</td>
                         <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{highlightMatch(row.jobTitle || '-')}</td>
                         <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{row.location ? highlightMatch(stripLocPrefix(row.location)) : '-'}</td>
+                        <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{row.company ? highlightMatch(row.company) : '-'}</td>
                       </>
                     )}
                     {parentCustomFields.map(f => {
@@ -6675,6 +6748,18 @@ export default function AdminPage(): React.ReactElement {
                   }).catch(() => { showAlert(<span style={{ userSelect: 'all', wordBreak: 'break-all', fontFamily: 'monospace', fontSize: '0.8rem' }}>{emails}</span>, { title: isDe ? 'E-Mail-Adressen manuell kopieren' : 'Copy email addresses manually' }); });
                 }
               }}
+            />
+
+            {/* v24.35: Erinnerung an Teilnehmer ohne eventspezifische Angaben */}
+            <ActionTile
+              icon={<Mail size={18} />}
+              category="mails"
+              title={isDe ? 'Angaben-Nachtrag anfordern' : 'Request missing details'}
+              desc={isDe
+                ? 'Sucht aktive Teilnehmer, die noch KEINE eventspezifischen Angaben gemacht haben (z.B. wegen eines technischen Problems bei der Anmeldung), und schickt ihnen eine freundliche Erinnerung im Deloitte-Layout: bitte die Infos in „Meine Events" nachtragen.'
+                : 'Finds active attendees who have NOT provided any event-specific details (e.g. due to a technical hiccup during registration) and sends a friendly reminder in the Deloitte layout to complete them in „My Events".'}
+              badge="organizer"
+              onClick={() => { void sendMissingInfoReminders(); }}
             />
 
             {/* 4. Massenmail an alle aktiven Teilnehmer */}

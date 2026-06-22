@@ -49,6 +49,7 @@ const AdminHubPage = React.lazy(() => import('./AdminHubPage'));
 const CheckInPage = React.lazy(() => import('./CheckInPage'));
 const SelfCheckInDisplayPage = React.lazy(() => import('./SelfCheckInDisplayPage'));
 const ManualPage = React.lazy(() => import('./manual/ManualPage'));
+const AssistantPage = React.lazy(() => import('./AssistantPage'));
 
 export interface IDexEventPlatformProps {
   context: WebPartContext;
@@ -633,6 +634,8 @@ function AppContent(): React.ReactElement {
         return <RegistrationPage />;
       case 'my-events':
         return <MyEventsPage />;
+      case 'assistant':
+        return <AssistantPage />;
       case 'create-event':
       case 'edit-event':
         return <EventCreationPage />;
