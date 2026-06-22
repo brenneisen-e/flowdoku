@@ -6323,49 +6323,62 @@ export default function AdminPage(): React.ReactElement {
               });
             }
           }
-          // 3f) v24.27: Feldart-Empfehlung — wenn ein Custom-Feld nach einem
-          // Datum bzw. einer Person klingt, aber als Freitext angelegt ist,
-          // hier dieselbe Empfehlung wie im Wizard (Feld-Editor) geben. Zugang
-          // läuft über „Event bearbeiten" → Schritt „Felder".
+          // 3f) v24.27/v24.28: Feld-Tipps — passendere Feldart (Datum/Person)
+          // ODER Feld, das ohnehin schon automatisch aus dem Profil erfasst wird
+          // (z.B. Abteilung, Standort, Firma) und deshalb überflüssig sein kann.
+          // Zugang zum Ändern läuft über „Event bearbeiten" → Schritt „Felder".
           {
             const looksDate = (s: string): boolean => /(datum|date|check[\s-]?in|check[\s-]?out|anreise|abreise|geburtstag|birthday|deadline|frist|termin|ankunft|abfahrt|arrival|departure)/i.test(s || '');
             const looksName = (s: string): boolean => /(\bname\b|vorname|nachname|ansprechpartner|counselor|kolleg|mitarbeiter|\bmentor\b|\bpate\b|\bbuddy\b|begleitung|\bgast\b)/i.test(s || '');
-            const dateLike: string[] = [];
-            const nameLike: string[] = [];
-            const scan = (fields: { type?: string; label?: string }[] | undefined, prefix: string): void => {
+            // Felder, die i.d.R. schon automatisch aus dem Deloitte-Profil
+            // kommen (Anrede/Vorname/Nachname/E-Mail/Abteilung/Standort/Position/
+            // Telefon) bzw. Firma/Adresse. „name" allein bewusst NICHT — das ist
+            // zu mehrdeutig (z.B. „Name of counselor").
+            const looksProfile = (s: string): boolean => /(vorname|nachname|first ?name|last ?name|e-?mail|abteilung|department|standort|location|\boffice\b|\bbüro\b|telefon|\bphone\b|\bmobil|\bhandy\b|firma|company|unternehmen|arbeitgeber|gesellschaft|\bgmbh\b|legal ?entity|\bentity\b|rechtsträger|member ?firm|adresse|address|job ?title)/i.test(s || '');
+            // Eindeutige Feld-Namen sammeln (gleiches Label in Haupt- + mehreren
+            // Sub-Events nur EINMAL nennen). Profil-Felder haben Vorrang (sie
+            // sollen ganz entfallen, nicht nur die Feldart wechseln).
+            const profileSet = new Map<string, string>();
+            const dateSet = new Map<string, string>();
+            const nameSet = new Map<string, string>();
+            const scan = (fields: { type?: string; label?: string }[] | undefined): void => {
               for (const f of (fields || [])) {
                 const lbl = (f.label || '').trim();
                 if (!lbl) continue;
-                const tag = prefix ? `${lbl} (${prefix})` : lbl;
-                if ((f.type === 'text' || f.type === 'number') && looksDate(lbl)) dateLike.push(tag);
-                else if (f.type === 'text' && looksName(lbl)) nameLike.push(tag);
+                const key = lbl.toLowerCase();
+                if (looksProfile(lbl)) { if (!profileSet.has(key)) profileSet.set(key, lbl); }
+                else if ((f.type === 'text' || f.type === 'number') && looksDate(lbl)) { if (!dateSet.has(key)) dateSet.set(key, lbl); }
+                else if (f.type === 'text' && looksName(lbl)) { if (!nameSet.has(key)) nameSet.set(key, lbl); }
               }
             };
-            scan(selectedEvent.eventSpecificFields, '');
-            for (const ch of childEventsOf(selectedEvent.id)) {
-              scan(ch.eventSpecificFields, shortSubEventTitle(ch.title, selectedEvent.title));
-            }
-            if (dateLike.length > 0 || nameLike.length > 0) {
+            scan(selectedEvent.eventSpecificFields);
+            for (const ch of childEventsOf(selectedEvent.id)) scan(ch.eventSpecificFields);
+            const dateLike = Array.from(dateSet.values());
+            const nameLike = Array.from(nameSet.values());
+            const profileLike = Array.from(profileSet.values());
+            if (dateLike.length > 0 || nameLike.length > 0 || profileLike.length > 0) {
               hints.push({
                 id: 'fieldtype-suggestion',
-                title: isDe ? 'Bessere Feldart möglich?' : 'Better field type available?',
+                title: isDe ? 'Tipps zu deinen Feldern' : 'Tips for your fields',
                 body: isDe ? (
                   <>
-                    Ein paar Felder könnten eine passendere Feldart haben:
+                    Ein paar deiner Felder lassen sich verbessern:
                     <ul style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>
-                      {dateLike.length > 0 && <li>Klingt nach <strong>Datum</strong>: <strong>{dateLike.join(', ')}</strong> — mit der Feldart „Datum“ bekommen Teilnehmer einen Kalender (optional mit Uhrzeit) statt Freitext.</li>}
-                      {nameLike.length > 0 && <li>Klingt nach <strong>Person</strong>: <strong>{nameLike.join(', ')}</strong> — mit der Feldart „Person“ suchen Teilnehmer die Person direkt (mit Foto und Standort).</li>}
+                      {profileLike.length > 0 && <li><strong>Vermutlich überflüssig</strong> (wird schon automatisch erfasst): {profileLike.join(', ')}. Angaben wie Abteilung, Standort, Firma o.ä. kommen i.d.R. automatisch aus dem Profil — du musst sie nicht extra abfragen.</li>}
+                      {dateLike.length > 0 && <li>Besser <strong>„Datum“ statt Freitext</strong>: {dateLike.join(', ')}. Teilnehmer wählen dann ein Datum im Kalender (optional mit Uhrzeit).</li>}
+                      {nameLike.length > 0 && <li>Besser <strong>„Person“ statt Freitext</strong>: {nameLike.join(', ')}. Teilnehmer suchen die Person direkt (mit Foto und Standort).</li>}
                     </ul>
-                    <div style={{ marginTop: 6 }}>Umstellen über „Event bearbeiten“ → Schritt „Felder“. Bestehende Antworten bleiben erhalten, werden aber nicht automatisch ins neue Format umgewandelt.</div>
+                    <div style={{ marginTop: 6 }}>Anpassen über „Event bearbeiten“ → Schritt „Felder“. Bestehende Antworten bleiben erhalten, werden aber nicht automatisch ins neue Format umgewandelt.</div>
                   </>
                 ) : (
                   <>
-                    A few fields might fit a better field type:
+                    A few of your fields could be improved:
                     <ul style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>
-                      {dateLike.length > 0 && <li>Looks like a <strong>date</strong>: <strong>{dateLike.join(', ')}</strong> — the „Date“ field type gives attendees a calendar (optionally with time) instead of free text.</li>}
-                      {nameLike.length > 0 && <li>Looks like a <strong>person</strong>: <strong>{nameLike.join(', ')}</strong> — the „Person“ field type lets attendees search the person directly (with photo and location).</li>}
+                      {profileLike.length > 0 && <li><strong>Probably unnecessary</strong> (already collected automatically): {profileLike.join(', ')}. Details like department, location or company usually come from the profile — you don’t need to ask for them.</li>}
+                      {dateLike.length > 0 && <li>Better <strong>„Date“ than free text</strong>: {dateLike.join(', ')}. Attendees then pick a date from a calendar (optionally with time).</li>}
+                      {nameLike.length > 0 && <li>Better <strong>„Person“ than free text</strong>: {nameLike.join(', ')}. Attendees search the person directly (with photo and location).</li>}
                     </ul>
-                    <div style={{ marginTop: 6 }}>Change via “Edit event” → step “Fields”. Existing answers are kept but not automatically converted to the new format.</div>
+                    <div style={{ marginTop: 6 }}>Adjust via “Edit event” → step “Fields”. Existing answers are kept but not automatically converted to the new format.</div>
                   </>
                 ),
               });
