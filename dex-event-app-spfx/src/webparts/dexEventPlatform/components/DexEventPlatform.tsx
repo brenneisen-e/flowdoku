@@ -670,12 +670,12 @@ function AppContent(): React.ReactElement {
     <div className="app-layout" ref={layoutRef}>
       {!isBootLoading && <Header />}
       <ImpersonationBanner currentPage={currentPage} />
-      {/* v23.37: Admin-Hinweis auf offene „Organizer werden"-Anträge (+ Deep-Link). */}
-      {!isBootLoading && (
-        <div style={{ padding: '12px 24px 0' }}>
-          <OrganizerRequestsBanner />
-        </div>
-      )}
+      {/* v23.37: Admin-Hinweis auf offene „Organizer werden"-Anträge (+ Deep-Link).
+          v24.19: kein eigener Padding-Wrapper mehr — der erzeugte sonst einen
+          weißen 12px-Streifen unter dem Header, auch wenn der Banner nichts
+          anzeigt (er gibt null zurueck, wenn keine Antraege offen sind). Den
+          Abstand traegt jetzt der Banner selbst, nur wenn er wirklich rendert. */}
+      {!isBootLoading && <OrganizerRequestsBanner />}
 
       {successBanner && (
         <div

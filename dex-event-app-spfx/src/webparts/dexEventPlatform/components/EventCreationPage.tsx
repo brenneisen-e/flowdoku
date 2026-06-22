@@ -6009,8 +6009,8 @@ export default function EventCreationPage(): React.ReactElement {
               </h2>
               <p className="dex-step-head-lead">
                 {isDe
-                  ? 'Hier definierst du das Fundament des Events: Titel, Datum, Beschreibung, Bild und die Personen, die das Event verantworten oder testen.'
-                  : 'Here you define the foundation of the event: title, date, description, image and the people who run or test it.'}
+                  ? 'Hier definierst du das Fundament des Events: Titel, Datum, Beschreibung und Bild.'
+                  : 'Here you define the foundation of the event: title, date, description and image.'}
               </p>
 
               {/* v24.9 (E): „Eigenes Event als Vorlage" — prominenter Fächer aus
