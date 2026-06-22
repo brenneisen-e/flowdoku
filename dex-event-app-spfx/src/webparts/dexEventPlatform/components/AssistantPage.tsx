@@ -49,7 +49,7 @@ function fieldVisible(f: EventSpecificField, data: Record<string, string>): bool
 }
 
 export default function AssistantPage(): React.ReactElement {
-  const { getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, registerForEvent, childEventsOf } = useEvents();
+  const { events, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, registerForEvent, childEventsOf } = useEvents();
   const { navigate } = useNavigation();
   const { locale } = useLanguage();
   const { confirmDialog, showAlert } = useDialog();
@@ -69,26 +69,28 @@ export default function AssistantPage(): React.ReactElement {
   } | null>(null);
   const [modalBusy, setModalBusy] = React.useState(false);
 
+  // Vollständige Event-Lookup-Map (Haupt- UND Sub-Events) — damit das Parent-/
+  // Klammer-Event eines Sub-Events sicher aufgelöst wird, auch wenn die
+  // Assistenz NUR ein Sub-Event (nicht das Hauptevent) gebucht hat.
+  const eventById = React.useMemo(() => {
+    const m = new Map<string, DeloitteEvent>();
+    for (const e of events) m.set(e.id, e);
+    return m;
+  }, [events]);
+
   const buildGroups = React.useCallback((items: ProxyItem[]): Group[] => {
     const map = new Map<string, Group>();
     for (const it of items) {
       const ev = it.event;
       const rootId = ev.parentEventId || ev.id;
-      // root-Event-Objekt bestimmen: bei Sub-Event ist der event selbst das Kind;
-      // wir nehmen für die Klammer das Parent über childEventsOf-Umkehr. Da wir
-      // nur das Kind-Objekt haben, finden wir das Parent über getMyProxyRegistrations
-      // nicht zwingend — deshalb: wenn parentEventId gesetzt ist, suchen wir in den
-      // bereits gesammelten Items nach dem Parent; sonst ist ev das root.
       const pEmail = (it.registration.ParticipantEmail || '').toLowerCase();
       const key = `${pEmail}__${rootId}`;
       let g = map.get(key);
       if (!g) {
-        // root-Event: falls ev ein Sub-Event ist, das Parent-Objekt suchen.
-        let rootEvent = ev;
-        if (ev.parentEventId) {
-          const parentItem = items.find(x => x.event.id === ev.parentEventId);
-          if (parentItem) rootEvent = parentItem.event;
-        }
+        // root-Event = das Klammer-/Hauptevent. Über die volle Event-Map
+        // auflösen (nicht nur über die Treffer-Liste — sonst würde ein
+        // Sub-Event ohne Parent-Anmeldung fälschlich selbst zum root).
+        const rootEvent = eventById.get(rootId) || ev;
         g = {
           pEmail,
           pName: it.registration.ParticipantName || `${it.registration.Vorname || ''} ${it.registration.Nachname || ''}`.trim() || pEmail,
@@ -106,7 +108,7 @@ export default function AssistantPage(): React.ReactElement {
     // Gruppen sortieren: nach Teilnehmer-Name, dann Event-Titel.
     return Array.from(map.values()).sort((a, b) =>
       a.pName.localeCompare(b.pName) || a.rootEvent.title.localeCompare(b.rootEvent.title));
-  }, []);
+  }, [eventById]);
 
   const reload = React.useCallback(async () => {
     setLoading(true);
@@ -306,6 +308,15 @@ export default function AssistantPage(): React.ReactElement {
     );
   };
 
+  // v24.37: Vergangene Events ausblenden — nach Event-Ende sind Angaben-
+  // Anpassung / An-/Abmeldung ohnehin gesperrt (Aufbewahrungs-/Löschkonzept).
+  // Eine Gruppe bleibt sichtbar, solange das Klammer-/Hauptevent ODER mind. ein
+  // Sub-Event noch nicht vorbei ist (dort kann die Assistenz noch handeln).
+  const visibleGroups = React.useMemo(() => groups.filter(g => {
+    if (!isEventOver(g.rootEvent)) return true;
+    return childEventsOf(g.rootEvent.id).some(c => !isEventOver(c));
+  }), [groups, childEventsOf]);
+
   return (
     <div className="page-container">
       <button
@@ -348,16 +359,20 @@ export default function AssistantPage(): React.ReactElement {
 
       {loading ? (
         <div style={{ padding: 48, textAlign: 'center', color: '#999' }}>{isDe ? 'Lade …' : 'Loading …'}</div>
-      ) : groups.length === 0 ? (
+      ) : visibleGroups.length === 0 ? (
         <div style={{ padding: 40, textAlign: 'center', color: '#888', background: '#f7f7f7', borderRadius: 12, marginTop: 16 }}>
           <Icon iconName="People" style={{ fontSize: 40, color: '#ccc', display: 'block', marginBottom: 10 }} />
-          {isDe
-            ? 'Du hast aktuell keine Anmeldungen für andere Personen durchgeführt.'
-            : 'You currently have no registrations made on behalf of others.'}
+          {groups.length === 0
+            ? (isDe
+              ? 'Du hast aktuell keine Anmeldungen für andere Personen durchgeführt.'
+              : 'You currently have no registrations made on behalf of others.')
+            : (isDe
+              ? 'Du hast nur stellvertretende Anmeldungen für bereits vergangene Events — die lassen sich nicht mehr anpassen.'
+              : 'You only have registrations on behalf of others for past events — those can no longer be changed.')}
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18, marginTop: 16 }}>
-          {groups.map(group => {
+          {visibleGroups.map(group => {
             const root = group.rootEvent;
             const children = childEventsOf(root.id);
             const rootItem = group.regs.get(root.id);
@@ -527,7 +542,7 @@ function RegRow(props: RegRowProps): React.ReactElement {
         {over && <span style={{ fontSize: '0.74rem', color: '#999', marginLeft: 8 }}>{isDe ? '(Event vorbei)' : '(event over)'}</span>}
       </div>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        {item && active && hasFields && onEdit && (
+        {item && active && hasFields && onEdit && !over && (
           <button type="button" onClick={onEdit} style={btnSecondary}>
             <Icon iconName="Edit" style={{ fontSize: 13, marginRight: 5 }} />{isDe ? 'Angaben anpassen' : 'Edit details'}
           </button>
