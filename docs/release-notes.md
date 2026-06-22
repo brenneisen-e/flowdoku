@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.47.0 | 2026-06-22 | Bugfix | Entwurfs-Events lassen sich wieder löschen: (1) Test-Anmeldungen auf einem Entwurf (nie öffentlich, z.B. Organizer meldet sich selbst an) lösen keine Aufbewahrungs-Sperre mehr aus — Entwürfe sind immer mit einfachem Ja löschbar. (2) Bei aktiven Events zählen nur noch AKTIVE Anmeldungen, nicht mehr abgemeldete. |
 | 24.46.0 | 2026-06-22 | Feature | Hat ein Event schon ein eigenes Assistenz-Feld (Personen-Feld mit „auf CC setzen"), läuft die Info-Freischaltung automatisch über dieses Feld — ohne die zusätzliche „Meine Assistenz informieren"-Abfrage. Die dort angegebene Person sieht die Anmeldung als Info in ihrer „Assistenz"-Kachel und kann Änderung/Abmeldung anfordern. Gilt für jeden Anmelder. |
 | 24.45.0 | 2026-06-22 | Bugfix | Die Abfrage „Meine Assistenz informieren" bei der Anmeldung erscheint jetzt für Partner UND Directoren (sowie Admins). Vorher wurde nur „Director" geprüft, Partner gingen leer aus. |
 | 24.44.0 | 2026-06-22 | Bugfix | Der Knopf „An die Person übergeben" in der Assistenz-Kachel erscheint jetzt nur noch bei Admins und Organizern des Events — nur sie haben die Rechte zum Umhängen der Anmeldung. |
