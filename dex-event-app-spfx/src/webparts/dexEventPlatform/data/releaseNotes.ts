@@ -44,6 +44,7 @@ export interface ReleaseNote {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '24.22.0', date: '2026-06-22', bereich: 'Allgemein', type: 'Feature', text: '„Über die App" ist jetzt oben im Kopfbereich erreichbar (links neben „Handbuch") statt unten auf der Startseite. Außerdem ist der Willkommenstext zweizeilig (Begrüßung oben, Beschreibung darunter) und der „Start"-Button hat dieselbe Breite wie die grüne „DEX für dein Event nutzen"-Box.' },
   { version: '24.21.0', date: '2026-06-22', bereich: 'Allgemein', type: 'Bugfix', text: 'Der Willkommenstext auf der Startseite wird nicht mehr auf die Breite des Grußes begrenzt — das wirkte zu gequetscht. Jetzt nutzt er wieder die normale, gut lesbare Breite.' },
   { version: '24.21.0', date: '2026-06-22', bereich: 'Allgemein', type: 'Feature', text: 'Startseite: Der Untertext der grünen Box lautet jetzt „Werde Organizer und nutze alle Funktionen.". Der Link „Über die App" ist nicht mehr unterstrichen.' },
   { version: '24.20.0', date: '2026-06-22', bereich: 'Allgemein', type: 'Feature', text: 'Die Startseite begrüßt jetzt tageszeitabhängig — „Guten Morgen / Guten Tag / Guten Abend <Name>" statt immer „Hallo". Darunter steht ein neuer Willkommenstext: „Willkommen bei DEX – unserer neuen App für die Organisation von Deloitte Events. Von der Anmeldung bis zum Check-in: alles an einer Stelle."' },

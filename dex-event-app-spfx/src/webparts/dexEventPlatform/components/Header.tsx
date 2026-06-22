@@ -14,9 +14,10 @@ import { useDialog } from '../context/DialogContext';
 import { DELOITTE_LOGO_HEADER } from '../data/brandLogos';
 import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
-import { ChevronLeft, Settings, Book, RefreshCw } from './Icons';
+import { ChevronLeft, Settings, Book, RefreshCw, Info } from './Icons';
 import { Icon } from '@fluentui/react/lib/Icon';
 import ImpersonateModal from './ImpersonateModal';
+import LandingInfoModal from './LandingInfoModal';
 import GlobalSearch from './GlobalSearch';
 import { useTutorial } from './tutorial/TutorialGuide';
 
@@ -33,6 +34,9 @@ export default function Header(): React.ReactElement {
   const { showAlert } = useDialog();
   // v24.19: Tutorial-CTA wandert von der Landing Page mittig in den Header.
   const { openTutorial } = useTutorial();
+  // v24.22: „Über die App" liegt jetzt im Header (links neben Handbuch) — das
+  // Info-Modal wird hier verwaltet statt auf der Landing Page.
+  const [showAbout, setShowAbout] = React.useState(false);
   const [showPopup, setShowPopup] = React.useState(false);
   const isLanding = currentPage === 'landing';
   const isStart = currentPage === 'start';
@@ -278,6 +282,21 @@ export default function Header(): React.ReactElement {
             )}
           </button>
         )}
+        {/* v24.22: „Über die App" — von der Landing Page in den Header verlegt,
+            links neben „Handbuch". Öffnet dasselbe Info-Modal. */}
+        <button
+          className="header-icon-btn"
+          onClick={() => setShowAbout(true)}
+          title={locale === 'de' ? 'Über die App' : 'About the app'}
+          style={isMobile ? {} : { width: 'auto', padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 8 }}
+        >
+          <Info size={18} />
+          {!isMobile && (
+            <span style={{ fontSize: '0.85rem', fontWeight: 500, lineHeight: 1 }}>
+              {locale === 'de' ? 'Über die App' : 'About the app'}
+            </span>
+          )}
+        </button>
         <button
           className="header-icon-btn"
           onClick={() => navigate('manual')}
@@ -479,6 +498,7 @@ export default function Header(): React.ReactElement {
         </div>
       </div>
       <ImpersonateModal open={showImpersonate} onClose={() => setShowImpersonate(false)} />
+      <LandingInfoModal open={showAbout} locale={locale === 'de' ? 'de' : 'en'} onClose={() => setShowAbout(false)} />
     </header>
     </div>
   );
