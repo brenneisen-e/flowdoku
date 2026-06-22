@@ -299,6 +299,12 @@ function AppContent(): React.ReactElement {
             navigate('my-events');
           }
         }
+      } else if (action === 'assistreq') {
+        // v24.42: Deep-Link aus der Anforderungs-Mail. Die verwaltende Person
+        // (Owner) landet in „Meine Events" — dort sieht sie die offene
+        // Anforderung als Banner und kann sie nach Erledigung quittieren.
+        didHandleDeepLink.current = true;
+        navigate('my-events');
       } else if ((action === 'admin' || action === 'checkin') && eventParam) {
         // Deep-Link für Organizer/Admin direkt ins jeweilige Event springen —
         // z.B. ?action=admin&event=35 öffnet das Admin Center mit Event mit

@@ -388,8 +388,9 @@ interface EventContextType {
   /** v24.41: Alle aktiven Assistenz-Verknüpfungen des Users (als Person,
    *  Assistenz oder Owner) — Basis für Info-Ansichten + Anforderungen. */
   getMyAssistantLinks: () => Promise<AssistantLink[]>;
-  /** v24.42: Änderungs-/Abmelde-Anforderung auf einem Link stellen. */
-  requestAssistantChange: (linkId: number, requestType: 'change' | 'cancel', note: string) => Promise<boolean>;
+  /** v24.42: Änderungs-/Abmelde-Anforderung stellen (schreibt die Anforderung +
+   *  schickt dem Owner eine Deeplink-Mail). */
+  requestAssistantChange: (link: AssistantLink, requestType: 'change' | 'cancel', note: string) => Promise<boolean>;
   /** v24.42: Anforderung als erledigt/abgelehnt markieren (Owner). */
   resolveAssistantRequest: (linkId: number, decision: 'Done' | 'Rejected') => Promise<boolean>;
   /** v18.33: Self-Check-in über einen gescannten QR-Deep-Link. Löst das Event
@@ -3721,14 +3722,57 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     catch { return []; }
   }
 
-  async function requestAssistantChange(linkId: number, requestType: 'change' | 'cancel', note: string): Promise<boolean> {
-    if (!eventService) return false;
-    const ok = await eventService.setAssistantLinkRequest(linkId, {
+  async function requestAssistantChange(link: AssistantLink, requestType: 'change' | 'cancel', note: string): Promise<boolean> {
+    if (!eventService || !link?.id) return false;
+    const requesterName = (currentUserName || '').trim() || currentUserEmail;
+    const ok = await eventService.setAssistantLinkRequest(link.id, {
       requestType, note,
       requestedByEmail: currentUserEmail,
-      requestedByName: (currentUserName || '').trim() || currentUserEmail,
+      requestedByName: requesterName,
     });
-    return ok;
+    if (!ok) return false;
+    // Deeplink-Mail an den OWNER (wer die Anmeldung verwaltet), damit er die
+    // Änderung/Abmeldung ausführt. Best-effort — gated über DisableEmails des
+    // Events (falls auffindbar).
+    try {
+      const ev = events.find(e => e.id === link.eventId);
+      if (ev && ev.disableEmails) return true; // Mails aus → nur die Liste, keine Mail
+      const isDe = !(ev && ev.emailLanguage === 'EN');
+      const actionLabel = requestType === 'cancel'
+        ? (isDe ? 'Abmeldung' : 'Cancellation')
+        : (isDe ? 'Änderung der Angaben' : 'Change of details');
+      const deepLink = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView&action=assistreq&id=${link.id}`;
+      const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const heading = isDe ? 'Anforderung an dich' : 'Request for you';
+      const sub = isDe ? `${actionLabel} — ${link.eventTitle || ''}` : `${actionLabel} — ${link.eventTitle || ''}`;
+      const body = isDe
+        ? `<p>Hallo,</p>
+           <p><strong>${esc(requesterName)}</strong> bittet dich um eine <strong>${esc(actionLabel)}</strong> für die folgende Anmeldung, die DU verwaltest:</p>
+           <p style="margin:12px 0;padding:10px 14px;background:#f3f7ec;border-radius:8px;">
+             <strong>Event:</strong> ${esc(link.eventTitle || link.eventId)}<br/>
+             <strong>Angemeldete Person:</strong> ${esc(link.participantName || link.participantEmail)}<br/>
+             ${note ? `<strong>Anmerkung:</strong> ${esc(note)}` : ''}
+           </p>
+           <p>Bitte führe die ${esc(actionLabel)} in der DEX-App aus (deine „Assistenz"-Kachel bzw. „Meine Events"):</p>
+           <p><a href="${deepLink}" style="display:inline-block;background:#86bc25;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;">In DEX öffnen</a></p>
+           <p>Vielen Dank!</p>`
+        : `<p>Hello,</p>
+           <p><strong>${esc(requesterName)}</strong> asks you for a <strong>${esc(actionLabel)}</strong> for the following registration that YOU manage:</p>
+           <p style="margin:12px 0;padding:10px 14px;background:#f3f7ec;border-radius:8px;">
+             <strong>Event:</strong> ${esc(link.eventTitle || link.eventId)}<br/>
+             <strong>Registered person:</strong> ${esc(link.participantName || link.participantEmail)}<br/>
+             ${note ? `<strong>Note:</strong> ${esc(note)}` : ''}
+           </p>
+           <p>Please perform the ${esc(actionLabel)} in the DEX app (your „Assistant" tile or „My Events"):</p>
+           <p><a href="${deepLink}" style="display:inline-block;background:#86bc25;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;">Open in DEX</a></p>
+           <p>Many thanks!</p>`;
+      const subject = isDe
+        ? `Anforderung: ${actionLabel} — ${link.eventTitle || ''}`
+        : `Request: ${actionLabel} — ${link.eventTitle || ''}`;
+      const wrapped = wrapTemplate('#86bc25', heading, sub, body);
+      await eventService.queueEmail(subject, link.ownerEmail, link.ownerEmail, wrapped, 'Info', link.eventTitle || '', link.eventId);
+    } catch (err) { console.warn('[DEX] requestAssistantChange mail failed:', err); }
+    return true;
   }
 
   async function resolveAssistantRequest(linkId: number, decision: 'Done' | 'Rejected'): Promise<boolean> {

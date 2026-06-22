@@ -52,10 +52,10 @@ function fieldVisible(f: EventSpecificField, data: Record<string, string>): bool
 }
 
 export default function AssistantPage(): React.ReactElement {
-  const { events, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, registerForEvent, childEventsOf, getMyAssistantLinks } = useEvents();
+  const { events, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, registerForEvent, childEventsOf, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest } = useEvents();
   const { navigate } = useNavigation();
   const { locale } = useLanguage();
-  const { confirmDialog, showAlert } = useDialog();
+  const { confirmDialog, showAlert, promptDialog } = useDialog();
   const { searchUsers, searchUser } = useRoles();
   const { currentUser } = useCurrentUser();
   const meLc = (currentUser?.email || '').toLowerCase().trim();
@@ -64,29 +64,41 @@ export default function AssistantPage(): React.ReactElement {
   const [loading, setLoading] = React.useState(true);
   const [groups, setGroups] = React.useState<Group[]>([]);
   const [busyKey, setBusyKey] = React.useState<string | null>(null);
-  // v24.41: INFO-Verknüpfungen — eine Person hat sich SELBST angemeldet und mich
-  // als Assistenz hinterlegt. Ich sehe die Anmeldung nur als Info (read-only),
-  // der Owner ist die Person selbst.
-  const [infoLinks, setInfoLinks] = React.useState<import('../services/EventService').AssistantLink[]>([]);
-  React.useEffect(() => {
-    let cancelled = false;
-    getMyAssistantLinks().then(list => {
-      if (cancelled) return;
-      // Nur Links, bei denen ICH die Assistenz bin und NICHT der Owner
-      // (Owner = die Person selbst = Szenario A). Pro Event ein Eintrag.
-      const seen = new Set<string>();
-      const filtered = (list || []).filter(l => {
-        if (l.status !== 'Active') return false;
-        if ((l.assistantEmail || '').toLowerCase() !== meLc) return false; // ich bin die hinterlegte Assistenz
-        if ((l.ownerEmail || '').toLowerCase() === meLc) return false;     // ich bin NICHT Owner (sonst editierbar)
-        if (seen.has(l.eventId)) return false;
-        seen.add(l.eventId);
-        return true;
-      });
-      setInfoLinks(filtered);
-    }).catch(() => { /* */ });
-    return () => { cancelled = true; };
-  }, [getMyAssistantLinks, meLc]);
+  // v24.41/42: Assistenz-Verknüpfungen. infoLinks = Person hat sich SELBST
+  // angemeldet und mich als Assistenz hinterlegt (read-only Info + Anforderung).
+  // openRequests = offene Anforderungen AN MICH (ich verwalte die Anmeldung).
+  const [allLinks, setAllLinks] = React.useState<import('../services/EventService').AssistantLink[]>([]);
+  const reloadLinks = React.useCallback(() => {
+    getMyAssistantLinks().then(list => setAllLinks(list || [])).catch(() => { /* */ });
+  }, [getMyAssistantLinks]);
+  React.useEffect(() => { reloadLinks(); }, [reloadLinks]);
+  const infoLinks = (() => {
+    const seen = new Set<string>();
+    return (allLinks || []).filter(l => {
+      if (l.status !== 'Active') return false;
+      if ((l.assistantEmail || '').toLowerCase() !== meLc) return false;
+      if ((l.ownerEmail || '').toLowerCase() === meLc) return false;
+      if (seen.has(l.eventId)) return false;
+      seen.add(l.eventId);
+      return true;
+    });
+  })();
+  const openRequestsToMe = (allLinks || []).filter(l =>
+    (l.ownerEmail || '').toLowerCase() === meLc && l.status === 'Active' && l.requestStatus === 'Open' && !!l.requestType);
+  const submitInfoRequest = async (link: import('../services/EventService').AssistantLink, type: 'change' | 'cancel'): Promise<void> => {
+    const note = await promptDialog(
+      isDe ? (type === 'cancel' ? 'Abmeldung anfordern — kurze Anmerkung (optional):' : 'Änderung anfordern — was soll geändert werden?')
+           : (type === 'cancel' ? 'Request cancellation — short note (optional):' : 'Request change — what should change?'),
+      { defaultValue: '' });
+    if (note === null) return;
+    const ok = await requestAssistantChange(link, type, note || '');
+    if (ok) { await showAlert(isDe ? 'Anforderung gesendet — die verwaltende Person bekommt eine Mail mit Direktlink.' : 'Request sent.', { variant: 'success' }); reloadLinks(); }
+    else await showAlert(isDe ? 'Anforderung konnte nicht gesendet werden.' : 'Request failed.', { variant: 'error' });
+  };
+  const resolveOwnerReq = async (link: import('../services/EventService').AssistantLink, decision: 'Done' | 'Rejected'): Promise<void> => {
+    const ok = await resolveAssistantRequest(link.id, decision);
+    if (ok) { await showAlert(isDe ? (decision === 'Done' ? 'Als erledigt markiert.' : 'Abgelehnt.') : 'Done.', { variant: 'success' }); reloadLinks(); }
+  };
 
   // Edit-/Register-Modal-State.
   const [fieldModal, setFieldModal] = React.useState<{
@@ -405,8 +417,40 @@ export default function AssistantPage(): React.ReactElement {
         </div>
       </div>
 
+      {/* v24.42: Offene Anforderungen AN MICH (ich verwalte die Anmeldung). */}
+      {openRequestsToMe.length > 0 && (
+        <div style={{ margin: '4px 0 18px', background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange, #ed8b00)', borderRadius: 12, padding: '14px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <Icon iconName="Mail" style={{ fontSize: 18, color: 'var(--dex-orange, #ed8b00)' }} />
+            <strong style={{ fontSize: '0.95rem', color: '#b35a00' }}>
+              {isDe ? `Offene Anforderungen (${openRequestsToMe.length})` : `Open requests (${openRequestsToMe.length})`}
+            </strong>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {openRequestsToMe.map(l => (
+              <div key={l.id} style={{ fontSize: '0.85rem', borderTop: '1px solid rgba(237,139,0,0.25)', paddingTop: 8 }}>
+                <div>
+                  <strong>{l.requestType === 'cancel' ? (isDe ? 'Abmeldung' : 'Cancellation') : (isDe ? 'Änderung' : 'Change')}</strong>
+                  {' · '}{l.eventTitle || l.eventId} · {l.participantName || l.participantEmail}
+                </div>
+                <div style={{ color: 'var(--dex-gray-600)', fontSize: '0.8rem', marginTop: 2 }}>
+                  {isDe ? 'von' : 'from'} {l.requestedByName || l.requestedByEmail}{l.requestNote ? ` — „${l.requestNote}"` : ''}
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                  <button type="button" style={btnPrimary} onClick={() => { void resolveOwnerReq(l, 'Done'); }}>{isDe ? 'Als erledigt markieren' : 'Mark as done'}</button>
+                  <button type="button" style={btnSecondary} onClick={() => { void resolveOwnerReq(l, 'Rejected'); }}>{isDe ? 'Ablehnen' : 'Reject'}</button>
+                </div>
+                <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.76rem', marginTop: 4 }}>
+                  {isDe ? 'Führe die Änderung/Abmeldung unten bei der Person aus, dann hier als erledigt markieren.' : 'Perform it below, then mark done here.'}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* v24.41: INFO — Anmeldungen, bei denen ich als Assistenz hinterlegt
-          wurde, die die Person aber SELBST verwaltet (read-only). */}
+          wurde, die die Person aber SELBST verwaltet (read-only + Anforderung). */}
       {infoLinks.length > 0 && (
         <div style={{ margin: '4px 0 18px', background: 'rgba(0,114,188,0.06)', border: '1px solid #0072bc', borderRadius: 12, padding: '14px 16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -417,14 +461,22 @@ export default function AssistantPage(): React.ReactElement {
           </div>
           <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: '#5a6b78', lineHeight: 1.5 }}>
             {isDe
-              ? 'Diese Personen haben sich SELBST angemeldet und dich als Assistenz angegeben. Sie verwalten ihre Anmeldung selbst — du siehst sie hier nur zur Info. Eine Änderung/Abmeldung kannst du anfordern (kommt in Kürze).'
-              : 'These people registered THEMSELVES and named you as their assistant. They manage their own registration — shown here for your information. You can request a change/cancellation (coming soon).'}
+              ? 'Diese Personen haben sich SELBST angemeldet und dich als Assistenz angegeben. Sie verwalten ihre Anmeldung selbst — du siehst sie hier zur Info und kannst eine Änderung/Abmeldung anfordern (die Person bekommt eine Mail mit Direktlink).'
+              : 'These people registered THEMSELVES and named you as their assistant. They manage it themselves — shown for info; you can request a change/cancellation (they get a mail with a direct link).'}
           </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {infoLinks.map((l, i) => (
               <div key={`${l.eventId}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.86rem' }}>
                 <strong>{l.participantName || l.participantEmail}</strong>
                 <span style={{ color: 'var(--dex-gray-500)' }}>· {l.eventTitle || l.eventId}</span>
+                {l.requestStatus === 'Open' ? (
+                  <span style={{ color: 'var(--dex-orange-dark, #b35a00)', fontSize: '0.78rem' }}>· {isDe ? 'Anforderung gesendet' : 'Request sent'}</span>
+                ) : (
+                  <span style={{ display: 'inline-flex', gap: 6 }}>
+                    <button type="button" style={btnSecondary} onClick={() => { void submitInfoRequest(l, 'change'); }}>{isDe ? 'Änderung anfordern' : 'Request change'}</button>
+                    <button type="button" style={btnDanger} onClick={() => { void submitInfoRequest(l, 'cancel'); }}>{isDe ? 'Abmeldung anfordern' : 'Request cancel'}</button>
+                  </span>
+                )}
               </div>
             ))}
           </div>
