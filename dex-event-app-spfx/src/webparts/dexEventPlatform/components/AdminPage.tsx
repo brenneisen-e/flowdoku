@@ -1818,11 +1818,47 @@ export default function AdminPage(): React.ReactElement {
     ))) return;
     setAddingToKlammer(row.emailKey);
     try {
+      // v24.39: Realen Registranten aus den Sub-Event-Zeilen ableiten (wer die
+      // Sub-Events angemeldet hat). Die Klammer-Schatten-Zeile wird DEMSELBEN
+      // zugeschrieben — NICHT dem Admin, der nur die Datenkorrektur macht.
+      // Dadurch (1) taucht die Zeile nicht fälschlich im „Assistenz" des Admins
+      // auf und (2) sieht die echte Assistenz die Klammer-Anmeldung in IHRER
+      // „Assistenz"-Kachel und kann die Klammer-Felder dort pflegen.
+      let realByEmail = '';
+      let realByName = '';
+      const subRegs = (Object.values(row.perChild).filter(Boolean) as SPRegistration[])
+        .slice()
+        .sort((a, b) => {
+          const ta = a.RegistrationDate ? new Date(a.RegistrationDate).getTime() : Number.POSITIVE_INFINITY;
+          const tb = b.RegistrationDate ? new Date(b.RegistrationDate).getTime() : Number.POSITIVE_INFINITY;
+          return ta - tb;
+        });
+      for (const r of subRegs) {
+        if ((r.RegisteredByEmail || '').trim()) { realByEmail = (r.RegisteredByEmail || '').trim(); realByName = (r.RegisteredByName || '').trim(); break; }
+      }
+      // Fallback: keine Stellvertreter-Info auf den Subs → als Selbst-Anmeldung
+      // behandeln (Schatten gehört dann der Person selbst, nicht dem Admin).
+      if (!realByEmail) { realByEmail = row.email; realByName = name; }
+
       const res = await registerForEvent(
         selectedEvent.id, {}, row.vorname || '', row.nachname || '', row.email, undefined,
         { suppressMail: true, suppressOutlook: true, proxyConsentConfirmed: true, actorAllowedAsAssistant: true }
       );
       if (res && res.ok) {
+        const regs = await getAllRegistrations(selectedEvent.id);
+        // Schatten-Zeile dem realen Registranten zuschreiben (registerForEvent
+        // hat den eingeloggten Admin als RegisteredBy gesetzt).
+        const newParent = regs.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === row.emailKey);
+        if (newParent && eventServiceRef && selectedEvent.subsiteUrl
+          && realByEmail.toLowerCase() !== (currentUser.email || '').toLowerCase()) {
+          try {
+            await eventServiceRef.adminUpdateRegistration(
+              selectedEvent.subsiteUrl, newParent.Id,
+              { RegisteredByEmail: realByEmail, RegisteredByName: realByName },
+              { name: `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email, email: currentUser.email }
+            );
+          } catch { /* best-effort */ }
+        }
         if (eventServiceRef) {
           try {
             await eventServiceRef.writeChangeLog({
@@ -1832,12 +1868,12 @@ export default function AdminPage(): React.ReactElement {
               targetName: name,
               eventId: selectedEvent.id,
               eventTitle: selectedEvent.title,
-              details: { scope: 'addedMissingKlammerRegistration', actorEmail: currentUser.email },
+              details: { scope: 'addedMissingKlammerRegistration', actorEmail: currentUser.email, attributedTo: realByEmail },
             });
           } catch { /* */ }
         }
-        const regs = await getAllRegistrations(selectedEvent.id);
-        setRegistrations(regs);
+        const regs2 = await getAllRegistrations(selectedEvent.id);
+        setRegistrations(regs2);
         showAlert(isDe ? `„${name}" wurde zum Klammer-Event hinzugefügt.` : `„${name}" was added to the umbrella event.`, { variant: 'success' });
       } else {
         showAlert(isDe ? 'Hinzufügen fehlgeschlagen — bitte erneut versuchen.' : 'Adding failed — please try again.', { variant: 'error' });
