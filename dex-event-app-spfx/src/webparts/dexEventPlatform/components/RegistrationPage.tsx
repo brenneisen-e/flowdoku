@@ -1723,8 +1723,8 @@ export default function RegistrationPage(): React.ReactElement {
             <p className="mt-8" style={{ color: 'var(--dex-gray-600)' }}>{successBody}</p>
           )}
           {(() => {
-            // v18.9: Organizer-Anzeige optional ausgeblendet.
-            if (event.hideOrganizer) return null;
+            // v18.9/v24.12: hideOrganizer blendet nicht mehr ALLE aus — einzelne
+            // Organizer werden selektiv über hiddenEmails ausgeblendet (s.u.).
             // Organizer als Chips mit Foto (gleicher Stil wie auf der
             // Anmelde-Seite). „Nachname, Vorname" → „Vorname Nachname".
             const orgs = event.organizers.reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map(o => {
@@ -1736,7 +1736,7 @@ export default function RegistrationPage(): React.ReactElement {
             return (
               <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                 <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>Organizer</div>
-                <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={event.hiddenOrganizerEmails} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} />
+                <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={event.hideOrganizer ? event.hiddenOrganizerEmails : []} forceIsDe={locale === 'de'} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} />
               </div>
             );
           })()}
@@ -2242,8 +2242,8 @@ export default function RegistrationPage(): React.ReactElement {
                 )}
               </div>
               {(() => {
-                // v18.9: Organizer-Anzeige optional ausgeblendet.
-                if (event.hideOrganizer) return null;
+                // v18.9/v24.12: hideOrganizer blendet nicht mehr ALLE aus — einzelne
+                // Organizer werden selektiv über hiddenEmails ausgeblendet (s.u.).
                 // Organizer als Chips mit Foto (Hover-Enlarge). Namen werden von "Nachname, Vorname"
                 // in "Vorname Nachname" normalisiert. v11.91: Label + Chip größer für bessere Lesbarkeit.
                 const orgs = event.organizers.reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map(o => {
@@ -2255,7 +2255,7 @@ export default function RegistrationPage(): React.ReactElement {
                 return (
                   <div style={{ marginTop: 6 }}>
                     <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, fontWeight: 600 }}>Organizer</div>
-                    <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={event.hiddenOrganizerEmails} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} />
+                    <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={event.hideOrganizer ? event.hiddenOrganizerEmails : []} forceIsDe={locale === 'de'} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} />
                   </div>
                 );
               })()}

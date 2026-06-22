@@ -8,6 +8,13 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.12.0 | 2026-06-18 | Feature | Organizer-Einstellungen als eigener Wizard-Schritt („Schritt 2 — Organizer & Team": Organizer, Ansprechpartner, Test-/Check-in-Team). Alle Folgeschritte neu nummeriert (inkl. geführter Tour und „Prüfen"-Übersicht). |
+| 24.12.0 | 2026-06-18 | Feature | Einzelne Organizer ausblenden geht erst nach Aktivierung von „Organizer einzeln ausblenden" (kein versehentliches Ausblenden per Klick). |
+| 24.12.0 | 2026-06-18 | Feature | Verständlichere Wizard-Texte: klarere Sub-Event-Erklärung; präziser Hinweis zur E-Mail-Verteiler-Speicherung. |
+| 24.11.0 | 2026-06-18 | Bugfix | Fest auf Englisch gestellte Anmeldeformulare werden jetzt vollständig englisch angezeigt (inkl. Organizer-Popup). Der Sprachumschalter zeigt die feste Sprache als aktiv; grüner Hinweis rechts daneben („Organizer set the language to English for this registration form"); Klick auf die andere Sprache meldet, dass der Organizer sie aus Einheitlichkeit festgelegt hat. |
+| 24.11.0 | 2026-06-18 | Feature | Hinweis auf löschbare abgelaufene Entwürfe jetzt auch in der Organizer-Eventübersicht (nicht nur auf der Startseite). |
+| 24.10.0 | 2026-06-18 | Feature | Rollen-Matrix als PDF herunterladbar (Querformat, Deloitte-Logo oben links, DEX-App-Logo oben rechts, komplette Berechtigungstabelle). |
+| 24.10.0 | 2026-06-18 | Feature | Wizard Schritt 1: Live-Vorschau der Organizer-Anzeige (klein/groß) unter „Anzeige auf dem Registerformular"; Ansprechpartner-Bereich default eingeklappt mit Hinweis, dass der Organizer Standard-Ansprechpartner ist und hier nur Externe (z.B. Service-Mail) eingetragen werden. |
 | 24.9.0 | 2026-06-18 | Feature | Eigenes Event als Vorlage (Teil 8 von v24): In Schritt 1 erscheint für Organizer mit bisherigen Events ein prominenter Bild-„Fächer"; Auswahl lädt Einstellungen + Bild ins neue Event (Datum/Anmeldungen/Sub-Events bleiben frisch). |
 | 24.8.0 | 2026-06-18 | Feature | Archivierungsschutz (Teil 7 von v24): Abgeschlossene/vergangene Events sind im Organizer Center schreibgeschützt — keine Abmeldungen, keine Feld-Bearbeitung, kein Bearbeiten (nur No-Show über den Check-in bleibt). Admins behalten vollen Zugriff. |
 | 24.8.0 | 2026-06-18 | Feature | Admin-Hinweis beim App-Start: Events, deren Ende > 1 Jahr zurückliegt, können (inkl. Teilnehmerliste) endgültig gelöscht werden — mit Sprung ins Organizer Center. |

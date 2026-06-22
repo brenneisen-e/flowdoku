@@ -10,6 +10,7 @@ import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
+import { useDialog } from '../context/DialogContext';
 import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
 import { ChevronLeft, Settings, Book, RefreshCw } from './Icons';
@@ -27,6 +28,7 @@ export default function Header(): React.ReactElement {
   // Check-in-Seite läuft jetzt über die globale Such-Leiste (GlobalSearch) bzw.
   // die Aktionen im Organizer Center.
   const { t, locale, setLocale } = useLanguage();
+  const { showAlert } = useDialog();
   const [showPopup, setShowPopup] = React.useState(false);
   const isLanding = currentPage === 'landing';
   const isStart = currentPage === 'start';
@@ -40,7 +42,27 @@ export default function Header(): React.ReactElement {
     (regHintEvent?.registrationLanguage === 'de' || regHintEvent?.registrationLanguage === 'en')
       ? regHintEvent.registrationLanguage : undefined;
   const showRegLangHint = currentPage === 'registration' && !!forcedRegLang;
-  const regLangHintText = forcedRegLang === 'de' ? 'Anmeldung auf Deutsch' : 'Registration in English';
+  const regLangHintText = forcedRegLang === 'de'
+    ? 'Organizer set the language to German for this registration form'
+    : 'Organizer set the language to English for this registration form';
+  // v24.11: Bei fest vorgegebener Formularsprache zeigt der Picker diese als
+  // aktiv; der Klick auf die andere Sprache wird mit Hinweis abgelehnt.
+  const pickerLang: 'de' | 'en' = forcedRegLang || locale;
+  const handleLangClick = (lang: 'de' | 'en'): void => {
+    if (forcedRegLang && forcedRegLang !== lang) {
+      const langName = forcedRegLang === 'en'
+        ? (locale === 'de' ? 'Englisch' : 'English')
+        : (locale === 'de' ? 'Deutsch' : 'German');
+      showAlert(
+        locale === 'de'
+          ? `Das ist hier nicht möglich: Der Organisator hat die Sprache dieses Anmeldeformulars aus Einheitlichkeit fest auf ${langName} gestellt.`
+          : `Not possible here: the organizer set this registration form's language to ${langName} for consistency.`,
+        { variant: 'info' },
+      );
+      return;
+    }
+    setLocale(lang);
+  };
 
   const pageIdMap: Record<string, string> = {
     'landing': 'landing',
@@ -244,24 +266,6 @@ export default function Header(): React.ReactElement {
             </span>
           )}
         </button>
-        {/* v18.40: Hinweis-Chip „Registration in English/Deutsch" jetzt RECHTS,
-            direkt links neben dem Sprach-Picker (statt neben dem Titel). */}
-        {showRegLangHint && (
-          <span
-            title={forcedRegLang === 'de'
-              ? 'Dieses Anmeldeformular wird auf Deutsch angezeigt.'
-              : 'This registration form is shown in English.'}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 5, alignSelf: 'center',
-              background: 'var(--dex-gray-100, #f0f0ee)', color: 'var(--dex-gray-600, #555)',
-              border: '1px solid var(--dex-gray-200, #e0e0e0)', borderRadius: 999,
-              padding: '3px 10px', fontSize: '0.72rem', fontWeight: 600, whiteSpace: 'nowrap',
-            }}
-          >
-            <Icon iconName="Globe" style={{ fontSize: 12 }} />
-            {regLangHintText}
-          </span>
-        )}
         {/* v7.26: Sprach-Toggle DE/EN — lässt den User auch im laufenden
             Tool zwischen Deutsch und Englisch wechseln. Visuell ein kleiner
             Pill-Toggle im Header-Style. */}
@@ -277,33 +281,51 @@ export default function Header(): React.ReactElement {
         >
           <button
             type="button"
-            onClick={() => setLocale('de')}
+            onClick={() => handleLangClick('de')}
             title="Deutsch"
             style={{
               padding: '3px 10px', borderRadius: 999,
               border: 'none', cursor: 'pointer',
               fontSize: '0.72rem', fontWeight: 700, fontFamily: 'inherit',
-              background: locale === 'de' ? '#fff' : 'transparent',
-              color: locale === 'de' ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500)',
-              boxShadow: locale === 'de' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+              background: pickerLang === 'de' ? '#fff' : 'transparent',
+              color: pickerLang === 'de' ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500)',
+              boxShadow: pickerLang === 'de' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
               transition: 'all 0.15s ease',
             }}
           >DE</button>
           <button
             type="button"
-            onClick={() => setLocale('en')}
+            onClick={() => handleLangClick('en')}
             title="English"
             style={{
               padding: '3px 10px', borderRadius: 999,
               border: 'none', cursor: 'pointer',
               fontSize: '0.72rem', fontWeight: 700, fontFamily: 'inherit',
-              background: locale === 'en' ? '#fff' : 'transparent',
-              color: locale === 'en' ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500)',
-              boxShadow: locale === 'en' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+              background: pickerLang === 'en' ? '#fff' : 'transparent',
+              color: pickerLang === 'en' ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500)',
+              boxShadow: pickerLang === 'en' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
               transition: 'all 0.15s ease',
             }}
           >EN</button>
         </div>
+        {/* v24.11: Hinweis-Chip RECHTS neben dem Picker, grün — „Organizer set
+            the language ... for this registration form". */}
+        {showRegLangHint && (
+          <span
+            title={forcedRegLang === 'de'
+              ? 'Dieses Anmeldeformular wird auf Deutsch angezeigt.'
+              : 'This registration form is shown in English.'}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 5, alignSelf: 'center',
+              background: 'rgba(134,188,37,0.14)', color: 'var(--dex-green-dark, #4a7c1f)',
+              border: '1px solid var(--dex-green, #86bc25)', borderRadius: 999,
+              padding: '3px 10px', fontSize: '0.72rem', fontWeight: 600, whiteSpace: 'nowrap',
+            }}
+          >
+            <Icon iconName="Globe" style={{ fontSize: 12 }} />
+            {regLangHintText}
+          </span>
+        )}
         {!isLanding && (
           <button
             className="header-icon-btn"

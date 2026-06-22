@@ -28,6 +28,7 @@ import AudiencePicker from './AudiencePicker';
 import ImageCropModal from './ImageCropModal';
 import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
+import OrganizerList from './OrganizerList';
 // v20.2: Self-Check-in ist aus dem Wizard ausgezogen — Aktivierung läuft
 // automatisch beim ersten Klick auf die Aktionen (Check-in-Seite, Admin
 // Center, QR-Kachel im Event-Detail); Zeitfenster + Deaktivieren im
@@ -794,6 +795,11 @@ export default function EventCreationPage(): React.ReactElement {
   const [contactName, setContactName] = React.useState<string>(editEvent ? (editEvent.contactName || '') : '');
   const [contactEmail, setContactEmail] = React.useState<string>(editEvent ? (editEvent.contactEmail || '') : '');
   const [contactInfo, setContactInfo] = React.useState<string>(editEvent ? (editEvent.contactInfo || '') : '');
+  // v24.10 (Q2): Ansprechpartner standardmäßig eingeklappt — nur aufklappen,
+  // wenn beim Bearbeiten bereits Daten hinterlegt sind.
+  const [contactExpanded, setContactExpanded] = React.useState<boolean>(
+    !!(editEvent && ((editEvent.contactName || '') || (editEvent.contactEmail || '') || (editEvent.contactInfo || '')))
+  );
 
   // v6.19: QR-Code-Scanner pro Event (beliebiger Deloitte-User, kein Admin/Organizer nötig).
   // Getrennte State-Arrays für Namen + Emails (index-synchron). Sucht via Graph-API.
@@ -3227,7 +3233,7 @@ export default function EventCreationPage(): React.ReactElement {
     if (hasSubs && (effDisableEmails || effDisableOutlook) && !requireSubEventSelection && !mainCommDisabledAck) {
       // eslint-disable-next-line no-alert
       showAlert(isDe
-        ? 'Du hast die Kommunikation für das Hauptevent deaktiviert. Bitte aktiviere in Schritt 6 (Kommunikation, Tab „Haupt-Event") entweder den Toggle „Anmeldung für mindestens ein Sub-Event verpflichtend" ODER bestätige den Ack-Haken — sonst landen Teilnehmer stumm in der Liste.'
+        ? 'Du hast die Kommunikation für das Hauptevent deaktiviert. Bitte aktiviere in Schritt 7 (Kommunikation, Tab „Haupt-Event") entweder den Toggle „Anmeldung für mindestens ein Sub-Event verpflichtend" ODER bestätige den Ack-Haken — sonst landen Teilnehmer stumm in der Liste.'
         : 'You disabled communication for the main event. Please either enable the toggle „Require selecting at least one sub-event" in step 6 OR tick the acknowledgement — otherwise attendees land silently in the list.');
       return;
     }
@@ -4581,13 +4587,13 @@ export default function EventCreationPage(): React.ReactElement {
     if (activeFieldsTabIdx > subEvents.length) setActiveFieldsTabIdx(0);
   }, [subEvents.length, activeLocationTabIdx, activeCapacityTabIdx, activeFieldsTabIdx]);
 
-  // v15: Templates laden wenn Step 6 (Kommunikation, currentStep === 5) erreicht
+  // v15: Templates laden wenn Step 6 (Kommunikation, currentStep === 6) erreicht
   // wird. Index hat sich verschoben, weil Team-Anmeldung jetzt NACH Kommunikation
   // kommt (siehe steps-Array).
   // WICHTIG: Dieser useEffect MUSS vor dem early return (if submitted) stehen,
   // da React die gleiche Anzahl Hooks bei jedem Render erwartet (Rules of Hooks).
   React.useEffect(() => {
-    if (currentStep === 5 && emailTemplates.length === 0) {
+    if (currentStep === 6 && emailTemplates.length === 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ctx = (window as any).__dexSpfxContext;
       if (ctx) {
@@ -4642,7 +4648,7 @@ export default function EventCreationPage(): React.ReactElement {
         <div>
           {isDe ? (
             <>
-              Du hast für dieses Event eingestellt, dass sich Teilnehmer <strong>nur für die {termPlural} (Sub-Sections) anmelden</strong> — die Klammer selbst ist <strong>nicht buchbar</strong>, sie fasst die {termPlural} nur zusammen. (Eingestellt in Schritt 2 „Ort &amp; Programm“ unter „Wie sollen sich Teilnehmer anmelden?“ → „Nur für {termPlural}“.) <strong>Entscheidend ist die Sichtbarkeit direkt hier unten</strong> (Standortfilter + Mailverteiler): Sie legt fest, <strong>wer das Event überhaupt sieht und sich für die {termPlural} anmelden kann</strong> — die {termPlural} übernehmen diese Sichtbarkeit standardmäßig. <strong>Plätze und Fristen</strong> stellst du nicht hier auf der Klammer ein, sondern <strong>je {childTermSingular || 'Sub-Event'}-Tab</strong> (wie viele Plätze, bis wann an-/abmelden) — die Kapazitäts- und Fristen-Felder weiter unten sind darum ausgegraut.
+              Du hast für dieses Event eingestellt, dass sich Teilnehmer <strong>nur für die {termPlural} (Sub-Sections) anmelden</strong> — die Klammer selbst ist <strong>nicht buchbar</strong>, sie fasst die {termPlural} nur zusammen. (Eingestellt in Schritt 4 „Ort &amp; Programm“ unter „Wie sollen sich Teilnehmer anmelden?“ → „Nur für {termPlural}“.) <strong>Entscheidend ist die Sichtbarkeit direkt hier unten</strong> (Standortfilter + Mailverteiler): Sie legt fest, <strong>wer das Event überhaupt sieht und sich für die {termPlural} anmelden kann</strong> — die {termPlural} übernehmen diese Sichtbarkeit standardmäßig. <strong>Plätze und Fristen</strong> stellst du nicht hier auf der Klammer ein, sondern <strong>je {childTermSingular || 'Sub-Event'}-Tab</strong> (wie viele Plätze, bis wann an-/abmelden) — die Kapazitäts- und Fristen-Felder weiter unten sind darum ausgegraut.
             </>
           ) : (
             <>
@@ -4999,12 +5005,17 @@ export default function EventCreationPage(): React.ReactElement {
       'Event-Titel und Beschreibung — werden auf der Eventliste und der Registrierungsseite angezeigt',
       'Event-Bild hochladen (wird oben auf der Detailseite und in den Mails verwendet)',
       'Als Entwurf speichern — taucht dann nur für Admins, Organizer und Test-Team auf',
-      'Organizer auswählen — bekommen alle Organizer-Mails (Cancel-/Roommate- etc.) und sehen das Event im Admin Center',
-      'Optional: QR-Code-Scanner-User für Check-In am Event-Tag (ohne weitere Bearbeitungs-Rechte)',
-      'Standort-Filter und Audience festlegen — wer das Event in der Liste sieht',
     ],
     [
-      // v15 Step 2: Sub-Events
+      // v24.12 Schritt 2: Organizer & Team
+      'Organizer auswählen — bekommen alle Organizer-Mails und sehen das Event im Admin Center; einzelne lassen sich von der Anmeldeseite ausblenden',
+      'Anzeige der Organizer auf dem Registerformular wählen (klein/groß) — mit Live-Vorschau',
+      'Optional: externen Ansprechpartner (z.B. Service-Mail) angeben',
+      'Test-Team: sieht das Event schon im Entwurf',
+      'Check-in-Team: bedient am Event-Tag nur das Check-in-Tool',
+    ],
+    [
+      // v15 Schritt 3: Sub-Events
       'Optional Sub-Events (Workshops, Sessions, Programmpunkte) anlegen — jeder bekommt im Anmeldeformular eine eigene Anmelde-Checkbox',
       'Bezeichnung wählen: Sub-Events / Workshops / Sessions / Programmpunkte / Event-Sections / eigene Bezeichnung',
       'Anmelde-Modus: zusätzlich zum Hauptevent ODER nur für Sub-Events (Hauptevent-Anmeldung dann ausgeblendet)',
@@ -5137,23 +5148,25 @@ export default function EventCreationPage(): React.ReactElement {
 
   const steps = [
     { label: t('create.step.basics'), icon: '1' },
+    // v24.12: Organizer-Einstellungen als eigener Schritt direkt nach Grundlagen.
+    { label: isDe ? 'Organizer & Team' : 'Organizers & Team', icon: '2' },
     // v15.0: Sub-Events kommen vor „Ort & Programm". Hintergrund:
-    // Steps 3-5 (Ort, Kapazität, Felder) zeigen pro-Sub-Event-Tabs,
+    // Steps 4-6 (Ort, Kapazität, Felder) zeigen pro-Sub-Event-Tabs,
     // damit der Organizer pro Sub-Event eigenes Ort / eigene Kapazität /
     // eigene Felder pflegen kann — dafür müssen die Sub-Events schon
-    // angelegt sein, deshalb ist Step 2 der Sub-Events-Step.
-    { label: t('create.step.subevents'), icon: '2' },
-    { label: t('create.step.datetime'), icon: '3' },
-    { label: t('create.step.capacity'), icon: '4' },
-    { label: t('create.step.fields'), icon: '5' },
-    { label: t('create.step.communication'), icon: '6' },
+    // angelegt sein, deshalb ist Schritt 3 der Sub-Events-Step.
+    { label: t('create.step.subevents'), icon: '3' },
+    { label: t('create.step.datetime'), icon: '4' },
+    { label: t('create.step.capacity'), icon: '5' },
+    { label: t('create.step.fields'), icon: '6' },
+    { label: t('create.step.communication'), icon: '7' },
     // v15.0: Team-Anmeldung kommt jetzt nach Kommunikation (vorher nach
     // Kapazität). Reihenfolge spiegelt den realen Setup-Workflow besser
     // wider: erst die Komm-Texte stehen, dann entscheidet der Organizer
     // ob Team-Anmeldung relevant ist.
-    { label: t('create.step.team'), icon: '7' },
-    { label: t('create.step.documents'), icon: '8' },
-    { label: t('create.step.funzone'), icon: '9' },
+    { label: t('create.step.team'), icon: '8' },
+    { label: t('create.step.documents'), icon: '9' },
+    { label: t('create.step.funzone'), icon: '10' },
   ];
 
   // Tooltip-State: welcher Step zeigt gerade seinen Hint-Tooltip an?
@@ -5163,36 +5176,33 @@ export default function EventCreationPage(): React.ReactElement {
     const errors: string[] = [];
     switch (currentStep) {
       case 0:
-        // v11.8 BUG-FIX: startDate / endDate / endBeforeStart-Check
-        // ist von case 1 nach case 0 gewandert, weil die Felder
-        // schon in Schritt 1 (Grundlagen) eingegeben werden — wenn
-        // die Validierung erst beim Verlassen von Schritt 2 (Ort &
-        // Programm) ausgewertet wurde, hatte der Weiter-Button keinen
-        // sichtbaren Effekt: die DatePicker-Felder sind in Step 2 gar
-        // nicht sichtbar, der User sah nicht warum's nicht weiterging.
+        // Schritt 1 (Grundlagen): Titel + Datum sind Pflicht. Die Datum-Checks
+        // laufen hier, weil die DatePicker schon in Grundlagen stehen.
         if (!title) errors.push('title');
-        if (!organizer) errors.push('organizer');
         if (!startDate) errors.push('startDate');
         if (!endDate) errors.push('endDate');
         if (startDate && endDate && new Date(endDate) <= new Date(startDate)) errors.push('endBeforeStart');
         // v9.14: description ist optional — kein Pflichtfeld mehr
         break;
       case 1:
-        // Schritt 2 (Sub-Events) ist ohne Pflicht-Validierung — der
+        // v24.12: Schritt 2 (Organizer & Team) — mindestens ein Organizer ist Pflicht.
+        if (!organizer) errors.push('organizer');
+        break;
+      case 2:
+        // Schritt 3 (Sub-Events) ist ohne Pflicht-Validierung — der
         // Organizer kann den Schritt auch komplett leer lassen.
-        // (v15.0: Sub-Events kommen jetzt VOR Ort & Programm.)
         // v18.36: Aber WENN ein Sub-Event Datum hat, darf das Ende nicht vor
         // dem Start liegen — sonst failt der Outlook-Create-Flow mit HTTP 400.
         if (subEvents.some(s => s.title && s.title.trim() && s.startDate && s.endDate && new Date(s.endDate) <= new Date(s.startDate))) {
           errors.push('subEventEndBeforeStart');
         }
         break;
-      case 2:
-        // Schritt 3 (Ort & Programm) ist ohne Pflicht-Validierung —
-        // Adresse / Agenda / Transferzeiten sind alle optional. Datum-
-        // Checks laufen in case 0 (Grundlagen).
-        break;
       case 3:
+        // Schritt 4 (Ort & Programm) ist ohne Pflicht-Validierung —
+        // Adresse / Agenda / Transferzeiten sind alle optional.
+        break;
+      case 4:
+        // Schritt 5 (Kapazität & Sichtbarkeit).
         if (registrationDeadline && startDate && new Date(registrationDeadline) > new Date(startDate)) errors.push('deadlineAfterStart');
         if (lastDeregisterDate && startDate && new Date(lastDeregisterDate) > new Date(startDate)) errors.push('deregAfterStart');
         if (!unlimitedParticipants && (maxParticipants === '' || isNaN(Number(maxParticipants)) || Number(maxParticipants) < 0)) errors.push('maxParticipants');
@@ -6469,6 +6479,19 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
 
 
+              </div>{/* v24.12: Ende Schritt 1 (Grundlagen) */}
+
+              {/* v24.12: Organizer-Einstellungen als eigener Wizard-Schritt (Schritt 2). */}
+              <div style={{ display: currentStep === 1 ? 'block' : 'none' }}>
+              <h2 className="dex-step-head-title">
+                {isDe ? 'Schritt 2 — Organizer & Team' : 'Step 2 — Organizers & Team'}
+              </h2>
+              <p className="dex-step-head-lead">
+                {isDe
+                  ? 'Wer verantwortet das Event (Organizer), wer ist Ansprechpartner und welches erweiterte Team (Test-Team, Check-in-Team) ist beteiligt.'
+                  : 'Who runs the event (organizers), who is the contact, and which extended team (test team, check-in team) is involved.'}
+              </p>
+
               {/* v24.4 (G): Zwischenüberschrift „Organizer" mit grünem Balken. */}
               <div style={{ borderLeft: '4px solid var(--dex-green)', padding: '4px 0 4px 12px', margin: '4px 0 18px' }}>
                 <div style={{ fontWeight: 800, fontSize: '1.02rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Organizer' : 'Organizers'}</div>
@@ -6570,7 +6593,10 @@ export default function EventCreationPage(): React.ReactElement {
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
                       {orgList.map((name, i) => {
                         const email = organizerEmails[i] || '';
-                        const orgHidden = !!email && hiddenOrganizerEmails.indexOf(email.toLowerCase()) >= 0;
+                        // v24.12 (J-Gate): Einzel-Ausblenden nur wenn „Organizer
+                        // einzeln ausblenden" aktiv ist; sonst Chips nicht klickbar.
+                        const canHideToggle = hideOrganizer && !!email;
+                        const orgHidden = hideOrganizer && !!email && hiddenOrganizerEmails.indexOf(email.toLowerCase()) >= 0;
                         return (
                         <span
                           key={`${name}-${i}`}
@@ -6593,9 +6619,9 @@ export default function EventCreationPage(): React.ReactElement {
                           {/* v24.8 (J): Klick auf den Namen blendet diesen Organizer
                               auf der Anmelde-Seite aus/ein (Rechte bleiben). */}
                           <span
-                            onClick={() => { if (email) toggleOrganizerHidden(email); }}
-                            title={email ? (isDe ? (orgHidden ? 'Wird auf der Anmeldeseite NICHT angezeigt — klicken zum Einblenden (Rechte bleiben)' : 'Klicken, um diesen Organizer auf der Anmeldeseite auszublenden (Rechte bleiben)') : (orgHidden ? 'Hidden on the registration page — click to show' : 'Click to hide this organizer on the registration page')) : undefined}
-                            style={{ cursor: email ? 'pointer' : 'default', textDecoration: orgHidden ? 'line-through' : 'none' }}
+                            onClick={() => { if (canHideToggle) toggleOrganizerHidden(email); }}
+                            title={canHideToggle ? (isDe ? (orgHidden ? 'Wird auf der Anmeldeseite NICHT angezeigt — klicken zum Einblenden (Rechte bleiben)' : 'Klicken, um diesen Organizer auf der Anmeldeseite auszublenden (Rechte bleiben)') : (orgHidden ? 'Hidden on the registration page — click to show' : 'Click to hide this organizer on the registration page')) : (isDe ? 'Zum Ausblenden zuerst „Organizer einzeln ausblenden" aktivieren' : 'Enable „Hide individual organizers" first')}
+                            style={{ cursor: canHideToggle ? 'pointer' : 'default', textDecoration: orgHidden ? 'line-through' : 'none' }}
                           >{name}</span>
                           {orgHidden && <span style={{ fontSize: '0.68rem', fontStyle: 'italic', opacity: 0.95 }}>{isDe ? '(ausgeblendet)' : '(hidden)'}</span>}
                           {orgList.length > 1 && i > 0 && (
@@ -6623,11 +6649,15 @@ export default function EventCreationPage(): React.ReactElement {
                         </span>
                       );
                       })}
-                      {/* v24.8 (J): Tipp unter den Organizer-Namen. */}
+                      {/* v24.8 (J) / v24.12 (Gate): Tipp unter den Organizer-Namen. */}
                       <span style={{ flexBasis: '100%', fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
                         {isDe
-                          ? 'Tipp: Auf einen Namen klicken blendet diese Person auf der Anmeldeseite aus (sie behält alle Rechte). Erneut klicken zeigt sie wieder.'
-                          : 'Tip: click a name to hide that person on the registration page (they keep all rights). Click again to show.'}
+                          ? (hideOrganizer
+                              ? 'Tipp: Auf einen Namen klicken blendet diese Person auf der Anmeldeseite aus (sie behält alle Rechte). Erneut klicken zeigt sie wieder.'
+                              : 'Tipp: Aktiviere oben „Organizer einzeln ausblenden", dann kannst du hier per Klick auf einen Namen einzelne Organizer ausblenden.')
+                          : (hideOrganizer
+                              ? 'Tip: click a name to hide that person on the registration page (they keep all rights). Click again to show.'
+                              : 'Tip: enable „Hide individual organizers" above, then click a name here to hide that organizer.')}
                       </span>
                     </div>
                   );
@@ -6737,23 +6767,23 @@ export default function EventCreationPage(): React.ReactElement {
                     style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 2 }}
                   />
                   <span style={{ flex: 1 }}>
-                    <strong>{isDe ? 'Organizer ausblenden' : 'Hide organizer'}</strong>
+                    <strong>{isDe ? 'Organizer einzeln ausblenden' : 'Hide individual organizers'}</strong>
                     <InfoTooltip text={isDe
                       ? <>
-                          <strong>Was du hier einstellst:</strong> ob die <strong>Organizer-Kacheln</strong> (Name + Foto + Mail) auf der <strong>Anmelde-Seite</strong> und in <strong>&bdquo;Meine Events&ldquo;</strong> angezeigt werden.<br /><br />
-                          <strong>Anzeige in der App:</strong> wenn aktiviert, sehen Teilnehmer <strong>keine Organizer-Ansprechpartner</strong> mehr bei diesem Event. Der optionale Ansprechpartner unten bleibt davon unberührt.<br /><br />
+                          <strong>Was du hier einstellst:</strong> ob du <strong>einzelne Organizer</strong> von der <strong>Anmelde-Seite</strong> (und &bdquo;Meine Events&ldquo;) ausblenden möchtest.<br /><br />
+                          <strong>Anzeige in der App:</strong> aktivierst du diese Option, kannst du unten bei den Organizer-Chips per <strong>Klick auf einen Namen</strong> genau diese Person ausblenden. Ohne Auswahl bleiben alle sichtbar.<br /><br />
                           <strong>Wichtig:</strong> das ist rein optisch — die Organizer behalten alle <strong>Rechte</strong> (bearbeiten, Teilnehmer verwalten) und ihre <strong>Mail-Benachrichtigungen</strong>.
                         </>
                       : <>
-                          <strong>What this controls:</strong> whether the <strong>organizer chips</strong> (name + photo + email) are shown on the <strong>registration page</strong> and in <strong>&bdquo;My Events&ldquo;</strong>.<br /><br />
-                          <strong>Where you see it:</strong> when enabled, attendees no longer see organizer contacts for this event. The optional contact person below is not affected.<br /><br />
-                          <strong>Note:</strong> this is purely visual — organizers keep all <strong>permissions</strong> (edit, manage attendees) and their <strong>email notifications</strong>.
+                          <strong>What this controls:</strong> whether you want to hide <strong>individual organizers</strong> from the <strong>registration page</strong> (and &bdquo;My Events&ldquo;).<br /><br />
+                          <strong>Where you see it:</strong> when enabled, click an organizer chip below to hide exactly that person. With no selection, all stay visible.<br /><br />
+                          <strong>Note:</strong> this is purely visual — organizers keep all <strong>permissions</strong> and their <strong>email notifications</strong>.
                         </>
                     } />
                     <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
                       {isDe
-                        ? 'Default: aus — Organizer werden als Ansprechpartner angezeigt.'
-                        : 'Default: off — organizers are shown as contacts.'}
+                        ? 'Default: aus — alle Organizer werden angezeigt. An: unten einzelne Organizer per Klick ausblenden.'
+                        : 'Default: off — all organizers are shown. On: click individual organizer chips below to hide them.'}
                     </span>
                   </span>
                 </label>
@@ -6765,9 +6795,9 @@ export default function EventCreationPage(): React.ReactElement {
                   werden (also nicht „ausgeblendet"). */}
               {!hideOrganizer && (
                 <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
-                  {/* v24.4 (I): explizite Wahl klein/groß statt einzelnem Toggle. */}
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {isDe ? 'Anzeige im Register-Screen:' : 'Display on the registration screen:'}
+                  {/* v24.4 (I) / v24.10 (Q): grüne Zwischenüberschrift + Live-Vorschau. */}
+                  <div className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                    {isDe ? 'Anzeige auf dem Registerformular' : 'Display on the registration form'}
                     <InfoTooltip text={isDe
                       ? <>
                           <strong>Was du hier einstellst:</strong> wie die <strong>Organizer</strong> auf der Anmelde-Seite dargestellt werden.<br /><br />
@@ -6780,7 +6810,7 @@ export default function EventCreationPage(): React.ReactElement {
                           <strong>Large:</strong> organizers are shown <strong>large permanently</strong> (big photo, name, clickable <strong>email</strong>, role &amp; location).
                         </>
                     } />
-                  </label>
+                  </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
                     <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
                       <input
@@ -6817,6 +6847,25 @@ export default function EventCreationPage(): React.ReactElement {
                       </span>
                     </label>
                   </div>
+                  {/* v24.10 (Q): Live-Vorschau — so sieht der Teilnehmer die Organizer. */}
+                  {(() => {
+                    const _orgNames = organizer.split(';').map(s => s.trim()).filter(Boolean);
+                    if (_orgNames.length === 0) return null;
+                    return (
+                      <div style={{ marginTop: 14, padding: 14, background: 'var(--dex-gray-50, #f7f8f9)', border: '1px dashed var(--dex-gray-300)', borderRadius: 10 }}>
+                        <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3, color: 'var(--dex-gray-500)', marginBottom: 8 }}>
+                          {isDe ? 'Vorschau (so sehen es die Teilnehmer)' : 'Preview (what attendees see)'}
+                        </div>
+                        <OrganizerList
+                          names={_orgNames}
+                          emails={organizerEmails}
+                          hiddenEmails={hiddenOrganizerEmails}
+                          size="md"
+                          display={organizerDisplayLarge ? 'card' : 'chip'}
+                        />
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -6826,19 +6875,27 @@ export default function EventCreationPage(): React.ReactElement {
                   sollen. Wird auf Register-/MyEvents-Page zusätzlich zu den
                   Organizern gezeigt. Alles drei optional, Freitext. */}
               <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {/* v24.10 (Q2): einklappbar, default zu. */}
+                <label
+                  className="form-label"
+                  onClick={() => setContactExpanded(v => !v)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}
+                >
                   <span style={{
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                     width: 22, height: 22, borderRadius: '50%',
                     background: 'var(--dex-gray-300)', color: '#fff',
                     fontSize: '0.75rem', fontWeight: 700,
-                  }}>+</span>
+                  }}>{contactExpanded ? '–' : '+'}</span>
                   {isDe ? 'Ansprechpartner (optional)' : 'Contact person (optional)'}
                 </label>
+                {contactExpanded && (
+                <>
+                {/* v24.10 (Q3): Organizer ist Standard-Ansprechpartner; hier nur Externe. */}
                 <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: '0 0 10px', lineHeight: 1.5 }}>
                   {isDe
-                    ? 'Zusätzliche Kontaktperson für Rückfragen — z.B. Person vor Ort, externe Agentur, Hotline-Mailbox. Erscheint auf der Anmelde-Seite und in „Meine Events" zusätzlich zu den Organizern. Hat KEINE App-Berechtigung, ist nur ein Anzeige-Feld.'
-                    : 'Additional contact for questions — e.g. on-site contact, external agency, hotline mailbox. Appears on the registration page and in „My Events" in addition to the organizers. Has NO app permissions, display-only.'}
+                    ? 'Standardmäßig wird der Organizer für Rückfragen aus dem Team angezeigt. Wenn du stattdessen (oder zusätzlich) jemand Externen angeben willst — z.B. eine Service-Mailadresse oder eine Kontaktperson vor Ort — dann hier eintragen. Erscheint auf der Anmelde-Seite und in „Meine Events" zusätzlich zu den Organizern. Hat KEINE App-Berechtigung, ist nur ein Anzeige-Feld.'
+                    : 'By default the organizer is shown as the contact for questions from the team. If you want to add an external contact instead (or in addition) — e.g. a service email or an on-site contact — enter it here. Appears on the registration page and in „My Events" in addition to the organizers. Has NO app permissions, display-only.'}
                 </p>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 10 }}>
                   <div>
@@ -6918,6 +6975,8 @@ export default function EventCreationPage(): React.ReactElement {
                     );
                   })()}
                 </div>
+                </>
+                )}
               </div>
 
               {/* v9.21: Test-Team pro Event — sieht das Event im Entwurfsmodus
@@ -7401,9 +7460,9 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
 
               {/* ===== Step 3 (v15.0: vormals Step 2): Ort & Programm ===== */}
-              <div style={{ display: currentStep === 2 ? 'block' : 'none' }}>
+              <div style={{ display: currentStep === 3 ? 'block' : 'none' }}>
               <h2 className="dex-step-head-title">
-                {isDe ? 'Schritt 3 — Ort & Programm' : 'Step 3 — Location & Programme'}
+                {isDe ? 'Schritt 4 — Ort & Programm' : 'Step 4 — Location & Programme'}
               </h2>
               <p className="dex-step-head-lead">
                 {isDe
@@ -7912,14 +7971,14 @@ export default function EventCreationPage(): React.ReactElement {
                   Sub-Events vs. nur Sub-Events).
                   v15.0: vorgezogen vor „Ort & Programm", damit die folgenden
                   Steps pro-Sub-Event-Tabs anbieten können. */}
-              <div style={{ display: currentStep === 1 ? 'block' : 'none' }}>
+              <div style={{ display: currentStep === 2 ? 'block' : 'none' }}>
               <h2 className="dex-step-head-title">
-                {isDe ? 'Schritt 2 — Sub-Events' : 'Step 2 — Sub-events'}
+                {isDe ? 'Schritt 3 — Sub-Events' : 'Step 3 — Sub-events'}
               </h2>
               <p className="dex-step-head-lead">
                 {isDe
-                  ? <><strong>Optional</strong> — lege zusätzliche Sessions, Workshops oder Programmpunkte zum Hauptevent an. Die meisten Events brauchen das nicht — dann einfach auf „Weiter“.</>
-                  : <><strong>Optional</strong> — add additional sessions, workshops or program items to the main event. Most events do not need this — then simply click “Next”.</>}
+                  ? <><strong>Optional</strong> — gliedere dein Event in einzeln buchbare Programmbausteine (z. B. Workshops, Sessions oder ein Networking-Dinner), jeweils mit eigener Teilnehmerzahl, eigenem Termin und eigener Teilnehmerliste. Ist eine solche Untergliederung nicht erforderlich, fahre mit „Weiter“ fort.</>
+                  : <><strong>Optional</strong> — divide your event into individually bookable building blocks (e.g. workshops, sessions or a networking dinner), each with its own capacity, schedule and attendee list. If no such breakdown is required, continue with “Next”.</>}
               </p>
 
               {/* v22.36: Erklärung, was ein Sub-Event ist (graue Beschreibungs-Box). */}
@@ -8396,9 +8455,9 @@ export default function EventCreationPage(): React.ReactElement {
               </div>{/* close Step 2 (Sub-Events) */}
 
               {/* ===== Step 4 (v14.8: vormals Step 3): Kapazität, Fristen & Sichtbarkeit ===== */}
-              <div style={{ display: currentStep === 3 ? 'block' : 'none' }}>
+              <div style={{ display: currentStep === 4 ? 'block' : 'none' }}>
               <h2 className="dex-step-head-title">
-                {isDe ? 'Schritt 4 — Kapazität & Sichtbarkeit' : 'Step 4 — Capacity & Visibility'}
+                {isDe ? 'Schritt 5 — Kapazität & Sichtbarkeit' : 'Step 5 — Capacity & Visibility'}
               </h2>
               <p className="dex-step-head-lead">
                 {isDe
@@ -8989,7 +9048,7 @@ export default function EventCreationPage(): React.ReactElement {
                       <>
                         <strong>Letzte Abmeldemöglichkeit</strong> — der Stichtag, den du den Teilnehmern als <strong>verbindliche Abmeldefrist kommunizierst</strong>. Bis dahin gilt eine Abmeldung als unproblematisch.<br /><br />
                         <strong>Auswirkung für Teilnehmer:</strong> Eine Abmeldung bleibt bewusst <strong>bis zum Ende des Events möglich</strong> — wer kurzfristig erkrankt oder verhindert ist, kann sich also weiterhin abmelden. Nach dem Stichtag sieht die Person beim Abmelden einen <strong>deutlichen Hinweis</strong>, dass die Frist abgelaufen ist und die Organizer informiert werden. Erst <strong>nach Event-Ende</strong> ist die Selbst-Abmeldung gesperrt.<br /><br />
-                        <strong>Automatismen:</strong> Bei jeder Abmeldung <strong>nach dem Stichtag</strong> bekommen die Organizer automatisch eine <strong>Info-Mail</strong> mit Name + E-Mail der Person — damit Hotel, Catering oder Transfers angepasst werden können. Zusätzliche Abmelde-Benachrichtigungen kannst du in <strong>Schritt 6 (Kommunikation)</strong> konfigurieren.<br /><br />
+                        <strong>Automatismen:</strong> Bei jeder Abmeldung <strong>nach dem Stichtag</strong> bekommen die Organizer automatisch eine <strong>Info-Mail</strong> mit Name + E-Mail der Person — damit Hotel, Catering oder Transfers angepasst werden können. Zusätzliche Abmelde-Benachrichtigungen kannst du in <strong>Schritt 7 (Kommunikation)</strong> konfigurieren.<br /><br />
                         Vorbefüllt mit <strong>3 Tagen vor Event-Start</strong>.
                       </>
                     ) : (
@@ -9451,9 +9510,9 @@ export default function EventCreationPage(): React.ReactElement {
                   Konfiguriert Team-Anmeldung-Toggle + Teamgröße +
                   Team-Name-Frage. v15: Index 4 → 6 (Team kommt jetzt nach
                   Kommunikation). */}
-              <div style={{ display: currentStep === 6 ? 'block' : 'none' }}>
+              <div style={{ display: currentStep === 7 ? 'block' : 'none' }}>
               <h2 className="dex-step-head-title">
-                {isDe ? 'Schritt 7 — Team-Anmeldung' : 'Step 7 — Team Registration'}
+                {isDe ? 'Schritt 8 — Team-Anmeldung' : 'Step 8 — Team Registration'}
               </h2>
               <p className="dex-step-head-lead">
                 {isDe
@@ -9758,9 +9817,9 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
 
               {/* ===== Step 5 (v15: vormals Step 6): Registrierungsfelder ===== */}
-              <div style={{ display: currentStep === 4 ? 'block' : 'none' }}>
+              <div style={{ display: currentStep === 5 ? 'block' : 'none' }}>
               <h2 className="dex-step-head-title">
-                {isDe ? 'Schritt 5 — Felder' : 'Step 5 — Fields'}
+                {isDe ? 'Schritt 6 — Felder' : 'Step 6 — Fields'}
               </h2>
               <p className="dex-step-head-lead">
                 {isDe
@@ -10652,7 +10711,7 @@ export default function EventCreationPage(): React.ReactElement {
                                 <strong>Was du hier einstellst:</strong> ob dieses Feld bei der Anmeldung für <strong>alle Teilnehmer</strong> oder nur für eine der zwei Kapazitäts-Gruppen sichtbar ist.<br /><br />
                                 <strong>Beispiel:</strong> bei einem Lauf-Event ist die Pflicht-Checkbox &bdquo;Leistungsnachweis vorhanden&ldquo; nur für die <strong>Durchstarter-Gruppe</strong> sinnvoll, nicht für Funstarter / Walker. Stelle das Feld dann auf <strong>Nur {labelA}</strong> — Funstarter sehen es gar nicht erst.<br /><br />
                                 <strong>Auswirkung in der App:</strong> die Anmelde-Seite blendet das Feld dynamisch ein/aus, sobald der Teilnehmer eine der zwei Boxen wählt. Pflichtfeld-Validierung greift natürlich nur wenn das Feld auch sichtbar ist.<br /><br />
-                                <strong>Vorraussetzung:</strong> in Schritt 3 (Kapazität &amp; Sichtbarkeit) muss der Toggle &bdquo;Geteilte Kapazität&ldquo; aktiv sein. Sonst gibt&apos;s keine Gruppen — dieser Selector ist dann ausgeblendet.
+                                <strong>Vorraussetzung:</strong> in Schritt 5 (Kapazität &amp; Sichtbarkeit) muss der Toggle &bdquo;Geteilte Kapazität&ldquo; aktiv sein. Sonst gibt&apos;s keine Gruppen — dieser Selector ist dann ausgeblendet.
                               </>
                             ) : (
                               <>
@@ -11179,8 +11238,8 @@ export default function EventCreationPage(): React.ReactElement {
                     title={isDe ? 'Noch keine Sub-Events angelegt' : 'No sub-events yet'}
                   >
                     {isDe
-                      ? 'Sub-Events legst du in Schritt 2 (Ort & Programm, ganz unten im Bereich „Sub-Events") an — danach kannst du hier pro Sub-Event eigene Anmelde-Felder definieren.'
-                      : 'Add sub-events in Step 2 (Location & Programme, at the bottom in the „Sub-events" block) — then come back here to define per-sub-event registration fields.'}
+                      ? 'Sub-Events legst du in Schritt 3 (Sub-Events) an — danach kannst du hier pro Sub-Event eigene Anmelde-Felder definieren.'
+                      : 'Add sub-events in Step 3 (Sub-events) — then come back here to define per-sub-event registration fields.'}
                   </WizardHint>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -11515,9 +11574,9 @@ export default function EventCreationPage(): React.ReactElement {
               </div>{/* close Step 5 (Felder) — v15 index 4 */}
 
               {/* ===== Step 6 (v15: vormals Step 7): Kommunikation ===== */}
-              <div style={{ display: currentStep === 5 ? 'block' : 'none' }}>
+              <div style={{ display: currentStep === 6 ? 'block' : 'none' }}>
                 <h2 className="dex-step-head-title">
-                  {isDe ? 'Schritt 6 — Kommunikation' : 'Step 6 — Communication'}
+                  {isDe ? 'Schritt 7 — Kommunikation' : 'Step 7 — Communication'}
                 </h2>
                 <p className="dex-step-head-lead">
                   {isDe
@@ -11989,7 +12048,7 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                     <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 6 }}>
                       {isDe
-                        ? '„Erst nach der letzten Abmeldemöglichkeit" nutzt das in Schritt 3 (Kapazität & Sichtbarkeit) gesetzte Datum „Letzte Abmeldemöglichkeit". Vor diesem Stichtag gelten Abmeldungen als unproblematisch — danach möchtest du als Organizer aber wissen, wer noch abspringt.'
+                        ? '„Erst nach der letzten Abmeldemöglichkeit" nutzt das in Schritt 5 (Kapazität & Sichtbarkeit) gesetzte Datum „Letzte Abmeldemöglichkeit". Vor diesem Stichtag gelten Abmeldungen als unproblematisch — danach möchtest du als Organizer aber wissen, wer noch abspringt.'
                         : '„Only after the last cancellation date" uses the date set in step 3 (Capacity & Visibility) under „Last cancellation date". Cancellations before that are considered routine — after that, organizers usually want to know about late drop-outs.'}
                     </p>
                   </div>
@@ -12219,9 +12278,9 @@ export default function EventCreationPage(): React.ReactElement {
               </div>{/* close Step 7 (Kommunikation) */}
 
               {/* ===== Step 8 (v14.8: vormals Step 7): Dokumente ===== */}
-              <div style={{ display: currentStep === 7 ? 'block' : 'none' }}>
+              <div style={{ display: currentStep === 8 ? 'block' : 'none' }}>
                 <h2 className="dex-step-head-title">
-                  {isDe ? 'Schritt 8 — Dokumente' : 'Step 8 — Documents'}
+                  {isDe ? 'Schritt 9 — Dokumente' : 'Step 9 — Documents'}
                 </h2>
                 <p className="dex-step-head-lead">
                   {isDe
@@ -12390,9 +12449,9 @@ export default function EventCreationPage(): React.ReactElement {
               </div>{/* close Step 8 (Dokumente) */}
 
               {/* ===== Step 9 (v14.8: vormals Step 8): Fun-Zone ===== */}
-              <div style={{ display: currentStep === 8 ? 'block' : 'none' }}>
+              <div style={{ display: currentStep === 9 ? 'block' : 'none' }}>
                 <h2 className="dex-step-head-title">
-                  {isDe ? 'Schritt 9 — Fun-Zone' : 'Step 9 — Fun Zone'}
+                  {isDe ? 'Schritt 10 — Fun-Zone' : 'Step 10 — Fun Zone'}
                 </h2>
                 <p className="dex-step-head-lead">
                   {isDe
@@ -13464,14 +13523,19 @@ export default function EventCreationPage(): React.ReactElement {
             { label: isDe ? 'Zeitraum' : 'Dates', value: startDate ? `${fmtDt(startDate)}${endDate ? ` – ${fmtDt(endDate)}` : (isDe ? ' (kein Ende — Outlook-Termin nicht möglich)' : ' (no end — Outlook invite not possible)')}` : '—', status: !startDate ? 'missing' : (endDate ? 'ok' : 'empty') },
             { label: isDe ? 'Beschreibung' : 'Description', value: plainDesc ? `${plainDesc.slice(0, 80)}${plainDesc.length > 80 ? '…' : ''}` : '—', status: plainDesc ? 'ok' : 'empty' },
             { label: isDe ? 'Event-Bild' : 'Event image', value: imagePreview ? (isDe ? 'hochgeladen' : 'uploaded') : '—', status: imagePreview ? 'ok' : 'empty' },
-            { label: 'Organizer', value: orgList.length ? `${orgList.length} ${isDe ? 'Person(en)' : 'person(s)'}` : '—', status: orgList.length ? 'ok' : 'missing' },
-            { label: isDe ? 'Test-Team' : 'Test team', value: testTeamEmails.length ? `${testTeamEmails.length} ${isDe ? 'Person(en)' : 'person(s)'}` : '—', status: testTeamEmails.length ? 'ok' : 'empty' },
-            { label: isDe ? 'Check-In-Team' : 'Check-in team', value: qrScannerEmails.length ? `${qrScannerEmails.length} ${isDe ? 'Person(en)' : 'person(s)'}` : '—', status: qrScannerEmails.length ? 'ok' : 'empty' },
             { label: 'Status', value: isFictive ? (activeFrom ? (isDe ? `Entwurf — geht automatisch live am ${fmtDt(activeFrom)}` : `Draft — goes live automatically on ${fmtDt(activeFrom)}`) : (isDe ? 'Entwurf (nur Admins, Organizer, Test-Team)' : 'Draft (admins, organizers, test team only)')) : (isDe ? 'Aktiv — für berechtigte Teilnehmer sichtbar' : 'Active — visible to eligible attendees'), status: isFictive ? 'default' : 'ok' },
           ],
         });
         sections.push({
-          title: isDe ? 'Schritt 2 — Sub-Events' : 'Step 2 — Sub-events',
+          title: isDe ? 'Schritt 2 — Organizer & Team' : 'Step 2 — Organizers & Team',
+          rows: [
+            { label: 'Organizer', value: orgList.length ? `${orgList.length} ${isDe ? 'Person(en)' : 'person(s)'}` : '—', status: orgList.length ? 'ok' : 'missing' },
+            { label: isDe ? 'Test-Team' : 'Test team', value: testTeamEmails.length ? `${testTeamEmails.length} ${isDe ? 'Person(en)' : 'person(s)'}` : '—', status: testTeamEmails.length ? 'ok' : 'empty' },
+            { label: isDe ? 'Check-In-Team' : 'Check-in team', value: qrScannerEmails.length ? `${qrScannerEmails.length} ${isDe ? 'Person(en)' : 'person(s)'}` : '—', status: qrScannerEmails.length ? 'ok' : 'empty' },
+          ],
+        });
+        sections.push({
+          title: isDe ? 'Schritt 3 — Sub-Events' : 'Step 3 — Sub-events',
           rows: subEvents.length === 0
             ? [{ label: 'Sub-Events', value: isDe ? 'keine' : 'none', status: 'default' }]
             : [
@@ -13480,7 +13544,7 @@ export default function EventCreationPage(): React.ReactElement {
               ],
         });
         sections.push({
-          title: isDe ? 'Schritt 3 — Ort & Programm' : 'Step 3 — Location & programme',
+          title: isDe ? 'Schritt 4 — Ort & Programm' : 'Step 4 — Location & programme',
           rows: [
             { label: isDe ? 'Veranstaltungsort' : 'Venue', value: location || '—', status: location ? 'ok' : 'empty' },
             { label: isDe ? 'Adresse' : 'Address', value: (addrStreet || addrCity) ? [addrStreet, addrHouseNo, addrZip, addrCity].filter(Boolean).join(' ') : '—', status: (addrStreet || addrCity) ? 'ok' : 'empty' },
@@ -13489,7 +13553,7 @@ export default function EventCreationPage(): React.ReactElement {
           ],
         });
         sections.push({
-          title: isDe ? 'Schritt 4 — Kapazität & Sichtbarkeit' : 'Step 4 — Capacity & visibility',
+          title: isDe ? 'Schritt 5 — Kapazität & Sichtbarkeit' : 'Step 5 — Capacity & visibility',
           rows: [
             useSplitCapacities
               ? { label: isDe ? 'Plätze (geteilte Kapazität)' : 'Seats (split capacity)', value: `${splitLabelA || 'Gruppe A'}: ${durchstarterCapacity || 0} · ${splitLabelB || 'Gruppe B'}: ${funstarterCapacity || 0}${splitSharedWaitlist ? (isDe ? ' · gemeinsame Warteliste' : ' · shared waitlist') : ''}`, status: 'ok' }
@@ -13502,7 +13566,7 @@ export default function EventCreationPage(): React.ReactElement {
           ],
         });
         sections.push({
-          title: isDe ? 'Schritt 5 — Felder' : 'Step 5 — Fields',
+          title: isDe ? 'Schritt 6 — Felder' : 'Step 6 — Fields',
           rows: [
             { label: isDe ? 'Eigene Abfrage-Felder' : 'Custom fields', value: customFields.length ? `${customFields.length}` : (isDe ? 'keine' : 'none'), status: customFields.length ? 'ok' : 'default' },
             { label: isDe ? 'Anrede abfragen' : 'Ask salutation', value: askSalutation ? (isDe ? 'an' : 'on') : (isDe ? 'aus' : 'off'), status: askSalutation ? 'ok' : 'default' },
@@ -13511,7 +13575,7 @@ export default function EventCreationPage(): React.ReactElement {
           ],
         });
         sections.push({
-          title: isDe ? 'Schritt 6 — Kommunikation' : 'Step 6 — Communication',
+          title: isDe ? 'Schritt 7 — Kommunikation' : 'Step 7 — Communication',
           rows: [
             { label: isDe ? 'Mail-Sprache' : 'Email language', value: (emailLanguage || 'EN').toUpperCase() === 'DE' ? 'Deutsch' : 'English', status: 'ok' },
             { label: isDe ? 'Bestätigungs-Mails' : 'Confirmation emails', value: disableEmails ? (isDe ? 'deaktiviert' : 'disabled') : (isDe ? 'aktiv' : 'on'), status: disableEmails ? 'ok' : 'default' },
@@ -13521,15 +13585,15 @@ export default function EventCreationPage(): React.ReactElement {
           ],
         });
         sections.push({
-          title: isDe ? 'Schritt 7 — Team-Anmeldung' : 'Step 7 — Team registration',
+          title: isDe ? 'Schritt 8 — Team-Anmeldung' : 'Step 7 — Team registration',
           rows: [{ label: isDe ? 'Team-Anmeldung' : 'Team registration', value: teamRegistrationEnabled ? (isDe ? `aktiv — Teams à ${teamSize}` : `on — teams of ${teamSize}`) : (isDe ? 'aus' : 'off'), status: teamRegistrationEnabled ? 'ok' : 'default' }],
         });
         sections.push({
-          title: isDe ? 'Schritt 8 — Dokumente' : 'Step 8 — Documents',
+          title: isDe ? 'Schritt 9 — Dokumente' : 'Step 9 — Documents',
           rows: [{ label: isDe ? 'Dokumente' : 'Documents', value: documents.length ? `${documents.length}` : '—', status: documents.length ? 'ok' : 'empty' }],
         });
         sections.push({
-          title: isDe ? 'Schritt 9 — Fun-Zone' : 'Step 9 — Fun zone',
+          title: isDe ? 'Schritt 10 — Fun-Zone' : 'Step 9 — Fun zone',
           rows: [{ label: 'Quiz', value: quiz.length ? `${quiz.length} ${isDe ? 'Fragen' : 'questions'}` : '—', status: quiz.length ? 'ok' : 'empty' }],
         });
         const allRows = sections.reduce((acc, s) => acc + s.rows.length, 0);
