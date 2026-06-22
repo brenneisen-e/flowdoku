@@ -11,6 +11,7 @@ import { useNavigation } from '../context/NavigationContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useDialog } from '../context/DialogContext';
+import { DELOITTE_LOGO_BLACK } from '../data/brandLogos';
 import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
 import { ChevronLeft, Settings, Book, RefreshCw } from './Icons';
@@ -198,7 +199,10 @@ export default function Header(): React.ReactElement {
       <div className="header-left">
         {isLanding ? (
           <div className="header-logo">
-            Deloitte<span>.</span>
+            {/* v24.14: offizielles Deloitte-Logo (Repo-Asset) statt Text-Wortmarke. */}
+            {DELOITTE_LOGO_BLACK
+              ? <img src={DELOITTE_LOGO_BLACK} alt="Deloitte" style={{ height: 30, width: 'auto', display: 'block' }} />
+              : <>Deloitte<span>.</span></>}
           </div>
         ) : (
           <>

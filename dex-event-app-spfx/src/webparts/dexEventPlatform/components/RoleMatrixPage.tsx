@@ -8,6 +8,32 @@ import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useRoles } from '../context/RoleContext';
 import { getCachedLogoBase64, getCachedOrbBase64 } from '../services/EmailTemplates';
+import { DELOITTE_LOGO_BLACK } from '../data/brandLogos';
+
+// v24.13: Das gecachte Deloitte-Logo ist WEISS (für dunkle Mail-Header). Fürs
+// PDF (weißer Grund) färben wir genau dieses offizielle Logo per Canvas auf
+// Schwarz um — Form/Proportionen bleiben das Original, nur die Farbe ändert sich.
+async function recolorLogoBlack(dataUrl: string): Promise<string | null> {
+  if (!dataUrl) return null;
+  return new Promise<string | null>((resolve) => {
+    const img = new Image();
+    img.onload = (): void => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = img.naturalWidth || 400; c.height = img.naturalHeight || 100;
+        const ctx = c.getContext('2d');
+        if (!ctx) { resolve(null); return; }
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        ctx.globalCompositeOperation = 'source-in';
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, c.width, c.height);
+        resolve(c.toDataURL('image/png'));
+      } catch { resolve(null); }
+    };
+    img.onerror = (): void => resolve(null);
+    img.src = dataUrl;
+  });
+}
 
 interface PermissionRow {
   category: string;
@@ -389,14 +415,30 @@ async function downloadRoleMatrixPdf(): Promise<void> {
   const cols = ['User', 'Assistenz', 'Test-Team', 'Check-In', 'Co-Org.', 'Organizer', 'Admin'];
   const featW = 96;
   const roleW = (pageW - 2 * margin - featW) / cols.length;
-  const logoL = getCachedLogoBase64();
   const logoR = getCachedOrbBase64();
+  // Schwarzes Deloitte-Logo oben links: bevorzugt das offizielle Repo-Logo,
+  // sonst das gecachte weiße Logo auf Schwarz umgefärbt, sonst Text-Fallback.
+  const logoLBlack = DELOITTE_LOGO_BLACK || (await recolorLogoBlack(getCachedLogoBase64())) || '';
 
   const drawChrome = (): number => {
-    // Logos
-    try {
-      if (logoL) { const p = doc.getImageProperties(logoL); const h = 11; const w = (p.width / p.height) * h; doc.addImage(logoL, 'PNG', margin, 9, w, h); }
-    } catch { /* Logo optional */ }
+    // Offizielles (schwarzes) Deloitte-Logo oben links.
+    let drewLogo = false;
+    if (logoLBlack) {
+      try {
+        const p = doc.getImageProperties(logoLBlack);
+        const h = 11; const w = (p.width / p.height) * h;
+        doc.addImage(logoLBlack, 'PNG', margin, 9, w, h);
+        drewLogo = true;
+      } catch { drewLogo = false; }
+    }
+    if (!drewLogo) {
+      // Text-Fallback, falls kein Logo verfügbar ist.
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(19); doc.setTextColor(0, 0, 0);
+      doc.text('Deloitte', margin, 18);
+      const dWidth = doc.getTextWidth('Deloitte');
+      doc.setTextColor(134, 188, 37); doc.text('.', margin + dWidth + 0.6, 18);
+    }
+    // DEX-App-Logo (Orb, farbig) oben rechts — auf Weiß gut sichtbar.
     try {
       if (logoR) { const p = doc.getImageProperties(logoR); const h = 13; const w = (p.width / p.height) * h; doc.addImage(logoR, 'PNG', pageW - margin - w, 8, w, h); }
     } catch { /* Logo optional */ }

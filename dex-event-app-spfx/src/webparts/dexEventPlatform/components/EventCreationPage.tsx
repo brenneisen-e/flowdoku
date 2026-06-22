@@ -1113,6 +1113,10 @@ export default function EventCreationPage(): React.ReactElement {
   // v18.9: Organizer-Anzeige (Chips mit Name + Foto) auf Anmelde-Seite +
   // „Meine Events" ausblenden. Rein visuell — Rechte/Mails unberührt.
   const [hideOrganizer, setHideOrganizer] = React.useState(editEvent ? !!editEvent.hideOrganizer : false);
+  // v24.15: Wenn „Organizer ausblenden" an ist UND es mehrere Organizer gibt,
+  // kann der Organizer stattdessen NUR EINZELNE ausblenden (Piggyback
+  // `_hideOrgIndividual`). false = alle ausblenden; true = nur die angeklickten.
+  const [hideOrganizerIndividualOnly, setHideOrganizerIndividualOnly] = React.useState(editEvent ? !!editEvent.hideOrganizerIndividualOnly : false);
   // v23.6: „Assistenzen sehen das Event generell" (Piggyback _assistantsCanSee).
   // Wenn aktiv, sehen Personen mit dem Job-Title „Assistenz" das Event auch
   // dann, wenn Standort-/Verteiler-Filter sie sonst ausschließen würden —
@@ -1162,7 +1166,7 @@ export default function EventCreationPage(): React.ReactElement {
           // beim Edit-Save (letzter Spread `...topOverrides`) das frisch
           // berechnete Flag, d.h. Abwählen bliebe ohne Wirkung.
           _teamTerm, _teamMembersCannotCreate, _assistantsCanSee, _previewBeforeActive, _imageDisplay,
-          _organizerDisplayLarge, _hiddenOrganizers,
+          _organizerDisplayLarge, _hiddenOrganizers, _hideOrgIndividual,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -1173,7 +1177,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _subEventsOnlyMode; void _childEventTerm;
         void _inheritFlags; void _hideOrganizer; void _headerImageLayout;
         void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee; void _previewBeforeActive; void _imageDisplay;
-        void _organizerDisplayLarge; void _hiddenOrganizers;
+        void _organizerDisplayLarge; void _hiddenOrganizers; void _hideOrgIndividual;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
     })() : {}
@@ -2098,6 +2102,168 @@ export default function EventCreationPage(): React.ReactElement {
   const updateCustomField = (id: string, updates: Partial<CustomFieldInput>): void => {
     setCustomFields(customFields.map(f => f.id === id ? { ...f, ...updates } : f));
   };
+  // v24.16: Sichtbarkeitsbedingung (showIf) als wiederverwendbarer Helfer —
+  // genutzt vom Hauptevent UND von Sub-Event-Feldern (vorher fehlte die UI bei
+  // Sub-Events komplett, daher liessen sich Bedingungen dort nie setzen).
+  const renderShowIfConfig = (field: CustomFieldInput, idx: number, allFields: CustomFieldInput[], onUpdate: (u: Partial<CustomFieldInput>) => void): React.ReactElement => {
+                      const candidateSources = allFields.slice(0, idx).filter(other =>
+                        (other.type === 'select' || other.type === 'checkbox') && (other.label || '').trim().length > 0
+                      );
+                      const sourceField = field.showIf
+                        ? allFields.find(o => o.id === field.showIf!.fieldId)
+                        : null;
+                      const removeShowIf = (): void => {
+                        // showIf gezielt löschen: updateCustomField macht ein
+                        // shallow-merge, also setzen wir undefined und filtern
+                        // beim Save raus.
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        onUpdate({ showIf: undefined as any });
+                      };
+                      return (
+                        <div style={{ marginLeft: 32, marginTop: 10, padding: '10px 12px', background: 'rgba(21,101,192,0.04)', border: '1px dashed var(--dex-gray-300)', borderRadius: 8 }}>
+                          {!field.showIf ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (candidateSources.length === 0) {
+                                    showAlert(isDe
+                                      ? 'Es gibt noch kein Dropdown- oder Checkbox-Feld VOR diesem hier, an das die Sichtbarkeit geknüpft werden könnte. Lege zuerst ein passendes Feld weiter oben an.'
+                                      : 'There is no dropdown or checkbox field BEFORE this one yet that visibility could depend on. Please add a suitable field above first.');
+                                    return;
+                                  }
+                                  const first = candidateSources[0];
+                                  onUpdate({
+                                    showIf: {
+                                      fieldId: first.id,
+                                      values: first.type === 'checkbox' ? ['true'] : (first.options[0] ? [first.options[0]] : []),
+                                    },
+                                  });
+                                }}
+                                style={{
+                                  background: 'none', border: 'none', padding: 0,
+                                  color: 'var(--dex-green-dark, #4a7c1f)',
+                                  fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
+                                }}
+                              >
+                                + {isDe ? 'Sichtbarkeitsbedingung hinzufügen' : 'Add visibility condition'}
+                              </button>
+                              <InfoTooltip
+                                text={isDe
+                                  ? 'Dieses Feld wird nur angezeigt, wenn die Antwort auf eine andere (zuvor angelegte) Frage einem von dir festgelegten Wert entspricht. Beispiel: „Roommate" wird nur gefragt, wenn die Frage „Zimmerart" mit „Doppelzimmer" beantwortet wurde. Andernfalls bleibt das Feld komplett verborgen — und blockiert auch nicht die Pflichtfeld-Validierung.'
+                                  : 'This field is shown only when the answer to another (previously added) question matches a value you specify. Example: "Roommate" is only asked when the question "Room type" is answered with "Double room". Otherwise the field stays fully hidden — and does not block the required-field validation either.'}
+                              />
+                            </span>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+                                {isDe ? 'Diese Frage nur anzeigen wenn:' : 'Only show this question when:'}
+                                <InfoTooltip
+                                  text={isDe
+                                    ? 'Dieses Feld wird nur angezeigt, wenn die Antwort auf die Quell-Frage einem der gewählten Werte entspricht. Bei Mehrfachauswahl-Quellen reicht ein Treffer. Pflichtfeld-Validierung wird übersprungen, solange das Feld verborgen ist.'
+                                    : 'This field is shown only when the answer to the source question matches one of the chosen values. With multi-select sources a single match is enough. Required-field validation is skipped as long as the field stays hidden.'}
+                                />
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                <select
+                                  className="form-select"
+                                  value={field.showIf.fieldId}
+                                  onChange={e => {
+                                    const newSrc = allFields.find(o => o.id === e.target.value);
+                                    if (!newSrc) return;
+                                    onUpdate({
+                                      showIf: {
+                                        fieldId: newSrc.id,
+                                        values: newSrc.type === 'checkbox' ? ['true'] : (newSrc.options[0] ? [newSrc.options[0]] : []),
+                                      },
+                                    });
+                                  }}
+                                  style={{ fontSize: '0.82rem', padding: '4px 8px', minWidth: 180, maxWidth: 320 }}
+                                >
+                                  {candidateSources.map(o => (
+                                    <option key={o.id} value={o.id}>
+                                      {allFields.findIndex(c => c.id === o.id) + 1}. {o.label}
+                                    </option>
+                                  ))}
+                                  {/* fallback wenn die ausgewählte Quelle hinter dem Feld gelandet
+                                      ist (z.B. nach einem Move) — option in der Liste anzeigen,
+                                      aber als ungültig markiert lassen. */}
+                                  {sourceField && !candidateSources.find(c => c.id === sourceField.id) && (
+                                    <option value={sourceField.id} disabled>
+                                      ⚠ {sourceField.label} ({isDe ? 'liegt hinter diesem Feld' : 'is positioned after this field'})
+                                    </option>
+                                  )}
+                                </select>
+                                <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
+                                  {isDe ? '=' : '='}
+                                </span>
+                                {sourceField && sourceField.type === 'checkbox' ? (
+                                  <select
+                                    className="form-select"
+                                    value={field.showIf.values[0] || 'true'}
+                                    onChange={e => onUpdate({
+                                      showIf: { fieldId: field.showIf!.fieldId, values: [e.target.value] },
+                                    })}
+                                    style={{ fontSize: '0.82rem', padding: '4px 8px', minWidth: 130 }}
+                                  >
+                                    <option value="true">{isDe ? 'angehakt' : 'checked'}</option>
+                                    <option value="false">{isDe ? 'nicht angehakt' : 'unchecked'}</option>
+                                  </select>
+                                ) : sourceField ? (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                    {(sourceField.options || []).filter(Boolean).map(opt => {
+                                      const checked = field.showIf!.values.indexOf(opt) >= 0;
+                                      return (
+                                        <label
+                                          key={opt}
+                                          style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                                            padding: '4px 10px', borderRadius: 999,
+                                            fontSize: '0.78rem', cursor: 'pointer',
+                                            border: `1px solid ${checked ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                                            background: checked ? 'rgba(134,188,37,0.10)' : '#fff',
+                                            color: checked ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)',
+                                            fontWeight: 600,
+                                          }}
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={() => {
+                                              const next = checked
+                                                ? field.showIf!.values.filter(v => v !== opt)
+                                                : [...field.showIf!.values, opt];
+                                              onUpdate({
+                                                showIf: { fieldId: field.showIf!.fieldId, values: next },
+                                              });
+                                            }}
+                                            style={{ display: 'none' }}
+                                          />
+                                          {checked ? '✓' : '○'} {opt}
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={removeShowIf}
+                                  title={isDe ? 'Bedingung entfernen' : 'Remove condition'}
+                                  style={{
+                                    background: 'none', border: 'none', cursor: 'pointer',
+                                    color: 'var(--dex-red, #c00)', fontSize: '0.8rem',
+                                    padding: '4px 6px', marginLeft: 'auto',
+                                  }}
+                                >
+                                  ✕ {isDe ? 'entfernen' : 'remove'}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+  };
+
 
   // === Sub-Event Custom-Field Helpers (v10.11+) =============================
   // Per-Sub-Event Custom-Fields ersetzen die hardcoded Funstarter/Durchstarter-
@@ -3413,6 +3579,7 @@ export default function EventCreationPage(): React.ReactElement {
       // v18.9: Organizer-Anzeige ausblenden (Piggyback).
       const hideOrganizerConfig = hideOrganizer ? { _hideOrganizer: true } : {};
       const hiddenOrganizersConfig: Record<string, unknown> = hiddenOrganizerEmails.length > 0 ? { _hiddenOrganizers: hiddenOrganizerEmails } : {};
+      const hideOrgIndividualConfig: Record<string, unknown> = hideOrganizerIndividualOnly ? { _hideOrgIndividual: true } : {};
       // v22.78: Team-Begriff + „keine neuen Teams"-Flag (Piggyback).
       const teamTermConfig = (teamTermSingular.trim() || teamTermPlural.trim())
         ? { _teamTerm: { singular: teamTermSingular.trim(), plural: teamTermPlural.trim() } }
@@ -3437,7 +3604,7 @@ export default function EventCreationPage(): React.ReactElement {
         });
         return Object.keys(out).length ? { _imageDisplay: out } : {};
       })();
-      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(teamTermConfig).length > 0 || Object.keys(teamNoCreateConfig).length > 0 || Object.keys(assistantsCanSeeConfig).length > 0 || Object.keys(organizerDisplayLargeConfig).length > 0 || Object.keys(previewBeforeActiveConfig).length > 0 || Object.keys(imageDisplayConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0 || Object.keys(hiddenOrganizersConfig).length > 0 || Object.keys(headerImageLayoutConfig).length > 0)
+      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(teamTermConfig).length > 0 || Object.keys(teamNoCreateConfig).length > 0 || Object.keys(assistantsCanSeeConfig).length > 0 || Object.keys(organizerDisplayLargeConfig).length > 0 || Object.keys(previewBeforeActiveConfig).length > 0 || Object.keys(imageDisplayConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0 || Object.keys(hiddenOrganizersConfig).length > 0 || Object.keys(hideOrgIndividualConfig).length > 0 || Object.keys(headerImageLayoutConfig).length > 0)
         ? JSON.stringify({
             ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
             ...(effOutlookLogo ? { _outlookLogo: effOutlookLogo } : {}),
@@ -3457,6 +3624,7 @@ export default function EventCreationPage(): React.ReactElement {
             ...imageDisplayConfig,
             ...hideOrganizerConfig,
             ...hiddenOrganizersConfig,
+            ...hideOrgIndividualConfig,
             // v18.73: Header-Bild-Layout (Breite + Innenabstand) — event-weit.
             ...headerImageLayoutConfig,
             ...topOverrides,
@@ -4006,6 +4174,7 @@ export default function EventCreationPage(): React.ReactElement {
           // v18.9: Organizer-Anzeige ausblenden (Piggyback).
           const hideOrganizerExtra = hideOrganizer ? { _hideOrganizer: true } : {};
           const hiddenOrganizersExtra: Record<string, unknown> = hiddenOrganizerEmails.length > 0 ? { _hiddenOrganizers: hiddenOrganizerEmails } : {};
+          const hideOrgIndividualExtra: Record<string, unknown> = hideOrganizerIndividualOnly ? { _hideOrgIndividual: true } : {};
           // v22.78: Team-Begriff + „keine neuen Teams"-Flag (Piggyback).
           const teamTermExtra = (teamTermSingular.trim() || teamTermPlural.trim())
             ? { _teamTerm: { singular: teamTermSingular.trim(), plural: teamTermPlural.trim() } }
@@ -4030,7 +4199,7 @@ export default function EventCreationPage(): React.ReactElement {
             return Object.keys(out).length ? { _imageDisplay: out } : {};
           })();
           // v11.93: Top-Level-Logos aus dem Resolver lesen.
-          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0 || Object.keys(teamTermExtra).length > 0 || Object.keys(teamNoCreateExtra).length > 0 || Object.keys(assistantsCanSeeExtra).length > 0 || Object.keys(organizerDisplayLargeExtra).length > 0 || Object.keys(previewBeforeActiveExtra).length > 0 || Object.keys(imageDisplayExtra).length > 0 || Object.keys(hideOrganizerExtra).length > 0 || Object.keys(hiddenOrganizersExtra).length > 0 || Object.keys(headerImageLayoutConfig).length > 0;
+          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0 || Object.keys(teamTermExtra).length > 0 || Object.keys(teamNoCreateExtra).length > 0 || Object.keys(assistantsCanSeeExtra).length > 0 || Object.keys(organizerDisplayLargeExtra).length > 0 || Object.keys(previewBeforeActiveExtra).length > 0 || Object.keys(imageDisplayExtra).length > 0 || Object.keys(hideOrganizerExtra).length > 0 || Object.keys(hiddenOrganizersExtra).length > 0 || Object.keys(hideOrgIndividualExtra).length > 0 || Object.keys(headerImageLayoutConfig).length > 0;
           return hasAny
             ? JSON.stringify({
                 ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
@@ -4051,6 +4220,7 @@ export default function EventCreationPage(): React.ReactElement {
                 ...imageDisplayExtra,
                 ...hideOrganizerExtra,
                 ...hiddenOrganizersExtra,
+                ...hideOrgIndividualExtra,
                 // v18.73: Header-Bild-Layout (Breite + Innenabstand) — event-weit.
                 ...headerImageLayoutConfig,
                 ...emailTemplateOverrides,
@@ -5009,7 +5179,7 @@ export default function EventCreationPage(): React.ReactElement {
     [
       // v24.12 Schritt 2: Organizer & Team
       'Organizer auswählen — bekommen alle Organizer-Mails und sehen das Event im Admin Center; einzelne lassen sich von der Anmeldeseite ausblenden',
-      'Anzeige der Organizer auf dem Registerformular wählen (klein/groß) — mit Live-Vorschau',
+      'Anzeige der Organizer auf dem Anmeldeformular wählen (klein/groß) — mit Live-Vorschau',
       'Optional: externen Ansprechpartner (z.B. Service-Mail) angeben',
       'Test-Team: sieht das Event schon im Entwurf',
       'Check-in-Team: bedient am Event-Tag nur das Check-in-Tool',
@@ -6497,8 +6667,8 @@ export default function EventCreationPage(): React.ReactElement {
                 <div style={{ fontWeight: 800, fontSize: '1.02rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Organizer' : 'Organizers'}</div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
                   {isDe
-                    ? 'Diese Personen können die Teilnehmerliste sehen und das Event einstellen.'
-                    : 'These people can see the attendee list and configure the event.'}
+                    ? 'Diese Personen verantworten die Eventkoordination, können das Event ändern und die Teilnehmerliste einsehen.'
+                    : 'These people are responsible for coordinating the event, can edit it and view the attendee list.'}
                 </div>
               </div>
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
@@ -6595,8 +6765,8 @@ export default function EventCreationPage(): React.ReactElement {
                         const email = organizerEmails[i] || '';
                         // v24.12 (J-Gate): Einzel-Ausblenden nur wenn „Organizer
                         // einzeln ausblenden" aktiv ist; sonst Chips nicht klickbar.
-                        const canHideToggle = hideOrganizer && !!email;
-                        const orgHidden = hideOrganizer && !!email && hiddenOrganizerEmails.indexOf(email.toLowerCase()) >= 0;
+                        const canHideToggle = hideOrganizer && hideOrganizerIndividualOnly && !!email;
+                        const orgHidden = hideOrganizer && hideOrganizerIndividualOnly && !!email && hiddenOrganizerEmails.indexOf(email.toLowerCase()) >= 0;
                         return (
                         <span
                           key={`${name}-${i}`}
@@ -6620,7 +6790,7 @@ export default function EventCreationPage(): React.ReactElement {
                               auf der Anmelde-Seite aus/ein (Rechte bleiben). */}
                           <span
                             onClick={() => { if (canHideToggle) toggleOrganizerHidden(email); }}
-                            title={canHideToggle ? (isDe ? (orgHidden ? 'Wird auf der Anmeldeseite NICHT angezeigt — klicken zum Einblenden (Rechte bleiben)' : 'Klicken, um diesen Organizer auf der Anmeldeseite auszublenden (Rechte bleiben)') : (orgHidden ? 'Hidden on the registration page — click to show' : 'Click to hide this organizer on the registration page')) : (isDe ? 'Zum Ausblenden zuerst „Organizer einzeln ausblenden" aktivieren' : 'Enable „Hide individual organizers" first')}
+                            title={canHideToggle ? (isDe ? (orgHidden ? 'Wird auf der Anmeldeseite NICHT angezeigt — klicken zum Einblenden (Rechte bleiben)' : 'Klicken, um diesen Organizer auf der Anmeldeseite auszublenden (Rechte bleiben)') : (orgHidden ? 'Hidden on the registration page — click to show' : 'Click to hide this organizer on the registration page')) : (isDe ? 'Zum einzelnen Ausblenden „Organizer ausblenden" und „Nur einzelne Organizer ausblenden" aktivieren' : 'Enable „Hide organizers" and „Hide only individual organizers" first')}
                             style={{ cursor: canHideToggle ? 'pointer' : 'default', textDecoration: orgHidden ? 'line-through' : 'none' }}
                           >{name}</span>
                           {orgHidden && <span style={{ fontSize: '0.68rem', fontStyle: 'italic', opacity: 0.95 }}>{isDe ? '(ausgeblendet)' : '(hidden)'}</span>}
@@ -6649,15 +6819,19 @@ export default function EventCreationPage(): React.ReactElement {
                         </span>
                       );
                       })}
-                      {/* v24.8 (J) / v24.12 (Gate): Tipp unter den Organizer-Namen. */}
+                      {/* v24.8 (J) / v24.15 (Gate): Tipp unter den Organizer-Namen. */}
                       <span style={{ flexBasis: '100%', fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
                         {isDe
-                          ? (hideOrganizer
-                              ? 'Tipp: Auf einen Namen klicken blendet diese Person auf der Anmeldeseite aus (sie behält alle Rechte). Erneut klicken zeigt sie wieder.'
-                              : 'Tipp: Aktiviere oben „Organizer einzeln ausblenden", dann kannst du hier per Klick auf einen Namen einzelne Organizer ausblenden.')
-                          : (hideOrganizer
-                              ? 'Tip: click a name to hide that person on the registration page (they keep all rights). Click again to show.'
-                              : 'Tip: enable „Hide individual organizers" above, then click a name here to hide that organizer.')}
+                          ? (!hideOrganizer
+                              ? 'Alle Organizer werden auf der Anmeldeseite angezeigt.'
+                              : (hideOrganizerIndividualOnly
+                                  ? 'Tipp: Auf einen Namen klicken blendet diese Person auf der Anmeldeseite aus (sie behält alle Rechte). Erneut klicken zeigt sie wieder.'
+                                  : 'Alle Organizer sind ausgeblendet. Bei mehreren Organizern kannst du oben „Nur einzelne Organizer ausblenden" wählen, um stattdessen einzelne anzuklicken.'))
+                          : (!hideOrganizer
+                              ? 'All organizers are shown on the registration page.'
+                              : (hideOrganizerIndividualOnly
+                                  ? 'Tip: click a name to hide that person on the registration page (they keep all rights). Click again to show.'
+                                  : 'All organizers are hidden. With several organizers you can choose „Hide individual organizers only" above to pick individuals instead.'))}
                       </span>
                     </div>
                   );
@@ -6767,37 +6941,56 @@ export default function EventCreationPage(): React.ReactElement {
                     style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 2 }}
                   />
                   <span style={{ flex: 1 }}>
-                    <strong>{isDe ? 'Organizer einzeln ausblenden' : 'Hide individual organizers'}</strong>
+                    <strong>{isDe ? 'Organizer ausblenden' : 'Hide organizers'}</strong>
                     <InfoTooltip text={isDe
                       ? <>
-                          <strong>Was du hier einstellst:</strong> ob du <strong>einzelne Organizer</strong> von der <strong>Anmelde-Seite</strong> (und &bdquo;Meine Events&ldquo;) ausblenden möchtest.<br /><br />
-                          <strong>Anzeige in der App:</strong> aktivierst du diese Option, kannst du unten bei den Organizer-Chips per <strong>Klick auf einen Namen</strong> genau diese Person ausblenden. Ohne Auswahl bleiben alle sichtbar.<br /><br />
+                          <strong>Was du hier einstellst:</strong> ob die <strong>Organizer</strong> auf der <strong>Anmelde-Seite</strong> (und &bdquo;Meine Events&ldquo;) als Ansprechpartner angezeigt werden.<br /><br />
+                          <strong>Anzeige in der App:</strong> aktiviert blendet alle Organizer aus. Gibt es mehrere Organizer, erscheint darunter zusätzlich die Option, stattdessen <strong>nur einzelne</strong> auszublenden (per Klick auf den Namen).<br /><br />
                           <strong>Wichtig:</strong> das ist rein optisch — die Organizer behalten alle <strong>Rechte</strong> (bearbeiten, Teilnehmer verwalten) und ihre <strong>Mail-Benachrichtigungen</strong>.
                         </>
                       : <>
-                          <strong>What this controls:</strong> whether you want to hide <strong>individual organizers</strong> from the <strong>registration page</strong> (and &bdquo;My Events&ldquo;).<br /><br />
-                          <strong>Where you see it:</strong> when enabled, click an organizer chip below to hide exactly that person. With no selection, all stay visible.<br /><br />
+                          <strong>What this controls:</strong> whether the <strong>organizers</strong> are shown as contacts on the <strong>registration page</strong> (and &bdquo;My Events&ldquo;).<br /><br />
+                          <strong>Where you see it:</strong> when enabled, all organizers are hidden. With several organizers, an option appears below to hide <strong>only individual ones</strong> instead (click a name).<br /><br />
                           <strong>Note:</strong> this is purely visual — organizers keep all <strong>permissions</strong> and their <strong>email notifications</strong>.
                         </>
                     } />
                     <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
                       {isDe
-                        ? 'Default: aus — alle Organizer werden angezeigt. An: unten einzelne Organizer per Klick ausblenden.'
-                        : 'Default: off — all organizers are shown. On: click individual organizer chips below to hide them.'}
+                        ? 'Default: aus — alle Organizer werden angezeigt. An: keine Organizer auf der Anmeldeseite (der optionale Ansprechpartner bleibt).'
+                        : 'Default: off — all organizers are shown. On: no organizers on the registration page (the optional contact stays).'}
                     </span>
                   </span>
                 </label>
+                {/* v24.15: zweite Checkbox — nur bei „Organizer ausblenden" UND
+                    mehreren Organizern: stattdessen nur einzelne ausblenden. */}
+                {hideOrganizer && organizerEmails.length >= 2 && (
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginTop: 12, marginLeft: 28 }}>
+                    <input
+                      type="checkbox"
+                      checked={hideOrganizerIndividualOnly}
+                      onChange={e => setHideOrganizerIndividualOnly(e.target.checked)}
+                      style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 2 }}
+                    />
+                    <span style={{ flex: 1 }}>
+                      <strong>{isDe ? 'Nur einzelne Organizer ausblenden' : 'Hide only individual organizers'}</strong>
+                      <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                        {isDe
+                          ? 'An: nicht alle ausblenden — klicke unten auf einzelne Organizer-Namen, um genau diese auszublenden (die übrigen bleiben sichtbar).'
+                          : 'On: don’t hide all — click individual organizer names below to hide exactly those (the rest stay visible).'}
+                      </span>
+                    </span>
+                  </label>
+                )}
               </div>
 
-              {/* v23.25: Darstellungs-Größe der Organizer auf der Anmeldeseite.
-                  Klein (Chip mit Hover) ODER groß (Foto + Mail + Rolle direkt
-                  sichtbar). Nur relevant, wenn die Organizer überhaupt angezeigt
-                  werden (also nicht „ausgeblendet"). */}
-              {!hideOrganizer && (
+              {/* v23.25/v24.15: Darstellungs-Größe der Organizer. Nur relevant,
+                  wenn überhaupt Organizer angezeigt werden — also NICHT, wenn
+                  ALLE ausgeblendet sind (hideOrganizer ohne Einzel-Modus). */}
+              {(!hideOrganizer || hideOrganizerIndividualOnly) && (
                 <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                   {/* v24.4 (I) / v24.10 (Q): grüne Zwischenüberschrift + Live-Vorschau. */}
                   <div className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, color: 'var(--dex-green-dark, #4a7c1f)' }}>
-                    {isDe ? 'Anzeige auf dem Registerformular' : 'Display on the registration form'}
+                    {isDe ? 'Anzeige auf dem Anmeldeformular' : 'Display on the registration form'}
                     <InfoTooltip text={isDe
                       ? <>
                           <strong>Was du hier einstellst:</strong> wie die <strong>Organizer</strong> auf der Anmelde-Seite dargestellt werden.<br /><br />
@@ -6859,7 +7052,7 @@ export default function EventCreationPage(): React.ReactElement {
                         <OrganizerList
                           names={_orgNames}
                           emails={organizerEmails}
-                          hiddenEmails={hiddenOrganizerEmails}
+                          hiddenEmails={(hideOrganizer && hideOrganizerIndividualOnly) ? hiddenOrganizerEmails : []}
                           size="md"
                           display={organizerDisplayLarge ? 'card' : 'chip'}
                         />
@@ -6987,8 +7180,8 @@ export default function EventCreationPage(): React.ReactElement {
                 <div style={{ fontWeight: 800, fontSize: '1.02rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Erweitertes Organisations-Team' : 'Extended organization team'}</div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
                   {isDe
-                    ? 'Test-Team (sieht das Event schon im Entwurf) und Check-in-Team (bedient am Event-Tag nur das Check-in-Tool).'
-                    : 'Test team (sees the draft early) and check-in team (operates only the check-in tool on the event day).'}
+                    ? 'Diese Personen unterstützen die Organizer. Sie können das Event nicht anpassen und die Teilnehmerliste nur bedingt einsehen (Check-in-Team beim Check-in).'
+                    : 'These people support the organizers. They cannot edit the event and can only view the attendee list to a limited extent (check-in team during check-in).'}
                 </div>
               </div>
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
@@ -10193,6 +10386,34 @@ export default function EventCreationPage(): React.ReactElement {
                                   onChange={e => updateSubEventCustomField(se.id, field.id, { helpText: e.target.value })}
                                   style={{ width: '100%', fontSize: '0.82rem', padding: '6px 10px' }}
                                 />
+                                {/* v24.14 BUG-FIX: helpTextStyle-Wahl fehlte bei Sub-Event-Feldern
+                                    (nur das Hauptevent hatte sie) — „Text unter dem Feld" wurde
+                                    deshalb beim Sub-Event nie gespeichert. */}
+                                {field.helpText && field.helpText.trim() && (
+                                  <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: '0.78rem', color: 'var(--dex-gray-600)', flexWrap: 'wrap' }}>
+                                    <span style={{ fontWeight: 600 }}>{isDe ? 'Anzeige:' : 'Display:'}</span>
+                                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: inherit ? 'default' : 'pointer' }}>
+                                      <input
+                                        type="radio"
+                                        name={`seHelpStyle-${se.id}-${field.id}`}
+                                        disabled={inherit}
+                                        checked={(field.helpTextStyle || 'tooltip') !== 'inline'}
+                                        onChange={() => updateSubEventCustomField(se.id, field.id, { helpTextStyle: 'tooltip' })}
+                                      />
+                                      {isDe ? '„i"-Info-Box (Hover)' : '„i" info box (hover)'}
+                                    </label>
+                                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: inherit ? 'default' : 'pointer' }}>
+                                      <input
+                                        type="radio"
+                                        name={`seHelpStyle-${se.id}-${field.id}`}
+                                        disabled={inherit}
+                                        checked={field.helpTextStyle === 'inline'}
+                                        onChange={() => updateSubEventCustomField(se.id, field.id, { helpTextStyle: 'inline' })}
+                                      />
+                                      {isDe ? 'Text unter dem Feld-Titel' : 'Text below the field title'}
+                                    </label>
+                                  </div>
+                                )}
                               </div>
                               {field.type === 'select' && (
                                 <div style={{
@@ -10252,6 +10473,11 @@ export default function EventCreationPage(): React.ReactElement {
                                   </div>
                                 </div>
                               )}
+                              {/* v24.16 BUG-FIX: Sichtbarkeitsbedingung (showIf)
+                                  fehlte bei Sub-Event-Feldern — bedingte Fragen
+                                  wurden deshalb auf dem Anmeldeformular IMMER
+                                  angezeigt. Gleiche UI wie beim Hauptevent. */}
+                              {!inherit && renderShowIfConfig(field, idx, seFields, (u) => updateSubEventCustomField(se.id, field.id, u))}
                             </div>
                           ))}
                         </div>
@@ -11048,164 +11274,7 @@ export default function EventCreationPage(): React.ReactElement {
                         eine andere Frage einen bestimmten Wert hat. Quelle
                         kann nur ein Feld VOR diesem hier sein (idx < aktuell)
                         und muss vom Typ select oder checkbox sein. */}
-                    {(() => {
-                      const candidateSources = customFields.slice(0, idx).filter(other =>
-                        (other.type === 'select' || other.type === 'checkbox') && (other.label || '').trim().length > 0
-                      );
-                      const sourceField = field.showIf
-                        ? customFields.find(o => o.id === field.showIf!.fieldId)
-                        : null;
-                      const removeShowIf = (): void => {
-                        // showIf gezielt löschen: updateCustomField macht ein
-                        // shallow-merge, also setzen wir undefined und filtern
-                        // beim Save raus.
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        updateCustomField(field.id, { showIf: undefined as any });
-                      };
-                      return (
-                        <div style={{ marginLeft: 32, marginTop: 10, padding: '10px 12px', background: 'rgba(21,101,192,0.04)', border: '1px dashed var(--dex-gray-300)', borderRadius: 8 }}>
-                          {!field.showIf ? (
-                            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (candidateSources.length === 0) {
-                                    showAlert(isDe
-                                      ? 'Es gibt noch kein Dropdown- oder Checkbox-Feld VOR diesem hier, an das die Sichtbarkeit geknüpft werden könnte. Lege zuerst ein passendes Feld weiter oben an.'
-                                      : 'There is no dropdown or checkbox field BEFORE this one yet that visibility could depend on. Please add a suitable field above first.');
-                                    return;
-                                  }
-                                  const first = candidateSources[0];
-                                  updateCustomField(field.id, {
-                                    showIf: {
-                                      fieldId: first.id,
-                                      values: first.type === 'checkbox' ? ['true'] : (first.options[0] ? [first.options[0]] : []),
-                                    },
-                                  });
-                                }}
-                                style={{
-                                  background: 'none', border: 'none', padding: 0,
-                                  color: 'var(--dex-green-dark, #4a7c1f)',
-                                  fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
-                                }}
-                              >
-                                + {isDe ? 'Sichtbarkeitsbedingung hinzufügen' : 'Add visibility condition'}
-                              </button>
-                              <InfoTooltip
-                                text={isDe
-                                  ? 'Dieses Feld wird nur angezeigt, wenn die Antwort auf eine andere (zuvor angelegte) Frage einem von dir festgelegten Wert entspricht. Beispiel: „Roommate" wird nur gefragt, wenn die Frage „Zimmerart" mit „Doppelzimmer" beantwortet wurde. Andernfalls bleibt das Feld komplett verborgen — und blockiert auch nicht die Pflichtfeld-Validierung.'
-                                  : 'This field is shown only when the answer to another (previously added) question matches a value you specify. Example: "Roommate" is only asked when the question "Room type" is answered with "Double room". Otherwise the field stays fully hidden — and does not block the required-field validation either.'}
-                              />
-                            </span>
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
-                                {isDe ? 'Diese Frage nur anzeigen wenn:' : 'Only show this question when:'}
-                                <InfoTooltip
-                                  text={isDe
-                                    ? 'Dieses Feld wird nur angezeigt, wenn die Antwort auf die Quell-Frage einem der gewählten Werte entspricht. Bei Mehrfachauswahl-Quellen reicht ein Treffer. Pflichtfeld-Validierung wird übersprungen, solange das Feld verborgen ist.'
-                                    : 'This field is shown only when the answer to the source question matches one of the chosen values. With multi-select sources a single match is enough. Required-field validation is skipped as long as the field stays hidden.'}
-                                />
-                              </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                <select
-                                  className="form-select"
-                                  value={field.showIf.fieldId}
-                                  onChange={e => {
-                                    const newSrc = customFields.find(o => o.id === e.target.value);
-                                    if (!newSrc) return;
-                                    updateCustomField(field.id, {
-                                      showIf: {
-                                        fieldId: newSrc.id,
-                                        values: newSrc.type === 'checkbox' ? ['true'] : (newSrc.options[0] ? [newSrc.options[0]] : []),
-                                      },
-                                    });
-                                  }}
-                                  style={{ fontSize: '0.82rem', padding: '4px 8px', minWidth: 180, maxWidth: 320 }}
-                                >
-                                  {candidateSources.map(o => (
-                                    <option key={o.id} value={o.id}>
-                                      {customFields.findIndex(c => c.id === o.id) + 1}. {o.label}
-                                    </option>
-                                  ))}
-                                  {/* fallback wenn die ausgewählte Quelle hinter dem Feld gelandet
-                                      ist (z.B. nach einem Move) — option in der Liste anzeigen,
-                                      aber als ungültig markiert lassen. */}
-                                  {sourceField && !candidateSources.find(c => c.id === sourceField.id) && (
-                                    <option value={sourceField.id} disabled>
-                                      ⚠ {sourceField.label} ({isDe ? 'liegt hinter diesem Feld' : 'is positioned after this field'})
-                                    </option>
-                                  )}
-                                </select>
-                                <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
-                                  {isDe ? '=' : '='}
-                                </span>
-                                {sourceField && sourceField.type === 'checkbox' ? (
-                                  <select
-                                    className="form-select"
-                                    value={field.showIf.values[0] || 'true'}
-                                    onChange={e => updateCustomField(field.id, {
-                                      showIf: { fieldId: field.showIf!.fieldId, values: [e.target.value] },
-                                    })}
-                                    style={{ fontSize: '0.82rem', padding: '4px 8px', minWidth: 130 }}
-                                  >
-                                    <option value="true">{isDe ? 'angehakt' : 'checked'}</option>
-                                    <option value="false">{isDe ? 'nicht angehakt' : 'unchecked'}</option>
-                                  </select>
-                                ) : sourceField ? (
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                                    {(sourceField.options || []).filter(Boolean).map(opt => {
-                                      const checked = field.showIf!.values.indexOf(opt) >= 0;
-                                      return (
-                                        <label
-                                          key={opt}
-                                          style={{
-                                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                                            padding: '4px 10px', borderRadius: 999,
-                                            fontSize: '0.78rem', cursor: 'pointer',
-                                            border: `1px solid ${checked ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
-                                            background: checked ? 'rgba(134,188,37,0.10)' : '#fff',
-                                            color: checked ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)',
-                                            fontWeight: 600,
-                                          }}
-                                        >
-                                          <input
-                                            type="checkbox"
-                                            checked={checked}
-                                            onChange={() => {
-                                              const next = checked
-                                                ? field.showIf!.values.filter(v => v !== opt)
-                                                : [...field.showIf!.values, opt];
-                                              updateCustomField(field.id, {
-                                                showIf: { fieldId: field.showIf!.fieldId, values: next },
-                                              });
-                                            }}
-                                            style={{ display: 'none' }}
-                                          />
-                                          {checked ? '✓' : '○'} {opt}
-                                        </label>
-                                      );
-                                    })}
-                                  </div>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  onClick={removeShowIf}
-                                  title={isDe ? 'Bedingung entfernen' : 'Remove condition'}
-                                  style={{
-                                    background: 'none', border: 'none', cursor: 'pointer',
-                                    color: 'var(--dex-red, #c00)', fontSize: '0.8rem',
-                                    padding: '4px 6px', marginLeft: 'auto',
-                                  }}
-                                >
-                                  ✕ {isDe ? 'entfernen' : 'remove'}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
+                    {renderShowIfConfig(field, idx, customFields, (u) => updateCustomField(field.id, u))}
                     </>)}
                   </div>
                   );

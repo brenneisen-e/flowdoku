@@ -8,6 +8,13 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.16.0 | 2026-06-22 | Bugfix | Sub-Event-Felder: Fragen, die nur bei einer bestimmten Antwort auf eine andere Frage erscheinen sollen, lassen sich jetzt auch im Sub-Event einstellen — und werden auf dem Anmeldeformular erst dann angezeigt (vorher standen alle bedingten Fragen immer offen da). |
+| 24.15.0 | 2026-06-18 | Feature | Organizer-Anzeige: erst „Organizer ausblenden" (alle aus); bei mehreren Organizern zusätzlich „Nur einzelne Organizer ausblenden" (per Klick auf Namen) — kein versehentliches Einzel-Ausblenden mehr. |
+| 24.14.0 | 2026-06-18 | Bugfix | Sub-Event-Felder: Wahl „i"-Info vs. „Text unter dem Feld" wird jetzt gespeichert (fehlte bisher, blieb immer „i"). |
+| 24.14.0 | 2026-06-18 | Bugfix | Datumsauswahl: heutiges/ausgewähltes Datum jetzt weiß (auf grünem Kreis lesbar). |
+| 24.14.0 | 2026-06-18 | Feature | Offizielles Deloitte-Logo als Bild im App-Header und im Rollen-Matrix-PDF (statt nachgebautem Schriftzug). |
+| 24.13.0 | 2026-06-18 | Feature | Startseite: kleine Karte „Du bist für … angemeldet" (mit Bild, Datum, Ort, Countdown in Tagen bzw. Stunden) pro aktivem Event, für das man angemeldet ist — Klick springt zu „Meine Events". Nicht doppelt, wenn schon eine Check-in-/QR-Box läuft. |
+| 24.13.0 | 2026-06-18 | Bugfix | Rollen-Matrix-PDF: Deloitte-Logo oben links jetzt schwarz (auf weißem Grund sichtbar). |
 | 24.12.0 | 2026-06-18 | Feature | Organizer-Einstellungen als eigener Wizard-Schritt („Schritt 2 — Organizer & Team": Organizer, Ansprechpartner, Test-/Check-in-Team). Alle Folgeschritte neu nummeriert (inkl. geführter Tour und „Prüfen"-Übersicht). |
 | 24.12.0 | 2026-06-18 | Feature | Einzelne Organizer ausblenden geht erst nach Aktivierung von „Organizer einzeln ausblenden" (kein versehentliches Ausblenden per Klick). |
 | 24.12.0 | 2026-06-18 | Feature | Verständlichere Wizard-Texte: klarere Sub-Event-Erklärung; präziser Hinweis zur E-Mail-Verteiler-Speicherung. |

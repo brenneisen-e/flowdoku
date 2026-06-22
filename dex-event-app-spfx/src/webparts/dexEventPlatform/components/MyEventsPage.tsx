@@ -1894,7 +1894,7 @@ export default function MyEventsPage(): React.ReactElement {
                     </div>
 
                     {/* Organizer mit Foto (Hover vergrößert). v24.12: einzelne ausblendbar. */}
-                    {event.organizers.length > 0 && (
+                    {event.organizers.length > 0 && !(event.hideOrganizer && !event.hideOrganizerIndividualOnly) && (
                       <div style={{ marginTop: 10 }}>
                         <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>Organizer</div>
                         <OrganizerList
@@ -1904,7 +1904,7 @@ export default function MyEventsPage(): React.ReactElement {
                             return parts.length === 2 ? `${parts[1]} ${parts[0]}` : trimmed;
                           }).filter(Boolean)}
                           emails={event.organizerEmails}
-                          hiddenEmails={event.hideOrganizer ? event.hiddenOrganizerEmails : []}
+                          hiddenEmails={(event.hideOrganizer && event.hideOrganizerIndividualOnly) ? event.hiddenOrganizerEmails : []}
                           size="sm"
                         />
                       </div>
