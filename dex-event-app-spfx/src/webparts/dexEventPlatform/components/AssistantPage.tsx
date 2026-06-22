@@ -56,9 +56,19 @@ export default function AssistantPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { locale } = useLanguage();
   const { confirmDialog, showAlert, promptDialog } = useDialog();
-  const { searchUsers, searchUser } = useRoles();
+  const { searchUsers, searchUser, isAdmin } = useRoles();
   const { currentUser } = useCurrentUser();
   const meLc = (currentUser?.email || '').toLowerCase().trim();
+  // v24.43: „An die Person übergeben" setzt den Zeilen-Ersteller um — das darf
+  // nur, wer „Listen verwalten"/Vollzugriff auf der Teilnehmerliste hat: Admins
+  // ODER Organizer/Co-Organizer DIESES Events. Sonst wird der Knopf ausgeblendet.
+  const canHandBackGroup = React.useCallback((group: Group): boolean => {
+    if (isAdmin) return true;
+    const ev = group.rootEvent;
+    const inOrg = (ev.organizerEmails || []).some(e => (e || '').toLowerCase() === meLc);
+    const inCo = (ev.coOrganizerEmails || []).some(e => (e || '').toLowerCase() === meLc);
+    return inOrg || inCo;
+  }, [isAdmin, meLc]);
   const isDe = locale === 'de';
 
   const [loading, setLoading] = React.useState(true);
@@ -559,7 +569,9 @@ export default function AssistantPage(): React.ReactElement {
                     <div style={{ fontWeight: 600, fontSize: '0.92rem' }}>{group.pName}</div>
                     <div style={{ fontSize: '0.78rem', color: '#666' }}>{group.pEmail}</div>
                     {subLine && <div style={{ fontSize: '0.78rem', color: '#888', marginTop: 2 }}>{subLine}</div>}
-                    {/* v24.43: Anmeldung komplett an die Person übergeben. */}
+                    {/* v24.43: Anmeldung komplett an die Person übergeben — nur
+                        Admin/Organizer dieses Events (Rechte zum Owner-Wechsel). */}
+                    {canHandBackGroup(group) && (
                     <button
                       type="button"
                       onClick={() => { void doHandBack(group); }}
@@ -570,6 +582,7 @@ export default function AssistantPage(): React.ReactElement {
                       <Icon iconName="Share" style={{ fontSize: 12, marginRight: 5 }} />
                       {busyKey === `handback_${group.pEmail}` ? '…' : (isDe ? 'An die Person übergeben' : 'Hand over to person')}
                     </button>
+                    )}
                   </div>
                 </div>
 
