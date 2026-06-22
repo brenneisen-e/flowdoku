@@ -1736,7 +1736,7 @@ export default function RegistrationPage(): React.ReactElement {
             return (
               <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                 <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>Organizer</div>
-                <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={event.hiddenOrganizerEmails} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} />
+                <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={event.hiddenOrganizerEmails} forceIsDe={locale === 'de'} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} />
               </div>
             );
           })()}
@@ -2255,7 +2255,7 @@ export default function RegistrationPage(): React.ReactElement {
                 return (
                   <div style={{ marginTop: 6 }}>
                     <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, fontWeight: 600 }}>Organizer</div>
-                    <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={event.hiddenOrganizerEmails} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} />
+                    <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={event.hiddenOrganizerEmails} forceIsDe={locale === 'de'} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} />
                   </div>
                 );
               })()}

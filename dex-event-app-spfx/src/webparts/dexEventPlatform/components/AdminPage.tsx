@@ -4531,6 +4531,46 @@ export default function AdminPage(): React.ReactElement {
                     {isDe ? 'Abgeschlossen (vorbei)' : 'Completed (past)'}
                   </span>
                 </div>
+                {/* v24.11: Hinweis auf abgelaufene Entwürfe (wie auf der Startseite),
+                    jetzt auch hier im Organizer Center. Löschen über die übliche
+                    Sicherheitsabfrage (Entwürfe = einfaches Ja). */}
+                {(() => {
+                  const dayMs = 24 * 60 * 60 * 1000;
+                  const nowTs = Date.now();
+                  const stale = adminEvents.filter(e => {
+                    if (e.parentEventId || !e.isFictive) return false;
+                    const endRaw = e.endDate || e.startDate;
+                    const endTs = endRaw ? new Date(endRaw).getTime() : 0;
+                    return endTs > 0 && endTs < nowTs - dayMs;
+                  });
+                  if (stale.length === 0) return null;
+                  return (
+                    <div style={{ margin: '0 4px 14px', padding: '12px 16px', background: '#fff', border: '1px solid rgba(237,139,0,0.5)', borderRadius: 12 }}>
+                      <div style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--dex-gray-800)', marginBottom: 4 }}>
+                        {isDe ? 'Abgelaufene Entwürfe aufräumen' : 'Clean up expired drafts'}
+                      </div>
+                      <p style={{ margin: '0 0 8px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                        {isDe
+                          ? <><strong>{stale.length}</strong> {stale.length === 1 ? 'Entwurf ist' : 'Entwürfe sind'} abgelaufen (Datum vorbei, nie aktiviert) und {stale.length === 1 ? 'kann' : 'können'} gelöscht werden.</>
+                          : <><strong>{stale.length}</strong> draft(s) expired (date passed, never activated) and can be deleted.</>}
+                      </p>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {stale.map(ev => (
+                          <div key={ev.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                            <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--dex-gray-800)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ev.title || (isDe ? 'Ohne Titel' : 'Untitled')}</span>
+                            <button
+                              className="btn btn-secondary"
+                              style={{ fontSize: '0.74rem', padding: '4px 10px', color: 'var(--dex-red, #c00)', flexShrink: 0 }}
+                              onClick={() => { setConfirmDeleteEvent(ev); setConfirmDeleteText(''); }}
+                            >
+                              {isDe ? 'Löschen' : 'Delete'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div className="my-events-list">
                   {currentEvents.map(ev => renderEventCard(ev))}
                 </div>

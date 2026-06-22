@@ -26,6 +26,9 @@ export interface OrganizerListProps {
   /** v23.25: 'card' = Organizer dauerhaft groß (Foto + Name + Mail + Rolle
    *  direkt sichtbar). Default 'chip' = klein mit Hover-Popup. */
   display?: 'chip' | 'card';
+  /** v24.11: Sprache erzwingen (z.B. Anmeldeseite mit fest englischer
+   *  Formularsprache). undefined = App-Sprache. */
+  forceIsDe?: boolean;
 }
 
 // v11.95: pro Email einmalig profile-lookup, Ergebnis App-weit gecached
@@ -82,7 +85,7 @@ function ContactLinks({ email, isDe }: { email: string; isDe: boolean }): React.
  * für den „card"-Modus, wo mehrere Organizer NEBENEINANDER in EINER Kachel
  * stehen. Lädt Rolle + Standort sofort (ohne Hover).
  */
-function OrganizerCardEntry({ name, email }: { name: string; email: string }): React.ReactElement {
+function OrganizerCardEntry({ name, email, forceIsDe }: { name: string; email: string; forceIsDe?: boolean }): React.ReactElement {
   const [failed, setFailed] = React.useState(false);
   const [retryAttempt, setRetryAttempt] = React.useState(0);
   const [profile, setProfile] = React.useState<{ jobTitle: string; location: string } | null>(
@@ -90,7 +93,7 @@ function OrganizerCardEntry({ name, email }: { name: string; email: string }): R
   );
   const { searchUser } = useRoles();
   const { locale } = useLanguage();
-  const isDe = locale === 'de';
+  const isDe = forceIsDe !== undefined ? forceIsDe : locale === 'de';
   const size = 96;
   const initials = getInitials(name);
   const cacheBust = retryAttempt > 0 ? `&_r=${retryAttempt}` : '';
@@ -132,8 +135,8 @@ function OrganizerCardEntry({ name, email }: { name: string; email: string }): R
   );
 }
 
-function OrganizerChip({ name, email, sizeClass, isOpen, onOpen, onScheduleClose, onCancelClose }: {
-  name: string; email: string; sizeClass: 'sm' | 'md';
+function OrganizerChip({ name, email, sizeClass, isOpen, onOpen, onScheduleClose, onCancelClose, forceIsDe }: {
+  name: string; email: string; sizeClass: 'sm' | 'md'; forceIsDe?: boolean;
   // v23.47: Auf/Zu-Status wird vom Eltern-Container gesteuert, damit IMMER nur
   // EIN Popover gleichzeitig offen ist (schnelles Wechseln zwischen Organizern
   // zeigte vorher kurz beide — der verzögerte Close des ersten überlappte mit
@@ -154,7 +157,7 @@ function OrganizerChip({ name, email, sizeClass, isOpen, onOpen, onScheduleClose
   );
   const { searchUser } = useRoles();
   const { locale } = useLanguage();
-  const isDe = locale === 'de';
+  const isDe = forceIsDe !== undefined ? forceIsDe : locale === 'de';
   const wrapperRef = React.useRef<HTMLSpanElement>(null);
   const avatarSize = sizeClass === 'sm' ? 24 : 32;
   const enlargedSize = 120;
@@ -354,9 +357,9 @@ function pairNamesEmails(names: string[], emails: string[]): Array<{ name: strin
   return result;
 }
 
-function OrganizerCardTile({ items }: { items: Array<{ name: string; email: string }> }): React.ReactElement {
+function OrganizerCardTile({ items, forceIsDe }: { items: Array<{ name: string; email: string }>; forceIsDe?: boolean }): React.ReactElement {
   const { locale } = useLanguage();
-  const isDe = locale === 'de';
+  const isDe = forceIsDe !== undefined ? forceIsDe : locale === 'de';
   // v23.26: EINE Kachel mit allen Organizern nebeneinander (statt einzeln
   // beim Mouse-Over). Ein Hinweis-Kopf, dann die Personen in einer Reihe.
   return (
@@ -372,7 +375,7 @@ function OrganizerCardTile({ items }: { items: Array<{ name: string; email: stri
       </span>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, justifyContent: 'center', alignItems: 'flex-start' }}>
         {items.map((o, i) => (
-          <OrganizerCardEntry key={`${o.email || o.name}-${i}`} name={o.name} email={o.email} />
+          <OrganizerCardEntry key={`${o.email || o.name}-${i}`} name={o.name} email={o.email} forceIsDe={forceIsDe} />
         ))}
       </div>
     </div>
@@ -386,8 +389,8 @@ function OrganizerCardTile({ items }: { items: Array<{ name: string; email: stri
  * vorige sofort (statt erst nach dem 200ms-Verzögerungs-Close — der vorher kurz
  * BEIDE Popover gleichzeitig zeigte).
  */
-function OrganizerChipRow({ items, sizeClass, compact }: {
-  items: Array<{ name: string; email: string }>; sizeClass: 'sm' | 'md'; compact: boolean;
+function OrganizerChipRow({ items, sizeClass, compact, forceIsDe }: {
+  items: Array<{ name: string; email: string }>; sizeClass: 'sm' | 'md'; compact: boolean; forceIsDe?: boolean;
 }): React.ReactElement {
   const [openIdx, setOpenIdx] = React.useState<number | null>(null);
   // Verzögertes Schließen, damit die Maus über die 8px-Lücke vom Chip in die
@@ -409,6 +412,7 @@ function OrganizerChipRow({ items, sizeClass, compact }: {
           name={o.name}
           email={o.email}
           sizeClass={sizeClass}
+          forceIsDe={forceIsDe}
           isOpen={openIdx === i}
           onOpen={() => { cancelClose(); setOpenIdx(i); }}
           onScheduleClose={scheduleClose}
@@ -419,7 +423,7 @@ function OrganizerChipRow({ items, sizeClass, compact }: {
   );
 }
 
-export default function OrganizerList({ names, emails, size = 'md', compact = false, display = 'chip', hiddenEmails }: OrganizerListProps): React.ReactElement | null {
+export default function OrganizerList({ names, emails, size = 'md', compact = false, display = 'chip', hiddenEmails, forceIsDe }: OrganizerListProps): React.ReactElement | null {
   let items = pairNamesEmails(names, emails).filter(o => !!o.name);
   // v24.8 (J): einzeln ausgeblendete Organizer aus der Anzeige nehmen (Rechte bleiben).
   if (hiddenEmails && hiddenEmails.length > 0) {
@@ -428,6 +432,6 @@ export default function OrganizerList({ names, emails, size = 'md', compact = fa
   }
   if (items.length === 0) return null;
   // v23.26: Großer Modus = EINE gemeinsame Kachel mit allen Organizern.
-  if (display === 'card') return <OrganizerCardTile items={items} />;
-  return <OrganizerChipRow items={items} sizeClass={size} compact={compact} />;
+  if (display === 'card') return <OrganizerCardTile items={items} forceIsDe={forceIsDe} />;
+  return <OrganizerChipRow items={items} sizeClass={size} compact={compact} forceIsDe={forceIsDe} />;
 }

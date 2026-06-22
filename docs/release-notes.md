@@ -8,6 +8,8 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.11.0 | 2026-06-18 | Bugfix | Fest auf Englisch gestellte Anmeldeformulare werden jetzt vollständig englisch angezeigt (inkl. Organizer-Popup). Der Sprachumschalter zeigt die feste Sprache als aktiv; grüner Hinweis rechts daneben („Organizer set the language to English for this registration form"); Klick auf die andere Sprache meldet, dass der Organizer sie aus Einheitlichkeit festgelegt hat. |
+| 24.11.0 | 2026-06-18 | Feature | Hinweis auf löschbare abgelaufene Entwürfe jetzt auch in der Organizer-Eventübersicht (nicht nur auf der Startseite). |
 | 24.10.0 | 2026-06-18 | Feature | Rollen-Matrix als PDF herunterladbar (Querformat, Deloitte-Logo oben links, DEX-App-Logo oben rechts, komplette Berechtigungstabelle). |
 | 24.10.0 | 2026-06-18 | Feature | Wizard Schritt 1: Live-Vorschau der Organizer-Anzeige (klein/groß) unter „Anzeige auf dem Registerformular"; Ansprechpartner-Bereich default eingeklappt mit Hinweis, dass der Organizer Standard-Ansprechpartner ist und hier nur Externe (z.B. Service-Mail) eingetragen werden. |
 | 24.9.0 | 2026-06-18 | Feature | Eigenes Event als Vorlage (Teil 8 von v24): In Schritt 1 erscheint für Organizer mit bisherigen Events ein prominenter Bild-„Fächer"; Auswahl lädt Einstellungen + Bild ins neue Event (Datum/Anmeldungen/Sub-Events bleiben frisch). |
