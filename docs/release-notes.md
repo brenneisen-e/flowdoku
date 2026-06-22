@@ -8,6 +8,8 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.35.0 | 2026-06-22 | Feature | Organizer Center: Neue Aktion „Angaben-Nachtrag anfordern" — findet aktive Teilnehmer ohne eventspezifische Angaben und schickt ihnen eine freundliche Erinnerung im Deloitte-Layout (du bist angemeldet, wir freuen uns; bei der Anmeldung gab es ein kleines technisches Problem, bitte die Infos in „Meine Events" nachtragen). |
+| 24.35.0 | 2026-06-22 | Bugfix | Teilnehmerliste: In der konsolidierten Ansicht eines Klammer-/Hauptevents wird die Spalte „Unternehmen" jetzt ebenfalls angezeigt (fehlte bisher dort). |
 | 24.34.0 | 2026-06-22 | Bugfix | Hotfix: Der Unternehmens-Abruf (Backfill) schlug bisher immer fehl, weil die Abfrage an Microsoft zu viele Bedingungen auf einmal stellte. Jetzt werden kleinere Pakete abgefragt — die Unternehmenszugehörigkeit wird dadurch korrekt geladen und nachgetragen. |
 | 24.33.0 | 2026-06-22 | Feature | Die Unternehmenszugehörigkeit wird jetzt zuverlässig aus dem M365-Profil gelesen (auch wenn das SharePoint-Profil sie nicht hat) und erscheint als eigene Spalte „Unternehmen" in der Teilnehmerliste der App. |
 | 24.33.0 | 2026-06-22 | Feature | Admin Center: Neue Kachel „Spalten fixen (alle Events)" mit Fortschrittsanzeige — prüft die Teilnehmerlisten ALLER Events inkl. Sub-Events, ergänzt fehlende Spalten und trägt die Unternehmenszugehörigkeit für bereits bestehende Teilnehmer nach. War alles schon korrekt, wird das auch so gemeldet. |
