@@ -773,7 +773,14 @@ export default function RegistrationPage(): React.ReactElement {
   // v24.45: Partner ODER Director (P/D) — vorher wurde nur „director" geprüft,
   // Partner gingen leer aus. „Senior Director"/„Associate Partner" matchen mit.
   const isPartnerOrDirector = /(partner|director)/i.test(currentUser.jobTitle || '');
-  const hasAssistantCcField = (event?.eventSpecificFields || []).some(f => (f.type === 'user' || f.type === 'roommate') && !!f.ccOnEmails);
+  // v24.48: Unterdrücken, wenn das Event bereits ein eigenes Assistenz-Feld hat
+  // — entweder ein People-Picker mit „auf CC setzen" ODER ein People-Picker,
+  // dessen Bezeichnung auf „Assistenz/Assistant" hindeutet (z.B. „Your assistant").
+  const hasAssistantCcField = (event?.eventSpecificFields || []).some(f => {
+    if (f.type !== 'user' && f.type !== 'roommate') return false;
+    if (f.ccOnEmails) return true;
+    return /assist|assistenz|assistenten?/i.test(`${f.label || ''} ${f.labelEn || ''}`);
+  });
   const canDelegateAssistant = (isAdmin || isPartnerOrDirector) && !registerForOther && !isTeamMode && !pendingJoinTeam && !hasAssistantCcField;
   const parsedDelegateAssist = (() => {
     const m = (delegateAssistValue || '').match(/^(.+?)\s*<([^>]+@[^>]+)>\s*$/);
@@ -810,6 +817,9 @@ export default function RegistrationPage(): React.ReactElement {
   const [ccSelfModalOpen, setCcSelfModalOpen] = React.useState(false);
   const ccSelfDecidedRef = React.useRef(false);
   const ccSelfRef = React.useRef(false);
+  // v24.48: Assistenz-Abfrage als Modal beim Register-Klick (Partner/Director).
+  const [assistantModalOpen, setAssistantModalOpen] = React.useState(false);
+  const assistantModalDecidedRef = React.useRef(false);
 
   const handleSubmit = async (): Promise<void> => {
     // v17.25: Demo-Showcase-Event — keine echte Anmeldung. Freundlicher
@@ -1094,6 +1104,14 @@ export default function RegistrationPage(): React.ReactElement {
     // läuft handleSubmit erneut und überspringt das Modal.
     if (registerForOther && !externalPerson && !ccSelfDecidedRef.current) {
       setCcSelfModalOpen(true);
+      return;
+    }
+
+    // v24.48: Assistenz-Abfrage als Modal beim Register-Klick — nur für
+    // Partner/Director (canDelegateAssistant), einmal pro Submit-Durchlauf.
+    // Nach der Entscheidung läuft handleSubmit erneut und überspringt das Modal.
+    if (canDelegateAssistant && !assistantModalDecidedRef.current) {
+      setAssistantModalOpen(true);
       return;
     }
 
@@ -1497,6 +1515,8 @@ export default function RegistrationPage(): React.ReactElement {
       // Submit-Durchlauf (z.B. nächste stellvertretende Anmeldung) wieder fragt.
       ccSelfDecidedRef.current = false;
       ccSelfRef.current = false;
+      // v24.48: Assistenz-Entscheidung zurücksetzen (nächster Submit fragt neu).
+      assistantModalDecidedRef.current = false;
       // Kleine Verzögerung damit der User die 100%-Anzeige kurz sieht
       // bevor das Overlay wieder verschwindet.
       setTimeout(() => {
@@ -3912,50 +3932,8 @@ export default function RegistrationPage(): React.ReactElement {
         </div>
       )}
 
-      {/* v24.41: „Meine Assistenz beauftragen" — nur Admin/Director, eigene
-          Anmeldung, kein vorhandenes Assistenz-CC-Feld. */}
-      {canDelegateAssistant && (
-        <div style={{ maxWidth: 1100, margin: '20px auto 0', background: 'var(--dex-gray-50, #f7f7f7)', border: '1px solid var(--dex-gray-200, #e3e3e3)', borderRadius: 12, padding: '16px 18px' }}>
-          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-            <input
-              type="checkbox"
-              checked={delegateAssistEnabled}
-              onChange={e => { setDelegateAssistEnabled(e.target.checked); if (!e.target.checked) setDelegateAssistValue(''); }}
-              style={{ marginTop: 3 }}
-            />
-            <span>
-              <span style={{ fontWeight: 600 }}>
-                {locale === 'de' ? 'Meine Assistenz informieren & beauftragen' : 'Inform & delegate to my assistant'}
-              </span>
-              <span style={{ display: 'block', fontSize: '0.82rem', color: 'var(--dex-gray-600, #666)', marginTop: 3, lineHeight: 1.5 }}>
-                {locale === 'de'
-                  ? 'Deine Assistenz bekommt die Bestätigung in Kopie (CC) und kann deine Anmeldung anschließend in ihrer „Assistenz"-Kachel verwalten (Angaben anpassen, ab-/anmelden). Du selbst bekommst die Bestätigungsmail und siehst in „Meine Events" einen Hinweis, dass deine Assistenz die Anmeldung betreut.'
-                  : 'Your assistant receives a copy (CC) of the confirmation and can then manage your registration in their „Assistant" tile (edit details, register/cancel). You receive the confirmation mail and see a note in „My Events" that your assistant manages it.'}
-              </span>
-            </span>
-          </label>
-          {delegateAssistEnabled && (
-            <div style={{ marginTop: 12, paddingLeft: 30 }}>
-              <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: 6 }}>
-                {locale === 'de' ? 'Assistenz auswählen' : 'Select assistant'}
-              </label>
-              <UserFieldPicker
-                value={delegateAssistValue}
-                onChange={setDelegateAssistValue}
-                searchUsers={searchUsers}
-                searchUserByEmail={searchUser}
-                placeholder={locale === 'de' ? 'Name oder E-Mail der Assistenz…' : 'Assistant name or email…'}
-                errorStyle={{}}
-              />
-              {!parsedDelegateAssist && (
-                <div style={{ fontSize: '0.78rem', color: 'var(--dex-orange-dark, #b35a00)', marginTop: 6 }}>
-                  {locale === 'de' ? 'Bitte eine Assistenz aus der Suche auswählen, sonst wird niemand informiert.' : 'Please select an assistant from the search, otherwise nobody is informed.'}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+      {/* v24.48: Die „Meine Assistenz"-Abfrage ist von inline auf ein Modal
+          beim Register-Klick umgestellt (siehe assistantModalOpen unten). */}
 
       {/* Buttons */}
       <div className="registration-actions mt-24" style={{ maxWidth: 1100, margin: '24px auto 0', alignItems: 'center' }}>
@@ -4569,6 +4547,69 @@ export default function RegistrationPage(): React.ReactElement {
               style={{ fontSize: '0.85rem' }}
             >
               {locale === 'de' ? 'Ja, mich auf CC setzen' : 'Yes, add me to CC'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* v24.48: Assistenz-Abfrage — erscheint nach „Register"-Klick für
+          Partner/Director. People-Picker (Suche nach Name/E-Mail). */}
+      {assistantModalOpen && (
+        <Modal
+          open={assistantModalOpen}
+          onClose={() => setAssistantModalOpen(false)}
+          maxWidth={560}
+          padding={24}
+          ariaLabel={locale === 'de' ? 'Assistenz informieren?' : 'Inform assistant?'}
+        >
+          <h3 style={{ margin: '0 0 10px', fontSize: '1.1rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
+            {locale === 'de' ? 'Möchtest du deine Assistenz informieren?' : 'Do you want to inform your assistant?'}
+          </h3>
+          <p style={{ margin: '0 0 14px', fontSize: '0.88rem', lineHeight: 1.55, color: 'var(--dex-gray-700)' }}>
+            {locale === 'de'
+              ? 'Deine Assistenz bekommt die Bestätigung in Kopie (CC) und sieht deine Anmeldung anschließend als Info in ihrer „Assistenz"-Kachel. Sie kann dort eine Änderung oder Abmeldung anfordern. Verwalten kannst du die Anmeldung weiterhin selbst über „Meine Events".'
+              : 'Your assistant receives a copy (CC) of the confirmation and then sees your registration as info in their „Assistant" tile. They can request a change or cancellation there. You continue to manage the registration yourself via „My Events".'}
+          </p>
+          <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: 6 }}>
+            {locale === 'de' ? 'Assistenz auswählen (Name oder E-Mail)' : 'Select assistant (name or email)'}
+          </label>
+          <UserFieldPicker
+            value={delegateAssistValue}
+            onChange={setDelegateAssistValue}
+            searchUsers={searchUsers}
+            searchUserByEmail={searchUser}
+            placeholder={locale === 'de' ? 'Vorname Nachname, Nachname Vorname oder E-Mail…' : 'First last, last first or email…'}
+            errorStyle={{}}
+            forcedIsDe={locale === 'de'}
+          />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap', marginTop: 18 }}>
+            <button
+              className="btn btn-secondary"
+              onClick={() => {
+                // Ohne Assistenz weiter.
+                setDelegateAssistEnabled(false);
+                setDelegateAssistValue('');
+                assistantModalDecidedRef.current = true;
+                setAssistantModalOpen(false);
+                setTimeout(() => { handleSubmit().catch(() => { /* */ }); }, 50);
+              }}
+              style={{ fontSize: '0.85rem' }}
+            >
+              {locale === 'de' ? 'Ohne Assistenz anmelden' : 'Register without assistant'}
+            </button>
+            <button
+              className="btn btn-primary"
+              disabled={!parsedDelegateAssist}
+              title={!parsedDelegateAssist ? (locale === 'de' ? 'Bitte zuerst eine Assistenz auswählen.' : 'Please select an assistant first.') : ''}
+              onClick={() => {
+                setDelegateAssistEnabled(true);
+                assistantModalDecidedRef.current = true;
+                setAssistantModalOpen(false);
+                setTimeout(() => { handleSubmit().catch(() => { /* */ }); }, 50);
+              }}
+              style={{ fontSize: '0.85rem' }}
+            >
+              {locale === 'de' ? 'Mit Assistenz anmelden' : 'Register with assistant'}
             </button>
           </div>
         </Modal>
