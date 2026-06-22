@@ -770,9 +770,11 @@ export default function RegistrationPage(): React.ReactElement {
   // Anmeldung (kein Stellvertreter-/Team-Modus), nur für Admins ODER Directoren,
   // und NICHT, wenn das Event bereits ein Assistenz-CC-Feld hat (dann hätte der
   // Organizer den CC schon eingebaut → kein doppeltes Abfragen).
-  const isDirectorUser = /director/i.test(currentUser.jobTitle || '');
+  // v24.45: Partner ODER Director (P/D) — vorher wurde nur „director" geprüft,
+  // Partner gingen leer aus. „Senior Director"/„Associate Partner" matchen mit.
+  const isPartnerOrDirector = /(partner|director)/i.test(currentUser.jobTitle || '');
   const hasAssistantCcField = (event?.eventSpecificFields || []).some(f => (f.type === 'user' || f.type === 'roommate') && !!f.ccOnEmails);
-  const canDelegateAssistant = (isAdmin || isDirectorUser) && !registerForOther && !isTeamMode && !pendingJoinTeam && !hasAssistantCcField;
+  const canDelegateAssistant = (isAdmin || isPartnerOrDirector) && !registerForOther && !isTeamMode && !pendingJoinTeam && !hasAssistantCcField;
   const parsedDelegateAssist = (() => {
     const m = (delegateAssistValue || '').match(/^(.+?)\s*<([^>]+@[^>]+)>\s*$/);
     return m ? { name: m[1].trim(), email: m[2].trim() } : null;
@@ -1448,6 +1450,29 @@ export default function RegistrationPage(): React.ReactElement {
         if (delegateAssist) {
           try { await delegateRegistrationToAssistant(selectedEventId!, delegateAssist); }
           catch { /* best-effort — Anmeldung bleibt gültig */ }
+        }
+        // v24.46: Hat das Event ein Assistenz-CC-Feld (Organizer hat es selbst
+        // eingebaut → KEIN Modal) und der User dort eine Person angegeben, läuft
+        // dieselbe Info-Freischaltung automatisch über dieses Feld — für JEDEN
+        // Anmelder, nicht nur Partner/Director. Greift nur bei Selbst-Anmeldung
+        // (für andere: die andere Person ist die angemeldete, nicht der CC).
+        if (!registerForOther) {
+          const ccFields = (event?.eventSpecificFields || []).filter(f => (f.type === 'user' || f.type === 'roommate') && !!f.ccOnEmails);
+          const seenAssist = new Set<string>();
+          for (const f of ccFields) {
+            const raw = (customData[f.id] || '').trim();
+            for (const part of raw.split(';').map(s => s.trim()).filter(Boolean)) {
+              const m = part.match(/^(.+?)\s*<([^>]+@[^>]+)>\s*$/);
+              const aEmail = m ? m[2].trim() : '';
+              const aName = m ? m[1].trim() : '';
+              if (!aEmail) continue;
+              const key = aEmail.toLowerCase();
+              if (key === participantEmail.toLowerCase() || seenAssist.has(key)) continue;
+              seenAssist.add(key);
+              try { await delegateRegistrationToAssistant(selectedEventId!, { email: aEmail, name: aName }); }
+              catch { /* best-effort */ }
+            }
+          }
         }
         // v24.41 Szenario B: Bei stellvertretender Anmeldung (für andere) einen
         // Info-Link anlegen — der/die Anmeldende ist Owner, die angemeldete
