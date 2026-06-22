@@ -836,6 +836,7 @@ type ConsolidatedRow = {
   nachname: string;
   jobTitle: string;
   location: string;
+  company: string;
   teilnehmerId: number | null;
   /** v15.23: Früheste RegistrationDate über alle Sub-Event-
    *  Registrierungen der Person — Default-Sortierschlüssel im
@@ -1072,6 +1073,13 @@ export default function AdminPage(): React.ReactElement {
   // v23.32: Standard = eingeklappt (Foto + zweizeilige Person: Name fett,
   // darunter „Position • Standort"). Gilt für konsolidierte UND normale Tabelle.
   const [personalColsCollapsed, setPersonalColsCollapsed] = React.useState(true);
+  // v24.31: Teilnehmer-Detailmodal — Klick auf eine Person zeigt Kontakt-
+  // Detailinfos (Foto, E-Mail, MS-Teams-Chat, Position/Standort/Unternehmen/
+  // Abteilung/Telefon/Status). Bewusst „Detailinfos", nicht die Fragen/Antworten.
+  const [participantDetail, setParticipantDetail] = React.useState<{
+    name: string; email: string; jobTitle: string; location: string; company: string;
+    department: string; phone: string; status: string; tid: number | null;
+  } | null>(null);
   // v14.11: eigene Sort-States für den Matrix-View. `consolidatedSort` kann
   // 'id' | 'vorname' | 'nachname' | 'email' | 'jobTitle' | 'location' |
   // 'child:<eventId>' sein. Default: 'nachname' aufsteigend.
@@ -4807,6 +4815,7 @@ export default function AdminPage(): React.ReactElement {
             })(),
             jobTitle: anyR.JobTitle || '',
             location: anyR.Location || '',
+            company: anyR.Company || '',
             teilnehmerId: r.TeilnehmerID || null,
             earliestRegistrationTs: r.RegistrationDate ? new Date(r.RegistrationDate).getTime() : Number.POSITIVE_INFINITY,
             perChild: {},
@@ -5140,9 +5149,13 @@ export default function AdminPage(): React.ReactElement {
                           {(() => {
                             const fullName = `${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email || '-';
                             const loc = stripLocPrefix(row.location || '');
-                            const sub = [row.jobTitle || '', loc].filter(Boolean).join(' • ');
+                            const sub = [row.jobTitle || '', loc, row.company || ''].filter(Boolean).join(' • ');
                             return (
-                              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.25 }}>
+                              <div
+                                style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.25, cursor: 'pointer' }}
+                                title={isDe ? 'Detailinfos anzeigen' : 'Show details'}
+                                onClick={() => setParticipantDetail({ name: fullName, email: row.email || '', jobTitle: row.jobTitle || '', location: row.location || '', company: row.company || '', department: '', phone: '', status: '', tid: row.teilnehmerId })}
+                              >
                                 <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{highlightMatch(fullName)}</span>
                                 {sub && <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>{highlightMatch(sub)}</span>}
                               </div>
@@ -6304,8 +6317,12 @@ export default function AdminPage(): React.ReactElement {
                     Schau dir kurz die Zielgruppe an — folgendes ist aufgefallen:
                     <ul style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>
                       {mainTiny && <li>Das <strong>Event</strong> ist nur für <strong>{effCount} {effCount === 1 ? 'Person' : 'Personen'}</strong> sichtbar (einzelne Adressen — kein Standort/Verteiler, nicht „alle Mitarbeiter“). Falls du mehr Leute erreichen willst, ergänze einen Standort oder Verteiler.</li>}
-                      {smallSubs.length > 0 && <li>Diese <strong>Sub-Events</strong> haben eine eigene, sehr kleine Zielgruppe: <strong>{smallSubs.join(', ')}</strong>. Wer dort nicht gelistet ist, kann sich nicht anmelden.</li>}
-                      {riskySubs.length > 0 && <li>Diese <strong>Sub-Events</strong> sind für andere/mehr Leute geöffnet als das Event: <strong>{riskySubs.join(', ')}</strong>. Wer nur beim Sub-Event steht, aber nicht beim Event, <strong>kann das Event nicht öffnen</strong> und sieht das Sub-Event nie — beim Event sollten alle dabei sein, die irgendein Sub-Event sehen sollen.</li>}
+                      {smallSubs.length > 0 && <li>Diese <strong>Sub-Events</strong> haben eine eigene, sehr kleine Zielgruppe — wer dort nicht gelistet ist, kann sich nicht anmelden:
+                        <ul style={{ margin: '3px 0 0', paddingLeft: 16 }}>{smallSubs.map(s => <li key={s}>{s}</li>)}</ul>
+                      </li>}
+                      {riskySubs.length > 0 && <li>Diese <strong>Sub-Events</strong> sind für andere/mehr Leute geöffnet als das Event — wer nur beim Sub-Event steht, aber nicht beim Event, <strong>kann das Event nicht öffnen</strong> und sieht es nie (beim Event sollten alle dabei sein, die irgendein Sub-Event sehen sollen):
+                        <ul style={{ margin: '3px 0 0', paddingLeft: 16 }}>{riskySubs.map(s => <li key={s}>{s}</li>)}</ul>
+                      </li>}
                     </ul>
                     <div style={{ marginTop: 6 }}>Prüfen/anpassen über „Event bearbeiten“ → Schritt 4 (ggf. Sub-Event-Tab) → „Sichtbarkeit prüfen“.</div>
                   </>
@@ -6314,8 +6331,12 @@ export default function AdminPage(): React.ReactElement {
                     Take a quick look at the audience — the app noticed:
                     <ul style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>
                       {mainTiny && <li>The <strong>event</strong> is visible to only <strong>{effCount} {effCount === 1 ? 'person' : 'people'}</strong> (individual addresses — no location/list, not “all employees”). If you want to reach more people, add a location or distribution list.</li>}
-                      {smallSubs.length > 0 && <li>These <strong>sub-events</strong> have their own, very small audience: <strong>{smallSubs.join(', ')}</strong>. Anyone not listed there cannot register.</li>}
-                      {riskySubs.length > 0 && <li>These <strong>sub-events</strong> are open to other/more people than the event: <strong>{riskySubs.join(', ')}</strong>. Anyone listed only on the sub-event but not on the event <strong>cannot open the event</strong> and never sees the sub-event — the event should include everyone who should see any sub-event.</li>}
+                      {smallSubs.length > 0 && <li>These <strong>sub-events</strong> have their own, very small audience — anyone not listed there cannot register:
+                        <ul style={{ margin: '3px 0 0', paddingLeft: 16 }}>{smallSubs.map(s => <li key={s}>{s}</li>)}</ul>
+                      </li>}
+                      {riskySubs.length > 0 && <li>These <strong>sub-events</strong> are open to other/more people than the event — anyone listed only on the sub-event but not on the event <strong>cannot open the event</strong> and never sees it (the event should include everyone who should see any sub-event):
+                        <ul style={{ margin: '3px 0 0', paddingLeft: 16 }}>{riskySubs.map(s => <li key={s}>{s}</li>)}</ul>
+                      </li>}
                     </ul>
                     <div style={{ marginTop: 6 }}>Check/adjust via “Edit event” → step 4 (sub-event tab if needed) → “Check visibility”.</div>
                   </>
@@ -6323,49 +6344,62 @@ export default function AdminPage(): React.ReactElement {
               });
             }
           }
-          // 3f) v24.27: Feldart-Empfehlung — wenn ein Custom-Feld nach einem
-          // Datum bzw. einer Person klingt, aber als Freitext angelegt ist,
-          // hier dieselbe Empfehlung wie im Wizard (Feld-Editor) geben. Zugang
-          // läuft über „Event bearbeiten" → Schritt „Felder".
+          // 3f) v24.27/v24.28: Feld-Tipps — passendere Feldart (Datum/Person)
+          // ODER Feld, das ohnehin schon automatisch aus dem Profil erfasst wird
+          // (z.B. Abteilung, Standort, Firma) und deshalb überflüssig sein kann.
+          // Zugang zum Ändern läuft über „Event bearbeiten" → Schritt „Felder".
           {
             const looksDate = (s: string): boolean => /(datum|date|check[\s-]?in|check[\s-]?out|anreise|abreise|geburtstag|birthday|deadline|frist|termin|ankunft|abfahrt|arrival|departure)/i.test(s || '');
             const looksName = (s: string): boolean => /(\bname\b|vorname|nachname|ansprechpartner|counselor|kolleg|mitarbeiter|\bmentor\b|\bpate\b|\bbuddy\b|begleitung|\bgast\b)/i.test(s || '');
-            const dateLike: string[] = [];
-            const nameLike: string[] = [];
-            const scan = (fields: { type?: string; label?: string }[] | undefined, prefix: string): void => {
+            // Felder, die i.d.R. schon automatisch aus dem Deloitte-Profil
+            // kommen (Anrede/Vorname/Nachname/E-Mail/Abteilung/Standort/Position/
+            // Telefon) bzw. Firma/Adresse. „name" allein bewusst NICHT — das ist
+            // zu mehrdeutig (z.B. „Name of counselor").
+            const looksProfile = (s: string): boolean => /(vorname|nachname|first ?name|last ?name|e-?mail|abteilung|department|standort|location|\boffice\b|\bbüro\b|telefon|\bphone\b|\bmobil|\bhandy\b|firma|company|unternehmen|arbeitgeber|gesellschaft|\bgmbh\b|legal ?entity|\bentity\b|rechtsträger|member ?firm|adresse|address|job ?title)/i.test(s || '');
+            // Eindeutige Feld-Namen sammeln (gleiches Label in Haupt- + mehreren
+            // Sub-Events nur EINMAL nennen). Profil-Felder haben Vorrang (sie
+            // sollen ganz entfallen, nicht nur die Feldart wechseln).
+            const profileSet = new Map<string, string>();
+            const dateSet = new Map<string, string>();
+            const nameSet = new Map<string, string>();
+            const scan = (fields: { type?: string; label?: string }[] | undefined): void => {
               for (const f of (fields || [])) {
                 const lbl = (f.label || '').trim();
                 if (!lbl) continue;
-                const tag = prefix ? `${lbl} (${prefix})` : lbl;
-                if ((f.type === 'text' || f.type === 'number') && looksDate(lbl)) dateLike.push(tag);
-                else if (f.type === 'text' && looksName(lbl)) nameLike.push(tag);
+                const key = lbl.toLowerCase();
+                if (looksProfile(lbl)) { if (!profileSet.has(key)) profileSet.set(key, lbl); }
+                else if ((f.type === 'text' || f.type === 'number') && looksDate(lbl)) { if (!dateSet.has(key)) dateSet.set(key, lbl); }
+                else if (f.type === 'text' && looksName(lbl)) { if (!nameSet.has(key)) nameSet.set(key, lbl); }
               }
             };
-            scan(selectedEvent.eventSpecificFields, '');
-            for (const ch of childEventsOf(selectedEvent.id)) {
-              scan(ch.eventSpecificFields, shortSubEventTitle(ch.title, selectedEvent.title));
-            }
-            if (dateLike.length > 0 || nameLike.length > 0) {
+            scan(selectedEvent.eventSpecificFields);
+            for (const ch of childEventsOf(selectedEvent.id)) scan(ch.eventSpecificFields);
+            const dateLike = Array.from(dateSet.values());
+            const nameLike = Array.from(nameSet.values());
+            const profileLike = Array.from(profileSet.values());
+            if (dateLike.length > 0 || nameLike.length > 0 || profileLike.length > 0) {
               hints.push({
                 id: 'fieldtype-suggestion',
-                title: isDe ? 'Bessere Feldart möglich?' : 'Better field type available?',
+                title: isDe ? 'Tipps zu deinen Feldern' : 'Tips for your fields',
                 body: isDe ? (
                   <>
-                    Ein paar Felder könnten eine passendere Feldart haben:
+                    Ein paar deiner Felder lassen sich verbessern:
                     <ul style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>
-                      {dateLike.length > 0 && <li>Klingt nach <strong>Datum</strong>: <strong>{dateLike.join(', ')}</strong> — mit der Feldart „Datum“ bekommen Teilnehmer einen Kalender (optional mit Uhrzeit) statt Freitext.</li>}
-                      {nameLike.length > 0 && <li>Klingt nach <strong>Person</strong>: <strong>{nameLike.join(', ')}</strong> — mit der Feldart „Person“ suchen Teilnehmer die Person direkt (mit Foto und Standort).</li>}
+                      {profileLike.length > 0 && <li><strong>Vermutlich überflüssig</strong> (wird schon automatisch erfasst): {profileLike.join(', ')}. Angaben wie Abteilung, Standort, Firma o.ä. kommen i.d.R. automatisch aus dem Profil — du musst sie nicht extra abfragen.</li>}
+                      {dateLike.length > 0 && <li>Besser <strong>„Datum“ statt Freitext</strong>: {dateLike.join(', ')}. Teilnehmer wählen dann ein Datum im Kalender (optional mit Uhrzeit).</li>}
+                      {nameLike.length > 0 && <li>Besser <strong>„Person“ statt Freitext</strong>: {nameLike.join(', ')}. Teilnehmer suchen die Person direkt (mit Foto und Standort).</li>}
                     </ul>
-                    <div style={{ marginTop: 6 }}>Umstellen über „Event bearbeiten“ → Schritt „Felder“. Bestehende Antworten bleiben erhalten, werden aber nicht automatisch ins neue Format umgewandelt.</div>
+                    <div style={{ marginTop: 6 }}>Anpassen über „Event bearbeiten“ → Schritt „Felder“. Bestehende Antworten bleiben erhalten, werden aber nicht automatisch ins neue Format umgewandelt.</div>
                   </>
                 ) : (
                   <>
-                    A few fields might fit a better field type:
+                    A few of your fields could be improved:
                     <ul style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>
-                      {dateLike.length > 0 && <li>Looks like a <strong>date</strong>: <strong>{dateLike.join(', ')}</strong> — the „Date“ field type gives attendees a calendar (optionally with time) instead of free text.</li>}
-                      {nameLike.length > 0 && <li>Looks like a <strong>person</strong>: <strong>{nameLike.join(', ')}</strong> — the „Person“ field type lets attendees search the person directly (with photo and location).</li>}
+                      {profileLike.length > 0 && <li><strong>Probably unnecessary</strong> (already collected automatically): {profileLike.join(', ')}. Details like department, location or company usually come from the profile — you don’t need to ask for them.</li>}
+                      {dateLike.length > 0 && <li>Better <strong>„Date“ than free text</strong>: {dateLike.join(', ')}. Attendees then pick a date from a calendar (optionally with time).</li>}
+                      {nameLike.length > 0 && <li>Better <strong>„Person“ than free text</strong>: {nameLike.join(', ')}. Attendees search the person directly (with photo and location).</li>}
                     </ul>
-                    <div style={{ marginTop: 6 }}>Change via “Edit event” → step “Fields”. Existing answers are kept but not automatically converted to the new format.</div>
+                    <div style={{ marginTop: 6 }}>Adjust via “Edit event” → step “Fields”. Existing answers are kept but not automatically converted to the new format.</div>
                   </>
                 ),
               });
@@ -9368,7 +9402,9 @@ export default function AdminPage(): React.ReactElement {
                   const jt = String((reg as any).JobTitle || '');
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const loc = stripLocPrefix(String((reg as any).Location || ''));
-                  const sub = [jt, loc].filter(Boolean).join(' • ');
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const comp = String((reg as any).Company || '');
+                  const sub = [jt, loc, comp].filter(Boolean).join(' • ');
                   const email = reg.ParticipantEmail || '';
                   return (
                     <td key="person" style={{ padding: 8 }}>
@@ -9381,7 +9417,12 @@ export default function AdminPage(): React.ReactElement {
                           onMouseLeave={e => { const t = e.currentTarget as HTMLImageElement; t.style.transform = 'scale(1)'; t.style.zIndex = 'auto'; t.style.boxShadow = 'none'; }}
                           style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0, transition: 'transform 0.15s ease', transformOrigin: 'left center', cursor: 'zoom-in' }}
                         />
-                        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.25 }}>
+                        <div
+                          style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.25, cursor: 'pointer' }}
+                          title={isDe ? 'Detailinfos anzeigen' : 'Show details'}
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          onClick={() => setParticipantDetail({ name: fullName, email, jobTitle: jt, location: String((reg as any).Location || ''), company: comp, department: String((reg as any).Department || ''), phone: String((reg as any).Phone || ''), status: reg.Status || '', tid: reg.TeilnehmerID || null })}
+                        >
                           <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{highlightMatch(fullName)}</span>
                           {sub && <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>{highlightMatch(sub)}</span>}
                         </div>
@@ -11288,7 +11329,63 @@ export default function AdminPage(): React.ReactElement {
       {/* v19.30 (Feature A): Bearbeiten der Hauptevent-Custom-Felder einer
           konsolidierten Zeile. Schreibt in die Registrierung der Person auf
           der Hauptevent-Subsite — gleiche Persistenz wie das Teilnehmer-Edit. */}
-      {mainFieldsEditReg && selectedEvent && (
+      {/* v24.31: Teilnehmer-Detailmodal (Klick auf eine Person) — Kontakt
+          (E-Mail, MS-Teams-Chat) + Detailinfos (Position/Abteilung/Unternehmen/
+          Standort/Telefon/Status). Bewusst „Detailinfos", nicht die Antworten. */}
+        {participantDetail && (
+          <Modal open={true} onClose={() => setParticipantDetail(null)} maxWidth={440} ariaLabel={isDe ? 'Teilnehmer-Details' : 'Participant details'}>
+            {(() => {
+              const p = participantDetail;
+              const photo = p.email ? `/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(p.email)}&size=L` : '';
+              const rows: Array<[string, string]> = [];
+              if (p.jobTitle) rows.push([isDe ? 'Position' : 'Job title', p.jobTitle]);
+              if (p.department) rows.push([isDe ? 'Abteilung' : 'Department', p.department]);
+              if (p.company) rows.push([isDe ? 'Unternehmen' : 'Company', p.company]);
+              if (p.location) rows.push([isDe ? 'Standort' : 'Location', p.location]);
+              if (p.phone) rows.push([isDe ? 'Telefon' : 'Phone', p.phone]);
+              if (p.status) rows.push(['Status', translateStatus(p.status, isDe)]);
+              if (p.tid) rows.push([isDe ? 'Teilnehmer-Nr.' : 'Participant no.', String(p.tid)]);
+              return (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
+                    {photo && <img src={photo} alt="" onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }} style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }} />}
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: '1.05rem' }}>{p.name}</div>
+                      {p.email && <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-500)', wordBreak: 'break-all' }}>{p.email}</div>}
+                    </div>
+                  </div>
+                  {p.email && (
+                    <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+                      <a href={`mailto:${p.email}`} className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '6px 12px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                        <Icon iconName="Mail" /> {isDe ? 'E-Mail' : 'Email'}
+                      </a>
+                      <a href={`msteams:/l/chat/0/0?users=${encodeURIComponent(p.email)}`} className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '6px 12px', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 6, color: '#6264A7' }}>
+                        <Icon iconName="TeamsLogo" /> {isDe ? 'Teams-Chat' : 'Teams chat'}
+                      </a>
+                    </div>
+                  )}
+                  <div style={{ fontWeight: 700, fontSize: '0.8rem', color: 'var(--dex-gray-600)', marginBottom: 6 }}>{isDe ? 'Detailinfos' : 'Details'}</div>
+                  {rows.length === 0 ? (
+                    <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-400)' }}>{isDe ? 'Keine weiteren Angaben.' : 'No further details.'}</div>
+                  ) : (
+                    <div>
+                      {rows.map(([k, v]) => (
+                        <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '7px 0', borderBottom: '1px solid var(--dex-gray-100)', fontSize: '0.85rem' }}>
+                          <span style={{ color: 'var(--dex-gray-500)' }}>{k}</span>
+                          <span style={{ fontWeight: 600, textAlign: 'right' }}>{v}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 18 }}>
+                    <button className="btn btn-secondary" onClick={() => setParticipantDetail(null)}>{isDe ? 'Schließen' : 'Close'}</button>
+                  </div>
+                </>
+              );
+            })()}
+          </Modal>
+        )}
+        {mainFieldsEditReg && selectedEvent && (
         <Modal
           open={!!mainFieldsEditReg}
           onClose={() => { if (!mainFieldsEditSaving) closeMainFieldsEdit(); }}

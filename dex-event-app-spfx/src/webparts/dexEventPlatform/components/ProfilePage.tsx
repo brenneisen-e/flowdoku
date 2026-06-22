@@ -20,6 +20,8 @@ const PROFILE_FIELDS: Array<{ key: string; label: string }> = [
   { key: 'LastName', label: 'Nachname' },
   { key: 'Title', label: 'Titel / Position' },
   { key: 'Department', label: 'Abteilung' },
+  // v24.29: Unternehmenszugehörigkeit / Rechtsträger („Company name" im Profil).
+  { key: 'Company', label: 'Unternehmen' },
   { key: 'Office', label: 'Standort' },
   { key: 'WorkEmail', label: 'E-Mail' },
   { key: 'WorkPhone', label: 'Telefon' },

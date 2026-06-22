@@ -651,6 +651,9 @@ export interface SPRegistration {
    *  Mitglieder-Identifikation angezeigt. Auf der SP-Liste seit jeher
    *  vorhanden — hier nur als TypeScript-Property nachgezogen. */
   Location?: string;
+  /** v24.29: Unternehmenszugehörigkeit / Rechtsträger („Company name" aus dem
+   *  Profil, z.B. „Deloitte GmbH" / „Deloitte Consulting"). */
+  Company?: string;
   /** v17.15: Nachrück-Audit. PromotedDate ist die ISO-Zeit des Promote
    *  (Warteliste → Angemeldet). ReplacedParticipantEmail ist die E-Mail
    *  der Person, deren Cancel diesen Promote ausgelöst hat („Ersetzt
@@ -4213,6 +4216,8 @@ export class EventService {
       { title: 'Location', type: 2 },
       { title: 'JobTitle', type: 2 },
       { title: 'Phone', type: 2 },
+      // v24.29: Unternehmenszugehörigkeit / Rechtsträger (aus dem Profil).
+      { title: 'Company', type: 2 },
       { title: 'Status', type: 6, choices: ['Angemeldet', 'QR versendet', 'Warteliste', 'Eingecheckt', 'No-Show', 'Abgemeldet'], metaType: 'SP.FieldChoice' },
       { title: 'StarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' }, // B2Run: Typ-Auswahl
       { title: 'PreferredStarterType', type: 6, choices: ['Durchstarter', 'Funstarter'], metaType: 'SP.FieldChoice' }, // B2Run: Wunsch-Typ (wenn Fallback oder Warteliste)
@@ -4337,7 +4342,7 @@ export class EventService {
     // werden alle SP-Default-Spalten (Modified, Created, ID, Type, Compliance Asset,
     // App Created By, ...) aus der View rausgeworfen — nur funktionelle Felder.
     await this.configureDefaultView(REG_LIST_NAME, [
-      'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'ParticipantEmail', 'Department', 'Location', 'JobTitle', 'Phone', 'StarterType', 'PreferredStarterType', 'Status', 'RegistrationDate', 'RegisteredByName', 'RegisteredByEmail', 'ProxyConsent', 'CancellationDate', 'CancelledByName', 'CancelledByEmail',
+      'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'ParticipantEmail', 'Department', 'Location', 'JobTitle', 'Company', 'Phone', 'StarterType', 'PreferredStarterType', 'Status', 'RegistrationDate', 'RegisteredByName', 'RegisteredByEmail', 'ProxyConsent', 'CancellationDate', 'CancelledByName', 'CancelledByEmail',
       ...customFieldViewNames,
       // v11.82: Team-Spalten am Ende der View (nach allen Custom Fields, vor
       // System-Spalten). So bleibt die View bei Nicht-Team-Events unauffällig
@@ -4897,6 +4902,8 @@ export class EventService {
         'Location': profile.location,
         'JobTitle': profile.jobTitle,
         'Phone': profile.phone,
+        // v24.29: Unternehmenszugehörigkeit / Rechtsträger mitschreiben.
+        'Company': profile.company,
         'Status': status,
         'RegistrationDate': new Date().toISOString(),
         'CustomData': JSON.stringify(customData),
@@ -5042,7 +5049,7 @@ export class EventService {
       firstName: string;
       lastName: string;
       email: string;
-      profile: { department: string; location: string; jobTitle: string; phone: string };
+      profile: { department: string; location: string; jobTitle: string; phone: string; company?: string };
       status: 'Angemeldet' | 'Warteliste';
       teamId: string;
       teamLead: boolean;
@@ -5072,6 +5079,7 @@ export class EventService {
         'Location': args.profile.location,
         'JobTitle': args.profile.jobTitle,
         'Phone': args.profile.phone,
+        'Company': args.profile.company || '',
         'Status': args.status,
         'RegistrationDate': new Date().toISOString(),
         'TeamId': args.teamId,
@@ -6631,6 +6639,7 @@ export class EventService {
     // Teilnehmerlisten-Schema auftauchen.
     const requiredFields: Array<{ title: string; type: number; choices?: string[]; metaType?: string }> = [
       { title: 'Anrede', type: 6, choices: ['Frau', 'Herr', 'Divers'], metaType: 'SP.FieldChoice' },
+      { title: 'Company', type: 2 },           // v24.29: Unternehmenszugehörigkeit / Rechtsträger (aus dem Profil)
       { title: 'RegisteredByName', type: 2 },  // Audit: Name des Users der die Anmeldung durchgeführt hat
       { title: 'RegisteredByEmail', type: 2 }, // Audit: E-Mail des Users der die Anmeldung durchgeführt hat
       { title: 'ProxyConsent', type: 3 },      // v18.74: Zustimmungs-Nachweis bei stellvertretender Anmeldung (Note)
@@ -6800,7 +6809,7 @@ export class EventService {
       // auf Nicht-B2Run- bzw. Nicht-Quiz-Events sollen sie nicht auftauchen.
       const viewFieldsCore = [
         'TeilnehmerID', 'Anrede', 'Vorname', 'Nachname', 'ParticipantEmail',
-        'Department', 'Location', 'JobTitle', 'Phone',
+        'Department', 'Location', 'JobTitle', 'Company', 'Phone',
       ];
       const viewFields: string[] = [...viewFieldsCore];
       // Post-Fix-Feldliste (bestehende + gerade hinzugefügte) für die Existenz-Checks
@@ -7431,6 +7440,7 @@ export class EventService {
         'Location': profile.location,
         'JobTitle': profile.jobTitle,
         'Phone': profile.phone,
+        'Company': profile.company,
         'Status': 'Abgemeldet',
         'RegistrationDate': nowIso,
         'CancellationDate': nowIso,
@@ -7560,7 +7570,7 @@ export class EventService {
   ): Promise<SPRegistration | null> {
     try {
       const response = await this.context.spHttpClient.get(
-        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=ParticipantEmail eq '${email.replace(/'/g, "''")}'&$select=Id,Title,Vorname,Nachname,ParticipantName,ParticipantEmail,Status,RegistrationDate,RegisteredByName,RegisteredByEmail,CancellationDate,CancelledByName,CancelledByEmail,CustomData,Department,JobTitle,Location&$top=1`,
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=ParticipantEmail eq '${email.replace(/'/g, "''")}'&$select=Id,Title,Vorname,Nachname,ParticipantName,ParticipantEmail,Status,RegistrationDate,RegisteredByName,RegisteredByEmail,CancellationDate,CancelledByName,CancelledByEmail,CustomData,Department,JobTitle,Location,Company&$top=1`,
         SPHttpClient.configurations.v1
       );
       if (!response.ok) return null;
@@ -7966,8 +7976,8 @@ export class EventService {
   /**
    * Profildaten des aktuellen Users laden für die Teilnehmerliste.
    */
-  public async getCurrentUserProfile(): Promise<{ department: string; location: string; jobTitle: string; phone: string; firstName: string; lastName: string; displayName: string }> {
-    const empty = { department: '', location: '', jobTitle: '', phone: '', firstName: '', lastName: '', displayName: '' };
+  public async getCurrentUserProfile(): Promise<{ department: string; location: string; jobTitle: string; phone: string; firstName: string; lastName: string; displayName: string; company: string }> {
+    const empty = { department: '', location: '', jobTitle: '', phone: '', firstName: '', lastName: '', displayName: '', company: '' };
     try {
       const response = await this.context.spHttpClient.get(
         `${this.siteUrl}/_api/SP.UserProfiles.PeopleManager/GetMyProperties`,
@@ -7990,6 +8000,7 @@ export class EventService {
         firstName: get('FirstName'),
         lastName: get('LastName'),
         displayName: get('PreferredName'),
+        company: get('Company') || get('SPS-Company') || get('CompanyName'),
       };
     } catch {
       return empty;
@@ -8159,11 +8170,11 @@ export class EventService {
    *
    * Rückgabe ist gefüllt sobald einer der Wege Properties liefert, sonst leer.
    */
-  public async getUserProfileByEmail(email: string): Promise<{ department: string; location: string; jobTitle: string; phone: string; firstName: string; lastName: string; displayName: string }> {
-    const empty = { department: '', location: '', jobTitle: '', phone: '', firstName: '', lastName: '', displayName: '' };
+  public async getUserProfileByEmail(email: string): Promise<{ department: string; location: string; jobTitle: string; phone: string; firstName: string; lastName: string; displayName: string; company: string }> {
+    const empty = { department: '', location: '', jobTitle: '', phone: '', firstName: '', lastName: '', displayName: '', company: '' };
     if (!email) return empty;
 
-    const extractProfile = (props: Array<{ Key: string; Value: string }>): { department: string; location: string; jobTitle: string; phone: string; firstName: string; lastName: string; displayName: string } => {
+    const extractProfile = (props: Array<{ Key: string; Value: string }>): { department: string; location: string; jobTitle: string; phone: string; firstName: string; lastName: string; displayName: string; company: string } => {
       const get = (key: string): string => {
         const p = props.find(x => x.Key === key);
         return p && p.Value ? p.Value : '';
@@ -8178,6 +8189,8 @@ export class EventService {
         firstName: get('FirstName'),
         lastName: get('LastName'),
         displayName: get('PreferredName'),
+        // v24.29: Unternehmenszugehörigkeit / Rechtsträger.
+        company: get('Company') || get('SPS-Company') || get('CompanyName'),
       };
     };
 

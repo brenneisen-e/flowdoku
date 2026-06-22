@@ -3070,7 +3070,9 @@ export default function RegistrationPage(): React.ReactElement {
               const jt = profile ? ((profile as { jobTitle?: string }).jobTitle || '') : '';
               const dept = profile ? ((profile as { department?: string }).department || '') : '';
               const loc = profile ? ((profile as { location?: string }).location || '') : '';
-              if (!registerForOther && !jt && !dept && !loc) return null;
+              // v24.29: Unternehmenszugehörigkeit / Rechtsträger read-only.
+              const comp = profile ? ((profile as { company?: string }).company || '') : '';
+              if (!registerForOther && !jt && !dept && !loc && !comp) return null;
               const placeholder = locale === 'de' ? 'aus SP-Profil — nicht hinterlegt' : 'from SP profile — not set';
               const renderField = (label: string, value: string): React.ReactElement => (
                 <div className="form-group">
@@ -3088,6 +3090,7 @@ export default function RegistrationPage(): React.ReactElement {
                 <>
                   {(jt || registerForOther) && renderField(locale === 'de' ? 'Position' : 'Job Title', jt)}
                   {(dept || registerForOther) && renderField(locale === 'de' ? 'Geschäftsbereich' : 'Business Area', dept)}
+                  {(comp || registerForOther) && renderField(locale === 'de' ? 'Unternehmen' : 'Company', comp)}
                   {(loc || registerForOther) && renderField(locale === 'de' ? 'Büro' : 'Office', loc)}
                 </>
               );

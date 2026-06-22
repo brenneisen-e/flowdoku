@@ -225,12 +225,18 @@ function labelLooksLikeDate(label: string): boolean {
 function labelLooksLikeName(label: string): boolean {
   return /(\bname\b|vorname|nachname|ansprechpartner|counselor|kolleg|mitarbeiter|\bmentor\b|\bpate\b|\bbuddy\b|begleitung|\bgast\b)/i.test(label || '');
 }
+// v24.28: Felder, die i.d.R. schon automatisch aus dem Deloitte-Profil kommen
+// (Standort, Abteilung, Unternehmenszugehörigkeit/Rechtsträger, Telefon, Name,
+// E-Mail) — die muss der Organizer nicht extra abfragen. „name" allein bewusst
+// NICHT (zu mehrdeutig, z.B. „Name of counselor").
+function labelLooksLikeProfile(label: string): boolean {
+  return /(vorname|nachname|first ?name|last ?name|e-?mail|abteilung|department|standort|location|\boffice\b|\bbüro\b|telefon|\bphone\b|\bmobil|\bhandy\b|firma|company|unternehmen|arbeitgeber|gesellschaft|\bgmbh\b|legal ?entity|\bentity\b|rechtsträger|member ?firm|adresse|address|job ?title)/i.test(label || '');
+}
 
-/** v24.25: Kleiner Empfehlungs-Hinweis im Feld-Editor. Erscheint nur, wenn das
- *  Label nach Datum/Person klingt, die aktuelle Feldart aber nicht passt — mit
- *  einem Button, der die Feldart direkt umstellt. `allowPerson` schaltet die
- *  Person-Empfehlung frei (nur Haupt-Felder; Sub-Event-Felder kennen den
- *  People-Picker-Typ nicht). */
+/** v24.25/v24.28: Kleiner Hinweis im Feld-Editor. Drei Fälle, in dieser
+ *  Priorität: (1) `profile` — das Feld wird ohnehin schon automatisch erfasst
+ *  (kein Umstell-Button, nur Hinweis); (2) `date` — besser Kalender-Feld;
+ *  (3) `person` — besser People-Picker (nur Haupt-Felder, `allowPerson`). */
 function FieldTypeSuggestion(props: {
   field: CustomFieldInput;
   isDe: boolean;
@@ -241,17 +247,23 @@ function FieldTypeSuggestion(props: {
   const { field, isDe, allowPerson, disabled, onApply } = props;
   const label = (field.label || '').trim();
   if (!label) return null;
-  let kind: 'date' | 'person' | null = null;
-  if (labelLooksLikeDate(label) && field.type !== 'date') kind = 'date';
+  let kind: 'profile' | 'date' | 'person' | null = null;
+  if (labelLooksLikeProfile(label)) kind = 'profile';
+  else if (labelLooksLikeDate(label) && field.type !== 'date') kind = 'date';
   else if (allowPerson && labelLooksLikeName(label) && field.type !== 'user' && field.type !== 'roommate') kind = 'person';
   if (!kind) return null;
-  const body = kind === 'date'
+  const body = kind === 'profile'
+    ? (isDe
+        ? <>Das wird vermutlich <strong>schon automatisch erfasst</strong> — Angaben wie Standort, Abteilung oder Unternehmenszugehörigkeit (z.B. Deloitte GmbH / Consulting GmbH) kommen aus dem Profil. Du musst sie meist nicht extra abfragen.</>
+        : <>This is probably <strong>already collected automatically</strong> — details like location, department or company affiliation come from the profile. You usually don’t need to ask for them.</>)
+    : kind === 'date'
     ? (isDe
         ? <>Das klingt nach einem <strong>Datum</strong>. Mit der Feldart <strong>„Datum“</strong> bekommen Teilnehmer einen Kalender-Auswähler (optional mit Uhrzeit) statt eines Freitextfelds.</>
         : <>This looks like a <strong>date</strong>. With the <strong>„Date“</strong> field type attendees get a calendar picker (optionally with time) instead of a free-text field.</>)
     : (isDe
         ? <>Das klingt nach einer <strong>Person</strong>. Mit der Feldart <strong>„Person“</strong> suchen Teilnehmer die Person direkt (mit Foto &amp; Standort), statt den Namen abzutippen.</>
         : <>This looks like a <strong>person</strong>. With the <strong>„Person“</strong> field type attendees search the person directly (with photo &amp; location) instead of typing the name.</>);
+  const applyType: CustomFieldInput['type'] | null = kind === 'date' ? 'date' : kind === 'person' ? 'user' : null;
   const applyLabel = kind === 'date'
     ? (isDe ? 'Auf „Datum" umstellen' : 'Switch to „Date"')
     : (isDe ? 'Auf „Person" umstellen' : 'Switch to „Person"');
@@ -260,14 +272,16 @@ function FieldTypeSuggestion(props: {
       <span style={{ flex: 1, minWidth: 200, fontSize: '0.78rem', color: 'var(--dex-gray-700)', lineHeight: 1.4 }}>
         <strong>{isDe ? 'Tipp' : 'Tip'}</strong> — „{label}“: {body}
       </span>
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => onApply(kind === 'date' ? 'date' : 'user')}
-        style={{ flexShrink: 0, background: 'var(--dex-green, #86bc25)', color: '#fff', border: 'none', borderRadius: 999, padding: '5px 12px', fontSize: '0.75rem', fontWeight: 700, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1 }}
-      >
-        {applyLabel}
-      </button>
+      {applyType && (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => onApply(applyType)}
+          style={{ flexShrink: 0, background: 'var(--dex-green, #86bc25)', color: '#fff', border: 'none', borderRadius: 999, padding: '5px 12px', fontSize: '0.75rem', fontWeight: 700, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1 }}
+        >
+          {applyLabel}
+        </button>
+      )}
     </div>
   );
 }
