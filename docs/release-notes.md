@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.51.0 | 2026-06-22 | Feature | Startseite, Box „Inaktive Deloitte-Konten": neuer Knopf „Organizer benachrichtigen" pro Event — schickt dem Organizer automatisch eine Mail (Deloitte-Layout, Link ins Event), dass eine angemeldete Person womöglich kein aktives Deloitte-Konto mehr hat. Pro Event+Person nur einmal, egal welcher Admin klickt (Duplikaterkennung). |
 | 24.50.0 | 2026-06-22 | Feature | Beim Wechsel zwischen Seiten/Bereichen springt die Ansicht jetzt immer wieder nach ganz oben. |
 | 24.50.0 | 2026-06-22 | Feature | Die Hinweis-Box „Hinweise zu diesem Event" ist jetzt orange und standardmäßig eingeklappt — nur die Überschriften werden gezeigt, Klick klappt den jeweiligen Hinweis auf. |
 | 24.49.0 | 2026-06-22 | Bugfix | Assistenz-Abfrage: Die angegebene Assistenz bekommt die Bestätigung jetzt wieder zuverlässig in Kopie (CC) — vorher ging sie durch einen Timing-Fehler verloren. Das Fenster trägt oben den Hinweis „Für Partner & Directoren" und einen kürzeren, weniger technischen Text. |

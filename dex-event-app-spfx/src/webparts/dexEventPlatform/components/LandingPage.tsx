@@ -39,7 +39,10 @@ export default function LandingPage(): React.ReactElement {
   // Organizer überflüssig — sie haben die Funktionen schon. Admins sehen sie
   // bewusst weiter (um die normale User-Ansicht der Landing Page zu prüfen).
   const showOrganizerCta = !canCreateEvents || isAdmin;
-  const { isEventsLoading, getArchivableCount, runArchiveExpired, scanInactiveAccounts, getDeletableArchiveCount, runDeleteOldArchive, deleteEvent, countExternalRegistrations, refreshEvents } = useEvents();
+  const { isEventsLoading, getArchivableCount, runArchiveExpired, scanInactiveAccounts, notifyOrganizerOfInactive, getDeletableArchiveCount, runDeleteOldArchive, deleteEvent, countExternalRegistrations, refreshEvents } = useEvents();
+  // v24.51: „Organizer benachrichtigen" pro Event (inaktive Konten).
+  const [notifyBusyId, setNotifyBusyId] = React.useState<string | null>(null);
+  const [notifyResult, setNotifyResult] = React.useState<Record<string, string>>({});
   const { confirmDialog, showAlert } = useDialog();
   const [archInfo, setArchInfo] = React.useState<{ total: number; perList: Record<string, number> } | null>(null);
   // v23.40: Löschkonzept — Anzahl DEX_Archive-Einträge älter als 1 Monat (v23.48).
@@ -456,6 +459,38 @@ export default function LandingPage(): React.ReactElement {
                       {it.people.map(p => p.name).join(', ')}
                     </span>
                   </button>
+                  {/* v24.51: Organizer per Mail benachrichtigen (Dedup: nur 1x je
+                      Event+Person, egal welcher Admin klickt). */}
+                  {notifyResult[it.eventId] ? (
+                    <div style={{ fontSize: '0.7rem', color: 'var(--dex-green-dark, #4a7c1f)', marginTop: 4, paddingLeft: 2 }}>
+                      {notifyResult[it.eventId]}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={notifyBusyId === it.eventId}
+                      onClick={async () => {
+                        setNotifyBusyId(it.eventId);
+                        try {
+                          const res = await notifyOrganizerOfInactive(it.eventId, it.people);
+                          let msg: string;
+                          if (res.noOrganizer) msg = isDe ? 'Kein Organizer hinterlegt — keine Mail möglich.' : 'No organizer on file — no mail possible.';
+                          else if (res.sent > 0) msg = isDe ? `✓ Organizer benachrichtigt (${res.sent}).` : `✓ Organizer notified (${res.sent}).`;
+                          else msg = isDe ? 'Bereits benachrichtigt — keine erneute Mail.' : 'Already notified — no second mail.';
+                          setNotifyResult(prev => ({ ...prev, [it.eventId]: msg }));
+                        } catch {
+                          setNotifyResult(prev => ({ ...prev, [it.eventId]: isDe ? 'Fehler beim Versenden.' : 'Sending failed.' }));
+                        } finally { setNotifyBusyId(null); }
+                      }}
+                      style={{
+                        marginTop: 5, fontSize: '0.7rem', fontWeight: 600, cursor: 'pointer',
+                        background: 'var(--dex-orange, #ed8b00)', color: '#fff', border: 'none',
+                        borderRadius: 6, padding: '4px 9px', fontFamily: 'inherit', width: '100%',
+                      }}
+                    >
+                      {notifyBusyId === it.eventId ? '…' : (isDe ? 'Organizer benachrichtigen' : 'Notify organizer')}
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
