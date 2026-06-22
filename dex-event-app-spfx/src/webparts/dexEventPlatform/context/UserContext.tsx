@@ -89,13 +89,14 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
     // JobTitle brauchen wir für die Assistant-Ausnahme in der Registration
     // ("Assistant" darf für "Director"/"Partner" registrieren).
     loadUserProfile(props.context).then(profile => {
-      if (profile.location || profile.jobTitle || profile.department || profile.mobilePhone) {
+      if (profile.location || profile.jobTitle || profile.department || profile.mobilePhone || profile.company) {
         setCurrentUser(prev => ({
           ...prev,
           ...(profile.location ? { location: profile.location } : {}),
           ...(profile.jobTitle ? { jobTitle: profile.jobTitle } : {}),
           ...(profile.department ? { department: profile.department } : {}),
           ...(profile.mobilePhone ? { mobilePhone: profile.mobilePhone } : {}),
+          ...(profile.company ? { company: profile.company } : {}),
         }));
       }
     }).catch(() => { /* Profil konnte nicht geladen werden */ });
@@ -142,7 +143,7 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
  * Office-Standort + JobTitle aus dem SP User Profile lesen.
  * JobTitle liegt im Property "Title" (bzw. "SPS-JobTitle" im Fallback).
  */
-async function loadUserProfile(context: WebPartContext): Promise<{ location: string; jobTitle: string; department: string; mobilePhone: string }> {
+async function loadUserProfile(context: WebPartContext): Promise<{ location: string; jobTitle: string; department: string; mobilePhone: string; company: string }> {
   try {
     const profileUrl = `${context.pageContext.web.absoluteUrl}/_api/SP.UserProfiles.PeopleManager/GetMyProperties`;
     const response = await context.spHttpClient.get(profileUrl, SPHttpClient.configurations.v1);
@@ -165,11 +166,14 @@ async function loadUserProfile(context: WebPartContext): Promise<{ location: str
           // v11.94: Department + Mobile zusätzlich aus dem SP-Profil.
           department: getProp(['Department', 'SPS-Department']),
           mobilePhone: getProp(['CellPhone', 'SPS-MobilePhone', 'MobilePhone']),
+          // v24.29: Unternehmenszugehörigkeit / Rechtsträger („Company name"
+          // im M365-Profil, z.B. „Deloitte Consulting").
+          company: getProp(['Company', 'SPS-Company', 'CompanyName', 'msOnline-CompanyName']),
         };
       }
     }
   } catch { /* Profil nicht verfügbar */ }
-  return { location: '', jobTitle: '', department: '', mobilePhone: '' };
+  return { location: '', jobTitle: '', department: '', mobilePhone: '', company: '' };
 }
 
 /**

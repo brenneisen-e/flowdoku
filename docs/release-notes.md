@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.29.0 | 2026-06-22 | Feature | Die Unternehmenszugehörigkeit (Rechtsträger, z.B. „Deloitte GmbH" / „Deloitte Consulting") wird jetzt überall aus dem Profil mit angezeigt und gespeichert: auf der Profilseite, im Anmeldeformular, in der Teilnehmerliste (App-Personenzeile + SharePoint-Standardansicht „Company"). |
 | 24.28.0 | 2026-06-22 | Feature | Feld-Editor + Organizer Center: Felder, die ohnehin schon automatisch aus dem Profil kommen (Standort, Abteilung, Unternehmenszugehörigkeit/Rechtsträger wie Deloitte GmbH vs. Consulting GmbH, Telefon …), werden jetzt als „vermutlich überflüssig" markiert — statt fälschlich einen Personen-Picker vorzuschlagen. Lange Listen werden außerdem entdoppelt. |
 | 24.27.0 | 2026-06-22 | Feature | Organizer Center: Die Hinweisbox empfiehlt jetzt auch eine bessere Feldart — klingt ein Custom-Feld nach einem Datum oder einer Person, ist es aber als Freitext angelegt, wird der Wechsel auf „Datum" bzw. „Person" vorgeschlagen (mit dem Hinweis, dass bestehende Antworten erhalten bleiben). |
 | 24.26.0 | 2026-06-22 | Bugfix | Organizer Center: Die drei sehr ähnlichen Sichtbarkeits-Hinweise (kleine Zielgruppe / Sub-Event mit kleiner Zielgruppe / Sub-Event weiter geöffnet als das Event) sind jetzt zu einer übersichtlichen Karte „Sichtbarkeit — bitte prüfen" zusammengefasst, die nur die zutreffenden Punkte als Liste zeigt. |

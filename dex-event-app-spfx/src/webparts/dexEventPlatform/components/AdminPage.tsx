@@ -836,6 +836,7 @@ type ConsolidatedRow = {
   nachname: string;
   jobTitle: string;
   location: string;
+  company: string;
   teilnehmerId: number | null;
   /** v15.23: Früheste RegistrationDate über alle Sub-Event-
    *  Registrierungen der Person — Default-Sortierschlüssel im
@@ -4807,6 +4808,7 @@ export default function AdminPage(): React.ReactElement {
             })(),
             jobTitle: anyR.JobTitle || '',
             location: anyR.Location || '',
+            company: anyR.Company || '',
             teilnehmerId: r.TeilnehmerID || null,
             earliestRegistrationTs: r.RegistrationDate ? new Date(r.RegistrationDate).getTime() : Number.POSITIVE_INFINITY,
             perChild: {},
@@ -5140,7 +5142,7 @@ export default function AdminPage(): React.ReactElement {
                           {(() => {
                             const fullName = `${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email || '-';
                             const loc = stripLocPrefix(row.location || '');
-                            const sub = [row.jobTitle || '', loc].filter(Boolean).join(' • ');
+                            const sub = [row.jobTitle || '', loc, row.company || ''].filter(Boolean).join(' • ');
                             return (
                               <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.25 }}>
                                 <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{highlightMatch(fullName)}</span>
@@ -6304,8 +6306,12 @@ export default function AdminPage(): React.ReactElement {
                     Schau dir kurz die Zielgruppe an — folgendes ist aufgefallen:
                     <ul style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>
                       {mainTiny && <li>Das <strong>Event</strong> ist nur für <strong>{effCount} {effCount === 1 ? 'Person' : 'Personen'}</strong> sichtbar (einzelne Adressen — kein Standort/Verteiler, nicht „alle Mitarbeiter“). Falls du mehr Leute erreichen willst, ergänze einen Standort oder Verteiler.</li>}
-                      {smallSubs.length > 0 && <li>Diese <strong>Sub-Events</strong> haben eine eigene, sehr kleine Zielgruppe: <strong>{smallSubs.join(', ')}</strong>. Wer dort nicht gelistet ist, kann sich nicht anmelden.</li>}
-                      {riskySubs.length > 0 && <li>Diese <strong>Sub-Events</strong> sind für andere/mehr Leute geöffnet als das Event: <strong>{riskySubs.join(', ')}</strong>. Wer nur beim Sub-Event steht, aber nicht beim Event, <strong>kann das Event nicht öffnen</strong> und sieht das Sub-Event nie — beim Event sollten alle dabei sein, die irgendein Sub-Event sehen sollen.</li>}
+                      {smallSubs.length > 0 && <li>Diese <strong>Sub-Events</strong> haben eine eigene, sehr kleine Zielgruppe — wer dort nicht gelistet ist, kann sich nicht anmelden:
+                        <ul style={{ margin: '3px 0 0', paddingLeft: 16 }}>{smallSubs.map(s => <li key={s}>{s}</li>)}</ul>
+                      </li>}
+                      {riskySubs.length > 0 && <li>Diese <strong>Sub-Events</strong> sind für andere/mehr Leute geöffnet als das Event — wer nur beim Sub-Event steht, aber nicht beim Event, <strong>kann das Event nicht öffnen</strong> und sieht es nie (beim Event sollten alle dabei sein, die irgendein Sub-Event sehen sollen):
+                        <ul style={{ margin: '3px 0 0', paddingLeft: 16 }}>{riskySubs.map(s => <li key={s}>{s}</li>)}</ul>
+                      </li>}
                     </ul>
                     <div style={{ marginTop: 6 }}>Prüfen/anpassen über „Event bearbeiten“ → Schritt 4 (ggf. Sub-Event-Tab) → „Sichtbarkeit prüfen“.</div>
                   </>
@@ -6314,8 +6320,12 @@ export default function AdminPage(): React.ReactElement {
                     Take a quick look at the audience — the app noticed:
                     <ul style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>
                       {mainTiny && <li>The <strong>event</strong> is visible to only <strong>{effCount} {effCount === 1 ? 'person' : 'people'}</strong> (individual addresses — no location/list, not “all employees”). If you want to reach more people, add a location or distribution list.</li>}
-                      {smallSubs.length > 0 && <li>These <strong>sub-events</strong> have their own, very small audience: <strong>{smallSubs.join(', ')}</strong>. Anyone not listed there cannot register.</li>}
-                      {riskySubs.length > 0 && <li>These <strong>sub-events</strong> are open to other/more people than the event: <strong>{riskySubs.join(', ')}</strong>. Anyone listed only on the sub-event but not on the event <strong>cannot open the event</strong> and never sees the sub-event — the event should include everyone who should see any sub-event.</li>}
+                      {smallSubs.length > 0 && <li>These <strong>sub-events</strong> have their own, very small audience — anyone not listed there cannot register:
+                        <ul style={{ margin: '3px 0 0', paddingLeft: 16 }}>{smallSubs.map(s => <li key={s}>{s}</li>)}</ul>
+                      </li>}
+                      {riskySubs.length > 0 && <li>These <strong>sub-events</strong> are open to other/more people than the event — anyone listed only on the sub-event but not on the event <strong>cannot open the event</strong> and never sees it (the event should include everyone who should see any sub-event):
+                        <ul style={{ margin: '3px 0 0', paddingLeft: 16 }}>{riskySubs.map(s => <li key={s}>{s}</li>)}</ul>
+                      </li>}
                     </ul>
                     <div style={{ marginTop: 6 }}>Check/adjust via “Edit event” → step 4 (sub-event tab if needed) → “Check visibility”.</div>
                   </>
@@ -9381,7 +9391,9 @@ export default function AdminPage(): React.ReactElement {
                   const jt = String((reg as any).JobTitle || '');
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const loc = stripLocPrefix(String((reg as any).Location || ''));
-                  const sub = [jt, loc].filter(Boolean).join(' • ');
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const comp = String((reg as any).Company || '');
+                  const sub = [jt, loc, comp].filter(Boolean).join(' • ');
                   const email = reg.ParticipantEmail || '';
                   return (
                     <td key="person" style={{ padding: 8 }}>

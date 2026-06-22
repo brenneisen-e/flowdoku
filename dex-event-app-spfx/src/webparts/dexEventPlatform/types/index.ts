@@ -471,6 +471,9 @@ export interface User {
   // Department + Mobile (statt Festnetz) read-only aus dem SP-User-Profil.
   department?: string;
   mobilePhone?: string;
+  // v24.29: Unternehmenszugehörigkeit / Rechtsträger („Company name" aus dem
+  // M365-Profil, z.B. „Deloitte GmbH" / „Deloitte Consulting").
+  company?: string;
 }
 
 export interface RoleAssignment {
