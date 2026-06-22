@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.45.0 | 2026-06-22 | Bugfix | Die Abfrage „Meine Assistenz informieren" bei der Anmeldung erscheint jetzt für Partner UND Directoren (sowie Admins). Vorher wurde nur „Director" geprüft, Partner gingen leer aus. |
 | 24.44.0 | 2026-06-22 | Bugfix | Der Knopf „An die Person übergeben" in der Assistenz-Kachel erscheint jetzt nur noch bei Admins und Organizern des Events — nur sie haben die Rechte zum Umhängen der Anmeldung. |
 | 24.43.0 | 2026-06-22 | Feature | Assistenz-Kachel: Neuer Knopf „An die Person übergeben" — eine stellvertretend angelegte Anmeldung (inkl. Klammer + Sub-Events) lässt sich komplett an die angemeldete Person selbst übergeben. Danach verwaltet nur noch sie die Anmeldung über „Meine Events" und sie verschwindet aus deiner Assistenz-Kachel. |
 | 24.43.0 | 2026-06-22 | Bugfix | Assistenz-Kachel: Der Wichtig-Hinweis ist korrigiert — er erklärt jetzt, dass man (1) die selbst gemachten Anmeldungen voll verwaltet UND (2) Anmeldungen als Info sieht, bei denen man als Assistenz angegeben wurde. |

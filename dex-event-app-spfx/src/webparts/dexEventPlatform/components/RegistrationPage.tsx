@@ -770,9 +770,11 @@ export default function RegistrationPage(): React.ReactElement {
   // Anmeldung (kein Stellvertreter-/Team-Modus), nur für Admins ODER Directoren,
   // und NICHT, wenn das Event bereits ein Assistenz-CC-Feld hat (dann hätte der
   // Organizer den CC schon eingebaut → kein doppeltes Abfragen).
-  const isDirectorUser = /director/i.test(currentUser.jobTitle || '');
+  // v24.45: Partner ODER Director (P/D) — vorher wurde nur „director" geprüft,
+  // Partner gingen leer aus. „Senior Director"/„Associate Partner" matchen mit.
+  const isPartnerOrDirector = /(partner|director)/i.test(currentUser.jobTitle || '');
   const hasAssistantCcField = (event?.eventSpecificFields || []).some(f => (f.type === 'user' || f.type === 'roommate') && !!f.ccOnEmails);
-  const canDelegateAssistant = (isAdmin || isDirectorUser) && !registerForOther && !isTeamMode && !pendingJoinTeam && !hasAssistantCcField;
+  const canDelegateAssistant = (isAdmin || isPartnerOrDirector) && !registerForOther && !isTeamMode && !pendingJoinTeam && !hasAssistantCcField;
   const parsedDelegateAssist = (() => {
     const m = (delegateAssistValue || '').match(/^(.+?)\s*<([^>]+@[^>]+)>\s*$/);
     return m ? { name: m[1].trim(), email: m[2].trim() } : null;
