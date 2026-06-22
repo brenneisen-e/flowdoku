@@ -213,6 +213,35 @@ function AppContent(): React.ReactElement {
       .forEach(sel => { try { document.querySelectorAll(sel).forEach(toTop); } catch { /* */ } });
   }, [currentPage]);
 
+  // v24.53: Auto-Fit per WURZEL-Zoom (wie echtes Browser-Zoom, Ctrl+-). Auf
+  // schmaleren Bildschirmen (kleinere Laptops / hohe Windows-Skalierung)
+  // skaliert die ganze Seite herunter, sodass sie immer passt. Recherche-
+  // Ergebnis: Container-Zoom mit Breiten-Kompensation wird von SharePoints
+  // `overflow:hidden` gekappt — daher Zoom auf <html>. `window.innerWidth` ist
+  // unabhängig vom gesetzten Zoom → kein Feedback-Loop. Edge/Chrome (SharePoint)
+  // unterstützen `zoom`. Beim Unmount zurücksetzen.
+  React.useEffect(() => {
+    const designWidth = 1700; // darüber: keine Skalierung (großer Monitor)
+    const floor = 0.72;       // ~75 % auf typischen Laptops, nicht kleiner
+    let applied = '';
+    const apply = (): void => {
+      const w = window.innerWidth || designWidth;
+      const z = Math.max(floor, Math.min(1, w / designWidth));
+      const val = z < 0.999 ? z.toFixed(3) : '';
+      if (val === applied) return;
+      applied = val;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      try { (document.documentElement.style as any).zoom = val; } catch { /* */ }
+    };
+    apply();
+    window.addEventListener('resize', apply);
+    return () => {
+      window.removeEventListener('resize', apply);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      try { (document.documentElement.style as any).zoom = ''; } catch { /* */ }
+    };
+  }, []);
+
   // Deep-Link Handling: Wenn die Seite mit ?action=cancel&event=<eventNumber>
   // aufgerufen wird (z.B. aus einer Outlook-Decline-Reminder-Mail), direkt auf
   // My Events navigieren mit der eventId - MyEventsPage cancelt dann die
@@ -500,30 +529,12 @@ function AppContent(): React.ReactElement {
     `;
     document.head.appendChild(styleEl);
 
-    // v24.52: Auto-Fit. Auf schmaleren Bildschirmen skaliert die App sich
-    // automatisch passend herunter (wie manuelles Rauszoomen), damit sie immer
-    // vollständig passt. Greift NUR unter `designWidth` — auf großen Monitoren
-    // bleibt alles unverändert (zoom=1 → keinerlei Risiko für den Normalfall).
-    // Die Breite wird gegenkompensiert (width = 100/zoom %), damit der zentrierte
-    // Inhalt zentriert bleibt; die Höhe wird durch den Zoom geteilt, damit das
-    // Layout weiterhin den Viewport füllt (kein doppelter Scrollbalken).
-    function computeZoom(): number {
-      const designWidth = 1550;
-      const floor = 0.8;
-      const raw = (window.innerWidth || designWidth) / designWidth;
-      return Math.max(floor, Math.min(1, raw));
-    }
     function setHeight(): void {
-      const el = layoutRef.current;
-      if (!el) return;
-      const z = computeZoom();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const s = el.style as any;
-      if (z < 1) { s.zoom = String(z); s.width = `${(100 / z).toFixed(3)}%`; }
-      else { s.zoom = ''; s.width = ''; }
-      const rect = el.getBoundingClientRect();
-      const available = window.innerHeight - rect.top;
-      el.style.height = `${Math.max(available, 400) / (z < 1 ? z : 1)}px`;
+      if (layoutRef.current) {
+        const rect = layoutRef.current.getBoundingClientRect();
+        const available = window.innerHeight - rect.top;
+        layoutRef.current.style.height = `${Math.max(available, 400)}px`;
+      }
     }
 
     setHeight();

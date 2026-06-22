@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.53.0 | 2026-06-22 | Bugfix | Auto-Fit neu gelöst: Das bisherige Verkleinern funktionierte auf Laptops nicht (SharePoint schnitt den Inhalt ab). Jetzt skaliert die App auf schmaleren Bildschirmen über echtes Seiten-Zoom (wie Strg+-, ca. 75% auf typischen Laptops); Inhalt bleibt vollständig und zentriert. Große Monitore unverändert. |
 | 24.52.0 | 2026-06-22 | Feature | Auto-Fit: Auf schmaleren Bildschirmen (kleinere Laptops / hohe Windows-Skalierung) verkleinert sich die App automatisch passend, sodass sie immer vollständig passt — kein manuelles Rauszoomen mehr. Auf großen Monitoren unverändert. Modals liegen weiterhin sauber zentriert über der ganzen Seite (Portal). |
 | 24.51.0 | 2026-06-22 | Feature | Startseite, Box „Inaktive Deloitte-Konten": neuer Knopf „Organizer benachrichtigen" pro Event — schickt dem Organizer automatisch eine Mail (Deloitte-Layout, Link ins Event), dass eine angemeldete Person womöglich kein aktives Deloitte-Konto mehr hat. Pro Event+Person nur einmal, egal welcher Admin klickt (Duplikaterkennung). |
 | 24.50.0 | 2026-06-22 | Feature | Beim Wechsel zwischen Seiten/Bereichen springt die Ansicht jetzt immer wieder nach ganz oben. |
