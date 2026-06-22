@@ -8,6 +8,7 @@ import * as React from 'react';
 import { useEvents } from '../context/EventContext';
 import { useNavigation } from '../context/NavigationContext';
 import { useLanguage } from '../context/LanguageContext';
+import { useCurrentUser } from '../context/UserContext';
 import { useDialog } from '../context/DialogContext';
 import { useRoles } from '../context/RoleContext';
 import { UserFieldPicker } from './UserFieldPicker';
@@ -51,16 +52,41 @@ function fieldVisible(f: EventSpecificField, data: Record<string, string>): bool
 }
 
 export default function AssistantPage(): React.ReactElement {
-  const { events, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, registerForEvent, childEventsOf } = useEvents();
+  const { events, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, registerForEvent, childEventsOf, getMyAssistantLinks } = useEvents();
   const { navigate } = useNavigation();
   const { locale } = useLanguage();
   const { confirmDialog, showAlert } = useDialog();
   const { searchUsers, searchUser } = useRoles();
+  const { currentUser } = useCurrentUser();
+  const meLc = (currentUser?.email || '').toLowerCase().trim();
   const isDe = locale === 'de';
 
   const [loading, setLoading] = React.useState(true);
   const [groups, setGroups] = React.useState<Group[]>([]);
   const [busyKey, setBusyKey] = React.useState<string | null>(null);
+  // v24.41: INFO-Verknüpfungen — eine Person hat sich SELBST angemeldet und mich
+  // als Assistenz hinterlegt. Ich sehe die Anmeldung nur als Info (read-only),
+  // der Owner ist die Person selbst.
+  const [infoLinks, setInfoLinks] = React.useState<import('../services/EventService').AssistantLink[]>([]);
+  React.useEffect(() => {
+    let cancelled = false;
+    getMyAssistantLinks().then(list => {
+      if (cancelled) return;
+      // Nur Links, bei denen ICH die Assistenz bin und NICHT der Owner
+      // (Owner = die Person selbst = Szenario A). Pro Event ein Eintrag.
+      const seen = new Set<string>();
+      const filtered = (list || []).filter(l => {
+        if (l.status !== 'Active') return false;
+        if ((l.assistantEmail || '').toLowerCase() !== meLc) return false; // ich bin die hinterlegte Assistenz
+        if ((l.ownerEmail || '').toLowerCase() === meLc) return false;     // ich bin NICHT Owner (sonst editierbar)
+        if (seen.has(l.eventId)) return false;
+        seen.add(l.eventId);
+        return true;
+      });
+      setInfoLinks(filtered);
+    }).catch(() => { /* */ });
+    return () => { cancelled = true; };
+  }, [getMyAssistantLinks, meLc]);
 
   // Edit-/Register-Modal-State.
   const [fieldModal, setFieldModal] = React.useState<{
@@ -379,9 +405,35 @@ export default function AssistantPage(): React.ReactElement {
         </div>
       </div>
 
+      {/* v24.41: INFO — Anmeldungen, bei denen ich als Assistenz hinterlegt
+          wurde, die die Person aber SELBST verwaltet (read-only). */}
+      {infoLinks.length > 0 && (
+        <div style={{ margin: '4px 0 18px', background: 'rgba(0,114,188,0.06)', border: '1px solid #0072bc', borderRadius: 12, padding: '14px 16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <Icon iconName="Info" style={{ fontSize: 18, color: '#0072bc' }} />
+            <strong style={{ fontSize: '0.95rem', color: '#0a5a93' }}>
+              {isDe ? 'Du bist als Assistenz hinterlegt (nur Info)' : 'You are listed as assistant (info only)'}
+            </strong>
+          </div>
+          <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: '#5a6b78', lineHeight: 1.5 }}>
+            {isDe
+              ? 'Diese Personen haben sich SELBST angemeldet und dich als Assistenz angegeben. Sie verwalten ihre Anmeldung selbst — du siehst sie hier nur zur Info. Eine Änderung/Abmeldung kannst du anfordern (kommt in Kürze).'
+              : 'These people registered THEMSELVES and named you as their assistant. They manage their own registration — shown here for your information. You can request a change/cancellation (coming soon).'}
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {infoLinks.map((l, i) => (
+              <div key={`${l.eventId}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.86rem' }}>
+                <strong>{l.participantName || l.participantEmail}</strong>
+                <span style={{ color: 'var(--dex-gray-500)' }}>· {l.eventTitle || l.eventId}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div style={{ padding: 48, textAlign: 'center', color: '#999' }}>{isDe ? 'Lade …' : 'Loading …'}</div>
-      ) : visibleGroups.length === 0 ? (
+      ) : visibleGroups.length === 0 && infoLinks.length === 0 ? (
         <div style={{ padding: 40, textAlign: 'center', color: '#888', background: '#f7f7f7', borderRadius: 12, marginTop: 16 }}>
           <Icon iconName="People" style={{ fontSize: 40, color: '#ccc', display: 'block', marginBottom: 10 }} />
           {groups.length === 0

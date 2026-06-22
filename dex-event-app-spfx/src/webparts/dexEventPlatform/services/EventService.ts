@@ -612,6 +612,29 @@ export interface CustomField {
   optionsEn?: string[];
 }
 
+/** v24.41: Eine Zeile aus DEX_AssistantAccess — Verknüpfung Person ↔ Assistenz
+ *  + optionale Änderungs-/Abmelde-Anforderung. Enthält KEINE Anmelde-Antworten. */
+export interface AssistantLink {
+  id: number;
+  subsiteUrl: string;
+  itemId: number;
+  eventId: string;
+  eventTitle: string;
+  participantEmail: string;
+  participantName: string;
+  assistantEmail: string;
+  assistantName: string;
+  ownerEmail: string;
+  linkType: string; // 'delegation' | 'proxy'
+  status: string;   // 'Active' | 'Cancelled'
+  requestType: string;   // '' | 'change' | 'cancel'
+  requestNote: string;
+  requestedByEmail: string;
+  requestedByName: string;
+  requestStatus: string; // '' | 'Open' | 'Done' | 'Rejected'
+  created: string;
+}
+
 export interface SPRegistration {
   Id: number;
   Title: string; // Email
@@ -5569,6 +5592,227 @@ export class EventService {
     }
   }
 
+  /**
+   * v24.41: Liste `DEX_AssistantAccess` — Delegations-/Zugriffs-Queue für die
+   * „Meine Assistenz beauftragen"-Funktion. Wenn ein Admin/Director sich für
+   * ein Event anmeldet und eine Assistenz angibt, wird hier ein Eintrag
+   * angelegt. Zwei Zwecke:
+   *  1. **Flow-Auftrag:** Der Flow `DEX_AssistantAccess_Grant` setzt den
+   *     Zeilen-Autor (`Created By`) der Teilnehmer-Anmeldung auf die Assistenz,
+   *     damit diese die Anmeldung in ihrer „Assistenz"-Kachel sieht/bearbeitet
+   *     (unter „nur eigene Elemente" geht das NUR über den Autor — siehe
+   *     Recherche v24.41). Für Admins setzt die App den Autor direkt; für
+   *     normale Directoren erledigt es der Flow.
+   *  2. **Info-Zeile für den Director:** Da der Director nach der Delegation
+   *     nicht mehr Autor der Teilnehmer-Zeile ist (und sie unter ILS nicht mehr
+   *     sieht), liest „Meine Events" hier (der Director ist Autor SEINES
+   *     Delegations-Eintrags → sieht ihn) eine schreibgeschützte Zeile
+   *     „Angemeldet für X — verwaltet von Assistenz Y".
+   * ReadSecurity/WriteSecurity=2: jeder sieht nur die EIGENEN Delegations-
+   * Einträge; der Flow (Site-Owner) sieht alle.
+   */
+  public async ensureAssistantAccessList(): Promise<void> {
+    const listName = 'DEX_AssistantAccess';
+    const exists = await this.listExists(listName);
+    if (exists) return;
+
+    await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'Queue + Info: Anmeldung an eine Assistenz delegieren — Zeilen-Autor auf die Assistenz setzen (v24.41, Flow DEX_AssistantAccess_Grant).',
+      'BaseTemplate': 100,
+      'AllowContentTypes': false,
+    });
+    const fields: Array<{ title: string; type: number }> = [
+      { title: 'SubsiteUrl', type: 2 },
+      { title: 'ItemId', type: 9 },
+      { title: 'EventId', type: 2 },
+      { title: 'EventTitle', type: 2 },
+      { title: 'ParticipantEmail', type: 2 },   // die angemeldete Person
+      { title: 'ParticipantName', type: 2 },
+      { title: 'AssistantEmail', type: 2 },     // die verknüpfte Assistenz
+      { title: 'AssistantName', type: 2 },
+      { title: 'OwnerEmail', type: 2 },         // wer die Anmeldung VERWALTET
+      { title: 'LinkType', type: 2 },           // 'delegation' (Selbst-Anmeldung+Assistenz) | 'proxy' (Assistenz meldet an)
+      { title: 'Status', type: 2 },             // 'Active' | 'Cancelled'
+      { title: 'RequestType', type: 2 },        // '' | 'change' | 'cancel'
+      { title: 'RequestNote', type: 3 },        // Note
+      { title: 'RequestedByEmail', type: 2 },
+      { title: 'RequestedByName', type: 2 },
+      { title: 'RequestStatus', type: 2 },      // '' | 'Open' | 'Done' | 'Rejected'
+    ];
+    for (const f of fields) {
+      try {
+        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
+          '__metadata': { 'type': 'SP.Field' },
+          'Title': f.title,
+          'FieldTypeKind': f.type,
+          'Required': false,
+        });
+      } catch { /* einzelne Feld-Fehler ignorieren */ }
+    }
+    try {
+      await this.configureDefaultView(listName, ['SubsiteUrl', 'ItemId', 'EventTitle', 'ParticipantEmail', 'AssistantEmail', 'OwnerEmail', 'LinkType', 'Status', 'RequestType', 'RequestStatus', 'Created']);
+    } catch { /* View optional */ }
+    try {
+      await this.setQueueListPermissions(listName);
+    } catch { /* best-effort */ }
+    // v24.41: ReadSecurity=1/WriteSecurity=1 — jeder darf lesen UND schreiben.
+    // Die Liste enthält bewusst NUR Koordinations-Daten (Verknüpfung Person ↔
+    // Assistenz + Anforderungs-Status), KEINE sensiblen Anmelde-Antworten (die
+    // bleiben ILS-geschützt auf der Subsite). So sehen beide Seiten ihre
+    // relevanten Einträge (App filtert) und können Anforderungen schreiben —
+    // alles ohne Flow.
+    try {
+      await this.context.spHttpClient.post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`,
+        SPHttpClient.configurations.v1,
+        {
+          headers: {
+            'Accept': 'application/json;odata=verbose',
+            'Content-Type': 'application/json;odata=verbose',
+            'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE',
+          },
+          body: JSON.stringify({
+            '__metadata': { 'type': 'SP.List' },
+            'ReadSecurity': 1, 'WriteSecurity': 1,
+          }),
+        }
+      );
+    } catch { /* best-effort */ }
+  }
+
+  /**
+   * v24.41: Verknüpfungs-/Koordinations-Eintrag in DEX_AssistantAccess anlegen.
+   * `ownerEmail` = wer die Anmeldung verwaltet (Owner). `linkType`:
+   * 'delegation' (Person meldet sich selbst an + benennt Assistenz) oder
+   * 'proxy' (Assistenz meldet die Person an). Best-effort.
+   */
+  public async queueAssistantAccess(args: {
+    subsiteUrl: string; itemId: number; eventId: string; eventTitle: string;
+    participantEmail: string; participantName: string; assistantEmail: string; assistantName: string;
+    ownerEmail: string; linkType: 'delegation' | 'proxy';
+  }): Promise<void> {
+    try {
+      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_AssistantAccess')/items`, {
+        '__metadata': { 'type': 'SP.Data.DEX_x005f_AssistantAccessListItem' },
+        'Title': `${args.participantEmail} <-> ${args.assistantEmail} (${args.eventTitle || args.eventId})`.slice(0, 250),
+        'SubsiteUrl': args.subsiteUrl,
+        'ItemId': args.itemId,
+        'EventId': args.eventId,
+        'EventTitle': (args.eventTitle || '').slice(0, 250),
+        'ParticipantEmail': args.participantEmail,
+        'ParticipantName': (args.participantName || '').slice(0, 250),
+        'AssistantEmail': args.assistantEmail,
+        'AssistantName': (args.assistantName || '').slice(0, 250),
+        'OwnerEmail': args.ownerEmail,
+        'LinkType': args.linkType,
+        'Status': 'Active',
+        'RequestStatus': '',
+      });
+    } catch (err) {
+      console.warn('[DEX] queueAssistantAccess fehlgeschlagen (best-effort):', err);
+    }
+  }
+
+  /**
+   * v24.41: Alle AKTIVEN Verknüpfungen lesen, die den eingeloggten User
+   * betreffen (als angemeldete Person, als verknüpfte Assistenz ODER als Owner).
+   * ReadSecurity=1 — der Server liefert alle; wir filtern serverseitig auf die
+   * drei Email-Felder. Die App kategorisiert danach (Info-Ansichten + offene
+   * Anforderungen an den Owner).
+   */
+  public async getAssistantLinksForUser(myEmail: string): Promise<AssistantLink[]> {
+    const out: AssistantLink[] = [];
+    const me = (myEmail || '').toLowerCase().trim();
+    if (!me) return out;
+    const esc = me.replace(/'/g, "''");
+    const filter = `Status eq 'Active' and (ParticipantEmail eq '${esc}' or AssistantEmail eq '${esc}' or OwnerEmail eq '${esc}')`;
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_AssistantAccess')/items?$select=Id,SubsiteUrl,ItemId,EventId,EventTitle,ParticipantEmail,ParticipantName,AssistantEmail,AssistantName,OwnerEmail,LinkType,Status,RequestType,RequestNote,RequestedByEmail,RequestedByName,RequestStatus,Created&$filter=${encodeURIComponent(filter)}&$orderby=Created desc&$top=500`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return out;
+      const data = await resp.json();
+      const items: Array<Record<string, string | number>> = data.value || data.d?.results || [];
+      for (const it of items) {
+        out.push({
+          id: Number(it.Id) || 0,
+          subsiteUrl: String(it.SubsiteUrl || ''),
+          itemId: Number(it.ItemId) || 0,
+          eventId: String(it.EventId || ''),
+          eventTitle: String(it.EventTitle || ''),
+          participantEmail: String(it.ParticipantEmail || ''),
+          participantName: String(it.ParticipantName || ''),
+          assistantEmail: String(it.AssistantEmail || ''),
+          assistantName: String(it.AssistantName || ''),
+          ownerEmail: String(it.OwnerEmail || ''),
+          linkType: String(it.LinkType || ''),
+          status: String(it.Status || ''),
+          requestType: String(it.RequestType || ''),
+          requestNote: String(it.RequestNote || ''),
+          requestedByEmail: String(it.RequestedByEmail || ''),
+          requestedByName: String(it.RequestedByName || ''),
+          requestStatus: String(it.RequestStatus || ''),
+          created: String(it.Created || ''),
+        });
+      }
+    } catch { /* best-effort */ }
+    return out;
+  }
+
+  /**
+   * v24.42: Eine Änderungs-/Abmelde-Anforderung auf einem Link setzen
+   * (RequestType/RequestNote/RequestStatus=Open + Anforderer). Schreibbar von
+   * jedem (WriteSecurity=1) — der nicht-Owner stellt die Anforderung.
+   */
+  public async setAssistantLinkRequest(linkId: number, args: {
+    requestType: 'change' | 'cancel'; note: string; requestedByEmail: string; requestedByName: string;
+  }): Promise<boolean> {
+    try {
+      const resp = await this._merge(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_AssistantAccess')/items(${linkId})`,
+        {
+          'RequestType': args.requestType,
+          'RequestNote': (args.note || '').slice(0, 1000),
+          'RequestedByEmail': args.requestedByEmail,
+          'RequestedByName': (args.requestedByName || '').slice(0, 250),
+          'RequestStatus': 'Open',
+        }
+      );
+      return resp.ok;
+    } catch { return false; }
+  }
+
+  /** v24.42: Anforderung als erledigt/abgelehnt markieren (Owner). */
+  public async resolveAssistantLinkRequest(linkId: number, decision: 'Done' | 'Rejected'): Promise<boolean> {
+    try {
+      const resp = await this._merge(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_AssistantAccess')/items(${linkId})`,
+        { 'RequestStatus': decision }
+      );
+      return resp.ok;
+    } catch { return false; }
+  }
+
+  /** v24.41: Link beim Abmelden auf 'Cancelled' setzen (Info verschwindet). */
+  public async setAssistantLinkStatusForRegistration(itemId: number, subsiteUrl: string, status: 'Cancelled'): Promise<void> {
+    try {
+      const esc = (subsiteUrl || '').replace(/'/g, "''");
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_AssistantAccess')/items?$select=Id&$filter=ItemId eq ${itemId} and SubsiteUrl eq '${esc}' and Status eq 'Active'&$top=20`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const items: Array<{ Id: number }> = data.value || data.d?.results || [];
+      for (const it of items) {
+        try { await this._merge(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_AssistantAccess')/items(${it.Id})`, { 'Status': status }); } catch { /* */ }
+      }
+    } catch { /* best-effort */ }
+  }
+
   public async ensureOutlookLocksList(): Promise<void> {
     const listName = 'DEX_OutlookLocks';
     const exists = await this.listExists(listName);
@@ -7562,6 +7806,11 @@ export class EventService {
       // Max-Wert intern frisch (race-frei gegen parallele Anmeldungen).
       if (response.ok) {
         try { await this.syncCounterToMax(subsiteUrl); } catch { /* */ }
+        // v24.41: Koordinations-Liste synchron halten — bei JEDER Abmeldung den
+        // zugehörigen Assistenz-Link (falls vorhanden) auf 'Cancelled' setzen,
+        // damit die Info bei der anderen Seite verschwindet. Deckt alle Cancel-
+        // Pfade ab (Self / Proxy / Admin / Team), weil sie hier durchlaufen.
+        try { await this.setAssistantLinkStatusForRegistration(itemId, subsiteUrl, 'Cancelled'); } catch { /* */ }
       }
       return response.ok;
     } catch (err) {

@@ -690,9 +690,22 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
 
 export default function MyEventsPage(): React.ReactElement {
   const { navigate, selectedEventId, navIntent, clearIntent } = useNavigation();
-  const { topLevelEvents, childEventsOf, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, cancelTeamMember, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, registerForEvent, getAllRegistrations, getTeamMembers, addTeamMember, listTeamJoinRequestsForEvent, decideTeamJoinRequest } = useEvents();
+  const { topLevelEvents, childEventsOf, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, cancelTeamMember, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, registerForEvent, getAllRegistrations, getTeamMembers, addTeamMember, listTeamJoinRequestsForEvent, decideTeamJoinRequest, getMyAssistantLinks } = useEvents();
   const { currentUser } = useCurrentUser();
   const currentUserEmail = (currentUser?.email || '').toLowerCase();
+  // v24.41: Assistenz-Verknüpfungen — INFO-Ansicht für Anmeldungen, die jemand
+  // ANDERES verwaltet (proxy: jemand hat MICH angemeldet → ich sehe nur Info).
+  const [assistantLinks, setAssistantLinks] = React.useState<import('../services/EventService').AssistantLink[]>([]);
+  React.useEffect(() => {
+    let cancelled = false;
+    getMyAssistantLinks().then(list => { if (!cancelled) setAssistantLinks(list || []); }).catch(() => { /* */ });
+    return () => { cancelled = true; };
+  }, [getMyAssistantLinks]);
+  // INFO-Anmeldungen (ich = angemeldete Person, aber jemand anderes ist Owner).
+  const infoAsParticipant = (assistantLinks || []).filter(l =>
+    (l.participantEmail || '').toLowerCase() === currentUserEmail
+    && (l.ownerEmail || '').toLowerCase() !== currentUserEmail
+    && l.status === 'Active');
   // v11.82: Team-Mitglieder pro Event-Karte cachen — Lazy-Load via getTeamMembers.
   // Key = `${eventId}|${teamId}`. Belastet das initiale loadMyRegistrations
   // nicht — nur für Events mit gesetzter TeamId im eigenen Eintrag.
@@ -2468,8 +2481,43 @@ export default function MyEventsPage(): React.ReactElement {
           margin: '0 0 12px', fontSize: '1.05rem',
           color: 'var(--dex-gray-700)', display: 'flex', alignItems: 'center', gap: 8,
         };
+        // v24.41: INFO-Anmeldungen — jemand anderes (Assistenz) hat MICH
+        // angemeldet und verwaltet die Anmeldung; ich sehe nur Info. Nur die
+        // zeigen, die nicht ohnehin schon als eigene Karte erscheinen.
+        const shownEventIds = new Set<string>([...upcomingEntries, ...pastEntries].map(e => e.event.id));
+        const visibleInfo = (infoAsParticipant || []).filter(d => d.eventId && !shownEventIds.has(d.eventId));
+        // Pro Event nur EINEN Info-Eintrag (Klammer + Sub-Events teilen sich
+        // dieselbe verwaltende Person).
+        const infoByEvent = new Map<string, typeof visibleInfo[number]>();
+        for (const d of visibleInfo) { if (!infoByEvent.has(d.eventId)) infoByEvent.set(d.eventId, d); }
+        const infoList = Array.from(infoByEvent.values());
         return (
           <>
+            {infoList.length > 0 && (
+              <div style={{ marginBottom: 24, background: 'rgba(134,188,37,0.06)', border: '1px solid var(--dex-green, #86bc25)', borderRadius: 12, padding: '14px 16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <Icon iconName="ContactCard" style={{ fontSize: 18, color: 'var(--dex-green-dark, #4a7c1f)' }} />
+                  <strong style={{ fontSize: '0.95rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                    {isDe ? 'Von deiner Assistenz verwaltet' : 'Managed by your assistant'}
+                  </strong>
+                </div>
+                <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                  {isDe
+                    ? 'Diese Anmeldungen wurden für dich vorgenommen und werden von der angegebenen Person verwaltet. Du siehst sie hier zur Info; Änderungen oder eine Abmeldung kannst du anfordern (kommt in Kürze).'
+                    : 'These registrations were made for you and are managed by the person below. Shown here for your information; you can request changes or a cancellation (coming soon).'}
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {infoList.map((d, i) => (
+                    <div key={`${d.eventId}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.86rem' }}>
+                      <strong>{d.eventTitle || d.eventId}</strong>
+                      <span style={{ color: 'var(--dex-gray-500)' }}>
+                        · {isDe ? 'verwaltet von' : 'managed by'} {d.assistantName || d.assistantEmail}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {upcomingEntries.length > 0 && (
               <>
                 <h3 style={clusterHeadingStyle}>
