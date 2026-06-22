@@ -8,6 +8,8 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.20.0 | 2026-06-22 | Feature | Startseite: Begrüßung jetzt tageszeitabhängig — „Guten Morgen / Guten Tag / Guten Abend <Name>" statt immer „Hallo". |
+| 24.20.0 | 2026-06-22 | Feature | Startseite: Neuer Willkommenstext — „Willkommen bei DEX – unserer neuen App für die Organisation von Deloitte Events. Von der Anmeldung bis zum Check-in: alles an einer Stelle." |
 | 24.19.0 | 2026-06-22 | Feature | Startseite: Der Tutorial-Button („Neu hier? Starte das Tutorial …") sitzt jetzt mittig oben im Kopfbereich und ist etwas größer. An seiner früheren Stelle gibt es wieder die grüne Box „DEX für dein Event nutzen" (mit DEX-Logo) — ein Klick öffnet die Anfrage. „Über die App" steht jetzt als Textlink unter den Entwickler-Namen. |
 | 24.19.0 | 2026-06-22 | Bugfix | Startseite: Schmaler weißer Streifen direkt unter dem Kopfbereich entfernt (entstand, obwohl dort nichts angezeigt wurde). |
 | 24.19.0 | 2026-06-22 | Bugfix | Event-Wizard: Einleitungssatz von Schritt 1 angepasst — er nannte noch die Organizer, die inzwischen einen eigenen Schritt 2 haben. |

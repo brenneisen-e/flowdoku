@@ -25,6 +25,28 @@ export default function LandingPage(): React.ReactElement {
   // v18.25: Vorname für die persönliche Begrüßung.
   const { currentUser } = useCurrentUser();
   const firstName = (currentUser?.firstName || '').trim();
+  // v24.20: Tageszeitabhängige Begrüßung (Morgen/Tag/Abend) statt fixem „Hallo".
+  const greetHour = new Date().getHours();
+  const greeting = isDe
+    ? (greetHour < 5 ? 'Hallo' : greetHour < 11 ? 'Guten Morgen' : greetHour < 18 ? 'Guten Tag' : 'Guten Abend')
+    : (greetHour < 5 ? 'Hi' : greetHour < 11 ? 'Good morning' : greetHour < 18 ? 'Good afternoon' : 'Good evening');
+  // v24.20: Der Untertitel soll nicht breiter werden als der Begrüßungsgruß —
+  // wir messen die tatsächliche Textbreite der Überschrift und begrenzen den
+  // Untertitel darauf (reagiert auf Sprache/Name/Fontload/Resize).
+  const greetRef = React.useRef<HTMLSpanElement>(null);
+  const [greetWidth, setGreetWidth] = React.useState<number | undefined>(undefined);
+  React.useLayoutEffect(() => {
+    const el = greetRef.current;
+    if (!el) return undefined;
+    const update = (): void => setGreetWidth(el.offsetWidth);
+    update();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const RO = (window as any).ResizeObserver;
+    const ro = RO ? new RO(update) : null;
+    if (ro) ro.observe(el);
+    window.addEventListener('resize', update);
+    return () => { if (ro) ro.disconnect(); window.removeEventListener('resize', update); };
+  }, [greeting, firstName, isDe]);
   const [showInfo, setShowInfo] = React.useState(false);
   // v13.3: Inquiry-Modal lebt jetzt komplett in der wiederverwendbaren
   // InquiryModal-Komponente — eigene States hier entfallen.
@@ -698,15 +720,14 @@ export default function LandingPage(): React.ReactElement {
           </div>
           <div className="landing__text">
             <h1>
-              {isDe ? 'Hallo' : 'Hi'}{firstName ? <> <strong>{firstName}</strong></> : ''}{', '}
-              <span style={{ whiteSpace: 'nowrap' }}>
-                {isDe ? 'willkommen bei ' : 'welcome to '}<strong>DEX</strong>.
+              <span ref={greetRef} style={{ display: 'inline-block' }}>
+                {greeting}{firstName ? <>, <strong>{firstName}</strong></> : ''}.
               </span>
             </h1>
-            <p>
+            <p style={{ maxWidth: greetWidth, marginLeft: 'auto', marginRight: 'auto' }}>
               {isDe
-                ? 'Deine zentrale Plattform für Deloitte Events – von der Einladung über die Anmeldung bis zum Check-in.'
-                : 'Your central platform for Deloitte events – from invitation through registration to check-in.'}
+                ? <>Willkommen bei <strong>DEX</strong>. Unsere neue App für die Organisation von Deloitte Events – von der Anmeldung bis zum Check-in: alles an einer Stelle.</>
+                : <>Welcome to <strong>DEX</strong>. Our new app for organising Deloitte events – from registration to check-in: everything in one place.</>}
             </p>
           </div>
           {/* v22.1: Check-in-Hinweisbox(en) — ab 2 Tage vor dem Event, sobald
