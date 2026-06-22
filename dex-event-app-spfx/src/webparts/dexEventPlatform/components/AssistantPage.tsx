@@ -9,6 +9,8 @@ import { useEvents } from '../context/EventContext';
 import { useNavigation } from '../context/NavigationContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useDialog } from '../context/DialogContext';
+import { useRoles } from '../context/RoleContext';
+import { UserFieldPicker } from './UserFieldPicker';
 import { DeloitteEvent, EventSpecificField } from '../types';
 import { SPRegistration } from '../services/EventService';
 import { isEventOver } from '../utils/eventFormat';
@@ -53,6 +55,7 @@ export default function AssistantPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { locale } = useLanguage();
   const { confirmDialog, showAlert } = useDialog();
+  const { searchUsers, searchUser } = useRoles();
   const isDe = locale === 'de';
 
   const [loading, setLoading] = React.useState(true);
@@ -184,7 +187,7 @@ export default function AssistantPage(): React.ReactElement {
     for (const f of fields) {
       if (!f.required) continue;
       if (!fieldVisible(f, data)) continue;
-      if (f.type === 'document' || f.type === 'user' || f.type === 'roommate') continue; // hier nicht bearbeitbar
+      if (f.type === 'document') continue; // Dokument-Upload hier nicht bearbeitbar
       const v = (data[f.id] || '').trim();
       if (!v || (f.type === 'checkbox' && v !== 'true')) {
         await showAlert(isDe ? `Bitte das Pflichtfeld „${f.label}" ausfüllen.` : `Please fill the required field „${f.label}".`);
@@ -245,12 +248,31 @@ export default function AssistantPage(): React.ReactElement {
       border: `1px solid ${val ? 'var(--dex-green, #86bc25)' : '#ccc'}`,
       background: val ? 'rgba(134,188,37,0.06)' : '#fff', fontSize: '0.9rem', boxSizing: 'border-box',
     };
-    if (f.type === 'user' || f.type === 'roommate' || f.type === 'document') {
+    if (f.type === 'user' || f.type === 'roommate') {
+      return (
+        <div key={f.id} style={{ marginBottom: 14 }}>
+          {labelEl}
+          {f.helpText && f.helpTextStyle === 'inline' && (
+            <div style={{ fontSize: '0.78rem', color: '#777', marginBottom: 5 }}>{f.helpText}</div>
+          )}
+          <UserFieldPicker
+            value={val}
+            onChange={setVal}
+            searchUsers={searchUsers}
+            searchUserByEmail={searchUser}
+            placeholder={isDe ? 'Name oder E-Mail eingeben…' : 'Type a name or email…'}
+            errorStyle={{}}
+            forcedIsDe={isDe}
+          />
+        </div>
+      );
+    }
+    if (f.type === 'document') {
       return (
         <div key={f.id} style={{ marginBottom: 14 }}>
           {labelEl}
           <div style={{ fontSize: '0.8rem', color: '#888', fontStyle: 'italic' }}>
-            {isDe ? 'Dieses Feld kann hier nicht bearbeitet werden.' : 'This field cannot be edited here.'}
+            {isDe ? 'Dokument-Uploads kannst du hier nicht bearbeiten — die Person erledigt das über „Meine Events".' : 'Document uploads cannot be edited here — the person handles that via „My Events".'}
           </div>
         </div>
       );
