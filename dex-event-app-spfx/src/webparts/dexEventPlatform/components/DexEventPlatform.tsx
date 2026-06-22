@@ -213,35 +213,6 @@ function AppContent(): React.ReactElement {
       .forEach(sel => { try { document.querySelectorAll(sel).forEach(toTop); } catch { /* */ } });
   }, [currentPage]);
 
-  // v24.53: Auto-Fit per WURZEL-Zoom (wie echtes Browser-Zoom, Ctrl+-). Auf
-  // schmaleren Bildschirmen (kleinere Laptops / hohe Windows-Skalierung)
-  // skaliert die ganze Seite herunter, sodass sie immer passt. Recherche-
-  // Ergebnis: Container-Zoom mit Breiten-Kompensation wird von SharePoints
-  // `overflow:hidden` gekappt — daher Zoom auf <html>. `window.innerWidth` ist
-  // unabhängig vom gesetzten Zoom → kein Feedback-Loop. Edge/Chrome (SharePoint)
-  // unterstützen `zoom`. Beim Unmount zurücksetzen.
-  React.useEffect(() => {
-    const designWidth = 1700; // darüber: keine Skalierung (großer Monitor)
-    const floor = 0.72;       // ~75 % auf typischen Laptops, nicht kleiner
-    let applied = '';
-    const apply = (): void => {
-      const w = window.innerWidth || designWidth;
-      const z = Math.max(floor, Math.min(1, w / designWidth));
-      const val = z < 0.999 ? z.toFixed(3) : '';
-      if (val === applied) return;
-      applied = val;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      try { (document.documentElement.style as any).zoom = val; } catch { /* */ }
-    };
-    apply();
-    window.addEventListener('resize', apply);
-    return () => {
-      window.removeEventListener('resize', apply);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      try { (document.documentElement.style as any).zoom = ''; } catch { /* */ }
-    };
-  }, []);
-
   // Deep-Link Handling: Wenn die Seite mit ?action=cancel&event=<eventNumber>
   // aufgerufen wird (z.B. aus einer Outlook-Decline-Reminder-Mail), direkt auf
   // My Events navigieren mit der eventId - MyEventsPage cancelt dann die
