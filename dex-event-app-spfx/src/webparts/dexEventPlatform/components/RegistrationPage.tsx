@@ -98,7 +98,7 @@ export default function RegistrationPage(): React.ReactElement {
   }, []);
 
   const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
-  const { events, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest, updateMyRegistration, uploadFieldDocument } = useEvents();
+  const { events, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest, updateMyRegistration, uploadFieldDocument, delegateRegistrationToAssistant, recordProxyDelegation } = useEvents();
   const { currentUser, groupEmails } = useCurrentUser();
   const { searchUsers, searchUser, isAdmin } = useRoles();
   const { locale: appLocale } = useLanguage();
@@ -254,6 +254,11 @@ export default function RegistrationPage(): React.ReactElement {
   const [surname, setSurname] = React.useState(currentUser.surname);
   const [email, setEmail] = React.useState(currentUser.email);
   const [registerForOther, setRegisterForOther] = React.useState(false);
+  // v24.41: „Meine Assistenz beauftragen" — Admins/Directoren können bei der
+  // eigenen Anmeldung eine Assistenz angeben, die danach die Anmeldung in ihrer
+  // „Assistenz"-Kachel verwaltet (Delegation) und auf CC der Bestätigung kommt.
+  const [delegateAssistEnabled, setDelegateAssistEnabled] = React.useState(false);
+  const [delegateAssistValue, setDelegateAssistValue] = React.useState('');
   // v18.74: „Person außerhalb Deloitte" — explizit eine externe Person
   // stellvertretend anmelden. Blendet den Deloitte-People-Picker aus und macht
   // Vorname/Nachname/E-Mail frei eintragbar. Die Zustimmung ist hier SCHRIFTLICH
@@ -761,6 +766,17 @@ export default function RegistrationPage(): React.ReactElement {
   // v22.54: Ist die Hauptevent-Frist abgelaufen, kann ein normaler Teilnehmer
   // das Hauptevent nicht mehr buchen — die offenen Sub-Events bleiben aber
   // wählbar. Organizer/Admins dürfen weiterhin (manuelle Anmeldung).
+  // v24.41: „Meine Assistenz beauftragen"-Prompt — nur bei der EIGENEN
+  // Anmeldung (kein Stellvertreter-/Team-Modus), nur für Admins ODER Directoren,
+  // und NICHT, wenn das Event bereits ein Assistenz-CC-Feld hat (dann hätte der
+  // Organizer den CC schon eingebaut → kein doppeltes Abfragen).
+  const isDirectorUser = /director/i.test(currentUser.jobTitle || '');
+  const hasAssistantCcField = (event?.eventSpecificFields || []).some(f => (f.type === 'user' || f.type === 'roommate') && !!f.ccOnEmails);
+  const canDelegateAssistant = (isAdmin || isDirectorUser) && !registerForOther && !isTeamMode && !pendingJoinTeam && !hasAssistantCcField;
+  const parsedDelegateAssist = (() => {
+    const m = (delegateAssistValue || '').match(/^(.+?)\s*<([^>]+@[^>]+)>\s*$/);
+    return m ? { name: m[1].trim(), email: m[2].trim() } : null;
+  })();
   const parentRegBlocked = isDeadlinePassed && !parentAlreadyRegistered && !isOrganizer && !isAdmin;
   const willRegisterParent = registerForParent && !parentAlreadyRegistered && !registerForOther && !(event && event.subEventsOnlyMode) && !parentRegBlocked;
   // Fürs Registrieren für andere bleibt der alte Flow: Parent wird immer registriert,
@@ -1225,6 +1241,15 @@ export default function RegistrationPage(): React.ReactElement {
         ? (currentUser.email || '').trim()
         : '';
 
+      // v24.41: Delegation an die eigene Assistenz (nur Selbst-Anmeldung von
+      // Admin/Director, Assistenz im Picker gewählt). Die Assistenz kommt auf CC
+      // der Bestätigung; die eigentliche Zugriffs-Übergabe (Zeilen-Autor) läuft
+      // nach erfolgreicher Anmeldung über delegateRegistrationToAssistant.
+      const delegateAssist = (canDelegateAssistant && delegateAssistEnabled && parsedDelegateAssist
+        && parsedDelegateAssist.email.toLowerCase() !== participantEmail.toLowerCase())
+        ? parsedDelegateAssist : null;
+      const delegateCc = delegateAssist ? delegateAssist.email : '';
+
       let anySuccess = false;
       let parentOk = true;
       let lastSubReason: string | undefined;
@@ -1295,7 +1320,7 @@ export default function RegistrationPage(): React.ReactElement {
           // v19.6: ccSelfEmail (Anmeldende:r auf CC der Bestätigungs-Mail).
           registerForOther
             ? { proxyConsentConfirmed: true, actorAllowedAsAssistant, ...(ccSelfEmail ? { extraCc: ccSelfEmail } : {}) }
-            : undefined
+            : (delegateCc ? { extraCc: delegateCc } : undefined)
         );
         parentOk = parentResult.ok;
         if (parentOk) {
@@ -1373,7 +1398,7 @@ export default function RegistrationPage(): React.ReactElement {
           // bei stellvertretender Anmeldung) zusammen in die Opts.
           // v19.6: ccSelfEmail zusätzlich in die CC der Sub-Event-Bestätigung
           // mergen (deduppt serverseitig).
-          const seExtraCc = [crossCutCc, ccSelfEmail].filter(Boolean).join(';');
+          const seExtraCc = [crossCutCc, ccSelfEmail, delegateCc].filter(Boolean).join(';');
           const seOpts = (seExtraCc || registerForOther)
             ? { ...(seExtraCc ? { extraCc: seExtraCc } : {}), ...(registerForOther ? { proxyConsentConfirmed: true, actorAllowedAsAssistant } : {}) }
             : undefined;
@@ -1418,6 +1443,20 @@ export default function RegistrationPage(): React.ReactElement {
         // Parent diesmal oder schon vorher angemeldet), zeigen wir auf der
         // Success-Seite den Sessions-Only-Hinweis.
         setSessionsOnlySubmitted(!willRegisterParent && !registerForOther);
+        // v24.41 Szenario A: Assistenz verknüpfen (Info + Anforderung). Der
+        // Owner bleibt der/die Anmeldende; die Assistenz sieht es als Info.
+        if (delegateAssist) {
+          try { await delegateRegistrationToAssistant(selectedEventId!, delegateAssist); }
+          catch { /* best-effort — Anmeldung bleibt gültig */ }
+        }
+        // v24.41 Szenario B: Bei stellvertretender Anmeldung (für andere) einen
+        // Info-Link anlegen — der/die Anmeldende ist Owner, die angemeldete
+        // Person sieht die Anmeldung als Info unter „Meine Events".
+        if (registerForOther && !externalPerson && participantEmail
+          && participantEmail.toLowerCase() !== (currentUser.email || '').toLowerCase()) {
+          try { await recordProxyDelegation(selectedEventId!, { email: participantEmail, name: `${firstTrim} ${surnameTrim}`.trim() || participantEmail }); }
+          catch { /* best-effort */ }
+        }
         setSubmitted(true);
       } else if (!parentOk) {
         // Parent-Fehler wurde schon in setError oben gesetzt.
@@ -3845,6 +3884,51 @@ export default function RegistrationPage(): React.ReactElement {
       {error && (
         <div className="mt-16" style={{ padding: '12px 16px', background: 'rgba(239,68,68,0.1)', border: '1px solid var(--dex-red)', borderRadius: 'var(--dex-radius-md)', color: 'var(--dex-red)', fontSize: '0.9rem' }}>
           {error}
+        </div>
+      )}
+
+      {/* v24.41: „Meine Assistenz beauftragen" — nur Admin/Director, eigene
+          Anmeldung, kein vorhandenes Assistenz-CC-Feld. */}
+      {canDelegateAssistant && (
+        <div style={{ maxWidth: 1100, margin: '20px auto 0', background: 'var(--dex-gray-50, #f7f7f7)', border: '1px solid var(--dex-gray-200, #e3e3e3)', borderRadius: 12, padding: '16px 18px' }}>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={delegateAssistEnabled}
+              onChange={e => { setDelegateAssistEnabled(e.target.checked); if (!e.target.checked) setDelegateAssistValue(''); }}
+              style={{ marginTop: 3 }}
+            />
+            <span>
+              <span style={{ fontWeight: 600 }}>
+                {locale === 'de' ? 'Meine Assistenz informieren & beauftragen' : 'Inform & delegate to my assistant'}
+              </span>
+              <span style={{ display: 'block', fontSize: '0.82rem', color: 'var(--dex-gray-600, #666)', marginTop: 3, lineHeight: 1.5 }}>
+                {locale === 'de'
+                  ? 'Deine Assistenz bekommt die Bestätigung in Kopie (CC) und kann deine Anmeldung anschließend in ihrer „Assistenz"-Kachel verwalten (Angaben anpassen, ab-/anmelden). Du selbst bekommst die Bestätigungsmail und siehst in „Meine Events" einen Hinweis, dass deine Assistenz die Anmeldung betreut.'
+                  : 'Your assistant receives a copy (CC) of the confirmation and can then manage your registration in their „Assistant" tile (edit details, register/cancel). You receive the confirmation mail and see a note in „My Events" that your assistant manages it.'}
+              </span>
+            </span>
+          </label>
+          {delegateAssistEnabled && (
+            <div style={{ marginTop: 12, paddingLeft: 30 }}>
+              <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: 6 }}>
+                {locale === 'de' ? 'Assistenz auswählen' : 'Select assistant'}
+              </label>
+              <UserFieldPicker
+                value={delegateAssistValue}
+                onChange={setDelegateAssistValue}
+                searchUsers={searchUsers}
+                searchUserByEmail={searchUser}
+                placeholder={locale === 'de' ? 'Name oder E-Mail der Assistenz…' : 'Assistant name or email…'}
+                errorStyle={{}}
+              />
+              {!parsedDelegateAssist && (
+                <div style={{ fontSize: '0.78rem', color: 'var(--dex-orange-dark, #b35a00)', marginTop: 6 }}>
+                  {locale === 'de' ? 'Bitte eine Assistenz aus der Suche auswählen, sonst wird niemand informiert.' : 'Please select an assistant from the search, otherwise nobody is informed.'}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

@@ -11,7 +11,7 @@
 import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../types';
-import { EventService, SPEvent, CustomField, SPRegistration, SPParticipant, ReseedSummary } from '../services/EventService';
+import { EventService, SPEvent, CustomField, SPRegistration, SPParticipant, ReseedSummary, AssistantLink } from '../services/EventService';
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
 import { isEventOver } from '../utils/eventFormat';
 import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
@@ -376,6 +376,23 @@ interface EventContextType {
   /** v24.36: Custom-Field-Antworten einer Fremd-Anmeldung aktualisieren
    *  (Assistenz). Schreibt CustomData + die gemappten SP-Spalten. */
   updateProxyRegistration: (eventId: string, registration: SPRegistration, customData: Record<string, string>) => Promise<boolean>;
+  /** v24.41: Nach einer Selbst-Anmeldung die Verwaltung an eine Assistenz
+   *  delegieren — legt pro betroffener Zeile (Haupt-/Klammer-Event + alle
+   *  Sub-Events, für die der User angemeldet ist) einen Delegations-Auftrag in
+   *  DEX_AssistantAccess an. Der Flow setzt darauf den Zeilen-Autor +
+   *  RegisteredBy auf die Assistenz (Zugriff in deren „Assistenz"-Kachel). */
+  delegateRegistrationToAssistant: (eventId: string, assistant: { email: string; name: string }) => Promise<void>;
+  /** v24.41 Szenario B: Nach stellvertretender Anmeldung einen Info-Link
+   *  anlegen (Anmelder = Owner, angemeldete Person sieht Info). */
+  recordProxyDelegation: (eventId: string, participant: { email: string; name: string }) => Promise<void>;
+  /** v24.41: Alle aktiven Assistenz-Verknüpfungen des Users (als Person,
+   *  Assistenz oder Owner) — Basis für Info-Ansichten + Anforderungen. */
+  getMyAssistantLinks: () => Promise<AssistantLink[]>;
+  /** v24.42: Änderungs-/Abmelde-Anforderung stellen (schreibt die Anforderung +
+   *  schickt dem Owner eine Deeplink-Mail). */
+  requestAssistantChange: (link: AssistantLink, requestType: 'change' | 'cancel', note: string) => Promise<boolean>;
+  /** v24.42: Anforderung als erledigt/abgelehnt markieren (Owner). */
+  resolveAssistantRequest: (linkId: number, decision: 'Done' | 'Rejected') => Promise<boolean>;
   /** v18.33: Self-Check-in über einen gescannten QR-Deep-Link. Löst das Event
    *  per Token (statischer QR) oder Event-Nummer + HMAC-Code (rotierender QR)
    *  auf, validiert Fenster/Frische und setzt die eigene Registrierung auf
@@ -695,6 +712,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         safeRun('ensureTeamJoinRequestsList', () => eventService.ensureTeamJoinRequestsList(), parallelMarks),
         safeRun('ensureOutlookLocksList', () => eventService.ensureOutlookLocksList(), parallelMarks),
         safeRun('ensureAccessFixList', () => eventService.ensureAccessFixList(), parallelMarks),
+        safeRun('ensureAssistantAccessList', () => eventService.ensureAssistantAccessList(), parallelMarks),
         safeRun('ensureArchiveList', () => eventService.ensureArchiveList(), parallelMarks),
         safeRun('ensureWeeklyReportsList', () => eventService.ensureWeeklyReportsList(), parallelMarks),
         safeRun('ensureOrganizerRequestsList', () => eventService.ensureOrganizerRequestsList(), parallelMarks),
@@ -3622,6 +3640,146 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return success;
   }
 
+  // v24.41: Delegation an eine Assistenz — pro Anmelde-Zeile (Haupt-/Klammer-
+  // Event + alle Sub-Events, für die der User angemeldet ist) einen Auftrag in
+  // DEX_AssistantAccess anlegen. Der Flow setzt darauf Zeilen-Autor +
+  // RegisteredBy auf die Assistenz. Best-effort: blockt die Anmeldung nie.
+  async function delegateRegistrationToAssistant(eventId: string, assistant: { email: string; name: string }): Promise<void> {
+    const assistEmail = (assistant?.email || '').trim();
+    if (!assistEmail) return;
+    if (assistEmail.toLowerCase() === (currentUserEmail || '').toLowerCase()) return; // nicht sich selbst
+    const assistName = (assistant?.name || '').trim() || assistEmail;
+    const participantName = (currentUserName || '').trim() || currentUserEmail;
+    // Ziel-Events: Hauptevent + (falls Klammer) alle Sub-Events.
+    const targetEventIds = [eventId, ...childEventsOf(eventId).map(c => c.id)];
+    for (const evId of targetEventIds) {
+      const subsiteUrl = subsiteMap.current[evId];
+      if (!subsiteUrl) continue;
+      let myReg: SPRegistration | null = null;
+      try { myReg = await eventService.getMyRegistration(subsiteUrl, currentUserEmail); } catch { myReg = null; }
+      if (!myReg || !myReg.Id) continue;
+      // Nur aktive Zeilen delegieren (keine abgemeldeten).
+      if ((myReg.Status || '') === 'Abgemeldet') continue;
+      const ev = events.find(e => e.id === evId);
+      // Szenario A (ohne Flow): KEIN Owner-Wechsel — der Anmelder bleibt
+      // Eigentümer (Owner) und verwaltet selbst. Es wird nur ein Info-
+      // Verknüpfungs-Eintrag angelegt, über den die Assistenz die Anmeldung als
+      // INFO sieht und eine Änderungs-/Abmelde-Anforderung stellen kann.
+      try {
+        await eventService.queueAssistantAccess({
+          subsiteUrl,
+          itemId: myReg.Id,
+          eventId: evId,
+          eventTitle: ev?.title || '',
+          participantEmail: currentUserEmail,
+          participantName,
+          assistantEmail: assistEmail,
+          assistantName: assistName,
+          ownerEmail: currentUserEmail,
+          linkType: 'delegation',
+        });
+      } catch (err) { console.warn('[DEX] queueAssistantAccess failed:', err); }
+    }
+  }
+
+  // v24.41 Szenario B: Nach einer stellvertretenden Anmeldung (Assistenz meldet
+  // eine andere Person an) einen Info-Link anlegen — der ANMELDER ist Owner und
+  // verwaltet, die angemeldete Person sieht die Anmeldung als INFO unter „Meine
+  // Events" und kann eine Anforderung stellen.
+  async function recordProxyDelegation(eventId: string, participant: { email: string; name: string }): Promise<void> {
+    const partEmail = (participant?.email || '').trim();
+    if (!partEmail) return;
+    if (partEmail.toLowerCase() === (currentUserEmail || '').toLowerCase()) return; // keine Selbst-Anmeldung
+    const partName = (participant?.name || '').trim() || partEmail;
+    const ownerName = (currentUserName || '').trim() || currentUserEmail;
+    const targetEventIds = [eventId, ...childEventsOf(eventId).map(c => c.id)];
+    for (const evId of targetEventIds) {
+      const subsiteUrl = subsiteMap.current[evId];
+      if (!subsiteUrl) continue;
+      let reg: SPRegistration | null = null;
+      try { reg = await eventService.getMyRegistration(subsiteUrl, partEmail); } catch { reg = null; }
+      if (!reg || !reg.Id || (reg.Status || '') === 'Abgemeldet') continue;
+      const ev = events.find(e => e.id === evId);
+      try {
+        await eventService.queueAssistantAccess({
+          subsiteUrl,
+          itemId: reg.Id,
+          eventId: evId,
+          eventTitle: ev?.title || '',
+          participantEmail: partEmail,
+          participantName: partName,
+          assistantEmail: currentUserEmail,   // der Anmelder = verknüpfte „Assistenz"/Owner
+          assistantName: ownerName,
+          ownerEmail: currentUserEmail,
+          linkType: 'proxy',
+        });
+      } catch (err) { console.warn('[DEX] recordProxyDelegation queue failed:', err); }
+    }
+  }
+
+  async function getMyAssistantLinks(): Promise<AssistantLink[]> {
+    try { return await eventService.getAssistantLinksForUser(currentUserEmail); }
+    catch { return []; }
+  }
+
+  async function requestAssistantChange(link: AssistantLink, requestType: 'change' | 'cancel', note: string): Promise<boolean> {
+    if (!eventService || !link?.id) return false;
+    const requesterName = (currentUserName || '').trim() || currentUserEmail;
+    const ok = await eventService.setAssistantLinkRequest(link.id, {
+      requestType, note,
+      requestedByEmail: currentUserEmail,
+      requestedByName: requesterName,
+    });
+    if (!ok) return false;
+    // Deeplink-Mail an den OWNER (wer die Anmeldung verwaltet), damit er die
+    // Änderung/Abmeldung ausführt. Best-effort — gated über DisableEmails des
+    // Events (falls auffindbar).
+    try {
+      const ev = events.find(e => e.id === link.eventId);
+      if (ev && ev.disableEmails) return true; // Mails aus → nur die Liste, keine Mail
+      const isDe = !(ev && ev.emailLanguage === 'EN');
+      const actionLabel = requestType === 'cancel'
+        ? (isDe ? 'Abmeldung' : 'Cancellation')
+        : (isDe ? 'Änderung der Angaben' : 'Change of details');
+      const deepLink = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView&action=assistreq&id=${link.id}`;
+      const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const heading = isDe ? 'Anforderung an dich' : 'Request for you';
+      const sub = isDe ? `${actionLabel} — ${link.eventTitle || ''}` : `${actionLabel} — ${link.eventTitle || ''}`;
+      const body = isDe
+        ? `<p>Hallo,</p>
+           <p><strong>${esc(requesterName)}</strong> bittet dich um eine <strong>${esc(actionLabel)}</strong> für die folgende Anmeldung, die DU verwaltest:</p>
+           <p style="margin:12px 0;padding:10px 14px;background:#f3f7ec;border-radius:8px;">
+             <strong>Event:</strong> ${esc(link.eventTitle || link.eventId)}<br/>
+             <strong>Angemeldete Person:</strong> ${esc(link.participantName || link.participantEmail)}<br/>
+             ${note ? `<strong>Anmerkung:</strong> ${esc(note)}` : ''}
+           </p>
+           <p>Bitte führe die ${esc(actionLabel)} in der DEX-App aus (deine „Assistenz"-Kachel bzw. „Meine Events"):</p>
+           <p><a href="${deepLink}" style="display:inline-block;background:#86bc25;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;">In DEX öffnen</a></p>
+           <p>Vielen Dank!</p>`
+        : `<p>Hello,</p>
+           <p><strong>${esc(requesterName)}</strong> asks you for a <strong>${esc(actionLabel)}</strong> for the following registration that YOU manage:</p>
+           <p style="margin:12px 0;padding:10px 14px;background:#f3f7ec;border-radius:8px;">
+             <strong>Event:</strong> ${esc(link.eventTitle || link.eventId)}<br/>
+             <strong>Registered person:</strong> ${esc(link.participantName || link.participantEmail)}<br/>
+             ${note ? `<strong>Note:</strong> ${esc(note)}` : ''}
+           </p>
+           <p>Please perform the ${esc(actionLabel)} in the DEX app (your „Assistant" tile or „My Events"):</p>
+           <p><a href="${deepLink}" style="display:inline-block;background:#86bc25;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;">Open in DEX</a></p>
+           <p>Many thanks!</p>`;
+      const subject = isDe
+        ? `Anforderung: ${actionLabel} — ${link.eventTitle || ''}`
+        : `Request: ${actionLabel} — ${link.eventTitle || ''}`;
+      const wrapped = wrapTemplate('#86bc25', heading, sub, body);
+      await eventService.queueEmail(subject, link.ownerEmail, link.ownerEmail, wrapped, 'Info', link.eventTitle || '', link.eventId);
+    } catch (err) { console.warn('[DEX] requestAssistantChange mail failed:', err); }
+    return true;
+  }
+
+  async function resolveAssistantRequest(linkId: number, decision: 'Done' | 'Rejected'): Promise<boolean> {
+    if (!eventService) return false;
+    return eventService.resolveAssistantLinkRequest(linkId, decision);
+  }
+
   // v22.50: Passthrough für die globale Admin-Suche (DEX_Participants).
   async function getAllParticipants(): Promise<SPParticipant[]> {
     try { return await eventService.getAllParticipants(); }
@@ -4370,7 +4528,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns,
         sendAdminInquiry,
         requestOrganizerRole, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,

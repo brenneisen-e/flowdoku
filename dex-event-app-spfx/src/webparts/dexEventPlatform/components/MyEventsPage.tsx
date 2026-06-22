@@ -690,9 +690,45 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
 
 export default function MyEventsPage(): React.ReactElement {
   const { navigate, selectedEventId, navIntent, clearIntent } = useNavigation();
-  const { topLevelEvents, childEventsOf, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, cancelTeamMember, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, registerForEvent, getAllRegistrations, getTeamMembers, addTeamMember, listTeamJoinRequestsForEvent, decideTeamJoinRequest } = useEvents();
+  const { topLevelEvents, childEventsOf, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, cancelTeamMember, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, registerForEvent, getAllRegistrations, getTeamMembers, addTeamMember, listTeamJoinRequestsForEvent, decideTeamJoinRequest, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest } = useEvents();
   const { currentUser } = useCurrentUser();
   const currentUserEmail = (currentUser?.email || '').toLowerCase();
+  // v24.41: Assistenz-Verknüpfungen — INFO-Ansicht für Anmeldungen, die jemand
+  // ANDERES verwaltet (proxy: jemand hat MICH angemeldet → ich sehe nur Info).
+  const [assistantLinks, setAssistantLinks] = React.useState<import('../services/EventService').AssistantLink[]>([]);
+  React.useEffect(() => {
+    let cancelled = false;
+    getMyAssistantLinks().then(list => { if (!cancelled) setAssistantLinks(list || []); }).catch(() => { /* */ });
+    return () => { cancelled = true; };
+  }, [getMyAssistantLinks]);
+  // INFO-Anmeldungen (ich = angemeldete Person, aber jemand anderes ist Owner).
+  const infoAsParticipant = (assistantLinks || []).filter(l =>
+    (l.participantEmail || '').toLowerCase() === currentUserEmail
+    && (l.ownerEmail || '').toLowerCase() !== currentUserEmail
+    && l.status === 'Active');
+  // Offene Anforderungen AN MICH (ich verwalte die Anmeldung, jemand bittet um
+  // Änderung/Abmeldung).
+  const openRequestsToMe = (assistantLinks || []).filter(l =>
+    (l.ownerEmail || '').toLowerCase() === currentUserEmail
+    && l.status === 'Active' && l.requestStatus === 'Open' && !!l.requestType);
+  const reloadAssistantLinks = React.useCallback(() => {
+    getMyAssistantLinks().then(list => setAssistantLinks(list || [])).catch(() => { /* */ });
+  }, [getMyAssistantLinks]);
+  // Anforderung stellen (als Info-Empfänger) bzw. erledigen (als Owner).
+  const submitAssistantRequest = async (link: import('../services/EventService').AssistantLink, type: 'change' | 'cancel'): Promise<void> => {
+    const note = await promptDialog(
+      isDe ? (type === 'cancel' ? 'Abmeldung anfordern — kurze Anmerkung (optional):' : 'Änderung anfordern — was soll geändert werden?')
+           : (type === 'cancel' ? 'Request cancellation — short note (optional):' : 'Request change — what should change?'),
+      { defaultValue: '' });
+    if (note === null) return;
+    const ok = await requestAssistantChange(link, type, note || '');
+    if (ok) { showAlert(isDe ? 'Anforderung gesendet — die verwaltende Person bekommt eine Mail mit Direktlink.' : 'Request sent — the managing person receives a mail with a direct link.', { variant: 'success' }); reloadAssistantLinks(); }
+    else showAlert(isDe ? 'Anforderung konnte nicht gesendet werden.' : 'Request could not be sent.', { variant: 'error' });
+  };
+  const resolveReq = async (link: import('../services/EventService').AssistantLink, decision: 'Done' | 'Rejected'): Promise<void> => {
+    const ok = await resolveAssistantRequest(link.id, decision);
+    if (ok) { showAlert(isDe ? (decision === 'Done' ? 'Als erledigt markiert.' : 'Anforderung abgelehnt.') : (decision === 'Done' ? 'Marked as done.' : 'Request rejected.'), { variant: 'success' }); reloadAssistantLinks(); }
+  };
   // v11.82: Team-Mitglieder pro Event-Karte cachen — Lazy-Load via getTeamMembers.
   // Key = `${eventId}|${teamId}`. Belastet das initiale loadMyRegistrations
   // nicht — nur für Events mit gesetzter TeamId im eigenen Eintrag.
@@ -881,7 +917,7 @@ export default function MyEventsPage(): React.ReactElement {
 
   const { t, locale } = useLanguage();
   // v20.4: App-Modals statt nativer Browser-Dialoge.
-  const { confirmDialog, showAlert } = useDialog();
+  const { confirmDialog, showAlert, promptDialog } = useDialog();
   // v20.7: Persönlicher Check-in-QR-Code unter „Meine Events" — gleicher
   // Payload wie die QR-Mail (DEX|<EventNr>|<E-Mail>), client-seitig erzeugt.
   // Damit hat jeder aktive Teilnehmer seinen QR jederzeit zur Hand, auch
@@ -2468,8 +2504,92 @@ export default function MyEventsPage(): React.ReactElement {
           margin: '0 0 12px', fontSize: '1.05rem',
           color: 'var(--dex-gray-700)', display: 'flex', alignItems: 'center', gap: 8,
         };
+        // v24.41: INFO-Anmeldungen — jemand anderes (Assistenz) hat MICH
+        // angemeldet und verwaltet die Anmeldung; ich sehe nur Info. Nur die
+        // zeigen, die nicht ohnehin schon als eigene Karte erscheinen.
+        const shownEventIds = new Set<string>([...upcomingEntries, ...pastEntries].map(e => e.event.id));
+        const visibleInfo = (infoAsParticipant || []).filter(d => d.eventId && !shownEventIds.has(d.eventId));
+        // Pro Event nur EINEN Info-Eintrag (Klammer + Sub-Events teilen sich
+        // dieselbe verwaltende Person).
+        const infoByEvent = new Map<string, typeof visibleInfo[number]>();
+        for (const d of visibleInfo) { if (!infoByEvent.has(d.eventId)) infoByEvent.set(d.eventId, d); }
+        const infoList = Array.from(infoByEvent.values());
         return (
           <>
+            {/* v24.42: Offene Anforderungen AN MICH (ich verwalte die Anmeldung). */}
+            {openRequestsToMe.length > 0 && (
+              <div style={{ marginBottom: 24, background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange, #ed8b00)', borderRadius: 12, padding: '14px 16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <Icon iconName="Mail" style={{ fontSize: 18, color: 'var(--dex-orange, #ed8b00)' }} />
+                  <strong style={{ fontSize: '0.95rem', color: '#b35a00' }}>
+                    {isDe ? `Offene Anforderungen (${openRequestsToMe.length})` : `Open requests (${openRequestsToMe.length})`}
+                  </strong>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {openRequestsToMe.map(l => (
+                    <div key={l.id} style={{ fontSize: '0.85rem', borderTop: '1px solid rgba(237,139,0,0.25)', paddingTop: 8 }}>
+                      <div>
+                        <strong>{l.requestType === 'cancel' ? (isDe ? 'Abmeldung' : 'Cancellation') : (isDe ? 'Änderung' : 'Change')}</strong>
+                        {' · '}{l.eventTitle || l.eventId} · {l.participantName || l.participantEmail}
+                      </div>
+                      <div style={{ color: 'var(--dex-gray-600)', fontSize: '0.8rem', marginTop: 2 }}>
+                        {isDe ? 'von' : 'from'} {l.requestedByName || l.requestedByEmail}{l.requestNote ? ` — „${l.requestNote}"` : ''}
+                      </div>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                        <button type="button" className="btn btn-primary" style={{ fontSize: '0.78rem', padding: '4px 12px' }} onClick={() => { void resolveReq(l, 'Done'); }}>
+                          {isDe ? 'Als erledigt markieren' : 'Mark as done'}
+                        </button>
+                        <button type="button" className="btn btn-secondary" style={{ fontSize: '0.78rem', padding: '4px 12px' }} onClick={() => { void resolveReq(l, 'Rejected'); }}>
+                          {isDe ? 'Ablehnen' : 'Reject'}
+                        </button>
+                      </div>
+                      <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.76rem', marginTop: 4 }}>
+                        {isDe ? 'Bitte führe die Änderung/Abmeldung wie gewohnt aus (oben in dieser Liste bzw. in der „Assistenz"-Kachel), dann hier als erledigt markieren.' : 'Please perform the change/cancellation as usual, then mark it done here.'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {infoList.length > 0 && (
+              <div style={{ marginBottom: 24, background: 'rgba(134,188,37,0.06)', border: '1px solid var(--dex-green, #86bc25)', borderRadius: 12, padding: '14px 16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                  <Icon iconName="ContactCard" style={{ fontSize: 18, color: 'var(--dex-green-dark, #4a7c1f)' }} />
+                  <strong style={{ fontSize: '0.95rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                    {isDe ? 'Von deiner Assistenz verwaltet' : 'Managed by your assistant'}
+                  </strong>
+                </div>
+                <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                  {isDe
+                    ? 'Diese Anmeldungen wurden für dich vorgenommen und werden von der angegebenen Person verwaltet. Du siehst sie hier zur Info und kannst eine Änderung oder Abmeldung anfordern (die verwaltende Person bekommt eine Mail mit Direktlink).'
+                    : 'These registrations were made for you and are managed by the person below. Shown here for your information; you can request a change or cancellation (the managing person gets a mail with a direct link).'}
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {infoList.map((d, i) => (
+                    <div key={`${d.eventId}-${i}`} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.86rem' }}>
+                      <strong>{d.eventTitle || d.eventId}</strong>
+                      <span style={{ color: 'var(--dex-gray-500)' }}>
+                        · {isDe ? 'verwaltet von' : 'managed by'} {d.assistantName || d.assistantEmail}
+                      </span>
+                      {d.requestStatus === 'Open' ? (
+                        <span style={{ color: 'var(--dex-orange-dark, #b35a00)', fontSize: '0.78rem' }}>
+                          · {isDe ? 'Anforderung gesendet' : 'Request sent'}
+                        </span>
+                      ) : (
+                        <span style={{ display: 'inline-flex', gap: 6 }}>
+                          <button type="button" className="btn btn-secondary" style={{ fontSize: '0.76rem', padding: '3px 10px' }} onClick={() => { void submitAssistantRequest(d, 'change'); }}>
+                            {isDe ? 'Änderung anfordern' : 'Request change'}
+                          </button>
+                          <button type="button" className="btn btn-secondary" style={{ fontSize: '0.76rem', padding: '3px 10px', color: 'var(--dex-red, #c00)' }} onClick={() => { void submitAssistantRequest(d, 'cancel'); }}>
+                            {isDe ? 'Abmeldung anfordern' : 'Request cancellation'}
+                          </button>
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
             {upcomingEntries.length > 0 && (
               <>
                 <h3 style={clusterHeadingStyle}>
