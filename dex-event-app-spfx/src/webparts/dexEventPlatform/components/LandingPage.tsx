@@ -8,7 +8,6 @@ import { useLanguage } from '../context/LanguageContext';
 // Einsatz-Zahlen stehen nur auf dem Boot-Loader davor.)
 import { useCurrentUser } from '../context/UserContext';
 import { APP_VERSION } from '../version';
-import LandingInfoModal from './LandingInfoModal';
 import InquiryModal from './InquiryModal';
 // v22: Archivierungs-Info für Admins (rechts auf der Landing Page) —
 // zählt beim App-Start die archivreifen Zeilen abgelaufener Events und
@@ -30,7 +29,6 @@ export default function LandingPage(): React.ReactElement {
   const greeting = isDe
     ? (greetHour < 5 ? 'Hallo' : greetHour < 11 ? 'Guten Morgen' : greetHour < 18 ? 'Guten Tag' : 'Guten Abend')
     : (greetHour < 5 ? 'Hi' : greetHour < 11 ? 'Good morning' : greetHour < 18 ? 'Good afternoon' : 'Good evening');
-  const [showInfo, setShowInfo] = React.useState(false);
   // v13.3: Inquiry-Modal lebt jetzt komplett in der wiederverwendbaren
   // InquiryModal-Komponente — eigene States hier entfallen.
   const [showInquiry, setShowInquiry] = React.useState(false);
@@ -707,8 +705,8 @@ export default function LandingPage(): React.ReactElement {
             </h1>
             <p>
               {isDe
-                ? <>Willkommen bei <strong>DEX</strong>. Unsere neue App für die Organisation von Deloitte Events – von der Anmeldung bis zum Check-in: alles an einer Stelle.</>
-                : <>Welcome to <strong>DEX</strong>. Our new app for organising Deloitte events – from registration to check-in: everything in one place.</>}
+                ? <>Willkommen bei <strong>DEX</strong>.<br />Unsere neue App für die Organisation von Deloitte Events – von der Anmeldung bis zum Check-in: alles an einer Stelle.</>
+                : <>Welcome to <strong>DEX</strong>.<br />Our new app for organising Deloitte events – from registration to check-in: everything in one place.</>}
             </p>
           </div>
           {/* v22.1: Check-in-Hinweisbox(en) — ab 2 Tage vor dem Event, sobald
@@ -780,7 +778,7 @@ export default function LandingPage(): React.ReactElement {
               );
             });
           })()}
-          <button className="btn btn-lg btn-block btn-outline" data-tour="landing-start" onClick={() => navigate('start')}>
+          <button className="btn btn-lg btn-block btn-outline" data-tour="landing-start" onClick={() => navigate('start')} style={{ maxWidth: 360 }}>
             {t('landing.start')}
           </button>
           <div
@@ -805,7 +803,7 @@ export default function LandingPage(): React.ReactElement {
                 padding: '12px 18px', borderRadius: 14,
                 boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
                 border: 'none', cursor: 'pointer', textAlign: 'left',
-                fontFamily: 'inherit', maxWidth: 360,
+                fontFamily: 'inherit', width: '100%', maxWidth: 360,
               }}
               title={locale === 'de' ? 'DEX App für dein Event anfragen' : 'Request the DEX App for your event'}
             >
@@ -845,21 +843,6 @@ export default function LandingPage(): React.ReactElement {
               {' '}{locale === 'de' ? 'und' : 'and'}{' '}
               <DevName name="Nils Felten" email="nifelten@deloitte.de" />
             </span>
-          </div>
-          {/* v24.19: „Über die App" als Textlink unter den Entwickler-Namen
-              (das frühere runde Info-Icon ist entfallen). */}
-          <div style={{ textAlign: 'center', marginTop: 4 }}>
-            <button
-              type="button"
-              onClick={() => setShowInfo(true)}
-              style={{
-                background: 'none', border: 'none', padding: 0,
-                color: 'var(--dex-gray-500)', fontSize: '0.9rem', cursor: 'pointer',
-                textDecoration: 'none', fontFamily: 'inherit',
-              }}
-            >
-              {locale === 'de' ? 'Über die App' : 'About the app'}
-            </button>
           </div>
         </div>
       </div>
@@ -902,11 +885,6 @@ export default function LandingPage(): React.ReactElement {
         </Modal>
       )}
 
-      <LandingInfoModal
-        open={showInfo}
-        locale={locale === 'de' ? 'de' : 'en'}
-        onClose={() => setShowInfo(false)}
-      />
       {/* v13.3: Inquiry-Modal aus der wiederverwendbaren Komponente. */}
       <InquiryModal open={showInquiry} onClose={() => setShowInquiry(false)} />
     </div>

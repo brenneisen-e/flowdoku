@@ -8,6 +8,8 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.22.0 | 2026-06-22 | Feature | „Über die App" liegt jetzt oben im Kopfbereich (links neben „Handbuch") statt unten auf der Startseite. |
+| 24.22.0 | 2026-06-22 | Feature | Startseite: Willkommenstext jetzt zweizeilig (Begrüßung in Zeile 1, Beschreibung darunter). „Start"-Button und die grüne „DEX für dein Event nutzen"-Box sind jetzt gleich breit. |
 | 24.21.0 | 2026-06-22 | Bugfix | Startseite: Der Willkommenstext wird nicht mehr künstlich auf die Breite des Grußes eingeengt (wirkte gequetscht) — er nutzt wieder die volle Textbreite. |
 | 24.21.0 | 2026-06-22 | Feature | Startseite: Untertext der grünen Box „DEX für dein Event nutzen" geändert zu „Werde Organizer und nutze alle Funktionen.". |
 | 24.20.0 | 2026-06-22 | Feature | Startseite: Begrüßung jetzt tageszeitabhängig — „Guten Morgen / Guten Tag / Guten Abend <Name>" statt immer „Hallo". |
