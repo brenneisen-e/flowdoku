@@ -8,7 +8,6 @@ import { useLanguage } from '../context/LanguageContext';
 // Einsatz-Zahlen stehen nur auf dem Boot-Loader davor.)
 import { useCurrentUser } from '../context/UserContext';
 import { APP_VERSION } from '../version';
-import { Info, Mail } from './Icons';
 import LandingInfoModal from './LandingInfoModal';
 import InquiryModal from './InquiryModal';
 // v22: Archivierungs-Info für Admins (rechts auf der Landing Page) —
@@ -18,10 +17,6 @@ import { useEvents } from '../context/EventContext';
 import { useRoles } from '../context/RoleContext';
 import { useDialog } from '../context/DialogContext';
 import Modal from './Modal';
-// v22.21: Geführtes Tutorial — die grüne CTA-Bubble („DEX für dein Event
-// nutzen?") ist durch einen Tutorial-Start-Button ersetzt; die Anfrage
-// bleibt über das Mail-Icon erreichbar.
-import { useTutorial } from './tutorial/TutorialGuide';
 
 export default function LandingPage(): React.ReactElement {
   const { navigate } = useNavigation();
@@ -30,13 +25,32 @@ export default function LandingPage(): React.ReactElement {
   // v18.25: Vorname für die persönliche Begrüßung.
   const { currentUser } = useCurrentUser();
   const firstName = (currentUser?.firstName || '').trim();
+  // v24.20: Tageszeitabhängige Begrüßung (Morgen/Tag/Abend) statt fixem „Hallo".
+  const greetHour = new Date().getHours();
+  const greeting = isDe
+    ? (greetHour < 5 ? 'Hallo' : greetHour < 11 ? 'Guten Morgen' : greetHour < 18 ? 'Guten Tag' : 'Guten Abend')
+    : (greetHour < 5 ? 'Hi' : greetHour < 11 ? 'Good morning' : greetHour < 18 ? 'Good afternoon' : 'Good evening');
+  // v24.20: Der Untertitel soll nicht breiter werden als der Begrüßungsgruß —
+  // wir messen die tatsächliche Textbreite der Überschrift und begrenzen den
+  // Untertitel darauf (reagiert auf Sprache/Name/Fontload/Resize).
+  const greetRef = React.useRef<HTMLSpanElement>(null);
+  const [greetWidth, setGreetWidth] = React.useState<number | undefined>(undefined);
+  React.useLayoutEffect(() => {
+    const el = greetRef.current;
+    if (!el) return undefined;
+    const update = (): void => setGreetWidth(el.offsetWidth);
+    update();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const RO = (window as any).ResizeObserver;
+    const ro = RO ? new RO(update) : null;
+    if (ro) ro.observe(el);
+    window.addEventListener('resize', update);
+    return () => { if (ro) ro.disconnect(); window.removeEventListener('resize', update); };
+  }, [greeting, firstName, isDe]);
   const [showInfo, setShowInfo] = React.useState(false);
   // v13.3: Inquiry-Modal lebt jetzt komplett in der wiederverwendbaren
   // InquiryModal-Komponente — eigene States hier entfallen.
   const [showInquiry, setShowInquiry] = React.useState(false);
-  // v22.21: Tutorial-Start (rollenbasiert: User-Tour für alle, Organizer-Tour
-  // zusätzlich für Organizer/Admins — Auswahl übernimmt der Provider).
-  const { openTutorial } = useTutorial();
 
   // ==================== v22: Archivierung (Admin) ====================
   const { isAdmin } = useRoles();
@@ -706,15 +720,14 @@ export default function LandingPage(): React.ReactElement {
           </div>
           <div className="landing__text">
             <h1>
-              {isDe ? 'Hallo' : 'Hi'}{firstName ? <> <strong>{firstName}</strong></> : ''}{', '}
-              <span style={{ whiteSpace: 'nowrap' }}>
-                {isDe ? 'willkommen bei ' : 'welcome to '}<strong>DEX</strong>.
+              <span ref={greetRef} style={{ display: 'inline-block' }}>
+                {greeting}{firstName ? <>, <strong>{firstName}</strong></> : ''}.
               </span>
             </h1>
-            <p>
+            <p style={{ maxWidth: greetWidth, marginLeft: 'auto', marginRight: 'auto' }}>
               {isDe
-                ? 'Deine zentrale Plattform für Deloitte Events – von der Einladung über die Anmeldung bis zum Check-in.'
-                : 'Your central platform for Deloitte events – from invitation through registration to check-in.'}
+                ? <>Willkommen bei <strong>DEX</strong>. Unsere neue App für die Organisation von Deloitte Events – von der Anmeldung bis zum Check-in: alles an einer Stelle.</>
+                : <>Welcome to <strong>DEX</strong>. Our new app for organising Deloitte events – from registration to check-in: everything in one place.</>}
             </p>
           </div>
           {/* v22.1: Check-in-Hinweisbox(en) — ab 2 Tage vor dem Event, sobald
@@ -796,57 +809,41 @@ export default function LandingPage(): React.ReactElement {
               flexWrap: 'wrap',
             }}
           >
-            <button
-              onClick={() => setShowInfo(!showInfo)}
-              style={{
-                background: 'none', border: '2px solid var(--dex-gray-300)', borderRadius: '50%',
-                width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', color: 'var(--dex-gray-400)', transition: 'all 0.2s',
-                flexShrink: 0,
-              }}
-              title={locale === 'de' ? 'Über die App' : 'About the app'}
-            >
-              <Info size={18} />
-            </button>
+            {/* v24.19: „DEX für dein Event nutzen"-Box (öffnet die Anfrage),
+                mit integriertem DEX-Orb-Logo. Ersetzt die früheren Info-/Mail-
+                Icons + die Tutorial-Bubble (das Tutorial liegt jetzt mittig im
+                Header). „Über die App" steht jetzt als Textlink unter den
+                Entwickler-Namen. */}
             <button
               type="button"
               onClick={() => setShowInquiry(true)}
+              className="landing__bubble"
               style={{
-                background: 'none', border: '2px solid var(--dex-gray-300)', borderRadius: '50%',
-                width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', color: 'var(--dex-gray-400)', transition: 'all 0.2s',
-                flexShrink: 0, padding: 0,
+                display: 'flex', alignItems: 'center', gap: 12,
+                background: 'var(--dex-green)', color: '#fff',
+                padding: '12px 18px', borderRadius: 14,
+                boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
+                border: 'none', cursor: 'pointer', textAlign: 'left',
+                fontFamily: 'inherit', maxWidth: 360,
               }}
               title={locale === 'de' ? 'DEX App für dein Event anfragen' : 'Request the DEX App for your event'}
             >
-              <Mail size={18} />
-            </button>
-            {/* v22.21: Tutorial-CTA — ersetzt die frühere „DEX für dein
-                Event nutzen?"-Bubble (Anfrage weiterhin über das Mail-Icon). */}
-            <button
-              type="button"
-              onClick={openTutorial}
-              className="landing__bubble"
-              style={{
-                position: 'relative',
-                background: 'var(--dex-green)',
-                color: '#fff',
-                padding: '10px 14px',
-                borderRadius: 12,
-                fontSize: '0.82rem',
-                lineHeight: 1.35,
-                maxWidth: 280,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                border: 'none',
-                cursor: 'pointer',
-                textAlign: 'left',
-                fontFamily: 'inherit',
-              }}
-              title={locale === 'de' ? 'Geführtes Tutorial starten' : 'Start the guided tutorial'}
-            >
-              {locale === 'de'
-                ? <><strong>Neu hier?</strong> Starte das Tutorial — wir zeigen dir DEX Schritt für Schritt.</>
-                : <><strong>New here?</strong> Start the tutorial — we will show you DEX step by step.</>}
+              <span style={{
+                position: 'relative', flexShrink: 0, width: 38, height: 38, borderRadius: '50%',
+                background: 'conic-gradient(from 0deg, #86bc25, #0076a8 90deg, #00bcd4 150deg, #4caf50 210deg, #8bc34a 270deg, #ffeb3b 320deg, #86bc25 360deg)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                boxShadow: '0 0 0 2px rgba(255,255,255,0.45)',
+              }}>
+                <span style={{ width: 16, height: 16, borderRadius: '50%', background: '#fff' }} />
+              </span>
+              <span style={{ minWidth: 0 }}>
+                <span style={{ display: 'block', fontWeight: 800, fontSize: '0.98rem', lineHeight: 1.25 }}>
+                  {locale === 'de' ? 'DEX für dein Event nutzen' : 'Use DEX for your event'}
+                </span>
+                <span style={{ display: 'block', fontSize: '0.82rem', opacity: 0.95, lineHeight: 1.3, marginTop: 2 }}>
+                  {locale === 'de' ? 'Wir richten DEX für deine Veranstaltung ein.' : 'We will set up DEX for your event.'}
+                </span>
+              </span>
             </button>
           </div>
 
@@ -867,6 +864,21 @@ export default function LandingPage(): React.ReactElement {
               {' '}{locale === 'de' ? 'und' : 'and'}{' '}
               <DevName name="Nils Felten" email="nifelten@deloitte.de" />
             </span>
+          </div>
+          {/* v24.19: „Über die App" als Textlink unter den Entwickler-Namen
+              (das frühere runde Info-Icon ist entfallen). */}
+          <div style={{ textAlign: 'center', marginTop: 4 }}>
+            <button
+              type="button"
+              onClick={() => setShowInfo(true)}
+              style={{
+                background: 'none', border: 'none', padding: 0,
+                color: 'var(--dex-gray-500)', fontSize: '0.9rem', cursor: 'pointer',
+                textDecoration: 'underline', fontFamily: 'inherit',
+              }}
+            >
+              {locale === 'de' ? 'Über die App' : 'About the app'}
+            </button>
           </div>
         </div>
       </div>

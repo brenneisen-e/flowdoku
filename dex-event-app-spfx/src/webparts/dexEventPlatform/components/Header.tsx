@@ -18,6 +18,7 @@ import { ChevronLeft, Settings, Book, RefreshCw } from './Icons';
 import { Icon } from '@fluentui/react/lib/Icon';
 import ImpersonateModal from './ImpersonateModal';
 import GlobalSearch from './GlobalSearch';
+import { useTutorial } from './tutorial/TutorialGuide';
 
 export default function Header(): React.ReactElement {
   const { currentPage, navigate, selectedEventId } = useNavigation();
@@ -30,6 +31,8 @@ export default function Header(): React.ReactElement {
   // die Aktionen im Organizer Center.
   const { t, locale, setLocale } = useLanguage();
   const { showAlert } = useDialog();
+  // v24.19: Tutorial-CTA wandert von der Landing Page mittig in den Header.
+  const { openTutorial } = useTutorial();
   const [showPopup, setShowPopup] = React.useState(false);
   const isLanding = currentPage === 'landing';
   const isStart = currentPage === 'start';
@@ -196,6 +199,32 @@ export default function Header(): React.ReactElement {
         zIndex: 1000, boxShadow: '0 2px 10px rgba(0,0,0,0.10)',
       } : undefined}
     >
+      {/* v24.19: Tutorial-CTA mittig im Header (nur Landing) — ersetzt die
+          frühere Bubble unten auf der Landing Page. Absolut zentriert, damit
+          die Position unabhängig von den Breiten links/rechts wirklich mittig
+          sitzt. */}
+      {isLanding && (
+        <button
+          type="button"
+          onClick={openTutorial}
+          style={{
+            position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)',
+            display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
+            background: 'var(--dex-green)', color: '#fff',
+            padding: '9px 18px', borderRadius: 999,
+            fontSize: '0.95rem', lineHeight: 1.2, fontFamily: 'inherit',
+            border: 'none', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
+            maxWidth: 'min(46vw, 460px)',
+          }}
+          title={locale === 'de' ? 'Geführtes Tutorial starten' : 'Start the guided tutorial'}
+        >
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {locale === 'de'
+              ? <><strong>Neu hier?</strong> Starte das Tutorial — wir zeigen dir DEX Schritt für Schritt.</>
+              : <><strong>New here?</strong> Start the tutorial — we will show you DEX step by step.</>}
+          </span>
+        </button>
+      )}
       <div className="header-left">
         {isLanding ? (
           <div className="header-logo">
