@@ -4459,8 +4459,22 @@ export default function RegistrationPage(): React.ReactElement {
       {pendingSubEventModal && (() => {
         const ce = childEvents.find(c => c.id === pendingSubEventModal.subEventId);
         if (!ce) return null;
-        const fields = (ce.eventSpecificFields || []).filter(f => f && f.label);
         const draft = pendingSubEventModal.draftValues;
+        // v24.16 BUG-FIX: showIf (Sichtbarkeitsbedingung) auch im Sub-Event-
+        // Modal anwenden — bedingte Fragen wurden vorher IMMER angezeigt und
+        // blockierten als Pflichtfeld die Bestätigung. Quell-Antwort steht im
+        // Sub-Event-eigenen `draft`.
+        const fields = (ce.eventSpecificFields || [])
+          .filter(f => f && f.label)
+          .filter(f => {
+            if (!f.showIf || !f.showIf.fieldId) return true;
+            const raw = (draft[f.showIf.fieldId] || '').trim();
+            if (!raw) return false;
+            const answers = raw.indexOf(' | ') >= 0
+              ? raw.split(' | ').map(s => s.trim()).filter(Boolean)
+              : [raw];
+            return answers.some(a => f.showIf!.values.indexOf(a) >= 0);
+          });
         const setDraft = (next: Record<string, string>): void => {
           setPendingSubEventModal(prev => prev ? { ...prev, draftValues: next } : prev);
         };

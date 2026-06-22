@@ -2102,6 +2102,168 @@ export default function EventCreationPage(): React.ReactElement {
   const updateCustomField = (id: string, updates: Partial<CustomFieldInput>): void => {
     setCustomFields(customFields.map(f => f.id === id ? { ...f, ...updates } : f));
   };
+  // v24.16: Sichtbarkeitsbedingung (showIf) als wiederverwendbarer Helfer —
+  // genutzt vom Hauptevent UND von Sub-Event-Feldern (vorher fehlte die UI bei
+  // Sub-Events komplett, daher liessen sich Bedingungen dort nie setzen).
+  const renderShowIfConfig = (field: CustomFieldInput, idx: number, allFields: CustomFieldInput[], onUpdate: (u: Partial<CustomFieldInput>) => void): React.ReactElement => {
+                      const candidateSources = allFields.slice(0, idx).filter(other =>
+                        (other.type === 'select' || other.type === 'checkbox') && (other.label || '').trim().length > 0
+                      );
+                      const sourceField = field.showIf
+                        ? allFields.find(o => o.id === field.showIf!.fieldId)
+                        : null;
+                      const removeShowIf = (): void => {
+                        // showIf gezielt löschen: updateCustomField macht ein
+                        // shallow-merge, also setzen wir undefined und filtern
+                        // beim Save raus.
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        onUpdate({ showIf: undefined as any });
+                      };
+                      return (
+                        <div style={{ marginLeft: 32, marginTop: 10, padding: '10px 12px', background: 'rgba(21,101,192,0.04)', border: '1px dashed var(--dex-gray-300)', borderRadius: 8 }}>
+                          {!field.showIf ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (candidateSources.length === 0) {
+                                    showAlert(isDe
+                                      ? 'Es gibt noch kein Dropdown- oder Checkbox-Feld VOR diesem hier, an das die Sichtbarkeit geknüpft werden könnte. Lege zuerst ein passendes Feld weiter oben an.'
+                                      : 'There is no dropdown or checkbox field BEFORE this one yet that visibility could depend on. Please add a suitable field above first.');
+                                    return;
+                                  }
+                                  const first = candidateSources[0];
+                                  onUpdate({
+                                    showIf: {
+                                      fieldId: first.id,
+                                      values: first.type === 'checkbox' ? ['true'] : (first.options[0] ? [first.options[0]] : []),
+                                    },
+                                  });
+                                }}
+                                style={{
+                                  background: 'none', border: 'none', padding: 0,
+                                  color: 'var(--dex-green-dark, #4a7c1f)',
+                                  fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
+                                }}
+                              >
+                                + {isDe ? 'Sichtbarkeitsbedingung hinzufügen' : 'Add visibility condition'}
+                              </button>
+                              <InfoTooltip
+                                text={isDe
+                                  ? 'Dieses Feld wird nur angezeigt, wenn die Antwort auf eine andere (zuvor angelegte) Frage einem von dir festgelegten Wert entspricht. Beispiel: „Roommate" wird nur gefragt, wenn die Frage „Zimmerart" mit „Doppelzimmer" beantwortet wurde. Andernfalls bleibt das Feld komplett verborgen — und blockiert auch nicht die Pflichtfeld-Validierung.'
+                                  : 'This field is shown only when the answer to another (previously added) question matches a value you specify. Example: "Roommate" is only asked when the question "Room type" is answered with "Double room". Otherwise the field stays fully hidden — and does not block the required-field validation either.'}
+                              />
+                            </span>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+                                {isDe ? 'Diese Frage nur anzeigen wenn:' : 'Only show this question when:'}
+                                <InfoTooltip
+                                  text={isDe
+                                    ? 'Dieses Feld wird nur angezeigt, wenn die Antwort auf die Quell-Frage einem der gewählten Werte entspricht. Bei Mehrfachauswahl-Quellen reicht ein Treffer. Pflichtfeld-Validierung wird übersprungen, solange das Feld verborgen ist.'
+                                    : 'This field is shown only when the answer to the source question matches one of the chosen values. With multi-select sources a single match is enough. Required-field validation is skipped as long as the field stays hidden.'}
+                                />
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                <select
+                                  className="form-select"
+                                  value={field.showIf.fieldId}
+                                  onChange={e => {
+                                    const newSrc = allFields.find(o => o.id === e.target.value);
+                                    if (!newSrc) return;
+                                    onUpdate({
+                                      showIf: {
+                                        fieldId: newSrc.id,
+                                        values: newSrc.type === 'checkbox' ? ['true'] : (newSrc.options[0] ? [newSrc.options[0]] : []),
+                                      },
+                                    });
+                                  }}
+                                  style={{ fontSize: '0.82rem', padding: '4px 8px', minWidth: 180, maxWidth: 320 }}
+                                >
+                                  {candidateSources.map(o => (
+                                    <option key={o.id} value={o.id}>
+                                      {allFields.findIndex(c => c.id === o.id) + 1}. {o.label}
+                                    </option>
+                                  ))}
+                                  {/* fallback wenn die ausgewählte Quelle hinter dem Feld gelandet
+                                      ist (z.B. nach einem Move) — option in der Liste anzeigen,
+                                      aber als ungültig markiert lassen. */}
+                                  {sourceField && !candidateSources.find(c => c.id === sourceField.id) && (
+                                    <option value={sourceField.id} disabled>
+                                      ⚠ {sourceField.label} ({isDe ? 'liegt hinter diesem Feld' : 'is positioned after this field'})
+                                    </option>
+                                  )}
+                                </select>
+                                <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
+                                  {isDe ? '=' : '='}
+                                </span>
+                                {sourceField && sourceField.type === 'checkbox' ? (
+                                  <select
+                                    className="form-select"
+                                    value={field.showIf.values[0] || 'true'}
+                                    onChange={e => onUpdate({
+                                      showIf: { fieldId: field.showIf!.fieldId, values: [e.target.value] },
+                                    })}
+                                    style={{ fontSize: '0.82rem', padding: '4px 8px', minWidth: 130 }}
+                                  >
+                                    <option value="true">{isDe ? 'angehakt' : 'checked'}</option>
+                                    <option value="false">{isDe ? 'nicht angehakt' : 'unchecked'}</option>
+                                  </select>
+                                ) : sourceField ? (
+                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                                    {(sourceField.options || []).filter(Boolean).map(opt => {
+                                      const checked = field.showIf!.values.indexOf(opt) >= 0;
+                                      return (
+                                        <label
+                                          key={opt}
+                                          style={{
+                                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                                            padding: '4px 10px', borderRadius: 999,
+                                            fontSize: '0.78rem', cursor: 'pointer',
+                                            border: `1px solid ${checked ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                                            background: checked ? 'rgba(134,188,37,0.10)' : '#fff',
+                                            color: checked ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)',
+                                            fontWeight: 600,
+                                          }}
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            onChange={() => {
+                                              const next = checked
+                                                ? field.showIf!.values.filter(v => v !== opt)
+                                                : [...field.showIf!.values, opt];
+                                              onUpdate({
+                                                showIf: { fieldId: field.showIf!.fieldId, values: next },
+                                              });
+                                            }}
+                                            style={{ display: 'none' }}
+                                          />
+                                          {checked ? '✓' : '○'} {opt}
+                                        </label>
+                                      );
+                                    })}
+                                  </div>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={removeShowIf}
+                                  title={isDe ? 'Bedingung entfernen' : 'Remove condition'}
+                                  style={{
+                                    background: 'none', border: 'none', cursor: 'pointer',
+                                    color: 'var(--dex-red, #c00)', fontSize: '0.8rem',
+                                    padding: '4px 6px', marginLeft: 'auto',
+                                  }}
+                                >
+                                  ✕ {isDe ? 'entfernen' : 'remove'}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+  };
+
 
   // === Sub-Event Custom-Field Helpers (v10.11+) =============================
   // Per-Sub-Event Custom-Fields ersetzen die hardcoded Funstarter/Durchstarter-
@@ -10311,6 +10473,11 @@ export default function EventCreationPage(): React.ReactElement {
                                   </div>
                                 </div>
                               )}
+                              {/* v24.16 BUG-FIX: Sichtbarkeitsbedingung (showIf)
+                                  fehlte bei Sub-Event-Feldern — bedingte Fragen
+                                  wurden deshalb auf dem Anmeldeformular IMMER
+                                  angezeigt. Gleiche UI wie beim Hauptevent. */}
+                              {!inherit && renderShowIfConfig(field, idx, seFields, (u) => updateSubEventCustomField(se.id, field.id, u))}
                             </div>
                           ))}
                         </div>
@@ -11107,164 +11274,7 @@ export default function EventCreationPage(): React.ReactElement {
                         eine andere Frage einen bestimmten Wert hat. Quelle
                         kann nur ein Feld VOR diesem hier sein (idx < aktuell)
                         und muss vom Typ select oder checkbox sein. */}
-                    {(() => {
-                      const candidateSources = customFields.slice(0, idx).filter(other =>
-                        (other.type === 'select' || other.type === 'checkbox') && (other.label || '').trim().length > 0
-                      );
-                      const sourceField = field.showIf
-                        ? customFields.find(o => o.id === field.showIf!.fieldId)
-                        : null;
-                      const removeShowIf = (): void => {
-                        // showIf gezielt löschen: updateCustomField macht ein
-                        // shallow-merge, also setzen wir undefined und filtern
-                        // beim Save raus.
-                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                        updateCustomField(field.id, { showIf: undefined as any });
-                      };
-                      return (
-                        <div style={{ marginLeft: 32, marginTop: 10, padding: '10px 12px', background: 'rgba(21,101,192,0.04)', border: '1px dashed var(--dex-gray-300)', borderRadius: 8 }}>
-                          {!field.showIf ? (
-                            <span style={{ display: 'inline-flex', alignItems: 'center' }}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (candidateSources.length === 0) {
-                                    showAlert(isDe
-                                      ? 'Es gibt noch kein Dropdown- oder Checkbox-Feld VOR diesem hier, an das die Sichtbarkeit geknüpft werden könnte. Lege zuerst ein passendes Feld weiter oben an.'
-                                      : 'There is no dropdown or checkbox field BEFORE this one yet that visibility could depend on. Please add a suitable field above first.');
-                                    return;
-                                  }
-                                  const first = candidateSources[0];
-                                  updateCustomField(field.id, {
-                                    showIf: {
-                                      fieldId: first.id,
-                                      values: first.type === 'checkbox' ? ['true'] : (first.options[0] ? [first.options[0]] : []),
-                                    },
-                                  });
-                                }}
-                                style={{
-                                  background: 'none', border: 'none', padding: 0,
-                                  color: 'var(--dex-green-dark, #4a7c1f)',
-                                  fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
-                                }}
-                              >
-                                + {isDe ? 'Sichtbarkeitsbedingung hinzufügen' : 'Add visibility condition'}
-                              </button>
-                              <InfoTooltip
-                                text={isDe
-                                  ? 'Dieses Feld wird nur angezeigt, wenn die Antwort auf eine andere (zuvor angelegte) Frage einem von dir festgelegten Wert entspricht. Beispiel: „Roommate" wird nur gefragt, wenn die Frage „Zimmerart" mit „Doppelzimmer" beantwortet wurde. Andernfalls bleibt das Feld komplett verborgen — und blockiert auch nicht die Pflichtfeld-Validierung.'
-                                  : 'This field is shown only when the answer to another (previously added) question matches a value you specify. Example: "Roommate" is only asked when the question "Room type" is answered with "Double room". Otherwise the field stays fully hidden — and does not block the required-field validation either.'}
-                              />
-                            </span>
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
-                                {isDe ? 'Diese Frage nur anzeigen wenn:' : 'Only show this question when:'}
-                                <InfoTooltip
-                                  text={isDe
-                                    ? 'Dieses Feld wird nur angezeigt, wenn die Antwort auf die Quell-Frage einem der gewählten Werte entspricht. Bei Mehrfachauswahl-Quellen reicht ein Treffer. Pflichtfeld-Validierung wird übersprungen, solange das Feld verborgen ist.'
-                                    : 'This field is shown only when the answer to the source question matches one of the chosen values. With multi-select sources a single match is enough. Required-field validation is skipped as long as the field stays hidden.'}
-                                />
-                              </div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                                <select
-                                  className="form-select"
-                                  value={field.showIf.fieldId}
-                                  onChange={e => {
-                                    const newSrc = customFields.find(o => o.id === e.target.value);
-                                    if (!newSrc) return;
-                                    updateCustomField(field.id, {
-                                      showIf: {
-                                        fieldId: newSrc.id,
-                                        values: newSrc.type === 'checkbox' ? ['true'] : (newSrc.options[0] ? [newSrc.options[0]] : []),
-                                      },
-                                    });
-                                  }}
-                                  style={{ fontSize: '0.82rem', padding: '4px 8px', minWidth: 180, maxWidth: 320 }}
-                                >
-                                  {candidateSources.map(o => (
-                                    <option key={o.id} value={o.id}>
-                                      {customFields.findIndex(c => c.id === o.id) + 1}. {o.label}
-                                    </option>
-                                  ))}
-                                  {/* fallback wenn die ausgewählte Quelle hinter dem Feld gelandet
-                                      ist (z.B. nach einem Move) — option in der Liste anzeigen,
-                                      aber als ungültig markiert lassen. */}
-                                  {sourceField && !candidateSources.find(c => c.id === sourceField.id) && (
-                                    <option value={sourceField.id} disabled>
-                                      ⚠ {sourceField.label} ({isDe ? 'liegt hinter diesem Feld' : 'is positioned after this field'})
-                                    </option>
-                                  )}
-                                </select>
-                                <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
-                                  {isDe ? '=' : '='}
-                                </span>
-                                {sourceField && sourceField.type === 'checkbox' ? (
-                                  <select
-                                    className="form-select"
-                                    value={field.showIf.values[0] || 'true'}
-                                    onChange={e => updateCustomField(field.id, {
-                                      showIf: { fieldId: field.showIf!.fieldId, values: [e.target.value] },
-                                    })}
-                                    style={{ fontSize: '0.82rem', padding: '4px 8px', minWidth: 130 }}
-                                  >
-                                    <option value="true">{isDe ? 'angehakt' : 'checked'}</option>
-                                    <option value="false">{isDe ? 'nicht angehakt' : 'unchecked'}</option>
-                                  </select>
-                                ) : sourceField ? (
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                                    {(sourceField.options || []).filter(Boolean).map(opt => {
-                                      const checked = field.showIf!.values.indexOf(opt) >= 0;
-                                      return (
-                                        <label
-                                          key={opt}
-                                          style={{
-                                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                                            padding: '4px 10px', borderRadius: 999,
-                                            fontSize: '0.78rem', cursor: 'pointer',
-                                            border: `1px solid ${checked ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
-                                            background: checked ? 'rgba(134,188,37,0.10)' : '#fff',
-                                            color: checked ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)',
-                                            fontWeight: 600,
-                                          }}
-                                        >
-                                          <input
-                                            type="checkbox"
-                                            checked={checked}
-                                            onChange={() => {
-                                              const next = checked
-                                                ? field.showIf!.values.filter(v => v !== opt)
-                                                : [...field.showIf!.values, opt];
-                                              updateCustomField(field.id, {
-                                                showIf: { fieldId: field.showIf!.fieldId, values: next },
-                                              });
-                                            }}
-                                            style={{ display: 'none' }}
-                                          />
-                                          {checked ? '✓' : '○'} {opt}
-                                        </label>
-                                      );
-                                    })}
-                                  </div>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  onClick={removeShowIf}
-                                  title={isDe ? 'Bedingung entfernen' : 'Remove condition'}
-                                  style={{
-                                    background: 'none', border: 'none', cursor: 'pointer',
-                                    color: 'var(--dex-red, #c00)', fontSize: '0.8rem',
-                                    padding: '4px 6px', marginLeft: 'auto',
-                                  }}
-                                >
-                                  ✕ {isDe ? 'entfernen' : 'remove'}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
+                    {renderShowIfConfig(field, idx, customFields, (u) => updateCustomField(field.id, u))}
                     </>)}
                   </div>
                   );
