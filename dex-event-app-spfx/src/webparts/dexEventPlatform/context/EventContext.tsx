@@ -376,6 +376,9 @@ interface EventContextType {
   /** v24.36: Custom-Field-Antworten einer Fremd-Anmeldung aktualisieren
    *  (Assistenz). Schreibt CustomData + die gemappten SP-Spalten. */
   updateProxyRegistration: (eventId: string, registration: SPRegistration, customData: Record<string, string>) => Promise<boolean>;
+  /** v24.43: Eine stellvertretend angelegte Anmeldung komplett an die Person
+   *  selbst übergeben (Owner/Autor/RegisteredBy → Person). */
+  handBackToParticipant: (eventId: string, registration: SPRegistration) => Promise<boolean>;
   /** v24.41: Nach einer Selbst-Anmeldung die Verwaltung an eine Assistenz
    *  delegieren — legt pro betroffener Zeile (Haupt-/Klammer-Event + alle
    *  Sub-Events, für die der User angemeldet ist) einen Delegations-Auftrag in
@@ -3134,6 +3137,35 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return success;
   }
 
+  // v24.43: Eine (stellvertretend angelegte) Anmeldung KOMPLETT an die
+  // angemeldete Person selbst übergeben — Owner + Zeilen-Autor + RegisteredBy
+  // werden auf die Person gesetzt. Danach sieht/verwaltet NUR noch sie die
+  // Anmeldung (über „Meine Events"); sie verschwindet aus der „Assistenz"-
+  // Kachel des bisherigen Akteurs. Etwaiger Assistenz-Verknüpfungs-Eintrag
+  // wird auf 'Cancelled' gesetzt (kein Assistenz-Bezug mehr).
+  async function handBackToParticipant(eventId: string, registration: SPRegistration): Promise<boolean> {
+    const subsiteUrl = subsiteMap.current[eventId];
+    if (!subsiteUrl || !registration?.Id) return false;
+    const pEmail = (registration.ParticipantEmail || '').trim();
+    if (!pEmail) return false;
+    const pName = `${registration.Vorname || ''} ${registration.Nachname || ''}`.trim() || registration.ParticipantName || pEmail;
+    const ok = await eventService.assignRegistrationToAssistant(subsiteUrl, registration.Id, pEmail, pName);
+    try { await eventService.setAssistantLinkStatusForRegistration(registration.Id, subsiteUrl, 'Cancelled'); } catch { /* */ }
+    if (ok) {
+      eventService.writeChangeLog({
+        action: 'ParticipantUpdated',
+        targetType: 'Participant',
+        targetId: pEmail,
+        targetName: pName,
+        eventId,
+        eventTitle: events.find(e => e.id === eventId)?.title || '',
+        details: { scope: 'handedBackToParticipant', actorEmail: currentUserEmail },
+      }).catch(() => { /* */ });
+    }
+    await loadEvents();
+    return ok;
+  }
+
   /**
    * v11.83: Nach einem Team-Mitglied-Cancel (Self-Cancel) erledigt diese
    * Routine:
@@ -4528,7 +4560,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns,
         sendAdminInquiry,
         requestOrganizerRole, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,
