@@ -419,6 +419,8 @@ interface EventContextType {
   /** v21: Archivierung — verschiebt archivreife Zeilen ins DEX_Archive.
    *  v22.2: shouldCancel = Abbruch-Check aus dem Fortschrittsmodal. */
   runArchiveExpired: (onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void, shouldCancel?: () => boolean) => Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number> }>;
+  /** v24.33: Globales „Spalten fixen" über ALLE Events inkl. Sub-Events + Company-Backfill bestehender Teilnehmer. */
+  fixAllEventColumns: (onProgress?: (done: number, total: number, label: string) => void) => Promise<{ lists: number; columnsAdded: number; backfilled: number; errors: number; anyChange: boolean }>;
   /** v23.40: Löschkonzept — zählt DEX_Archive-Einträge älter als 1 Monat (v23.48). */
   getDeletableArchiveCount: () => Promise<number>;
   /** v23.40: Löschkonzept — löscht DEX_Archive-Einträge älter als 1 Monat (v23.48). */
@@ -3800,6 +3802,52 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     } catch (err) { console.warn('[DEX] autoRepairProxyAccess error:', err); }
   }
 
+  // v24.33: Globales „Spalten fixen" über ALLE Events (Haupt + Sub) — legt
+  // fehlende Spalten (inkl. der neuen Company-Spalte) an, korrigiert die
+  // View-Reihenfolge, zieht das Custom-Field-Mapping nach UND trägt die
+  // Unternehmenszugehörigkeit für bestehende Teilnehmer nach (Graph-Backfill).
+  // onProgress treibt eine Fortschrittsanzeige (done/total + Event-Titel).
+  async function fixAllEventColumns(
+    onProgress?: (done: number, total: number, label: string) => void
+  ): Promise<{ lists: number; columnsAdded: number; backfilled: number; errors: number; anyChange: boolean }> {
+    const seen = new Set<string>();
+    const targets: DeloitteEvent[] = [];
+    for (const e of events) {
+      const s = (e.subsiteUrl || '').trim();
+      if (!s || seen.has(s.toLowerCase())) continue;
+      seen.add(s.toLowerCase());
+      targets.push(e);
+    }
+    const total = targets.length;
+    let columnsAdded = 0; let backfilled = 0; let errors = 0;
+    for (let i = 0; i < targets.length; i++) {
+      const ev = targets[i];
+      if (onProgress) onProgress(i, total, ev.title || '');
+      try {
+        const cf = (ev.eventSpecificFields || []).map(f => ({
+          id: f.id, label: f.label, type: f.type, required: f.required, options: f.options,
+          visible: true,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          spInternalName: (f as any).spInternalName || '',
+        }));
+        const res = await eventService.fixRegistrationListColumns(ev.subsiteUrl!, {
+          isB2Run: !!(ev.durchstarterCapacity || ev.funstarterCapacity),
+          hasQuiz: !!(ev.quiz && ev.quiz.length > 0),
+          customFields: cf,
+        });
+        columnsAdded += (res.added ? res.added.length : 0);
+        if (res.customFieldMap && Object.keys(res.customFieldMap).length > 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const upd = (cf as any[]).map(f => { const sp = res.customFieldMap![f.id]; return sp ? { ...f, spInternalName: sp } : f; });
+          try { await updateEvent(ev.id, { 'CustomFields': JSON.stringify(upd) }); } catch { /* best-effort */ }
+        }
+        try { const bf = await eventService.backfillCompanyForList(ev.subsiteUrl!); backfilled += bf.updated; } catch { /* best-effort */ }
+      } catch (err) { errors++; console.warn('[DEX] fixAllEventColumns failed for', ev.id, err); }
+    }
+    if (onProgress) onProgress(total, total, '');
+    return { lists: total, columnsAdded, backfilled, errors, anyChange: columnsAdded > 0 || backfilled > 0 };
+  }
+
   // v23.8: Wöchentlicher Admin-Bericht. Wird beim App-Start (nur Admins,
   // gedrosselt) angestoßen. Quelle der Wahrheit für „wann lief der letzte
   // Bericht" ist die SP-Liste DEX_WeeklyReports — erst wenn der letzte Bericht
@@ -4142,7 +4190,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive,
+        getMyRegistration, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns,
         sendAdminInquiry,
         requestOrganizerRole, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,

@@ -106,6 +106,12 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
       if (url) setPhotoUrl(url);
     }).catch(() => { /* Foto nicht verfügbar */ });
 
+    // v24.33: Unternehmenszugehörigkeit via Graph nachladen (nur setzen, wenn
+    // SP-Profil keine geliefert hat — Graph ist im Tenant die verlässliche Quelle).
+    loadUserCompany(props.context).then(comp => {
+      if (comp) setCurrentUser(prev => (prev.company ? prev : { ...prev, company: comp }));
+    }).catch(() => { /* Company nicht verfügbar */ });
+
     // v15.27: Gruppen-/DL-Mitgliedschaften des Users laden, damit der
     // Audience-Filter-Check zur Laufzeit Verteiler-Mitgliedschaften matched.
     // Seit v16.4 ist die Pre-Compiled-Liste in event.audienceResolvedEmails
@@ -221,6 +227,18 @@ async function loadUserGroupEmails(context: WebPartContext): Promise<string[]> {
 /**
  * Profilbild ueber Microsoft Graph laden
  */
+// v24.33: Unternehmenszugehörigkeit via Graph `/me?$select=companyName` — die
+// SP-UserProfile-Property „Company" ist im Tenant nicht zuverlässig gefüllt.
+async function loadUserCompany(context: WebPartContext): Promise<string> {
+  try {
+    const graphClient = await context.msGraphClientFactory.getClient('3');
+    const me = await graphClient.api('/me').select('companyName').get();
+    return ((me && me.companyName) || '').trim();
+  } catch {
+    return '';
+  }
+}
+
 async function loadUserPhoto(context: WebPartContext): Promise<string> {
   try {
     const graphClient = await context.msGraphClientFactory.getClient('3');

@@ -38,7 +38,7 @@ export default function AdminHubPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { isAdmin, originalIsAdmin, siteUrl } = useRoles();
   const listUrl = (name: string): string => `${siteUrl}/Lists/${name}`;
-  const { getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive } = useEvents();
+  const { getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns } = useEvents();
   const { locale } = useLanguage();
   const { confirmDialog, showAlert } = useDialog();
   const isDe = locale === 'de';
@@ -46,7 +46,9 @@ export default function AdminHubPage(): React.ReactElement {
 
   const [archTotal, setArchTotal] = React.useState(0);
   const [delTotal, setDelTotal] = React.useState(0);
-  const [busy, setBusy] = React.useState<'' | 'arch' | 'del'>('');
+  const [busy, setBusy] = React.useState<'' | 'arch' | 'del' | 'fixcols'>('');
+  // v24.33: Fortschritt für das globale „Spalten fixen".
+  const [fixProgress, setFixProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
   // Release-Notes: Volltext-Suche + Bereichs-Filter + Art-Filter.
   const [rnSearch, setRnSearch] = React.useState('');
   const [rnBereich, setRnBereich] = React.useState<string>('');
@@ -104,6 +106,32 @@ export default function AdminHubPage(): React.ReactElement {
       try { const d = await getDeletableArchiveCount(); setDelTotal(d); } catch { /* */ }
     } catch { showAlert(isDe ? 'Löschen fehlgeschlagen.' : 'Deletion failed.', { variant: 'error' }); }
     finally { setBusy(''); }
+  };
+
+  // v24.33: Globales „Spalten fixen" über ALLE Events (inkl. Sub-Events) +
+  // Company-Backfill bestehender Teilnehmer — mit Fortschrittsanzeige.
+  const doFixAllColumns = async (): Promise<void> => {
+    if (busy) return;
+    if (!(await confirmDialog(
+      isDe
+        ? 'Die Teilnehmerlisten ALLER Events (inkl. Sub-Events) prüfen, fehlende Spalten anlegen und die Unternehmenszugehörigkeit für bestehende Teilnehmer nachtragen? Je nach Anzahl der Events kann das einen Moment dauern.'
+        : 'Check the participant lists of ALL events (incl. sub-events), add missing columns and backfill the company affiliation for existing attendees? This may take a moment depending on the number of events.',
+      { confirmLabel: isDe ? 'Jetzt prüfen' : 'Check now' }
+    ))) return;
+    setBusy('fixcols');
+    setFixProgress({ done: 0, total: 0, label: '' });
+    try {
+      const r = await fixAllEventColumns((done, total, label) => setFixProgress({ done, total, label }));
+      const msg = r.anyChange
+        ? (isDe
+            ? `Fertig: ${r.lists} Teilnehmerlisten geprüft, ${r.columnsAdded} Spalte(n) ergänzt, ${r.backfilled} Unternehmens-Angabe(n) nachgetragen${r.errors ? `, ${r.errors} mit Fehler` : ''}.`
+            : `Done: ${r.lists} lists checked, ${r.columnsAdded} column(s) added, ${r.backfilled} company value(s) backfilled${r.errors ? `, ${r.errors} with errors` : ''}.`)
+        : (isDe
+            ? `Alles war schon korrekt — ${r.lists} Teilnehmerlisten geprüft, nichts zu tun${r.errors ? ` (${r.errors} mit Fehler)` : ''}.`
+            : `Everything was already fine — ${r.lists} lists checked, nothing to do${r.errors ? ` (${r.errors} with errors)` : ''}.`);
+      showAlert(msg, { variant: r.errors ? 'error' : 'success' });
+    } catch { showAlert(isDe ? 'Spalten-Prüfung fehlgeschlagen.' : 'Column check failed.', { variant: 'error' }); }
+    finally { setBusy(''); setFixProgress(null); }
   };
 
   const tools: Array<{ icon: React.ReactNode; title: string; desc: string; onClick: () => void }> = [
@@ -181,6 +209,35 @@ export default function AdminHubPage(): React.ReactElement {
           </p>
           <button className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%', color: 'var(--dex-red, #c00)' }} disabled={busy !== '' || delTotal === 0} onClick={() => { void doDelete(); }}>
             {busy === 'del' ? (isDe ? 'Wird gelöscht…' : 'Deleting…') : (isDe ? 'Alte Einträge löschen' : 'Delete old entries')}
+          </button>
+        </div>
+      </div>
+
+      {/* v24.33: Wartung — globales Spalten fixen (alle Events inkl. Sub-Events) */}
+      <h2 style={{ fontSize: '1.15rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Wartung' : 'Maintenance'}</h2>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14, marginBottom: 28 }}>
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><Settings size={18} /></span>
+            <span style={{ fontWeight: 700 }}>{isDe ? 'Spalten fixen (alle Events)' : 'Fix columns (all events)'}</span>
+          </div>
+          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
+            {isDe
+              ? 'Prüft die Teilnehmerlisten ALLER Events inkl. Sub-Events, legt fehlende Spalten an (z.B. „Unternehmen") und trägt die Unternehmenszugehörigkeit für bestehende Teilnehmer nach.'
+              : 'Checks the participant lists of ALL events incl. sub-events, adds missing columns (e.g. „Company") and backfills the company affiliation for existing attendees.'}
+          </p>
+          {busy === 'fixcols' && fixProgress && (
+            <div style={{ margin: '0 0 10px' }}>
+              <div style={{ height: 8, background: 'var(--dex-gray-100)', borderRadius: 999, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${fixProgress.total > 0 ? Math.round((fixProgress.done / fixProgress.total) * 100) : 0}%`, background: 'var(--dex-green, #86bc25)', transition: 'width 0.2s' }} />
+              </div>
+              <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {fixProgress.done}/{fixProgress.total}{fixProgress.label ? ` · ${fixProgress.label}` : ''}
+              </div>
+            </div>
+          )}
+          <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { void doFixAllColumns(); }}>
+            {busy === 'fixcols' ? (isDe ? 'Wird geprüft…' : 'Checking…') : (isDe ? 'Jetzt alle prüfen' : 'Check all now')}
           </button>
         </div>
       </div>

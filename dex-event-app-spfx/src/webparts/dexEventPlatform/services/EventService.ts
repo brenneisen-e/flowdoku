@@ -1324,6 +1324,90 @@ export class EventService {
     return { ok: true, inactive };
   }
 
+  /**
+   * v24.33: Unternehmenszugehörigkeit („Company name" / Graph `companyName`)
+   * des eingeloggten Users via Microsoft Graph. Die SP-UserProfile-Property
+   * „Company" ist im Tenant nicht zuverlässig gefüllt — Graph `/me` schon.
+   */
+  public async getMyCompanyViaGraph(): Promise<string> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ctx = this.context as any;
+    if (!ctx.msGraphClientFactory) return '';
+    try {
+      const client = await ctx.msGraphClientFactory.getClient('3');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const resp: any = await client.api('/me').select('companyName').get();
+      return (resp?.companyName || '').trim();
+    } catch {
+      return '';
+    }
+  }
+
+  /**
+   * v24.33: Unternehmenszugehörigkeit für mehrere E-Mails via Graph (Batch à 8,
+   * gleiches Muster wie checkAccountsActive). Liefert eine Map
+   * lowercased-E-Mail → companyName. Für den Backfill bestehender Teilnehmer.
+   */
+  public async getCompaniesByEmails(emails: string[]): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const ctx = this.context as any;
+    if (!ctx.msGraphClientFactory) return out;
+    const candidates = Array.from(new Set(
+      emails.map(e => (e || '').trim().toLowerCase()).filter(e => /@(.*\.)?deloitte\.(de|com)$/i.test(e))
+    ));
+    if (candidates.length === 0) return out;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let client: any;
+    try { client = await ctx.msGraphClientFactory.getClient('3'); } catch { return out; }
+    const esc = (s: string): string => s.replace(/'/g, "''");
+    const BATCH = 8;
+    for (let i = 0; i < candidates.length; i += BATCH) {
+      const batch = candidates.slice(i, i + BATCH);
+      const clauses = batch.map(e => `mail eq '${esc(e)}' or userPrincipalName eq '${esc(e)}'`).join(' or ');
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const resp: any = await client.api('/users').filter(`(${clauses})`).select('mail,userPrincipalName,companyName').top(999).get();
+        const found = (resp?.value || []) as Array<{ mail?: string; userPrincipalName?: string; companyName?: string }>;
+        for (const u of found) {
+          const comp = (u.companyName || '').trim();
+          if (!comp) continue;
+          if (u.mail) out[u.mail.toLowerCase()] = comp;
+          if (u.userPrincipalName) out[u.userPrincipalName.toLowerCase()] = comp;
+        }
+      } catch (err) {
+        console.warn('[DEX] getCompaniesByEmails batch failed:', err);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * v24.33: Trägt die Unternehmenszugehörigkeit für bestehende Teilnehmer einer
+   * Liste nach (Backfill) — lädt alle Zeilen, holt `companyName` via Graph und
+   * setzt `Company` per MERGE, aber nur dort, wo es noch leer ist. Best-effort:
+   * fehlt die Spalte/das Recht, wird die Zeile übersprungen.
+   */
+  public async backfillCompanyForList(subsiteUrl: string): Promise<{ updated: number; checked: number }> {
+    let regs: SPRegistration[] = [];
+    try { regs = await this.getAllRegistrations(subsiteUrl); } catch { return { updated: 0, checked: 0 }; }
+    const emails = Array.from(new Set(regs.map(r => (r.ParticipantEmail || '').toLowerCase()).filter(Boolean)));
+    if (emails.length === 0) return { updated: 0, checked: regs.length };
+    const compMap = await this.getCompaniesByEmails(emails);
+    let updated = 0;
+    for (const r of regs) {
+      const comp = compMap[(r.ParticipantEmail || '').toLowerCase()];
+      if (!comp) continue;
+      if ((r.Company || '').trim()) continue; // schon gesetzt
+      if (!r.Id) continue;
+      try {
+        await this._merge(`${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${r.Id})`, { Company: comp });
+        updated++;
+      } catch { /* Spalte evtl. nicht da / keine Rechte — überspringen */ }
+    }
+    return { updated, checked: regs.length };
+  }
+
   // ==================== DEX_IDReorder Queue ====================
 
   /**
@@ -8014,6 +8098,10 @@ export class EventService {
         return p && p.Value ? p.Value : '';
       };
 
+      // v24.33: Company kommt im Tenant nicht aus der SP-UserProfile-Property —
+      // wenn leer, via Graph `/me?$select=companyName` nachladen.
+      let company = get('Company') || get('SPS-Company') || get('CompanyName');
+      if (!company) { company = await this.getMyCompanyViaGraph(); }
       return {
         department: get('Department'),
         location: get('Office'),
@@ -8022,7 +8110,7 @@ export class EventService {
         firstName: get('FirstName'),
         lastName: get('LastName'),
         displayName: get('PreferredName'),
-        company: get('Company') || get('SPS-Company') || get('CompanyName'),
+        company,
       };
     } catch {
       return empty;

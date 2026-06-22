@@ -44,6 +44,8 @@ export interface ReleaseNote {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '24.33.0', date: '2026-06-22', bereich: 'Allgemein', type: 'Feature', text: 'Die Unternehmenszugehörigkeit wird jetzt zuverlässig aus dem Microsoft-365-Profil gelesen (auch wenn das SharePoint-Profil sie nicht enthält) und in der Teilnehmerliste der App als eigene Spalte „Unternehmen" angezeigt.' },
+  { version: '24.33.0', date: '2026-06-22', bereich: 'Organizer Center', type: 'Feature', text: 'Im Admin Center gibt es eine neue Kachel „Spalten fixen (alle Events)" mit Fortschrittsanzeige: Sie prüft mit einem Klick die Teilnehmerlisten ALLER Events (inklusive Sub-Events), legt fehlende Spalten an und trägt die Unternehmenszugehörigkeit für bereits bestehende Teilnehmer nach. Wenn nichts fehlte, wird gemeldet, dass schon alles korrekt war.' },
   { version: '24.32.0', date: '2026-06-22', bereich: 'Anmeldung', type: 'Bugfix', text: 'Eine Anmeldung bricht nicht mehr ab, wenn die neue Spalte „Company" in einer älteren Teilnehmerliste noch fehlt. Die Anmeldung läuft dann normal durch (ohne den Unternehmens-Wert) — der Wert wird automatisch mitgespeichert, sobald „Spalten fixen" für das Event lief.' },
   { version: '24.32.0', date: '2026-06-22', bereich: 'Organizer Center', type: 'Feature', text: '„Spalten fixen" für ein Event deckt jetzt auch alle seine Sub-Events ab (jedes Sub-Event hat eine eigene Teilnehmerliste). Ein Klick genügt, statt jedes Sub-Event einzeln zu fixen.' },
   { version: '24.32.0', date: '2026-06-22', bereich: 'Organizer Center', type: 'Bugfix', text: 'Die Hinweisbox „Hinweise zu diesem Event" ist jetzt breiter und damit besser lesbar.' },
