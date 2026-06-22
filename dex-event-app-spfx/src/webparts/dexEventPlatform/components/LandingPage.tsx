@@ -709,8 +709,8 @@ export default function LandingPage(): React.ReactElement {
             </h1>
             <p>
               {isDe
-                ? <>Willkommen bei <strong>DEX</strong>. Unsere neue App für die Organisation von Deloitte Events. Von der Anmeldung, bis zum Check-in. Alles an einer Stelle.</>
-                : <>Welcome to <strong>DEX</strong>. Our new app for organising Deloitte events. From registration to check-in. Everything in one place.</>}
+                ? <>Willkommen bei <strong>DEX</strong>. Unsere neue App für die Organisation von <span style={{ whiteSpace: 'nowrap' }}>Deloitte Events</span>. Von der Anmeldung, bis zum Check-in. Alles an einer Stelle.</>
+                : <>Welcome to <strong>DEX</strong>. Our new app for organising <span style={{ whiteSpace: 'nowrap' }}>Deloitte events</span>. From registration to check-in. Everything in one place.</>}
             </p>
           </div>
           {/* v22.1: Check-in-Hinweisbox(en) — ab 2 Tage vor dem Event, sobald

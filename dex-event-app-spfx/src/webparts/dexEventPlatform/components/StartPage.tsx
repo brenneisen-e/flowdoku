@@ -11,7 +11,7 @@ import InquiryModal from './InquiryModal';
 
 export default function StartPage(): React.ReactElement {
   const { navigate } = useNavigation();
-  const { canCreateEvents, isAdmin, originalIsAdmin } = useRoles();
+  const { canCreateEvents, isAdmin } = useRoles();
   const { events } = useEvents();
   const { currentUser } = useCurrentUser();
   const { t, locale } = useLanguage();
@@ -68,8 +68,11 @@ export default function StartPage(): React.ReactElement {
   // sehen, nicht erst über den Header-Button suchen müssen.
   const showAdminTile = true;
   const showCheckInTile = isCheckInTeamOfActive || isAdmin || isOrganizer;
-  // v23.41: „Admin"-Kachel (Hub) — nur echte Admins (auch im Demo-Modus).
-  const showAdminHubTile = isAdmin || originalIsAdmin;
+  // v24.24: „Admin"-Kachel (Hub) — nur echte Admins. Im Demo-Modus bewusst
+  // AUSGEBLENDET (isAdmin ist dann false), damit die Startseite exakt der
+  // normalen User-Ansicht entspricht (vorher zeigte `|| originalIsAdmin` die
+  // Kachel auch im Demo-Modus).
+  const showAdminHubTile = isAdmin;
 
   return (
     <div className="page-container">
@@ -226,9 +229,10 @@ export default function StartPage(): React.ReactElement {
           </div>
         )}
       </div>
-      {/* v23.37: „Organizer werden?" stellt jetzt einen nachverfolgbaren
-          Antrag (Admins bestätigen ihn in der App), keine allgemeine Anfrage. */}
-      <InquiryModal open={showInquiry} onClose={() => setShowInquiry(false)} organizerMode />
+      {/* v24.24: „Organizer werden?" öffnet jetzt dasselbe Anfrage-Modal wie die
+          grüne Box auf der Landing Page („DEX App für dein Event anfragen") —
+          kein eigenes „Organizer werden"-Antragsmodal mehr. */}
+      <InquiryModal open={showInquiry} onClose={() => setShowInquiry(false)} />
     </div>
   );
 }

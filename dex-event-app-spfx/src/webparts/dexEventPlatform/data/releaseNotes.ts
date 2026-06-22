@@ -44,6 +44,11 @@ export interface ReleaseNote {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '24.24.0', date: '2026-06-22', bereich: 'Allgemein', type: 'Bugfix', text: 'Im Willkommenstext der Startseite wird „Deloitte Events" nicht mehr über zwei Zeilen getrennt — die beiden Wörter bleiben immer zusammen.' },
+  { version: '24.24.0', date: '2026-06-22', bereich: 'Allgemein', type: 'Bugfix', text: 'Im Demo-Modus wird die „Admin"-Kachel nicht mehr angezeigt — so sieht man im Demo-Modus genau das, was ein normaler Nutzer sieht.' },
+  { version: '24.24.0', date: '2026-06-22', bereich: 'Allgemein', type: 'Feature', text: 'Die Kachel „Organizer werden?" öffnet jetzt dasselbe Anfrage-Fenster wie die grüne Box auf der Startseite — ein einheitlicher Weg, um die DEX-App für das eigene Event anzufragen.' },
+  { version: '24.24.0', date: '2026-06-22', bereich: 'Allgemein', type: 'Feature', text: 'Im Anfrage-Fenster ist der eigene Name nicht mehr frei überschreibbar. Stattdessen wird man als Personen-Karte mit Foto, Name, Position und Standort angezeigt. Diese Angaben werden jetzt auch in die Anfrage-Mail an die Admins übernommen.' },
+  { version: '24.24.0', date: '2026-06-22', bereich: 'Organizer Center', type: 'Feature', text: 'Im Organizer Center heißt die Überschrift oben links jetzt „Organizer" statt „Admin".' },
   { version: '24.23.0', date: '2026-06-22', bereich: 'Allgemein', type: 'Feature', text: 'Der Willkommenstext auf der Startseite ist leicht überarbeitet („… Von der Anmeldung, bis zum Check-in. Alles an einer Stelle.") und wird jetzt zuverlässig auf zwei Zeilen umbrochen.' },
   { version: '24.23.0', date: '2026-06-22', bereich: 'Allgemein', type: 'Feature', text: 'Der Tutorial-Button oben im Kopfbereich ist jetzt kürzer beschriftet: „Neu hier? Starte das DEX Tutorial".' },
   { version: '24.23.0', date: '2026-06-22', bereich: 'Allgemein', type: 'Feature', text: 'Die grüne Box „DEX für dein Event nutzen" auf der Startseite wird Organizern nicht mehr angezeigt — sie haben die Funktionen ohnehin schon. Normale Nutzer und Admins (die so die normale Nutzer-Ansicht sehen) bekommen sie weiterhin.' },

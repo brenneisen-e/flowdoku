@@ -450,7 +450,7 @@ interface EventContextType {
   refreshEvents: () => Promise<void>;
   refreshParticipantCounts: (eventId?: string) => Promise<void>;
   markExpiredEventsAsCompleted: () => Promise<number>;
-  sendAdminInquiry: (requesterName: string, requesterEmail: string, eventName: string, message: string) => Promise<boolean>;
+  sendAdminInquiry: (requesterName: string, requesterEmail: string, eventName: string, message: string, requesterLocation?: string, requesterJobTitle?: string) => Promise<boolean>;
   /** v12.12: Admin-Aktion zum Re-Seed der Default-Email-Templates in
    *  DEX_EmailTemplates. Überschreibt die aktuelle Subject/Heading/BodyHtml
    *  jedes Standard-Templates mit den Default-Werten aus dem Code. */
@@ -3625,7 +3625,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     requesterName: string,
     requesterEmail: string,
     eventName: string,
-    message: string
+    message: string,
+    requesterLocation?: string,
+    requesterJobTitle?: string
   ): Promise<boolean> {
     const adminTo = 'ebrenneisen@deloitte.de;nifelten@deloitte.de;aenk@deloitte.de';
     const subject = `DEX-Anfrage: ${eventName || 'Event ohne Titel'} (von ${requesterName || 'unbekannt'})`;
@@ -3639,6 +3641,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       <table cellpadding="6" cellspacing="0" style="border-collapse:collapse;margin:8px 0;">
         <tr><td style="color:#555;font-weight:600;vertical-align:top;">Name:</td><td>${escape(requesterName)}</td></tr>
         <tr><td style="color:#555;font-weight:600;vertical-align:top;">E-Mail:</td><td><a href="mailto:${escape(requesterEmail)}">${escape(requesterEmail)}</a></td></tr>
+        ${requesterJobTitle && requesterJobTitle.trim() ? `<tr><td style="color:#555;font-weight:600;vertical-align:top;">Position:</td><td>${escape(requesterJobTitle)}</td></tr>` : ''}
+        ${requesterLocation && requesterLocation.trim() ? `<tr><td style="color:#555;font-weight:600;vertical-align:top;">Standort:</td><td>${escape(requesterLocation)}</td></tr>` : ''}
         <tr><td style="color:#555;font-weight:600;vertical-align:top;">Event:</td><td>${escape(eventName)}</td></tr>
       </table>
       <p style="color:#555;font-weight:600;margin-bottom:4px;">Worum geht es:</p>
