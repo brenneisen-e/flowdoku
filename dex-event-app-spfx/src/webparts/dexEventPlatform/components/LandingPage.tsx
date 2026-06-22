@@ -169,7 +169,7 @@ export default function LandingPage(): React.ReactElement {
   // Ab 2 Tagen vor Event-Start UND sobald der QR-Massen-Versand lief (eigener
   // Status 'QR versendet'), zeigt die Landing Page über dem Start-Button eine
   // Hinweisbox „Check-in für <Event>" mit kleinem QR — Klick öffnet ihn groß.
-  const { getMyRegistration, events } = useEvents();
+  const { getMyRegistration, getMyEventNumbers, events } = useEvents();
 
   // v22.45: Inaktive-Konten-Scan für Organizer/Admins. Gedrosselt 1×/24h via
   // localStorage; Ergebnis sofort aus dem Cache angezeigt, im Hintergrund
@@ -266,6 +266,51 @@ export default function LandingPage(): React.ReactElement {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEventsLoading, currentUser?.email]);
+
+  // v24.13: „Du bist angemeldet"-Box für aktive Events, für die man angemeldet
+  // ist — Klick springt zu „Meine Events". Günstig über getMyEventNumbers (kein
+  // per-Event-Lookup). Events mit bereits sichtbarer Check-in-/QR-Box werden
+  // beim Rendern ausgeblendet (sonst doppelt).
+  const [myRegBoxes, setMyRegBoxes] = React.useState<Array<{ eventId: string; title: string; imageUrl?: string; startDate: string; location?: string }>>([]);
+  const [nowTick, setNowTick] = React.useState(Date.now());
+  React.useEffect(() => {
+    const id = window.setInterval(() => setNowTick(Date.now()), 60000);
+    return () => window.clearInterval(id);
+  }, []);
+  React.useEffect(() => {
+    if (isEventsLoading) return undefined;
+    const myEmail = (currentUser?.email || '').trim();
+    if (!myEmail) return undefined;
+    let cancelled = false;
+    (async () => {
+      let nums: { registered: number[]; waitlisted: number[] };
+      try { nums = await getMyEventNumbers(); } catch { return; }
+      if (cancelled) return;
+      const registered = new Set((nums && nums.registered) || []);
+      if (registered.size === 0) { setMyRegBoxes([]); return; }
+      const now = Date.now();
+      const topById = new Map((events || []).filter(e => !e.parentEventId).map(e => [e.id, e]));
+      const involved = new Set<string>();
+      (events || []).forEach(e => { if (e.eventNumber && registered.has(e.eventNumber)) involved.add(e.parentEventId || e.id); });
+      const boxes = Array.from(involved)
+        .map(id => topById.get(id))
+        .filter((e): e is NonNullable<typeof e> => !!e && e.status === 'Active' && !e.isFictive && !!e.startDate)
+        .filter(e => {
+          const startTs = new Date(e.startDate).getTime();
+          if (!Number.isFinite(startTs)) return false;
+          let endTs = e.endDate ? new Date(e.endDate).getTime() : NaN;
+          if (!Number.isFinite(endTs)) { const d = new Date(e.startDate); endTs = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59).getTime(); }
+          return endTs >= now; // noch nicht vorbei
+        })
+        .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+        .slice(0, 6)
+        .map(e => ({ eventId: e.id, title: e.title || '', imageUrl: e.imageUrl, startDate: e.startDate, location: e.location }));
+      if (!cancelled) setMyRegBoxes(boxes);
+    })().catch(() => { /* best-effort */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEventsLoading, currentUser?.email, events]);
+
   const openBigQr = async (box: { qrData: string; title: string; name: string; tid?: number }): Promise<void> => {
     try {
       const QRCode = await import('qrcode');
@@ -676,6 +721,45 @@ export default function LandingPage(): React.ReactElement {
               </span>
             </button>
           ))}
+          {/* v24.13: „Du bist angemeldet"-Boxen — aktive Events, für die man
+              angemeldet ist; ausgeblendet, wenn schon eine Check-in/QR-Box läuft. */}
+          {(() => {
+            const checkInIds = new Set(checkInBoxes.map(b => b.eventId));
+            const list = myRegBoxes.filter(b => !checkInIds.has(b.eventId));
+            return list.map(box => {
+              const startTs = new Date(box.startDate).getTime();
+              const diff = startTs - nowTick;
+              let countdown: string; let urgent = false;
+              if (diff <= 0) { countdown = isDe ? 'läuft gerade' : 'happening now'; urgent = true; }
+              else if (diff < 24 * 60 * 60 * 1000) { const h = Math.max(1, Math.ceil(diff / (60 * 60 * 1000))); countdown = isDe ? `noch ${h} ${h === 1 ? 'Stunde' : 'Stunden'}` : `in ${h} ${h === 1 ? 'hour' : 'hours'}`; urgent = true; }
+              else { const d = Math.floor(diff / (24 * 60 * 60 * 1000)); countdown = isDe ? `noch ${d} ${d === 1 ? 'Tag' : 'Tage'}` : `in ${d} ${d === 1 ? 'day' : 'days'}`; }
+              const dateLabel = new Date(box.startDate).toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+              return (
+                <button
+                  key={box.eventId}
+                  type="button"
+                  onClick={() => navigate('my-events')}
+                  style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left', marginBottom: 12, padding: '12px 14px', background: '#fff', border: '1.5px solid var(--dex-gray-200)', borderRadius: 12, cursor: 'pointer' }}
+                  title={isDe ? 'Zu „Meine Events"' : 'Go to My Events'}
+                >
+                  <div style={{ width: 66, height: 66, flexShrink: 0, borderRadius: 8, background: box.imageUrl ? `url(${box.imageUrl}) center/cover no-repeat` : 'linear-gradient(135deg, var(--dex-green, #86bc25), var(--dex-blue, #0076a8))', border: '1px solid var(--dex-gray-200)' }} />
+                  <span style={{ minWidth: 0, flex: 1 }}>
+                    <span style={{ display: 'block', fontWeight: 700, fontSize: '0.92rem', color: 'var(--dex-gray-800)' }}>
+                      {isDe
+                        ? <>Du bist für <span style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>&bdquo;{box.title}&ldquo;</span> angemeldet</>
+                        : <>You are registered for <span style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>&bdquo;{box.title}&ldquo;</span></>}
+                    </span>
+                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
+                      {dateLabel}{box.location ? ` · ${box.location}` : ''}
+                    </span>
+                  </span>
+                  <span style={{ flexShrink: 0, fontSize: '0.78rem', fontWeight: 800, padding: '4px 10px', borderRadius: 999, background: urgent ? 'rgba(218,41,28,0.10)' : 'rgba(134,188,37,0.12)', color: urgent ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)' }}>
+                    {countdown}
+                  </span>
+                </button>
+              );
+            });
+          })()}
           <button className="btn btn-lg btn-block btn-outline" data-tour="landing-start" onClick={() => navigate('start')}>
             {t('landing.start')}
           </button>

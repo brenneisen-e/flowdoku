@@ -8,6 +8,8 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.13.0 | 2026-06-18 | Feature | Startseite: kleine Karte „Du bist für … angemeldet" (mit Bild, Datum, Ort, Countdown in Tagen bzw. Stunden) pro aktivem Event, für das man angemeldet ist — Klick springt zu „Meine Events". Nicht doppelt, wenn schon eine Check-in-/QR-Box läuft. |
+| 24.13.0 | 2026-06-18 | Bugfix | Rollen-Matrix-PDF: Deloitte-Logo oben links jetzt schwarz (auf weißem Grund sichtbar). |
 | 24.12.0 | 2026-06-18 | Feature | Organizer-Einstellungen als eigener Wizard-Schritt („Schritt 2 — Organizer & Team": Organizer, Ansprechpartner, Test-/Check-in-Team). Alle Folgeschritte neu nummeriert (inkl. geführter Tour und „Prüfen"-Übersicht). |
 | 24.12.0 | 2026-06-18 | Feature | Einzelne Organizer ausblenden geht erst nach Aktivierung von „Organizer einzeln ausblenden" (kein versehentliches Ausblenden per Klick). |
 | 24.12.0 | 2026-06-18 | Feature | Verständlichere Wizard-Texte: klarere Sub-Event-Erklärung; präziser Hinweis zur E-Mail-Verteiler-Speicherung. |
