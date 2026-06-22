@@ -1181,6 +1181,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // v7.11: multi-Flag durchreichen, damit RegistrationPage Mehrfachauswahl rendern kann
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         multi: !!(cf as any).multi,
+        // v24.25: withTime — bei Datums-Feldern (type='date') auch die Uhrzeit
+        // mit abfragen (datetime-local statt date).
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        withTime: !!(cf as any).withTime,
         // externalLinks ebenfalls durchreichen, damit AGB-Links für B2Run-Datenschutz
         // korrekt unter dem Feld angezeigt werden (war bisher nur ueber den Fallback in
         // RegistrationPage abgesichert).

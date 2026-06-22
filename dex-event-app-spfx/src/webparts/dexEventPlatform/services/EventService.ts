@@ -574,9 +574,11 @@ export interface SPEvent {
 export interface CustomField {
   id: string;
   label: string;
-  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'document'; // v19.0: document = Datei-Upload (Attachment)
+  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'document' | 'date'; // v19.0: document = Datei-Upload (Attachment); v24.25: date = Kalender-Auswahl
   required: boolean;
   options?: string[]; // für select-Felder
+  /** v24.25: Nur für `type === 'date'` — zusätzlich die Uhrzeit abfragen. */
+  withTime?: boolean;
   visible: boolean;
   /** v7.20: Optionaler Hilfe-/Beschreibungstext, der im Registrierungs-
    *  Formular als "i"-Tooltip neben dem Feld-Label sichtbar ist. */

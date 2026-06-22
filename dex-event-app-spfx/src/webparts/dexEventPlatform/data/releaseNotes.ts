@@ -44,6 +44,10 @@ export interface ReleaseNote {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '24.25.0', date: '2026-06-22', bereich: 'Event-Erstellung', type: 'Feature', text: 'Neue Feldart „Datum (Kalender)": Teilnehmer wählen ein Datum bequem über einen Kalender aus. Optional lässt sich zusätzlich die Uhrzeit abfragen („Auch Uhrzeit abfragen?"). Funktioniert bei Haupt- und Sub-Event-Feldern.' },
+  { version: '24.25.0', date: '2026-06-22', bereich: 'Event-Erstellung', type: 'Feature', text: 'Der Wizard erkennt jetzt, wenn ein Feld nach einem Datum klingt (z.B. „Check-in"/„Check-out") und empfiehlt die Feldart „Datum"; klingt ein Feld nach einer Person/einem Namen, empfiehlt er den Personen-Picker „Person" (mit Suche, Foto und Standort). Ein Klick übernimmt die Empfehlung.' },
+  { version: '24.25.0', date: '2026-06-22', bereich: 'Event-Erstellung', type: 'Bugfix', text: 'Beim Anlegen von Feldern sind das Feld-Namen-Eingabefeld und die Feldart-Auswahl jetzt gleich hoch.' },
+  { version: '24.25.0', date: '2026-06-22', bereich: 'Event-Erstellung', type: 'Feature', text: 'Über der Feld-Liste gibt es jetzt eine aufklappbare Box „Welche Feldarten gibt es?", die alle Feldarten (Text, Dropdown, Zahl, Checkbox, Datum, Person, Roommate, Dokument) und ihre Funktionen kurz erklärt.' },
   { version: '24.24.0', date: '2026-06-22', bereich: 'Allgemein', type: 'Bugfix', text: 'Im Willkommenstext der Startseite wird „Deloitte Events" nicht mehr über zwei Zeilen getrennt — die beiden Wörter bleiben immer zusammen.' },
   { version: '24.24.0', date: '2026-06-22', bereich: 'Allgemein', type: 'Bugfix', text: 'Im Demo-Modus wird die „Admin"-Kachel nicht mehr angezeigt — so sieht man im Demo-Modus genau das, was ein normaler Nutzer sieht.' },
   { version: '24.24.0', date: '2026-06-22', bereich: 'Allgemein', type: 'Feature', text: 'Die Kachel „Organizer werden?" öffnet jetzt dasselbe Anfrage-Fenster wie die grüne Box auf der Startseite — ein einheitlicher Weg, um die DEX-App für das eigene Event anzufragen.' },
