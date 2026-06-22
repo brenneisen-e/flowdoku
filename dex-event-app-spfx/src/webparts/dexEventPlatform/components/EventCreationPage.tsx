@@ -28,6 +28,7 @@ import AudiencePicker from './AudiencePicker';
 import ImageCropModal from './ImageCropModal';
 import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
+import OrganizerList from './OrganizerList';
 // v20.2: Self-Check-in ist aus dem Wizard ausgezogen — Aktivierung läuft
 // automatisch beim ersten Klick auf die Aktionen (Check-in-Seite, Admin
 // Center, QR-Kachel im Event-Detail); Zeitfenster + Deaktivieren im
@@ -794,6 +795,11 @@ export default function EventCreationPage(): React.ReactElement {
   const [contactName, setContactName] = React.useState<string>(editEvent ? (editEvent.contactName || '') : '');
   const [contactEmail, setContactEmail] = React.useState<string>(editEvent ? (editEvent.contactEmail || '') : '');
   const [contactInfo, setContactInfo] = React.useState<string>(editEvent ? (editEvent.contactInfo || '') : '');
+  // v24.10 (Q2): Ansprechpartner standardmäßig eingeklappt — nur aufklappen,
+  // wenn beim Bearbeiten bereits Daten hinterlegt sind.
+  const [contactExpanded, setContactExpanded] = React.useState<boolean>(
+    !!(editEvent && ((editEvent.contactName || '') || (editEvent.contactEmail || '') || (editEvent.contactInfo || '')))
+  );
 
   // v6.19: QR-Code-Scanner pro Event (beliebiger Deloitte-User, kein Admin/Organizer nötig).
   // Getrennte State-Arrays für Namen + Emails (index-synchron). Sucht via Graph-API.
@@ -6765,9 +6771,9 @@ export default function EventCreationPage(): React.ReactElement {
                   werden (also nicht „ausgeblendet"). */}
               {!hideOrganizer && (
                 <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
-                  {/* v24.4 (I): explizite Wahl klein/groß statt einzelnem Toggle. */}
-                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {isDe ? 'Anzeige im Register-Screen:' : 'Display on the registration screen:'}
+                  {/* v24.4 (I) / v24.10 (Q): grüne Zwischenüberschrift + Live-Vorschau. */}
+                  <div className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                    {isDe ? 'Anzeige auf dem Registerformular' : 'Display on the registration form'}
                     <InfoTooltip text={isDe
                       ? <>
                           <strong>Was du hier einstellst:</strong> wie die <strong>Organizer</strong> auf der Anmelde-Seite dargestellt werden.<br /><br />
@@ -6780,7 +6786,7 @@ export default function EventCreationPage(): React.ReactElement {
                           <strong>Large:</strong> organizers are shown <strong>large permanently</strong> (big photo, name, clickable <strong>email</strong>, role &amp; location).
                         </>
                     } />
-                  </label>
+                  </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 4 }}>
                     <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
                       <input
@@ -6817,6 +6823,25 @@ export default function EventCreationPage(): React.ReactElement {
                       </span>
                     </label>
                   </div>
+                  {/* v24.10 (Q): Live-Vorschau — so sieht der Teilnehmer die Organizer. */}
+                  {(() => {
+                    const _orgNames = organizer.split(';').map(s => s.trim()).filter(Boolean);
+                    if (_orgNames.length === 0) return null;
+                    return (
+                      <div style={{ marginTop: 14, padding: 14, background: 'var(--dex-gray-50, #f7f8f9)', border: '1px dashed var(--dex-gray-300)', borderRadius: 10 }}>
+                        <div style={{ fontSize: '0.7rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.3, color: 'var(--dex-gray-500)', marginBottom: 8 }}>
+                          {isDe ? 'Vorschau (so sehen es die Teilnehmer)' : 'Preview (what attendees see)'}
+                        </div>
+                        <OrganizerList
+                          names={_orgNames}
+                          emails={organizerEmails}
+                          hiddenEmails={hiddenOrganizerEmails}
+                          size="md"
+                          display={organizerDisplayLarge ? 'card' : 'chip'}
+                        />
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -6826,19 +6851,27 @@ export default function EventCreationPage(): React.ReactElement {
                   sollen. Wird auf Register-/MyEvents-Page zusätzlich zu den
                   Organizern gezeigt. Alles drei optional, Freitext. */}
               <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {/* v24.10 (Q2): einklappbar, default zu. */}
+                <label
+                  className="form-label"
+                  onClick={() => setContactExpanded(v => !v)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', userSelect: 'none' }}
+                >
                   <span style={{
                     display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                     width: 22, height: 22, borderRadius: '50%',
                     background: 'var(--dex-gray-300)', color: '#fff',
                     fontSize: '0.75rem', fontWeight: 700,
-                  }}>+</span>
+                  }}>{contactExpanded ? '–' : '+'}</span>
                   {isDe ? 'Ansprechpartner (optional)' : 'Contact person (optional)'}
                 </label>
+                {contactExpanded && (
+                <>
+                {/* v24.10 (Q3): Organizer ist Standard-Ansprechpartner; hier nur Externe. */}
                 <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: '0 0 10px', lineHeight: 1.5 }}>
                   {isDe
-                    ? 'Zusätzliche Kontaktperson für Rückfragen — z.B. Person vor Ort, externe Agentur, Hotline-Mailbox. Erscheint auf der Anmelde-Seite und in „Meine Events" zusätzlich zu den Organizern. Hat KEINE App-Berechtigung, ist nur ein Anzeige-Feld.'
-                    : 'Additional contact for questions — e.g. on-site contact, external agency, hotline mailbox. Appears on the registration page and in „My Events" in addition to the organizers. Has NO app permissions, display-only.'}
+                    ? 'Standardmäßig wird der Organizer für Rückfragen aus dem Team angezeigt. Wenn du stattdessen (oder zusätzlich) jemand Externen angeben willst — z.B. eine Service-Mailadresse oder eine Kontaktperson vor Ort — dann hier eintragen. Erscheint auf der Anmelde-Seite und in „Meine Events" zusätzlich zu den Organizern. Hat KEINE App-Berechtigung, ist nur ein Anzeige-Feld.'
+                    : 'By default the organizer is shown as the contact for questions from the team. If you want to add an external contact instead (or in addition) — e.g. a service email or an on-site contact — enter it here. Appears on the registration page and in „My Events" in addition to the organizers. Has NO app permissions, display-only.'}
                 </p>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 10 }}>
                   <div>
@@ -6918,6 +6951,8 @@ export default function EventCreationPage(): React.ReactElement {
                     );
                   })()}
                 </div>
+                </>
+                )}
               </div>
 
               {/* v9.21: Test-Team pro Event — sieht das Event im Entwurfsmodus

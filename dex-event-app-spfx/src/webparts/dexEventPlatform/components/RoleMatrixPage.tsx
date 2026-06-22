@@ -7,6 +7,7 @@
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
 import { useRoles } from '../context/RoleContext';
+import { getCachedLogoBase64, getCachedOrbBase64 } from '../services/EmailTemplates';
 
 interface PermissionRow {
   category: string;
@@ -379,8 +380,77 @@ function renderCell(value: boolean | string): React.ReactElement {
   return <span style={{ color: '#d97706', fontSize: '0.78rem', fontWeight: 600 }}>{value}</span>;
 }
 
+// v24.10: Rollen-Matrix als PDF (Querformat A4) — Deloitte-Logo oben links,
+// DEX-App-Logo (Orb) oben rechts, danach die komplette Berechtigungstabelle.
+async function downloadRoleMatrixPdf(): Promise<void> {
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'landscape' });
+  const pageW = 297, pageH = 210, margin = 12;
+  const cols = ['User', 'Assistenz', 'Test-Team', 'Check-In', 'Co-Org.', 'Organizer', 'Admin'];
+  const featW = 96;
+  const roleW = (pageW - 2 * margin - featW) / cols.length;
+  const logoL = getCachedLogoBase64();
+  const logoR = getCachedOrbBase64();
+
+  const drawChrome = (): number => {
+    // Logos
+    try {
+      if (logoL) { const p = doc.getImageProperties(logoL); const h = 11; const w = (p.width / p.height) * h; doc.addImage(logoL, 'PNG', margin, 9, w, h); }
+    } catch { /* Logo optional */ }
+    try {
+      if (logoR) { const p = doc.getImageProperties(logoR); const h = 13; const w = (p.width / p.height) * h; doc.addImage(logoR, 'PNG', pageW - margin - w, 8, w, h); }
+    } catch { /* Logo optional */ }
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(30);
+    doc.text('Rollen-Matrix — Berechtigungen', pageW / 2, 15, { align: 'center' });
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(120);
+    doc.text(`DEX Event Experience Platform · Stand: ${new Date().toLocaleDateString('de-DE')}`, pageW / 2, 20, { align: 'center' });
+    // Spaltenkopf
+    const yy = 26;
+    doc.setFillColor(134, 188, 37); doc.rect(margin, yy, pageW - 2 * margin, 8, 'F');
+    doc.setTextColor(255); doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
+    doc.text('Funktion', margin + 2, yy + 5.3);
+    cols.forEach((c, i) => doc.text(c, margin + featW + i * roleW + roleW / 2, yy + 5.3, { align: 'center' }));
+    return yy + 8;
+  };
+
+  let y = drawChrome();
+  let lastCat = '';
+  const cell = (v: boolean | string): { t: string; c: [number, number, number] } =>
+    v === true ? { t: 'Ja', c: [34, 140, 30] } : v === false ? { t: '–', c: [175, 175, 175] } : { t: String(v), c: [180, 95, 0] };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const row of (PERMISSIONS as any[])) {
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5);
+    const featLines = doc.splitTextToSize(row.feature, featW - 4) as string[];
+    const vals = [row.user, row.assistenz, row.testteam, row.checkin, row.coorganizer, row.organizer, row.admin].map(cell);
+    const cellLines = vals.map(v => doc.splitTextToSize(v.t, roleW - 3) as string[]);
+    let maxLines = featLines.length;
+    cellLines.forEach(cl => { if (cl.length > maxLines) maxLines = cl.length; });
+    const rowH = Math.max(6, maxLines * 3.1 + 2.6);
+    const catH = row.category !== lastCat ? 6 : 0;
+    if (y + catH + rowH > pageH - margin) { doc.addPage(); y = drawChrome(); lastCat = ''; }
+    if (row.category !== lastCat) {
+      lastCat = row.category;
+      doc.setFillColor(238, 240, 233); doc.rect(margin, y, pageW - 2 * margin, 6, 'F');
+      doc.setTextColor(74, 124, 31); doc.setFont('helvetica', 'bold'); doc.setFontSize(8);
+      doc.text(row.category, margin + 2, y + 4.2);
+      y += 6;
+    }
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(45);
+    doc.text(featLines, margin + 2, y + 3.6);
+    vals.forEach((v, i) => {
+      doc.setTextColor(v.c[0], v.c[1], v.c[2]);
+      doc.text(cellLines[i], margin + featW + i * roleW + roleW / 2, y + 3.6, { align: 'center' });
+    });
+    doc.setDrawColor(228); doc.line(margin, y + rowH, pageW - margin, y + rowH);
+    y += rowH;
+  }
+  doc.save('DEX-Rollenmatrix.pdf');
+}
+
 export default function RoleMatrixPage(): React.ReactElement {
   const { navigate } = useNavigation();
+  const [pdfBusy, setPdfBusy] = React.useState(false);
   // v13.0: Admin-Guard hinzugefügt — laut CLAUDE.md-Rollenmatrix ist
   // "Rollen-Matrix einsehen" Admin-only. Vorher fehlte der Schutz —
   // jeder User (auch Demo-impersoniert) konnte die Seite öffnen. Wir
@@ -410,10 +480,23 @@ export default function RoleMatrixPage(): React.ReactElement {
           borderBottom: '1px solid var(--dex-gray-200)',
           background: 'linear-gradient(135deg, rgba(134,188,37,0.08) 0%, rgba(59,130,246,0.05) 100%)',
         }}>
-          <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700 }}>Rollen-Matrix</h2>
-          <p style={{ margin: '6px 0 0', color: 'var(--dex-gray-500)', fontSize: '0.85rem' }}>
-            Übersicht aller Berechtigungen nach Rolle
-          </p>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div>
+              <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700 }}>Rollen-Matrix</h2>
+              <p style={{ margin: '6px 0 0', color: 'var(--dex-gray-500)', fontSize: '0.85rem' }}>
+                Übersicht aller Berechtigungen nach Rolle
+              </p>
+            </div>
+            {/* v24.10: PDF-Download (Querformat, mit Deloitte- + DEX-App-Logo). */}
+            <button
+              className="btn btn-secondary"
+              style={{ fontSize: '0.82rem', padding: '8px 16px', flexShrink: 0 }}
+              disabled={pdfBusy}
+              onClick={() => { setPdfBusy(true); downloadRoleMatrixPdf().catch(() => { /* */ }).then(() => setPdfBusy(false)); }}
+            >
+              {pdfBusy ? 'PDF wird erstellt…' : 'Als PDF herunterladen'}
+            </button>
+          </div>
           {/* v18.5: Power User ist KEINE eigene Rolle, sondern ein Zusatz-Flag
               auf einem Organizer/Admin — daher keine eigene Matrix-Spalte. */}
           <div style={{

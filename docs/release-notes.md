@@ -8,6 +8,8 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.10.0 | 2026-06-18 | Feature | Rollen-Matrix als PDF herunterladbar (Querformat, Deloitte-Logo oben links, DEX-App-Logo oben rechts, komplette Berechtigungstabelle). |
+| 24.10.0 | 2026-06-18 | Feature | Wizard Schritt 1: Live-Vorschau der Organizer-Anzeige (klein/groß) unter „Anzeige auf dem Registerformular"; Ansprechpartner-Bereich default eingeklappt mit Hinweis, dass der Organizer Standard-Ansprechpartner ist und hier nur Externe (z.B. Service-Mail) eingetragen werden. |
 | 24.9.0 | 2026-06-18 | Feature | Eigenes Event als Vorlage (Teil 8 von v24): In Schritt 1 erscheint für Organizer mit bisherigen Events ein prominenter Bild-„Fächer"; Auswahl lädt Einstellungen + Bild ins neue Event (Datum/Anmeldungen/Sub-Events bleiben frisch). |
 | 24.8.0 | 2026-06-18 | Feature | Archivierungsschutz (Teil 7 von v24): Abgeschlossene/vergangene Events sind im Organizer Center schreibgeschützt — keine Abmeldungen, keine Feld-Bearbeitung, kein Bearbeiten (nur No-Show über den Check-in bleibt). Admins behalten vollen Zugriff. |
 | 24.8.0 | 2026-06-18 | Feature | Admin-Hinweis beim App-Start: Events, deren Ende > 1 Jahr zurückliegt, können (inkl. Teilnehmerliste) endgültig gelöscht werden — mit Sprung ins Organizer Center. |
