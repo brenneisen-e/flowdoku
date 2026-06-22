@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.30.0 | 2026-06-22 | Bugfix | „Meine Events": Wenn man sich nachträglich für ein Sub-Event anmeldet (z.B. ein neu hinzugefügtes), werden jetzt zuerst dessen Pflicht-/Auswahlfelder abgefragt — vorher wurde direkt ohne Abfrage angemeldet und die Antworten fehlten. |
 | 24.29.0 | 2026-06-22 | Feature | Die Unternehmenszugehörigkeit (Rechtsträger, z.B. „Deloitte GmbH" / „Deloitte Consulting") wird jetzt überall aus dem Profil mit angezeigt und gespeichert: auf der Profilseite, im Anmeldeformular, in der Teilnehmerliste (App-Personenzeile + SharePoint-Standardansicht „Company"). |
 | 24.28.0 | 2026-06-22 | Feature | Feld-Editor + Organizer Center: Felder, die ohnehin schon automatisch aus dem Profil kommen (Standort, Abteilung, Unternehmenszugehörigkeit/Rechtsträger wie Deloitte GmbH vs. Consulting GmbH, Telefon …), werden jetzt als „vermutlich überflüssig" markiert — statt fälschlich einen Personen-Picker vorzuschlagen. Lange Listen werden außerdem entdoppelt. |
 | 24.27.0 | 2026-06-22 | Feature | Organizer Center: Die Hinweisbox empfiehlt jetzt auch eine bessere Feldart — klingt ein Custom-Feld nach einem Datum oder einer Person, ist es aber als Freitext angelegt, wird der Wechsel auf „Datum" bzw. „Person" vorgeschlagen (mit dem Hinweis, dass bestehende Antworten erhalten bleiben). |

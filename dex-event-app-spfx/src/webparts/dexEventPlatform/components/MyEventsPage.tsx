@@ -3380,6 +3380,16 @@ function MyEventSubEvents(props: {
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editDraft, setEditDraft] = React.useState<Record<string, string>>({});
   const [savingEdit, setSavingEdit] = React.useState(false);
+  // v24.30 BUG-FIX: Beim Anmelden für ein Sub-Event aus „Meine Events" wurden
+  // die (Pflicht-)Felder nie abgefragt (registerForEvent lief mit leerem
+  // customData). Jetzt öffnet sich — wie auf der Anmeldeseite — erst ein
+  // Feld-Modal, das die Antworten sammelt. resolve liefert die Antworten oder
+  // 'abort'.
+  const [regFieldsModal, setRegFieldsModal] = React.useState<{
+    ce: DeloitteEvent; resolve: (_v: Record<string, string> | 'abort') => void;
+  } | null>(null);
+  const [regDraft, setRegDraft] = React.useState<Record<string, string>>({});
+  const [regShowErrors, setRegShowErrors] = React.useState(false);
   // v11.34: Cascade-Cancel-Dialog für Sub-Event-Cancel — fragt ob auch
   // die anderen aktiven Sub-Events des gleichen Parents abgemeldet
   // werden sollen (Peer-Cancel).
@@ -3467,6 +3477,23 @@ function MyEventSubEvents(props: {
         peerIdsToCancel = choice.peerIds;
       }
     }
+    // v24.30 BUG-FIX: Vor der Sub-Event-Anmeldung die (Pflicht-)Felder abfragen
+    // — sonst gingen sie verloren (registerForEvent lief mit leerem customData).
+    let registerCustomData: Record<string, string> = {};
+    if (!currentlyRegistered) {
+      const target = props.childEvents.find(ce => ce.id === childEventId);
+      const fields = (target?.eventSpecificFields || []).filter(f => f && f.label);
+      if (target && fields.length > 0) {
+        const result = await new Promise<Record<string, string> | 'abort'>(resolve => {
+          setRegDraft({});
+          setRegShowErrors(false);
+          setRegFieldsModal({ ce: target, resolve });
+        });
+        setRegFieldsModal(null);
+        if (result === 'abort') return;
+        registerCustomData = result;
+      }
+    }
     setBusyId(childEventId);
     // v15.21: Voll-Bild-Progress mit Beschreibung — bei Peer-Cancels
     // zählen wir die Fortschritte fortlaufend mit, damit der User sieht
@@ -3510,7 +3537,7 @@ function MyEventSubEvents(props: {
           }
         }
       } else {
-        await props.registerForEvent(childEventId, {});
+        await props.registerForEvent(childEventId, registerCustomData);
       }
       setProcessingMessage(isDe ? 'Aktualisiere…' : 'Refreshing…');
       await refresh();
@@ -3754,6 +3781,95 @@ function MyEventSubEvents(props: {
           Default: target ist immer abgemeldet (lock-Checkbox); peers
           unchecked. Klick auf „Abmelden" verarbeitet die Auswahl. */}
       {peerCancelDialog && <PeerCancelCheckboxModal dlg={peerCancelDialog} isDe={isDe} isSectionedEvent={!!props.parentEvent.requireSubEventSelection} />}
+      {/* v24.30 BUG-FIX: Feld-Modal beim Anmelden für ein Sub-Event aus „Meine
+          Events" — fragt die (Pflicht-)Felder ab (vorher gingen sie verloren).
+          Gleiche Felder-Logik (inkl. Sichtbarkeitsbedingung) wie das Sub-Event-
+          Modal auf der Anmeldeseite. */}
+      {regFieldsModal && (() => {
+        const ce = regFieldsModal.ce;
+        const fields = (ce.eventSpecificFields || [])
+          .filter(f => f && f.label)
+          .filter(f => {
+            if (!f.showIf || !f.showIf.fieldId) return true;
+            const raw = (regDraft[f.showIf.fieldId] || '').trim();
+            if (!raw) return false;
+            const answers = raw.indexOf(' | ') >= 0 ? raw.split(' | ').map(s => s.trim()).filter(Boolean) : [raw];
+            return answers.some(a => f.showIf!.values.indexOf(a) >= 0);
+          });
+        const setVal = (id: string, v: string): void => setRegDraft(prev => ({ ...prev, [id]: v }));
+        const isMissing = (f: EventSpecificField): boolean =>
+          !!f.required && (f.type === 'checkbox' ? regDraft[f.id] !== 'true' : !((regDraft[f.id] || '').trim()));
+        const onSubmit = (): void => {
+          if (fields.some(isMissing)) { setRegShowErrors(true); return; }
+          regFieldsModal.resolve({ ...regDraft });
+        };
+        const onCancel = (): void => regFieldsModal.resolve('abort');
+        const errStyle = (f: EventSpecificField): React.CSSProperties =>
+          regShowErrors && isMissing(f) ? { borderColor: 'var(--dex-red, #c00)', boxShadow: '0 0 0 1px var(--dex-red, #c00) inset' } : {};
+        return (
+          <Modal open={true} onClose={onCancel} maxWidth={520} padding={24} ariaLabel={ce.title || (isDe ? 'Sub-Event' : 'Sub-event')}>
+            <h3 style={{ margin: '0 0 6px', fontSize: '1.1rem' }}>{ce.title || (isDe ? 'Sub-Event' : 'Sub-event')}</h3>
+            <p style={{ margin: '0 0 18px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+              {isDe ? 'Bitte beantworte die Fragen für dieses Sub-Event, dann wirst du angemeldet:' : 'Please answer the questions for this sub-event, then you’ll be registered:'}
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 18 }}>
+              {fields.map(f => {
+                const val = regDraft[f.id] || '';
+                return (
+                  <div key={f.id}>
+                    <label className="form-label" style={{ display: 'block', fontSize: '0.85rem', marginBottom: 4 }}>
+                      {f.required && <span style={{ color: 'var(--dex-red, #c00)', marginRight: 4 }}>*</span>}
+                      {f.label}
+                      {f.helpText && <InfoTooltip text={f.helpText} />}
+                    </label>
+                    {f.type === 'select' ? (
+                      f.multi ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {(f.options || []).map(opt => {
+                            const current = val.split(' | ').map(s => s.trim()).filter(Boolean);
+                            const checked = current.indexOf(opt) >= 0;
+                            return (
+                              <label key={opt} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', cursor: 'pointer' }}>
+                                <input type="checkbox" checked={checked} onChange={e => setVal(f.id, (e.target.checked ? [...current, opt] : current.filter(x => x !== opt)).join(' | '))} />
+                                {opt}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <select className="form-select" value={val} onChange={e => setVal(f.id, e.target.value)} style={errStyle(f)}>
+                          <option value="">{isDe ? '— bitte wählen —' : '— please select —'}</option>
+                          {(f.options || []).map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                        </select>
+                      )
+                    ) : f.type === 'checkbox' ? (
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.85rem', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={val === 'true'} onChange={e => setVal(f.id, e.target.checked ? 'true' : 'false')} />
+                        {f.label}
+                      </label>
+                    ) : f.type === 'number' ? (
+                      <input className="form-input" type="number" value={val} onChange={e => setVal(f.id, e.target.value)} style={errStyle(f)} />
+                    ) : f.type === 'date' ? (
+                      <input className="form-input" type={f.withTime ? 'datetime-local' : 'date'} value={val} onChange={e => setVal(f.id, e.target.value)} style={errStyle(f)} />
+                    ) : (
+                      <input className="form-input" type="text" value={val} onChange={e => setVal(f.id, e.target.value)} style={errStyle(f)} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {regShowErrors && fields.some(isMissing) && (
+              <div style={{ color: 'var(--dex-red, #c00)', fontSize: '0.8rem', marginBottom: 10 }}>
+                {isDe ? 'Bitte fülle die Pflichtfelder aus.' : 'Please fill in the required fields.'}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="btn btn-secondary" onClick={onCancel}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
+              <button className="btn btn-primary" onClick={onSubmit}>{isDe ? 'Anmelden' : 'Register'}</button>
+            </div>
+          </Modal>
+        );
+      })()}
       {/* v15.21: Globaler Progress-Overlay während (Peer-)Cancel +
           Registrierung — blockiert die ganze Seite, damit der User nicht
           versehentlich nochmal klickt und sieht, dass die Aktion läuft. */}
