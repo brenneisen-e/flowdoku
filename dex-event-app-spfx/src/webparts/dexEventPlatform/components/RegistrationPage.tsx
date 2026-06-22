@@ -820,6 +820,10 @@ export default function RegistrationPage(): React.ReactElement {
   // v24.48: Assistenz-Abfrage als Modal beim Register-Klick (Partner/Director).
   const [assistantModalOpen, setAssistantModalOpen] = React.useState(false);
   const assistantModalDecidedRef = React.useRef(false);
+  // v24.49: Auswahl SYNCHRON im Ref festhalten — der Re-Submit aus dem Modal
+  // läuft sonst mit dem alten State-Wert (setState ist async) und die CC würde
+  // verloren gehen. { enabled, value } wird beim Klick im Modal gesetzt.
+  const delegateChoiceRef = React.useRef<{ enabled: boolean; value: string } | null>(null);
 
   const handleSubmit = async (): Promise<void> => {
     // v17.25: Demo-Showcase-Event — keine echte Anmeldung. Freundlicher
@@ -1265,9 +1269,17 @@ export default function RegistrationPage(): React.ReactElement {
       // Admin/Director, Assistenz im Picker gewählt). Die Assistenz kommt auf CC
       // der Bestätigung; die eigentliche Zugriffs-Übergabe (Zeilen-Autor) läuft
       // nach erfolgreicher Anmeldung über delegateRegistrationToAssistant.
-      const delegateAssist = (canDelegateAssistant && delegateAssistEnabled && parsedDelegateAssist
-        && parsedDelegateAssist.email.toLowerCase() !== participantEmail.toLowerCase())
-        ? parsedDelegateAssist : null;
+      // v24.49: Auswahl aus dem Ref (synchron gesetzt) lesen, Fallback auf State.
+      const choice = delegateChoiceRef.current;
+      const chosenVal = choice ? choice.value : (delegateAssistEnabled ? delegateAssistValue : '');
+      const chosenEnabled = choice ? choice.enabled : delegateAssistEnabled;
+      const chosenParsed = (() => {
+        const m = (chosenVal || '').match(/^(.+?)\s*<([^>]+@[^>]+)>\s*$/);
+        return m ? { name: m[1].trim(), email: m[2].trim() } : null;
+      })();
+      const delegateAssist = (canDelegateAssistant && chosenEnabled && chosenParsed
+        && chosenParsed.email.toLowerCase() !== participantEmail.toLowerCase())
+        ? chosenParsed : null;
       const delegateCc = delegateAssist ? delegateAssist.email : '';
 
       let anySuccess = false;
@@ -1517,6 +1529,7 @@ export default function RegistrationPage(): React.ReactElement {
       ccSelfRef.current = false;
       // v24.48: Assistenz-Entscheidung zurücksetzen (nächster Submit fragt neu).
       assistantModalDecidedRef.current = false;
+      delegateChoiceRef.current = null;
       // Kleine Verzögerung damit der User die 100%-Anzeige kurz sieht
       // bevor das Overlay wieder verschwindet.
       setTimeout(() => {
@@ -4562,13 +4575,16 @@ export default function RegistrationPage(): React.ReactElement {
           padding={24}
           ariaLabel={locale === 'de' ? 'Assistenz informieren?' : 'Inform assistant?'}
         >
+          <div style={{ display: 'inline-block', background: 'var(--dex-green, #86bc25)', color: '#fff', fontSize: '0.72rem', fontWeight: 700, padding: '4px 12px', borderRadius: 999, marginBottom: 12, letterSpacing: 0.4 }}>
+            {locale === 'de' ? 'Für Partner & Directoren' : 'For Partners & Directors'}
+          </div>
           <h3 style={{ margin: '0 0 10px', fontSize: '1.1rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
             {locale === 'de' ? 'Möchtest du deine Assistenz informieren?' : 'Do you want to inform your assistant?'}
           </h3>
-          <p style={{ margin: '0 0 14px', fontSize: '0.88rem', lineHeight: 1.55, color: 'var(--dex-gray-700)' }}>
+          <p style={{ margin: '0 0 14px', fontSize: '0.9rem', lineHeight: 1.55, color: 'var(--dex-gray-700)' }}>
             {locale === 'de'
-              ? 'Deine Assistenz bekommt die Bestätigung in Kopie (CC) und sieht deine Anmeldung anschließend als Info in ihrer „Assistenz"-Kachel. Sie kann dort eine Änderung oder Abmeldung anfordern. Verwalten kannst du die Anmeldung weiterhin selbst über „Meine Events".'
-              : 'Your assistant receives a copy (CC) of the confirmation and then sees your registration as info in their „Assistant" tile. They can request a change or cancellation there. You continue to manage the registration yourself via „My Events".'}
+              ? 'Deine Assistenz bekommt eine Kopie der Bestätigung und sieht deine Anmeldung in der App — so bleibt sie auf dem Laufenden.'
+              : 'Your assistant gets a copy of the confirmation and can see your registration in the app — so they stay in the loop.'}
           </p>
           <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: 6 }}>
             {locale === 'de' ? 'Assistenz auswählen (Name oder E-Mail)' : 'Select assistant (name or email)'}
@@ -4587,6 +4603,7 @@ export default function RegistrationPage(): React.ReactElement {
               className="btn btn-secondary"
               onClick={() => {
                 // Ohne Assistenz weiter.
+                delegateChoiceRef.current = { enabled: false, value: '' };
                 setDelegateAssistEnabled(false);
                 setDelegateAssistValue('');
                 assistantModalDecidedRef.current = true;
@@ -4602,6 +4619,7 @@ export default function RegistrationPage(): React.ReactElement {
               disabled={!parsedDelegateAssist}
               title={!parsedDelegateAssist ? (locale === 'de' ? 'Bitte zuerst eine Assistenz auswählen.' : 'Please select an assistant first.') : ''}
               onClick={() => {
+                delegateChoiceRef.current = { enabled: true, value: delegateAssistValue };
                 setDelegateAssistEnabled(true);
                 assistantModalDecidedRef.current = true;
                 setAssistantModalOpen(false);
