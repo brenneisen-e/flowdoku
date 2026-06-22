@@ -500,12 +500,30 @@ function AppContent(): React.ReactElement {
     `;
     document.head.appendChild(styleEl);
 
+    // v24.52: Auto-Fit. Auf schmaleren Bildschirmen skaliert die App sich
+    // automatisch passend herunter (wie manuelles Rauszoomen), damit sie immer
+    // vollständig passt. Greift NUR unter `designWidth` — auf großen Monitoren
+    // bleibt alles unverändert (zoom=1 → keinerlei Risiko für den Normalfall).
+    // Die Breite wird gegenkompensiert (width = 100/zoom %), damit der zentrierte
+    // Inhalt zentriert bleibt; die Höhe wird durch den Zoom geteilt, damit das
+    // Layout weiterhin den Viewport füllt (kein doppelter Scrollbalken).
+    function computeZoom(): number {
+      const designWidth = 1550;
+      const floor = 0.8;
+      const raw = (window.innerWidth || designWidth) / designWidth;
+      return Math.max(floor, Math.min(1, raw));
+    }
     function setHeight(): void {
-      if (layoutRef.current) {
-        const rect = layoutRef.current.getBoundingClientRect();
-        const available = window.innerHeight - rect.top;
-        layoutRef.current.style.height = `${Math.max(available, 400)}px`;
-      }
+      const el = layoutRef.current;
+      if (!el) return;
+      const z = computeZoom();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const s = el.style as any;
+      if (z < 1) { s.zoom = String(z); s.width = `${(100 / z).toFixed(3)}%`; }
+      else { s.zoom = ''; s.width = ''; }
+      const rect = el.getBoundingClientRect();
+      const available = window.innerHeight - rect.top;
+      el.style.height = `${Math.max(available, 400) / (z < 1 ? z : 1)}px`;
     }
 
     setHeight();
