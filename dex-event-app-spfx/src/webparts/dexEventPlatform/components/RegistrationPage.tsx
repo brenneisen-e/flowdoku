@@ -1451,6 +1451,29 @@ export default function RegistrationPage(): React.ReactElement {
           try { await delegateRegistrationToAssistant(selectedEventId!, delegateAssist); }
           catch { /* best-effort — Anmeldung bleibt gültig */ }
         }
+        // v24.46: Hat das Event ein Assistenz-CC-Feld (Organizer hat es selbst
+        // eingebaut → KEIN Modal) und der User dort eine Person angegeben, läuft
+        // dieselbe Info-Freischaltung automatisch über dieses Feld — für JEDEN
+        // Anmelder, nicht nur Partner/Director. Greift nur bei Selbst-Anmeldung
+        // (für andere: die andere Person ist die angemeldete, nicht der CC).
+        if (!registerForOther) {
+          const ccFields = (event?.eventSpecificFields || []).filter(f => (f.type === 'user' || f.type === 'roommate') && !!f.ccOnEmails);
+          const seenAssist = new Set<string>();
+          for (const f of ccFields) {
+            const raw = (customData[f.id] || '').trim();
+            for (const part of raw.split(';').map(s => s.trim()).filter(Boolean)) {
+              const m = part.match(/^(.+?)\s*<([^>]+@[^>]+)>\s*$/);
+              const aEmail = m ? m[2].trim() : '';
+              const aName = m ? m[1].trim() : '';
+              if (!aEmail) continue;
+              const key = aEmail.toLowerCase();
+              if (key === participantEmail.toLowerCase() || seenAssist.has(key)) continue;
+              seenAssist.add(key);
+              try { await delegateRegistrationToAssistant(selectedEventId!, { email: aEmail, name: aName }); }
+              catch { /* best-effort */ }
+            }
+          }
+        }
         // v24.41 Szenario B: Bei stellvertretender Anmeldung (für andere) einen
         // Info-Link anlegen — der/die Anmeldende ist Owner, die angemeldete
         // Person sieht die Anmeldung als Info unter „Meine Events".
