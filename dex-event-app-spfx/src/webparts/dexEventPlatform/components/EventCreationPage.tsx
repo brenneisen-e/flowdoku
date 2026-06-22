@@ -93,8 +93,10 @@ async function compressImage(file: File, maxWidth: number = 1200, quality: numbe
 interface CustomFieldInput {
   id: string;
   label: string;
-  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'document'; // v19.0: document = Datei-Upload
+  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'document' | 'date'; // v19.0: document = Datei-Upload; v24.25: date = Kalender-Auswahl
   required: boolean;
+  /** v24.25: Nur für `type === 'date'` — zusätzlich die Uhrzeit abfragen. */
+  withTime?: boolean;
   // Optionen als Array (incl. leerer Slots für "frisch hinzugefügte" Einträge)
   options: string[];
   visible: boolean;
@@ -191,6 +193,8 @@ function serializeCustomFields(
           ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } }
           : {}),
         ...(optionsOut ? { options: optionsOut, ...(f.multi ? { multi: true } : {}) } : {}),
+        // v24.25: Uhrzeit-Flag nur bei Datums-Feldern persistieren.
+        ...(f.type === 'date' && f.withTime ? { withTime: true } : {}),
         ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
         ...(f.type === 'checkbox' && f.confirmLabel && f.confirmLabel.trim()
           ? { confirmLabel: f.confirmLabel.trim() }
@@ -210,6 +214,62 @@ function serializeCustomFields(
         ...((f.type === 'user' || f.type === 'roommate') && f.ccOnEmails ? { ccOnEmails: true } : {}),
       } as CustomField;
     });
+}
+
+// v24.25: Heuristiken für die Feldart-Empfehlung im Feld-Editor — wenn das
+// Feld-Label nach einem Datum bzw. nach einer Person/einem Namen klingt,
+// schlägt der Wizard die passende Feldart vor (Kalender bzw. People-Picker).
+function labelLooksLikeDate(label: string): boolean {
+  return /(datum|date|check[\s-]?in|check[\s-]?out|anreise|abreise|geburtstag|birthday|deadline|frist|termin|ankunft|abfahrt|arrival|departure)/i.test(label || '');
+}
+function labelLooksLikeName(label: string): boolean {
+  return /(\bname\b|vorname|nachname|ansprechpartner|counselor|kolleg|mitarbeiter|\bmentor\b|\bpate\b|\bbuddy\b|begleitung|\bgast\b)/i.test(label || '');
+}
+
+/** v24.25: Kleiner Empfehlungs-Hinweis im Feld-Editor. Erscheint nur, wenn das
+ *  Label nach Datum/Person klingt, die aktuelle Feldart aber nicht passt — mit
+ *  einem Button, der die Feldart direkt umstellt. `allowPerson` schaltet die
+ *  Person-Empfehlung frei (nur Haupt-Felder; Sub-Event-Felder kennen den
+ *  People-Picker-Typ nicht). */
+function FieldTypeSuggestion(props: {
+  field: CustomFieldInput;
+  isDe: boolean;
+  allowPerson: boolean;
+  disabled?: boolean;
+  onApply: (type: CustomFieldInput['type']) => void;
+}): React.ReactElement | null {
+  const { field, isDe, allowPerson, disabled, onApply } = props;
+  const label = (field.label || '').trim();
+  if (!label) return null;
+  let kind: 'date' | 'person' | null = null;
+  if (labelLooksLikeDate(label) && field.type !== 'date') kind = 'date';
+  else if (allowPerson && labelLooksLikeName(label) && field.type !== 'user' && field.type !== 'roommate') kind = 'person';
+  if (!kind) return null;
+  const body = kind === 'date'
+    ? (isDe
+        ? <>Das klingt nach einem <strong>Datum</strong>. Mit der Feldart <strong>„Datum“</strong> bekommen Teilnehmer einen Kalender-Auswähler (optional mit Uhrzeit) statt eines Freitextfelds.</>
+        : <>This looks like a <strong>date</strong>. With the <strong>„Date“</strong> field type attendees get a calendar picker (optionally with time) instead of a free-text field.</>)
+    : (isDe
+        ? <>Das klingt nach einer <strong>Person</strong>. Mit der Feldart <strong>„Person“</strong> suchen Teilnehmer die Person direkt (mit Foto &amp; Standort), statt den Namen abzutippen.</>
+        : <>This looks like a <strong>person</strong>. With the <strong>„Person“</strong> field type attendees search the person directly (with photo &amp; location) instead of typing the name.</>);
+  const applyLabel = kind === 'date'
+    ? (isDe ? 'Auf „Datum" umstellen' : 'Switch to „Date"')
+    : (isDe ? 'Auf „Person" umstellen' : 'Switch to „Person"');
+  return (
+    <div style={{ marginTop: 8, marginLeft: 32, padding: '8px 12px', background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange, #ed8b00)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+      <span style={{ flex: 1, minWidth: 200, fontSize: '0.78rem', color: 'var(--dex-gray-700)', lineHeight: 1.4 }}>
+        <strong>{isDe ? 'Tipp' : 'Tip'}</strong> — „{label}“: {body}
+      </span>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => onApply(kind === 'date' ? 'date' : 'user')}
+        style={{ flexShrink: 0, background: 'var(--dex-green, #86bc25)', color: '#fff', border: 'none', borderRadius: 999, padding: '5px 12px', fontSize: '0.75rem', fontWeight: 700, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1 }}
+      >
+        {applyLabel}
+      </button>
+    </div>
+  );
 }
 
 // v19.22: Sub-Event-Titel auf den reinen Sub-Namen kürzen (Parent-Präfix
@@ -10343,6 +10403,7 @@ export default function EventCreationPage(): React.ReactElement {
                                   <option value="select">{isDe ? 'Dropdown' : 'Dropdown'}</option>
                                   <option value="number">{isDe ? 'Zahl' : 'Number'}</option>
                                   <option value="checkbox">{isDe ? 'Checkbox' : 'Checkbox'}</option>
+                                  <option value="date">{isDe ? 'Datum (Kalender)' : 'Date (calendar)'}</option>
                                 </select>
                                 <label
                                   style={{
@@ -10375,6 +10436,28 @@ export default function EventCreationPage(): React.ReactElement {
                                   <X size={18} />
                                 </button>
                               </div>
+                              {/* v24.25: Datum-Feld → optional Uhrzeit mit abfragen. */}
+                              {field.type === 'date' && (
+                                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginLeft: 32, marginTop: 8, cursor: inherit ? 'default' : 'pointer', fontSize: '0.82rem', color: 'var(--dex-gray-700)' }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={!!field.withTime}
+                                    disabled={inherit}
+                                    onChange={e => updateSubEventCustomField(se.id, field.id, { withTime: e.target.checked })}
+                                    style={{ accentColor: 'var(--dex-green, #86bc25)' }}
+                                  />
+                                  {isDe ? 'Auch Uhrzeit abfragen?' : 'Also ask for the time?'}
+                                </label>
+                              )}
+                              {/* v24.25: Feldart-Empfehlung (nur Datum — Sub-Event-Felder
+                                  kennen den People-Picker-Typ nicht). */}
+                              <FieldTypeSuggestion
+                                field={field}
+                                isDe={isDe}
+                                allowPerson={false}
+                                disabled={inherit}
+                                onApply={(t) => updateSubEventCustomField(se.id, field.id, { type: t })}
+                              />
                               <div style={{ marginLeft: 32, marginTop: 10 }}>
                                 <input
                                   className="form-input"
@@ -10641,6 +10724,30 @@ export default function EventCreationPage(): React.ReactElement {
                     </button>
                   )}
                 </div>
+                {/* v24.25: Erklär-Box zwischen den Feld-Buttons und der Feld-Liste —
+                    welche Feldarten es gibt und was sie tun (aufklappbar, grau). */}
+                <WizardHint
+                  isDe={isDe}
+                  variant="description"
+                  title={isDe ? 'Welche Feldarten gibt es?' : 'Which field types are available?'}
+                  style={{ marginBottom: 12 }}
+                >
+                  <ul style={{ margin: '4px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>
+                    <li><strong>{isDe ? 'Text (Freitext)' : 'Text (free text)'}</strong> — {isDe ? 'freie Eingabe, z.B. eine Anmerkung.' : 'free input, e.g. a note.'}</li>
+                    <li><strong>{isDe ? 'Dropdown' : 'Dropdown'}</strong> — {isDe ? 'Auswahl aus festen Optionen; optional Mehrfachauswahl.' : 'pick from preset options; optionally multi-select.'}</li>
+                    <li><strong>{isDe ? 'Zahl' : 'Number'}</strong> — {isDe ? 'nur Zahlen, z.B. eine Anzahl.' : 'numbers only, e.g. a quantity.'}</li>
+                    <li><strong>{isDe ? 'Checkbox' : 'Checkbox'}</strong> — {isDe ? 'einfache Ja/Nein-Bestätigung.' : 'simple yes/no confirmation.'}</li>
+                    <li><strong>{isDe ? 'Datum (Kalender)' : 'Date (calendar)'}</strong> — {isDe ? 'Datum über einen Kalender; optional zusätzlich die Uhrzeit.' : 'a date via a calendar; optionally with time.'}</li>
+                    <li><strong>{isDe ? 'Person' : 'Person'}</strong> — {isDe ? 'Personensuche mit Foto und Standort; die gewählte Person kann optional die An-/Abmelde-Mail in Kopie (CC) bekommen.' : 'person search with photo and location; the chosen person can optionally be CC’d on the emails.'}</li>
+                    <li><strong>{isDe ? 'Roommate' : 'Roommate'}</strong> — {isDe ? 'wie „Person“, löst zusätzlich eine Zimmerpartner-Mail an die gewählte Person aus.' : 'like „Person“, additionally triggers a roommate email to the selected person.'}</li>
+                    <li><strong>{isDe ? 'Dokument (Upload)' : 'Document (upload)'}</strong> — {isDe ? 'Teilnehmer lädt eine Datei (PDF/Bild) hoch, die an die Anmeldung angehängt wird.' : 'attendee uploads a file (PDF/image) attached to the registration.'}</li>
+                  </ul>
+                  <p style={{ margin: '8px 0 0' }}>
+                    {isDe
+                      ? 'Pro Feld kannst du zusätzlich „Pflicht“ verlangen, eine Beschreibung hinterlegen (als „i“-Box oder als Text unter dem Feld) und eine Sichtbarkeitsbedingung setzen — das Feld erscheint dann nur, wenn eine andere Frage bestimmt beantwortet wurde.'
+                      : 'Per field you can also require it, add a description (as an „i“ box or text below the field) and set a visibility condition — the field then only appears when another question has a specific answer.'}
+                  </p>
+                </WizardHint>
                 {/* v22.38: Anrede als Standard-Feld-Zeile — aktiviert über das
                     Vorgeschlagene-Felder-Modal (Eintrag „Anrede"), entfernbar
                     über das X. Kein Custom-Field (eigener askSalutation-Flag). */}
@@ -10777,13 +10884,16 @@ export default function EventCreationPage(): React.ReactElement {
                           border: '1px solid var(--dex-green, #86bc25)',
                           color: 'var(--dex-green-dark, #4a7c1f)',
                           fontWeight: 600,
-                          padding: '8px 10px',
+                          // v24.25: gleiche Höhe wie das Label-Eingabefeld
+                          // (Textarea, padding 10px 12px, 0.9rem, minHeight 0).
+                          padding: '10px 12px', fontSize: '0.9rem', minHeight: 0,
                         }}
                       >
                         <option value="text">{isDe ? 'Text (Freitext)' : 'Text (free text)'}</option>
                         <option value="select">{isDe ? 'Dropdown' : 'Dropdown'}</option>
                         <option value="number">{isDe ? 'Zahl' : 'Number'}</option>
                         <option value="checkbox">{isDe ? 'Checkbox' : 'Checkbox'}</option>
+                        <option value="date">{isDe ? 'Datum (Kalender)' : 'Date (calendar)'}</option>
                         <option value="user">{isDe ? 'Person' : 'Person'}</option>
                         <option value="roommate">{isDe ? 'Roommate' : 'Roommate'}</option>
                         <option value="document">{isDe ? 'Dokument (Upload)' : 'Document (upload)'}</option>
@@ -10831,6 +10941,27 @@ export default function EventCreationPage(): React.ReactElement {
                         <X size={18} />
                       </button>
                     </div>
+
+                    {/* v24.25: Datum-Feld → optional auch die Uhrzeit abfragen
+                        (immer sichtbar, nicht in „Details" versteckt). */}
+                    {field.type === 'date' && (
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginTop: 8, marginLeft: 32, cursor: 'pointer', fontSize: '0.82rem', color: 'var(--dex-gray-700)' }}>
+                        <input
+                          type="checkbox"
+                          checked={!!field.withTime}
+                          onChange={e => updateCustomField(field.id, { withTime: e.target.checked })}
+                          style={{ accentColor: 'var(--dex-green, #86bc25)' }}
+                        />
+                        {isDe ? 'Auch Uhrzeit abfragen?' : 'Also ask for the time?'}
+                      </label>
+                    )}
+                    {/* v24.25: Feldart-Empfehlung (Datum/Person) anhand des Labels. */}
+                    <FieldTypeSuggestion
+                      field={field}
+                      isDe={isDe}
+                      allowPerson
+                      onApply={(t) => updateCustomField(field.id, { type: t })}
+                    />
 
                     {isExpanded && (<>
                     {/* v18.41: People-Picker-Feld → ausgewählte Person bei
@@ -11414,6 +11545,7 @@ export default function EventCreationPage(): React.ReactElement {
                                       <option value="select">{isDe ? 'Dropdown' : 'Dropdown'}</option>
                                       <option value="number">{isDe ? 'Zahl' : 'Number'}</option>
                                       <option value="checkbox">{isDe ? 'Checkbox' : 'Checkbox'}</option>
+                                      <option value="date">{isDe ? 'Datum (Kalender)' : 'Date (calendar)'}</option>
                                     </select>
                                     <label
                                       style={{
@@ -11468,6 +11600,26 @@ export default function EventCreationPage(): React.ReactElement {
                                       <X size={18} />
                                     </button>
                                   </div>
+
+                                  {/* v24.25: Datum-Feld → optional Uhrzeit mit abfragen. */}
+                                  {field.type === 'date' && (
+                                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, marginLeft: 32, marginTop: 8, cursor: 'pointer', fontSize: '0.82rem', color: 'var(--dex-gray-700)' }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={!!field.withTime}
+                                        onChange={e => updateSubEventCustomField(se.id, field.id, { withTime: e.target.checked })}
+                                        style={{ accentColor: 'var(--dex-green, #86bc25)' }}
+                                      />
+                                      {isDe ? 'Auch Uhrzeit abfragen?' : 'Also ask for the time?'}
+                                    </label>
+                                  )}
+                                  {/* v24.25: Feldart-Empfehlung (nur Datum). */}
+                                  <FieldTypeSuggestion
+                                    field={field}
+                                    isDe={isDe}
+                                    allowPerson={false}
+                                    onApply={(t) => updateSubEventCustomField(se.id, field.id, { type: t })}
+                                  />
 
                                   {/* Beschreibung pro Feld */}
                                   <div style={{ marginLeft: 32, marginTop: 10 }}>

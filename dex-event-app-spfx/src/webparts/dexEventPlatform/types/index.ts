@@ -384,9 +384,13 @@ export interface EventSpecificField {
   label: string;
   // v19.0: 'document' = PDF/Bild-Upload, der als Attachment an die Teilnehmer-
   // Zeile gehängt wird (kein Spaltenwert).
-  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'document';
+  // v24.25: 'date' = Datums-/Kalender-Auswahl (optional mit Uhrzeit via withTime).
+  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'document' | 'date';
   required: boolean;
   options?: string[];
+  /** v24.25: Nur für `type === 'date'` — zusätzlich die Uhrzeit abfragen
+   *  (datetime-local statt date). */
+  withTime?: boolean;
   helpText?: string;
   /** v18.18: Darstellung der Beschreibung (`helpText`). `'tooltip'` (Default,
    *  Backward-Compat): erscheint als „i"-Hover-Box neben dem Label.

@@ -8,6 +8,12 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.27.0 | 2026-06-22 | Feature | Organizer Center: Die Hinweisbox empfiehlt jetzt auch eine bessere Feldart — klingt ein Custom-Feld nach einem Datum oder einer Person, ist es aber als Freitext angelegt, wird der Wechsel auf „Datum" bzw. „Person" vorgeschlagen (mit dem Hinweis, dass bestehende Antworten erhalten bleiben). |
+| 24.26.0 | 2026-06-22 | Bugfix | Organizer Center: Die drei sehr ähnlichen Sichtbarkeits-Hinweise (kleine Zielgruppe / Sub-Event mit kleiner Zielgruppe / Sub-Event weiter geöffnet als das Event) sind jetzt zu einer übersichtlichen Karte „Sichtbarkeit — bitte prüfen" zusammengefasst, die nur die zutreffenden Punkte als Liste zeigt. |
+| 24.25.0 | 2026-06-22 | Feature | Event-Erstellung: Neue Feldart „Datum (Kalender)" — Teilnehmer wählen ein Datum über einen Kalender. Optional kann zusätzlich die Uhrzeit abgefragt werden („Auch Uhrzeit abfragen?"). Verfügbar bei Haupt- und Sub-Event-Feldern. |
+| 24.25.0 | 2026-06-22 | Feature | Event-Erstellung: Der Wizard schlägt jetzt die passende Feldart vor — klingt ein Feld nach einem Datum (z.B. „Check-in"), wird „Datum" empfohlen; klingt es nach einer Person/einem Namen, wird der Personen-Picker („Person") empfohlen. Ein Klick übernimmt die Empfehlung. |
+| 24.25.0 | 2026-06-22 | Bugfix | Event-Erstellung: Feld-Name und Feldart-Auswahl sind jetzt gleich hoch. |
+| 24.25.0 | 2026-06-22 | Feature | Event-Erstellung: Über der Feld-Liste gibt es eine aufklappbare Box „Welche Feldarten gibt es?", die alle Feldarten und ihre Funktionen erklärt. |
 | 24.24.0 | 2026-06-22 | Bugfix | Startseite: „Deloitte Events" wird im Willkommenstext nicht mehr getrennt (steht immer zusammen in einer Zeile). |
 | 24.24.0 | 2026-06-22 | Bugfix | Demo-Modus: Die „Admin"-Kachel wird nicht mehr angezeigt — der Demo-Modus zeigt jetzt exakt die normale Nutzer-Ansicht. |
 | 24.24.0 | 2026-06-22 | Feature | „Organizer werden?" auf der Startseite öffnet jetzt dasselbe Anfrage-Fenster wie die grüne Box auf der Startseite (einheitlicher Ablauf). |

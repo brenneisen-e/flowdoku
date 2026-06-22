@@ -1994,6 +1994,17 @@ export default function RegistrationPage(): React.ReactElement {
           </div>
         );
       })()
+    ) : field.type === 'date' ? (
+      // v24.25: Datums-Feld — Kalender-Auswahl. Mit withTime zusätzlich Uhrzeit
+      // (datetime-local). Der Wert wird als String gespeichert (wie alle
+      // Custom-Field-Antworten).
+      <input
+        className="form-input"
+        type={field.withTime ? 'datetime-local' : 'date'}
+        value={vals[field.id] || ''}
+        onChange={e => setVals({ ...vals, [field.id]: e.target.value })}
+        style={inputStyleGreen}
+      />
     ) : (
       <input className="form-input" value={vals[field.id] || ''} onChange={e => setVals({ ...vals, [field.id]: e.target.value })} placeholder={displayLabel} style={inputStyleGreen} />
     )}
