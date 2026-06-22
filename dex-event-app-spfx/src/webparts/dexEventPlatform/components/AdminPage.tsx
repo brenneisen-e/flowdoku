@@ -6256,10 +6256,11 @@ export default function AdminPage(): React.ReactElement {
           // Event"-Hinweis ist entfallen — er erschien immer und war reines
           // Erklär-Rauschen. Hinweise kommen jetzt nur noch bei echten
           // möglichen Inkonsistenzen (3c/3d/3e).
-          // 3c) v22.59: Sehr kleine Zielgruppe — nur wenige Einzeladressen, kein
-          // Standortfilter und kein „alle Mitarbeiter". Oft hat der Organizer
-          // dann nur sich/die Organizer eingetragen und den eigentlichen Kreis
-          // vergessen.
+          // 3c–e) v24.26: Sichtbarkeits-Hinweise KONSOLIDIERT. Früher liefen drei
+          // sehr ähnliche Einzelkarten (kleine Zielgruppe / Sub-Event mit eigener
+          // kleiner Zielgruppe / Sub-Event weiter geöffnet als das Event). Jetzt
+          // eine gemeinsame „Sichtbarkeit prüfen"-Karte, die nur die tatsächlich
+          // zutreffenden Punkte als Liste zeigt — ein Hinweis, ein Ausblenden.
           {
             const aud = selectedEvent.audienceFilter || [];
             const loc = selectedEvent.locationAudience || [];
@@ -6267,30 +6268,21 @@ export default function AdminPage(): React.ReactElement {
             const resolved = (selectedEvent.audienceResolvedEmails || []).map(s => (s || '').trim()).filter(Boolean);
             const atCount = aud.filter(a => a.indexOf('@') >= 0).length;
             const effCount = resolved.length > 0 ? resolved.length : atCount;
-            if (aud.length > 0 && loc.length === 0 && !hasAllPattern && effCount > 0 && effCount < 10) {
-              hints.push({
-                id: 'tiny-audience',
-                title: isDe ? 'Sehr kleine Zielgruppe — Absicht?' : 'Very small audience — intended?',
-                body: isDe
-                  ? <>Die Sichtbarkeit umfasst aktuell nur <strong>{effCount} {effCount === 1 ? 'Person' : 'Personen'}</strong> (einzelne Adressen — kein Standortfilter, kein Mailverteiler, nicht „alle Mitarbeiter“). Falls du eigentlich einen größeren Kreis erreichen willst, ergänze einen Standort oder Verteiler über „Event bearbeiten“ → Schritt 4. Ist das Event bewusst nur für diese wenigen Personen, kannst du den Hinweis ausblenden.</>
-                  : <>The visibility currently covers only <strong>{effCount} {effCount === 1 ? 'person' : 'people'}</strong> (individual addresses — no location filter, no mailing list, not “all employees”). If you actually want to reach a larger group, add a location or distribution list via “Edit event” → step 4. If the event is intentionally for these few people only, you can dismiss this hint.</>,
-              });
-            }
-          }
-          // 3d) v22.60: Sub-Events mit EIGENER kleiner Sichtbarkeit. Die Klammer
-          // kann korrekt sein, aber ein Sub-Event hat eine abweichende, sehr
-          // enge Zielgruppe (z.B. nur ein paar Einzeladressen) → eigener Hinweis
-          // pro betroffenem Sub-Event. Nur wenn die Sub-Sichtbarkeit sich von
-          // der Klammer unterscheidet (sonst ist es nur geerbt).
-          {
-            const parentAudKey = (selectedEvent.audienceFilter || []).join('|');
-            const parentLocKey = (selectedEvent.locationAudience || []).join('|');
+            // (1) Hauptevent sehr kleine Zielgruppe
+            const mainTiny = aud.length > 0 && loc.length === 0 && !hasAllPattern && effCount > 0 && effCount < 10;
+
+            const parentAudKey = aud.join('|');
+            const parentLocKey = loc.join('|');
+            const parentShowsAll = (aud.length === 0 && loc.length === 0) || hasAllPattern;
+            // (2) Sub-Events mit eigener sehr kleiner Sichtbarkeit
+            // (3) Sub-Events weiter/anders geöffnet als die Klammer
             const smallSubs: string[] = [];
+            const riskySubs: string[] = [];
             for (const ch of childEventsOf(selectedEvent.id)) {
               const cAud = ch.audienceFilter || [];
               const cLoc = ch.locationAudience || [];
-              if (cAud.length === 0 && cLoc.length === 0) continue; // keine eigene Sichtbarkeit
-              if (cAud.join('|') === parentAudKey && cLoc.join('|') === parentLocKey) continue; // nur geerbt
+              if (cAud.length === 0 && cLoc.length === 0) continue; // erbt die Klammer
+              if (cAud.join('|') === parentAudKey && cLoc.join('|') === parentLocKey) continue; // identisch zur Klammer
               const cHasAll = cAud.some(a => { const f = (a || '').toLowerCase(); return f === 'all' || f === 'deall'; });
               const cResolved = (ch.audienceResolvedEmails || []).map(s => (s || '').trim()).filter(Boolean);
               const cAt = cAud.filter(a => a.indexOf('@') >= 0).length;
@@ -6298,46 +6290,36 @@ export default function AdminPage(): React.ReactElement {
               if (cAud.length > 0 && cLoc.length === 0 && !cHasAll && cEff > 0 && cEff < 10) {
                 smallSubs.push(`${shortSubEventTitle(ch.title, selectedEvent.title)} (${cEff})`);
               }
-            }
-            if (smallSubs.length > 0) {
-              hints.push({
-                id: 'tiny-sub-audience',
-                title: isDe ? 'Sub-Event mit sehr kleiner Zielgruppe' : 'Sub-event with very small audience',
-                body: isDe
-                  ? <>Diese Sub-Events haben eine <strong>eigene, sehr kleine Sichtbarkeit</strong> (nur wenige Einzeladressen, kein Standort/Verteiler): <strong>{smallSubs.join(', ')}</strong>. Die Klammer-Sichtbarkeit kann passen, aber wer in der jeweiligen Sub-Event-Liste nicht steht, kann sich für dieses Sub-Event nicht anmelden. Prüfen/anpassen über „Event bearbeiten“ → Schritt 4 (Tab des Sub-Events) → „Sichtbarkeit prüfen“.</>
-                  : <>These sub-events have their <strong>own, very small visibility</strong> (only a few individual addresses, no location/distribution list): <strong>{smallSubs.join(', ')}</strong>. The bracket visibility may be fine, but anyone not in the respective sub-event list cannot register for that sub-event. Check/adjust via “Edit event” → step 4 (sub-event tab) → “Check visibility”.</>,
-              });
-            }
-          }
-          // 3e) v22.61: Person nur im Sub-Event, aber nicht in der Klammer →
-          // kann das Event gar nicht öffnen (Zugang läuft zur Laufzeit über die
-          // Klammer-Sichtbarkeit; Sub-Events werden erst auf der Anmeldeseite
-          // der Klammer gefiltert). Risiko besteht, wenn die Klammer eingeschränkt
-          // ist UND ein Sub-Event eine abweichende eigene Sichtbarkeit hat.
-          {
-            const pAud = selectedEvent.audienceFilter || [];
-            const pLoc = selectedEvent.locationAudience || [];
-            const parentShowsAll = (pAud.length === 0 && pLoc.length === 0)
-              || pAud.some(a => { const f = (a || '').toLowerCase(); return f === 'all' || f === 'deall'; });
-            const pAudKey = pAud.join('|');
-            const pLocKey = pLoc.join('|');
-            const riskySubs: string[] = [];
-            if (!parentShowsAll) {
-              for (const ch of childEventsOf(selectedEvent.id)) {
-                const cAud = ch.audienceFilter || [];
-                const cLoc = ch.locationAudience || [];
-                if (cAud.length === 0 && cLoc.length === 0) continue; // erbt die Klammer → kein zusätzliches Publikum
-                if (cAud.join('|') === pAudKey && cLoc.join('|') === pLocKey) continue; // identisch zur Klammer
+              if (!parentShowsAll) {
                 riskySubs.push(shortSubEventTitle(ch.title, selectedEvent.title));
               }
             }
-            if (riskySubs.length > 0) {
+
+            if (mainTiny || smallSubs.length > 0 || riskySubs.length > 0) {
               hints.push({
-                id: 'sub-not-in-parent',
-                title: isDe ? 'Sub-Event für mehr Leute geöffnet als das Event?' : 'Sub-event open to more people than the event?',
-                body: isDe
-                  ? <>Bei diesen Sub-Events hast du <strong>andere Leute ausgewählt als beim Event selbst</strong>: <strong>{riskySubs.join(', ')}</strong>. Das kann ein Problem sein: Wer nur beim Sub-Event ausgewählt ist, aber nicht beim Event, <strong>kann das Event gar nicht öffnen</strong> — und sieht das Sub-Event deshalb nie. Damit das passt, sollten beim Event mindestens alle dabei sein, die irgendein Sub-Event sehen sollen. Zum Vergleichen: „Sichtbarkeit prüfen“ (dort pro Sub-Event).</>
-                  : <>For these sub-events you picked <strong>different people than for the event itself</strong>: <strong>{riskySubs.join(', ')}</strong>. That can be a problem: anyone picked only for the sub-event but not for the event <strong>can’t open the event at all</strong> — and therefore never sees the sub-event. To make it work, the event should include at least everyone who should see any sub-event. To compare: “Check visibility” (per sub-event).</>,
+                id: 'visibility-check',
+                title: isDe ? 'Sichtbarkeit — bitte prüfen' : 'Visibility — please check',
+                body: isDe ? (
+                  <>
+                    Schau dir kurz die Zielgruppe an — folgendes ist aufgefallen:
+                    <ul style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>
+                      {mainTiny && <li>Das <strong>Event</strong> ist nur für <strong>{effCount} {effCount === 1 ? 'Person' : 'Personen'}</strong> sichtbar (einzelne Adressen — kein Standort/Verteiler, nicht „alle Mitarbeiter“). Falls du mehr Leute erreichen willst, ergänze einen Standort oder Verteiler.</li>}
+                      {smallSubs.length > 0 && <li>Diese <strong>Sub-Events</strong> haben eine eigene, sehr kleine Zielgruppe: <strong>{smallSubs.join(', ')}</strong>. Wer dort nicht gelistet ist, kann sich nicht anmelden.</li>}
+                      {riskySubs.length > 0 && <li>Diese <strong>Sub-Events</strong> sind für andere/mehr Leute geöffnet als das Event: <strong>{riskySubs.join(', ')}</strong>. Wer nur beim Sub-Event steht, aber nicht beim Event, <strong>kann das Event nicht öffnen</strong> und sieht das Sub-Event nie — beim Event sollten alle dabei sein, die irgendein Sub-Event sehen sollen.</li>}
+                    </ul>
+                    <div style={{ marginTop: 6 }}>Prüfen/anpassen über „Event bearbeiten“ → Schritt 4 (ggf. Sub-Event-Tab) → „Sichtbarkeit prüfen“.</div>
+                  </>
+                ) : (
+                  <>
+                    Take a quick look at the audience — the app noticed:
+                    <ul style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>
+                      {mainTiny && <li>The <strong>event</strong> is visible to only <strong>{effCount} {effCount === 1 ? 'person' : 'people'}</strong> (individual addresses — no location/list, not “all employees”). If you want to reach more people, add a location or distribution list.</li>}
+                      {smallSubs.length > 0 && <li>These <strong>sub-events</strong> have their own, very small audience: <strong>{smallSubs.join(', ')}</strong>. Anyone not listed there cannot register.</li>}
+                      {riskySubs.length > 0 && <li>These <strong>sub-events</strong> are open to other/more people than the event: <strong>{riskySubs.join(', ')}</strong>. Anyone listed only on the sub-event but not on the event <strong>cannot open the event</strong> and never sees the sub-event — the event should include everyone who should see any sub-event.</li>}
+                    </ul>
+                    <div style={{ marginTop: 6 }}>Check/adjust via “Edit event” → step 4 (sub-event tab if needed) → “Check visibility”.</div>
+                  </>
+                ),
               });
             }
           }

@@ -44,6 +44,7 @@ export interface ReleaseNote {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '24.26.0', date: '2026-06-22', bereich: 'Organizer Center', type: 'Bugfix', text: 'Die drei sehr ähnlichen Sichtbarkeits-Hinweise im Organizer Center (kleine Zielgruppe / Sub-Event mit eigener kleiner Zielgruppe / Sub-Event weiter geöffnet als das Event) sind zu einer einzigen, übersichtlichen Karte „Sichtbarkeit — bitte prüfen" zusammengefasst. Sie zeigt nur die tatsächlich zutreffenden Punkte als Liste — ein Hinweis statt drei.' },
   { version: '24.25.0', date: '2026-06-22', bereich: 'Event-Erstellung', type: 'Feature', text: 'Neue Feldart „Datum (Kalender)": Teilnehmer wählen ein Datum bequem über einen Kalender aus. Optional lässt sich zusätzlich die Uhrzeit abfragen („Auch Uhrzeit abfragen?"). Funktioniert bei Haupt- und Sub-Event-Feldern.' },
   { version: '24.25.0', date: '2026-06-22', bereich: 'Event-Erstellung', type: 'Feature', text: 'Der Wizard erkennt jetzt, wenn ein Feld nach einem Datum klingt (z.B. „Check-in"/„Check-out") und empfiehlt die Feldart „Datum"; klingt ein Feld nach einer Person/einem Namen, empfiehlt er den Personen-Picker „Person" (mit Suche, Foto und Standort). Ein Klick übernimmt die Empfehlung.' },
   { version: '24.25.0', date: '2026-06-22', bereich: 'Event-Erstellung', type: 'Bugfix', text: 'Beim Anlegen von Feldern sind das Feld-Namen-Eingabefeld und die Feldart-Auswahl jetzt gleich hoch.' },
