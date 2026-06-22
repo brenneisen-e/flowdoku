@@ -375,6 +375,28 @@
     .landing__text p { color: var(--dex-gray-600); font-size: clamp(0.92rem, 1.4vw, 1.05rem); line-height: 1.45; text-wrap: balance; }
     .landing__card .btn { max-width: 480px; width: 100%; }
 
+    /* v24.55: Höhen-responsiv — auf niedrigeren Bildschirmen (Laptops) schrumpfen
+       Kreis, Abstände und Schrift, damit der ganze Willkommens-Screen ohne
+       Scrollen passt (statt eines globalen Zoom-Hacks). Greift gestaffelt. */
+    @media (max-height: 900px) {
+      .landing__orb { width: clamp(130px, 20vh, 220px); height: clamp(130px, 20vh, 220px); }
+      .landing__hero { gap: clamp(8px, 1.6vh, 22px); padding: clamp(10px, 2vh, 28px) 32px; }
+      .landing__card { gap: clamp(12px, 2vh, 28px); padding: clamp(20px, 3vh, 44px) clamp(24px, 5vw, 64px); }
+      .landing__text h1 { font-size: clamp(1.4rem, 2.8vw, 2rem); }
+    }
+    @media (max-height: 760px) {
+      .landing__orb { width: clamp(96px, 15vh, 160px); height: clamp(96px, 15vh, 160px); }
+      .landing__hero { gap: clamp(6px, 1.2vh, 16px); padding: clamp(8px, 1.5vh, 20px) 32px; }
+      .landing__card { gap: clamp(8px, 1.4vh, 18px); padding: clamp(14px, 2vh, 28px) clamp(20px, 5vw, 56px); }
+      .landing__text h1 { font-size: clamp(1.2rem, 2.4vw, 1.7rem); }
+      .landing__text p { font-size: clamp(0.82rem, 1.2vw, 0.95rem); }
+    }
+    @media (max-height: 620px) {
+      .landing__orb { width: clamp(72px, 12vh, 120px); height: clamp(72px, 12vh, 120px); }
+      .landing__card { gap: clamp(6px, 1vh, 14px); }
+      .landing__text h1 { font-size: clamp(1.05rem, 2vw, 1.4rem); }
+    }
+
     /* ========== Start Page ========== */
     .start-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; max-width: 900px; margin: 0 auto; }
     .start-grid--with-admin { grid-template-columns: 1fr 1fr 1fr; }
