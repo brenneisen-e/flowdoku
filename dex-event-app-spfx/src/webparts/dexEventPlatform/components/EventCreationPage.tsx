@@ -5009,7 +5009,7 @@ export default function EventCreationPage(): React.ReactElement {
     [
       // v24.12 Schritt 2: Organizer & Team
       'Organizer auswählen — bekommen alle Organizer-Mails und sehen das Event im Admin Center; einzelne lassen sich von der Anmeldeseite ausblenden',
-      'Anzeige der Organizer auf dem Registerformular wählen (klein/groß) — mit Live-Vorschau',
+      'Anzeige der Organizer auf dem Anmeldeformular wählen (klein/groß) — mit Live-Vorschau',
       'Optional: externen Ansprechpartner (z.B. Service-Mail) angeben',
       'Test-Team: sieht das Event schon im Entwurf',
       'Check-in-Team: bedient am Event-Tag nur das Check-in-Tool',
@@ -6497,8 +6497,8 @@ export default function EventCreationPage(): React.ReactElement {
                 <div style={{ fontWeight: 800, fontSize: '1.02rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Organizer' : 'Organizers'}</div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
                   {isDe
-                    ? 'Diese Personen können die Teilnehmerliste sehen und das Event einstellen.'
-                    : 'These people can see the attendee list and configure the event.'}
+                    ? 'Diese Personen verantworten die Eventkoordination, können das Event ändern und die Teilnehmerliste einsehen.'
+                    : 'These people are responsible for coordinating the event, can edit it and view the attendee list.'}
                 </div>
               </div>
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
@@ -6797,7 +6797,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                   {/* v24.4 (I) / v24.10 (Q): grüne Zwischenüberschrift + Live-Vorschau. */}
                   <div className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, color: 'var(--dex-green-dark, #4a7c1f)' }}>
-                    {isDe ? 'Anzeige auf dem Registerformular' : 'Display on the registration form'}
+                    {isDe ? 'Anzeige auf dem Anmeldeformular' : 'Display on the registration form'}
                     <InfoTooltip text={isDe
                       ? <>
                           <strong>Was du hier einstellst:</strong> wie die <strong>Organizer</strong> auf der Anmelde-Seite dargestellt werden.<br /><br />
@@ -6987,8 +6987,8 @@ export default function EventCreationPage(): React.ReactElement {
                 <div style={{ fontWeight: 800, fontSize: '1.02rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Erweitertes Organisations-Team' : 'Extended organization team'}</div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
                   {isDe
-                    ? 'Test-Team (sieht das Event schon im Entwurf) und Check-in-Team (bedient am Event-Tag nur das Check-in-Tool).'
-                    : 'Test team (sees the draft early) and check-in team (operates only the check-in tool on the event day).'}
+                    ? 'Diese Personen unterstützen die Organizer. Sie können das Event nicht anpassen und die Teilnehmerliste nur bedingt einsehen (Check-in-Team beim Check-in).'
+                    : 'These people support the organizers. They cannot edit the event and can only view the attendee list to a limited extent (check-in team during check-in).'}
                 </div>
               </div>
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
@@ -10193,6 +10193,34 @@ export default function EventCreationPage(): React.ReactElement {
                                   onChange={e => updateSubEventCustomField(se.id, field.id, { helpText: e.target.value })}
                                   style={{ width: '100%', fontSize: '0.82rem', padding: '6px 10px' }}
                                 />
+                                {/* v24.14 BUG-FIX: helpTextStyle-Wahl fehlte bei Sub-Event-Feldern
+                                    (nur das Hauptevent hatte sie) — „Text unter dem Feld" wurde
+                                    deshalb beim Sub-Event nie gespeichert. */}
+                                {field.helpText && field.helpText.trim() && (
+                                  <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: '0.78rem', color: 'var(--dex-gray-600)', flexWrap: 'wrap' }}>
+                                    <span style={{ fontWeight: 600 }}>{isDe ? 'Anzeige:' : 'Display:'}</span>
+                                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: inherit ? 'default' : 'pointer' }}>
+                                      <input
+                                        type="radio"
+                                        name={`seHelpStyle-${se.id}-${field.id}`}
+                                        disabled={inherit}
+                                        checked={(field.helpTextStyle || 'tooltip') !== 'inline'}
+                                        onChange={() => updateSubEventCustomField(se.id, field.id, { helpTextStyle: 'tooltip' })}
+                                      />
+                                      {isDe ? '„i"-Info-Box (Hover)' : '„i" info box (hover)'}
+                                    </label>
+                                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: inherit ? 'default' : 'pointer' }}>
+                                      <input
+                                        type="radio"
+                                        name={`seHelpStyle-${se.id}-${field.id}`}
+                                        disabled={inherit}
+                                        checked={field.helpTextStyle === 'inline'}
+                                        onChange={() => updateSubEventCustomField(se.id, field.id, { helpTextStyle: 'inline' })}
+                                      />
+                                      {isDe ? 'Text unter dem Feld-Titel' : 'Text below the field title'}
+                                    </label>
+                                  </div>
+                                )}
                               </div>
                               {field.type === 'select' && (
                                 <div style={{

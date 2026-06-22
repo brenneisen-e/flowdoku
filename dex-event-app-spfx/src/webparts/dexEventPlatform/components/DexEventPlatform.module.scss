@@ -696,7 +696,11 @@
       font-weight: 700 !important;
       color: var(--dex-green-dark, #6b9a1e) !important;
     }
-    .react-datepicker__day--today.react-datepicker__day--selected { color: #fff !important; }
+    /* Heute UND ausgewählt/keyboard-selected (grüner Kreis): Schrift weiß,
+       sonst überschreibt die --today-Regel die weiße Schrift und „heute" wäre
+       grün auf grün = unsichtbar. */
+    .react-datepicker__day--today.react-datepicker__day--selected,
+    .react-datepicker__day--today.react-datepicker__day--keyboard-selected { color: #fff !important; }
     .react-datepicker__time-container {
       border-left: 1px solid var(--dex-gray-200) !important;
     }

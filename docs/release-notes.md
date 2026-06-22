@@ -8,6 +8,9 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.14.0 | 2026-06-18 | Bugfix | Sub-Event-Felder: Wahl „i"-Info vs. „Text unter dem Feld" wird jetzt gespeichert (fehlte bisher, blieb immer „i"). |
+| 24.14.0 | 2026-06-18 | Bugfix | Datumsauswahl: heutiges/ausgewähltes Datum jetzt weiß (auf grünem Kreis lesbar). |
+| 24.14.0 | 2026-06-18 | Feature | Offizielles Deloitte-Logo als Bild im App-Header und im Rollen-Matrix-PDF (statt nachgebautem Schriftzug). |
 | 24.13.0 | 2026-06-18 | Feature | Startseite: kleine Karte „Du bist für … angemeldet" (mit Bild, Datum, Ort, Countdown in Tagen bzw. Stunden) pro aktivem Event, für das man angemeldet ist — Klick springt zu „Meine Events". Nicht doppelt, wenn schon eine Check-in-/QR-Box läuft. |
 | 24.13.0 | 2026-06-18 | Bugfix | Rollen-Matrix-PDF: Deloitte-Logo oben links jetzt schwarz (auf weißem Grund sichtbar). |
 | 24.12.0 | 2026-06-18 | Feature | Organizer-Einstellungen als eigener Wizard-Schritt („Schritt 2 — Organizer & Team": Organizer, Ansprechpartner, Test-/Check-in-Team). Alle Folgeschritte neu nummeriert (inkl. geführter Tour und „Prüfen"-Übersicht). |
