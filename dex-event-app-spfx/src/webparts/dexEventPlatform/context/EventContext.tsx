@@ -978,6 +978,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           return !!(ov && ov._hideOrganizer);
         } catch { return false; }
       })(),
+      // v24.15: „nur einzelne ausblenden"-Modus (Piggyback _hideOrgIndividual).
+      hideOrganizerIndividualOnly: ((): boolean => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          return !!(ov && ov._hideOrgIndividual);
+        } catch { return false; }
+      })(),
       // v24.8 (J): einzelne ausgeblendete Organizer (Piggyback _hiddenOrganizers).
       hiddenOrganizerEmails: ((): string[] => {
         try {

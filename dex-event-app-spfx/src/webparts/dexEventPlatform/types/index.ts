@@ -118,6 +118,10 @@ export interface DeloitteEvent {
    *  Organizer-Rechte, Mails und BCC bleiben unberührt. Persistiert als
    *  Piggyback `_hideOrganizer` in EmailTemplateOverrides. */
   hideOrganizer?: boolean;
+  /** v24.15: Wenn true (nur relevant wenn hideOrganizer=true): NICHT alle
+   *  Organizer ausblenden, sondern nur die in hiddenOrganizerEmails. Piggyback
+   *  `_hideOrgIndividual`. */
+  hideOrganizerIndividualOnly?: boolean;
   /** v24.8 (J): EINZELNE Organizer (E-Mails, lowercase), die auf der
    *  Anmelde-Seite nicht als Ansprechpartner gezeigt werden — Rechte bleiben.
    *  Piggyback `_hiddenOrganizers` in EmailTemplateOverrides. */

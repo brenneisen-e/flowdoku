@@ -44,6 +44,7 @@ export interface ReleaseNote {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '24.15.0', date: '2026-06-18', bereich: 'Event-Erstellung', type: 'Feature', text: 'Organizer-Anzeige neu geregelt: Erst „Organizer ausblenden" (blendet alle aus). Gibt es mehrere Organizer, erscheint zusätzlich „Nur einzelne Organizer ausblenden" — dann blendet man per Klick auf einen Namen gezielt einzelne aus (die übrigen bleiben sichtbar). Das Einzel-Ausblenden ist also nicht mehr versehentlich möglich.' },
   { version: '24.14.0', date: '2026-06-18', bereich: 'Event-Erstellung', type: 'Bugfix', text: 'Bei Sub-Event-Feldern lässt sich jetzt — wie beim Hauptevent — wählen, ob der Hilfetext als „i"-Info (beim Drüberfahren) oder direkt als Text unter dem Feld angezeigt wird. Diese Wahl wurde vorher beim Sub-Event nicht gespeichert (es blieb immer das „i").' },
   { version: '24.14.0', date: '2026-06-18', bereich: 'Allgemein', type: 'Bugfix', text: 'Datumsauswahl: Das heutige (ausgewählte) Datum ist im Kalender jetzt weiß geschrieben und damit auf dem grünen Kreis lesbar (vorher unsichtbar).' },
   { version: '24.14.0', date: '2026-06-18', bereich: 'Allgemein', type: 'Feature', text: 'Das offizielle Deloitte-Logo wird jetzt im Kopfbereich der App und im Rollen-Matrix-PDF als Bild angezeigt (statt eines nachgebauten Schriftzugs).' },

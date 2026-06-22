@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.15.0 | 2026-06-18 | Feature | Organizer-Anzeige: erst „Organizer ausblenden" (alle aus); bei mehreren Organizern zusätzlich „Nur einzelne Organizer ausblenden" (per Klick auf Namen) — kein versehentliches Einzel-Ausblenden mehr. |
 | 24.14.0 | 2026-06-18 | Bugfix | Sub-Event-Felder: Wahl „i"-Info vs. „Text unter dem Feld" wird jetzt gespeichert (fehlte bisher, blieb immer „i"). |
 | 24.14.0 | 2026-06-18 | Bugfix | Datumsauswahl: heutiges/ausgewähltes Datum jetzt weiß (auf grünem Kreis lesbar). |
 | 24.14.0 | 2026-06-18 | Feature | Offizielles Deloitte-Logo als Bild im App-Header und im Rollen-Matrix-PDF (statt nachgebautem Schriftzug). |
