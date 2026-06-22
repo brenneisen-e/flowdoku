@@ -164,8 +164,21 @@ export default function StartPage(): React.ReactElement {
         @media (max-width: 760px) {
           .start-grid--with-adminhub { grid-template-columns: 1fr 1fr !important; }
         }
+        /* v24.38: Dynamische Spaltenzahl — alle Kacheln (inkl. Assistenz)
+           bleiben in EINER Zeile, statt in eine zweite umzubrechen. Steht
+           bewusst als LETZTE Regel im Block, damit sie die festen
+           --with-checkin/--with-adminhub-Regeln (gleiche Spezifität)
+           per Source-Order überschreibt. */
+        ${(() => {
+          const n = 3 + (showCheckInTile ? 1 : 0) + (showAdminHubTile ? 1 : 0) + (showAssistTile ? 1 : 0);
+          const maxW = Math.min(1640, 250 * n + 90);
+          return `.start-grid--dyncols { grid-template-columns: repeat(${n}, minmax(0, 1fr)) !important; max-width: ${maxW}px !important; }
+        .start-grid--dyncols .start-card { width: 100%; }
+        @media (max-width: 1100px) { .start-grid--dyncols { grid-template-columns: repeat(3, 1fr) !important; } }
+        @media (max-width: 760px) { .start-grid--dyncols { grid-template-columns: 1fr 1fr !important; } }`;
+        })()}
       `}</style>
-      <div className={`start-grid${showAdminTile ? ' start-grid--with-admin' : ''}${showCheckInTile ? ' start-grid--with-checkin' : ''}${showAdminHubTile ? ' start-grid--with-adminhub' : ''}`}>
+      <div className={`start-grid start-grid--dyncols${showAdminTile ? ' start-grid--with-admin' : ''}${showCheckInTile ? ' start-grid--with-checkin' : ''}${showAdminHubTile ? ' start-grid--with-adminhub' : ''}`}>
         {/* v22.21: data-tour-Anker — Spotlight-Ziele des geführten Tutorials. */}
         <div className="card card-clickable start-card" data-tour="tile-register" onClick={() => navigate('register')}>
           <div className="start-card__icon">
