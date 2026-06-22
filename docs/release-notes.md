@@ -8,6 +8,9 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.32.0 | 2026-06-22 | Bugfix | Anmeldungen brechen nicht mehr ab, wenn die neue Spalte „Company" in einer (älteren) Teilnehmerliste noch fehlt — die Anmeldung läuft dann ohne den Unternehmens-Wert durch (er wird nachgetragen, sobald „Spalten fixen" lief). |
+| 24.32.0 | 2026-06-22 | Feature | „Spalten fixen" deckt jetzt auch alle Sub-Events ab (eigene Teilnehmerlisten) — ein Klick reicht, statt jedes Sub-Event einzeln zu fixen. |
+| 24.32.0 | 2026-06-22 | Bugfix | Organizer Center: Die Hinweisbox „Hinweise zu diesem Event" ist jetzt breiter und damit besser lesbar. |
 | 24.31.0 | 2026-06-22 | Feature | Organizer Center: Klick auf eine Person in der Teilnehmerliste öffnet jetzt ein Detail-Fenster mit Foto, E-Mail-Link, MS-Teams-Chat-Link und Detailinfos (Position, Abteilung, Unternehmen, Standort, Telefon, Status, Teilnehmer-Nr.). |
 | 24.30.0 | 2026-06-22 | Bugfix | „Meine Events": Wenn man sich nachträglich für ein Sub-Event anmeldet (z.B. ein neu hinzugefügtes), werden jetzt zuerst dessen Pflicht-/Auswahlfelder abgefragt — vorher wurde direkt ohne Abfrage angemeldet und die Antworten fehlten. |
 | 24.29.0 | 2026-06-22 | Feature | Die Unternehmenszugehörigkeit (Rechtsträger, z.B. „Deloitte GmbH" / „Deloitte Consulting") wird jetzt überall aus dem Profil mit angezeigt und gespeichert: auf der Profilseite, im Anmeldeformular, in der Teilnehmerliste (App-Personenzeile + SharePoint-Standardansicht „Company"). |

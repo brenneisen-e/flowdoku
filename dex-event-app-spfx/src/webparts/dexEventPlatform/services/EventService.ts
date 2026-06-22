@@ -4958,11 +4958,19 @@ export class EventService {
       // Spalte scheitert. Der Zustimmungs-Nachweis geht dann verloren (der
       // Admin kann die Spalte per „Spalten fixen" nachrüsten), die Anmeldung
       // selbst gelingt aber.
-      if (!response.ok && payload['ProxyConsent']) {
-        console.warn('[DEX] registerForEvent: Insert fehlgeschlagen — Retry OHNE ProxyConsent (Spalte evtl. nicht vorhanden). Bitte im Admin Center "Spalten fixen" ausführen.');
+      // v24.32: Gleiches Schutz-Muster jetzt AUCH für die v24.29-Spalte
+      // `Company` — auf Teilnehmerlisten, auf denen „Spalten fixen" noch nicht
+      // lief, existiert sie nicht → der Insert mit `Company` im Body würde sonst
+      // mit HTTP 400 scheitern und die GANZE Anmeldung kaputtmachen. Deshalb bei
+      // einem fehlgeschlagenen Insert das optionale Feld strippen und erneut
+      // versuchen. Folge ohne Spalte: Anmeldung gelingt, Unternehmens-Wert wird
+      // nicht getrackt (Admin kann „Spalten fixen" nachziehen).
+      if (!response.ok && (payload['ProxyConsent'] || payload['Company'])) {
+        console.warn('[DEX] registerForEvent: Insert fehlgeschlagen — Retry OHNE ProxyConsent/Company (Spalte evtl. nicht vorhanden). Bitte im Admin Center "Spalten fixen" ausführen.');
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const retryPayload: Record<string, any> = { ...payload };
         delete retryPayload['ProxyConsent'];
+        delete retryPayload['Company'];
         response = await this._post(
           `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items`,
           retryPayload
@@ -5100,10 +5108,21 @@ export class EventService {
           if (spName) payload[spName] = v;
         }
       }
-      const response = await this._post(
+      let response = await this._post(
         `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items`,
         payload
       );
+      // v24.32: Retry OHNE Company, falls die Spalte auf der Liste fehlt (s.
+      // registerForEvent) — sonst bräche die Team-Anmeldung auf Alt-Listen.
+      if (!response.ok && payload['Company']) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const retryPayload: Record<string, any> = { ...payload };
+        delete retryPayload['Company'];
+        response = await this._post(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items`,
+          retryPayload
+        );
+      }
       if (!response.ok) return { ok: false };
       try {
         const respJson = await response.json();
@@ -7451,12 +7470,15 @@ export class EventService {
       if (auditEmail) { payload['RegisteredByEmail'] = auditEmail; payload['CancelledByEmail'] = auditEmail; }
       const url = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items`;
       let resp = await this._post(url, payload);
-      if (!resp.ok && (auditName || auditEmail)) {
+      if (!resp.ok && (auditName || auditEmail || payload['Company'])) {
         // Fallback ohne Audit-Felder (alte Subsite-Liste ohne diese Spalten).
+        // v24.32: zusätzlich Company strippen — fehlt die Spalte, würde der
+        // Insert sonst auch im Fallback an Company scheitern.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const noAudit: Record<string, any> = { ...payload };
         delete noAudit['RegisteredByName']; delete noAudit['RegisteredByEmail'];
         delete noAudit['CancelledByName']; delete noAudit['CancelledByEmail'];
+        delete noAudit['Company'];
         resp = await this._post(url, noAudit);
       }
       return resp.ok;
