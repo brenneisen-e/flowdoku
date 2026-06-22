@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.44.0 | 2026-06-22 | Bugfix | Der Knopf „An die Person übergeben" in der Assistenz-Kachel erscheint jetzt nur noch bei Admins und Organizern des Events — nur sie haben die Rechte zum Umhängen der Anmeldung. |
 | 24.43.0 | 2026-06-22 | Feature | Assistenz-Kachel: Neuer Knopf „An die Person übergeben" — eine stellvertretend angelegte Anmeldung (inkl. Klammer + Sub-Events) lässt sich komplett an die angemeldete Person selbst übergeben. Danach verwaltet nur noch sie die Anmeldung über „Meine Events" und sie verschwindet aus deiner Assistenz-Kachel. |
 | 24.43.0 | 2026-06-22 | Bugfix | Assistenz-Kachel: Der Wichtig-Hinweis ist korrigiert — er erklärt jetzt, dass man (1) die selbst gemachten Anmeldungen voll verwaltet UND (2) Anmeldungen als Info sieht, bei denen man als Assistenz angegeben wurde. |
 | 24.42.0 | 2026-06-22 | Feature | Assistenz-Verknüpfung Teil 2 — Änderung/Abmeldung anfordern: Wer eine Anmeldung nur als Info sieht, kann jetzt eine Änderung oder Abmeldung anfordern. Die verwaltende Person bekommt eine Deloitte-Mail mit Direktlink und sieht die Anforderung in der App als Box „Offene Anforderungen" mit „Als erledigt markieren"/„Ablehnen". Ohne Flow. |
