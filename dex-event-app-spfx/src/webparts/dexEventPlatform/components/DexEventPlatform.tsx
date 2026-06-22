@@ -197,6 +197,22 @@ function AppContent(): React.ReactElement {
   }, []);
   const layoutRef = React.useRef<HTMLDivElement>(null);
 
+  // v24.50: Beim Seitenwechsel immer nach oben scrollen — sonst „hängt" die
+  // neue Seite an der Scroll-Position der vorigen. Deckt das App-Layout, das
+  // Fenster UND den SharePoint-Canvas-Scrollcontainer ab (in SP scrollt nicht
+  // window, sondern ein eigener Container).
+  React.useEffect(() => {
+    const toTop = (el: Element | null): void => { try { if (el && 'scrollTop' in el) (el as HTMLElement).scrollTop = 0; } catch { /* */ } };
+    try { window.scrollTo(0, 0); } catch { /* */ }
+    toTop(document.scrollingElement);
+    toTop(document.documentElement);
+    toTop(document.body);
+    toTop(layoutRef.current);
+    // Bekannte SharePoint-Scrollcontainer (Workbench / moderne Seite).
+    ['[data-automation-id="contentScrollRegion"]', '.SPPageChrome-content', '#spPageCanvasContent', '[class*="contentScrollRegion"]']
+      .forEach(sel => { try { document.querySelectorAll(sel).forEach(toTop); } catch { /* */ } });
+  }, [currentPage]);
+
   // Deep-Link Handling: Wenn die Seite mit ?action=cancel&event=<eventNumber>
   // aufgerufen wird (z.B. aus einer Outlook-Decline-Reminder-Mail), direkt auf
   // My Events navigieren mit der eventId - MyEventsPage cancelt dann die
@@ -484,12 +500,30 @@ function AppContent(): React.ReactElement {
     `;
     document.head.appendChild(styleEl);
 
+    // v24.52: Auto-Fit. Auf schmaleren Bildschirmen skaliert die App sich
+    // automatisch passend herunter (wie manuelles Rauszoomen), damit sie immer
+    // vollständig passt. Greift NUR unter `designWidth` — auf großen Monitoren
+    // bleibt alles unverändert (zoom=1 → keinerlei Risiko für den Normalfall).
+    // Die Breite wird gegenkompensiert (width = 100/zoom %), damit der zentrierte
+    // Inhalt zentriert bleibt; die Höhe wird durch den Zoom geteilt, damit das
+    // Layout weiterhin den Viewport füllt (kein doppelter Scrollbalken).
+    function computeZoom(): number {
+      const designWidth = 1550;
+      const floor = 0.8;
+      const raw = (window.innerWidth || designWidth) / designWidth;
+      return Math.max(floor, Math.min(1, raw));
+    }
     function setHeight(): void {
-      if (layoutRef.current) {
-        const rect = layoutRef.current.getBoundingClientRect();
-        const available = window.innerHeight - rect.top;
-        layoutRef.current.style.height = `${Math.max(available, 400)}px`;
-      }
+      const el = layoutRef.current;
+      if (!el) return;
+      const z = computeZoom();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const s = el.style as any;
+      if (z < 1) { s.zoom = String(z); s.width = `${(100 / z).toFixed(3)}%`; }
+      else { s.zoom = ''; s.width = ''; }
+      const rect = el.getBoundingClientRect();
+      const available = window.innerHeight - rect.top;
+      el.style.height = `${Math.max(available, 400) / (z < 1 ? z : 1)}px`;
     }
 
     setHeight();

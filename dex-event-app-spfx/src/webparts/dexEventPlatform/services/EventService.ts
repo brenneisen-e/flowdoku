@@ -5813,6 +5813,73 @@ export class EventService {
     } catch { /* best-effort */ }
   }
 
+  /**
+   * v24.51: Liste `DEX_InactiveNotices` — Dedup-Marker für die „Organizer über
+   * inaktives Konto informieren"-Mail. ReadSecurity=1 (alle Admins lesen
+   * dieselben Marker → klickt ein zweiter Admin, wird NICHT erneut gesendet).
+   * Spalten: EventId + ParticipantEmail (Schlüssel) + SentByEmail (informativ).
+   */
+  public async ensureInactiveNoticesList(): Promise<void> {
+    const listName = 'DEX_InactiveNotices';
+    const exists = await this.listExists(listName);
+    if (exists) return;
+    await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'Dedup: Organizer wurde über ein inaktives Konto informiert (v24.51). Eine Mail pro Event+Person, egal welcher Admin klickt.',
+      'BaseTemplate': 100,
+      'AllowContentTypes': false,
+    });
+    const fields: Array<{ title: string; type: number }> = [
+      { title: 'EventId', type: 2 },
+      { title: 'ParticipantEmail', type: 2 },
+      { title: 'SentByEmail', type: 2 },
+    ];
+    for (const f of fields) {
+      try {
+        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
+          '__metadata': { 'type': 'SP.Field' }, 'Title': f.title, 'FieldTypeKind': f.type, 'Required': false,
+        });
+      } catch { /* */ }
+    }
+    try { await this.configureDefaultView(listName, ['EventId', 'ParticipantEmail', 'SentByEmail', 'Created']); } catch { /* */ }
+    try { await this.setQueueListPermissions(listName); } catch { /* */ }
+    // ReadSecurity bleibt 1 (Default) — alle Admins müssen dieselben Marker
+    // sehen können (sonst keine Cross-Admin-Dedup).
+  }
+
+  /** v24.51: Bereits benachrichtigte (Event+Email)-Paare für ein Event lesen. */
+  public async getSentInactiveNotices(eventId: string): Promise<Set<string>> {
+    const out = new Set<string>();
+    try {
+      const esc = (eventId || '').replace(/'/g, "''");
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_InactiveNotices')/items?$select=ParticipantEmail&$filter=EventId eq '${esc}'&$top=500`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return out;
+      const data = await resp.json();
+      for (const it of (data.value || data.d?.results || [])) {
+        const e = (it.ParticipantEmail || '').toLowerCase().trim();
+        if (e) out.add(e);
+      }
+    } catch { /* */ }
+    return out;
+  }
+
+  /** v24.51: Benachrichtigungs-Marker anlegen (claim). */
+  public async recordInactiveNotice(eventId: string, participantEmail: string): Promise<void> {
+    try {
+      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_InactiveNotices')/items`, {
+        '__metadata': { 'type': 'SP.Data.DEX_x005f_InactiveNoticesListItem' },
+        'Title': `${eventId} | ${participantEmail}`.slice(0, 250),
+        'EventId': eventId,
+        'ParticipantEmail': participantEmail,
+        'SentByEmail': (this.context.pageContext.user.email || '').toLowerCase(),
+      });
+    } catch (err) { console.warn('[DEX] recordInactiveNotice failed:', err); }
+  }
+
   public async ensureOutlookLocksList(): Promise<void> {
     const listName = 'DEX_OutlookLocks';
     const exists = await this.listExists(listName);

@@ -1058,6 +1058,9 @@ export default function AdminPage(): React.ReactElement {
   // Sprach-Fix + Tick, damit „Ausblenden" (localStorage) sofort re-rendert.
   const [hintLangBusy, setHintLangBusy] = React.useState(false);
   const [hintsDismissTick, setHintsDismissTick] = React.useState(0);
+  // v24.50: Welche Hinweise sind aufgeklappt? (Default: alle eingeklappt —
+  // nur die Überschriften zeigen, Klick klappt den Inhalt auf.)
+  const [expandedHintIds, setExpandedHintIds] = React.useState<Set<string>>(new Set());
   // v11.97/v11.98: bei Events mit Split-Kapazität (zwei Gruppen) wird die
   // Aktiv-Teilnehmer-Tabelle standardmäßig nach Gruppe getrennt angezeigt
   // (kleinere Gruppe zuerst). Per Toggle umschaltbar auf zusammengeführte
@@ -6930,34 +6933,51 @@ export default function AdminPage(): React.ReactElement {
           if (visible.length === 0) return null;
           return (
             <aside style={{ flex: '0 1 460px', minWidth: 360 }}>
-              <div className="card" style={{ padding: 20, background: 'rgba(0,118,168,0.04)', border: '1px solid var(--dex-blue, #0076a8)' }}>
+              <div className="card" style={{ padding: 20, background: 'rgba(237,139,0,0.06)', border: '1px solid var(--dex-orange, #ed8b00)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ color: 'var(--dex-blue, #0076a8)', display: 'inline-flex' }}><Info size={18} /></span>
-                  <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--dex-blue, #0076a8)' }}>{isDe ? 'Hinweise zu diesem Event' : 'Hints for this event'}</h3>
+                  <span style={{ color: 'var(--dex-orange, #ed8b00)', display: 'inline-flex' }}><Info size={18} /></span>
+                  <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--dex-orange-dark, #b35a00)' }}>{isDe ? 'Hinweise zu diesem Event' : 'Hints for this event'}</h3>
                 </div>
                 <p style={{ margin: '0 0 14px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-                  {isDe ? 'Der App sind ein paar Dinge aufgefallen, die du dir kurz anschauen solltest:' : 'The app noticed a few things worth a quick look:'}
+                  {isDe ? 'Der App sind ein paar Dinge aufgefallen, die du dir kurz anschauen solltest (zum Aufklappen auf die Überschrift tippen):' : 'The app noticed a few things worth a quick look (tap a heading to expand):'}
                 </p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-                  {visible.map(h => (
-                    <div key={h.id} style={{ borderTop: '1px solid rgba(0,118,168,0.15)', paddingTop: 12 }}>
-                      <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--dex-gray-800)', marginBottom: 4 }}>{h.title}</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>{h.body}</div>
-                      <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                        {h.action}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            try { window.localStorage.setItem(dismissKey(h.id), '1'); } catch { /* */ }
-                            setHintsDismissTick(t => t + 1);
-                          }}
-                          style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--dex-gray-500)', fontSize: '0.74rem', textDecoration: 'underline' }}
-                        >
-                          {isDe ? 'Hinweis ausblenden' : 'Dismiss hint'}
-                        </button>
-                      </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {visible.map(h => {
+                    const open = expandedHintIds.has(h.id);
+                    return (
+                    <div key={h.id} style={{ borderTop: '1px solid rgba(237,139,0,0.2)', paddingTop: 10 }}>
+                      {/* v24.50: Überschrift = Klappschalter (Default eingeklappt). */}
+                      <button
+                        type="button"
+                        onClick={() => setExpandedHintIds(prev => { const n = new Set(prev); if (n.has(h.id)) n.delete(h.id); else n.add(h.id); return n; })}
+                        style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
+                      >
+                        <span style={{ color: 'var(--dex-orange, #ed8b00)', display: 'inline-flex', flexShrink: 0 }}>
+                          {open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        </span>
+                        <span style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--dex-gray-800)' }}>{h.title}</span>
+                      </button>
+                      {open && (
+                        <div style={{ marginTop: 6, paddingLeft: 22 }}>
+                          <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>{h.body}</div>
+                          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                            {h.action}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                try { window.localStorage.setItem(dismissKey(h.id), '1'); } catch { /* */ }
+                                setHintsDismissTick(t => t + 1);
+                              }}
+                              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--dex-gray-500)', fontSize: '0.74rem', textDecoration: 'underline' }}
+                            >
+                              {isDe ? 'Hinweis ausblenden' : 'Dismiss hint'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </aside>

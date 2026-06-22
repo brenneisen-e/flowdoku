@@ -21,6 +21,7 @@
  *   </Modal>
  */
 import * as React from 'react';
+import * as ReactDOM from 'react-dom';
 
 interface ModalProps {
   open: boolean;
@@ -57,7 +58,7 @@ export default function Modal({
 
   if (!open) return null;
 
-  return (
+  const overlay = (
     <div
       role="dialog"
       aria-modal="true"
@@ -85,4 +86,14 @@ export default function Modal({
       </div>
     </div>
   );
+
+  // v24.52: Per Portal an document.body rendern — so liegt das Modal AUSSERHALB
+  // des Auto-Fit-Zoom-Containers und der position:fixed-Backdrop deckt immer den
+  // ganzen Viewport ab (sonst blieben auf skalierten Screens Ränder frei).
+  try {
+    if (typeof document !== 'undefined' && document.body) {
+      return ReactDOM.createPortal(overlay, document.body);
+    }
+  } catch { /* Fallback: inline rendern */ }
+  return overlay;
 }

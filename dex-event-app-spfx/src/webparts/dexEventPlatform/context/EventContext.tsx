@@ -446,6 +446,9 @@ interface EventContextType {
   /** v22.45: Scannt die übergebenen Events auf Teilnehmer ohne aktives
    *  Deloitte-Konto (für die Landing-Page-Warnung der Organizer/Admins). */
   scanInactiveAccounts: (evs: Array<{ id: string; title: string; subsiteUrl?: string }>) => Promise<Array<{ eventId: string; title: string; people: Array<{ email: string; name: string }> }>>;
+  /** v24.51: Organizer per Mail über (ein) inaktives Konto informieren — mit
+   *  Dedup über alle Admins (nur einmal pro Event+Person). */
+  notifyOrganizerOfInactive: (eventId: string, people: Array<{ email: string; name: string }>) => Promise<{ sent: number; skipped: number; noOrganizer?: boolean }>;
   /** v21: Archivierung — zählt archivreife Zeilen abgelaufener Events. */
   getArchivableCount: () => Promise<{ total: number; perList: Record<string, number> }>;
   /** v21: Archivierung — verschiebt archivreife Zeilen ins DEX_Archive.
@@ -716,6 +719,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         safeRun('ensureOutlookLocksList', () => eventService.ensureOutlookLocksList(), parallelMarks),
         safeRun('ensureAccessFixList', () => eventService.ensureAccessFixList(), parallelMarks),
         safeRun('ensureAssistantAccessList', () => eventService.ensureAssistantAccessList(), parallelMarks),
+        safeRun('ensureInactiveNoticesList', () => eventService.ensureInactiveNoticesList(), parallelMarks),
         safeRun('ensureArchiveList', () => eventService.ensureArchiveList(), parallelMarks),
         safeRun('ensureWeeklyReportsList', () => eventService.ensureWeeklyReportsList(), parallelMarks),
         safeRun('ensureOrganizerRequestsList', () => eventService.ensureOrganizerRequestsList(), parallelMarks),
@@ -4547,6 +4551,55 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return out;
   }
 
+  // v24.51: Den/die Organizer eines Events per Mail darauf hinweisen, dass eine
+  // angemeldete Person womöglich kein aktives Deloitte-Konto mehr hat. Dedup
+  // über DEX_InactiveNotices (ReadSecurity=1) — pro Event+Person nur EINE Mail,
+  // egal welcher Admin den Button klickt.
+  async function notifyOrganizerOfInactive(
+    eventId: string,
+    people: Array<{ email: string; name: string }>
+  ): Promise<{ sent: number; skipped: number; noOrganizer?: boolean }> {
+    const event = events.find(e => e.id === eventId);
+    if (!event) return { sent: 0, skipped: 0 };
+    const orgEmails = Array.from(new Set((event.organizerEmails || []).concat(event.coOrganizerEmails || [])
+      .map(e => (e || '').trim()).filter(Boolean)));
+    if (orgEmails.length === 0) return { sent: 0, skipped: people.length, noOrganizer: true };
+    let sentSet = new Set<string>();
+    try { sentSet = await eventService.getSentInactiveNotices(eventId); } catch { sentSet = new Set(); }
+    const newPeople = people.filter(p => !sentSet.has((p.email || '').toLowerCase().trim()));
+    if (newPeople.length === 0) return { sent: 0, skipped: people.length };
+    // Marker setzen (claim) — danach versenden.
+    for (const p of newPeople) {
+      try { await eventService.recordInactiveNotice(eventId, (p.email || '').toLowerCase().trim()); } catch { /* */ }
+    }
+    const isDe = !(event.emailLanguage === 'EN');
+    const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const list = newPeople.map(p => `<li><strong>${esc(p.name || p.email)}</strong>${p.name ? ` (${esc(p.email)})` : ''}</li>`).join('');
+    const heading = isDe ? 'Möglicherweise inaktives Konto' : 'Possibly inactive account';
+    const sub = event.title;
+    const appUrl = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView&action=admin&event=${eventId}`;
+    const body = isDe
+      ? `<p>Hallo,</p>
+         <p>bei deinem Event <strong>${esc(event.title)}</strong> ${newPeople.length === 1 ? 'gibt es eine angemeldete Person, die' : 'gibt es angemeldete Personen, die'} <strong>womöglich Deloitte verlassen ${newPeople.length === 1 ? 'hat' : 'haben'}</strong> (kein aktives Konto mehr). An ${newPeople.length === 1 ? 'diese Person' : 'diese Personen'} kommen Bestätigungs-Mails und Outlook-Termine <strong>möglicherweise nicht an</strong>:</p>
+         <ul>${list}</ul>
+         <p>Bitte prüfe das im Organizer Center und melde die ${newPeople.length === 1 ? 'Person' : 'Personen'} bei Bedarf ab.</p>
+         <p><a href="${appUrl}" style="display:inline-block;background:#86bc25;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;">Event im Organizer Center öffnen</a></p>
+         <p>Danke!</p>`
+      : `<p>Hello,</p>
+         <p>at your event <strong>${esc(event.title)}</strong> there ${newPeople.length === 1 ? 'is a registered person who' : 'are registered people who'} may have <strong>left Deloitte</strong> (no active account). Confirmation emails and Outlook invites <strong>may not arrive</strong> for ${newPeople.length === 1 ? 'them' : 'them'}:</p>
+         <ul>${list}</ul>
+         <p>Please review this in the Organizer Center and deregister ${newPeople.length === 1 ? 'the person' : 'the people'} if needed.</p>
+         <p><a href="${appUrl}" style="display:inline-block;background:#86bc25;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-weight:600;">Open event in the Organizer Center</a></p>
+         <p>Thanks!</p>`;
+    const subject = isDe ? `Hinweis: möglicherweise inaktives Konto — ${event.title}` : `Heads-up: possibly inactive account — ${event.title}`;
+    const wrapped = wrapTemplate('#86bc25', heading, sub, body);
+    try {
+      // Eine Mail an alle Organizer (Semikolon-getrennt, der Flow mappt To direkt).
+      await eventService.queueEmail(subject, orgEmails.join(';'), orgEmails.join(';'), wrapped, 'Info', event.title, eventId);
+    } catch (err) { console.warn('[DEX] notifyOrganizerOfInactive mail failed:', err); }
+    return { sent: newPeople.length, skipped: people.length - newPeople.length };
+  }
+
   return React.createElement(
     EventContext.Provider,
     {
@@ -4571,7 +4624,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns,
         sendAdminInquiry,
         requestOrganizerRole, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,
