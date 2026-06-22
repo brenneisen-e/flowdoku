@@ -169,7 +169,7 @@ export default function LandingPage(): React.ReactElement {
   // Ab 2 Tagen vor Event-Start UND sobald der QR-Massen-Versand lief (eigener
   // Status 'QR versendet'), zeigt die Landing Page über dem Start-Button eine
   // Hinweisbox „Check-in für <Event>" mit kleinem QR — Klick öffnet ihn groß.
-  const { getMyRegistration, getMyEventNumbers, events } = useEvents();
+  const { getMyRegistration, events } = useEvents();
 
   // v22.45: Inaktive-Konten-Scan für Organizer/Admins. Gedrosselt 1×/24h via
   // localStorage; Ergebnis sofort aus dem Cache angezeigt, im Hintergrund
@@ -267,10 +267,11 @@ export default function LandingPage(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEventsLoading, currentUser?.email]);
 
-  // v24.13: „Du bist angemeldet"-Box für aktive Events, für die man angemeldet
-  // ist — Klick springt zu „Meine Events". Günstig über getMyEventNumbers (kein
-  // per-Event-Lookup). Events mit bereits sichtbarer Check-in-/QR-Box werden
-  // beim Rendern ausgeblendet (sonst doppelt).
+  // v24.13/v24.18: „Du bist angemeldet"-Box für aktive Events, für die man
+  // angemeldet ist — Klick springt zu „Meine Events". Quelle ist die echte
+  // Anmelde-Zeile pro Event (getMyRegistration), inkl. Sub-Event-/Klammer-
+  // Anmeldungen (auf das Klammer-Event abgebildet). Events mit bereits
+  // sichtbarer Check-in-/QR-Box werden beim Rendern ausgeblendet (sonst doppelt).
   const [myRegBoxes, setMyRegBoxes] = React.useState<Array<{ eventId: string; title: string; imageUrl?: string; startDate: string; location?: string }>>([]);
   const [nowTick, setNowTick] = React.useState(Date.now());
   React.useEffect(() => {
@@ -283,18 +284,16 @@ export default function LandingPage(): React.ReactElement {
     if (!myEmail) return undefined;
     let cancelled = false;
     (async () => {
-      let nums: { registered: number[]; waitlisted: number[] };
-      try { nums = await getMyEventNumbers(); } catch { return; }
-      if (cancelled) return;
-      const registered = new Set((nums && nums.registered) || []);
-      if (registered.size === 0) { setMyRegBoxes([]); return; }
       const now = Date.now();
-      const topById = new Map((events || []).filter(e => !e.parentEventId).map(e => [e.id, e]));
-      const involved = new Set<string>();
-      (events || []).forEach(e => { if (e.eventNumber && registered.has(e.eventNumber)) involved.add(e.parentEventId || e.id); });
-      const boxes = Array.from(involved)
-        .map(id => topById.get(id))
-        .filter((e): e is NonNullable<typeof e> => !!e && e.status === 'Active' && !e.isFictive && !!e.startDate)
+      // v24.18 BUG-FIX: Statt aus dem (best-effort, oft unvollständigen)
+      // zentralen Teilnehmer-Register (getMyEventNumbers) zu lesen — was bei
+      // Sub-Event-/Klammer-Anmeldungen leer blieb und die Box gar nicht
+      // erscheinen ließ — prüfen wir die Anmeldung direkt pro Event über
+      // getMyRegistration (derselbe verlässliche Pfad wie die Check-in-Box).
+      // Sub-Event-Anmeldungen werden auf das KLAMMER-/Hauptevent abgebildet
+      // (dessen Name + Bild wird angezeigt).
+      const topCandidates = (events || [])
+        .filter(e => !e.parentEventId && e.status === 'Active' && !e.isFictive && !!e.startDate)
         .filter(e => {
           const startTs = new Date(e.startDate).getTime();
           if (!Number.isFinite(startTs)) return false;
@@ -303,8 +302,35 @@ export default function LandingPage(): React.ReactElement {
           return endTs >= now; // noch nicht vorbei
         })
         .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
-        .slice(0, 6)
-        .map(e => ({ eventId: e.id, title: e.title || '', imageUrl: e.imageUrl, startDate: e.startDate, location: e.location }));
+        .slice(0, 20);
+      const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
+      const isActiveReg = (r: { Status?: string } | null | undefined): boolean =>
+        !!r && ACTIVE.indexOf(r.Status || '') >= 0;
+      const boxes: Array<{ eventId: string; title: string; imageUrl?: string; startDate: string; location?: string }> = [];
+      for (const top of topCandidates) {
+        if (cancelled) return;
+        let registered = false;
+        try {
+          // Eigene Anmeldung am Haupt-/Klammer-Event (bei „Nur Sub-Events"
+          // existiert hier eine Schatten-Zeile, sobald ein Sub-Event gebucht
+          // wurde) — fängt den gemeldeten Fall direkt ab.
+          registered = isActiveReg(await getMyRegistration(top.id));
+        } catch { /* Lookup-Fehler — weiter mit Sub-Events */ }
+        if (!registered) {
+          // Fallback: irgendein Sub-Event aktiv angemeldet?
+          const children = (events || []).filter(c => c.parentEventId === top.id && !c.isFictive);
+          for (const child of children) {
+            if (cancelled) return;
+            try {
+              if (isActiveReg(await getMyRegistration(child.id))) { registered = true; break; }
+            } catch { /* einzelner Sub-Event-Lookup-Fehler */ }
+          }
+        }
+        if (registered) {
+          boxes.push({ eventId: top.id, title: top.title || '', imageUrl: top.imageUrl, startDate: top.startDate, location: top.location });
+        }
+        if (boxes.length >= 6) break;
+      }
       if (!cancelled) setMyRegBoxes(boxes);
     })().catch(() => { /* best-effort */ });
     return () => { cancelled = true; };
