@@ -30,23 +30,6 @@ export default function LandingPage(): React.ReactElement {
   const greeting = isDe
     ? (greetHour < 5 ? 'Hallo' : greetHour < 11 ? 'Guten Morgen' : greetHour < 18 ? 'Guten Tag' : 'Guten Abend')
     : (greetHour < 5 ? 'Hi' : greetHour < 11 ? 'Good morning' : greetHour < 18 ? 'Good afternoon' : 'Good evening');
-  // v24.20: Der Untertitel soll nicht breiter werden als der Begrüßungsgruß —
-  // wir messen die tatsächliche Textbreite der Überschrift und begrenzen den
-  // Untertitel darauf (reagiert auf Sprache/Name/Fontload/Resize).
-  const greetRef = React.useRef<HTMLSpanElement>(null);
-  const [greetWidth, setGreetWidth] = React.useState<number | undefined>(undefined);
-  React.useLayoutEffect(() => {
-    const el = greetRef.current;
-    if (!el) return undefined;
-    const update = (): void => setGreetWidth(el.offsetWidth);
-    update();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const RO = (window as any).ResizeObserver;
-    const ro = RO ? new RO(update) : null;
-    if (ro) ro.observe(el);
-    window.addEventListener('resize', update);
-    return () => { if (ro) ro.disconnect(); window.removeEventListener('resize', update); };
-  }, [greeting, firstName, isDe]);
   const [showInfo, setShowInfo] = React.useState(false);
   // v13.3: Inquiry-Modal lebt jetzt komplett in der wiederverwendbaren
   // InquiryModal-Komponente — eigene States hier entfallen.
@@ -720,11 +703,9 @@ export default function LandingPage(): React.ReactElement {
           </div>
           <div className="landing__text">
             <h1>
-              <span ref={greetRef} style={{ display: 'inline-block' }}>
-                {greeting}{firstName ? <>, <strong>{firstName}</strong></> : ''}.
-              </span>
+              {greeting}{firstName ? <>, <strong>{firstName}</strong></> : ''}.
             </h1>
-            <p style={{ maxWidth: greetWidth, marginLeft: 'auto', marginRight: 'auto' }}>
+            <p>
               {isDe
                 ? <>Willkommen bei <strong>DEX</strong>. Unsere neue App für die Organisation von Deloitte Events – von der Anmeldung bis zum Check-in: alles an einer Stelle.</>
                 : <>Welcome to <strong>DEX</strong>. Our new app for organising Deloitte events – from registration to check-in: everything in one place.</>}
@@ -841,7 +822,7 @@ export default function LandingPage(): React.ReactElement {
                   {locale === 'de' ? 'DEX für dein Event nutzen' : 'Use DEX for your event'}
                 </span>
                 <span style={{ display: 'block', fontSize: '0.82rem', opacity: 0.95, lineHeight: 1.3, marginTop: 2 }}>
-                  {locale === 'de' ? 'Wir richten DEX für deine Veranstaltung ein.' : 'We will set up DEX for your event.'}
+                  {locale === 'de' ? 'Werde Organizer und nutze alle Funktionen.' : 'Become an organizer and use all features.'}
                 </span>
               </span>
             </button>
@@ -874,7 +855,7 @@ export default function LandingPage(): React.ReactElement {
               style={{
                 background: 'none', border: 'none', padding: 0,
                 color: 'var(--dex-gray-500)', fontSize: '0.9rem', cursor: 'pointer',
-                textDecoration: 'underline', fontFamily: 'inherit',
+                textDecoration: 'none', fontFamily: 'inherit',
               }}
             >
               {locale === 'de' ? 'Über die App' : 'About the app'}
