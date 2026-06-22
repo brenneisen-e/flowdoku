@@ -14,7 +14,7 @@ import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
-import { DeloitteEvent } from '../types';
+import { DeloitteEvent, EventSpecificField } from '../types';
 import { SPRegistration } from '../services/EventService';
 import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2, ChevronUp, ChevronDown, QrCode, Search, Info, Calendar, Pin } from './Icons';
 import OrganizerList from './OrganizerList';
@@ -850,7 +850,9 @@ export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
   // v14.11: zusätzlich `events` (alle Events inkl. Sub-Events) als `allEvents`
   // für die Parent-Lookup-Logik im konsolidierten View + im Sub-Event-Detail.
-  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead } = useEvents();
+  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead, registerForEvent } = useEvents();
+  // v24.38: läuft gerade ein „Zur Klammer hinzufügen" für diese E-Mail?
+  const [addingToKlammer, setAddingToKlammer] = React.useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = React.useState(false);
   const handleRefresh = async (): Promise<void> => {
     if (isRefreshing) return;
@@ -1799,6 +1801,55 @@ export default function AdminPage(): React.ReactElement {
   // konsolidierten Zeile öffnen. Die Antworten stehen in der Registrierung der
   // Person auf der Hauptevent-Subsite. Wir suchen sie per E-Mail in
   // `registrations` (das ist die Teilnehmerliste des selektierten Hauptevents).
+  // v24.38: Fehlende Klammer-/Hauptevent-Anmeldung nachtragen. Eine Person, die
+  // nur in Sub-Events angemeldet ist, aber keine Schatten-Zeile auf der
+  // Klammer-Teilnehmerliste hat (Daten-Anomalie), wird hier vom Organizer
+  // händisch ergänzt. Das ist genau die „Schatten-Registrierung" des
+  // subEventsOnlyMode — `registerForEvent` auf das Klammer-Event unterdrückt
+  // bei subEventsOnlyMode automatisch Mail + Outlook (suppressParentNotifications).
+  const addToKlammer = async (row: ConsolidatedRow): Promise<void> => {
+    if (!selectedEvent) return;
+    const name = `${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email;
+    if (!(await confirmDialog(
+      isDe
+        ? `Fehlende Hauptanmeldung: „${name}" ist nur in Sub-Events angemeldet, fehlt aber am Klammer-Event „${selectedEvent.title}".\n\nDie fehlende Klammer-Anmeldung jetzt ergänzen? (Es wird KEINE Mail und KEIN Outlook-Termin versendet — reine Datenkorrektur.)`
+        : `Missing main registration: „${name}" is only in sub-events but missing on the umbrella event „${selectedEvent.title}".\n\nAdd the missing umbrella registration now? (No email and no Outlook invite are sent — data correction only.)`,
+      { confirmLabel: isDe ? 'Hinzufügen' : 'Add' }
+    ))) return;
+    setAddingToKlammer(row.emailKey);
+    try {
+      const res = await registerForEvent(
+        selectedEvent.id, {}, row.vorname || '', row.nachname || '', row.email, undefined,
+        { suppressMail: true, suppressOutlook: true, proxyConsentConfirmed: true, actorAllowedAsAssistant: true }
+      );
+      if (res && res.ok) {
+        if (eventServiceRef) {
+          try {
+            await eventServiceRef.writeChangeLog({
+              action: 'ParticipantUpdated',
+              targetType: 'Participant',
+              targetId: (row.email || '') + '#klammer',
+              targetName: name,
+              eventId: selectedEvent.id,
+              eventTitle: selectedEvent.title,
+              details: { scope: 'addedMissingKlammerRegistration', actorEmail: currentUser.email },
+            });
+          } catch { /* */ }
+        }
+        const regs = await getAllRegistrations(selectedEvent.id);
+        setRegistrations(regs);
+        showAlert(isDe ? `„${name}" wurde zum Klammer-Event hinzugefügt.` : `„${name}" was added to the umbrella event.`, { variant: 'success' });
+      } else {
+        showAlert(isDe ? 'Hinzufügen fehlgeschlagen — bitte erneut versuchen.' : 'Adding failed — please try again.', { variant: 'error' });
+      }
+    } catch (err) {
+      console.warn('[DEX] addToKlammer error:', err);
+      showAlert(isDe ? 'Unerwarteter Fehler beim Hinzufügen.' : 'Unexpected error while adding.', { variant: 'error' });
+    } finally {
+      setAddingToKlammer(null);
+    }
+  };
+
   const openMainFieldsEdit = (emailKey: string, displayName: string): void => {
     if (!selectedEvent) return;
     setMainFieldsEditError('');
@@ -2517,17 +2568,29 @@ export default function AdminPage(): React.ReactElement {
       showAlert(isDe ? 'E-Mails sind für dieses Event deaktiviert (Schritt 6 „Kommunikation").' : 'Emails are disabled for this event (step 6 “Communication”).', { variant: 'error' });
       return;
     }
+    // Klammer-/Hauptevent-eigene Felder.
     const fields = (selectedEvent.eventSpecificFields || []).filter(f => f.label && f.type !== 'document');
-    if (fields.length === 0) {
+    // v24.38: Im Klammer-Modus zusätzlich die Felder JEDES Sub-Events — die
+    // „Angaben" einer Person leben dort (das Hauptevent/die Klammer hat oft
+    // selbst gar keine Felder). Sonst meldete die Aktion „keine Felder" und es
+    // ging keine Mail raus.
+    const childFieldsById: Record<string, EventSpecificField[]> = {};
+    if (isConsolidatedMode) {
+      for (const ch of consolidatedChildren) {
+        childFieldsById[ch.id] = (ch.eventSpecificFields || []).filter(f => f.label && f.type !== 'document');
+      }
+    }
+    const anyChildFields = Object.keys(childFieldsById).some(k => childFieldsById[k].length > 0);
+    if (fields.length === 0 && !anyChildFields) {
       showAlert(isDe ? 'Dieses Event hat keine eventspezifischen Felder — es gibt nichts nachzutragen.' : 'This event has no event-specific fields — nothing to complete.', { variant: 'error' });
       return;
     }
     const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
     const parse = (s: string | undefined): Record<string, unknown> => { try { return (JSON.parse(s || '{}') as Record<string, unknown>) || {}; } catch { return {}; } };
-    const hasInfo = (reg: SPRegistration | undefined): boolean => {
-      if (!reg) return false;
+    const regHasAnswer = (reg: SPRegistration | undefined, fieldSet: EventSpecificField[]): boolean => {
+      if (!reg || fieldSet.length === 0) return false;
       const cd = parse(reg.CustomData);
-      for (const f of fields) {
+      for (const f of fieldSet) {
         const v1 = cd[f.id];
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const v2 = (f as any).spInternalName ? (reg as any)[(f as any).spInternalName] : undefined;
@@ -2535,6 +2598,7 @@ export default function AdminPage(): React.ReactElement {
       }
       return false;
     };
+    const hasInfo = (reg: SPRegistration | undefined): boolean => regHasAnswer(reg, fields);
 
     // v24.37: Ziel-Personen ermitteln — im Klammer-/konsolidierten Modus EINMAL
     // pro Person (nur die Klammer-Felder, NICHT pro Sub-Event), sonst direkt aus
@@ -2550,11 +2614,14 @@ export default function AdminPage(): React.ReactElement {
         const ek = row.emailKey;
         if (!ek || seen.has(ek)) continue;
         const parentReg = registrations.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === ek);
-        // Klammer-Angaben vorhanden? Erst Parent-Zeile, dann (Fallback) die
-        // Sub-Event-Zeilen prüfen (manche Klammer-Felder werden dort gespiegelt).
-        let info = hasInfo(parentReg);
+        // Angaben vorhanden? Klammer-Felder auf der Parent-Zeile UND je
+        // Sub-Event dessen EIGENE Felder auf der Sub-Event-Zeile prüfen. Hat die
+        // Person irgendwo eine Antwort gegeben, gilt sie als „hat Angaben".
+        let info = regHasAnswer(parentReg, fields);
         if (!info) {
-          for (const ch of consolidatedChildren) { if (hasInfo(row.perChild[ch.id])) { info = true; break; } }
+          for (const ch of consolidatedChildren) {
+            if (regHasAnswer(row.perChild[ch.id], childFieldsById[ch.id] || [])) { info = true; break; }
+          }
         }
         if (info) continue;
         // Assistenz: RegisteredByEmail aus Parent- oder erster Sub-Event-Zeile.
@@ -5270,6 +5337,49 @@ export default function AdminPage(): React.ReactElement {
             </div>
           </div>
         )}
+        {/* v24.38: Fehlende Klammer-Anmeldung — Personen mit Sub-Event-Zeilen,
+            aber OHNE Hauptevent-/Klammer-Anmeldung (Daten-Anomalie). Als Fehler
+            ausweisen + pro Person „Zur Klammer hinzufügen". */}
+        {canManage && (() => {
+          const missing = consolidatedRows.filter(r => r.activeCount > 0 && !hasParentReg(r.emailKey));
+          if (missing.length === 0) return null;
+          return (
+            <div style={{ marginBottom: 16, padding: 14, borderRadius: 10, border: '1px solid var(--dex-red, #c00)', background: 'rgba(200,0,0,0.06)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <Icon iconName="Warning" style={{ fontSize: 16, color: 'var(--dex-red, #c00)' }} />
+                <strong style={{ color: 'var(--dex-red, #c00)', fontSize: '0.9rem' }}>
+                  {isDe ? `Fehlende Klammer-Anmeldung (${missing.length})` : `Missing umbrella registration (${missing.length})`}
+                </strong>
+              </div>
+              <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                {isDe
+                  ? 'Diese Personen sind in einem oder mehreren Sub-Events angemeldet, fehlen aber am Klammer-/Hauptevent selbst (z.B. durch eine abgebrochene Anmeldung). Dadurch fehlen u.a. die übergreifenden Klammer-Angaben und der Direkt-Bezug zum Hauptevent. Trage die fehlende Klammer-Anmeldung pro Person nach — das versendet KEINE Mail und KEINEN Outlook-Termin (reine Datenkorrektur).'
+                  : 'These people are registered for one or more sub-events but are missing on the umbrella/main event itself (e.g. due to an interrupted registration). As a result the cross-cutting umbrella details and the direct link to the main event are missing. Add the missing umbrella registration per person — this sends NO email and NO Outlook invite (data correction only).'}
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {missing.map(r => {
+                  const nm = `${r.vorname || ''} ${r.nachname || ''}`.trim() || r.email;
+                  return (
+                    <div key={r.emailKey} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.84rem' }}>
+                      <strong>{nm}</strong>
+                      <span style={{ color: 'var(--dex-gray-500)' }}>{r.email}</span>
+                      <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.78rem' }}>· {isDe ? `${r.activeCount} Sub-Event(s)` : `${r.activeCount} sub-event(s)`}</span>
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        style={{ marginLeft: 'auto', fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-orange, #ed8b00)', borderColor: 'var(--dex-orange, #ed8b00)' }}
+                        disabled={addingToKlammer === r.emailKey}
+                        onClick={() => { void addToKlammer(r); }}
+                      >
+                        <Plus size={12} /> {addingToKlammer === r.emailKey ? '…' : (isDe ? 'Zur Klammer hinzufügen' : 'Add to umbrella')}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
         {/* v15.3.1: Legende für die Pastell-Spalten — sonst rät der Organizer,
             was die zwei Hintergrundfarben bedeuten. */}
         {(parentCustomFields.length > 0 || childCustomFieldsByChild.some(x => x.fields.length > 0)) && (
@@ -5539,7 +5649,7 @@ export default function AdminPage(): React.ReactElement {
                         {/* v19.30 (Feature A): Hauptevent-Felder bearbeiten —
                             nur wenn es Hauptevent-Custom-Felder gibt UND die
                             Person eine Hauptevent-Registrierung hat. */}
-                        {canManage && !orgPastLock && editableParentFieldCount > 0 && (hasParentReg(row.emailKey) || row.activeCount > 0) && (
+                        {canManage && !orgPastLock && editableParentFieldCount > 0 && hasParentReg(row.emailKey) && (
                           <button
                             type="button"
                             className="btn btn-secondary"
@@ -5548,6 +5658,22 @@ export default function AdminPage(): React.ReactElement {
                             onClick={() => openMainFieldsEdit(row.emailKey, `${row.vorname} ${row.nachname}`.trim() || row.email)}
                           >
                             <Pencil size={12} /> {isDe ? 'Felder' : 'Fields'}
+                          </button>
+                        )}
+                        {/* v24.38: Fehlende Klammer-Anmeldung — Person hat NUR
+                            Sub-Event-Zeilen, aber keine Hauptevent-/Klammer-
+                            Anmeldung (Daten-Anomalie). Als Fehler markieren +
+                            Knopf zum Nachtragen der Klammer-Anmeldung. */}
+                        {canManage && !orgPastLock && isConsolidatedMode && !hasParentReg(row.emailKey) && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--dex-orange, #ed8b00)', borderColor: 'var(--dex-orange, #ed8b00)' }}
+                            title={isDe ? 'Fehlende Hauptanmeldung: Diese Person ist nur in Sub-Events angemeldet, fehlt aber am Klammer-Event. Klick fügt die fehlende Klammer-Anmeldung hinzu (ohne Mail/Outlook).' : 'Missing main registration: this person is only in sub-events but missing on the umbrella event. Click adds the missing umbrella registration (no mail/Outlook).'}
+                            disabled={addingToKlammer === row.emailKey}
+                            onClick={() => { void addToKlammer(row); }}
+                          >
+                            <Plus size={12} /> {addingToKlammer === row.emailKey ? '…' : (isDe ? 'Zur Klammer hinzufügen' : 'Add to umbrella')}
                           </button>
                         )}
                         {/* v19.30 (Feature B): Abmelden mit Sub-Event-Auswahl.
