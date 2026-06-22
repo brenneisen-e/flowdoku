@@ -8,6 +8,11 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.24.0 | 2026-06-22 | Bugfix | Startseite: „Deloitte Events" wird im Willkommenstext nicht mehr getrennt (steht immer zusammen in einer Zeile). |
+| 24.24.0 | 2026-06-22 | Bugfix | Demo-Modus: Die „Admin"-Kachel wird nicht mehr angezeigt — der Demo-Modus zeigt jetzt exakt die normale Nutzer-Ansicht. |
+| 24.24.0 | 2026-06-22 | Feature | „Organizer werden?" auf der Startseite öffnet jetzt dasselbe Anfrage-Fenster wie die grüne Box auf der Startseite (einheitlicher Ablauf). |
+| 24.24.0 | 2026-06-22 | Feature | Anfrage-Fenster: Der eigene Name ist nicht mehr frei änderbar, sondern wird als Personen-Karte (Foto, Name, Position, Standort) angezeigt. Diese Angaben stehen jetzt auch in der Anfrage-Mail an die Admins. |
+| 24.24.0 | 2026-06-22 | Feature | Organizer Center: Überschrift im Kopfbereich heißt jetzt „Organizer" statt „Admin". |
 | 24.23.0 | 2026-06-22 | Feature | Startseite: Willkommenstext leicht überarbeitet („… Von der Anmeldung, bis zum Check-in. Alles an einer Stelle.") und so gesetzt, dass er auf zwei Zeilen passt. |
 | 24.23.0 | 2026-06-22 | Feature | Kopfbereich: Tutorial-Button kürzer beschriftet („Neu hier? Starte das DEX Tutorial"). |
 | 24.23.0 | 2026-06-22 | Feature | Startseite: Die grüne Box „DEX für dein Event nutzen" wird Organizern nicht mehr angezeigt (sie haben die Funktionen bereits). Normale Nutzer und Admins sehen sie weiterhin. |

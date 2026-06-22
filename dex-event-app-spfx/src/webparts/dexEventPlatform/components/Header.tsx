@@ -134,7 +134,7 @@ export default function Header(): React.ReactElement {
       case 'edit-event': return t('header.editevent');
       case 'settings': return t('header.settings');
       case 'profile': return t('header.profile');
-      case 'admin': return t('header.admin');
+      case 'admin': return 'Organizer';
       case 'role-matrix': return t('header.rolematrix');
       case 'participants': return t('header.participants');
       case 'flowcharts': return t('header.flowcharts');

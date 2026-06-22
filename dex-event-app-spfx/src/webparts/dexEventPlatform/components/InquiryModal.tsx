@@ -23,20 +23,22 @@ interface InquiryModalProps {
 
 export default function InquiryModal({ open, onClose, organizerMode }: InquiryModalProps): React.ReactElement | null {
   const { sendAdminInquiry, requestOrganizerRole } = useEvents();
-  const { currentUser } = useCurrentUser();
+  const { currentUser, photoUrl } = useCurrentUser();
   const { locale } = useLanguage();
   const isDe = locale === 'de';
   const userFullName = `${currentUser.firstName} ${currentUser.surname}`.trim();
-  const [name, setName] = React.useState(userFullName);
+  // v24.24: Standort + Position des eingeloggten Users (read-only Anzeige +
+  // gehen mit in die Anfrage-Mail an die Admins).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const userLocation = ((currentUser as any).location || '').trim();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const userJobTitle = ((currentUser as any).jobTitle || '').trim();
+  const userInitials = `${(currentUser.firstName || '')[0] || ''}${(currentUser.surname || '')[0] || ''}`.toUpperCase() || '?';
   const [eventName, setEventName] = React.useState('');
   const [message, setMessage] = React.useState('');
   const [sending, setSending] = React.useState(false);
   const [status, setStatus] = React.useState<'' | 'success' | 'error'>('');
   const [showInfo, setShowInfo] = React.useState(false);
-
-  React.useEffect(() => {
-    if (open && !name && userFullName) setName(userFullName);
-  }, [open, userFullName]);
 
   // v23.37: im Organizer-Modus reicht der Name (Nachricht optional, kein
   // Event-Name) — die allgemeine Anfrage braucht Event-Name + Nachricht.
@@ -48,12 +50,10 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
     setStatus('');
     let ok = false;
     if (organizerMode) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const loc = (currentUser as any).location || '';
-      const res = await requestOrganizerRole(currentUser.email || '', name.trim() || userFullName, loc, message.trim());
+      const res = await requestOrganizerRole(currentUser.email || '', userFullName, userLocation, message.trim());
       ok = res.ok;
     } else {
-      ok = await sendAdminInquiry(name.trim() || userFullName, currentUser.email || '', eventName.trim(), message.trim());
+      ok = await sendAdminInquiry(userFullName, currentUser.email || '', eventName.trim(), message.trim(), userLocation, userJobTitle);
     }
     setSending(false);
     if (ok) {
@@ -121,17 +121,42 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
               : 'Click here — all features, audiences and example events at a glance.'}
           </span>
         </button>}
-        <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
-          {locale === 'de' ? 'Dein Name' : 'Your name'}
-          {/* v13.0: form-input statt inline-style — konsistente Höhe / Border. */}
-          <input
-            type="text"
-            className="form-input"
-            value={name}
-            onChange={e => setName(e.target.value)}
-            disabled={sending}
-          />
-        </label>
+        {/* v24.24: „Dein Name" ist nicht mehr frei editierbar — stattdessen eine
+            read-only Personen-Karte des eingeloggten Users (Foto, Name, Position,
+            Standort), analog zur Teilnehmerliste. Diese Infos gehen mit in die
+            Anfrage-Mail an die Admins. */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
+          {locale === 'de' ? 'Du fragst an als' : 'Requesting as'}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 12,
+            padding: '10px 12px', borderRadius: 10,
+            border: '1px solid var(--dex-gray-200)', background: 'var(--dex-gray-50, #fafafa)',
+          }}>
+            {photoUrl
+              ? <img src={photoUrl} alt="" style={{ width: 44, height: 44, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+              : <span style={{
+                  width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+                  background: 'var(--dex-green, #86bc25)', color: '#fff',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontWeight: 700, fontSize: '0.95rem',
+                }}>{userInitials}</span>}
+            <span style={{ minWidth: 0 }}>
+              <span style={{ display: 'block', fontWeight: 600, color: 'var(--dex-gray-800)', fontSize: '0.92rem' }}>
+                {userFullName || (currentUser.email || '')}
+              </span>
+              {(userJobTitle || userLocation) && (
+                <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+                  {[userJobTitle, userLocation].filter(Boolean).join(' · ')}
+                </span>
+              )}
+              {currentUser.email && (
+                <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-400)' }}>
+                  {currentUser.email}
+                </span>
+              )}
+            </span>
+          </div>
+        </div>
         {!organizerMode && (
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
             {locale === 'de' ? 'Event-Name' : 'Event name'}
