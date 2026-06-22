@@ -197,6 +197,22 @@ function AppContent(): React.ReactElement {
   }, []);
   const layoutRef = React.useRef<HTMLDivElement>(null);
 
+  // v24.50: Beim Seitenwechsel immer nach oben scrollen — sonst „hängt" die
+  // neue Seite an der Scroll-Position der vorigen. Deckt das App-Layout, das
+  // Fenster UND den SharePoint-Canvas-Scrollcontainer ab (in SP scrollt nicht
+  // window, sondern ein eigener Container).
+  React.useEffect(() => {
+    const toTop = (el: Element | null): void => { try { if (el && 'scrollTop' in el) (el as HTMLElement).scrollTop = 0; } catch { /* */ } };
+    try { window.scrollTo(0, 0); } catch { /* */ }
+    toTop(document.scrollingElement);
+    toTop(document.documentElement);
+    toTop(document.body);
+    toTop(layoutRef.current);
+    // Bekannte SharePoint-Scrollcontainer (Workbench / moderne Seite).
+    ['[data-automation-id="contentScrollRegion"]', '.SPPageChrome-content', '#spPageCanvasContent', '[class*="contentScrollRegion"]']
+      .forEach(sel => { try { document.querySelectorAll(sel).forEach(toTop); } catch { /* */ } });
+  }, [currentPage]);
+
   // Deep-Link Handling: Wenn die Seite mit ?action=cancel&event=<eventNumber>
   // aufgerufen wird (z.B. aus einer Outlook-Decline-Reminder-Mail), direkt auf
   // My Events navigieren mit der eventId - MyEventsPage cancelt dann die
