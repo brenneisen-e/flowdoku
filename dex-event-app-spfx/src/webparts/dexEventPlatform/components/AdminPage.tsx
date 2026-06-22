@@ -2697,6 +2697,8 @@ export default function AdminPage(): React.ReactElement {
       { id: 'email', label: 'Email' },
       { id: 'jobTitle', label: 'Job Title' },
       { id: 'location', label: 'Standort' },
+      // v24.33: Unternehmenszugehörigkeit / Rechtsträger als eigene Spalte.
+      { id: 'company', label: isDe ? 'Unternehmen' : 'Company' },
     ];
     // v11.6: bei Split-Capacity die frei wählbaren Gruppen-Labels nutzen
     // (Fallback auf 'Starter-Typ' wenn keine Labels gesetzt sind).
@@ -6019,7 +6021,7 @@ export default function AdminPage(): React.ReactElement {
             ist: finalisieren, Test-An-/Abmeldung, live schalten (+ wer es sieht),
             Einladungsmail verschicken, Anmeldungen verfolgen. */}
         {(isAdmin || isOrganizerFor(selectedEvent)) && !!selectedEvent.isFictive && !selectedEvent.isDemoShowcase && (
-          <aside style={{ flex: '0 1 340px', minWidth: 290 }}>
+          <aside style={{ flex: '0 1 460px', minWidth: 360 }}>
             <div className="card" style={{ padding: 20, background: 'rgba(134,188,37,0.05)', border: '1px solid var(--dex-green, #86bc25)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', display: 'inline-flex' }}><Info size={18} /></span>
@@ -6451,7 +6453,7 @@ export default function AdminPage(): React.ReactElement {
           const visible = hints.filter(h => !isDismissed(h.id));
           if (visible.length === 0) return null;
           return (
-            <aside style={{ flex: '0 1 340px', minWidth: 290 }}>
+            <aside style={{ flex: '0 1 460px', minWidth: 360 }}>
               <div className="card" style={{ padding: 20, background: 'rgba(0,118,168,0.04)', border: '1px solid var(--dex-blue, #0076a8)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                   <span style={{ color: 'var(--dex-blue, #0076a8)', display: 'inline-flex' }}><Info size={18} /></span>
@@ -7057,6 +7059,36 @@ export default function AdminPage(): React.ReactElement {
                       } catch {
                         msgs.push(isDe ? 'WARN: Custom-Field-Mapping konnte nicht am Event gespeichert werden' : 'WARN: custom field mapping could not be saved on the event');
                       }
+                    }
+                    // v24.32: „Spalten fixen" deckt jetzt auch ALLE Sub-Events ab
+                    // (eigene Teilnehmerlisten) — sonst fehlt z.B. die neue
+                    // Company-Spalte dort. Pro Sub-Event mit eigener Subsite die
+                    // Spalten + View fixen und das Custom-Field-Mapping nachziehen.
+                    const subKids = childEventsOf(selectedEvent.id).filter(c => (c.subsiteUrl || '').trim());
+                    let subFixed = 0; let subFailed = 0;
+                    for (const child of subKids) {
+                      try {
+                        const childCf = (child.eventSpecificFields || []).map(f => ({
+                          id: f.id, label: f.label, type: f.type, required: f.required, options: f.options,
+                          visible: true,
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          spInternalName: (f as any).spInternalName || '',
+                        }));
+                        const childB2 = !!(child.durchstarterCapacity || child.funstarterCapacity);
+                        const childQuiz = !!(child.quiz && child.quiz.length > 0);
+                        const cr = await eventServiceRef.fixRegistrationListColumns(child.subsiteUrl, { isB2Run: childB2, hasQuiz: childQuiz, customFields: childCf });
+                        if (cr.customFieldMap && Object.keys(cr.customFieldMap).length > 0) {
+                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                          const updCf = (childCf as any[]).map(f => { const sp = cr.customFieldMap![f.id]; return sp ? { ...f, spInternalName: sp } : f; });
+                          try { await updateEvent(child.id, { 'CustomFields': JSON.stringify(updCf) }); } catch { /* best-effort */ }
+                        }
+                        subFixed++;
+                      } catch (err) { subFailed++; console.warn('[DEX] Spalten fixen (Sub-Event) fehlgeschlagen:', child.id, err); }
+                    }
+                    if (subKids.length > 0) {
+                      msgs.push(isDe
+                        ? `Sub-Events geprüft: ${subFixed}/${subKids.length}${subFailed ? ` (${subFailed} mit Fehler)` : ''}`
+                        : `Sub-events checked: ${subFixed}/${subKids.length}${subFailed ? ` (${subFailed} with errors)` : ''}`);
                     }
                     const finalMsg = msgs.length > 0 ? msgs.join(' | ') : (isDe ? 'Alles OK, keine Änderungen nötig.' : 'All OK, no changes needed.');
                     setFixColumnsResult(finalMsg);
@@ -9190,7 +9222,7 @@ export default function AdminPage(): React.ReactElement {
               // Spalte (Foto + zweizeilig) zusammenfassen. Die synthetische
               // 'person'-Spalte ersetzt die erste sichtbare Personen-Spalte,
               // die übrigen entfallen.
-              const PERSONAL_IDS = ['anrede', 'vorname', 'nachname', 'email', 'jobTitle', 'location'];
+              const PERSONAL_IDS = ['anrede', 'vorname', 'nachname', 'email', 'jobTitle', 'location', 'company'];
               const effectiveColumnIds = (() => {
                 if (!personalColsCollapsed) return visibleColumnIds;
                 const out: string[] = [];
@@ -9297,6 +9329,7 @@ export default function AdminPage(): React.ReactElement {
                 }
                 if (id === 'jobTitle') return <th key={id} style={{ ...baseStyle, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('jobTitle')}>Job Title{sortIcon('jobTitle')}{hideButton(id)}</th>;
                 if (id === 'location') return <th key={id} style={{ ...baseStyle, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSort('location')}>{isDe ? 'Standort' : 'Location'}{sortIcon('location')}{hideButton(id)}</th>;
+                if (id === 'company') return <th key={id} style={{ ...baseStyle }}>{isDe ? 'Unternehmen' : 'Company'}{hideButton(id)}</th>;
                 if (id === 'starterType') {
                   return (
                     <th key={id} style={baseStyle} title={isDe ? "Starter-Typ: Durchstarter oder Funstarter. Wird bei der Anmeldung gewählt und steuert die Split-Kapazität + Warteliste. Der eigentliche Startblock steht in der Custom-Field-Spalte 'Start block'." : "Starter type: Durchstarter or Funstarter. Chosen at registration and controls the split capacity + waitlist. The actual start block is in the custom field column 'Start block'."}>
@@ -9459,6 +9492,11 @@ export default function AdminPage(): React.ReactElement {
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const lc = String((reg as any).Location || '');
                   return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{lc ? highlightMatch(lc) : '-'}</td>;
+                }
+                if (id === 'company') {
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                  const cmp = String((reg as any).Company || '');
+                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{cmp ? highlightMatch(cmp) : '-'}</td>;
                 }
                 if (id === 'starterType') {
                   return (
