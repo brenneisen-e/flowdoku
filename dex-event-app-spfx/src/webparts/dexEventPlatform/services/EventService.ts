@@ -1294,7 +1294,10 @@ export class EventService {
     const activeSet = new Set<string>();
     const checkedSet = new Set<string>();
     const esc = (s: string): string => s.replace(/'/g, "''");
-    const BATCH = 8;
+    // v24.34 HOTFIX: Graph erlaubt max. 15 OR-Klauseln im $filter. Pro E-Mail
+    // erzeugen wir 2 Klauseln (mail + userPrincipalName) → Batch 8 = 16 Klauseln
+    // → JEDER Batch scheiterte mit HTTP 400. Batch 7 = 14 Klauseln.
+    const BATCH = 7;
     for (let i = 0; i < candidates.length; i += BATCH) {
       const batch = candidates.slice(i, i + BATCH);
       const clauses = batch
@@ -1361,7 +1364,10 @@ export class EventService {
     let client: any;
     try { client = await ctx.msGraphClientFactory.getClient('3'); } catch { return out; }
     const esc = (s: string): string => s.replace(/'/g, "''");
-    const BATCH = 8;
+    // v24.34 HOTFIX: Graph erlaubt max. 15 OR-Klauseln im $filter. Pro E-Mail
+    // erzeugen wir 2 Klauseln (mail + userPrincipalName) → Batch 8 = 16 Klauseln
+    // → JEDER Batch scheiterte mit HTTP 400. Batch 7 = 14 Klauseln.
+    const BATCH = 7;
     for (let i = 0; i < candidates.length; i += BATCH) {
       const batch = candidates.slice(i, i + BATCH);
       const clauses = batch.map(e => `mail eq '${esc(e)}' or userPrincipalName eq '${esc(e)}'`).join(' or ');
