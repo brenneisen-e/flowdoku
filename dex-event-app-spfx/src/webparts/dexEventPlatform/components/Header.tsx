@@ -224,8 +224,8 @@ export default function Header(): React.ReactElement {
         >
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {locale === 'de'
-              ? <><strong>Neu hier?</strong> Starte das Tutorial — wir zeigen dir DEX Schritt für Schritt.</>
-              : <><strong>New here?</strong> Start the tutorial — we will show you DEX step by step.</>}
+              ? <><strong>Neu hier?</strong> Starte das DEX Tutorial</>
+              : <><strong>New here?</strong> Start the DEX tutorial</>}
           </span>
         </button>
       )}

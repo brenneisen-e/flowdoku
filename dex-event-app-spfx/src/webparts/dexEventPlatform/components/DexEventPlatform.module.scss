@@ -364,7 +364,9 @@
     .landing__text { text-align: center; max-width: 760px; }
     .landing__text h1 { font-size: clamp(1.6rem, 3.4vw, 2.4rem); font-weight: 400; color: var(--dex-gray-800); margin-bottom: 8px; line-height: 1.2; }
     .landing__text h1 strong { font-weight: 700; }
-    .landing__text p { color: var(--dex-gray-600); font-size: clamp(1rem, 1.8vw, 1.25rem); line-height: 1.4; }
+    // v24.23: etwas kleinere Schrift + ausgewogener Umbruch (text-wrap: balance),
+    // damit der komplette Willkommenstext auf genau zwei Zeilen passt (vorher 3).
+    .landing__text p { color: var(--dex-gray-600); font-size: clamp(0.92rem, 1.4vw, 1.05rem); line-height: 1.45; text-wrap: balance; }
     .landing__card .btn { max-width: 480px; width: 100%; }
 
     /* ========== Start Page ========== */
