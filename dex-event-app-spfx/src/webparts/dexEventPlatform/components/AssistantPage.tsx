@@ -52,7 +52,7 @@ function fieldVisible(f: EventSpecificField, data: Record<string, string>): bool
 }
 
 export default function AssistantPage(): React.ReactElement {
-  const { events, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, registerForEvent, childEventsOf, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest } = useEvents();
+  const { events, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, registerForEvent, childEventsOf, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest } = useEvents();
   const { navigate } = useNavigation();
   const { locale } = useLanguage();
   const { confirmDialog, showAlert, promptDialog } = useDialog();
@@ -211,6 +211,36 @@ export default function AssistantPage(): React.ReactElement {
     let data: Record<string, string> = {};
     try { if (item.registration.CustomData) data = JSON.parse(item.registration.CustomData); } catch { /* */ }
     setFieldModal({ mode: 'edit', event: item.event, group, registration: item.registration, data });
+  }
+
+  // v24.43: Die ganze Anmeldung (Haupt-/Klammer + alle Sub-Events) an die Person
+  // selbst übergeben — danach verwaltet nur noch sie alles über „Meine Events".
+  async function doHandBack(group: Group): Promise<void> {
+    const ok = await confirmDialog(
+      isDe
+        ? `Die Anmeldung von „${group.pName}" komplett an die Person selbst übergeben? Danach siehst DU sie hier nicht mehr — nur noch „${group.pName}" verwaltet sie über „Meine Events".`
+        : `Hand the registration of „${group.pName}" over to the person themselves? You will no longer see it here — only „${group.pName}" manages it via „My Events".`,
+      { confirmLabel: isDe ? 'Übergeben' : 'Hand over' }
+    );
+    if (!ok) return;
+    const key = `handback_${group.pEmail}`;
+    setBusyKey(key);
+    try {
+      let allOk = true;
+      for (const item of Array.from(group.regs.values())) {
+        try { const r = await handBackToParticipant(item.event.id, item.registration); if (!r) allOk = false; }
+        catch { allOk = false; }
+      }
+      await showAlert(
+        allOk
+          ? (isDe ? `Übergeben — „${group.pName}" verwaltet die Anmeldung jetzt selbst.` : `Handed over — „${group.pName}" now manages it.`)
+          : (isDe ? 'Teilweise übergeben — bitte prüfen.' : 'Partially handed over — please check.'),
+        { variant: allOk ? 'success' : 'error' }
+      );
+      await reload();
+    } finally {
+      setBusyKey(null);
+    }
   }
 
   function openRegister(group: Group, childEvent: DeloitteEvent): void {
@@ -407,11 +437,11 @@ export default function AssistantPage(): React.ReactElement {
         <div style={{ fontSize: '0.84rem', color: '#5a4a20', lineHeight: 1.5 }}>
           {isDe ? (
             <>
-              <strong>Wichtig:</strong> Du siehst hier ausschließlich Anmeldungen, die du <strong>selbst stellvertretend</strong> für eine andere Person durchgeführt hast. Hat sich die Person (z.B. dein Partner oder Director) <strong>selbst angemeldet</strong>, kannst du diese Anmeldung hier <strong>aktuell nicht</strong> einsehen oder bearbeiten — in dem Fall muss die Person ihre Anmeldung selbst über „Meine Events“ verwalten.
+              <strong>Wichtig:</strong> Hier siehst du zwei Arten von Anmeldungen: <strong>(1)</strong> Anmeldungen, die du <strong>selbst stellvertretend</strong> durchgeführt hast — die kannst du voll verwalten (Angaben anpassen, ab-/anmelden). <strong>(2)</strong> Anmeldungen, bei denen dich jemand bei seiner <strong>eigenen Anmeldung als Assistenz angegeben</strong> hat — die siehst du nur als <strong>Info</strong> (die Person verwaltet selbst) und kannst eine Änderung/Abmeldung <strong>anfordern</strong>. Hat sich jemand selbst angemeldet, <strong>ohne</strong> dich anzugeben, erscheint die Anmeldung hier nicht.
             </>
           ) : (
             <>
-              <strong>Important:</strong> You only see registrations you made <strong>on behalf of</strong> another person yourself. If the person (e.g. your partner or director) <strong>registered themselves</strong>, you currently <strong>cannot</strong> view or manage that registration here — in that case the person needs to manage it themselves via „My events“.
+              <strong>Important:</strong> You see two kinds of registrations here: <strong>(1)</strong> ones you made <strong>on behalf of</strong> someone — fully manageable (edit details, register/cancel); <strong>(2)</strong> ones where someone named you as their <strong>assistant</strong> during their own registration — shown as <strong>info</strong> only (they manage it themselves) and you can <strong>request</strong> a change/cancellation. If someone registered themselves <strong>without</strong> naming you, it does not appear here.
             </>
           )}
         </div>
@@ -529,6 +559,17 @@ export default function AssistantPage(): React.ReactElement {
                     <div style={{ fontWeight: 600, fontSize: '0.92rem' }}>{group.pName}</div>
                     <div style={{ fontSize: '0.78rem', color: '#666' }}>{group.pEmail}</div>
                     {subLine && <div style={{ fontSize: '0.78rem', color: '#888', marginTop: 2 }}>{subLine}</div>}
+                    {/* v24.43: Anmeldung komplett an die Person übergeben. */}
+                    <button
+                      type="button"
+                      onClick={() => { void doHandBack(group); }}
+                      disabled={busyKey === `handback_${group.pEmail}`}
+                      title={isDe ? 'Die ganze Anmeldung an die Person selbst übergeben — danach verwaltet nur noch sie alles.' : 'Hand the whole registration over to the person themselves.'}
+                      style={{ ...btnSecondary, marginTop: 8, fontSize: '0.76rem', padding: '5px 10px' }}
+                    >
+                      <Icon iconName="Share" style={{ fontSize: 12, marginRight: 5 }} />
+                      {busyKey === `handback_${group.pEmail}` ? '…' : (isDe ? 'An die Person übergeben' : 'Hand over to person')}
+                    </button>
                   </div>
                 </div>
 
