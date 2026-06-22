@@ -6323,6 +6323,54 @@ export default function AdminPage(): React.ReactElement {
               });
             }
           }
+          // 3f) v24.27: Feldart-Empfehlung — wenn ein Custom-Feld nach einem
+          // Datum bzw. einer Person klingt, aber als Freitext angelegt ist,
+          // hier dieselbe Empfehlung wie im Wizard (Feld-Editor) geben. Zugang
+          // läuft über „Event bearbeiten" → Schritt „Felder".
+          {
+            const looksDate = (s: string): boolean => /(datum|date|check[\s-]?in|check[\s-]?out|anreise|abreise|geburtstag|birthday|deadline|frist|termin|ankunft|abfahrt|arrival|departure)/i.test(s || '');
+            const looksName = (s: string): boolean => /(\bname\b|vorname|nachname|ansprechpartner|counselor|kolleg|mitarbeiter|\bmentor\b|\bpate\b|\bbuddy\b|begleitung|\bgast\b)/i.test(s || '');
+            const dateLike: string[] = [];
+            const nameLike: string[] = [];
+            const scan = (fields: { type?: string; label?: string }[] | undefined, prefix: string): void => {
+              for (const f of (fields || [])) {
+                const lbl = (f.label || '').trim();
+                if (!lbl) continue;
+                const tag = prefix ? `${lbl} (${prefix})` : lbl;
+                if ((f.type === 'text' || f.type === 'number') && looksDate(lbl)) dateLike.push(tag);
+                else if (f.type === 'text' && looksName(lbl)) nameLike.push(tag);
+              }
+            };
+            scan(selectedEvent.eventSpecificFields, '');
+            for (const ch of childEventsOf(selectedEvent.id)) {
+              scan(ch.eventSpecificFields, shortSubEventTitle(ch.title, selectedEvent.title));
+            }
+            if (dateLike.length > 0 || nameLike.length > 0) {
+              hints.push({
+                id: 'fieldtype-suggestion',
+                title: isDe ? 'Bessere Feldart möglich?' : 'Better field type available?',
+                body: isDe ? (
+                  <>
+                    Ein paar Felder könnten eine passendere Feldart haben:
+                    <ul style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>
+                      {dateLike.length > 0 && <li>Klingt nach <strong>Datum</strong>: <strong>{dateLike.join(', ')}</strong> — mit der Feldart „Datum“ bekommen Teilnehmer einen Kalender (optional mit Uhrzeit) statt Freitext.</li>}
+                      {nameLike.length > 0 && <li>Klingt nach <strong>Person</strong>: <strong>{nameLike.join(', ')}</strong> — mit der Feldart „Person“ suchen Teilnehmer die Person direkt (mit Foto und Standort).</li>}
+                    </ul>
+                    <div style={{ marginTop: 6 }}>Umstellen über „Event bearbeiten“ → Schritt „Felder“. Bestehende Antworten bleiben erhalten, werden aber nicht automatisch ins neue Format umgewandelt.</div>
+                  </>
+                ) : (
+                  <>
+                    A few fields might fit a better field type:
+                    <ul style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>
+                      {dateLike.length > 0 && <li>Looks like a <strong>date</strong>: <strong>{dateLike.join(', ')}</strong> — the „Date“ field type gives attendees a calendar (optionally with time) instead of free text.</li>}
+                      {nameLike.length > 0 && <li>Looks like a <strong>person</strong>: <strong>{nameLike.join(', ')}</strong> — the „Person“ field type lets attendees search the person directly (with photo and location).</li>}
+                    </ul>
+                    <div style={{ marginTop: 6 }}>Change via “Edit event” → step “Fields”. Existing answers are kept but not automatically converted to the new format.</div>
+                  </>
+                ),
+              });
+            }
+          }
           // 4) v22.34: End-Datum fehlt (Hauptevent oder Sub-Event) — ohne Ende
           // kann der Outlook-Termin nicht angelegt werden (der Kalendereintrag
           // braucht Start UND Ende; das Sub-Event bekommt dann nie eine
