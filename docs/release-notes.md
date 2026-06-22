@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.34.0 | 2026-06-22 | Bugfix | Hotfix: Der Unternehmens-Abruf (Backfill) schlug bisher immer fehl, weil die Abfrage an Microsoft zu viele Bedingungen auf einmal stellte. Jetzt werden kleinere Pakete abgefragt — die Unternehmenszugehörigkeit wird dadurch korrekt geladen und nachgetragen. |
 | 24.33.0 | 2026-06-22 | Feature | Die Unternehmenszugehörigkeit wird jetzt zuverlässig aus dem M365-Profil gelesen (auch wenn das SharePoint-Profil sie nicht hat) und erscheint als eigene Spalte „Unternehmen" in der Teilnehmerliste der App. |
 | 24.33.0 | 2026-06-22 | Feature | Admin Center: Neue Kachel „Spalten fixen (alle Events)" mit Fortschrittsanzeige — prüft die Teilnehmerlisten ALLER Events inkl. Sub-Events, ergänzt fehlende Spalten und trägt die Unternehmenszugehörigkeit für bereits bestehende Teilnehmer nach. War alles schon korrekt, wird das auch so gemeldet. |
 | 24.32.0 | 2026-06-22 | Bugfix | Anmeldungen brechen nicht mehr ab, wenn die neue Spalte „Company" in einer (älteren) Teilnehmerliste noch fehlt — die Anmeldung läuft dann ohne den Unternehmens-Wert durch (er wird nachgetragen, sobald „Spalten fixen" lief). |
