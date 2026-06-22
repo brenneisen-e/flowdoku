@@ -34,7 +34,11 @@ export default function LandingPage(): React.ReactElement {
   const [showInquiry, setShowInquiry] = React.useState(false);
 
   // ==================== v22: Archivierung (Admin) ====================
-  const { isAdmin } = useRoles();
+  const { isAdmin, canCreateEvents } = useRoles();
+  // v24.23: Die „DEX für dein Event nutzen"-Box (Werde Organizer) ist für
+  // Organizer überflüssig — sie haben die Funktionen schon. Admins sehen sie
+  // bewusst weiter (um die normale User-Ansicht der Landing Page zu prüfen).
+  const showOrganizerCta = !canCreateEvents || isAdmin;
   const { isEventsLoading, getArchivableCount, runArchiveExpired, scanInactiveAccounts, getDeletableArchiveCount, runDeleteOldArchive, deleteEvent, countExternalRegistrations, refreshEvents } = useEvents();
   const { confirmDialog, showAlert } = useDialog();
   const [archInfo, setArchInfo] = React.useState<{ total: number; perList: Record<string, number> } | null>(null);
@@ -705,8 +709,8 @@ export default function LandingPage(): React.ReactElement {
             </h1>
             <p>
               {isDe
-                ? <>Willkommen bei <strong>DEX</strong>.<br />Unsere neue App für die Organisation von Deloitte Events – von der Anmeldung bis zum Check-in: alles an einer Stelle.</>
-                : <>Welcome to <strong>DEX</strong>.<br />Our new app for organising Deloitte events – from registration to check-in: everything in one place.</>}
+                ? <>Willkommen bei <strong>DEX</strong>. Unsere neue App für die Organisation von Deloitte Events. Von der Anmeldung, bis zum Check-in. Alles an einer Stelle.</>
+                : <>Welcome to <strong>DEX</strong>. Our new app for organising Deloitte events. From registration to check-in. Everything in one place.</>}
             </p>
           </div>
           {/* v22.1: Check-in-Hinweisbox(en) — ab 2 Tage vor dem Event, sobald
@@ -781,6 +785,7 @@ export default function LandingPage(): React.ReactElement {
           <button className="btn btn-lg btn-block btn-outline" data-tour="landing-start" onClick={() => navigate('start')} style={{ maxWidth: 360 }}>
             {t('landing.start')}
           </button>
+          {showOrganizerCta && (
           <div
             className="landing__actions"
             style={{
@@ -825,6 +830,7 @@ export default function LandingPage(): React.ReactElement {
               </span>
             </button>
           </div>
+          )}
 
           <div
             style={{

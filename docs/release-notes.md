@@ -8,6 +8,9 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.23.0 | 2026-06-22 | Feature | Startseite: Willkommenstext leicht überarbeitet („… Von der Anmeldung, bis zum Check-in. Alles an einer Stelle.") und so gesetzt, dass er auf zwei Zeilen passt. |
+| 24.23.0 | 2026-06-22 | Feature | Kopfbereich: Tutorial-Button kürzer beschriftet („Neu hier? Starte das DEX Tutorial"). |
+| 24.23.0 | 2026-06-22 | Feature | Startseite: Die grüne Box „DEX für dein Event nutzen" wird Organizern nicht mehr angezeigt (sie haben die Funktionen bereits). Normale Nutzer und Admins sehen sie weiterhin. |
 | 24.22.0 | 2026-06-22 | Feature | „Über die App" liegt jetzt oben im Kopfbereich (links neben „Handbuch") statt unten auf der Startseite. |
 | 24.22.0 | 2026-06-22 | Feature | Startseite: Willkommenstext jetzt zweizeilig (Begrüßung in Zeile 1, Beschreibung darunter). „Start"-Button und die grüne „DEX für dein Event nutzen"-Box sind jetzt gleich breit. |
 | 24.21.0 | 2026-06-22 | Bugfix | Startseite: Der Willkommenstext wird nicht mehr künstlich auf die Breite des Grußes eingeengt (wirkte gequetscht) — er nutzt wieder die volle Textbreite. |

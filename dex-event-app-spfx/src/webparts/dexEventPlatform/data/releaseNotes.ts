@@ -44,6 +44,9 @@ export interface ReleaseNote {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '24.23.0', date: '2026-06-22', bereich: 'Allgemein', type: 'Feature', text: 'Der Willkommenstext auf der Startseite ist leicht überarbeitet („… Von der Anmeldung, bis zum Check-in. Alles an einer Stelle.") und wird jetzt zuverlässig auf zwei Zeilen umbrochen.' },
+  { version: '24.23.0', date: '2026-06-22', bereich: 'Allgemein', type: 'Feature', text: 'Der Tutorial-Button oben im Kopfbereich ist jetzt kürzer beschriftet: „Neu hier? Starte das DEX Tutorial".' },
+  { version: '24.23.0', date: '2026-06-22', bereich: 'Allgemein', type: 'Feature', text: 'Die grüne Box „DEX für dein Event nutzen" auf der Startseite wird Organizern nicht mehr angezeigt — sie haben die Funktionen ohnehin schon. Normale Nutzer und Admins (die so die normale Nutzer-Ansicht sehen) bekommen sie weiterhin.' },
   { version: '24.22.0', date: '2026-06-22', bereich: 'Allgemein', type: 'Feature', text: '„Über die App" ist jetzt oben im Kopfbereich erreichbar (links neben „Handbuch") statt unten auf der Startseite. Außerdem ist der Willkommenstext zweizeilig (Begrüßung oben, Beschreibung darunter) und der „Start"-Button hat dieselbe Breite wie die grüne „DEX für dein Event nutzen"-Box.' },
   { version: '24.21.0', date: '2026-06-22', bereich: 'Allgemein', type: 'Bugfix', text: 'Der Willkommenstext auf der Startseite wird nicht mehr auf die Breite des Grußes begrenzt — das wirkte zu gequetscht. Jetzt nutzt er wieder die normale, gut lesbare Breite.' },
   { version: '24.21.0', date: '2026-06-22', bereich: 'Allgemein', type: 'Feature', text: 'Startseite: Der Untertext der grünen Box lautet jetzt „Werde Organizer und nutze alle Funktionen.". Der Link „Über die App" ist nicht mehr unterstrichen.' },
