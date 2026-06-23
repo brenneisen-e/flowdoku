@@ -18,6 +18,7 @@ import { DeloitteEvent, EventSpecificField } from '../types';
 import { SPRegistration } from '../services/EventService';
 import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2, ChevronUp, ChevronDown, QrCode, Search, Info, Calendar, Pin } from './Icons';
 import OrganizerList from './OrganizerList';
+import { PersonContactHover } from './PersonContactHover';
 import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
 import { isEventOver } from '../utils/eventFormat';
 // v20.1: Self-Check-in jederzeit aktivierbar (Token-Erzeugung beim Klick).
@@ -5588,14 +5589,12 @@ export default function AdminPage(): React.ReactElement {
                     {personalColsCollapsed ? (
                       <td style={{ padding: 8 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                          <img
-                            src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(row.email)}&size=L`}
-                            alt={`${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email}
-                            onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
-                            onMouseEnter={e => { const t = e.currentTarget as HTMLImageElement; t.style.transform = 'scale(2.6)'; t.style.zIndex = '20'; t.style.position = 'relative'; t.style.boxShadow = '0 4px 16px rgba(0,0,0,0.25)'; }}
-                            onMouseLeave={e => { const t = e.currentTarget as HTMLImageElement; t.style.transform = 'scale(1)'; t.style.zIndex = 'auto'; t.style.boxShadow = 'none'; }}
-                            style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0, transition: 'transform 0.15s ease', transformOrigin: 'left center', cursor: 'zoom-in' }}
-                          />
+                          {/* v24.56: Foto-Hover = Kontaktkarte (E-Mail + Teams). */}
+                          {(() => {
+                            const nm = `${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email || '-';
+                            const sl = [row.jobTitle || '', stripLocPrefix(row.location || ''), row.company || ''].filter(Boolean).join(' • ');
+                            return <PersonContactHover email={row.email || ''} name={nm} size={30} subline={sl} isDe={isDe} />;
+                          })()}
                           {/* v23.32: zweizeilig — Name fett, darunter „Position • Standort" (ohne DE). */}
                           {(() => {
                             const fullName = `${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email || '-';
@@ -6859,29 +6858,47 @@ export default function AdminPage(): React.ReactElement {
             const nameLike = Array.from(nameSet.values());
             const profileLike = Array.from(profileSet.values());
             if (dateLike.length > 0 || nameLike.length > 0 || profileLike.length > 0) {
+              // v24.56: Feldnamen als Badges/Chips darstellen, damit klar ist,
+              // welche Felder gemeint sind. Format pro Tipp: „Du hast …" +
+              // Empfehlung + Erklärung.
+              const badges = (arr: string[]): React.ReactNode => (
+                <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 6, verticalAlign: 'middle' }}>
+                  {arr.map((f, i) => (
+                    <span key={`${f}-${i}`} style={{ display: 'inline-block', background: 'rgba(237,139,0,0.14)', border: '1px solid var(--dex-orange, #ed8b00)', color: 'var(--dex-orange-dark, #b35a00)', borderRadius: 999, padding: '1px 9px', fontSize: '0.74rem', fontWeight: 700, whiteSpace: 'nowrap' }}>{f}</span>
+                  ))}
+                </span>
+              );
+              const tip = (intro: React.ReactNode, empf: string, erkl: string): React.ReactElement => (
+                <div style={{ marginTop: 4 }}>
+                  <div>{intro}</div>
+                  <div style={{ marginTop: 3 }}><strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Empfehlung:' : 'Recommendation:'}</strong> {empf}</div>
+                  <div style={{ marginTop: 2, color: 'var(--dex-gray-600)' }}><strong>{isDe ? 'Erklärung:' : 'Why:'}</strong> {erkl}</div>
+                </div>
+              );
               hints.push({
                 id: 'fieldtype-suggestion',
                 title: isDe ? 'Tipps zu deinen Feldern' : 'Tips for your fields',
-                body: isDe ? (
-                  <>
-                    Ein paar deiner Felder lassen sich verbessern:
-                    <ul style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>
-                      {profileLike.length > 0 && <li><strong>Vermutlich überflüssig</strong> (wird schon automatisch erfasst): {profileLike.join(', ')}. Angaben wie Abteilung, Standort, Firma o.ä. kommen i.d.R. automatisch aus dem Profil — du musst sie nicht extra abfragen.</li>}
-                      {dateLike.length > 0 && <li>Besser <strong>„Datum“ statt Freitext</strong>: {dateLike.join(', ')}. Teilnehmer wählen dann ein Datum im Kalender (optional mit Uhrzeit).</li>}
-                      {nameLike.length > 0 && <li>Besser <strong>„Person“ statt Freitext</strong>: {nameLike.join(', ')}. Teilnehmer suchen die Person direkt (mit Foto und Standort).</li>}
-                    </ul>
-                    <div style={{ marginTop: 6 }}>Anpassen über „Event bearbeiten“ → Schritt „Felder“. Bestehende Antworten bleiben erhalten, werden aber nicht automatisch ins neue Format umgewandelt.</div>
-                  </>
-                ) : (
-                  <>
-                    A few of your fields could be improved:
-                    <ul style={{ margin: '6px 0 0', paddingLeft: 18, lineHeight: 1.5 }}>
-                      {profileLike.length > 0 && <li><strong>Probably unnecessary</strong> (already collected automatically): {profileLike.join(', ')}. Details like department, location or company usually come from the profile — you don’t need to ask for them.</li>}
-                      {dateLike.length > 0 && <li>Better <strong>„Date“ than free text</strong>: {dateLike.join(', ')}. Attendees then pick a date from a calendar (optionally with time).</li>}
-                      {nameLike.length > 0 && <li>Better <strong>„Person“ than free text</strong>: {nameLike.join(', ')}. Attendees search the person directly (with photo and location).</li>}
-                    </ul>
-                    <div style={{ marginTop: 6 }}>Adjust via “Edit event” → step “Fields”. Existing answers are kept but not automatically converted to the new format.</div>
-                  </>
+                body: (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    {dateLike.length > 0 && tip(
+                      isDe ? <>Du hast {dateLike.length === 1 ? 'das Feld' : 'die Felder'} {badges(dateLike)} als <strong>Freitext</strong> eingestellt.</> : <>You set {dateLike.length === 1 ? 'the field' : 'the fields'} {badges(dateLike)} as <strong>free text</strong>.</>,
+                      isDe ? 'Nutze besser den Feldtyp „Datum".' : 'Better use the „Date" field type.',
+                      isDe ? 'Teilnehmer wählen dann ein Datum im Kalender (optional mit Uhrzeit) — keine Tippfehler, einheitliches Format.' : 'Attendees then pick a date from a calendar (optionally with time) — no typos, consistent format.'
+                    )}
+                    {nameLike.length > 0 && tip(
+                      isDe ? <>Du hast {nameLike.length === 1 ? 'das Feld' : 'die Felder'} {badges(nameLike)} als <strong>Freitext</strong> eingestellt.</> : <>You set {nameLike.length === 1 ? 'the field' : 'the fields'} {badges(nameLike)} as <strong>free text</strong>.</>,
+                      isDe ? 'Nutze besser den Feldtyp „Person".' : 'Better use the „Person" field type.',
+                      isDe ? 'Teilnehmer suchen die Person direkt (mit Foto und Standort) — eindeutig statt frei getippt.' : 'Attendees search the person directly (with photo and location) — unambiguous instead of free text.'
+                    )}
+                    {profileLike.length > 0 && tip(
+                      isDe ? <>Du fragst {profileLike.length === 1 ? 'das Feld' : 'die Felder'} {badges(profileLike)} ab.</> : <>You ask for {profileLike.length === 1 ? 'the field' : 'the fields'} {badges(profileLike)}.</>,
+                      isDe ? 'Diese Felder kannst du weglassen.' : 'You can drop these fields.',
+                      isDe ? 'Angaben wie Abteilung, Standort oder Firma kommen automatisch aus dem Profil — du musst sie nicht extra abfragen.' : 'Details like department, location or company come automatically from the profile — no need to ask for them.'
+                    )}
+                    <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.76rem' }}>
+                      {isDe ? 'Anpassen über „Event bearbeiten" → Schritt „Felder". Bestehende Antworten bleiben erhalten, werden aber nicht automatisch ins neue Format umgewandelt.' : 'Adjust via „Edit event" → step „Fields". Existing answers are kept but not automatically converted.'}
+                    </div>
+                  </div>
                 ),
               });
             }
@@ -9950,14 +9967,9 @@ export default function AdminPage(): React.ReactElement {
                   return (
                     <td key="person" style={{ padding: 8 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                        <img
-                          src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(email)}&size=L`}
-                          alt={fullName}
-                          onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
-                          onMouseEnter={e => { const t = e.currentTarget as HTMLImageElement; t.style.transform = 'scale(2.6)'; t.style.zIndex = '20'; t.style.position = 'relative'; t.style.boxShadow = '0 4px 16px rgba(0,0,0,0.25)'; }}
-                          onMouseLeave={e => { const t = e.currentTarget as HTMLImageElement; t.style.transform = 'scale(1)'; t.style.zIndex = 'auto'; t.style.boxShadow = 'none'; }}
-                          style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0, transition: 'transform 0.15s ease', transformOrigin: 'left center', cursor: 'zoom-in' }}
-                        />
+                        {/* v24.56: Foto-Hover zeigt Kontaktkarte (E-Mail + Teams),
+                            wie bei den Organizern auf der Anmeldeseite. */}
+                        <PersonContactHover email={email} name={fullName} size={30} subline={sub} isDe={isDe} />
                         <div
                           style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.25, cursor: 'pointer' }}
                           title={isDe ? 'Detailinfos anzeigen' : 'Show details'}

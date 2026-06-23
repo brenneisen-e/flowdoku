@@ -8,6 +8,9 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.56.0 | 2026-06-22 | Feature | Teilnehmerliste: Maus über das Foto einer Person zeigt jetzt eine Kontaktkarte (Foto, Name, klickbare E-Mail, MS-Teams-Chat-Link) — wie bei den Organizern auf der Anmeldeseite. |
+| 24.56.0 | 2026-06-22 | Feature | Hinweis-Box „Tipps zu deinen Feldern": Felder als farbige Badges, klarere Struktur (Du hast … / Empfehlung / Erklärung). |
+| 24.56.0 | 2026-06-22 | Bugfix | Anmeldeseite: Die Platz-Anzeige steht jetzt direkt links neben dem „Anmelden"-Button. |
 | 24.55.0 | 2026-06-22 | Bugfix | Landing Page passt sich der Bildschirmhöhe an: Auf niedrigeren Bildschirmen werden Kreis, Abstände und Schrift automatisch kleiner, sodass der ganze Willkommens-Screen ohne Scrollen passt (gestaffelt bei 900/760/620 px Höhe). |
 | 24.54.0 | 2026-06-22 | Bugfix | Landing Page auf Laptops: Inhalt wurde bei zu wenig Bildschirmhöhe oben/unten abgeschnitten. Jetzt scrollbar und zentriert solange er passt — immer alles erreichbar. (Der getestete automatische Seiten-Zoom wurde wieder entfernt.) |
 | 24.53.0 | 2026-06-22 | Bugfix | Auto-Fit neu gelöst: Das bisherige Verkleinern funktionierte auf Laptops nicht (SharePoint schnitt den Inhalt ab). Jetzt skaliert die App auf schmaleren Bildschirmen über echtes Seiten-Zoom (wie Strg+-, ca. 75% auf typischen Laptops); Inhalt bleibt vollständig und zentriert. Große Monitore unverändert. |

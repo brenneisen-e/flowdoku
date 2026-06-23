@@ -3966,7 +3966,7 @@ export default function RegistrationPage(): React.ReactElement {
           const isTeamEvent = !!(event.teamRegistrationEnabled && event.teamSize && event.teamSize > 1);
           const teamsFree = isTeamEvent ? Math.floor(free / (event.teamSize || 1)) : 0;
           return (
-            <span style={{ marginRight: 'auto', fontSize: '0.82rem', color, fontWeight: 600 }}>
+            <span style={{ fontSize: '0.82rem', color, fontWeight: 600 }}>
               {`${free} / ${event.maxParticipants} ${t('reg.seats.available') || 'Plätze frei'}`}
               {isTeamEvent && (
                 <span style={{ marginLeft: 6, color: 'var(--dex-gray-600)', fontWeight: 500 }}>
