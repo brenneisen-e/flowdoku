@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.70.0 | 2026-06-23 | Feature | Admin-Übersicht: Kacheln haben jetzt einen Hover-Effekt (grüner Rand + leichter Lift). |
 | 24.69.0 | 2026-06-23 | Feature | Admin-Übersicht: getrennte Kacheln „Rollenverwaltung" (Rollen zuweisen → Einstellungen) und „Rollenmatrix" (Rechte-Übersicht). Matrix-Seite + Suche + PDF heißen jetzt „Rollenmatrix". |
 | 24.69.0 | 2026-06-23 | Feature | Tutorial-CTA „Neu hier?" per „×" ausblendbar (in localStorage gespeichert). |
 | 24.69.0 | 2026-06-23 | Feature | Nutzermenü aufgeräumt: „Rollenverwaltung" raus (jetzt Admin-Hub-Kachel), „Demo: als User testen" als eigener „Demo"-Button in die Kopfzeile verlegt. |
