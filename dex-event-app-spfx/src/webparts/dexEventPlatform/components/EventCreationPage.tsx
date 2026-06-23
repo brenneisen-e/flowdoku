@@ -7,7 +7,7 @@
 
 import * as React from 'react';
 import { useNavigation } from '../context/NavigationContext';
-import { useEvents } from '../context/EventContext';
+import { useEvents, formatOrganizerList } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -3569,7 +3569,9 @@ export default function EventCreationPage(): React.ReactElement {
       // verweist. Sonst kommt der Termin ganz ohne Body — wirkt
       // unprofessionell und der Teilnehmer hat keinen Ansprechpartner
       // bei organisatorischen Rückfragen.
-      const orgNames = organizer.split(';').map(s => s.trim()).filter(Boolean).join(', ');
+      // v24.60: Namen wie die Anmelde-Mail normalisieren („Schwartz, Eva" →
+      // „Eva Schwartz") und mit „und"/„and" verbinden — nicht stumpf mit Komma.
+      const orgNames = formatOrganizerList([organizer], effEmailLanguage);
       const escHtml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
       // v9.8: Default-Body enthält jetzt auch den Abmelde-Hinweis analog zur
       // Anmeldebestätigungs-Mail. Sonst weiss der Empfänger nicht, wie er
@@ -4191,7 +4193,9 @@ export default function EventCreationPage(): React.ReactElement {
             StartDate: startDate ? new Date(startDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
             EndDate: endDate ? new Date(endDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
           };
-          const orgNames = organizer.split(';').map(s => s.trim()).filter(Boolean).join(', ');
+          // v24.60: Namen wie die Anmelde-Mail normalisieren + mit „und"/„and"
+          // verbinden (nicht stumpf Komma-getrennt).
+          const orgNames = formatOrganizerList([organizer], effEmailLanguage);
           const escHtml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
           // v9.8: gleicher Default-Body wie im Update-Pfad — inkl. Abmelde-Hinweis
           // mit Link auf die App ("Meine Events"-Tab).

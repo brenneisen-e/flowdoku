@@ -449,6 +449,9 @@ interface EventContextType {
   /** v24.51: Organizer per Mail über (ein) inaktives Konto informieren — mit
    *  Dedup über alle Admins (nur einmal pro Event+Person). */
   notifyOrganizerOfInactive: (eventId: string, people: Array<{ email: string; name: string }>) => Promise<{ sent: number; skipped: number; noOrganizer?: boolean }>;
+  /** v24.59: Bereits benachrichtigte Teilnehmer-E-Mails (lowercase) eines Events
+   *  — damit die Landing-Page schon-benachrichtigte Konten ausblenden kann. */
+  getSentInactiveNotices: (eventId: string) => Promise<Set<string>>;
   /** v21: Archivierung — zählt archivreife Zeilen abgelaufener Events. */
   getArchivableCount: () => Promise<{ total: number; perList: Record<string, number> }>;
   /** v21: Archivierung — verschiebt archivreife Zeilen ins DEX_Archive.
@@ -4567,6 +4570,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return out;
   }
 
+  // v24.59: Bereits benachrichtigte Konten eines Events (lowercase E-Mails) —
+  // best-effort-Durchgriff auf den Service.
+  async function getSentInactiveNotices(eventId: string): Promise<Set<string>> {
+    try { return await eventService.getSentInactiveNotices(eventId); }
+    catch { return new Set<string>(); }
+  }
+
   // v24.51: Den/die Organizer eines Events per Mail darauf hinweisen, dass eine
   // angemeldete Person womöglich kein aktives Deloitte-Konto mehr hat. Dedup
   // über DEX_InactiveNotices (ReadSecurity=1) — pro Event+Person nur EINE Mail,
@@ -4640,7 +4650,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns,
         sendAdminInquiry,
         requestOrganizerRole, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,

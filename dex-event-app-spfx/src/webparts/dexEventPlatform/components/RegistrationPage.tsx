@@ -765,7 +765,6 @@ export default function RegistrationPage(): React.ReactElement {
     );
   }
 
-  const isFull = event.maxParticipants > 0 && event.currentParticipants >= event.maxParticipants;
   const errorBorder = { border: '2px solid var(--dex-red)' };
 
   const parentAlreadyRegistered = !!(myParentReg && myParentReg.Status && myParentReg.Status !== 'Abgemeldet');
@@ -2444,15 +2443,10 @@ export default function RegistrationPage(): React.ReactElement {
               }}
             />
           )}
-          {isFull && (
-            <p className="text-red text-center mt-8" style={{ padding: '0 12px 12px', fontWeight: 600, fontSize: '0.85rem' }}>
-              {t('reg.allplaces')
-                .replace('{count}', String(event.waitlistCount))
-                .replace('{personLabel}', event.waitlistCount === 1
-                  ? (locale === 'en' ? 'person' : 'Person')
-                  : (locale === 'en' ? 'people' : 'Personen'))}
-            </p>
-          )}
+          {/* v24.59: Der frühere rote „Alle Plätze belegt …"-Text unter der
+              Event-Karte ist entfernt — die Info steht jetzt im Badge über den
+              Buttons (Status „Alle Plätze belegt") und in der Button-Beschriftung
+              (Warteliste + aktuelle Anzahl). */}
           {/* v10.20: Sessions-/Hauptevent-Auswahl ist nun in die rechte Spalte
               ('registration-specific') eingebettet — siehe weiter unten unter
               dem section-header "reg.eventinfo". Vorher stand der Block hier
@@ -3981,7 +3975,7 @@ export default function RegistrationPage(): React.ReactElement {
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: bg, color: fg, border: `1px solid ${bd}`, borderRadius: 999, padding: '5px 14px', fontSize: '0.82rem', fontWeight: 700 }}>
               <Icon iconName={waitlist ? 'Clock' : 'People'} style={{ fontSize: 15 }} />
               {waitlist
-                ? (locale === 'de' ? 'Nur noch Warteliste' : 'Waitlist only')
+                ? (locale === 'de' ? 'Alle Plätze belegt' : 'All places taken')
                 : (
                   <span>
                     {free} / {event.maxParticipants} {locale === 'de' ? 'freie Plätze' : 'seats free'}
@@ -4033,6 +4027,18 @@ export default function RegistrationPage(): React.ReactElement {
             >
               <Send size={16} /> {(() => {
                 if (isSubmitting) return t('reg.submitting');
+                // v24.59: Wenn das Hauptevent voll ist und eine Warteliste hat,
+                // landet die Anmeldung auf der Warteliste — das steht jetzt direkt
+                // im Button-Text inkl. aktueller Warteliste-Anzahl.
+                const mainFull = event.maxParticipants > 0
+                  && Math.max(0, event.maxParticipants - (event.currentParticipants || 0)) <= 0
+                  && !!event.waitlistEnabled;
+                const wc = event.waitlistCount || 0;
+                const waitlistSuffix = mainFull
+                  ? (locale === 'de'
+                      ? ` (Warteliste – aktuell ${wc} ${wc === 1 ? 'Person' : 'Personen'})`
+                      : ` (waitlist – currently ${wc} ${wc === 1 ? 'person' : 'people'})`)
+                  : '';
                 // v18.73: Vorgemerkter Team-Beitritt — eigener Button-Text.
                 if (pendingJoinTeam) {
                   return event?.teamJoinRequiresApproval
@@ -4051,18 +4057,19 @@ export default function RegistrationPage(): React.ReactElement {
                     ? `Bitte mindestens ${childTermSingular ? `eine ${childTermSingular}` : 'ein Sub-Event'} auswählen`
                     : `Please pick at least one ${childTermSingular || 'sub-event'}`;
                 }
-                if (registerForOther) return t('reg.register');
+                if (registerForOther) return t('reg.register') + waitlistSuffix;
                 // v7.3: Kein Selection-Block → einfacher "Registrieren"-Text ohne
                 // Parantheses-Info. Erst wenn Sub-Events existieren, zeigen wir
                 // detailliert an, was gerade submittet wird.
-                if (childEvents.length === 0) return t('reg.register');
+                if (childEvents.length === 0) return t('reg.register') + waitlistSuffix;
                 const parts: string[] = [];
                 if (willRegisterParent) parts.push(resolveMainEventLabel(t('reg.selection.mainevent') || 'Haupt-Event') || event.title);
                 if (selectedSessions.size > 0) {
                   parts.push(`${selectedSessions.size} ${selectedSessions.size === 1 ? (childTermSingular || t('reg.selection.sessioncount.one') || 'Session') : (childTermPlural || t('reg.selection.sessioncount.many') || 'Sessions')}`);
                 }
-                if (parts.length === 0) return t('reg.register');
-                return `${t('reg.register')} (${parts.join(' + ')})`;
+                if (parts.length === 0) return t('reg.register') + waitlistSuffix;
+                // Bei gleichzeitiger Hauptevent-Anmeldung den Warteliste-Hinweis anhängen.
+                return `${t('reg.register')} (${parts.join(' + ')})${willRegisterParent ? waitlistSuffix : ''}`;
               })()}
             </button>
           );
