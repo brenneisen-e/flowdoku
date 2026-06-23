@@ -618,7 +618,20 @@ function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | null {
     try { window.localStorage.removeItem('dex_search_focus_action'); } catch { /* */ }
     const seed = ACTION_FOCUS_SEED[hint];
     focusSeededRef.current = true;
-    if (seed) { setQuery(props.isDe ? seed.de : seed.en); setOpen(true); }
+    if (!seed) return;
+    // v24.67: Wenn genau EINE registrierte Aktion auf den Seed-Begriff passt,
+    // diese direkt auslösen (öffnet z.B. das „E-Mail versenden"-Modal) — statt
+    // nur das gefilterte Aktionen-Dropdown zu zeigen. Sonst Fallback: Dropdown
+    // vorgefiltert öffnen.
+    const seedTerm = (props.isDe ? seed.de : seed.en).toLowerCase().trim();
+    const matches = ctx.actions.filter(a => a.title.toLowerCase().indexOf(seedTerm) >= 0);
+    if (matches.length === 1 && matches[0].onClick && !matches[0].disabled) {
+      // kurz warten, damit der Admin-View vollständig gemountet ist.
+      const target = matches[0];
+      window.setTimeout(() => { try { target.onClick?.(); } catch { /* */ } }, 60);
+      return;
+    }
+    setQuery(props.isDe ? seed.de : seed.en); setOpen(true);
   }, [ctx, props.isDe]);
   if (!ctx || ctx.actions.length === 0) return null;
   const lang = props.isDe ? 'de' : 'en';

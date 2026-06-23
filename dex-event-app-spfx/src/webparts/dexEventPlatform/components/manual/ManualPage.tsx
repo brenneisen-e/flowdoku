@@ -83,6 +83,30 @@ export default function ManualPage(): React.ReactElement {
   const [copiedLink, setCopiedLink] = React.useState(false);
   const activeSection = visibleSections.find(s => s.id === activeId) || visibleSections[0];
 
+  // v24.67: Wenn die globale Suche einen Handbuch-Artikel öffnet, während das
+  // Handbuch SCHON offen ist, gibt es kein Remount — der Initial-State liest die
+  // Ziel-Sektion also nicht erneut. Deshalb hier live auf das CustomEvent
+  // reagieren und die Sektion umschalten (Fallback: localStorage-Key lesen).
+  React.useEffect(() => {
+    const open = (id: string): void => {
+      if (id && visibleSections.some(s => s.id === id)) {
+        setActiveId(id);
+        setSearch('');
+      }
+    };
+    const onOpen = (e: Event): void => {
+      const detail = (e as CustomEvent).detail;
+      if (typeof detail === 'string') open(detail);
+    };
+    window.addEventListener('dex-open-manual-section', onOpen);
+    // Beim Mount/Update auch einen evtl. frisch gesetzten localStorage-Key prüfen.
+    try {
+      const hinted = window.localStorage.getItem('dex_open_manual_section');
+      if (hinted) { window.localStorage.removeItem('dex_open_manual_section'); open(hinted); }
+    } catch { /* */ }
+    return () => window.removeEventListener('dex-open-manual-section', onOpen);
+  }, [visibleSections]);
+
   // Deep-Link zur aktuell offenen Sektion in die Zwischenablage kopieren.
   // Entfernt bestehende action/section/event-Parameter, fügt action=manual
   // + section=<activeId> sauber hinzu, damit die Ziel-URL immer auf diese

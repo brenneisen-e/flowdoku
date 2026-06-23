@@ -336,7 +336,14 @@ export default function GlobalSearch(): React.ReactElement | null {
       id: `man-${m.s.id}`,
       primary: m.s.title,
       secondary: m.s.description,
-      onSelect: () => { try { window.localStorage.setItem('dex_open_manual_section', m.s.id); } catch { /* */ } navigate('manual'); },
+      onSelect: () => {
+        try { window.localStorage.setItem('dex_open_manual_section', m.s.id); } catch { /* */ }
+        // v24.67: Falls das Handbuch bereits offen ist, wechselt navigate('manual')
+        // die Sektion NICHT (kein Remount). Deshalb zusätzlich ein Event feuern,
+        // auf das die ManualPage live reagiert und die Sektion umschaltet.
+        try { window.dispatchEvent(new CustomEvent('dex-open-manual-section', { detail: m.s.id })); } catch { /* */ }
+        navigate('manual');
+      },
     }));
     if (manHits.length) out.push({ key: 'manual', label: isDe ? 'Handbuch' : 'Manual', hits: manHits });
 
