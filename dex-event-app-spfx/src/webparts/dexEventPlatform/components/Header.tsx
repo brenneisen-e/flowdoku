@@ -14,7 +14,7 @@ import { useDialog } from '../context/DialogContext';
 import { DELOITTE_LOGO_HEADER } from '../data/brandLogos';
 import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
-import { ChevronLeft, Settings, Book, RefreshCw, Info } from './Icons';
+import { ChevronLeft, Settings, Book, RefreshCw, Info, Users } from './Icons';
 import { Icon } from '@fluentui/react/lib/Icon';
 import ImpersonateModal from './ImpersonateModal';
 import LandingInfoModal from './LandingInfoModal';
@@ -24,7 +24,7 @@ import { useTutorial } from './tutorial/TutorialGuide';
 export default function Header(): React.ReactElement {
   const { currentPage, navigate, selectedEventId } = useNavigation();
   const { currentUser, photoUrl } = useCurrentUser();
-  const { currentUserRole, isAdmin, originalIsAdmin } = useRoles();
+  const { currentUserRole, originalIsAdmin } = useRoles();
   const [showImpersonate, setShowImpersonate] = React.useState(false);
   const { events } = useEvents();
   // v22.50: Das frühere Check-in-Icon im Header ist entfallen — der Zugang zur
@@ -38,6 +38,15 @@ export default function Header(): React.ReactElement {
   // Info-Modal wird hier verwaltet statt auf der Landing Page.
   const [showAbout, setShowAbout] = React.useState(false);
   const [showPopup, setShowPopup] = React.useState(false);
+  // v24.69: Tutorial-CTA im Header ist per X ausblendbar — Zustand bleibt in
+  // localStorage erhalten (einmal weggeklickt = bleibt weg).
+  const [tutorialCtaHidden, setTutorialCtaHidden] = React.useState<boolean>(() => {
+    try { return window.localStorage.getItem('dex_tutorial_cta_hidden') === '1'; } catch { return false; }
+  });
+  const dismissTutorialCta = (): void => {
+    try { window.localStorage.setItem('dex_tutorial_cta_hidden', '1'); } catch { /* */ }
+    setTutorialCtaHidden(true);
+  };
   const isLanding = currentPage === 'landing';
   const isStart = currentPage === 'start';
 
@@ -207,27 +216,48 @@ export default function Header(): React.ReactElement {
           frühere Bubble unten auf der Landing Page. Absolut zentriert, damit
           die Position unabhängig von den Breiten links/rechts wirklich mittig
           sitzt. */}
-      {isLanding && (
-        <button
-          type="button"
-          onClick={openTutorial}
+      {isLanding && !tutorialCtaHidden && (
+        <div
           style={{
             position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)',
-            display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
-            background: 'var(--dex-green)', color: '#fff',
-            padding: '9px 18px', borderRadius: 999,
-            fontSize: '0.95rem', lineHeight: 1.2, fontFamily: 'inherit',
-            border: 'none', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
-            maxWidth: 'min(46vw, 460px)',
+            display: 'inline-flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap',
+            background: 'var(--dex-green)', borderRadius: 999,
+            boxShadow: '0 2px 8px rgba(0,0,0,0.10)', maxWidth: 'min(46vw, 460px)',
           }}
-          title={locale === 'de' ? 'Geführtes Tutorial starten' : 'Start the guided tutorial'}
         >
-          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {locale === 'de'
-              ? <><strong>Neu hier?</strong> Starte das DEX Tutorial</>
-              : <><strong>New here?</strong> Start the DEX tutorial</>}
-          </span>
-        </button>
+          <button
+            type="button"
+            onClick={openTutorial}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap',
+              background: 'transparent', color: '#fff',
+              padding: '9px 6px 9px 18px', borderRadius: 999,
+              fontSize: '0.95rem', lineHeight: 1.2, fontFamily: 'inherit',
+              border: 'none', cursor: 'pointer', overflow: 'hidden',
+            }}
+            title={locale === 'de' ? 'Geführtes Tutorial starten' : 'Start the guided tutorial'}
+          >
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {locale === 'de'
+                ? <><strong>Neu hier?</strong> Starte das DEX Tutorial</>
+                : <><strong>New here?</strong> Start the DEX tutorial</>}
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={dismissTutorialCta}
+            aria-label={locale === 'de' ? 'Tutorial-Hinweis ausblenden' : 'Hide tutorial hint'}
+            title={locale === 'de' ? 'Ausblenden (nicht mehr anzeigen)' : 'Hide (do not show again)'}
+            style={{
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              width: 26, height: 26, marginRight: 6, borderRadius: '50%',
+              background: 'rgba(255,255,255,0.2)', color: '#fff',
+              border: 'none', cursor: 'pointer', fontSize: '1rem', lineHeight: 1, fontFamily: 'inherit',
+            }}
+          >
+            ×
+          </button>
+        </div>
       )}
       <div className="header-left">
         {isLanding ? (
@@ -278,6 +308,23 @@ export default function Header(): React.ReactElement {
             {!isMobile && (
               <span style={{ fontSize: '0.85rem', fontWeight: 500, lineHeight: 1 }}>
                 {locale === 'de' ? 'Aktualisieren' : 'Refresh'}
+              </span>
+            )}
+          </button>
+        )}
+        {/* v24.69: „Demo: als User testen" aus dem User-Menü in den Header
+            verlegt (nur echte Admins). Öffnet den Impersonate-Dialog. */}
+        {originalIsAdmin && (
+          <button
+            className="header-icon-btn"
+            onClick={() => setShowImpersonate(true)}
+            title={locale === 'de' ? 'Demo: als User testen' : 'Demo: test as a user'}
+            style={isMobile ? {} : { width: 'auto', padding: '0 12px', display: 'inline-flex', alignItems: 'center', gap: 8 }}
+          >
+            <Users size={18} />
+            {!isMobile && (
+              <span style={{ fontSize: '0.85rem', fontWeight: 500, lineHeight: 1 }}>
+                {locale === 'de' ? 'Demo' : 'Demo'}
               </span>
             )}
           </button>
@@ -459,28 +506,9 @@ export default function Header(): React.ReactElement {
                 >
                   {t('profile.viewfull')}
                 </button>
-                {isAdmin && (
-                  <button
-                    className="btn btn-primary btn-block"
-                    style={{ fontSize: '0.85rem' }}
-                    onClick={() => { setShowPopup(false); navigate('settings'); }}
-                  >
-                    <Settings size={14} /> {t('settings.rolemanagement')}
-                  </button>
-                )}
-                {/* v12.7: Demo-Modus-Toggle nur für echte Admins
-                    (originalIsAdmin), damit der Button auch sichtbar bleibt,
-                    wenn die App durch laufende Impersonation kurzzeitig
-                    'isAdmin=false' meldet. */}
-                {originalIsAdmin && (
-                  <button
-                    className="btn btn-secondary btn-block"
-                    style={{ fontSize: '0.85rem' }}
-                    onClick={() => { setShowPopup(false); setShowImpersonate(true); }}
-                  >
-                    {t('header.demoUser') || 'Demo: als User testen'}
-                  </button>
-                )}
+                {/* v24.69: „Rollenverwaltung" (jetzt eigene Admin-Hub-Kachel) und
+                    „Demo: als User testen" (jetzt eigener Header-Button) sind aus
+                    dem User-Menü entfernt. */}
               </div>
               <div
                 title="Page-ID — bei UI-Anfragen kannst du diese ID nennen, dann finde ich die Seite sofort."
