@@ -8,6 +8,8 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.68.0 | 2026-06-23 | Bugfix | Sub-Event-Antworten nachträglich ändern: showIf wird respektiert (nur passende bedingte Felder sichtbar), alte/ausgeblendete Auswahl wird beim Speichern geleert statt ergänzt. |
+| 24.68.0 | 2026-06-23 | Bugfix | Startseite: zu großer Abstand zwischen Header und Box auf großen Screens — Box jetzt oben ausgerichtet (margin-top statt voll zentriert). |
 | 24.67.0 | 2026-06-23 | Bugfix | Suche: Klick auf eine Aktion (z.B. „E-Mail versenden") öffnet jetzt direkt das Aktions-Fenster für das Event statt nur die Event-Übersicht. |
 | 24.67.0 | 2026-06-23 | Bugfix | Handbuch: Über die Suche einen anderen Artikel öffnen wechselt jetzt auch, wenn das Handbuch schon offen ist (kein Remount → CustomEvent-Listener). |
 | 24.66.0 | 2026-06-23 | Bugfix | Suche (oben + Handbuch): Relevanz-Sortierung + Stichwörter + Bindestrich-Normalisierung — der beste Artikel wird nicht mehr von schwachen Treffern aus den Top 6 verdrängt; „email" findet auch „E-Mail". |

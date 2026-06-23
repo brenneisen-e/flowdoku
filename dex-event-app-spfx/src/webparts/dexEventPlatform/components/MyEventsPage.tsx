@@ -3793,12 +3793,34 @@ function MyEventSubEvents(props: {
       {editingId && (() => {
         const ce = props.childEvents.find(c => c.id === editingId);
         if (!ce) return null;
-        const fields = (ce.eventSpecificFields || []).filter(f => f && f.label);
+        // v24.68 BUG-FIX: Sichtbarkeitsbedingung (showIf) auch beim NACHTRÄGLICHEN
+        // Bearbeiten respektieren — vorher wurden ALLE bedingten Felder gezeigt
+        // (z.B. „Auswahl für Rice Bowl" UND „Auswahl für Com Curry"), egal welches
+        // Gericht gewählt war. Quelle der Bedingungs-Antwort ist der live
+        // editDraft, damit das Umschalten des steuernden Felds die abhängigen
+        // Felder sofort ein-/ausblendet (gleiche Logik wie das Anmelde-Modal).
+        const isFieldVisible = (f: EventSpecificField): boolean => {
+          if (!f.showIf || !f.showIf.fieldId) return true;
+          const raw = (editDraft[f.showIf.fieldId] || '').trim();
+          if (!raw) return false;
+          const answers = raw.indexOf(' | ') >= 0 ? raw.split(' | ').map(s => s.trim()).filter(Boolean) : [raw];
+          return answers.some(a => f.showIf!.values.indexOf(a) >= 0);
+        };
+        const allFields = (ce.eventSpecificFields || []).filter(f => f && f.label);
+        const fields = allFields.filter(isFieldVisible);
         const closeModal = (): void => { setEditingId(null); setEditDraft({}); };
         const saveEdit = async (): Promise<void> => {
           setSavingEdit(true);
           try {
-            await props.updateMyRegistration(editingId, editDraft);
+            // v24.68 BUG-FIX: Aktuell ausgeblendete bedingte Felder beim Speichern
+            // LEEREN — sonst bleibt eine alte Auswahl (z.B. „Auswahl für Com Curry")
+            // erhalten und „ergänzt" nur die neue, obwohl das Gericht gewechselt
+            // wurde.
+            const payload: Record<string, string> = { ...editDraft };
+            for (const f of allFields) {
+              if (f.showIf && f.showIf.fieldId && !isFieldVisible(f)) payload[f.id] = '';
+            }
+            await props.updateMyRegistration(editingId, payload);
             await refresh();
             await props.onMutated();
             closeModal();
