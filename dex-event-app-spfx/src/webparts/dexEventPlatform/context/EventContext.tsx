@@ -1099,6 +1099,22 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           return !!(ov && ov._teamMembersCannotCreate);
         } catch { return false; }
       })(),
+      // v24.58: Anzeige-Bezeichnung des Haupt-Events in der Sub-Event-Auswahl
+      // (Piggyback _mainEventLabel = { mode, text }).
+      mainEventLabelMode: ((): 'default' | 'custom' | 'none' | undefined => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          const m = ov && ov._mainEventLabel && ov._mainEventLabel.mode;
+          return (m === 'custom' || m === 'none') ? m : undefined;
+        } catch { return undefined; }
+      })(),
+      mainEventLabel: ((): string | undefined => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          const v = ov && ov._mainEventLabel && typeof ov._mainEventLabel.text === 'string' ? ov._mainEventLabel.text : '';
+          return v || undefined;
+        } catch { return undefined; }
+      })(),
       // v11.57: bei alten Tenants kann die SP-Spalte fehlen — undefined wird
       // als false interpretiert (kein Hinweis anzeigen).
       outlookDirty: !!e.OutlookDirty,

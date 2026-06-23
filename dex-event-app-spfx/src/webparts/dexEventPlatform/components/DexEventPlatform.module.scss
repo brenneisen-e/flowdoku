@@ -497,7 +497,10 @@
     }
     .registration-event__overlay h4 { font-size: 0.95rem; margin-bottom: 4px; }
     .registration-event__overlay p { font-size: 0.78rem; opacity: 0.85; }
-    .registration-actions { display: flex; justify-content: flex-end; gap: 16px; }
+    /* v24.57: Buttons (Registrieren / Ich nehme nicht teil) zentriert unter dem
+       Anmeldeformular statt rechtsbündig. Die Platz-Anzeige steht dann links
+       daneben im zentrierten Cluster. */
+    .registration-actions { display: flex; justify-content: center; align-items: center; gap: 16px; }
 
     /* v18.10 / v18.16: Event-Beschreibung (RichText). Vorher feste kleine
        Größe + lockerer Zeilenabstand. Jetzt größere, gut lesbare Basis und

@@ -447,11 +447,21 @@ export default function AssistantPage(): React.ReactElement {
         <div style={{ fontSize: '0.84rem', color: '#5a4a20', lineHeight: 1.5 }}>
           {isDe ? (
             <>
-              <strong>Wichtig:</strong> Hier siehst du zwei Arten von Anmeldungen: <strong>(1)</strong> Anmeldungen, die du <strong>selbst stellvertretend</strong> durchgeführt hast — die kannst du voll verwalten (Angaben anpassen, ab-/anmelden). <strong>(2)</strong> Anmeldungen, bei denen dich jemand bei seiner <strong>eigenen Anmeldung als Assistenz angegeben</strong> hat — die siehst du nur als <strong>Info</strong> (die Person verwaltet selbst) und kannst eine Änderung/Abmeldung <strong>anfordern</strong>. Hat sich jemand selbst angemeldet, <strong>ohne</strong> dich anzugeben, erscheint die Anmeldung hier nicht.
+              <strong>Wichtig:</strong> Hier siehst du zwei Arten von Anmeldungen:
+              <ul style={{ margin: '6px 0 6px', paddingLeft: 18, lineHeight: 1.5 }}>
+                <li>Anmeldungen, die du <strong>selbst stellvertretend</strong> durchgeführt hast — die kannst du <strong>voll verwalten</strong> (Angaben anpassen, ab-/anmelden).</li>
+                <li>Anmeldungen, bei denen dich jemand bei seiner <strong>eigenen Anmeldung als Assistenz angegeben</strong> hat — die siehst du nur als <strong>Info</strong> (die Person verwaltet selbst) und kannst eine Änderung/Abmeldung <strong>anfordern</strong>.</li>
+              </ul>
+              Hat sich jemand selbst angemeldet, <strong>ohne</strong> dich anzugeben, erscheint die Anmeldung hier nicht.
             </>
           ) : (
             <>
-              <strong>Important:</strong> You see two kinds of registrations here: <strong>(1)</strong> ones you made <strong>on behalf of</strong> someone — fully manageable (edit details, register/cancel); <strong>(2)</strong> ones where someone named you as their <strong>assistant</strong> during their own registration — shown as <strong>info</strong> only (they manage it themselves) and you can <strong>request</strong> a change/cancellation. If someone registered themselves <strong>without</strong> naming you, it does not appear here.
+              <strong>Important:</strong> You see two kinds of registrations here:
+              <ul style={{ margin: '6px 0 6px', paddingLeft: 18, lineHeight: 1.5 }}>
+                <li>ones you made <strong>on behalf of</strong> someone — <strong>fully manageable</strong> (edit details, register/cancel);</li>
+                <li>ones where someone named you as their <strong>assistant</strong> during their own registration — shown as <strong>info</strong> only (they manage it themselves) and you can <strong>request</strong> a change/cancellation.</li>
+              </ul>
+              If someone registered themselves <strong>without</strong> naming you, it does not appear here.
             </>
           )}
         </div>

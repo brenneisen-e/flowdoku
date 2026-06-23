@@ -1240,7 +1240,7 @@ export default function EventCreationPage(): React.ReactElement {
           // beim Edit-Save (letzter Spread `...topOverrides`) das frisch
           // berechnete Flag, d.h. Abwählen bliebe ohne Wirkung.
           _teamTerm, _teamMembersCannotCreate, _assistantsCanSee, _previewBeforeActive, _imageDisplay,
-          _organizerDisplayLarge, _hiddenOrganizers, _hideOrgIndividual,
+          _organizerDisplayLarge, _hiddenOrganizers, _hideOrgIndividual, _mainEventLabel,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -1251,7 +1251,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _subEventsOnlyMode; void _childEventTerm;
         void _inheritFlags; void _hideOrganizer; void _headerImageLayout;
         void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee; void _previewBeforeActive; void _imageDisplay;
-        void _organizerDisplayLarge; void _hiddenOrganizers; void _hideOrgIndividual;
+        void _organizerDisplayLarge; void _hiddenOrganizers; void _hideOrgIndividual; void _mainEventLabel;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
     })() : {}
@@ -1845,6 +1845,9 @@ export default function EventCreationPage(): React.ReactElement {
   const [teamTermSingular, setTeamTermSingular] = React.useState<string>(editEvent?.teamTermSingular || '');
   const [teamTermPlural, setTeamTermPlural] = React.useState<string>(editEvent?.teamTermPlural || '');
   const [teamMembersCannotCreate, setTeamMembersCannotCreate] = React.useState<boolean>(!!editEvent?.teamMembersCannotCreate);
+  // v24.58: Anzeige-Bezeichnung des Haupt-Events in der Sub-Event-Auswahl.
+  const [mainEventLabelMode, setMainEventLabelMode] = React.useState<'default' | 'custom' | 'none'>(editEvent?.mainEventLabelMode || 'default');
+  const [mainEventLabel, setMainEventLabel] = React.useState<string>(editEvent?.mainEventLabel || '');
   // v17.20: Bilingual-Toggle — wenn an, kann der Organizer pro Custom-Field
   // (Label, Help-Text, Checkbox-Confirm-Text, Dropdown-Optionen) eine
   // englische Variante hinterlegen. Wird im Wizard-Schritt 5 ganz oben als
@@ -3659,6 +3662,11 @@ export default function EventCreationPage(): React.ReactElement {
         ? { _teamTerm: { singular: teamTermSingular.trim(), plural: teamTermPlural.trim() } }
         : {};
       const teamNoCreateConfig = teamMembersCannotCreate ? { _teamMembersCannotCreate: true } : {};
+      // v24.58: Anzeige-Bezeichnung des Haupt-Events (Piggyback).
+      const mainEventLabelConfig: Record<string, unknown> =
+        mainEventLabelMode === 'none' ? { _mainEventLabel: { mode: 'none' } }
+        : (mainEventLabelMode === 'custom' && mainEventLabel.trim()) ? { _mainEventLabel: { mode: 'custom', text: mainEventLabel.trim() } }
+        : {};
       // v23.6: Assistenz-Sichtbarkeit (Piggyback).
       const assistantsCanSeeConfig = assistantsCanSee ? { _assistantsCanSee: true } : {};
       // v23.25: Organizer groß darstellen (Piggyback).
@@ -3678,7 +3686,7 @@ export default function EventCreationPage(): React.ReactElement {
         });
         return Object.keys(out).length ? { _imageDisplay: out } : {};
       })();
-      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(teamTermConfig).length > 0 || Object.keys(teamNoCreateConfig).length > 0 || Object.keys(assistantsCanSeeConfig).length > 0 || Object.keys(organizerDisplayLargeConfig).length > 0 || Object.keys(previewBeforeActiveConfig).length > 0 || Object.keys(imageDisplayConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0 || Object.keys(hiddenOrganizersConfig).length > 0 || Object.keys(hideOrgIndividualConfig).length > 0 || Object.keys(headerImageLayoutConfig).length > 0)
+      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(teamTermConfig).length > 0 || Object.keys(teamNoCreateConfig).length > 0 || Object.keys(mainEventLabelConfig).length > 0 || Object.keys(assistantsCanSeeConfig).length > 0 || Object.keys(organizerDisplayLargeConfig).length > 0 || Object.keys(previewBeforeActiveConfig).length > 0 || Object.keys(imageDisplayConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0 || Object.keys(hiddenOrganizersConfig).length > 0 || Object.keys(hideOrgIndividualConfig).length > 0 || Object.keys(headerImageLayoutConfig).length > 0)
         ? JSON.stringify({
             ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
             ...(effOutlookLogo ? { _outlookLogo: effOutlookLogo } : {}),
@@ -3692,6 +3700,7 @@ export default function EventCreationPage(): React.ReactElement {
             ...childTermConfig,
             ...teamTermConfig,
             ...teamNoCreateConfig,
+            ...mainEventLabelConfig,
             ...assistantsCanSeeConfig,
             ...organizerDisplayLargeConfig,
             ...previewBeforeActiveConfig,
@@ -4254,6 +4263,11 @@ export default function EventCreationPage(): React.ReactElement {
             ? { _teamTerm: { singular: teamTermSingular.trim(), plural: teamTermPlural.trim() } }
             : {};
           const teamNoCreateExtra = teamMembersCannotCreate ? { _teamMembersCannotCreate: true } : {};
+          // v24.58: Anzeige-Bezeichnung des Haupt-Events (Piggyback).
+          const mainEventLabelExtra: Record<string, unknown> =
+            mainEventLabelMode === 'none' ? { _mainEventLabel: { mode: 'none' } }
+            : (mainEventLabelMode === 'custom' && mainEventLabel.trim()) ? { _mainEventLabel: { mode: 'custom', text: mainEventLabel.trim() } }
+            : {};
           // v23.6: Assistenz-Sichtbarkeit (Piggyback).
           const assistantsCanSeeExtra = assistantsCanSee ? { _assistantsCanSee: true } : {};
           // v23.25: Organizer groß darstellen (Piggyback).
@@ -4273,7 +4287,7 @@ export default function EventCreationPage(): React.ReactElement {
             return Object.keys(out).length ? { _imageDisplay: out } : {};
           })();
           // v11.93: Top-Level-Logos aus dem Resolver lesen.
-          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0 || Object.keys(teamTermExtra).length > 0 || Object.keys(teamNoCreateExtra).length > 0 || Object.keys(assistantsCanSeeExtra).length > 0 || Object.keys(organizerDisplayLargeExtra).length > 0 || Object.keys(previewBeforeActiveExtra).length > 0 || Object.keys(imageDisplayExtra).length > 0 || Object.keys(hideOrganizerExtra).length > 0 || Object.keys(hiddenOrganizersExtra).length > 0 || Object.keys(hideOrgIndividualExtra).length > 0 || Object.keys(headerImageLayoutConfig).length > 0;
+          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0 || Object.keys(teamTermExtra).length > 0 || Object.keys(teamNoCreateExtra).length > 0 || Object.keys(mainEventLabelExtra).length > 0 || Object.keys(assistantsCanSeeExtra).length > 0 || Object.keys(organizerDisplayLargeExtra).length > 0 || Object.keys(previewBeforeActiveExtra).length > 0 || Object.keys(imageDisplayExtra).length > 0 || Object.keys(hideOrganizerExtra).length > 0 || Object.keys(hiddenOrganizersExtra).length > 0 || Object.keys(hideOrgIndividualExtra).length > 0 || Object.keys(headerImageLayoutConfig).length > 0;
           return hasAny
             ? JSON.stringify({
                 ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
@@ -4288,6 +4302,7 @@ export default function EventCreationPage(): React.ReactElement {
                 ...childTermExtra,
                 ...teamTermExtra,
                 ...teamNoCreateExtra,
+                ...mainEventLabelExtra,
                 ...assistantsCanSeeExtra,
                 ...organizerDisplayLargeExtra,
                 ...previewBeforeActiveExtra,
@@ -8490,6 +8505,95 @@ export default function EventCreationPage(): React.ReactElement {
                   })}
                 </div>
               </div>
+
+              {/* v24.58: Anzeige-Name des Haupt-Events in der Sub-Event-Auswahl.
+                  Nur relevant, wenn das Hauptevent mit-buchbar ist (also NICHT
+                  im „Nur Sub-Events"-Modus, wo es keine Hauptevent-Zeile gibt). */}
+              {!subEventsOnlyMode && (
+                <div style={{
+                  background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                  padding: '14px 16px', marginBottom: 16,
+                  border: '1px solid var(--dex-gray-200)',
+                }}>
+                  <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {isDe ? 'Bezeichnung des Haupt-Events in der Auswahl' : 'Main-event label in the selection'}
+                    <InfoTooltip text={isDe ? (
+                      <>
+                        <strong>Was du hier einstellst:</strong> Wenn dein Event {(childTermPlural || 'Sub-Events')} hat, sieht der Teilnehmer auf der Anmeldeseite mehrere wählbare Bereiche. Standardmäßig steht über dem Hauptevent das Wort &bdquo;Haupt-Event&ldquo; — hier kannst du das umbenennen oder ganz weglassen.<br /><br />
+                        <strong>Anzeige in der App:</strong> die gewählte Bezeichnung erscheint als kleine Überschrift über der Hauptevent-Auswahl, vor dem Event-Titel. Bei &bdquo;Kein Name&ldquo; wird nur der Event-Titel gezeigt.
+                      </>
+                    ) : (
+                      <>
+                        <strong>What you set here:</strong> When your event has {(childTermPlural || 'sub-events')}, attendees see several selectable areas on the registration page. By default the main event is prefixed with the word &bdquo;Main event&ldquo; — here you can rename it or drop it entirely.<br /><br />
+                        <strong>Shown in the app:</strong> the chosen label appears as a small heading above the main-event option, before the event title. With &bdquo;No label&ldquo; only the event title is shown.
+                      </>
+                    )} />
+                  </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+                    {([
+                      { val: 'default' as const, label: isDe ? <>Standard: <strong>„Haupt-Event“</strong></> : <>Default: <strong>„Main event“</strong></> },
+                      { val: 'custom' as const, label: isDe ? <>Eigener Name (z.B. <strong>„Konferenz“</strong>, <strong>„Hauptprogramm“</strong>)</> : <>Custom name (e.g. <strong>„Conference“</strong>, <strong>„Main programme“</strong>)</> },
+                      { val: 'none' as const, label: isDe ? <>Kein Name (nur der Event-Titel)</> : <>No label (just the event title)</> },
+                    ]).map(opt => {
+                      const selected = mainEventLabelMode === opt.val;
+                      return (
+                        <label
+                          key={opt.val}
+                          style={{
+                            display: 'flex', alignItems: 'flex-start', gap: 10,
+                            padding: '10px 14px', borderRadius: 8,
+                            border: `1px solid ${selected ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+                            background: selected ? 'rgba(134,188,37,0.06)' : '#fff',
+                            cursor: 'pointer', transition: 'border-color 0.15s, background 0.15s',
+                          }}
+                        >
+                          <input
+                            type="radio"
+                            name="mainEventLabelMode"
+                            checked={selected}
+                            onChange={() => setMainEventLabelMode(opt.val)}
+                            style={{
+                              position: 'absolute', opacity: 0, pointerEvents: 'none',
+                              width: 1, height: 1, margin: -1, padding: 0,
+                              border: 0, overflow: 'hidden', clip: 'rect(0 0 0 0)',
+                            }}
+                          />
+                          <span aria-hidden="true" style={{
+                            display: 'inline-block', width: 18, height: 18, borderRadius: '50%',
+                            border: `2px solid ${selected ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-400, #9aa0a6)'}`,
+                            background: '#fff', position: 'relative', flexShrink: 0, marginTop: 2,
+                            transition: 'border-color 0.15s',
+                          }}>
+                            {selected && (
+                              <span style={{ position: 'absolute', inset: 3, borderRadius: '50%', background: 'var(--dex-green, #86bc25)' }} />
+                            )}
+                          </span>
+                          <span style={{ fontSize: '0.88rem', flex: 1 }}>{opt.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {mainEventLabelMode === 'custom' && (
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={mainEventLabel}
+                      onChange={e => setMainEventLabel(e.target.value)}
+                      placeholder={isDe ? 'z.B. Konferenz' : 'e.g. Conference'}
+                      style={{ marginTop: 10, padding: '8px 12px', fontSize: '0.9rem' }}
+                    />
+                  )}
+                  {/* Live-Vorschau, wie es der Teilnehmer sieht. */}
+                  <div style={{ marginTop: 12, fontSize: '0.82rem', color: 'var(--dex-gray-500)' }}>
+                    {isDe ? 'Vorschau:' : 'Preview:'}{' '}
+                    <span style={{ fontWeight: 700, color: 'var(--dex-gray-700, #444)' }}>
+                      {mainEventLabelMode === 'none'
+                        ? (title || (isDe ? 'Event-Titel' : 'Event title'))
+                        : `${mainEventLabelMode === 'custom' ? (mainEventLabel.trim() || (isDe ? 'Eigener Name' : 'Custom name')) : (isDe ? 'Haupt-Event' : 'Main event')}: ${title || (isDe ? 'Event-Titel' : 'Event title')}`}
+                    </span>
+                  </div>
+                </div>
+              )}
 
                 {/* ===== Sub-Events (z.B. Workshop-Tage, Networking-Dinner, Kick-off-Sessions) ===== */}
                 <div className="form-group" style={{ marginTop: 0 }}>
