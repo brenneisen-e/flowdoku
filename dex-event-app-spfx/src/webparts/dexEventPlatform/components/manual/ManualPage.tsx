@@ -116,9 +116,18 @@ export default function ManualPage(): React.ReactElement {
 
   const grouped = React.useMemo(() => {
     const out: Record<string, ManualSection[]> = {};
-    const q = search.trim().toLowerCase();
+    // v24.66: Robuste Suche — Bindestriche entfernen (damit „email" auch
+    // „E-Mail" findet), in Tokens zerlegen (jedes Wort muss vorkommen) und
+    // zusätzlich die Such-Stichwörter (keywords) durchsuchen. Vorher war es ein
+    // simpler Teilstring-Vergleich nur auf Titel/Beschreibung, der z.B. „email"
+    // wegen des Bindestrichs in „E-Mail" nicht fand.
+    const normJoin = (str: string): string => (str || '').toLowerCase().replace(/-/g, '');
+    const tokens = normJoin(search.trim()).split(/[^a-z0-9äöüß]+/).filter(Boolean);
     for (const s of visibleSections) {
-      if (q && s.title.toLowerCase().indexOf(q) < 0 && s.description.toLowerCase().indexOf(q) < 0) continue;
+      if (tokens.length > 0) {
+        const hay = normJoin(`${s.title} ${s.description} ${s.keywords || ''}`);
+        if (!tokens.every(t => hay.indexOf(t) >= 0)) continue;
+      }
       (out[s.category] = out[s.category] || []).push(s);
     }
     return out;

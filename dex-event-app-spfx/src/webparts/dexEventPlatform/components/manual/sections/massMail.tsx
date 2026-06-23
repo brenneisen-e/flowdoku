@@ -16,6 +16,7 @@ export function massMailSection(locale: 'de' | 'en'): ManualSection {
       ? 'Alle Angemeldeten eines Events auf einmal anschreiben — im Deloitte-Layout, mit Rich-Text-Editor und Test-Versand an dich selbst.'
       : 'Reach all registered attendees of an event at once — in the Deloitte layout, with a rich-text editor and a test send to yourself.',
     visibleFor: ['Organizer', 'Admin'],
+    keywords: 'email senden mail senden e-mail versenden massenmail rundmail rund-mail email an alle mail an alle teilnehmer anschreiben nachricht info-mail infomail serienmail newsletter benachrichtigen',
     perspectives: [
       {
         perspective: 'organizer',

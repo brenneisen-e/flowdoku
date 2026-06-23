@@ -51,5 +51,9 @@ export interface ManualSection {
   description: string;
   /** Welche Rollen sehen diese Sektion in der Sidebar */
   visibleFor: Array<'User' | 'Organizer' | 'Admin'>;
+  /** v24.66: Zusätzliche Such-Stichwörter/Synonyme (nicht angezeigt) — damit die
+   *  Sektion auch über alternative Schreibweisen gefunden wird (z.B. „Email",
+   *  „Rundmail", „Massenmail" für den Mail-Versand-Artikel). */
+  keywords?: string;
   perspectives: ManualPerspectiveBlock[];
 }
