@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.65.0 | 2026-06-23 | Bugfix | Dialogfenster erben wieder das komplette App-Styling (Schrift, Auswahlfelder, Buttons). Ursache: Modal lag außerhalb des Web-Part-Scopes (Portal) — jetzt mit `styles.dexApp` umwickelt. |
 | 24.64.0 | 2026-06-23 | Feature | Sub-Events: Pro Sub-Event lässt sich im Wizard eine „Pflichtanmeldung" setzen — markierte Sub-Events müssen mitgebucht werden (auf der Anmeldeseite mit „Pflicht"-Hinweis). |
 | 24.64.0 | 2026-06-23 | Bugfix | Alte, nicht mehr einstellbare Pflicht-Sub-Event-Markierung wird nicht mehr berücksichtigt — Haupt-Event-only-Anmeldung ist wieder möglich, sofern kein Sub-Event als Pflicht markiert ist. |
 | 24.64.0 | 2026-06-23 | Bugfix | Dialog-Buttons werden zuverlässig im Deloitte-Look angezeigt (eigenes Stylesheet in document.head, unabhängig vom Portal-Rendering). |

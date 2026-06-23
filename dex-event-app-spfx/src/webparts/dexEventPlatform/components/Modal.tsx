@@ -22,6 +22,14 @@
  */
 import * as React from 'react';
 import * as ReactDOM from 'react-dom';
+// v24.65: Die gescopte Root-Klasse des Web Parts. Alle Basis-Styles (Schrift,
+// Radio-/Checkbox-/Input-Styling, CSS-Variablen) liegen unter `.dexApp`. Ein per
+// Portal an document.body gerendertes Modal liegt AUSSERHALB dieses Scopes —
+// deshalb fehlte dem Modal-Inhalt das komplette App-Styling. Indem wir das
+// Overlay mit `styles.dexApp` versehen, greift der gesamte gescopte Stylesheet
+// wieder (Schrift, Inputs, Variablen, …) — der moderne Look ist zurück, und das
+// Portal/Zoom bleibt erhalten.
+import styles from './DexEventPlatform.module.scss';
 
 // v24.64: Deterministisches Modal-Button-Styling.
 // Hintergrund (recherchiert): SPFx-CSS-Module sind auf den Web-Part-Container
@@ -112,7 +120,7 @@ export default function Modal({
       role="dialog"
       aria-modal="true"
       aria-label={ariaLabel}
-      className="dex-modal-overlay"
+      className={`dex-modal-overlay ${styles.dexApp}`}
       onClick={() => { if (dismissable) onClose(); }}
       style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
