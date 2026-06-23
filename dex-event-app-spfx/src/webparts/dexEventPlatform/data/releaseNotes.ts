@@ -44,6 +44,8 @@ export interface ReleaseNote {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '24.68.0', date: '2026-06-23', bereich: 'Anmeldung', type: 'Bugfix', text: 'Ändert man nachträglich seine Antworten zu einem Sub-Event (z.B. die Essensauswahl), werden die abhängigen Felder jetzt korrekt nur passend zur aktuellen Auswahl angezeigt — vorher erschienen alle bedingten Felder gleichzeitig. Außerdem wird eine alte, nicht mehr passende Auswahl beim Speichern entfernt statt zusätzlich behalten.' },
+  { version: '24.68.0', date: '2026-06-23', bereich: 'Allgemein', type: 'Bugfix', text: 'Auf der Startseite war der Abstand zwischen Kopfzeile und der weißen Box auf großen Bildschirmen sehr groß. Die Box sitzt jetzt näher oben.' },
   { version: '24.67.0', date: '2026-06-23', bereich: 'Organizer Center', type: 'Bugfix', text: 'Klickt man in der Suche oben auf eine Aktion (z.B. „E-Mail versenden"), öffnet sich jetzt direkt das passende Fenster für das Event — vorher landete man nur in der Event-Übersicht und musste die Aktion nochmal von Hand suchen.' },
   { version: '24.67.0', date: '2026-06-23', bereich: 'Prozesse & Doku', type: 'Bugfix', text: 'Öffnet man über die Suche einen Handbuch-Artikel, während das Handbuch bereits geöffnet ist, wird jetzt korrekt auf den gesuchten Artikel umgeschaltet (vorher blieb der alte Artikel stehen).' },
   { version: '24.66.0', date: '2026-06-23', bereich: 'Prozesse & Doku', type: 'Bugfix', text: 'Die Suche (oben und im Handbuch) findet jetzt zuverlässig die passenden Handbuch-Artikel. Vorher wurde z.B. der Artikel „E-Mail an alle Teilnehmer senden" bei der Suche nach „email senden" nicht angezeigt — die wirklich passenden Treffer landen jetzt ganz oben, und „email" findet auch „E-Mail".' },
