@@ -52,7 +52,7 @@ interface ActionEntry { key: string; de: string; en: string; kw: string[]; gate:
 const ACTION_CATALOG: ActionEntry[] = [
   { key: 'export', de: 'Teilnehmerliste exportieren (Excel)', en: 'Export attendee list (Excel)', kw: ['export', 'exportieren', 'excel', 'csv', 'sharepoint', 'teilnehmerliste', 'liste', 'download', 'tabelle'], gate: 'manage' },
   { key: 'qr', de: 'QR-Codes versenden', en: 'Send QR codes', kw: ['qr', 'qr-code', 'qr code', 'checkin-code', 'code versenden'], gate: 'manage' },
-  { key: 'massmail', de: 'Massenmail an Teilnehmer', en: 'Mass mail to attendees', kw: ['massenmail', 'mail', 'email', 'e-mail', 'nachricht', 'rundmail', 'anschreiben'], gate: 'manage' },
+  { key: 'massmail', de: 'E-Mail versenden', en: 'Send email', kw: ['massenmail', 'mail', 'email', 'e-mail', 'nachricht', 'rundmail', 'anschreiben', 'senden', 'versenden'], gate: 'manage' },
   { key: 'invite', de: 'Einladungsmail verschicken', en: 'Send invitation mail', kw: ['einladung', 'einladen', 'invite', 'anmelde-link', 'invitation'], gate: 'manage' },
   { key: 'audit', de: 'Audit-Log / Änderungsprotokoll', en: 'Audit log / change log', kw: ['audit', 'log', 'protokoll', 'historie', 'änderungen', 'changelog'], gate: 'manage' },
   { key: 'selfcheckin', de: 'Self-Check-in einstellen', en: 'Configure self-check-in', kw: ['self-check-in', 'selfcheckin', 'self check', 'qr-plakat', 'pdf', 'live-anzeige'], gate: 'manage' },
@@ -135,7 +135,7 @@ function nodeText(node: React.ReactNode): string {
 }
 
 function manualHaystack(s: ManualSection): string {
-  const parts: string[] = [s.title, s.description];
+  const parts: string[] = [s.title, s.description, s.keywords || ''];
   for (const block of s.perspectives || []) {
     if (block.title) parts.push(block.title);
     parts.push(nodeText(block.intro));
@@ -308,18 +308,36 @@ export default function GlobalSearch(): React.ReactElement | null {
     if (pageHits.length) out.push({ key: 'pages', label: isDe ? 'Seiten & Funktionen' : 'Pages & functions', hits: pageHits });
 
     // ---- Handbuch (gesamter Schritt-Text) ----
-    const manHits: SearchHit[] = [];
+    // v24.66: Relevanz-Sortierung. Vorher wurden einfach die ersten 6 Treffer in
+    // Array-Reihenfolge genommen — der eigentlich beste Artikel (Suchbegriff im
+    // Titel) wurde von früher einsortierten Schwach-Treffern aus den Top 6
+    // verdrängt (z.B. „E-Mail an alle Teilnehmer senden" tauchte bei „email
+    // senden" gar nicht auf). Jetzt: alle Treffer scoren (Titel > Stichwort >
+    // Beschreibung), absteigend sortieren, Top 6.
+    const stripHyphen = (s: string): string => s.replace(/-/g, '');
+    const manScored: Array<{ m: { s: ManualSection }; score: number }> = [];
     for (const m of manualIndex) {
-      if (matchAll(tokens, m.hay, m.words)) {
-        manHits.push({
-          id: `man-${m.s.id}`,
-          primary: m.s.title,
-          secondary: m.s.description,
-          onSelect: () => { try { window.localStorage.setItem('dex_open_manual_section', m.s.id); } catch { /* */ } navigate('manual'); },
-        });
+      if (!matchAll(tokens, m.hay, m.words)) continue;
+      const tHay = stripHyphen(norm(m.s.title));
+      const kHay = stripHyphen(norm(m.s.keywords || ''));
+      const dHay = stripHyphen(norm(m.s.description));
+      let score = 1;
+      let allInTitle = tokens.length > 0;
+      for (const tk of tokens) {
+        const t = stripHyphen(tk);
+        if (t && tHay.indexOf(t) >= 0) { score += 20; }
+        else { allInTitle = false; if (t && kHay.indexOf(t) >= 0) score += 8; else if (t && dHay.indexOf(t) >= 0) score += 4; }
       }
-      if (manHits.length >= 6) break;
+      if (allInTitle) score += 30; // alle Suchbegriffe im Titel = klarer Top-Treffer
+      manScored.push({ m, score });
     }
+    manScored.sort((a, b) => b.score - a.score);
+    const manHits: SearchHit[] = manScored.slice(0, 6).map(({ m }) => ({
+      id: `man-${m.s.id}`,
+      primary: m.s.title,
+      secondary: m.s.description,
+      onSelect: () => { try { window.localStorage.setItem('dex_open_manual_section', m.s.id); } catch { /* */ } navigate('manual'); },
+    }));
     if (manHits.length) out.push({ key: 'manual', label: isDe ? 'Handbuch' : 'Manual', hits: manHits });
 
     // ---- Teilnehmer (aus den Teilnehmerlisten der verwaltbaren Events) ----

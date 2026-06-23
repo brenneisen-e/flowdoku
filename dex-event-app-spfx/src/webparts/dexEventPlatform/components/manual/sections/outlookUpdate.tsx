@@ -16,6 +16,7 @@ export function outlookUpdateSection(locale: 'de' | 'en'): ManualSection {
       ? 'Das Bild im Outlook-Kalendereintrag der Teilnehmer austauschen und einen bereits verschickten Termin nachträglich aktualisieren, wenn er noch veraltet ist.'
       : 'Swap the image in the attendees’ Outlook calendar entry and refresh an already-sent appointment when it is still outdated.',
     visibleFor: ['Organizer', 'Admin'],
+    keywords: 'outlook termin bild foto invite einladung kalender aktualisieren update kalendereintrag termin aktualisieren outlook bild ändern foto im invite',
     perspectives: [
       {
         perspective: 'organizer',
