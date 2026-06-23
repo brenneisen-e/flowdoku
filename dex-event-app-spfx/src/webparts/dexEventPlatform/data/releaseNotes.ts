@@ -44,6 +44,8 @@ export interface ReleaseNote {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '24.63.0', date: '2026-06-23', bereich: 'Allgemein', type: 'Bugfix', text: 'Die Buttons in Dialogfenstern (z.B. „Abbrechen"/„Weiter", „Bestätigen") wurden zuletzt teilweise als schlichte graue Browser-Knöpfe angezeigt. Jetzt erscheinen überall wieder die gewohnten grünen bzw. grauen Deloitte-Buttons.' },
+  { version: '24.63.0', date: '2026-06-23', bereich: 'Anmeldung', type: 'Bugfix', text: 'Wenn man sich für ein Event anmelden wollte, bei dem eine Sub-Event-Auswahl verpflichtend ist, erschien ein interner Platzhaltertext statt eines verständlichen Hinweises. Jetzt steht dort klar, dass mindestens ein Sub-Event ausgewählt werden muss.' },
   { version: '24.62.0', date: '2026-06-23', bereich: 'Outlook', type: 'Feature', text: 'Beim Bearbeiten eines Events gibt es im Schritt „Kommunikation" (bei „Bild für den Outlook-Termin" und „Text im Outlook-Termin") jetzt den Button „Outlook-Termin jetzt aktualisieren". Falls der Kalendereintrag der Teilnehmer noch veraltet ist, kann man den Termin damit direkt neu verschicken.' },
   { version: '24.62.0', date: '2026-06-23', bereich: 'Prozesse & Doku', type: 'Feature', text: 'Zwei neue Handbuch-Artikel: „E-Mail an alle Teilnehmer senden" (Schritt für Schritt, wie man eine Mail an alle Angemeldeten schickt) und „Outlook-Termin: Bild ändern & aktualisieren". Beide sind auch über die Suche oben auffindbar.' },
   { version: '24.62.0', date: '2026-06-23', bereich: 'Anmeldung', type: 'Feature', text: 'Ausgebuchte Events: Das Status-Feld über den Buttons zeigt jetzt „Alle Plätze belegt | Warteliste aktuell X Personen", und der Anmelden-Button bleibt schlank mit dem dezenten Zusatz „(Warteliste)".' },
