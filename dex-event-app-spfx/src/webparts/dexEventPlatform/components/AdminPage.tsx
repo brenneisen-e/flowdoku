@@ -14,7 +14,7 @@ import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
-import { DeloitteEvent, EventSpecificField } from '../types';
+import { DeloitteEvent } from '../types';
 import { SPRegistration } from '../services/EventService';
 import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2, ChevronUp, ChevronDown, QrCode, Search, Info, Calendar, Pin } from './Icons';
 import OrganizerList from './OrganizerList';
@@ -2671,187 +2671,6 @@ export default function AdminPage(): React.ReactElement {
     showAlert(isDe ? `${sent} Mail(s) in die Warteschlange gelegt — sie werden in Kürze versendet.` : `${sent} mail(s) queued — they will be sent shortly.`, { variant: 'success' });
   };
 
-  // v24.35: Erinnerungs-Mail an aktive Teilnehmer OHNE eventspezifische Angaben
-  // („kleines technisches Problem bei der Anmeldung — bitte in Meine Events
-  // nachtragen"). Deloitte-Layout, gated über event.disableEmails.
-  const sendMissingInfoReminders = async (): Promise<void> => {
-    if (!selectedEvent || !eventServiceRef) return;
-    if (selectedEvent.disableEmails) {
-      showAlert(isDe ? 'E-Mails sind für dieses Event deaktiviert (Schritt 6 „Kommunikation").' : 'Emails are disabled for this event (step 6 “Communication”).', { variant: 'error' });
-      return;
-    }
-    // Klammer-/Hauptevent-eigene Felder.
-    const fields = (selectedEvent.eventSpecificFields || []).filter(f => f.label && f.type !== 'document');
-    // v24.38: Im Klammer-Modus zusätzlich die Felder JEDES Sub-Events — die
-    // „Angaben" einer Person leben dort (das Hauptevent/die Klammer hat oft
-    // selbst gar keine Felder). Sonst meldete die Aktion „keine Felder" und es
-    // ging keine Mail raus.
-    const childFieldsById: Record<string, EventSpecificField[]> = {};
-    if (isConsolidatedMode) {
-      for (const ch of consolidatedChildren) {
-        childFieldsById[ch.id] = (ch.eventSpecificFields || []).filter(f => f.label && f.type !== 'document');
-      }
-    }
-    const anyChildFields = Object.keys(childFieldsById).some(k => childFieldsById[k].length > 0);
-    if (fields.length === 0 && !anyChildFields) {
-      showAlert(isDe ? 'Dieses Event hat keine eventspezifischen Felder — es gibt nichts nachzutragen.' : 'This event has no event-specific fields — nothing to complete.', { variant: 'error' });
-      return;
-    }
-    const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
-    const parse = (s: string | undefined): Record<string, unknown> => { try { return (JSON.parse(s || '{}') as Record<string, unknown>) || {}; } catch { return {}; } };
-    const regHasAnswer = (reg: SPRegistration | undefined, fieldSet: EventSpecificField[]): boolean => {
-      if (!reg || fieldSet.length === 0) return false;
-      const cd = parse(reg.CustomData);
-      for (const f of fieldSet) {
-        const v1 = cd[f.id];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const v2 = (f as any).spInternalName ? (reg as any)[(f as any).spInternalName] : undefined;
-        if ((v1 !== undefined && v1 !== null && String(v1).trim()) || (v2 !== undefined && v2 !== null && String(v2).trim())) return true;
-      }
-      return false;
-    };
-    const hasInfo = (reg: SPRegistration | undefined): boolean => regHasAnswer(reg, fields);
-
-    // v24.37: Ziel-Personen ermitteln — im Klammer-/konsolidierten Modus EINMAL
-    // pro Person (nur die Klammer-Felder, NICHT pro Sub-Event), sonst direkt aus
-    // den Teilnehmern des Events. Pro Ziel zusätzlich die „Assistenz" (wer die
-    // Anmeldung stellvertretend durchgeführt hat = RegisteredByEmail ≠ Person).
-    type Target = { email: string; first: string; full: string; assistant?: string };
-    const meLc = (currentUser.email || '').toLowerCase().trim();
-    const targets: Target[] = [];
-    const seen = new Set<string>();
-    if (isConsolidatedMode) {
-      for (const row of consolidatedRows) {
-        if (row.activeCount <= 0) continue;
-        const ek = row.emailKey;
-        if (!ek || seen.has(ek)) continue;
-        const parentReg = registrations.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === ek);
-        // Angaben vorhanden? Klammer-Felder auf der Parent-Zeile UND je
-        // Sub-Event dessen EIGENE Felder auf der Sub-Event-Zeile prüfen. Hat die
-        // Person irgendwo eine Antwort gegeben, gilt sie als „hat Angaben".
-        let info = regHasAnswer(parentReg, fields);
-        if (!info) {
-          for (const ch of consolidatedChildren) {
-            if (regHasAnswer(row.perChild[ch.id], childFieldsById[ch.id] || [])) { info = true; break; }
-          }
-        }
-        if (info) continue;
-        // Assistenz: RegisteredByEmail aus Parent- oder erster Sub-Event-Zeile.
-        let regBy = (parentReg?.RegisteredByEmail || '').toLowerCase().trim();
-        if (!regBy) {
-          for (const ch of consolidatedChildren) {
-            const rb = (row.perChild[ch.id]?.RegisteredByEmail || '').toLowerCase().trim();
-            if (rb) { regBy = rb; break; }
-          }
-        }
-        const assistant = (regBy && regBy !== ek) ? regBy : undefined;
-        targets.push({
-          email: row.email,
-          first: row.vorname || (row.email.split('@')[0] || ''),
-          full: `${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email,
-          assistant,
-        });
-        seen.add(ek);
-      }
-    } else {
-      for (const r of registrations) {
-        if (ACTIVE.indexOf(r.Status) < 0) continue;
-        const ek = (r.ParticipantEmail || '').toLowerCase().trim();
-        if (!ek || seen.has(ek)) continue;
-        if (hasInfo(r)) continue;
-        const regBy = (r.RegisteredByEmail || '').toLowerCase().trim();
-        const assistant = (regBy && regBy !== ek) ? regBy : undefined;
-        targets.push({
-          email: r.ParticipantEmail,
-          first: (r.Vorname && r.Vorname.trim()) || (r.ParticipantName || '').split(/\s+/)[0] || '',
-          full: `${r.Vorname || ''} ${r.Nachname || ''}`.trim() || r.ParticipantName || r.ParticipantEmail || '?',
-          assistant,
-        });
-        seen.add(ek);
-      }
-    }
-    if (targets.length === 0) {
-      showAlert(isDe ? 'Alle aktiven Teilnehmer haben ihre eventspezifischen Angaben gemacht — keine Erinnerung nötig.' : 'All active attendees have provided their event-specific info — no reminder needed.', { variant: 'success' });
-      return;
-    }
-    const proxyCount = targets.filter(t => t.assistant && t.assistant !== meLc).length;
-    const namesPreview = targets.slice(0, 8).map(t => t.full).join(', ');
-    const more = targets.length > 8 ? (isDe ? ` …und ${targets.length - 8} weitere` : ` …and ${targets.length - 8} more`) : '';
-    const proxyNote = proxyCount > 0
-      ? (isDe
-        ? `\n\nBei ${proxyCount} davon wurde die Anmeldung stellvertretend (Assistenz) vorgenommen — die jeweilige Assistenz bekommt zusätzlich eine Info-Mail, dass Angaben fehlen.`
-        : `\n\nFor ${proxyCount} of them the registration was made on their behalf (assistant) — that assistant additionally receives an info mail that details are missing.`)
-      : '';
-    if (!(await confirmDialog(
-      isDe
-        ? `${targets.length} aktive(r) Teilnehmer ohne eventspezifische Angaben gefunden:\n\n${namesPreview}${more}\n\nIhnen jetzt eine freundliche Erinnerungs-Mail (Deloitte-Layout) senden, ihre Angaben in „Meine Events" nachzutragen?${proxyNote}`
-        : `Found ${targets.length} active attendee(s) without event-specific info:\n\n${namesPreview}${more}\n\nSend them a friendly reminder email (Deloitte layout) to complete their details in “My Events”?${proxyNote}`,
-      { confirmLabel: isDe ? 'Erinnerung senden' : 'Send reminder' }
-    ))) return;
-    const escHtml = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    let sent = 0;
-    let sentAssist = 0;
-    const assistSeen = new Set<string>();
-    for (const t of targets) {
-      const first = t.first;
-      const fullName = t.full;
-      const heading = isDe ? `Du bist angemeldet — ${selectedEvent.title}` : `You're registered — ${selectedEvent.title}`;
-      const sub = isDe ? 'Bitte ergänze noch kurz deine Angaben' : 'Please complete your details';
-      const body = isDe
-        ? `<p>Hallo ${escHtml(first)},</p>
-           <p>schön, dass du bei <strong>${escHtml(selectedEvent.title)}</strong> dabei bist — wir freuen uns sehr auf dich!</p>
-           <p>Bei deiner Anmeldung gab es leider ein kleines technisches Problem, sodass deine <strong>eventspezifischen Angaben</strong> (z.&nbsp;B. Verpflegung, Anreise o.&nbsp;Ä.) nicht gespeichert wurden.</p>
-           <p>Bitte hol das kurz nach: Öffne die DEX-App, gehe zu <strong>„Meine Events"</strong>, wähle dieses Event und fülle die noch offenen Felder aus. Das dauert nur eine Minute.</p>
-           <p>Vielen Dank und bis bald!</p>`
-        : `<p>Hi ${escHtml(first)},</p>
-           <p>great to have you at <strong>${escHtml(selectedEvent.title)}</strong> — we're really looking forward to it!</p>
-           <p>Unfortunately a small technical problem occurred during your registration, so your <strong>event-specific details</strong> (e.g. catering, travel) were not saved.</p>
-           <p>Please complete them quickly: open the DEX app, go to <strong>“My Events”</strong>, select this event and fill in the remaining fields. It only takes a minute.</p>
-           <p>Many thanks and see you soon!</p>`;
-      const subject = isDe ? `Bitte ergänze deine Angaben — ${selectedEvent.title}` : `Please complete your details — ${selectedEvent.title}`;
-      const wrapped = wrapTemplate('#86bc25', heading, sub, body);
-      try {
-        const ok = await eventServiceRef.queueEmail(subject, t.email, fullName, wrapped, 'Info', selectedEvent.title, selectedEvent.id);
-        if (ok) sent += 1;
-      } catch { /* best-effort pro Empfänger */ }
-      // v24.37: Assistenz (Stellvertretung) zusätzlich informieren — eine Mail
-      // pro Assistenz-Adresse genügt, auch wenn sie mehrere Personen angemeldet
-      // hat (wir fassen es pro Person zusammen, aber deduplizieren NICHT die
-      // Person — jede betroffene Person ist eine eigene Info-Zeile). Praktisch
-      // schicken wir pro (Assistenz × Person)-Paar eine kurze, klare Mail.
-      if (t.assistant && t.assistant !== meLc) {
-        const key = `${t.assistant}__${t.email.toLowerCase()}`;
-        if (!assistSeen.has(key)) {
-          assistSeen.add(key);
-          const aHeading = isDe ? `Angaben fehlen — ${selectedEvent.title}` : `Details missing — ${selectedEvent.title}`;
-          const aSub = isDe ? 'Du hast diese Person stellvertretend angemeldet' : 'You registered this person on their behalf';
-          const aBody = isDe
-            ? `<p>Hallo,</p>
-               <p>du hast <strong>${escHtml(fullName)}</strong> stellvertretend für das Event <strong>${escHtml(selectedEvent.title)}</strong> angemeldet — vielen Dank dafür!</p>
-               <p>Für diese Anmeldung fehlen aktuell noch die <strong>eventspezifischen Angaben</strong> (z.&nbsp;B. Verpflegung, Anreise o.&nbsp;Ä.).</p>
-               <p>Du kannst sie selbst nachtragen: Öffne die DEX-App, gehe auf die Kachel <strong>„Assistenz"</strong>, wähle die Person und ergänze über <strong>„Angaben anpassen"</strong> die offenen Felder. Alternativ bitte die Person, das selbst über „Meine Events" zu erledigen.</p>
-               <p>Vielen Dank!</p>`
-            : `<p>Hello,</p>
-               <p>you registered <strong>${escHtml(fullName)}</strong> on their behalf for the event <strong>${escHtml(selectedEvent.title)}</strong> — many thanks!</p>
-               <p>This registration is currently still missing the <strong>event-specific details</strong> (e.g. catering, travel).</p>
-               <p>You can complete them yourself: open the DEX app, go to the <strong>„Assistant"</strong> tile, select the person and fill in the open fields via <strong>„Edit details"</strong>. Alternatively, ask the person to do it via „My Events".</p>
-               <p>Many thanks!</p>`;
-          const aSubject = isDe ? `Angaben fehlen für ${fullName} — ${selectedEvent.title}` : `Details missing for ${fullName} — ${selectedEvent.title}`;
-          const aWrapped = wrapTemplate('#86bc25', aHeading, aSub, aBody);
-          try {
-            const okA = await eventServiceRef.queueEmail(aSubject, t.assistant, t.assistant, aWrapped, 'Info', selectedEvent.title, selectedEvent.id);
-            if (okA) sentAssist += 1;
-          } catch { /* best-effort */ }
-        }
-      }
-    }
-    showAlert(
-      isDe
-        ? `${sent} Erinnerungs-Mail(s) an Teilnehmer${sentAssist > 0 ? ` und ${sentAssist} Info-Mail(s) an die jeweilige Assistenz` : ''} in die Warteschlange gelegt — sie werden in Kürze versendet.`
-        : `${sent} reminder mail(s) to attendees${sentAssist > 0 ? ` and ${sentAssist} info mail(s) to the respective assistant` : ''} queued — they will be sent shortly.`,
-      { variant: 'success' }
-    );
-  };
   // Max. 10 automatische Neu-Checks (≈5 Min) pro Event — wenn die Lücke dann
   // immer noch da ist, ist sie echt (Tail-Race, siehe Box-Text) und kein
   // weiteres Polling nötig.
@@ -7190,23 +7009,11 @@ export default function AdminPage(): React.ReactElement {
               }}
             />
 
-            {/* v24.35: Erinnerung an Teilnehmer ohne eventspezifische Angaben */}
-            <ActionTile
-              icon={<Mail size={18} />}
-              category="mails"
-              title={isDe ? 'Angaben-Nachtrag anfordern' : 'Request missing details'}
-              desc={isDe
-                ? 'Sucht aktive Teilnehmer, die noch KEINE eventspezifischen Angaben gemacht haben (z.B. wegen eines technischen Problems bei der Anmeldung), und schickt ihnen eine freundliche Erinnerung im Deloitte-Layout: bitte die Infos in „Meine Events" nachtragen. Bei Klammer-Events wird pro Person nur EINMAL erinnert (Klammer-Angaben, nicht je Sub-Event). Wurde jemand stellvertretend angemeldet, bekommt zusätzlich die Assistenz eine Info, dass Angaben fehlen.'
-                : 'Finds active attendees who have NOT provided any event-specific details (e.g. due to a technical hiccup during registration) and sends a friendly reminder in the Deloitte layout to complete them in „My Events". For umbrella events each person is reminded only ONCE (umbrella details, not per sub-event). If someone was registered on their behalf, the assistant is additionally informed that details are missing.'}
-              badge="organizer"
-              onClick={() => { void sendMissingInfoReminders(); }}
-            />
-
             {/* 4. Massenmail an alle aktiven Teilnehmer */}
             <ActionTile
               icon={<Mail size={18} />}
               category="mails"
-              title={isDe ? 'E-Mail versenden an Teilnehmergruppen' : 'Send email to participant groups'}
+              title={isDe ? 'E-Mail versenden' : 'Send email'}
               desc={isDe
                 ? 'Öffnet einen RichText-Editor mit Deloitte-Mail-Template. Geht an alle aktiven Teilnehmer (nicht Wartelistler / Abgemeldete).'
                 : 'Opens a rich-text editor with the Deloitte mail template. Goes to all active participants (not waitlisted / cancelled).'}

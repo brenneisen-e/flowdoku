@@ -153,6 +153,36 @@
   }
 
   :global {
+    /* v24.61: Theme-Variablen ZUSÄTZLICH global auf :root spiegeln.
+       Die obigen --dex-*-Variablen sind nur auf dem (gehashten) Web-Part-
+       Container definiert. Modals werden aber per Portal an document.body
+       gerendert (außerhalb des Containers) — dort waren die Variablen
+       undefiniert, sodass z.B. `.btn-primary { background: var(--dex-green) }`
+       OHNE Fallback leer blieb (ungestylte Buttons). Auf :root deklariert
+       stehen sie dem ganzen Dokument inkl. portalter Modals zur Verfügung. */
+    :root {
+      --dex-black: #000000;
+      --dex-white: #ffffff;
+      --dex-green: #86bc25;
+      --dex-green-dark: #6b9a1e;
+      --dex-gray-100: #f5f5f5;
+      --dex-gray-200: #e8e8e8;
+      --dex-gray-300: #d1d1d1;
+      --dex-gray-400: #a0a0a0;
+      --dex-gray-600: #666666;
+      --dex-gray-800: #333333;
+      --dex-red: #da291c;
+      --dex-red-light: #fce8e6;
+      --dex-blue: #3860b2;
+      --dex-orange: #ed8b00;
+      --dex-radius: 12px;
+      --dex-radius-lg: 16px;
+      --dex-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      --dex-shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.12);
+      --dex-transition: 0.2s ease;
+      --dex-header-height: 64px;
+    }
+
     /* Layout - dynamische Höhe wird per JS gesetzt */
     .app-layout {
       display: flex;
