@@ -39,7 +39,7 @@ export default function LandingPage(): React.ReactElement {
   // Organizer überflüssig — sie haben die Funktionen schon. Admins sehen sie
   // bewusst weiter (um die normale User-Ansicht der Landing Page zu prüfen).
   const showOrganizerCta = !canCreateEvents || isAdmin;
-  const { isEventsLoading, getArchivableCount, runArchiveExpired, scanInactiveAccounts, notifyOrganizerOfInactive, getDeletableArchiveCount, runDeleteOldArchive, deleteEvent, countExternalRegistrations, refreshEvents } = useEvents();
+  const { isEventsLoading, getArchivableCount, runArchiveExpired, scanInactiveAccounts, notifyOrganizerOfInactive, getSentInactiveNotices, getDeletableArchiveCount, runDeleteOldArchive, deleteEvent, countExternalRegistrations, refreshEvents } = useEvents();
   // v24.51: „Organizer benachrichtigen" pro Event (inaktive Konten).
   const [notifyBusyId, setNotifyBusyId] = React.useState<string | null>(null);
   const [notifyResult, setNotifyResult] = React.useState<Record<string, string>>({});
@@ -173,6 +173,23 @@ export default function LandingPage(): React.ReactElement {
   // Hinweisbox „Check-in für <Event>" mit kleinem QR — Klick öffnet ihn groß.
   const { getMyRegistration, events } = useEvents();
 
+  // v24.59: Events/Personen ausblenden, deren Organizer bereits über das
+  // inaktive Konto benachrichtigt wurde (Dedup-Marker DEX_InactiveNotices).
+  // Pro Event werden nur noch-nicht-benachrichtigte Personen behalten; bleibt
+  // keine übrig, fällt das ganze Event aus der Box.
+  type InactiveItem = { eventId: string; title: string; people: Array<{ email: string; name: string }> };
+  const filterNotified = React.useCallback(async (items: InactiveItem[]): Promise<InactiveItem[]> => {
+    const out: InactiveItem[] = [];
+    for (const it of items) {
+      let sent = new Set<string>();
+      try { sent = await getSentInactiveNotices(it.eventId); } catch { sent = new Set<string>(); }
+      const remaining = it.people.filter(p => !sent.has((p.email || '').toLowerCase().trim()));
+      if (remaining.length > 0) out.push({ ...it, people: remaining });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // v22.45: Inaktive-Konten-Scan für Organizer/Admins. Gedrosselt 1×/24h via
   // localStorage; Ergebnis sofort aus dem Cache angezeigt, im Hintergrund
   // aktualisiert. Organizer scannen ihre eigenen aktiven Events, Admins alle.
@@ -190,27 +207,31 @@ export default function LandingPage(): React.ReactElement {
     // v22.46: Signatur der relevanten Events — ändert sich die Event-Liste
     // (neues Event, Status-Wechsel), wird neu gescannt statt 24h zu warten.
     const sig = relevant.map(e => e.id).sort().join('|');
+    let cancelled = false;
     // Sofort aus dem Cache zeigen (falls vorhanden), auf aktuelle Events gefiltert.
     let stale = true;
     try {
       const raw = window.localStorage.getItem(CACHE);
       if (raw) {
-        const parsed = JSON.parse(raw) as { ts?: number; sig?: string; items?: Array<{ eventId: string; title: string; people: Array<{ email: string; name: string }> }> };
+        const parsed = JSON.parse(raw) as { ts?: number; sig?: string; items?: InactiveItem[] };
         if (parsed && typeof parsed.ts === 'number' && Array.isArray(parsed.items)) {
           const liveIds = new Set(relevant.map(e => e.id));
-          setInactiveSummary(parsed.items.filter(it => liveIds.has(it.eventId)));
+          const cached = parsed.items.filter(it => liveIds.has(it.eventId));
+          // v24.59: bereits benachrichtigte Konten gleich ausblenden.
+          filterNotified(cached).then(f => { if (!cancelled) setInactiveSummary(f); }).catch(() => { if (!cancelled) setInactiveSummary(cached); });
           if (Date.now() - parsed.ts < 24 * 60 * 60 * 1000 && parsed.sig === sig) stale = false;
         }
       }
     } catch { /* */ }
-    if (!stale) return undefined;
-    let cancelled = false;
+    if (!stale) return () => { cancelled = true; };
     const t = window.setTimeout(() => {
       scanInactiveAccounts(relevant.map(e => ({ id: e.id, title: e.title, subsiteUrl: e.subsiteUrl })))
-        .then(items => {
+        .then(async items => {
           if (cancelled) return;
-          setInactiveSummary(items);
+          // Rohscan cachen (für die nächste Anzeige), aber benachrichtigte ausblenden.
           try { window.localStorage.setItem(CACHE, JSON.stringify({ ts: Date.now(), sig, items })); } catch { /* */ }
+          const filtered = await filterNotified(items);
+          if (!cancelled) setInactiveSummary(filtered);
         })
         .catch(() => { /* best-effort */ });
     }, 3500); // dem Boot Vorrang geben
@@ -473,11 +494,15 @@ export default function LandingPage(): React.ReactElement {
                         setNotifyBusyId(it.eventId);
                         try {
                           const res = await notifyOrganizerOfInactive(it.eventId, it.people);
-                          let msg: string;
-                          if (res.noOrganizer) msg = isDe ? 'Kein Organizer hinterlegt — keine Mail möglich.' : 'No organizer on file — no mail possible.';
-                          else if (res.sent > 0) msg = isDe ? `✓ Organizer benachrichtigt (${res.sent}).` : `✓ Organizer notified (${res.sent}).`;
-                          else msg = isDe ? 'Bereits benachrichtigt — keine erneute Mail.' : 'Already notified — no second mail.';
-                          setNotifyResult(prev => ({ ...prev, [it.eventId]: msg }));
+                          if (res.noOrganizer) {
+                            // Kein Organizer → Mail nicht möglich, Box-Eintrag bleibt (mit Hinweis).
+                            setNotifyResult(prev => ({ ...prev, [it.eventId]: isDe ? 'Kein Organizer hinterlegt — keine Mail möglich.' : 'No organizer on file — no mail possible.' }));
+                          } else {
+                            // v24.59: Erfolgreich versendet ODER bereits benachrichtigt →
+                            // Event sofort aus der Landing-Box entfernen (und den Marker
+                            // greift beim nächsten Aufruf dauerhaft über den Filter).
+                            setInactiveSummary(prev => prev.filter(x => x.eventId !== it.eventId));
+                          }
                         } catch {
                           setNotifyResult(prev => ({ ...prev, [it.eventId]: isDe ? 'Fehler beim Versenden.' : 'Sending failed.' }));
                         } finally { setNotifyBusyId(null); }
