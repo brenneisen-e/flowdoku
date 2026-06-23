@@ -344,6 +344,15 @@ export default function RegistrationPage(): React.ReactElement {
   // („Sessions" / „Sub-Events") überall im RegistrationPage-UI.
   const childTermSingular = (event && event.childEventTermSingular) || '';
   const childTermPlural = (event && event.childEventTermPlural) || '';
+  // v24.58: Anzeige-Präfix des Haupt-Events in der Sub-Event-Auswahl.
+  // 'none' → kein Präfix (null), 'custom' → freier Text, sonst der mitgegebene
+  // Default („Haupt-Event"/„Main event").
+  const resolveMainEventLabel = React.useCallback((defaultLabel: string): string | null => {
+    const mode = event && event.mainEventLabelMode;
+    if (mode === 'none') return null;
+    if (mode === 'custom' && event && event.mainEventLabel && event.mainEventLabel.trim()) return event.mainEventLabel.trim();
+    return defaultLabel;
+  }, [event]);
   const [registerForParent, setRegisterForParent] = React.useState(true);
   const [selectedSessions, setSelectedSessions] = React.useState<Set<string>>(new Set());
   const [sessionStarterType, setSessionStarterType] = React.useState<Record<string, string>>({});
@@ -2479,7 +2488,9 @@ export default function RegistrationPage(): React.ReactElement {
                   style={{ marginTop: 2 }}
                 />
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700 }}>{t('reg.selection.mainevent') || 'Haupt-Event'}: {event.title}</div>
+                  {(() => { const lbl = resolveMainEventLabel(t('reg.selection.mainevent') || 'Haupt-Event'); return (
+                    <div style={{ fontWeight: 700 }}>{lbl ? `${lbl}: ` : ''}{event.title}</div>
+                  ); })()}
                   {parentAlreadyRegistered && (
                     <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
                       {t('reg.selection.alreadyregistered') || 'Du bist bereits für das Haupt-Event angemeldet.'}
@@ -3752,7 +3763,9 @@ export default function RegistrationPage(): React.ReactElement {
                     style={{ marginTop: 2 }}
                   />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700 }}>{tEvent('reg.selection.mainevent') || 'Haupt-Event'}: {event.title}</div>
+                    {(() => { const lbl = resolveMainEventLabel(tEvent('reg.selection.mainevent') || 'Haupt-Event'); return (
+                      <div style={{ fontWeight: 700 }}>{lbl ? `${lbl}: ` : ''}{event.title}</div>
+                    ); })()}
                     {parentAlreadyRegistered && (
                       <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
                         {tEvent('reg.selection.alreadyregistered') || 'Du bist bereits für das Haupt-Event angemeldet.'}
@@ -4044,7 +4057,7 @@ export default function RegistrationPage(): React.ReactElement {
                 // detailliert an, was gerade submittet wird.
                 if (childEvents.length === 0) return t('reg.register');
                 const parts: string[] = [];
-                if (willRegisterParent) parts.push(t('reg.selection.mainevent') || 'Haupt-Event');
+                if (willRegisterParent) parts.push(resolveMainEventLabel(t('reg.selection.mainevent') || 'Haupt-Event') || event.title);
                 if (selectedSessions.size > 0) {
                   parts.push(`${selectedSessions.size} ${selectedSessions.size === 1 ? (childTermSingular || t('reg.selection.sessioncount.one') || 'Session') : (childTermPlural || t('reg.selection.sessioncount.many') || 'Sessions')}`);
                 }
@@ -4388,7 +4401,7 @@ export default function RegistrationPage(): React.ReactElement {
                         style={{ marginTop: 2 }}
                       />
                       <span style={{ flex: 1 }}>
-                        <span style={{ fontSize: '0.88rem', fontWeight: 600, display: 'block' }}>{event.title} <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>{locale === 'de' ? '(Haupt-Event)' : '(main event)'}</span></span>
+                        <span style={{ fontSize: '0.88rem', fontWeight: 600, display: 'block' }}>{event.title}{(() => { const lbl = resolveMainEventLabel(locale === 'de' ? 'Haupt-Event' : 'main event'); return lbl ? <> <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)', fontSize: '0.8rem' }}>({lbl})</span></> : null; })()}</span>
                         {dtRange(event.startDate, event.endDate) && (
                           <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', display: 'block', marginTop: 1 }}>{dtRange(event.startDate, event.endDate)}</span>
                         )}

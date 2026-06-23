@@ -71,6 +71,11 @@ export function subEventsSection(locale: 'de' | 'en'): ManualSection {
                 {isDe
                   ? 'Alle Mails zu Sub-Events (An-/Abmeldung) und Outlook-Termine nutzen automatisch das Deloitte-Layout (Logo, grüner Balken, Footer). Der Body wird pro Session aus Titel, Beschreibung, Datum und Ort zusammengesetzt und in die Deloitte-Vorlage gewrappt. Teilnehmer bekommen also für jede gebuchte Session eine separate, sauber gestaltete Mail und einen eigenen Kalendereintrag.'
                   : 'All sub-event emails (registration/cancellation) and Outlook invites automatically use the Deloitte layout (logo, green bar, footer). The body per session is composed from title, description, date and location and wrapped into the Deloitte template. Attendees receive a clean, branded email and a dedicated calendar entry for each booked session.'}
+                <br /><br />
+                <strong>{isDe ? 'Bezeichnung des Haupt-Events in der Auswahl (v24.58):' : 'Main-event label in the selection (v24.58):'}</strong>{' '}
+                {isDe
+                  ? 'Hat dein Event Sub-Events, sieht der Teilnehmer auf der Anmeldeseite mehrere wählbare Bereiche. Über dem Hauptevent steht standardmäßig „Haupt-Event". Im Sub-Events-Schritt kannst du das umbenennen (z.B. „Konferenz", „Hauptprogramm") oder ganz weglassen, sodass nur der Event-Titel erscheint. Eine Live-Vorschau zeigt dir sofort, wie es der Teilnehmer sieht.'
+                  : 'If your event has sub-events, attendees see several selectable areas on the registration page. By default the main event is labelled „Main event". In the sub-events step you can rename it (e.g. „Conference", „Main programme") or drop it entirely so only the event title is shown. A live preview shows exactly what the attendee will see.'}
               </>
             ),
             mockup: <Callout variant="info">{isDe ? 'Kein Power-Automate-Flow-Update nötig — Sub-Event-Details nutzen die bestehende DEX_Outlook-Queue mit Override-Feldern.' : 'No Power Automate flow update required — sub-event details use the existing DEX_Outlook queue with override fields.'}</Callout>,

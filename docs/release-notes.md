@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.58.0 | 2026-06-23 | Feature | Hat ein Event Sub-Events, kann man dem Haupt-Event eine eigene Bezeichnung in der Auswahl geben: Standard „Haupt-Event", ein eigener Name (z.B. „Konferenz") oder gar kein Name (nur der Event-Titel). Mit Live-Vorschau. |
 | 24.57.0 | 2026-06-22 | Feature | Anmeldeseite: Über den Buttons steht ein Badge mit Icon und Platz-Info (freie Plätze / „Nur noch Warteliste" / bei unbegrenzt nichts); Buttons mittig unter dem Formular zentriert. |
 | 24.57.0 | 2026-06-22 | Feature | Assistenz-Seite: Der „Wichtig"-Hinweis ist jetzt eine Aufzählung statt Fließtext. |
 | 24.56.0 | 2026-06-22 | Feature | Teilnehmerliste: Maus über das Foto einer Person zeigt jetzt eine Kontaktkarte (Foto, Name, klickbare E-Mail, MS-Teams-Chat-Link) — wie bei den Organizern auf der Anmeldeseite. |

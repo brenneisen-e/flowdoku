@@ -328,6 +328,12 @@ export interface DeloitteEvent {
   /** v22.78: Wenn true, dürfen Teilnehmer KEINE neuen Teams selbst erstellen —
    *  die Zuordnung übernimmt der Organizer (z.B. Break-Out-Sessions). */
   teamMembersCannotCreate?: boolean;
+  /** v24.58: Anzeige-Bezeichnung des Haupt-Events in der Sub-Event-Auswahl
+   *  (Anmeldeseite). 'default' = „Haupt-Event", 'custom' = freier Text in
+   *  mainEventLabel, 'none' = kein Präfix (nur der Event-Titel). Piggyback im
+   *  EmailTemplateOverrides-JSON (_mainEventLabel). */
+  mainEventLabelMode?: 'default' | 'custom' | 'none';
+  mainEventLabel?: string;
   agenda: AgendaItem[];
   transferTimes: TransferTime[];
   documents: EventDocument[];

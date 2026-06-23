@@ -44,6 +44,7 @@ export interface ReleaseNote {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '24.58.0', date: '2026-06-23', bereich: 'Event-Erstellung', type: 'Feature', text: 'Wenn ein Event Sub-Events hat, kann man dem Haupt-Event jetzt selbst eine Bezeichnung geben, die der Teilnehmer in der Auswahl sieht: Standard „Haupt-Event", ein eigener Name (z.B. „Konferenz" oder „Hauptprogramm") oder gar kein Name (dann steht dort nur der Event-Titel). Eine Vorschau zeigt direkt, wie es aussieht.' },
   { version: '24.57.0', date: '2026-06-22', bereich: 'Anmeldung', type: 'Feature', text: 'Anmeldeseite: Über den Buttons „Anmelden"/„Ich nehme nicht teil" steht jetzt ein Badge mit Icon und der Platz-Info — bei freien Plätzen „X / Y freie Plätze", bei vollem Event mit Warteliste „Nur noch Warteliste", und bei unbegrenzter Teilnehmerzahl gar nichts. Die Buttons sind außerdem mittig unter dem Anmeldeformular zentriert.' },
   { version: '24.57.0', date: '2026-06-22', bereich: 'Anmeldung', type: 'Feature', text: 'Assistenz-Seite: Der „Wichtig"-Hinweis ist jetzt als übersichtliche Aufzählung dargestellt statt als langer Fließtext.' },
   { version: '24.56.0', date: '2026-06-22', bereich: 'Organizer Center', type: 'Feature', text: 'Teilnehmerliste: Wenn man mit der Maus über das Foto einer Person fährt, erscheint jetzt eine Kontaktkarte mit großem Foto, Name, klickbarer E-Mail-Adresse und einem Direktlink zum MS-Teams-Chat — genauso wie bei den Organizern auf der Anmeldeseite.' },
