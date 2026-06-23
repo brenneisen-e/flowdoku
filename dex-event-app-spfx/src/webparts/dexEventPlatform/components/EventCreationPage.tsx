@@ -1349,6 +1349,8 @@ export default function EventCreationPage(): React.ReactElement {
     endDate: string;
     maxParticipants?: number;
     registrationDeadline?: string;
+    /** v24.64: Pflicht-Sub-Event — Teilnehmer MUSS dieses Sub-Event auswählen. */
+    mandatory?: boolean;
     disableEmails?: boolean;
     // v19.22: granulare An-/Abmelde-Mail-Schalter jetzt auch pro Sub-Event.
     disableRegistrationEmail?: boolean;
@@ -1500,6 +1502,7 @@ export default function EventCreationPage(): React.ReactElement {
       endDate: k.endDate,
       maxParticipants: k.maxParticipants || 0,
       registrationDeadline: k.registrationDeadline,
+      mandatory: !!k.mandatoryRegistration, // v24.64: Pflicht-Sub-Event
       disableEmails: k.disableEmails,
       disableRegistrationEmail: k.disableRegistrationEmail,
       disableCancellationEmail: k.disableCancellationEmail,
@@ -3035,6 +3038,7 @@ export default function EventCreationPage(): React.ReactElement {
         lastDeregisterDate: draft.lastDeregisterDate || '',
         maxParticipants: draft.maxParticipants || 0,
         waitlistEnabled: typeof draft.waitlistEnabled === 'boolean' ? draft.waitlistEnabled : true,
+        mandatoryRegistration: !!draft.mandatory, // v24.64: Pflicht-Sub-Event
         eventImageUrl: '',
         organizer: sanitizedOrgPair.orgString,
         organizerEmail: sanitizedOrgPair.orgEmailString,
@@ -3202,6 +3206,7 @@ export default function EventCreationPage(): React.ReactElement {
           // beim Speichern eines bestehenden Sub-Events still verloren
           // (gleiche Bug-Klasse wie v19.32 bei den Mail-Flags).
           'WaitlistEnabled': childPayload.waitlistEnabled,
+          'MandatoryRegistration': childPayload.mandatoryRegistration, // v24.64: Pflicht-Sub-Event
           'LastDeregisterDate': childPayload.lastDeregisterDate || null,
           'LocationAddress': childPayload.locationAddress,
           'LocationFilter': childPayload.locationFilter,
@@ -8857,6 +8862,29 @@ export default function EventCreationPage(): React.ReactElement {
                             />
                           </div>
                         </div>
+
+                        {/* v24.64: Pflichtanmeldung — wenn aktiv, MUSS der
+                            Teilnehmer dieses Sub-Event bei der Anmeldung wählen
+                            (er kann sich nicht ohne dieses Sub-Event anmelden). */}
+                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 10px', borderRadius: 8, border: `1px solid ${se.mandatory ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`, background: se.mandatory ? 'rgba(134,188,37,0.06)' : '#fff', cursor: 'pointer', marginBottom: 4 }}>
+                          <input
+                            type="checkbox"
+                            checked={!!se.mandatory}
+                            onChange={e => {
+                              const v = e.target.checked;
+                              setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, mandatory: v } : x));
+                            }}
+                            style={{ width: 18, height: 18, marginTop: 1, flexShrink: 0, cursor: 'pointer' }}
+                          />
+                          <span style={{ fontSize: '0.82rem' }}>
+                            <strong>{isDe ? 'Pflichtanmeldung für dieses Sub-Event' : 'Mandatory registration for this sub-event'}</strong>
+                            <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2, fontWeight: 400 }}>
+                              {isDe
+                                ? 'Wenn aktiv, muss jeder Teilnehmer dieses Sub-Event mitbuchen — eine Anmeldung ohne dieses Sub-Event ist dann nicht möglich.'
+                                : 'If active, every attendee must include this sub-event — registering without it is then not possible.'}
+                            </span>
+                          </span>
+                        </label>
 
                         {/* v15: Mail- und Outlook-Toggles raus aus der Sub-Event-
                             Card — sie leben jetzt ausschliesslich in Schritt 6

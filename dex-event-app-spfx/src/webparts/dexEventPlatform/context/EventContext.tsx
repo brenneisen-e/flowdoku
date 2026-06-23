@@ -530,6 +530,7 @@ export interface CreateEventInput {
   lastDeregisterDate: string;
   maxParticipants: number;
   waitlistEnabled: boolean;
+  mandatoryRegistration?: boolean; // v24.64: Pflicht-Sub-Event
   eventImageUrl: string;
   organizer: string;
   organizerEmail: string;
@@ -969,6 +970,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       description: e.Description || '',
       maxParticipants: e.MaxParticipants || 0,
       waitlistEnabled: e.WaitlistEnabled !== false, // default true wenn null/undefined
+      mandatoryRegistration: e.MandatoryRegistration === true, // v24.64
+
       autoSendQRCode: e.AutoSendQRCode === true, // v9.15 — explizites opt-in pro Event
       activeFrom: e.ActiveFrom || undefined, // v9.21 — Auto-Activate-Datum
       currentParticipants,

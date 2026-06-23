@@ -852,19 +852,30 @@ export default function RegistrationPage(): React.ReactElement {
       return;
     }
 
-    // v14.5: Wenn der Organizer `requireSubEventSelection` aktiviert hat
-    // (Toggle in Schritt 6), MUSS der Teilnehmer mindestens ein Sub-Event
-    // angehakt haben — sonst landet er ohne Kommunikation in der Liste,
-    // weil die Hauptevent-Mails/Outlook deaktiviert sind.
-    if (event && event.requireSubEventSelection && childEvents.length > 0 && selectedSessions.size === 0) {
-      // v24.63: Direkt den dynamischen Text setzen (respektiert einen
-      // umbenannten Sub-Event-Begriff). Der frühere t('reg.require.subevent')-
-      // Lookup hatte keinen Eintrag in der Übersetzungs-Map — t() liefert dann
-      // den Key selbst (truthy) zurück, sodass der Fallback nie griff und der
-      // rohe Key „reg.require.subevent" im Fehlerbanner stand.
+    // v24.64: Pflicht-Sub-Events. Pro Sub-Event kann der Organizer im Wizard
+    // („Sub-Events"-Schritt) „Pflichtanmeldung" setzen — ein so markiertes
+    // Sub-Event MUSS ausgewählt sein, sonst ist die Anmeldung nicht möglich.
+    // (Löst das alte, in der UI nicht mehr einstellbare
+    // requireSubEventSelection ab — das wird hier bewusst NICHT mehr geprüft.)
+    const subShortName = (c: { title?: string }): string => {
+      const tt = (c.title || '').trim();
+      const parts = tt.split('|');
+      return (parts.length > 1 ? parts[parts.length - 1] : tt).trim();
+    };
+    const mandatoryMissing = childEvents.filter(c => c.mandatoryRegistration && !selectedSessions.has(c.id));
+    if (mandatoryMissing.length > 0) {
+      const names = mandatoryMissing.map(subShortName).filter(Boolean).join(', ');
       setError(locale === 'de'
-        ? `Für dieses Event musst du mindestens ein ${childTermSingular || 'Sub-Event'} auswählen — sonst kannst du dich nicht anmelden.`
-        : `For this event you must pick at least one ${childTermSingular || 'sub-event'} — otherwise you cannot register.`);
+        ? `Bitte wähle die Pflicht-${mandatoryMissing.length === 1 ? (childTermSingular || 'Sub-Event') : (childTermPlural || 'Sub-Events')} aus, um dich anzumelden: ${names}.`
+        : `Please select the mandatory ${mandatoryMissing.length === 1 ? (childTermSingular || 'sub-event') : (childTermPlural || 'sub-events')} to register: ${names}.`);
+      return;
+    }
+    // v24.64: Im „Nur Sub-Events"-Modus ist das Haupt-Event nicht buchbar —
+    // dann muss mindestens ein Sub-Event gewählt sein.
+    if (event && event.subEventsOnlyMode && childEvents.length > 0 && selectedSessions.size === 0) {
+      setError(locale === 'de'
+        ? `Bitte wähle mindestens ein ${childTermSingular || 'Sub-Event'} aus, um dich anzumelden.`
+        : `Please select at least one ${childTermSingular || 'sub-event'} to register.`);
       return;
     }
 
@@ -2578,7 +2589,14 @@ export default function RegistrationPage(): React.ReactElement {
                             style={{ marginTop: 2 }}
                           />
                           <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 700 }}>{ce.title || tEvent('reg.subevents.untitled')}</div>
+                            <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              {ce.title || tEvent('reg.subevents.untitled')}
+                              {ce.mandatoryRegistration && (
+                                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#fff', background: 'var(--dex-orange, #ed8b00)', borderRadius: 999, padding: '2px 8px' }}>
+                                  {locale === 'de' ? 'Pflicht' : 'Required'}
+                                </span>
+                              )}
+                            </div>
                             {ce.description && (
                               // v11.97: gleiche Schriftgröße wie der Titel
                               // (Standard-Body). Vorher 0.78rem klein.
@@ -3828,7 +3846,14 @@ export default function RegistrationPage(): React.ReactElement {
                             style={{ marginTop: 2 }}
                           />
                           <div style={{ flex: 1 }}>
-                            <div style={{ fontWeight: 700 }}>{ce.title || tEvent('reg.subevents.untitled')}</div>
+                            <div style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                              {ce.title || tEvent('reg.subevents.untitled')}
+                              {ce.mandatoryRegistration && (
+                                <span style={{ fontSize: '0.68rem', fontWeight: 700, color: '#fff', background: 'var(--dex-orange, #ed8b00)', borderRadius: 999, padding: '2px 8px' }}>
+                                  {locale === 'de' ? 'Pflicht' : 'Required'}
+                                </span>
+                              )}
+                            </div>
                             {ce.description && (
                               // v11.97: gleiche Schriftgröße wie der Titel
                               // (Standard-Body). Vorher 0.78rem klein.
