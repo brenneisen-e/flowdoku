@@ -857,9 +857,14 @@ export default function RegistrationPage(): React.ReactElement {
     // angehakt haben — sonst landet er ohne Kommunikation in der Liste,
     // weil die Hauptevent-Mails/Outlook deaktiviert sind.
     if (event && event.requireSubEventSelection && childEvents.length > 0 && selectedSessions.size === 0) {
-      setError(t('reg.require.subevent') || (locale === 'de'
+      // v24.63: Direkt den dynamischen Text setzen (respektiert einen
+      // umbenannten Sub-Event-Begriff). Der frühere t('reg.require.subevent')-
+      // Lookup hatte keinen Eintrag in der Übersetzungs-Map — t() liefert dann
+      // den Key selbst (truthy) zurück, sodass der Fallback nie griff und der
+      // rohe Key „reg.require.subevent" im Fehlerbanner stand.
+      setError(locale === 'de'
         ? `Für dieses Event musst du mindestens ein ${childTermSingular || 'Sub-Event'} auswählen — sonst kannst du dich nicht anmelden.`
-        : `For this event you must pick at least one ${childTermSingular || 'sub-event'} — otherwise you cannot register.`));
+        : `For this event you must pick at least one ${childTermSingular || 'sub-event'} — otherwise you cannot register.`);
       return;
     }
 

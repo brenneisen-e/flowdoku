@@ -63,12 +63,32 @@ export default function Modal({
       role="dialog"
       aria-modal="true"
       aria-label={ariaLabel}
+      className="dex-modal-overlay"
       onClick={() => { if (dismissable) onClose(); }}
       style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         zIndex: 9999, padding: 16,
-      }}
+        // v24.63: Theme-Variablen direkt am Overlay setzen — so erben alle
+        // Modal-Inhalte (Buttons, Eingaben, Texte) die --dex-*-Farben auch dann,
+        // wenn das Modal per Portal außerhalb des Web-Part-Containers liegt.
+        ['--dex-black' as string]: '#000000',
+        ['--dex-white' as string]: '#ffffff',
+        ['--dex-green' as string]: '#86bc25',
+        ['--dex-green-dark' as string]: '#6b9a1e',
+        ['--dex-gray-100' as string]: '#f5f5f5',
+        ['--dex-gray-200' as string]: '#e8e8e8',
+        ['--dex-gray-300' as string]: '#d1d1d1',
+        ['--dex-gray-400' as string]: '#a0a0a0',
+        ['--dex-gray-500' as string]: '#808080',
+        ['--dex-gray-600' as string]: '#666666',
+        ['--dex-gray-700' as string]: '#444444',
+        ['--dex-gray-800' as string]: '#333333',
+        ['--dex-red' as string]: '#da291c',
+        ['--dex-orange' as string]: '#ed8b00',
+        ['--dex-orange-dark' as string]: '#b35a00',
+        ['--dex-radius' as string]: '12px',
+      } as React.CSSProperties}
     >
       <div
         onClick={e => e.stopPropagation()}
@@ -90,6 +110,10 @@ export default function Modal({
   // v24.52: Per Portal an document.body rendern — so liegt das Modal AUSSERHALB
   // des Auto-Fit-Zoom-Containers und der position:fixed-Backdrop deckt immer den
   // ganzen Viewport ab (sonst blieben auf skalierten Screens Ränder frei).
+  // WICHTIG (v24.63): Damit am body-Level die Modal-Styles greifen, MÜSSEN die
+  // `.btn`-Klassen + die `--dex-*`-CSS-Variablen global (auf :root bzw. ohne
+  // Container-Scope) definiert sein — siehe DexEventPlatform.module.scss
+  // (:global-Block). Sonst rendern die Buttons als nackte Browser-Buttons.
   try {
     if (typeof document !== 'undefined' && document.body) {
       return ReactDOM.createPortal(overlay, document.body);

@@ -304,16 +304,51 @@
       border: none; border-radius: var(--dex-radius); font-size: 0.95rem;
       font-weight: 600; transition: all var(--dex-transition);
     }
-    .btn-primary { background: var(--dex-green); color: var(--dex-white); }
-    .btn-primary:hover { background: var(--dex-green-dark); }
-    .btn-secondary { background: var(--dex-gray-200); color: var(--dex-gray-800); }
-    .btn-secondary:hover { background: var(--dex-gray-300); }
-    .btn-danger { background: var(--dex-gray-600); color: var(--dex-white); }
-    .btn-danger:hover { background: var(--dex-gray-800); }
-    .btn-outline { background: transparent; border: 2px solid var(--dex-green); color: var(--dex-green-dark); }
-    .btn-outline:hover { background: var(--dex-green); color: var(--dex-white); }
+    // v24.63: Feste Fallback-Farben in jeder var() — so rendern die Buttons
+    // korrekt, selbst wenn die --dex-*-Variablen am aktuellen Ort (z.B. ein per
+    // Portal an document.body gerendertes Modal außerhalb des Web-Part-Scopes)
+    // nicht greifen sollten.
+    .btn-primary { background: var(--dex-green, #86bc25); color: var(--dex-white, #fff); }
+    .btn-primary:hover { background: var(--dex-green-dark, #6b9a1e); }
+    .btn-secondary { background: var(--dex-gray-200, #e8e8e8); color: var(--dex-gray-800, #333); }
+    .btn-secondary:hover { background: var(--dex-gray-300, #d1d1d1); }
+    .btn-danger { background: var(--dex-gray-600, #666); color: var(--dex-white, #fff); }
+    .btn-danger:hover { background: var(--dex-gray-800, #333); }
+    .btn-outline { background: transparent; border: 2px solid var(--dex-green, #86bc25); color: var(--dex-green-dark, #6b9a1e); }
+    .btn-outline:hover { background: var(--dex-green, #86bc25); color: var(--dex-white, #fff); }
     .btn-lg { padding: 14px 48px; font-size: 1.1rem; }
     .btn-block { width: 100%; justify-content: center; }
+
+    /* v24.63: Bulletproof-Styles für Modal-Buttons. Modals werden per Portal an
+       document.body gerendert (außerhalb des Web-Part-Containers). Damit die
+       Buttons dort GARANTIERT wie die Deloitte-Buttons aussehen — und nicht von
+       SharePoint-eigenen Button-Resets überschrieben werden — werden sie hier
+       mit festen Werten + !important unter der Overlay-Klasse erzwungen. */
+    .dex-modal-overlay button.btn,
+    .dex-modal-overlay .btn {
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 8px !important;
+      padding: 10px 24px !important;
+      border: none !important;
+      border-radius: 12px !important;
+      font-size: 0.95rem !important;
+      font-weight: 600 !important;
+      font-family: inherit !important;
+      line-height: 1.2 !important;
+      cursor: pointer !important;
+      text-decoration: none !important;
+      transition: all 0.2s ease;
+    }
+    .dex-modal-overlay .btn-primary { background: #86bc25 !important; color: #fff !important; }
+    .dex-modal-overlay .btn-primary:hover { background: #6b9a1e !important; }
+    .dex-modal-overlay .btn-secondary { background: #e8e8e8 !important; color: #333 !important; }
+    .dex-modal-overlay .btn-secondary:hover { background: #d1d1d1 !important; }
+    .dex-modal-overlay .btn-danger { background: #666 !important; color: #fff !important; }
+    .dex-modal-overlay .btn-danger:hover { background: #333 !important; color: #fff !important; }
+    .dex-modal-overlay .btn-outline { background: transparent !important; border: 2px solid #86bc25 !important; color: #6b9a1e !important; }
+    .dex-modal-overlay .btn-outline:hover { background: #86bc25 !important; color: #fff !important; }
+    .dex-modal-overlay .btn:disabled { opacity: 0.55 !important; cursor: not-allowed !important; }
 
     /* Toggle */
     .toggle-wrapper { display: flex; align-items: center; gap: 10px; }

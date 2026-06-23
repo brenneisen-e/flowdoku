@@ -8,6 +8,8 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.63.0 | 2026-06-23 | Bugfix | Dialog-Buttons („Abbrechen"/„Weiter"/„Bestätigen" usw.) wurden teils als nackte Browser-Knöpfe dargestellt — jetzt wieder die grünen/grauen Deloitte-Buttons (robust auch in per Portal gerenderten Modals). |
+| 24.63.0 | 2026-06-23 | Bugfix | Pflicht-Sub-Event-Hinweis bei der Anmeldung zeigte den internen Platzhalter „reg.require.subevent" statt eines klaren Hinweistexts. |
 | 24.62.0 | 2026-06-23 | Feature | Outlook-Termin: Im Bearbeiten-Schritt „Kommunikation" gibt es bei Bild und Text jetzt den Button „Outlook-Termin jetzt aktualisieren" (verschickt den Kalendereintrag neu, falls er noch veraltet ist). |
 | 24.62.0 | 2026-06-23 | Feature | Zwei neue Handbuch-Artikel: „E-Mail an alle Teilnehmer senden" und „Outlook-Termin: Bild ändern & aktualisieren" (auch über die Suche oben auffindbar). |
 | 24.62.0 | 2026-06-23 | Feature | Ausgebuchte Events: Status-Feld zeigt „Alle Plätze belegt \| Warteliste aktuell X Personen"; Anmelden-Button mit dezentem Zusatz „(Warteliste)". |
