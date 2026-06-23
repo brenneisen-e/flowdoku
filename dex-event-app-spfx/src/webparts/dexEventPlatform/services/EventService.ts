@@ -505,6 +505,7 @@ export interface SPEvent {
   LastDeregisterDate: string;
   MaxParticipants: number;
   WaitlistEnabled: boolean;
+  MandatoryRegistration?: boolean; // v24.64: Pflicht-Sub-Event (pro Sub-Event)
   EventImageUrl: string;
   EmailImageBase64: string; // Base64 Event-Bild für E-Mails/Outlook
   Organizer: string;
@@ -3039,6 +3040,7 @@ export class EventService {
       { title: 'LastDeregisterDate', type: 4 },
       { title: 'MaxParticipants', type: 9 },
       { title: 'WaitlistEnabled', type: 8 },
+      { title: 'MandatoryRegistration', type: 8 },
       { title: 'EventImageUrl', type: 2 },
       { title: 'EmailImageBase64', type: 3 }, // Base64 Event-Bild für E-Mails/Outlook (Flow ersetzt {{ORB_URL}})
       // Organizer + OrganizerEmail sind Multi-Line-Text (Note) damit sie auch bei
@@ -3475,7 +3477,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,OutlookSubject,OutlookStart,OutlookEnd,OutlookLocation,EmailLanguage,RegistrationLanguage,EmailTemplateOverrides,DisableEmails,DisableRegistrationEmail,DisableCancellationEmail,AutoDeregisterOnDecline,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,ConfirmDialogEnabled,ConfirmDialogMode,ConfirmDialogText,SelfCheckInEnabled,SelfCheckInToken,SelfCheckInFrom,SelfCheckInTo,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,MandatoryRegistration,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,OutlookSubject,OutlookStart,OutlookEnd,OutlookLocation,EmailLanguage,RegistrationLanguage,EmailTemplateOverrides,DisableEmails,DisableRegistrationEmail,DisableCancellationEmail,AutoDeregisterOnDecline,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,ConfirmDialogEnabled,ConfirmDialogMode,ConfirmDialogText,SelfCheckInEnabled,SelfCheckInToken,SelfCheckInFrom,SelfCheckInTo,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl';
 
   /**
    * Strip SharePoint-Note-Field-Wrapper.
@@ -3644,6 +3646,8 @@ export class EventService {
     lastDeregisterDate: string;
     maxParticipants: number;
     waitlistEnabled: boolean;
+    mandatoryRegistration?: boolean; // v24.64: Pflicht-Sub-Event
+
     eventImageUrl: string;
     organizer: string;
     organizerEmail: string;
@@ -3855,6 +3859,7 @@ export class EventService {
         'LastDeregisterDate': event.lastDeregisterDate || null,
         'MaxParticipants': event.maxParticipants,
         'WaitlistEnabled': event.waitlistEnabled,
+        'MandatoryRegistration': !!event.mandatoryRegistration,
         'EventImageUrl': event.eventImageUrl,
         // Custom-Event-Logo aus emailTemplateOverrides._eventLogo extrahieren (falls
         // vorhanden) und als EmailImageBase64 persistieren — damit der Power-Automate-Flow

@@ -74,6 +74,10 @@ export interface DeloitteEvent {
   currentParticipants: number;
   waitlistCount: number;
   waitlistEnabled?: boolean;
+  /** v24.64: Pflicht-Sub-Event — wenn true, MUSS dieses (Sub-)Event bei der
+   *  Anmeldung ausgewählt werden. Pro Sub-Event im Wizard-Schritt „Sub-Events"
+   *  einstellbar. Ersetzt das alte globale requireSubEventSelection. */
+  mandatoryRegistration?: boolean;
   autoSendQRCode?: boolean; // v9.15 — automatisch QR-Code-Mail nach Anmeldung versenden
   imageUrl?: string;
   subsiteUrl?: string;

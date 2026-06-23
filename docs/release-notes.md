@@ -8,6 +8,9 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.64.0 | 2026-06-23 | Feature | Sub-Events: Pro Sub-Event lässt sich im Wizard eine „Pflichtanmeldung" setzen — markierte Sub-Events müssen mitgebucht werden (auf der Anmeldeseite mit „Pflicht"-Hinweis). |
+| 24.64.0 | 2026-06-23 | Bugfix | Alte, nicht mehr einstellbare Pflicht-Sub-Event-Markierung wird nicht mehr berücksichtigt — Haupt-Event-only-Anmeldung ist wieder möglich, sofern kein Sub-Event als Pflicht markiert ist. |
+| 24.64.0 | 2026-06-23 | Bugfix | Dialog-Buttons werden zuverlässig im Deloitte-Look angezeigt (eigenes Stylesheet in document.head, unabhängig vom Portal-Rendering). |
 | 24.63.0 | 2026-06-23 | Bugfix | Dialog-Buttons („Abbrechen"/„Weiter"/„Bestätigen" usw.) wurden teils als nackte Browser-Knöpfe dargestellt — jetzt wieder die grünen/grauen Deloitte-Buttons (robust auch in per Portal gerenderten Modals). |
 | 24.63.0 | 2026-06-23 | Bugfix | Pflicht-Sub-Event-Hinweis bei der Anmeldung zeigte den internen Platzhalter „reg.require.subevent" statt eines klaren Hinweistexts. |
 | 24.62.0 | 2026-06-23 | Feature | Outlook-Termin: Im Bearbeiten-Schritt „Kommunikation" gibt es bei Bild und Text jetzt den Button „Outlook-Termin jetzt aktualisieren" (verschickt den Kalendereintrag neu, falls er noch veraltet ist). |

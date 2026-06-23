@@ -23,6 +23,52 @@
 import * as React from 'react';
 import * as ReactDOM from 'react-dom';
 
+// v24.64: Deterministisches Modal-Button-Styling.
+// Hintergrund (recherchiert): SPFx-CSS-Module sind auf den Web-Part-Container
+// gescopt; ihre Stylesheets werden über den SPFx-Style-Loader geladen. Ein per
+// ReactDOM.createPortal an document.body gerendertes Modal liegt AUSSERHALB
+// dieses Containers — die `.btn`-Styles greifen dort nicht zuverlässig, sodass
+// die Buttons als nackte Browser-Buttons rendern. Lösung: ein eigenes <style>
+// direkt in document.head injizieren (reines DOM, KEIN SPFx-Loader). Mit
+// `!important` + festen Werten unter `.dex-modal-overlay` greifen die
+// Deloitte-Button-Styles garantiert dokumentweit — auch im Portal.
+const MODAL_STYLE_ID = 'dex-modal-global-styles';
+function ensureModalStyles(): void {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById(MODAL_STYLE_ID)) return;
+  const el = document.createElement('style');
+  el.id = MODAL_STYLE_ID;
+  el.textContent = `
+.dex-modal-overlay button.btn,
+.dex-modal-overlay .btn {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  padding: 10px 24px !important;
+  border: none !important;
+  border-radius: 12px !important;
+  font-size: 0.95rem !important;
+  font-weight: 600 !important;
+  font-family: inherit !important;
+  line-height: 1.2 !important;
+  cursor: pointer !important;
+  text-decoration: none !important;
+  transition: all 0.2s ease !important;
+}
+.dex-modal-overlay .btn-primary { background: #86bc25 !important; color: #ffffff !important; }
+.dex-modal-overlay .btn-primary:hover { background: #6b9a1e !important; color: #ffffff !important; }
+.dex-modal-overlay .btn-secondary { background: #e8e8e8 !important; color: #333333 !important; }
+.dex-modal-overlay .btn-secondary:hover { background: #d1d1d1 !important; color: #333333 !important; }
+.dex-modal-overlay .btn-danger { background: #666666 !important; color: #ffffff !important; }
+.dex-modal-overlay .btn-danger:hover { background: #333333 !important; color: #ffffff !important; }
+.dex-modal-overlay .btn-outline { background: transparent !important; border: 2px solid #86bc25 !important; color: #6b9a1e !important; }
+.dex-modal-overlay .btn-outline:hover { background: #86bc25 !important; color: #ffffff !important; }
+.dex-modal-overlay .btn:disabled { opacity: 0.55 !important; cursor: not-allowed !important; }
+`;
+  document.head.appendChild(el);
+}
+
 interface ModalProps {
   open: boolean;
   onClose: () => void;
@@ -47,6 +93,9 @@ export default function Modal({
   ariaLabel,
   children,
 }: ModalProps): React.ReactElement | null {
+  // v24.64: Globale Modal-Button-Styles einmalig in document.head sicherstellen.
+  React.useEffect(() => { ensureModalStyles(); }, []);
+
   React.useEffect(() => {
     if (!open) return undefined;
     const onKey = (e: KeyboardEvent): void => {
