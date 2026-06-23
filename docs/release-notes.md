@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.60.0 | 2026-06-23 | Bugfix | Outlook-Standardtext: Bei mehreren Organisatoren wurden die Namen falsch verkettet („Katharina Kallenbach, Schwartz, Eva"). Jetzt sauber wie in der Anmelde-Mail: „Katharina Kallenbach und Eva Schwartz". |
 | 24.59.0 | 2026-06-23 | Feature | Ausgebuchte Events: Statt rotem Text unter dem Bild zeigt das Status-Feld „Alle Plätze belegt" und der Anmelden-Button „Anmelden (Warteliste – aktuell X Personen)". |
 | 24.59.0 | 2026-06-23 | Feature | Startseite: Der Hinweis auf ein inaktives Deloitte-Konto verschwindet, sobald der Organizer benachrichtigt wurde (taucht für neue betroffene Personen erneut auf). |
 | 24.58.0 | 2026-06-23 | Feature | Hat ein Event Sub-Events, kann man dem Haupt-Event eine eigene Bezeichnung in der Auswahl geben: Standard „Haupt-Event", ein eigener Name (z.B. „Konferenz") oder gar kein Name (nur der Event-Titel). Mit Live-Vorschau. |
