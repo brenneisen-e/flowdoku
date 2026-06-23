@@ -10,11 +10,11 @@ export function massMailSection(locale: 'de' | 'en'): ManualSection {
   const isDe = locale === 'de';
   return {
     id: 'mass-mail',
-    title: isDe ? 'Massenmail an Teilnehmer' : 'Mass email to attendees',
+    title: isDe ? 'E-Mail an alle Teilnehmer senden' : 'Send an email to all attendees',
     category: 'organizer',
     description: isDe
-      ? 'Alle Angemeldeten auf einmal anschreiben — im Deloitte-Template, mit Rich-Text.'
-      : 'Reach all registered attendees at once — in the Deloitte template, with rich text.',
+      ? 'Alle Angemeldeten eines Events auf einmal anschreiben — im Deloitte-Layout, mit Rich-Text-Editor und Test-Versand an dich selbst.'
+      : 'Reach all registered attendees of an event at once — in the Deloitte layout, with a rich-text editor and a test send to yourself.',
     visibleFor: ['Organizer', 'Admin'],
     perspectives: [
       {
@@ -22,17 +22,17 @@ export function massMailSection(locale: 'de' | 'en'): ManualSection {
         steps: [
           {
             number: 1,
-            title: isDe ? 'Massenmail-Dialog öffnen' : 'Open the mass email dialog',
+            title: isDe ? 'Aktion „E-Mail versenden" öffnen' : 'Open the „Send email" action',
             description: (
               <>
                 {isDe
-                  ? 'Im Admin Center eines Events findest du die Aktion "Massenmail". Ein modaler Dialog öffnet sich mit Betreff-, Überschrift- und Inhalt-Feld. Für den Inhalt steht dir ein Rich-Text-Editor zur Verfügung (fett, kursiv, Links, Listen).'
-                  : 'The event admin center has an action "Mass email". A modal opens with subject, heading and content fields. The content uses a rich-text editor (bold, italic, links, lists).'}
+                  ? 'Öffne dein Event im Organizer Center (Kachel „Organizer" auf der Startseite → Event anklicken). Klicke dort auf das Dropdown „Aktionen" und wähle in der Kategorie „E-Mails" den Eintrag „E-Mail versenden". Hinweis: Du musst nichts in der Teilnehmerliste markieren — wen die Mail erreicht, legst du im nächsten Schritt fest.'
+                  : 'Open your event in the Organizer Center (the „Organizer" tile on the start page → click the event). Open the „Actions" dropdown and pick „Send email" under the „Emails" category. Note: you do not need to select anyone in the attendee list — you choose the recipients in the next step.'}
               </>
             ),
             mockup: (
               <AppPreview
-                label={isDe ? 'Admin Center → Massenmail-Button (echte Ansicht)' : 'Admin center → mass email button (real view)'}
+                label={isDe ? 'Organizer Center → Aktionen → E-Mails (echte Ansicht)' : 'Organizer Center → Actions → Emails (real view)'}
                 role="Organizer"
                 page="admin"
                 selectedEventId={DEMO_EVENT_ID}
@@ -46,43 +46,86 @@ export function massMailSection(locale: 'de' | 'en'): ManualSection {
           },
           {
             number: 2,
-            title: isDe ? 'Empfängerkreis wählen' : 'Choose recipients',
+            title: isDe ? 'Empfängerkreis wählen' : 'Choose the recipients',
             description: (
               <>
                 {isDe
-                  ? 'Standardmäßig gehen Mails an alle aktiven Teilnehmer (Angemeldet + Eingecheckt). Mit Checkboxen kannst du zusätzlich Warteliste oder nur eine Untergruppe auswählen.'
-                  : 'By default mails go to all active attendees (Registered + Checked-in). Checkboxes let you additionally include the waitlist or only a subset.'}
+                  ? 'Zuerst fragt dich ein kleiner Dialog „An wen soll die Mail gehen?". Du hast fünf Möglichkeiten:'
+                  : 'First a small dialog asks „Who should receive the email?". You have five options:'}
+                <ul style={{ margin: '10px 0 0', paddingLeft: 20, lineHeight: 1.6 }}>
+                  <li>{isDe
+                    ? <><strong>Teilnehmer (alle aktiven)</strong> — der Normalfall: alle, die angemeldet, mit QR-Code versorgt oder schon eingecheckt sind (also NICHT Warteliste und NICHT Abgemeldete).</>
+                    : <><strong>Attendees (all active)</strong> — the usual case: everyone registered, QR-sent or already checked in (NOT the waitlist and NOT cancellations).</>}</li>
+                  <li>{isDe
+                    ? <><strong>Teilnehmer + Warteliste</strong> — zusätzlich die Wartelistler, z.B. wenn du auch sie vorwarnen willst.</>
+                    : <><strong>Attendees + waitlist</strong> — additionally the waitlisted people, e.g. to give them a heads-up too.</>}</li>
+                  <li>{isDe
+                    ? <><strong>Nur Warteliste</strong> — ausschließlich die Wartelistler.</>
+                    : <><strong>Waitlist only</strong> — only the waitlisted people.</>}</li>
+                  <li>{isDe
+                    ? <><strong>Nachrücker (manueller Abgleich)</strong> — du fügst im nächsten Schritt eine Liste von E-Mail-Adressen ein; die Mail geht dann an alle aktiven Teilnehmer, die NICHT in deiner Liste stehen.</>
+                    : <><strong>No-shows / top-ups (manual match)</strong> — you paste a list of email addresses in the next step; the mail then goes to all active attendees who are NOT on your list.</>}</li>
+                  <li>{isDe
+                    ? <><strong>Eigene Auswahl (nach Status)</strong> — du hakst genau die Status an, die die Mail bekommen sollen (z.B. nur „QR versendet“).</>
+                    : <><strong>Custom selection (by status)</strong> — tick exactly the statuses that should receive the mail (e.g. only „QR sent“).</>}</li>
+                </ul>
               </>
             ),
           },
           {
             number: 3,
-            title: isDe ? 'Vorschau' : 'Preview',
+            title: isDe ? 'Betreff und Text schreiben' : 'Write subject and text',
             description: (
               <>
                 {isDe
-                  ? 'Vor dem Versand siehst du eine Vorschau im Deloitte-Mail-Template mit Event-Logo (falls hinterlegt) und Signatur-Block. So vermeidest du Überraschungen.'
-                  : 'Before sending you see a preview in the Deloitte mail template with event logo (if set) and signature block. Avoids surprises.'}
+                  ? 'Danach öffnet sich der Editor mit Betreff, Überschrift, Unter-Überschrift und dem eigentlichen Inhalt. Der Inhalt läuft über einen Rich-Text-Editor (fett, kursiv, Links, Aufzählungen). Du kannst Platzhalter verwenden, die beim Versand pro Person ersetzt werden: '
+                  : 'Then the editor opens with subject, heading, sub-heading and the actual content. The content uses a rich-text editor (bold, italic, links, bullet lists). You can use placeholders that are replaced per person when sending: '}
+                <code>{'{{Vorname}}'}</code>, <code>{'{{Name}}'}</code> {isDe ? 'und' : 'and'} <code>{'{{EventTitle}}'}</code>.{' '}
+                {isDe
+                  ? 'Dein Entwurf wird pro Event automatisch gespeichert — du kannst den Dialog also schließen und später weiterschreiben, ohne den Text zu verlieren.'
+                  : 'Your draft is saved automatically per event — so you can close the dialog and continue later without losing the text.'}
               </>
             ),
             mockup: <DemoEmailPreview heading={isDe ? 'Info zum Event' : 'Info about the event'} />,
           },
           {
             number: 4,
-            title: isDe ? 'Versenden' : 'Send',
+            title: isDe ? 'Test an dich selbst' : 'Test to yourself',
             description: (
               <>
                 {isDe
-                  ? 'Die Mails landen in der DEX_Emails-Queue und werden vom Power-Automate-Flow "DEX_SEND_MAIL" abgearbeitet (meist innerhalb weniger Minuten).'
-                  : 'Emails go into the DEX_Emails queue and are processed by the Power Automate flow "DEX_SEND_MAIL" (usually within minutes).'}
+                  ? 'Bevor du an alle sendest, klicke auf „Test an mich". Die App schickt die Mail genau so, wie sie rausgehen würde, an die hinterlegten Organizer — also an dich. So siehst du in deinem Postfach das fertige Deloitte-Layout (Logo, grüner Balken, Signatur) und kannst Tippfehler oder falsche Links vor dem echten Versand korrigieren.'
+                  : 'Before sending to everyone, click „Test to me". The app sends the email exactly as it would go out to the configured organizers — i.e. to you. That way you see the finished Deloitte layout (logo, green bar, signature) in your mailbox and can fix typos or wrong links before the real send.'}
+              </>
+            ),
+          },
+          {
+            number: 5,
+            title: isDe ? 'Absenden' : 'Send',
+            description: (
+              <>
+                {isDe
+                  ? 'Bist du zufrieden, klickst du auf Senden. Die Mails werden in die Versand-Warteschlange gelegt und meist innerhalb weniger Minuten zugestellt — jede Person bekommt eine eigene Mail (kein sichtbarer Verteiler). Die Mail kommt vom gemeinsamen Absender „no_reply.events@deloitte.de", nicht von deiner persönlichen Adresse; Rückfragen der Teilnehmer landen daher nicht automatisch bei dir, sondern du wirst im Text als Ansprechpartner genannt.'
+                  : 'When you are happy, click Send. The emails are placed in the send queue and usually delivered within minutes — each person receives an individual email (no visible distribution list). The mail comes from the shared sender „no_reply.events@deloitte.de", not from your personal address; replies therefore do not land with you automatically — instead you are named as the contact in the text.'}
               </>
             ),
             mockup: (
               <Callout variant="info">
                 {isDe
-                  ? 'Die Mail geht vom Shared-Mailbox-Absender "no_reply.events@deloitte.de" raus — nicht von dir persönlich.'
-                  : 'Emails are sent from the shared mailbox "no_reply.events@deloitte.de" — not from your personal address.'}
+                  ? 'Tipp: Für eine Einladung an Personen, die noch NICHT angemeldet sind, nutze stattdessen die Aktion „Einladungsmail" (Anmelde-Link an dich zum Weiterleiten oder direkt an den Mailverteiler des Events).'
+                  : 'Tip: To invite people who are NOT registered yet, use the „Invitation email" action instead (registration link to yourself for forwarding or directly to the event mail distribution list).'}
               </Callout>
+            ),
+          },
+          {
+            number: 6,
+            title: isDe ? 'Wer darf das?' : 'Who is allowed to do this?',
+            description: (
+              <>
+                {isDe
+                  ? 'Den Massen-E-Mail-Versand können Organizer für ihre eigenen Events und Admins für alle Events nutzen. Normale Teilnehmer sehen das Organizer Center nicht und haben die Aktion daher nicht.'
+                  : 'Mass email sending is available to organizers for their own events and to admins for all events. Regular attendees do not see the Organizer Center and therefore do not have this action.'}
+              </>
             ),
           },
         ],

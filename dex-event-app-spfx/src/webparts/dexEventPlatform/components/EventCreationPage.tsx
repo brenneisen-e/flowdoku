@@ -1598,6 +1598,83 @@ export default function EventCreationPage(): React.ReactElement {
   const [activeLocationTabIdx, setActiveLocationTabIdx] = React.useState<number>(0);
   const [activeCapacityTabIdx, setActiveCapacityTabIdx] = React.useState<number>(0);
   const [activeFieldsTabIdx, setActiveFieldsTabIdx] = React.useState<number>(0);
+  // v24.62: Manueller „Outlook-Termin jetzt aktualisieren"-Trigger (Schritt 6,
+  // Sektionen Outlook-Bild + Outlook-Text). Schickt für das Event/Sub-Event des
+  // aktiven Kommunikations-Tabs ein Update an die Kalender der Teilnehmer — für
+  // den Fall, dass der Outlook-Termin noch den alten Stand zeigt. Nutzt den
+  // zuletzt GESPEICHERTEN Stand (der Flow liest das Event aus der Verwaltung).
+  const [outlookUpdateBusy, setOutlookUpdateBusy] = React.useState(false);
+  const triggerOutlookUpdateNow = async (): Promise<void> => {
+    let targetDbId = '';
+    let targetTitle = title;
+    let hasAppointment = false;
+    if (activeCommTabIdx > 0) {
+      const sub = subEvents[activeCommTabIdx - 1];
+      if (sub) {
+        targetDbId = sub.dbId || '';
+        targetTitle = sub.title || title;
+        hasAppointment = !!(sub.initialOutlookEventId || sub.initialCalendarLink);
+      }
+    } else {
+      targetDbId = editEvent?.id || '';
+      hasAppointment = !!(editEvent?.outlookEventId || editEvent?.calendarLink);
+    }
+    if (!editEvent || !targetDbId) {
+      showAlert(isDe ? 'Den Outlook-Termin gibt es erst, nachdem das Event gespeichert wurde.' : 'The Outlook appointment only exists after the event has been saved.', { variant: 'info' });
+      return;
+    }
+    if (disableOutlook) {
+      showAlert(isDe ? 'Für diesen Tab ist der Outlook-Termin deaktiviert (Schalter weiter oben in Schritt 6).' : 'The Outlook appointment is disabled for this tab (toggle further up in step 6).', { variant: 'info' });
+      return;
+    }
+    if (!hasAppointment) {
+      showAlert(isDe ? 'Für dieses Event wurde noch kein Outlook-Termin angelegt — er entsteht beim Speichern.' : 'No Outlook appointment has been created for this event yet — it is created on save.', { variant: 'info' });
+      return;
+    }
+    const ok = await confirmDialog(
+      isDe
+        ? 'Der Outlook-Termin aller Teilnehmer wird mit dem zuletzt GESPEICHERTEN Stand aktualisiert. Falls du gerade etwas geändert hast, speichere bitte zuerst und klicke dann erneut hier.'
+        : 'The Outlook appointment of all attendees will be updated with the last SAVED state. If you just changed something, please save first and then click here again.',
+      { confirmLabel: isDe ? 'Jetzt aktualisieren' : 'Update now' },
+    );
+    if (!ok) return;
+    setOutlookUpdateBusy(true);
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ctx = (window as any).__dexSpfxContext;
+      const svc = new EventService(ctx);
+      await svc.queueOutlookEvent('', targetDbId, targetTitle, 'UpdateEvent');
+      showAlert(isDe ? 'Outlook-Aktualisierung wurde angestoßen — die Kalender der Teilnehmer aktualisieren sich in Kürze.' : 'Outlook update triggered — attendees will see the refreshed appointment shortly.', { variant: 'success' });
+    } catch {
+      showAlert(isDe ? 'Aktualisierung fehlgeschlagen — bitte erneut versuchen.' : 'Update failed — please try again.', { variant: 'error' });
+    } finally {
+      setOutlookUpdateBusy(false);
+    }
+  };
+  // Wiederverwendbarer Button-Block für die Outlook-Sektionen (Bild + Text).
+  const renderOutlookUpdateButton = (): React.ReactNode => {
+    if (!editEvent) return null; // nur beim Bearbeiten sinnvoll (Neu-Event hat noch keinen Termin)
+    return (
+      <div style={{ marginTop: 14, padding: 10, borderRadius: 8, background: 'rgba(237,139,0,0.07)', border: '1px solid rgba(237,139,0,0.4)' }}>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          disabled={outlookUpdateBusy}
+          onClick={() => { void triggerOutlookUpdateNow(); }}
+          style={{ fontSize: '0.82rem', padding: '7px 14px' }}
+        >
+          {outlookUpdateBusy
+            ? (isDe ? 'Wird aktualisiert…' : 'Updating…')
+            : (isDe ? 'Outlook-Termin jetzt aktualisieren' : 'Update Outlook appointment now')}
+        </button>
+        <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-600)', marginTop: 6, lineHeight: 1.5 }}>
+          {isDe
+            ? 'Falls der Outlook-Termin der Teilnehmer noch veraltet ist, klicke hier — der Kalendereintrag wird mit dem zuletzt gespeicherten Stand neu verschickt. Tipp: Wenn du gerade etwas geändert hast, zuerst speichern.'
+            : 'If the attendees’ Outlook appointment is still outdated, click here — the calendar entry is re-sent with the last saved state. Tip: if you just changed something, save first.'}
+        </div>
+      </div>
+    );
+  };
   // v11.60: synchroner Spiegel von subEvents für Save/Detect-Pfade. React-
   // State-Updates sind async — wenn flushActiveCommTabToState() per
   // setSubEvents(prev=>...) den aktiven Tab in die jeweilige Slice
@@ -12485,6 +12562,7 @@ export default function EventCreationPage(): React.ReactElement {
                       reader.readAsDataURL(compressed);
                     }} />
                   </label>
+                  {renderOutlookUpdateButton()}
                   </div>
                 </details>
 
@@ -12513,6 +12591,7 @@ export default function EventCreationPage(): React.ReactElement {
                         : t('create.outlookdesc.placeholder')}
                     </span>
                   </div>
+                  {renderOutlookUpdateButton()}
                   </div>
                 </details>
 

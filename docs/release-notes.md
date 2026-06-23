@@ -8,6 +8,10 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.62.0 | 2026-06-23 | Feature | Outlook-Termin: Im Bearbeiten-Schritt „Kommunikation" gibt es bei Bild und Text jetzt den Button „Outlook-Termin jetzt aktualisieren" (verschickt den Kalendereintrag neu, falls er noch veraltet ist). |
+| 24.62.0 | 2026-06-23 | Feature | Zwei neue Handbuch-Artikel: „E-Mail an alle Teilnehmer senden" und „Outlook-Termin: Bild ändern & aktualisieren" (auch über die Suche oben auffindbar). |
+| 24.62.0 | 2026-06-23 | Feature | Ausgebuchte Events: Status-Feld zeigt „Alle Plätze belegt \| Warteliste aktuell X Personen"; Anmelden-Button mit dezentem Zusatz „(Warteliste)". |
+| 24.62.0 | 2026-06-23 | Feature | Aktionen-Menü: „E-Mail versenden an Teilnehmergruppen" heißt jetzt „E-Mail versenden". |
 | 24.61.0 | 2026-06-23 | Bugfix | Bestätigungs-Dialoge (z.B. „Jetzt archivieren"): Buttons wurden ungestylt angezeigt (wie einfache Browser-Knöpfe). Jetzt wieder die normalen grünen/grauen Deloitte-Buttons. |
 | 24.60.0 | 2026-06-23 | Bugfix | Outlook-Standardtext: Bei mehreren Organisatoren wurden die Namen falsch verkettet („Katharina Kallenbach, Schwartz, Eva"). Jetzt sauber wie in der Anmelde-Mail: „Katharina Kallenbach und Eva Schwartz". |
 | 24.59.0 | 2026-06-23 | Feature | Ausgebuchte Events: Statt rotem Text unter dem Bild zeigt das Status-Feld „Alle Plätze belegt" und der Anmelden-Button „Anmelden (Warteliste – aktuell X Personen)". |

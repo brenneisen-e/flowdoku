@@ -24,6 +24,7 @@ import { selfCheckInSection } from './sections/selfCheckIn';
 import { quizSection } from './sections/quiz';
 import { massMailSection } from './sections/massMail';
 import { inviteMailSection } from './sections/inviteMail';
+import { outlookUpdateSection } from './sections/outlookUpdate';
 import { rolesSection } from './sections/roles';
 import { templatesSection } from './sections/templates';
 import { idReorderSection } from './sections/idReorder';
@@ -58,6 +59,7 @@ export function getManualSections(locale: Locale): ManualSection[] {
     quizSection(locale),
     massMailSection(locale),
     inviteMailSection(locale),
+    outlookUpdateSection(locale),
     rolesSection(locale),
     peoplePickerScopeSection(locale),
     demoImpersonationSection(locale),
