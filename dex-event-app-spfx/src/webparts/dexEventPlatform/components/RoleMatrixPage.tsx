@@ -449,7 +449,7 @@ async function downloadRoleMatrixPdf(): Promise<void> {
       if (logoR) { const p = doc.getImageProperties(logoR); const h = 13; const w = (p.width / p.height) * h; doc.addImage(logoR, 'PNG', pageW - margin - w, 8, w, h); }
     } catch { /* Logo optional */ }
     doc.setFont('helvetica', 'bold'); doc.setFontSize(15); doc.setTextColor(30);
-    doc.text('Rollen-Matrix — Berechtigungen', pageW / 2, 15, { align: 'center' });
+    doc.text('Rollenmatrix — Berechtigungen', pageW / 2, 15, { align: 'center' });
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(120);
     doc.text(`DEX Event Experience Platform · Stand: ${new Date().toLocaleDateString('de-DE')}`, pageW / 2, 20, { align: 'center' });
     // Spaltenkopf
@@ -530,7 +530,7 @@ export default function RoleMatrixPage(): React.ReactElement {
         }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
             <div>
-              <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700 }}>Rollen-Matrix</h2>
+              <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700 }}>Rollenmatrix</h2>
               <p style={{ margin: '6px 0 0', color: 'var(--dex-gray-500)', fontSize: '0.85rem' }}>
                 Übersicht aller Berechtigungen nach Rolle
               </p>
