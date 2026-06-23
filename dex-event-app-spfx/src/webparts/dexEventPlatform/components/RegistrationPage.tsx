@@ -3948,34 +3948,37 @@ export default function RegistrationPage(): React.ReactElement {
       {/* v24.48: Die „Meine Assistenz"-Abfrage ist von inline auf ein Modal
           beim Register-Klick umgestellt (siehe assistantModalOpen unten). */}
 
-      {/* Buttons */}
-      <div className="registration-actions mt-24" style={{ maxWidth: 1100, margin: '24px auto 0', alignItems: 'center' }}>
-        {/* v23.26: „X / Y Plätze frei" links neben dem Registrieren-Button
-            (marginRight:auto schiebt die Buttons nach rechts). */}
+      {/* Buttons + Platz-Badge (v24.57) — Badge über den zentrierten Buttons. */}
+      <div style={{ maxWidth: 1100, margin: '24px auto 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+        {/* v24.57: Badge mit Icon — freie Plätze ODER (wenn voll + Warteliste
+            aktiv) „Warteliste". Bei unbegrenzter Teilnehmerzahl gar nichts. */}
         {event.maxParticipants > 0 && (() => {
           const free = Math.max(0, event.maxParticipants - (event.currentParticipants || 0));
-          const isFullAll = free <= 0;
-          const nearlyFull = !isFullAll && free <= Math.max(1, Math.round(event.maxParticipants * 0.1));
-          const color = isFullAll
-            ? 'var(--dex-red, #c00)'
-            : nearlyFull
-              ? 'var(--dex-orange, #ff8c00)'
-              : 'var(--dex-green-dark, #6b9a1e)';
-          // "Event voll"-Hinweis übernimmt der Block unter der Beschreibung.
-          if (isFullAll) return null;
+          const isFull = free <= 0;
+          if (isFull && !event.waitlistEnabled) return null; // voll, keine Warteliste → nichts
+          const waitlist = isFull && !!event.waitlistEnabled;
+          const nearlyFull = !isFull && free <= Math.max(1, Math.round(event.maxParticipants * 0.1));
           const isTeamEvent = !!(event.teamRegistrationEnabled && event.teamSize && event.teamSize > 1);
           const teamsFree = isTeamEvent ? Math.floor(free / (event.teamSize || 1)) : 0;
+          const orange = waitlist || nearlyFull;
+          const bg = orange ? 'rgba(237,139,0,0.12)' : 'rgba(134,188,37,0.14)';
+          const fg = orange ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-green-dark, #4a7c1f)';
+          const bd = orange ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)';
           return (
-            <span style={{ fontSize: '0.82rem', color, fontWeight: 600 }}>
-              {`${free} / ${event.maxParticipants} ${t('reg.seats.available') || 'Plätze frei'}`}
-              {isTeamEvent && (
-                <span style={{ marginLeft: 6, color: 'var(--dex-gray-600)', fontWeight: 500 }}>
-                  ({teamsFree} {teamsFree === 1 ? (locale === 'de' ? 'Team' : 'team') : (locale === 'de' ? 'Teams' : 'teams')} {locale === 'de' ? 'frei' : 'free'})
-                </span>
-              )}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: bg, color: fg, border: `1px solid ${bd}`, borderRadius: 999, padding: '5px 14px', fontSize: '0.82rem', fontWeight: 700 }}>
+              <Icon iconName={waitlist ? 'Clock' : 'People'} style={{ fontSize: 15 }} />
+              {waitlist
+                ? (locale === 'de' ? 'Nur noch Warteliste' : 'Waitlist only')
+                : (
+                  <span>
+                    {free} / {event.maxParticipants} {locale === 'de' ? 'freie Plätze' : 'seats free'}
+                    {isTeamEvent && <span style={{ fontWeight: 500, marginLeft: 6 }}>({teamsFree} {teamsFree === 1 ? (locale === 'de' ? 'Team' : 'team') : (locale === 'de' ? 'Teams' : 'teams')} {locale === 'de' ? 'frei' : 'free'})</span>}
+                  </span>
+                )}
             </span>
           );
         })()}
+        <div className="registration-actions" style={{ alignItems: 'center' }}>
         {(() => {
           // v15.11: im subEventsOnlyMode (Hauptevent nicht anmeldbar) muss
           // mindestens ein Sub-Event ausgewählt sein, sonst Button ausgrauen
@@ -4070,6 +4073,7 @@ export default function RegistrationPage(): React.ReactElement {
               : (locale === 'de' ? 'Ich nehme nicht teil' : 'I will not attend')}
           </button>
         )}
+        </div>
       </div>
 
       {/* Datenschutz-Hinweis als Fußnote ganz unten.

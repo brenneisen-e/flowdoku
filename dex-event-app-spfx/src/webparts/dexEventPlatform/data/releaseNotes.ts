@@ -44,6 +44,8 @@ export interface ReleaseNote {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '24.57.0', date: '2026-06-22', bereich: 'Anmeldung', type: 'Feature', text: 'Anmeldeseite: Über den Buttons „Anmelden"/„Ich nehme nicht teil" steht jetzt ein Badge mit Icon und der Platz-Info — bei freien Plätzen „X / Y freie Plätze", bei vollem Event mit Warteliste „Nur noch Warteliste", und bei unbegrenzter Teilnehmerzahl gar nichts. Die Buttons sind außerdem mittig unter dem Anmeldeformular zentriert.' },
+  { version: '24.57.0', date: '2026-06-22', bereich: 'Anmeldung', type: 'Feature', text: 'Assistenz-Seite: Der „Wichtig"-Hinweis ist jetzt als übersichtliche Aufzählung dargestellt statt als langer Fließtext.' },
   { version: '24.56.0', date: '2026-06-22', bereich: 'Organizer Center', type: 'Feature', text: 'Teilnehmerliste: Wenn man mit der Maus über das Foto einer Person fährt, erscheint jetzt eine Kontaktkarte mit großem Foto, Name, klickbarer E-Mail-Adresse und einem Direktlink zum MS-Teams-Chat — genauso wie bei den Organizern auf der Anmeldeseite.' },
   { version: '24.56.0', date: '2026-06-22', bereich: 'Organizer Center', type: 'Feature', text: 'Die Hinweis-Box „Tipps zu deinen Feldern" ist klarer formuliert: Die betroffenen Felder werden als farbige Badges angezeigt, und pro Tipp steht jetzt „Du hast die Felder … eingestellt", darunter eine Empfehlung und eine kurze Erklärung.' },
   { version: '24.56.0', date: '2026-06-22', bereich: 'Anmeldung', type: 'Bugfix', text: 'Die Platz-Anzeige („X / Y Plätze frei") steht jetzt direkt links neben dem „Anmelden"-Button statt ganz links außen.' },

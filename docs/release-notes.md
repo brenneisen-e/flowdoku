@@ -8,6 +8,8 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.57.0 | 2026-06-22 | Feature | Anmeldeseite: Über den Buttons steht ein Badge mit Icon und Platz-Info (freie Plätze / „Nur noch Warteliste" / bei unbegrenzt nichts); Buttons mittig unter dem Formular zentriert. |
+| 24.57.0 | 2026-06-22 | Feature | Assistenz-Seite: Der „Wichtig"-Hinweis ist jetzt eine Aufzählung statt Fließtext. |
 | 24.56.0 | 2026-06-22 | Feature | Teilnehmerliste: Maus über das Foto einer Person zeigt jetzt eine Kontaktkarte (Foto, Name, klickbare E-Mail, MS-Teams-Chat-Link) — wie bei den Organizern auf der Anmeldeseite. |
 | 24.56.0 | 2026-06-22 | Feature | Hinweis-Box „Tipps zu deinen Feldern": Felder als farbige Badges, klarere Struktur (Du hast … / Empfehlung / Erklärung). |
 | 24.56.0 | 2026-06-22 | Bugfix | Anmeldeseite: Die Platz-Anzeige steht jetzt direkt links neben dem „Anmelden"-Button. |
