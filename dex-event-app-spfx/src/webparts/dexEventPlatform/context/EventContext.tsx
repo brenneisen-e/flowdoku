@@ -493,6 +493,11 @@ interface EventContextType {
    *  Aktiv-/Warteliste-Zahl auch für normale Teilnehmer. null = Counter nicht
    *  verfügbar (Aufrufer fällt auf event.currentParticipants zurück). */
   getLiveCounterStats: (eventId: string) => Promise<{ active: number; waitlist: number } | null>;
+  /** v24.74: Sitzplatz-Counter aller aktiven Kapazitäts-Events aus dem echten
+   *  Bestand frischziehen (SeatsTaken + WaitlistTaken). Braucht Vollzugriff →
+   *  beim Admin-Start aufrufen, damit die für alle lesbaren Counter stimmen,
+   *  bevor Teilnehmer das Anmeldeformular öffnen. Best-effort, sequentiell. */
+  reconcileCounters: () => Promise<void>;
   markExpiredEventsAsCompleted: () => Promise<number>;
   sendAdminInquiry: (requesterName: string, requesterEmail: string, eventName: string, message: string, requesterLocation?: string, requesterJobTitle?: string) => Promise<boolean>;
   /** v12.12: Admin-Aktion zum Re-Seed der Default-Email-Templates in
@@ -873,6 +878,23 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       && typeof event.funstarterCapacity === 'number'
       && ((event.durchstarterCapacity || 0) > 0 || (event.funstarterCapacity || 0) > 0);
     try { return await eventService.getCounterStats(subsiteUrl, isSplit); } catch { return null; }
+  }
+
+  // v24.74: Counter aller aktiven Kapazitäts-Events frischziehen (privilegiert).
+  async function reconcileCounters(): Promise<void> {
+    const seen = new Set<string>();
+    const targets = (events || []).filter(e =>
+      e.status === 'Active' && (e.maxParticipants || 0) > 0 && (e.subsiteUrl || '').trim());
+    for (const e of targets) {
+      const sub = e.subsiteUrl as string;
+      if (seen.has(sub)) continue;
+      seen.add(sub);
+      const isSplit = typeof e.durchstarterCapacity === 'number'
+        && typeof e.funstarterCapacity === 'number'
+        && ((e.durchstarterCapacity || 0) > 0 || (e.funstarterCapacity || 0) > 0);
+      // Sequentiell wegen SP-Throttling; best-effort, blockiert nie.
+      try { await eventService.syncSeatsToActiveCount(sub, { isSplit }); } catch { /* */ }
+    }
   }
 
   async function refreshParticipantCounts(eventId?: string): Promise<void> {
@@ -4684,7 +4706,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns,
         sendAdminInquiry,
         requestOrganizerRole, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,

@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.74.0 | 2026-06-24 | Bugfix | Sitzplatz-Counter werden beim Admin-Start (Vollzugriff) aller aktiven Events frischgezogen → korrekte Zahlen schon beim ersten Öffnen, auch für bestehende Events. |
 | 24.73.0 | 2026-06-24 | Bugfix | Anmeldeformular: korrekte Frei-/Warteliste-Zahl für ALLE (auch normale Teilnehmer) — Quelle ist jetzt der für alle lesbare Sitzplatz-Counter (SeatsTaken/WaitlistTaken) statt der item-level-gesicherten Teilnehmerliste. Leiser Refresh bei Öffnen + Fokus. Echtzeit-Push folgt in v24.74. |
 | 24.72.0 | 2026-06-24 | Bugfix | Freie-Plätze-Anzeige zieht jetzt die Wartelisten-Anzahl ab → kein kurzes falsches „1 frei" mehr während des Nachrückens (EventCard + Registrierungs-Badge + mainFull). |
 | 24.72.0 | 2026-06-24 | Feature | EN-Wording: „available" statt „free" für die Platz-Anzeige (reg.free + Registrierungs-Badge). |
