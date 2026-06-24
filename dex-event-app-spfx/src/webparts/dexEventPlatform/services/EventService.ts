@@ -21,6 +21,7 @@ import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions } from '@microsoft/sp-http';
 import { wrapTemplateForStorage, buildEmailFromTemplate } from './EmailTemplates';
 import { buildOutlookLocation } from '../utils/eventFormat';
+import { subscribeListChanges } from '../utils/spListRealtime';
 
 /**
  * HTML-Body für die OutlookDeclineReminder-Mail (EN) - komplett im
@@ -6846,6 +6847,23 @@ export class EventService {
       const waitlist = (wRaw === null || wRaw === undefined) ? -1 : num(wRaw);
       return { active, waitlist };
     } catch { return null; }
+  }
+
+  /**
+   * v24.75: Echtzeit-Push auf eine Liste der Event-Subsite abonnieren.
+   * kind='counter' → DEX_TeilnehmerCounter (für alle lesbar; Anmeldeformular),
+   * kind='participants' → Teilnehmerliste (Organizer-Vollzugriff). Liefert eine
+   * Cleanup-Funktion. Best-effort (siehe utils/spListRealtime).
+   */
+  public async subscribeListRealtime(
+    subsiteUrl: string,
+    kind: 'counter' | 'participants',
+    onChange: () => void
+  ): Promise<() => void> {
+    if (!subsiteUrl) return () => { /* */ };
+    const listTitle = kind === 'counter' ? COUNTER_LIST_NAME : REG_LIST_NAME;
+    try { return await subscribeListChanges(this.context.spHttpClient, subsiteUrl, listTitle, onChange); }
+    catch { return () => { /* */ }; }
   }
 
   /**

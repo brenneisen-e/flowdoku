@@ -98,7 +98,7 @@ export default function RegistrationPage(): React.ReactElement {
   }, []);
 
   const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
-  const { events, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest, updateMyRegistration, uploadFieldDocument, delegateRegistrationToAssistant, recordProxyDelegation, getLiveCounterStats } = useEvents();
+  const { events, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest, updateMyRegistration, uploadFieldDocument, delegateRegistrationToAssistant, recordProxyDelegation, getLiveCounterStats, subscribeEventRealtime } = useEvents();
   const { currentUser, groupEmails } = useCurrentUser();
   const { searchUsers, searchUser, isAdmin } = useRoles();
   const { locale: appLocale } = useLanguage();
@@ -369,7 +369,19 @@ export default function RegistrationPage(): React.ReactElement {
     load();
     const onFocus = (): void => load();
     window.addEventListener('focus', onFocus);
-    return () => { cancelled = true; window.removeEventListener('focus', onFocus); };
+    // v24.75: Echtzeit-Push auf den (für alle lesbaren) Counter — bei jeder
+    // An-/Abmeldung am Event meldet SharePoint die Counter-Änderung → der Wert
+    // aktualisiert sich live, ohne Polling. Best-effort: klappt der Socket nicht,
+    // bleibt der Lade-/Fokus-Refresh.
+    let cleanupSocket: (() => void) | null = null;
+    subscribeEventRealtime(event.id, 'counter', load)
+      .then(c => { if (cancelled) c(); else cleanupSocket = c; })
+      .catch(() => { /* best-effort */ });
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', onFocus);
+      if (cleanupSocket) cleanupSocket();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [event?.id, event?.maxParticipants]);
   const [registerForParent, setRegisterForParent] = React.useState(true);

@@ -865,7 +865,7 @@ export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
   // v14.11: zusätzlich `events` (alle Events inkl. Sub-Events) als `allEvents`
   // für die Parent-Lookup-Logik im konsolidierten View + im Sub-Event-Detail.
-  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead, registerForEvent } = useEvents();
+  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead, registerForEvent, subscribeEventRealtime } = useEvents();
   // v24.38: läuft gerade ein „Zur Klammer hinzufügen" für diese E-Mail?
   const [addingToKlammer, setAddingToKlammer] = React.useState<string | null>(null);
   // v24.40: Modal „Assistenz zuordnen" — Person an eine gewählte Assistenz
@@ -896,6 +896,24 @@ export default function AdminPage(): React.ReactElement {
   const { confirmDialog, showAlert } = useDialog();
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
   const [registrations, setRegistrations] = React.useState<SPRegistration[]>([]);
+  // v24.75: Echtzeit-Push auf die Teilnehmerliste des gewählten Events. Meldet
+  // sich jemand an/ab, kommt eine Push-Benachrichtigung → die Tabelle (und die
+  // Zähler) laden leise nach. Organizer/Admin haben Vollzugriff → Subscription
+  // greift. Best-effort: ohne Socket bleibt der manuelle/Refresh-Knopf.
+  React.useEffect(() => {
+    const ev = selectedEvent;
+    if (!ev || !ev.id || !(ev.subsiteUrl || '').trim()) return undefined;
+    let cancelled = false;
+    let cleanupSocket: (() => void) | null = null;
+    const reload = (): void => {
+      getAllRegistrations(ev.id).then(r => { if (!cancelled) setRegistrations(r); }).catch(() => { /* */ });
+    };
+    subscribeEventRealtime(ev.id, 'participants', reload)
+      .then(c => { if (cancelled) c(); else cleanupSocket = c; })
+      .catch(() => { /* best-effort */ });
+    return () => { cancelled = true; if (cleanupSocket) cleanupSocket(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedEvent?.id, selectedEvent?.subsiteUrl]);
   // v22.7: Konten-Aktiv-Check — Adressen (lowercase) der Teilnehmer, deren
   // Deloitte-Konto nicht mehr aktiv ist (Person hat womöglich das Unternehmen
   // verlassen). Wird im Hintergrund max. 1×/Tag pro Event geprüft.

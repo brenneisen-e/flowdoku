@@ -498,6 +498,10 @@ interface EventContextType {
    *  beim Admin-Start aufrufen, damit die für alle lesbaren Counter stimmen,
    *  bevor Teilnehmer das Anmeldeformular öffnen. Best-effort, sequentiell. */
   reconcileCounters: () => Promise<void>;
+  /** v24.75: Echtzeit-Push auf eine Liste der Event-Subsite. kind='counter'
+   *  (Anmeldeformular, für alle lesbar) / 'participants' (Organizer-Liste).
+   *  Liefert eine Cleanup-Funktion. Best-effort. */
+  subscribeEventRealtime: (eventId: string, kind: 'counter' | 'participants', onChange: () => void) => Promise<() => void>;
   markExpiredEventsAsCompleted: () => Promise<number>;
   sendAdminInquiry: (requesterName: string, requesterEmail: string, eventName: string, message: string, requesterLocation?: string, requesterJobTitle?: string) => Promise<boolean>;
   /** v12.12: Admin-Aktion zum Re-Seed der Default-Email-Templates in
@@ -878,6 +882,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       && typeof event.funstarterCapacity === 'number'
       && ((event.durchstarterCapacity || 0) > 0 || (event.funstarterCapacity || 0) > 0);
     try { return await eventService.getCounterStats(subsiteUrl, isSplit); } catch { return null; }
+  }
+
+  // v24.75: Echtzeit-Push auf eine Liste der Event-Subsite abonnieren.
+  async function subscribeEventRealtime(eventId: string, kind: 'counter' | 'participants', onChange: () => void): Promise<() => void> {
+    const event = events.find(e => e.id === eventId);
+    const subsiteUrl = subsiteMap.current[eventId] || event?.subsiteUrl;
+    if (!subsiteUrl) return () => { /* */ };
+    return eventService.subscribeListRealtime(subsiteUrl, kind, onChange);
   }
 
   // v24.74: Counter aller aktiven Kapazitäts-Events frischziehen (privilegiert).
@@ -4706,7 +4718,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns,
         sendAdminInquiry,
         requestOrganizerRole, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,
