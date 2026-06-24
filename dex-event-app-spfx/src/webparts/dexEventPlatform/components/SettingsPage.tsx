@@ -21,8 +21,8 @@ export default function SettingsPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { currentUser } = useCurrentUser();
   const {
-    roles, currentUserRole, isAdmin, originalIsAdmin,
-    addRole, updateRole, setPowerUser, updateRoleLocation, removeRole, isRolesLoading, siteUrl, searchUsers, searchUser,
+    roles, isAdmin, originalIsAdmin,
+    addRole, updateRole, setPowerUser, removeRole, isRolesLoading, siteUrl, searchUsers, searchUser,
   } = useRoles();
   const { events, sendOrganizerOnboarding } = useEvents();
   const { locale } = useLanguage();
@@ -266,24 +266,7 @@ export default function SettingsPage(): React.ReactElement {
     await updateRole(itemId, role);
   };
 
-  // Rollen-Badge Farbe
-  const roleBadge = (role: string): React.ReactElement => {
-    const colors: Record<string, { bg: string; color: string }> = {
-      'Admin': { bg: '#e8f5e9', color: '#2e7d32' },
-      'Power User': { bg: '#fff4e5', color: '#b35a00' },
-      'Organizer': { bg: '#e3f2fd', color: '#1565c0' },
-      'User': { bg: '#f5f5f5', color: '#666' },
-    };
-    const c = colors[role] || colors['User'];
-    return (
-      <span style={{
-        display: 'inline-block', padding: '2px 10px', borderRadius: 12,
-        background: c.bg, color: c.color, fontSize: '0.8rem', fontWeight: 500,
-      }}>
-        {role}
-      </span>
-    );
-  };
+  // v24.87: roleBadge entfernt (war nur für die gelöschte „User Information"-Karte).
 
   // ===================== v24.85: Role-Management nach Kategorien =====================
   // Test-Team + Check-in-Team über ALLE Events aggregieren (read-only, analog
@@ -335,6 +318,8 @@ export default function SettingsPage(): React.ReactElement {
   // Klapp-Status pro Kategorie (Default: alle offen).
   const [openSections, setOpenSections] = React.useState<Set<string>>(() => new Set(['admins', 'organizer', 'coorg', 'tester', 'checkin', 'user']));
   const toggleSection = (k: string): void => setOpenSections(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  // v24.87: Freitext-Suche über alle Kategorien (Name/E-Mail/Position/Standort).
+  const [roleSearch, setRoleSearch] = React.useState('');
   // Deloitte-Displayname „Nachname, Vorname" → { first, last }.
   const splitName = (full: string): { first: string; last: string } => {
     const n = (full || '').trim();
@@ -349,9 +334,14 @@ export default function SettingsPage(): React.ReactElement {
     const thS: React.CSSProperties = { textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)', fontSize: '0.76rem', fontWeight: 600, whiteSpace: 'nowrap' };
     const tdS: React.CSSProperties = { padding: 8, verticalAlign: 'middle' };
     const byName = (a: { userName: string }, b: { userName: string }): number => (a.userName || '').localeCompare(b.userName || '', 'de');
-    const admins = [...roles].filter(r => r.role === 'Admin').sort(byName);
-    const organizers = [...roles].filter(r => r.role === 'Organizer').sort(byName);
-    const usersLeft = [...roles].filter(r => r.role !== 'Admin' && r.role !== 'Organizer').sort(byName);
+    // v24.87: Freitext-Filter (Name/E-Mail/Position/Standort) über alle Kategorien.
+    const q = roleSearch.trim().toLowerCase();
+    const hit = (parts: Array<string | undefined>): boolean => !q || parts.some(s => (s || '').toLowerCase().indexOf(q) >= 0);
+    const matchRole = (r: typeof roles[number]): boolean => { const p = profiles[(r.userEmail || '').toLowerCase()] || {}; return hit([r.userName, r.userEmail, p.jobTitle, p.location, r.location]); };
+    const matchAgg = (x: { email: string; name: string }): boolean => { const p = profiles[x.email] || {}; return hit([x.name, x.email, p.jobTitle, p.location]); };
+    const admins = [...roles].filter(r => r.role === 'Admin').filter(matchRole).sort(byName);
+    const organizers = [...roles].filter(r => r.role === 'Organizer').filter(matchRole).sort(byName);
+    const usersLeft = [...roles].filter(r => r.role !== 'Admin' && r.role !== 'Organizer').filter(matchRole).sort(byName);
     const eventBadges = (titles: string[]): React.ReactNode => titles.length === 0
       ? <span style={{ color: 'var(--dex-gray-300)' }}>—</span>
       : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{titles.map((t2, idx) => (
@@ -368,11 +358,17 @@ export default function SettingsPage(): React.ReactElement {
         <th style={thS}>{isDe ? 'Position' : 'Position'}</th>
         <th style={thS}>{isDe ? 'Standort' : 'Location'}</th>
         <th style={thS}>Role</th>
+        <th style={thS}>Status</th>
         <th style={thS}>Power User</th>
         <th style={thS}>Coordinated Events</th>
         <th style={{ ...thS, textAlign: 'right' }} />
       </tr>
     );
+    // v24.87: Status-Badges (Admin/Organizer/User + Co-Organizer/Tester/Check-in).
+    const adminPill = catPill('Admin', '#e8f5e9', '#2e7d32');
+    const organizerPill = catPill('Organizer', 'rgba(0,118,168,0.10)', 'var(--dex-blue, #0076a8)');
+    const userPill = catPill('User', '#f5f5f5', '#666');
+    const coOrgPill = catPill('Co-Organizer', 'rgba(237,139,0,0.15)', 'var(--dex-orange-dark, #b35a00)');
     // Editierbare Zeile (DEX_Roles: Admins / Organizer / User)
     const editableRow = (r: typeof roles[number]): React.ReactElement => {
       const { first, last } = splitName(r.userName);
@@ -392,16 +388,9 @@ export default function SettingsPage(): React.ReactElement {
           <td style={{ ...tdS, fontWeight: 500 }}>{last || '-'}</td>
           <td style={{ ...tdS, color: 'var(--dex-gray-600)' }}>{r.userEmail}</td>
           <td style={{ ...tdS, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{pos || '—'}</td>
-          <td style={tdS}>
-            <input
-              className="form-input"
-              key={`loc-${r.id}-${r.location}`}
-              defaultValue={r.location || ''}
-              style={{ fontSize: '0.82rem', padding: '4px 8px', width: '100%', minWidth: 110 }}
-              placeholder="Standort"
-              onBlur={async (e) => { const nl = e.target.value.trim(); if (nl !== (r.location || '')) { await updateRoleLocation(r.id, nl); } }}
-            />
-          </td>
+          {/* v24.87: Standort ist NICHT editierbar — er ergibt sich aus dem
+              Profil zur E-Mail-Adresse (live nachgeladen, Fallback DEX_Roles). */}
+          <td style={{ ...tdS, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{prof.location || r.location || '—'}</td>
           <td style={tdS}>
             <select
               value={r.role}
@@ -413,6 +402,15 @@ export default function SettingsPage(): React.ReactElement {
               <option value="Organizer">Organizer</option>
               <option value="User">User</option>
             </select>
+          </td>
+          <td style={tdS}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {r.role === 'Admin' && adminPill}
+              {r.role === 'Organizer' && organizerPill}
+              {r.role === 'User' && userPill}
+              {/* v24.87: globaler Organizer, der zusätzlich Events betreut → auch Co-Organizer. */}
+              {r.role === 'Organizer' && evts.length > 0 && coOrgPill}
+            </div>
           </td>
           <td style={tdS}>
             {(r.role === 'Organizer' || r.role === 'Admin') ? (
@@ -459,6 +457,7 @@ export default function SettingsPage(): React.ReactElement {
           <td style={{ ...tdS, color: 'var(--dex-gray-600)' }}>{p.email}</td>
           <td style={{ ...tdS, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{prof.jobTitle || '—'}</td>
           <td style={{ ...tdS, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{prof.location || '—'}</td>
+          <td style={tdS}><span style={{ color: 'var(--dex-gray-300)' }}>—</span></td>
           <td style={tdS}>{rolePill}</td>
           <td style={tdS}><span style={{ color: 'var(--dex-gray-300)' }}>—</span></td>
           <td style={{ ...tdS, fontSize: '0.78rem', color: 'var(--dex-gray-600)', maxWidth: 280 }}>{eventBadges(p.events)}</td>
@@ -466,18 +465,27 @@ export default function SettingsPage(): React.ReactElement {
         </tr>
       );
     };
+    const coorgF = coOrganizersList.filter(matchAgg);
+    const testersF = testersList.filter(matchAgg);
+    const checkinF = checkinList.filter(matchAgg);
+    // v24.87: Organizer + Co-Organizer in EINEM Abschnitt — globale Organizer
+    // (editierbar) zuerst, danach die reinen Per-Event-Co-Organizer (read-only).
+    // Die Status-Spalte zeigt „Organizer" und/oder „Co-Organizer".
+    const organizerSectionBody = [
+      ...organizers.map(editableRow),
+      ...coorgF.map(p => aggRow(p, coOrgPill)),
+    ];
     const sections: Array<{ key: string; title: string; body: React.ReactNode; count: number }> = [
       { key: 'admins', title: 'Admins', count: admins.length, body: admins.map(editableRow) },
-      { key: 'organizer', title: 'Organizer', count: organizers.length, body: organizers.map(editableRow) },
-      { key: 'coorg', title: isDe ? 'Co-Organizer' : 'Co-organizers', count: coOrganizersList.length, body: coOrganizersList.map(p => aggRow(p, catPill('Per-Event', 'rgba(237,139,0,0.15)', 'var(--dex-orange-dark, #b35a00)'))) },
-      { key: 'tester', title: isDe ? 'Tester' : 'Testers', count: testersList.length, body: testersList.map(p => aggRow(p, catPill(isDe ? 'Tester' : 'Tester', 'rgba(0,118,168,0.10)', 'var(--dex-blue, #0076a8)'))) },
-      { key: 'checkin', title: 'Check-in', count: checkinList.length, body: checkinList.map(p => aggRow(p, catPill('Check-in', 'rgba(134,188,37,0.16)', 'var(--dex-green-dark, #4a7c1f)'))) },
+      { key: 'organizer', title: isDe ? 'Organizer & Co-Organizer' : 'Organizers & co-organizers', count: organizers.length + coorgF.length, body: organizerSectionBody },
+      { key: 'tester', title: isDe ? 'Tester' : 'Testers', count: testersF.length, body: testersF.map(p => aggRow(p, catPill(isDe ? 'Tester' : 'Tester', 'rgba(0,118,168,0.10)', 'var(--dex-blue, #0076a8)'))) },
+      { key: 'checkin', title: 'Check-in', count: checkinF.length, body: checkinF.map(p => aggRow(p, catPill('Check-in', 'rgba(134,188,37,0.16)', 'var(--dex-green-dark, #4a7c1f)'))) },
     ];
     if (usersLeft.length > 0) sections.push({ key: 'user', title: isDe ? 'Weitere (User)' : 'Other (users)', count: usersLeft.length, body: usersLeft.map(editableRow) });
     return (
       <div>
         {sections.map(sec => {
-          const open = openSections.has(sec.key);
+          const open = q ? true : openSections.has(sec.key);
           return (
             <div key={sec.key} style={{ marginBottom: 12, border: '1px solid var(--dex-gray-200, #eee)', borderRadius: 8, overflow: 'hidden' }}>
               <button
@@ -509,30 +517,10 @@ export default function SettingsPage(): React.ReactElement {
 
   return (
     <div className="page-container">
-      <div className="settings-grid">
+      <div>
 
-        {/* User Information */}
-        <div className="card">
-          <h3 className="mb-16">User Information</h3>
-          <div className="settings-info">
-            <div className="settings-info__row">
-              <span className="settings-info__label">Name</span>
-              <span>{currentUser.firstName} {currentUser.surname}</span>
-            </div>
-            <div className="settings-info__row">
-              <span className="settings-info__label">Email</span>
-              <span>{currentUser.email}</span>
-            </div>
-            <div className="settings-info__row">
-              <span className="settings-info__label">Location</span>
-              <span>{currentUser.location || '-'}</span>
-            </div>
-            <div className="settings-info__row">
-              <span className="settings-info__label">Role</span>
-              {roleBadge(currentUserRole)}
-            </div>
-          </div>
-        </div>
+        {/* v24.87: „User Information"-Karte entfernt — diese Seite ist reine
+            Rollenverwaltung (die eigenen User-Infos stehen im Header-Avatar-Menü). */}
 
         {/* v24.84: „Admin Actions"-Karte (Create New Event / View All Events /
             Rollen-Matrix) entfernt — diese Wege gibt es bereits über die
@@ -731,6 +719,29 @@ export default function SettingsPage(): React.ReactElement {
                     {isAdding ? 'Saving...' : 'Assign Role'}
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* v24.87: Freitext-Suche über alle Kategorien. */}
+            {!isRolesLoading && (
+              <div style={{ position: 'relative', marginBottom: 14, maxWidth: 360 }}>
+                <input
+                  className="form-input"
+                  value={roleSearch}
+                  onChange={e => setRoleSearch(e.target.value)}
+                  placeholder={isDe ? 'Suchen (Name, E-Mail, Position, Standort)…' : 'Search (name, email, position, location)…'}
+                  style={{ fontSize: '0.85rem', paddingRight: roleSearch ? 30 : undefined }}
+                />
+                {roleSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setRoleSearch('')}
+                    title={isDe ? 'Suche zurücksetzen' : 'Clear search'}
+                    style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'var(--dex-gray-100)', cursor: 'pointer', width: 22, height: 22, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--dex-gray-600)' }}
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
             )}
 
