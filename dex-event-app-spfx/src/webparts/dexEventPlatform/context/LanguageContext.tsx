@@ -557,7 +557,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'reg.eventnotfound': 'Event not found',
     'reg.backtoevents': 'Back to Events',
     'reg.unlimited': 'Unlimited',
-    'reg.free': 'free',
+    'reg.free': 'available',
     'reg.submitting': 'Submitting...',
     'reg.requiredfields': 'Please fill in all required fields.',
     'reg.requiredcustom': 'Please fill in',

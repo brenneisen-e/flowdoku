@@ -143,7 +143,21 @@ export default function AdminHubPage(): React.ReactElement {
     { icon: <Book size={28} />, title: isDe ? 'Handbuch' : 'Manual', desc: isDe ? 'Ausführliche Anleitung zu allen Funktionen.' : 'Detailed guide for all features.', onClick: () => navigate('manual') },
   ];
 
-  const cardStyle: React.CSSProperties = { background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 12, padding: 18, boxShadow: '0 2px 8px rgba(0,0,0,0.05)' };
+  const cardStyle: React.CSSProperties = { background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 12, padding: 18, boxShadow: '0 2px 8px rgba(0,0,0,0.05)', transition: 'border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease' };
+  // v24.70: Hover-Effekt für die klickbaren Kacheln — grüner Rand, leichter
+  // Lift + Schatten (wie die Kacheln auf der Startseite).
+  const onCardHover = (e: React.MouseEvent<HTMLDivElement>): void => {
+    const el = e.currentTarget;
+    el.style.borderColor = 'var(--dex-green, #86bc25)';
+    el.style.boxShadow = '0 8px 22px rgba(134,188,37,0.20)';
+    el.style.transform = 'translateY(-2px)';
+  };
+  const onCardLeave = (e: React.MouseEvent<HTMLDivElement>): void => {
+    const el = e.currentTarget;
+    el.style.borderColor = 'var(--dex-gray-200)';
+    el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.05)';
+    el.style.transform = '';
+  };
 
   return (
     <div className="page-container">
@@ -155,7 +169,7 @@ export default function AdminHubPage(): React.ReactElement {
       {/* Werkzeuge */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 14, marginBottom: 28 }}>
         {tools.map((t, i) => (
-          <div key={i} className="card-clickable" style={{ ...cardStyle, cursor: 'pointer', display: 'flex', gap: 14, alignItems: 'flex-start' }} onClick={t.onClick}>
+          <div key={i} className="card-clickable" style={{ ...cardStyle, cursor: 'pointer', display: 'flex', gap: 14, alignItems: 'flex-start' }} onClick={t.onClick} onMouseEnter={onCardHover} onMouseLeave={onCardLeave}>
             <span style={{ color: 'var(--dex-green, #86bc25)', flexShrink: 0 }}>{t.icon}</span>
             <span>
               <span style={{ display: 'block', fontWeight: 700, color: 'var(--dex-gray-800)', marginBottom: 2 }}>{t.title}</span>

@@ -110,7 +110,7 @@ function ImpersonationBanner(props: { currentPage?: string }): React.ReactElemen
 function AppContent(): React.ReactElement {
   const { currentPage, navigate } = useNavigation();
   const { isAdmin, isOrganizer, isRolesLoading } = useRoles();
-  const { markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, isEventsLoading, events, getKpiCache, updateKpiCache } = useEvents();
+  const { markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, reconcileCounters, isEventsLoading, events, getKpiCache, updateKpiCache } = useEvents();
 
   // v11.52: KPI-Boxen im Boot-Loader. Live-Zählung ueber alle Event-
   // Subsites war zu langsam (Counts kommen erst nach mehreren Sekunden) —
@@ -411,6 +411,31 @@ function AppContent(): React.ReactElement {
     const t = window.setTimeout(() => {
       autoRepairProxyAccess().catch(err => console.warn('[DEX] auto access-fix failed:', err));
     }, 4000);
+    return () => window.clearTimeout(t);
+  }, [isAdmin, isEventsLoading, events]);
+
+  // v24.74: Sitzplatz-Counter beim Admin-Start frischziehen (Admin hat
+  // Vollzugriff → echte Aktiv-/Warteliste-Zahlen). So stimmen die für ALLE
+  // lesbaren Counter (SeatsTaken/WaitlistTaken), bevor normale Teilnehmer das
+  // Anmeldeformular öffnen. Gedrosselt 1×/6h via localStorage, verzögert,
+  // best-effort (blockiert den Boot nicht).
+  const didReconcileCounters = React.useRef(false);
+  React.useEffect(() => {
+    if (didReconcileCounters.current) return;
+    if (!isAdmin) return;
+    if (isEventsLoading) return;
+    if (!events || events.length === 0) return;
+    let due = true;
+    try {
+      const last = parseInt(window.localStorage.getItem('dex_counter_reconcile_lastrun') || '0', 10);
+      if (last && Date.now() - last < 6 * 60 * 60 * 1000) due = false;
+    } catch { /* */ }
+    if (!due) return;
+    didReconcileCounters.current = true;
+    try { window.localStorage.setItem('dex_counter_reconcile_lastrun', String(Date.now())); } catch { /* */ }
+    const t = window.setTimeout(() => {
+      reconcileCounters().catch(err => console.warn('[DEX] counter reconcile failed:', err));
+    }, 6000);
     return () => window.clearTimeout(t);
   }, [isAdmin, isEventsLoading, events]);
 
