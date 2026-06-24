@@ -1567,6 +1567,22 @@ export class EventService {
   // Organizer/Admin können LESEN. Setzt Item-Level-Read = "Only their own".
   private async ensureChangeLogPermissions(listName: string): Promise<void> {
     try {
+      // v24.77: Permissions nur EINMAL setzen. Sind die Berechtigungen schon
+      // eindeutig (Vererbung bereits gebrochen), läuft das komplette Setup
+      // unten NICHT erneut. Vorher feuerte breakroleinheritance +
+      // addroleassignment bei JEDEM Boot neu → wiederkehrendes 400-Rauschen
+      // in der Konsole. Gleiches Muster wie ensureEventsList bei den
+      // Event-Permissions.
+      try {
+        const listInfo = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')?$select=HasUniqueRoleAssignments`,
+          SPHttpClient.configurations.v1
+        );
+        if (listInfo.ok) {
+          const data = await listInfo.json();
+          if (data.HasUniqueRoleAssignments) return; // schon eingerichtet
+        }
+      } catch { /* im Zweifel weiter unten einrichten */ }
       // 1. Inheritance brechen
       await this._post(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`,
@@ -3424,8 +3440,16 @@ export class EventService {
             {}
           );
         } catch { /* ignore */ }
-      } else {
-        // Nur hinzufügen (behält bestehende SP-Felder bei). Duplikate vermeiden.
+      }
+      // IMMER die tatsächlich noch vorhandenen View-Felder lesen — auch im
+      // Rebuild-Pfad. Hintergrund: SharePoints `addviewfield` ist NICHT
+      // idempotent und antwortet mit HTTP 500, wenn das Feld bereits in der
+      // View liegt. Greift `removeallviewfields` nicht (Permission/Throttle),
+      // blieben die alten Felder drin → 500-Rauschen bei jedem Boot (z.B.
+      // `addviewfield('DisableOutlook')`). Mit dem Re-Read überspringen wir
+      // bereits vorhandene Felder und senden den fehlschlagenden Request gar
+      // nicht erst ab.
+      try {
         const existingResponse = await this.context.spHttpClient.get(
           `${url}/_api/web/lists/getbytitle('${listName}')/defaultview/viewfields`,
           SPHttpClient.configurations.v1
@@ -3436,7 +3460,7 @@ export class EventService {
           else if (existingData.d?.Items) existingFields = existingData.d.Items;
           else if (existingData.value) existingFields = existingData.value;
         }
-      }
+      } catch { /* ignore — dann werden ggf. alle Felder versucht */ }
 
       for (const fieldName of fieldNames) {
         // Nur hinzufügen wenn noch nicht in der View

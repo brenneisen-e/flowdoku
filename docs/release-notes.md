@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.77.0 | 2026-06-24 | Bugfix | Konsole beim App-Start aufgeräumt: zwei wiederkehrende Hintergrund-Fehlermeldungen (rund um das Änderungsprotokoll und die Spaltenanzeige der Event-Liste) entstanden, weil interne Einrichtungs-Schritte bei jedem Start unnötig erneut liefen. Sie laufen jetzt nur noch, wenn wirklich etwas einzurichten ist — für Organizer und Teilnehmer ändert sich nichts, der Start ist nur sauberer und etwas schlanker. |
 | 24.76.0 | 2026-06-24 | Bugfix | Counter-MERGE 400 behoben: WaitlistTaken-Feld wird vor dem Schreiben sichergestellt (ensureCounterFieldsOnce, gecacht); adjustWaitlistCounter überspringt den Write still, wenn das Feld (noch) fehlt. Push im Tenant verifiziert (✅ Verbunden). |
 | 24.75.0 | 2026-06-24 | Feature | Echtzeit-Push: Plätze/Teilnehmer aktualisieren sich live im Anmeldeformular (Counter-Liste) und in der Organizer-Teilnehmerliste (Teilnehmerliste) über SharePoints nativen Socket.IO-Endpunkt (lazy socket.io-client, best-effort, klare `[DEX Realtime]`-Konsolen-Diagnose). Eventübersicht bleibt Lade-/Fokus-Refresh. |
 | 24.74.0 | 2026-06-24 | Bugfix | Sitzplatz-Counter werden beim Admin-Start (Vollzugriff) aller aktiven Events frischgezogen → korrekte Zahlen schon beim ersten Öffnen, auch für bestehende Events. |
