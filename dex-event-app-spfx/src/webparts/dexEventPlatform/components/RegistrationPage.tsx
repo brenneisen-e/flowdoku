@@ -3990,7 +3990,13 @@ export default function RegistrationPage(): React.ReactElement {
         {/* v24.57: Badge mit Icon — freie Plätze ODER (wenn voll + Warteliste
             aktiv) „Warteliste". Bei unbegrenzter Teilnehmerzahl gar nichts. */}
         {event.maxParticipants > 0 && (() => {
-          const free = Math.max(0, event.maxParticipants - (event.currentParticipants || 0));
+          // v24.72: Wartelisten-Anzahl von den freien Plätzen abziehen. Ein frei
+          // gewordener Platz geht IMMER zuerst an die Warteliste — er ist also
+          // nicht „frei" für neue Anmeldungen. Das verhindert auch das kurze,
+          // fälschliche „1 freier Platz" während des Nachrückens (Abmeldung
+          // gebucht, Promote vom Flow läuft noch): solange jemand auf der
+          // Warteliste steht, bleibt die Anzeige bei 0 frei / Warteliste.
+          const free = Math.max(0, event.maxParticipants - (event.currentParticipants || 0) - (event.waitlistCount || 0));
           const isFull = free <= 0;
           if (isFull && !event.waitlistEnabled) return null; // voll, keine Warteliste → nichts
           const waitlist = isFull && !!event.waitlistEnabled;
@@ -4013,8 +4019,8 @@ export default function RegistrationPage(): React.ReactElement {
                   })()
                 : (
                   <span>
-                    {free} / {event.maxParticipants} {locale === 'de' ? 'freie Plätze' : 'seats free'}
-                    {isTeamEvent && <span style={{ fontWeight: 500, marginLeft: 6 }}>({teamsFree} {teamsFree === 1 ? (locale === 'de' ? 'Team' : 'team') : (locale === 'de' ? 'Teams' : 'teams')} {locale === 'de' ? 'frei' : 'free'})</span>}
+                    {free} / {event.maxParticipants} {locale === 'de' ? 'freie Plätze' : 'available'}
+                    {isTeamEvent && <span style={{ fontWeight: 500, marginLeft: 6 }}>({teamsFree} {teamsFree === 1 ? (locale === 'de' ? 'Team' : 'team') : (locale === 'de' ? 'Teams' : 'teams')} {locale === 'de' ? 'frei' : 'available'})</span>}
                   </span>
                 )}
             </span>
@@ -4067,7 +4073,7 @@ export default function RegistrationPage(): React.ReactElement {
                 // kurzer, NICHT fetter Zusatz „(Warteliste)" (die aktuelle Anzahl
                 // steht im Badge über dem Button).
                 const mainFull = event.maxParticipants > 0
-                  && Math.max(0, event.maxParticipants - (event.currentParticipants || 0)) <= 0
+                  && Math.max(0, event.maxParticipants - (event.currentParticipants || 0) - (event.waitlistCount || 0)) <= 0
                   && !!event.waitlistEnabled;
                 const waitlistSuffixNode: React.ReactNode = mainFull
                   ? <span style={{ fontWeight: 400 }}> ({locale === 'de' ? 'Warteliste' : 'waitlist'})</span>

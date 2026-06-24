@@ -8,6 +8,8 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.72.0 | 2026-06-24 | Bugfix | Freie-Plätze-Anzeige zieht jetzt die Wartelisten-Anzahl ab → kein kurzes falsches „1 frei" mehr während des Nachrückens (EventCard + Registrierungs-Badge + mainFull). |
+| 24.72.0 | 2026-06-24 | Feature | EN-Wording: „available" statt „free" für die Platz-Anzeige (reg.free + Registrierungs-Badge). |
 | 24.71.0 | 2026-06-23 | Bugfix | Organizer-Nachrück-Mail: abgemeldete Person wurde als „Nachname, Vorname" (SP-Anzeigename) geschrieben, nachgerückte als „Vorname Nachname". Self-Cancel schreibt CancelledName jetzt aus der Registrierung (Vorname Nachname) → einheitlich. |
 | 24.70.0 | 2026-06-23 | Feature | Admin-Übersicht: Kacheln haben jetzt einen Hover-Effekt (grüner Rand + leichter Lift). |
 | 24.69.0 | 2026-06-23 | Feature | Admin-Übersicht: getrennte Kacheln „Rollenverwaltung" (Rollen zuweisen → Einstellungen) und „Rollenmatrix" (Rechte-Übersicht). Matrix-Seite + Suche + PDF heißen jetzt „Rollenmatrix". |

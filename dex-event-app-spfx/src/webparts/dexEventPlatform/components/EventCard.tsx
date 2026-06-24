@@ -77,7 +77,10 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
     ? event.maxParticipants
     : splitCapacity;
   const isUnlimited = !effectiveMax || effectiveMax === 0;
-  const freePlaces = isUnlimited ? Infinity : effectiveMax - event.currentParticipants;
+  // v24.72: Wartelisten-Anzahl abziehen — ein frei gewordener Platz geht IMMER
+  // zuerst an die Warteliste und ist daher nicht „frei" für neue Anmeldungen.
+  // Verhindert auch das kurze, falsche „1 frei" während des Nachrückens.
+  const freePlaces = isUnlimited ? Infinity : effectiveMax - event.currentParticipants - (event.waitlistCount || 0);
   const isFull = !isUnlimited && freePlaces <= 0;
   const alreadySignedUp = isRegistered || isWaitlisted;
   // v22.54: Die Anmeldung bleibt offen, solange das Hauptevent ODER mindestens
