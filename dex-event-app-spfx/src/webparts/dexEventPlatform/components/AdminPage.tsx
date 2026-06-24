@@ -10620,10 +10620,12 @@ export default function AdminPage(): React.ReactElement {
           };
           const thClickable: React.CSSProperties = { textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', position: 'sticky', top: 0, background: '#fff', zIndex: 5, borderBottom: '2px solid var(--dex-gray-200)' };
           const declineCount = cancelledRegs.filter(isDeclined).length;
-          // v19.28: Abgemeldete Registrierungen endgültig löschen (Admin/Organizer)
-          // — z.B. um Test-Anmeldungen aus der Übersicht zu entfernen. Hartes
-          // DELETE nach Sicherheits-Confirm; Audit-Eintrag im ChangeLog.
-          const canDelete = !!selectedEvent && (isAdmin || isOrganizerFor(selectedEvent)) && !!selectedEvent.subsiteUrl;
+          // v24.82: Abmeldungen dürfen NUR bei Entwurf-Events (isFictive)
+          // gelöscht werden — z.B. zum Aufräumen von Test-Anmeldungen, BEVOR
+          // das Event live geht. Sobald das Event live war/ist, bleiben
+          // Abmeldungen wegen der einjährigen Aufbewahrungsfrist erhalten
+          // (dann kein „Löschen"-Button).
+          const canDelete = !!selectedEvent && selectedEvent.isFictive === true && (isAdmin || isOrganizerFor(selectedEvent)) && !!selectedEvent.subsiteUrl;
           const deleteCancelled = async (reg: SPRegistration): Promise<void> => {
             if (!selectedEvent) return;
             // v22.59: im Klammer-Modus die Subsite der jeweiligen Sub-Section
@@ -10832,6 +10834,13 @@ export default function AdminPage(): React.ReactElement {
               </>
             );
           }
+          // v24.82: Abmeldungen im selben Zeilen-Layout wie die aktiven
+          // Anmeldungen (Foto + Name + „Position • Standort • Firma"), aber
+          // alle Texte in hellem Grau, damit sie klar von den aktiven
+          // Anmeldungen zu unterscheiden sind. Ein „Löschen"-Button erscheint
+          // NUR bei Entwurf-Events (canDelete) — sonst bleiben Abmeldungen
+          // wegen der einjährigen Aufbewahrungsfrist erhalten.
+          const greyText = 'var(--dex-gray-400)';
           return (
             <>
               <h4 style={{ marginTop: 24, color: 'var(--dex-gray-400)' }}>
@@ -10846,11 +10855,7 @@ export default function AdminPage(): React.ReactElement {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                   <thead>
                     <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
-                      <th style={thClickable} onClick={() => toggleSort('vorname')}>Vorname{arrow('vorname')}</th>
-                      <th style={thClickable} onClick={() => toggleSort('nachname')}>Nachname{arrow('nachname')}</th>
-                      <th style={thClickable} onClick={() => toggleSort('email')}>Email{arrow('email')}</th>
-                      <th style={thClickable} onClick={() => toggleSort('jobtitle')}>Job Title{arrow('jobtitle')}</th>
-                      <th style={thClickable} onClick={() => toggleSort('location')}>Standort{arrow('location')}</th>
+                      <th style={thClickable} onClick={() => toggleSort('nachname')}>{isDe ? 'Teilnehmer' : 'Attendee'}{arrow('nachname')}</th>
                       <th style={thClickable} onClick={() => toggleSort('type')}>{isDe ? 'Art' : 'Type'}{arrow('type')}</th>
                       {isConsolidatedMode && (
                         <th style={{ ...thClickable, cursor: 'default' }}>{isDe ? 'Sub-Event' : 'Sub-event'}</th>
@@ -10873,24 +10878,36 @@ export default function AdminPage(): React.ReactElement {
                       // eslint-disable-next-line @typescript-eslint/no-explicit-any
                       const anyReg = reg as any;
                       const declined = isDeclined(reg);
+                      const vn = reg.Vorname || ((reg.ParticipantName || '').split(' ')[0] || '');
+                      let nn = reg.Nachname || '';
+                      if (!nn && reg.ParticipantName) { const pp = reg.ParticipantName.trim().split(/\s+/); if (pp.length > 1) nn = pp.slice(1).join(' '); }
+                      const fullName = `${vn} ${nn}`.trim() || reg.ParticipantEmail || '-';
+                      const sub = [String(anyReg.JobTitle || ''), stripLocPrefix(String(anyReg.Location || '')), String(anyReg.Company || '')].filter(Boolean).join(' • ');
+                      // Neutral-graue Pille (Abmeldung vs. Absage ohne Anmeldung) —
+                      // bewusst kein Rot/Blau, damit die Zeile durchgängig grau bleibt.
+                      const artLabel = declined
+                        ? (isDe ? 'Absage (nicht angemeldet)' : 'Decline (never registered)')
+                        : (isDe ? 'Abgemeldet' : 'Cancelled');
                       return (
                         <tr key={reg.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                          <td style={{ padding: 8, fontWeight: 500 }}>{reg.Vorname || '-'}</td>
-                          <td style={{ padding: 8, fontWeight: 500 }}>{reg.Nachname || '-'}</td>
-                          <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
-                          <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{anyReg.JobTitle || '-'}</td>
-                          <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{anyReg.Location || '-'}</td>
                           <td style={{ padding: 8 }}>
-                            {declined
-                              ? <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(0,118,168,0.10)', color: 'var(--dex-blue, #0076a8)' }}>{isDe ? 'Absage (nicht angemeldet)' : 'Decline (never registered)'}</span>
-                              : <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(218,41,28,0.08)', color: 'var(--dex-red, #da291c)' }}>{isDe ? 'Abgemeldet' : 'Cancelled'}</span>}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                              <PersonContactHover email={reg.ParticipantEmail || ''} name={fullName} size={30} subline={sub} isDe={isDe} />
+                              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.25 }}>
+                                <span style={{ fontWeight: 600, color: greyText, whiteSpace: 'nowrap' }}>{fullName}</span>
+                                {sub && <span style={{ fontSize: '0.78rem', color: greyText, whiteSpace: 'nowrap' }}>{sub}</span>}
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ padding: 8 }}>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--dex-gray-100)', color: greyText }}>{artLabel}</span>
                           </td>
                           {isConsolidatedMode && (
-                            <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{(reg as SPRegistration & { _sectionTitle?: string })._sectionTitle || '-'}</td>
+                            <td style={{ padding: 8, color: greyText, fontSize: '0.8rem' }}>{(reg as SPRegistration & { _sectionTitle?: string })._sectionTitle || '-'}</td>
                           )}
-                          <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.CancellationDate)}</td>
+                          <td style={{ padding: 8, color: greyText }}>{formatDate(reg.CancellationDate)}</td>
                           {hasWaitlistActivity && (
-                            <td style={{ padding: 8, color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.8rem' }}>
+                            <td style={{ padding: 8, color: greyText, fontSize: '0.8rem' }}>
                               {(() => {
                                 const email = (anyReg.ReplacedByParticipantEmail as string | undefined) || '';
                                 if (!email) return <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
@@ -10904,7 +10921,7 @@ export default function AdminPage(): React.ReactElement {
                             <td style={{ padding: 8, textAlign: 'right' }}>
                               <button
                                 type="button"
-                                title={isDe ? 'Registrierung endgültig löschen' : 'Permanently delete registration'}
+                                title={isDe ? 'Registrierung endgültig löschen (nur im Entwurf möglich)' : 'Permanently delete registration (drafts only)'}
                                 onClick={() => { deleteCancelled(reg).catch(() => { /* */ }); }}
                                 style={{
                                   display: 'inline-flex', alignItems: 'center', gap: 5,

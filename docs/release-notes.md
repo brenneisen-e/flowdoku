@@ -8,6 +8,8 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.82.0 | 2026-06-24 | Feature | Organizer Center: Die Abmeldungen werden jetzt im selben Zeilen-Layout wie die Anmeldungen dargestellt (Foto, Name, Position • Standort), aber durchgehend in hellem Grau — so sind sie auf einen Blick klar von den aktiven Anmeldungen zu unterscheiden. |
+| 24.82.0 | 2026-06-24 | Feature | Abmeldungen lassen sich nur noch löschen, solange das Event ein Entwurf ist (z.B. um Test-Anmeldungen vor dem Live-Schalten aufzuräumen). Bei live geschalteten Events bleiben Abmeldungen erhalten (einjährige Aufbewahrungsfrist) — der Löschen-Button ist dort ausgeblendet. |
 | 24.81.0 | 2026-06-24 | Feature | Datenschutz-Fußnote: Die Adresse privacy@deloitte.de (Widerruf der Foto-/Video-Einwilligung) ist jetzt ein klickbarer E-Mail-Link — ein Klick öffnet direkt eine neue Mail. |
 | 24.80.0 | 2026-06-24 | Feature | Datenschutz-Fußnote im Anmeldeformular: zurück zur Darstellung als zwei getrennte Absätze (jeweils mit Event-Namen) — einer zur Verarbeitung der personenbezogenen Daten (mit Link zu den Deloitte-Datenschutzhinweisen), einer zu den Audio-/Bild-/Videoaufnahmen. Zweisprachig (DE/EN). |
 | 24.79.0 | 2026-06-24 | Feature | Datenschutz-Fußnote im Anmeldeformular übersichtlicher: Statt zwei ähnlich beginnender Absätze gibt es jetzt einen gemeinsamen Einstieg „Im Rahmen des Events …" und darunter zwei Stichpunkte — (1) Verarbeitung der personenbezogenen Daten (mit Link zu den Deloitte-Datenschutzhinweisen) und (2) Audio-/Bild-/Videoaufnahmen. Der Event-Name wird nur noch einmal genannt. |
