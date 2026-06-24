@@ -4179,32 +4179,37 @@ export default function RegistrationPage(): React.ReactElement {
         className="footer-disclaimer mt-24"
         style={{ borderRadius: 'var(--dex-radius-lg)', maxWidth: 1100, margin: '24px auto 0' }}
       >
-        <p>
-          {/* Datenverarbeitungs-Einwilligung (v24.78). „{link}" wird als
-              Anchor auf die Deloitte-Datenschutzhinweise gerendert; der Rest
-              ist reiner Text mit {title}-Ersetzung. */}
-          {(() => {
-            const raw = t('reg.privacy.data').replace('{title}', event.title);
-            const parts = raw.split('{link}');
-            const linkLabel = t('reg.privacy.data.link');
-            return (
-              <>
-                {parts[0]}
-                <a
-                  href="https://www.deloitte.com/de/de/legal/privacy.html"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {linkLabel}
-                </a>
-                {parts[1] || ''}
-              </>
-            );
-          })()}
+        {/* Datenschutz-Hinweise (v24.79): gemeinsamer Einstieg „Im Rahmen des
+            Events <Name>:" + zwei Bullets — (1) Datenverarbeitung (mit Link auf
+            die Deloitte-Datenschutzhinweise), (2) Audio-/Bild-/Videoaufnahmen.
+            Der Event-Name steht nur noch einmal im Einstieg. */}
+        <p style={{ marginBottom: 8 }}>
+          {t('reg.privacy.intro').replace('{title}', event.title)}
         </p>
-        <p>
-          {t('reg.privacy').replace('{title}', event.title)}
-        </p>
+        <ul style={{ margin: 0, paddingLeft: 20 }}>
+          <li style={{ marginBottom: 8 }}>
+            {(() => {
+              const parts = t('reg.privacy.data').split('{link}');
+              const linkLabel = t('reg.privacy.data.link');
+              return (
+                <>
+                  {parts[0]}
+                  <a
+                    href="https://www.deloitte.com/de/de/legal/privacy.html"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {linkLabel}
+                  </a>
+                  {parts[1] || ''}
+                </>
+              );
+            })()}
+          </li>
+          <li>
+            {t('reg.privacy')}
+          </li>
+        </ul>
       </div>
 
       {/* Fallback-Dialog (seit v6.5): Wunsch-Starter-Typ voll, aber Alternative frei.
