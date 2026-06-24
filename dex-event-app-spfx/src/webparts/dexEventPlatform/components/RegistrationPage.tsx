@@ -4203,7 +4203,24 @@ export default function RegistrationPage(): React.ReactElement {
           })()}
         </p>
         <p>
-          {t('reg.privacy').replace('{title}', event.title)}
+          {/* Bild-/Video-Einwilligung. privacy@deloitte.de wird als
+              mailto-Link gerendert (gleiche Adresse in DE und EN). */}
+          {(() => {
+            const raw = t('reg.privacy').replace('{title}', event.title);
+            const mail = 'privacy@deloitte.de';
+            const parts = raw.split(mail);
+            return (
+              <>
+                {parts[0]}
+                {parts.length > 1 && (
+                  <>
+                    <a href={`mailto:${mail}`}>{mail}</a>
+                    {parts.slice(1).join(mail)}
+                  </>
+                )}
+              </>
+            );
+          })()}
         </p>
       </div>
 

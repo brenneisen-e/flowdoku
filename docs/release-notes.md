@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.81.0 | 2026-06-24 | Feature | Datenschutz-Fußnote: Die Adresse privacy@deloitte.de (Widerruf der Foto-/Video-Einwilligung) ist jetzt ein klickbarer E-Mail-Link — ein Klick öffnet direkt eine neue Mail. |
 | 24.80.0 | 2026-06-24 | Feature | Datenschutz-Fußnote im Anmeldeformular: zurück zur Darstellung als zwei getrennte Absätze (jeweils mit Event-Namen) — einer zur Verarbeitung der personenbezogenen Daten (mit Link zu den Deloitte-Datenschutzhinweisen), einer zu den Audio-/Bild-/Videoaufnahmen. Zweisprachig (DE/EN). |
 | 24.79.0 | 2026-06-24 | Feature | Datenschutz-Fußnote im Anmeldeformular übersichtlicher: Statt zwei ähnlich beginnender Absätze gibt es jetzt einen gemeinsamen Einstieg „Im Rahmen des Events …" und darunter zwei Stichpunkte — (1) Verarbeitung der personenbezogenen Daten (mit Link zu den Deloitte-Datenschutzhinweisen) und (2) Audio-/Bild-/Videoaufnahmen. Der Event-Name wird nur noch einmal genannt. |
 | 24.78.0 | 2026-06-24 | Feature | Anmeldeformular: In der Fußnote steht jetzt zusätzlich ein Datenschutz-Hinweis zur Verarbeitung der personenbezogenen Daten (Anmeldung, Kommunikation, Teilnahmeabwicklung) — zweisprachig (DE/EN) und mit Verlinkung „hier" auf die Datenschutzhinweise von Deloitte. Der Event-Name wird automatisch eingesetzt. |
