@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.86.0 | 2026-06-24 | Feature | Die beiden Admin-Werkzeuge „Default-Mail-Vorlagen zurücksetzen" und „Wochenbericht jetzt senden" sind aus der Rollenverwaltung ins Admin Center (Aktionen-Menü) umgezogen — dort, wo die übrigen Admin-Aktionen liegen. |
 | 24.85.0 | 2026-06-24 | Feature | Rollenverwaltung neu strukturiert: Die Personen stehen jetzt in eigenen, einzeln auf- und zuklappbaren Abschnitten — Admins, Organizer, Co-Organizer, Tester und Check-in (Tester und Check-in werden automatisch aus allen Events zusammengetragen). Die Tabelle zeigt jetzt Vorname, Nachname, E-Mail, Position, Standort, Rolle, Power-User und die betreuten Events; die Position wird je Person aus dem Verzeichnis nachgeladen. Beim Überfahren des Fotos erscheint dieselbe Kontaktkarte (E-Mail, Teams-Chat) wie auf der Anmeldeseite. |
 | 24.84.0 | 2026-06-24 | Feature | Startseite: Die „Admin"-Kachel sitzt jetzt ganz rechts (nach „Assistenz"). |
 | 24.84.0 | 2026-06-24 | Feature | Das Zahnrad-Symbol oben im Kopfbereich wurde entfernt — die Rollenverwaltung erreichst du über die „Admin"-Kachel. Die Seite heißt jetzt passend „Rollenverwaltung" und enthält nur noch die Rollenverwaltung (die zusätzliche Aktions-Box und die Listen-Berechtigungs-Übersicht sind dort entfallen, weil es diese Wege bereits an anderer Stelle gibt). |
