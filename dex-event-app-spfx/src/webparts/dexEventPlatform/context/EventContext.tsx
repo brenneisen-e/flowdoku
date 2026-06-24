@@ -2829,8 +2829,17 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // danach ID-Neuvergabe + Nachrücken abwickelt).
         if (subsiteUrl) {
           try {
+            // v24.71: CancelledName als „Vorname Nachname" schreiben (aus der
+            // Registrierung), nicht den SharePoint-Anzeigenamen currentUserName
+            // („Nachname, Vorname") — sonst stehen in der Organizer-Nachrück-Mail
+            // die Namen uneinheitlich (z.B. „Obermeier, Katrin" abgemeldet vs.
+            // „Alexa Sophie Gedaschko" nachgerückt). Der Flow baut PromotedName
+            // ebenfalls als „Vorname Nachname".
+            const cancelledDisplayName = (myReg.Vorname && myReg.Nachname)
+              ? `${myReg.Vorname} ${myReg.Nachname}`
+              : (myReg.ParticipantName || currentUserName);
             const reorderOk = await eventService.queueIDReorder(
-              eventId, event.eventNumber || 0, subsiteUrl, event.title, currentUserName, currentUserEmail
+              eventId, event.eventNumber || 0, subsiteUrl, event.title, cancelledDisplayName, currentUserEmail
             );
             if (!reorderOk) console.warn('[DEX] queueIDReorder returned false');
           } catch (err) { console.warn('[DEX] queueIDReorder failed:', err); }

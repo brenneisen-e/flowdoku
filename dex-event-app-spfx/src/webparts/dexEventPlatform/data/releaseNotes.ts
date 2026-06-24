@@ -44,6 +44,7 @@ export interface ReleaseNote {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '24.71.0', date: '2026-06-23', bereich: 'E-Mails', type: 'Bugfix', text: 'In der Mail an die Organisatoren über eine Abmeldung mit Nachrücker wurden die beiden Namen unterschiedlich geschrieben — die abgemeldete Person als „Nachname, Vorname" und die nachgerückte Person als „Vorname Nachname". Jetzt werden beide einheitlich als „Vorname Nachname" dargestellt.' },
   { version: '24.70.0', date: '2026-06-23', bereich: 'Verwaltung', type: 'Feature', text: 'Die Kacheln in der Admin-Übersicht reagieren jetzt auf die Maus: Beim Darüberfahren bekommen sie einen grünen Rand und heben sich leicht an — so ist klar erkennbar, dass sie anklickbar sind.' },
   { version: '24.69.0', date: '2026-06-23', bereich: 'Verwaltung', type: 'Feature', text: 'In der Admin-Übersicht gibt es jetzt zwei getrennte Kacheln: „Rollenverwaltung" (User, Organizer und Admins zuweisen oder entfernen) und „Rollenmatrix" (Übersicht, wer welche Rechte hat). Die frühere Kachel hieß „Rollenverwaltung", öffnete aber die Matrix — das ist jetzt klar getrennt und richtig benannt.' },
   { version: '24.69.0', date: '2026-06-23', bereich: 'Allgemein', type: 'Feature', text: 'Der Tutorial-Hinweis „Neu hier? Starte das DEX Tutorial" lässt sich jetzt mit einem kleinen „×" ausblenden. Einmal weggeklickt, bleibt er weg (wird gespeichert).' },
