@@ -8,6 +8,8 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.83.0 | 2026-06-24 | Feature | Organizer Center: Ab 5 Tagen vor Event-Start erscheint in den Hinweisen zum Event ganz oben ein Tipp, dass die persönlichen Check-in-QR-Codes jetzt verschickt werden können — inkl. Button, der direkt den QR-Versand öffnet. |
+| 24.83.0 | 2026-06-24 | Feature | Die automatische „Event angelegt"-Mail an die Organisatoren erklärt jetzt ausführlich die nächsten Schritte (Event finalisieren, Test-An-/Abmeldung, live schalten, Einladung verschicken, Anmeldungen verfolgen) statt nur „Event wurde erstellt". |
 | 24.82.0 | 2026-06-24 | Feature | Organizer Center: Die Abmeldungen werden jetzt im selben Zeilen-Layout wie die Anmeldungen dargestellt (Foto, Name, Position • Standort), aber durchgehend in hellem Grau — so sind sie auf einen Blick klar von den aktiven Anmeldungen zu unterscheiden. |
 | 24.82.0 | 2026-06-24 | Feature | Abmeldungen lassen sich nur noch löschen, solange das Event ein Entwurf ist (z.B. um Test-Anmeldungen vor dem Live-Schalten aufzuräumen). Bei live geschalteten Events bleiben Abmeldungen erhalten (einjährige Aufbewahrungsfrist) — der Löschen-Button ist dort ausgeblendet. |
 | 24.81.0 | 2026-06-24 | Feature | Datenschutz-Fußnote: Die Adresse privacy@deloitte.de (Widerruf der Foto-/Video-Einwilligung) ist jetzt ein klickbarer E-Mail-Link — ein Klick öffnet direkt eine neue Mail. |

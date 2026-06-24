@@ -6796,6 +6796,39 @@ export default function AdminPage(): React.ReactElement {
               });
             }
           }
+          // 6) v24.83: Ab 5 Tagen vor Event-Start ein Hinweis GANZ OBEN, dass
+          // jetzt die persönlichen Check-in-QR-Codes versendet werden können
+          // (optional — „falls du möchtest"). Nur im Hauptevent-Detail (nicht
+          // im Sub-Event-Detail) und nur solange das Event nicht vorbei ist.
+          if (!parentEventForSelected) {
+            const startMs = selectedEvent.startDate ? new Date(selectedEvent.startDate).getTime() : 0;
+            const daysUntilStart = startMs ? (startMs - Date.now()) / 86400000 : Infinity;
+            if (daysUntilStart <= 5 && !isEventOver(selectedEvent)) {
+              hints.unshift({
+                id: 'qr-send-window',
+                title: isDe ? 'QR-Codes versenden möglich' : 'QR codes can be sent now',
+                body: isDe ? (
+                  <>
+                    Das Event startet in den nächsten Tagen. Du kannst jetzt — wenn du möchtest — die persönlichen <strong>Check-in-QR-Codes</strong> an alle angemeldeten Teilnehmer verschicken. Jede Person bekommt ihren Code per E-Mail; wer sich danach noch anmeldet, erhält ihn automatisch. Am Veranstaltungstag scannst du die Codes am Eingang (oder die Teilnehmer checken sich per Self-Check-in selbst ein).
+                    <div style={{ marginTop: 8 }}>
+                      <button type="button" className="btn btn-primary" style={{ fontSize: '0.8rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => setQrSendModalOpen(true)}>
+                        <QrCode size={14} /> QR-Codes versenden
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    The event starts within the next few days. You can now — if you like — send the personal <strong>check-in QR codes</strong> to all registered attendees. Each person gets their code by email; anyone registering afterwards receives it automatically. On the event day you scan the codes at the entrance (or attendees self-check-in).
+                    <div style={{ marginTop: 8 }}>
+                      <button type="button" className="btn btn-primary" style={{ fontSize: '0.8rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => setQrSendModalOpen(true)}>
+                        <QrCode size={14} /> Send QR codes
+                      </button>
+                    </div>
+                  </>
+                ),
+              });
+            }
+          }
           const visible = hints.filter(h => !isDismissed(h.id));
           if (visible.length === 0) return null;
           return (

@@ -517,19 +517,28 @@ export function promotionEmail(recipientName: string, eventTitle: string): { sub
  */
 export function eventCreatedEmail(recipientName: string, eventTitle: string, subsiteUrl: string): { subject: string; body: string } {
   return {
-    subject: `[Deloitte Eventmanager] - New event created`,
+    subject: `[Deloitte Eventmanager] - Event angelegt`,
     body: wrapTemplate(
       GREEN,
-      'Event Created',
+      'Event angelegt',
       eventTitle,
-      `<p>Dear ${recipientName},</p>
-      <p>your event <strong>${eventTitle}</strong> has been successfully created.</p>
-      <p>You can find the list of participants here:</p>
+      `<p>Hallo ${recipientName},</p>
+      <p>dein Event <strong>${eventTitle}</strong> wurde erfolgreich angelegt. So machst du es startklar:</p>
+      <ol style="line-height:1.6;padding-left:20px;margin:0 0 16px;">
+        <li><strong>Event finalisieren</strong> &ndash; &uuml;ber &bdquo;Event bearbeiten&ldquo; Felder, Bild und Texte vervollst&auml;ndigen.</li>
+        <li><strong>Test-An- und Abmeldung</strong> &ndash; melde dich einmal selbst an und wieder ab, um zu pr&uuml;fen, ob die automatische Kommunikation (Best&auml;tigungs-Mail, Outlook-Termin, Abmelde-Mail) richtig ankommt.</li>
+        <li><strong>Event live schalten</strong> &ndash; in der App oben &uuml;ber das Status-H&auml;kchen &bdquo;Entwurf &rarr; Aktiv&ldquo; schalten. Danach ist es f&uuml;r die berechtigten Gruppen sichtbar.</li>
+        <li><strong>Einladung verschicken</strong> &ndash; optional die Einladung mit Anmelde-Link direkt aus der App versenden (an dich zum Weiterleiten oder an den Verteiler).</li>
+        <li><strong>Anmeldungen verfolgen</strong> &ndash; sobald sich Teilnehmer anmelden, siehst du im Organizer Center alle Infos: Anzahl, Status und die komplette Teilnehmerliste.</li>
+      </ol>
+      <p>Teilnehmerliste &amp; Verwaltung:</p>
       <ul>
-        <li><a href="${subsiteUrl}/Lists/Teilnehmer/AllItems.aspx" style="color:${GREEN};font-weight:600;">SharePoint Teilnehmerliste</a></li>
+        <li><a href="${subsiteUrl}/Lists/Teilnehmer/AllItems.aspx" style="color:${GREEN};font-weight:600;">SharePoint-Teilnehmerliste</a></li>
         <li><a href="${APP_URL}" style="color:${GREEN};font-weight:600;">DEX App</a> (Admin / Organizer)</li>
       </ul>
-      <p>Regards,<br>Team DEX App</p>`
+      <p>Viele Gr&uuml;&szlig;e<br>Team DEX App</p>
+      <hr style="border:none;border-top:1px solid #e0e0e0;margin:20px 0;">
+      <p style="color:#999;font-size:13px;line-height:1.5;">English: Your event <strong>${eventTitle}</strong> was created successfully. Next steps: (1)&nbsp;finalize it via &bdquo;Edit event&ldquo;, (2)&nbsp;do a test registration &amp; cancellation to check the automatic emails and the Outlook invite, (3)&nbsp;publish it via the status toggle &bdquo;Draft &rarr; Active&ldquo;, (4)&nbsp;optionally send the invitation with the registration link from the app, (5)&nbsp;track registrations in the Organizer Center. Participant list &amp; admin: see the links above.</p>`
     ),
   };
 }
