@@ -4180,6 +4180,29 @@ export default function RegistrationPage(): React.ReactElement {
         style={{ borderRadius: 'var(--dex-radius-lg)', maxWidth: 1100, margin: '24px auto 0' }}
       >
         <p>
+          {/* Datenverarbeitungs-Einwilligung (v24.78). „{link}" wird als
+              Anchor auf die Deloitte-Datenschutzhinweise gerendert; der Rest
+              ist reiner Text mit {title}-Ersetzung. */}
+          {(() => {
+            const raw = t('reg.privacy.data').replace('{title}', event.title);
+            const parts = raw.split('{link}');
+            const linkLabel = t('reg.privacy.data.link');
+            return (
+              <>
+                {parts[0]}
+                <a
+                  href="https://www.deloitte.com/de/de/legal/privacy.html"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {linkLabel}
+                </a>
+                {parts[1] || ''}
+              </>
+            );
+          })()}
+        </p>
+        <p>
           {t('reg.privacy').replace('{title}', event.title)}
         </p>
       </div>

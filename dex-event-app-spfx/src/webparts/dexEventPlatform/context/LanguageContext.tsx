@@ -138,6 +138,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'reg.deadlinepassed.date': 'Anmeldeschluss war',
     'reg.deadlinepassed.adminnotice': 'Hinweis: Als normaler User könntest du dich nicht mehr registrieren - die Anmeldefrist ist abgelaufen.',
     'reg.privacy': 'Im Rahmen des Events {title} werden von Deloitte Audio-, Bild- und Videoaufnahmen erstellt. Durch die eindeutige bestätigende Handlung, z.B. Posieren oder Lächeln in die Kamera, willigst du in die Erstellung von Audio-, Bild- und Videoaufnahmen ein. Die Aufnahmen können für Deloitte-interne Veröffentlichungszwecke (z.B. DeloitteNet) verwendet werden. Die Einwilligung kann jederzeit mit Wirkung für die Zukunft und ohne negative Konsequenzen per E-Mail an privacy@deloitte.de widerrufen werden.',
+    'reg.privacy.data': 'Mit deiner Anmeldung zum {title} willigst du ein, dass deine personenbezogenen Daten zum Zweck der Organisation und Durchführung der Veranstaltung verarbeitet werden. Dies umfasst insbesondere die Erhebung, Speicherung und Nutzung der von dir angegebenen Daten zur Anmeldung, Kommunikation und Teilnahmeabwicklung. Weitere Informationen zur Verarbeitung deiner Daten findest du {link} in den Datenschutzhinweisen von Deloitte.',
+    'reg.privacy.data.link': 'hier',
 
     // My Events
     'myevents.title': 'Meine Events',
@@ -581,6 +583,8 @@ export const translations: Record<Locale, Record<string, string>> = {
     'reg.deadlinepassed.date': 'Registration deadline was',
     'reg.deadlinepassed.adminnotice': 'Note: As a regular user you would no longer be able to register - the registration deadline has passed.',
     'reg.privacy': 'As part of the event {title}, audio, image, and video recordings will be made for Deloitte. By the clear confirming action, e.g., posing or smiling at the camera, you consent to the creation of audio, image, and video recordings. The recordings may be used for Deloitte internal publication purposes (e.g., DeloitteNet). The consent can be revoked at any time with future effect and without any negative consequences by sending an email to privacy@deloitte.de.',
+    'reg.privacy.data': 'By registering for {title}, you consent to the processing of your personal data for the purpose of organising and running the event. This includes in particular the collection, storage, and use of the data you provide for registration, communication, and participation handling. You can find further information on the processing of your data {link} in Deloitte\'s privacy notices.',
+    'reg.privacy.data.link': 'here',
 
     // My Events
     'myevents.title': 'My Events',
