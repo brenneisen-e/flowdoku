@@ -12,7 +12,7 @@ import { useLanguage } from '../context/LanguageContext';
 // v20.4: moderne Confirm-Modals statt window.confirm.
 import { useDialog } from '../context/DialogContext';
 import { UserRole } from '../types';
-import { Plus, FileText, Trash2, X } from './Icons';
+import { Plus, Trash2, X } from './Icons';
 import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
 
@@ -20,7 +20,7 @@ export default function SettingsPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { currentUser } = useCurrentUser();
   const {
-    roles, currentUserRole, isAdmin, canCreateEvents, originalIsAdmin,
+    roles, currentUserRole, isAdmin, originalIsAdmin,
     addRole, updateRole, setPowerUser, updateRoleLocation, removeRole, isRolesLoading, siteUrl, searchUsers,
   } = useRoles();
   const { events, sendOrganizerOnboarding } = useEvents();
@@ -87,11 +87,12 @@ export default function SettingsPage(): React.ReactElement {
         accumulator[emailLc].events.push(evt.title);
       }
     }
-    return Object.keys(accumulator).sort().map(emailLc => ({
+    // v24.84: alphabetisch nach Name sortieren (vorher nach E-Mail-Schlüssel).
+    return Object.keys(accumulator).map(emailLc => ({
       email: emailLc,
       name: accumulator[emailLc].name,
       events: accumulator[emailLc].events,
-    }));
+    })).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'));
   }, [roles, events]);
   // v19.26: Die Per-Event-Organizer-Namen stammen aus dem index-basierten
   // Pairing von Organizer-Namen ↔ -E-Mails im Event. Driftet dieses Pairing
@@ -205,6 +206,16 @@ export default function SettingsPage(): React.ReactElement {
     const assignedEmail = newEmail;
     const assignedName = newName;
     const assignedRole = newRole;
+    // v24.84: Duplikaterkennung — hat die Person schon eine Rolle, nicht erneut
+    // hinzufügen (sonst doppelte Zeile in DEX_Roles). Stattdessen Hinweis, die
+    // bestehende Rolle in der Liste unten zu ändern.
+    const existing = roles.find(r => (r.userEmail || '').toLowerCase() === assignedEmail.toLowerCase());
+    if (existing) {
+      setStatusMsg(`Error: ${assignedName} hat bereits eine Rolle (${existing.role}). Bitte ändere die bestehende Rolle in der Liste unten, statt die Person erneut hinzuzufügen.`);
+      setIsAdding(false);
+      setTimeout(() => setStatusMsg(''), 6000);
+      return;
+    }
     const success = await addRole(assignedEmail, assignedName, assignedRole, newLocation);
     if (success) {
       setStatusMsg('Role assigned successfully.');
@@ -300,25 +311,9 @@ export default function SettingsPage(): React.ReactElement {
           </div>
         </div>
 
-        {/* Admin Actions - sichtbar für Organizer und Admin */}
-        {canCreateEvents && (
-          <div className="card">
-            <h3 className="mb-16">Admin Actions</h3>
-            <div className="settings-actions">
-              <button className="btn btn-primary btn-block" onClick={() => navigate('create-event')}>
-                <Plus size={18} /> Create New Event
-              </button>
-              <button className="btn btn-secondary btn-block mt-8" onClick={() => navigate('admin')}>
-                <FileText size={18} /> View All Events (Admin)
-              </button>
-              {isAdmin && (
-                <button className="btn btn-secondary btn-block mt-8" onClick={() => navigate('role-matrix')}>
-                  <FileText size={18} /> Rollen-Matrix anzeigen
-                </button>
-              )}
-            </div>
-          </div>
-        )}
+        {/* v24.84: „Admin Actions"-Karte (Create New Event / View All Events /
+            Rollen-Matrix) entfernt — diese Wege gibt es bereits über die
+            Start-/Admin-Kacheln. Diese Seite ist jetzt reine Rollenverwaltung. */}
 
         {/* v9.21: Rollenmanagement collapsible — Admin kann die ganze Liste
             zusammenklappen wenn er sie gerade nicht braucht. Default: zu. */}
@@ -782,8 +777,7 @@ export default function SettingsPage(): React.ReactElement {
         {/* v23.12: Wochenbericht-Test (nur Admin) */}
         {isAdmin && <WeeklyReportTestCard />}
 
-        {/* Berechtigungs-Übersicht - nur für Admin */}
-        {isAdmin && <PermissionsViewer siteUrl={siteUrl} />}
+        {/* v24.84: „Listen-Berechtigungen"-Übersicht entfernt. */}
 
       </div>
 
@@ -983,124 +977,6 @@ function WeeklyReportTestCard(): React.ReactElement {
                 ? `In die Warteschlange gelegt — eine Mail an ${result.admins} Admin(s). Sie wird in Kürze vom DEX_SEND_MAIL-Flow versendet.`
                 : `Queued — one mail to ${result.admins} admin(s). It will be sent shortly by the DEX_SEND_MAIL flow.`)
             : reasonText(result.reason) || (isDe ? 'Versand fehlgeschlagen.' : 'Sending failed.')}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PermissionsViewer(props: { siteUrl: string }): React.ReactElement {
-  const { siteUrl } = props;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ctx = (window as any).__dexSpfxContext;
-  const SPHttpClient = require('@microsoft/sp-http').SPHttpClient;
-
-  type ListPerms = { listName: string; perms: Array<{ name: string; type: string; level: string }>; loading: boolean; error?: string };
-  const [lists, setLists] = React.useState<ListPerms[]>([]);
-  const [isOpen, setIsOpen] = React.useState(false);
-
-  const listNames = ['DEX_Events', 'DEX_Roles', 'DEX_Emails', 'DEX_Outlook', 'DEX_IDReorder', 'DEX_Participants'];
-
-  async function loadPermissions(): Promise<void> {
-    if (!ctx) return;
-    const results: ListPerms[] = [];
-
-    for (const listName of listNames) {
-      try {
-        const resp = await ctx.spHttpClient.get(
-          `${siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments?$expand=Member,RoleDefinitionBindings&$select=Member/Title,Member/PrincipalType,RoleDefinitionBindings/Name`,
-          SPHttpClient.configurations.v1
-        );
-        if (!resp.ok) {
-          results.push({ listName, perms: [], loading: false, error: `${resp.status}` });
-          continue;
-        }
-        const data = await resp.json();
-        const items = data.value || data.d?.results || [];
-        // v13.2: typsicheres Mapping der RoleAssignment-Items.
-        interface SPRoleAssignmentMember { Title?: string; PrincipalType?: number }
-        interface SPRoleDefinitionBinding { Name?: string }
-        interface SPRoleAssignmentItem {
-          Member?: SPRoleAssignmentMember;
-          RoleDefinitionBindings?: SPRoleDefinitionBinding[] | { results?: SPRoleDefinitionBinding[] };
-        }
-        const perms = (items as SPRoleAssignmentItem[]).map((item) => {
-          const member: SPRoleAssignmentMember = item.Member || {};
-          const bindingsRaw = item.RoleDefinitionBindings;
-          const bindings: SPRoleDefinitionBinding[] = Array.isArray(bindingsRaw)
-            ? bindingsRaw
-            : (bindingsRaw && Array.isArray(bindingsRaw.results) ? bindingsRaw.results : []);
-          const roleNames = bindings
-            .map((b) => b.Name || '')
-            .filter((n) => n !== 'Limited Access' && n !== '');
-          const pType = member.PrincipalType === 8 ? 'Gruppe' : 'User';
-          return { name: member.Title || '?', type: pType, level: roleNames.join(', ') || '-' };
-        }).filter((p) => p.level !== '-');
-        results.push({ listName, perms, loading: false });
-      } catch {
-        results.push({ listName, perms: [], loading: false, error: 'Fehler' });
-      }
-    }
-    setLists(results);
-  }
-
-  return (
-    <div className="card" style={{ marginTop: 16 }}>
-      <h3
-        className="mb-16"
-        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
-        onClick={() => { setIsOpen(!isOpen); if (!isOpen && lists.length === 0) loadPermissions(); }}
-      >
-        🔒 Listen-Berechtigungen {isOpen ? '▾' : '▸'}
-      </h3>
-      {isOpen && (
-        <div>
-          {lists.length === 0 && <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>Lade Berechtigungen...</p>}
-          {lists.map(list => (
-            <div key={list.listName} style={{ marginBottom: 16 }}>
-              <h4 style={{ fontSize: '0.85rem', marginBottom: 4 }}>{list.listName}</h4>
-              {list.error ? (
-                <p style={{ color: 'var(--dex-danger, red)', fontSize: '0.8rem' }}>Fehler: {list.error}</p>
-              ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid var(--dex-gray-200)' }}>
-                      <th style={{ textAlign: 'left', padding: 4, color: 'var(--dex-gray-500)' }}>Name</th>
-                      <th style={{ textAlign: 'left', padding: 4, color: 'var(--dex-gray-500)' }}>Typ</th>
-                      <th style={{ textAlign: 'left', padding: 4, color: 'var(--dex-gray-500)' }}>Berechtigung</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {list.perms.map((p, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                        <td style={{ padding: 4 }}>{p.name}</td>
-                        <td style={{ padding: 4, color: 'var(--dex-gray-500)' }}>{p.type}</td>
-                        <td style={{ padding: 4 }}>
-                          <span style={{
-                            padding: '2px 6px', borderRadius: 4, fontSize: '0.75rem',
-                            background: p.level.includes('Full Control') ? '#e8f5e9' : p.level.includes('Contribute') ? '#fff3e0' : '#e3f2fd',
-                            color: p.level.includes('Full Control') ? '#2e7d32' : p.level.includes('Contribute') ? '#e65100' : '#1565c0',
-                          }}>
-                            {p.level}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                    {list.perms.length === 0 && !list.error && (
-                      <tr><td colSpan={3} style={{ padding: 4, color: 'var(--dex-gray-400)' }}>Erbt Parent-Berechtigungen</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          ))}
-          <button
-            className="btn btn-secondary mt-8"
-            style={{ fontSize: '0.8rem' }}
-            onClick={loadPermissions}
-          >
-            Aktualisieren
-          </button>
         </div>
       )}
     </div>

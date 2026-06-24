@@ -14,7 +14,7 @@ import { useDialog } from '../context/DialogContext';
 import { DELOITTE_LOGO_HEADER } from '../data/brandLogos';
 import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
-import { ChevronLeft, Settings, Book, RefreshCw, Info, Users } from './Icons';
+import { ChevronLeft, Book, RefreshCw, Info, Users } from './Icons';
 import { Icon } from '@fluentui/react/lib/Icon';
 import ImpersonateModal from './ImpersonateModal';
 import LandingInfoModal from './LandingInfoModal';
@@ -426,16 +426,8 @@ export default function Header(): React.ReactElement {
             {regLangHintText}
           </span>
         )}
-        {!isLanding && (
-          <button
-            className="header-icon-btn"
-            onClick={() => navigate('settings')}
-            title="Settings"
-            style={currentPage === 'settings' ? { background: 'var(--dex-gray-200)' } : {}}
-          >
-            <Settings size={20} />
-          </button>
-        )}
+        {/* v24.84: Settings-(Zahnrad-)Icon im Header entfernt — die Rollen-
+            verwaltung/Settings ist über die Admin-Kachel (Admin-Hub) erreichbar. */}
         {/* User-Avatar mit Initialen + Popup.
             v22.23: data-tour-Anker auf dem Wrapper — die Klasse .header-avatar
             existiert nur im Initialen-Fallback (mit Profilfoto rendert ein

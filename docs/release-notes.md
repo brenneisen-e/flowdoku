@@ -8,6 +8,9 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.84.0 | 2026-06-24 | Feature | Startseite: Die „Admin"-Kachel sitzt jetzt ganz rechts (nach „Assistenz"). |
+| 24.84.0 | 2026-06-24 | Feature | Das Zahnrad-Symbol oben im Kopfbereich wurde entfernt — die Rollenverwaltung erreichst du über die „Admin"-Kachel. Die Seite heißt jetzt passend „Rollenverwaltung" und enthält nur noch die Rollenverwaltung (die zusätzliche Aktions-Box und die Listen-Berechtigungs-Übersicht sind dort entfallen, weil es diese Wege bereits an anderer Stelle gibt). |
+| 24.84.0 | 2026-06-24 | Feature | Rollenverwaltung: Wer eine Person hinzufügt, die bereits eine Rolle hat, bekommt jetzt einen Hinweis (statt eines doppelten Eintrags) und wird gebeten, die bestehende Rolle in der Liste zu ändern. Die Liste der Event-bezogenen Mit-Organisatoren ist jetzt alphabetisch sortiert. |
 | 24.83.0 | 2026-06-24 | Feature | Organizer Center: Ab 5 Tagen vor Event-Start erscheint in den Hinweisen zum Event ganz oben ein Tipp, dass die persönlichen Check-in-QR-Codes jetzt verschickt werden können — inkl. Button, der direkt den QR-Versand öffnet. |
 | 24.83.0 | 2026-06-24 | Feature | Die automatische „Event angelegt"-Mail an die Organisatoren erklärt jetzt ausführlich die nächsten Schritte (Event finalisieren, Test-An-/Abmeldung, live schalten, Einladung verschicken, Anmeldungen verfolgen) statt nur „Event wurde erstellt". |
 | 24.82.0 | 2026-06-24 | Feature | Organizer Center: Die Abmeldungen werden jetzt im selben Zeilen-Layout wie die Anmeldungen dargestellt (Foto, Name, Position • Standort), aber durchgehend in hellem Grau — so sind sie auf einen Blick klar von den aktiven Anmeldungen zu unterscheiden. |
