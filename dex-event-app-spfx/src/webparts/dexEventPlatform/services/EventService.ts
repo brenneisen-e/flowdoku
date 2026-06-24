@@ -6770,6 +6770,9 @@ export class EventService {
   ): Promise<void> {
     let counts: { total: number; durch: number; fun: number; waitlist: number };
     try { counts = await this.getActiveCounts(subsiteUrl); } catch { return; }
+    // v24.76: WaitlistTaken-Feld sicherstellen, sonst HTTP 400 beim MERGE auf
+    // Bestands-Events (Feld noch nicht angelegt).
+    await this.ensureCounterFieldsOnce(subsiteUrl);
     const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
     // v24.73: WaitlistTaken (rein informativ, nicht überbuchungs-relevant) beim
     // Reconcile mitschreiben — so heilt eine durch Flow-Promotion gedriftete
@@ -6803,6 +6806,9 @@ export class EventService {
    */
   public async adjustWaitlistCounter(subsiteUrl: string, delta: number): Promise<void> {
     if (!subsiteUrl || !delta) return;
+    // v24.76: Feld sicherstellen (greift für privilegierte Aufrufer; normale
+    // User dürfen kein Feld anlegen → dann wird der Write unten übersprungen).
+    await this.ensureCounterFieldsOnce(subsiteUrl);
     const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
     for (let attempt = 0; attempt < 8; attempt++) {
       try {
@@ -6811,6 +6817,11 @@ export class EventService {
         const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
         if (!etag) return;
         const data = await getResp.json();
+        const body = data?.d ?? data;
+        // v24.76: Feld (noch) nicht vorhanden → MERGE würde 400 liefern → still
+        // überspringen (kein Konsolen-Fehler). Sobald ein Admin reconcilet, ist
+        // das Feld da und der Bump greift.
+        if (body && typeof body === 'object' && !('WaitlistTaken' in body)) return;
         const rawVal = data?.WaitlistTaken ?? data?.d?.WaitlistTaken;
         const current = typeof rawVal === 'number' ? rawVal : (parseInt(String(rawVal), 10) || 0);
         const next = Math.max(0, current + delta);
@@ -9021,6 +9032,17 @@ export class EventService {
 
   // Hilfsroutine: prüft ob auf der Counter-Liste die NextValue-Spalte
   // existiert und legt sie an wenn sie fehlt. Idempotent.
+  // v24.76: Counter-Felder (inkl. des neuen WaitlistTaken) EINMAL pro Subsite
+  // pro Session sicherstellen, bevor darauf geschrieben wird — sonst liefert der
+  // MERGE auf Bestands-Events ein HTTP 400 (Feld existiert noch nicht). Gecacht,
+  // damit nicht bei jedem Reconcile/Bump erneut geprobt wird.
+  private _counterFieldsEnsured: Set<string> = new Set<string>();
+  private async ensureCounterFieldsOnce(subsiteUrl: string): Promise<void> {
+    if (!subsiteUrl || this._counterFieldsEnsured.has(subsiteUrl)) return;
+    try { await this.ensureCounterListField(subsiteUrl); } catch { /* best-effort */ }
+    this._counterFieldsEnsured.add(subsiteUrl);
+  }
+
   private async ensureCounterListField(subsiteUrl: string): Promise<void> {
     const fieldsUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/fields`;
     // v7.28: NextValue (TeilnehmerID-Automat).
