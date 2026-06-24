@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.76.0 | 2026-06-24 | Bugfix | Counter-MERGE 400 behoben: WaitlistTaken-Feld wird vor dem Schreiben sichergestellt (ensureCounterFieldsOnce, gecacht); adjustWaitlistCounter überspringt den Write still, wenn das Feld (noch) fehlt. Push im Tenant verifiziert (✅ Verbunden). |
 | 24.75.0 | 2026-06-24 | Feature | Echtzeit-Push: Plätze/Teilnehmer aktualisieren sich live im Anmeldeformular (Counter-Liste) und in der Organizer-Teilnehmerliste (Teilnehmerliste) über SharePoints nativen Socket.IO-Endpunkt (lazy socket.io-client, best-effort, klare `[DEX Realtime]`-Konsolen-Diagnose). Eventübersicht bleibt Lade-/Fokus-Refresh. |
 | 24.74.0 | 2026-06-24 | Bugfix | Sitzplatz-Counter werden beim Admin-Start (Vollzugriff) aller aktiven Events frischgezogen → korrekte Zahlen schon beim ersten Öffnen, auch für bestehende Events. |
 | 24.73.0 | 2026-06-24 | Bugfix | Anmeldeformular: korrekte Frei-/Warteliste-Zahl für ALLE (auch normale Teilnehmer) — Quelle ist jetzt der für alle lesbare Sitzplatz-Counter (SeatsTaken/WaitlistTaken) statt der item-level-gesicherten Teilnehmerliste. Leiser Refresh bei Öffnen + Fokus. Echtzeit-Push folgt in v24.74. |
