@@ -489,6 +489,10 @@ interface EventContextType {
   getAllParticipants: () => Promise<SPParticipant[]>;
   refreshEvents: () => Promise<void>;
   refreshParticipantCounts: (eventId?: string) => Promise<void>;
+  /** v24.73: Live-Plätze aus dem (für alle lesbaren) Counter — korrekte
+   *  Aktiv-/Warteliste-Zahl auch für normale Teilnehmer. null = Counter nicht
+   *  verfügbar (Aufrufer fällt auf event.currentParticipants zurück). */
+  getLiveCounterStats: (eventId: string) => Promise<{ active: number; waitlist: number } | null>;
   markExpiredEventsAsCompleted: () => Promise<number>;
   sendAdminInquiry: (requesterName: string, requesterEmail: string, eventName: string, message: string, requesterLocation?: string, requesterJobTitle?: string) => Promise<boolean>;
   /** v12.12: Admin-Aktion zum Re-Seed der Default-Email-Templates in
@@ -855,6 +859,20 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return results.map(e => uniqueByParent.has(e.id)
       ? { ...e, currentParticipants: uniqueByParent.get(e.id)!.active, waitlistCount: uniqueByParent.get(e.id)!.waitlist }
       : e);
+  }
+
+  // v24.73: Live-Plätze aus dem Counter (für alle lesbar). Aktiv = SeatsTaken
+  // (wird von reserveSeat für JEDE Anmeldung gepflegt → korrekt für alle),
+  // Warteliste = WaitlistTaken. null → Counter (noch) nicht da → Aufrufer nutzt
+  // den bisherigen Wert.
+  async function getLiveCounterStats(eventId: string): Promise<{ active: number; waitlist: number } | null> {
+    const event = events.find(e => e.id === eventId);
+    const subsiteUrl = subsiteMap.current[eventId] || event?.subsiteUrl;
+    if (!subsiteUrl) return null;
+    const isSplit = !!event && typeof event.durchstarterCapacity === 'number'
+      && typeof event.funstarterCapacity === 'number'
+      && ((event.durchstarterCapacity || 0) > 0 || (event.funstarterCapacity || 0) > 0);
+    try { return await eventService.getCounterStats(subsiteUrl, isSplit); } catch { return null; }
   }
 
   async function refreshParticipantCounts(eventId?: string): Promise<void> {
@@ -1507,6 +1525,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // Warteliste-Position ermitteln
       let waitlistPosition = 0;
       if (status === 'Warteliste') {
+        // v24.73: WaitlistTaken im (für alle lesbaren) Counter hochzählen — damit
+        // die Live-Warteliste-Zahl auch für normale Teilnehmer stimmt (informativ,
+        // nicht überbuchungs-relevant; privilegierter Reconcile heilt Drift).
+        eventService.adjustWaitlistCounter(subsiteUrl, +1).catch(() => { /* best-effort */ });
         try {
           const counts = await eventService.getRegistrationCount(subsiteUrl);
           waitlistPosition = counts.waitlist;
@@ -4662,7 +4684,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns,
         sendAdminInquiry,
         requestOrganizerRole, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,

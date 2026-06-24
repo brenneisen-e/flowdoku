@@ -98,7 +98,7 @@ export default function RegistrationPage(): React.ReactElement {
   }, []);
 
   const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
-  const { events, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest, updateMyRegistration, uploadFieldDocument, delegateRegistrationToAssistant, recordProxyDelegation } = useEvents();
+  const { events, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest, updateMyRegistration, uploadFieldDocument, delegateRegistrationToAssistant, recordProxyDelegation, getLiveCounterStats } = useEvents();
   const { currentUser, groupEmails } = useCurrentUser();
   const { searchUsers, searchUser, isAdmin } = useRoles();
   const { locale: appLocale } = useLanguage();
@@ -353,6 +353,25 @@ export default function RegistrationPage(): React.ReactElement {
     if (mode === 'custom' && event && event.mainEventLabel && event.mainEventLabel.trim()) return event.mainEventLabel.trim();
     return defaultLabel;
   }, [event]);
+  // v24.73: Live-Plätze aus dem (für alle lesbaren) Sitzplatz-Counter. Die
+  // Teilnehmerliste selbst ist item-level-gesichert — ein normaler Teilnehmer
+  // sieht darüber NICHT die echte Gesamtzahl. Der Counter (aktiv = SeatsTaken,
+  // Warteliste = WaitlistTaken) ist für alle lesbar und liefert die korrekten
+  // Werte. Wird beim Öffnen + bei Fenster-Fokus leise nachgeladen (kein
+  // sichtbares Nachladen — nur die Zahl ändert sich). Der Live-Push folgt in v24.74.
+  const [liveStats, setLiveStats] = React.useState<{ active: number; waitlist: number } | null>(null);
+  React.useEffect(() => {
+    if (!event || !event.id || !(event.maxParticipants > 0)) { setLiveStats(null); return undefined; }
+    let cancelled = false;
+    const load = (): void => {
+      getLiveCounterStats(event.id).then(s => { if (!cancelled && s) setLiveStats(s); }).catch(() => { /* best-effort */ });
+    };
+    load();
+    const onFocus = (): void => load();
+    window.addEventListener('focus', onFocus);
+    return () => { cancelled = true; window.removeEventListener('focus', onFocus); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event?.id, event?.maxParticipants]);
   const [registerForParent, setRegisterForParent] = React.useState(true);
   const [selectedSessions, setSelectedSessions] = React.useState<Set<string>>(new Set());
   const [sessionStarterType, setSessionStarterType] = React.useState<Record<string, string>>({});
@@ -3993,10 +4012,13 @@ export default function RegistrationPage(): React.ReactElement {
           // v24.72: Wartelisten-Anzahl von den freien Plätzen abziehen. Ein frei
           // gewordener Platz geht IMMER zuerst an die Warteliste — er ist also
           // nicht „frei" für neue Anmeldungen. Das verhindert auch das kurze,
-          // fälschliche „1 freier Platz" während des Nachrückens (Abmeldung
-          // gebucht, Promote vom Flow läuft noch): solange jemand auf der
-          // Warteliste steht, bleibt die Anzeige bei 0 frei / Warteliste.
-          const free = Math.max(0, event.maxParticipants - (event.currentParticipants || 0) - (event.waitlistCount || 0));
+          // fälschliche „1 freier Platz" während des Nachrückens.
+          // v24.73: Aktiv-/Warteliste-Zahl bevorzugt aus dem für alle lesbaren
+          // Counter (liveStats) — sonst sieht ein normaler Teilnehmer wegen der
+          // Item-Level-Security der Teilnehmerliste keine korrekte Zahl.
+          const effActive = liveStats ? liveStats.active : (event.currentParticipants || 0);
+          const effWaitlist = (liveStats && liveStats.waitlist >= 0) ? liveStats.waitlist : (event.waitlistCount || 0);
+          const free = Math.max(0, event.maxParticipants - effActive - effWaitlist);
           const isFull = free <= 0;
           if (isFull && !event.waitlistEnabled) return null; // voll, keine Warteliste → nichts
           const waitlist = isFull && !!event.waitlistEnabled;
@@ -4012,7 +4034,7 @@ export default function RegistrationPage(): React.ReactElement {
               <Icon iconName={waitlist ? 'Clock' : 'People'} style={{ fontSize: 15 }} />
               {waitlist
                 ? (() => {
-                    const wc = event.waitlistCount || 0;
+                    const wc = effWaitlist;
                     return locale === 'de'
                       ? `Alle Plätze belegt | Warteliste aktuell ${wc} ${wc === 1 ? 'Person' : 'Personen'}`
                       : `All places taken | Waitlist currently ${wc} ${wc === 1 ? 'person' : 'people'}`;
@@ -4072,8 +4094,10 @@ export default function RegistrationPage(): React.ReactElement {
                 // landet die Anmeldung auf der Warteliste — im Button steht das als
                 // kurzer, NICHT fetter Zusatz „(Warteliste)" (die aktuelle Anzahl
                 // steht im Badge über dem Button).
+                const mfActive = liveStats ? liveStats.active : (event.currentParticipants || 0);
+                const mfWaitlist = (liveStats && liveStats.waitlist >= 0) ? liveStats.waitlist : (event.waitlistCount || 0);
                 const mainFull = event.maxParticipants > 0
-                  && Math.max(0, event.maxParticipants - (event.currentParticipants || 0) - (event.waitlistCount || 0)) <= 0
+                  && Math.max(0, event.maxParticipants - mfActive - mfWaitlist) <= 0
                   && !!event.waitlistEnabled;
                 const waitlistSuffixNode: React.ReactNode = mainFull
                   ? <span style={{ fontWeight: 400 }}> ({locale === 'de' ? 'Warteliste' : 'waitlist'})</span>

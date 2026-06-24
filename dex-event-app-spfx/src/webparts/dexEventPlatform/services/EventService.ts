@@ -6642,13 +6642,15 @@ export class EventService {
    * pro Starter-Gruppe. Quelle ist die echte Teilnehmerliste — wird zum Seeden
    * und Reconcilen der Sitzplatz-Counter genutzt.
    */
-  private async getActiveCounts(subsiteUrl: string): Promise<{ total: number; durch: number; fun: number }> {
+  private async getActiveCounts(subsiteUrl: string): Promise<{ total: number; durch: number; fun: number; waitlist: number }> {
     const regs = await this.getAllRegistrations(subsiteUrl);
     const active = regs.filter(r => EventService.ACTIVE_STATI.indexOf(r.Status) >= 0);
     return {
       total: active.length,
       durch: active.filter(r => r.StarterType === 'Durchstarter').length,
       fun: active.filter(r => r.StarterType === 'Funstarter').length,
+      // v24.73: Warteliste-Zahl für den (privilegierten) Counter-Reconcile.
+      waitlist: regs.filter(r => r.Status === 'Warteliste').length,
     };
   }
 
@@ -6765,12 +6767,17 @@ export class EventService {
     subsiteUrl: string,
     opts: { isSplit: boolean }
   ): Promise<void> {
-    let counts: { total: number; durch: number; fun: number };
+    let counts: { total: number; durch: number; fun: number; waitlist: number };
     try { counts = await this.getActiveCounts(subsiteUrl); } catch { return; }
     const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
+    // v24.73: WaitlistTaken (rein informativ, nicht überbuchungs-relevant) beim
+    // Reconcile mitschreiben — so heilt eine durch Flow-Promotion gedriftete
+    // Warteliste-Zahl. Läuft NUR in privilegierten Kontexten (getActiveCounts
+    // braucht Vollzugriff), daher hier korrekt; in User-Self-Cancel-Pfaden wird
+    // syncSeatsToActiveCount bewusst nicht aufgerufen.
     const desired = opts.isSplit
-      ? { SeatsTakenDurch: counts.durch, SeatsTakenFun: counts.fun, SeatsTaken: counts.total }
-      : { SeatsTaken: counts.total };
+      ? { SeatsTakenDurch: counts.durch, SeatsTakenFun: counts.fun, SeatsTaken: counts.total, WaitlistTaken: counts.waitlist }
+      : { SeatsTaken: counts.total, WaitlistTaken: counts.waitlist };
     for (let attempt = 0; attempt < 6; attempt++) {
       try {
         const getResp = await this.context.spHttpClient.get(counterItemUrl, SPHttpClient.configurations.v1);
@@ -6783,6 +6790,62 @@ export class EventService {
         await new Promise(res => setTimeout(res, 50 + Math.floor(Math.random() * 100)));
       } catch { return; }
     }
+  }
+
+  /**
+   * v24.73: Warteliste-Zähler im Counter additiv anpassen (atomar per ETag-CAS).
+   * REIN INFORMATIV — `WaitlistTaken` gatet keine Überbuchung; ein verlorener
+   * Bump verfälscht nur kurz die angezeigte Warteliste-Zahl und wird vom
+   * privilegierten `syncSeatsToActiveCount`-Reconcile wieder geheilt. Wird von
+   * den Anmelde-/Abmelde-Pfaden mit delta +1/-1 aufgerufen (auch von normalen
+   * Usern — der Counter ist für alle schreibbar). Best-effort, blockiert nie.
+   */
+  public async adjustWaitlistCounter(subsiteUrl: string, delta: number): Promise<void> {
+    if (!subsiteUrl || !delta) return;
+    const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      try {
+        const getResp = await this.context.spHttpClient.get(counterItemUrl, SPHttpClient.configurations.v1);
+        if (!getResp.ok) return;
+        const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
+        if (!etag) return;
+        const data = await getResp.json();
+        const rawVal = data?.WaitlistTaken ?? data?.d?.WaitlistTaken;
+        const current = typeof rawVal === 'number' ? rawVal : (parseInt(String(rawVal), 10) || 0);
+        const next = Math.max(0, current + delta);
+        const patchResp = await this._mergeIfMatch(counterItemUrl, { WaitlistTaken: next }, etag);
+        if (patchResp.ok) return;
+        if (patchResp.status !== 412) return; // anderer Fehler → aufgeben (best-effort)
+        await new Promise(res => setTimeout(res, 40 + Math.floor(Math.random() * 80)));
+      } catch { return; }
+    }
+  }
+
+  /**
+   * v24.73: Live-Plätze aus dem Counter lesen — für ALLE lesbar (auch normale
+   * Teilnehmer, im Gegensatz zur item-level-gesicherten Teilnehmerliste). Quelle
+   * der Anzeige-Zahlen (aktiv = SeatsTaken, Warteliste = WaitlistTaken). Liefert
+   * `null`, wenn der Counter (noch) nicht existiert/lesbar ist → Aufrufer fällt
+   * dann auf den bisherigen (item-level-gefilterten) Zählweg zurück.
+   */
+  public async getCounterStats(subsiteUrl: string, isSplit: boolean): Promise<{ active: number; waitlist: number } | null> {
+    if (!subsiteUrl) return null;
+    const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
+    try {
+      const resp = await this.context.spHttpClient.get(counterItemUrl, SPHttpClient.configurations.v1);
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      const num = (v: unknown): number => typeof v === 'number' ? v : (parseInt(String(v ?? ''), 10) || 0);
+      const total = num(data?.SeatsTaken ?? data?.d?.SeatsTaken);
+      const durch = num(data?.SeatsTakenDurch ?? data?.d?.SeatsTakenDurch);
+      const fun = num(data?.SeatsTakenFun ?? data?.d?.SeatsTakenFun);
+      const wRaw = data?.WaitlistTaken ?? data?.d?.WaitlistTaken;
+      // SeatsTaken ist der Gesamt-Aktiv-Wert; bei Split fällt er ggf. auf
+      // Durch+Fun zurück, falls der Gesamtwert (noch) nicht gepflegt wurde.
+      const active = total > 0 ? total : (isSplit ? durch + fun : total);
+      const waitlist = (wRaw === null || wRaw === undefined) ? -1 : num(wRaw);
+      return { active, waitlist };
+    } catch { return null; }
   }
 
   /**
@@ -8946,7 +9009,7 @@ export class EventService {
     // v11.36: SeatsTaken / SeatsTakenDurch / SeatsTakenFun — atomare
     // Sitzplatz-Reservierung pro Gruppe (gegen Überbuchung bei
     // zeitgleichen Anmeldungen). Alle Number-Felder, default 0/leer.
-    const wanted = ['NextValue', 'SeatsTaken', 'SeatsTakenDurch', 'SeatsTakenFun'];
+    const wanted = ['NextValue', 'SeatsTaken', 'SeatsTakenDurch', 'SeatsTakenFun', 'WaitlistTaken'];
     for (const name of wanted) {
       try {
         const probe = await this.context.spHttpClient.get(
