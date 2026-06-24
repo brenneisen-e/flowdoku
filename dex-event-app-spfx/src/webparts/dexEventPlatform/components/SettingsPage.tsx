@@ -12,16 +12,17 @@ import { useLanguage } from '../context/LanguageContext';
 // v20.4: moderne Confirm-Modals statt window.confirm.
 import { useDialog } from '../context/DialogContext';
 import { UserRole } from '../types';
-import { Plus, FileText, Trash2, X } from './Icons';
+import { Plus, Trash2, X } from './Icons';
 import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
+import { PersonContactHover } from './PersonContactHover';
 
 export default function SettingsPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { currentUser } = useCurrentUser();
   const {
-    roles, currentUserRole, isAdmin, canCreateEvents, originalIsAdmin,
-    addRole, updateRole, setPowerUser, updateRoleLocation, removeRole, isRolesLoading, siteUrl, searchUsers,
+    roles, currentUserRole, isAdmin, originalIsAdmin,
+    addRole, updateRole, setPowerUser, updateRoleLocation, removeRole, isRolesLoading, siteUrl, searchUsers, searchUser,
   } = useRoles();
   const { events, sendOrganizerOnboarding } = useEvents();
   const { locale } = useLanguage();
@@ -87,11 +88,12 @@ export default function SettingsPage(): React.ReactElement {
         accumulator[emailLc].events.push(evt.title);
       }
     }
-    return Object.keys(accumulator).sort().map(emailLc => ({
+    // v24.84: alphabetisch nach Name sortieren (vorher nach E-Mail-Schlüssel).
+    return Object.keys(accumulator).map(emailLc => ({
       email: emailLc,
       name: accumulator[emailLc].name,
       events: accumulator[emailLc].events,
-    }));
+    })).sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'));
   }, [roles, events]);
   // v19.26: Die Per-Event-Organizer-Namen stammen aus dem index-basierten
   // Pairing von Organizer-Namen ↔ -E-Mails im Event. Driftet dieses Pairing
@@ -205,6 +207,16 @@ export default function SettingsPage(): React.ReactElement {
     const assignedEmail = newEmail;
     const assignedName = newName;
     const assignedRole = newRole;
+    // v24.84: Duplikaterkennung — hat die Person schon eine Rolle, nicht erneut
+    // hinzufügen (sonst doppelte Zeile in DEX_Roles). Stattdessen Hinweis, die
+    // bestehende Rolle in der Liste unten zu ändern.
+    const existing = roles.find(r => (r.userEmail || '').toLowerCase() === assignedEmail.toLowerCase());
+    if (existing) {
+      setStatusMsg(`Error: ${assignedName} hat bereits eine Rolle (${existing.role}). Bitte ändere die bestehende Rolle in der Liste unten, statt die Person erneut hinzuzufügen.`);
+      setIsAdding(false);
+      setTimeout(() => setStatusMsg(''), 6000);
+      return;
+    }
     const success = await addRole(assignedEmail, assignedName, assignedRole, newLocation);
     if (success) {
       setStatusMsg('Role assigned successfully.');
@@ -273,6 +285,228 @@ export default function SettingsPage(): React.ReactElement {
     );
   };
 
+  // ===================== v24.85: Role-Management nach Kategorien =====================
+  // Test-Team + Check-in-Team über ALLE Events aggregieren (read-only, analog
+  // zu den Per-Event-Co-Organizern). Datenwerte: event.testTeamEmails/-Names
+  // bzw. event.qrScannerEmails/-Names.
+  const aggregateTeam = React.useCallback((pick: (e: (typeof events)[number]) => { emails?: string[]; names?: string[] }) => {
+    const acc: Record<string, { name: string; events: string[] }> = {};
+    for (const evt of events) {
+      const sel = pick(evt); const emails = sel.emails || []; const names = sel.names || [];
+      for (let i = 0; i < emails.length; i++) {
+        const lc = (emails[i] || '').toLowerCase(); if (!lc) continue;
+        if (!acc[lc]) acc[lc] = { name: names[i] || lc, events: [] };
+        if (acc[lc].events.indexOf(evt.title) < 0) acc[lc].events.push(evt.title);
+      }
+    }
+    return Object.keys(acc).map(lc => ({ email: lc, name: acc[lc].name, events: acc[lc].events }))
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'));
+  }, [events]);
+  const testersList = React.useMemo(() => aggregateTeam(e => ({ emails: e.testTeamEmails, names: e.testTeamNames })), [aggregateTeam]);
+  const checkinList = React.useMemo(() => aggregateTeam(e => ({ emails: e.qrScannerEmails, names: e.qrScannerNames })), [aggregateTeam]);
+
+  // Position (Job Title) + Standort pro Person live nachladen — DEX_Roles
+  // speichert die Position nicht. Best-effort, 1× pro E-Mail gecacht.
+  const [profiles, setProfiles] = React.useState<Record<string, { jobTitle?: string; location?: string }>>({});
+  const profileAttemptedRef = React.useRef<Set<string>>(new Set());
+  React.useEffect(() => {
+    const emails = new Set<string>();
+    roles.forEach(r => emails.add((r.userEmail || '').toLowerCase()));
+    coOrganizersList.forEach(c => emails.add(c.email));
+    testersList.forEach(c => emails.add(c.email));
+    checkinList.forEach(c => emails.add(c.email));
+    let cancelled = false;
+    (async () => {
+      for (const em of Array.from(emails)) {
+        if (!em || profileAttemptedRef.current.has(em)) continue;
+        profileAttemptedRef.current.add(em);
+        try {
+          const u = await searchUser(em);
+          if (u && !cancelled && (u.jobTitle || u.location)) {
+            setProfiles(prev => ({ ...prev, [em]: { jobTitle: u.jobTitle, location: u.location } }));
+          }
+        } catch { /* best-effort */ }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roles, coOrganizersList, testersList, checkinList]);
+
+  // Klapp-Status pro Kategorie (Default: alle offen).
+  const [openSections, setOpenSections] = React.useState<Set<string>>(() => new Set(['admins', 'organizer', 'coorg', 'tester', 'checkin', 'user']));
+  const toggleSection = (k: string): void => setOpenSections(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  // Deloitte-Displayname „Nachname, Vorname" → { first, last }.
+  const splitName = (full: string): { first: string; last: string } => {
+    const n = (full || '').trim();
+    if (!n) return { first: '', last: '' };
+    const c = n.indexOf(',');
+    if (c >= 0) return { last: n.substring(0, c).trim(), first: n.substring(c + 1).trim() };
+    const parts = n.split(/\s+/);
+    return parts.length > 1 ? { first: parts[0], last: parts.slice(1).join(' ') } : { first: n, last: '' };
+  };
+
+  const renderRoleSections = (): React.ReactElement => {
+    const thS: React.CSSProperties = { textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)', fontSize: '0.76rem', fontWeight: 600, whiteSpace: 'nowrap' };
+    const tdS: React.CSSProperties = { padding: 8, verticalAlign: 'middle' };
+    const byName = (a: { userName: string }, b: { userName: string }): number => (a.userName || '').localeCompare(b.userName || '', 'de');
+    const admins = [...roles].filter(r => r.role === 'Admin').sort(byName);
+    const organizers = [...roles].filter(r => r.role === 'Organizer').sort(byName);
+    const usersLeft = [...roles].filter(r => r.role !== 'Admin' && r.role !== 'Organizer').sort(byName);
+    const eventBadges = (titles: string[]): React.ReactNode => titles.length === 0
+      ? <span style={{ color: 'var(--dex-gray-300)' }}>—</span>
+      : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{titles.map((t2, idx) => (
+          <span key={idx} style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, background: 'rgba(134,188,37,0.14)', color: 'var(--dex-green-dark)', fontSize: '0.72rem', fontWeight: 600 }}>{t2}</span>
+        ))}</div>;
+    const catPill = (label: string, bg: string, fg: string): React.ReactNode => (
+      <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 999, background: bg, color: fg, fontSize: '0.74rem', fontWeight: 600, whiteSpace: 'nowrap' }}>{label}</span>
+    );
+    const headRow = (
+      <tr style={{ borderBottom: '2px solid var(--dex-gray-200, #eee)' }}>
+        <th style={thS}>{isDe ? 'Vorname' : 'First name'}</th>
+        <th style={thS}>{isDe ? 'Nachname' : 'Last name'}</th>
+        <th style={thS}>Email</th>
+        <th style={thS}>{isDe ? 'Position' : 'Position'}</th>
+        <th style={thS}>{isDe ? 'Standort' : 'Location'}</th>
+        <th style={thS}>Role</th>
+        <th style={thS}>Power User</th>
+        <th style={thS}>Coordinated Events</th>
+        <th style={{ ...thS, textAlign: 'right' }} />
+      </tr>
+    );
+    // Editierbare Zeile (DEX_Roles: Admins / Organizer / User)
+    const editableRow = (r: typeof roles[number]): React.ReactElement => {
+      const { first, last } = splitName(r.userName);
+      const emailLc = (r.userEmail || '').toLowerCase();
+      const prof = profiles[emailLc] || {};
+      const pos = prof.jobTitle || '';
+      const isSelf = emailLc === currentUser.email.toLowerCase();
+      const evts = organizerEventMap[emailLc] || [];
+      return (
+        <tr key={r.id} style={{ borderBottom: '1px solid var(--dex-gray-100, #f0f0f0)' }}>
+          <td style={tdS}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <PersonContactHover email={r.userEmail} name={r.userName} size={30} subline={pos} isDe={isDe} />
+              <span style={{ fontWeight: 500 }}>{first || '-'}</span>
+            </div>
+          </td>
+          <td style={{ ...tdS, fontWeight: 500 }}>{last || '-'}</td>
+          <td style={{ ...tdS, color: 'var(--dex-gray-600)' }}>{r.userEmail}</td>
+          <td style={{ ...tdS, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{pos || '—'}</td>
+          <td style={tdS}>
+            <input
+              className="form-input"
+              key={`loc-${r.id}-${r.location}`}
+              defaultValue={r.location || ''}
+              style={{ fontSize: '0.82rem', padding: '4px 8px', width: '100%', minWidth: 110 }}
+              placeholder="Standort"
+              onBlur={async (e) => { const nl = e.target.value.trim(); if (nl !== (r.location || '')) { await updateRoleLocation(r.id, nl); } }}
+            />
+          </td>
+          <td style={tdS}>
+            <select
+              value={r.role}
+              onChange={e => handleChangeRole(r.id, e.target.value as UserRole)}
+              style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid var(--dex-gray-200, #ddd)', fontSize: '0.8rem', background: '#fff' }}
+              disabled={isSelf}
+            >
+              <option value="Admin">Admin</option>
+              <option value="Organizer">Organizer</option>
+              <option value="User">User</option>
+            </select>
+          </td>
+          <td style={tdS}>
+            {(r.role === 'Organizer' || r.role === 'Admin') ? (
+              <button
+                type="button"
+                disabled={isSelf}
+                onClick={() => setPowerUser(r.id, !r.isPowerUser)}
+                title={r.isPowerUser ? (isDe ? 'Power-User-Status entfernen' : 'Remove power-user status') : (isDe ? 'Als Power User markieren' : 'Mark as power user')}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 999, cursor: isSelf ? 'default' : 'pointer', fontSize: '0.74rem', fontWeight: 600, whiteSpace: 'nowrap', border: `1px solid ${r.isPowerUser ? '#b35a00' : 'var(--dex-gray-300)'}`, background: r.isPowerUser ? '#fff4e5' : '#fff', color: r.isPowerUser ? '#b35a00' : 'var(--dex-gray-600)' }}
+              >
+                <span aria-hidden="true">{r.isPowerUser ? '★' : '☆'}</span>
+                {r.isPowerUser ? 'Power User' : (isDe ? 'Power User?' : 'Power user?')}
+              </button>
+            ) : <span style={{ color: 'var(--dex-gray-300)' }}>—</span>}
+          </td>
+          <td style={{ ...tdS, fontSize: '0.78rem', color: 'var(--dex-gray-600)', maxWidth: 280 }}>
+            {r.role === 'User' ? <span style={{ color: 'var(--dex-gray-300)' }}>—</span> : eventBadges(evts)}
+          </td>
+          <td style={{ ...tdS, textAlign: 'right' }}>
+            {!isSelf && (
+              <button onClick={() => handleRemoveRole(r.id, r.userName)} disabled={isRemoving === r.id} style={{ border: 'none', background: 'none', cursor: isRemoving === r.id ? 'wait' : 'pointer', color: 'var(--dex-danger, #e53935)', padding: 4, opacity: isRemoving === r.id ? 0.4 : 1 }} title="Rolle entfernen">
+                {isRemoving === r.id ? '...' : <Trash2 size={16} />}
+              </button>
+            )}
+          </td>
+        </tr>
+      );
+    };
+    // Read-only Zeile (aggregiert: Co-Organizer / Tester / Check-in)
+    const aggRow = (p: { email: string; name: string; events: string[] }, rolePill: React.ReactNode): React.ReactElement => {
+      const { first, last } = splitName(p.name);
+      const prof = profiles[p.email] || {};
+      const displayName = resolvedOrgNames[p.email] || p.name;
+      const dn = splitName(displayName);
+      return (
+        <tr key={p.email} style={{ borderBottom: '1px solid var(--dex-gray-100, #f0f0f0)' }}>
+          <td style={tdS}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <PersonContactHover email={p.email} name={displayName} size={30} subline={prof.jobTitle || ''} isDe={isDe} />
+              <span style={{ fontWeight: 500 }}>{dn.first || first || '-'}</span>
+            </div>
+          </td>
+          <td style={{ ...tdS, fontWeight: 500 }}>{dn.last || last || '-'}</td>
+          <td style={{ ...tdS, color: 'var(--dex-gray-600)' }}>{p.email}</td>
+          <td style={{ ...tdS, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{prof.jobTitle || '—'}</td>
+          <td style={{ ...tdS, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{prof.location || '—'}</td>
+          <td style={tdS}>{rolePill}</td>
+          <td style={tdS}><span style={{ color: 'var(--dex-gray-300)' }}>—</span></td>
+          <td style={{ ...tdS, fontSize: '0.78rem', color: 'var(--dex-gray-600)', maxWidth: 280 }}>{eventBadges(p.events)}</td>
+          <td style={{ ...tdS, textAlign: 'right' }} />
+        </tr>
+      );
+    };
+    const sections: Array<{ key: string; title: string; body: React.ReactNode; count: number }> = [
+      { key: 'admins', title: 'Admins', count: admins.length, body: admins.map(editableRow) },
+      { key: 'organizer', title: 'Organizer', count: organizers.length, body: organizers.map(editableRow) },
+      { key: 'coorg', title: isDe ? 'Co-Organizer' : 'Co-organizers', count: coOrganizersList.length, body: coOrganizersList.map(p => aggRow(p, catPill('Per-Event', 'rgba(237,139,0,0.15)', 'var(--dex-orange-dark, #b35a00)'))) },
+      { key: 'tester', title: isDe ? 'Tester' : 'Testers', count: testersList.length, body: testersList.map(p => aggRow(p, catPill(isDe ? 'Tester' : 'Tester', 'rgba(0,118,168,0.10)', 'var(--dex-blue, #0076a8)'))) },
+      { key: 'checkin', title: 'Check-in', count: checkinList.length, body: checkinList.map(p => aggRow(p, catPill('Check-in', 'rgba(134,188,37,0.16)', 'var(--dex-green-dark, #4a7c1f)'))) },
+    ];
+    if (usersLeft.length > 0) sections.push({ key: 'user', title: isDe ? 'Weitere (User)' : 'Other (users)', count: usersLeft.length, body: usersLeft.map(editableRow) });
+    return (
+      <div>
+        {sections.map(sec => {
+          const open = openSections.has(sec.key);
+          return (
+            <div key={sec.key} style={{ marginBottom: 12, border: '1px solid var(--dex-gray-200, #eee)', borderRadius: 8, overflow: 'hidden' }}>
+              <button
+                type="button"
+                onClick={() => toggleSection(sec.key)}
+                style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--dex-gray-50, #fafafa)', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.95rem', color: 'var(--dex-gray-800)' }}
+              >
+                <span style={{ color: 'var(--dex-gray-500)' }}>{open ? '▾' : '▸'}</span>
+                {sec.title} <span style={{ color: 'var(--dex-gray-400)', fontWeight: 500 }}>({sec.count})</span>
+              </button>
+              {open && (
+                <div style={{ overflowX: 'auto', padding: '0 6px 6px' }}>
+                  {sec.count === 0 ? (
+                    <p style={{ padding: '8px 10px', margin: 0, color: 'var(--dex-gray-400)', fontStyle: 'italic', fontSize: '0.82rem' }}>{isDe ? 'keine' : 'none'}</p>
+                  ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                      <thead>{headRow}</thead>
+                      <tbody>{sec.body}</tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <div className="page-container">
       <div className="settings-grid">
@@ -300,38 +534,20 @@ export default function SettingsPage(): React.ReactElement {
           </div>
         </div>
 
-        {/* Admin Actions - sichtbar für Organizer und Admin */}
-        {canCreateEvents && (
-          <div className="card">
-            <h3 className="mb-16">Admin Actions</h3>
-            <div className="settings-actions">
-              <button className="btn btn-primary btn-block" onClick={() => navigate('create-event')}>
-                <Plus size={18} /> Create New Event
-              </button>
-              <button className="btn btn-secondary btn-block mt-8" onClick={() => navigate('admin')}>
-                <FileText size={18} /> View All Events (Admin)
-              </button>
-              {isAdmin && (
-                <button className="btn btn-secondary btn-block mt-8" onClick={() => navigate('role-matrix')}>
-                  <FileText size={18} /> Rollen-Matrix anzeigen
-                </button>
-              )}
-            </div>
-          </div>
-        )}
+        {/* v24.84: „Admin Actions"-Karte (Create New Event / View All Events /
+            Rollen-Matrix) entfernt — diese Wege gibt es bereits über die
+            Start-/Admin-Kacheln. Diese Seite ist jetzt reine Rollenverwaltung. */}
 
         {/* v9.21: Rollenmanagement collapsible — Admin kann die ganze Liste
             zusammenklappen wenn er sie gerade nicht braucht. Default: zu. */}
         {isAdmin && (
-          <details className="card" style={{ cursor: 'default' }} open>
-            <summary style={{
-              cursor: 'pointer', fontWeight: 600, fontSize: '1rem',
-              padding: '4px 0', listStyle: 'revert',
-              color: 'var(--dex-gray-800)',
-            }}>
-              Role Management
-            </summary>
-            <div style={{ marginTop: 16 }}>
+          <div className="card">
+            {/* v24.85: nicht mehr die ganze Karte einklappbar — stattdessen je
+                Kategorie ein eigener aufklappbarer Abschnitt (renderRoleSections). */}
+            <h2 style={{ margin: '0 0 12px', fontSize: '1.1rem', color: 'var(--dex-gray-800)' }}>
+              {isDe ? 'Rollenverwaltung' : 'Role management'}
+            </h2>
+            <div style={{ marginTop: 4 }}>
             <p style={{ color: 'var(--dex-gray-500, #888)', fontSize: '0.85rem', marginBottom: 16 }}>
               Manage who can create events. Roles are stored in the SharePoint list &ldquo;DEX_Roles&rdquo;.
               {' '}
@@ -518,272 +734,21 @@ export default function SettingsPage(): React.ReactElement {
               </div>
             )}
 
-            {/* Rollen-Tabelle */}
+            {/* v24.85: Rollen je Kategorie als eigene aufklappbare Abschnitte. */}
             {isRolesLoading ? (
-              <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>Loading roles...</p>
-            ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '2px solid var(--dex-gray-200, #eee)' }}>
-                      <th style={{ textAlign: 'left', padding: '8px 8px 8px 0', color: 'var(--dex-gray-500)' }}>Name</th>
-                      <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Email</th>
-                      <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Role</th>
-                      <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Location</th>
-                      <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Coordinated Events</th>
-                      <th style={{ textAlign: 'right', padding: '8px 0 8px 8px', color: 'var(--dex-gray-500)' }} />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...roles]
-                      .sort((a, b) => {
-                        // Admins zuerst, dann Organizer, dann User - jeweils alphabetisch
-                        const order: Record<string, number> = { Admin: 0, Organizer: 1, User: 2 };
-                        const diff = (order[a.role] ?? 3) - (order[b.role] ?? 3);
-                        return diff !== 0 ? diff : a.userName.localeCompare(b.userName);
-                      })
-                      .map((r, i, arr) => {
-                        // Trennlinie zwischen Rollen-Gruppen
-                        const prevRole = i > 0 ? arr[i - 1].role : null;
-                        const showSeparator = prevRole && prevRole !== r.role;
-                        return (
-                          <React.Fragment key={r.id}>
-                            {showSeparator && (
-                              <tr><td colSpan={6} style={{ padding: 0 }}><hr style={{ border: 'none', borderTop: '2px solid var(--dex-gray-300)', margin: '4px 0' }} /></td></tr>
-                            )}
-                            <tr style={{ borderBottom: '1px solid var(--dex-gray-100, #f0f0f0)' }}>
-                        <td style={{ padding: '10px 8px 10px 0', fontWeight: 500 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <img
-                              src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(r.userEmail)}&size=L`}
-                              alt={r.userName}
-                              onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
-                              style={{
-                                width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', flexShrink: 0,
-                                background: 'var(--dex-gray-100)',
-                                transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-                                transformOrigin: 'left center',
-                                /* v11.94: kein zoom-in-Cursor mehr — Default-Pfeil bleibt. */
-                              }}
-                              onMouseEnter={e => {
-                                (e.currentTarget as HTMLImageElement).style.transform = 'scale(3.5)';
-                                (e.currentTarget as HTMLImageElement).style.boxShadow = '0 4px 14px rgba(0,0,0,0.18)';
-                                (e.currentTarget as HTMLImageElement).style.zIndex = '50';
-                                (e.currentTarget as HTMLImageElement).style.position = 'relative';
-                              }}
-                              onMouseLeave={e => {
-                                (e.currentTarget as HTMLImageElement).style.transform = 'scale(1)';
-                                (e.currentTarget as HTMLImageElement).style.boxShadow = 'none';
-                                (e.currentTarget as HTMLImageElement).style.zIndex = '';
-                                (e.currentTarget as HTMLImageElement).style.position = '';
-                              }}
-                            />
-                            <span>{r.userName}</span>
-                          </div>
-                        </td>
-                        <td style={{ padding: 10, color: 'var(--dex-gray-600)' }}>{r.userEmail}</td>
-                        <td style={{ padding: 10 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <select
-                              value={r.role}
-                              onChange={e => handleChangeRole(r.id, e.target.value as UserRole)}
-                              style={{
-                                padding: '4px 8px', borderRadius: 6, border: '1px solid var(--dex-gray-200, #ddd)',
-                                fontSize: '0.8rem', background: '#fff',
-                              }}
-                              disabled={r.userEmail.toLowerCase() === currentUser.email.toLowerCase()}
-                            >
-                              <option value="Admin">Admin</option>
-                              <option value="Organizer">Organizer</option>
-                              <option value="User">User</option>
-                            </select>
-                            {/* v18.5: 1-Klick-Power-User-Flag direkt in der Zeile.
-                                „Power User" ist KEINE eigene Rolle, sondern ein
-                                Zusatz auf einem Organizer/Admin — die Person
-                                bleibt also Organizer und ist zusätzlich Power
-                                User. Nur für Organizer/Admin-Rollen sinnvoll. */}
-                            {(r.role === 'Organizer' || r.role === 'Admin') && (
-                              <button
-                                type="button"
-                                disabled={r.userEmail.toLowerCase() === currentUser.email.toLowerCase()}
-                                onClick={() => setPowerUser(r.id, !r.isPowerUser)}
-                                title={r.isPowerUser
-                                  ? (isDe ? 'Power-User-Status entfernen' : 'Remove power-user status')
-                                  : (isDe ? 'Als Power User markieren (Experten-Ansprechpartner auf der Event-Erstellungs-Seite)' : 'Mark as power user (help contact on the event creation page)')}
-                                style={{
-                                  display: 'inline-flex', alignItems: 'center', gap: 4,
-                                  padding: '4px 10px', borderRadius: 999, cursor: 'pointer',
-                                  fontSize: '0.76rem', fontWeight: 600, whiteSpace: 'nowrap',
-                                  border: `1px solid ${r.isPowerUser ? '#b35a00' : 'var(--dex-gray-300)'}`,
-                                  background: r.isPowerUser ? '#fff4e5' : '#fff',
-                                  color: r.isPowerUser ? '#b35a00' : 'var(--dex-gray-600)',
-                                }}
-                              >
-                                <span aria-hidden="true">{r.isPowerUser ? '★' : '☆'}</span>
-                                {r.isPowerUser
-                                  ? 'Power User'
-                                  : (isDe ? 'Power User?' : 'Power user?')}
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                        <td style={{ padding: 10 }}>
-                          <input
-                            className="form-input"
-                            key={`loc-${r.id}-${r.location}`}
-                            defaultValue={r.location || ''}
-                            style={{ fontSize: '0.85rem', padding: '4px 8px', width: '100%', minWidth: 120 }}
-                            placeholder="Standort"
-                            onBlur={async (e) => {
-                              const newLoc = e.target.value.trim();
-                              if (newLoc !== (r.location || '')) {
-                                await updateRoleLocation(r.id, newLoc);
-                              }
-                            }}
-                          />
-                        </td>
-                        <td style={{ padding: 10, fontSize: '0.78rem', color: 'var(--dex-gray-600)', maxWidth: 280 }}>
-                          {(() => {
-                            const evts = organizerEventMap[r.userEmail.toLowerCase()] || [];
-                            if (r.role === 'User') return <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
-                            if (evts.length === 0) return <span style={{ color: 'var(--dex-gray-300)' }}>keine</span>;
-                            return (
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                                {evts.map((title, idx) => (
-                                  <span key={idx} style={{
-                                    display: 'inline-block', padding: '2px 8px', borderRadius: 10,
-                                    background: 'rgba(134,188,37,0.14)', color: 'var(--dex-green-dark)',
-                                    fontSize: '0.74rem', fontWeight: 600,
-                                  }}>{title}</span>
-                                ))}
-                              </div>
-                            );
-                          })()}
-                        </td>
-                        <td style={{ padding: '10px 0 10px 8px', textAlign: 'right' }}>
-                          {r.userEmail.toLowerCase() !== currentUser.email.toLowerCase() && (
-                            <button
-                              onClick={() => handleRemoveRole(r.id, r.userName)}
-                              disabled={isRemoving === r.id}
-                              style={{
-                                border: 'none', background: 'none', cursor: isRemoving === r.id ? 'wait' : 'pointer',
-                                color: 'var(--dex-danger, #e53935)', padding: 4,
-                                opacity: isRemoving === r.id ? 0.4 : 1,
-                              }}
-                              title="Rolle entfernen"
-                            >
-                              {isRemoving === r.id ? '...' : <Trash2 size={16} />}
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                          </React.Fragment>
-                        );
-                      })}
-                  </tbody>
-                </table>
-
-                {/* v10.16: Per-Event-Co-Organizer — Personen mit Event-Zugriff
-                    aber ohne globalen Eintrag in DEX_Roles. Sie wurden vom
-                    Hauptorganizer per Wizard-Picker zu einem (oder mehreren)
-                    Events hinzugefügt und haben für DIESE Events Vollzugriff,
-                    ohne dafür „Organizer"-Rolle global haben zu müssen. */}
-                {coOrganizersList.length > 0 && (
-                  <div style={{ marginTop: 24 }}>
-                    <h4 style={{ margin: '0 0 4px', fontSize: '0.95rem', color: 'var(--dex-gray-800)' }}>
-                      Per-Event-Co-Organizer ({coOrganizersList.length})
-                    </h4>
-                    <p style={{ margin: '0 0 12px', fontSize: '0.78rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-                      Diese Personen sind im Wizard-Picker eines oder mehrerer Events als Organizer eingetragen, haben aber KEINEN globalen Eintrag in DEX_Roles. Sie können das jeweilige Event verwalten (Teilnehmer, Bearbeiten, Mails) — aber keine NEUEN Events anlegen. Wenn du jemandem permanent &bdquo;Organizer&ldquo;-Status geben willst, fügst du sie über das Formular oben mit Role &bdquo;Organizer&ldquo; hinzu.
-                    </p>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '2px solid var(--dex-gray-200, #eee)' }}>
-                          <th style={{ textAlign: 'left', padding: '8px 8px 8px 0', color: 'var(--dex-gray-500)' }}>Name</th>
-                          <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Email</th>
-                          <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Status</th>
-                          <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Coordinated Events</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {coOrganizersList.map(co => (
-                          <tr key={co.email} style={{ borderBottom: '1px solid var(--dex-gray-100, #f0f0f0)' }}>
-                            <td style={{ padding: '10px 8px 10px 0', fontWeight: 500 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <img
-                                  src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(co.email)}&size=L`}
-                                  alt={resolvedOrgNames[co.email] || co.name}
-                                  onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
-                                  style={{
-                                    width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', flexShrink: 0,
-                                    background: 'var(--dex-gray-100)',
-                                    transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-                                    transformOrigin: 'left center',
-                                    /* v11.94: kein zoom-in-Cursor mehr — Default-Pfeil bleibt. */
-                                  }}
-                                  onMouseEnter={e => {
-                                    (e.currentTarget as HTMLImageElement).style.transform = 'scale(3.5)';
-                                    (e.currentTarget as HTMLImageElement).style.boxShadow = '0 4px 14px rgba(0,0,0,0.18)';
-                                    (e.currentTarget as HTMLImageElement).style.zIndex = '50';
-                                    (e.currentTarget as HTMLImageElement).style.position = 'relative';
-                                  }}
-                                  onMouseLeave={e => {
-                                    (e.currentTarget as HTMLImageElement).style.transform = 'scale(1)';
-                                    (e.currentTarget as HTMLImageElement).style.boxShadow = 'none';
-                                    (e.currentTarget as HTMLImageElement).style.zIndex = '';
-                                    (e.currentTarget as HTMLImageElement).style.position = '';
-                                  }}
-                                />
-                                <span>{resolvedOrgNames[co.email] || co.name}</span>
-                              </div>
-                            </td>
-                            <td style={{ padding: 10, color: 'var(--dex-gray-600)' }}>{co.email}</td>
-                            <td style={{ padding: 10 }}>
-                              <span style={{
-                                display: 'inline-block', padding: '3px 10px', borderRadius: 999,
-                                background: 'rgba(237,139,0,0.15)', color: 'var(--dex-orange-dark, #b35a00)',
-                                fontSize: '0.74rem', fontWeight: 600,
-                              }}>Per-Event</span>
-                            </td>
-                            <td style={{ padding: 10, fontSize: '0.78rem', color: 'var(--dex-gray-600)', maxWidth: 280 }}>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                                {co.events.map((title, idx) => (
-                                  <span key={idx} style={{
-                                    display: 'inline-block', padding: '2px 8px', borderRadius: 10,
-                                    background: 'rgba(134,188,37,0.14)', color: 'var(--dex-green-dark)',
-                                    fontSize: '0.74rem', fontWeight: 600,
-                                  }}>{title}</span>
-                                ))}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            )}
+              <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>{isDe ? 'Rollen werden geladen…' : 'Loading roles...'}</p>
+            ) : renderRoleSections()}
 
             </div>
-          </details>
+          </div>
         )}
 
         {/* v9.16/v9.21: Test-Team war hier global, ist jetzt per-Event
             (im EventCreation-Wizard). TestTeamManager entfernt. */}
 
-        {/* v12.12: Default-Email-Templates re-seeden — Admin-Only.
-            Überschreibt die aktuellen Subject/Heading/Body-Texte in
-            DEX_EmailTemplates mit den eingebauten Defaults. Nützlich
-            nach Code-Updates an den Standard-Texten (z.B. neue
-            Nachrücken-Mail in v12.11/v12.12). */}
-        {isAdmin && <ReseedTemplatesCard />}
-
-        {/* v23.12: Wochenbericht-Test (nur Admin) */}
-        {isAdmin && <WeeklyReportTestCard />}
-
-        {/* Berechtigungs-Übersicht - nur für Admin */}
-        {isAdmin && <PermissionsViewer siteUrl={siteUrl} />}
+        {/* v24.86: „Default-Mail-Templates re-seed" und „Wochenbericht — Test-
+            Versand" sind ins Admin Center (Aktionen-Dropdown) gewandert.
+            v24.84: „Listen-Berechtigungen"-Übersicht entfernt. */}
 
       </div>
 
@@ -834,277 +799,4 @@ export default function SettingsPage(): React.ReactElement {
     </div>
   );
 }
-
-/**
- * Zeigt die Berechtigungen aller DEX-Listen an.
- */
-// v12.12: Re-Seed-Karte für die Default-Email-Templates. Admin-Only.
-// Klick auf den Button überschreibt jeden Standard-Template-Eintrag
-// in DEX_EmailTemplates mit dem Default-Text aus dem Code (Subject,
-// Heading, BodyHtml). Confirmation-Modal vor Ausführung.
-function ReseedTemplatesCard(): React.ReactElement {
-  const { reseedDefaultEmailTemplates } = useEvents();
-  const { locale } = useLanguage();
-  const isDe = locale === 'de';
-  const { confirmDialog } = useDialog();
-  const [busy, setBusy] = React.useState(false);
-  const [status, setStatus] = React.useState<'' | 'success' | 'error'>('');
-  const [summary, setSummary] = React.useState<{ created: number; updated: number; skipped: number; failed: number; errors: string[] } | undefined>(undefined);
-  const handleReseed = async (): Promise<void> => {
-    const msg = isDe
-      ? 'Alle Standard-Mail-Templates (DEX_EmailTemplates) mit den Default-Texten aus dem Code überschreiben? Eigene individuelle Anpassungen an Subject / Heading / Body gehen verloren.'
-      : 'Overwrite all default email templates (DEX_EmailTemplates) with the built-in default texts from the code? Any local customizations to Subject / Heading / Body will be lost.';
-    if (!(await confirmDialog(msg, { danger: true, confirmLabel: isDe ? 'Überschreiben' : 'Overwrite' }))) return;
-    setBusy(true);
-    setStatus('');
-    setSummary(undefined);
-    try {
-      const res = await reseedDefaultEmailTemplates();
-      setSummary(res);
-      // v18.66: Ein fehlgeschlagener Insert (z.B. neues Template) zählt als
-      // Fehler, auch wenn der Rest durchlief — so sieht der Admin sofort,
-      // dass nicht alle Templates angelegt wurden.
-      setStatus(res.failed > 0 ? 'error' : 'success');
-    } catch {
-      setStatus('error');
-    } finally {
-      setBusy(false);
-    }
-  };
-  return (
-    <div className="card" style={{ padding: '20px 24px', marginBottom: 24 }}>
-      <h3 style={{ margin: '0 0 6px', fontSize: '1.05rem' }}>
-        {isDe ? 'Default-Mail-Templates re-seed' : 'Default email templates re-seed'}
-      </h3>
-      <p style={{ margin: '0 0 12px', color: 'var(--dex-gray-600)', fontSize: '0.85rem', lineHeight: 1.5 }}>
-        {isDe
-          ? 'Überschreibt alle Einträge in DEX_EmailTemplates (Anmeldung, Warteliste, Abmeldung, Nachrücken, …) mit den Default-Texten aus dem aktuellen Code. Nützlich nach Code-Updates an den Standard-Vorlagen, damit der DEX_SEND_MAIL-Flow die neuen Texte nutzt. Achtung: eigene Anpassungen an Subject/Heading/Body in DEX_EmailTemplates gehen verloren.'
-          : 'Overwrites all entries in DEX_EmailTemplates (Registration, Waitlist, Cancellation, Promotion, …) with the default texts from the current code. Useful after code updates to the standard templates so that the DEX_SEND_MAIL flow uses the new texts. Note: local customizations to Subject/Heading/Body in DEX_EmailTemplates will be lost.'}
-      </p>
-      <button
-        type="button"
-        className="btn btn-secondary"
-        onClick={handleReseed}
-        disabled={busy}
-        style={{ fontSize: '0.85rem' }}
-      >
-        {busy
-          ? (isDe ? 'Wird zurückgesetzt…' : 'Resetting…')
-          : (isDe ? 'Default-Templates zurücksetzen' : 'Reset default templates')}
-      </button>
-      {status === 'success' && (
-        <div style={{ marginTop: 10, fontSize: '0.85rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
-          {isDe ? 'Templates erfolgreich zurückgesetzt.' : 'Templates reset successfully.'}
-          {summary && (
-            <span style={{ color: 'var(--dex-gray-600)' }}>
-              {' '}({summary.created} {isDe ? 'neu angelegt' : 'created'}, {summary.updated} {isDe ? 'aktualisiert' : 'updated'}, {summary.skipped} {isDe ? 'unverändert' : 'unchanged'})
-            </span>
-          )}
-        </div>
-      )}
-      {status === 'error' && (
-        <div style={{ marginTop: 10, fontSize: '0.85rem', color: 'var(--dex-red, #c00)' }}>
-          {summary
-            ? (isDe
-                ? `${summary.failed} Template(s) konnten nicht geschrieben werden (${summary.created} neu, ${summary.updated} aktualisiert, ${summary.skipped} unverändert).`
-                : `${summary.failed} template(s) could not be written (${summary.created} created, ${summary.updated} updated, ${summary.skipped} unchanged).`)
-            : (isDe ? 'Reset fehlgeschlagen. Bitte später erneut versuchen.' : 'Reset failed. Please try again later.')}
-          {summary && summary.errors.length > 0 && (
-            <ul style={{ margin: '8px 0 0', paddingLeft: 18, fontSize: '0.78rem', color: 'var(--dex-gray-700)' }}>
-              {summary.errors.slice(0, 8).map((err, i) => (
-                <li key={i}>{err}</li>
-              ))}
-              {summary.errors.length > 8 && (
-                <li>{isDe ? `… und ${summary.errors.length - 8} weitere` : `… and ${summary.errors.length - 8} more`}</li>
-              )}
-            </ul>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// v23.12: Admin-Testbutton für den Wochenbericht — sendet ihn SOFORT (überspringt
-// die 7-Tage-Sperre) an alle Admins und zeigt das Ergebnis. So lässt sich
-// verifizieren, dass Admins gefunden werden und die Mail in die Queue geht.
-function WeeklyReportTestCard(): React.ReactElement {
-  const { maybeSendWeeklyReport } = useEvents();
-  const { locale } = useLanguage();
-  const isDe = locale === 'de';
-  const { confirmDialog } = useDialog();
-  const [busy, setBusy] = React.useState(false);
-  const [result, setResult] = React.useState<{ sent: boolean; admins: number; reason?: string } | null>(null);
-  const handleSend = async (): Promise<void> => {
-    const msg = isDe
-      ? 'Den Wochenbericht JETZT (sofort, ohne 7-Tage-Sperre) an alle Admins versenden? Nutze das nur zum Testen — der nächste reguläre Bericht zählt dann ab jetzt.'
-      : 'Send the weekly report NOW (immediately, bypassing the 7-day lock) to all admins? Use this only for testing — the next regular report counts from now.';
-    if (!(await confirmDialog(msg, { confirmLabel: isDe ? 'Jetzt senden' : 'Send now' }))) return;
-    setBusy(true);
-    setResult(null);
-    try {
-      const r = await maybeSendWeeklyReport({ force: true });
-      setResult(r);
-    } catch {
-      setResult({ sent: false, admins: 0, reason: 'error' });
-    } finally {
-      setBusy(false);
-    }
-  };
-  const reasonText = (reason?: string): string => {
-    if (reason === 'no-admins') return isDe ? 'Keine Admins in DEX_Roles gefunden (Rolle „Admin"). Bitte Rollen prüfen.' : 'No admins found in DEX_Roles (role „Admin"). Please check the roles.';
-    if (reason === 'queue-failed') return isDe ? 'Die Mail konnte nicht in die Warteschlange (DEX_Emails) geschrieben werden.' : 'The mail could not be written to the queue (DEX_Emails).';
-    if (reason === 'error') return isDe ? 'Unerwarteter Fehler — bitte Browser-Konsole prüfen.' : 'Unexpected error — please check the browser console.';
-    return '';
-  };
-  return (
-    <div className="card" style={{ padding: '20px 24px', marginBottom: 24 }}>
-      <h3 style={{ margin: '0 0 6px', fontSize: '1.05rem' }}>
-        {isDe ? 'Wochenbericht — Test-Versand' : 'Weekly report — test send'}
-      </h3>
-      <p style={{ margin: '0 0 12px', color: 'var(--dex-gray-600)', fontSize: '0.85rem', lineHeight: 1.5 }}>
-        {isDe
-          ? 'Der Wochenbericht geht automatisch 1×/Woche an alle Admins (ausgelöst beim Öffnen der App). Hier kannst du ihn sofort auslösen, um zu prüfen, ob er ankommt — die 7-Tage-Sperre wird übersprungen. Die Mail landet wie alle Mails zunächst in DEX_Emails und wird vom DEX_SEND_MAIL-Flow versendet.'
-          : 'The weekly report is sent automatically once a week to all admins (triggered when the app opens). Here you can trigger it immediately to verify delivery — the 7-day lock is bypassed. The mail goes into DEX_Emails first (like all mails) and is sent by the DEX_SEND_MAIL flow.'}
-      </p>
-      <button
-        type="button"
-        className="btn btn-secondary"
-        onClick={handleSend}
-        disabled={busy}
-        style={{ fontSize: '0.85rem' }}
-      >
-        {busy ? (isDe ? 'Wird gesendet…' : 'Sending…') : (isDe ? 'Wochenbericht jetzt senden' : 'Send weekly report now')}
-      </button>
-      {result && (
-        <div style={{ marginTop: 10, fontSize: '0.85rem', color: result.sent ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-red, #c00)' }}>
-          {result.sent
-            ? (isDe
-                ? `In die Warteschlange gelegt — eine Mail an ${result.admins} Admin(s). Sie wird in Kürze vom DEX_SEND_MAIL-Flow versendet.`
-                : `Queued — one mail to ${result.admins} admin(s). It will be sent shortly by the DEX_SEND_MAIL flow.`)
-            : reasonText(result.reason) || (isDe ? 'Versand fehlgeschlagen.' : 'Sending failed.')}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PermissionsViewer(props: { siteUrl: string }): React.ReactElement {
-  const { siteUrl } = props;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ctx = (window as any).__dexSpfxContext;
-  const SPHttpClient = require('@microsoft/sp-http').SPHttpClient;
-
-  type ListPerms = { listName: string; perms: Array<{ name: string; type: string; level: string }>; loading: boolean; error?: string };
-  const [lists, setLists] = React.useState<ListPerms[]>([]);
-  const [isOpen, setIsOpen] = React.useState(false);
-
-  const listNames = ['DEX_Events', 'DEX_Roles', 'DEX_Emails', 'DEX_Outlook', 'DEX_IDReorder', 'DEX_Participants'];
-
-  async function loadPermissions(): Promise<void> {
-    if (!ctx) return;
-    const results: ListPerms[] = [];
-
-    for (const listName of listNames) {
-      try {
-        const resp = await ctx.spHttpClient.get(
-          `${siteUrl}/_api/web/lists/getbytitle('${listName}')/roleassignments?$expand=Member,RoleDefinitionBindings&$select=Member/Title,Member/PrincipalType,RoleDefinitionBindings/Name`,
-          SPHttpClient.configurations.v1
-        );
-        if (!resp.ok) {
-          results.push({ listName, perms: [], loading: false, error: `${resp.status}` });
-          continue;
-        }
-        const data = await resp.json();
-        const items = data.value || data.d?.results || [];
-        // v13.2: typsicheres Mapping der RoleAssignment-Items.
-        interface SPRoleAssignmentMember { Title?: string; PrincipalType?: number }
-        interface SPRoleDefinitionBinding { Name?: string }
-        interface SPRoleAssignmentItem {
-          Member?: SPRoleAssignmentMember;
-          RoleDefinitionBindings?: SPRoleDefinitionBinding[] | { results?: SPRoleDefinitionBinding[] };
-        }
-        const perms = (items as SPRoleAssignmentItem[]).map((item) => {
-          const member: SPRoleAssignmentMember = item.Member || {};
-          const bindingsRaw = item.RoleDefinitionBindings;
-          const bindings: SPRoleDefinitionBinding[] = Array.isArray(bindingsRaw)
-            ? bindingsRaw
-            : (bindingsRaw && Array.isArray(bindingsRaw.results) ? bindingsRaw.results : []);
-          const roleNames = bindings
-            .map((b) => b.Name || '')
-            .filter((n) => n !== 'Limited Access' && n !== '');
-          const pType = member.PrincipalType === 8 ? 'Gruppe' : 'User';
-          return { name: member.Title || '?', type: pType, level: roleNames.join(', ') || '-' };
-        }).filter((p) => p.level !== '-');
-        results.push({ listName, perms, loading: false });
-      } catch {
-        results.push({ listName, perms: [], loading: false, error: 'Fehler' });
-      }
-    }
-    setLists(results);
-  }
-
-  return (
-    <div className="card" style={{ marginTop: 16 }}>
-      <h3
-        className="mb-16"
-        style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}
-        onClick={() => { setIsOpen(!isOpen); if (!isOpen && lists.length === 0) loadPermissions(); }}
-      >
-        🔒 Listen-Berechtigungen {isOpen ? '▾' : '▸'}
-      </h3>
-      {isOpen && (
-        <div>
-          {lists.length === 0 && <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>Lade Berechtigungen...</p>}
-          {lists.map(list => (
-            <div key={list.listName} style={{ marginBottom: 16 }}>
-              <h4 style={{ fontSize: '0.85rem', marginBottom: 4 }}>{list.listName}</h4>
-              {list.error ? (
-                <p style={{ color: 'var(--dex-danger, red)', fontSize: '0.8rem' }}>Fehler: {list.error}</p>
-              ) : (
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '1px solid var(--dex-gray-200)' }}>
-                      <th style={{ textAlign: 'left', padding: 4, color: 'var(--dex-gray-500)' }}>Name</th>
-                      <th style={{ textAlign: 'left', padding: 4, color: 'var(--dex-gray-500)' }}>Typ</th>
-                      <th style={{ textAlign: 'left', padding: 4, color: 'var(--dex-gray-500)' }}>Berechtigung</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {list.perms.map((p, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                        <td style={{ padding: 4 }}>{p.name}</td>
-                        <td style={{ padding: 4, color: 'var(--dex-gray-500)' }}>{p.type}</td>
-                        <td style={{ padding: 4 }}>
-                          <span style={{
-                            padding: '2px 6px', borderRadius: 4, fontSize: '0.75rem',
-                            background: p.level.includes('Full Control') ? '#e8f5e9' : p.level.includes('Contribute') ? '#fff3e0' : '#e3f2fd',
-                            color: p.level.includes('Full Control') ? '#2e7d32' : p.level.includes('Contribute') ? '#e65100' : '#1565c0',
-                          }}>
-                            {p.level}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                    {list.perms.length === 0 && !list.error && (
-                      <tr><td colSpan={3} style={{ padding: 4, color: 'var(--dex-gray-400)' }}>Erbt Parent-Berechtigungen</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          ))}
-          <button
-            className="btn btn-secondary mt-8"
-            style={{ fontSize: '0.8rem' }}
-            onClick={loadPermissions}
-          >
-            Aktualisieren
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 

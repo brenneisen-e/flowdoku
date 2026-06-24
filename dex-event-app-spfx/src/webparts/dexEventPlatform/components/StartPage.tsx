@@ -261,22 +261,6 @@ export default function StartPage(): React.ReactElement {
             </p>
           </div>
         )}
-        {/* v23.41: „Admin"-Kachel rechts neben Check-In — Hub für Prozesse,
-            Rollen, Listen-Erklärung, Archiv/Löschung (nur echte Admins). */}
-        {showAdminHubTile && (
-          <div
-            className="card card-clickable start-card"
-            onClick={() => navigate('admin-hub')}
-          >
-            <div className="start-card__icon">
-              <Star size={64} strokeWidth={1} />
-            </div>
-            <h2>Admin</h2>
-            <p style={{ whiteSpace: 'nowrap' }}>
-              {locale === 'de' ? 'Verwaltung & Prozesse' : 'Administration & processes'}
-            </p>
-          </div>
-        )}
         {/* v24.36: „Assistenz"-Kachel — nur für User, die stellvertretend für
             andere angemeldet haben (oder Admins). Führt zur Verwaltung dieser
             Fremd-Anmeldungen (einsehen, Angaben anpassen, ab-/anmelden). */}
@@ -291,6 +275,23 @@ export default function StartPage(): React.ReactElement {
             <h2>{locale === 'de' ? 'Assistenz' : 'Assistant'}</h2>
             <p style={{ whiteSpace: 'nowrap' }}>
               {locale === 'de' ? 'Anmeldungen für andere' : 'Registrations for others'}
+            </p>
+          </div>
+        )}
+        {/* v23.41/v24.84: „Admin"-Kachel — Hub für Prozesse, Rollen,
+            Listen-Erklärung, Archiv/Löschung (nur echte Admins). Bewusst als
+            LETZTE Kachel ganz rechts. */}
+        {showAdminHubTile && (
+          <div
+            className="card card-clickable start-card"
+            onClick={() => navigate('admin-hub')}
+          >
+            <div className="start-card__icon">
+              <Star size={64} strokeWidth={1} />
+            </div>
+            <h2>Admin</h2>
+            <p style={{ whiteSpace: 'nowrap' }}>
+              {locale === 'de' ? 'Verwaltung & Prozesse' : 'Administration & processes'}
             </p>
           </div>
         )}

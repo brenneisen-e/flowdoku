@@ -865,7 +865,7 @@ export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
   // v14.11: zusätzlich `events` (alle Events inkl. Sub-Events) als `allEvents`
   // für die Parent-Lookup-Logik im konsolidierten View + im Sub-Event-Detail.
-  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead, registerForEvent, subscribeEventRealtime } = useEvents();
+  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead, registerForEvent, subscribeEventRealtime, reseedDefaultEmailTemplates, maybeSendWeeklyReport } = useEvents();
   // v24.38: läuft gerade ein „Zur Klammer hinzufügen" für diese E-Mail?
   const [addingToKlammer, setAddingToKlammer] = React.useState<string | null>(null);
   // v24.40: Modal „Assistenz zuordnen" — Person an eine gewählte Assistenz
@@ -894,6 +894,11 @@ export default function AdminPage(): React.ReactElement {
   const isDe = locale === 'de';
   // v20.4: App-Modals statt nativer Browser-Dialoge.
   const { confirmDialog, showAlert } = useDialog();
+  // v24.86: Re-seed + Wochenbericht-Test (aus den Settings hierher verschoben).
+  const [reseedBusy, setReseedBusy] = React.useState(false);
+  const [reseedResult, setReseedResult] = React.useState<string | null>(null);
+  const [weeklyBusy, setWeeklyBusy] = React.useState(false);
+  const [weeklyResult, setWeeklyResult] = React.useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
   const [registrations, setRegistrations] = React.useState<SPRegistration[]>([]);
   // v24.75: Echtzeit-Push auf die Teilnehmerliste des gewählten Events. Meldet
@@ -6796,6 +6801,39 @@ export default function AdminPage(): React.ReactElement {
               });
             }
           }
+          // 6) v24.83: Ab 5 Tagen vor Event-Start ein Hinweis GANZ OBEN, dass
+          // jetzt die persönlichen Check-in-QR-Codes versendet werden können
+          // (optional — „falls du möchtest"). Nur im Hauptevent-Detail (nicht
+          // im Sub-Event-Detail) und nur solange das Event nicht vorbei ist.
+          if (!parentEventForSelected) {
+            const startMs = selectedEvent.startDate ? new Date(selectedEvent.startDate).getTime() : 0;
+            const daysUntilStart = startMs ? (startMs - Date.now()) / 86400000 : Infinity;
+            if (daysUntilStart <= 5 && !isEventOver(selectedEvent)) {
+              hints.unshift({
+                id: 'qr-send-window',
+                title: isDe ? 'QR-Codes versenden möglich' : 'QR codes can be sent now',
+                body: isDe ? (
+                  <>
+                    Das Event startet in den nächsten Tagen. Du kannst jetzt — wenn du möchtest — die persönlichen <strong>Check-in-QR-Codes</strong> an alle angemeldeten Teilnehmer verschicken. Jede Person bekommt ihren Code per E-Mail; wer sich danach noch anmeldet, erhält ihn automatisch. Am Veranstaltungstag scannst du die Codes am Eingang (oder die Teilnehmer checken sich per Self-Check-in selbst ein).
+                    <div style={{ marginTop: 8 }}>
+                      <button type="button" className="btn btn-primary" style={{ fontSize: '0.8rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => setQrSendModalOpen(true)}>
+                        <QrCode size={14} /> QR-Codes versenden
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    The event starts within the next few days. You can now — if you like — send the personal <strong>check-in QR codes</strong> to all registered attendees. Each person gets their code by email; anyone registering afterwards receives it automatically. On the event day you scan the codes at the entrance (or attendees self-check-in).
+                    <div style={{ marginTop: 8 }}>
+                      <button type="button" className="btn btn-primary" style={{ fontSize: '0.8rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }} onClick={() => setQrSendModalOpen(true)}>
+                        <QrCode size={14} /> Send QR codes
+                      </button>
+                    </div>
+                  </>
+                ),
+              });
+            }
+          }
           const visible = hints.filter(h => !isDismissed(h.id));
           if (visible.length === 0) return null;
           return (
@@ -7348,6 +7386,69 @@ export default function AdminPage(): React.ReactElement {
                     setDetectOverbookResult(isDe ? 'Fehler beim Prüfen der Überbuchung' : 'Error checking overbooking');
                   }
                   setIsDetectingOverbook(false);
+                }}
+              />
+            )}
+
+            {/* v24.86: Default-Mail-Templates zurücksetzen — aus den Settings
+                hierher verschoben (Admin only, global). */}
+            {isAdmin && (
+              <ActionTile
+                icon={<Mail size={18} />}
+                category="mails"
+                title={reseedBusy ? (isDe ? 'Wird zurückgesetzt…' : 'Resetting…') : (isDe ? 'Default-Mail-Vorlagen zurücksetzen' : 'Reset default mail templates')}
+                desc={isDe
+                  ? 'Überschreibt alle Standard-Mail-Vorlagen (Anmeldung, Warteliste, Abmeldung, Nachrücken …) mit den eingebauten Texten aus dem aktuellen Stand der App. Nützlich nach App-Updates an den Standard-Texten. Achtung: eigene Anpassungen an den Standard-Vorlagen gehen dabei verloren.'
+                  : 'Overwrites all default mail templates with the built-in texts from the current app version. Useful after updates to the standard texts. Note: customizations to the standard templates are lost.'}
+                badge="admin"
+                busy={reseedBusy}
+                result={reseedResult}
+                resultIsError={!!reseedResult && (reseedResult.indexOf('Fehler') >= 0 || reseedResult.indexOf('Error') >= 0 || reseedResult.indexOf('fehlgeschlagen') >= 0 || reseedResult.indexOf('failed') >= 0)}
+                onClick={async () => {
+                  const msg = isDe
+                    ? 'Alle Standard-Mail-Vorlagen mit den eingebauten Texten überschreiben? Eigene Anpassungen an den Standard-Vorlagen gehen verloren.'
+                    : 'Overwrite all default mail templates with the built-in texts? Customizations to the standard templates will be lost.';
+                  if (!(await confirmDialog(msg, { danger: true, confirmLabel: isDe ? 'Überschreiben' : 'Overwrite' }))) return;
+                  setReseedBusy(true); setReseedResult(null);
+                  try {
+                    const res = await reseedDefaultEmailTemplates();
+                    setReseedResult(res.failed > 0
+                      ? (isDe ? `Mit Fehlern: ${res.failed} Vorlage(n) fehlgeschlagen.` : `With errors: ${res.failed} template(s) failed.`)
+                      : (isDe ? `Erledigt (${res.created} neu, ${res.updated} aktualisiert, ${res.skipped} unverändert).` : `Done (${res.created} created, ${res.updated} updated, ${res.skipped} unchanged).`));
+                  } catch {
+                    setReseedResult(isDe ? 'Fehler beim Zurücksetzen.' : 'Error while resetting.');
+                  } finally { setReseedBusy(false); }
+                }}
+              />
+            )}
+            {/* v24.86: Wochenbericht-Test — aus den Settings hierher verschoben. */}
+            {isAdmin && (
+              <ActionTile
+                icon={<Mail size={18} />}
+                category="maintenance"
+                title={weeklyBusy ? (isDe ? 'Wird gesendet…' : 'Sending…') : (isDe ? 'Wochenbericht jetzt senden' : 'Send weekly report now')}
+                desc={isDe
+                  ? 'Löst den wöchentlichen Admin-Bericht sofort aus (überspringt die 7-Tage-Sperre) und legt ihn für alle Admins in die Mail-Warteschlange. Nur zum Testen — der nächste reguläre Bericht zählt dann ab jetzt.'
+                  : 'Triggers the weekly admin report immediately (bypassing the 7-day lock) and queues it for all admins. For testing only.'}
+                badge="admin"
+                busy={weeklyBusy}
+                result={weeklyResult}
+                resultIsError={!!weeklyResult && (weeklyResult.indexOf('Fehler') >= 0 || weeklyResult.indexOf('Error') >= 0 || weeklyResult.indexOf('Keine') >= 0 || weeklyResult.indexOf('No ') >= 0 || weeklyResult.indexOf('fehlgeschlagen') >= 0 || weeklyResult.indexOf('failed') >= 0)}
+                onClick={async () => {
+                  const msg = isDe
+                    ? 'Den Wochenbericht JETZT (ohne 7-Tage-Sperre) an alle Admins versenden? Nur zum Testen — der nächste reguläre Bericht zählt ab jetzt.'
+                    : 'Send the weekly report NOW (bypassing the 7-day lock) to all admins? For testing only.';
+                  if (!(await confirmDialog(msg, { confirmLabel: isDe ? 'Jetzt senden' : 'Send now' }))) return;
+                  setWeeklyBusy(true); setWeeklyResult(null);
+                  try {
+                    const r = await maybeSendWeeklyReport({ force: true });
+                    setWeeklyResult(r.sent
+                      ? (isDe ? `In die Warteschlange gelegt — eine Mail an ${r.admins} Admin(s).` : `Queued — one mail to ${r.admins} admin(s).`)
+                      : r.reason === 'no-admins' ? (isDe ? 'Keine Admins gefunden.' : 'No admins found.')
+                      : (isDe ? 'Versand fehlgeschlagen.' : 'Sending failed.'));
+                  } catch {
+                    setWeeklyResult(isDe ? 'Unerwarteter Fehler.' : 'Unexpected error.');
+                  } finally { setWeeklyBusy(false); }
                 }}
               />
             )}
@@ -10620,10 +10721,12 @@ export default function AdminPage(): React.ReactElement {
           };
           const thClickable: React.CSSProperties = { textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', position: 'sticky', top: 0, background: '#fff', zIndex: 5, borderBottom: '2px solid var(--dex-gray-200)' };
           const declineCount = cancelledRegs.filter(isDeclined).length;
-          // v19.28: Abgemeldete Registrierungen endgültig löschen (Admin/Organizer)
-          // — z.B. um Test-Anmeldungen aus der Übersicht zu entfernen. Hartes
-          // DELETE nach Sicherheits-Confirm; Audit-Eintrag im ChangeLog.
-          const canDelete = !!selectedEvent && (isAdmin || isOrganizerFor(selectedEvent)) && !!selectedEvent.subsiteUrl;
+          // v24.82: Abmeldungen dürfen NUR bei Entwurf-Events (isFictive)
+          // gelöscht werden — z.B. zum Aufräumen von Test-Anmeldungen, BEVOR
+          // das Event live geht. Sobald das Event live war/ist, bleiben
+          // Abmeldungen wegen der einjährigen Aufbewahrungsfrist erhalten
+          // (dann kein „Löschen"-Button).
+          const canDelete = !!selectedEvent && selectedEvent.isFictive === true && (isAdmin || isOrganizerFor(selectedEvent)) && !!selectedEvent.subsiteUrl;
           const deleteCancelled = async (reg: SPRegistration): Promise<void> => {
             if (!selectedEvent) return;
             // v22.59: im Klammer-Modus die Subsite der jeweiligen Sub-Section
@@ -10832,6 +10935,13 @@ export default function AdminPage(): React.ReactElement {
               </>
             );
           }
+          // v24.82: Abmeldungen im selben Zeilen-Layout wie die aktiven
+          // Anmeldungen (Foto + Name + „Position • Standort • Firma"), aber
+          // alle Texte in hellem Grau, damit sie klar von den aktiven
+          // Anmeldungen zu unterscheiden sind. Ein „Löschen"-Button erscheint
+          // NUR bei Entwurf-Events (canDelete) — sonst bleiben Abmeldungen
+          // wegen der einjährigen Aufbewahrungsfrist erhalten.
+          const greyText = 'var(--dex-gray-400)';
           return (
             <>
               <h4 style={{ marginTop: 24, color: 'var(--dex-gray-400)' }}>
@@ -10846,11 +10956,7 @@ export default function AdminPage(): React.ReactElement {
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                   <thead>
                     <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
-                      <th style={thClickable} onClick={() => toggleSort('vorname')}>Vorname{arrow('vorname')}</th>
-                      <th style={thClickable} onClick={() => toggleSort('nachname')}>Nachname{arrow('nachname')}</th>
-                      <th style={thClickable} onClick={() => toggleSort('email')}>Email{arrow('email')}</th>
-                      <th style={thClickable} onClick={() => toggleSort('jobtitle')}>Job Title{arrow('jobtitle')}</th>
-                      <th style={thClickable} onClick={() => toggleSort('location')}>Standort{arrow('location')}</th>
+                      <th style={thClickable} onClick={() => toggleSort('nachname')}>{isDe ? 'Teilnehmer' : 'Attendee'}{arrow('nachname')}</th>
                       <th style={thClickable} onClick={() => toggleSort('type')}>{isDe ? 'Art' : 'Type'}{arrow('type')}</th>
                       {isConsolidatedMode && (
                         <th style={{ ...thClickable, cursor: 'default' }}>{isDe ? 'Sub-Event' : 'Sub-event'}</th>
@@ -10873,24 +10979,36 @@ export default function AdminPage(): React.ReactElement {
                       // eslint-disable-next-line @typescript-eslint/no-explicit-any
                       const anyReg = reg as any;
                       const declined = isDeclined(reg);
+                      const vn = reg.Vorname || ((reg.ParticipantName || '').split(' ')[0] || '');
+                      let nn = reg.Nachname || '';
+                      if (!nn && reg.ParticipantName) { const pp = reg.ParticipantName.trim().split(/\s+/); if (pp.length > 1) nn = pp.slice(1).join(' '); }
+                      const fullName = `${vn} ${nn}`.trim() || reg.ParticipantEmail || '-';
+                      const sub = [String(anyReg.JobTitle || ''), stripLocPrefix(String(anyReg.Location || '')), String(anyReg.Company || '')].filter(Boolean).join(' • ');
+                      // Neutral-graue Pille (Abmeldung vs. Absage ohne Anmeldung) —
+                      // bewusst kein Rot/Blau, damit die Zeile durchgängig grau bleibt.
+                      const artLabel = declined
+                        ? (isDe ? 'Absage (nicht angemeldet)' : 'Decline (never registered)')
+                        : (isDe ? 'Abgemeldet' : 'Cancelled');
                       return (
                         <tr key={reg.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                          <td style={{ padding: 8, fontWeight: 500 }}>{reg.Vorname || '-'}</td>
-                          <td style={{ padding: 8, fontWeight: 500 }}>{reg.Nachname || '-'}</td>
-                          <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
-                          <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{anyReg.JobTitle || '-'}</td>
-                          <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{anyReg.Location || '-'}</td>
                           <td style={{ padding: 8 }}>
-                            {declined
-                              ? <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(0,118,168,0.10)', color: 'var(--dex-blue, #0076a8)' }}>{isDe ? 'Absage (nicht angemeldet)' : 'Decline (never registered)'}</span>
-                              : <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(218,41,28,0.08)', color: 'var(--dex-red, #da291c)' }}>{isDe ? 'Abgemeldet' : 'Cancelled'}</span>}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                              <PersonContactHover email={reg.ParticipantEmail || ''} name={fullName} size={30} subline={sub} isDe={isDe} />
+                              <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.25 }}>
+                                <span style={{ fontWeight: 600, color: greyText, whiteSpace: 'nowrap' }}>{fullName}</span>
+                                {sub && <span style={{ fontSize: '0.78rem', color: greyText, whiteSpace: 'nowrap' }}>{sub}</span>}
+                              </div>
+                            </div>
+                          </td>
+                          <td style={{ padding: 8 }}>
+                            <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--dex-gray-100)', color: greyText }}>{artLabel}</span>
                           </td>
                           {isConsolidatedMode && (
-                            <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{(reg as SPRegistration & { _sectionTitle?: string })._sectionTitle || '-'}</td>
+                            <td style={{ padding: 8, color: greyText, fontSize: '0.8rem' }}>{(reg as SPRegistration & { _sectionTitle?: string })._sectionTitle || '-'}</td>
                           )}
-                          <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.CancellationDate)}</td>
+                          <td style={{ padding: 8, color: greyText }}>{formatDate(reg.CancellationDate)}</td>
                           {hasWaitlistActivity && (
-                            <td style={{ padding: 8, color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.8rem' }}>
+                            <td style={{ padding: 8, color: greyText, fontSize: '0.8rem' }}>
                               {(() => {
                                 const email = (anyReg.ReplacedByParticipantEmail as string | undefined) || '';
                                 if (!email) return <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
@@ -10904,7 +11022,7 @@ export default function AdminPage(): React.ReactElement {
                             <td style={{ padding: 8, textAlign: 'right' }}>
                               <button
                                 type="button"
-                                title={isDe ? 'Registrierung endgültig löschen' : 'Permanently delete registration'}
+                                title={isDe ? 'Registrierung endgültig löschen (nur im Entwurf möglich)' : 'Permanently delete registration (drafts only)'}
                                 onClick={() => { deleteCancelled(reg).catch(() => { /* */ }); }}
                                 style={{
                                   display: 'inline-flex', alignItems: 'center', gap: 5,
