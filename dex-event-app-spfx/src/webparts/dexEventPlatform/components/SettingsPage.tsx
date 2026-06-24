@@ -15,13 +15,14 @@ import { UserRole } from '../types';
 import { Plus, Trash2, X } from './Icons';
 import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
+import { PersonContactHover } from './PersonContactHover';
 
 export default function SettingsPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { currentUser } = useCurrentUser();
   const {
     roles, currentUserRole, isAdmin, originalIsAdmin,
-    addRole, updateRole, setPowerUser, updateRoleLocation, removeRole, isRolesLoading, siteUrl, searchUsers,
+    addRole, updateRole, setPowerUser, updateRoleLocation, removeRole, isRolesLoading, siteUrl, searchUsers, searchUser,
   } = useRoles();
   const { events, sendOrganizerOnboarding } = useEvents();
   const { locale } = useLanguage();
@@ -284,6 +285,228 @@ export default function SettingsPage(): React.ReactElement {
     );
   };
 
+  // ===================== v24.85: Role-Management nach Kategorien =====================
+  // Test-Team + Check-in-Team über ALLE Events aggregieren (read-only, analog
+  // zu den Per-Event-Co-Organizern). Datenwerte: event.testTeamEmails/-Names
+  // bzw. event.qrScannerEmails/-Names.
+  const aggregateTeam = React.useCallback((pick: (e: (typeof events)[number]) => { emails?: string[]; names?: string[] }) => {
+    const acc: Record<string, { name: string; events: string[] }> = {};
+    for (const evt of events) {
+      const sel = pick(evt); const emails = sel.emails || []; const names = sel.names || [];
+      for (let i = 0; i < emails.length; i++) {
+        const lc = (emails[i] || '').toLowerCase(); if (!lc) continue;
+        if (!acc[lc]) acc[lc] = { name: names[i] || lc, events: [] };
+        if (acc[lc].events.indexOf(evt.title) < 0) acc[lc].events.push(evt.title);
+      }
+    }
+    return Object.keys(acc).map(lc => ({ email: lc, name: acc[lc].name, events: acc[lc].events }))
+      .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'de'));
+  }, [events]);
+  const testersList = React.useMemo(() => aggregateTeam(e => ({ emails: e.testTeamEmails, names: e.testTeamNames })), [aggregateTeam]);
+  const checkinList = React.useMemo(() => aggregateTeam(e => ({ emails: e.qrScannerEmails, names: e.qrScannerNames })), [aggregateTeam]);
+
+  // Position (Job Title) + Standort pro Person live nachladen — DEX_Roles
+  // speichert die Position nicht. Best-effort, 1× pro E-Mail gecacht.
+  const [profiles, setProfiles] = React.useState<Record<string, { jobTitle?: string; location?: string }>>({});
+  const profileAttemptedRef = React.useRef<Set<string>>(new Set());
+  React.useEffect(() => {
+    const emails = new Set<string>();
+    roles.forEach(r => emails.add((r.userEmail || '').toLowerCase()));
+    coOrganizersList.forEach(c => emails.add(c.email));
+    testersList.forEach(c => emails.add(c.email));
+    checkinList.forEach(c => emails.add(c.email));
+    let cancelled = false;
+    (async () => {
+      for (const em of Array.from(emails)) {
+        if (!em || profileAttemptedRef.current.has(em)) continue;
+        profileAttemptedRef.current.add(em);
+        try {
+          const u = await searchUser(em);
+          if (u && !cancelled && (u.jobTitle || u.location)) {
+            setProfiles(prev => ({ ...prev, [em]: { jobTitle: u.jobTitle, location: u.location } }));
+          }
+        } catch { /* best-effort */ }
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roles, coOrganizersList, testersList, checkinList]);
+
+  // Klapp-Status pro Kategorie (Default: alle offen).
+  const [openSections, setOpenSections] = React.useState<Set<string>>(() => new Set(['admins', 'organizer', 'coorg', 'tester', 'checkin', 'user']));
+  const toggleSection = (k: string): void => setOpenSections(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  // Deloitte-Displayname „Nachname, Vorname" → { first, last }.
+  const splitName = (full: string): { first: string; last: string } => {
+    const n = (full || '').trim();
+    if (!n) return { first: '', last: '' };
+    const c = n.indexOf(',');
+    if (c >= 0) return { last: n.substring(0, c).trim(), first: n.substring(c + 1).trim() };
+    const parts = n.split(/\s+/);
+    return parts.length > 1 ? { first: parts[0], last: parts.slice(1).join(' ') } : { first: n, last: '' };
+  };
+
+  const renderRoleSections = (): React.ReactElement => {
+    const thS: React.CSSProperties = { textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)', fontSize: '0.76rem', fontWeight: 600, whiteSpace: 'nowrap' };
+    const tdS: React.CSSProperties = { padding: 8, verticalAlign: 'middle' };
+    const byName = (a: { userName: string }, b: { userName: string }): number => (a.userName || '').localeCompare(b.userName || '', 'de');
+    const admins = [...roles].filter(r => r.role === 'Admin').sort(byName);
+    const organizers = [...roles].filter(r => r.role === 'Organizer').sort(byName);
+    const usersLeft = [...roles].filter(r => r.role !== 'Admin' && r.role !== 'Organizer').sort(byName);
+    const eventBadges = (titles: string[]): React.ReactNode => titles.length === 0
+      ? <span style={{ color: 'var(--dex-gray-300)' }}>—</span>
+      : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{titles.map((t2, idx) => (
+          <span key={idx} style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, background: 'rgba(134,188,37,0.14)', color: 'var(--dex-green-dark)', fontSize: '0.72rem', fontWeight: 600 }}>{t2}</span>
+        ))}</div>;
+    const catPill = (label: string, bg: string, fg: string): React.ReactNode => (
+      <span style={{ display: 'inline-block', padding: '2px 10px', borderRadius: 999, background: bg, color: fg, fontSize: '0.74rem', fontWeight: 600, whiteSpace: 'nowrap' }}>{label}</span>
+    );
+    const headRow = (
+      <tr style={{ borderBottom: '2px solid var(--dex-gray-200, #eee)' }}>
+        <th style={thS}>{isDe ? 'Vorname' : 'First name'}</th>
+        <th style={thS}>{isDe ? 'Nachname' : 'Last name'}</th>
+        <th style={thS}>Email</th>
+        <th style={thS}>{isDe ? 'Position' : 'Position'}</th>
+        <th style={thS}>{isDe ? 'Standort' : 'Location'}</th>
+        <th style={thS}>Role</th>
+        <th style={thS}>Power User</th>
+        <th style={thS}>Coordinated Events</th>
+        <th style={{ ...thS, textAlign: 'right' }} />
+      </tr>
+    );
+    // Editierbare Zeile (DEX_Roles: Admins / Organizer / User)
+    const editableRow = (r: typeof roles[number]): React.ReactElement => {
+      const { first, last } = splitName(r.userName);
+      const emailLc = (r.userEmail || '').toLowerCase();
+      const prof = profiles[emailLc] || {};
+      const pos = prof.jobTitle || '';
+      const isSelf = emailLc === currentUser.email.toLowerCase();
+      const evts = organizerEventMap[emailLc] || [];
+      return (
+        <tr key={r.id} style={{ borderBottom: '1px solid var(--dex-gray-100, #f0f0f0)' }}>
+          <td style={tdS}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <PersonContactHover email={r.userEmail} name={r.userName} size={30} subline={pos} isDe={isDe} />
+              <span style={{ fontWeight: 500 }}>{first || '-'}</span>
+            </div>
+          </td>
+          <td style={{ ...tdS, fontWeight: 500 }}>{last || '-'}</td>
+          <td style={{ ...tdS, color: 'var(--dex-gray-600)' }}>{r.userEmail}</td>
+          <td style={{ ...tdS, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{pos || '—'}</td>
+          <td style={tdS}>
+            <input
+              className="form-input"
+              key={`loc-${r.id}-${r.location}`}
+              defaultValue={r.location || ''}
+              style={{ fontSize: '0.82rem', padding: '4px 8px', width: '100%', minWidth: 110 }}
+              placeholder="Standort"
+              onBlur={async (e) => { const nl = e.target.value.trim(); if (nl !== (r.location || '')) { await updateRoleLocation(r.id, nl); } }}
+            />
+          </td>
+          <td style={tdS}>
+            <select
+              value={r.role}
+              onChange={e => handleChangeRole(r.id, e.target.value as UserRole)}
+              style={{ padding: '4px 8px', borderRadius: 6, border: '1px solid var(--dex-gray-200, #ddd)', fontSize: '0.8rem', background: '#fff' }}
+              disabled={isSelf}
+            >
+              <option value="Admin">Admin</option>
+              <option value="Organizer">Organizer</option>
+              <option value="User">User</option>
+            </select>
+          </td>
+          <td style={tdS}>
+            {(r.role === 'Organizer' || r.role === 'Admin') ? (
+              <button
+                type="button"
+                disabled={isSelf}
+                onClick={() => setPowerUser(r.id, !r.isPowerUser)}
+                title={r.isPowerUser ? (isDe ? 'Power-User-Status entfernen' : 'Remove power-user status') : (isDe ? 'Als Power User markieren' : 'Mark as power user')}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px', borderRadius: 999, cursor: isSelf ? 'default' : 'pointer', fontSize: '0.74rem', fontWeight: 600, whiteSpace: 'nowrap', border: `1px solid ${r.isPowerUser ? '#b35a00' : 'var(--dex-gray-300)'}`, background: r.isPowerUser ? '#fff4e5' : '#fff', color: r.isPowerUser ? '#b35a00' : 'var(--dex-gray-600)' }}
+              >
+                <span aria-hidden="true">{r.isPowerUser ? '★' : '☆'}</span>
+                {r.isPowerUser ? 'Power User' : (isDe ? 'Power User?' : 'Power user?')}
+              </button>
+            ) : <span style={{ color: 'var(--dex-gray-300)' }}>—</span>}
+          </td>
+          <td style={{ ...tdS, fontSize: '0.78rem', color: 'var(--dex-gray-600)', maxWidth: 280 }}>
+            {r.role === 'User' ? <span style={{ color: 'var(--dex-gray-300)' }}>—</span> : eventBadges(evts)}
+          </td>
+          <td style={{ ...tdS, textAlign: 'right' }}>
+            {!isSelf && (
+              <button onClick={() => handleRemoveRole(r.id, r.userName)} disabled={isRemoving === r.id} style={{ border: 'none', background: 'none', cursor: isRemoving === r.id ? 'wait' : 'pointer', color: 'var(--dex-danger, #e53935)', padding: 4, opacity: isRemoving === r.id ? 0.4 : 1 }} title="Rolle entfernen">
+                {isRemoving === r.id ? '...' : <Trash2 size={16} />}
+              </button>
+            )}
+          </td>
+        </tr>
+      );
+    };
+    // Read-only Zeile (aggregiert: Co-Organizer / Tester / Check-in)
+    const aggRow = (p: { email: string; name: string; events: string[] }, rolePill: React.ReactNode): React.ReactElement => {
+      const { first, last } = splitName(p.name);
+      const prof = profiles[p.email] || {};
+      const displayName = resolvedOrgNames[p.email] || p.name;
+      const dn = splitName(displayName);
+      return (
+        <tr key={p.email} style={{ borderBottom: '1px solid var(--dex-gray-100, #f0f0f0)' }}>
+          <td style={tdS}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+              <PersonContactHover email={p.email} name={displayName} size={30} subline={prof.jobTitle || ''} isDe={isDe} />
+              <span style={{ fontWeight: 500 }}>{dn.first || first || '-'}</span>
+            </div>
+          </td>
+          <td style={{ ...tdS, fontWeight: 500 }}>{dn.last || last || '-'}</td>
+          <td style={{ ...tdS, color: 'var(--dex-gray-600)' }}>{p.email}</td>
+          <td style={{ ...tdS, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{prof.jobTitle || '—'}</td>
+          <td style={{ ...tdS, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{prof.location || '—'}</td>
+          <td style={tdS}>{rolePill}</td>
+          <td style={tdS}><span style={{ color: 'var(--dex-gray-300)' }}>—</span></td>
+          <td style={{ ...tdS, fontSize: '0.78rem', color: 'var(--dex-gray-600)', maxWidth: 280 }}>{eventBadges(p.events)}</td>
+          <td style={{ ...tdS, textAlign: 'right' }} />
+        </tr>
+      );
+    };
+    const sections: Array<{ key: string; title: string; body: React.ReactNode; count: number }> = [
+      { key: 'admins', title: 'Admins', count: admins.length, body: admins.map(editableRow) },
+      { key: 'organizer', title: 'Organizer', count: organizers.length, body: organizers.map(editableRow) },
+      { key: 'coorg', title: isDe ? 'Co-Organizer' : 'Co-organizers', count: coOrganizersList.length, body: coOrganizersList.map(p => aggRow(p, catPill('Per-Event', 'rgba(237,139,0,0.15)', 'var(--dex-orange-dark, #b35a00)'))) },
+      { key: 'tester', title: isDe ? 'Tester' : 'Testers', count: testersList.length, body: testersList.map(p => aggRow(p, catPill(isDe ? 'Tester' : 'Tester', 'rgba(0,118,168,0.10)', 'var(--dex-blue, #0076a8)'))) },
+      { key: 'checkin', title: 'Check-in', count: checkinList.length, body: checkinList.map(p => aggRow(p, catPill('Check-in', 'rgba(134,188,37,0.16)', 'var(--dex-green-dark, #4a7c1f)'))) },
+    ];
+    if (usersLeft.length > 0) sections.push({ key: 'user', title: isDe ? 'Weitere (User)' : 'Other (users)', count: usersLeft.length, body: usersLeft.map(editableRow) });
+    return (
+      <div>
+        {sections.map(sec => {
+          const open = openSections.has(sec.key);
+          return (
+            <div key={sec.key} style={{ marginBottom: 12, border: '1px solid var(--dex-gray-200, #eee)', borderRadius: 8, overflow: 'hidden' }}>
+              <button
+                type="button"
+                onClick={() => toggleSection(sec.key)}
+                style={{ width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', background: 'var(--dex-gray-50, #fafafa)', border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: '0.95rem', color: 'var(--dex-gray-800)' }}
+              >
+                <span style={{ color: 'var(--dex-gray-500)' }}>{open ? '▾' : '▸'}</span>
+                {sec.title} <span style={{ color: 'var(--dex-gray-400)', fontWeight: 500 }}>({sec.count})</span>
+              </button>
+              {open && (
+                <div style={{ overflowX: 'auto', padding: '0 6px 6px' }}>
+                  {sec.count === 0 ? (
+                    <p style={{ padding: '8px 10px', margin: 0, color: 'var(--dex-gray-400)', fontStyle: 'italic', fontSize: '0.82rem' }}>{isDe ? 'keine' : 'none'}</p>
+                  ) : (
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                      <thead>{headRow}</thead>
+                      <tbody>{sec.body}</tbody>
+                    </table>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   return (
     <div className="page-container">
       <div className="settings-grid">
@@ -318,15 +541,13 @@ export default function SettingsPage(): React.ReactElement {
         {/* v9.21: Rollenmanagement collapsible — Admin kann die ganze Liste
             zusammenklappen wenn er sie gerade nicht braucht. Default: zu. */}
         {isAdmin && (
-          <details className="card" style={{ cursor: 'default' }} open>
-            <summary style={{
-              cursor: 'pointer', fontWeight: 600, fontSize: '1rem',
-              padding: '4px 0', listStyle: 'revert',
-              color: 'var(--dex-gray-800)',
-            }}>
-              Role Management
-            </summary>
-            <div style={{ marginTop: 16 }}>
+          <div className="card">
+            {/* v24.85: nicht mehr die ganze Karte einklappbar — stattdessen je
+                Kategorie ein eigener aufklappbarer Abschnitt (renderRoleSections). */}
+            <h2 style={{ margin: '0 0 12px', fontSize: '1.1rem', color: 'var(--dex-gray-800)' }}>
+              {isDe ? 'Rollenverwaltung' : 'Role management'}
+            </h2>
+            <div style={{ marginTop: 4 }}>
             <p style={{ color: 'var(--dex-gray-500, #888)', fontSize: '0.85rem', marginBottom: 16 }}>
               Manage who can create events. Roles are stored in the SharePoint list &ldquo;DEX_Roles&rdquo;.
               {' '}
@@ -513,255 +734,13 @@ export default function SettingsPage(): React.ReactElement {
               </div>
             )}
 
-            {/* Rollen-Tabelle */}
+            {/* v24.85: Rollen je Kategorie als eigene aufklappbare Abschnitte. */}
             {isRolesLoading ? (
-              <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>Loading roles...</p>
-            ) : (
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '2px solid var(--dex-gray-200, #eee)' }}>
-                      <th style={{ textAlign: 'left', padding: '8px 8px 8px 0', color: 'var(--dex-gray-500)' }}>Name</th>
-                      <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Email</th>
-                      <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Role</th>
-                      <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Location</th>
-                      <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Coordinated Events</th>
-                      <th style={{ textAlign: 'right', padding: '8px 0 8px 8px', color: 'var(--dex-gray-500)' }} />
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...roles]
-                      .sort((a, b) => {
-                        // Admins zuerst, dann Organizer, dann User - jeweils alphabetisch
-                        const order: Record<string, number> = { Admin: 0, Organizer: 1, User: 2 };
-                        const diff = (order[a.role] ?? 3) - (order[b.role] ?? 3);
-                        return diff !== 0 ? diff : a.userName.localeCompare(b.userName);
-                      })
-                      .map((r, i, arr) => {
-                        // Trennlinie zwischen Rollen-Gruppen
-                        const prevRole = i > 0 ? arr[i - 1].role : null;
-                        const showSeparator = prevRole && prevRole !== r.role;
-                        return (
-                          <React.Fragment key={r.id}>
-                            {showSeparator && (
-                              <tr><td colSpan={6} style={{ padding: 0 }}><hr style={{ border: 'none', borderTop: '2px solid var(--dex-gray-300)', margin: '4px 0' }} /></td></tr>
-                            )}
-                            <tr style={{ borderBottom: '1px solid var(--dex-gray-100, #f0f0f0)' }}>
-                        <td style={{ padding: '10px 8px 10px 0', fontWeight: 500 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                            <img
-                              src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(r.userEmail)}&size=L`}
-                              alt={r.userName}
-                              onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
-                              style={{
-                                width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', flexShrink: 0,
-                                background: 'var(--dex-gray-100)',
-                                transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-                                transformOrigin: 'left center',
-                                /* v11.94: kein zoom-in-Cursor mehr — Default-Pfeil bleibt. */
-                              }}
-                              onMouseEnter={e => {
-                                (e.currentTarget as HTMLImageElement).style.transform = 'scale(3.5)';
-                                (e.currentTarget as HTMLImageElement).style.boxShadow = '0 4px 14px rgba(0,0,0,0.18)';
-                                (e.currentTarget as HTMLImageElement).style.zIndex = '50';
-                                (e.currentTarget as HTMLImageElement).style.position = 'relative';
-                              }}
-                              onMouseLeave={e => {
-                                (e.currentTarget as HTMLImageElement).style.transform = 'scale(1)';
-                                (e.currentTarget as HTMLImageElement).style.boxShadow = 'none';
-                                (e.currentTarget as HTMLImageElement).style.zIndex = '';
-                                (e.currentTarget as HTMLImageElement).style.position = '';
-                              }}
-                            />
-                            <span>{r.userName}</span>
-                          </div>
-                        </td>
-                        <td style={{ padding: 10, color: 'var(--dex-gray-600)' }}>{r.userEmail}</td>
-                        <td style={{ padding: 10 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                            <select
-                              value={r.role}
-                              onChange={e => handleChangeRole(r.id, e.target.value as UserRole)}
-                              style={{
-                                padding: '4px 8px', borderRadius: 6, border: '1px solid var(--dex-gray-200, #ddd)',
-                                fontSize: '0.8rem', background: '#fff',
-                              }}
-                              disabled={r.userEmail.toLowerCase() === currentUser.email.toLowerCase()}
-                            >
-                              <option value="Admin">Admin</option>
-                              <option value="Organizer">Organizer</option>
-                              <option value="User">User</option>
-                            </select>
-                            {/* v18.5: 1-Klick-Power-User-Flag direkt in der Zeile.
-                                „Power User" ist KEINE eigene Rolle, sondern ein
-                                Zusatz auf einem Organizer/Admin — die Person
-                                bleibt also Organizer und ist zusätzlich Power
-                                User. Nur für Organizer/Admin-Rollen sinnvoll. */}
-                            {(r.role === 'Organizer' || r.role === 'Admin') && (
-                              <button
-                                type="button"
-                                disabled={r.userEmail.toLowerCase() === currentUser.email.toLowerCase()}
-                                onClick={() => setPowerUser(r.id, !r.isPowerUser)}
-                                title={r.isPowerUser
-                                  ? (isDe ? 'Power-User-Status entfernen' : 'Remove power-user status')
-                                  : (isDe ? 'Als Power User markieren (Experten-Ansprechpartner auf der Event-Erstellungs-Seite)' : 'Mark as power user (help contact on the event creation page)')}
-                                style={{
-                                  display: 'inline-flex', alignItems: 'center', gap: 4,
-                                  padding: '4px 10px', borderRadius: 999, cursor: 'pointer',
-                                  fontSize: '0.76rem', fontWeight: 600, whiteSpace: 'nowrap',
-                                  border: `1px solid ${r.isPowerUser ? '#b35a00' : 'var(--dex-gray-300)'}`,
-                                  background: r.isPowerUser ? '#fff4e5' : '#fff',
-                                  color: r.isPowerUser ? '#b35a00' : 'var(--dex-gray-600)',
-                                }}
-                              >
-                                <span aria-hidden="true">{r.isPowerUser ? '★' : '☆'}</span>
-                                {r.isPowerUser
-                                  ? 'Power User'
-                                  : (isDe ? 'Power User?' : 'Power user?')}
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                        <td style={{ padding: 10 }}>
-                          <input
-                            className="form-input"
-                            key={`loc-${r.id}-${r.location}`}
-                            defaultValue={r.location || ''}
-                            style={{ fontSize: '0.85rem', padding: '4px 8px', width: '100%', minWidth: 120 }}
-                            placeholder="Standort"
-                            onBlur={async (e) => {
-                              const newLoc = e.target.value.trim();
-                              if (newLoc !== (r.location || '')) {
-                                await updateRoleLocation(r.id, newLoc);
-                              }
-                            }}
-                          />
-                        </td>
-                        <td style={{ padding: 10, fontSize: '0.78rem', color: 'var(--dex-gray-600)', maxWidth: 280 }}>
-                          {(() => {
-                            const evts = organizerEventMap[r.userEmail.toLowerCase()] || [];
-                            if (r.role === 'User') return <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
-                            if (evts.length === 0) return <span style={{ color: 'var(--dex-gray-300)' }}>keine</span>;
-                            return (
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                                {evts.map((title, idx) => (
-                                  <span key={idx} style={{
-                                    display: 'inline-block', padding: '2px 8px', borderRadius: 10,
-                                    background: 'rgba(134,188,37,0.14)', color: 'var(--dex-green-dark)',
-                                    fontSize: '0.74rem', fontWeight: 600,
-                                  }}>{title}</span>
-                                ))}
-                              </div>
-                            );
-                          })()}
-                        </td>
-                        <td style={{ padding: '10px 0 10px 8px', textAlign: 'right' }}>
-                          {r.userEmail.toLowerCase() !== currentUser.email.toLowerCase() && (
-                            <button
-                              onClick={() => handleRemoveRole(r.id, r.userName)}
-                              disabled={isRemoving === r.id}
-                              style={{
-                                border: 'none', background: 'none', cursor: isRemoving === r.id ? 'wait' : 'pointer',
-                                color: 'var(--dex-danger, #e53935)', padding: 4,
-                                opacity: isRemoving === r.id ? 0.4 : 1,
-                              }}
-                              title="Rolle entfernen"
-                            >
-                              {isRemoving === r.id ? '...' : <Trash2 size={16} />}
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                          </React.Fragment>
-                        );
-                      })}
-                  </tbody>
-                </table>
-
-                {/* v10.16: Per-Event-Co-Organizer — Personen mit Event-Zugriff
-                    aber ohne globalen Eintrag in DEX_Roles. Sie wurden vom
-                    Hauptorganizer per Wizard-Picker zu einem (oder mehreren)
-                    Events hinzugefügt und haben für DIESE Events Vollzugriff,
-                    ohne dafür „Organizer"-Rolle global haben zu müssen. */}
-                {coOrganizersList.length > 0 && (
-                  <div style={{ marginTop: 24 }}>
-                    <h4 style={{ margin: '0 0 4px', fontSize: '0.95rem', color: 'var(--dex-gray-800)' }}>
-                      Per-Event-Co-Organizer ({coOrganizersList.length})
-                    </h4>
-                    <p style={{ margin: '0 0 12px', fontSize: '0.78rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-                      Diese Personen sind im Wizard-Picker eines oder mehrerer Events als Organizer eingetragen, haben aber KEINEN globalen Eintrag in DEX_Roles. Sie können das jeweilige Event verwalten (Teilnehmer, Bearbeiten, Mails) — aber keine NEUEN Events anlegen. Wenn du jemandem permanent &bdquo;Organizer&ldquo;-Status geben willst, fügst du sie über das Formular oben mit Role &bdquo;Organizer&ldquo; hinzu.
-                    </p>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                      <thead>
-                        <tr style={{ borderBottom: '2px solid var(--dex-gray-200, #eee)' }}>
-                          <th style={{ textAlign: 'left', padding: '8px 8px 8px 0', color: 'var(--dex-gray-500)' }}>Name</th>
-                          <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Email</th>
-                          <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Status</th>
-                          <th style={{ textAlign: 'left', padding: 8, color: 'var(--dex-gray-500)' }}>Coordinated Events</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {coOrganizersList.map(co => (
-                          <tr key={co.email} style={{ borderBottom: '1px solid var(--dex-gray-100, #f0f0f0)' }}>
-                            <td style={{ padding: '10px 8px 10px 0', fontWeight: 500 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                <img
-                                  src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(co.email)}&size=L`}
-                                  alt={resolvedOrgNames[co.email] || co.name}
-                                  onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
-                                  style={{
-                                    width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', flexShrink: 0,
-                                    background: 'var(--dex-gray-100)',
-                                    transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-                                    transformOrigin: 'left center',
-                                    /* v11.94: kein zoom-in-Cursor mehr — Default-Pfeil bleibt. */
-                                  }}
-                                  onMouseEnter={e => {
-                                    (e.currentTarget as HTMLImageElement).style.transform = 'scale(3.5)';
-                                    (e.currentTarget as HTMLImageElement).style.boxShadow = '0 4px 14px rgba(0,0,0,0.18)';
-                                    (e.currentTarget as HTMLImageElement).style.zIndex = '50';
-                                    (e.currentTarget as HTMLImageElement).style.position = 'relative';
-                                  }}
-                                  onMouseLeave={e => {
-                                    (e.currentTarget as HTMLImageElement).style.transform = 'scale(1)';
-                                    (e.currentTarget as HTMLImageElement).style.boxShadow = 'none';
-                                    (e.currentTarget as HTMLImageElement).style.zIndex = '';
-                                    (e.currentTarget as HTMLImageElement).style.position = '';
-                                  }}
-                                />
-                                <span>{resolvedOrgNames[co.email] || co.name}</span>
-                              </div>
-                            </td>
-                            <td style={{ padding: 10, color: 'var(--dex-gray-600)' }}>{co.email}</td>
-                            <td style={{ padding: 10 }}>
-                              <span style={{
-                                display: 'inline-block', padding: '3px 10px', borderRadius: 999,
-                                background: 'rgba(237,139,0,0.15)', color: 'var(--dex-orange-dark, #b35a00)',
-                                fontSize: '0.74rem', fontWeight: 600,
-                              }}>Per-Event</span>
-                            </td>
-                            <td style={{ padding: 10, fontSize: '0.78rem', color: 'var(--dex-gray-600)', maxWidth: 280 }}>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                                {co.events.map((title, idx) => (
-                                  <span key={idx} style={{
-                                    display: 'inline-block', padding: '2px 8px', borderRadius: 10,
-                                    background: 'rgba(134,188,37,0.14)', color: 'var(--dex-green-dark)',
-                                    fontSize: '0.74rem', fontWeight: 600,
-                                  }}>{title}</span>
-                                ))}
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            )}
+              <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>{isDe ? 'Rollen werden geladen…' : 'Loading roles...'}</p>
+            ) : renderRoleSections()}
 
             </div>
-          </details>
+          </div>
         )}
 
         {/* v9.16/v9.21: Test-Team war hier global, ist jetzt per-Event
