@@ -11304,6 +11304,14 @@ export default function AdminPage(): React.ReactElement {
                       return `3. Send QR ${n === 1 ? 'code' : 'codes'} to ${n} participant${n === 1 ? '' : 's'}`;
                     })()}
                   </button>
+                  {/* v24.100: Hinweis — Versand ist nicht in Echtzeit (jede Mail
+                      einzeln), bei großen Events kann es dauern. Kein Drama,
+                      nur zur Erwartung. */}
+                  <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-600)', background: 'var(--dex-gray-50, #fafafa)', border: '1px solid var(--dex-gray-200)', borderRadius: 6, padding: '7px 10px', lineHeight: 1.45 }}>
+                    {isDe
+                      ? <>Hinweis: Die Mails werden automatisch <strong>einzeln nacheinander</strong> verschickt. Bei großen Events (&gt; 100 Personen) kann der Versand daher schon mal <strong>über 10 Minuten</strong> dauern — das ist normal, keine Echtzeit-Übermittlung. Den QR-Code haben deine Teilnehmer ohnehin jederzeit <strong>live in der App</strong> unter &bdquo;Meine Events&ldquo;.</>
+                      : <>Note: The emails are sent automatically <strong>one by one</strong>. For large events (&gt; 100 people) sending can therefore take <strong>more than 10 minutes</strong> — this is normal, not a real-time delivery. Your participants always have their QR code <strong>live in the app</strong> under &bdquo;My Events&ldquo;.</>}
+                  </div>
                   {/* v22.18: Mail-Text pro Event anpassbar — QR-Block bleibt fix. */}
                   <button
                     type="button"
