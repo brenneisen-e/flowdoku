@@ -2735,6 +2735,26 @@ export class EventService {
     return [];
   }
 
+  /**
+   * Ein globales Email-Template (DEX_EmailTemplates) aktualisieren — Admin-Tool
+   * (globaler Vorlagen-Editor). Nur die übergebenen Felder werden per MERGE
+   * geschrieben.
+   */
+  public async updateEmailTemplate(id: number, fields: { subject?: string; heading?: string; subheading?: string; headingColor?: string; bodyHtml?: string }): Promise<boolean> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body: Record<string, any> = {};
+      if (fields.subject !== undefined) body['Subject'] = fields.subject;
+      if (fields.heading !== undefined) body['Heading'] = fields.heading;
+      if (fields.subheading !== undefined) body['Subheading'] = fields.subheading;
+      if (fields.headingColor !== undefined) body['HeadingColor'] = fields.headingColor;
+      if (fields.bodyHtml !== undefined) body['BodyHtml'] = fields.bodyHtml;
+      if (Object.keys(body).length === 0) return true;
+      const resp = await this._merge(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items(${id})`, body);
+      return resp.ok;
+    } catch { return false; }
+  }
+
   // ==================== DEX_Participants Liste ====================
 
   /**

@@ -97,6 +97,7 @@ export default function Header(): React.ReactElement {
     'flowcharts': 'flowcharts',
     'check-in': 'check-in',
     'manual': 'manual',
+    'email-templates': 'email-templates',
   };
   // v10.19: Admin-Center hat zwei Sub-Views — die Übersichtsliste aller Events
   // ('admin-center') und die Detail-Ansicht eines konkreten Events
@@ -149,6 +150,7 @@ export default function Header(): React.ReactElement {
       case 'flowcharts': return t('header.flowcharts');
       case 'check-in': return t('header.checkin');
       case 'manual': return t('header.manual');
+      case 'email-templates': return locale === 'de' ? 'Mail-Vorlagen' : 'Mail templates';
       default: return '';
     }
   };
