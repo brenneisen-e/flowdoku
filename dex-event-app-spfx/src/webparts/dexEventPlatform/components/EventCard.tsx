@@ -89,7 +89,12 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
   const isDeadlinePassed = isRegistrationFullyClosed(event, childEventsOf(event.id));
   // Nur normale User bekommen den Deadline-Overlay. Organizer/Admins dürfen
   // trotzdem reinklicken, um ggf. manuell zu registrieren.
-  const showDeadlineOverlay = isDeadlinePassed && !canCreateEvents && !alreadySignedUp;
+  // v24.90: isOwnOrganizer ergänzt — per-Event-Co-Organizer (im Wizard zum
+  // Event hinzugefügt, OHNE globale Organizer-/Admin-Rolle, also
+  // canCreateEvents=false) konnten ein nach Frist geschlossenes Event sonst
+  // nicht öffnen und niemanden mehr anmelden. Sie sind aber vollwertige
+  // Organizer DIESES Events und müssen reinklicken können.
+  const showDeadlineOverlay = isDeadlinePassed && !canCreateEvents && !isOwnOrganizer && !alreadySignedUp;
   // v23.14: Vorschau vor Aktivierung („Aktiv ab" in der Zukunft + previewBeforeActive).
   // Reguläre User sehen die Karte, dürfen aber NICHT in die Anmeldeseite —
   // blockierender Overlay „Anmeldung ab …". Organizer/Admins dürfen weiterhin

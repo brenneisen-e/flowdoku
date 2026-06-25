@@ -574,7 +574,8 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
                     >
                       {t('myevents.title')}
                     </button>
-                    {canCreateEvents && (
+                    {/* v24.90: auch per-Event-Organizer (isOwn) — nicht nur global. */}
+                    {(canCreateEvents || isOwn) && (
                       <button
                         className="btn btn-secondary"
                         style={{ fontSize: '0.78rem', padding: '6px 14px' }}
