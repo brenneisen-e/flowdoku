@@ -10572,7 +10572,13 @@ export default function AdminPage(): React.ReactElement {
               if (waitlistSortColumn === k) setWaitlistSortAsc(v => !v);
               else { setWaitlistSortColumn(k); setWaitlistSortAsc(true); }
             };
-            const thClickable: React.CSSProperties = { textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', position: 'sticky', top: 'var(--dex-header-height, 64px)', background: '#fff', zIndex: 5, borderBottom: '2px solid var(--dex-gray-200)' };
+            // v24.93: NICHT sticky — diese Tabellen stehen in einem
+            // overflowX:'auto'-Wrapper, in dem position:sticky relativ zum
+            // Wrapper (statt zum Fenster) berechnet wird; der Kopf schwebte
+            // dadurch mitten in der Tabelle und schnitt Zeilen ab. Sticky
+            // bleibt nur bei der Teilnehmer-Tabelle (eigener renderHeader,
+            // ohne Scroll-Wrapper).
+            const thClickable: React.CSSProperties = { textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', background: '#fff', borderBottom: '2px solid var(--dex-gray-200)' };
             return (
               <React.Fragment key={title}>
                 <h4 style={{ marginTop: 24, color: accentColor }}>{title} ({regs.length})</h4>
@@ -10722,7 +10728,8 @@ export default function AdminPage(): React.ReactElement {
             if (cancelledSortColumn === k) setCancelledSortAsc(v => !v);
             else { setCancelledSortColumn(k); setCancelledSortAsc(true); }
           };
-          const thClickable: React.CSSProperties = { textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', position: 'sticky', top: 'var(--dex-header-height, 64px)', background: '#fff', zIndex: 5, borderBottom: '2px solid var(--dex-gray-200)' };
+          // v24.93: NICHT sticky (steht in overflowX-Wrapper, s.o.).
+          const thClickable: React.CSSProperties = { textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none', background: '#fff', borderBottom: '2px solid var(--dex-gray-200)' };
           const declineCount = cancelledRegs.filter(isDeclined).length;
           // v24.82: Abmeldungen dürfen NUR bei Entwurf-Events (isFictive)
           // gelöscht werden — z.B. zum Aufräumen von Test-Anmeldungen, BEVOR
