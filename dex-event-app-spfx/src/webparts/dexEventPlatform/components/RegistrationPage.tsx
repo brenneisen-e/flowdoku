@@ -4073,7 +4073,11 @@ export default function RegistrationPage(): React.ReactElement {
               disabled={isDisabled}
               title={titleAttr}
             >
-              <Send size={16} /> {(() => {
+              {/* v24.94: Label in EINEN Span wickeln. Sonst werden „Register" und
+                  das „(Warteliste)"-Suffix-Span zu separaten Flex-Items des
+                  Buttons (.btn ist inline-flex mit gap:8px) → der Flex-Gap PLUS
+                  das Leerzeichen ergaben einen doppelten Abstand. */}
+              <Send size={16} /> <span>{(() => {
                 if (isSubmitting) return t('reg.submitting');
                 // v24.62: Wenn das Hauptevent voll ist und eine Warteliste hat,
                 // landet die Anmeldung auf der Warteliste — im Button steht das als
@@ -4118,7 +4122,7 @@ export default function RegistrationPage(): React.ReactElement {
                 if (parts.length === 0) return <>{t('reg.register')}{waitlistSuffixNode}</>;
                 // Bei gleichzeitiger Hauptevent-Anmeldung den Warteliste-Hinweis anhängen.
                 return <>{t('reg.register')} ({parts.join(' + ')}){willRegisterParent ? waitlistSuffixNode : null}</>;
-              })()}
+              })()}</span>
             </button>
           );
         })()}
