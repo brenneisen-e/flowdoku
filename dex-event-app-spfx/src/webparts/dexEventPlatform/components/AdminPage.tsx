@@ -10958,10 +10958,12 @@ export default function AdminPage(): React.ReactElement {
                     <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
                       <th style={thClickable} onClick={() => toggleSort('nachname')}>{isDe ? 'Teilnehmer' : 'Attendee'}{arrow('nachname')}</th>
                       <th style={thClickable} onClick={() => toggleSort('type')}>{isDe ? 'Art' : 'Type'}{arrow('type')}</th>
+                      <th style={{ ...thClickable, cursor: 'default' }}>{isDe ? 'Abgemeldet von' : 'Cancelled by'}</th>
                       {isConsolidatedMode && (
                         <th style={{ ...thClickable, cursor: 'default' }}>{isDe ? 'Sub-Event' : 'Sub-event'}</th>
                       )}
                       <th style={thClickable} onClick={() => toggleSort('date')}>{isDe ? 'Abgemeldet am' : 'Cancelled on'}{arrow('date')}</th>
+                      <th style={{ ...thClickable, cursor: 'default' }}>{isDe ? 'Nach Frist?' : 'After deadline?'}</th>
                       {/* v19.4: „Wurde ersetzt durch" — die nachgerückte Person, die
                           den frei gewordenen Platz übernommen hat (vom Flow gesetzt).
                           v19.11: nur bei Events mit echter Warteliste-/Nachrück-
@@ -10984,8 +10986,8 @@ export default function AdminPage(): React.ReactElement {
                       if (!nn && reg.ParticipantName) { const pp = reg.ParticipantName.trim().split(/\s+/); if (pp.length > 1) nn = pp.slice(1).join(' '); }
                       const fullName = `${vn} ${nn}`.trim() || reg.ParticipantEmail || '-';
                       const sub = [String(anyReg.JobTitle || ''), stripLocPrefix(String(anyReg.Location || '')), String(anyReg.Company || '')].filter(Boolean).join(' • ');
-                      // Neutral-graue Pille (Abmeldung vs. Absage ohne Anmeldung) —
-                      // bewusst kein Rot/Blau, damit die Zeile durchgängig grau bleibt.
+                      // v24.88: Status-Pille wieder FARBIG (blau = Absage ohne
+                      // Anmeldung, rot = abgemeldet) — der Rest der Zeile bleibt grau.
                       const artLabel = declined
                         ? (isDe ? 'Absage (nicht angemeldet)' : 'Decline (never registered)')
                         : (isDe ? 'Abgemeldet' : 'Cancelled');
@@ -11001,12 +11003,43 @@ export default function AdminPage(): React.ReactElement {
                             </div>
                           </td>
                           <td style={{ padding: 8 }}>
-                            <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'var(--dex-gray-100)', color: greyText }}>{artLabel}</span>
+                            {declined
+                              ? <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(0,118,168,0.10)', color: 'var(--dex-blue, #0076a8)' }}>{artLabel}</span>
+                              : <span style={{ fontSize: '0.72rem', fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: 'rgba(218,41,28,0.08)', color: 'var(--dex-red, #da291c)' }}>{artLabel}</span>}
+                          </td>
+                          {/* v24.88: „Abgemeldet von" — selbst abgemeldet vs. durch
+                              jemand anderen (Audit CancelledBy*), analog „Angemeldet von". */}
+                          <td style={{ padding: 8, color: greyText, fontSize: '0.8rem' }}>
+                            {(() => {
+                              const cby = (anyReg.CancelledByEmail || '').toLowerCase();
+                              const pe = (reg.ParticipantEmail || '').toLowerCase();
+                              if (!cby) return <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
+                              if (cby === pe) return <span>{isDe ? 'Selbst abgemeldet' : 'Self'}</span>;
+                              return <span title={anyReg.CancelledByEmail}>{anyReg.CancelledByName || anyReg.CancelledByEmail}</span>;
+                            })()}
                           </td>
                           {isConsolidatedMode && (
                             <td style={{ padding: 8, color: greyText, fontSize: '0.8rem' }}>{(reg as SPRegistration & { _sectionTitle?: string })._sectionTitle || '-'}</td>
                           )}
                           <td style={{ padding: 8, color: greyText }}>{formatDate(reg.CancellationDate)}</td>
+                          {/* v24.88: Markierung, wenn die Abmeldung NACH der
+                              kommunizierten Abmeldefrist (lastDeregisterDate) erfolgte. */}
+                          <td style={{ padding: 8, fontSize: '0.8rem' }}>
+                            {(() => {
+                              if (declined) return <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
+                              let ev = selectedEvent;
+                              if (isConsolidatedMode) {
+                                const sid = (reg as SPRegistration & { _sectionId?: string })._sectionId;
+                                if (sid && sid !== '__parent') { const ch = consolidatedChildren.find(c => c.id === sid); if (ch) ev = ch; }
+                              }
+                              const dlRaw = ev?.lastDeregisterDate;
+                              if (!dlRaw || !reg.CancellationDate) return <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
+                              const isLate = new Date(reg.CancellationDate).getTime() > new Date(dlRaw).getTime();
+                              return isLate
+                                ? <span title={`${isDe ? 'Abmeldefrist war' : 'Deadline was'}: ${formatDate(dlRaw)}`} style={{ fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px', borderRadius: 999, background: 'rgba(237,139,0,0.15)', color: 'var(--dex-orange-dark, #b35a00)' }}>{isDe ? 'Nach Frist' : 'After deadline'}</span>
+                                : <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
+                            })()}
+                          </td>
                           {hasWaitlistActivity && (
                             <td style={{ padding: 8, color: greyText, fontSize: '0.8rem' }}>
                               {(() => {
