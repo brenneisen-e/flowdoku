@@ -508,6 +508,10 @@ interface EventContextType {
    *  DEX_EmailTemplates. Überschreibt die aktuelle Subject/Heading/BodyHtml
    *  jedes Standard-Templates mit den Default-Werten aus dem Code. */
   reseedDefaultEmailTemplates: () => Promise<ReseedSummary>;
+  /** v24.98: Globaler Mail-Vorlagen-Editor — alle Templates lesen + einzelne
+   *  Felder (Subject/Heading/Subheading/Farbe/Body) speichern. */
+  getAllEmailTemplates: () => Promise<Array<{ id: number; templateType: string; language: string; subject: string; headingColor: string; heading: string; subheading: string; bodyHtml: string }>>;
+  updateEmailTemplate: (id: number, fields: { subject?: string; heading?: string; subheading?: string; headingColor?: string; bodyHtml?: string }) => Promise<boolean>;
   /** v11.52: Gecachte KPI-Werte (Events + Teilnehmer) aus _Config lesen —
    *  ein einziger schneller REST-Call, für Boot-Loader-Anzeige. */
   getKpiCache: () => Promise<{ participants: number; events: number } | null>;
@@ -4099,6 +4103,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return eventService.reseedDefaultEmailTemplates();
   }
 
+  async function getAllEmailTemplates(): Promise<Array<{ id: number; templateType: string; language: string; subject: string; headingColor: string; heading: string; subheading: string; bodyHtml: string }>> {
+    return eventService.getAllEmailTemplates();
+  }
+  async function updateEmailTemplate(id: number, fields: { subject?: string; heading?: string; subheading?: string; headingColor?: string; bodyHtml?: string }): Promise<boolean> {
+    return eventService.updateEmailTemplate(id, fields);
+  }
+
   async function sendAdminInquiry(
     requesterName: string,
     requesterEmail: string,
@@ -4722,6 +4733,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         sendAdminInquiry,
         requestOrganizerRole, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,
+        getAllEmailTemplates,
+        updateEmailTemplate,
         sendOrganizerOnboarding,
         getKpiCache: () => eventService.getKpiCache(),
         updateKpiCache: (v) => eventService.updateKpiCache(v),

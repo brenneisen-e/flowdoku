@@ -865,7 +865,7 @@ export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
   // v14.11: zusätzlich `events` (alle Events inkl. Sub-Events) als `allEvents`
   // für die Parent-Lookup-Logik im konsolidierten View + im Sub-Event-Detail.
-  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead, registerForEvent, subscribeEventRealtime, reseedDefaultEmailTemplates, maybeSendWeeklyReport } = useEvents();
+  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead, registerForEvent, subscribeEventRealtime } = useEvents();
   // v24.38: läuft gerade ein „Zur Klammer hinzufügen" für diese E-Mail?
   const [addingToKlammer, setAddingToKlammer] = React.useState<string | null>(null);
   // v24.40: Modal „Assistenz zuordnen" — Person an eine gewählte Assistenz
@@ -894,11 +894,6 @@ export default function AdminPage(): React.ReactElement {
   const isDe = locale === 'de';
   // v20.4: App-Modals statt nativer Browser-Dialoge.
   const { confirmDialog, showAlert } = useDialog();
-  // v24.86: Re-seed + Wochenbericht-Test (aus den Settings hierher verschoben).
-  const [reseedBusy, setReseedBusy] = React.useState(false);
-  const [reseedResult, setReseedResult] = React.useState<string | null>(null);
-  const [weeklyBusy, setWeeklyBusy] = React.useState(false);
-  const [weeklyResult, setWeeklyResult] = React.useState<string | null>(null);
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
   const [registrations, setRegistrations] = React.useState<SPRegistration[]>([]);
   // v24.75: Echtzeit-Push auf die Teilnehmerliste des gewählten Events. Meldet
@@ -7390,68 +7385,10 @@ export default function AdminPage(): React.ReactElement {
               />
             )}
 
-            {/* v24.86: Default-Mail-Templates zurücksetzen — aus den Settings
-                hierher verschoben (Admin only, global). */}
-            {isAdmin && (
-              <ActionTile
-                icon={<Mail size={18} />}
-                category="mails"
-                title={reseedBusy ? (isDe ? 'Wird zurückgesetzt…' : 'Resetting…') : (isDe ? 'Default-Mail-Vorlagen zurücksetzen' : 'Reset default mail templates')}
-                desc={isDe
-                  ? 'Überschreibt alle Standard-Mail-Vorlagen (Anmeldung, Warteliste, Abmeldung, Nachrücken …) mit den eingebauten Texten aus dem aktuellen Stand der App. Nützlich nach App-Updates an den Standard-Texten. Achtung: eigene Anpassungen an den Standard-Vorlagen gehen dabei verloren.'
-                  : 'Overwrites all default mail templates with the built-in texts from the current app version. Useful after updates to the standard texts. Note: customizations to the standard templates are lost.'}
-                badge="admin"
-                busy={reseedBusy}
-                result={reseedResult}
-                resultIsError={!!reseedResult && (reseedResult.indexOf('Fehler') >= 0 || reseedResult.indexOf('Error') >= 0 || reseedResult.indexOf('fehlgeschlagen') >= 0 || reseedResult.indexOf('failed') >= 0)}
-                onClick={async () => {
-                  const msg = isDe
-                    ? 'Alle Standard-Mail-Vorlagen mit den eingebauten Texten überschreiben? Eigene Anpassungen an den Standard-Vorlagen gehen verloren.'
-                    : 'Overwrite all default mail templates with the built-in texts? Customizations to the standard templates will be lost.';
-                  if (!(await confirmDialog(msg, { danger: true, confirmLabel: isDe ? 'Überschreiben' : 'Overwrite' }))) return;
-                  setReseedBusy(true); setReseedResult(null);
-                  try {
-                    const res = await reseedDefaultEmailTemplates();
-                    setReseedResult(res.failed > 0
-                      ? (isDe ? `Mit Fehlern: ${res.failed} Vorlage(n) fehlgeschlagen.` : `With errors: ${res.failed} template(s) failed.`)
-                      : (isDe ? `Erledigt (${res.created} neu, ${res.updated} aktualisiert, ${res.skipped} unverändert).` : `Done (${res.created} created, ${res.updated} updated, ${res.skipped} unchanged).`));
-                  } catch {
-                    setReseedResult(isDe ? 'Fehler beim Zurücksetzen.' : 'Error while resetting.');
-                  } finally { setReseedBusy(false); }
-                }}
-              />
-            )}
-            {/* v24.86: Wochenbericht-Test — aus den Settings hierher verschoben. */}
-            {isAdmin && (
-              <ActionTile
-                icon={<Mail size={18} />}
-                category="maintenance"
-                title={weeklyBusy ? (isDe ? 'Wird gesendet…' : 'Sending…') : (isDe ? 'Wochenbericht jetzt senden' : 'Send weekly report now')}
-                desc={isDe
-                  ? 'Löst den wöchentlichen Admin-Bericht sofort aus (überspringt die 7-Tage-Sperre) und legt ihn für alle Admins in die Mail-Warteschlange. Nur zum Testen — der nächste reguläre Bericht zählt dann ab jetzt.'
-                  : 'Triggers the weekly admin report immediately (bypassing the 7-day lock) and queues it for all admins. For testing only.'}
-                badge="admin"
-                busy={weeklyBusy}
-                result={weeklyResult}
-                resultIsError={!!weeklyResult && (weeklyResult.indexOf('Fehler') >= 0 || weeklyResult.indexOf('Error') >= 0 || weeklyResult.indexOf('Keine') >= 0 || weeklyResult.indexOf('No ') >= 0 || weeklyResult.indexOf('fehlgeschlagen') >= 0 || weeklyResult.indexOf('failed') >= 0)}
-                onClick={async () => {
-                  const msg = isDe
-                    ? 'Den Wochenbericht JETZT (ohne 7-Tage-Sperre) an alle Admins versenden? Nur zum Testen — der nächste reguläre Bericht zählt ab jetzt.'
-                    : 'Send the weekly report NOW (bypassing the 7-day lock) to all admins? For testing only.';
-                  if (!(await confirmDialog(msg, { confirmLabel: isDe ? 'Jetzt senden' : 'Send now' }))) return;
-                  setWeeklyBusy(true); setWeeklyResult(null);
-                  try {
-                    const r = await maybeSendWeeklyReport({ force: true });
-                    setWeeklyResult(r.sent
-                      ? (isDe ? `In die Warteschlange gelegt — eine Mail an ${r.admins} Admin(s).` : `Queued — one mail to ${r.admins} admin(s).`)
-                      : r.reason === 'no-admins' ? (isDe ? 'Keine Admins gefunden.' : 'No admins found.')
-                      : (isDe ? 'Versand fehlgeschlagen.' : 'Sending failed.'));
-                  } catch {
-                    setWeeklyResult(isDe ? 'Unerwarteter Fehler.' : 'Unexpected error.');
-                  } finally { setWeeklyBusy(false); }
-                }}
-              />
-            )}
+            {/* v24.97: „Default-Mail-Vorlagen zurücksetzen" + „Wochenbericht
+                jetzt senden" sind GLOBALE Admin-Aktionen und liegen jetzt im
+                Admin-Hub (AdminHubPage, Sektion „E-Mails & Berichte") statt hier
+                im per-Event-Aktionsmenü. */}
 
             {/* 8. Spalten fixen — Admin only */}
             {isAdmin && (
@@ -9746,13 +9683,13 @@ export default function AdminPage(): React.ReactElement {
                   maxWidth: 180,
                   verticalAlign: 'top',
                   lineHeight: 1.3,
-                  // v17.10: Sticky-Header — beim Scrollen bleiben die
-                  // Spaltenüberschriften der Teilnehmer-Tabelle sichtbar.
-                  // v24.89: top = App-Header-Höhe, damit der Tabellenkopf UNTER
-                  // der (beim Scrollen fixierten) App-Kopfzeile pinnt statt
-                  // dahinter zu verschwinden.
+                  // v24.96: Echtes Sticky über einen EIGENEN Scroll-Container um
+                  // die Tabelle (renderTable wrappt die Tabelle in ein div mit
+                  // maxHeight + overflow:auto). `top: 0` klebt dann zuverlässig am
+                  // oberen Rand DIESES Containers — anders als CSS-sticky relativ
+                  // zum Fenster, das im SharePoint-Canvas verrutscht.
                   position: 'sticky',
-                  top: 'var(--dex-header-height, 64px)',
+                  top: 0,
                   background: '#fff',
                   zIndex: 5,
                   borderBottom: '2px solid var(--dex-gray-200)',
@@ -10420,6 +10357,11 @@ export default function AdminPage(): React.ReactElement {
                       kleinere zuerst. */}
                   {(() => {
                     const renderTable = (rows: SPRegistration[], indexOffset: number): React.ReactElement => (
+                      // v24.96: eigener Scroll-Container um die Tabelle → der
+                      // thead (position:sticky top:0) klebt zuverlässig an dessen
+                      // oberem Rand (CSS-sticky relativ zu DIESEM Container, nicht
+                      // zum Fenster — Letzteres ist im SP-Canvas unzuverlässig).
+                      <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                         <thead>
                           <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
@@ -10465,6 +10407,7 @@ export default function AdminPage(): React.ReactElement {
                           })}
                         </tbody>
                       </table>
+                      </div>
                     );
 
                     if (!isSplitCapacity || splitParticipantsView === 'merged') {
