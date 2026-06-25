@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.97.0 | 2026-06-25 | Feature | Die globalen Admin-Werkzeuge „Default-Mail-Vorlagen zurücksetzen" und „Wochenbericht jetzt senden" sind jetzt direkt im Admin-Bereich (Admin-Kachel) unter „E-Mails & Berichte" erreichbar — ohne erst ein einzelnes Event öffnen zu müssen. (Zuvor lagen sie im Aktionsmenü eines Events.) |
 | 24.96.0 | 2026-06-25 | Bugfix | Teilnehmer-Liste: Die Spaltenüberschrift bleibt jetzt zuverlässig sichtbar. Die Liste hat dafür einen eigenen Scroll-Bereich bekommen, in dem die Überschrift oben „klebt" — vorher verrutschte die angeheftete Überschrift mitten in die Tabelle und überdeckte Zeilen. |
 | 24.95.0 | 2026-06-25 | Bugfix | Abmeldung von der Warteliste: Der erklärende Zusatzsatz („Da du auf der Warteliste standst …") in der Bestätigung wurde wieder entfernt — die Meldung sagt jetzt schlicht, dass man von der Warteliste abgemeldet wurde. |
 | 24.94.0 | 2026-06-25 | Bugfix | Anmeldeformular: Beim „Registrieren (Warteliste)"-Button war der Abstand vor „(Warteliste)" zu groß (Doppel-Abstand). Jetzt ist es ein normaler Abstand. |

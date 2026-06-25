@@ -38,7 +38,7 @@ export default function AdminHubPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { isAdmin, originalIsAdmin, siteUrl } = useRoles();
   const listUrl = (name: string): string => `${siteUrl}/Lists/${name}`;
-  const { getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns } = useEvents();
+  const { getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns, reseedDefaultEmailTemplates, maybeSendWeeklyReport } = useEvents();
   const { locale } = useLanguage();
   const { confirmDialog, showAlert } = useDialog();
   const isDe = locale === 'de';
@@ -46,7 +46,7 @@ export default function AdminHubPage(): React.ReactElement {
 
   const [archTotal, setArchTotal] = React.useState(0);
   const [delTotal, setDelTotal] = React.useState(0);
-  const [busy, setBusy] = React.useState<'' | 'arch' | 'del' | 'fixcols'>('');
+  const [busy, setBusy] = React.useState<'' | 'arch' | 'del' | 'fixcols' | 'reseed' | 'weekly'>('');
   // v24.33: Fortschritt für das globale „Spalten fixen".
   const [fixProgress, setFixProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
   // Release-Notes: Volltext-Suche + Bereichs-Filter + Art-Filter.
@@ -132,6 +132,46 @@ export default function AdminHubPage(): React.ReactElement {
       showAlert(msg, { variant: r.errors ? 'error' : 'success' });
     } catch { showAlert(isDe ? 'Spalten-Prüfung fehlgeschlagen.' : 'Column check failed.', { variant: 'error' }); }
     finally { setBusy(''); setFixProgress(null); }
+  };
+
+  // v24.97: Globale Mail-Werkzeuge — aus dem per-Event-Aktionsmenü hierher
+  // verschoben (gehören als globale Admin-Aktion in den Admin-Hub).
+  const doReseed = async (): Promise<void> => {
+    if (busy) return;
+    if (!(await confirmDialog(
+      isDe
+        ? 'Alle Standard-Mail-Vorlagen mit den eingebauten Texten aus dem aktuellen Stand der App überschreiben? Eigene Anpassungen an den Standard-Vorlagen gehen dabei verloren.'
+        : 'Overwrite all default mail templates with the built-in texts from the current app version? Customizations to the standard templates will be lost.',
+      { danger: true, confirmLabel: isDe ? 'Überschreiben' : 'Overwrite' }))) return;
+    setBusy('reseed');
+    try {
+      const r = await reseedDefaultEmailTemplates();
+      showAlert(
+        r.failed > 0
+          ? (isDe ? `Mit Fehlern: ${r.failed} Vorlage(n) fehlgeschlagen.` : `With errors: ${r.failed} template(s) failed.`)
+          : (isDe ? `Erledigt: ${r.created} neu angelegt, ${r.updated} aktualisiert, ${r.skipped} unverändert.` : `Done: ${r.created} created, ${r.updated} updated, ${r.skipped} unchanged.`),
+        { variant: r.failed > 0 ? 'error' : 'success' });
+    } catch { showAlert(isDe ? 'Zurücksetzen fehlgeschlagen.' : 'Reset failed.', { variant: 'error' }); }
+    finally { setBusy(''); }
+  };
+
+  const doWeekly = async (): Promise<void> => {
+    if (busy) return;
+    if (!(await confirmDialog(
+      isDe
+        ? 'Den Wochenbericht JETZT (sofort, ohne 7-Tage-Sperre) an alle Admins versenden? Nutze das nur zum Testen — der nächste reguläre Bericht zählt dann ab jetzt.'
+        : 'Send the weekly report NOW (immediately, bypassing the 7-day lock) to all admins? Use this only for testing.',
+      { confirmLabel: isDe ? 'Jetzt senden' : 'Send now' }))) return;
+    setBusy('weekly');
+    try {
+      const r = await maybeSendWeeklyReport({ force: true });
+      showAlert(
+        r.sent
+          ? (isDe ? `In die Warteschlange gelegt — eine Mail an ${r.admins} Admin(s). Sie wird in Kürze versendet.` : `Queued — one mail to ${r.admins} admin(s). It will be sent shortly.`)
+          : (isDe ? 'Versand nicht möglich — keine Admins gefunden? Bitte Rollen prüfen.' : 'Sending not possible — no admins found? Please check the roles.'),
+        { variant: r.sent ? 'success' : 'error' });
+    } catch { showAlert(isDe ? 'Versand fehlgeschlagen.' : 'Sending failed.', { variant: 'error' }); }
+    finally { setBusy(''); }
   };
 
   const tools: Array<{ icon: React.ReactNode; title: string; desc: string; onClick: () => void }> = [
@@ -253,6 +293,39 @@ export default function AdminHubPage(): React.ReactElement {
           )}
           <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { void doFixAllColumns(); }}>
             {busy === 'fixcols' ? (isDe ? 'Wird geprüft…' : 'Checking…') : (isDe ? 'Jetzt alle prüfen' : 'Check all now')}
+          </button>
+        </div>
+      </div>
+
+      {/* v24.97: E-Mails & Berichte — globale Mail-Werkzeuge (Reseed + Wochenbericht) */}
+      <h2 style={{ fontSize: '1.15rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'E-Mails & Berichte' : 'Emails & reports'}</h2>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14, marginBottom: 28 }}>
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><Mail size={18} /></span>
+            <span style={{ fontWeight: 700 }}>{isDe ? 'Default-Mail-Vorlagen zurücksetzen' : 'Reset default mail templates'}</span>
+          </div>
+          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
+            {isDe
+              ? 'Überschreibt alle Standard-Mail-Vorlagen (Anmeldung, Warteliste, Abmeldung, Nachrücken …) mit den eingebauten Texten aus dem aktuellen Stand der App. Achtung: eigene Anpassungen an den Standard-Vorlagen gehen verloren.'
+              : 'Overwrites all default mail templates with the built-in texts from the current app version. Note: customizations to the standard templates are lost.'}
+          </p>
+          <button className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { void doReseed(); }}>
+            {busy === 'reseed' ? (isDe ? 'Wird zurückgesetzt…' : 'Resetting…') : (isDe ? 'Vorlagen zurücksetzen' : 'Reset templates')}
+          </button>
+        </div>
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><Mail size={18} /></span>
+            <span style={{ fontWeight: 700 }}>{isDe ? 'Wochenbericht jetzt senden' : 'Send weekly report now'}</span>
+          </div>
+          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
+            {isDe
+              ? 'Löst den wöchentlichen Admin-Bericht sofort aus (überspringt die 7-Tage-Sperre) und legt ihn für alle Admins in die Mail-Warteschlange. Nur zum Testen.'
+              : 'Triggers the weekly admin report immediately (bypassing the 7-day lock) and queues it for all admins. For testing only.'}
+          </p>
+          <button className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { void doWeekly(); }}>
+            {busy === 'weekly' ? (isDe ? 'Wird gesendet…' : 'Sending…') : (isDe ? 'Wochenbericht senden' : 'Send weekly report')}
           </button>
         </div>
       </div>
