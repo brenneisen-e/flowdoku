@@ -2941,46 +2941,19 @@ export default function RegistrationPage(): React.ReactElement {
                                   (async () => {
                                     const existing = await checkRegistrationByEmail(event.id, u.email).catch(() => null);
                                     const alreadyRegistered = !!existing && existing.Status !== 'Abgemeldet';
-                                    const locFilters = event.locationAudience || [];
-                                    const audFilters = (event.audienceFilter || [])
-                                      .map(s => s.trim())
-                                      .filter(s => s && s.toLowerCase() !== 'all' && s.toLowerCase() !== 'deall');
-                                    const hasAnyFilter = locFilters.length > 0 || audFilters.length > 0;
-                                    let notInAudience = false;
-                                    if (hasAnyFilter) {
-                                      const loc = (u.location || '').toLowerCase();
-                                      const uEmail = u.email.toLowerCase();
-                                      const locMatch = locFilters.length === 0 || locFilters.some(f => {
-                                        const fl = f.trim().toLowerCase();
-                                        if (fl === 'all') return true;
-                                        const norm = fl.replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ä/g, 'ae');
-                                        return loc.indexOf(fl) >= 0 || loc.indexOf(norm) >= 0;
-                                      });
-                                      const audMatch = audFilters.length === 0 || audFilters.some(f => {
-                                        const fl = f.trim().toLowerCase();
-                                        if (fl.indexOf('@') >= 0) return uEmail === fl;
-                                        if (fl.startsWith('de')) {
-                                          const city = fl.substring(2);
-                                          const norm = city.replace(/oe/g, 'ö').replace(/ue/g, 'ü').replace(/ae/g, 'ä');
-                                          return loc.indexOf(city) >= 0 || loc.indexOf(norm) >= 0;
-                                        }
-                                        return false;
-                                      });
-                                      const mode = event.filterMode || 'AND';
-                                      const hasLoc = locFilters.length > 0;
-                                      const hasAud = audFilters.length > 0;
-                                      let visible: boolean;
-                                      if (mode === 'OR') {
-                                        if (hasLoc && hasAud) visible = locMatch || audMatch;
-                                        else if (hasLoc) visible = locMatch;
-                                        else visible = audMatch;
-                                      } else {
-                                        if (hasLoc && hasAud) visible = locMatch && audMatch;
-                                        else if (hasLoc) visible = locMatch;
-                                        else visible = audMatch;
-                                      }
-                                      notInAudience = !visible;
-                                    }
+                                    // v24.92: Audience-Check über die KANONISCHE Sichtbarkeits-
+                                    // Logik (isEventVisibleForUser) statt einer Teil-Reimplementierung.
+                                    // Bugfix: Der alte Code prüfte nur rohe Filter-Einträge (E-Mail
+                                    // direkt / Standort-Code) und kannte KEINE Verteiler-/Gruppen-
+                                    // Mitgliedschaft — daher wurde JEDE über einen Verteiler sichtbare
+                                    // Person fälschlich als „nicht im Gästekreis" gemeldet. Die beim
+                                    // Event-Save aufgelösten Verteiler-Mitglieder stehen in
+                                    // event.audienceResolvedEmails und werden von isEventVisibleForUser
+                                    // berücksichtigt. Die Graph-Gruppen der Zielperson kennen wir nicht
+                                    // (leeres groupEmails) — die aufgelösten Mitglieder decken den
+                                    // DL-Fall aber ab.
+                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                    const notInAudience = !isEventVisibleForUser(event, u.email, (u as any).location || '', [], (u as any).jobTitle || '');
                                     setThirdPartyCheck({
                                       alreadyRegistered,
                                       notInAudience,

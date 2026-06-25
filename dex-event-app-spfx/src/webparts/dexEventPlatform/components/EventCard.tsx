@@ -6,6 +6,7 @@
  */
 
 import * as React from 'react';
+import * as ReactDOM from 'react-dom';
 import { useNavigation } from '../context/NavigationContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useRoles } from '../context/RoleContext';
@@ -13,6 +14,11 @@ import { useEvents } from '../context/EventContext';
 import { DeloitteEvent } from '../types';
 import { useCachedImage } from '../utils/imageCache';
 import { isRegistrationFullyClosed } from '../utils/eventFormat';
+import OrganizerList from './OrganizerList';
+// v24.91: Portal-Popover (Organizer-Kontakt im „Registration closed"-Overlay)
+// wird an document.body gerendert — daher mit `styles.dexApp` wrappen, damit
+// die gescopten CSS-Variablen greifen (analog Modal-Fix v24.65).
+import styles from './DexEventPlatform.module.scss';
 
 // Deutsches Datumsformat
 function formatDate(iso: string): string {
@@ -62,7 +68,8 @@ interface Props {
 
 export default function EventCard({ event, index, isRegistered, isWaitlisted, isOwnOrganizer }: Props): React.ReactElement {
   const { navigate } = useNavigation();
-  const { t } = useLanguage();
+  const { t, locale } = useLanguage();
+  const isDe = locale === 'de';
   const { canCreateEvents } = useRoles();
   const { childEventsOf } = useEvents();
   // v19.22: Event-Bild über den IndexedDB-Cache — beim zweiten App-Aufruf sofort
@@ -104,6 +111,24 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
   const showPreviewOverlay = notYetActive && !canCreateEvents && !isOwnOrganizer && !alreadySignedUp;
   const showOrganizerActiveBadge = notYetActive && (canCreateEvents || isOwnOrganizer);
   const blockClick = showDeadlineOverlay || showPreviewOverlay;
+
+  // v24.91: Organizer-Kontakt im „Registration closed"-Overlay — das Wort
+  // „Organizer" wird unterstrichen; Hover/Klick blendet die Kontaktkarte(n)
+  // der Veranstalter ein (Foto, E-Mail, Teams). Portal an document.body, weil
+  // die Karte overflow:hidden + Hover-transform hat (würde ein In-Card-
+  // Popover clippen).
+  const orgNames = (event.organizers || []).reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map(o => o.trim()).filter(Boolean);
+  const hiddenOrgEmails = (event.hideOrganizer && event.hideOrganizerIndividualOnly) ? (event.hiddenOrganizerEmails || []) : [];
+  const allOrgsHidden = !!event.hideOrganizer && !event.hideOrganizerIndividualOnly;
+  const hasOrgContacts = !allOrgsHidden && orgNames.length > 0;
+  const orgTriggerRef = React.useRef<HTMLSpanElement>(null);
+  const [orgOpen, setOrgOpen] = React.useState(false);
+  const [orgCoords, setOrgCoords] = React.useState<{ x: number; y: number } | null>(null);
+  const orgCloseTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelOrgClose = (): void => { if (orgCloseTimer.current) { clearTimeout(orgCloseTimer.current); orgCloseTimer.current = null; } };
+  const openOrg = (): void => { cancelOrgClose(); const r = orgTriggerRef.current?.getBoundingClientRect(); if (r) setOrgCoords({ x: r.left + r.width / 2, y: r.bottom + 6 }); setOrgOpen(true); };
+  const scheduleOrgClose = (): void => { cancelOrgClose(); orgCloseTimer.current = setTimeout(() => setOrgOpen(false), 220); };
+  React.useEffect(() => () => cancelOrgClose(), []);
 
   return (
     <div className="event-card" style={{ position: 'relative', cursor: blockClick ? 'not-allowed' : 'pointer', ...(event.isDemoShowcase ? { outline: '2px dashed var(--dex-blue, #0076a8)', outlineOffset: 2 } : {}) }} onClick={() => (!alreadySignedUp && !blockClick) ? navigate('registration', event.id) : undefined}>
@@ -171,12 +196,44 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
             {t('events.deadlinepassed')}
           </div>
           <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: '0.85rem', marginBottom: 4, maxWidth: 320, lineHeight: 1.4 }}>
-            {t('events.deadlinepassed.hint')}
+            {(() => {
+              const hint = t('events.deadlinepassed.hint');
+              if (!hasOrgContacts) return hint;
+              // Das Wort „Organizer"/„organizer" unterstrichen + hoverbar machen.
+              const segs = hint.split(/(organizer)/i);
+              return segs.map((seg, i) => /^organizer$/i.test(seg) ? (
+                <span
+                  key={i}
+                  ref={orgTriggerRef}
+                  onMouseEnter={openOrg}
+                  onMouseLeave={scheduleOrgClose}
+                  onClick={(e) => { e.stopPropagation(); if (orgOpen) setOrgOpen(false); else openOrg(); }}
+                  style={{ textDecoration: 'underline', textUnderlineOffset: 3, cursor: 'pointer', fontWeight: 700, color: '#fff' }}
+                >{seg}</span>
+              ) : <React.Fragment key={i}>{seg}</React.Fragment>);
+            })()}
           </div>
           <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', marginTop: 4 }}>
             {event.title}
           </div>
         </div>
+      )}
+      {/* v24.91: Organizer-Kontaktkarte (Portal an document.body, mit
+          styles.dexApp-Scope für die CSS-Variablen). */}
+      {orgOpen && orgCoords && hasOrgContacts && ReactDOM.createPortal(
+        <div
+          className={styles.dexApp}
+          onMouseEnter={openOrg}
+          onMouseLeave={scheduleOrgClose}
+          onClick={(e) => e.stopPropagation()}
+          style={{ position: 'fixed', top: orgCoords.y, left: orgCoords.x, transform: 'translateX(-50%)', zIndex: 11000, background: '#fff', borderRadius: 12, padding: 14, boxShadow: '0 10px 30px rgba(0,0,0,0.28)', border: '1px solid var(--dex-gray-200, #e1e1e1)', maxWidth: 360 }}
+        >
+          <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600, #666)', marginBottom: 8, textAlign: 'center' }}>
+            {isDe ? 'Bei Fragen wende dich gerne an:' : 'For questions, feel free to reach out to:'}
+          </div>
+          <OrganizerList names={orgNames} emails={event.organizerEmails} hiddenEmails={hiddenOrgEmails} display="card" size="sm" forceIsDe={isDe} />
+        </div>,
+        document.body
       )}
       {/* v23.14: Vorschau-Overlay für reguläre User — sichtbar, aber Anmeldung
           erst ab dem Aktivierungszeitpunkt (Anmeldeseite nicht öffenbar). */}
