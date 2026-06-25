@@ -943,6 +943,9 @@ export default function MyEventsPage(): React.ReactElement {
   // Anmelde-Success-Screen (persönliche Ansprache, Event-Bild, Organizer).
   const [cancelSuccess, setCancelSuccess] = React.useState<null | {
     title: string; imageUrl?: string; organizers: string[]; organizerEmails: string[];
+    // v24.94: War die abgemeldete Anmeldung auf der Warteliste? Dann wurde KEIN
+    // Platz frei und es rückt niemand nach — die Erfolgsmeldung muss das sagen.
+    wasWaitlisted?: boolean;
   }>(null);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editData, setEditData] = React.useState<Record<string, string>>({});
@@ -1324,6 +1327,7 @@ export default function MyEventsPage(): React.ReactElement {
           imageUrl: entry.event.imageUrl,
           organizers: entry.event.organizers || [],
           organizerEmails: entry.event.organizerEmails || [],
+          wasWaitlisted: entry.registration.Status === 'Warteliste',
         });
       }
     }
@@ -1440,9 +1444,13 @@ export default function MyEventsPage(): React.ReactElement {
                 : <>Hi{greet ? <> <strong>{greet}</strong></> : ''},</>}
             </p>
             <p style={{ margin: '0 0 10px' }}>
-              {isDe
-                ? <>du hast dich erfolgreich vom Event <strong>„{cancelSuccess.title}“</strong> abgemeldet. Dein Platz ist wieder frei{cancelSuccess.imageUrl ? '' : ''} — falls eine Warteliste besteht, rückt automatisch die nächste Person nach.</>
-                : <>you have successfully cancelled your registration for <strong>“{cancelSuccess.title}”</strong>. Your spot is free again — if there is a waitlist, the next person is promoted automatically.</>}
+              {cancelSuccess.wasWaitlisted
+                ? (isDe
+                  ? <>du hast dich erfolgreich von der <strong>Warteliste</strong> des Events <strong>„{cancelSuccess.title}“</strong> abgemeldet.</>
+                  : <>you have successfully removed yourself from the <strong>waitlist</strong> for <strong>“{cancelSuccess.title}”</strong>.</>)
+                : (isDe
+                  ? <>du hast dich erfolgreich vom Event <strong>„{cancelSuccess.title}“</strong> abgemeldet. Dein Platz ist wieder frei — falls eine Warteliste besteht, rückt automatisch die nächste Person nach.</>
+                  : <>you have successfully cancelled your registration for <strong>“{cancelSuccess.title}”</strong>. Your spot is free again — if there is a waitlist, the next person is promoted automatically.</>)}
             </p>
             <p style={{ margin: 0 }}>
               {isDe
