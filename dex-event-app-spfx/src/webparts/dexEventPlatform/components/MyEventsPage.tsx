@@ -1446,8 +1446,8 @@ export default function MyEventsPage(): React.ReactElement {
             <p style={{ margin: '0 0 10px' }}>
               {cancelSuccess.wasWaitlisted
                 ? (isDe
-                  ? <>du hast dich erfolgreich von der <strong>Warteliste</strong> des Events <strong>„{cancelSuccess.title}“</strong> abgemeldet. Da du auf der Warteliste standst, wird kein Platz frei und es rückt niemand nach.</>
-                  : <>you have successfully removed yourself from the <strong>waitlist</strong> for <strong>“{cancelSuccess.title}”</strong>. As you were on the waitlist, no spot is freed up and nobody is promoted.</>)
+                  ? <>du hast dich erfolgreich von der <strong>Warteliste</strong> des Events <strong>„{cancelSuccess.title}“</strong> abgemeldet.</>
+                  : <>you have successfully removed yourself from the <strong>waitlist</strong> for <strong>“{cancelSuccess.title}”</strong>.</>)
                 : (isDe
                   ? <>du hast dich erfolgreich vom Event <strong>„{cancelSuccess.title}“</strong> abgemeldet. Dein Platz ist wieder frei — falls eine Warteliste besteht, rückt automatisch die nächste Person nach.</>
                   : <>you have successfully cancelled your registration for <strong>“{cancelSuccess.title}”</strong>. Your spot is free again — if there is a waitlist, the next person is promoted automatically.</>)}

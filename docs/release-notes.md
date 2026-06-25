@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 24.95.0 | 2026-06-25 | Bugfix | Abmeldung von der Warteliste: Der erklärende Zusatzsatz („Da du auf der Warteliste standst …") in der Bestätigung wurde wieder entfernt — die Meldung sagt jetzt schlicht, dass man von der Warteliste abgemeldet wurde. |
 | 24.94.0 | 2026-06-25 | Bugfix | Anmeldeformular: Beim „Registrieren (Warteliste)"-Button war der Abstand vor „(Warteliste)" zu groß (Doppel-Abstand). Jetzt ist es ein normaler Abstand. |
 | 24.94.0 | 2026-06-25 | Bugfix | Abmeldung von der Warteliste: Die Bestätigung sagte fälschlich „dein Platz ist frei, die nächste Person rückt nach" — das stimmt für Wartelisten-Plätze nicht. Jetzt steht dort korrekt, dass man von der Warteliste entfernt wurde und niemand nachrückt. |
 | 24.93.0 | 2026-06-25 | Bugfix | In der Abmeldungs-Liste „schwebte" die Spaltenüberschrift seit dem Sticky-Header-Update mitten in der Tabelle und verdeckte/zerschnitt Zeilen. Ursache: Diese Liste liegt in einem seitlich scrollbaren Bereich, in dem das „Mitlaufen" der Überschrift nicht korrekt funktioniert. Die Abmeldungs-Überschrift läuft jetzt wieder normal mit; die Spaltenüberschriften der Teilnehmer-Liste bleiben weiterhin sichtbar am oberen Rand. |
