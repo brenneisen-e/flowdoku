@@ -583,8 +583,8 @@ export function organizerOnboardingEmail(recipientName: string, role: 'Organizer
 
       <p style="margin-top:24px;"><strong>So legst du dein erstes Test-Event an:</strong></p>
       <ul>
-        <li>Öffne die App über den Link oben und klicke auf <strong>&bdquo;Event erstellen&ldquo;</strong>. Fülle Titel, Datum, Ort und Beschreibung aus &mdash; das reicht für einen ersten Probelauf.</li>
-        <li>Lade dich selbst (oder eine Testperson) auf der <strong>Registrierungsseite</strong> ein und prüfe im <strong>Admin Center</strong>, ob die Anmeldung sauber durchläuft und die Bestätigungsmail rauskommt.</li>
+        <li>Öffne die App über den Link oben und gehe auf die Kachel <strong>&bdquo;Organizer&ldquo;</strong> &mdash; dort findest du den Button <strong>&bdquo;Event erstellen&ldquo;</strong>. Fülle Titel, Datum, Ort und Beschreibung aus &mdash; das reicht für einen ersten Probelauf.</li>
+        <li>Mach einen Test: <strong>Melde dich selbst</strong> (oder eine Testperson) ganz normal über die <strong>Anmeldeseite</strong> des Events an &mdash; in DEX registrieren sich die Teilnehmer immer selbst, es gibt keine automatische Einladung. Prüfe danach im <strong>Organizer Center</strong>, ob die Anmeldung sauber durchläuft und die Bestätigungsmail rauskommt.</li>
         <li>Schau dir das <strong>Handbuch</strong> an, wenn du Custom-Felder, Wartelisten, Outlook-Termine oder den Massenmail-Versand ausprobieren möchtest &mdash; dort sind alle Funktionen mit Praxisbeispielen erklärt.</li>
       </ul>
 
