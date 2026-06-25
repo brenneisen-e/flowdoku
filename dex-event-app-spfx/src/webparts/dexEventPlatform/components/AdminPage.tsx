@@ -3973,16 +3973,29 @@ export default function AdminPage(): React.ReactElement {
     if (!eventServiceRef || !selectedEvent) return;
     setIsSendingQR(true); setQrSendResult(null); setQrSentCount(0);
     try {
-      const orgEmail = currentUser.email;
-      const orgFullName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || orgEmail;
-      const orgFirstName = currentUser.firstName || orgFullName.split(/\s+/)[0] || orgFullName;
-      const qrData = `DEX|${selectedEvent.eventNumber}|${orgEmail}`;
-      const qrImageHtml = await buildQrImageHtml(qrData);
-      const emailData = qrCodeEmail(orgFirstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', orgFullName, liveOverride || getQrMailOverride(selectedEvent));
-      await eventServiceRef.queueEmail(emailData.subject, orgEmail, orgFullName, emailData.body, 'QRCode', selectedEvent.title, selectedEvent.id);
+      // v24.99: Test-Mail geht an ALLE Organisatoren des Events (vorher nur an
+      // den eingeloggten User). Fallback: wenn keine Organisatoren hinterlegt
+      // sind, an mich selbst. Jeder bekommt einen QR mit der EIGENEN Adresse.
+      const orgEmails = (selectedEvent.organizerEmails || []).map(e => (e || '').trim()).filter(Boolean);
+      const orgNames = selectedEvent.organizers || [];
+      const recipients = orgEmails.length > 0
+        ? orgEmails.map((em, i) => ({ email: em, rawName: orgNames[i] || em }))
+        : [{ email: currentUser.email, rawName: `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email }];
+      let sent = 0;
+      for (const r of recipients) {
+        const raw = (r.rawName || '').trim();
+        // Deloitte-Displayname „Nachname, Vorname" → „Vorname Nachname" + Vorname.
+        const fullName = raw.indexOf(',') >= 0 ? raw.split(',').reverse().map(s => s.trim()).join(' ') : (raw || r.email);
+        const firstName = raw.indexOf(',') >= 0 ? (raw.substring(raw.indexOf(',') + 1).trim().split(/\s+/)[0] || fullName) : (fullName.split(/\s+/)[0] || fullName);
+        const qrData = `DEX|${selectedEvent.eventNumber}|${r.email}`;
+        const qrImageHtml = await buildQrImageHtml(qrData);
+        const emailData = qrCodeEmail(firstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', fullName, liveOverride || getQrMailOverride(selectedEvent));
+        await eventServiceRef.queueEmail(emailData.subject, r.email, fullName, emailData.body, 'QRCode', selectedEvent.title, selectedEvent.id);
+        sent++; setQrSentCount(sent);
+      }
       setQrSendResult(isDe
-        ? `Test-Mail an ${orgEmail} verschickt — bitte in deinem Postfach prüfen.`
-        : `Test email sent to ${orgEmail} — please check your mailbox.`);
+        ? `Test-Mail an ${sent} Organisator${sent === 1 ? '' : 'en'} verschickt — bitte im Postfach prüfen.`
+        : `Test email sent to ${sent} organizer${sent === 1 ? '' : 's'} — please check the mailbox.`);
     } catch (err) {
       setQrSendResult((isDe ? 'Fehler beim Test-Versand: ' : 'Error during test send: ') + (err instanceof Error ? err.message : String(err)));
     }
@@ -11274,7 +11287,7 @@ export default function AdminPage(): React.ReactElement {
                       disabled={isSendingQR}
                       style={{ fontSize: '0.85rem', flex: 1, minWidth: 130 }}
                     >
-                      {isDe ? '2. Test an mich' : '2. Test to me'}
+                      {isDe ? '2. Test an Organisatoren' : '2. Test to organizers'}
                     </button>
                   </div>
                   <button
@@ -11291,6 +11304,14 @@ export default function AdminPage(): React.ReactElement {
                       return `3. Send QR ${n === 1 ? 'code' : 'codes'} to ${n} participant${n === 1 ? '' : 's'}`;
                     })()}
                   </button>
+                  {/* v24.100: Hinweis — Versand ist nicht in Echtzeit (jede Mail
+                      einzeln), bei großen Events kann es dauern. Kein Drama,
+                      nur zur Erwartung. */}
+                  <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-600)', background: 'var(--dex-gray-50, #fafafa)', border: '1px solid var(--dex-gray-200)', borderRadius: 6, padding: '7px 10px', lineHeight: 1.45 }}>
+                    {isDe
+                      ? <>Hinweis: Die Mails werden automatisch <strong>einzeln nacheinander</strong> verschickt. Bei großen Events (&gt; 100 Personen) kann der Versand daher schon mal <strong>über 10 Minuten</strong> dauern — das ist normal, keine Echtzeit-Übermittlung. Den QR-Code haben deine Teilnehmer ohnehin jederzeit <strong>live in der App</strong> unter &bdquo;Meine Events&ldquo;.</>
+                      : <>Note: The emails are sent automatically <strong>one by one</strong>. For large events (&gt; 100 people) sending can therefore take <strong>more than 10 minutes</strong> — this is normal, not a real-time delivery. Your participants always have their QR code <strong>live in the app</strong> under &bdquo;My Events&ldquo;.</>}
+                  </div>
                   {/* v22.18: Mail-Text pro Event anpassbar — QR-Block bleibt fix. */}
                   <button
                     type="button"
@@ -11444,7 +11465,7 @@ export default function AdminPage(): React.ReactElement {
               onClick={() => { qrTestSendAction({ subject: qrEditSubject, heading: qrEditHeading, subheading: qrEditSubheading, bodyHtml: qrEditBody }).catch(() => { /* */ }); }}
               style={{ fontSize: '0.82rem', width: '100%' }}
             >
-              {isDe ? 'Test an mich (aktueller Text)' : 'Test to me (current text)'}
+              {isDe ? 'Test an Organisatoren (aktueller Text)' : 'Test to organizers (current text)'}
             </button>
             <button
               type="button"
