@@ -9746,13 +9746,13 @@ export default function AdminPage(): React.ReactElement {
                   maxWidth: 180,
                   verticalAlign: 'top',
                   lineHeight: 1.3,
-                  // v17.10: Sticky-Header — beim Scrollen bleiben die
-                  // Spaltenüberschriften der Teilnehmer-Tabelle sichtbar.
-                  // v24.89: top = App-Header-Höhe, damit der Tabellenkopf UNTER
-                  // der (beim Scrollen fixierten) App-Kopfzeile pinnt statt
-                  // dahinter zu verschwinden.
+                  // v24.96: Echtes Sticky über einen EIGENEN Scroll-Container um
+                  // die Tabelle (renderTable wrappt die Tabelle in ein div mit
+                  // maxHeight + overflow:auto). `top: 0` klebt dann zuverlässig am
+                  // oberen Rand DIESES Containers — anders als CSS-sticky relativ
+                  // zum Fenster, das im SharePoint-Canvas verrutscht.
                   position: 'sticky',
-                  top: 'var(--dex-header-height, 64px)',
+                  top: 0,
                   background: '#fff',
                   zIndex: 5,
                   borderBottom: '2px solid var(--dex-gray-200)',
@@ -10420,6 +10420,11 @@ export default function AdminPage(): React.ReactElement {
                       kleinere zuerst. */}
                   {(() => {
                     const renderTable = (rows: SPRegistration[], indexOffset: number): React.ReactElement => (
+                      // v24.96: eigener Scroll-Container um die Tabelle → der
+                      // thead (position:sticky top:0) klebt zuverlässig an dessen
+                      // oberem Rand (CSS-sticky relativ zu DIESEM Container, nicht
+                      // zum Fenster — Letzteres ist im SP-Canvas unzuverlässig).
+                      <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                         <thead>
                           <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
@@ -10465,6 +10470,7 @@ export default function AdminPage(): React.ReactElement {
                           })}
                         </tbody>
                       </table>
+                      </div>
                     );
 
                     if (!isSplitCapacity || splitParticipantsView === 'merged') {

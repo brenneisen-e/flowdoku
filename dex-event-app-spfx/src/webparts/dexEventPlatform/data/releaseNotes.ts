@@ -44,6 +44,7 @@ export interface ReleaseNote {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '24.96.0', date: '2026-06-25', bereich: 'Organizer Center', type: 'Bugfix', text: 'Die Spaltenüberschrift der Teilnehmer-Liste bleibt jetzt zuverlässig sichtbar. Die Liste hat dafür einen eigenen Scroll-Bereich bekommen, in dem die Überschrift oben „klebt". Vorher (mit dem zuvor ergänzten Anheften) verrutschte die Überschrift mitten in die Tabelle und überdeckte Zeilen.' },
   { version: '24.95.0', date: '2026-06-25', bereich: 'Warteliste & IDs', type: 'Bugfix', text: 'Bei der Abmelde-Bestätigung von der Warteliste wurde der erklärende Zusatzsatz („Da du auf der Warteliste standst, wird kein Platz frei …") wieder entfernt — er war überflüssig. Die Meldung sagt jetzt nur noch, dass man erfolgreich von der Warteliste abgemeldet wurde.' },
   { version: '24.94.0', date: '2026-06-25', bereich: 'Anmeldung', type: 'Bugfix', text: 'Beim „Registrieren (Warteliste)"-Button im Anmeldeformular war der Abstand vor „(Warteliste)" zu groß (es sah wie ein doppeltes Leerzeichen aus). Jetzt ist es ein normaler Abstand.' },
   { version: '24.94.0', date: '2026-06-25', bereich: 'Warteliste & IDs', type: 'Bugfix', text: 'Wer sich von der Warteliste abmeldet, bekam fälschlich die Rückmeldung „dein Platz ist wieder frei — die nächste Person rückt nach". Auf der Warteliste hält man aber keinen Platz, daher rückt auch niemand nach. Die Bestätigung sagt jetzt korrekt, dass man von der Warteliste entfernt wurde und niemand nachrückt.' },
