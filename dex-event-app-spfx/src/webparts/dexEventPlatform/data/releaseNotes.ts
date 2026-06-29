@@ -44,6 +44,7 @@ export interface ReleaseNote {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '26.19.0', date: '2026-06-29', bereich: 'Verwaltung', type: 'Bugfix', text: 'Im Änderungsprotokoll (Audit-Log) wird beim Anlegen eines Events jetzt auch die eingegebene Beschreibung mitgespeichert (gekürzt), falls vorhanden. Bei Änderungen wurde sie bereits erfasst.' },
   { version: '26.18.0', date: '2026-06-29', bereich: 'Organizer Center', type: 'Feature', text: 'Im Organizer Center erscheint jetzt ein Warnhinweis, wenn es mehrere Events mit gleichem Namen am gleichen Tag gibt (vermutlich versehentlich doppelt angelegt). Pro Duplikat gibt es direkt einen „Diese Version löschen"-Knopf, um die alte/überflüssige Version zu entfernen.' },
   { version: '26.18.0', date: '2026-06-29', bereich: 'Allgemein', type: 'Bugfix', text: 'Beim Zurückgehen aus einem geöffneten Event zurück zur Event-Liste wird jetzt wieder nach oben gescrollt (vorher blieb die Ansicht weit unten stehen).' },
   { version: '26.17.0', date: '2026-06-29', bereich: 'Allgemein', type: 'Bugfix', text: 'Wenn das Bild eines Events ausgetauscht wurde, zeigte die App teils weiter das alte Bild (es lag im lokalen Bild-Zwischenspeicher des Browsers). Jetzt erkennt die App eine Änderung am Event und lädt das Bild frisch — das neue Bild erscheint sofort.' },

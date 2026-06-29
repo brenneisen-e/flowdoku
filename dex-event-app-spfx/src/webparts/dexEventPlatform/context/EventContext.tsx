@@ -1374,7 +1374,16 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         targetName: input.title,
         eventId: String(eventId),
         eventTitle: input.title,
-        details: { eventType: input.type, location: input.location, startDate: input.startDate, maxParticipants: input.maxParticipants },
+        // v26.19: Beschreibung mit ins Audit-Log aufnehmen (falls vorhanden) —
+        // als reiner Text gekürzt, damit der Eintrag lesbar bleibt. Bei
+        // EventUpdated wird sie ohnehin über den Feld-Diff erfasst.
+        details: (() => {
+          const descPlain = (input.description || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+          return {
+            eventType: input.type, location: input.location, startDate: input.startDate, maxParticipants: input.maxParticipants,
+            ...(descPlain ? { description: descPlain.length > 300 ? `${descPlain.slice(0, 300)}…` : descPlain } : {}),
+          };
+        })(),
       }).catch(() => { /* */ });
       // v11.53: KPI-Counter sofort hochzählen — nur für nicht-fictive Events
       // (Test-Events zählen nicht in der LandingPage-KPI).

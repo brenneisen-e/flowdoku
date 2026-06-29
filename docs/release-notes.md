@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 26.19.0 | 2026-06-29 | Bugfix | Im Änderungsprotokoll (Audit-Log) wird beim Anlegen eines Events jetzt auch die eingegebene Beschreibung mitgespeichert (gekürzt), falls vorhanden. Bei Änderungen wurde sie bereits erfasst. |
 | 26.18.0 | 2026-06-29 | Feature | Im Organizer Center erscheint jetzt ein Warnhinweis, wenn es mehrere Events mit gleichem Namen am gleichen Tag gibt (vermutlich versehentlich doppelt angelegt). Pro Duplikat gibt es direkt einen „Diese Version löschen"-Knopf, um die alte/überflüssige Version zu entfernen. |
 | 26.18.0 | 2026-06-29 | Bugfix | Beim Zurückgehen aus einem geöffneten Event zurück zur Event-Liste wird jetzt wieder nach oben gescrollt (vorher blieb die Ansicht weit unten stehen). |
 | 26.17.0 | 2026-06-29 | Bugfix | Wenn das Bild eines Events ausgetauscht wurde, zeigte die App teils weiter das alte Bild (es lag im lokalen Bild-Zwischenspeicher des Browsers). Jetzt erkennt die App eine Änderung am Event und lädt das Bild frisch — das neue Bild erscheint sofort. |
