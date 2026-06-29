@@ -9,6 +9,12 @@
  */
 import * as React from 'react';
 import { Icon } from '@fluentui/react/lib/Icon';
+import { useRoles } from '../context/RoleContext';
+
+// v26.8: Modul-globaler Cache für lazy nachgeladene Profil-Infos (Position +
+// Standort) — analog zur Organizer-Hover-Karte auf der Anmeldeseite
+// (OrganizerList.tsx), damit dieselbe Person nicht mehrfach abgefragt wird.
+const profileCache = new Map<string, { jobTitle: string; location: string }>();
 
 function getInitials(name: string): string {
   const parts = (name || '').includes(',')
@@ -37,13 +43,23 @@ export interface PersonContactHoverProps {
 
 export function PersonContactHover(props: PersonContactHoverProps): React.ReactElement {
   const { email, name, size = 30, subline, isDe = true } = props;
+  const { searchUser } = useRoles();
   const [failed, setFailed] = React.useState(false);
   const [coords, setCoords] = React.useState<{ x: number; y: number; above: boolean } | null>(null);
   const [open, setOpen] = React.useState(false);
+  // v26.8: Wird keine subline übergeben, laden wir Position + Standort beim
+  // ersten Hover live nach (gleicher Mechanismus wie die Anmeldeseite).
+  const emailLc = (email || '').toLowerCase();
+  const [fetchedSub, setFetchedSub] = React.useState<string>(
+    emailLc && profileCache.has(emailLc)
+      ? [profileCache.get(emailLc)!.jobTitle, profileCache.get(emailLc)!.location].filter(Boolean).join(' · ')
+      : ''
+  );
   const wrapperRef = React.useRef<HTMLSpanElement>(null);
   const closeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const initials = getInitials(name);
   const popoverHeight = 200;
+  const effectiveSub = subline || fetchedSub || undefined;
 
   const cancelClose = (): void => { if (closeTimer.current) { clearTimeout(closeTimer.current); closeTimer.current = null; } };
   const scheduleClose = (): void => { cancelClose(); closeTimer.current = setTimeout(() => setOpen(false), 200); };
@@ -57,6 +73,16 @@ export function PersonContactHover(props: PersonContactHoverProps): React.ReactE
     const above = spaceBelow < popoverHeight + 16;
     setCoords({ x: r.left + r.width / 2, y: above ? r.top - 8 : r.bottom + 8, above });
     setOpen(true);
+    // Position + Standort lazy nachladen (nur wenn keine subline gesetzt ist).
+    if (!subline && !fetchedSub && emailLc) {
+      searchUser(email).then((res) => {
+        if (!res) return;
+        const entry = { jobTitle: res.jobTitle || '', location: res.location || '' };
+        profileCache.set(emailLc, entry);
+        const sub = [entry.jobTitle, entry.location].filter(Boolean).join(' · ');
+        if (sub) setFetchedSub(sub);
+      }).catch(() => { /* best-effort */ });
+    }
   };
 
   return (
@@ -94,7 +120,7 @@ export function PersonContactHover(props: PersonContactHoverProps): React.ReactE
               style={{ width: 96, height: 96, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-200)' }} />
           )}
           <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--dex-gray-800)', textAlign: 'center' }}>{name}</span>
-          {subline && <span style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', textAlign: 'center' }}>{subline}</span>}
+          {effectiveSub && <span style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', textAlign: 'center' }}>{effectiveSub}</span>}
           <a href={`mailto:${email}`}
             style={{ fontSize: '0.75rem', color: 'var(--dex-green, #86bc25)', textDecoration: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
