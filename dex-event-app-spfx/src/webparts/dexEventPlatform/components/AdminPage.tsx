@@ -7487,10 +7487,14 @@ export default function AdminPage(): React.ReactElement {
                     }
                     if (result.viewFixed) msgs.push(isDe ? 'View-Reihenfolge korrigiert' : 'View order fixed');
                     if (result.customFieldMap && Object.keys(result.customFieldMap).length > 0) {
+                      // v26.13 DATENVERLUST-FIX: aus den VOLLEN geparsten Feldern
+                      // bauen (helpText/showIf/EN-Varianten erhalten), nicht aus
+                      // dem gestrippten `customFields`. Sonst löscht „Spalten fixen"
+                      // alle Beschreibungen.
                       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      const updatedCf = (customFields as any[]).map(f => {
+                      const updatedCf = (selectedEvent.eventSpecificFields || []).map((f: any) => {
                         const sp = result.customFieldMap![f.id];
-                        return sp ? { ...f, spInternalName: sp } : f;
+                        return sp ? { ...f, spInternalName: sp } : { ...f };
                       });
                       try {
                         await updateEvent(selectedEvent.id, { 'CustomFields': JSON.stringify(updatedCf) });
@@ -7517,8 +7521,10 @@ export default function AdminPage(): React.ReactElement {
                         const childQuiz = !!(child.quiz && child.quiz.length > 0);
                         const cr = await eventServiceRef.fixRegistrationListColumns(child.subsiteUrl, { isB2Run: childB2, hasQuiz: childQuiz, customFields: childCf });
                         if (cr.customFieldMap && Object.keys(cr.customFieldMap).length > 0) {
+                          // v26.13 DATENVERLUST-FIX: volle Sub-Event-Felder erhalten
+                          // (helpText etc.), nicht aus dem gestrippten childCf bauen.
                           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                          const updCf = (childCf as any[]).map(f => { const sp = cr.customFieldMap![f.id]; return sp ? { ...f, spInternalName: sp } : f; });
+                          const updCf = (child.eventSpecificFields || []).map((f: any) => { const sp = cr.customFieldMap![f.id]; return sp ? { ...f, spInternalName: sp } : { ...f }; });
                           try { await updateEvent(child.id, { 'CustomFields': JSON.stringify(updCf) }); } catch { /* best-effort */ }
                         }
                         subFixed++;

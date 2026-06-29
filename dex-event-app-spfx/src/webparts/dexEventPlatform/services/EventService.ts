@@ -1047,6 +1047,24 @@ export class EventService {
     }
   }
 
+  /** v26.13: Versions-Historie der CustomFields-Spalte eines DEX_Events-Items
+   *  (neueste zuerst). Grundlage für die Wiederherstellung versehentlich
+   *  überschriebener Custom-Field-Beschreibungen (helpText etc.) aus der
+   *  SharePoint-Versionshistorie. */
+  public async getEventCustomFieldsVersions(itemId: number): Promise<Array<{ created: string; customFields: string }>> {
+    try {
+      const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${itemId})/versions?$select=Created,CustomFields&$orderby=Created desc&$top=400`;
+      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (items as any[]).map(v => ({ created: v.Created || '', customFields: typeof v.CustomFields === 'string' ? v.CustomFields : '' }));
+    } catch {
+      return [];
+    }
+  }
+
   // ==================== DEX_Outlook Liste ====================
 
   /**
