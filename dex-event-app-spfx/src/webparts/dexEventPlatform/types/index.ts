@@ -43,6 +43,10 @@ export interface DeloitteEvent {
   contactName?: string;
   contactEmail?: string;
   contactInfo?: string;
+  /** v26.18: E-Mail eines der Organizer, der als Hauptkontakt markiert ist —
+   *  wird auf der Anmeldeseite grün hervorgehoben (ersetzt die separate
+   *  Kontakt-Angabe). Leer = kein Organizer hervorgehoben. */
+  contactOrganizerEmail?: string;
   /** v9.21: Test-Team pro Event — Personen die diesen Event bereits im Entwurfs-
    *  Modus sehen + sich anmelden dürfen. Sie testen das Event durch, bevor der
    *  Organizer das "Entwurf"-Häkchen wegnimmt. Persistenz:
