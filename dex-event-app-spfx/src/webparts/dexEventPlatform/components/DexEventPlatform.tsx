@@ -151,7 +151,13 @@ function AppContent(): React.ReactElement {
     if (kpiRefreshedRef.current) return;
     kpiRefreshedRef.current = true;
     const SESSION_KEY = 'dex-kpi-cache-refreshed';
-    try { if (sessionStorage.getItem(SESSION_KEY) === '1') return; } catch { /* */ }
+    try {
+      if (sessionStorage.getItem(SESSION_KEY) === '1') {
+        // eslint-disable-next-line no-console
+        console.log('[DEX KPI] Gesamtwert wurde in dieser Browser-Session bereits neu berechnet — übersprungen (Cache ist aktuell).');
+        return;
+      }
+    } catch { /* */ }
     // Korrekter Gesamtwert über ALLE Events (inkl. abgelaufener/Completed; ohne
     // abgesagte + Entwürfe), Teilnehmer inkl. Sub-Events. Best-effort, läuft im
     // Hintergrund (sequentielle Subsite-Counts).
