@@ -30,6 +30,13 @@ export default function TicketsPage(): React.ReactElement {
 
   React.useEffect(() => { reloadTickets().catch(() => { /* */ }); }, [reloadTickets]);
 
+  // v26.7: Zeigt der Deep-Link auf ein bereits beantwortetes Ticket, die
+  // (sonst eingeklappte) „Beantwortet"-Sektion automatisch aufklappen.
+  React.useEffect(() => {
+    if (deepLinkId == null) return;
+    if (powerUserQueue.some(t => t.id === deepLinkId && t.status === 'Closed')) setClosedOpen(true);
+  }, [deepLinkId, powerUserQueue]);
+
   if (!canAnswerTickets && !isAdmin) {
     return (
       <div className="page-container">

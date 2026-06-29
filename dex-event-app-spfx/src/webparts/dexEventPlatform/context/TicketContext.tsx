@@ -61,6 +61,11 @@ interface TicketContextType {
   claimTicket: (ticketId: number) => Promise<void>;
   releaseTicket: (ticketId: number) => Promise<void>;
   answerTicket: (input: AnswerInput) => Promise<boolean>;
+  /** v26.8: Auf eine beantwortete Frage erneut antworten (Fragesteller → nur an
+   *  die/den Beantwortenden; Beantwortende → an den Fragesteller). */
+  replyToTicket: (ticket: DexTicket, text: string) => Promise<boolean>;
+  /** v26.8: Ticket schließen, ohne Antwort-Mail (z.B. Rückfrage = nur Danke). */
+  closeTicketNoAnswer: (ticketId: number) => Promise<void>;
   /** Tickets eines normalen Users zu einem konkreten Event (Audience=Organizer). */
   ticketsForEvent: (eventId: string) => DexTicket[];
   /** Anzahl noch offener (nicht geschlossener) User-Fragen zu einem Event. */
@@ -148,7 +153,17 @@ export function TicketProvider(props: { context: WebPartContext; children: React
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldLoadAll, eventService]);
 
-  const appBase = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`;
+  // v26.7: Deep-Link-Basis = die SEITE, auf der die App tatsächlich läuft
+  // (window.location), statt eines fest verdrahteten „/SitePages/DEX.aspx".
+  // Sonst landete der Link auf der Team-Site-Startseite statt in der App.
+  const appBase = (() => {
+    try {
+      if (typeof window !== 'undefined' && window.location && window.location.pathname) {
+        return `${window.location.origin}${window.location.pathname}?env=WebView`;
+      }
+    } catch { /* */ }
+    return `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`;
+  })();
 
   // ---- Mail-Bausteine -----------------------------------------------------
   const noReplyHintHtml = `<div style="margin-top:18px;padding:12px 14px;background:#fff3e0;border:1px solid #ed8b00;border-radius:6px;color:#8a4b00;font-size:13px;">
@@ -195,6 +210,8 @@ export function TicketProvider(props: { context: WebPartContext; children: React
       askerEmail: currentUser.email || '',
       askerName: `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || (currentUser.email || ''),
       askerRole,
+      askerLocation: currentUser.location || '',
+      askerJobTitle: currentUser.jobTitle || '',
       audience, eventId, eventTitle, assignedOrganizers, pageContext,
     });
     if (id == null) return false;
@@ -283,6 +300,8 @@ export function TicketProvider(props: { context: WebPartContext; children: React
       wizardStep: input.wizardStep,
       answeredByEmail: currentUser.email || '',
       answeredByName,
+      answeredByLocation: currentUser.location || '',
+      answeredByJobTitle: currentUser.jobTitle || '',
     });
     if (!ok) return false;
     for (const f of (input.screenshots || [])) {
@@ -312,7 +331,8 @@ export function TicketProvider(props: { context: WebPartContext; children: React
         <div style="margin:6px 0 0;white-space:pre-wrap;">${esc(input.answerText || '').replace(/\n/g, '<br>')}</div>
         ${articleHtml}
         ${wizardHtml}
-        <p style="margin:20px 0 0;color:#666;font-size:13px;">Du findest diese Antwort jederzeit in der App über den grünen Button <strong>&bdquo;Hast du Fragen?&ldquo;</strong> (oben rechts) unter <strong>&bdquo;Deine Fragen&ldquo;</strong>. Falls noch etwas offen ist, stelle dort einfach eine neue Frage.</p>
+        ${ctaButton(`${appBase}&action=ask`, 'Antwort in der App ansehen')}
+        <p style="margin:18px 0 0;color:#666;font-size:13px;">Du findest diese Antwort jederzeit in der App über den grünen Button <strong>&bdquo;Hast du Fragen?&ldquo;</strong> (oben rechts) unter <strong>&bdquo;Deine Fragen&ldquo;</strong>. Falls noch etwas offen ist, stelle dort einfach eine neue Frage.</p>
         ${noReplyHintHtml}
       `;
       const body = wrapTemplate(GREEN, 'Deine Frage wurde beantwortet', t.eventTitle || 'DEX-Support', inner);
@@ -330,6 +350,83 @@ export function TicketProvider(props: { context: WebPartContext; children: React
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventService, currentUser, appBase]);
 
+  // v26.8: Auf eine bereits beantwortete Frage erneut antworten (Rückfrage).
+  //  - Fragesteller → die Frage wird wieder geöffnet UND geht NUR an die Person,
+  //    die geantwortet hat (nicht an alle Power-User/Organizer).
+  //  - Beantwortende → Folge-Antwort, Ticket wird wieder geschlossen, Mail an
+  //    den Fragesteller.
+  const replyToTicket = React.useCallback(async (ticket: DexTicket, text: string): Promise<boolean> => {
+    const msg = (text || '').trim();
+    if (!msg) return false;
+    const myName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || (currentUser.email || '');
+    const iAmAsker = (currentUser.email || '').toLowerCase() === (ticket.askerEmail || '').toLowerCase();
+    const role: 'asker' | 'answerer' = iAmAsker ? 'asker' : 'answerer';
+    const now = new Date().toISOString();
+    const newFollowUps = [...(ticket.followUps || []), { byEmail: currentUser.email || '', byName: myName, byRole: role, text: msg, at: now }];
+
+    let ok = false;
+    if (iAmAsker) {
+      // Wieder öffnen und der/dem ursprünglich Beantwortenden zuweisen.
+      ok = await eventService.setTicketFollowUps(ticket.id, newFollowUps, {
+        status: 'InProgress',
+        claimedByEmail: ticket.answeredByEmail || '',
+        claimedByName: ticket.answeredByName || '',
+        claimedAt: now,
+      });
+    } else {
+      ok = await eventService.setTicketFollowUps(ticket.id, newFollowUps, { status: 'Closed' });
+    }
+    if (!ok) return false;
+
+    // Ziel-Empfänger: Rückfrage des Fragestellers → NUR die/der Beantwortende;
+    // Folge-Antwort der/des Beantwortenden → der Fragesteller.
+    const toEmail = iAmAsker ? (ticket.answeredByEmail || '') : (ticket.askerEmail || '');
+    const toName = iAmAsker ? (ticket.answeredByName || ticket.answeredByEmail || '') : (ticket.askerName || ticket.askerEmail || '');
+    if (toEmail) {
+      const link = iAmAsker
+        ? (ticket.audience === 'PowerUser'
+            ? `${appBase}&action=tickets&id=${ticket.id}`
+            : `${appBase}&action=admin&event=${encodeURIComponent(ticket.eventId)}&ticket=${ticket.id}`)
+        : `${appBase}&action=ask`;
+      const heading = iAmAsker ? 'Rückfrage zu einer beantworteten Frage' : 'Neue Antwort auf deine Frage';
+      const introLine = iAmAsker
+        ? `<strong>${esc(myName)}</strong> hat auf deine Antwort im DEX-Ticketsystem reagiert${ticket.eventTitle ? ` (Event: <strong>${esc(ticket.eventTitle)}</strong>)` : ''}.`
+        : `Deine Frage im DEX-Ticketsystem wurde von <strong>${esc(myName)}</strong> ergänzt/beantwortet.`;
+      const ctaLabel = iAmAsker ? 'Rückfrage öffnen & beantworten' : 'Antwort in der App ansehen';
+      const inner = `
+        <p style="margin:0 0 6px;">Hallo ${esc(firstNameOf(toName))},</p>
+        <p style="margin:0 0 16px;">${introLine}</p>
+        <p style="margin:0;"><strong>Nachricht:</strong></p>
+        <div style="margin:6px 0 0;white-space:pre-wrap;">${esc(msg).replace(/\n/g, '<br>')}</div>
+        ${ctaButton(link, ctaLabel)}
+        ${noReplyHintHtml}
+      `;
+      const body = wrapTemplate(GREEN, heading, ticket.eventTitle || 'DEX-Support', inner);
+      try {
+        await eventService.queueEmail(
+          iAmAsker ? 'Rückfrage im DEX-Ticketsystem' : 'Neue Antwort im DEX-Ticketsystem',
+          toEmail, toName, body,
+          iAmAsker ? 'TicketFollowUp' : 'TicketAnswered',
+          ticket.eventTitle || 'DEX-Ticket', ticket.eventId || '0'
+        );
+      } catch { /* Mail best-effort */ }
+    }
+
+    reloadMyTickets().catch(() => { /* */ });
+    if (shouldLoadAll) reloadTickets().catch(() => { /* */ });
+    return true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventService, currentUser, appBase, shouldLoadAll]);
+
+  // v26.8: „Keine Antwort nötig" — Ticket schließen, ohne eine Antwort-Mail zu
+  // senden (z.B. wenn die Rückfrage nur ein Dankeschön war).
+  const closeTicketNoAnswer = React.useCallback(async (ticketId: number): Promise<void> => {
+    await eventService.closeTicketNoAnswer(ticketId);
+    await reloadTickets();
+    reloadMyTickets().catch(() => { /* */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventService]);
+
   const ticketsForEvent = React.useCallback((eventId: string): DexTicket[] => {
     if (!eventId) return [];
     return tickets.filter(t => t.eventId === eventId && t.audience === 'Organizer');
@@ -344,9 +441,10 @@ export function TicketProvider(props: { context: WebPartContext; children: React
   const value = React.useMemo<TicketContextType>(() => ({
     tickets, myTickets, isTicketsLoading, canAnswerTickets,
     reloadTickets, reloadMyTickets, createTicket, claimTicket, releaseTicket, answerTicket,
+    replyToTicket, closeTicketNoAnswer,
     ticketsForEvent, openCountForEvent, powerUserQueue,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [tickets, myTickets, isTicketsLoading, canAnswerTickets, powerUserQueue, ticketsForEvent, openCountForEvent, createTicket, answerTicket, reloadTickets, reloadMyTickets, claimTicket, releaseTicket]);
+  }), [tickets, myTickets, isTicketsLoading, canAnswerTickets, powerUserQueue, ticketsForEvent, openCountForEvent, createTicket, answerTicket, replyToTicket, closeTicketNoAnswer, reloadTickets, reloadMyTickets, claimTicket, releaseTicket]);
 
   return React.createElement(TicketContext.Provider, { value }, props.children);
 }

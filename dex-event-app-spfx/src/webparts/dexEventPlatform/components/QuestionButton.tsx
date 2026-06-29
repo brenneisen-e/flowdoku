@@ -22,6 +22,8 @@ import { useEvents } from '../context/EventContext';
 import { searchManual, openManualArticle, getManualSection, ManualArticle } from '../utils/manualSearch';
 import { captureScreen } from '../utils/screenshot';
 import { DexTicket } from '../types';
+import PersonContactHover from './PersonContactHover';
+import { renderTicketThread, contactSubline } from './tickets/ticketThread';
 
 interface ShotRef { file: File; url: string; }
 
@@ -46,6 +48,9 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [hitSection, setHitSection] = React.useState<any>(null);
   const [hitLoading, setHitLoading] = React.useState(false);
+  // v26.8: Rückfrage des Fragestellers auf eine Antwort (pro Ticket ein Entwurf).
+  const [replyDrafts, setReplyDrafts] = React.useState<Record<number, string>>({});
+  const [replyBusyId, setReplyBusyId] = React.useState<number | null>(null);
 
   // Live-Handbuch-Suche (debounced) auf den eingegebenen Fragetext.
   const queryText = questions.join(' ').trim();
@@ -69,6 +74,14 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
 
   // Object-URLs der Screenshots beim Unmount freigeben.
   React.useEffect(() => () => { shots.forEach((s) => { try { URL.revokeObjectURL(s.url); } catch { /* */ } }); }, [shots]);
+
+  // v26.7: Deep-Link aus der Antwort-Mail (?action=ask) öffnet das Modal direkt
+  // auf „Deine Fragen".
+  React.useEffect(() => {
+    const onOpen = (): void => { setTab('mine'); setOpen(true); };
+    window.addEventListener('dex-open-questions', onOpen);
+    return () => window.removeEventListener('dex-open-questions', onOpen);
+  }, []);
 
   if (!ticketCtx) return null;
 
@@ -135,6 +148,17 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
     getManualSection(id, isDe ? 'de' : 'en')
       .then((sec) => { setHitSection(sec); setHitLoading(false); })
       .catch(() => setHitLoading(false));
+  };
+
+  // v26.8: Der Fragesteller antwortet auf die Antwort — die Rückfrage geht NUR
+  // an die Person, die geantwortet hat (Routing in TicketContext.replyToTicket).
+  const sendReply = async (tk: DexTicket): Promise<void> => {
+    const txt = (replyDrafts[tk.id] || '').trim();
+    if (!txt || !ticketCtx) return;
+    setReplyBusyId(tk.id);
+    const ok = await ticketCtx.replyToTicket(tk, txt);
+    setReplyBusyId(null);
+    if (ok) setReplyDrafts((d) => ({ ...d, [tk.id]: '' }));
   };
 
   // ---- Status-Badge für „Deine Fragen" ----
@@ -322,10 +346,21 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
                   {tk.eventTitle && <span style={{ fontSize: 12, color: 'var(--dex-gray-400,#a0a0a0)' }}>{tk.eventTitle}</span>}
                 </div>
                 {tk.questions.map((q, i) => (<div key={i} style={{ fontSize: '0.88rem', marginBottom: 2 }}>• {q}</div>))}
-                {tk.status === 'Closed' && (
+                {!!tk.answeredAt && (
                   <div style={{ marginTop: 8, background: '#f1f7e8', borderRadius: 6, padding: '8px 10px' }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--dex-green-dark,#4a7c1f)', marginBottom: 3 }}>
-                      {isDe ? 'Antwort' : 'Answer'}{tk.answeredByName ? ` · ${tk.answeredByName}` : ''}
+                    {/* v26.8: Foto-Kontaktkarte der/des Beantwortenden (Hover → Teams-Chat). */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--dex-green-dark,#4a7c1f)' }}>{isDe ? 'Antwort' : 'Answer'}</span>
+                      {tk.answeredByEmail && (
+                        <PersonContactHover email={tk.answeredByEmail} name={tk.answeredByName || tk.answeredByEmail} size={26}
+                          subline={contactSubline(tk.answeredByJobTitle, tk.answeredByLocation)} isDe={isDe} />
+                      )}
+                      {tk.answeredByName && (
+                        <span style={{ fontSize: 12, color: 'var(--dex-gray-600,#666)' }}>
+                          {tk.answeredByName}
+                          {contactSubline(tk.answeredByJobTitle, tk.answeredByLocation) ? ` · ${contactSubline(tk.answeredByJobTitle, tk.answeredByLocation)}` : ''}
+                        </span>
+                      )}
                     </div>
                     {tk.answerText && <div style={{ fontSize: '0.85rem', whiteSpace: 'pre-wrap' }}>{tk.answerText}</div>}
                     {tk.answerArticleIds.length > 0 && (
@@ -344,6 +379,24 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
                         {isDe ? `Im Event-Wizard: Schritt ${tk.answerWizardStep}` : `In the event wizard: step ${tk.answerWizardStep}`}
                       </div>
                     )}
+                  </div>
+                )}
+                {/* v26.8: Rückfragen-Verlauf */}
+                {renderTicketThread(tk, isDe)}
+                {/* v26.8: Auf die Antwort erneut antworten — geht NUR an die Person,
+                    die geantwortet hat. */}
+                {!!tk.answeredAt && (
+                  <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <textarea value={replyDrafts[tk.id] || ''} onChange={(e) => setReplyDrafts((d) => ({ ...d, [tk.id]: e.target.value }))} rows={2}
+                      placeholder={isDe ? 'Auf die Antwort antworten …' : 'Reply to the answer …'}
+                      style={{ padding: '8px 10px', borderRadius: 8, border: '1px solid var(--dex-gray-300,#d1d1d1)', fontFamily: 'inherit', fontSize: '0.85rem', resize: 'vertical' }} />
+                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <button type="button" onClick={() => sendReply(tk)} disabled={replyBusyId === tk.id || !(replyDrafts[tk.id] || '').trim()}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--dex-green,#86bc25)', color: '#fff', border: 'none', borderRadius: 8, padding: '6px 14px', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', fontFamily: 'inherit', opacity: (replyBusyId === tk.id || !(replyDrafts[tk.id] || '').trim()) ? 0.6 : 1 }}>
+                        <Icon iconName="Send" style={{ fontSize: 13 }} />
+                        {replyBusyId === tk.id ? (isDe ? 'Wird gesendet …' : 'Sending …') : (isDe ? 'Antwort senden' : 'Send reply')}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>

@@ -210,31 +210,37 @@ export default function StartPage(): React.ReactElement {
         /* v26.2: jeder Cluster in einer EIGENEN Zeile (untereinander) → größere Kacheln. */
         .dex-cluster-grid {
           display: grid; grid-template-columns: 1fr;
-          gap: 24px; max-width: 660px; margin: 0 auto;
+          gap: 28px; max-width: 800px; margin: 0 auto;
         }
         .dex-cluster-title {
-          font-size: 0.82rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
-          color: var(--dex-gray-500); margin: 0 0 12px; padding-bottom: 7px;
+          font-size: 0.9rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
+          color: var(--dex-gray-500); margin: 0 0 14px; padding-bottom: 8px;
           border-bottom: 1px solid var(--dex-gray-200);
         }
-        /* v26.6: alle Kacheln GLEICH GROSS (fix 300px, quadratisch — wie die
-           Tickets-Kachel). Passen zwei nebeneinander, stehen sie in einer Zeile;
-           sonst brechen sie um, statt unterschiedlich zu schrumpfen. */
-        .dex-cluster-tiles { display: flex; flex-wrap: wrap; gap: 18px; align-items: stretch; }
+        /* v26.6: alle Kacheln GLEICH GROSS (quadratisch — wie die Tickets-Kachel).
+           v26.8: auf dem Desktop größer (380px) + größerer Text, damit nichts
+           untergeht. Passen zwei nebeneinander, stehen sie in einer Zeile; sonst
+           brechen sie um, statt unterschiedlich zu schrumpfen. */
+        .dex-cluster-tiles { display: flex; flex-wrap: wrap; gap: 22px; align-items: stretch; }
         .dex-cluster .start-card {
-          flex: 0 0 auto !important; width: 300px !important; max-width: 100% !important;
-          padding: 24px 16px !important; min-height: 0 !important; aspect-ratio: 1 / 1; gap: 8px !important;
+          flex: 0 0 auto !important; width: 380px !important; max-width: 100% !important;
+          padding: 32px 22px !important; min-height: 0 !important; aspect-ratio: 1 / 1; gap: 10px !important;
         }
         /* v26.5: echter KREIS hinter dem Icon — flex:0 0 auto + aspect-ratio
            verhindert, dass die Flex-Stauchung den Kreis zur Ellipse macht. */
-        .dex-cluster .start-card__icon { width: 84px !important; height: 84px !important; flex: 0 0 auto !important; aspect-ratio: 1 / 1 !important; border-radius: 50% !important; margin-bottom: 4px !important; }
-        .dex-cluster .start-card__icon svg { width: 44px !important; height: 44px !important; }
-        .dex-cluster .start-card h2 { font-size: 1.12rem !important; }
-        .dex-cluster .start-card p { font-size: 0.82rem !important; white-space: normal !important; }
+        .dex-cluster .start-card__icon { width: 104px !important; height: 104px !important; flex: 0 0 auto !important; aspect-ratio: 1 / 1 !important; border-radius: 50% !important; margin-bottom: 6px !important; }
+        .dex-cluster .start-card__icon svg { width: 54px !important; height: 54px !important; }
+        .dex-cluster .start-card h2 { font-size: 1.32rem !important; }
+        .dex-cluster .start-card p { font-size: 0.98rem !important; white-space: normal !important; }
+        @media (max-width: 820px) {
+          .dex-cluster-grid { max-width: 420px; }
+        }
         @media (max-width: 480px) {
-          .dex-cluster .start-card__icon { width: 60px !important; height: 60px !important; aspect-ratio: 1 / 1 !important; }
-          .dex-cluster .start-card__icon svg { width: 32px !important; height: 32px !important; }
-          .dex-cluster .start-card h2 { font-size: 0.98rem !important; }
+          .dex-cluster .start-card { width: 300px !important; padding: 24px 16px !important; }
+          .dex-cluster .start-card__icon { width: 72px !important; height: 72px !important; aspect-ratio: 1 / 1 !important; }
+          .dex-cluster .start-card__icon svg { width: 38px !important; height: 38px !important; }
+          .dex-cluster .start-card h2 { font-size: 1.1rem !important; }
+          .dex-cluster .start-card p { font-size: 0.9rem !important; }
         }
       `}</style>
       <div className="dex-cluster-grid">

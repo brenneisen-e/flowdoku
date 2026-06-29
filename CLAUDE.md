@@ -657,6 +657,30 @@ zwischen Event-Infos und KPI-Kacheln in `AdminPage.tsx`).
   beschrifteter Verweis + Direkt-Sprung in den Wizard umgesetzt (kein fragiles
   Offscreen-Rendering) plus optionales Antwort-Bild — robust ohne lokales Testen.
 
+**v26.8 — Foto-Kontaktkarten, Rückfragen, „keine Antwort nötig":**
+- **Neue `DEX_Tickets`-Felder** (`ensureTicketExtraFields()` zieht sie auf
+  Bestands-Listen nach, Sentinel `FollowUps`): `AskerLocation`/`AskerJobTitle`
+  (beim Create aus `currentUser`), `AnsweredByLocation`/`AnsweredByJobTitle`
+  (beim Answer), `FollowUps` (Note JSON, Rückfragen-Verlauf). Voll geplumbt in
+  `DexTicket` (+ `TicketFollowUp`-Typ), `createTicket`/`answerTicket`,
+  `_mapTicket`, `$select`.
+- **Foto-Kontaktkarte:** wiederverwendete `PersonContactHover` (Foto + Hover →
+  E-Mail/Teams-Chat, `subline` = Position · Standort). Antwort-Seite (`TicketCard`)
+  zeigt den **Fragesteller**, „Deine Fragen" (`QuestionButton`) zeigt die
+  **antwortende Person**. Gemeinsamer Renderer + Subline-Helfer in
+  `components/tickets/ticketThread.tsx`.
+- **Rückfrage:** `TicketContext.replyToTicket(ticket, text)` — Rollen-Erkennung
+  über `currentUser.email` vs. `askerEmail`. Fragesteller → Ticket reopened
+  (`InProgress`, dem ursprünglichen `answeredBy` zugewiesen), Mail **NUR** an
+  `answeredByEmail`. Beantwortende → Folge-Antwort, `Closed`, Mail an den
+  Fragesteller. Verlauf in `FollowUps` (`setTicketFollowUps`). Die erste Antwort
+  bleibt in `AnswerText`/`AnsweredBy*`; der Erst-Antwort-Composer (`TicketCard`)
+  erscheint nur, solange `!answeredAt`, danach eine schlanke Folge-Antwort-Box.
+- **„Keine Antwort nötig":** `closeTicketNoAnswer(id)` schließt das Ticket ohne
+  Antwort-Mail (z.B. Rückfrage = nur Danke).
+- **StartPage (v26.8):** Desktop-Kacheln + Text größer (380px, h2 1.32rem,
+  Icon-Kreis 104px); Handy bleibt kompakt (≤480px: 300px).
+
 ### SharePoint Site
 
 - Site URL: `https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform`

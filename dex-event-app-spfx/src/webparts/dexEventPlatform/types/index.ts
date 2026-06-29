@@ -518,6 +518,18 @@ export interface TicketAttachment {
   kind: 'ask' | 'ans' | 'other';
 }
 
+// v26.8: Rückfragen-Verlauf NACH der ersten Antwort. Der Fragesteller kann auf
+// die Antwort erneut antworten (geht nur an die Person, die geantwortet hat),
+// die Antwortende kann erneut antworten oder „keine Antwort nötig" klicken.
+export interface TicketFollowUp {
+  byEmail: string;
+  byName: string;
+  /** asker = Rückfrage des Fragestellers, answerer = Folge-Antwort der/des Beantwortenden. */
+  byRole: 'asker' | 'answerer';
+  text: string;
+  at: string;
+}
+
 export interface DexTicket {
   id: number;
   title: string;
@@ -527,6 +539,9 @@ export interface DexTicket {
   askerEmail: string;
   askerName: string;
   askerRole: UserRole;
+  /** v26.8: Standort + Position des Fragestellers (für Foto-Kontaktkarte). */
+  askerLocation: string;
+  askerJobTitle: string;
   audience: TicketAudience;
   /** Event-Kontext beim Stellen der Frage (leer = kein Event). */
   eventId: string;
@@ -542,6 +557,9 @@ export interface DexTicket {
   answerWizardStep: number | null;
   answeredByEmail: string;
   answeredByName: string;
+  /** v26.8: Standort + Position der/des Beantwortenden (für Foto-Kontaktkarte). */
+  answeredByLocation: string;
+  answeredByJobTitle: string;
   answeredAt: string;
   /** Wer das Ticket gerade bearbeitet (Echtzeit „in Bearbeitung"). */
   claimedByEmail: string;
@@ -549,4 +567,6 @@ export interface DexTicket {
   claimedAt: string;
   created: string;
   attachments: TicketAttachment[];
+  /** v26.8: Rückfragen-Verlauf nach der ersten Antwort. */
+  followUps: TicketFollowUp[];
 }
