@@ -1369,6 +1369,15 @@ export default function AdminPage(): React.ReactElement {
   const [qrEditSaving, setQrEditSaving] = React.useState(false);
   const [qrEditSampleBlock, setQrEditSampleBlock] = React.useState('');
   const [searchQuery, setSearchQuery] = React.useState('');
+  // v26.11: Sprung zur Person in der Teilnehmerliste (aus der „Konto inaktiv"-
+  // Hinweisbox) — filtert die Liste auf die Adresse und scrollt sie in den Blick.
+  const participantListRef = React.useRef<HTMLDivElement>(null);
+  const jumpToParticipant = (email: string): void => {
+    setSearchQuery(email);
+    window.setTimeout(() => {
+      try { participantListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch { /* */ }
+    }, 80);
+  };
   // v23.33: string statt fixer Union — erlaubt Sortierung nach Custom-Field-
   // Spalten (Keys „cf-…"/„cfp-…") und Job Title / Standort.
   const [sortColumn, setSortColumn] = React.useState<string>('id');
@@ -5887,7 +5896,22 @@ export default function AdminPage(): React.ReactElement {
               </div>
               <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.85rem', color: 'var(--dex-gray-800)' }}>
                 {items.map(it => (
-                  <li key={it.email}><strong>{it.name}</strong> <span style={{ color: 'var(--dex-gray-500)' }}>({it.email})</span></li>
+                  <li key={it.email} style={{ marginBottom: 4 }}>
+                    <strong>{it.name}</strong> <span style={{ color: 'var(--dex-gray-500)' }}>({it.email})</span>
+                    <button
+                      type="button"
+                      onClick={() => jumpToParticipant(it.email)}
+                      title={isDe ? 'In der Teilnehmerliste anzeigen' : 'Show in participant list'}
+                      style={{
+                        marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 4,
+                        background: 'transparent', border: '1px solid var(--dex-orange, #ed8b00)', color: 'var(--dex-orange-dark, #b35a00)',
+                        borderRadius: 6, padding: '1px 8px', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 600, fontFamily: 'inherit',
+                      }}
+                    >
+                      <Icon iconName="Search" style={{ fontSize: 11 }} />
+                      {isDe ? 'Zur Person springen' : 'Jump to person'}
+                    </button>
+                  </li>
                 ))}
               </ul>
             </div>
@@ -8569,7 +8593,7 @@ export default function AdminPage(): React.ReactElement {
       })()}
 
       {/* Teilnehmerliste */}
-      <div className="card" style={{ padding: 24 }}>
+      <div ref={participantListRef} className="card" style={{ padding: 24 }}>
         {/* v11.28: Suchfeld direkt neben dem „Teilnehmer (N)"-Header
             statt rechtsbündig — flüssiger Lese-Flow von links nach
             rechts, kein Sprung ueber die ganze Card-Breite mehr. */}
@@ -10182,16 +10206,35 @@ export default function AdminPage(): React.ReactElement {
                 }
                 if (id === 'action') {
                   const att = attachmentsByReg[reg.Id] || [];
+                  // v26.11: Ist das Event vorbei, geht es nur noch um die
+                  // Anwesenheits-Nachpflege — KEIN „Bearbeiten" mehr, sondern
+                  // No-Show / Einchecken / stille Abmeldung (ohne E-Mail).
+                  const eventOver = !!selectedEvent && isEventOver(selectedEvent);
+                  const doCheckIn = async (): Promise<void> => {
+                    if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                    await eventServiceRef.checkInParticipant(selectedEvent.subsiteUrl, reg.Id);
+                    const regs = await getAllRegistrations(selectedEvent.id);
+                    setRegistrations(regs);
+                  };
+                  const doCheckOut = async (): Promise<void> => {
+                    if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                    await eventServiceRef.checkOutParticipant(selectedEvent.subsiteUrl, reg.Id);
+                    const regs = await getAllRegistrations(selectedEvent.id);
+                    setRegistrations(regs);
+                  };
                   return (
                     <td key={id} style={{ padding: 8, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                      <button
-                        className="btn btn-secondary"
-                        style={{ fontSize: '0.75rem', padding: '4px 10px' }}
-                        title={isDe ? 'Teilnehmer-Daten bearbeiten' : 'Edit attendee data'}
-                        onClick={() => openEditModal(reg)}
-                      >
-                        <Pencil size={12} /> {isDe ? 'Bearbeiten' : 'Edit'}
-                      </button>
+                      {/* „Bearbeiten" nur, solange das Event noch nicht vorbei ist. */}
+                      {!eventOver && (
+                        <button
+                          className="btn btn-secondary"
+                          style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                          title={isDe ? 'Teilnehmer-Daten bearbeiten' : 'Edit attendee data'}
+                          onClick={() => openEditModal(reg)}
+                        >
+                          <Pencil size={12} /> {isDe ? 'Bearbeiten' : 'Edit'}
+                        </button>
+                      )}
                       {/* v11.0: Anhang-Button — wenn das Event den Teilnehmer-
                           Upload erlaubt ODER ein Dokument-Custom-Feld hat (v19.0).
                           Zeigt Counter wenn mind. eine Datei hochgeladen wurde. */}
@@ -10206,34 +10249,42 @@ export default function AdminPage(): React.ReactElement {
                           {att.length > 0 ? `${isDe ? 'Datei' : 'File'} (${att.length})` : (isDe ? 'Datei' : 'File')}
                         </button>
                       )}
-                      {reg.Status === 'Eingecheckt' ? (
-                        <button
-                          className="btn btn-secondary"
-                          style={{ fontSize: '0.75rem', padding: '4px 10px' }}
-                          onClick={async () => {
-                            if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                            await eventServiceRef.checkOutParticipant(selectedEvent.subsiteUrl, reg.Id);
-                            const regs = await getAllRegistrations(selectedEvent.id);
-                            setRegistrations(regs);
-                          }}
-                        >
-                          {isDe ? 'Auschecken' : 'Check out'}
-                        </button>
+                      {eventOver ? (
+                        <>
+                          {/* Nach dem Event: Anwesenheit explizit pflegen. */}
+                          <button
+                            className="btn btn-primary"
+                            style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                            disabled={reg.Status === 'Eingecheckt'}
+                            title={isDe ? 'Als anwesend markieren' : 'Mark as attended'}
+                            onClick={doCheckIn}
+                          >
+                            {isDe ? 'Einchecken' : 'Check in'}
+                          </button>
+                          <button
+                            className="btn btn-secondary"
+                            style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                            disabled={reg.Status !== 'Eingecheckt'}
+                            title={isDe ? 'Als nicht erschienen markieren' : 'Mark as no-show'}
+                            onClick={doCheckOut}
+                          >
+                            No-Show
+                          </button>
+                        </>
                       ) : (
-                        <button
-                          className="btn btn-primary"
-                          style={{ fontSize: '0.75rem', padding: '4px 10px' }}
-                          onClick={async () => {
-                            if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                            await eventServiceRef.checkInParticipant(selectedEvent.subsiteUrl, reg.Id);
-                            const regs = await getAllRegistrations(selectedEvent.id);
-                            setRegistrations(regs);
-                          }}
-                        >
-                          {isDe ? 'Einchecken' : 'Check in'}
-                        </button>
+                        reg.Status === 'Eingecheckt' ? (
+                          <button className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '4px 10px' }} onClick={doCheckOut}>
+                            {isDe ? 'Auschecken' : 'Check out'}
+                          </button>
+                        ) : (
+                          <button className="btn btn-primary" style={{ fontSize: '0.75rem', padding: '4px 10px' }} onClick={doCheckIn}>
+                            {isDe ? 'Einchecken' : 'Check in'}
+                          </button>
+                        )
                       )}
-                      {!orgPastLock && (
+                      {/* Abmelden: nach dem Event still & ohne E-Mail (v22.22) —
+                          deshalb auch für Organizer eigener Events freigegeben. */}
+                      {(eventOver || !orgPastLock) && (
                       <button
                         className="btn btn-secondary"
                         style={{ fontSize: '0.75rem', padding: '4px 10px', color: 'var(--dex-red, #c00)' }}
@@ -10246,8 +10297,7 @@ export default function AdminPage(): React.ReactElement {
                           // v22.22: Vergangenes Event → stille Abmeldung (keine
                           // Abmelde-Mail, keine Outlook-Absage, kein Nachrücken,
                           // kein ID-Reorder). Der Confirm sagt das explizit.
-                          const eventWasOver = isEventOver(selectedEvent);
-                          const confirmMsg = eventWasOver
+                          const confirmMsg = eventOver
                             ? (isDe
                               ? `${name} (${reg.ParticipantEmail}) wirklich abmelden?\n\nDas Event liegt in der Vergangenheit — die Abmeldung läuft still: Es gehen keine Abmelde-Mail und keine Outlook-Absage raus, und es rückt niemand von der Warteliste nach.`
                               : `Really cancel ${name} (${reg.ParticipantEmail})?\n\nThe event is in the past — the cancellation runs silently: no cancellation email, no Outlook removal, and nobody is promoted from the waitlist.`)
@@ -10256,7 +10306,7 @@ export default function AdminPage(): React.ReactElement {
                           await performStandardCancel(reg);
                         }}
                       >
-                        {isDe ? 'Abmelden' : 'Cancel'}
+                        {eventOver ? (isDe ? 'Abmelden (Ohne E-Mail)' : 'Cancel (no email)') : (isDe ? 'Abmelden' : 'Cancel')}
                       </button>
                       )}
                     </td>
