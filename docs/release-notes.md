@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 26.9.0 | 2026-06-29 | Bugfix | In der Kontaktkarte zu einer Person (Foto-Mouseover) werden jetzt auch Position und Standort angezeigt — genau wie auf der Anmeldeseite. Fehlten diese Angaben am Ticket (z. B. bei älteren Fragen), lädt die App sie beim Draufzeigen automatisch nach. |
 | 26.8.0 | 2026-06-29 | Feature | In der Ticket-Ansicht stehen jetzt zu jeder Frage Foto, Position und Standort des Fragestellers — mit Mouseover auf das Foto öffnet sich eine kleine Kontaktkarte mit Teams-Chat-Verknüpfung. Genauso wird beim Fragesteller unter „Deine Fragen" die antwortende Person mit Foto, Position und Standort angezeigt. |
 | 26.8.0 | 2026-06-29 | Feature | Der Fragesteller kann jetzt auf eine erhaltene Antwort direkt in der App antworten (Rückfrage). Diese Rückfrage geht ausschließlich an die Person, die geantwortet hat — nicht an das ganze Team. Die Frage wird dadurch wieder geöffnet und landet erneut bei dieser Person. Der gesamte Verlauf (Frage, Antwort, Rückfragen) ist auf beiden Seiten sichtbar. |
 | 26.8.0 | 2026-06-29 | Feature | Wer Fragen beantwortet, kann eine Rückfrage jetzt auch mit „Keine Antwort nötig" abschließen — praktisch, wenn die Rückfrage nur ein Dankeschön war. Es wird dann keine weitere Antwort-Mail verschickt. |
