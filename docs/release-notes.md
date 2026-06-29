@@ -8,6 +8,8 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 26.18.0 | 2026-06-29 | Feature | Im Organizer Center erscheint jetzt ein Warnhinweis, wenn es mehrere Events mit gleichem Namen am gleichen Tag gibt (vermutlich versehentlich doppelt angelegt). Pro Duplikat gibt es direkt einen „Diese Version löschen"-Knopf, um die alte/überflüssige Version zu entfernen. |
+| 26.18.0 | 2026-06-29 | Bugfix | Beim Zurückgehen aus einem geöffneten Event zurück zur Event-Liste wird jetzt wieder nach oben gescrollt (vorher blieb die Ansicht weit unten stehen). |
 | 26.17.0 | 2026-06-29 | Bugfix | Wenn das Bild eines Events ausgetauscht wurde, zeigte die App teils weiter das alte Bild (es lag im lokalen Bild-Zwischenspeicher des Browsers). Jetzt erkennt die App eine Änderung am Event und lädt das Bild frisch — das neue Bild erscheint sofort. |
 | 26.16.0 | 2026-06-29 | Bugfix | Auf der Anmeldeseite stehen die Eingabefelder im zweispaltigen Raster jetzt auf gleicher Höhe, auch wenn nur eines der nebeneinanderliegenden Felder eine Beschreibung hat (z. B. „Dressing" jetzt auf Höhe von „Gerichtauswahl"). |
 | 26.15.0 | 2026-06-29 | Bugfix | Die Wiederherstellung las bei stark bearbeiteten Events nur einen Teil der Versionshistorie (die Antwort wurde durch große mitgelesene Inhalte abgeschnitten) und meldete dadurch fälschlich „keine Beschreibungen vorhanden". Jetzt wird gezielt nur das benötigte Feld gelesen und die komplette Historie (auch mehrere hundert Versionen) durchsucht — die alten Beschreibungen werden wieder gefunden. |

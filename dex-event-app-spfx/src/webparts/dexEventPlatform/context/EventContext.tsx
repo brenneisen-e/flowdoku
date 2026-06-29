@@ -561,6 +561,7 @@ export interface CreateEventInput {
   contactName?: string;
   contactEmail?: string;
   contactInfo?: string;
+  contactOrganizerEmail?: string; // v26.18
   outlookEventId: string;
   outlookBody: string;
   agenda?: string; // JSON-Array mit Agenda-Einträgen

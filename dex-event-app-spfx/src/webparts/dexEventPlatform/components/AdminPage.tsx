@@ -896,6 +896,19 @@ export default function AdminPage(): React.ReactElement {
   // v20.4: App-Modals statt nativer Browser-Dialoge.
   const { confirmDialog, showAlert } = useDialog();
   const [selectedEvent, setSelectedEvent] = React.useState<DeloitteEvent | null>(null);
+  // v26.18: Beim Wechsel zwischen Event-Detail und Event-Liste (das ist ein
+  // interner State-Wechsel, KEINE Seiten-Navigation → der globale Scroll-Reset
+  // greift nicht) immer nach oben scrollen. Betrifft besonders „Zurück" aus der
+  // Detailansicht: vorher blieb die Liste weit unten gescrollt.
+  React.useEffect(() => {
+    const toTop = (el: Element | null): void => { if (el) { try { (el as HTMLElement).scrollTop = 0; } catch { /* */ } } };
+    try { window.scrollTo(0, 0); } catch { /* */ }
+    toTop(document.scrollingElement);
+    toTop(document.documentElement);
+    toTop(document.body);
+    ['[data-automation-id="contentScrollRegion"]', '.SPPageChrome-content', '#spPageCanvasContent', '[class*="contentScrollRegion"]']
+      .forEach(sel => { try { document.querySelectorAll(sel).forEach(toTop); } catch { /* */ } });
+  }, [selectedEvent?.id]);
   const [registrations, setRegistrations] = React.useState<SPRegistration[]>([]);
   // v24.75: Echtzeit-Push auf die Teilnehmerliste des gewählten Events. Meldet
   // sich jemand an/ab, kommt eine Push-Benachrichtigung → die Tabelle (und die
@@ -2852,6 +2865,24 @@ export default function AdminPage(): React.ReactElement {
   // keine Abmeldung/Löschung/Feld-Bearbeitung mehr (Archivierungsschutz; nur
   // No-Show über den Check-in bleibt). Admins behalten vollen Zugriff.
   const orgPastLock = !isAdmin && !!selectedEvent && isEventOver(selectedEvent);
+  // v26.18: Duplikat-Warnung — mehrere Top-Level-Events mit (fast) gleichem
+  // Namen am gleichen Tag deuten auf versehentlich mehrfach angelegte Versionen
+  // hin. Der Organizer bekommt im Event-Center einen Hinweis + Direkt-Löschen.
+  const duplicateEvents = React.useMemo<DeloitteEvent[]>(() => {
+    if (!selectedEvent) return [];
+    const norm = (s?: string): string => (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const dayKey = (d?: string): string => { if (!d) return ''; try { const dt = new Date(d); return `${dt.getFullYear()}-${dt.getMonth()}-${dt.getDate()}`; } catch { return ''; } };
+    const selTitle = norm(selectedEvent.title);
+    if (!selTitle) return [];
+    const selDay = dayKey(selectedEvent.startDate);
+    return (events || []).filter(e =>
+      e.id !== selectedEvent.id &&
+      !e.parentEventId &&
+      norm(e.title) === selTitle &&
+      // gleicher Tag (falls beide ein Datum haben) — sonst nur Namensgleichheit.
+      (!selDay || !dayKey(e.startDate) || dayKey(e.startDate) === selDay)
+    );
+  }, [events, selectedEvent]);
   const currentEventsRaw = isAdmin ? adminEvents.filter(e => !isPastEvent(e)) : adminEvents;
   const pastEventsRaw = isAdmin ? adminEvents.filter(isPastEvent) : [];
   const [showPastEvents, setShowPastEvents] = React.useState(false);
@@ -5918,6 +5949,52 @@ export default function AdminPage(): React.ReactElement {
           </div>
         );
       })()}
+
+      {/* v26.18: Duplikat-Warnung — gleicher Name + gleicher Tag = vermutlich
+          mehrfach angelegte Versionen. Hinweis + Direkt-Löschen der Alt-Versionen. */}
+      {duplicateEvents.length > 0 && (
+        <div style={{
+          display: 'flex', alignItems: 'flex-start', gap: 12,
+          padding: '14px 16px', marginBottom: 20,
+          background: '#fff3e0', border: '1px solid var(--dex-orange, #ed8b00)', borderRadius: 12,
+          color: 'var(--dex-gray-800)',
+        }}>
+          <AlertCircle size={20} />
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ fontWeight: 700, marginBottom: 4, color: 'var(--dex-orange-dark, #b35a00)' }}>
+              {isDe
+                ? `Achtung: ${duplicateEvents.length === 1 ? 'ein weiteres Event' : `${duplicateEvents.length} weitere Events`} mit gleichem Namen am gleichen Tag`
+                : `Heads up: ${duplicateEvents.length === 1 ? 'another event' : `${duplicateEvents.length} more events`} with the same name on the same day`}
+            </div>
+            <div style={{ fontSize: '0.84rem', color: 'var(--dex-gray-600)', lineHeight: 1.5, marginBottom: 8 }}>
+              {isDe
+                ? 'Sieht so aus, als wäre dieses Event versehentlich mehrfach angelegt worden. Bitte die nicht mehr benötigten (alten) Versionen löschen, damit Teilnehmer sich nicht auf der falschen Version anmelden.'
+                : 'It looks like this event was created more than once. Please delete the obsolete (old) versions so attendees do not register on the wrong one.'}
+            </div>
+            <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {duplicateEvents.map(dup => {
+                const dt = (() => { try { return dup.startDate ? new Date(dup.startDate).toLocaleString(isDe ? 'de-DE' : 'en-GB') : ''; } catch { return ''; } })();
+                const statusLabel = dup.isFictive ? (isDe ? 'Entwurf' : 'Draft') : (dup.status || '');
+                return (
+                  <li key={dup.id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.85rem' }}>
+                    <strong>{dup.title}</strong>
+                    {statusLabel && <span style={{ padding: '1px 8px', borderRadius: 10, background: 'rgba(0,0,0,0.06)', fontSize: 12 }}>{statusLabel}</span>}
+                    {dt && <span style={{ color: 'var(--dex-gray-500)' }}>{dt}</span>}
+                    <span style={{ color: 'var(--dex-gray-400)', fontSize: 12 }}>#{dup.eventNumber || dup.id}</span>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteEvent(dup)}
+                      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'transparent', border: '1px solid var(--dex-red, #c00)', color: 'var(--dex-red, #c00)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, fontFamily: 'inherit' }}
+                    >
+                      <Trash2 size={12} /> {isDe ? 'Diese Version löschen' : 'Delete this version'}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
+      )}
 
       {/* v12.7: Aktionen-Card aufgelöst — alle ActionTiles registrieren
           sich jetzt im ActionsRegistryProvider. Die Dropdown-Liste sitzt
