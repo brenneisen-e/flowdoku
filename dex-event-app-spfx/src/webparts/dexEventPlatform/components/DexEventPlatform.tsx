@@ -400,6 +400,12 @@ function AppContent(): React.ReactElement {
         // und öffnet das Ticket direkt zum Beantworten.
         didHandleDeepLink.current = true;
         navigate('tickets');
+      } else if (action === 'ask') {
+        // v26.7: Deep-Link aus der Antwort-Mail an den Fragesteller → App öffnen
+        // und das „Hast du Fragen?"-Fenster auf „Deine Fragen" zeigen.
+        didHandleDeepLink.current = true;
+        navigate('start');
+        try { window.setTimeout(() => { window.dispatchEvent(new CustomEvent('dex-open-questions')); }, 500); } catch { /* */ }
       }
     } catch { /* URL-Parsing fehlgeschlagen, ignorieren */ }
   }, [isEventsLoading, events]);

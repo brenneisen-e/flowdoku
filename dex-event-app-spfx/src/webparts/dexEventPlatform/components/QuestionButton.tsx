@@ -70,6 +70,14 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
   // Object-URLs der Screenshots beim Unmount freigeben.
   React.useEffect(() => () => { shots.forEach((s) => { try { URL.revokeObjectURL(s.url); } catch { /* */ } }); }, [shots]);
 
+  // v26.7: Deep-Link aus der Antwort-Mail (?action=ask) öffnet das Modal direkt
+  // auf „Deine Fragen".
+  React.useEffect(() => {
+    const onOpen = (): void => { setTab('mine'); setOpen(true); };
+    window.addEventListener('dex-open-questions', onOpen);
+    return () => window.removeEventListener('dex-open-questions', onOpen);
+  }, []);
+
   if (!ticketCtx) return null;
 
   const resetForm = (): void => {

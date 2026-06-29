@@ -148,7 +148,17 @@ export function TicketProvider(props: { context: WebPartContext; children: React
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shouldLoadAll, eventService]);
 
-  const appBase = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`;
+  // v26.7: Deep-Link-Basis = die SEITE, auf der die App tatsächlich läuft
+  // (window.location), statt eines fest verdrahteten „/SitePages/DEX.aspx".
+  // Sonst landete der Link auf der Team-Site-Startseite statt in der App.
+  const appBase = (() => {
+    try {
+      if (typeof window !== 'undefined' && window.location && window.location.pathname) {
+        return `${window.location.origin}${window.location.pathname}?env=WebView`;
+      }
+    } catch { /* */ }
+    return `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`;
+  })();
 
   // ---- Mail-Bausteine -----------------------------------------------------
   const noReplyHintHtml = `<div style="margin-top:18px;padding:12px 14px;background:#fff3e0;border:1px solid #ed8b00;border-radius:6px;color:#8a4b00;font-size:13px;">
@@ -312,7 +322,8 @@ export function TicketProvider(props: { context: WebPartContext; children: React
         <div style="margin:6px 0 0;white-space:pre-wrap;">${esc(input.answerText || '').replace(/\n/g, '<br>')}</div>
         ${articleHtml}
         ${wizardHtml}
-        <p style="margin:20px 0 0;color:#666;font-size:13px;">Du findest diese Antwort jederzeit in der App über den grünen Button <strong>&bdquo;Hast du Fragen?&ldquo;</strong> (oben rechts) unter <strong>&bdquo;Deine Fragen&ldquo;</strong>. Falls noch etwas offen ist, stelle dort einfach eine neue Frage.</p>
+        ${ctaButton(`${appBase}&action=ask`, 'Antwort in der App ansehen')}
+        <p style="margin:18px 0 0;color:#666;font-size:13px;">Du findest diese Antwort jederzeit in der App über den grünen Button <strong>&bdquo;Hast du Fragen?&ldquo;</strong> (oben rechts) unter <strong>&bdquo;Deine Fragen&ldquo;</strong>. Falls noch etwas offen ist, stelle dort einfach eine neue Frage.</p>
         ${noReplyHintHtml}
       `;
       const body = wrapTemplate(GREEN, 'Deine Frage wurde beantwortet', t.eventTitle || 'DEX-Support', inner);
