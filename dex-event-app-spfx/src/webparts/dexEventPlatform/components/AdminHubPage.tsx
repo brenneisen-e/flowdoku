@@ -50,6 +50,7 @@ export default function AdminHubPage(): React.ReactElement {
   // v24.33: Fortschritt für das globale „Spalten fixen".
   const [fixProgress, setFixProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
   const [restoreProgress, setRestoreProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
+  const [restorePreview, setRestorePreview] = React.useState<Array<{ eventId: string; eventTitle: string; fields: Array<{ label: string; props: string[] }> }> | null>(null);
   // Release-Notes: Volltext-Suche + Bereichs-Filter + Art-Filter.
   const [rnSearch, setRnSearch] = React.useState('');
   const [rnBereich, setRnBereich] = React.useState<string>('');
@@ -138,6 +139,24 @@ export default function AdminHubPage(): React.ReactElement {
   // v26.13: Wiederherstellung versehentlich gelöschter Custom-Field-
   // Eigenschaften (Beschreibungen, Bedingungen, Mehrfachauswahl, EN-Varianten …)
   // aus der SharePoint-Versionshistorie.
+  // v26.13: Trockenlauf — ermittelt OHNE zu schreiben, was wiederhergestellt würde.
+  const doPreviewDescriptions = async (): Promise<void> => {
+    if (busy) return;
+    setBusy('restoredesc');
+    setRestoreProgress({ done: 0, total: 0, label: '' });
+    setRestorePreview(null);
+    try {
+      const r = await restoreCustomFieldDescriptions((done, total, label) => setRestoreProgress({ done, total, label }), true);
+      setRestorePreview(r.details || []);
+      showAlert(
+        r.fieldsRestored > 0
+          ? (isDe ? `Vorschau: ${r.fieldsRestored} Feld-Eigenschaft(en) in ${r.eventsChanged} Event(s) könnten wiederhergestellt werden (${r.events} geprüft). Es wurde NICHTS verändert.` : `Preview: ${r.fieldsRestored} field propert(ies) in ${r.eventsChanged} event(s) could be restored (${r.events} checked). NOTHING was changed.`)
+          : (isDe ? `Vorschau: nichts wiederherzustellen (${r.events} Event(s) geprüft). Prüfe die Browser-Konsole (Filter „[DEX restore]") — dort steht pro Event, ob in der Versionshistorie überhaupt Beschreibungen vorhanden sind.` : `Preview: nothing to restore (${r.events} event(s) checked). Check the browser console (filter „[DEX restore]").`),
+        { variant: 'success' });
+    } catch { showAlert(isDe ? 'Vorschau fehlgeschlagen.' : 'Preview failed.', { variant: 'error' }); }
+    finally { setBusy(''); setRestoreProgress(null); }
+  };
+
   const doRestoreDescriptions = async (): Promise<void> => {
     if (busy) return;
     if (!(await confirmDialog(
@@ -345,9 +364,28 @@ export default function AdminHubPage(): React.ReactElement {
               </div>
             </div>
           )}
-          <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { void doRestoreDescriptions(); }}>
-            {busy === 'restoredesc' ? (isDe ? 'Wird wiederhergestellt…' : 'Restoring…') : (isDe ? 'Jetzt wiederherstellen' : 'Restore now')}
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '8px 12px', flex: 1 }} disabled={busy !== ''} onClick={() => { void doPreviewDescriptions(); }}>
+              {isDe ? 'Vorschau (Trockenlauf)' : 'Preview (dry run)'}
+            </button>
+            <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 12px', flex: 1 }} disabled={busy !== ''} onClick={() => { void doRestoreDescriptions(); }}>
+              {busy === 'restoredesc' ? (isDe ? 'Läuft…' : 'Running…') : (isDe ? 'Wiederherstellen' : 'Restore')}
+            </button>
+          </div>
+          {restorePreview && (
+            <div style={{ marginTop: 10, maxHeight: 220, overflowY: 'auto', fontSize: '0.78rem', borderTop: '1px solid var(--dex-gray-100)', paddingTop: 8 }}>
+              {restorePreview.length === 0 ? (
+                <div style={{ color: 'var(--dex-gray-500)' }}>{isDe ? 'Keine wiederherstellbaren Eigenschaften gefunden.' : 'No restorable properties found.'}</div>
+              ) : restorePreview.map(ev => (
+                <div key={ev.eventId} style={{ marginBottom: 8 }}>
+                  <div style={{ fontWeight: 700, color: 'var(--dex-gray-800)' }}>{ev.eventTitle}</div>
+                  {ev.fields.map((f, i) => (
+                    <div key={i} style={{ color: 'var(--dex-gray-600)', paddingLeft: 8 }}>• {f.label}: {f.props.join(', ')}</div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
