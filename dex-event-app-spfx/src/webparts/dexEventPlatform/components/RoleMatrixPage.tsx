@@ -57,6 +57,7 @@ const CATEGORY_COLORS: Record<string, { bg: string; border: string; text: string
   'Registrierungen':        { bg: 'rgba(245,158,11,0.10)',  border: '#f59e0b', text: '#92400e' },
   'Teilnehmerverwaltung':   { bg: 'rgba(147,51,234,0.08)',  border: '#9333ea', text: '#6b21a8' },
   'Administration':         { bg: 'rgba(239,68,68,0.08)',   border: '#ef4444', text: '#991b1b' },
+  'Ticketsystem':           { bg: 'rgba(99,102,241,0.08)',  border: '#6366f1', text: '#3730a3' },
   'SharePoint':             { bg: 'rgba(107,114,128,0.10)', border: '#6b7280', text: '#374151' },
   'Profil':                 { bg: 'rgba(20,184,166,0.08)',  border: '#14b8a6', text: '#0f766e' },
 };
@@ -347,6 +348,17 @@ const PERMISSIONS: PermissionRow[] = [
   { category: 'Administration', feature: 'Globale E-Mail-Templates bearbeiten',
     description: 'Standard-Templates in DEX_EmailTemplates (gilt für alle Events ohne eigene Overrides) anpassen.',
     user: false, assistenz: false, coorganizer: false, testteam: false, checkin: false, organizer: false, admin: true },
+
+  // Ticketsystem (v26.0)
+  { category: 'Ticketsystem', feature: 'Frage stellen (Button „Hast du Fragen?")',
+    description: 'Jede/r eingeloggte User kann über den Button „Hast du Fragen?" ein Ticket mit einer Frage einreichen — z.B. bei Problemen mit der Anmeldung oder offenen Fragen zu einem Event. Das Ticket landet beim zuständigen Team und wird dort beantwortet. Eingeführt mit v26.0.',
+    user: true, assistenz: true, coorganizer: true, testteam: true, checkin: true, organizer: true, admin: true },
+  { category: 'Ticketsystem', feature: 'Tickets beantworten (Kachel „Tickets")',
+    description: 'Über die Startseiten-Kachel „Tickets" alle eingegangenen Fragen einsehen und beantworten. Zugang haben nur Admins sowie Power User (das sind Organizer oder Admins mit dem zusätzlichen Power-User-Status — siehe Hinweis oben). Ein normaler Organizer ohne Power-User-Status sieht die Kachel nicht. Eingeführt mit v26.0.',
+    user: false, assistenz: false, coorganizer: false, testteam: false, checkin: false, organizer: '★ Nur Power User', admin: true },
+  { category: 'Ticketsystem', feature: 'User-Fragen zum eigenen Event beantworten (Box „Offene Fragen (User)")',
+    description: 'In der Event-Übersicht (Organizer Center) sieht der Organizer eines Events eine Box „Offene Fragen (User)" mit allen Fragen, die Teilnehmer zu genau diesem Event gestellt haben, und kann sie direkt beantworten. So bleibt die Beantwortung event-bezogener Fragen beim verantwortlichen Organizer. Eingeführt mit v26.0.',
+    user: false, assistenz: false, coorganizer: 'Eigene Events ²', testteam: false, checkin: false, organizer: 'Eigene Events ²', admin: true },
 
   // SharePoint (Visitors = DEALL, Owners = Admins)
   { category: 'SharePoint', feature: 'DEX_Events: Lesen',

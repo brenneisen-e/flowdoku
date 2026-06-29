@@ -588,11 +588,7 @@ export function organizerOnboardingEmail(recipientName: string, role: 'Organizer
         <li>Schau dir das <strong>Handbuch</strong> an, wenn du Custom-Felder, Wartelisten, Outlook-Termine oder den Massenmail-Versand ausprobieren möchtest &mdash; dort sind alle Funktionen mit Praxisbeispielen erklärt.</li>
       </ul>
 
-      <p style="margin-top:24px;">Bei Fragen oder Problemen melde dich gerne direkt bei
-      <a href="mailto:ebrenneisen@deloitte.de" style="color:${GREEN};">ebrenneisen@deloitte.de</a>
-      oder
-      <a href="mailto:nifelten@deloitte.de" style="color:${GREEN};">nifelten@deloitte.de</a>
-      &mdash; wir helfen dir gerne weiter.</p>
+      <p style="margin-top:24px;"><strong>Du hast Fragen?</strong> Nutze dafür bitte das Ticketsystem direkt in der App: Oben rechts in der Kopfzeile findest du den grünen Button <strong>&bdquo;Hast du Fragen?&ldquo;</strong>. Ein Klick öffnet ein Fenster, in dem du deine Frage(n) stellst &mdash; auf Wunsch mit einem Screenshot deines Bildschirms. Schon beim Tippen schlägt dir die App passende Handbuch-Artikel vor. Deine Frage geht an das DEX-Team, das sich darum kümmert und dir in der App antwortet.</p>
 
       <p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein DEX-Team</strong></p>`
     ),

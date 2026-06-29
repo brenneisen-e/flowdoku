@@ -8,7 +8,7 @@
 
 import * as React from 'react';
 
-export type Page = 'landing' | 'start' | 'register' | 'registration' | 'my-events' | 'assistant' | 'create-event' | 'edit-event' | 'settings' | 'profile' | 'admin' | 'admin-hub' | 'role-matrix' | 'participants' | 'flowcharts' | 'check-in' | 'self-checkin-display' | 'help' | 'manual' | 'email-templates';
+export type Page = 'landing' | 'start' | 'register' | 'registration' | 'my-events' | 'assistant' | 'create-event' | 'edit-event' | 'settings' | 'profile' | 'admin' | 'admin-hub' | 'role-matrix' | 'participants' | 'flowcharts' | 'check-in' | 'self-checkin-display' | 'help' | 'manual' | 'email-templates' | 'tickets';
 
 // Optionale Absicht beim Navigieren (z.B. Registration-Seite direkt im "Für andere"-Modus oeffnen)
 export type NavIntent = 'register-other' | 'auto-cancel' | undefined;

@@ -6,13 +6,15 @@ import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { useCurrentUser } from '../context/UserContext';
 import { useLanguage } from '../context/LanguageContext';
-import { Calendar, Pin, Settings, QrCode, Star, Users } from './Icons';
+import { Calendar, Pin, Settings, QrCode, Star, Users, MessageSquare } from './Icons';
 import InquiryModal from './InquiryModal';
+import { useTickets } from '../context/TicketContext';
 
 export default function StartPage(): React.ReactElement {
   const { navigate } = useNavigation();
-  const { canCreateEvents, isAdmin } = useRoles();
+  const { canCreateEvents, isAdmin, isPowerUser } = useRoles();
   const { events, isEventsLoading, getMyProxyRegistrations } = useEvents();
+  const { powerUserQueue } = useTickets();
   const { currentUser } = useCurrentUser();
   const { t, locale } = useLanguage();
   // v12.5: Organizer-Kachel wird jetzt IMMER gerendert. Wer keine Organizer-
@@ -73,6 +75,11 @@ export default function StartPage(): React.ReactElement {
   // normalen User-Ansicht entspricht (vorher zeigte `|| originalIsAdmin` die
   // Kachel auch im Demo-Modus).
   const showAdminHubTile = isAdmin;
+
+  // v26: „Tickets"-Kachel — Power-User + Admins beantworten hier die Fragen aus
+  // dem Ticketsystem (Badge = Anzahl noch offener/in Bearbeitung befindlicher).
+  const showTicketsTile = isAdmin || isPowerUser;
+  const openTicketCount = powerUserQueue.filter(tk => tk.status !== 'Closed').length;
 
   // v24.36: „Assistenz"-Kachel — nur sichtbar, wenn der User STELLVERTRETEND
   // für eine andere Person angemeldet hat (also tatsächlich „Assistenz" ist),
@@ -170,7 +177,7 @@ export default function StartPage(): React.ReactElement {
            --with-checkin/--with-adminhub-Regeln (gleiche Spezifität)
            per Source-Order überschreibt. */
         ${(() => {
-          const n = 3 + (showCheckInTile ? 1 : 0) + (showAdminHubTile ? 1 : 0) + (showAssistTile ? 1 : 0);
+          const n = 3 + (showCheckInTile ? 1 : 0) + (showTicketsTile ? 1 : 0) + (showAdminHubTile ? 1 : 0) + (showAssistTile ? 1 : 0);
           const maxW = Math.min(1640, 250 * n + 90);
           return `.start-grid--dyncols { grid-template-columns: repeat(${n}, minmax(0, 1fr)) !important; max-width: ${maxW}px !important; }
         .start-grid--dyncols .start-card { width: 100%; }
@@ -259,6 +266,25 @@ export default function StartPage(): React.ReactElement {
                 ? 'Teilnehmer einchecken'
                 : 'Check in attendees'}
             </p>
+          </div>
+        )}
+        {/* v26: „Tickets"-Kachel — Power-User + Admins beantworten Fragen. */}
+        {showTicketsTile && (
+          <div className="card card-clickable start-card" onClick={() => navigate('tickets')} style={{ position: 'relative' }}>
+            <div className="start-card__icon">
+              <MessageSquare size={64} strokeWidth={1} />
+            </div>
+            <h2>{locale === 'de' ? 'Tickets' : 'Tickets'}</h2>
+            <p style={{ whiteSpace: 'nowrap' }}>
+              {locale === 'de' ? 'Fragen beantworten' : 'Answer questions'}
+            </p>
+            {openTicketCount > 0 && (
+              <span style={{
+                position: 'absolute', top: 12, right: 12, background: '#ed8b00', color: '#fff',
+                borderRadius: 12, minWidth: 24, height: 24, padding: '0 7px',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700,
+              }}>{openTicketCount}</span>
+            )}
           </div>
         )}
         {/* v24.36: „Assistenz"-Kachel — nur für User, die stellvertretend für

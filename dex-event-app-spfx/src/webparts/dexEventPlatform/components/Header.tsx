@@ -19,6 +19,7 @@ import { Icon } from '@fluentui/react/lib/Icon';
 import ImpersonateModal from './ImpersonateModal';
 import LandingInfoModal from './LandingInfoModal';
 import GlobalSearch from './GlobalSearch';
+import QuestionButton from './QuestionButton';
 import { useTutorial } from './tutorial/TutorialGuide';
 
 export default function Header(): React.ReactElement {
@@ -293,6 +294,9 @@ export default function Header(): React.ReactElement {
           Landing Page ausgeblendet, weil dort der Boot-/Logo-Look gilt. */}
       {!isLanding && <GlobalSearch />}
       <div className="header-right">
+        {/* v26: Grüner „Hast du Fragen?"-Button — Ticketsystem für alle User
+            (nicht auf der Landing Page). */}
+        {!isLanding && <QuestionButton isMobile={isMobile} />}
         {/* v9.29: Refresh-Button im Header — ersetzt die alten in-page
             Aktualisieren-Buttons in AdminPage. Nur auf Seiten anzeigen, auf
             denen ein Refresh sinnvoll ist (Admin Center, Event-Liste,

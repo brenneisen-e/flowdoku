@@ -1029,6 +1029,152 @@ function ArchiveDeleteFlow(): React.ReactElement {
   );
 }
 
+// v26.0: Ticketsystem — User/Organizer stellen Fragen, Power-User/Admins und
+// Organisator:innen beantworten sie. Bewusst anwenderfreundlich erklärt.
+function TicketSystemFlow(): React.ReactElement {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      <FlowNode
+        type="start"
+        label={'User oder Organizer klickt im Kopfbereich auf „Hast du Fragen?"'}
+        details={'Einstieg: Wer in der App nicht weiterkommt, klickt den grünen Button „Hast du Fragen?" oben im Kopfbereich. Es öffnet sich ein Fragen-Fenster — egal auf welcher Seite man gerade ist, Hilfe ist immer nur einen Klick entfernt.'}
+      />
+      <Arrow />
+      <FlowNode
+        type="process"
+        label="Fragen-Fenster ausfüllen"
+        details="Im Fenster schreibt die Person eine oder mehrere Fragen und kann optional einen Screenshot anhängen, damit klar ist, worum es geht. Während des Tippens werden automatisch passende Handbuch-Artikel als Vorschläge eingeblendet — oft beantwortet sich die Frage damit schon selbst, ohne dass jemand antworten muss."
+      />
+      <Arrow />
+      <FlowNode
+        type="decision"
+        label="Frage schon durch einen Handbuch-Vorschlag beantwortet?"
+        details="Die Selbsthilfe-Vorschläge sollen den schnellsten Weg bieten. Findet die Person die Antwort direkt im vorgeschlagenen Handbuch-Artikel, kann sie das Fenster einfach schließen — es entsteht kein Ticket und niemand muss antworten."
+      />
+      <BranchContainer>
+        <Branch label="Ja — selbst gelöst">
+          <FlowNode
+            type="end"
+            color="var(--dex-green)"
+            label="Fenster geschlossen, kein Ticket nötig"
+            details="Die Frage ist beantwortet, bevor sie überhaupt jemanden erreicht — die schnellste mögliche Hilfe."
+          />
+        </Branch>
+        <Branch label="Nein — absenden">
+          <FlowNode
+            type="subprocess"
+            label="Ticket wird angelegt"
+            details={'Beim Absenden wird die Frage als neues Ticket gespeichert (in der Liste DEX_Tickets). Festgehalten werden die Frage(n), der optionale Screenshot, wer gefragt hat, von welcher Seite bzw. zu welchem Event die Frage kam und der Status „Offen". Das Ticket ist damit nachvollziehbar dokumentiert — nichts geht verloren, anders als bei einer losen E-Mail.'}
+          />
+        </Branch>
+      </BranchContainer>
+      <Arrow />
+      <FlowNode
+        type="decision"
+        label="Wer hat gefragt — und worum geht es?"
+        details="Damit die Frage bei den richtigen Leuten landet, entscheidet das System anhand der Rolle und des Zusammenhangs, an wen das Ticket geht. So muss niemand raten, wer zuständig ist."
+      />
+      <BranchContainer>
+        <Branch label="Organizer- oder Admin-Frage">
+          <FlowNode
+            type="process"
+            color="#e3f2fd"
+            label="Routing an die Power-User (Admins in Kopie)"
+            details="Fragen von Organizer:innen oder Admins gehen an die Power-User — das sind die erfahrenen Ansprechpartner für die App. Die Admins stehen zusätzlich in Kopie, damit sie den Überblick behalten und bei Bedarf einspringen können."
+          />
+        </Branch>
+        <Branch label="User-Frage zu einem Event">
+          <FlowNode
+            type="process"
+            color="#fff3e0"
+            label="Routing an die Organisator:innen des Events"
+            details="Stellt ein Teilnehmer eine Frage zu einem konkreten Event, geht das Ticket direkt an die Organisator:innen genau dieses Events. Sie kennen die Details ihrer Veranstaltung am besten und können am schnellsten helfen."
+          />
+        </Branch>
+      </BranchContainer>
+      <Arrow />
+      <FlowNode
+        type="data"
+        label="Benachrichtigungs-Mail an die Beantwortenden"
+        details="Die zuständigen Personen bekommen eine Mail mit einem Direkt-Link, der das Ticket sofort in der App öffnet. Wichtig: In der Mail steht klar, dass man NICHT per Mail-Antwort reagieren soll — beantwortet wird ausschließlich in der App, damit alles an einem Ort und für das Team sichtbar bleibt."
+      />
+      <Arrow />
+      <FlowNode
+        type="decision"
+        label="Wo sehen die Beantwortenden das Ticket?"
+        details="Je nach Rolle erscheint das offene Ticket an einer anderen, passenden Stelle in der App — zusätzlich zum Mail-Link."
+      />
+      <BranchContainer>
+        <Branch label="Power-User / Admin">
+          <FlowNode
+            type="process"
+            color="#e3f2fd"
+            label={'Über die Kachel „Tickets"'}
+            details={'Power-User und Admins finden alle für sie zuständigen Fragen gebündelt in der Kachel „Tickets" — ihre zentrale Übersicht für eingehende Anfragen.'}
+          />
+        </Branch>
+        <Branch label="Organisator:in">
+          <FlowNode
+            type="process"
+            color="#fff3e0"
+            label={'Über die Box „Offene Fragen (User)" in der Event-Übersicht'}
+            details={'Organisator:innen sehen die Fragen ihrer Teilnehmer direkt in der Event-Übersicht in der Box „Offene Fragen (User)" — also genau dort, wo sie ihr Event ohnehin verwalten.'}
+          />
+        </Branch>
+      </BranchContainer>
+      <Arrow />
+      <FlowNode
+        type="process"
+        label={'„Übernehmen" — Status wird „In Bearbeitung"'}
+        details={'Klickt jemand auf „Übernehmen", wechselt der Status auf „In Bearbeitung". Dieser Wechsel ist für die anderen Beantwortenden nahezu in Echtzeit sichtbar (die Ansicht aktualisiert sich automatisch). So sieht jeder sofort, dass sich schon jemand kümmert — und zwei Leute bearbeiten nicht versehentlich dieselbe Frage doppelt.'}
+      />
+      <Arrow />
+      <FlowNode
+        type="decision"
+        label="Doch nicht zuständig oder keine Zeit?"
+        details="Wer ein Ticket übernommen hat, ist nicht für immer gebunden — es soll niemand liegen bleiben, nur weil die ursprünglich übernehmende Person verhindert ist."
+      />
+      <BranchContainer>
+        <Branch label="Wieder freigeben">
+          <FlowNode
+            type="process"
+            color="#fff8e1"
+            label={'Status zurück auf „Offen"'}
+            details={'Mit „Wieder freigeben" geht das Ticket zurück auf „Offen" und steht allen Zuständigen erneut zur Verfügung. So kann eine andere Person übernehmen, falls man selbst doch nicht helfen kann.'}
+          />
+        </Branch>
+        <Branch label="Antworten">
+          <FlowNode
+            type="subprocess"
+            color="#e8f5e9"
+            label="Antwort verfassen"
+            details={'Die beantwortende Person schreibt eine Antwort im Freitext und kann zusätzlich auf einen passenden Handbuch-Artikel verweisen, optional einen Schritt im Event-Wizard nennen und optional ein Bild anhängen. So bekommt der Fragesteller nicht nur eine Antwort, sondern auch den Weg, wie er es künftig selbst findet.'}
+          />
+        </Branch>
+      </BranchContainer>
+      <Arrow />
+      <FlowNode
+        type="data"
+        label={'Antwort-Mail an den Fragesteller + Status „Geschlossen"'}
+        details={'Sobald die Antwort abgeschickt ist, wird das Ticket auf „Geschlossen" gesetzt und der Fragesteller bekommt die Antwort per Mail. Die Frage ist damit erledigt und sauber dokumentiert.'}
+      />
+      <Arrow />
+      <FlowNode
+        type="data"
+        color="#f3e5f5"
+        label="Fragen & Antworten erscheinen im Wochenbericht an die Admins"
+        details="Damit die Admins den Überblick behalten, tauchen die Fragen samt Antworten automatisch im wöchentlichen Bericht auf. So erkennt das Team, wo oft Unterstützung gebraucht wird — und kann z.B. das Handbuch gezielt verbessern."
+      />
+      <Arrow />
+      <FlowNode
+        type="end"
+        label="Frage beantwortet, alles nachvollziehbar dokumentiert"
+        details="Der Fragesteller hat seine Antwort, das Team sieht den Verlauf und der Wochenbericht hält fest, was gefragt wurde. Kein verlorener Mail-Faden, keine doppelte Bearbeitung."
+      />
+    </div>
+  );
+}
+
 // ==================== Hauptkomponente ====================
 
 export default function FlowchartPage(): React.ReactElement {
@@ -1045,6 +1191,7 @@ export default function FlowchartPage(): React.ReactElement {
     { id: 'idmanual', label: 'IDs neu vergeben (Admin)', icon: '#' },
     { id: 'columnfix', label: 'Spalten fixen (Admin)', icon: '⚙' },
     { id: 'archive', label: 'Archivierung und Löschung', icon: '🗄' },
+    { id: 'tickets', label: 'Ticketsystem', icon: '?' },
   ];
 
   const renderFlow = (): React.ReactElement => {
@@ -1059,6 +1206,7 @@ export default function FlowchartPage(): React.ReactElement {
       case 'idmanual': return <IDReorderManualFlow />;
       case 'columnfix': return <ColumnFixFlow />;
       case 'archive': return <ArchiveDeleteFlow />;
+      case 'tickets': return <TicketSystemFlow />;
       default: return <RegistrationFlow />;
     }
   };
