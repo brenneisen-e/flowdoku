@@ -38,7 +38,7 @@ export default function AdminHubPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { isAdmin, originalIsAdmin, siteUrl } = useRoles();
   const listUrl = (name: string): string => `${siteUrl}/Lists/${name}`;
-  const { getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns, reseedDefaultEmailTemplates, maybeSendWeeklyReport } = useEvents();
+  const { getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns, restoreCustomFieldDescriptions, reseedDefaultEmailTemplates, maybeSendWeeklyReport } = useEvents();
   const { locale } = useLanguage();
   const { confirmDialog, showAlert } = useDialog();
   const isDe = locale === 'de';
@@ -46,9 +46,10 @@ export default function AdminHubPage(): React.ReactElement {
 
   const [archTotal, setArchTotal] = React.useState(0);
   const [delTotal, setDelTotal] = React.useState(0);
-  const [busy, setBusy] = React.useState<'' | 'arch' | 'del' | 'fixcols' | 'reseed' | 'weekly'>('');
+  const [busy, setBusy] = React.useState<'' | 'arch' | 'del' | 'fixcols' | 'restoredesc' | 'reseed' | 'weekly'>('');
   // v24.33: Fortschritt für das globale „Spalten fixen".
   const [fixProgress, setFixProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
+  const [restoreProgress, setRestoreProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
   // Release-Notes: Volltext-Suche + Bereichs-Filter + Art-Filter.
   const [rnSearch, setRnSearch] = React.useState('');
   const [rnBereich, setRnBereich] = React.useState<string>('');
@@ -132,6 +133,33 @@ export default function AdminHubPage(): React.ReactElement {
       showAlert(msg, { variant: r.errors ? 'error' : 'success' });
     } catch { showAlert(isDe ? 'Spalten-Prüfung fehlgeschlagen.' : 'Column check failed.', { variant: 'error' }); }
     finally { setBusy(''); setFixProgress(null); }
+  };
+
+  // v26.13: Wiederherstellung versehentlich gelöschter Custom-Field-
+  // Eigenschaften (Beschreibungen, Bedingungen, Mehrfachauswahl, EN-Varianten …)
+  // aus der SharePoint-Versionshistorie.
+  const doRestoreDescriptions = async (): Promise<void> => {
+    if (busy) return;
+    if (!(await confirmDialog(
+      isDe
+        ? 'Aus der Versionshistorie die zuvor gespeicherten Feld-Eigenschaften (Beschreibungen, Anzeige-Bedingungen, Mehrfachauswahl, Englisch-Varianten u.a.) für ALLE Events wiederherstellen? Es werden nur FEHLENDE Werte aufgefüllt — aktuelle Eingaben bleiben unangetastet.'
+        : 'Restore previously saved field properties (descriptions, display conditions, multi-select, English variants, etc.) for ALL events from the version history? Only MISSING values are filled in — current entries are left untouched.',
+      { confirmLabel: isDe ? 'Jetzt wiederherstellen' : 'Restore now' }
+    ))) return;
+    setBusy('restoredesc');
+    setRestoreProgress({ done: 0, total: 0, label: '' });
+    try {
+      const r = await restoreCustomFieldDescriptions((done, total, label) => setRestoreProgress({ done, total, label }));
+      const msg = r.fieldsRestored > 0
+        ? (isDe
+            ? `Fertig: ${r.fieldsRestored} Feld-Eigenschaft(en) in ${r.eventsChanged} Event(s) wiederhergestellt (${r.events} geprüft)${r.errors ? `, ${r.errors} mit Fehler` : ''}.`
+            : `Done: restored ${r.fieldsRestored} field propert(ies) in ${r.eventsChanged} event(s) (${r.events} checked)${r.errors ? `, ${r.errors} with errors` : ''}.`)
+        : (isDe
+            ? `Nichts wiederherzustellen — ${r.events} Event(s) geprüft, alle Eigenschaften aktuell vorhanden${r.errors ? ` (${r.errors} mit Fehler)` : ''}.`
+            : `Nothing to restore — ${r.events} event(s) checked, all properties present${r.errors ? ` (${r.errors} with errors)` : ''}.`);
+      showAlert(msg, { variant: r.errors ? 'error' : 'success' });
+    } catch { showAlert(isDe ? 'Wiederherstellung fehlgeschlagen.' : 'Restore failed.', { variant: 'error' }); }
+    finally { setBusy(''); setRestoreProgress(null); }
   };
 
   // v24.97: Globale Mail-Werkzeuge — aus dem per-Event-Aktionsmenü hierher
@@ -293,6 +321,32 @@ export default function AdminHubPage(): React.ReactElement {
           )}
           <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { void doFixAllColumns(); }}>
             {busy === 'fixcols' ? (isDe ? 'Wird geprüft…' : 'Checking…') : (isDe ? 'Jetzt alle prüfen' : 'Check all now')}
+          </button>
+        </div>
+
+        {/* v26.13: Feld-Eigenschaften aus der Versionshistorie wiederherstellen. */}
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><Settings size={18} /></span>
+            <span style={{ fontWeight: 700 }}>{isDe ? 'Feld-Beschreibungen wiederherstellen' : 'Restore field descriptions'}</span>
+          </div>
+          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
+            {isDe
+              ? 'Stellt versehentlich verlorene Eigenschaften der Abfrage-/Auswahlfelder (Beschreibungen, Anzeige-Bedingungen, Mehrfachauswahl, Englisch-Varianten u.a.) aus der SharePoint-Versionshistorie wieder her. Füllt nur FEHLENDE Werte auf — aktuelle Eingaben bleiben erhalten.'
+              : 'Restores accidentally lost properties of the form/selection fields (descriptions, display conditions, multi-select, English variants, etc.) from the SharePoint version history. Only fills in MISSING values — current entries are preserved.'}
+          </p>
+          {busy === 'restoredesc' && restoreProgress && (
+            <div style={{ margin: '0 0 10px' }}>
+              <div style={{ height: 8, background: 'var(--dex-gray-100)', borderRadius: 999, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${restoreProgress.total > 0 ? Math.round((restoreProgress.done / restoreProgress.total) * 100) : 0}%`, background: 'var(--dex-green, #86bc25)', transition: 'width 0.2s' }} />
+              </div>
+              <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {restoreProgress.done}/{restoreProgress.total}{restoreProgress.label ? ` · ${restoreProgress.label}` : ''}
+              </div>
+            </div>
+          )}
+          <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { void doRestoreDescriptions(); }}>
+            {busy === 'restoredesc' ? (isDe ? 'Wird wiederhergestellt…' : 'Restoring…') : (isDe ? 'Jetzt wiederherstellen' : 'Restore now')}
           </button>
         </div>
       </div>

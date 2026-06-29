@@ -459,6 +459,9 @@ interface EventContextType {
   runArchiveExpired: (onProgress?: (listIdx: number, listTotal: number, listName: string, done: number, total: number) => void, shouldCancel?: () => boolean) => Promise<{ archived: number; failed: number; cancelled: boolean; perList: Record<string, number> }>;
   /** v24.33: Globales „Spalten fixen" über ALLE Events inkl. Sub-Events + Company-Backfill bestehender Teilnehmer. */
   fixAllEventColumns: (onProgress?: (done: number, total: number, label: string) => void) => Promise<{ lists: number; columnsAdded: number; backfilled: number; errors: number; anyChange: boolean }>;
+  /** v26.13: Versehentlich gelöschte Custom-Field-Beschreibungen aus der
+   *  SharePoint-Versionshistorie wiederherstellen. */
+  restoreCustomFieldDescriptions: (onProgress?: (done: number, total: number, label: string) => void) => Promise<{ events: number; eventsChanged: number; fieldsRestored: number; errors: number }>;
   /** v23.40: Löschkonzept — zählt DEX_Archive-Einträge älter als 1 Monat (v23.48). */
   getDeletableArchiveCount: () => Promise<number>;
   /** v23.40: Löschkonzept — löscht DEX_Archive-Einträge älter als 1 Monat (v23.48). */
@@ -4324,8 +4327,17 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         });
         columnsAdded += (res.added ? res.added.length : 0);
         if (res.customFieldMap && Object.keys(res.customFieldMap).length > 0) {
+          // v26.13 DATENVERLUST-FIX: NICHT aus dem gestrippten `cf` neu bauen —
+          // das droppte helpText (Beschreibungen!), showIf, multi, EN-Varianten
+          // usw. beim Zurückschreiben. Stattdessen die VOLLEN geparsten Felder
+          // behalten und NUR spInternalName nachtragen (wie der Edit-Save seit
+          // v19.20). Sonst sind nach „Spalten fixen (alle Events)" alle
+          // Custom-Field-Beschreibungen weg.
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const upd = (cf as any[]).map(f => { const sp = res.customFieldMap![f.id]; return sp ? { ...f, spInternalName: sp } : f; });
+          const upd = (ev.eventSpecificFields || []).map((f: any) => {
+            const sp = res.customFieldMap![f.id];
+            return sp ? { ...f, spInternalName: sp } : { ...f };
+          });
           try { await updateEvent(ev.id, { 'CustomFields': JSON.stringify(upd) }); } catch { /* best-effort */ }
         }
         try { const bf = await eventService.backfillCompanyForList(ev.subsiteUrl!); backfilled += bf.updated; } catch { /* best-effort */ }
@@ -4333,6 +4345,72 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     }
     if (onProgress) onProgress(total, total, '');
     return { lists: total, columnsAdded, backfilled, errors, anyChange: columnsAdded > 0 || backfilled > 0 };
+  }
+
+  // v26.13: Wiederherstellung von Custom-Field-Beschreibungen (helpText) und
+  // weiteren Feld-Eigenschaften, die ein älterer „Spalten fixen"-Lauf
+  // versehentlich aus dem CustomFields-JSON gestrippt hatte. Quelle ist die
+  // SharePoint-Versionshistorie des DEX_Events-Items: pro Feld wird die JÜNGSTE
+  // ältere Version gesucht, die die jeweilige Eigenschaft noch enthielt, und nur
+  // FEHLENDE Werte im aktuellen Stand aufgefüllt (nie etwas überschrieben).
+  async function restoreCustomFieldDescriptions(
+    onProgress?: (done: number, total: number, label: string) => void
+  ): Promise<{ events: number; eventsChanged: number; fieldsRestored: number; errors: number }> {
+    const RESTORE_PROPS = ['helpText', 'helpTextEn', 'helpTextStyle', 'showIf', 'multi', 'externalLinks', 'ccOnEmails', 'onlyForGroup', 'confirmLabel', 'confirmLabelEn', 'labelEn', 'optionsEn'];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const hasVal = (p: string, val: any): boolean => {
+      if (p === 'multi' || p === 'ccOnEmails') return val === true;
+      if (p === 'optionsEn' || p === 'externalLinks') return Array.isArray(val) && val.length > 0;
+      return typeof val === 'string' ? val.trim().length > 0 : (val !== undefined && val !== null);
+    };
+    const seen = new Set<string>();
+    const targets = (events || []).filter(e => { const id = String(e.id); if (seen.has(id)) return false; seen.add(id); return true; });
+    const total = targets.length;
+    let eventsChanged = 0; let fieldsRestored = 0; let errors = 0;
+    for (let i = 0; i < total; i++) {
+      const ev = targets[i];
+      if (onProgress) onProgress(i, total, ev.title || '');
+      try {
+        const versions = await eventService.getEventCustomFieldsVersions(Number(ev.id));
+        if (!versions || versions.length === 0) continue;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let currentArr: any[];
+        try { currentArr = JSON.parse(versions[0].customFields || '[]'); } catch { currentArr = []; }
+        if (!Array.isArray(currentArr) || currentArr.length === 0) continue;
+        // Pro Feld-Id den jüngsten vorhandenen Wert je Eigenschaft sammeln
+        // (Versionen sind bereits neueste-zuerst sortiert → erster Treffer gilt).
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const best: Record<string, Record<string, any>> = {};
+        for (const ver of versions) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          let arr: any[]; try { arr = JSON.parse(ver.customFields || '[]'); } catch { continue; }
+          if (!Array.isArray(arr)) continue;
+          for (const f of arr) {
+            const id = f && f.id; if (!id) continue;
+            if (!best[id]) best[id] = {};
+            for (const p of RESTORE_PROPS) {
+              if (best[id][p] !== undefined) continue;
+              if (hasVal(p, f[p])) best[id][p] = f[p];
+            }
+          }
+        }
+        let changed = false;
+        const restoredArr = currentArr.map((f) => {
+          const id = f && f.id; if (!id || !best[id]) return f;
+          const out = { ...f };
+          for (const p of RESTORE_PROPS) {
+            if (!hasVal(p, out[p]) && best[id][p] !== undefined) { out[p] = best[id][p]; changed = true; fieldsRestored++; }
+          }
+          return out;
+        });
+        if (changed) {
+          await updateEvent(ev.id, { 'CustomFields': JSON.stringify(restoredArr) });
+          eventsChanged++;
+        }
+      } catch (e) { errors++; console.warn('[DEX] restoreCustomFieldDescriptions failed for', ev.id, e); }
+    }
+    if (onProgress) onProgress(total, total, '');
+    return { events: total, eventsChanged, fieldsRestored, errors };
   }
 
   // v23.8: Wöchentlicher Admin-Bericht. Wird beim App-Start (nur Admins,
@@ -4770,7 +4848,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns, restoreCustomFieldDescriptions,
         sendAdminInquiry,
         requestOrganizerRole, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,
