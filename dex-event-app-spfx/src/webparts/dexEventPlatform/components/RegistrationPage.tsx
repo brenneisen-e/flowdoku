@@ -1956,6 +1956,15 @@ export default function RegistrationPage(): React.ReactElement {
       // großen Lücken führte.
       ? <div style={{ fontSize: '0.78rem', fontWeight: 400, color: 'var(--dex-gray-500)', lineHeight: 1.45, marginTop: 2, marginBottom: 6, minHeight: '2.9em' }}>{displayHelp}</div>
       : null;
+    // v26.16: Felder OHNE Inline-Beschreibung bekommen einen leeren Platzhalter
+    // gleicher Höhe, SOBALD irgendein Feld im Formular eine Inline-Beschreibung
+    // hat — damit stehen die Eingaben benachbarter Felder im 2-Spalten-Grid auf
+    // gleicher Höhe (z.B. „Dressing" auf Höhe von „Gerichtauswahl"). Nur dann,
+    // damit ohne Beschreibungen keine unnötigen Lücken entstehen.
+    const hasAnyInlineHelp = (event?.eventSpecificFields || []).some(ff => ff.helpTextStyle === 'inline' && !!pickFieldHelp(ff));
+    const inlineHelpSlot = inlineHelpEl || (hasAnyInlineHelp
+      ? <div aria-hidden="true" style={{ marginTop: 2, marginBottom: 6, minHeight: '2.9em' }} />
+      : null);
     // v19.0: Ausgefüllte Felder bekommen die gleiche grüne Hervorhebung wie die
     // ausgewählten Event-Sections (grüner Rand + zarter grüner Hintergrund).
     const fieldVal = vals[field.id];
@@ -1976,7 +1985,7 @@ export default function RegistrationPage(): React.ReactElement {
             v18.18: nur im 'tooltip'-Modus; 'inline' rendert darunter. */}
         {displayHelp && !isInlineHelp && <InfoTooltip text={displayHelp} />}
       </label>
-      {inlineHelpEl}
+      {inlineHelpSlot}
       </>
     )}
     {field.type === 'select' && field.multi ? (
@@ -2042,7 +2051,7 @@ export default function RegistrationPage(): React.ReactElement {
           {displayLabel}
           {displayHelp && !isInlineHelp && <InfoTooltip text={displayHelp} />}
         </label>
-        {inlineHelpEl}
+        {inlineHelpSlot}
         <label
           style={{
             display: 'flex', alignItems: 'center', gap: 10,

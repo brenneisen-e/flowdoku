@@ -657,6 +657,23 @@ export interface CreateEventInput {
 
 export const EventContext = React.createContext<EventContextType | undefined>(undefined);
 
+// v26.17: Cache-Buster für das Event-Bild. Der Browser-Bild-Cache (IndexedDB,
+// utils/imageCache) speichert pro BILD-URL — ändert sich beim Bild-Wechsel die
+// URL NICHT (z.B. Attachment mit gleichem Dateinamen überschrieben), zeigte die
+// App dauerhaft das alte, gecachte Bild. Wir hängen daher die letzte
+// Änderungszeit des Events als `?v=`-Parameter an die ANZEIGE-URL — ändert sich
+// das Event (= auch beim Bild-Tausch), wird die URL neu und der Cache greift
+// frisch. Nur für die Anzeige; das gespeicherte EventImageUrl bleibt unberührt.
+function buildDisplayImageUrl(rawUrl: string, modified?: string): string {
+  const url = (rawUrl || '').trim();
+  if (!url || url.indexOf('data:') === 0) return url;
+  if (!modified) return url;
+  let v = '';
+  try { v = String(new Date(modified).getTime()); } catch { v = ''; }
+  if (!v || v === 'NaN') return url;
+  return `${url}${url.indexOf('?') >= 0 ? '&' : '?'}v=${v}`;
+}
+
 export function EventProvider(props: { context: WebPartContext; children: React.ReactNode }): React.ReactElement {
   const [events, setEvents] = React.useState<DeloitteEvent[]>([]);
   const [isEventsLoading, setIsEventsLoading] = React.useState(true);
@@ -1039,7 +1056,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       activeFrom: e.ActiveFrom || undefined, // v9.21 — Auto-Activate-Datum
       currentParticipants,
       waitlistCount,
-      imageUrl: e.EventImageUrl || '',
+      imageUrl: buildDisplayImageUrl(e.EventImageUrl || '', (e as { Modified?: string }).Modified),
       subsiteUrl: e.SubsiteUrl || '',
       outlookBody: e.OutlookBody || '',
       outlookSubject: e.OutlookSubject || undefined,
