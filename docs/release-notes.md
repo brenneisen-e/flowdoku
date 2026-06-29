@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 26.17.0 | 2026-06-29 | Bugfix | Wenn das Bild eines Events ausgetauscht wurde, zeigte die App teils weiter das alte Bild (es lag im lokalen Bild-Zwischenspeicher des Browsers). Jetzt erkennt die App eine Änderung am Event und lädt das Bild frisch — das neue Bild erscheint sofort. |
 | 26.16.0 | 2026-06-29 | Bugfix | Auf der Anmeldeseite stehen die Eingabefelder im zweispaltigen Raster jetzt auf gleicher Höhe, auch wenn nur eines der nebeneinanderliegenden Felder eine Beschreibung hat (z. B. „Dressing" jetzt auf Höhe von „Gerichtauswahl"). |
 | 26.15.0 | 2026-06-29 | Bugfix | Die Wiederherstellung las bei stark bearbeiteten Events nur einen Teil der Versionshistorie (die Antwort wurde durch große mitgelesene Inhalte abgeschnitten) und meldete dadurch fälschlich „keine Beschreibungen vorhanden". Jetzt wird gezielt nur das benötigte Feld gelesen und die komplette Historie (auch mehrere hundert Versionen) durchsucht — die alten Beschreibungen werden wieder gefunden. |
 | 26.14.0 | 2026-06-29 | Bugfix | Die Wiederherstellung der Feld-Beschreibungen las die Versionshistorie fehlerhaft aus und meldete deshalb immer „nichts wiederherzustellen". Der Verlauf wird jetzt korrekt gelesen. Zusätzlich gibt es einen Trockenlauf („Vorschau"), der vor dem Schreiben pro Event/Feld auflistet, was zurückgeholt würde, und in der Browser-Konsole steht pro Event, ob in der Historie überhaupt Beschreibungen vorhanden sind. |
