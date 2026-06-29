@@ -24,6 +24,8 @@ import { captureScreen } from '../utils/screenshot';
 import { DexTicket } from '../types';
 import PersonContactHover from './PersonContactHover';
 import { renderTicketThread, contactSubline } from './tickets/ticketThread';
+import ImageAnnotateModal from './ImageAnnotateModal';
+import InquiryModal from './InquiryModal';
 
 interface ShotRef { file: File; url: string; }
 
@@ -39,6 +41,10 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
   const [tab, setTab] = React.useState<'ask' | 'mine'>('ask');
   const [questions, setQuestions] = React.useState<string[]>(['']);
   const [shots, setShots] = React.useState<ShotRef[]>([]);
+  // v26.10: Index des Screenshots, der gerade groß markiert wird (null = keiner).
+  const [annotateIdx, setAnnotateIdx] = React.useState<number | null>(null);
+  // v26.10: „DEX selbst nutzen?"-Anfrage-Modal (nur für normale User).
+  const [showInquiry, setShowInquiry] = React.useState(false);
   const [capturing, setCapturing] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
   const [done, setDone] = React.useState(false);
@@ -117,6 +123,18 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
   };
   const removeShot = (idx: number): void => {
     setShots((s) => { const copy = [...s]; const [rm] = copy.splice(idx, 1); if (rm) { try { URL.revokeObjectURL(rm.url); } catch { /* */ } } return copy; });
+  };
+  // v26.10: markiertes Bild übernehmen → ersetzt den Screenshot an annotateIdx.
+  const onAnnotateSave = (file: File): void => {
+    const idx = annotateIdx;
+    if (idx == null) return;
+    const url = URL.createObjectURL(file);
+    setShots((s) => s.map((sh, i) => {
+      if (i !== idx) return sh;
+      try { URL.revokeObjectURL(sh.url); } catch { /* */ }
+      return { file, url };
+    }));
+    setAnnotateIdx(null);
   };
 
   const setQuestion = (idx: number, val: string): void => setQuestions((qs) => qs.map((q, i) => (i === idx ? val : q)));
@@ -292,23 +310,50 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
                 <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400,#a0a0a0)' }}>{isDe ? 'optional' : 'optional'}</span>
               </div>
               {shots.length > 0 && (
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
-                  {shots.map((s, idx) => (
-                    <div key={idx} style={{ position: 'relative', border: '1px solid var(--dex-gray-200,#e8e8e8)', borderRadius: 8, overflow: 'hidden' }}>
-                      <img src={s.url} alt={`Screenshot ${idx + 1}`} style={{ width: 120, height: 76, objectFit: 'cover', display: 'block' }} />
-                      <button type="button" onClick={() => removeShot(idx)} title={isDe ? 'Entfernen' : 'Remove'}
-                        style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(0,0,0,0.55)', color: '#fff', border: 'none', borderRadius: '50%', width: 20, height: 20, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <Icon iconName="Cancel" style={{ fontSize: 11 }} />
-                      </button>
-                    </div>
-                  ))}
-                </div>
+                <>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
+                    {shots.map((s, idx) => (
+                      <div key={idx} style={{ position: 'relative', border: '1px solid var(--dex-gray-200,#e8e8e8)', borderRadius: 8, overflow: 'hidden' }}>
+                        <button type="button" onClick={() => setAnnotateIdx(idx)} title={isDe ? 'Vergrößern & markieren' : 'Enlarge & mark up'}
+                          style={{ display: 'block', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}>
+                          <img src={s.url} alt={`Screenshot ${idx + 1}`} style={{ width: 120, height: 76, objectFit: 'cover', display: 'block' }} />
+                          <span style={{ position: 'absolute', bottom: 2, left: 2, background: 'rgba(0,0,0,0.55)', color: '#fff', borderRadius: 4, padding: '1px 5px', display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10 }}>
+                            <Icon iconName="InsertTextBox" style={{ fontSize: 11 }} /> {isDe ? 'markieren' : 'mark up'}
+                          </span>
+                        </button>
+                        <button type="button" onClick={() => removeShot(idx)} title={isDe ? 'Entfernen' : 'Remove'}
+                          style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(0,0,0,0.55)', color: '#fff', border: 'none', borderRadius: '50%', width: 20, height: 20, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Icon iconName="Cancel" style={{ fontSize: 11 }} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-400,#a0a0a0)', marginTop: 6 }}>
+                    {isDe ? 'Tipp: Auf einen Screenshot klicken, um ihn groß anzuzeigen und die gemeinte Stelle zu markieren.' : 'Tip: click a screenshot to enlarge it and mark the relevant area.'}
+                  </div>
+                </>
               )}
             </div>
 
             <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500,#808080)', display: 'flex', alignItems: 'center', gap: 7 }}>
               <Icon iconName="Send" style={{ fontSize: 13, color: 'var(--dex-green,#86bc25)' }} /> {routingText}
             </div>
+
+            {/* v26.10: Vorschlag NUR für normale User (Organizer/Admins können
+                Events ohnehin selbst anlegen) — „DEX selbst nutzen?" öffnet das
+                bestehende DEX-Anfrage-Modal. */}
+            {!askerIsOrgLike && (
+              <div style={{ background: '#f1f7e8', border: '1px solid var(--dex-green,#86bc25)', borderRadius: 8, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                <Icon iconName="Lightbulb" style={{ fontSize: 18, color: 'var(--dex-green-dark,#4a7c1f)' }} />
+                <span style={{ flex: 1, minWidth: 200, fontSize: '0.84rem', color: 'var(--dex-gray-700,#444)' }}>
+                  {isDe ? 'Möchtest du DEX selbst für ein Event nutzen?' : 'Would you like to use DEX for your own event?'}
+                </span>
+                <button type="button" onClick={() => setShowInquiry(true)}
+                  style={{ background: 'var(--dex-green,#86bc25)', color: '#fff', border: 'none', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', fontFamily: 'inherit' }}>
+                  {isDe ? 'DEX anfragen' : 'Request DEX'}
+                </button>
+              </div>
+            )}
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 4 }}>
               <button className="btn btn-secondary" onClick={closeModal} disabled={submitting}>{isDe ? 'Abbrechen' : 'Cancel'}</button>
@@ -404,6 +449,19 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
           </div>
         )}
       </Modal>
+
+      {/* v26.10: Screenshot vergrößern + transparente Boxen darübersetzen. */}
+      <ImageAnnotateModal
+        open={annotateIdx != null && !!shots[annotateIdx as number]}
+        src={annotateIdx != null && shots[annotateIdx] ? shots[annotateIdx].url : ''}
+        fileName={annotateIdx != null && shots[annotateIdx] ? shots[annotateIdx].file.name : 'screenshot.png'}
+        isDe={isDe}
+        onClose={() => setAnnotateIdx(null)}
+        onSave={onAnnotateSave}
+      />
+
+      {/* v26.10: DEX-Anfrage-Modal (nur für normale User aus der Vorschlags-Box). */}
+      <InquiryModal open={showInquiry} onClose={() => setShowInquiry(false)} />
     </>
   );
 }

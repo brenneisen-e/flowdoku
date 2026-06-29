@@ -20,6 +20,7 @@ import { useCurrentUser } from '../../context/UserContext';
 import { listManualArticles, openManualArticle, ManualArticle } from '../../utils/manualSearch';
 import PersonContactHover from '../PersonContactHover';
 import { renderTicketThread, contactSubline } from './ticketThread';
+import ImageAnnotateModal from '../ImageAnnotateModal';
 
 function wizardStepLabels(isDe: boolean): string[] {
   // 1-basiert; Reihenfolge identisch zum Event-Wizard (EventCreationPage.steps).
@@ -46,6 +47,7 @@ export default function TicketCard(props: { ticket: DexTicket; defaultExpanded?:
   const [showArticlePicker, setShowArticlePicker] = React.useState(false);
   const [imgFile, setImgFile] = React.useState<File | null>(null);
   const [imgUrl, setImgUrl] = React.useState<string>('');
+  const [annotateOpen, setAnnotateOpen] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   // v26.8: Folge-Antwort auf eine Rückfrage des Fragestellers.
   const [replyText, setReplyText] = React.useState('');
@@ -332,7 +334,13 @@ export default function TicketCard(props: { ticket: DexTicket; defaultExpanded?:
             </label>
             {imgUrl && (
               <div style={{ position: 'relative', border: '1px solid var(--dex-gray-200,#e8e8e8)', borderRadius: 8, overflow: 'hidden' }}>
-                <img src={imgUrl} alt="Anhang" style={{ width: 110, height: 70, objectFit: 'cover', display: 'block' }} />
+                <button type="button" onClick={() => setAnnotateOpen(true)} title={isDe ? 'Vergrößern & markieren' : 'Enlarge & mark up'}
+                  style={{ display: 'block', padding: 0, border: 'none', background: 'transparent', cursor: 'pointer' }}>
+                  <img src={imgUrl} alt="Anhang" style={{ width: 110, height: 70, objectFit: 'cover', display: 'block' }} />
+                  <span style={{ position: 'absolute', bottom: 2, left: 2, background: 'rgba(0,0,0,0.55)', color: '#fff', borderRadius: 4, padding: '1px 5px', display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10 }}>
+                    <Icon iconName="InsertTextBox" style={{ fontSize: 11 }} /> {isDe ? 'markieren' : 'mark up'}
+                  </span>
+                </button>
                 <button type="button" onClick={() => { if (imgUrl) { try { URL.revokeObjectURL(imgUrl); } catch { /* */ } } setImgFile(null); setImgUrl(''); }}
                   style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(0,0,0,0.55)', color: '#fff', border: 'none', borderRadius: '50%', width: 18, height: 18, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Icon iconName="Cancel" style={{ fontSize: 10 }} />
@@ -349,6 +357,19 @@ export default function TicketCard(props: { ticket: DexTicket; defaultExpanded?:
           </div>
         </div>
       )}
+
+      {/* v26.10: Antwort-Bild vergrößern + transparente Boxen darübersetzen. */}
+      <ImageAnnotateModal
+        open={annotateOpen && !!imgUrl}
+        src={imgUrl}
+        fileName={imgFile?.name || 'bild.png'}
+        isDe={isDe}
+        onClose={() => setAnnotateOpen(false)}
+        onSave={(f) => {
+          if (imgUrl) { try { URL.revokeObjectURL(imgUrl); } catch { /* */ } }
+          setImgFile(f); setImgUrl(URL.createObjectURL(f)); setAnnotateOpen(false);
+        }}
+      />
     </div>
   );
 }
