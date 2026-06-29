@@ -4362,26 +4362,41 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       if (overEvents.length === 0) return;
       let appUrl = '';
       try { appUrl = `${props.context.pageContext.web.absoluteUrl}/SitePages/DEX.aspx`; } catch { appUrl = ''; }
-      const greetName = (currentUserName || '').split(' ')[0] || (currentUserName || '');
       for (const ev of overEvents) {
-        const key = `dex_posteventmail_${ev.id}_${meLc}`;
+        const key = `dex_posteventmail_${ev.id}`;
         let already = false;
         try { already = !!window.localStorage.getItem(key); } catch { already = false; }
         if (already) continue;
+        // v26.12: an ALLE Organizer (Haupt- + Co-Organizer), nicht nur an den,
+        // der die App öffnet. Doppelversand-Schutz serverseitig über die Queue
+        // (DEX_Emails) — so feuert auch bei mehreren Organizern nur EINE Mail.
+        const orgEmails = Array.from(new Set(
+          [...(ev.organizerEmails || []), ...(ev.coOrganizerEmails || [])]
+            .map(x => (x || '').trim())
+            .filter(x => x.indexOf('@') > 0)
+            .map(x => x)
+        ));
+        if (orgEmails.length === 0) continue;
+        // Dedupe case-insensitiv (eine Adresse nicht doppelt im To).
+        const seen = new Set<string>();
+        const recipients = orgEmails.filter(e => { const lc = e.toLowerCase(); if (seen.has(lc)) return false; seen.add(lc); return true; });
+        let alreadyQueued = false;
+        try { alreadyQueued = await eventService.hasQueuedEmail('PostEventOrganizer', ev.id); } catch { alreadyQueued = false; }
+        if (alreadyQueued) { try { window.localStorage.setItem(key, String(Date.now())); } catch { /* */ } continue; }
         const linkLine = appUrl
-          ? `<p style="margin:0 0 12px;">Du findest die Teilnehmerübersicht jederzeit im <a href="${appUrl}" style="color:#86bc25;font-weight:600;">Organizer Center der DEX App</a> — dort kannst du sie auch als Excel exportieren.</p>`
-          : `<p style="margin:0 0 12px;">Du findest die Teilnehmerübersicht jederzeit im Organizer Center der DEX App — dort kannst du sie auch als Excel exportieren.</p>`;
+          ? `<p style="margin:0 0 12px;">Ihr findet die Teilnehmerübersicht jederzeit im <a href="${appUrl}" style="color:#86bc25;font-weight:600;">Organizer Center der DEX App</a> — dort könnt ihr sie auch als Excel exportieren.</p>`
+          : `<p style="margin:0 0 12px;">Ihr findet die Teilnehmerübersicht jederzeit im Organizer Center der DEX App — dort könnt ihr sie auch als Excel exportieren.</p>`;
         const inner = `
-          <p style="margin:0 0 12px;">Hallo ${greetName || 'zusammen'},</p>
-          <p style="margin:0 0 12px;">wir hoffen, dein Event <strong>&bdquo;${ev.title}&ldquo;</strong> ist gut verlaufen und alle hatten eine schöne Zeit!</p>
+          <p style="margin:0 0 12px;">Hallo zusammen,</p>
+          <p style="margin:0 0 12px;">wir hoffen, euer Event <strong>&bdquo;${ev.title}&ldquo;</strong> ist gut verlaufen und alle hatten eine schöne Zeit!</p>
           <p style="margin:0 0 12px;">Ein kurzer Hinweis zur Aufbewahrung: Die <strong>Teilnehmerübersicht bleibt noch ein Jahr gespeichert</strong> (Datenschutz-/Aufbewahrungsvorgabe). Danach wird sie entfernt.</p>
           ${linkLine}
-          <p style="margin:0 0 12px;">Vielen Dank, dass du das Event organisiert hast!</p>`;
-        const body = wrapTemplate('#86bc25', 'Danke für dein Event!', ev.title, inner);
+          <p style="margin:0 0 12px;">Vielen Dank, dass ihr das Event organisiert habt!</p>`;
+        const body = wrapTemplate('#86bc25', 'Danke für euer Event!', ev.title, inner);
         try {
           await eventService.queueEmail(
             `Dein Event „${ev.title}" — danke & Hinweis zur Aufbewahrung`,
-            currentUserEmail, currentUserName, body, 'PostEventOrganizer', ev.title, ev.id,
+            recipients.join('; '), recipients.join('; '), body, 'PostEventOrganizer', ev.title, ev.id,
           );
           try { window.localStorage.setItem(key, String(Date.now())); } catch { /* */ }
         } catch { /* einzelne Mail-Fehler ignorieren */ }

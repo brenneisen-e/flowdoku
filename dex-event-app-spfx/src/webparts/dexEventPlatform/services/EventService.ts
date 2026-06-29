@@ -1028,6 +1028,25 @@ export class EventService {
     }
   }
 
+  /** v26.12: Gibt es bereits eine Mail dieses Typs für dieses Event in der
+   *  DEX_Emails-Queue? Dient als serverseitiger Doppelversand-Schutz, wenn die
+   *  Mail clientseitig (App-Open) ausgelöst wird und mehrere Organizer die App
+   *  öffnen könnten. */
+  public async hasQueuedEmail(emailType: string, eventId: string): Promise<boolean> {
+    try {
+      const safeType = (emailType || '').replace(/'/g, "''");
+      const safeId = (eventId || '').replace(/'/g, "''");
+      const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items?$select=Id&$filter=EmailType eq '${safeType}' and EventId eq '${safeId}'&$top=1`;
+      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      if (!resp.ok) return false;
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      return Array.isArray(items) && items.length > 0;
+    } catch {
+      return false;
+    }
+  }
+
   // ==================== DEX_Outlook Liste ====================
 
   /**

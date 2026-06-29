@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 26.12.0 | 2026-06-29 | Bugfix | Die „Danke & Hinweis zur Aufbewahrung"-Mail nach einem Event geht jetzt an ALLE Organisatoren des Events (Haupt- und Co-Organisatoren stehen gemeinsam im Empfänger) statt nur an eine Person. Außerdem wird die Mail pro Event garantiert nur einmal verschickt, auch wenn mehrere Organisatoren die App öffnen. |
 | 26.11.0 | 2026-06-29 | Feature | Im Hinweis „Eine Person hat womöglich Deloitte verlassen" gibt es jetzt pro genannter Person den Knopf „Zur Person springen": Ein Klick filtert die Teilnehmerliste auf diese Person und scrollt direkt dorthin — so kann man sie sofort prüfen oder abmelden. |
 | 26.11.0 | 2026-06-29 | Feature | Nach einem vergangenen Event zeigt die Teilnehmerliste pro Person nur noch die sinnvollen Aktionen für die Nachbereitung: „Einchecken", „No-Show" und „Abmelden (Ohne E-Mail)". Das Bearbeiten der Anmeldedaten ist nach dem Event ausgeblendet, und die Abmeldung läuft wie gewohnt still (ohne Mail/Kalenderabsage). |
 | 26.10.0 | 2026-06-29 | Feature | Angehängte Screenshots lassen sich jetzt per Klick groß anzeigen und direkt markieren: Mit der Maus zieht man ein (halbtransparentes) Rechteck über die gemeinte Stelle — auch mehrere. Die Markierungen werden fest ins Bild übernommen, sodass die antwortende Person sofort sieht, worum es geht. Funktioniert beim Stellen der Frage und beim Anhängen eines Bildes in der Antwort. |
