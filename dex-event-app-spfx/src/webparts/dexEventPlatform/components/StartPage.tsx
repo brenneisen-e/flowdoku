@@ -17,6 +17,7 @@ export default function StartPage(): React.ReactElement {
   const { powerUserQueue } = useTickets();
   const { currentUser } = useCurrentUser();
   const { t, locale } = useLanguage();
+  const isDe = locale === 'de';
   // v12.5: Organizer-Kachel wird jetzt IMMER gerendert. Wer keine Organizer-
   // Rechte hat sieht sie ausgegraut mit Overlay-Button „Want to become an
   // organizer?" — Klick öffnet das gleiche Inquiry-Modal wie das
@@ -28,15 +29,6 @@ export default function StartPage(): React.ReactElement {
   // AdminPage gewährt ihnen ohnehin Zugriff auf "ihre" Events (siehe
   // isOrganizerFor dort), aber ohne Kachel im Startmenü gab es bisher
   // keinen Einstieg.
-  //
-  // v11.46-Fix: seit v9.20 hat der Wizard nur EINEN Organizer-Picker und
-  // schreibt alle Personen (Haupt-Organizer wie Co-Organizer) in
-  // event.organizerEmails — das alte Feld event.coOrganizerEmails wird
-  // garnicht mehr befüllt (siehe EventCreationPage const-State ohne Setter).
-  // Der bisherige Check auf nur coOrganizerEmails fand also für alle nach
-  // v9.20 angelegten Events nichts. Prüfung jetzt analog zu
-  // AdminPage.isOrganizerFor: organizerEmails ODER coOrganizerEmails
-  // (Backward-Compat für alte Events).
   const currentEmailLc = (currentUser.email || '').toLowerCase();
   const isOrganizerOfAnyEvent = !!currentEmailLc && (events || []).some(e => {
     const inOrg = (e.organizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
@@ -44,36 +36,18 @@ export default function StartPage(): React.ReactElement {
     return (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
   });
   // v23.36: Im Demo-Modus sieht der Demo-User die Start-Kacheln EXAKT wie ein
-  // normaler User — d.h. die Organizer-Kachel ist ausgegraut (mit „Organizer
-  // werden?"-Hinweis) und die Check-In-Kachel fehlt. Früher (v18.3) war die
-  // Organizer-Kachel im Demo-Modus klickbar (`|| isImpersonating`) — das
-  // widersprach dem Zweck „so sieht es ein echter User".
+  // normaler User — d.h. die Organizer-Kachel ist ausgegraut.
   const isOrganizer = canCreateEvents || isOrganizerOfAnyEvent;
-  // v13.12: Check-In-Team-Mitgliedschaft = User ist in qrScannerEmails
-  // mindestens eines AKTIVEN Events. Wenn ja: eine eigene 4. Kachel
-  // „Check-In" erscheint mit QrCode-Icon + Pulse-Animation. Die
-  // Organizer-Kachel bleibt für reine Check-In-Helfer trotzdem ausgegraut
-  // (keine Verwirrung über die tatsächlichen Berechtigungen — Check-In ist
-  // ein eigener, klar abgegrenzter Bereich).
+  // v13.12: Check-In-Team-Mitgliedschaft = User ist QR-Scanner/Organizer eines
+  // AKTIVEN Events; dann erscheint die Check-In-Kachel.
   const isCheckInTeamOfActive = !!currentEmailLc && (events || []).some(e => {
     if (e.status !== 'Active') return false;
     if ((e.qrScannerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc)) return true;
     if ((e.organizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc)) return true;
     return (e.coOrganizerEmails || []).some(x => (x || '').toLowerCase() === currentEmailLc);
   });
-  // v12.5: Grid bleibt immer 3-spaltig — auch User sehen die Organizer-
-  // Kachel (ausgegraut + CTA-Overlay).
-  // v13.12 / v14.3: Wenn der User Check-In-Team-Mitgliedschaft hat ODER
-  // Admin / Organizer ist, kommt die 4. Check-In-Kachel dazu → 4-spaltiges
-  // Grid. Admins und Organizer können ohnehin überall einchecken — sie
-  // sollen den Direkteinstieg also auch immer prominent auf der Startseite
-  // sehen, nicht erst über den Header-Button suchen müssen.
-  const showAdminTile = true;
   const showCheckInTile = isCheckInTeamOfActive || isAdmin || isOrganizer;
-  // v24.24: „Admin"-Kachel (Hub) — nur echte Admins. Im Demo-Modus bewusst
-  // AUSGEBLENDET (isAdmin ist dann false), damit die Startseite exakt der
-  // normalen User-Ansicht entspricht (vorher zeigte `|| originalIsAdmin` die
-  // Kachel auch im Demo-Modus).
+  // v24.24: „Admin"-Kachel (Hub) — nur echte Admins.
   const showAdminHubTile = isAdmin;
 
   // v26: „Tickets"-Kachel — Power-User + Admins beantworten hier die Fragen aus
@@ -82,13 +56,8 @@ export default function StartPage(): React.ReactElement {
   const openTicketCount = powerUserQueue.filter(tk => tk.status !== 'Closed').length;
 
   // v24.36: „Assistenz"-Kachel — nur sichtbar, wenn der User STELLVERTRETEND
-  // für eine andere Person angemeldet hat (also tatsächlich „Assistenz" ist),
-  // oder Admin ist. Admins sehen die Kachel immer und finden darin ebenfalls
-  // ihre eigenen Fremd-Anmeldungen. Die Erkennung läuft im Hintergrund über
-  // alle Teilnehmerlisten — Ergebnis wird pro Tag gecacht (localStorage), damit
-  // nicht bei jedem Start-Aufruf alle Subsites abgefragt werden. Der teure
-  // Scan läuft NUR für Nicht-Admins (Admins sehen die Kachel ohnehin) und auch
-  // nur, wenn der Cache abgelaufen ist.
+  // für eine andere Person angemeldet hat (oder Admin ist). Erkennung läuft im
+  // Hintergrund über alle Teilnehmerlisten, pro Tag gecacht (localStorage).
   const [hasProxyRegs, setHasProxyRegs] = React.useState<boolean>(false);
   const proxyScanStartedRef = React.useRef(false);
   React.useEffect(() => {
@@ -117,10 +86,97 @@ export default function StartPage(): React.ReactElement {
   }, [isAdmin, isEventsLoading, events, currentEmailLc, getMyProxyRegistrations]);
   const showAssistTile = isAdmin || hasProxyRegs;
 
+  // v26: Kacheln als Elemente — werden danach in beschriftete Cluster gruppiert
+  // und als quadratische Kacheln in einem zweispaltigen Raster gerendert
+  // (data-tour-Anker bleiben für das geführte Tutorial erhalten).
+  const tileRegister = (
+    <div className="card card-clickable start-card" data-tour="tile-register" onClick={() => navigate('register')}>
+      <div className="start-card__icon"><Calendar size={64} strokeWidth={1} /></div>
+      <h2>{t('start.register')}</h2>
+      <p>{t('start.register.desc')}</p>
+    </div>
+  );
+  const tileMyEvents = (
+    <div className="card card-clickable start-card" data-tour="tile-myevents" onClick={() => navigate('my-events')}>
+      <div className="start-card__icon"><Pin size={64} strokeWidth={1} /></div>
+      <h2>{t('start.myevents')}</h2>
+      <p>{t('start.myevents.desc')}</p>
+    </div>
+  );
+  const tileOrganizer = isOrganizer ? (
+    <div className="card card-clickable start-card start-card--admin" data-tour="tile-admin" onClick={() => navigate('admin')}>
+      <div className="start-card__icon"><Settings size={64} strokeWidth={1} /></div>
+      <h2>{t('start.admin')}</h2>
+      <p>{t('start.admin.desc')}</p>
+    </div>
+  ) : (
+    <div className="card start-card start-card--admin" style={{ position: 'relative', cursor: 'default', opacity: 0.55 }}>
+      <div className="start-card__icon"><Settings size={64} strokeWidth={1} /></div>
+      <h2>{t('start.admin')}</h2>
+      <p>{t('start.admin.desc')}</p>
+      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 10 }}>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setShowInquiry(true); }}
+          style={{
+            background: 'var(--dex-green, #86bc25)', color: '#fff', border: 'none', borderRadius: 14,
+            padding: '8px 12px', fontWeight: 700, cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
+            fontSize: '0.74rem', lineHeight: 1.25, textAlign: 'center',
+          }}
+        >
+          {isDe ? 'Organizer werden?' : 'Want to become an organizer?'}
+        </button>
+      </div>
+    </div>
+  );
+  const tileCheckIn = (
+    <div className="card card-clickable start-card start-card--checkin" data-tour="tile-checkin" onClick={() => navigate('check-in')}>
+      <div className="start-card__icon"><QrCode size={64} strokeWidth={1} /></div>
+      <h2>{isDe ? 'Check-In' : 'Check-in'}</h2>
+      <p>{isDe ? 'Teilnehmer einchecken' : 'Check in attendees'}</p>
+    </div>
+  );
+  const tileTickets = (
+    <div className="card card-clickable start-card" onClick={() => navigate('tickets')} style={{ position: 'relative' }}>
+      <div className="start-card__icon"><MessageSquare size={64} strokeWidth={1} /></div>
+      <h2>Tickets</h2>
+      <p>{isDe ? 'Fragen beantworten' : 'Answer questions'}</p>
+      {openTicketCount > 0 && (
+        <span style={{
+          position: 'absolute', top: 10, right: 10, background: '#ed8b00', color: '#fff',
+          borderRadius: 12, minWidth: 22, height: 22, padding: '0 6px',
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700,
+        }}>{openTicketCount}</span>
+      )}
+    </div>
+  );
+  const tileAssist = (
+    <div className="card card-clickable start-card" onClick={() => navigate('assistant')}>
+      <div className="start-card__icon"><Users size={64} /></div>
+      <h2>{isDe ? 'Assistenz' : 'Assistant'}</h2>
+      <p>{isDe ? 'Anmeldungen für andere' : 'Registrations for others'}</p>
+    </div>
+  );
+  const tileAdminHub = (
+    <div className="card card-clickable start-card" onClick={() => navigate('admin-hub')}>
+      <div className="start-card__icon"><Star size={64} strokeWidth={1} /></div>
+      <h2>Admin</h2>
+      <p>{isDe ? 'Verwaltung & Prozesse' : 'Administration & processes'}</p>
+    </div>
+  );
+
+  const clusters: Array<{ key: string; title: string; tiles: React.ReactNode[] }> = [
+    { key: 'teilnahme', title: isDe ? 'Teilnahme' : 'Participation', tiles: [tileRegister, tileMyEvents] },
+    { key: 'organisation', title: isDe ? 'Organisation' : 'Organization', tiles: [tileOrganizer, ...(showCheckInTile ? [tileCheckIn] : [])] },
+    { key: 'support', title: isDe ? 'Support' : 'Support', tiles: showTicketsTile ? [tileTickets] : [] },
+    { key: 'verwaltung', title: isDe ? 'Verwaltung' : 'Administration', tiles: [...(showAssistTile ? [tileAssist] : []), ...(showAdminHubTile ? [tileAdminHub] : [])] },
+  ].filter(c => c.tiles.length > 0);
+
   return (
     <div className="page-container">
       {/* v9.36: Keyframes inline injizieren — SPFx hasht sonst die Names im
-          .module.scss und die Animation findet sie nicht. */}
+          .module.scss und die Animation findet sie nicht.
+          v26: Layout in beschriftete Cluster (quadratische Kacheln, zweizeilig). */}
       <style>{`
         @keyframes dexStartIconBounce {
           0%   { transform: translateY(0) scale(1); }
@@ -148,183 +204,42 @@ export default function StartPage(): React.ReactElement {
           100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(134,188,37,0.0)); }
         }
         .start-card--checkin:hover .start-card__icon svg { animation: dexStartIconScanPulse 0.9s ease; }
-        /* v13.14: 4-Spalten-Variante. Grid bekommt mehr Maximalbreite,
-           damit alle vier Kacheln gleich breit UND nicht zu schmal sind. */
-        .start-grid--with-checkin {
-          grid-template-columns: 1fr 1fr 1fr 1fr !important;
-          max-width: 1200px !important;
+
+        /* v26: Cluster-Raster — bis zu 2 Cluster nebeneinander (→ zwei Reihen),
+           darin quadratische Kacheln. */
+        .dex-cluster-grid {
+          display: grid; grid-template-columns: repeat(auto-fit, minmax(430px, 1fr));
+          gap: 28px 32px; max-width: 1000px; margin: 0 auto; align-items: start;
         }
-        .start-grid--with-checkin .start-card { width: 100%; }
-        @media (max-width: 900px) {
-          .start-grid--with-checkin { grid-template-columns: 1fr 1fr !important; }
-          .start-grid--with-checkin .start-card--checkin { grid-column: 1 / -1; }
+        .dex-cluster-title {
+          font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
+          color: var(--dex-gray-500); margin: 0 0 12px; padding-bottom: 7px;
+          border-bottom: 1px solid var(--dex-gray-200);
         }
-        /* v23.41: 5-Spalten-Variante mit Admin-Hub-Kachel. */
-        .start-grid--with-adminhub {
-          grid-template-columns: repeat(5, 1fr) !important;
-          max-width: 1360px !important;
+        .dex-cluster-tiles { display: grid; grid-template-columns: repeat(auto-fill, 190px); gap: 16px; justify-content: start; }
+        .dex-cluster .start-card {
+          width: 100% !important; padding: 18px 14px !important; min-height: 0 !important;
+          aspect-ratio: 1 / 1; gap: 6px !important;
         }
-        .start-grid--with-adminhub .start-card { width: 100%; }
-        @media (max-width: 1100px) {
-          .start-grid--with-adminhub { grid-template-columns: 1fr 1fr 1fr !important; }
-        }
-        @media (max-width: 760px) {
-          .start-grid--with-adminhub { grid-template-columns: 1fr 1fr !important; }
-        }
-        /* v24.38: Dynamische Spaltenzahl — alle Kacheln (inkl. Assistenz)
-           bleiben in EINER Zeile, statt in eine zweite umzubrechen. Steht
-           bewusst als LETZTE Regel im Block, damit sie die festen
-           --with-checkin/--with-adminhub-Regeln (gleiche Spezifität)
-           per Source-Order überschreibt. */
-        ${(() => {
-          const n = 3 + (showCheckInTile ? 1 : 0) + (showTicketsTile ? 1 : 0) + (showAdminHubTile ? 1 : 0) + (showAssistTile ? 1 : 0);
-          const maxW = Math.min(1640, 250 * n + 90);
-          return `.start-grid--dyncols { grid-template-columns: repeat(${n}, minmax(0, 1fr)) !important; max-width: ${maxW}px !important; }
-        .start-grid--dyncols .start-card { width: 100%; }
-        @media (max-width: 1100px) { .start-grid--dyncols { grid-template-columns: repeat(3, 1fr) !important; } }
-        @media (max-width: 760px) { .start-grid--dyncols { grid-template-columns: 1fr 1fr !important; } }`;
-        })()}
+        .dex-cluster .start-card__icon { width: 70px !important; height: 70px !important; margin-bottom: 2px !important; }
+        .dex-cluster .start-card__icon svg { width: 38px !important; height: 38px !important; }
+        .dex-cluster .start-card h2 { font-size: 1.02rem !important; }
+        .dex-cluster .start-card p { font-size: 0.78rem !important; white-space: normal !important; }
+        @media (max-width: 920px) { .dex-cluster-grid { grid-template-columns: 1fr; max-width: 460px; } }
+        @media (max-width: 460px) { .dex-cluster-tiles { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); } }
       `}</style>
-      <div className={`start-grid start-grid--dyncols${showAdminTile ? ' start-grid--with-admin' : ''}${showCheckInTile ? ' start-grid--with-checkin' : ''}${showAdminHubTile ? ' start-grid--with-adminhub' : ''}`}>
-        {/* v22.21: data-tour-Anker — Spotlight-Ziele des geführten Tutorials. */}
-        <div className="card card-clickable start-card" data-tour="tile-register" onClick={() => navigate('register')}>
-          <div className="start-card__icon">
-            <Calendar size={64} strokeWidth={1} />
-          </div>
-          <h2>{t('start.register')}</h2>
-          <p style={{ whiteSpace: 'nowrap' }}>{t('start.register.desc')}</p>
-        </div>
-        <div className="card card-clickable start-card" data-tour="tile-myevents" onClick={() => navigate('my-events')}>
-          <div className="start-card__icon">
-            <Pin size={64} strokeWidth={1} />
-          </div>
-          <h2>{t('start.myevents')}</h2>
-          <p style={{ whiteSpace: 'nowrap' }}>{t('start.myevents.desc')}</p>
-        </div>
-        {isOrganizer ? (
-          <div className="card card-clickable start-card start-card--admin" data-tour="tile-admin" onClick={() => navigate('admin')}>
-            <div className="start-card__icon">
-              <Settings size={64} strokeWidth={1} />
-            </div>
-            <h2>{t('start.admin')}</h2>
-            <p style={{ whiteSpace: 'nowrap' }}>{t('start.admin.desc')}</p>
-          </div>
-        ) : (
-          // v12.5: Ausgegraute Organizer-Kachel mit CTA-Overlay-Button
-          // — User können so direkt anfragen Organizer zu werden. Bleibt
-          // ausgegraut auch für reine Check-In-Helfer (v13.12), die haben
-          // ja keine Organizer-Rechte — Check-In ist eine eigene Kachel.
-          <div
-            className="card start-card start-card--admin"
-            style={{ position: 'relative', cursor: 'default', opacity: 0.55 }}
-          >
-            <div className="start-card__icon">
-              <Settings size={64} strokeWidth={1} />
-            </div>
-            <h2>{t('start.admin')}</h2>
-            <p style={{ whiteSpace: 'nowrap' }}>{t('start.admin.desc')}</p>
-            <div
-              style={{
-                position: 'absolute', inset: 0,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                background: 'rgba(255,255,255,0.0)',
-                opacity: 1,
-              }}
-            >
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setShowInquiry(true); }}
-                style={{
-                  background: 'var(--dex-green, #86bc25)', color: '#fff',
-                  border: 'none', borderRadius: 999,
-                  padding: '10px 18px', fontWeight: 700,
-                  cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
-                  fontSize: '0.85rem', whiteSpace: 'nowrap',
-                }}
-              >
-                {locale === 'de' ? 'Organizer werden?' : 'Want to become an organizer?'}
-              </button>
+      <div className="dex-cluster-grid">
+        {clusters.map(c => (
+          <div key={c.key} className="dex-cluster">
+            <div className="dex-cluster-title">{c.title}</div>
+            <div className="dex-cluster-tiles">
+              {c.tiles.map((tile, i) => <React.Fragment key={i}>{tile}</React.Fragment>)}
             </div>
           </div>
-        )}
-        {/* v13.12: Vierte Kachel „Check-In" — nur sichtbar wenn der User
-            in mindestens einem aktiven Event als QR-Scanner / Organizer /
-            Co-Organizer eingetragen ist. Eigenes QR-Code-Icon und eigene
-            Scan-Pulse-Animation, klar abgegrenzt von der Admin-Kachel. */}
-        {showCheckInTile && (
-          <div
-            className="card card-clickable start-card start-card--checkin"
-            data-tour="tile-checkin"
-            onClick={() => navigate('check-in')}
-          >
-            <div className="start-card__icon">
-              <QrCode size={64} strokeWidth={1} />
-            </div>
-            <h2>{locale === 'de' ? 'Check-In' : 'Check-in'}</h2>
-            <p style={{ whiteSpace: 'nowrap' }}>
-              {locale === 'de'
-                ? 'Teilnehmer einchecken'
-                : 'Check in attendees'}
-            </p>
-          </div>
-        )}
-        {/* v26: „Tickets"-Kachel — Power-User + Admins beantworten Fragen. */}
-        {showTicketsTile && (
-          <div className="card card-clickable start-card" onClick={() => navigate('tickets')} style={{ position: 'relative' }}>
-            <div className="start-card__icon">
-              <MessageSquare size={64} strokeWidth={1} />
-            </div>
-            <h2>{locale === 'de' ? 'Tickets' : 'Tickets'}</h2>
-            <p style={{ whiteSpace: 'nowrap' }}>
-              {locale === 'de' ? 'Fragen beantworten' : 'Answer questions'}
-            </p>
-            {openTicketCount > 0 && (
-              <span style={{
-                position: 'absolute', top: 12, right: 12, background: '#ed8b00', color: '#fff',
-                borderRadius: 12, minWidth: 24, height: 24, padding: '0 7px',
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700,
-              }}>{openTicketCount}</span>
-            )}
-          </div>
-        )}
-        {/* v24.36: „Assistenz"-Kachel — nur für User, die stellvertretend für
-            andere angemeldet haben (oder Admins). Führt zur Verwaltung dieser
-            Fremd-Anmeldungen (einsehen, Angaben anpassen, ab-/anmelden). */}
-        {showAssistTile && (
-          <div
-            className="card card-clickable start-card"
-            onClick={() => navigate('assistant')}
-          >
-            <div className="start-card__icon">
-              <Users size={64} />
-            </div>
-            <h2>{locale === 'de' ? 'Assistenz' : 'Assistant'}</h2>
-            <p style={{ whiteSpace: 'nowrap' }}>
-              {locale === 'de' ? 'Anmeldungen für andere' : 'Registrations for others'}
-            </p>
-          </div>
-        )}
-        {/* v23.41/v24.84: „Admin"-Kachel — Hub für Prozesse, Rollen,
-            Listen-Erklärung, Archiv/Löschung (nur echte Admins). Bewusst als
-            LETZTE Kachel ganz rechts. */}
-        {showAdminHubTile && (
-          <div
-            className="card card-clickable start-card"
-            onClick={() => navigate('admin-hub')}
-          >
-            <div className="start-card__icon">
-              <Star size={64} strokeWidth={1} />
-            </div>
-            <h2>Admin</h2>
-            <p style={{ whiteSpace: 'nowrap' }}>
-              {locale === 'de' ? 'Verwaltung & Prozesse' : 'Administration & processes'}
-            </p>
-          </div>
-        )}
+        ))}
       </div>
-      {/* v24.24: „Organizer werden?" öffnet jetzt dasselbe Anfrage-Modal wie die
-          grüne Box auf der Landing Page („DEX App für dein Event anfragen") —
-          kein eigenes „Organizer werden"-Antragsmodal mehr. */}
+      {/* v24.24: „Organizer werden?" öffnet dasselbe Anfrage-Modal wie die grüne
+          Box auf der Landing Page. */}
       <InquiryModal open={showInquiry} onClose={() => setShowInquiry(false)} />
     </div>
   );
