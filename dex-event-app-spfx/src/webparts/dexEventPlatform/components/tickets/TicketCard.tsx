@@ -18,6 +18,8 @@ import { useLanguage } from '../../context/LanguageContext';
 import { useNavigation } from '../../context/NavigationContext';
 import { useCurrentUser } from '../../context/UserContext';
 import { listManualArticles, openManualArticle, ManualArticle } from '../../utils/manualSearch';
+import PersonContactHover from '../PersonContactHover';
+import { renderTicketThread, contactSubline } from './ticketThread';
 
 function wizardStepLabels(isDe: boolean): string[] {
   // 1-basiert; Reihenfolge identisch zum Event-Wizard (EventCreationPage.steps).
@@ -28,7 +30,7 @@ function wizardStepLabels(isDe: boolean): string[] {
 
 export default function TicketCard(props: { ticket: DexTicket; defaultExpanded?: boolean }): React.ReactElement {
   const { ticket } = props;
-  const { claimTicket, releaseTicket, answerTicket } = useTickets();
+  const { claimTicket, releaseTicket, answerTicket, replyToTicket, closeTicketNoAnswer } = useTickets();
   const { locale } = useLanguage();
   const { navigate } = useNavigation();
   const { currentUser } = useCurrentUser();
@@ -45,6 +47,9 @@ export default function TicketCard(props: { ticket: DexTicket; defaultExpanded?:
   const [imgFile, setImgFile] = React.useState<File | null>(null);
   const [imgUrl, setImgUrl] = React.useState<string>('');
   const [busy, setBusy] = React.useState(false);
+  // v26.8: Folge-Antwort auf eine Rückfrage des Fragestellers.
+  const [replyText, setReplyText] = React.useState('');
+  const [replyBusy, setReplyBusy] = React.useState(false);
 
   const stepLabels = wizardStepLabels(isDe);
 
@@ -59,6 +64,19 @@ export default function TicketCard(props: { ticket: DexTicket; defaultExpanded?:
   const ansShots = ticket.attachments.filter((a) => a.kind === 'ans');
 
   const claimedByMe = (ticket.claimedByEmail || '').toLowerCase() === myEmailLc;
+  // v26.8: Wurde schon einmal beantwortet? Dann ist ein nicht-geschlossenes
+  // Ticket durch eine Rückfrage des Fragestellers WIEDER GEÖFFNET — dann zeigen
+  // wir eine schlanke Antwort-Box statt des vollen Erst-Antwort-Composers.
+  const alreadyAnswered = !!ticket.answeredAt;
+  const reopened = alreadyAnswered && ticket.status !== 'Closed';
+
+  const sendReply = async (): Promise<void> => {
+    if (!replyText.trim()) return;
+    setReplyBusy(true);
+    const ok = await replyToTicket(ticket, replyText.trim());
+    setReplyBusy(false);
+    if (ok) setReplyText('');
+  };
 
   const startAnswering = async (): Promise<void> => {
     if (ticket.status === 'Open') { await claimTicket(ticket.id); }
@@ -116,9 +134,16 @@ export default function TicketCard(props: { ticket: DexTicket; defaultExpanded?:
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ padding: '2px 9px', borderRadius: 10, background: si.bg, color: si.col, fontSize: 12, fontWeight: 700 }}>{si.label}</span>
-          <strong style={{ fontSize: '0.92rem' }}>{ticket.askerName || ticket.askerEmail}</strong>
-          <span style={{ fontSize: 12, color: 'var(--dex-gray-400,#a0a0a0)' }}>
-            {ticket.askerRole}{ticket.eventTitle ? ` · ${ticket.eventTitle}` : ''}
+          {/* v26.8: Foto-Kontaktkarte des Fragestellers (Hover → Teams-Chat). */}
+          <PersonContactHover email={ticket.askerEmail} name={ticket.askerName || ticket.askerEmail} size={30}
+            subline={contactSubline(ticket.askerJobTitle, ticket.askerLocation)} isDe={isDe} />
+          <span style={{ display: 'inline-flex', flexDirection: 'column', lineHeight: 1.25 }}>
+            <strong style={{ fontSize: '0.92rem' }}>{ticket.askerName || ticket.askerEmail}</strong>
+            <span style={{ fontSize: 12, color: 'var(--dex-gray-400,#a0a0a0)' }}>
+              {ticket.askerRole}
+              {contactSubline(ticket.askerJobTitle, ticket.askerLocation) ? ` · ${contactSubline(ticket.askerJobTitle, ticket.askerLocation)}` : ''}
+              {ticket.eventTitle ? ` · ${ticket.eventTitle}` : ''}
+            </span>
           </span>
         </div>
         {created && <span style={{ fontSize: 11, color: 'var(--dex-gray-400,#a0a0a0)' }}>{created}</span>}
@@ -155,11 +180,22 @@ export default function TicketCard(props: { ticket: DexTicket; defaultExpanded?:
         </div>
       )}
 
-      {/* Bereits beantwortet → Antwort anzeigen */}
-      {ticket.status === 'Closed' && (ticket.answerText || ticket.answerArticleIds.length > 0 || ticket.answerWizardStep != null || ansShots.length > 0) && (
+      {/* Bereits beantwortet → Antwort anzeigen (auch wenn durch eine Rückfrage
+          wieder geöffnet — die ursprüngliche Antwort bleibt sichtbar). */}
+      {!!ticket.answeredAt && (ticket.answerText || ticket.answerArticleIds.length > 0 || ticket.answerWizardStep != null || ansShots.length > 0) && (
         <div style={{ marginTop: 10, background: '#f1f7e8', borderRadius: 8, padding: '9px 11px' }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--dex-green-dark,#4a7c1f)', marginBottom: 3 }}>
-            {isDe ? 'Antwort' : 'Answer'}{ticket.answeredByName ? ` · ${ticket.answeredByName}` : ''}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--dex-green-dark,#4a7c1f)' }}>{isDe ? 'Antwort' : 'Answer'}</span>
+            {ticket.answeredByEmail && (
+              <PersonContactHover email={ticket.answeredByEmail} name={ticket.answeredByName || ticket.answeredByEmail} size={26}
+                subline={contactSubline(ticket.answeredByJobTitle, ticket.answeredByLocation)} isDe={isDe} />
+            )}
+            {ticket.answeredByName && (
+              <span style={{ fontSize: 12, color: 'var(--dex-gray-600,#666)' }}>
+                {ticket.answeredByName}
+                {contactSubline(ticket.answeredByJobTitle, ticket.answeredByLocation) ? ` · ${contactSubline(ticket.answeredByJobTitle, ticket.answeredByLocation)}` : ''}
+              </span>
+            )}
           </div>
           {ticket.answerText && <div style={{ fontSize: '0.88rem', whiteSpace: 'pre-wrap' }}>{ticket.answerText}</div>}
           {ticket.answerArticleIds.length > 0 && (
@@ -191,8 +227,30 @@ export default function TicketCard(props: { ticket: DexTicket; defaultExpanded?:
         </div>
       )}
 
-      {/* Aktionen */}
-      {ticket.status !== 'Closed' && !expanded && (
+      {/* v26.8: Rückfragen-Verlauf */}
+      {renderTicketThread(ticket, isDe)}
+
+      {/* v26.8: Wieder geöffnet durch eine Rückfrage → schlanke Folge-Antwort
+          ODER „keine Antwort nötig" (z.B. wenn die Rückfrage nur ein Danke war). */}
+      {reopened && (
+        <div style={{ marginTop: 12, borderTop: '1px solid var(--dex-gray-200,#e8e8e8)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700,#444)' }}>{isDe ? 'Auf die Rückfrage antworten' : 'Reply to the follow-up'}</label>
+          <textarea value={replyText} onChange={(e) => setReplyText(e.target.value)} rows={3}
+            placeholder={isDe ? 'Deine Antwort an den Fragesteller …' : 'Your reply to the asker …'}
+            style={{ padding: '9px 11px', borderRadius: 8, border: '1px solid var(--dex-gray-300,#d1d1d1)', fontFamily: 'inherit', fontSize: '0.9rem', resize: 'vertical' }} />
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn btn-secondary" style={{ padding: '7px 14px' }} onClick={() => closeTicketNoAnswer(ticket.id)} disabled={replyBusy}>
+              {isDe ? 'Keine Antwort nötig' : 'No answer needed'}
+            </button>
+            <button className="btn btn-primary" style={{ padding: '7px 16px' }} onClick={sendReply} disabled={replyBusy || !replyText.trim()}>
+              {replyBusy ? (isDe ? 'Wird gesendet …' : 'Sending …') : (isDe ? 'Antwort senden' : 'Send reply')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Aktionen (Erst-Antwort) */}
+      {ticket.status !== 'Closed' && !alreadyAnswered && !expanded && (
         <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
           <button className="btn btn-primary" style={{ padding: '7px 16px' }} onClick={startAnswering}>
             {ticket.status === 'Open' ? (isDe ? 'Übernehmen & beantworten' : 'Take & answer') : (claimedByMe ? (isDe ? 'Antworten' : 'Answer') : (isDe ? 'Übernehmen' : 'Take over'))}
@@ -205,8 +263,8 @@ export default function TicketCard(props: { ticket: DexTicket; defaultExpanded?:
         </div>
       )}
 
-      {/* Antwort-Composer */}
-      {ticket.status !== 'Closed' && expanded && (
+      {/* Antwort-Composer (Erst-Antwort) */}
+      {ticket.status !== 'Closed' && !alreadyAnswered && expanded && (
         <div style={{ marginTop: 12, borderTop: '1px solid var(--dex-gray-200,#e8e8e8)', paddingTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
           <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700,#444)' }}>{isDe ? 'Deine Antwort' : 'Your answer'}</label>
           <textarea value={answerText} onChange={(e) => setAnswerText(e.target.value)} rows={4}

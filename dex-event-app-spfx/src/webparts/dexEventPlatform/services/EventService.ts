@@ -22,7 +22,7 @@ import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions } from '@micro
 import { wrapTemplateForStorage, buildEmailFromTemplate } from './EmailTemplates';
 import { buildOutlookLocation } from '../utils/eventFormat';
 import { subscribeListChanges } from '../utils/spListRealtime';
-import { DexTicket, TicketAttachment } from '../types';
+import { DexTicket, TicketAttachment, TicketFollowUp } from '../types';
 
 /**
  * HTML-Body für die OutlookDeclineReminder-Mail (EN) - komplett im
@@ -9678,7 +9678,7 @@ export class EventService {
   public async ensureTicketsList(): Promise<void> {
     const listName = EventService.TICKETS_LIST;
     const exists = await this.listExists(listName);
-    if (exists) return;
+    if (exists) { await this.ensureTicketExtraFields(); return; }
     const createResp = await this._post(`${this.siteUrl}/_api/web/lists`, {
       '__metadata': { 'type': 'SP.List' },
       'Title': listName,
@@ -9710,6 +9710,12 @@ export class EventService {
       { title: 'ClaimedByEmail', type: 2 },
       { title: 'ClaimedByName', type: 2 },
       { title: 'ClaimedAt', type: 4 },
+      // v26.8: Standort/Position für die Foto-Kontaktkarte + Rückfragen-Verlauf.
+      { title: 'AskerLocation', type: 2 },
+      { title: 'AskerJobTitle', type: 2 },
+      { title: 'AnsweredByLocation', type: 2 },
+      { title: 'AnsweredByJobTitle', type: 2 },
+      { title: 'FollowUps', type: 3, note: true },
     ];
     for (const f of fields) {
       try {
@@ -9731,10 +9737,46 @@ export class EventService {
     try { await this.setQueueListPermissions(listName); } catch { /* best-effort */ }
   }
 
+  /** v26.8: fehlende Felder auf einer bereits existierenden DEX_Tickets-Liste
+   *  nachziehen (Standort/Position für die Foto-Kontaktkarte + Rückfragen-
+   *  Verlauf). Sentinel-Feld FollowUps → wenn vorhanden, ist nichts zu tun. */
+  private async ensureTicketExtraFields(): Promise<void> {
+    const listName = EventService.TICKETS_LIST;
+    try {
+      const check = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName&$filter=InternalName eq 'FollowUps'`,
+        SPHttpClient.configurations.v1);
+      if (check.ok) {
+        const d = await check.json();
+        const arr = d.value || d.d?.results || [];
+        if (Array.isArray(arr) && arr.length > 0) return; // schon migriert
+      }
+    } catch { /* weiter — versuchen anzulegen */ }
+    const extra: Array<{ title: string; type: number; note?: boolean }> = [
+      { title: 'AskerLocation', type: 2 },
+      { title: 'AskerJobTitle', type: 2 },
+      { title: 'AnsweredByLocation', type: 2 },
+      { title: 'AnsweredByJobTitle', type: 2 },
+      { title: 'FollowUps', type: 3, note: true },
+    ];
+    for (const f of extra) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const payload: Record<string, any> = {
+          '__metadata': { 'type': f.note ? 'SP.FieldMultiLineText' : 'SP.Field' },
+          'Title': f.title, 'FieldTypeKind': f.type, 'Required': false,
+        };
+        if (f.note) { payload['RichText'] = false; payload['NumberOfLines'] = 8; }
+        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
+      } catch { /* einzelne Feld-Fehler ignorieren */ }
+    }
+  }
+
   /** Neues Ticket anlegen. Liefert die Item-Id zurück (für Attachment-Upload). */
   public async createTicket(t: {
     questions: string[];
     askerEmail: string; askerName: string; askerRole: string;
+    askerLocation?: string; askerJobTitle?: string;
     audience: string; eventId: string; eventTitle: string;
     assignedOrganizers: string[]; pageContext: string;
   }): Promise<number | null> {
@@ -9748,6 +9790,7 @@ export class EventService {
           'Questions': JSON.stringify(t.questions || []),
           'Status': 'Open',
           'AskerEmail': t.askerEmail, 'AskerName': t.askerName, 'AskerRole': t.askerRole,
+          'AskerLocation': t.askerLocation || '', 'AskerJobTitle': t.askerJobTitle || '',
           'Audience': t.audience,
           'TicketEventId': t.eventId || '', 'TicketEventTitle': t.eventTitle || '',
           'AssignedOrganizers': JSON.stringify(t.assignedOrganizers || []),
@@ -9786,7 +9829,7 @@ export class EventService {
   /** Alle Tickets laden (inkl. Anhänge per $expand). Neueste zuerst. */
   public async getTickets(): Promise<DexTicket[]> {
     try {
-      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AnswerText,AnswerArticleIds,AnswerWizardStep,AnsweredByEmail,AnsweredByName,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,Created';
+      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AnswerText,AnswerArticleIds,AnswerWizardStep,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
       const url = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items?$select=${sel}&$expand=AttachmentFiles&$orderby=Created desc&$top=500`;
       const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
       if (!resp.ok) return [];
@@ -9804,7 +9847,7 @@ export class EventService {
    *  Ask-Modal — der Fragesteller sieht Status + Antwort in der App). */
   public async getMyTickets(email: string): Promise<DexTicket[]> {
     try {
-      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AnswerText,AnswerArticleIds,AnswerWizardStep,AnsweredByEmail,AnsweredByName,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,Created';
+      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AnswerText,AnswerArticleIds,AnswerWizardStep,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
       const safe = (email || '').replace(/'/g, "''");
       const url = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items?$select=${sel}&$expand=AttachmentFiles&$filter=AskerEmail eq '${safe}'&$orderby=Created desc&$top=100`;
       const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
@@ -9831,6 +9874,20 @@ export class EventService {
       return { fileName: fn, url: a.ServerRelativeUrl || '', kind };
     });
     const stepRaw = it.AnswerWizardStep;
+    const parseFollowUps = (s: unknown): TicketFollowUp[] => {
+      try {
+        const a = JSON.parse((s as string) || '[]');
+        if (!Array.isArray(a)) return [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        return a.map((x: any) => ({
+          byEmail: String(x.byEmail || ''),
+          byName: String(x.byName || ''),
+          byRole: (x.byRole === 'answerer' ? 'answerer' : 'asker') as TicketFollowUp['byRole'],
+          text: String(x.text || ''),
+          at: String(x.at || ''),
+        }));
+      } catch { return []; }
+    };
     return {
       id: it.Id,
       title: it.Title || '',
@@ -9839,6 +9896,8 @@ export class EventService {
       askerEmail: it.AskerEmail || '',
       askerName: it.AskerName || '',
       askerRole: (it.AskerRole || 'User') as DexTicket['askerRole'],
+      askerLocation: it.AskerLocation || '',
+      askerJobTitle: it.AskerJobTitle || '',
       audience: (it.Audience || 'PowerUser') as DexTicket['audience'],
       eventId: it.TicketEventId || '',
       eventTitle: it.TicketEventTitle || '',
@@ -9849,12 +9908,15 @@ export class EventService {
       answerWizardStep: (stepRaw === 0 || (stepRaw != null && stepRaw !== '')) ? Number(stepRaw) : null,
       answeredByEmail: it.AnsweredByEmail || '',
       answeredByName: it.AnsweredByName || '',
+      answeredByLocation: it.AnsweredByLocation || '',
+      answeredByJobTitle: it.AnsweredByJobTitle || '',
       answeredAt: it.AnsweredAt || '',
       claimedByEmail: it.ClaimedByEmail || '',
       claimedByName: it.ClaimedByName || '',
       claimedAt: it.ClaimedAt || '',
       created: it.Created || '',
       attachments,
+      followUps: parseFollowUps(it.FollowUps),
     };
   }
 
@@ -9890,6 +9952,7 @@ export class EventService {
   public async answerTicket(itemId: number, a: {
     answerText: string; articleIds: string[]; wizardStep: number | null;
     answeredByEmail: string; answeredByName: string;
+    answeredByLocation?: string; answeredByJobTitle?: string;
   }): Promise<boolean> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -9900,6 +9963,8 @@ export class EventService {
         'AnswerWizardStep': (a.wizardStep == null) ? null : a.wizardStep,
         'AnsweredByEmail': a.answeredByEmail,
         'AnsweredByName': a.answeredByName,
+        'AnsweredByLocation': a.answeredByLocation || '',
+        'AnsweredByJobTitle': a.answeredByJobTitle || '',
         'AnsweredAt': new Date().toISOString(),
       };
       const resp = await this._merge(
@@ -9909,6 +9974,45 @@ export class EventService {
       return resp.ok;
     } catch (err) {
       console.warn('[DEX] answerTicket failed:', err);
+      return false;
+    }
+  }
+
+  /** v26.8: Rückfragen-Verlauf schreiben + Status setzen. Vom Fragesteller
+   *  (Status zurück auf InProgress, der/dem Beantwortenden zugewiesen) ODER von
+   *  der/dem Beantwortenden als Folge-Antwort (Status Closed). */
+  public async setTicketFollowUps(itemId: number, followUps: TicketFollowUp[], extra: {
+    status?: string; claimedByEmail?: string; claimedByName?: string; claimedAt?: string | null;
+  }): Promise<boolean> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body: Record<string, any> = { 'FollowUps': JSON.stringify(followUps || []) };
+      if (extra.status !== undefined) body['Status'] = extra.status;
+      if (extra.claimedByEmail !== undefined) body['ClaimedByEmail'] = extra.claimedByEmail;
+      if (extra.claimedByName !== undefined) body['ClaimedByName'] = extra.claimedByName;
+      if (extra.claimedAt !== undefined) body['ClaimedAt'] = extra.claimedAt;
+      const resp = await this._merge(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items(${itemId})`,
+        body
+      );
+      return resp.ok;
+    } catch (err) {
+      console.warn('[DEX] setTicketFollowUps failed:', err);
+      return false;
+    }
+  }
+
+  /** v26.8: Ticket schließen, ohne eine Antwort zu senden („keine Antwort nötig",
+   *  z.B. wenn die Rückfrage nur ein Dankeschön war). */
+  public async closeTicketNoAnswer(itemId: number): Promise<boolean> {
+    try {
+      const resp = await this._merge(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items(${itemId})`,
+        { 'Status': 'Closed' }
+      );
+      return resp.ok;
+    } catch (err) {
+      console.warn('[DEX] closeTicketNoAnswer failed:', err);
       return false;
     }
   }
