@@ -36,6 +36,7 @@ import { InfoTooltip } from './InfoTooltip';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 import Modal from './Modal';
 import { Icon } from '@fluentui/react/lib/Icon';
+import TicketEventBox from './tickets/TicketEventBox';
 import InternationalSearchToggle from './InternationalSearchToggle';
 import { UserFieldPicker } from './UserFieldPicker';
 // v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
@@ -8188,6 +8189,9 @@ export default function AdminPage(): React.ReactElement {
           unten in die „Angemeldet"-Kachel hochgezogen. Die Kachel bekommt
           dann doppelte Breite (2fr) damit Group-A/B-Breakdown sauber drin
           Platz hat — keine zwei breiten Vollbreite-Karten mehr. */}
+      {/* v26: Box „Offene Fragen (User)" — zwischen Event-Infos und KPI-Kacheln.
+          Zeigt die Fragen normaler User zu diesem Event (Ticketsystem). */}
+      {selectedEvent && <TicketEventBox eventId={selectedEvent.id} />}
       {(() => {
         const hasWaitlistKPI = !!(selectedEvent?.waitlistEnabled && (selectedEvent?.maxParticipants || 0) > 0);
         // Fraktionen pro Spalte — Angemeldet bekommt 2fr wenn Split aktiv ist.

@@ -28,6 +28,9 @@ interface RoleContextType {
   isImpersonating: boolean;
   isOrganizer: boolean;
   canCreateEvents: boolean;
+  /** v26: Der aktuelle User ist Power-User (Organizer/Admin mit IsPowerUser-Flag).
+   *  Power-User + Admins beantworten Tickets über die „Tickets"-Kachel. */
+  isPowerUser: boolean;
   siteUrl: string;
   addRole: (userEmail: string, userName: string, role: UserRole, location: string) => Promise<boolean>;
   updateRole: (itemId: number, newRole: UserRole) => Promise<boolean>;
@@ -259,6 +262,11 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   const isAdmin = effectiveRole === 'Admin';
   const isOrganizer = effectiveRole === 'Organizer' || effectiveRole === 'Admin';
   const canCreateEvents = isOrganizer;
+  // v26: Power-User-Flag des aktuellen Users aus DEX_Roles. Im Demo-/
+  // Impersonations-Modus bewusst false (wie isAdmin) — der Demo-User soll
+  // exakt das sehen, was ein normaler User sieht.
+  const myRoleEntry = roles.find(r => (r.userEmail || '').toLowerCase() === currentUserEmail.toLowerCase());
+  const isPowerUser = !isImpersonating && !!myRoleEntry?.isPowerUser;
   const originalIsAdmin = currentUserRole === 'Admin';
   const siteUrl = props.context.pageContext.web.absoluteUrl;
 
@@ -269,7 +277,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   // pro Render neu erzeugt und würden das Memo wirkungslos machen).
   const value = React.useMemo<RoleContextType>(() => ({
     roles, currentUserRole, isRolesLoading,
-    isAdmin, isOrganizer, canCreateEvents, siteUrl,
+    isAdmin, isOrganizer, canCreateEvents, isPowerUser, siteUrl,
     originalIsAdmin, isImpersonating,
     addRole, updateRole, setPowerUser, updateRoleLocation, removeRole, refreshRoles, searchUser, searchUsers, searchGroups, getGroupMembers, searchUsersByLocation,
   // eslint-disable-next-line react-hooks/exhaustive-deps

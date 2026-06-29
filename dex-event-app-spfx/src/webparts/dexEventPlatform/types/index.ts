@@ -501,3 +501,52 @@ export interface RoleAssignment {
    *  und kann gleichzeitig Organizer UND Power User sein. */
   isPowerUser?: boolean;
 }
+
+// ==================== Ticketsystem (v26.0.0) ====================
+// Fragen der Nutzer (grüner „Hast du Fragen?"-Header-Button) + Antworten der
+// Power-User/Organizer. Persistiert in der globalen Liste DEX_Tickets.
+export type TicketStatus = 'Open' | 'InProgress' | 'Closed';
+// PowerUser = Frage eines Organizers/Admins (geht an Power-User, Admins in CC).
+// Organizer  = Frage eines normalen Users zu einem Event (geht an dessen Organizer).
+export type TicketAudience = 'PowerUser' | 'Organizer';
+
+export interface TicketAttachment {
+  fileName: string;
+  /** Server-relative URL des Anhangs (für <img src>). */
+  url: string;
+  /** ask = vom Fragesteller angehängt, ans = von der Antwort, other = sonstiges. */
+  kind: 'ask' | 'ans' | 'other';
+}
+
+export interface DexTicket {
+  id: number;
+  title: string;
+  /** Eine oder mehrere Fragen (per „+" im Modal). */
+  questions: string[];
+  status: TicketStatus;
+  askerEmail: string;
+  askerName: string;
+  askerRole: UserRole;
+  audience: TicketAudience;
+  /** Event-Kontext beim Stellen der Frage (leer = kein Event). */
+  eventId: string;
+  eventTitle: string;
+  /** Bei Audience='Organizer': E-Mails der zuständigen Organizer. */
+  assignedOrganizers: string[];
+  /** Page-ID / Bildschirm, von dem die Frage gestellt wurde. */
+  pageContext: string;
+  answerText: string;
+  /** IDs der in der Antwort verlinkten Handbuch-Artikel. */
+  answerArticleIds: string[];
+  /** 1-basierter Event-Wizard-Schritt, der in der Antwort eingebunden ist (null = keiner). */
+  answerWizardStep: number | null;
+  answeredByEmail: string;
+  answeredByName: string;
+  answeredAt: string;
+  /** Wer das Ticket gerade bearbeitet (Echtzeit „in Bearbeitung"). */
+  claimedByEmail: string;
+  claimedByName: string;
+  claimedAt: string;
+  created: string;
+  attachments: TicketAttachment[];
+}

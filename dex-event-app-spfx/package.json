@@ -1,6 +1,6 @@
 {
   "name": "dex-event-platform-spfx",
-  "version": "25.1.0",
+  "version": "26.1.0",
   "private": true,
   "engines": {
     "node": ">=18.17.1 <19.0.0 || >=20.0.0"
@@ -28,6 +28,7 @@
     "ajv": "^8.18.0",
     "date-fns": "^4.1.0",
     "eslint": "^8.57.1",
+    "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "postcss": "^8.5.8",
     "postcss-discard-comments": "^5.1.2",
@@ -37,6 +38,7 @@
     "react-datepicker": "^4.25.0",
     "react-dom": "17.0.1",
     "react-pdf": "^6.2.2",
+    "socket.io-client": "^4.7.5",
     "tslib": "2.3.1",
     "xlsx": "^0.18.5"
   },

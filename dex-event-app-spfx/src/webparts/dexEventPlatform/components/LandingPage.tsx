@@ -32,6 +32,8 @@ export default function LandingPage(): React.ReactElement {
   // v13.3: Inquiry-Modal lebt jetzt komplett in der wiederverwendbaren
   // InquiryModal-Komponente — eigene States hier entfallen.
   const [showInquiry, setShowInquiry] = React.useState(false);
+  // v26: Hover-Zustand für die „DEX für dein Event nutzen"-CTA (dunkelgrüne Kontur).
+  const [ctaHover, setCtaHover] = React.useState(false);
 
   // ==================== v22: Archivierung (Admin) ====================
   const { isAdmin, canCreateEvents } = useRoles();
@@ -861,13 +863,17 @@ export default function LandingPage(): React.ReactElement {
             <button
               type="button"
               onClick={() => setShowInquiry(true)}
+              onMouseEnter={() => setCtaHover(true)}
+              onMouseLeave={() => setCtaHover(false)}
               className="landing__bubble"
               style={{
                 display: 'flex', alignItems: 'center', gap: 12,
                 background: 'var(--dex-green)', color: '#fff',
                 padding: '12px 18px', borderRadius: 14,
-                boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
-                border: 'none', cursor: 'pointer', textAlign: 'left',
+                boxShadow: ctaHover ? '0 4px 14px rgba(0,0,0,0.16)' : '0 2px 8px rgba(0,0,0,0.10)',
+                border: ctaHover ? '2px solid var(--dex-green-dark, #4a7c1f)' : '2px solid transparent',
+                cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s ease',
+                transform: ctaHover ? 'translateY(-1px)' : 'none',
                 fontFamily: 'inherit', width: '100%', maxWidth: 360,
               }}
               title={locale === 'de' ? 'DEX App für dein Event anfragen' : 'Request the DEX App for your event'}

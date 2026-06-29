@@ -743,6 +743,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         safeRun('ensureInactiveNoticesList', () => eventService.ensureInactiveNoticesList(), parallelMarks),
         safeRun('ensureArchiveList', () => eventService.ensureArchiveList(), parallelMarks),
         safeRun('ensureWeeklyReportsList', () => eventService.ensureWeeklyReportsList(), parallelMarks),
+        safeRun('ensureTicketsList', () => eventService.ensureTicketsList(), parallelMarks),
         safeRun('ensureOrganizerRequestsList', () => eventService.ensureOrganizerRequestsList(), parallelMarks),
         safeRun('ensureOrganizerArchivedList', () => eventService.ensureOrganizerArchivedList(), parallelMarks),
         safeRun('ensureAssetsFolders', () => eventService.ensureAssetsFolders(), parallelMarks),
@@ -4484,10 +4485,26 @@ export function EventProvider(props: { context: WebPartContext; children: React.
            <ul style="margin:8px 0 0 18px;padding:0;">${heldRows.map(r => `<li style="margin-bottom:6px;"><strong>${esc(r.e.title)}</strong> — ${cnt(r.e)} Teilnehmer <span style="color:#777;font-size:13px;">(${fmtD(new Date(r.ts).toISOString())})</span>${r.kids.length ? `<ul style="margin:4px 0 0 18px;padding:0;color:#555;font-size:13px;">${r.kids.map(k => `<li style="margin-bottom:2px;">${esc(shortSub(k.title))} — ${cnt(k)} Teilnehmer</li>`).join('')}</ul>` : ''}</li>`).join('')}</ul>`
         : '<p style="margin:6px 0 0;color:#666;">In diesem Zeitraum hat kein Event stattgefunden.</p>';
 
+      // v26: Tickets im Berichtszeitraum (Fragen & Antworten der Nutzer).
+      const tInPeriod = (iso: string): boolean => { const x = new Date(iso).getTime(); return isFinite(x) && x >= fromTs && x <= toTs; };
+      let ticketsInPeriod: Array<{ askerName: string; questions: string[]; status: string; answerText: string; answeredByName: string }> = [];
+      try {
+        const allTickets = await eventService.getTickets();
+        ticketsInPeriod = allTickets.filter(tk => tInPeriod(tk.created) || (!!tk.answeredAt && tInPeriod(tk.answeredAt)));
+      } catch { /* best-effort */ }
+      const tStatusLabel = (s: string): string => (s === 'Closed' ? 'beantwortet' : (s === 'InProgress' ? 'in Bearbeitung' : 'offen'));
+      const answeredInPeriod = ticketsInPeriod.filter(tk => tk.status === 'Closed').length;
+      const ticketsHtml = ticketsInPeriod.length > 0
+        ? `<p style="margin:6px 0 0;">In diesem Zeitraum ${ticketsInPeriod.length === 1 ? 'wurde <strong>1 Frage</strong> gestellt' : `wurden <strong>${ticketsInPeriod.length} Fragen</strong> gestellt`}${answeredInPeriod > 0 ? `, davon ${answeredInPeriod} beantwortet` : ''}:</p>
+           <ul style="margin:8px 0 0 18px;padding:0;">${ticketsInPeriod.map(tk => `<li style="margin-bottom:8px;"><strong>${esc(tk.askerName)}</strong> <span style="color:#777;font-size:13px;">(${tStatusLabel(tk.status)})</span><br><span style="color:#333;">${esc((tk.questions || []).join(' / '))}</span>${tk.status === 'Closed' && tk.answerText ? `<br><span style="color:#2d4a06;font-size:13px;">Antwort${tk.answeredByName ? ` (${esc(tk.answeredByName)})` : ''}: ${esc(tk.answerText)}</span>` : ''}</li>`).join('')}</ul>`
+        : '<p style="margin:6px 0 0;color:#666;">In diesem Zeitraum wurden keine Fragen über das Ticketsystem gestellt.</p>';
+      const relNotesBottomHtml = relNotes.length > 0
+        ? `<p style="margin:6px 0 0;color:#555;">Diese Verbesserungen sind in diesem Zeitraum live gegangen:</p>${relNotesHtml}`
+        : '<p style="margin:6px 0 0;color:#666;">In diesem Zeitraum gab es keine neuen Änderungen an der App.</p>';
+
       const inner = `
         <p style="margin:0 0 6px;">Hallo __GREETING_NAME__,</p>
         <p style="margin:0 0 16px;">hier ist euer wöchentlicher Überblick über die DEX Event Experience Platform — was in den letzten Tagen passiert ist, vom <strong>${fmtD(fromIso)}</strong> bis <strong>${fmtD(toIso)}</strong>.</p>
-        ${relNotes.length > 0 ? `<h3 style="margin:18px 0 0;font-size:15px;color:#2d4a06;">Neues in der App</h3><p style="margin:6px 0 0;color:#555;">Diese Verbesserungen sind in dieser Woche live gegangen:</p>${relNotesHtml}` : ''}
         <h3 style="margin:18px 0 0;font-size:15px;color:#2d4a06;">Neue Events</h3>
         ${eventsHtml}
         ${draftHint}
@@ -4506,6 +4523,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           <tr><td style="padding:3px 16px 3px 0;color:#555;">Aktive Anmeldungen insgesamt</td><td style="padding:3px 0;font-weight:700;">${regTotal}</td></tr>
           <tr><td style="padding:3px 16px 3px 0;color:#555;">Berechtigte Organizer</td><td style="padding:3px 0;font-weight:700;">${organizerEmails.length}</td></tr>
         </table>
+        <hr style="border:none;border-top:1px solid #e0e0e0;margin:24px 0;">
+        <h3 style="margin:0 0 6px;font-size:15px;color:#2d4a06;">Fragen &amp; Antworten</h3>
+        ${ticketsHtml}
+        <hr style="border:none;border-top:1px solid #e0e0e0;margin:24px 0;">
+        <h3 style="margin:0 0 6px;font-size:15px;color:#2d4a06;">Release Notes</h3>
+        ${relNotesBottomHtml}
         <p style="margin:24px 0 0;font-size:12px;color:#999;">Diesen Bericht bekommt ihr automatisch einmal pro Woche, weil ihr Admin der DEX Event Experience Platform seid.</p>
       `;
       const subject = `Automatischer Wochenbericht — ${fmtD(toIso)}`;

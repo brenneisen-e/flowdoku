@@ -604,10 +604,63 @@ Zusaetzlich zu den drei Versions-Dateien oben bei JEDEM Build:
 3. Clean-Build + `.sppkg` nach `dist/` kopieren.
 4. Source + `dist/dex-event-platform.sppkg` + `docs/release-notes.md` committen.
 
+### Ticketsystem (v26.0.0) — Fragen & Antworten
+
+Nutzer stellen Fragen über den grünen Header-Button **„Hast du Fragen?"**
+(`components/QuestionButton.tsx`, in `Header.tsx` in `header-right`, nicht auf der
+Landing Page, für ALLE eingeloggten User). Power-User + Admins beantworten sie
+über die Kachel **„Tickets"** (`TicketsPage.tsx`, lazy), Organizer beantworten
+die User-Fragen zu ihrem Event in der Event-Übersicht
+(`components/tickets/TicketEventBox.tsx`, einklappbare Box „Offene Fragen (User)"
+zwischen Event-Infos und KPI-Kacheln in `AdminPage.tsx`).
+
+- **Globale Liste `DEX_Tickets`** (Site-Collection-Root, `ensureTicketsList` in
+  `EventService.ts`, im Boot über `initEvents` eingehängt). Queue-Schreibrechte
+  via `setQueueListPermissions` — bewusst **KEINE Item-Level-Security** (analog
+  `DEX_TeamJoinRequests`: die Beantwortenden müssen fremde Tickets lesen). Felder:
+  `Questions`(Note JSON), `Status`(Choice Open/InProgress/Closed),
+  `AskerEmail/Name/Role`, `Audience`(PowerUser|Organizer), `TicketEventId/Title`,
+  `AssignedOrganizers`(Note JSON), `PageContext`, `AnswerText`(Note),
+  `AnswerArticleIds`(Note JSON), `AnswerWizardStep`(Number),
+  `AnsweredByEmail/Name/At`, `ClaimedByEmail/Name/At`. Screenshots = Item-
+  Attachments mit Namens-Präfix `ask_`/`ans_`.
+- **Service-Methoden** (EventService): `createTicket`, `getTickets`,
+  `getMyTickets`, `addTicketAttachment`, `claimTicket`, `releaseTicket`,
+  `answerTicket`. **`TicketContext`** (`context/TicketContext.tsx`, Provider in
+  `DexEventPlatform.tsx` unter dem EventProvider) orchestriert Laden, Routing,
+  Mails und die Echtzeit-Anzeige (`subscribeListChanges` auf `DEX_Tickets` +
+  30-s-Poll-Fallback). `RoleContext` exponiert `isPowerUser` (aktueller User).
+- **Routing:** Organizer/Admin-Frage → Audience `PowerUser` (Mail an alle
+  Power-User, Admins in CC). User-Frage zu einem Event → Audience `Organizer`
+  (Mail an die Event-Organizer, KEIN CC). Ohne Event-Kontext fällt die
+  User-Frage auf die Power-User zurück.
+- **Mails** (bestehende `DEX_Emails`-Queue, KEIN neuer Flow): neue Frage →
+  Benachrichtigung mit **Deep-Link** (`?action=tickets&id=` bzw.
+  `?action=admin&event=&ticket=`, abgefangen in `DexEventPlatform.tsx`);
+  Antwort → Mail an den Fragesteller. **Jede Ticket-Mail enthält den Hinweis,
+  NICHT per Mail zu antworten, sondern in der App.**
+- **„In Bearbeitung":** Wer ein Ticket öffnet, claimt es (Status `InProgress`,
+  `ClaimedBy`); andere sehen das nahezu in Echtzeit. „Wieder freigeben"
+  (`releaseTicket`) setzt zurück auf `Open`, damit jemand anderes übernimmt.
+- **Antwort-Bausteine:** Freitext + verlinkte Handbuch-Artikel + Verweis auf
+  einen Event-Wizard-Schritt (Sprung via `dex-tutorial-wizard-step`-Event) +
+  optionales Bild. Handbuch wird **lazy** geladen (`utils/manualSearch.ts`,
+  dynamic import von `handbookContent`) — NIE statisch im Boot-Pfad.
+- **Screenshots:** `utils/screenshot.ts` (`captureScreen`, dynamic import von
+  **`html2canvas`** — neue Dependency, lazy). Der Ask-Screenshot erfasst den
+  Bildschirm hinter dem kurz ausgeblendeten Modal.
+- **Wochenbericht** (`maybeSendWeeklyReport`): Reihenfolge Event-Statistiken →
+  **Fragen & Antworten** (Tickets im Zeitraum) → **Release Notes ganz unten**.
+- **Onboarding-Mail** (`organizerOnboardingEmail`): verweist für Fragen auf den
+  „Hast du Fragen?"-Button (keine persönlichen Kontakte mehr).
+- **Wizard-Schritt-Bezug:** Der „Schritt als Screenshot"-Wunsch ist als
+  beschrifteter Verweis + Direkt-Sprung in den Wizard umgesetzt (kein fragiles
+  Offscreen-Rendering) plus optionales Antwort-Bild — robust ohne lokales Testen.
+
 ### SharePoint Site
 
 - Site URL: `https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform`
-- Lists: DEX_Events, DEX_Roles, DEX_Emails, DEX_Outlook, DEX_IDReorder, DEX_Participants, DEX_EmailTemplates
+- Lists: DEX_Events, DEX_Roles, DEX_Emails, DEX_Outlook, DEX_IDReorder, DEX_Participants, DEX_EmailTemplates, DEX_Tickets
 - Per-Event: Subsite with "Teilnehmer" registration list
 - Shared Mailbox: `no_reply.events@deloitte.de`
 

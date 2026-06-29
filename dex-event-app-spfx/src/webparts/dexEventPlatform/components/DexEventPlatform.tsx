@@ -19,6 +19,7 @@ import { UserProvider } from '../context/UserContext';
 import { RoleProvider, useRoles } from '../context/RoleContext';
 // v22.21: Geführtes Tutorial (Onboarding-Tour) — Provider + Overlay.
 import { TutorialProvider } from './tutorial/TutorialGuide';
+import { TicketProvider } from '../context/TicketContext';
 import Header from './Header';
 import LandingPage from './LandingPage';
 import StartPage from './StartPage';
@@ -51,6 +52,7 @@ const CheckInPage = React.lazy(() => import('./CheckInPage'));
 const SelfCheckInDisplayPage = React.lazy(() => import('./SelfCheckInDisplayPage'));
 const ManualPage = React.lazy(() => import('./manual/ManualPage'));
 const AssistantPage = React.lazy(() => import('./AssistantPage'));
+const TicketsPage = React.lazy(() => import('./TicketsPage'));
 
 export interface IDexEventPlatformProps {
   context: WebPartContext;
@@ -381,6 +383,12 @@ function AppContent(): React.ReactElement {
         // Beispiel: ?action=manual&section=check-in
         didHandleDeepLink.current = true;
         navigate('manual');
+      } else if (action === 'tickets') {
+        // v26: Deep-Link aus der Power-User-Benachrichtigung → Tickets-Inbox.
+        // Die optionale ?id=<ticketId> liest die TicketsPage selbst aus der URL
+        // und öffnet das Ticket direkt zum Beantworten.
+        didHandleDeepLink.current = true;
+        navigate('tickets');
       }
     } catch { /* URL-Parsing fehlgeschlagen, ignorieren */ }
   }, [isEventsLoading, events]);
@@ -709,6 +717,8 @@ function AppContent(): React.ReactElement {
         return <SelfCheckInDisplayPage />;
       case 'manual':
         return <ManualPage />;
+      case 'tickets':
+        return <TicketsPage />;
       default:
         return <LandingPage />;
     }
@@ -789,9 +799,11 @@ export default function DexEventPlatform(props: IDexEventPlatformProps): React.R
             <RoleProvider context={props.context}>
               <NavigationProvider>
                 <EventProvider context={props.context}>
-                  <TutorialProvider>
-                    <AppContent />
-                  </TutorialProvider>
+                  <TicketProvider context={props.context}>
+                    <TutorialProvider>
+                      <AppContent />
+                    </TutorialProvider>
+                  </TicketProvider>
                 </EventProvider>
               </NavigationProvider>
             </RoleProvider>

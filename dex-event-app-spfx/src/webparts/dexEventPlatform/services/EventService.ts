@@ -22,6 +22,7 @@ import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions } from '@micro
 import { wrapTemplateForStorage, buildEmailFromTemplate } from './EmailTemplates';
 import { buildOutlookLocation } from '../utils/eventFormat';
 import { subscribeListChanges } from '../utils/spListRealtime';
+import { DexTicket, TicketAttachment } from '../types';
 
 /**
  * HTML-Body für die OutlookDeclineReminder-Mail (EN) - komplett im
@@ -9588,6 +9589,256 @@ export class EventService {
         'DraftEventIds': JSON.stringify(draftEventIds || []),
       });
     } catch (e) { console.warn('[DEX] recordWeeklyReport failed:', e); }
+  }
+
+  // ==================== Ticketsystem (v26.0.0) ====================
+  // Globale Liste DEX_Tickets (Site-Collection-Root). Nutzer stellen über den
+  // grünen „Hast du Fragen?"-Header-Button Fragen; Power-User/Admins bzw. die
+  // Organizer des betroffenen Events beantworten sie. Queue-Schreibrechte wie
+  // DEX_Emails — bewusst KEINE Item-Level-Security (analog DEX_TeamJoinRequests:
+  // die Beantwortenden müssen fremde Tickets lesen können). Screenshots als
+  // Item-Attachments mit Namens-Präfix ask_ (Fragesteller) bzw. ans_ (Antwort).
+
+  private static readonly TICKETS_LIST = 'DEX_Tickets';
+  private static readonly TICKETS_ITEM_TYPE = 'SP.Data.DEX_x005f_TicketsListItem';
+
+  /** Ticket-Liste anlegen (idempotent), Felder + Queue-Schreibrechte. */
+  public async ensureTicketsList(): Promise<void> {
+    const listName = EventService.TICKETS_LIST;
+    const exists = await this.listExists(listName);
+    if (exists) return;
+    const createResp = await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'Ticketsystem (v26): Fragen der Nutzer + Antworten der Power-User/Organizer.',
+      'BaseTemplate': 100,
+      'AllowContentTypes': false,
+    });
+    if (!createResp.ok) {
+      console.warn('[DEX] DEX_Tickets konnte nicht angelegt werden — vermutlich fehlen Owner-Rechte.');
+      return;
+    }
+    const fields: Array<{ title: string; type: number; choices?: string[]; metaType?: string; note?: boolean }> = [
+      { title: 'Questions', type: 3, note: true },
+      { title: 'Status', type: 6, choices: ['Open', 'InProgress', 'Closed'], metaType: 'SP.FieldChoice' },
+      { title: 'AskerEmail', type: 2 },
+      { title: 'AskerName', type: 2 },
+      { title: 'AskerRole', type: 2 },
+      { title: 'Audience', type: 2 },
+      { title: 'TicketEventId', type: 2 },
+      { title: 'TicketEventTitle', type: 2 },
+      { title: 'AssignedOrganizers', type: 3, note: true },
+      { title: 'PageContext', type: 2 },
+      { title: 'AnswerText', type: 3, note: true },
+      { title: 'AnswerArticleIds', type: 3, note: true },
+      { title: 'AnswerWizardStep', type: 9 },
+      { title: 'AnsweredByEmail', type: 2 },
+      { title: 'AnsweredByName', type: 2 },
+      { title: 'AnsweredAt', type: 4 },
+      { title: 'ClaimedByEmail', type: 2 },
+      { title: 'ClaimedByName', type: 2 },
+      { title: 'ClaimedAt', type: 4 },
+    ];
+    for (const f of fields) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const payload: Record<string, any> = {
+          '__metadata': { 'type': f.metaType || (f.note ? 'SP.FieldMultiLineText' : 'SP.Field') },
+          'Title': f.title, 'FieldTypeKind': f.type, 'Required': false,
+        };
+        if (f.choices) payload['Choices'] = { 'results': f.choices };
+        if (f.note) { payload['RichText'] = false; payload['NumberOfLines'] = 8; }
+        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
+      } catch { /* einzelne Feld-Fehler ignorieren */ }
+    }
+    try {
+      await this.configureDefaultView(listName, [
+        'Status', 'AskerName', 'AskerRole', 'Audience', 'TicketEventTitle', 'Created', 'AnsweredAt',
+      ]);
+    } catch { /* View optional */ }
+    try { await this.setQueueListPermissions(listName); } catch { /* best-effort */ }
+  }
+
+  /** Neues Ticket anlegen. Liefert die Item-Id zurück (für Attachment-Upload). */
+  public async createTicket(t: {
+    questions: string[];
+    askerEmail: string; askerName: string; askerRole: string;
+    audience: string; eventId: string; eventTitle: string;
+    assignedOrganizers: string[]; pageContext: string;
+  }): Promise<number | null> {
+    try {
+      const first = (t.questions[0] || 'Frage').replace(/\s+/g, ' ').trim().slice(0, 240) || 'Frage';
+      const resp = await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items`,
+        {
+          '__metadata': { 'type': EventService.TICKETS_ITEM_TYPE },
+          'Title': first,
+          'Questions': JSON.stringify(t.questions || []),
+          'Status': 'Open',
+          'AskerEmail': t.askerEmail, 'AskerName': t.askerName, 'AskerRole': t.askerRole,
+          'Audience': t.audience,
+          'TicketEventId': t.eventId || '', 'TicketEventTitle': t.eventTitle || '',
+          'AssignedOrganizers': JSON.stringify(t.assignedOrganizers || []),
+          'PageContext': t.pageContext || '',
+        }
+      );
+      if (!resp.ok) return null;
+      const data = await resp.json();
+      const id = data?.d?.Id ?? data?.Id;
+      return typeof id === 'number' ? id : (id != null ? Number(id) : null);
+    } catch (err) {
+      console.warn('[DEX] createTicket failed:', err);
+      return null;
+    }
+  }
+
+  /** Screenshot als Item-Attachment anhängen (kind = ask_ / ans_). */
+  public async addTicketAttachment(itemId: number, file: File, kind: 'ask' | 'ans'): Promise<boolean> {
+    try {
+      const buf = await file.arrayBuffer();
+      const safeName = (file.name || 'screenshot.png').replace(/[^a-zA-Z0-9._-]+/g, '_');
+      const ts = new Date().toISOString().replace(/[:.]/g, '-').replace(/T/, '_').slice(0, 19);
+      const finalName = `${kind}_${ts}_${safeName}`;
+      const url = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items(${itemId})/AttachmentFiles/add(FileName='${encodeURIComponent(finalName)}')`;
+      const resp = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
+        headers: { 'Accept': 'application/json;odata=nometadata' },
+        body: buf,
+      });
+      return resp.ok;
+    } catch (err) {
+      console.warn('[DEX] addTicketAttachment failed:', err);
+      return false;
+    }
+  }
+
+  /** Alle Tickets laden (inkl. Anhänge per $expand). Neueste zuerst. */
+  public async getTickets(): Promise<DexTicket[]> {
+    try {
+      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AnswerText,AnswerArticleIds,AnswerWizardStep,AnsweredByEmail,AnsweredByName,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,Created';
+      const url = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items?$select=${sel}&$expand=AttachmentFiles&$orderby=Created desc&$top=500`;
+      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (items as any[]).map((it) => this._mapTicket(it));
+    } catch (err) {
+      console.warn('[DEX] getTickets failed:', err);
+      return [];
+    }
+  }
+
+  /** Eigene Tickets eines Fragestellers (für die „Deine Fragen"-Ansicht im
+   *  Ask-Modal — der Fragesteller sieht Status + Antwort in der App). */
+  public async getMyTickets(email: string): Promise<DexTicket[]> {
+    try {
+      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AnswerText,AnswerArticleIds,AnswerWizardStep,AnsweredByEmail,AnsweredByName,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,Created';
+      const safe = (email || '').replace(/'/g, "''");
+      const url = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items?$select=${sel}&$expand=AttachmentFiles&$filter=AskerEmail eq '${safe}'&$orderby=Created desc&$top=100`;
+      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return (items as any[]).map((it) => this._mapTicket(it));
+    } catch (err) {
+      console.warn('[DEX] getMyTickets failed:', err);
+      return [];
+    }
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private _mapTicket(it: any): DexTicket {
+    const parseArr = (s: unknown): string[] => {
+      try { const a = JSON.parse((s as string) || '[]'); return Array.isArray(a) ? a.map((x) => String(x)) : []; } catch { return []; }
+    };
+    const attsRaw = (it.AttachmentFiles && (it.AttachmentFiles.results || it.AttachmentFiles)) || [];
+    const attachments: TicketAttachment[] = (Array.isArray(attsRaw) ? attsRaw : []).map((a: { FileName?: string; ServerRelativeUrl?: string }) => {
+      const fn = a.FileName || '';
+      const kind: TicketAttachment['kind'] = fn.indexOf('ask_') === 0 ? 'ask' : fn.indexOf('ans_') === 0 ? 'ans' : 'other';
+      return { fileName: fn, url: a.ServerRelativeUrl || '', kind };
+    });
+    const stepRaw = it.AnswerWizardStep;
+    return {
+      id: it.Id,
+      title: it.Title || '',
+      questions: parseArr(it.Questions),
+      status: (it.Status || 'Open') as DexTicket['status'],
+      askerEmail: it.AskerEmail || '',
+      askerName: it.AskerName || '',
+      askerRole: (it.AskerRole || 'User') as DexTicket['askerRole'],
+      audience: (it.Audience || 'PowerUser') as DexTicket['audience'],
+      eventId: it.TicketEventId || '',
+      eventTitle: it.TicketEventTitle || '',
+      assignedOrganizers: parseArr(it.AssignedOrganizers),
+      pageContext: it.PageContext || '',
+      answerText: it.AnswerText || '',
+      answerArticleIds: parseArr(it.AnswerArticleIds),
+      answerWizardStep: (stepRaw === 0 || (stepRaw != null && stepRaw !== '')) ? Number(stepRaw) : null,
+      answeredByEmail: it.AnsweredByEmail || '',
+      answeredByName: it.AnsweredByName || '',
+      answeredAt: it.AnsweredAt || '',
+      claimedByEmail: it.ClaimedByEmail || '',
+      claimedByName: it.ClaimedByName || '',
+      claimedAt: it.ClaimedAt || '',
+      created: it.Created || '',
+      attachments,
+    };
+  }
+
+  /** Ticket „in Bearbeitung" nehmen (Claim). */
+  public async claimTicket(itemId: number, email: string, name: string): Promise<boolean> {
+    try {
+      const resp = await this._merge(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items(${itemId})`,
+        { 'Status': 'InProgress', 'ClaimedByEmail': email, 'ClaimedByName': name, 'ClaimedAt': new Date().toISOString() }
+      );
+      return resp.ok;
+    } catch (err) {
+      console.warn('[DEX] claimTicket failed:', err);
+      return false;
+    }
+  }
+
+  /** Ticket wieder freigeben (zurück auf „Open"), damit ein anderer übernimmt. */
+  public async releaseTicket(itemId: number): Promise<boolean> {
+    try {
+      const resp = await this._merge(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items(${itemId})`,
+        { 'Status': 'Open', 'ClaimedByEmail': '', 'ClaimedByName': '', 'ClaimedAt': null }
+      );
+      return resp.ok;
+    } catch (err) {
+      console.warn('[DEX] releaseTicket failed:', err);
+      return false;
+    }
+  }
+
+  /** Ticket beantworten + schließen. */
+  public async answerTicket(itemId: number, a: {
+    answerText: string; articleIds: string[]; wizardStep: number | null;
+    answeredByEmail: string; answeredByName: string;
+  }): Promise<boolean> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const body: Record<string, any> = {
+        'Status': 'Closed',
+        'AnswerText': a.answerText || '',
+        'AnswerArticleIds': JSON.stringify(a.articleIds || []),
+        'AnswerWizardStep': (a.wizardStep == null) ? null : a.wizardStep,
+        'AnsweredByEmail': a.answeredByEmail,
+        'AnsweredByName': a.answeredByName,
+        'AnsweredAt': new Date().toISOString(),
+      };
+      const resp = await this._merge(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items(${itemId})`,
+        body
+      );
+      return resp.ok;
+    } catch (err) {
+      console.warn('[DEX] answerTicket failed:', err);
+      return false;
+    }
   }
 
   // ==================== DEX_OrganizerRequests (v23.37) ====================
