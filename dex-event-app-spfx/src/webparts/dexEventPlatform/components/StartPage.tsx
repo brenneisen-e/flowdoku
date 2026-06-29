@@ -217,16 +217,24 @@ export default function StartPage(): React.ReactElement {
           color: var(--dex-gray-500); margin: 0 0 12px; padding-bottom: 7px;
           border-bottom: 1px solid var(--dex-gray-200);
         }
-        .dex-cluster-tiles { display: grid; grid-template-columns: repeat(auto-fill, 240px); gap: 18px; justify-content: start; }
+        /* v26.5: alle Kacheln eines Clusters IMMER in EINER Zeile (flex, kein
+           Umbruch) — sie teilen sich die Breite und schrumpfen bei Bedarf. */
+        .dex-cluster-tiles { display: flex; flex-wrap: nowrap; gap: 18px; align-items: stretch; }
         .dex-cluster .start-card {
-          width: 100% !important; padding: 24px 16px !important; min-height: 0 !important;
-          aspect-ratio: 1 / 1; gap: 8px !important;
+          flex: 1 1 0 !important; min-width: 0 !important; max-width: 300px !important;
+          padding: 22px 14px !important; min-height: 0 !important; aspect-ratio: 1 / 1; gap: 8px !important;
         }
-        .dex-cluster .start-card__icon { width: 88px !important; height: 88px !important; margin-bottom: 4px !important; }
-        .dex-cluster .start-card__icon svg { width: 46px !important; height: 46px !important; }
-        .dex-cluster .start-card h2 { font-size: 1.15rem !important; }
-        .dex-cluster .start-card p { font-size: 0.84rem !important; white-space: normal !important; }
-        @media (max-width: 560px) { .dex-cluster-tiles { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); } }
+        /* v26.5: echter KREIS hinter dem Icon — flex:0 0 auto + aspect-ratio
+           verhindert, dass die Flex-Stauchung den Kreis zur Ellipse macht. */
+        .dex-cluster .start-card__icon { width: 84px !important; height: 84px !important; flex: 0 0 auto !important; aspect-ratio: 1 / 1 !important; border-radius: 50% !important; margin-bottom: 4px !important; }
+        .dex-cluster .start-card__icon svg { width: 44px !important; height: 44px !important; }
+        .dex-cluster .start-card h2 { font-size: 1.12rem !important; }
+        .dex-cluster .start-card p { font-size: 0.82rem !important; white-space: normal !important; }
+        @media (max-width: 480px) {
+          .dex-cluster .start-card__icon { width: 60px !important; height: 60px !important; aspect-ratio: 1 / 1 !important; }
+          .dex-cluster .start-card__icon svg { width: 32px !important; height: 32px !important; }
+          .dex-cluster .start-card h2 { font-size: 0.98rem !important; }
+        }
       `}</style>
       <div className="dex-cluster-grid">
         {clusters.map(c => (
