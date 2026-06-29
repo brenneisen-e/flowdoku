@@ -210,19 +210,20 @@ export default function StartPage(): React.ReactElement {
         /* v26.2: jeder Cluster in einer EIGENEN Zeile (untereinander) → größere Kacheln. */
         .dex-cluster-grid {
           display: grid; grid-template-columns: 1fr;
-          gap: 24px; max-width: 840px; margin: 0 auto;
+          gap: 24px; max-width: 660px; margin: 0 auto;
         }
         .dex-cluster-title {
           font-size: 0.82rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
           color: var(--dex-gray-500); margin: 0 0 12px; padding-bottom: 7px;
           border-bottom: 1px solid var(--dex-gray-200);
         }
-        /* v26.5: alle Kacheln eines Clusters IMMER in EINER Zeile (flex, kein
-           Umbruch) — sie teilen sich die Breite und schrumpfen bei Bedarf. */
-        .dex-cluster-tiles { display: flex; flex-wrap: nowrap; gap: 18px; align-items: stretch; }
+        /* v26.6: alle Kacheln GLEICH GROSS (fix 300px, quadratisch — wie die
+           Tickets-Kachel). Passen zwei nebeneinander, stehen sie in einer Zeile;
+           sonst brechen sie um, statt unterschiedlich zu schrumpfen. */
+        .dex-cluster-tiles { display: flex; flex-wrap: wrap; gap: 18px; align-items: stretch; }
         .dex-cluster .start-card {
-          flex: 1 1 0 !important; min-width: 0 !important; max-width: 300px !important;
-          padding: 22px 14px !important; min-height: 0 !important; aspect-ratio: 1 / 1; gap: 8px !important;
+          flex: 0 0 auto !important; width: 300px !important; max-width: 100% !important;
+          padding: 24px 16px !important; min-height: 0 !important; aspect-ratio: 1 / 1; gap: 8px !important;
         }
         /* v26.5: echter KREIS hinter dem Icon — flex:0 0 auto + aspect-ratio
            verhindert, dass die Flex-Stauchung den Kreis zur Ellipse macht. */
