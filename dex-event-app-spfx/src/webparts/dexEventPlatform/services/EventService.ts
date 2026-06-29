@@ -1051,30 +1051,37 @@ export class EventService {
    *  (neueste zuerst). Grundlage für die Wiederherstellung versehentlich
    *  überschriebener Custom-Field-Beschreibungen (helpText etc.) aus der
    *  SharePoint-Versionshistorie. */
-  public async getEventCustomFieldsVersions(itemId: number): Promise<Array<{ versionId: number; created: string; customFields: string }>> {
-    // WICHTIG: KEIN $select/$orderby — der versions-Endpunkt lehnt beides je
-    // nach Tenant mit HTTP 400 ab (→ vorher kam IMMER eine leere Liste zurück
-    // und „nichts wiederherzustellen"). Wir holen ALLE Versionsfelder und
-    // sortieren clientseitig nach VersionId absteigend (= neueste zuerst). Der
-    // CustomFields-Note-Wert ist in jeder Version standardmäßig enthalten.
-    const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${itemId})/versions?$top=500`;
+  public async getEventCustomFieldsVersions(itemId: number): Promise<Array<{ created: string; customFields: string }>> {
+    // WICHTIG (v26.15): $select=Created,CustomFields ist PFLICHT — sonst liefert
+    // der versions-Endpunkt ALLE Felder pro Version (inkl. der riesigen
+    // OutlookBody-/EmailTemplateOverrides-Base64-Logos). Bei stark bearbeiteten
+    // Events (z.B. 188 Versionen) sprengt das die Antwortgröße und SharePoint
+    // bricht nach ~51 Versionen ab → die Version MIT der Beschreibung fehlte und
+    // es kam fälschlich „helpText in Historie: false". KEIN $orderby (das löst
+    // auf dem versions-Endpunkt 400 aus) — wir sortieren clientseitig nach
+    // Created absteigend (neueste zuerst). Folgeseiten via nextLink einsammeln.
+    const out: Array<{ created: string; customFields: string }> = [];
+    let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${itemId})/versions?$select=Created,CustomFields&$top=500`;
+    let guard = 0;
     try {
-      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
-      if (!resp.ok) { console.warn('[DEX restore] versions HTTP', resp.status, 'für Item', itemId); return []; }
-      const data = await resp.json();
-      const items = data.value || data.d?.results || [];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const mapped = (items as any[]).map(v => ({
-        versionId: Number(v.VersionId != null ? v.VersionId : (v.ID != null ? v.ID : 0)),
-        created: v.Created || '',
-        customFields: typeof v.CustomFields === 'string' ? v.CustomFields : '',
-      }));
-      mapped.sort((a, b) => b.versionId - a.versionId);
-      return mapped;
+      while (url && guard < 25) {
+        guard++;
+        const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        if (!resp.ok) { console.warn('[DEX restore] versions HTTP', resp.status, 'für Item', itemId); break; }
+        const data = await resp.json();
+        const items = data.value || data.d?.results || [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const v of (items as any[])) {
+          out.push({ created: v.Created || '', customFields: typeof v.CustomFields === 'string' ? v.CustomFields : '' });
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        url = (data as any)['@odata.nextLink'] || (data.d && (data.d as any).__next) || null;
+      }
     } catch (e) {
       console.warn('[DEX restore] versions fetch failed für Item', itemId, e);
-      return [];
     }
+    out.sort((a, b) => (b.created || '').localeCompare(a.created || ''));
+    return out;
   }
 
   // ==================== DEX_Outlook Liste ====================
