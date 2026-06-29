@@ -2458,6 +2458,78 @@ export class EventService {
   }
 
   /**
+   * v26.4: ALLE DEX_Events-Zeilen (paginiert, NICHT auf 100 begrenzt) — nur die
+   * für die KPI nötigen Felder. getEvents() lädt aus Performance-Gründen nur die
+   * 100 neuesten; für den „bisher genutzt für"-Gesamtwert brauchen wir aber
+   * wirklich alle Events.
+   */
+  public async getAllEventsForKpi(): Promise<Array<{ id: number; parentEventId: string; status: string; subsiteUrl: string }>> {
+    const out: Array<{ id: number; parentEventId: string; status: string; subsiteUrl: string }> = [];
+    let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=Id,ParentEventId,EventStatus,SubsiteUrl&$top=5000`;
+    let guard = 0;
+    while (url && guard < 20) {
+      guard++;
+      let resp: SPHttpClientResponse;
+      try { resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1); }
+      catch { break; }
+      if (!resp.ok) break;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let data: any;
+      try { data = await resp.json(); } catch { break; }
+      const items = data.value || data.d?.results || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const it of items as any[]) {
+        out.push({ id: it.Id, parentEventId: it.ParentEventId || '', status: it.EventStatus || '', subsiteUrl: it.SubsiteUrl || '' });
+      }
+      url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
+    }
+    return out;
+  }
+
+  /**
+   * v26.4: KPI-Gesamtwerte über ALLE Events (nicht nur die geladenen 100):
+   * participants = Summe der aktiven Anmeldungen über alle Events, die NICHT
+   * abgesagt und KEIN Entwurf sind (inkl. abgelaufener/Completed + Sub-Events);
+   * events = Anzahl dieser Haupt-Events (ohne Sub-Events). Best-effort,
+   * sequentiell (SP-Throttling) — wird im Hintergrund 1×/Session aufgerufen.
+   * Liefert null bei komplettem Fehler (dann KEIN Cache-Überschreiben).
+   */
+  public async getKpiTotals(): Promise<{ participants: number; events: number } | null> {
+    const LOG = '[DEX KPI]';
+    try {
+      // eslint-disable-next-line no-console
+      console.log(`${LOG} Recompute „bisher genutzt für" gestartet — zähle über ALLE Events (nicht nur die geladenen 100) …`);
+      const all = await this.getAllEventsForKpi();
+      if (all.length === 0) {
+        // eslint-disable-next-line no-console
+        console.warn(`${LOG} Keine Event-Zeilen geladen — Recompute übersprungen (Cache bleibt unverändert).`);
+        return null;
+      }
+      // Wie der bisherige Recompute: abgesagte Events + Entwürfe
+      // ('Under Construction') zählen NICHT, alles andere (Active/Completed) schon.
+      const counted = all.filter(e => e.status !== 'Cancelled' && e.status !== 'Under Construction');
+      const events = counted.filter(e => !e.parentEventId).length;
+      // eslint-disable-next-line no-console
+      console.log(`${LOG} ${all.length} Event-Zeilen geladen → ${counted.length} werden gezählt (inkl. abgelaufener), davon ${events} Haupt-Events. Summiere Teilnehmer pro Subsite …`);
+      let participants = 0;
+      let scanned = 0;
+      let failed = 0;
+      for (const e of counted) {
+        if (!e.subsiteUrl) continue;
+        try { const c = await this.getRegistrationCount(e.subsiteUrl); participants += c.registered; scanned++; }
+        catch { failed++; /* einzelne Subsite-Fehler ignorieren — Gesamtwert bleibt best-effort */ }
+      }
+      // eslint-disable-next-line no-console
+      console.log(`${LOG} Ergebnis über ALLE Events: ${participants} Teilnehmer / ${events} Events (${scanned} Teilnehmerlisten gezählt${failed ? `, ${failed} nicht lesbar` : ''}).`);
+      return { participants, events };
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.warn(`${LOG} Recompute fehlgeschlagen (best-effort, Cache bleibt unverändert):`, err);
+      return null;
+    }
+  }
+
+  /**
    * v11.50: Anzahl Items in DEX_Participants (= unique User, die jemals für
    * irgendein Event angemeldet/auf Warteliste waren). Liest nur das ItemCount-
    * Metadatum der Liste, nicht alle Items — schnell und cheap. Liefert null

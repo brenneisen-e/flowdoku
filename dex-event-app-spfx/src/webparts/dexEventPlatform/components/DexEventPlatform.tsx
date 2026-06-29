@@ -112,8 +112,8 @@ function ImpersonationBanner(props: { currentPage?: string }): React.ReactElemen
 
 function AppContent(): React.ReactElement {
   const { currentPage, navigate } = useNavigation();
-  const { isAdmin, isOrganizer, isRolesLoading } = useRoles();
-  const { markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, reconcileCounters, isEventsLoading, events, getKpiCache, updateKpiCache } = useEvents();
+  const { isAdmin, isRolesLoading } = useRoles();
+  const { markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, reconcileCounters, isEventsLoading, events, getKpiCache, updateKpiCache, getKpiTotals } = useEvents();
 
   // v11.52: KPI-Boxen im Boot-Loader. Live-Zählung ueber alle Event-
   // Subsites war zu langsam (Counts kommen erst nach mehreren Sekunden) —
@@ -143,28 +143,33 @@ function AppContent(): React.ReactElement {
   const kpiRefreshedRef = React.useRef(false);
   React.useEffect(() => {
     if (isEventsLoading || isRolesLoading) return;
-    if (!isAdmin && !isOrganizer) return;
-    if (!events || events.length === 0) return;
+    // v26.4: Den „bisher genutzt für"-Gesamtwert berechnet die App über die
+    // ADMINS neu — und zwar über ALLE Events (paginiert), nicht nur die geladenen
+    // 100. Normale User bewegen den Zähler live per ±1 bei An-/Abmeldung (bumpKpi*).
+    if (!isAdmin) return;
+    if (!events || events.length === 0) return; // erst wenn die App bereit ist
     if (kpiRefreshedRef.current) return;
     kpiRefreshedRef.current = true;
     const SESSION_KEY = 'dex-kpi-cache-refreshed';
-    let alreadyDoneThisSession = false;
-    try { alreadyDoneThisSession = sessionStorage.getItem(SESSION_KEY) === '1'; } catch { /* */ }
-    const hosted = events.filter(e => !e.isFictive && e.status !== 'Cancelled');
-    // v23.37: Events-KPI zählt nur Klammern/Hauptevents — Sub-Events (mit
-    // parentEventId) werden NICHT einzeln mitgezählt. Die Teilnehmer-KPI zählt
-    // dagegen weiterhin ALLE (inkl. Sub-Events).
-    const eventsCount = hosted.filter(e => !e.parentEventId).length;
-    const participantsCount = hosted.reduce((s, e) => s + (e.currentParticipants || 0), 0);
-    setKpiCache({ participants: participantsCount, events: eventsCount });
-    if (alreadyDoneThisSession) return;
-    updateKpiCache({ participants: participantsCount, events: eventsCount })
-      .then(ok => {
-        if (ok) { try { sessionStorage.setItem(SESSION_KEY, '1'); } catch { /* */ } }
+    try { if (sessionStorage.getItem(SESSION_KEY) === '1') return; } catch { /* */ }
+    // Korrekter Gesamtwert über ALLE Events (inkl. abgelaufener/Completed; ohne
+    // abgesagte + Entwürfe), Teilnehmer inkl. Sub-Events. Best-effort, läuft im
+    // Hintergrund (sequentielle Subsite-Counts).
+    // eslint-disable-next-line no-console
+    console.log('[DEX KPI] Admin-Session erkannt — starte einmalige Neu-Berechnung des Startbildschirm-Zählers über ALLE Events.');
+    getKpiTotals()
+      .then(totals => {
+        if (!totals) return undefined;
+        setKpiCache(totals);
+        return updateKpiCache(totals).then(ok => {
+          // eslint-disable-next-line no-console
+          console.log(`[DEX KPI] In _Config ${ok ? 'gespeichert' : 'NICHT gespeichert (Schreibfehler)'} — ${ok ? 'der nächste Boot zeigt den neuen Wert.' : 'Cache unverändert.'}`);
+          if (ok) { try { sessionStorage.setItem(SESSION_KEY, '1'); } catch { /* */ } }
+        });
       })
       .catch(() => { /* */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEventsLoading, isRolesLoading, isAdmin, isOrganizer, events]);
+  }, [isEventsLoading, isRolesLoading, isAdmin, events]);
 
   const kpiHostedEvents = kpiCache?.events ?? 0;
   const kpiParticipants = kpiCache?.participants ?? 0;
