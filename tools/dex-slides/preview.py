@@ -29,12 +29,12 @@ def base(title,sub):
 
 # slide1
 left0=0.55; total=13.33-1.1; GAP=0.32; CW=(total-3*GAP)/4
-L=[left0+i*(CW+GAP) for i in range(4)]; CTOP=2.02; CH=4.45; BD=0.92; PX=0.30
+L=[left0+i*(CW+GAP) for i in range(4)]; CTOP=2.02; CH=4.0; BD=0.92; PX=0.30
 img,d=base("DEX – Was seit April passiert ist","Eigener Plattform-Wechsel statt Entwicklung in Indien – mit messbarem Erfolg")
-kpis=[("icons/refresh-cw.png","April","Neue Plattform live","Bewusst gegen die Entwicklung mit Indien entschieden (Komplexität, Skillset, Budget, Zeit). KI-gestützt eigenständig auf eine neue Architektur migriert – live & produktiv."),
-("icons/calendar.png","29","Events koordiniert","Seit dem Wechsel 29 Events vollständig über DEX abgewickelt – Tendenz weiter steigend."),
-("icons/users.png","~7.000","Teilnehmer","Rund 7.000 Anmeldungen gesteuert – inkl. vollautomatischer Mail- & Outlook-Anbindung, die den Assistenzen viel Zeit spart."),
-("icons/check-circle.png","≈100%","Self-Service","Event-Erstellung läuft eigenständig durch die Assistenzen – ohne operative Einbindung von Nils & Eike. 72 Std. Eigenleistung gebucht.")]
+kpis=[("icons/refresh-cw.png","April","Neue Plattform live","Bewusst gegen Indien entschieden – KI-gestützt eigenständig neu aufgebaut, live & produktiv."),
+("icons/calendar.png","29","Events koordiniert","29 Events vollständig über DEX abgewickelt – von kleinen Runden bis Großevents, Tendenz steigend."),
+("icons/users.png","~7.000","Teilnehmer","Rund 7.000 Anmeldungen gesteuert – automatische Mail- & Outlook-Anbindung spart den Assistenzen viel Zeit."),
+("icons/check-circle.png","≈100%","Self-Service","Event-Erstellung läuft eigenständig durch die Assistenzen – kaum noch operative Einbindung. 72 Std. Eigenleistung gebucht.")]
 for i,(ic,num,lab,desc) in enumerate(kpis):
     x=L[i]*S;y=CTOP*S;w=CW*S;h=CH*S; rr(d,x,y,w,h,PALE)
     badge(img,d,x+PX*S,y+0.34*S,BD*S,DEEP,ic)

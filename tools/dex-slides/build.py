@@ -61,7 +61,7 @@ def badge(slide,x,y,d,fill,icon):
 
 # ---------- SLIDE 1: KPI columns (text INSIDE the card) ----------
 left0=0.55; total=13.33-1.1; GAP=0.32; CW=(total-3*GAP)/4
-L=[left0+i*(CW+GAP) for i in range(4)]; CTOP=2.02; CH=4.45; BD=0.92; PX=0.30
+L=[left0+i*(CW+GAP) for i in range(4)]; CTOP=2.02; CH=4.0; BD=0.92; PX=0.30
 def kpi(slide,i,icon,num,label,desc):
     x=L[i]; sp=card(slide,x,CTOP,CW,CH,PALE)
     badge(slide,x+PX,CTOP+0.34,BD,DG,icon)
@@ -71,10 +71,10 @@ def kpi(slide,i,icon,num,label,desc):
 s=p.slides.add_slide(LAY)
 set_ph(s,0,"DEX – Was seit April passiert ist")
 set_ph(s,13,"Eigener Plattform-Wechsel statt Entwicklung in Indien – mit messbarem Erfolg")
-kpi(s,0,"icons/refresh-cw.png","April","Neue Plattform live","Bewusst gegen die Entwicklung mit Indien entschieden (Komplexität, Skillset, Budget, Zeit). KI-gestützt eigenständig auf eine neue Architektur migriert – live & produktiv.")
-kpi(s,1,"icons/calendar.png","29","Events koordiniert","Seit dem Wechsel 29 Events vollständig über DEX abgewickelt – Tendenz weiter steigend.")
-kpi(s,2,"icons/users.png","~7.000","Teilnehmer","Rund 7.000 Anmeldungen gesteuert – inkl. vollautomatischer Mail- & Outlook-Anbindung, die den Assistenzen viel Zeit spart.")
-kpi(s,3,"icons/check-circle.png","≈100%","Self-Service","Event-Erstellung läuft eigenständig durch die Assistenzen – ohne operative Einbindung von Nils & Eike. 72 Std. Eigenleistung gebucht.")
+kpi(s,0,"icons/refresh-cw.png","April","Neue Plattform live","Bewusst gegen Indien entschieden – KI-gestützt eigenständig neu aufgebaut, live & produktiv.")
+kpi(s,1,"icons/calendar.png","29","Events koordiniert","29 Events vollständig über DEX abgewickelt – von kleinen Runden bis Großevents, Tendenz steigend.")
+kpi(s,2,"icons/users.png","~7.000","Teilnehmer","Rund 7.000 Anmeldungen gesteuert – automatische Mail- & Outlook-Anbindung spart den Assistenzen viel Zeit.")
+kpi(s,3,"icons/check-circle.png","≈100%","Self-Service","Event-Erstellung läuft eigenständig durch die Assistenzen – kaum noch operative Einbindung. 72 Std. Eigenleistung gebucht.")
 
 # ---------- SLIDES 2 & 3: 2x2 horizontal cards (text INSIDE the card) ----------
 GX=0.30; GY=0.30; CW2=(total-GX)/2; CTOP2=1.92; CH2=((6.92-CTOP2)-GY)/2
