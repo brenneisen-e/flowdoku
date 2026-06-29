@@ -207,26 +207,26 @@ export default function StartPage(): React.ReactElement {
 
         /* v26: Cluster-Raster — bis zu 2 Cluster nebeneinander (→ zwei Reihen),
            darin quadratische Kacheln. */
+        /* v26.2: jeder Cluster in einer EIGENEN Zeile (untereinander) → größere Kacheln. */
         .dex-cluster-grid {
-          display: grid; grid-template-columns: repeat(auto-fit, minmax(430px, 1fr));
-          gap: 28px 32px; max-width: 1000px; margin: 0 auto; align-items: start;
+          display: grid; grid-template-columns: 1fr;
+          gap: 24px; max-width: 840px; margin: 0 auto;
         }
         .dex-cluster-title {
-          font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
+          font-size: 0.82rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px;
           color: var(--dex-gray-500); margin: 0 0 12px; padding-bottom: 7px;
           border-bottom: 1px solid var(--dex-gray-200);
         }
-        .dex-cluster-tiles { display: grid; grid-template-columns: repeat(auto-fill, 190px); gap: 16px; justify-content: start; }
+        .dex-cluster-tiles { display: grid; grid-template-columns: repeat(auto-fill, 240px); gap: 18px; justify-content: start; }
         .dex-cluster .start-card {
-          width: 100% !important; padding: 18px 14px !important; min-height: 0 !important;
-          aspect-ratio: 1 / 1; gap: 6px !important;
+          width: 100% !important; padding: 24px 16px !important; min-height: 0 !important;
+          aspect-ratio: 1 / 1; gap: 8px !important;
         }
-        .dex-cluster .start-card__icon { width: 70px !important; height: 70px !important; margin-bottom: 2px !important; }
-        .dex-cluster .start-card__icon svg { width: 38px !important; height: 38px !important; }
-        .dex-cluster .start-card h2 { font-size: 1.02rem !important; }
-        .dex-cluster .start-card p { font-size: 0.78rem !important; white-space: normal !important; }
-        @media (max-width: 920px) { .dex-cluster-grid { grid-template-columns: 1fr; max-width: 460px; } }
-        @media (max-width: 460px) { .dex-cluster-tiles { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); } }
+        .dex-cluster .start-card__icon { width: 88px !important; height: 88px !important; margin-bottom: 4px !important; }
+        .dex-cluster .start-card__icon svg { width: 46px !important; height: 46px !important; }
+        .dex-cluster .start-card h2 { font-size: 1.15rem !important; }
+        .dex-cluster .start-card p { font-size: 0.84rem !important; white-space: normal !important; }
+        @media (max-width: 560px) { .dex-cluster-tiles { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); } }
       `}</style>
       <div className="dex-cluster-grid">
         {clusters.map(c => (
