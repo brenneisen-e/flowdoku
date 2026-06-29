@@ -2406,16 +2406,9 @@ export class EventService {
    * parallelen Usern. Liefert den neuen Wert oder null bei Fehler.
    */
   public async bumpKpiParticipants(delta: number): Promise<number | null> {
-    // v26.2: Der „So far used"-Headline-Zähler ist KUMULATIV (bisher genutzt
-    // für …). Abmeldungen / Event-Löschungen (negatives Delta) senken ihn NICHT
-    // mehr — nur neue Anmeldungen zählen hoch. Sonst „schrumpfte" die Zahl.
-    if (delta <= 0) return null;
     return this.bumpKpiField('TotalParticipantsCount', delta);
   }
   public async bumpKpiEvents(delta: number): Promise<number | null> {
-    // v26.2: ebenfalls kumulativ — gelöschte Events senken „bisher genutzt
-    // für X Events" nicht.
-    if (delta <= 0) return null;
     return this.bumpKpiField('TotalEventsCount', delta);
   }
   private async bumpKpiField(field: string, delta: number): Promise<number | null> {
@@ -2456,20 +2449,9 @@ export class EventService {
     const itemUrl = await this.getConfigItemUrl();
     if (!itemUrl) return false;
     try {
-      // v26.2: MONOTON — der „So far used"-Zähler darf durch ein Neu-Berechnen
-      // NIE unter den bereits gespeicherten Wert fallen. Hintergrund: das
-      // Recompute liefert die Summe der AKTUELL aktiven Teilnehmer; je nach
-      // Session/Zeitpunkt ist die kleiner als der hochgezählte Stand, wodurch
-      // die Headline-Zahl scheinbar „weniger wurde" (z.B. 6700 -> 6500). Ein
-      // Recompute darf den kumulativen „bisher genutzt für"-Wert nur ERHÖHEN.
-      const newP = Math.max(0, Math.floor(values.participants || 0));
-      const newE = Math.max(0, Math.floor(values.events || 0));
-      const current = await this.getKpiCache();
-      const p = current ? Math.max(current.participants, newP) : newP;
-      const e = current ? Math.max(current.events, newE) : newE;
       const resp = await this._mergeIfMatch(itemUrl, {
-        'TotalParticipantsCount': p,
-        'TotalEventsCount': e,
+        'TotalParticipantsCount': Math.max(0, Math.floor(values.participants || 0)),
+        'TotalEventsCount': Math.max(0, Math.floor(values.events || 0)),
       }, '*');
       return resp.ok;
     } catch { return false; }
