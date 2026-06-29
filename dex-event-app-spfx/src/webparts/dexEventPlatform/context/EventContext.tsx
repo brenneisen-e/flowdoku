@@ -230,6 +230,27 @@ const EVENT_AUDIT_LABELS: Record<string, string> = {
  * geänderten Felder als `{ Label: { old, new } }`. Lange/JSON-Felder werden
  * nicht ausgeschrieben (nur „(geändert)"), Booleans als „an"/„aus".
  */
+// v26.20: Lesbare Zusammenfassung der Custom-Felder fürs Audit-Log —
+// „Label: Beschreibung | …". Dient als Vorher/Nachher-Verlauf der Felder UND
+// als Sicherheitsnetz, falls Feld-Beschreibungen (helpText) verloren gehen
+// (dann steht die alte Beschreibung noch im Audit-Eintrag). Akzeptiert sowohl
+// das CustomFields-JSON (String) als auch ein bereits geparstes Array.
+export function summarizeCustomFields(raw: unknown): string {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let arr: any[];
+  try { arr = Array.isArray(raw) ? raw : JSON.parse(typeof raw === 'string' ? (raw || '[]') : '[]'); } catch { return ''; }
+  if (!Array.isArray(arr) || arr.length === 0) return '(keine Felder)';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const parts = arr.map((f: any) => {
+    const label = String((f && (f.label || f.id)) || '?').trim();
+    const help = String((f && f.helpText) || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+    return help ? `${label}: ${help.length > 200 ? `${help.slice(0, 200)}…` : help}` : label;
+  });
+  let s = parts.join(' | ');
+  if (s.length > 2000) s = `${s.slice(0, 2000)}…`;
+  return s;
+}
+
 export function buildEventUpdateDiff(
   oldItem: Record<string, unknown>,
   updates: Record<string, unknown>,
@@ -253,7 +274,11 @@ export function buildEventUpdateDiff(
   for (const key of Object.keys(updates)) {
     if (same(oldItem[key], updates[key])) continue;
     const label = EVENT_AUDIT_LABELS[key] || key;
-    if (opaque.has(key)) {
+    if (key === 'CustomFields') {
+      // v26.20: Statt nur „(geändert)" die Feld-Beschreibungen vorher/nachher
+      // ausschreiben — Verlauf + Sicherheitsnetz für verlorene Beschreibungen.
+      out[label] = { old: summarizeCustomFields(oldItem[key]) || '(leer)', new: summarizeCustomFields(updates[key]) || '(leer)' };
+    } else if (opaque.has(key)) {
       out[label] = { old: '(vorher)', new: '(geändert)' };
     } else {
       out[label] = { old: trunc(prettyBool(norm(oldItem[key]))) || '(leer)', new: trunc(prettyBool(norm(updates[key]))) || '(leer)' };
@@ -1379,9 +1404,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // EventUpdated wird sie ohnehin über den Feld-Diff erfasst.
         details: (() => {
           const descPlain = (input.description || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const fieldsSummary = summarizeCustomFields((input as any).customFields);
           return {
             eventType: input.type, location: input.location, startDate: input.startDate, maxParticipants: input.maxParticipants,
             ...(descPlain ? { description: descPlain.length > 300 ? `${descPlain.slice(0, 300)}…` : descPlain } : {}),
+            ...(fieldsSummary && fieldsSummary !== '(keine Felder)' ? { fields: fieldsSummary } : {}),
           };
         })(),
       }).catch(() => { /* */ });

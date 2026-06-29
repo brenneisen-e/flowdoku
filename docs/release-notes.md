@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 26.20.0 | 2026-06-29 | Feature | Das Änderungsprotokoll erfasst jetzt auch die Beschreibungen der Abfrage-/Auswahlfelder („Label: Beschreibung") — beim Anlegen UND beim Ändern als Vorher/Nachher-Verlauf. Vorher stand bei Feldänderungen nur „geändert". Das dient zugleich als Sicherheitsnetz: Gehen Feld-Beschreibungen verloren, stehen die alten Texte weiterhin im Protokoll. |
 | 26.19.0 | 2026-06-29 | Bugfix | Im Änderungsprotokoll (Audit-Log) wird beim Anlegen eines Events jetzt auch die eingegebene Beschreibung mitgespeichert (gekürzt), falls vorhanden. Bei Änderungen wurde sie bereits erfasst. |
 | 26.18.0 | 2026-06-29 | Feature | Im Organizer Center erscheint jetzt ein Warnhinweis, wenn es mehrere Events mit gleichem Namen am gleichen Tag gibt (vermutlich versehentlich doppelt angelegt). Pro Duplikat gibt es direkt einen „Diese Version löschen"-Knopf, um die alte/überflüssige Version zu entfernen. |
 | 26.18.0 | 2026-06-29 | Bugfix | Beim Zurückgehen aus einem geöffneten Event zurück zur Event-Liste wird jetzt wieder nach oben gescrollt (vorher blieb die Ansicht weit unten stehen). |

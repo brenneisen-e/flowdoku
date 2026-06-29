@@ -44,6 +44,7 @@ export interface ReleaseNote {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '26.20.0', date: '2026-06-29', bereich: 'Verwaltung', type: 'Feature', text: 'Das Änderungsprotokoll erfasst jetzt auch die Beschreibungen der Abfrage-/Auswahlfelder („Label: Beschreibung") — beim Anlegen UND beim Ändern als Vorher/Nachher-Verlauf. Vorher stand bei Feldänderungen nur „geändert". Das dient zugleich als Sicherheitsnetz: Gehen Feld-Beschreibungen verloren, stehen die alten Texte weiterhin im Protokoll.' },
   { version: '26.19.0', date: '2026-06-29', bereich: 'Verwaltung', type: 'Bugfix', text: 'Im Änderungsprotokoll (Audit-Log) wird beim Anlegen eines Events jetzt auch die eingegebene Beschreibung mitgespeichert (gekürzt), falls vorhanden. Bei Änderungen wurde sie bereits erfasst.' },
   { version: '26.18.0', date: '2026-06-29', bereich: 'Organizer Center', type: 'Feature', text: 'Im Organizer Center erscheint jetzt ein Warnhinweis, wenn es mehrere Events mit gleichem Namen am gleichen Tag gibt (vermutlich versehentlich doppelt angelegt). Pro Duplikat gibt es direkt einen „Diese Version löschen"-Knopf, um die alte/überflüssige Version zu entfernen.' },
   { version: '26.18.0', date: '2026-06-29', bereich: 'Allgemein', type: 'Bugfix', text: 'Beim Zurückgehen aus einem geöffneten Event zurück zur Event-Liste wird jetzt wieder nach oben gescrollt (vorher blieb die Ansicht weit unten stehen).' },
