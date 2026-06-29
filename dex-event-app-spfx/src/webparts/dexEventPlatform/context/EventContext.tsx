@@ -461,7 +461,7 @@ interface EventContextType {
   fixAllEventColumns: (onProgress?: (done: number, total: number, label: string) => void) => Promise<{ lists: number; columnsAdded: number; backfilled: number; errors: number; anyChange: boolean }>;
   /** v26.13: Versehentlich gelöschte Custom-Field-Beschreibungen aus der
    *  SharePoint-Versionshistorie wiederherstellen. */
-  restoreCustomFieldDescriptions: (onProgress?: (done: number, total: number, label: string) => void) => Promise<{ events: number; eventsChanged: number; fieldsRestored: number; errors: number }>;
+  restoreCustomFieldDescriptions: (onProgress?: (done: number, total: number, label: string) => void, dryRun?: boolean) => Promise<{ events: number; eventsChanged: number; fieldsRestored: number; errors: number; details: Array<{ eventId: string; eventTitle: string; fields: Array<{ label: string; props: string[] }> }> }>;
   /** v23.40: Löschkonzept — zählt DEX_Archive-Einträge älter als 1 Monat (v23.48). */
   getDeletableArchiveCount: () => Promise<number>;
   /** v23.40: Löschkonzept — löscht DEX_Archive-Einträge älter als 1 Monat (v23.48). */
@@ -4354,8 +4354,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   // ältere Version gesucht, die die jeweilige Eigenschaft noch enthielt, und nur
   // FEHLENDE Werte im aktuellen Stand aufgefüllt (nie etwas überschrieben).
   async function restoreCustomFieldDescriptions(
-    onProgress?: (done: number, total: number, label: string) => void
-  ): Promise<{ events: number; eventsChanged: number; fieldsRestored: number; errors: number }> {
+    onProgress?: (done: number, total: number, label: string) => void,
+    dryRun?: boolean
+  ): Promise<{ events: number; eventsChanged: number; fieldsRestored: number; errors: number; details: Array<{ eventId: string; eventTitle: string; fields: Array<{ label: string; props: string[] }> }> }> {
     const RESTORE_PROPS = ['helpText', 'helpTextEn', 'helpTextStyle', 'showIf', 'multi', 'externalLinks', 'ccOnEmails', 'onlyForGroup', 'confirmLabel', 'confirmLabelEn', 'labelEn', 'optionsEn'];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const hasVal = (p: string, val: any): boolean => {
@@ -4367,11 +4368,18 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const targets = (events || []).filter(e => { const id = String(e.id); if (seen.has(id)) return false; seen.add(id); return true; });
     const total = targets.length;
     let eventsChanged = 0; let fieldsRestored = 0; let errors = 0;
+    const details: Array<{ eventId: string; eventTitle: string; fields: Array<{ label: string; props: string[] }> }> = [];
     for (let i = 0; i < total; i++) {
       const ev = targets[i];
       if (onProgress) onProgress(i, total, ev.title || '');
       try {
         const versions = await eventService.getEventCustomFieldsVersions(Number(ev.id));
+        // v26.13: Diagnose — pro Event ausgeben, wie viele Versionen es gibt und
+        // ob in der Historie überhaupt ein helpText vorkommt (sonst ist nichts
+        // wiederherzustellen). Hilft beim Nachvollziehen in der Browser-Konsole.
+        const helpInHistory = (versions || []).some(v => (v.customFields || '').indexOf('helpText') >= 0);
+        // eslint-disable-next-line no-console
+        console.log('[DEX restore]', ev.title, '(id', ev.id + ') — Versionen:', (versions || []).length, '— helpText in Historie:', helpInHistory);
         if (!versions || versions.length === 0) continue;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let currentArr: any[];
@@ -4395,22 +4403,29 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           }
         }
         let changed = false;
+        const evFields: Array<{ label: string; props: string[] }> = [];
         const restoredArr = currentArr.map((f) => {
           const id = f && f.id; if (!id || !best[id]) return f;
           const out = { ...f };
+          const restoredProps: string[] = [];
           for (const p of RESTORE_PROPS) {
-            if (!hasVal(p, out[p]) && best[id][p] !== undefined) { out[p] = best[id][p]; changed = true; fieldsRestored++; }
+            if (!hasVal(p, out[p]) && best[id][p] !== undefined) {
+              out[p] = best[id][p]; changed = true; fieldsRestored++; restoredProps.push(p);
+            }
           }
+          if (restoredProps.length > 0) evFields.push({ label: (f.label || f.id || '?'), props: restoredProps });
           return out;
         });
         if (changed) {
-          await updateEvent(ev.id, { 'CustomFields': JSON.stringify(restoredArr) });
+          if (evFields.length > 0) details.push({ eventId: String(ev.id), eventTitle: ev.title || String(ev.id), fields: evFields });
+          // v26.13: Trockenlauf — nur ermitteln, NICHT schreiben.
+          if (!dryRun) { await updateEvent(ev.id, { 'CustomFields': JSON.stringify(restoredArr) }); }
           eventsChanged++;
         }
       } catch (e) { errors++; console.warn('[DEX] restoreCustomFieldDescriptions failed for', ev.id, e); }
     }
     if (onProgress) onProgress(total, total, '');
-    return { events: total, eventsChanged, fieldsRestored, errors };
+    return { events: total, eventsChanged, fieldsRestored, errors, details };
   }
 
   // v23.8: Wöchentlicher Admin-Bericht. Wird beim App-Start (nur Admins,

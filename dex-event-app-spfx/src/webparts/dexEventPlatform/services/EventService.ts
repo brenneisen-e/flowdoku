@@ -1051,16 +1051,28 @@ export class EventService {
    *  (neueste zuerst). Grundlage für die Wiederherstellung versehentlich
    *  überschriebener Custom-Field-Beschreibungen (helpText etc.) aus der
    *  SharePoint-Versionshistorie. */
-  public async getEventCustomFieldsVersions(itemId: number): Promise<Array<{ created: string; customFields: string }>> {
+  public async getEventCustomFieldsVersions(itemId: number): Promise<Array<{ versionId: number; created: string; customFields: string }>> {
+    // WICHTIG: KEIN $select/$orderby — der versions-Endpunkt lehnt beides je
+    // nach Tenant mit HTTP 400 ab (→ vorher kam IMMER eine leere Liste zurück
+    // und „nichts wiederherzustellen"). Wir holen ALLE Versionsfelder und
+    // sortieren clientseitig nach VersionId absteigend (= neueste zuerst). Der
+    // CustomFields-Note-Wert ist in jeder Version standardmäßig enthalten.
+    const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${itemId})/versions?$top=500`;
     try {
-      const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${itemId})/versions?$select=Created,CustomFields&$orderby=Created desc&$top=400`;
       const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
-      if (!resp.ok) return [];
+      if (!resp.ok) { console.warn('[DEX restore] versions HTTP', resp.status, 'für Item', itemId); return []; }
       const data = await resp.json();
       const items = data.value || data.d?.results || [];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (items as any[]).map(v => ({ created: v.Created || '', customFields: typeof v.CustomFields === 'string' ? v.CustomFields : '' }));
-    } catch {
+      const mapped = (items as any[]).map(v => ({
+        versionId: Number(v.VersionId != null ? v.VersionId : (v.ID != null ? v.ID : 0)),
+        created: v.Created || '',
+        customFields: typeof v.CustomFields === 'string' ? v.CustomFields : '',
+      }));
+      mapped.sort((a, b) => b.versionId - a.versionId);
+      return mapped;
+    } catch (e) {
+      console.warn('[DEX restore] versions fetch failed für Item', itemId, e);
       return [];
     }
   }
