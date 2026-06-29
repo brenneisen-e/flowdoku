@@ -72,6 +72,20 @@ export async function listManualArticles(locale: 'de' | 'en'): Promise<ManualArt
   return items.map((it) => ({ id: it.id, title: it.title, description: it.description }));
 }
 
+/** Vollständige Handbuch-Sektion (mit Inhalten) lazy laden — für die
+ *  Inline-Vorschau im „Hast du Fragen?"-Modal (Antwort ausklappen, ohne ins
+ *  Handbuch zu springen). Rückgabe ist eine ManualSection (enthält React-Nodes). */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function getManualSection(id: string, locale: 'de' | 'en'): Promise<any | null> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mod: any = await import('../components/manual/handbookContent');
+    const sections = mod.getManualSections(locale) || [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return sections.find((s: any) => s.id === id) || null;
+  } catch { return null; }
+}
+
 /** Einen Handbuch-Artikel öffnen (gleicher Mechanismus wie die globale Suche). */
 export function openManualArticle(id: string, navigate: (page: 'manual') => void): void {
   try { window.localStorage.setItem('dex_open_manual_section', id); } catch { /* */ }

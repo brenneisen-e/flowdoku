@@ -19,7 +19,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { useNavigation } from '../context/NavigationContext';
 import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
-import { searchManual, openManualArticle, ManualArticle } from '../utils/manualSearch';
+import { searchManual, openManualArticle, getManualSection, ManualArticle } from '../utils/manualSearch';
 import { captureScreen } from '../utils/screenshot';
 import { DexTicket } from '../types';
 
@@ -41,6 +41,11 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
   const [submitting, setSubmitting] = React.useState(false);
   const [done, setDone] = React.useState(false);
   const [hits, setHits] = React.useState<ManualArticle[]>([]);
+  // v26.3: Vorschlag inline ausklappen (Antwort lesen, ohne ins Handbuch zu springen).
+  const [openHitId, setOpenHitId] = React.useState<string | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [hitSection, setHitSection] = React.useState<any>(null);
+  const [hitLoading, setHitLoading] = React.useState(false);
 
   // Live-Handbuch-Suche (debounced) auf den eingegebenen Fragetext.
   const queryText = questions.join(' ').trim();
@@ -122,6 +127,15 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
   };
 
   const openArticle = (id: string): void => { setOpen(false); openManualArticle(id, navigate); };
+
+  // Vorschlag auf-/zuklappen und den vollen Artikel-Inhalt lazy nachladen.
+  const toggleHit = (id: string): void => {
+    if (openHitId === id) { setOpenHitId(null); setHitSection(null); return; }
+    setOpenHitId(id); setHitSection(null); setHitLoading(true);
+    getManualSection(id, isDe ? 'de' : 'en')
+      .then((sec) => { setHitSection(sec); setHitLoading(false); })
+      .catch(() => setHitLoading(false));
+  };
 
   // ---- Status-Badge für „Deine Fragen" ----
   const statusBadge = (st: DexTicket['status'], claimedBy: string): React.ReactElement => {
@@ -212,17 +226,34 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
                 <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--dex-green-dark,#4a7c1f)', marginBottom: 6 }}>
                   {isDe ? 'Vielleicht hilft dir das schon weiter:' : 'This might already help you:'}
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {hits.map((h) => (
-                    <button key={h.id} type="button" onClick={() => openArticle(h.id)}
-                      style={{ textAlign: 'left', background: '#fff', border: '1px solid var(--dex-gray-200,#e8e8e8)', borderRadius: 6, padding: '7px 10px', cursor: 'pointer', fontFamily: 'inherit' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
-                        <Icon iconName="ReadingMode" style={{ fontSize: 13, color: 'var(--dex-green,#86bc25)' }} />
-                        <strong style={{ fontSize: '0.85rem' }}>{h.title}</strong>
-                      </span>
-                      {h.description && <div style={{ fontSize: '0.76rem', color: 'var(--dex-gray-500,#808080)', marginTop: 2 }}>{h.description}</div>}
-                    </button>
-                  ))}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {hits.map((h) => {
+                    const isOpenHit = openHitId === h.id;
+                    return (
+                      <div key={h.id} style={{ background: '#fff', border: '1px solid var(--dex-gray-200,#e8e8e8)', borderRadius: 6, overflow: 'hidden' }}>
+                        <button type="button" onClick={() => toggleHit(h.id)}
+                          style={{ width: '100%', textAlign: 'left', background: 'transparent', border: 'none', padding: '7px 10px', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                          <Icon iconName="ReadingMode" style={{ fontSize: 13, color: 'var(--dex-green,#86bc25)', marginTop: 2 }} />
+                          <span style={{ flex: 1 }}>
+                            <strong style={{ fontSize: '0.85rem' }}>{h.title}</strong>
+                            {h.description && <div style={{ fontSize: '0.76rem', color: 'var(--dex-gray-500,#808080)', marginTop: 2 }}>{h.description}</div>}
+                          </span>
+                          <Icon iconName={isOpenHit ? 'ChevronUp' : 'ChevronDown'} style={{ fontSize: 12, color: 'var(--dex-gray-400,#a0a0a0)', marginTop: 3 }} />
+                        </button>
+                        {isOpenHit && (
+                          <div style={{ borderTop: '1px solid var(--dex-gray-100,#f5f5f5)', padding: '6px 10px 10px' }}>
+                            {hitLoading && <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400,#a0a0a0)', padding: '6px 0' }}>{isDe ? 'Lädt …' : 'Loading …'}</div>}
+                            {!hitLoading && hitSection && renderArticleBody(hitSection, isDe)}
+                            {!hitLoading && !hitSection && <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-400,#a0a0a0)' }}>{isDe ? 'Inhalt nicht verfügbar.' : 'Content unavailable.'}</div>}
+                            <button type="button" onClick={() => openArticle(h.id)}
+                              style={{ marginTop: 8, background: 'transparent', border: 'none', color: 'var(--dex-green-dark,#4a7c1f)', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem', padding: 0, fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                              <Icon iconName="OpenInNewWindow" style={{ fontSize: 12 }} /> {isDe ? 'Ganzen Artikel im Handbuch öffnen' : 'Open full article in the manual'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -323,3 +354,42 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
     </>
   );
 }
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+// v26.3: Inhalt einer Handbuch-Sektion kompakt inline rendern (Perspektiven →
+// Schritte). Nur Text-/Prosa-Teile (intro, title, description, tip, warning) —
+// KEINE liveDemo/mockup-Renders, damit nichts auf fehlende Kontexte zugreift.
+function renderArticleBody(section: any, isDe: boolean): React.ReactElement {
+  const persps: any[] = section.perspectives || [];
+  const perspLabel = (p: any): string =>
+    p.title || (p.perspective === 'organizer'
+      ? (isDe ? 'Als Organizer' : 'As organizer')
+      : p.perspective === 'admin'
+        ? (isDe ? 'Als Admin' : 'As admin')
+        : (isDe ? 'Als Teilnehmer' : 'As participant'));
+  return (
+    <div style={{ maxHeight: 300, overflowY: 'auto', fontSize: '0.84rem', lineHeight: 1.5 }}>
+      {section.description && <p style={{ margin: '4px 0 10px', color: 'var(--dex-gray-700,#444)' }}>{section.description}</p>}
+      {persps.map((p: any, pi: number) => (
+        <div key={pi} style={{ marginBottom: 12 }}>
+          {persps.length > 1 && (
+            <div style={{ fontSize: '0.72rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.4, color: 'var(--dex-green-dark,#4a7c1f)', marginBottom: 5 }}>{perspLabel(p)}</div>
+          )}
+          {p.intro && <div style={{ marginBottom: 7, color: 'var(--dex-gray-700,#444)' }}>{p.intro}</div>}
+          {(p.steps || []).map((st: any, si: number) => (
+            <div key={si} style={{ display: 'flex', gap: 8, marginBottom: 7 }}>
+              <span style={{ flexShrink: 0, width: 19, height: 19, borderRadius: '50%', background: 'var(--dex-green,#86bc25)', color: '#fff', fontSize: 11, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', marginTop: 1 }}>{st.number}</span>
+              <div>
+                {st.title && <strong>{st.title}</strong>}
+                {st.description && <div style={{ color: 'var(--dex-gray-700,#444)' }}>{st.description}</div>}
+                {st.tip && <div style={{ marginTop: 3, fontSize: '0.78rem', color: 'var(--dex-orange-dark,#b35a00)' }}>{isDe ? 'Tipp: ' : 'Tip: '}{st.tip}</div>}
+                {st.warning && <div style={{ marginTop: 3, fontSize: '0.78rem', color: 'var(--dex-red,#da291c)' }}>{st.warning}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */

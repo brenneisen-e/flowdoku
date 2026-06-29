@@ -518,6 +518,9 @@ interface EventContextType {
   /** v11.52: Frische KPI-Werte in _Config schreiben. Wird nach vollem
    *  App-Load im Hintergrund aufgerufen, damit nächster Boot frisch ist. */
   updateKpiCache: (v: { participants: number; events: number }) => Promise<boolean>;
+  /** v26.4: Korrekte KPI-Gesamtwerte über ALLE Events (paginiert, nicht nur die
+   *  geladenen 100) — Admin-Recompute für den „bisher genutzt für"-Boot-Zähler. */
+  getKpiTotals: () => Promise<{ participants: number; events: number } | null>;
   /**
    * Onboarding-Mail an einen frisch ernannten Organizer/Admin verschicken.
    * Cc geht automatisch an die DEX-Verantwortlichen, der Body wird ins
@@ -4761,6 +4764,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         sendOrganizerOnboarding,
         getKpiCache: () => eventService.getKpiCache(),
         updateKpiCache: (v) => eventService.updateKpiCache(v),
+        getKpiTotals: () => eventService.getKpiTotals(),
       },
     },
     props.children
