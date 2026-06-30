@@ -271,6 +271,45 @@ export function TicketProvider(props: { context: WebPartContext; children: React
       } catch { /* Mail best-effort */ }
     }
 
+    // v26.25: Eingangs-Bestätigung an den Fragesteller, wenn die Frage zu einem
+    // Event an die Organizer geroutet wurde — mit namentlicher Nennung der
+    // Organizer + Hinweis, dass sie über die App antworten und es je nach
+    // Verfügbarkeit etwas dauern kann (freundlich formuliert).
+    if (audience === 'Organizer' && currentUser.email && toNames.length > 0) {
+      const many = toNames.length > 1;
+      const orgList = many
+        ? `${toNames.slice(0, -1).map(esc).join(', ')} und ${esc(toNames[toNames.length - 1])}`
+        : esc(toNames[0]);
+      const kuemmern = many
+        ? 'kümmern sich darum und antworten dir direkt über die DEX-App'
+        : 'kümmert sich darum und antwortet dir direkt über die DEX-App';
+      const zeit = many
+        ? 'wie schnell die Organizer gerade Zeit finden'
+        : 'wie schnell der/die Organizer gerade Zeit findet';
+      const qListAsk = questions.length === 1
+        ? `<p style="margin:6px 0 0;color:#555;">${esc(questions[0])}</p>`
+        : `<ul style="margin:8px 0 0 18px;padding:0;color:#555;">${questions.map(q => `<li style="margin-bottom:4px;">${esc(q)}</li>`).join('')}</ul>`;
+      const innerAsk = `
+        <p style="margin:0 0 6px;">Hallo ${esc(currentUser.firstName || '')},</p>
+        <p style="margin:0 0 16px;">vielen Dank für deine Frage zum Event <strong>${esc(eventTitle)}</strong> — sie ist erfolgreich eingegangen.</p>
+        <p style="margin:0;"><strong>Deine Frage${questions.length > 1 ? 'n' : ''}:</strong></p>
+        ${qListAsk}
+        <p style="margin:16px 0 0;padding:10px 12px;background:#f1f7e8;border:1px solid ${GREEN};border-radius:6px;">Deine Frage liegt jetzt bei <strong>${orgList}</strong> (Organisation dieses Events). ${many ? 'Sie' : 'Die Person'} ${kuemmern}.</p>
+        <p style="margin:14px 0 0;color:#555;">Je nachdem, ${zeit}, kann die Antwort etwas dauern — bitte hab ein wenig Geduld. Du bekommst die Antwort automatisch per Mail und findest sie jederzeit in der App über den grünen Button <strong>&bdquo;Hast du Fragen?&ldquo;</strong> (oben rechts) unter <strong>&bdquo;Deine Fragen&ldquo;</strong>.</p>
+        ${noReplyHintHtml}
+      `;
+      const bodyAsk = wrapTemplate(GREEN, 'Deine Frage ist eingegangen', eventTitle || 'DEX-Support', innerAsk);
+      try {
+        await eventService.queueEmail(
+          `Deine Frage zum Event „${eventTitle}" ist eingegangen`,
+          currentUser.email,
+          `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email,
+          bodyAsk,
+          'TicketReceived', eventTitle || 'DEX-Ticket', eventId || '0'
+        );
+      } catch { /* Mail best-effort */ }
+    }
+
     // States aktualisieren.
     reloadMyTickets().catch(() => { /* */ });
     if (shouldLoadAll) reloadTickets().catch(() => { /* */ });
