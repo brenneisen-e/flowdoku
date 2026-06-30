@@ -34,7 +34,7 @@ gelten zwei Regeln:
 1. **Route-Level-Splitting:** Die Sekundär-Seiten `EventCreationPage`,
    `AdminPage`, `CheckInPage`, `SettingsPage`, `RoleMatrixPage`,
    `ParticipantsPage`, `FlowchartPage`, `ManualPage`,
-   `SelfCheckInDisplayPage` werden in `DexEventPlatform.tsx` per
+   `SelfCheckInDisplayPage`, `ArchitecturePage` werden in `DexEventPlatform.tsx` per
    `React.lazy(() => import('./X'))` + `<React.Suspense>` geladen. Neue
    Sekundär-Seiten (alles außer Landing/Start/EventList/Registration/
    MyEvents/Profile/SelfCheckInPage) bitte demselben Muster folgen.

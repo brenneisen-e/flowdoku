@@ -53,6 +53,7 @@ const SelfCheckInDisplayPage = React.lazy(() => import('./SelfCheckInDisplayPage
 const ManualPage = React.lazy(() => import('./manual/ManualPage'));
 const AssistantPage = React.lazy(() => import('./AssistantPage'));
 const TicketsPage = React.lazy(() => import('./TicketsPage'));
+const ArchitecturePage = React.lazy(() => import('./ArchitecturePage'));
 
 export interface IDexEventPlatformProps {
   context: WebPartContext;
@@ -736,6 +737,8 @@ function AppContent(): React.ReactElement {
         return <ManualPage />;
       case 'tickets':
         return <TicketsPage />;
+      case 'architecture':
+        return <ArchitecturePage />;
       default:
         return <LandingPage />;
     }
