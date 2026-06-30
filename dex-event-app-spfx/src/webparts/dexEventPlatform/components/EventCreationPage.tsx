@@ -692,7 +692,7 @@ async function resolveAudienceMembersToCsv(
 
 export default function EventCreationPage(): React.ReactElement {
   const { goBack, selectedEventId, currentPage, setNavigationGuard } = useNavigation();
-  const { events, childEventsOf, createEvent, updateEvent, deleteEvent, deleteEventItemOnly, refreshEvents } = useEvents();
+  const { events, childEventsOf, createEvent, updateEvent, deleteEvent, deleteEventItemOnly, refreshEvents, requestCoOrganizerApprovals } = useEvents();
   const { currentUser } = useCurrentUser();
   // searchGroups + searchUsersByLocation werden seit v19.x ausschließlich im
   // ausgelagerten <AudiencePicker> verwendet (eigener useRoles-Hook dort).
@@ -3954,6 +3954,16 @@ export default function EventCreationPage(): React.ReactElement {
           }
         } catch (err) { console.warn('[DEX] Permission-Sync für Organizer fehlgeschlagen:', err); }
 
+        // v26.24: Co-Organizer-Freigabe. Benannte Organizer, die noch KEIN
+        // Organizer/Admin sind, brauchen Schreibrecht auf DEX_Events (kommt aus
+        // der Members-Gruppe, nicht aus dem Organizer-Eintrag). Das kann ein
+        // normaler Organizer nicht selbst vergeben → wir legen pro solcher Person
+        // einen „Organizer werden"-Antrag an; die Admins bekommen die Mail mit
+        // Deep-Link und geben frei. Best-effort, blockt den Save nicht.
+        try {
+          await requestCoOrganizerApprovals(sanitizedOrgPairEdit.orgString, sanitizedOrgPairEdit.orgEmailString, title);
+        } catch (err) { console.warn('[DEX] Co-Organizer-Freigabe-Anträge fehlgeschlagen:', err); }
+
         setProgress(75);
         setProgressLabel(isDe ? 'Sub-Events werden gespeichert...' : 'Saving sub-events...');
         // Sub-Events persistieren (create/update/delete pro Draft). Seit v6.4.
@@ -4449,6 +4459,13 @@ export default function EventCreationPage(): React.ReactElement {
       });
 
       if (eventId) {
+        // v26.24: Co-Organizer-Freigabe (siehe Edit-Pfad) — für benannte
+        // Organizer, die noch kein Organizer/Admin sind, einen „Organizer
+        // werden"-Antrag zur Admin-Freigabe anlegen. Best-effort.
+        try {
+          await requestCoOrganizerApprovals(sanitizedOrgPairCreate.orgString, sanitizedOrgPairCreate.orgEmailString, title);
+        } catch (err) { console.warn('[DEX] Co-Organizer-Freigabe-Anträge (Create) fehlgeschlagen:', err); }
+
         // v11.87: Sub-Events bekommen den Bereich (topEnd..90) gleichmäßig
         // aufgeteilt — pro Sub-Event ein eigener Stage-Slot. persistSubEventsForParent
         // erhält einen Sub-Progress-Callback über ein Window-Event-Bus-ähnliches

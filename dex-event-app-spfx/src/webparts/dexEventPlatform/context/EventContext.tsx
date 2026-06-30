@@ -463,6 +463,11 @@ interface EventContextType {
   maybeSendPostEventOrganizerMails: () => Promise<void>;
   /** v23.37: Antrag „Organizer werden" anlegen (+ Admin-Mail mit Deep-Link). */
   requestOrganizerRole: (email: string, name: string, location: string, message?: string) => Promise<{ ok: boolean; reason?: string }>;
+  /** v26.24: Beim Event-Speichern für jeden benannten Co-Organizer, der noch
+   *  KEIN Organizer/Admin ist, einen „Organizer werden"-Antrag (zur Admin-
+   *  Freigabe) anlegen. orgNames/orgEmails sind die 1:1-gepaarten Strings aus
+   *  sanitizeOrganizerPairs (Namen „; "-, Mails ";"-getrennt). Best-effort. */
+  requestCoOrganizerApprovals: (orgNames: string, orgEmails: string, eventTitle: string) => Promise<void>;
   /** v23.37: offene Organizer-Anträge (für den Admin-Hinweis beim App-Start). */
   getOpenOrganizerRequests: () => Promise<Array<{ id: number; email: string; name: string; location: string; message: string; created: string }>>;
   /** v23.37: Antrag entscheiden — Status setzen + Antragsteller informieren.
@@ -4768,6 +4773,41 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     }
   }
 
+  // v26.24: Co-Organizer-Freigabe. Beim Speichern eines Events ruft der Wizard
+  // dies mit der (1:1-gepaarten) Organizer-Namens-/-Mail-Liste auf. Für jede
+  // benannte Person, die NOCH KEIN Organizer/Admin ist (und nicht der speichernde
+  // User selbst), wird über requestOrganizerRole ein „Organizer werden"-Antrag
+  // angelegt — die Admins bekommen die bestehende Antrags-Mail mit Deep-Link und
+  // geben die Person frei (dann wird sie Organizer und kann das Event bearbeiten
+  // und speichern). requestOrganizerRole entdoppelt offene Anträge selbst, daher
+  // ist ein erneuter Save unkritisch. Best-effort — blockt den Save nie.
+  async function requestCoOrganizerApprovals(orgNames: string, orgEmails: string, eventTitle: string): Promise<void> {
+    try {
+      const mails = (orgEmails || '').split(';').map(s => s.trim());
+      const names = (orgNames || '').split(';').map(s => s.trim());
+      if (mails.filter(Boolean).length === 0) return;
+      const orgs = await eventService.getRoleEmails('Organizer');
+      const admins = await eventService.getRoleEmails('Admin');
+      const elevated = new Set([...orgs, ...admins].map(e => e.toLowerCase()));
+      const me = (currentUserEmail || '').toLowerCase();
+      for (let i = 0; i < mails.length; i++) {
+        const mail = mails[i];
+        if (!mail) continue;
+        const lc = mail.toLowerCase();
+        if (lc === me) continue;            // sich selbst nie anfragen
+        if (elevated.has(lc)) continue;     // ist schon Organizer/Admin → kann eh speichern
+        const nm = names[i] || mail;
+        const requester = currentUserName || currentUserEmail || '';
+        const msg = `„${requester}" hat diese Person als Co-Organizer für das Event „${eventTitle}" benannt. `
+          + `Mit der Freigabe wird sie Organizer und kann das Event in DEX bearbeiten und speichern.`;
+        try { await requestOrganizerRole(mail, nm, '', msg); }
+        catch (e) { console.warn('[DEX] requestCoOrganizerApprovals: Einzel-Antrag fehlgeschlagen:', mail, e); }
+      }
+    } catch (e) {
+      console.warn('[DEX] requestCoOrganizerApprovals fehlgeschlagen (best-effort):', e);
+    }
+  }
+
   async function getOpenOrganizerRequests(): Promise<Array<{ id: number; email: string; name: string; location: string; message: string; created: string }>> {
     try {
       const list = await eventService.getOrganizerRequests(true);
@@ -4922,7 +4962,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelTeamMember,
         getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns, restoreCustomFieldDescriptions,
         sendAdminInquiry,
-        requestOrganizerRole, getOpenOrganizerRequests, markOrganizerRequestDecided,
+        requestOrganizerRole, requestCoOrganizerApprovals, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,
         getAllEmailTemplates,
         updateEmailTemplate,

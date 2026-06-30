@@ -10362,15 +10362,35 @@ export class EventService {
     // aus der Queue). Hängengebliebene Pendings bleiben so in der
     // Arbeitsliste sichtbar, wo der Admin sie sehen soll.
     if (String(r['Status'] || '') === 'Pending') return false;
+    // v26.26: Verwaiste Zeilen (KEINEM Event zugeordnet, EventId leer/'0', oder
+    // Event bereits gelöscht) werden NICHT mehr sofort archiviert, sondern erst,
+    // wenn sie mindestens 1 Monat alt sind. Sonst verschwinden frische event-lose
+    // Mails (Ticket-Bestätigungen/-Benachrichtigungen, Organizer-Anträge,
+    // Wochenbericht — alle mit EventId='0') sofort aus der Queue. Zeilen eines
+    // wirklich ABGELAUFENEN Events bleiben sofort archivreif (das Event ist vorbei).
+    const ORPHAN_GRACE_MS = 30 * 24 * 60 * 60 * 1000; // ~1 Monat
+    const oldEnough = (): boolean => {
+      const c = String(r['Created'] || '');
+      if (!c) return false; // ohne Erstellungsdatum konservativ NICHT archivieren
+      const t = new Date(c).getTime();
+      if (isNaN(t)) return false;
+      return (Date.now() - t) >= ORPHAN_GRACE_MS;
+    };
     if (matchBy === 'eventId') {
       const id = String(r['EventId'] || '').trim();
-      if (!id) return false;
-      // archivreif = Event abgelaufen ODER nicht mehr existent (gelöscht/verwaist).
-      return expiredEventIds.has(id) || (allEventIds.size > 0 && !allEventIds.has(id));
+      // Keinem Event zugeordnet (leer/'0') → Orphan-Regel (erst nach 1 Monat).
+      if (!id || id === '0') return oldEnough();
+      // Event abgelaufen → sofort archivreif.
+      if (expiredEventIds.has(id)) return true;
+      // Event existiert nicht mehr (gelöscht/verwaist) → erst nach 1 Monat.
+      if (allEventIds.size > 0 && !allEventIds.has(id)) return oldEnough();
+      return false;
     }
     const su = String(r['SubsiteUrl'] || '').toLowerCase().trim();
-    if (!su) return false;
-    return expiredSubsiteUrls.has(su) || (allSubsiteUrls.size > 0 && !allSubsiteUrls.has(su));
+    if (!su) return oldEnough();
+    if (expiredSubsiteUrls.has(su)) return true;
+    if (allSubsiteUrls.size > 0 && !allSubsiteUrls.has(su)) return oldEnough();
+    return false;
   }
 
   /** v21: Zählt die archivreifen Zeilen pro Quell-Liste (leichtgewichtig:
@@ -10386,7 +10406,9 @@ export class EventService {
       try {
         // v22.2: Status mitladen (wo vorhanden), damit der Pending-Ausschluss
         // schon beim Zählen greift und die Box-Zahl zum Lauf passt.
-        const base = src.matchBy === 'eventId' ? 'Id,EventId' : 'Id,SubsiteUrl';
+        // v26.26: Created mitladen — die Orphan-Regel (1-Monats-Karenz) braucht
+        // das Erstellungsdatum, sonst zählt die Box anders als der echte Lauf.
+        const base = src.matchBy === 'eventId' ? 'Id,EventId,Created' : 'Id,SubsiteUrl,Created';
         const select = src.hasStatus ? `${base},Status` : base;
         const rows = await this.loadAllListRows(src.list, select);
         for (const r of rows) {
