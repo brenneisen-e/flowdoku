@@ -4039,7 +4039,7 @@ export default function EventCreationPage(): React.ReactElement {
             });
             if (fixResult.customFieldMap && Object.keys(fixResult.customFieldMap).length > 0) {
               // v19.20: ROBUSTER FIX für den wiederkehrenden „zweiter
-              // CustomFields-Write droppt Properties"-Bug (siehe CLAUDE.md).
+              // CustomFields-Write droppt Properties"-Bug (siehe ENTWICKLUNG.md).
               // Früher wurde dieser zweite Write aus dem manuell gepflegten
               // cfForFix-Mapping gebaut — jede dort vergessene Property wurde
               // damit direkt nach dem Speichern wieder vom SP-Item entfernt
@@ -6177,7 +6177,7 @@ export default function EventCreationPage(): React.ReactElement {
 
               {/* ===== Schritt 1: Grundlagen =====
                   v9.32: 1-basierte UI-Nummerierung (in der Logik bleibt
-                  currentStep 0-basiert) — siehe CLAUDE.md. */}
+                  currentStep 0-basiert) — siehe ENTWICKLUNG.md. */}
               <div style={{ display: currentStep === 0 ? 'block' : 'none' }}>
               {/* v23.6: Demo-Button sitzt jetzt IM grünen Schritt-1-Header
                   (oben rechts), nicht mehr in einer eigenen Zeile darüber. */}

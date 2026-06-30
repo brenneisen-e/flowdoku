@@ -1,4 +1,4 @@
-# CLAUDE.md - Project Instructions
+# ENTWICKLUNG.md - Project Instructions
 
 ## DEX Event Experience Platform (SPFx)
 
@@ -34,7 +34,7 @@ gelten zwei Regeln:
 1. **Route-Level-Splitting:** Die Sekundär-Seiten `EventCreationPage`,
    `AdminPage`, `CheckInPage`, `SettingsPage`, `RoleMatrixPage`,
    `ParticipantsPage`, `FlowchartPage`, `ManualPage`,
-   `SelfCheckInDisplayPage` werden in `DexEventPlatform.tsx` per
+   `SelfCheckInDisplayPage`, `ArchitecturePage` werden in `DexEventPlatform.tsx` per
    `React.lazy(() => import('./X'))` + `<React.Suspense>` geladen. Neue
    Sekundär-Seiten (alles außer Landing/Start/EventList/Registration/
    MyEvents/Profile/SelfCheckInPage) bitte demselben Muster folgen.
@@ -2041,7 +2041,7 @@ nicht erschöpfend, sondern Beispiele:
 - Code-Kommentare, JSDoc, Inline-`/* … */`-Kommentare.
 - Commit-Messages.
 - Handbuch-Einträge (`src/webparts/dexEventPlatform/components/manual/sections/*`).
-- Markdown-Dokumentation (`docs/*.md`, `CLAUDE.md`).
+- Markdown-Dokumentation (`docs/*.md`, `ENTWICKLUNG.md`).
 - HTML-entitiy-escaped Anführungszeichen (`&bdquo;…&ldquo;`) sind OK, aber
   Umlaute selber **nicht** als `&auml;`/`&ouml;` etc. — direkt `ä`/`ö`
   schreiben.
@@ -2279,7 +2279,7 @@ verlorene Einträge). Stand 2026-06-02: im Tenant umgesetzt und verifiziert.
 | **Rollenmatrix** | `src/webparts/dexEventPlatform/components/RoleMatrixPage.tsx` | Neue User-/Organizer-/Admin-Fähigkeit als zusätzliche Zeile in das Matrix-Array einfügen — inkl. Description, die erklärt wofür das Feature ist. Zeigt dem Admin auf einen Blick, wer was darf. |
 | **Prozess-Übersicht (Flowcharts)** | `src/webparts/dexEventPlatform/components/FlowchartPage.tsx` | Betroffene Flowcharts (RegistrationFlow, CancellationFlow, IDReorderFlow, EventCreationFlow etc.) müssen den neuen Ablauf widerspiegeln. Seit v6.9 mit Prosa-`details`-Feld pro FlowNode — dort jedes wichtige Step erklären, was passiert und warum. Neue Flows brauchen eigene Render-Function. |
 | **docs/flow-jsons.md** | `docs/flow-jsons.md` | Wenn sich ein Power-Automate-Flow ändert (neue Action, geänderte Expression, neue Condition): Section entsprechend aktualisieren mit Struktur-Diagramm und Begründung. |
-| **CLAUDE.md** | `CLAUDE.md` | Neue Konventionen, neue SharePoint-Listen, neue Schema-Felder: hier ergänzen, damit die Projekt-Regeln aktuell bleiben. |
+| **ENTWICKLUNG.md** | `ENTWICKLUNG.md` | Neue Konventionen, neue SharePoint-Listen, neue Schema-Felder: hier ergänzen, damit die Projekt-Regeln aktuell bleiben. |
 
 Beim Review eines Feature-Commits wird geprüft: **Handbuch ✓, Rollenmatrix ✓, Flowchart ✓, ggf. Flow-JSONs ✓.** Fehlt einer, blockiert das den Release.
 

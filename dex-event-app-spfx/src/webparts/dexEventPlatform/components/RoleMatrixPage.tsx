@@ -511,7 +511,7 @@ async function downloadRoleMatrixPdf(): Promise<void> {
 export default function RoleMatrixPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const [pdfBusy, setPdfBusy] = React.useState(false);
-  // v13.0: Admin-Guard hinzugefügt — laut CLAUDE.md-Rollenmatrix ist
+  // v13.0: Admin-Guard hinzugefügt — laut ENTWICKLUNG.md-Rollenmatrix ist
   // "Rollen-Matrix einsehen" Admin-only. Vorher fehlte der Schutz —
   // jeder User (auch Demo-impersoniert) konnte die Seite öffnen. Wir
   // nutzen originalIsAdmin damit der Admin-im-Demo-Modus seine eigene

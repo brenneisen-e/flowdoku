@@ -145,7 +145,7 @@ Diese Befunde aus dem Audit wurden geprüft und sind **korrekt wie sie sind**:
 5. **`reserveSeat` Drift-Mitigation:** `realActive` wird einmal vor der
    CAS-Retry-Schleife gelesen (dokumentierte Best-Effort-Grenze).
 6. **Encoding-Altlasten:** ae/oe/ue in ALTEN Kommentaren diverser Dateien
-   (kein UI-Text betroffen). Per CLAUDE.md-Regel nur bei Berührung fixen.
+   (kein UI-Text betroffen). Per ENTWICKLUNG.md-Regel nur bei Berührung fixen.
 7. **`BulkUserImportModal`:** Import-Schleife ohne Abbruch-Flag beim
    Modal-Schließen (nur verschwendete Hintergrund-Calls, kein Datenfehler).
 8. **`RegistrationPage` Dokument-Upload nach Anmeldung:** schlägt ein Upload
@@ -165,4 +165,4 @@ Admin-Mutationspfaden gefunden. Die strukturellen Schwächen sind bekannt und
 dokumentiert (Monolith-Dateien, Comm-Tab-Spiegelung, zweiter
 CustomFields-Write) — die wiederkehrende Bug-Klasse „Feld im Create- aber
 nicht im Update-Payload" wurde mit 1.1/1.2 erneut bestätigt und sollte bei
-jedem neuen Event-Feld als Checklisten-Punkt gelten (siehe CLAUDE.md).
+jedem neuen Event-Feld als Checklisten-Punkt gelten (siehe ENTWICKLUNG.md).

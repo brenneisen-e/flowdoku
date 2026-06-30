@@ -1727,7 +1727,7 @@ export class EventService {
         : entry.details
           ? JSON.stringify(entry.details)
           : '';
-      // CLAUDE.md-Hinweis: bei odata=nometadata KEIN __metadata im Body —
+      // ENTWICKLUNG.md-Hinweis: bei odata=nometadata KEIN __metadata im Body —
       // SP leitet den Typ aus der URL ab. Robust gegen List-Type-Encoding-
       // Quirks (Bug-Story v7.28 → v7.29). Nutzen wir hier statt verbose-POST
       // damit ein verschmierter Type-Name den ChangeLog-Insert nicht

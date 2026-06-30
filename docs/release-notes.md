@@ -1,6 +1,6 @@
 # DEX Event Experience Platform — Release Notes
 
-Pflege-Regel: siehe `CLAUDE.md` → „Release Notes — Pflicht bei JEDEM Release".
+Pflege-Regel: siehe `ENTWICKLUNG.md` → „Release Notes — Pflicht bei JEDEM Release".
 Bei **jedem** Versions-Bump kommt hier eine Zeile dazu (neueste Version **oben**),
 Spalten: **Version | Datum | Art | Beschreibung**. `Art` = `Feature` (neue
 Funktionalität) oder `Bugfix` (Fehlerbehebung). Beschreibung auf Deutsch,
@@ -8,6 +8,8 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 26.28.0 | 2026-06-30 | Feature | Neuer Bereich „Architektur" im Admin (über die Admin-Kachel): eine verständliche Gesamtübersicht der Plattform — die App, alle SharePoint-Listen mit ihrer Funktion, die Hintergrund-Abläufe (Power-Automate-Flows) und die genutzten Microsoft-365-Dienste samt Zusammenhängen und typischen Datenflüssen. Mit einem Klick lässt sich das Ganze als ausführliches PDF-Dokument herunterladen. |
+| 26.27.0 | 2026-06-30 | Bugfix | Interne Aufräumarbeiten: die Projektdokumentation wurde umbenannt und vereinheitlicht. Im Handbuch verweist der Hinweis zum Vorlagen-Neuaufsetzen jetzt auf die Release Notes statt auf eine interne Datei. Keine Auswirkung auf bestehende Funktionen. |
 | 26.26.0 | 2026-06-30 | Bugfix | Mails, die zu keinem Event gehören (z. B. Ticket-Bestätigungen, Organisator-Anträge oder der Wochenbericht), wurden bei der Archivierung sofort weggeräumt. Jetzt bleiben sie erst einen Monat erhalten und werden danach archiviert — so sind frische Mails noch nachvollziehbar. Mails zu bereits abgelaufenen Events werden wie bisher direkt archiviert. |
 | 26.25.0 | 2026-06-30 | Feature | Wer eine Frage zu einem Event stellt, bekommt jetzt sofort eine Eingangs-Bestätigung per Mail. Darin stehen die Namen der Organisatoren, die die Frage erhalten haben, und der Hinweis, dass sie direkt über die App antworten — je nach Verfügbarkeit kann das etwas dauern. So weiß man gleich, dass die Frage angekommen ist und bei wem sie liegt. |
 | 26.24.0 | 2026-06-30 | Feature | Ein Organisator kann jetzt jemanden als Co-Organisator zu seinem Event hinzufügen, der noch kein Organisator ist. Beim Speichern wird automatisch eine Freigabe-Anfrage an die Admins erzeugt — sie bekommen eine Mail mit einem Knopf „Antrag in der App öffnen & bestätigen". Sobald ein Admin freigibt, wird die Person Organisator und kann das Event bearbeiten und speichern. Personen, die bereits Organisator sind, lösen keine Anfrage aus. |

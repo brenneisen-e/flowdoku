@@ -2,7 +2,7 @@
  * Strukturierte Release Notes — Laufzeit-Quelle für den Wochenbericht UND die
  * durchsuchbare Release-Notes-Tabelle im Admin-Bereich.
  *
- * WICHTIG (Konvention, siehe CLAUDE.md): Bei JEDEM Release sowohl
+ * WICHTIG (Konvention, siehe ENTWICKLUNG.md): Bei JEDEM Release sowohl
  * `docs/release-notes.md` ALS AUCH diese Liste pflegen — neueste Version oben.
  *  - `version` = x.y.z
  *  - `date`    = ISO-Datum (YYYY-MM-DD)
@@ -44,6 +44,8 @@ export interface ReleaseNote {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '26.28.0', date: '2026-06-30', bereich: 'Verwaltung', type: 'Feature', text: 'Neuer Bereich „Architektur" im Admin (über die Admin-Kachel): eine verständliche Gesamtübersicht der Plattform — die App, alle SharePoint-Listen mit ihrer Funktion, die Hintergrund-Abläufe (Power-Automate-Flows) und die genutzten Microsoft-365-Dienste samt Zusammenhängen und typischen Datenflüssen. Mit einem Klick lässt sich das Ganze als ausführliches PDF-Dokument herunterladen.' },
+  { version: '26.27.0', date: '2026-06-30', bereich: 'Allgemein', type: 'Bugfix', text: 'Interne Aufräumarbeiten: die Projektdokumentation wurde umbenannt und vereinheitlicht. Im Handbuch verweist der Hinweis zum Vorlagen-Neuaufsetzen jetzt auf die Release Notes statt auf eine interne Datei. Keine Auswirkung auf bestehende Funktionen.' },
   { version: '26.26.0', date: '2026-06-30', bereich: 'Verwaltung', type: 'Bugfix', text: 'Mails, die zu keinem Event gehören (z. B. Ticket-Bestätigungen, Organisator-Anträge oder der Wochenbericht), wurden bei der Archivierung sofort weggeräumt. Jetzt bleiben sie erst einen Monat erhalten und werden danach archiviert — so sind frische Mails noch nachvollziehbar. Mails zu bereits abgelaufenen Events werden wie bisher direkt archiviert.' },
   { version: '26.25.0', date: '2026-06-30', bereich: 'Organizer Center', type: 'Feature', text: 'Wer eine Frage zu einem Event stellt, bekommt jetzt sofort eine Eingangs-Bestätigung per Mail. Darin stehen die Namen der Organisatoren, die die Frage erhalten haben, und der Hinweis, dass sie direkt über die App antworten — je nach Verfügbarkeit kann das etwas dauern. So weiß man gleich, dass die Frage angekommen ist und bei wem sie liegt.' },
   { version: '26.24.0', date: '2026-06-30', bereich: 'Organizer Center', type: 'Feature', text: 'Ein Organisator kann jetzt jemanden als Co-Organisator zu seinem Event hinzufügen, der noch kein Organisator ist. Beim Speichern wird automatisch eine Freigabe-Anfrage an die Admins erzeugt — sie bekommen eine Mail mit einem Knopf „Antrag in der App öffnen & bestätigen". Sobald ein Admin freigibt, wird die Person Organisator und kann das Event bearbeiten und speichern. Personen, die bereits Organisator sind, lösen keine Anfrage aus.' },

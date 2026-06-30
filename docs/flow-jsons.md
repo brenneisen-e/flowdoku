@@ -3732,7 +3732,7 @@ den Listeneinstellungen prüfen, dass sie existiert.
   > abgemeldete Zeile ihre alte Nummer und würde die Max-Berechnung des
   > ID-Reorder-Flows (`Get_Max_TeilnehmerID`, ohne Status-Filter) verfälschen →
   > der Counter läuft davon und neue Anmeldungen bekommen zu hohe IDs.
-  (nometadata → **kein** `__metadata` im Body, siehe CLAUDE.md MERGE-Regel.)
+  (nometadata → **kein** `__metadata` im Body, siehe ENTWICKLUNG.md MERGE-Regel.)
 - **(⋮ → Rename)** → `Deregister_Participant`.
 
 **2b — NEU `Queue_AutoCancel_IDReorder`** (SharePoint — *Create item*), Run after `Deregister_Participant` *is successful*:
