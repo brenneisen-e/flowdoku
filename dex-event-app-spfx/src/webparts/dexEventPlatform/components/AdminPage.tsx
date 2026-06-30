@@ -6437,10 +6437,18 @@ export default function AdminPage(): React.ReactElement {
                     </div>
                     <div style={rowStyle}>
                       <span style={labelStyle}>{isDe ? 'Organizer' : 'Organizer'}</span>
-                      <span style={valueStyle}>{selectedEvent.organizers.map(o => {
-                        const parts = o.split(',').map(s => s.trim());
-                        return parts.length === 2 ? `${parts[1]} ${parts[0]}` : o;
-                      }).join(', ')}</span>
+                      {/* v26.23: Organizer als Foto-Chips mit Hover-Kontaktkarte
+                          (Position · Standort + Teams-Chat) statt reinem Klartext —
+                          gleiche Komponente wie auf der Anmeldeseite. */}
+                      <span style={{ ...valueStyle, display: 'inline-flex' }}>
+                        <OrganizerList
+                          names={selectedEvent.organizers}
+                          emails={selectedEvent.organizerEmails}
+                          size="md"
+                          display="chip"
+                          forceIsDe={isDe}
+                        />
+                      </span>
                     </div>
                     <div style={rowStyle}>
                       <span style={labelStyle}>{isDe ? 'Ort' : 'Location'}</span>
