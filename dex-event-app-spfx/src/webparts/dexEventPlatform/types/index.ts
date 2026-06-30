@@ -47,6 +47,8 @@ export interface DeloitteEvent {
    *  wird auf der Anmeldeseite grün hervorgehoben (ersetzt die separate
    *  Kontakt-Angabe). Leer = kein Organizer hervorgehoben. */
   contactOrganizerEmail?: string;
+  /** v26.22: SP-Erstell-Zeitstempel (ISO) — u.a. für die Duplikat-Anzeige. */
+  created?: string;
   /** v9.21: Test-Team pro Event — Personen die diesen Event bereits im Entwurfs-
    *  Modus sehen + sich anmelden dürfen. Sie testen das Event durch, bevor der
    *  Organizer das "Entwurf"-Häkchen wegnimmt. Persistenz:
