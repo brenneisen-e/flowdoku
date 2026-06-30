@@ -2865,23 +2865,39 @@ export default function AdminPage(): React.ReactElement {
   // keine Abmeldung/Löschung/Feld-Bearbeitung mehr (Archivierungsschutz; nur
   // No-Show über den Check-in bleibt). Admins behalten vollen Zugriff.
   const orgPastLock = !isAdmin && !!selectedEvent && isEventOver(selectedEvent);
-  // v26.18: Duplikat-Warnung — mehrere Top-Level-Events mit (fast) gleichem
-  // Namen am gleichen Tag deuten auf versehentlich mehrfach angelegte Versionen
-  // hin. Der Organizer bekommt im Event-Center einen Hinweis + Direkt-Löschen.
+  // v26.18/v26.21: Duplikat-Warnung — versehentlich mehrfach angelegte Versionen.
+  // Zwei Stufen, beide am GLEICHEN Tag:
+  //  1) EXAKT gleicher (normalisierter) Name → immer Duplikat.
+  //  2) ÄHNLICHER Name + gemeinsamer Organizer → Duplikat, wenn der Namens-Anfang
+  //     ≥ 2 Wörter übereinstimmt ODER die Wort-Überlappung ≥ 50% ist. So werden
+  //     z.B. „MD Academy 1st test" + „MD Academy 2026" erkannt, aber echte
+  //     verschiedene Events („Frühlingsfest Berlin" vs „… Hamburg") NICHT.
   const duplicateEvents = React.useMemo<DeloitteEvent[]>(() => {
     if (!selectedEvent) return [];
     const norm = (s?: string): string => (s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    const toks = (s?: string): string[] => norm(s).split(' ').filter(t => t.length >= 2);
     const dayKey = (d?: string): string => { if (!d) return ''; try { const dt = new Date(d); return `${dt.getFullYear()}-${dt.getMonth()}-${dt.getDate()}`; } catch { return ''; } };
+    const orgSet = (e: DeloitteEvent): Set<string> => new Set([...(e.organizerEmails || []), ...(e.coOrganizerEmails || [])].map(x => (x || '').trim().toLowerCase()).filter(Boolean));
+    const prefixLen = (a: string[], b: string[]): number => { let i = 0; while (i < a.length && i < b.length && a[i] === b[i]) i++; return i; };
+    const jaccard = (a: string[], b: string[]): number => { if (!a.length || !b.length) return 0; const sb = new Set(b); let inter = 0; new Set(a).forEach(t => { if (sb.has(t)) inter++; }); const uni = new Set([...a, ...b]).size; return uni ? inter / uni : 0; };
     const selTitle = norm(selectedEvent.title);
     if (!selTitle) return [];
+    const selToks = toks(selectedEvent.title);
     const selDay = dayKey(selectedEvent.startDate);
-    return (events || []).filter(e =>
-      e.id !== selectedEvent.id &&
-      !e.parentEventId &&
-      norm(e.title) === selTitle &&
-      // gleicher Tag (falls beide ein Datum haben) — sonst nur Namensgleichheit.
-      (!selDay || !dayKey(e.startDate) || dayKey(e.startDate) === selDay)
-    );
+    const selOrg = orgSet(selectedEvent);
+    const shareOrg = (e: DeloitteEvent): boolean => { const o = orgSet(e); for (const x of Array.from(selOrg)) { if (o.has(x)) return true; } return false; };
+    return (events || []).filter(e => {
+      if (e.id === selectedEvent.id || e.parentEventId) return false;
+      const eDay = dayKey(e.startDate);
+      // gleicher Tag (falls beide ein Datum haben).
+      if (selDay && eDay && eDay !== selDay) return false;
+      const eTitle = norm(e.title);
+      if (eTitle === selTitle) return true; // Stufe 1: exakt
+      // Stufe 2: ähnlich + gemeinsamer Organizer
+      if (!shareOrg(e)) return false;
+      const eToks = toks(e.title);
+      return prefixLen(selToks, eToks) >= 2 || jaccard(selToks, eToks) >= 0.5;
+    });
   }, [events, selectedEvent]);
   const currentEventsRaw = isAdmin ? adminEvents.filter(e => !isPastEvent(e)) : adminEvents;
   const pastEventsRaw = isAdmin ? adminEvents.filter(isPastEvent) : [];
@@ -5963,8 +5979,8 @@ export default function AdminPage(): React.ReactElement {
           <div style={{ minWidth: 0, flex: 1 }}>
             <div style={{ fontWeight: 700, marginBottom: 4, color: 'var(--dex-orange-dark, #b35a00)' }}>
               {isDe
-                ? `Achtung: ${duplicateEvents.length === 1 ? 'ein weiteres Event' : `${duplicateEvents.length} weitere Events`} mit gleichem Namen am gleichen Tag`
-                : `Heads up: ${duplicateEvents.length === 1 ? 'another event' : `${duplicateEvents.length} more events`} with the same name on the same day`}
+                ? `Achtung: ${duplicateEvents.length === 1 ? 'ein weiteres Event' : `${duplicateEvents.length} weitere Events`} mit gleichem oder ähnlichem Namen am gleichen Tag`
+                : `Heads up: ${duplicateEvents.length === 1 ? 'another event' : `${duplicateEvents.length} more events`} with the same or similar name on the same day`}
             </div>
             <div style={{ fontSize: '0.84rem', color: 'var(--dex-gray-600)', lineHeight: 1.5, marginBottom: 8 }}>
               {isDe
