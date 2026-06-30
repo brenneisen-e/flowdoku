@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 26.22.0 | 2026-06-29 | Feature | Die Duplikat-Warnung listet jetzt ALLE betroffenen Versionen (auch das gerade geöffnete Event) — jeweils mit Erstellungs-Zeitstempel und eigenem Löschen-Knopf, damit man sofort sieht, welche die ältere/überflüssige Version ist. Die interne Event-Nummer (#…) wird nicht mehr angezeigt. |
 | 26.21.0 | 2026-06-29 | Feature | Die Duplikat-Warnung erkennt jetzt auch Events mit ähnlichem (nicht nur exakt gleichem) Namen am gleichen Tag, wenn sie sich einen Organisator teilen — z. B. „MD Academy 1st test" und „MD Academy 2026". Echte unterschiedliche Events (z. B. „Frühlingsfest Berlin" vs. „… Hamburg") werden weiterhin nicht fälschlich gemeldet. |
 | 26.20.0 | 2026-06-29 | Feature | Das Änderungsprotokoll erfasst jetzt auch die Beschreibungen der Abfrage-/Auswahlfelder („Label: Beschreibung") — beim Anlegen UND beim Ändern als Vorher/Nachher-Verlauf. Vorher stand bei Feldänderungen nur „geändert". Das dient zugleich als Sicherheitsnetz: Gehen Feld-Beschreibungen verloren, stehen die alten Texte weiterhin im Protokoll. |
 | 26.19.0 | 2026-06-29 | Bugfix | Im Änderungsprotokoll (Audit-Log) wird beim Anlegen eines Events jetzt auch die eingegebene Beschreibung mitgespeichert (gekürzt), falls vorhanden. Bei Änderungen wurde sie bereits erfasst. |

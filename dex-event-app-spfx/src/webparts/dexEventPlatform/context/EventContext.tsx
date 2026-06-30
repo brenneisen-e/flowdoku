@@ -1071,6 +1071,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       filterMode: (e.FilterMode as 'AND' | 'OR') || 'OR',
       startDate: e.StartDate || '',
       endDate: e.EndDate || '',
+      // v26.22: SP-Erstell-Zeitstempel (für die Duplikat-Anzeige „erstellt am …").
+      created: (e as { Created?: string }).Created || '',
       registrationDeadline: e.RegistrationDeadline || '',
       lastDeregisterDate: e.LastDeregisterDate || '',
       description: e.Description || '',
