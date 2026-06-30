@@ -31,8 +31,8 @@ export function templatesReseedSection(locale: 'de' | 'en'): ManualSection {
               </>
             ),
             tip: isDe
-              ? 'Im CLAUDE.md des Repos steht pro App-Version aufgelistet, welche Templates neu hinzugekommen oder verändert wurden.'
-              : 'The repo\'s CLAUDE.md lists per app version which templates were added or modified.',
+              ? 'In den Release Notes ist pro App-Version aufgelistet, welche Vorlagen neu hinzugekommen oder verändert wurden.'
+              : 'The release notes list per app version which templates were added or modified.',
           },
           {
             number: 2,
