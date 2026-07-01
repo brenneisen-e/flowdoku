@@ -3588,6 +3588,7 @@ export default function RegistrationPage(): React.ReactElement {
                 </div>
               )}
             </div>
+            </CollapsibleSection>
           </div>
         )}
 
