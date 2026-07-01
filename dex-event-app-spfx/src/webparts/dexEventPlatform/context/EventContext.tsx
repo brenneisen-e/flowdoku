@@ -4187,7 +4187,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     requesterLocation?: string,
     requesterJobTitle?: string
   ): Promise<boolean> {
-    const adminTo = 'ebrenneisen@deloitte.de;nifelten@deloitte.de;aenk@deloitte.de';
+    const adminTo = 'ebrenneisen@deloitte.de;nifelten@deloitte.de';
     const subject = `DEX-Anfrage: ${eventName || 'Event ohne Titel'} (von ${requesterName || 'unbekannt'})`;
     const escape = (s: string): string => s
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')

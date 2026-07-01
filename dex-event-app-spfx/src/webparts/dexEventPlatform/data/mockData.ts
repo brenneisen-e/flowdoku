@@ -46,7 +46,7 @@ export const events: DeloitteEvent[] = [
     title: 'JPMorgan Lauf || Warteliste',
     type: 'JPMorgan',
     status: 'Active',
-    organizers: ['Eike Brenneisen', 'Andreas Enk'],
+    organizers: ['Eike Brenneisen'],
     organizerEmails: [],
     qrScannerNames: [],
     qrScannerEmails: [],

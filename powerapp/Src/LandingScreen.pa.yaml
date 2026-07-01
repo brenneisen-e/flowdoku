@@ -150,7 +150,7 @@ Screens:
           Properties:
             Font: ="Aptos"
             Height: =83
-            Text: ="The Event Experience Platform is a new solution for managing participants at Deloitte events such as office or department meetings and company runs (e.g., JPMorgan, B2Run). The platform was developed by Eike Brenneisen, Andreas Enk and Nils Felten. Currently in its pilot phase, the platform may still have a few quirks – but rest assured, we’re continuously refining and expanding its capabilities. Over the coming months, it will be rolled out to support more and more events across the firm. If you have any questions, feedback, or are interested in using the platform for your upcoming event, feel free to get in touch with us!"
+            Text: ="The Event Experience Platform is a new solution for managing participants at Deloitte events such as office or department meetings and company runs (e.g., JPMorgan, B2Run). The platform was developed by Eike Brenneisen and Nils Felten. Currently in its pilot phase, the platform may still have a few quirks – but rest assured, we’re continuously refining and expanding its capabilities. Over the coming months, it will be rolled out to support more and more events across the firm. If you have any questions, feedback, or are interested in using the platform for your upcoming event, feel free to get in touch with us!"
             Width: =1159
             X: =45
             Y: =627
@@ -161,7 +161,7 @@ Screens:
             Color: =RGBA(200, 200, 200, 1)  // Hellgrau
             HoverColor: '=ColorValue("#046A38") '
             Icon: =Icon.Mail
-            OnSelect: =Launch("mailto:ebrenneisen@deloitte.de;nifelten@deloitte.de;aenk@deloitte.de")
+            OnSelect: =Launch("mailto:ebrenneisen@deloitte.de;nifelten@deloitte.de")
             X: =1221
             Y: =627
       - Image10:

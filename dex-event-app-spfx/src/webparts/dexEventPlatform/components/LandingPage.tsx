@@ -910,8 +910,6 @@ export default function LandingPage(): React.ReactElement {
             {locale === 'de' ? 'Entwickelt von ' : 'Built by '}
             <span style={{ fontWeight: 600, color: 'var(--dex-gray-500)' }}>
               <DevName name="Eike Brenneisen" email="ebrenneisen@deloitte.de" />
-              {', '}
-              <DevName name="Andreas Enk" email="aenk@deloitte.de" />
               {' '}{locale === 'de' ? 'und' : 'and'}{' '}
               <DevName name="Nils Felten" email="nifelten@deloitte.de" />
             </span>
