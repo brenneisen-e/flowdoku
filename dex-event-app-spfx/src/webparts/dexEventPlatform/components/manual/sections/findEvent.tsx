@@ -17,6 +17,9 @@ export function findEventSection(locale: 'de' | 'en'): ManualSection {
       ? 'So meldest du dich für ein Event an — mit und ohne zusätzliche Fragen.'
       : 'How to register for an event — with and without extra questions.',
     visibleFor: ['User', 'Organizer', 'Admin'],
+    keywords: isDe
+      ? 'Event finden anmelden registrieren Registrierung Anmeldung Event-Liste Übersicht Kachel Karten-Ansicht Listen-Ansicht Warteliste Zusatzfragen Zimmerpartner T-Shirt-Größe Anrede Bestätigungsmail Outlook-Termin ausgebucht Kapazität'
+      : 'find event register registration sign up event list overview card list view waitlist wait list extra questions roommate t-shirt size salutation confirmation email outlook invite full capacity',
     perspectives: [
       {
         perspective: 'user',
@@ -27,8 +30,8 @@ export function findEventSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Auf der "Registrierung"-Seite siehst du alle Events, die für dich sichtbar sind. Mit dem Schalter "Nur aktive Events" blendest du vergangene Events aus. Klick auf die Event-Karte, die dich interessiert.'
-                  : 'On the "Registration" page you see every event visible to you. Toggle "Only active events" to hide past events. Click the card you\'re interested in.'}
+                  ? 'Über die Kachel "Registrierung" (bzw. den Navigationspunkt) landest du auf der Event-Übersicht "Deine Events". Dort siehst du alle Events, die für dich sichtbar sind. Oben kannst du zwischen Karten- und Listen-Ansicht umschalten. Klick auf die Event-Karte, die dich interessiert.'
+                  : 'Via the "Registration" tile (or navigation item) you reach the "Your events" overview. There you see every event visible to you. At the top you can switch between card and list view. Click the card you\'re interested in.'}
               </>
             ),
             mockup: (

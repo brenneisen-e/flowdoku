@@ -12,7 +12,7 @@ export function ticketsSection(locale: 'de' | 'en'): ManualSection {
       ? 'Stelle direkt aus der App eine Frage — mit optionalem Screenshot. Organisator:innen und das Support-Team beantworten sie ohne Umweg über die Mail.'
       : 'Ask a question right from the app — with an optional screenshot. Organizers and the support team answer it without detouring through email.',
     visibleFor: ['User', 'Organizer', 'Admin'],
-    keywords: 'frage fragen hilfe support ticket tickets question questions help screenshot bildschirmfoto handbuch problem feedback kontakt antwort answer hast du fragen power-user power user inbox postfach',
+    keywords: 'frage fragen hilfe support ticket tickets question questions help screenshot bildschirmfoto handbuch problem feedback kontakt antwort answer hast du fragen power-user power user inbox postfach übernehmen claim race kollision gleichzeitig conflict zugewiesen assign erinnerung reminder überfällig überfaellig unbeantwortet werktage escalation eskalation benachrichtigung notification link teams outlook deep-link deeplink',
     perspectives: [
       {
         perspective: 'user',
@@ -130,19 +130,19 @@ export function ticketsSection(locale: 'de' | 'en'): ManualSection {
           },
           {
             number: 2,
-            title: isDe ? 'Ticket öffnen = übernehmen' : 'Opening a ticket = taking it',
+            title: isDe ? 'Ticket übernehmen — kollisionssicher' : 'Take a ticket — collision-safe',
             description: (
               <>
                 {isDe
-                  ? 'Sobald du ein Ticket öffnest, gilt es als „in Bearbeitung“ und ist dir zugeordnet. Andere Beantwortende sehen diesen Status nahezu in Echtzeit — so vermeidet ihr, dass zwei Personen dieselbe Frage gleichzeitig bearbeiten und doppelt antworten.'
-                  : 'As soon as you open a ticket it becomes „in progress“ and is assigned to you. Other responders see this status almost in real time — so you avoid two people working the same question at once and answering twice.'}
+                  ? 'Mit „Übernehmen & beantworten“ nimmst du ein offenes Ticket an dich: Es gilt dann als „in Bearbeitung“ und ist dir zugeordnet. Andere Beantwortende sehen diesen Status nahezu in Echtzeit — so vermeidet ihr, dass zwei Personen dieselbe Frage gleichzeitig bearbeiten und doppelt antworten. Das Übernehmen ist kollisionssicher: Klicken zwei Power-User fast gleichzeitig auf „Übernehmen“, bekommt die zweite Person den Hinweis „X hat dieses Ticket gerade übernommen“ — statt dass die eine Zuordnung die andere still überschreibt.'
+                  : 'With „Take & answer“ you claim an open ticket: it then counts as „in progress“ and is assigned to you. Other responders see this status almost in real time — so you avoid two people working the same question at once and answering twice. Claiming is collision-safe: if two power users click „Take“ almost simultaneously, the second person gets the notice „X just took this ticket“ — instead of one assignment silently overwriting the other.'}
               </>
             ),
             mockup: (
               <Callout variant="info">
                 {isDe
-                  ? 'Der „in Bearbeitung“-Status verhindert Doppel-Antworten, ohne dass ihr euch abstimmen müsst.'
-                  : 'The „in progress“ status prevents duplicate answers without any need to coordinate.'}
+                  ? 'Der „in Bearbeitung“-Status verhindert Doppel-Antworten, ohne dass ihr euch abstimmen müsst — und bei fast gleichzeitigem Übernehmen gewinnt eindeutig die erste Person.'
+                  : 'The „in progress“ status prevents duplicate answers without any need to coordinate — and on near-simultaneous claims the first person clearly wins.'}
               </Callout>
             ),
           },
@@ -184,12 +184,26 @@ export function ticketsSection(locale: 'de' | 'en'): ManualSection {
           },
           {
             number: 6,
+            title: isDe ? 'Tägliche Erinnerung an offene Tickets' : 'Daily reminder for open tickets',
+            description: (
+              <>
+                {isDe
+                  ? 'Bleiben Fragen an das Support-Team („Power-User“) zu lange liegen, meldet sich das System von selbst: Sobald eine Frage seit mindestens zwei Werktagen unbeantwortet ist, geht einmal pro Tag eine Sammel-Erinnerung an alle Power-User (bzw. ersatzweise an die Admins). Die Mail listet die überfälligen Tickets mit Frage, Absender:in und Alter auf und enthält einen Direkt-Link in die Ticket-Übersicht. Die Erinnerung wird pro Tag nur einmal verschickt, egal wie viele Power-User die App öffnen.'
+                  : 'If questions to the support team (the „power users“) sit too long, the system speaks up on its own: as soon as a question has been unanswered for at least two working days, a single collected reminder goes out once per day to all power users (or to the admins as a fallback). The email lists the overdue tickets with their question, sender and age, and includes a direct link into the ticket overview. The reminder is sent only once per day, no matter how many power users open the app.'}
+              </>
+            ),
+            tip: isDe
+              ? 'Die Erinnerung zählt nur Werktage — ein Wochenende dazwischen verlängert die Frist nicht künstlich.'
+              : 'The reminder counts working days only — a weekend in between does not artificially extend the deadline.',
+          },
+          {
+            number: 7,
             title: isDe ? 'Benachrichtigungen — und der Verweis in die App' : 'Notifications — and the pointer back into the app',
             description: (
               <>
                 {isDe
-                  ? 'Bei einer neuen Frage bekommen die Beantwortenden eine Mail mit einem Direkt-Link, der das passende Ticket in der App öffnet. Bei deiner Antwort geht eine Mail an die fragende Person. In jeder dieser Mails steht ausdrücklich: nicht per Mail antworten, sondern in der App — so bleibt der gesamte Austausch an einem Ort und geht nicht in Postfächern verloren.'
-                  : 'On a new question the responders receive an email with a direct link that opens the matching ticket in the app. On your reply an email goes to the person who asked. Every one of these emails explicitly states: do not reply by email, use the app instead — that keeps the whole exchange in one place and out of scattered mailboxes.'}
+                  ? 'Bei einer neuen Frage bekommen die Beantwortenden eine Mail mit einem Direkt-Link, der das passende Ticket in der App öffnet. Bei deiner Antwort geht eine Mail an die fragende Person. Diese Links sind Outlook- und Teams-robust: Klickst du den Link aus Outlook oder aus Microsoft Teams heraus, öffnet er zuverlässig das richtige Ticket — auch dann, wenn Teams eigene Parameter an die Adresse anhängt (früher landete man dabei auf einer Fehlerseite). In jeder dieser Mails steht ausdrücklich: nicht per Mail antworten, sondern in der App — so bleibt der gesamte Austausch an einem Ort und geht nicht in Postfächern verloren.'
+                  : 'On a new question the responders receive an email with a direct link that opens the matching ticket in the app. On your reply an email goes to the person who asked. These links are Outlook- and Teams-robust: clicking the link from Outlook or from Microsoft Teams reliably opens the correct ticket — even when Teams appends its own parameters to the address (which previously landed you on an error page). Every one of these emails explicitly states: do not reply by email, use the app instead — that keeps the whole exchange in one place and out of scattered mailboxes.'}
               </>
             ),
             warning: isDe

@@ -20,12 +20,15 @@ export function teamRegistrationSection(locale: 'de' | 'en'): ManualSection {
       ? 'Wie du dich + ein ganzes Team in einem Schritt anmeldest.'
       : 'How to register yourself + an entire team in one go.',
     visibleFor: ['User', 'Organizer', 'Admin'],
+    keywords: isDe
+      ? 'Team-Anmeldung Team anmelden Gruppe Gruppen-Anmeldung mehrere Personen anmelden Team-Lead Team-Kapitän Team-Name Mitglied hinzufügen People-Picker Zustimmung Zustimmungs-Checkbox Team beitreten Beitritts-Anfrage offene Slots Team bearbeiten Team verwalten Lead übergeben Break-Out Session Break-Out Sessions Gruppe Tisch Team-Größe komplette Teams Teil-Teams Warteliste Team Schritt 8 Drag and Drop zuordnen Per-Team-Mail Einwahllink'
+      : 'team registration register team group registration register multiple people team lead team captain team name add member people picker consent consent checkbox join team join request open slots edit team manage team transfer lead break-out session break-out sessions group table team size complete teams partial teams waitlist team step 8 drag and drop assign per-team mail join link',
     perspectives: [
       {
         perspective: 'user',
         intro: D(
-          'Bei Events mit aktivierter Team-Anmeldung (Organizer hat das in Schritt 4 erlaubt) kannst du dich und mehrere Personen mit einem einzigen Submit anmelden. Wichtig: jedes Teammitglied muss vorher zugestimmt haben.',
-          'For events with team registration enabled (the organizer switches this on in step 4) you can register yourself together with several other people in a single submit. Important: every team member must have consented up front.'
+          'Bei Events mit aktivierter Team-Anmeldung (Organizer hat das in Schritt 8 „Team-Anmeldung" erlaubt) kannst du dich und mehrere Personen mit einem einzigen Submit anmelden. Wichtig: jedes Teammitglied muss vorher zugestimmt haben.',
+          'For events with team registration enabled (the organizer switches this on in step 8 „Team registration") you can register yourself together with several other people in a single submit. Important: every team member must have consented up front.'
         ),
         steps: [
           {
@@ -40,8 +43,8 @@ export function teamRegistrationSection(locale: 'de' | 'en'): ManualSection {
             number: 2,
             title: isDe ? 'Team-Name (optional)' : 'Team name (optional)',
             description: D(
-              'Wenn der Organizer in Schritt 4 die Option „Team-Namen abfragen" aktiviert hat, erscheint ein Pflichtfeld Team-Name (max. 60 Zeichen). Den Namen siehst du später in „Meine Events" als Badge an der Event-Karte. Wenn der Organizer das deaktiviert hat, taucht die Frage gar nicht auf.',
-              'If the organizer enabled „Ask for team name" in step 4, a required input field Team name appears (max 60 characters). The name later shows up as a badge on the event card in „My Events". If the organizer did not enable it, the question is hidden entirely.'
+              'Wenn der Organizer in Schritt 8 die Option „Team-Namen abfragen" aktiviert hat, erscheint ein Pflichtfeld Team-Name (max. 60 Zeichen). Den Namen siehst du später in „Meine Events" als Badge an der Event-Karte. Wenn der Organizer das deaktiviert hat, taucht die Frage gar nicht auf.',
+              'If the organizer enabled „Ask for team name" in step 8, a required input field Team name appears (max 60 characters). The name later shows up as a badge on the event card in „My Events". If the organizer did not enable it, the question is hidden entirely.'
             ),
           },
           {
@@ -121,16 +124,16 @@ export function teamRegistrationSection(locale: 'de' | 'en'): ManualSection {
       {
         perspective: 'organizer',
         intro: D(
-          'Du steuerst die Team-Anmeldung über Schritt 4 (Team-Anmeldung) im Event-Wizard. Hinweis: die Pro-Sub-Event-Team-Anmeldung folgt erst in v11.83+ — aktuell ist die Team-Funktion auf das Haupt-Event beschränkt.',
-          'You control team registration via step 4 (team registration) in the event wizard. Note: per-sub-event team registration is coming in v11.83+ — for now the team feature is limited to the main event.'
+          'Du steuerst die Team-Anmeldung über Schritt 8 (Team-Anmeldung) im Event-Wizard. Hinweis: die Team-Funktion ist auf das Haupt-Event beschränkt — Sub-Events haben keine eigene Team-Anmeldung.',
+          'You control team registration via step 8 (team registration) in the event wizard. Note: the team feature is limited to the main event — sub-events do not have their own team registration.'
         ),
         steps: [
           {
             number: 1,
-            title: isDe ? 'Settings in Schritt 4' : 'Settings in step 4',
+            title: isDe ? 'Settings in Schritt 8' : 'Settings in step 8',
             description: D(
-              'Aktiviere „Team-Anmeldung erlauben", setze die Team-Größe (Default 4, Min 2, Max 20) und entscheide ob ein Team-Name abgefragt werden soll. Im Sub-Bereich „Beitritts-Modus" wählst du, ob nur komplette Teams erlaubt sind oder auch Teil-Teams. Die Optionen „Offene Slots öffentlich sichtbar" und „Beitritt erfordert Bestätigung" greifen erst, sobald die Beitritts-Funktion in einer späteren Iteration ausgerollt wird.',
-              'Switch on „Allow team registration", set the team size (default 4, min 2, max 20) and decide whether to ask for a team name. In the sub-section „Joining mode" you decide between complete teams only or partial teams allowed. The „Public open slots" and „Joining requires approval" options only take effect once the join feature ships in a later iteration.'
+              'Aktiviere „Team-Anmeldung erlauben", setze die Team-Größe (Default 4, Min 2, Max 20) und entscheide ob ein Team-Name abgefragt werden soll. Im Sub-Bereich „Beitritts-Modus" wählst du, ob nur komplette Teams erlaubt sind oder auch Teil-Teams. Aktivierst du „Auch Teil-Teams erlaubt", kannst du zusätzlich „Offene Slots öffentlich sichtbar" schalten (andere Teilnehmer sehen offene Teams auf der Anmeldeseite und können beitreten) und darunter „Beitritt erfordert Bestätigung durch Team-Kapitän".',
+              'Switch on „Allow team registration", set the team size (default 4, min 2, max 20) and decide whether to ask for a team name. In the sub-section „Joining mode" you decide between complete teams only or partial teams allowed. If you enable „Partial teams allowed" you can additionally switch on „Public open slots" (other attendees see open teams on the registration page and can join) and, below it, „Joining requires team captain approval".'
             ),
           },
           {

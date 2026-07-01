@@ -15,6 +15,9 @@ export function myEventsSection(locale: 'de' | 'en'): ManualSection {
       ? 'Eigene Anmeldungen einsehen, Angaben ändern und Abmeldung durchführen.'
       : 'Review your sign-ups, update answers and cancel.',
     visibleFor: ['User', 'Organizer', 'Admin'],
+    keywords: isDe
+      ? 'Meine Events Anmeldungen verwalten abmelden Abmeldung stornieren Storno Angaben ändern bearbeiten Warteliste Sessions Sub-Events Nur Sessions Outlook-Termin QR-Code Check-in Abmeldefrist verspätete Abmeldung Gruppe wechseln'
+      : 'my events registrations manage cancel cancellation unregister edit answers waitlist sessions sub-events sessions only outlook appointment qr code check-in cancellation deadline late cancellation switch group',
     perspectives: [
       {
         perspective: 'user',
@@ -64,13 +67,13 @@ export function myEventsSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Auf jeder Event-Karte gibt es einen prominenten roten "Abmelden"-Button (rot umrandet, mit X-Icon). Beim ersten Klick wird er rot ausgefüllt und wartet auf eine zweite Bestätigung — daneben erscheint ein "Doch behalten"-Button, falls du dich verklickt hast. Erst der zweite Klick auf "Wirklich abmelden?" zieht deine Anmeldung zurück. Die Abmeldung ist bis zur festgelegten Abmeldefrist möglich — danach blockiert die App die Abmeldung, weil Zimmer/Caterer/Busse bereits gebucht sind.'
-                  : 'Every event card has a prominent red "Cancel" button (red outline, with X icon). The first click fills it red and waits for a second confirmation — a "Keep registration" button appears next to it in case you misclicked. Only the second click on "Really cancel?" actually withdraws your registration. Cancellation is possible until the defined deadline — after that the app blocks self-cancellation because rooms/catering/buses are already booked.'}
+                  ? 'Auf jeder Event-Karte gibt es einen prominenten roten "Abmelden"-Button (rot umrandet, mit X-Icon). Beim ersten Klick wird er rot ausgefüllt und wartet auf eine zweite Bestätigung — daneben erscheint ein "Anmeldung behalten"-Button, falls du dich verklickt hast. Erst der zweite Klick auf "Abmeldung bestätigen" zieht deine Anmeldung zurück. Liegt die festgelegte Abmeldefrist bereits in der Vergangenheit, ist die Abmeldung weiterhin möglich — die App zeigt dann aber einen orangen Hinweis und informiert den Organizer automatisch per E-Mail (verspätete Abmeldung), weil Zimmer/Caterer/Busse ggf. schon gebucht sind. Nur bei Events, die bereits vorbei sind, ist keine Abmeldung mehr möglich.'
+                  : 'Every event card has a prominent red "Cancel" button (red outline, with X icon). The first click fills it red and waits for a second confirmation — a "Keep registration" button appears next to it in case you misclicked. Only the second click on "Confirm cancellation" actually withdraws your registration. If the defined cancellation deadline has already passed, you can still cancel — but the app shows an orange warning and automatically notifies the organizer by email (late cancellation), because rooms/catering/buses may already be booked. Only for events that are already over is cancellation no longer possible.'}
               </>
             ),
             warning: isDe
-              ? 'Nach Ablauf der Abmeldefrist kannst du dich nicht mehr selbst abmelden. Wende dich direkt an den Event-Organizer.'
-              : 'After the cancellation deadline passes you can no longer cancel yourself. Please contact the event organizer directly.',
+              ? 'Meldest du dich nach Ablauf der Abmeldefrist ab, wird der Organizer automatisch über deine verspätete Abmeldung informiert. Bei bereits vergangenen Events ist keine Abmeldung mehr möglich — wende dich in dem Fall direkt an den Event-Organizer.'
+              : 'If you cancel after the deadline has passed, the organizer is automatically notified of your late cancellation. For events that are already over, cancelling is no longer possible — in that case please contact the event organizer directly.',
           },
           {
             number: 4,

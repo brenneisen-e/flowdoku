@@ -18,6 +18,9 @@ export function selfCheckInSection(locale: 'de' | 'en'): ManualSection {
       ? 'Teilnehmer checken sich am Veranstaltungstag selbst ein, indem sie einen event-spezifischen QR-Code mit der Handy-Kamera scannen — kein Anstehen am Check-in-Schalter, kein In-App-Scanner. Zwei Modi: druckbares QR-PDF (bequem) und rotierende Live-Anzeige (foto-sicher).'
       : 'Attendees check themselves in on event day by scanning an event-specific QR code with their phone camera — no queue at the desk, no in-app scanner. Two modes: printable QR PDF (convenient) and rotating live display (photo-safe).',
     visibleFor: ['User', 'Organizer', 'Admin'],
+    keywords: isDe
+      ? 'Self-Check-in Selbst-Check-in selbst einchecken QR-Code scannen Handy-Kamera druckbares PDF QR-PDF aushängen Aushang rotierende Live-Anzeige Bildschirm Beamer Vollbild foto-sicher rotierender Code HMAC 45 Sekunden Zeitfenster Von Bis Check-in-Fenster 2 Stunden vor Start QR-Kachel Event-Bild kein Schalter kein Toggle immer möglich Deep-Link selfcheckin Token Eingecheckt Keine Anmeldung Code abgelaufen noch nicht offen'
+      : 'self check-in self checkin check in yourself scan QR code phone camera printable PDF QR PDF poster post rotating live display screen projector fullscreen photo-safe rotating code HMAC 45 seconds time window from until check-in window 2 hours before start QR tile event image no toggle no switch always possible deep link selfcheckin token checked in no registration code expired not open yet',
     perspectives: [
       {
         perspective: 'organizer',

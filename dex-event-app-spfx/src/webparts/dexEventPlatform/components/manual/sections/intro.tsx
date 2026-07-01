@@ -15,6 +15,9 @@ export function introSection(locale: 'de' | 'en'): ManualSection {
       ? 'Erste Schritte, Rollen-Übersicht und was die Plattform eigentlich macht.'
       : 'First steps, roles overview, and what the platform actually does.',
     visibleFor: ['User', 'Organizer', 'Admin'],
+    keywords: isDe
+      ? 'Einführung Überblick Übersicht Willkommen Erste Schritte Getting Started Rollen User Organizer Admin Berechtigungen Event-Management DEX Deloitte Sprache Deutsch Englisch Standort Sichtbarkeit'
+      : 'introduction overview welcome getting started first steps roles user organizer admin permissions event management DEX Deloitte language German English location visibility',
     perspectives: [
       {
         perspective: 'user',

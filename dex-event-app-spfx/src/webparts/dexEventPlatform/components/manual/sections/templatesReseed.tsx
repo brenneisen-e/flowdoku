@@ -16,6 +16,7 @@ export function templatesReseedSection(locale: 'de' | 'en'): ManualSection {
       ? 'Alle Standard-Mail-Vorlagen in DEX_EmailTemplates auf die im Code definierten Default-Texte zurücksetzen — z.B. nach App-Updates.'
       : 'Reset all standard mail templates in DEX_EmailTemplates back to the defaults defined in code — e.g. after app updates.',
     visibleFor: ['Admin'],
+    keywords: 'reseed re-seed zurücksetzen reset defaults default-vorlagen default-templates mail-vorlagen email templates überschreiben overwrite standard-mails admin-hub admin center vorlagen zurücksetzen dex_emailtemplates nach app-update seed neu seeden idempotent',
     perspectives: [
       {
         perspective: 'admin',
@@ -40,8 +41,8 @@ export function templatesReseedSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Geh in das Admin-Panel (Header oben rechts → Avatar → „Rollenverwaltung"). Scroll runter zur Karte „Default-Mail-Templates re-seed". Klick auf den grauen Button „Default-Templates zurücksetzen".'
-                  : 'Open the Admin Panel (top-right header → avatar → "Role management"). Scroll down to the card "Default email templates reset". Click the grey button "Reset default templates".'}
+                  ? 'Öffne den Admin-Hub (Kachel „Admin" auf der Startseite). Scroll zum Abschnitt „E-Mails & Berichte" und dort zur Karte „Default-Mail-Vorlagen zurücksetzen". Klick auf den Button „Vorlagen zurücksetzen".'
+                  : 'Open the Admin Hub (the „Admin" tile on the start page). Scroll to the „Emails & reports" section and there to the card „Reset default mail templates". Click the „Reset templates" button.'}
               </>
             ),
           },
@@ -51,13 +52,13 @@ export function templatesReseedSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Ein Confirm-Dialog erinnert daran: alle individuellen Tenant-Anpassungen an Subject / Heading / BodyHtml gehen verloren. Wenn ihr eure eigenen Mails customized habt, vorher manuell sichern (Liste DEX_EmailTemplates öffnen, Werte kopieren). Mit „OK" bestätigen.'
-                  : 'A confirm dialog reminds you: all tenant customizations to Subject / Heading / BodyHtml will be lost. If you have customized your own mails, back them up first (open DEX_EmailTemplates, copy values). Confirm with "OK".'}
+                  ? 'Ein Confirm-Dialog (rot markiert) erinnert daran: alle individuellen Tenant-Anpassungen an Subject / Heading / HeadingColor / BodyHtml gehen verloren. Wenn ihr eure eigenen Mails customized habt, vorher manuell sichern (Liste DEX_EmailTemplates öffnen, Werte kopieren). Mit „Überschreiben" bestätigen.'
+                  : 'A confirm dialog (marked as dangerous) reminds you: all tenant customizations to Subject / Heading / HeadingColor / BodyHtml will be lost. If you have customized your own mails, back them up first (open DEX_EmailTemplates, copy values). Confirm with "Overwrite".'}
               </>
             ),
             tip: isDe
-              ? 'Der Reseed läuft pro Template idempotent: existiert das Template, wird BodyHtml/Subject/Heading überschrieben — Reihenfolge oder andere Felder bleiben.'
-              : 'The reseed runs idempotently per template: if a template exists, BodyHtml/Subject/Heading get overwritten — order or other fields stay.',
+              ? 'Der Reseed läuft pro Template idempotent: existiert das Template und weicht sein BodyHtml vom Code-Default ab, werden Subject, Heading, HeadingColor und BodyHtml auf den Default zurückgesetzt (fehlende Templates werden neu angelegt). Ist der Body schon identisch, wird der Eintrag übersprungen.'
+              : 'The reseed runs idempotently per template: if a template exists and its BodyHtml differs from the code default, Subject, Heading, HeadingColor and BodyHtml are reset to the default (missing templates are created). If the body already matches, the entry is skipped.',
           },
           {
             number: 4,
@@ -66,20 +67,22 @@ export function templatesReseedSection(locale: 'de' | 'en'): ManualSection {
               <>
                 {isDe ? (
                   <>
-                    Alle Standard-Templates, sowohl DE als auch EN:<br/>
-                    Anmeldung, Warteliste, Abmeldung, Nachrücken, EventErstellt,
-                    OutlookDeclineReminder, OutlookDeclineReminder_OnBehalfOf,
-                    OutlookForwardNotification, OutlookDeclineDigest,
-                    TeamMemberJoined, TeamJoinRequest, TeamJoinRejected,
-                    TeamLeadTransferred, TeamMemberCancelled, RoommateRequest,
-                    GroupSwitchConfirmed, GroupSwitchWaitlist, OverbookingApology.
+                    Alle Standard-Templates, jeweils in DE und EN:<br/>
+                    Anmeldung, Warteliste, Abmeldung, AbmeldungAuto, Nachrücken,
+                    OrgNachruecker, EventErstellt, OutlookDeclineReminder,
+                    OutlookDeclineReminder_OnBehalfOf, OutlookForwardNotification,
+                    OutlookDeclineDigest, TeamMemberJoined, TeamJoinRequest,
+                    TeamJoinRejected, TeamLeadTransferred, TeamMemberCancelled,
+                    RoommateRequest, GroupSwitchConfirmed, GroupSwitchWaitlist,
+                    OverbookingApology.
                   </>
                 ) : (
                   <>
-                    All standard templates, both DE and EN:<br/>
+                    All standard templates, each in DE and EN:<br/>
                     Anmeldung (registration), Warteliste (waitlist), Abmeldung
-                    (cancellation), Nachrücken (promotion), EventErstellt
-                    (event-created notification), OutlookDeclineReminder,
+                    (cancellation), AbmeldungAuto (auto-cancellation), Nachrücken
+                    (promotion), OrgNachruecker (organizer move-up notice),
+                    EventErstellt (event-created notification), OutlookDeclineReminder,
                     OutlookDeclineReminder_OnBehalfOf, OutlookForwardNotification,
                     OutlookDeclineDigest, TeamMemberJoined, TeamJoinRequest,
                     TeamJoinRejected, TeamLeadTransferred, TeamMemberCancelled,

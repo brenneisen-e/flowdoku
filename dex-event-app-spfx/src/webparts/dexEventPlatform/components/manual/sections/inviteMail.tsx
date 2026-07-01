@@ -12,6 +12,7 @@ export function inviteMailSection(locale: 'de' | 'en'): ManualSection {
       ? 'Eine Einladungs-Mail an dich selbst oder direkt an den Mailverteiler des Events verschicken — mit Anmelde-Link, im Deloitte-Template, frei editierbar.'
       : 'Send an invitation email to yourself or directly to the event mail distribution list — with registration link, in the Deloitte template, freely editable.',
     visibleFor: ['Organizer', 'Admin'],
+    keywords: 'einladung einladungsmail invite invitation mail anmelde-link anmeldelink registration link mailverteiler verteiler distribution list an mich weiterleiten forward zum weiterleiten empfänger einladen invite people teilnehmer einladen {{Link}} link platzhalter standort-verteiler all-verteiler gesperrt blockiert cmc marketing freigabe',
     perspectives: [
       {
         perspective: 'organizer',

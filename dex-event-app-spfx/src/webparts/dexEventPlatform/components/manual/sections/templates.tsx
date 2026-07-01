@@ -15,6 +15,7 @@ export function templatesSection(locale: 'de' | 'en'): ManualSection {
       ? 'Die vier System-Mails (Anmeldung, Warteliste, Abmeldung, Nachrücken) zentral anpassen. Pro Event können sie überschrieben werden.'
       : 'Centrally customize the four system emails (Registration, Waitlist, Cancellation, Promotion). Each event can override them.',
     visibleFor: ['Admin'],
+    keywords: 'e-mail-templates email templates mail-vorlagen vorlagen system-mails anmeldung warteliste abmeldung nachrücken registration waitlist cancellation promotion platzhalter placeholder chips html-editor betreff subject überschrift heading body override overrides per-event pro event überschreiben headingcolor brand-farbe live-vorschau preview deloitte-template globale templates dex_emailtemplates',
     perspectives: [
       {
         perspective: 'admin',
@@ -41,9 +42,9 @@ export function templatesSection(locale: 'de' | 'en'): ManualSection {
                     : 'Templates support placeholders that are replaced per recipient at send time:'}
                 </p>
                 <ul style={{ paddingLeft: 18, margin: '0 0 6px 0', lineHeight: 1.7 }}>
-                  <li><code>{'{{Name}}'}</code> — {isDe ? 'Vorname des Teilnehmers' : 'attendee\'s first name'}</li>
+                  <li><code>{'{{Name}}'}</code> {isDe ? 'bzw.' : '/'} <code>{'{{Vorname}}'}</code> — {isDe ? 'Vorname des Teilnehmers' : 'attendee\'s first name'}</li>
                   <li><code>{'{{EventTitle}}'}</code> — {isDe ? 'Event-Titel' : 'event title'}</li>
-                  <li><code>{'{{Organizer}}'}</code> — {isDe ? 'Liste der Organizer-Namen, sprachsensitiv formatiert' : 'list of organizer names, language-aware formatting'}</li>
+                  <li><code>{'{{OrganizerHtml}}'}</code> — {isDe ? 'Liste der Organizer-Namen, sprachsensitiv formatiert (Namen fett)' : 'list of organizer names, language-aware formatting (names in bold)'}</li>
                   <li><code>{'{{AppUrl}}'}</code> — {isDe ? 'Link zurück in die App' : 'link back to the app'}</li>
                   <li><code>{'{{WaitlistPosition}}'}</code> — {isDe ? 'nur in Warteliste-Mails: aktuelle Position' : 'waitlist mails only: current position'}</li>
                 </ul>
@@ -89,8 +90,8 @@ export function templatesSection(locale: 'de' | 'en'): ManualSection {
                 </ol>
                 <p style={{ margin: 0 }}>
                   {isDe
-                    ? 'Die headingColor (Brand-Farbe pro Mail-Typ) wird NIE überschrieben — sie kommt immer aus dem globalen Template.'
-                    : 'The headingColor (brand color per mail type) is NEVER overridden — it always comes from the global template.'}
+                    ? 'Seit v18.19 lassen sich pro Event auch Überschrift-Farbe (headingColor) und -Formatierung (Größe, fett, kursiv) sowie die Unter-Überschrift überschreiben; ist am Event nichts gesetzt, gilt der Wert aus dem globalen Template.'
+                    : 'Since v18.19 the heading color (headingColor) and formatting (size, bold, italic) as well as the sub-heading can also be overridden per event; if nothing is set on the event, the value from the global template applies.'}
                 </p>
               </>
             ),

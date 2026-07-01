@@ -14,6 +14,9 @@ export function profileSection(locale: 'de' | 'en'): ManualSection {
       ? 'Profilbild, Kontakt-Infos und Sprach-Einstellung.'
       : 'Profile picture, contact info and language setting.',
     visibleFor: ['User', 'Organizer', 'Admin'],
+    keywords: isDe
+      ? 'Profil Einstellungen Profilbild Foto Avatar Kontaktdaten Standort Office Abteilung Department Job-Titel Manager Telefon Sprache Deutsch Englisch DE EN localStorage SharePoint User Profile AD Active Directory IT-Support'
+      : 'profile settings profile picture photo avatar contact details location office department job title manager phone language German English DE EN localStorage SharePoint user profile AD active directory IT support',
     perspectives: [
       {
         perspective: 'user',

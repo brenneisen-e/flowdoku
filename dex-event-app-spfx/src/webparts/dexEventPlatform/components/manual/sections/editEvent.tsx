@@ -14,9 +14,12 @@ export function editEventSection(locale: 'de' | 'en'): ManualSection {
     title: isDe ? 'Event bearbeiten & löschen' : 'Edit & delete events',
     category: 'organizer',
     description: isDe
-      ? 'Bestehende Events anpassen, dupliziert, archivieren oder endgültig löschen.'
-      : 'Modify, duplicate, archive or permanently delete existing events.',
+      ? 'Bestehende Events anpassen, archivieren oder endgültig löschen.'
+      : 'Modify, archive or permanently delete existing events.',
     visibleFor: ['Organizer', 'Admin'],
+    keywords: isDe
+      ? 'Event bearbeiten ändern anpassen editieren aktualisieren updaten Änderung speichern Edit-Modus Wizard Custom Field löschen Titel ändern Startzeit Endzeit Outlook-Termin aktualisieren ausstehender Sync Kommunikations-Tabs pro Sub-Event archivieren Event löschen Subsite entfernen'
+      : 'edit event change modify update editing edit mode wizard save changes custom field delete title change start end time update outlook invite pending sync per-sub-event communication tabs archive delete event remove subsite',
     perspectives: [
       {
         perspective: 'organizer',
@@ -94,8 +97,8 @@ export function editEventSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Seit v11.57: In Schritt 6 (Kommunikation) findest du oben eine Tab-Leiste, sobald dein Event Sub-Events hat. Der erste Tab steht für das Haupt-Event, jeder weitere Tab für einen Sub-Event. Pro Tab kannst du eigene Werte für Mail-Sprache, Outlook-Termin-Text, Mail- und Outlook-Logo sowie die Schalter „E-Mails versenden" / „Outlook-Termin erstellen" pflegen. So lassen sich z.B. ein deutsches und ein englisches Sub-Event sauber nebeneinander pflegen.'
-                  : 'Since v11.57: Step 6 (Communication) shows a tab bar at the top whenever the event has sub-events. The first tab is for the main event, every other tab is for a sub-event. Each tab keeps its own values for email language, Outlook appointment text, email and Outlook logo, and the “send emails” / “create Outlook invite” switches. This lets you cleanly run e.g. a German and an English sub-event side by side.'}
+                  ? 'Seit v11.57: In Schritt 7 (Kommunikation) findest du oben eine Tab-Leiste, sobald dein Event Sub-Events hat. Der erste Tab steht für das Haupt-Event, jeder weitere Tab für einen Sub-Event. Pro Tab kannst du eigene Werte für Mail-Sprache, Outlook-Termin-Text, Mail- und Outlook-Logo sowie die Schalter „E-Mails versenden" / „Outlook-Termin erstellen" pflegen. So lassen sich z.B. ein deutsches und ein englisches Sub-Event sauber nebeneinander pflegen.'
+                  : 'Since v11.57: Step 7 (Communication) shows a tab bar at the top whenever the event has sub-events. The first tab is for the main event, every other tab is for a sub-event. Each tab keeps its own values for email language, Outlook appointment text, email and Outlook logo, and the “send emails” / “create Outlook invite” switches. This lets you cleanly run e.g. a German and an English sub-event side by side.'}
               </>
             ),
             mockup: <Callout variant="info">{isDe ? 'Beim Tab-Wechsel werden die Werte automatisch zwischengespeichert — Speichern brauchst du erst am Ende des Wizards.' : 'Switching tabs auto-stashes the values — you only need to save at the very end of the wizard.'}</Callout>,
