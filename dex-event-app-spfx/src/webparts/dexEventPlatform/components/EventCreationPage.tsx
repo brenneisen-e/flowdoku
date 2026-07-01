@@ -35,6 +35,7 @@ import OrganizerList from './OrganizerList';
 // Kachel-Modal des Admin Centers.
 import { buildOutlookLocation } from '../utils/eventFormat';
 import { setActiveWizardStep } from '../utils/wizardStepContext';
+import { useIsMobile } from '../utils/useIsMobile';
 import { Icon } from '@fluentui/react/lib/Icon';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { de } from 'date-fns/locale';
@@ -720,6 +721,8 @@ export default function EventCreationPage(): React.ReactElement {
   const { t, locale } = useLanguage();
   // v20.4: App-Modals statt nativer Browser-Dialoge.
   const { confirmDialog, showAlert } = useDialog();
+  // Mobile-Breakpoint (≤768px) für responsive Grid-/Flex-Anpassungen im Wizard.
+  const isMobile = useIsMobile();
   const isDe = locale === 'de';
 
   // Edit-Modus: wenn wir auf 'edit-event' sind und eine selectedEventId haben
@@ -7300,7 +7303,7 @@ export default function EventCreationPage(): React.ReactElement {
                     ? 'Standardmäßig wird der Organizer für Rückfragen aus dem Team angezeigt. Wenn du stattdessen (oder zusätzlich) jemand Externen angeben willst — z.B. eine Service-Mailadresse oder eine Kontaktperson vor Ort — dann hier eintragen. Erscheint auf der Anmelde-Seite und in „Meine Events" zusätzlich zu den Organizern. Hat KEINE App-Berechtigung, ist nur ein Anzeige-Feld.'
                     : 'By default the organizer is shown as the contact for questions from the team. If you want to add an external contact instead (or in addition) — e.g. a service email or an on-site contact — enter it here. Appears on the registration page and in „My Events" in addition to the organizers. Has NO app permissions, display-only.'}
                 </p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 10 }}>
+                <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 10 }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 4 }}>
                       {isDe ? 'Name' : 'Name'}
@@ -7995,23 +7998,23 @@ export default function EventCreationPage(): React.ReactElement {
                           background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
                           border: '1px solid var(--dex-gray-200)',
                         }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 120 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 120, flexBasis: isMobile ? '100%' : undefined }}>
                             <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.date')}</label>
                             <input type="date" className="form-input" value={item.date} onChange={e => updateSubAgendaItem(item.id, { date: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
                           </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80, flexBasis: isMobile ? '100%' : undefined }}>
                             <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.time')}</label>
                             <input type="time" className="form-input" value={item.time} onChange={e => updateSubAgendaItem(item.id, { time: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
                           </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80, flexBasis: isMobile ? '100%' : undefined }}>
                             <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.endtime')}</label>
                             <input type="time" className="form-input" value={item.endTime || ''} onChange={e => updateSubAgendaItem(item.id, { endTime: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
                           </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150, flexBasis: isMobile ? '100%' : undefined }}>
                             <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.title')}</label>
                             <input type="text" className="form-input" value={item.title} onChange={e => updateSubAgendaItem(item.id, { title: e.target.value })} placeholder={t('create.agenda.title')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
                           </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150, flexBasis: isMobile ? '100%' : undefined }}>
                             <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.desc')}</label>
                             <input type="text" className="form-input" value={item.description || ''} onChange={e => updateSubAgendaItem(item.id, { description: e.target.value })} placeholder={t('create.agenda.desc')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
                           </div>
@@ -8050,7 +8053,7 @@ export default function EventCreationPage(): React.ReactElement {
                           background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
                           border: '1px solid var(--dex-gray-200)',
                         }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, marginBottom: 8 }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr auto', gap: 8, marginBottom: 8 }}>
                             <div>
                               <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.location')}</label>
                               <input type="text" className="form-input" value={tt.location} onChange={e => updateSub({ transferTimes: seTransfers.map(x => x.id === tt.id ? { ...x, location: e.target.value } : x) })} placeholder="Stadt..." style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
@@ -8069,7 +8072,7 @@ export default function EventCreationPage(): React.ReactElement {
                               </button>
                             </div>
                           </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr', gap: 8 }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr 2fr', gap: 8 }}>
                             <div>
                               <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.date')}</label>
                               <input type="date" className="form-input" value={tt.date} onChange={e => updateSub({ transferTimes: seTransfers.map(x => x.id === tt.id ? { ...x, date: e.target.value } : x) })} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
@@ -8313,7 +8316,7 @@ export default function EventCreationPage(): React.ReactElement {
                     border: '1px solid var(--dex-gray-200)',
                   }}>
                     {/* Zeile 1: Stadt + Treffpunkt + Adresse + Löschen */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, marginBottom: 8 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr auto', gap: 8, marginBottom: 8 }}>
                       <div>
                         <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.location')}</label>
                         <input type="text" className="form-input" list={`transfer-locations-${tt.id}`} value={tt.location} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, location: e.target.value } : x))} placeholder="Stadt eingeben..." style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
@@ -8338,7 +8341,7 @@ export default function EventCreationPage(): React.ReactElement {
                       </div>
                     </div>
                     {/* Zeile 2: Datum + Abfahrt + Ankunft + Beschreibung */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr', gap: 8 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr 2fr', gap: 8 }}>
                       <div>
                         <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.date')}</label>
                         <input type="date" className="form-input" value={tt.date} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, date: e.target.value } : x))} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
@@ -8816,7 +8819,7 @@ export default function EventCreationPage(): React.ReactElement {
                             v15.0: „Max. Teilnehmer" entfällt aus dieser
                             Karte — Kapazität wird jetzt in Schritt 4
                             (Kapazität) pro Sub-Event-Tab gepflegt. */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                             <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.start')}</label>
                             <DatePicker
@@ -9641,7 +9644,7 @@ export default function EventCreationPage(): React.ReactElement {
                   {/* v10.20: zwei Text-Inputs für die frei wählbaren Bezeichnungen.
                       Wenn der Organizer nichts einträgt, fällt die Registration-
                       Seite auf 'Durchstarter' / 'Funstarter' zurück. */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                     <div>
                       <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
                         {isDe ? 'Bezeichnung Gruppe A' : 'Group A label'}
@@ -9669,7 +9672,7 @@ export default function EventCreationPage(): React.ReactElement {
                       />
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div>
                       <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
                         <Icon iconName="People" style={{ fontSize: 14, marginRight: 6, color: 'var(--dex-green-dark, #6b9a1e)' }} />
@@ -9816,7 +9819,7 @@ export default function EventCreationPage(): React.ReactElement {
                           </>
                         )} />
                       </label>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                         <div>
                           <label style={{ display: 'block', fontSize: '0.78rem', marginBottom: 4, color: 'var(--dex-gray-600)' }}>Durchstarter →</label>
                           <select
@@ -10155,7 +10158,7 @@ export default function EventCreationPage(): React.ReactElement {
                     ? <><strong>Was du hier einstellst:</strong> einen eigenen Begriff für die Teams — z.B. <strong>„Break-Out Session“</strong>, „Gruppe“ oder „Tisch“. Leer = Standard „Team“.<br /><br /><strong>Anzeige in der App:</strong> ersetzt das Wort „Team“ überall (Organizer Center, „Meine Events“, Anmeldeformular).</>
                     : <><strong>What this controls:</strong> a custom term for the teams — e.g. <strong>“Break-Out session”</strong>, “group” or “table”. Empty = default “Team”.<br /><br /><strong>Where you see it:</strong> replaces the word “Team” everywhere (organizer center, “My Events”, registration form).</>} />
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                   <input
                     type="text" className="form-input"
                     value={teamTermSingular}
@@ -13592,7 +13595,7 @@ export default function EventCreationPage(): React.ReactElement {
           popperPlacement: 'bottom-start' as const, isClearable: true, autoComplete: 'off',
         };
         const outlookDateEditor = (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <label style={{ fontSize: '0.68rem', color: 'var(--dex-gray-400)' }}>Start</label>
               <DatePicker {...dpCommon} selected={olIsoToDate(olStartOverrideVal)} onChange={(d: Date | null) => setOlStart(olDateToIso(d))} placeholderText={olStart ? olFmt(olStart) + ' (übernommen)' : 'Start'} />
@@ -14017,8 +14020,8 @@ export default function EventCreationPage(): React.ReactElement {
                 <div key={si} style={{ marginBottom: 14 }}>
                   <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--dex-green-dark, #4a7c1f)', borderBottom: '1px solid var(--dex-gray-100)', paddingBottom: 4, marginBottom: 6 }}>{sec.title}</div>
                   {sec.rows.map((r, ri) => (
-                    <div key={ri} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '4px 0', fontSize: '0.8rem' }}>
-                      <span style={{ flex: '0 0 230px', color: 'var(--dex-gray-500)' }}>{r.label}</span>
+                    <div key={ri} style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: 'flex-start', gap: isMobile ? 2 : 10, padding: '4px 0', fontSize: '0.8rem' }}>
+                      <span style={{ flex: isMobile ? '0 0 auto' : '0 0 230px', width: isMobile ? '100%' : undefined, color: 'var(--dex-gray-500)' }}>{r.label}</span>
                       <span style={{ flex: 1, color: 'var(--dex-gray-800)', minWidth: 0, overflowWrap: 'anywhere' }}>{r.value}</span>
                       {chip(r.status)}
                     </div>

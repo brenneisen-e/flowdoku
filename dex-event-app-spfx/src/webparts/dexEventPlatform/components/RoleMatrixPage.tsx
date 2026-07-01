@@ -578,7 +578,7 @@ export default function RoleMatrixPage(): React.ReactElement {
         </div>
 
         <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: 'calc(100vh - 260px)' }}>
-          <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, fontSize: '0.85rem' }}>
+          <table style={{ width: '100%', minWidth: 760, borderCollapse: 'separate', borderSpacing: 0, fontSize: '0.85rem' }}>
             <thead>
               <tr>
                 <th style={{ ...thStyle, ...stickyHeaderCell, width: '32%', borderRight: '1px solid var(--dex-gray-300)' }}>Funktion</th>

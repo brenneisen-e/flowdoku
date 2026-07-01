@@ -30,6 +30,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { getManualSections } from './manual/handbookContent';
 import { ManualSection } from './manual/types';
 import { DeloitteEvent } from '../types';
+import { useIsMobile } from '../utils/useIsMobile';
 
 type Gate = 'all' | 'manage' | 'admin';
 
@@ -154,6 +155,11 @@ export default function GlobalSearch(): React.ReactElement | null {
   const { currentUser } = useCurrentUser();
   const { locale } = useLanguage();
   const isDe = locale === 'de';
+  // v26.36: Auf Mobile teilt sich die Such-Leiste die (umbrechende) Header-Zeile
+  // — schmalere flex-basis, damit sie neben den anderen Buttons Platz lässt,
+  // statt auf feste 420px zu bestehen und sie zu verdrängen.
+  const isMobile = useIsMobile();
+  const searchFlex = isMobile ? '1 1 120px' : '1 1 420px';
 
   const emailLc = (currentUser?.email || '').toLowerCase();
   const adminLike = originalIsAdmin || isAdmin;
@@ -394,7 +400,7 @@ export default function GlobalSearch(): React.ReactElement | null {
   // Eingeklappt: nur das Such-Icon.
   if (!expanded) {
     return (
-      <div ref={rootRef} style={{ flex: '1 1 420px', maxWidth: 460, minWidth: 0, margin: '0 16px', display: 'flex' }}>
+      <div ref={rootRef} style={{ flex: searchFlex, maxWidth: 460, minWidth: 0, margin: isMobile ? '0 8px' : '0 16px', display: 'flex' }}>
         <button
           type="button"
           onClick={() => { setExpanded(true); setOpen(true); }}
@@ -420,7 +426,7 @@ export default function GlobalSearch(): React.ReactElement | null {
   const noResults = showPanel && flat.length === 0 && !partLoading;
 
   return (
-    <div ref={rootRef} style={{ position: 'relative', flex: '1 1 420px', maxWidth: 460, minWidth: 0, margin: '0 16px' }}>
+    <div ref={rootRef} style={{ position: 'relative', flex: searchFlex, maxWidth: 460, minWidth: 0, margin: isMobile ? '0 8px' : '0 16px' }}>
       <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
         <span style={{ position: 'absolute', left: 12, display: 'inline-flex', color: 'var(--dex-gray-400)', pointerEvents: 'none' }}>
           <Search size={16} />

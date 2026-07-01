@@ -12,6 +12,9 @@ export function flowsSection(locale: 'de' | 'en'): ManualSection {
       ? 'Die sechs Hintergrund-Flows, die E-Mails und Outlook-Termine steuern.'
       : 'The six background flows that drive emails and Outlook appointments.',
     visibleFor: ['Admin'],
+    keywords: isDe
+      ? 'Power Automate Flows Hintergrund-Flows Queue DEX_Emails DEX_Outlook DEX_SEND_MAIL DEX_CreateOutlookEvent DEX_Outlook_Einladungen DEX_OutlookDeclineHandler DEX_OutlookForwardHandler DEX_IDReorder_TeilnehmerIDs Outlook-Termin Kalender ORB_URL flow-jsons Monitoring no_reply.events'
+      : 'Power Automate flows background flows queue DEX_Emails DEX_Outlook DEX_SEND_MAIL DEX_CreateOutlookEvent DEX_Outlook_Einladungen DEX_OutlookDeclineHandler DEX_OutlookForwardHandler DEX_IDReorder_TeilnehmerIDs outlook appointment calendar ORB_URL flow-jsons monitoring no_reply.events',
     perspectives: [
       {
         perspective: 'admin',

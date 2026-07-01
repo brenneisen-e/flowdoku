@@ -18,6 +18,7 @@ import { PreviewContextStack } from './manual/previews/PreviewProviders';
 import RegistrationPage from './RegistrationPage';
 import Header from './Header';
 import { DeloitteEvent } from '../types';
+import { useIsMobile } from '../utils/useIsMobile';
 
 export interface RegisterPreviewData {
   title: string;
@@ -225,6 +226,7 @@ function buildSynthChildEvents(data: RegisterPreviewData): DeloitteEvent[] {
 
 export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open, onClose, data }) => {
   if (!open) return null;
+  const isMobile = useIsMobile();
   const synthEvent = React.useMemo(() => buildSynthEvent(data), [data]);
   const synthChildren = React.useMemo(() => buildSynthChildEvents(data), [data]);
 
@@ -281,22 +283,25 @@ export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open
             damit auf einen Blick klar ist dass das die Desktop-Ansicht ist. */}
         <div style={{
           flex: 1,
-          padding: '24px 24px 36px',
+          padding: isMobile ? '8px 8px 12px' : '24px 24px 36px',
           overflow: 'auto',
           background: 'var(--dex-gray-100, #f4f4f5)',
           display: 'flex', justifyContent: 'center',
         }}>
-          <div style={{ width: '100%', maxWidth: 1200, position: 'relative', paddingBottom: 14 }}>
+          <div style={{ width: '100%', maxWidth: 1200, position: 'relative', paddingBottom: isMobile ? 0 : 14 }}>
             <div style={{
-              padding: '14px 14px 12px', borderRadius: '12px 12px 6px 6px',
-              background: '#1a1a1a',
-              boxShadow: '0 8px 28px rgba(0,0,0,0.2)',
+              padding: isMobile ? 0 : '14px 14px 12px',
+              borderRadius: isMobile ? 8 : '12px 12px 6px 6px',
+              background: isMobile ? 'transparent' : '#1a1a1a',
+              boxShadow: isMobile ? 'none' : '0 8px 28px rgba(0,0,0,0.2)',
               position: 'relative',
             }}>
-              <div style={{
-                position: 'absolute', top: 5, left: '50%', transform: 'translateX(-50%)',
-                width: 6, height: 6, borderRadius: '50%', background: '#333',
-              }} />
+              {!isMobile && (
+                <div style={{
+                  position: 'absolute', top: 5, left: '50%', transform: 'translateX(-50%)',
+                  width: 6, height: 6, borderRadius: '50%', background: '#333',
+                }} />
+              )}
               <div
                 className="dex-preview-scope"
                 // v14.10: Klicks sind jetzt erlaubt (Organizer kann durchklicken,
@@ -311,8 +316,12 @@ export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open
                   // v22.36: Bildschirm im 16:9-Format (vorher wirkte der
                   // Laptop-Screen durch min/maxHeight eher wie 4:3); der
                   // Seiteninhalt scrollt innerhalb des Screens.
-                  aspectRatio: '16 / 9',
-                  maxHeight: '78vh', overflow: 'auto',
+                  // Auf dem Handy KEIN Laptop-Frame / 16:9 (wird sonst nur
+                  // ~190px hoch) — volle Breite + Höhe, damit die echte
+                  // mobile Anmelde-Ansicht sichtbar ist.
+                  ...(isMobile
+                    ? { width: '100%', maxHeight: '78vh', overflow: 'auto' }
+                    : { aspectRatio: '16 / 9', maxHeight: '78vh', overflow: 'auto' }),
                 }}
               >
                 <PreviewContextStack
@@ -326,16 +335,21 @@ export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open
                 </PreviewContextStack>
               </div>
             </div>
-            {/* Laptop-Stand */}
-            <div style={{
-              position: 'absolute', left: -12, right: -12, bottom: 0, height: 12,
-              background: 'linear-gradient(180deg, #2a2a2a, #111)',
-              borderRadius: '0 0 12px 12px',
-            }} />
-            <div style={{
-              position: 'absolute', left: '40%', right: '40%', bottom: 8, height: 4,
-              background: '#444', borderRadius: '0 0 6px 6px',
-            }} />
+            {/* Laptop-Stand — auf dem Handy ausgeblendet (die -12px links/rechts
+                verursachen sonst ein paar px horizontales Scrollen). */}
+            {!isMobile && (
+              <>
+                <div style={{
+                  position: 'absolute', left: -12, right: -12, bottom: 0, height: 12,
+                  background: 'linear-gradient(180deg, #2a2a2a, #111)',
+                  borderRadius: '0 0 12px 12px',
+                }} />
+                <div style={{
+                  position: 'absolute', left: '40%', right: '40%', bottom: 8, height: 4,
+                  background: '#444', borderRadius: '0 0 6px 6px',
+                }} />
+              </>
+            )}
           </div>
         </div>
 

@@ -16,6 +16,9 @@ export function registerForOtherSection(locale: 'de' | 'en'): ManualSection {
       ? 'Wie du als Organizer oder Assistant andere Personen anmeldest.'
       : 'How organizers and assistants register other people.',
     visibleFor: ['Organizer', 'Admin'],
+    keywords: isDe
+      ? 'Für andere registrieren stellvertretend anmelden Fremd-Anmeldung Proxy-Anmeldung Assistent Assistant Senior Assistant Business Support Partner Director People-Picker Kolleginnen suchen bereits angemeldet Verteilerkreis Audience-Check Zustimmung ProxyConsent Einwilligung Nachweis externe Person außerhalb Deloitte Gast E-Mail-Prüfung Tippfehler Bestätigungsmail CC Outlook-Termin Assistenz-Kachel Delegation verwalten'
+      : 'register for someone else on behalf proxy registration register another person assistant senior assistant business support partner director people picker search colleagues already registered audience distribution check consent ProxyConsent proof record external person outside Deloitte guest email typo check confirmation email CC Outlook invite assistant tile delegation manage',
     perspectives: [
       {
         perspective: 'organizer',

@@ -79,9 +79,12 @@ export function massMailSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Danach öffnet sich der Editor mit Betreff, Überschrift, Unter-Überschrift und dem eigentlichen Inhalt. Der Inhalt läuft über einen Rich-Text-Editor (fett, kursiv, Links, Aufzählungen). Du kannst Platzhalter verwenden, die beim Versand pro Person ersetzt werden: '
-                  : 'Then the editor opens with subject, heading, sub-heading and the actual content. The content uses a rich-text editor (bold, italic, links, bullet lists). You can use placeholders that are replaced per person when sending: '}
-                <code>{'{{Vorname}}'}</code>, <code>{'{{Name}}'}</code> {isDe ? 'und' : 'and'} <code>{'{{EventTitle}}'}</code>.{' '}
+                  ? 'Danach öffnet sich der Editor mit Betreff, Überschrift, Unter-Überschrift und dem eigentlichen Inhalt. Der Inhalt läuft über einen Rich-Text-Editor (fett, kursiv, Links, Aufzählungen). Weil die Massenmail als EIN Anschreiben an die ganze Empfängergruppe geht (nicht personalisiert pro Person), werden nur event-weite Platzhalter ersetzt: '
+                  : 'Then the editor opens with subject, heading, sub-heading and the actual content. The content uses a rich-text editor (bold, italic, links, bullet lists). Because the mass mail goes out as ONE message to the whole recipient group (not personalised per person), only event-wide placeholders are replaced: '}
+                <code>{'{{EventTitle}}'}</code> {isDe ? 'und' : 'and'} <code>{'{{Organizer}}'}</code>.{' '}
+                {isDe
+                  ? 'Persönliche Anreden wie {{Vorname}} funktionieren hier NICHT (sie blieben als Text stehen) — dafür sind die System-Mails (Anmeldung, Warteliste, …) gedacht.'
+                  : 'Personal salutations like {{Vorname}} do NOT work here (they would remain as literal text) — the system mails (registration, waitlist, …) are meant for that.'}{' '}
                 {isDe
                   ? 'Dein Entwurf wird pro Event automatisch gespeichert — du kannst den Dialog also schließen und später weiterschreiben, ohne den Text zu verlieren.'
                   : 'Your draft is saved automatically per event — so you can close the dialog and continue later without losing the text.'}
@@ -106,8 +109,8 @@ export function massMailSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Bist du zufrieden, klickst du auf Senden. Die Mails werden in die Versand-Warteschlange gelegt und meist innerhalb weniger Minuten zugestellt — jede Person bekommt eine eigene Mail (kein sichtbarer Verteiler). Die Mail kommt vom gemeinsamen Absender „no_reply.events@deloitte.de", nicht von deiner persönlichen Adresse; Rückfragen der Teilnehmer landen daher nicht automatisch bei dir, sondern du wirst im Text als Ansprechpartner genannt.'
-                  : 'When you are happy, click Send. The emails are placed in the send queue and usually delivered within minutes — each person receives an individual email (no visible distribution list). The mail comes from the shared sender „no_reply.events@deloitte.de", not from your personal address; replies therefore do not land with you automatically — instead you are named as the contact in the text.'}
+                  ? 'Bist du zufrieden, klickst du auf Senden. Die App fragt kurz nach („E-Mail an N Teilnehmer senden?") und legt danach EINE Mail in die Versand-Warteschlange (DEX_Emails), die an alle gewählten Empfänger geht; die Organizer werden automatisch auf CC gesetzt (sofern sie nicht ohnehin schon Empfänger sind). Zustellung meist innerhalb weniger Minuten. Die Mail kommt vom gemeinsamen Absender „no_reply.events@deloitte.de", nicht von deiner persönlichen Adresse; Rückfragen der Teilnehmer landen daher nicht automatisch bei dir, sondern du wirst im Text als Ansprechpartner genannt.'
+                  : 'When you are happy, click Send. The app confirms briefly („Send email to N attendees?") and then places ONE mail into the send queue (DEX_Emails) addressed to all selected recipients; the organizers are automatically added on CC (unless they are already recipients). Delivery usually within minutes. The mail comes from the shared sender „no_reply.events@deloitte.de", not from your personal address; replies therefore do not land with you automatically — instead you are named as the contact in the text.'}
               </>
             ),
             mockup: (

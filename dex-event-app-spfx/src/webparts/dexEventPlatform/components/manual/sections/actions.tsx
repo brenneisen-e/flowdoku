@@ -17,6 +17,9 @@ export function actionsSection(locale: 'de' | 'en'): ManualSection {
       ? 'Alle Aktionen aus dem Aktionen-Dropdown erklärt — Teilnehmerliste exportieren, QR-Codes, Mails, Check-in und Reparatur-Werkzeuge.'
       : 'Every action from the actions dropdown explained — export the attendee list, QR codes, emails, check-in and repair tools.',
     visibleFor: ['Organizer', 'Admin'],
+    keywords: isDe
+      ? 'Aktionen Aktion auswählen Dropdown Menü Werkzeuge Organizer Center Admin Center Kategorien Suchfeld Excel-Export Teilnehmerliste xlsx herunterladen Zielgruppe Matrix Sub-Event-Blätter IDs neu vergeben Nummern renummerieren Von Warteliste nachrücken Überbuchung prüfen Outlook-Absagen prüfen Massenmail E-Mail versenden Einladungsmail E-Mails kopieren Check-in starten QR-Codes versenden Self-Check-in Event bearbeiten In SharePoint öffnen Deep-Link kopieren Audit-Log Änderungsprotokoll Spalten fixen Zugriff reparieren Counter zurücksetzen B2Run migrieren Custom-Fields reparieren Wartung Reparatur'
+      : 'actions pick an action dropdown menu tools organizer center admin center categories search box Excel export attendee list xlsx download target group matrix sub-event sheets reassign IDs renumber promote from waitlist check overbooking check Outlook declines mass email send email invitation email copy emails start check-in send QR codes self check-in edit event open in SharePoint copy deep link audit log change history fix columns repair access reset counter migrate B2Run repair custom fields maintenance repair',
     perspectives: [
       {
         perspective: 'organizer',

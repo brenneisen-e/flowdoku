@@ -14,6 +14,7 @@ import { useRoles } from '../context/RoleContext';
 // wie die Event-Liste) — sonst sieht jeder Hauptevent-Teilnehmer alle Sub-Events.
 import { isEventVisibleForUser } from './EventListPage';
 import { useCachedImage } from '../utils/imageCache';
+import { useIsMobile } from '../utils/useIsMobile';
 import { isRegistrationFullyClosed } from '../utils/eventFormat';
 import { useLanguage, translations as appTranslations, Locale } from '../context/LanguageContext';
 // v20.4: modernes Alert-Modal statt window.alert.
@@ -80,6 +81,82 @@ const isPlausibleEmail = (e: string): boolean => {
   return true;
 };
 
+/**
+ * Einklappbare Formular-Sektion für die Handy-Ansicht.
+ *
+ * Auf dem Desktop (isMobile=false) wird EXAKT wie bisher gerendert: der
+ * Header (mit optionalen Action-Buttons in `headerExtra`) plus der Body sind
+ * immer sichtbar, ohne Chevron und ohne Toggle — das Verhalten bleibt
+ * unverändert.
+ *
+ * Auf dem Handy (isMobile=true) wird der Header zu einer antippbaren Zeile mit
+ * Chevron (▸/▾). Der Body ist per Default eingeklappt (`defaultOpen=false`),
+ * damit die Anmeldemaske kompakt bleibt und man nicht ewig scrollen muss.
+ * Etwaige Action-Buttons aus `headerExtra` bleiben auch eingeklappt bedienbar
+ * (sie stehen weiter im Header, nur der reine Titel-Bereich toggelt).
+ *
+ * WICHTIG: Es werden keine Feldnamen, kein State und keine Validierung
+ * verändert — nur die Sichtbarkeit des bereits gerenderten Bodys.
+ */
+function CollapsibleSection(props: {
+  isMobile: boolean;
+  icon: string;
+  title: React.ReactNode;
+  /** Zusätzlicher Header-Inhalt rechts (z.B. Toggle-Buttons). */
+  headerExtra?: React.ReactNode;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}): React.ReactElement {
+  const { isMobile, icon, title, headerExtra, defaultOpen, children } = props;
+  const [open, setOpen] = React.useState<boolean>(defaultOpen ?? !isMobile);
+
+  // Desktop: unverändertes Markup (Header + Body immer sichtbar, kein Chevron).
+  if (!isMobile) {
+    return (
+      <>
+        {headerExtra ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <Icon iconName={icon} style={{ fontSize: 16 }} />
+              {title}
+            </div>
+            {headerExtra}
+          </div>
+        ) : (
+          <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <Icon iconName={icon} style={{ fontSize: 16 }} />
+            {title}
+          </div>
+        )}
+        {children}
+      </>
+    );
+  }
+
+  // Handy: antippbarer Header + einklappbarer Body.
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+        <div
+          className="section-header"
+          role="button"
+          tabIndex={0}
+          aria-expanded={open}
+          onClick={() => setOpen(o => !o)}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o); } }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', flex: headerExtra ? '0 1 auto' : '1 1 auto', userSelect: 'none' }}
+        >
+          <span aria-hidden="true" style={{ fontSize: 12, width: 12, display: 'inline-block' }}>{open ? '▾' : '▸'}</span>
+          <Icon iconName={icon} style={{ fontSize: 16 }} />
+          {title}
+        </div>
+        {headerExtra}
+      </div>
+      {open && children}
+    </>
+  );
+}
+
 export default function RegistrationPage(): React.ReactElement {
   // v11.98: Beim Mount nach oben scrollen. Sonst behält der scrollende
   // .main-content-Container die Position aus der vorherigen Seite (z.B.
@@ -104,6 +181,8 @@ export default function RegistrationPage(): React.ReactElement {
   const { locale: appLocale } = useLanguage();
   // v20.4: App-Modal statt nativem Browser-Alert.
   const { showAlert } = useDialog();
+  // Mobile-Breakpoint für kompaktere Handy-Darstellung (einklappbare Sektionen etc.).
+  const isMobile = useIsMobile();
   const event = events.find(e => e.id === selectedEventId);
 
   // v18.35: Erzwungene Anmeldesprache. Hat der Organizer für dieses Event eine
@@ -2320,7 +2399,9 @@ export default function RegistrationPage(): React.ReactElement {
             style={{
               display: 'flex',
               // Hochkant -> Bild links + Inhalt rechts | Querformat -> Bild oben + Inhalt drunter
-              flexDirection: imgOrientation === 'portrait' ? 'row' : 'column',
+              // Auf dem Handy IMMER Bild oben + Inhalt drunter, damit Titel/Datum
+              // nicht auf ~110px zusammengequetscht werden.
+              flexDirection: isMobile ? 'column' : (imgOrientation === 'portrait' ? 'row' : 'column'),
               gap: 12,
               alignItems: 'stretch',
             }}
@@ -2339,9 +2420,12 @@ export default function RegistrationPage(): React.ReactElement {
                 overflow: 'hidden',
                 // Hochkant: schmal links + volle Karten-Höhe
                 // Querformat: volle Breite oben, Höhe richtet sich nach Bild-Aspect (kein Crop)
-                ...(imgOrientation === 'portrait'
-                  ? { flex: '0 0 220px', alignSelf: 'stretch', minHeight: 360, display: 'flex' }
-                  : { width: '100%', display: 'flex', justifyContent: 'center' }),
+                // Handy: immer volle Breite mit begrenzter Höhe (kein 360px-Block).
+                ...(isMobile
+                  ? { width: '100%', maxHeight: 200, display: 'flex', justifyContent: 'center' }
+                  : imgOrientation === 'portrait'
+                    ? { flex: '0 0 220px', alignSelf: 'stretch', minHeight: 360, display: 'flex' }
+                    : { width: '100%', display: 'flex', justifyContent: 'center' }),
               }}
             >
               {event.imageUrl && (
@@ -2353,7 +2437,11 @@ export default function RegistrationPage(): React.ReactElement {
                   // Bildteil weggecroppt). Hintergrundfarbe der Hülle ist
                   // bereits gray-100 — das ergibt einen sauberen, neutralen
                   // Letterbox-Rahmen statt eines Bildschnitts.
-                  style={event.imageDisplay?.hero
+                  style={isMobile
+                    // Handy: Bild füllt die begrenzte 200px-Höhe (cover), damit
+                    // die Karte kompakt bleibt und der Rest ohne Scrollen sichtbar ist.
+                    ? { width: '100%', maxHeight: 200, height: 'auto', objectFit: 'cover', display: 'block' }
+                    : event.imageDisplay?.hero
                     // v23.22: Pro-Ansicht-Darstellung (Hero) — volles Bild
                     // (contain), Größe über max. Höhe steuerbar (behebt „Foto zu
                     // groß") + optionaler Zoom. Zentriert auf weißem Hintergrund.
@@ -2767,11 +2855,12 @@ export default function RegistrationPage(): React.ReactElement {
               rechts daneben). Vorher saß der Toggle unter dem Header
               im Body — wenig auffällig. „* = Required field"-Legende
               ist hier weg und sitzt jetzt am Event-Specific-Header. */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <Icon iconName="ContactInfo" style={{ fontSize: 16 }} />
-              {t('reg.personalinfo')}
-            </div>
+          <CollapsibleSection
+            isMobile={isMobile}
+            icon="ContactInfo"
+            title={t('reg.personalinfo')}
+            headerExtra={(canRegisterForOther || (registerForOther && canCreateEvents)) ? (
+            <>
             {canRegisterForOther && (
               <button
                 type="button"
@@ -2818,7 +2907,9 @@ export default function RegistrationPage(): React.ReactElement {
                 {locale === 'de' ? 'Massenimport' : 'Bulk import'}
               </button>
             )}
-          </div>
+            </>
+            ) : undefined}
+          >
           <div style={{ padding: '24px 20px' }}>
             {canRegisterForOther && (
               <>
@@ -3270,16 +3361,18 @@ export default function RegistrationPage(): React.ReactElement {
               </div>
             )}
           </div>
+          </CollapsibleSection>
         </div>
 
         {/* v11.82: Team-Anmeldung-Card — separat unter „Persönliche Daten",
             nur sichtbar wenn der Toggle aktiv ist. */}
         {isTeamCapable && isTeamMode && !registerForOther && !parentAlreadyRegistered && (
           <div className="registration-form" style={{ marginTop: 24 }}>
-            <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <Icon iconName="People" style={{ fontSize: 16 }} />
-              {locale === 'de' ? 'Team-Anmeldung' : 'Team registration'}
-            </div>
+            <CollapsibleSection
+              isMobile={isMobile}
+              icon="People"
+              title={locale === 'de' ? 'Team-Anmeldung' : 'Team registration'}
+            >
             <div style={{ padding: '24px 20px' }}>
               {/* Pflicht-Hinweis-Box ganz oben — auffällig orange. */}
               <div style={{
@@ -3404,6 +3497,7 @@ export default function RegistrationPage(): React.ReactElement {
                 </label>
               </div>
             </div>
+            </CollapsibleSection>
           </div>
         )}
 
@@ -3416,10 +3510,11 @@ export default function RegistrationPage(): React.ReactElement {
             */}
         {event && event.teamRegistrationEnabled && event.teamOpenSlotsVisible && !registerForOther && openTeamsLoaded && openTeams.length > 0 && !parentAlreadyRegistered && (
           <div className="registration-form" style={{ marginBottom: 16 }}>
-            <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <Icon iconName="People" style={{ fontSize: 16 }} />
-              {locale === 'de' ? 'Offene Teams — einem unvollständigen Team beitreten' : 'Open teams — join an incomplete team'}
-            </div>
+            <CollapsibleSection
+              isMobile={isMobile}
+              icon="People"
+              title={locale === 'de' ? 'Offene Teams — einem unvollständigen Team beitreten' : 'Open teams — join an incomplete team'}
+            >
             <div style={{ padding: '20px' }}>
               <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>
                 {locale === 'de'
@@ -3512,11 +3607,11 @@ export default function RegistrationPage(): React.ReactElement {
               einer Zeile. Legende mit ROTEM Stern (vorher war der Stern
               in der Erklärung grau, jetzt im Deloitte-Rot wie alle echten
               Required-Marker). */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <Icon iconName="EditNote" style={{ fontSize: 16 }} />
-              {t('reg.eventinfo')}
-            </div>
+          <CollapsibleSection
+            isMobile={isMobile}
+            icon="EditNote"
+            title={t('reg.eventinfo')}
+            headerExtra={
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12, padding: '0 12px' }}>
               <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
                 <span style={{ color: 'var(--dex-red, #da291c)', fontWeight: 700, marginRight: 2 }}>*</span> = {t('reg.requiredfield')}
@@ -3534,7 +3629,8 @@ export default function RegistrationPage(): React.ReactElement {
                 <Trash2 size={14} /> {locale === 'de' ? 'Zurücksetzen' : 'Reset'}
               </button>
             </span>
-          </div>
+            }
+          >
           <div style={{ padding: '24px 20px' }}>
             {/* v11.10: Group-Selection ist ein eigener, IMMER sichtbarer
                 Block (sofern das Event Split-Capacity hat). Vorher war er
@@ -3600,7 +3696,7 @@ export default function RegistrationPage(): React.ReactElement {
                     </div>
                   );
                 })()}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                   {(() => {
                     const optA = { id: 'Durchstarter', label: splitLabelA, desc: splitLabelA === 'Durchstarter' ? t('reg.starter.durch.desc') : '', cap: durchCap, count: starterCounts?.durch ?? 0, wait: starterCounts?.durchWait ?? 0, color: 'var(--dex-green-dark, #6b9a1e)' };
                     const optB = { id: 'Funstarter', label: splitLabelB, desc: splitLabelB === 'Funstarter' ? t('reg.starter.fun.desc') : '', cap: funCap, count: starterCounts?.fun ?? 0, wait: starterCounts?.funWait ?? 0, color: 'var(--dex-orange, #ff8c00)' };
@@ -3984,6 +4080,7 @@ export default function RegistrationPage(): React.ReactElement {
               </div>
             )}
           </div>
+          </CollapsibleSection>
         </div>
         )}
       </div>
@@ -4344,8 +4441,8 @@ export default function RegistrationPage(): React.ReactElement {
                     ? <><strong>{okCount}</strong> bereit zum Anmelden{dupCount > 0 ? `, ${dupCount} Duplikat(e)` : ''}{nfCount > 0 ? `, ${nfCount} nicht gefunden` : ''}. Prüfe die Tabelle — nicht passende Zeilen kannst du entfernen.</>
                     : <><strong>{okCount}</strong> ready to register{dupCount > 0 ? `, ${dupCount} duplicate(s)` : ''}{nfCount > 0 ? `, ${nfCount} not found` : ''}. Review the table — remove rows that don&apos;t fit.</>}
                 </p>
-                <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 8 }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <div style={{ maxHeight: 320, overflowY: 'auto', overflowX: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 8 }}>
+                  <table style={{ width: '100%', minWidth: 560, borderCollapse: 'collapse' }}>
                     <thead>
                       <tr>
                         <th style={thStyle}>{locale === 'de' ? 'Vorname' : 'First name'}</th>

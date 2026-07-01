@@ -16,6 +16,9 @@ export function manageParticipantsSection(locale: 'de' | 'en'): ManualSection {
       ? 'Liste aller Teilnehmer einsehen, Status ändern, E-Mails kopieren, manuell einchecken.'
       : 'View the full participant list, change statuses, copy emails, check in manually.',
     visibleFor: ['Organizer', 'Admin'],
+    keywords: isDe
+      ? 'Teilnehmer verwalten Teilnehmerliste Teilnehmertabelle Admin Center Organizer Center Anmeldungen Status ändern einchecken auschecken abmelden Warteliste QR versendet KPI-Kacheln Metrik-Kacheln Suche sortieren TeilnehmerID E-Mails kopieren Semikolon Zwischenablage Outlook Teilnehmer bearbeiten Edit-Modal Tenant-Prüfung M365-Profil ChangeLog Audit-Log Aktualisieren Refresh Deep-Link kopieren Sub-Events Klammer konsolidierte Ansicht Felder Abmeldungen löschen'
+      : 'manage participants attendee list participant table admin center organizer center registrations change status check in check out cancel deregister waitlist QR sent KPI tiles metric tiles search sort attendee ID copy emails semicolon clipboard Outlook edit attendee edit modal tenant validation M365 profile ChangeLog audit log refresh reload deep link copy sub-events bracket consolidated view fields cancellations delete',
     perspectives: [
       {
         perspective: 'organizer',
@@ -26,8 +29,8 @@ export function manageParticipantsSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Im Admin-Bereich → Karte deines Events → "Admin Center". Du siehst oben vier Metrik-Kacheln (Angemeldet, Warteliste, Eingecheckt, Abgemeldet) und darunter Aktions-Buttons.'
-                  : 'Admin area → your event card → "Admin Center". You\'ll see four metric tiles (Registered, Waitlist, Checked-in, Cancelled) and action buttons below.'}
+                  ? 'Im Admin-Bereich → Karte deines Events → "Admin Center". Du siehst oben die Metrik-Kacheln (Angemeldet, Warteliste — falls eine existiert, QR versendet, Eingecheckt, Abgemeldet) und darunter das Aktionen-Menü sowie die Teilnehmertabelle.'
+                  : 'Admin area → your event card → "Admin Center". You\'ll see the metric tiles (Registered, Waitlist — if one exists, QR sent, Checked-in, Cancelled) and below them the actions menu plus the participant table.'}
               </>
             ),
             mockup: (
@@ -92,8 +95,8 @@ export function manageParticipantsSection(locale: 'de' | 'en'): ManualSection {
             mockup: (
               <Callout variant="tip">
                 {isDe
-                  ? 'Abgemeldete Teilnehmer werden NICHT exportiert — nur Angemeldete, Eingecheckte und Wartelistler.'
-                  : 'Cancelled attendees are NOT exported — only Registered, Checked-in, and Waitlisted.'}
+                  ? 'Kopiert werden nur die aktiven Teilnehmer — also Angemeldete, „QR versendet" und Eingecheckte. Wartelisten-Einträge und Abgemeldete sind NICHT dabei.'
+                  : 'Only active attendees are copied — Registered, „QR sent" and Checked-in. Waitlist entries and Cancelled ones are NOT included.'}
               </Callout>
             ),
           },

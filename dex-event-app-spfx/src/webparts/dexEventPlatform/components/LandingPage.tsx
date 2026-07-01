@@ -16,11 +16,13 @@ import { useEvents } from '../context/EventContext';
 import { useRoles } from '../context/RoleContext';
 import { useDialog } from '../context/DialogContext';
 import Modal from './Modal';
+import { useIsMobile } from '../utils/useIsMobile';
 
 export default function LandingPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { locale, setLocale, t } = useLanguage();
   const isDe = locale === 'de';
+  const isMobile = useIsMobile();
   // v18.25: Vorname für die persönliche Begrüßung.
   const { currentUser } = useCurrentUser();
   const firstName = (currentUser?.firstName || '').trim();
@@ -470,7 +472,9 @@ export default function LandingPage(): React.ReactElement {
           Inaktive-Konten-Warnung für Organizer/Admin). */}
       {((isAdmin && archInfo && archInfo.total > 0) || (isAdmin && delArchCount > 0) || inactiveSummary.length > 0 || staleDrafts.length > 0 || (isAdmin && (pdWarn > 0 || pdDue > 0))) && (
       <div style={{
-        position: 'absolute', top: 34, right: 16, width: 300,
+        ...(isMobile
+          ? { position: 'static', width: '100%', margin: '0 auto 16px' }
+          : { position: 'absolute', top: 34, right: 16, width: 300 }),
         maxWidth: 'calc(100vw - 32px)', zIndex: 6,
         display: 'flex', flexDirection: 'column', gap: 12,
       }}>
@@ -964,9 +968,9 @@ export default function LandingPage(): React.ReactElement {
           >
             {locale === 'de' ? 'Entwickelt von ' : 'Built by '}
             <span style={{ fontWeight: 600, color: 'var(--dex-gray-500)' }}>
-              <DevName name="Eike Brenneisen" email="ebrenneisen@deloitte.de" />
+              <DevName name="Eike Brenneisen" email="ebrenneisen@deloitte.de" isMobile={isMobile} />
               {' '}{locale === 'de' ? 'und' : 'and'}{' '}
-              <DevName name="Nils Felten" email="nifelten@deloitte.de" />
+              <DevName name="Nils Felten" email="nifelten@deloitte.de" isMobile={isMobile} />
             </span>
           </div>
         </div>
@@ -1136,11 +1140,25 @@ function AnimatedCounter(props: { value: number; durationMs?: number }): React.R
 // werden per SharePoint-User-Profil-Lookup live nachgeladen (einmalig
 // beim ersten Hover) — damit zeigen wir immer den aktuellen Rollen-Stand
 // aus dem AD, keine hardcoded Strings.
-function DevName(props: { name: string; email: string }): React.ReactElement {
+function DevName(props: { name: string; email: string; isMobile?: boolean }): React.ReactElement {
   const [hovered, setHovered] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
   const [profile, setProfile] = React.useState<{ jobTitle: string; location: string } | null>(null);
   const loadedRef = React.useRef(false);
+  const wrapRef = React.useRef<HTMLSpanElement>(null);
+  const isMobile = !!props.isMobile;
+  // v26.37: Auf dem Handy gibt es kein Hover — die Karte wird per Tap geöffnet
+  // und schließt beim Tap außerhalb.
+  React.useEffect(() => {
+    if (!isMobile || !hovered) return;
+    const onDocDown = (e: Event): void => {
+      if (wrapRef.current && e.target instanceof Node && !wrapRef.current.contains(e.target)) {
+        setHovered(false);
+      }
+    };
+    document.addEventListener('pointerdown', onDocDown);
+    return () => document.removeEventListener('pointerdown', onDocDown);
+  }, [isMobile, hovered]);
   React.useEffect(() => {
     if (!hovered || loadedRef.current) return;
     loadedRef.current = true;
@@ -1168,9 +1186,11 @@ function DevName(props: { name: string; email: string }): React.ReactElement {
 
   return (
     <span
-      style={{ position: 'relative', cursor: 'default', display: 'inline-block' }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      ref={wrapRef}
+      style={{ position: 'relative', cursor: isMobile ? 'pointer' : 'default', display: 'inline-block' }}
+      onMouseEnter={isMobile ? undefined : () => setHovered(true)}
+      onMouseLeave={isMobile ? undefined : () => setHovered(false)}
+      onClick={isMobile ? (e) => { e.stopPropagation(); setHovered(h => !h); } : undefined}
     >
       <span style={{ textDecoration: hovered ? 'underline' : 'none', textDecorationColor: 'var(--dex-green)' }}>
         {props.name}
@@ -1182,7 +1202,10 @@ function DevName(props: { name: string; email: string }): React.ReactElement {
           background: '#fff', borderRadius: 10, padding: '10px 12px',
           boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
           display: 'flex', alignItems: 'center', gap: 10,
-          whiteSpace: 'nowrap', zIndex: 20, pointerEvents: 'none',
+          whiteSpace: isMobile ? 'normal' : 'nowrap',
+          maxWidth: isMobile ? 'calc(100vw - 24px)' : undefined,
+          width: isMobile ? 'max-content' : undefined,
+          zIndex: 20, pointerEvents: 'none',
           border: '1px solid var(--dex-gray-200)',
         }}>
           {failed ? (

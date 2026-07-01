@@ -16,6 +16,9 @@ export function waitlistSection(locale: 'de' | 'en'): ManualSection {
       ? 'Wie Wartelisten funktionieren, wie das automatische Nachrücken abläuft und was Organizer/Admins beim Abmelden sehen. Inkl. getrennte Wartelisten pro Starter-Typ bei Lauf-Events (B2Run).'
       : 'How waitlists work, how automatic promotion happens, and what organizers/admins see when cancelling. Includes split waitlists per starter type for running events (B2Run).',
     visibleFor: ['User', 'Organizer', 'Admin'],
+    keywords: isDe
+      ? 'Warteliste Wartelisten Nachrücken nachrücken Nachrücker Nachrück-Mail Platz frei ausgebucht voll volles Event automatisch nachrücken Abmeldung abmelden Promote Durchstarter Funstarter Starter-Typ Startblock Split-Kapazität getrennte Warteliste gemeinsame Warteliste geteilte Warteliste B2Run Lauf-Event Power Automate Flow DEX_IDReorder Toast Admin-Center Nachgerückt'
+      : 'waitlist waiting list promotion promote promoted move up next in line seat free full sold out fully booked cancellation cancel Durchstarter Funstarter starter type startblock split capacity separate waitlist shared waitlist B2Run running event power automate flow DEX_IDReorder toast admin center promoted',
     perspectives: [
       {
         perspective: 'user',
@@ -49,8 +52,8 @@ export function waitlistSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Bei Split-Kapazitäten gibt es zwei unabhängige Wartelisten: eine für Durchstarter und eine für Funstarter. Wenn sich ein Durchstarter abmeldet, rückt nur der nächste Durchstarter-Warteliste-Teilnehmer nach — und nicht etwa ein Funstarter, der sich gerne umstellen würde. Dein gewünschter Starter-Typ wird dabei respektiert.'
-                  : 'With split capacities there are two independent waitlists — one per type. When a Durchstarter cancels, only the next Durchstarter waitlist entry is promoted (not a Funstarter who would happily switch). Your preferred starter type is always respected.'}
+                  ? 'Bei Split-Kapazitäten gibt es standardmäßig zwei unabhängige Wartelisten: eine für Durchstarter und eine für Funstarter. Wenn sich ein Durchstarter abmeldet, rückt nur der nächste Durchstarter-Warteliste-Teilnehmer nach — und nicht etwa ein Funstarter, der sich gerne umstellen würde. Dein gewünschter Starter-Typ wird dabei respektiert. Hat der Organizer allerdings die Option „Gemeinsame Warteliste" aktiviert, gibt es nur eine einzige Warteliste über beide Typen — dann rückt beim Frei-Werden eines Platzes der nächste Wartende unabhängig vom Starter-Typ nach.'
+                  : 'With split capacities there are, by default, two independent waitlists — one per type. When a Durchstarter cancels, only the next Durchstarter waitlist entry is promoted (not a Funstarter who would happily switch). Your preferred starter type is respected. However, if the organizer enabled the „Shared waitlist" option, there is a single waitlist across both types — a freed seat then promotes the next person in line regardless of starter type.'}
               </>
             ),
           },
@@ -126,7 +129,7 @@ export function waitlistSection(locale: 'de' | 'en'): ManualSection {
               <>
                 {isDe
                   ? 'Wenn du einen Teilnehmer direkt in der SharePoint-Teilnehmerliste löschst (ohne die App), wird KEIN DEX_IDReorder-Item geschrieben — d.h. der Flow läuft nicht, niemand rückt nach, und die TeilnehmerIDs bleiben lückenhaft. Lösung: im Admin-Center einmal auf "IDs neu vergeben" klicken (macht client-seitig einen Zwei-Pass-Reorder mit Angemeldeten zuerst, Warteliste danach).'
-                  : 'If you delete a participant directly in the SharePoint participant list (bypassing the app), NO DEX_IDReorder item is written — the flow does not run, nobody is promoted, and participant IDs are left with gaps. Fix: click "Reorder IDs" in the admin center (does a client-side two-pass reorder: registered first, waitlist after).'}
+                  : 'If you delete a participant directly in the SharePoint participant list (bypassing the app), NO DEX_IDReorder item is written — the flow does not run, nobody is promoted, and participant IDs are left with gaps. Fix: click "Reassign IDs" in the admin center (does a client-side two-pass reorder: registered first, waitlist after).'}
               </>
             ),
             warning: isDe
@@ -140,7 +143,7 @@ export function waitlistSection(locale: 'de' | 'en'): ManualSection {
               <>
                 {isDe
                   ? 'Wenn der DEX_IDReorder-Flow bei einem Eintrag fehlschlägt (z.B. Graph-API-Timeout), wird der DEX_IDReorder-Listen-Eintrag auf Status="Failed" gesetzt. In dem Fall: (a) prüfe den Flow-Run-Verlauf in Power Automate für Details, (b) klicke im Admin-Center auf "IDs neu vergeben" um den Zwei-Pass-Reorder manuell zu triggern, (c) falls Nachrücken fehlt: einen Warteliste-Teilnehmer manuell per "Anmelden"-Button aktivieren.'
-                  : 'If the DEX_IDReorder flow fails on an entry (e.g. Graph API timeout), the DEX_IDReorder list item is set to Status="Failed". Action: (a) check the flow run history in Power Automate for details, (b) click "Reorder IDs" in the admin center to trigger the two-pass reorder manually, (c) if promotion is missing: manually activate a waitlist entry via "Register"-button.'}
+                  : 'If the DEX_IDReorder flow fails on an entry (e.g. Graph API timeout), the DEX_IDReorder list item is set to Status="Failed". Action: (a) check the flow run history in Power Automate for details, (b) click "Reassign IDs" in the admin center to trigger the two-pass reorder manually, (c) if promotion is missing: manually activate a waitlist entry via "Register"-button.'}
               </>
             ),
           },

@@ -506,7 +506,7 @@ export default function AudiencePicker({
             ))}
           </div>
         )}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
           <button
             type="button"
             className="btn btn-secondary"
@@ -964,8 +964,8 @@ export default function AudiencePicker({
                       </div>
                     )}
                   </div>
-                  <div style={{ maxHeight: 420, overflowY: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 6 }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                  <div style={{ maxHeight: 420, overflowY: 'auto', overflowX: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 6 }}>
+                    <table style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                       <thead style={{ position: 'sticky', top: 0, background: 'var(--dex-gray-50, #fafafa)', zIndex: 1 }}>
                         <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
                           <th style={{ ...headerStyle, width: 36, cursor: 'default' }} />
@@ -1230,8 +1230,8 @@ export default function AudiencePicker({
                               style={{ paddingLeft: 32, fontSize: '0.82rem' }}
                             />
                           </div>
-                          <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 8 }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                          <div style={{ maxHeight: 320, overflowY: 'auto', overflowX: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 8 }}>
+                            <table style={{ width: '100%', minWidth: 520, borderCollapse: 'collapse', fontSize: '0.8rem' }}>
                               <thead>
                                 <tr style={{ borderBottom: '1px solid var(--dex-gray-200)' }}>
                                   <th style={{ width: 40, padding: '6px 8px', position: 'sticky', top: 0, background: '#fff' }} aria-label={isDe ? 'Foto' : 'Photo'} />
@@ -1339,7 +1339,8 @@ export default function AudiencePicker({
                 <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-500)', marginBottom: 8 }}>
                   {emailSearchResults.length} Ergebnis{emailSearchResults.length !== 1 ? 'se' : ''}:
                 </p>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', minWidth: 560, borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                   <thead>
                     <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
                       <th style={{ textAlign: 'left', padding: 6, width: 44 }} aria-label={isDe ? 'Foto' : 'Photo'} />
@@ -1423,6 +1424,7 @@ export default function AudiencePicker({
                     })}
                   </tbody>
                 </table>
+                </div>
               </div>
             )}
             {/* v22.8: expliziter Schließen-Button (Backdrop-Klick schließt nicht mehr). */}

@@ -18,6 +18,7 @@ import { useRoles } from '../context/RoleContext';
 import { useCurrentUser } from '../context/UserContext';
 import { EventService } from '../services/EventService';
 import { useLanguage } from '../context/LanguageContext';
+import { useIsMobile } from '../utils/useIsMobile';
 import OrganizerList from './OrganizerList';
 import { ChevronDown, ChevronUp } from './Icons';
 // v20.0 (Audit): qr-scanner nur noch als Typ statisch importieren — die
@@ -46,6 +47,7 @@ export default function CheckInPage(): React.ReactElement {
   const { currentUser } = useCurrentUser();
   const { t, locale } = useLanguage();
   const isDe = locale === 'de';
+  const isMobile = useIsMobile();
   // v6.22 / v13.11: aktueller User-E-Mail über UserContext — der respektiert
   // die Demo-Impersonation (sonst greift hier immer die echte SPFx-Identität
   // des Admins, und Demo-Modus „Check-In-Team" käme nie an die Check-In-
@@ -687,7 +689,9 @@ export default function CheckInPage(): React.ReactElement {
                         onClick={e => { e.stopPropagation(); setExpandedCheckInParents(p => ({ ...p, [parent.id]: !p[parent.id] })); }}
                         title={isDe ? (expanded ? 'Sub-Events einklappen' : 'Sub-Events anzeigen') : (expanded ? 'Collapse sub-events' : 'Show sub-events')}
                         style={{
-                          position: 'absolute', top: '50%', right: 14, transform: 'translateY(-50%)',
+                          ...(isMobile
+                            ? { marginTop: 8, alignSelf: 'flex-start' }
+                            : { position: 'absolute', top: '50%', right: 14, transform: 'translateY(-50%)' }),
                           display: 'inline-flex', alignItems: 'center', gap: 6,
                           background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 999,
                           padding: '6px 12px', cursor: 'pointer', color: 'var(--dex-gray-700)',
@@ -1011,7 +1015,7 @@ export default function CheckInPage(): React.ReactElement {
             reduziert. Sichtbar nur wenn Event gewählt + Liste geladen. */}
         {nameSearchEventId && (searchRegsCache[nameSearchEventId] || []).length > 0 && (
           <div style={{
-            display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8,
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(96px, 1fr))', gap: 8,
             marginBottom: 10,
           }}>
             <div style={{
@@ -1146,7 +1150,7 @@ export default function CheckInPage(): React.ReactElement {
                       <div
                         key={reg.Id}
                         style={{
-                          display: 'flex', alignItems: 'center', gap: 12,
+                          display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
                           padding: '10px 12px', border: '1px solid var(--dex-gray-200)',
                           borderRadius: 10, background: '#fff',
                         }}
@@ -1197,7 +1201,7 @@ export default function CheckInPage(): React.ReactElement {
                           background: statusBg, color: statusFg, fontWeight: 600, whiteSpace: 'nowrap',
                         }}>{status}</span>
                         {/* v23.28: Check-in UND No-Show nebeneinander. */}
-                        <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                        <div style={{ display: 'flex', gap: 6, flexShrink: 0, flex: isMobile ? '1 1 100%' : undefined }}>
                           <button
                             type="button"
                             className="btn btn-primary"

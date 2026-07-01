@@ -9,19 +9,22 @@ export function idReorderSection(locale: 'de' | 'en'): ManualSection {
   const isDe = locale === 'de';
   return {
     id: 'id-reorder',
-    title: isDe ? 'IDs neu vergeben & Spalten fixen' : 'Renumber IDs & fix columns',
+    title: isDe ? 'IDs neu vergeben & Spalten fixen' : 'Reassign IDs & fix columns',
     category: 'admin',
     description: isDe
       ? 'Admin-Wartungstools für Teilnehmerlisten: sequentielle IDs und fehlende Spalten.'
       : 'Admin maintenance tools for participant lists: sequential IDs and missing columns.',
     visibleFor: ['Admin'],
+    keywords: isDe
+      ? 'IDs neu vergeben TeilnehmerID TeilnehmerIDs Nummern neu vergeben durchnummerieren Lücken schließen Reorder Neuvergabe Spalten fixen fehlende Spalten fixRegistrationListColumns Schema-Update QuizScore StarterType Reaktivierung erneut anmelden Überbuchung prüfen überbucht Kapazität DEX_IDReorder Power Automate Flow Wartungstool idempotent'
+      : 'reassign IDs renumber IDs participant ID participant IDs renumber sequential close gaps reorder fix columns missing columns fixRegistrationListColumns schema update QuizScore StarterType reactivation re-register overbooking check overbooked capacity DEX_IDReorder power automate flow maintenance tool idempotent',
     perspectives: [
       {
         perspective: 'admin',
         steps: [
           {
             number: 1,
-            title: isDe ? '"IDs neu vergeben"' : '"Renumber IDs"',
+            title: isDe ? '"IDs neu vergeben"' : '"Reassign IDs"',
             description: (
               <>
                 {isDe
@@ -83,7 +86,7 @@ export function idReorderSection(locale: 'de' | 'en'): ManualSection {
             ),
             tip: isDe
               ? 'Soll die Liste nach mehreren Reaktivierungen wieder lückenlos durchnummeriert sein, einmal "IDs neu vergeben" klicken — der Flow sortiert Aktive (1..N) und Warteliste (N+1..N+M) sauber.'
-              : 'After several reactivations, click "Renumber IDs" once to get a gap-free sequence — the flow sorts active (1..N) and waitlist (N+1..N+M) cleanly.',
+              : 'After several reactivations, click "Reassign IDs" once to get a gap-free sequence — the flow sorts active (1..N) and waitlist (N+1..N+M) cleanly.',
           },
           {
             number: 5,

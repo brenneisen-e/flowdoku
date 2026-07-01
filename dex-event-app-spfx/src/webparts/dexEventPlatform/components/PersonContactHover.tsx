@@ -85,10 +85,30 @@ export function PersonContactHover(props: PersonContactHoverProps): React.ReactE
     }
   };
 
+  // v26.36: Auf Touch-/Handy-Geräten gibt es kein Hover — ein TAP auf den Avatar
+  // öffnet/schließt die Kontaktkarte (E-Mail + Teams-Chat sonst unerreichbar).
+  // Desktop-Hover bleibt unverändert.
+  const toggleOnTap = (e: React.MouseEvent): void => {
+    if (!email) return;
+    e.stopPropagation();
+    if (open) { cancelClose(); setOpen(false); } else { cancelClose(); openPopover(); }
+  };
+
+  // v26.36: Tap außerhalb schließt die (per Tap geöffnete) Karte wieder.
+  React.useEffect(() => {
+    if (!open) return;
+    const onDocClick = (ev: MouseEvent): void => {
+      if (wrapperRef.current && !wrapperRef.current.contains(ev.target as Node)) setOpen(false);
+    };
+    document.addEventListener('click', onDocClick, true);
+    return () => document.removeEventListener('click', onDocClick, true);
+  }, [open]);
+
   return (
     <span ref={wrapperRef} style={{ display: 'inline-flex', flexShrink: 0 }}
       onMouseEnter={() => { cancelClose(); openPopover(); }}
       onMouseLeave={scheduleClose}
+      onClick={toggleOnTap}
     >
       {!failed && email ? (
         <img
@@ -109,20 +129,24 @@ export function PersonContactHover(props: PersonContactHoverProps): React.ReactE
             position: 'fixed',
             top: coords.above ? undefined : coords.y,
             bottom: coords.above ? window.innerHeight - coords.y : undefined,
-            left: coords.x, transform: 'translateX(-50%)', zIndex: 3000,
+            // v26.36: x-Position in den Viewport clampen, damit die (auf 90vw
+            // gedeckelte) Karte auf schmalen Handy-Screens nie halb aus dem Bild
+            // ragt. halfWidth = halbe maximale Kartenbreite (90vw).
+            left: (() => { const hw = Math.min(180, window.innerWidth * 0.45); return Math.min(Math.max(coords.x, hw), window.innerWidth - hw); })(),
+            transform: 'translateX(-50%)', zIndex: 3000,
             background: '#fff', borderRadius: 10, padding: 12,
             boxShadow: '0 8px 24px rgba(0,0,0,0.18)', border: '1px solid var(--dex-gray-200)',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 180,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 180, maxWidth: '90vw',
           }}
         >
           {!failed && (
             <img src={photoUrl(email, 'L')} alt={name} onError={() => setFailed(true)}
               style={{ width: 96, height: 96, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-200)' }} />
           )}
-          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--dex-gray-800)', textAlign: 'center' }}>{name}</span>
+          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--dex-gray-800)', textAlign: 'center', whiteSpace: 'normal', wordBreak: 'break-word' }}>{name}</span>
           {effectiveSub && <span style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', textAlign: 'center' }}>{effectiveSub}</span>}
           <a href={`mailto:${email}`}
-            style={{ fontSize: '0.75rem', color: 'var(--dex-green, #86bc25)', textDecoration: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
+            style={{ fontSize: '0.75rem', color: 'var(--dex-green, #86bc25)', textDecoration: 'none', fontWeight: 600, whiteSpace: 'normal', wordBreak: 'break-all', textAlign: 'center' }}
             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
             onMouseLeave={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
           >{email}</a>

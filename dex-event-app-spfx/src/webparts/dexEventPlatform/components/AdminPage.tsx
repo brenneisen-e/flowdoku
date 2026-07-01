@@ -26,6 +26,7 @@ import { isEventOver } from '../utils/eventFormat';
 // v20.2: + statische Check-in-URL für die QR-Kachel im Event-Detail.
 // v20.3: + Default-Zeitfenster (2 Std. vor Start bis Event-Ende) zur Vorbelegung.
 import { generateSelfCheckInToken, buildStaticCheckInUrl, defaultCheckInWindow } from '../utils/selfCheckIn';
+import { useIsMobile } from '../utils/useIsMobile';
 // v20.0 (Audit): xlsx + qrcode werden nicht mehr statisch importiert, sondern
 // erst beim tatsächlichen Gebrauch (Export-Klick / QR-Vorschau) als eigener
 // Chunk nachgeladen — spart ~1 MB im Haupt-Bundle.
@@ -864,6 +865,7 @@ type ConsolidatedRow = {
 };
 
 export default function AdminPage(): React.ReactElement {
+  const isMobile = useIsMobile();
   const { navigate, selectedEventId } = useNavigation();
   // v14.11: zusätzlich `events` (alle Events inkl. Sub-Events) als `allEvents`
   // für die Parent-Lookup-Logik im konsolidierten View + im Sub-Event-Detail.
@@ -5889,7 +5891,10 @@ export default function AdminPage(): React.ReactElement {
         const closable = adminToast.kind !== 'cancelling';
         return (
           <div style={{
-            position: 'fixed', top: 80, right: 20, zIndex: 1000, maxWidth: 460,
+            position: 'fixed', top: 80, zIndex: 1000,
+            ...(isMobile
+              ? { left: 12, right: 12, maxWidth: 'min(460px, calc(100vw - 24px))' }
+              : { right: 20, maxWidth: 460 }),
             padding: '14px 18px', borderRadius: 'var(--dex-radius, 12px)',
             background: '#fff',
             border: `1px solid ${accent}`,
@@ -6446,8 +6451,8 @@ export default function AdminPage(): React.ReactElement {
               {(() => {
                 const rowStyle: React.CSSProperties = {
                   display: 'grid',
-                  gridTemplateColumns: '160px 1fr',
-                  gap: 12,
+                  gridTemplateColumns: isMobile ? '1fr' : '160px 1fr',
+                  gap: isMobile ? 2 : 12,
                   padding: '10px 0',
                   borderBottom: '1px solid var(--dex-gray-200)',
                   fontSize: '0.9rem',
@@ -8553,7 +8558,7 @@ export default function AdminPage(): React.ReactElement {
                 </p>
               ) : (
                 <>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 24 }}>
                     <div style={{ padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 12, textAlign: 'center' }}>
                       <div style={{ fontSize: '1.6rem', fontWeight: 700, color: 'var(--dex-green-dark, #6b9a1e)' }}>{totalCompleted}</div>
                       <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>Abgeschlossen</div>
@@ -9224,6 +9229,39 @@ export default function AdminPage(): React.ReactElement {
           const count = teamEntries.length;
           const canManage = isAdmin || isOrganizerFor(selectedEvent);
 
+          // v26.x (Mobile): HTML5-Drag&Drop feuert auf Touch-Geräten nicht.
+          // Deshalb auf dem Handy pro Person ein simples Auswahlmenü zum
+          // Umsortieren anbieten — reine Zusatz-UI, die Drag-Logik bleibt
+          // unangetastet. Nutzt denselben Pfad (moveRegToTeam) wie der Drop.
+          const teamSelectOptions = teamEntries.map(te => ({
+            tid: te.tid,
+            label: te.members.find(mm => !!mm.TeamName)?.TeamName || `${selectedEvent.teamTermSingular || 'Team'} ${te.tid}`,
+          }));
+          const MobileTeamSelect = (reg: SPRegistration): React.ReactElement => {
+            const curTid = reg.TeamId || '';
+            return (
+              <select
+                value={curTid}
+                aria-label={isDe ? 'Team ändern' : 'Change team'}
+                onChange={e => {
+                  const target = e.target.value;
+                  const opt = teamSelectOptions.find(o => o.tid === target);
+                  moveRegToTeam(reg, target, opt?.label).catch(() => { /* */ });
+                }}
+                style={{
+                  marginTop: 6, width: '100%', fontSize: '0.82rem',
+                  padding: '6px 8px', borderRadius: 8,
+                  border: '1px solid var(--dex-gray-300)', background: '#fff',
+                }}
+              >
+                <option value="">{isDe ? `Ohne ${selectedEvent.teamTermSingular || 'Team'}` : `No ${selectedEvent.teamTermSingular || 'team'}`}</option>
+                {teamSelectOptions.map(o => (
+                  <option key={o.tid} value={o.tid}>{o.label}</option>
+                ))}
+              </select>
+            );
+          };
+
           const statusBadge = (st: string): React.ReactElement | null => {
             if (!st || st === 'Angemeldet') return null;
             const colorMap: Record<string, string> = {
@@ -9369,6 +9407,7 @@ export default function AdminPage(): React.ReactElement {
                                 <div style={{ fontSize: '0.88rem', fontWeight: 500 }}>{name}{statusBadge(m.Status)}</div>
                                 <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)' }}>{m.ParticipantEmail}</div>
                                 {dept && <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', marginTop: 1 }}>{dept}</div>}
+                                {isMobile && canManage && teamSelectOptions.length > 0 && MobileTeamSelect(m)}
                               </div>
                             </div>
                           );
@@ -9478,6 +9517,7 @@ export default function AdminPage(): React.ReactElement {
                                       <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', marginTop: 1 }}>{dept}</div>
                                     );
                                   })()}
+                                  {isMobile && canManage && MobileTeamSelect(m)}
                                 </div>
                                 {isLead && (
                                   <span style={{
@@ -11847,7 +11887,7 @@ export default function AdminPage(): React.ReactElement {
                 </div>
               );
               return (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   {/* Anrede zuerst (read-only) */}
                   <div>{renderReadOnly(isDe ? 'Anrede' : 'Salutation', editForm.Anrede || '')}</div>
                   {/* Vorname + Nachname editierbar */}
@@ -11920,7 +11960,7 @@ export default function AdminPage(): React.ReactElement {
                           ? 'Nur diese Felder werden gespeichert.'
                           : 'Only these fields will be saved.'}
                       </p>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                         {selectedEvent.eventSpecificFields.map(cf => {
                           // eslint-disable-next-line @typescript-eslint/no-explicit-any
                           const sp = (cf as any).spInternalName || '';
@@ -12205,7 +12245,7 @@ export default function AdminPage(): React.ReactElement {
               );
             }
             return (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 {parentFields.map(cf => {
                   const value = mainFieldsEditForm[cf.id] || '';
                   const setVal = (v: string): void => setMainFieldsEditForm(prev => ({ ...prev, [cf.id]: v }));

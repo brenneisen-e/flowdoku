@@ -18,6 +18,9 @@ export function subEventsSection(locale: 'de' | 'en'): ManualSection {
       ? 'Innerhalb eines Hauptevents mehrere Sessions anlegen — jede mit eigenem Termin, Ort, Kapazität, eigener An-/Abmelde-Mail und eigenem Outlook-Kalendereintrag. Seit v6.4 sind Sub-Events eigenständige DEX_Events-Items mit parentEventId — dadurch funktionieren Teilnehmerlisten, Warteliste, Outlook-Termine, Custom-Fields und Mail-Templates identisch zu Top-Level-Events (ohne Sonderlogik).'
       : 'Create multiple sessions inside a main event — each with its own date, location, capacity, own registration/cancellation emails and dedicated Outlook calendar entry. Since v6.4 sub-events are standalone DEX_Events items with parentEventId — so participant lists, waitlist, Outlook invites, custom fields and email templates work identically to top-level events (no special logic).',
     visibleFor: ['User', 'Organizer', 'Admin'],
+    keywords: isDe
+      ? 'Sub-Event Sub-Events Subevent Sessions Workshop Workshops Side-Event Nebenveranstaltung Programmpunkt Programmbaustein Track Breakout Break-out Session mehrtägig Offsite Networking-Dinner Kick-off Session buchen dazubuchen Session-Auswahl Nur Sessions Haupt-Event Bezeichnung umbenennen parentEventId Schritt 3 Sub-Events nutzen Sub-Event-Filter Auslastung pro Session'
+      : 'sub-event sub-events subevent session sessions workshop workshops side-event side event breakout break-out track programme item building block multi-day offsite networking dinner kick-off session book add-on session selection sessions only main event label rename parentEventId step 3 use sub-events sub-event filter per-session capacity',
     perspectives: [
       {
         perspective: 'organizer',
@@ -39,8 +42,8 @@ export function subEventsSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Im Event-Wizard zu Reiter 5 "Kommunikation" wechseln — dort gibt es unterhalb der E-Mail-Templates die Sektion "Sub-Events". Pro Session legst du Titel, Beschreibung, Ort, Start-/Endzeit und optional eine Max-Teilnehmerzahl sowie einen Anmeldeschluss fest. Zwei Schalter pro Session steuern, ob eigene Mails bzw. ein eigener Outlook-Termin erzeugt werden.'
-                  : 'In the event wizard, go to step 5 "Communication" — below the email template list you will find the "Sub-events" section. For each session define title, description, location, start/end time and optionally a capacity and registration deadline. Two toggles per session control whether dedicated emails and/or a dedicated Outlook calendar entry are created.'}
+                  ? 'Im Event-Wizard zu Schritt 3 "Sub-Events" wechseln und den Schalter "Sub-Events nutzen?" aktivieren — die gesamte Sub-Event-Konfiguration klappt darunter auf. Pro Session legst du Titel, Beschreibung, Ort, Start-/Endzeit und optional eine Max-Teilnehmerzahl sowie einen Anmeldeschluss fest. Zwei Schalter pro Session steuern, ob eigene Mails bzw. ein eigener Outlook-Termin erzeugt werden.'
+                  : 'In the event wizard, go to step 3 "Sub-events" and flip the "Use sub-events?" toggle — the entire sub-event configuration unfolds below it. For each session define title, description, location, start/end time and optionally a capacity and registration deadline. Two toggles per session control whether dedicated emails and/or a dedicated Outlook calendar entry are created.'}
                 <br /><br />
                 <strong>{isDe ? 'Outlook nachträglich aktivieren — ohne Teilnehmer-Verlust (v11.69):' : 'Enabling Outlook after the fact — without losing attendees (v11.69):'}</strong>{' '}
                 {isDe
@@ -50,13 +53,13 @@ export function subEventsSection(locale: 'de' | 'en'): ManualSection {
             ),
             mockup: (
               <AppPreview
-                label={isDe ? 'Wizard Schritt 5: Sub-Events verwalten (echte Ansicht)' : 'Wizard step 5: Manage sub-events (real view)'}
+                label={isDe ? 'Wizard Schritt 3: Sub-Events verwalten (echte Ansicht)' : 'Wizard step 3: Manage sub-events (real view)'}
                 role="Organizer"
                 page="edit-event"
                 selectedEventId={DEMO_EVENT_ID}
                 width={1024}
                 device="laptop"
-                initialStep={4}
+                initialStep={2}
               >
                 <Header />
                 <EventCreationPage />
@@ -143,7 +146,7 @@ export function subEventsSection(locale: 'de' | 'en'): ManualSection {
             ),
           },
           {
-            number: 3,
+            number: 4,
             title: isDe ? 'Sessions unter "My Events" verwalten' : 'Manage sessions in "My Events"',
             description: (
               <>

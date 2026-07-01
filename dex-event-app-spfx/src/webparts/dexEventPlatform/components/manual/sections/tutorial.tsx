@@ -14,6 +14,9 @@ export function tutorialSection(locale: 'de' | 'en'): ManualSection {
       ? 'Die interaktive Tour durch die App — Schritt für Schritt, direkt auf den echten Seiten.'
       : 'The interactive tour through the app — step by step, directly on the real pages.',
     visibleFor: ['User', 'Organizer', 'Admin'],
+    keywords: isDe
+      ? 'Tutorial Onboarding Tour geführte Tour Einführung Rundgang Spotlight Hilfe interaktiv Teilnehmer-Tutorial Organizer-Tutorial Demo Startseite Willkommensseite Neu hier'
+      : 'tutorial onboarding tour guided tour walkthrough spotlight help interactive attendee tutorial organizer tutorial demo landing welcome page new here',
     perspectives: [
       {
         perspective: 'user',
@@ -24,8 +27,8 @@ export function tutorialSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Auf der Willkommensseite (ganz am Anfang der App) findest du unter dem Start-Button die grüne Sprechblase „Neu hier? Starte das Tutorial". Ein Klick darauf startet die geführte Tour.'
-                  : 'On the welcome page (the very first screen of the app) you find the green bubble "New here? Start the tutorial" below the start button. One click starts the guided tour.'}
+                  ? 'Oben mittig im Header findest du die grüne Sprechblase „Neu hier? Starte das DEX Tutorial". Ein Klick darauf startet die geführte Tour. Über das „×" daneben kannst du den Hinweis ausblenden.'
+                  : 'In the center of the header you find the green bubble "New here? Start the DEX tutorial". One click starts the guided tour. The "×" next to it hides the hint.'}
               </>
             ),
             tip: isDe

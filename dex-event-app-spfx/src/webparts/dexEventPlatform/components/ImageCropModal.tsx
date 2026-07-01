@@ -42,7 +42,12 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
   const [error, setError] = React.useState('');
   const imgRef = React.useRef<HTMLImageElement | null>(null);
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
-  const dragRef = React.useRef<{ startX: number; startY: number; baseX: number; baseY: number } | null>(null);
+  // v26.x: `scale` = FRAME-Einheiten pro gerendertem CSS-Pixel. Auf dem Handy
+  // wird die Canvas responsiv kleiner als FRAME (320) gerendert; die Drag-Deltas
+  // (CSS-Pixel) müssen daher in FRAME-Einheiten umgerechnet werden, damit der
+  // Offset (der in FRAME-Einheiten in drawTo einfließt) weiterhin stimmt und der
+  // Zuschnitt korrekt auf das Ausgabebild (OUT) abgebildet wird.
+  const dragRef = React.useRef<{ startX: number; startY: number; baseX: number; baseY: number; scale: number } | null>(null);
 
   // Bild laden, State zurücksetzen beim Öffnen.
   React.useEffect(() => {
@@ -104,13 +109,19 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
   if (!open) return null;
 
   const onPointerDown = (e: React.MouseEvent): void => {
-    dragRef.current = { startX: e.clientX, startY: e.clientY, baseX: offset.x, baseY: offset.y };
+    // Skalierungsfaktor aus der tatsächlich gerenderten Canvas-Breite ableiten
+    // (FRAME-Einheiten pro CSS-Pixel). Auf dem Desktop ist die Breite == FRAME,
+    // also scale == 1 (unverändertes Verhalten); auf dem Handy < FRAME → scale > 1.
+    const rect = e.currentTarget.getBoundingClientRect();
+    const scale = rect.width > 0 ? FRAME / rect.width : 1;
+    dragRef.current = { startX: e.clientX, startY: e.clientY, baseX: offset.x, baseY: offset.y, scale };
   };
   const onPointerMove = (e: React.MouseEvent): void => {
     if (!dragRef.current) return;
+    const { scale } = dragRef.current;
     setOffset({
-      x: dragRef.current.baseX + (e.clientX - dragRef.current.startX),
-      y: dragRef.current.baseY + (e.clientY - dragRef.current.startY),
+      x: dragRef.current.baseX + (e.clientX - dragRef.current.startX) * scale,
+      y: dragRef.current.baseY + (e.clientY - dragRef.current.startY) * scale,
     });
   };
   const endDrag = (): void => { dragRef.current = null; };
@@ -146,7 +157,11 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
           : 'This is exactly how the image will be saved and shown everywhere (registration page, card, mail). Drag to move, slider to zoom.'}
       </p>
 
-      {/* Live-Canvas-Vorschau = exaktes Ergebnis */}
+      {/* Live-Canvas-Vorschau = exaktes Ergebnis.
+          Das Backing-Store bleibt FRAME×FRAME (Zeichen-/Export-Mathematik
+          unverändert); per CSS wird die Canvas nur responsiv verkleinert, damit
+          sie auf schmalen Karten (Handy ~295px) nicht überläuft. Die Drag-Math
+          rechnet die CSS-Pixel über den Skalierungsfaktor in FRAME-Einheiten um. */}
       <div style={{ display: 'flex', justifyContent: 'center' }}>
         <canvas
           ref={canvasRef}
@@ -157,7 +172,8 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
           onMouseUp={endDrag}
           onMouseLeave={endDrag}
           style={{
-            width: FRAME, height: FRAME, cursor: 'grab', userSelect: 'none',
+            width: '100%', maxWidth: FRAME, aspectRatio: '1 / 1', height: 'auto',
+            cursor: 'grab', userSelect: 'none',
             borderRadius: 12, boxShadow: 'inset 0 0 0 1px var(--dex-gray-200)',
             background: '#f3f3f1', touchAction: 'none',
           }}

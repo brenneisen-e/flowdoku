@@ -320,7 +320,7 @@ const BulkUserImportModal: React.FC<Props> = ({ open, onClose, title, descriptio
                 <ul style={{ margin: '4px 0 0 16px', padding: 0 }}>
                   {report.added.map((a, i) => (
                     <li key={`a-${i}`}>
-                      <strong>{a.lastname}</strong>{a.firstname ? `, ${a.firstname}` : ''} <span style={{ color: 'var(--dex-gray-400)' }}>— {a.email}</span>
+                      <strong>{a.lastname}</strong>{a.firstname ? `, ${a.firstname}` : ''} <span style={{ color: 'var(--dex-gray-400)', overflowWrap: 'anywhere' }}>— {a.email}</span>
                     </li>
                   ))}
                 </ul>
@@ -332,7 +332,7 @@ const BulkUserImportModal: React.FC<Props> = ({ open, onClose, title, descriptio
                 <ul style={{ margin: '4px 0 0 16px', padding: 0, color: 'var(--dex-gray-500)' }}>
                   {report.alreadyIn.map((a, i) => (
                     <li key={`w-${i}`}>
-                      <strong>{a.lastname}</strong>{a.firstname ? `, ${a.firstname}` : ''} <span>— {a.email}</span>
+                      <strong>{a.lastname}</strong>{a.firstname ? `, ${a.firstname}` : ''} <span style={{ overflowWrap: 'anywhere' }}>— {a.email}</span>
                     </li>
                   ))}
                 </ul>
@@ -363,7 +363,7 @@ const BulkUserImportModal: React.FC<Props> = ({ open, onClose, title, descriptio
                           borderRadius: 4, cursor: 'pointer', fontSize: '0.8rem',
                         }}
                       >
-                        <strong>{m.displayName}</strong> <span style={{ color: 'var(--dex-gray-400)' }}>{m.email}</span>
+                        <strong>{m.displayName}</strong> <span style={{ color: 'var(--dex-gray-400)', overflowWrap: 'anywhere' }}>{m.email}</span>
                       </button>
                     ))}
                   </div>

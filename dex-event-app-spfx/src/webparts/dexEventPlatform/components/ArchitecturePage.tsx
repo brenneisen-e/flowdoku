@@ -126,7 +126,7 @@ export default function ArchitecturePage(): React.ReactElement {
 
   // ---- Styles ----
   const band: React.CSSProperties = { border: `1px solid var(--dex-gray-200)`, borderRadius: 12, background: '#fff', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', overflow: 'hidden', marginBottom: 6 };
-  const bandHead: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', background: 'var(--dex-gray-50, #f7f8f9)', borderBottom: '1px solid var(--dex-gray-200)' };
+  const bandHead: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '10px 16px', background: 'var(--dex-gray-50, #f7f8f9)', borderBottom: '1px solid var(--dex-gray-200)' };
   const bandTitle: React.CSSProperties = { fontWeight: 700, color: GREEN_DARK, fontSize: '1rem' };
   const bandSub: React.CSSProperties = { fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginLeft: 'auto', textAlign: 'right' };
   const grid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(230px, 1fr))', gap: 10, padding: 14 };
@@ -240,7 +240,7 @@ export default function ArchitecturePage(): React.ReactElement {
       <h2 style={{ fontSize: '1.1rem', color: GREEN_DARK, marginTop: 26 }}>{isDe ? 'Typische Datenflüsse' : 'Typical data flows'}</h2>
       <div style={{ ...band, marginBottom: 20 }}>
         {dataFlows.map((f, i) => (
-          <div key={i} style={{ display: 'flex', gap: 12, padding: '11px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--dex-gray-100)', alignItems: 'baseline' }}>
+          <div key={i} style={{ display: 'flex', gap: 12, flexWrap: 'wrap', padding: '11px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--dex-gray-100)', alignItems: 'baseline' }}>
             <span style={{ flexShrink: 0, minWidth: 150, fontWeight: 700, color: GREEN_DARK, fontSize: '0.85rem' }}>{f.name}</span>
             <span style={{ fontSize: '0.83rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>{isDe ? f.de : f.en}</span>
           </div>

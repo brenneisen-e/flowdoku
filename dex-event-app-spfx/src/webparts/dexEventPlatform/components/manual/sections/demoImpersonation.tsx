@@ -17,6 +17,9 @@ export function demoImpersonationSection(locale: 'de' | 'en'): ManualSection {
       ? 'Als Admin testweise als beliebiger User mit gewähltem Standort durch die App navigieren — ohne dich selbst auszuloggen.'
       : 'As an admin, act as any chosen user with a selected location to test the app — without logging out.',
     visibleFor: ['Admin'],
+    keywords: isDe
+      ? 'Demo-Modus Impersonation als User testen Impersonieren Standort Demo User demo.user originalIsAdmin Sticky-Banner localStorage dex_demo_impersonation UI-Test Filter-Test'
+      : 'demo mode impersonation act as user impersonate location Demo User demo.user originalIsAdmin sticky banner localStorage dex_demo_impersonation UI test filter test',
     perspectives: [
       {
         perspective: 'admin',

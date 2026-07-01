@@ -11,6 +11,9 @@ export function peoplePickerScopeSection(locale: 'de' | 'en'): ManualSection {
       ? 'Wie die Personensuche in der App funktioniert — Standard nur Deloitte Deutschland, optional mit internationalen Member-Firms.'
       : 'How the people search in the app works — German member firm by default, international member firms on demand.',
     visibleFor: ['Admin', 'Organizer'],
+    keywords: isDe
+      ? 'Personensuche People-Picker Personenfinder Suche Member-Firm international @deloitte.de @deloitte.com DEALL Toggle Checkbox DECH DEUS DECEMEA Co-Organizer Speaker'
+      : 'people search people picker person finder search member firm international @deloitte.de @deloitte.com DEALL toggle checkbox DECH DEUS DECEMEA co-organizer speaker',
     perspectives: [
       {
         perspective: 'organizer',

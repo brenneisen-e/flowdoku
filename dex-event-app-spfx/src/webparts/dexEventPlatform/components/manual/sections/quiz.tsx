@@ -19,6 +19,7 @@ export function quizSection(locale: 'de' | 'en'): ManualSection {
     description: isDe
       ? 'Quiz-Fragen erstellen, Teilnehmer spielen lassen und Ergebnisse auswerten.'
       : 'Create quiz questions, let attendees play, and review the results.',
+    keywords: 'quiz fun-zone funzone fun zone spiel game frage fragen question questions antwort antworten answers richtig correct mehrere richtige multiple correct correctindices bild image bereiche sections cluster cluster-size rangliste leaderboard scoreboard punktzahl score gewinner winner verlosung giveaway csv export auswertung',
     visibleFor: ['User', 'Organizer', 'Admin'],
     perspectives: [
       {
@@ -27,30 +28,30 @@ export function quizSection(locale: 'de' | 'en'): ManualSection {
         intro: (
           <>
             {isDe
-              ? 'Das Quiz ist Teil von Schritt 7 "Fun-Zone" im Event-Wizard. Du kannst beliebig viele Fragen mit je 4 Antwortoptionen anlegen und eine davon als richtig markieren. Teilnehmer spielen das Quiz auf der Event-Details-Seite — sobald mindestens eine Frage gespeichert ist, erscheint der Start-Button automatisch.'
-              : 'The quiz lives in wizard step 7 "Fun-Zone". You can add any number of questions, each with 4 answer options, and mark one as correct. Attendees play the quiz on the event details page — as soon as at least one question is saved, the start button appears automatically.'}
+              ? 'Das Quiz ist Teil des letzten Wizard-Schritts "Fun-Zone" (Schritt 10). Du kannst beliebig viele Fragen mit je bis zu 4 Antwortoptionen anlegen und eine oder mehrere davon als richtig markieren. Teilnehmer spielen das Quiz auf der Event-Details-Seite — sobald mindestens eine Frage gespeichert ist, erscheint der Start-Button automatisch.'
+              : 'The quiz lives in the final wizard step "Fun-Zone" (step 10). You can add any number of questions, each with up to 4 answer options, and mark one or more as correct. Attendees play the quiz on the event details page — as soon as at least one question is saved, the start button appears automatically.'}
           </>
         ),
         steps: [
           {
             number: 1,
-            title: isDe ? 'Wizard Schritt 7 öffnen' : 'Open wizard step 7',
+            title: isDe ? 'Wizard-Schritt "Fun-Zone" öffnen' : 'Open the "Fun-Zone" wizard step',
             description: (
               <>
                 {isDe
-                  ? 'Nach den üblichen Schritten (Grundlagen, Zeit & Ort, Kapazität, Felder, Kommunikation, Dokumente) erreichst du den letzten Schritt "Fun-Zone". Standardmäßig ist noch keine Frage angelegt — das Quiz ist also optional.'
-                  : 'After the usual steps (Basics, Date & Location, Capacity, Fields, Communication, Documents) you reach the final step "Fun-Zone". By default no question is set — the quiz is optional.'}
+                  ? 'Nach den vorherigen Schritten (Grundlagen, Organizer & Team, Sub-Events, Ort & Programm, Kapazität & Sichtbarkeit, Felder, Kommunikation, Team-Anmeldung, Dokumente) erreichst du als letzten Schritt "Fun-Zone" (Schritt 10). Standardmäßig ist noch keine Frage angelegt — das Quiz ist also optional.'
+                  : 'After the previous steps (Basics, Organizers & Team, Sub-events, Location & Programme, Capacity & Visibility, Fields, Communication, Team Registration, Documents) you reach "Fun-Zone" (step 10) as the final step. By default no question is set — the quiz is optional.'}
               </>
             ),
             mockup: (
               <AppPreview
-                label={isDe ? 'Wizard Schritt 7: Fun-Zone (echte Ansicht)' : 'Wizard step 7: Fun-Zone (real view)'}
+                label={isDe ? 'Wizard Schritt 10: Fun-Zone (echte Ansicht)' : 'Wizard step 10: Fun-Zone (real view)'}
                 role="Organizer"
                 page="edit-event"
                 selectedEventId={DEMO_EVENT_ID}
                 width={1024}
                 device="laptop"
-                initialStep={6}
+                initialStep={9}
               >
                 <Header />
                 <EventCreationPage />
@@ -157,7 +158,7 @@ export function quizSection(locale: 'de' | 'en'): ManualSection {
             ),
           },
           {
-            number: 5,
+            number: 9,
             title: isDe ? 'Vorschau selbst spielen' : 'Play the preview yourself',
             description: (
               <>

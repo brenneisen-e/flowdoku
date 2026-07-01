@@ -13,6 +13,7 @@ import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useDialog } from '../context/DialogContext';
+import { useIsMobile } from '../utils/useIsMobile';
 import { Settings, Users, Mail, Book, FileText, Trash2, Columns, BarChart3 } from './Icons';
 import { RELEASE_NOTES, RELEASE_BEREICHE } from '../data/releaseNotes';
 
@@ -42,6 +43,7 @@ export default function AdminHubPage(): React.ReactElement {
   const { locale } = useLanguage();
   const { confirmDialog, showAlert } = useDialog();
   const isDe = locale === 'de';
+  const isMobile = useIsMobile();
   const adminLike = isAdmin || originalIsAdmin;
 
   const [archTotal, setArchTotal] = React.useState(0);
@@ -431,8 +433,8 @@ export default function AdminHubPage(): React.ReactElement {
       </p>
       <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
         {LIST_DOCS.map((l, i) => (
-          <div key={l.name} style={{ display: 'flex', gap: 14, padding: '12px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--dex-gray-100)', alignItems: 'baseline' }}>
-            <a href={listUrl(l.name)} target="_blank" rel="noopener noreferrer" style={{ flexShrink: 0, fontFamily: 'Consolas, monospace', fontSize: '0.82rem', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700, minWidth: 190, textDecoration: 'none' }}
+          <div key={l.name} style={{ display: 'flex', gap: 14, flexWrap: 'wrap', padding: '12px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--dex-gray-100)', alignItems: 'baseline' }}>
+            <a href={listUrl(l.name)} target="_blank" rel="noopener noreferrer" style={{ flexShrink: 0, fontFamily: 'Consolas, monospace', fontSize: '0.82rem', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700, minWidth: 150, textDecoration: 'none' }}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
             >{l.name}</a>
@@ -470,9 +472,9 @@ export default function AdminHubPage(): React.ReactElement {
           {filteredNotes.length} / {RELEASE_NOTES.length}
         </span>
       </div>
-      <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
+      <div style={{ ...cardStyle, padding: 0, overflow: 'auto' }}>
         {/* Tabellenkopf */}
-        <div style={{ display: 'grid', gridTemplateColumns: '70px 92px 150px 78px 1fr', gap: 12, padding: '10px 16px', background: 'var(--dex-gray-50, #f7f8f9)', borderBottom: '1px solid var(--dex-gray-200)', fontSize: '0.72rem', fontWeight: 700, color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.3 }}>
+        <div style={{ display: isMobile ? 'none' : 'grid', gridTemplateColumns: '70px 92px 150px 78px 1fr', minWidth: 720, gap: 12, padding: '10px 16px', background: 'var(--dex-gray-50, #f7f8f9)', borderBottom: '1px solid var(--dex-gray-200)', fontSize: '0.72rem', fontWeight: 700, color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.3 }}>
           <span>{isDe ? 'Version' : 'Version'}</span>
           <span>{isDe ? 'Datum' : 'Date'}</span>
           <span>{isDe ? 'Bereich' : 'Area'}</span>
@@ -484,7 +486,7 @@ export default function AdminHubPage(): React.ReactElement {
             {isDe ? 'Keine Treffer für diese Filter.' : 'No matches for these filters.'}
           </div>
         ) : filteredNotes.map((n, i) => (
-          <div key={`${n.version}-${i}`} style={{ display: 'grid', gridTemplateColumns: '70px 92px 150px 78px 1fr', gap: 12, padding: '11px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--dex-gray-100)', alignItems: 'baseline' }}>
+          <div key={`${n.version}-${i}`} style={{ display: 'grid', gridTemplateColumns: isMobile ? '64px 1fr' : '70px 92px 150px 78px 1fr', minWidth: isMobile ? 0 : 720, gap: isMobile ? '2px 10px' : 12, padding: '11px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--dex-gray-100)', alignItems: 'baseline' }}>
             <code style={{ fontFamily: 'Consolas, monospace', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>v{n.version}</code>
             <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>{fmtDate(n.date)}</span>
             <span style={{ fontSize: '0.74rem', fontWeight: 600, color: 'var(--dex-gray-700)' }}>{n.bereich}</span>

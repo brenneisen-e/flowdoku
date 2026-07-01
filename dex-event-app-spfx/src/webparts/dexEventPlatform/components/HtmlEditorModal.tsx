@@ -17,6 +17,7 @@ import { Icon } from '@fluentui/react/lib/Icon';
 import { wrapTemplate, replacePlaceholders, replacePlaceholdersPlain, getCachedOrbBase64, getCachedLogoBase64 } from '../services/EmailTemplates';
 // v20.4: modernes Confirm-Modal statt window.confirm.
 import { useDialog } from '../context/DialogContext';
+import { useIsMobile } from '../utils/useIsMobile';
 
 // v9.40: 'plain' = nur HTML rendern, kein Mail-/Outlook-Wrapper. Wird für die
 // Event-Beschreibung im Wizard genutzt — die landet 1:1 auf der Anmelde-Seite.
@@ -224,6 +225,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
   } = props;
 
   const editorRef = React.useRef<HTMLDivElement>(null);
+  const isMobile = useIsMobile();
   // v20.4: App-Modals statt window.confirm/window.prompt.
   const { confirmDialog, promptDialog } = useDialog();
   const savedSelectionRef = React.useRef<Range | null>(null);
@@ -510,7 +512,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
         position: 'fixed', inset: 0, zIndex: 1200,
         background: 'rgba(0,0,0,0.55)',
         display: 'flex', alignItems: 'stretch', justifyContent: 'center',
-        padding: '32px 24px',
+        padding: isMobile ? '12px 8px' : '32px 24px',
       }}
       // v18.43: KEIN Schließen per Backdrop-Klick mehr — der Editor enthält
       // viel Arbeit (Body, Betreff, Logos) und wurde durch einen Fehlklick
@@ -520,7 +522,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
       <div
         className="card"
         style={{
-          width: '100%', maxWidth: leftPanel ? 1600 : 1280, maxHeight: '100%',
+          width: '100%', maxWidth: isMobile ? '100vw' : (leftPanel ? 1600 : 1280), maxHeight: '100%',
           display: 'flex', flexDirection: 'column',
           background: '#fff', borderRadius: 'var(--dex-radius)', overflow: 'hidden',
         }}
@@ -537,15 +539,26 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
           </button>
         </div>
 
-        <div style={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: isMobile ? 'column' : 'row', minHeight: 0, overflow: 'hidden' }}>
           {/* === OPTIONALE AKTIONS-SPALTE LINKS (v22.19) === */}
           {leftPanel && (
-            <div style={{ width: 280, minWidth: 280, borderRight: '1px solid var(--dex-gray-200)', overflow: 'auto', background: 'var(--dex-gray-50, #fafafa)', padding: '14px 16px' }}>
+            <div style={{
+              width: isMobile ? '100%' : 280, minWidth: isMobile ? 0 : 280,
+              borderRight: isMobile ? 'none' : '1px solid var(--dex-gray-200)',
+              borderBottom: isMobile ? '1px solid var(--dex-gray-200)' : 'none',
+              overflow: 'auto', background: 'var(--dex-gray-50, #fafafa)', padding: '14px 16px',
+            }}>
               {leftPanel}
             </div>
           )}
           {/* === EDITOR === */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', borderRight: '1px solid var(--dex-gray-200)', overflow: 'auto' }}>
+          <div style={{
+            flex: 1, display: 'flex', flexDirection: 'column',
+            width: isMobile ? '100%' : undefined,
+            borderRight: isMobile ? 'none' : '1px solid var(--dex-gray-200)',
+            borderBottom: isMobile ? '1px solid var(--dex-gray-200)' : 'none',
+            overflow: 'auto',
+          }}>
             <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               {headerExtra}
               {previewMode === 'email' && (
@@ -976,7 +989,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
           </div>
 
           {/* === PREVIEW === */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: 'var(--dex-gray-50)', minHeight: 0 }}>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', width: isMobile ? '100%' : undefined, background: 'var(--dex-gray-50)', minHeight: 0 }}>
             <div style={{ padding: '10px 16px', fontSize: '0.75rem', color: 'var(--dex-gray-500)', borderBottom: '1px solid var(--dex-gray-200)', background: '#fff' }}>
               Live-Vorschau {previewMode === 'outlook' ? '(Outlook-Termin)' : previewMode === 'plain' ? '(Anmelde-Seite)' : '(Deloitte-Mail)'} — Variablen werden mit Beispielwerten ersetzt
             </div>

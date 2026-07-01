@@ -21,6 +21,7 @@ import LandingInfoModal from './LandingInfoModal';
 import GlobalSearch from './GlobalSearch';
 import QuestionButton from './QuestionButton';
 import { useTutorial } from './tutorial/TutorialGuide';
+import { useIsMobile } from '../utils/useIsMobile';
 
 export default function Header(): React.ReactElement {
   const { currentPage, navigate, selectedEventId } = useNavigation();
@@ -115,25 +116,9 @@ export default function Header(): React.ReactElement {
   // v6.28: Handbuch-Preview kann Mobile erzwingen (window.__dexForceMobile),
   // damit die Bubble im Phone-Frame-Rahmen des AppPreview sichtbar ist —
   // auch wenn der User das Handbuch am Desktop öffnet.
-  const [isMobile, setIsMobile] = React.useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if ((window as any).__dexForceMobile) return true;
-    return !!(window.matchMedia && window.matchMedia('(max-width: 768px)').matches);
-  });
-  React.useEffect(() => {
-    if (typeof window === 'undefined' || !window.matchMedia) return;
-    const mq = window.matchMedia('(max-width: 768px)');
-    const handler = (e: MediaQueryListEvent): void => setIsMobile(e.matches);
-    if (mq.addEventListener) mq.addEventListener('change', handler);
-    // eslint-disable-next-line @typescript-eslint/no-deprecated
-    else mq.addListener(handler);
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener('change', handler);
-      // eslint-disable-next-line @typescript-eslint/no-deprecated
-      else mq.removeListener(handler);
-    };
-  }, []);
+  // v26.36: Zentraler Mobile-Hook (spiegelt das frühere inline-matchMedia inkl.
+  // window.__dexForceMobile für die Handbuch-Preview) — appweit dieselbe Grenze.
+  const isMobile = useIsMobile();
 
   // Titel-Mapping je nach aktuellem Seitenstatus
   const getTitle = (): string => {
@@ -221,7 +206,9 @@ export default function Header(): React.ReactElement {
           frühere Bubble unten auf der Landing Page. Absolut zentriert, damit
           die Position unabhängig von den Breiten links/rechts wirklich mittig
           sitzt. */}
-      {isLanding && !tutorialCtaHidden && (
+      {/* v26.36: Auf Mobile ausgeblendet — die absolut zentrierte CTA-Pille
+          überlappt sonst das rechte Icon-Cluster und macht Buttons unklickbar. */}
+      {isLanding && !tutorialCtaHidden && !isMobile && (
         <div
           style={{
             position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%, -50%)',
@@ -418,7 +405,7 @@ export default function Header(): React.ReactElement {
         </div>
         {/* v24.11: Hinweis-Chip RECHTS neben dem Picker, grün — „Organizer set
             the language ... for this registration form". */}
-        {showRegLangHint && (
+        {showRegLangHint && !isMobile && (
           <span
             title={forcedRegLang === 'de'
               ? 'Dieses Anmeldeformular wird auf Deutsch angezeigt.'
