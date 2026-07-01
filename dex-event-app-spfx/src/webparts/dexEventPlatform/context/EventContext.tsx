@@ -14,7 +14,7 @@ import { DeloitteEvent } from '../types';
 import { EventService, SPEvent, CustomField, SPRegistration, SPParticipant, ReseedSummary, AssistantLink } from '../services/EventService';
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
 import { isEventOver } from '../utils/eventFormat';
-import { registrationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
+import { registrationEmail, externalInvitationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
 import { APP_VERSION } from '../version';
 import { RELEASE_NOTES } from '../data/releaseNotes';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
@@ -1662,10 +1662,16 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // {{Name}} in E-Mail-Anreden: nur Vorname (firstNameToUse ist bei Self-Reg
       // aus dem displayName gesplittet, bei "Für andere registrieren" explizit gesetzt).
       const vars = { Name: firstNameToUse, EventTitle: event.title, Organizer: formatOrganizerList(event.organizers, lang), AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, WaitlistPosition: posText };
+      // v26.33: Externe Dritte (kein Deloitte-Postfach), die stellvertretend
+      // angemeldet wurden, bekommen statt der Anmeldebestätigung eine EINLADUNG
+      // (Bestätigung per Antwort-Mail; Anmelder + Organizer auf CC).
+      const isExternalInvite = status === 'Angemeldet' && isProxyRegistration && isExternalParticipant;
       let emailData: { subject: string; body: string };
-      const spTemplateRaw = await eventService.getEmailTemplate(templateType, lang).catch(() => null);
+      const spTemplateRaw = isExternalInvite ? null : await eventService.getEmailTemplate(templateType, lang).catch(() => null);
       const spTemplate = applyEventTemplateOverride(spTemplateRaw, event.emailTemplateOverrides, templateType);
-      if (spTemplate) {
+      if (isExternalInvite) {
+        emailData = externalInvitationEmail(nameToUse, event.title, currentUserName, lang.toUpperCase() === 'DE');
+      } else if (spTemplate) {
         emailData = buildEmailFromTemplate(spTemplate, vars);
       } else {
         emailData = status === 'Warteliste'
@@ -1707,17 +1713,25 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // externer Anmeldung).
         let externalCcExtra = '';
         if (isExternalRecipient) {
-          const orgEmails = (event.organizerEmails || []).filter(Boolean);
-          externalCcExtra = orgEmails.join(';');
-          // Hinweis-Box VOR dem Original-Body — adressiert an die externe Person.
-          const externalHint = `<div style="margin:0 0 16px;padding:12px 16px;background:#fff3e0;border:1px solid #ed8b00;border-radius:8px;font-size:13px;line-height:1.55;color:#7a4a00;">`
-            + `<strong>Externe Anmeldung — kein automatischer Kalendereintrag.</strong><br>`
-            + `Diese Anmeldebestätigung gehört zu <strong>${nameToUse}</strong> (<strong>${emailToUse}</strong>). Da es sich um eine externe Adresse (kein Deloitte-Postfach) handelt, wird <strong>kein Outlook-Kalendereintrag</strong> versendet — bitte trage dir den Termin manuell in deinen Kalender ein. `
-            + `Der Organizer ist zur Bestätigung auf Kopie (CC).`
-            + `</div>`;
-          // Body kommt schon als komplett-gewickeltes HTML (Deloitte-Template).
-          // Wir injecten den Hinweis direkt nach dem opening-<body>-Tag.
-          finalBody = injectIntoEmailContent(finalBody, externalHint);
+          // v26.33: ALLE Organizer (inkl. Co-Organizer) auf CC.
+          const allOrganizers = [...(event.organizerEmails || []), ...(event.coOrganizerEmails || [])].filter(Boolean);
+          if (isExternalInvite) {
+            // Einladung: zusätzlich der/die Anmelder:in auf CC — so erreicht die
+            // Bestätigung per Antwort-Mail alle. KEINE Anmeldebestätigungs-Hinweisbox
+            // (die Einladung trägt ihren eigenen Text).
+            externalCcExtra = [currentUserEmail, ...allOrganizers].filter(Boolean).join(';');
+          } else {
+            externalCcExtra = allOrganizers.join(';');
+            // Hinweis-Box VOR dem Original-Body — adressiert an die externe Person.
+            const externalHint = `<div style="margin:0 0 16px;padding:12px 16px;background:#fff3e0;border:1px solid #ed8b00;border-radius:8px;font-size:13px;line-height:1.55;color:#7a4a00;">`
+              + `<strong>Externe Anmeldung — kein automatischer Kalendereintrag.</strong><br>`
+              + `Diese Anmeldebestätigung gehört zu <strong>${nameToUse}</strong> (<strong>${emailToUse}</strong>). Da es sich um eine externe Adresse (kein Deloitte-Postfach) handelt, wird <strong>kein Outlook-Kalendereintrag</strong> versendet — bitte trage dir den Termin manuell in deinen Kalender ein. `
+              + `Der Organizer ist zur Bestätigung auf Kopie (CC).`
+              + `</div>`;
+            // Body kommt schon als komplett-gewickeltes HTML (Deloitte-Template).
+            // Wir injecten den Hinweis direkt nach dem opening-<body>-Tag.
+            finalBody = injectIntoEmailContent(finalBody, externalHint);
+          }
         }
         // v18.41: People-Picker-Felder mit „CC bei Mail" → ausgewählte
         // Person(en) auf CC der An-/Warteliste-Mail (NICHT im Outlook-Termin).
