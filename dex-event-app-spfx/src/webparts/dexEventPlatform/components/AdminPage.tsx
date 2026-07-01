@@ -1303,20 +1303,22 @@ export default function AdminPage(): React.ReactElement {
       if (cancelled) return;
       const endRaw = confirmDeleteEvent.endDate || confirmDeleteEvent.startDate;
       const endTs = endRaw ? new Date(endRaw).getTime() : 0;
-      const oneYearAgo = Date.now() - 365 * 24 * 60 * 60 * 1000;
-      const overOneYear = endTs > 0 && endTs < oneYearAgo;
+      // v26.32: Aufbewahrung 3 Monate (statt vormals 1 Jahr) — konsistent mit dem
+      // Teilnehmerlisten-Löschkonzept.
+      const retentionCutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
+      const overRetention = endTs > 0 && endTs < retentionCutoff;
       if (externalCount > 0) {
         // Ehemals aktiv (echte Teilnehmer) → geschützt.
         if (!isAdmin) {
           setDeletePolicy({ loading: false, allowed: false, requiresTitle: false, externalCount,
             reason: isDe
-              ? 'Dieses Event hatte Anmeldungen über das Organizer-Team hinaus. Es darf nur von einem Admin gelöscht werden — und das frühestens ein Jahr nach dem Event (Aufbewahrung der Teilnehmerliste). Du kannst das Event stattdessen archivieren (aus deiner Übersicht ausblenden).'
-              : 'This event had registrations beyond the organizer team. Only an admin may delete it — and only one year after the event at the earliest. You can archive it instead (hide from your overview).' });
-        } else if (!overOneYear) {
+              ? 'Dieses Event hatte Anmeldungen über das Organizer-Team hinaus. Es darf nur von einem Admin gelöscht werden — und das frühestens 3 Monate nach dem Event (Aufbewahrung der Teilnehmerliste). Du kannst das Event stattdessen archivieren (aus deiner Übersicht ausblenden).'
+              : 'This event had registrations beyond the organizer team. Only an admin may delete it — and only three months after the event at the earliest. You can archive it instead (hide from your overview).' });
+        } else if (!overRetention) {
           setDeletePolicy({ loading: false, allowed: false, requiresTitle: false, externalCount,
             reason: isDe
-              ? 'Dieses Event hat Anmeldungen über das Organizer-Team hinaus. Die Teilnehmerliste muss ein Jahr aufbewahrt werden — Löschen ist erst ein Jahr nach dem Event-Ende möglich.'
-              : 'This event has registrations beyond the organizer team. The attendee list must be kept for a year — deletion is only possible one year after the event ends.' });
+              ? 'Dieses Event hat Anmeldungen über das Organizer-Team hinaus. Die Teilnehmerliste wird 3 Monate aufbewahrt — das vollständige Löschen des Events ist erst 3 Monate nach dem Event-Ende möglich.'
+              : 'This event has registrations beyond the organizer team. The attendee list is kept for three months — full deletion of the event is only possible three months after the event ends.' });
         } else {
           setDeletePolicy({ loading: false, allowed: true, requiresTitle: true, externalCount });
         }

@@ -41,7 +41,7 @@ export default function LandingPage(): React.ReactElement {
   // Organizer überflüssig — sie haben die Funktionen schon. Admins sehen sie
   // bewusst weiter (um die normale User-Ansicht der Landing Page zu prüfen).
   const showOrganizerCta = !canCreateEvents || isAdmin;
-  const { isEventsLoading, getArchivableCount, runArchiveExpired, scanInactiveAccounts, notifyOrganizerOfInactive, getSentInactiveNotices, getDeletableArchiveCount, runDeleteOldArchive, deleteEvent, countExternalRegistrations, refreshEvents } = useEvents();
+  const { isEventsLoading, getArchivableCount, runArchiveExpired, scanInactiveAccounts, notifyOrganizerOfInactive, getSentInactiveNotices, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, deleteEvent, countExternalRegistrations, refreshEvents } = useEvents();
   // v24.51: „Organizer benachrichtigen" pro Event (inaktive Konten).
   const [notifyBusyId, setNotifyBusyId] = React.useState<string | null>(null);
   const [notifyResult, setNotifyResult] = React.useState<Record<string, string>>({});
@@ -50,6 +50,10 @@ export default function LandingPage(): React.ReactElement {
   // v23.40: Löschkonzept — Anzahl DEX_Archive-Einträge älter als 1 Monat (v23.48).
   const [delArchCount, setDelArchCount] = React.useState(0);
   const [delArchBusy, setDelArchBusy] = React.useState(false);
+  // v26.32: Löschkonzept — Teilnehmerlisten (3 Monate): Vorwarn- + Fällig-Zähler.
+  const [pdWarn, setPdWarn] = React.useState(0);
+  const [pdDue, setPdDue] = React.useState(0);
+  const [pdBusy, setPdBusy] = React.useState(false);
   // v22.45: Warnung über Teilnehmer ohne aktives Deloitte-Konto — pro Event,
   // für Organizer (eigene Events) und Admins (alle aktiven Events).
   const [inactiveSummary, setInactiveSummary] = React.useState<Array<{ eventId: string; title: string; people: Array<{ email: string; name: string }> }>>([]);
@@ -75,6 +79,15 @@ export default function LandingPage(): React.ReactElement {
     getDeletableArchiveCount()
       .then(n => { if (!cancelled) setDelArchCount(n); })
       .catch(() => { /* best-effort */ });
+    // v26.32: Teilnehmerlisten-Löschkonzept — Vorwarn-/Fällig-Zähler laden und die
+    // Vorwarn-Mails an die Organizer automatisch (Queue-entdoppelt) auslösen.
+    getParticipantDeletionWarnings()
+      .then(list => { if (!cancelled) setPdWarn(list.length); })
+      .catch(() => { /* best-effort */ });
+    getParticipantDeletionDue()
+      .then(list => { if (!cancelled) setPdDue(list.length); })
+      .catch(() => { /* best-effort */ });
+    maybeSendParticipantDeletionWarnings().catch(() => { /* best-effort */ });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAdmin, isEventsLoading]);
@@ -104,6 +117,33 @@ export default function LandingPage(): React.ReactElement {
       showAlert(isDe ? 'Löschen fehlgeschlagen — bitte erneut versuchen.' : 'Deletion failed — please try again.', { variant: 'error' });
     } finally { setDelArchBusy(false); }
   };
+  // v26.32: Fällige Teilnehmerlisten löschen — KPIs ins DEX_EventStats archivieren,
+  // dann die Teilnehmer-Subsite recyceln. Das Event bleibt in DEX_Events erhalten.
+  const startParticipantDeletion = async (): Promise<void> => {
+    if (pdBusy || pdDue === 0) return;
+    const ok = await confirmDialog(
+      isDe
+        ? `Bei ${pdDue} ${pdDue === 1 ? 'Event' : 'Events'} die Teilnehmerliste endgültig löschen?\n\nDie wichtigsten Kennzahlen werden zuvor ins Statistik-Archiv übernommen. Das Event bleibt bestehen, die Teilnehmerliste wird in den SharePoint-Papierkorb verschoben.`
+        : `Delete the attendee list for ${pdDue} event(s)?\n\nThe key KPIs are archived to the statistics archive first. The event is kept; the attendee list is moved to the SharePoint recycle bin.`,
+      { danger: true, confirmLabel: isDe ? 'Endgültig löschen' : 'Delete permanently' },
+    );
+    if (!ok) return;
+    setPdBusy(true);
+    try {
+      const r = await runParticipantDeletion();
+      showAlert(
+        isDe
+          ? `${r.deleted} Teilnehmerliste(n) archiviert & gelöscht${r.failed ? `, ${r.failed} fehlgeschlagen` : ''}.`
+          : `${r.deleted} attendee list(s) archived & deleted${r.failed ? `, ${r.failed} failed` : ''}.`,
+        { variant: r.failed ? 'error' : 'success' },
+      );
+      try { const list = await getParticipantDeletionDue(); setPdDue(list.length); } catch { /* */ }
+      try { const w = await getParticipantDeletionWarnings(); setPdWarn(w.length); } catch { /* */ }
+      try { await refreshEvents(); } catch { /* */ }
+    } catch {
+      showAlert(isDe ? 'Löschen fehlgeschlagen — bitte erneut versuchen.' : 'Deletion failed — please try again.', { variant: 'error' });
+    } finally { setPdBusy(false); }
+  };
   // ==================== v24.1: Entwurf-Aufräumen (Organizer) ====================
   // Entwurf-Events (nie aktiv), deren Datum > 1 Tag her ist, kann der Organizer
   // hier direkt löschen — mit einfacher Ja-Bestätigung (kein Titel-Eintippen).
@@ -129,19 +169,9 @@ export default function LandingPage(): React.ReactElement {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [_eventsForDrafts, isEventsLoading, isAdmin, currentUser?.email]);
-  // v24.8 (C2): Admin-Hinweis — Events (inkl. Teilnehmerliste), deren Ende
-  // über 1 Jahr her ist, können vom Admin endgültig gelöscht werden.
-  const oldEventsCount = React.useMemo(() => {
-    if (!isAdmin || isEventsLoading) return 0;
-    const cutoff = Date.now() - 365 * 24 * 60 * 60 * 1000;
-    return (_eventsForDrafts || []).filter(e => {
-      if (e.parentEventId || e.isFictive) return false;
-      const endRaw = e.endDate || e.startDate;
-      const endTs = endRaw ? new Date(endRaw).getTime() : 0;
-      return endTs > 0 && endTs < cutoff;
-    }).length;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [_eventsForDrafts, isEventsLoading, isAdmin]);
+  // v26.32: Die frühere „Events älter als 1 Jahr löschen"-Regel entfällt — das
+  // Löschkonzept behält das Event und löscht nur die Teilnehmerliste nach 3
+  // Monaten (Zähler pdWarn/pdDue via getParticipantDeletionWarnings/Due).
   const deleteStaleDraft = async (ev: typeof staleDrafts[number]): Promise<void> => {
     if (draftDeleteBusyId) return;
     const ok = await confirmDialog(
@@ -438,7 +468,7 @@ export default function LandingPage(): React.ReactElement {
       {/* v22 / v22.45: Hinweis-Boxen oben rechts auf der Landing Page —
           gestapelt in einem gemeinsamen Container (Archivierung für Admin,
           Inaktive-Konten-Warnung für Organizer/Admin). */}
-      {((isAdmin && archInfo && archInfo.total > 0) || (isAdmin && delArchCount > 0) || inactiveSummary.length > 0 || staleDrafts.length > 0 || oldEventsCount > 0) && (
+      {((isAdmin && archInfo && archInfo.total > 0) || (isAdmin && delArchCount > 0) || inactiveSummary.length > 0 || staleDrafts.length > 0 || (isAdmin && (pdWarn > 0 || pdDue > 0))) && (
       <div style={{
         position: 'absolute', top: 34, right: 16, width: 300,
         maxWidth: 'calc(100vw - 32px)', zIndex: 6,
@@ -628,17 +658,41 @@ export default function LandingPage(): React.ReactElement {
           </button>
         </div>
       )}
-      {/* v24.8 (C2): Admin-Hinweis — Events (inkl. Teilnehmerliste) älter als 1 Jahr. */}
-      {isAdmin && oldEventsCount > 0 && (
+      {/* v26.32: Löschkonzept — Vorwarnung (Teilnehmerliste wird in ~1 Woche gelöscht). */}
+      {isAdmin && pdWarn > 0 && (
         <div style={{
           width: '100%', boxSizing: 'border-box',
-          background: '#fff', border: '1px solid rgba(0,118,168,0.4)',
+          background: '#fff', border: '1px solid rgba(237,139,0,0.5)',
           borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
           padding: '14px 16px', textAlign: 'left',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
             <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>
-              {isDe ? 'Alte Events löschen' : 'Delete old events'}
+              {isDe ? 'Teilnehmerlisten laufen ab' : 'Attendee lists expiring'}
+            </span>
+            <span style={{
+              fontSize: '0.66rem', padding: '1px 7px', borderRadius: 999, fontWeight: 700,
+              background: 'rgba(237,139,0,0.12)', color: 'var(--dex-orange, #ed8b00)',
+            }}>{isDe ? 'Nur Admin' : 'Admin only'}</span>
+          </div>
+          <p style={{ margin: '0 0 4px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+            {isDe
+              ? <>Bei <strong>{pdWarn}</strong> {pdWarn === 1 ? 'Event' : 'Events'} wird die Teilnehmerliste in etwa einer Woche gelöscht (3 Monate nach dem Event). Die Organizer wurden automatisch informiert, die Liste noch herunterzuladen. Event &amp; Kennzahlen bleiben im Statistik-Archiv erhalten.</>
+              : <>For <strong>{pdWarn}</strong> event(s) the attendee list will be deleted in about a week (3 months after the event). The organizers were notified automatically to download it. Event &amp; KPIs are kept in the statistics archive.</>}
+          </p>
+        </div>
+      )}
+      {/* v26.32: Löschkonzept — fällige Teilnehmerlisten löschen (Event bleibt, KPIs ins Archiv). */}
+      {isAdmin && pdDue > 0 && (
+        <div style={{
+          width: '100%', boxSizing: 'border-box',
+          background: '#fff', border: '1px solid rgba(218,41,28,0.4)',
+          borderRadius: 12, boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+          padding: '14px 16px', textAlign: 'left',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ fontWeight: 800, fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>
+              {isDe ? 'Teilnehmerlisten löschen' : 'Delete attendee lists'}
             </span>
             <span style={{
               fontSize: '0.66rem', padding: '1px 7px', borderRadius: 999, fontWeight: 700,
@@ -647,15 +701,16 @@ export default function LandingPage(): React.ReactElement {
           </div>
           <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
             {isDe
-              ? <><strong>{oldEventsCount}</strong> {oldEventsCount === 1 ? 'Event ist' : 'Events sind'} älter als 1 Jahr. Die Teilnehmerliste muss ein Jahr aufbewahrt werden — danach {oldEventsCount === 1 ? 'kann es' : 'können sie'} (inkl. Teilnehmerliste) endgültig gelöscht werden. Öffne dazu das Organizer Center.</>
-              : <><strong>{oldEventsCount}</strong> event(s) are older than 1 year and can be permanently deleted (incl. attendee list) in the Organizer Center.</>}
+              ? <>Bei <strong>{pdDue}</strong> {pdDue === 1 ? 'Event ist' : 'Events sind'} die Aufbewahrungsfrist (3 Monate) abgelaufen. Beim Löschen werden die wichtigsten Kennzahlen ins Statistik-Archiv übernommen und dann die Teilnehmerliste entfernt — das Event bleibt erhalten.</>
+              : <><strong>{pdDue}</strong> event(s) have passed the 3-month retention. Deleting archives the key KPIs to the statistics archive and then removes the attendee list — the event itself is kept.</>}
           </p>
           <button
             className="btn btn-secondary"
-            style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }}
-            onClick={() => navigate('admin')}
+            style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%', color: 'var(--dex-red, #c00)' }}
+            disabled={pdBusy}
+            onClick={() => { startParticipantDeletion().catch(() => { /* */ }); }}
           >
-            {isDe ? 'Zum Organizer Center' : 'Open Organizer Center'}
+            {pdBusy ? (isDe ? 'Wird gelöscht…' : 'Deleting…') : (isDe ? 'Teilnehmerlisten löschen' : 'Delete attendee lists')}
           </button>
         </div>
       )}

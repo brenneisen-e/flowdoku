@@ -496,6 +496,13 @@ interface EventContextType {
   getDeletableArchiveCount: () => Promise<number>;
   /** v23.40: Löschkonzept — löscht DEX_Archive-Einträge älter als 1 Monat (v23.48). */
   runDeleteOldArchive: (onProgress?: (done: number, total: number) => void, shouldCancel?: () => boolean) => Promise<{ deleted: number; failed: number; cancelled: boolean }>;
+  /** v26.32: Löschkonzept — Teilnehmerlisten 3 Monate nach Event-Ende. Events im
+   *  Vorwarn-Fenster (3 Mon. − 1 Woche) bzw. fällige (≥3 Mon.) + Ausführung +
+   *  automatische Vorwarn-Mail an die Organizer. */
+  getParticipantDeletionWarnings: () => Promise<DeloitteEvent[]>;
+  getParticipantDeletionDue: () => Promise<DeloitteEvent[]>;
+  runParticipantDeletion: (onProgress?: (done: number, total: number, label: string) => void) => Promise<{ deleted: number; failed: number }>;
+  maybeSendParticipantDeletionWarnings: () => Promise<void>;
   updateMyRegistration: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
   /** v10.27: Split-Capacity-Gruppen-Wechsel für die eigene Registrierung.
    *  Nimmt die App-internen Wert-IDs ('Durchstarter' | 'Funstarter') —
@@ -3746,6 +3753,128 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return eventService.deleteOldArchiveRows(archiveDeleteCutoffIso(), onProgress, shouldCancel);
   }
 
+  // ====================================================================
+  // v26.32: Löschkonzept — Teilnehmerliste 3 Monate nach Event-Ende löschen.
+  // 3 Mon. − 1 Woche: Vorwarn-Mail an alle Organizer (Download-Hinweis) +
+  // Landing-Hinweis. Ab 3 Mon.: Admin löscht per Button die Teilnehmerliste;
+  // Event bleibt in DEX_Events, KPIs wandern ins DEX_EventStats-Archiv.
+  // ====================================================================
+  const PARTICIPANT_RETENTION_MONTHS = 3;
+  const PARTICIPANT_WARN_LEAD_MS = 7 * 24 * 60 * 60 * 1000;
+  function participantDeleteDueTs(e: DeloitteEvent): number {
+    const endRef = e.endDate || e.startDate;
+    if (!endRef) return 0;
+    const d = new Date(endRef);
+    if (isNaN(d.getTime())) return 0;
+    d.setMonth(d.getMonth() + PARTICIPANT_RETENTION_MONTHS);
+    return d.getTime();
+  }
+  // Nur echte Haupt-Events mit eigener Teilnehmer-Subsite, keine Entwürfe.
+  function isParticipantDeletionCandidate(e: DeloitteEvent): boolean {
+    return !e.parentEventId && !e.isFictive && !!e.subsiteUrl;
+  }
+
+  /** Events, deren Teilnehmerliste fällig ist (≥3 Mon.) und noch NICHT archiviert. */
+  async function getParticipantDeletionDue(): Promise<DeloitteEvent[]> {
+    if (!eventService) return [];
+    const now = Date.now();
+    const cands = (events || []).filter(e => {
+      const due = participantDeleteDueTs(e);
+      return isParticipantDeletionCandidate(e) && due > 0 && due <= now;
+    });
+    if (cands.length === 0) return [];
+    let archived = new Set<number>();
+    try { archived = await eventService.getArchivedStatsEventNumbers(); } catch { archived = new Set(); }
+    return cands.filter(e => !archived.has(e.eventNumber));
+  }
+
+  /** Events im Vorwarn-Fenster (3 Mon. − 1 Woche … 3 Mon.), noch nicht archiviert. */
+  async function getParticipantDeletionWarnings(): Promise<DeloitteEvent[]> {
+    if (!eventService) return [];
+    const now = Date.now();
+    const cands = (events || []).filter(e => {
+      if (!isParticipantDeletionCandidate(e)) return false;
+      const due = participantDeleteDueTs(e);
+      return due > 0 && (due - PARTICIPANT_WARN_LEAD_MS) <= now && now < due;
+    });
+    if (cands.length === 0) return [];
+    let archived = new Set<number>();
+    try { archived = await eventService.getArchivedStatsEventNumbers(); } catch { archived = new Set(); }
+    return cands.filter(e => !archived.has(e.eventNumber));
+  }
+
+  /** Admin-Aktion: KPIs archivieren, dann Teilnehmerliste löschen (Event bleibt). */
+  async function runParticipantDeletion(
+    onProgress?: (done: number, total: number, label: string) => void
+  ): Promise<{ deleted: number; failed: number }> {
+    if (!eventService) return { deleted: 0, failed: 0 };
+    const due = await getParticipantDeletionDue();
+    let deleted = 0, failed = 0;
+    for (let i = 0; i < due.length; i++) {
+      const e = due[i];
+      if (onProgress) onProgress(i, due.length, e.title || '');
+      try {
+        // Erst KPIs sichern — nur bei Erfolg die (unwiderrufliche) Löschung starten.
+        const archivedOk = await eventService.archiveEventStats({
+          eventNumber: e.eventNumber, eventTitle: e.title, eventType: e.type,
+          location: e.location, startDate: e.startDate, endDate: e.endDate,
+          maxParticipants: e.maxParticipants, subsiteUrl: e.subsiteUrl,
+        });
+        if (!archivedOk) { failed++; continue; }
+        const delOk = await eventService.deleteParticipantData(Number(e.id));
+        if (delOk) deleted++; else failed++;
+      } catch { failed++; }
+    }
+    if (onProgress) onProgress(due.length, due.length, '');
+    await loadEvents();
+    return { deleted, failed };
+  }
+
+  /** Auto-Vorwarnung an alle Organizer (einmalig, Queue-entdoppelt). Wird vom
+   *  Admin-App-Open auf der Landing Page ausgelöst. */
+  async function maybeSendParticipantDeletionWarnings(): Promise<void> {
+    try {
+      if (!eventService) return;
+      const warns = await getParticipantDeletionWarnings();
+      if (warns.length === 0) return;
+      let appUrl = '';
+      try { appUrl = `${props.context.pageContext.web.absoluteUrl}/SitePages/DEX.aspx`; } catch { appUrl = ''; }
+      for (const ev of warns) {
+        const key = `dex_participantdelwarn_${ev.id}`;
+        let already = false;
+        try { already = !!window.localStorage.getItem(key); } catch { already = false; }
+        if (already) continue;
+        const orgEmails = Array.from(new Set(
+          [...(ev.organizerEmails || []), ...(ev.coOrganizerEmails || [])]
+            .map(x => (x || '').trim()).filter(x => x.indexOf('@') > 0)
+        ));
+        if (orgEmails.length === 0) continue;
+        const seen = new Set<string>();
+        const recipients = orgEmails.filter(e => { const lc = e.toLowerCase(); if (seen.has(lc)) return false; seen.add(lc); return true; });
+        let alreadyQueued = false;
+        try { alreadyQueued = await eventService.hasQueuedEmail('ParticipantDeletionWarning', ev.id); } catch { alreadyQueued = false; }
+        if (alreadyQueued) { try { window.localStorage.setItem(key, String(Date.now())); } catch { /* */ } continue; }
+        const linkLine = appUrl
+          ? `<p style="margin:0 0 12px;">Ihr könnt die Teilnehmerübersicht jetzt noch im <a href="${appUrl}" style="color:#86bc25;font-weight:600;">Organizer Center der DEX App</a> ansehen und als Excel exportieren.</p>`
+          : `<p style="margin:0 0 12px;">Ihr könnt die Teilnehmerübersicht jetzt noch im Organizer Center der DEX App ansehen und als Excel exportieren.</p>`;
+        const inner = `
+          <p style="margin:0 0 12px;">Hallo zusammen,</p>
+          <p style="margin:0 0 12px;">für euer Event <strong>&bdquo;${ev.title}&ldquo;</strong> läuft die Aufbewahrungsfrist der Teilnehmerliste ab: <strong>in etwa einer Woche wird die Teilnehmerliste gelöscht</strong> (3 Monate nach dem Event, Datenschutz-/Aufbewahrungsvorgabe).</p>
+          <p style="margin:0 0 12px;">Bitte <strong>ladet euch die Liste jetzt herunter</strong>, falls ihr sie noch braucht. Das Event und die wichtigsten Kennzahlen bleiben danach im Statistik-Archiv erhalten.</p>
+          ${linkLine}
+          <p style="margin:0 0 12px;">Vielen Dank!</p>`;
+        const body = wrapTemplate('#86bc25', 'Teilnehmerliste wird bald gelöscht', ev.title, inner);
+        try {
+          await eventService.queueEmail(
+            `Teilnehmerliste zu „${ev.title}" wird in ~1 Woche gelöscht`,
+            recipients.join('; '), recipients.join('; '), body, 'ParticipantDeletionWarning', ev.title, ev.id,
+          );
+          try { window.localStorage.setItem(key, String(Date.now())); } catch { /* */ }
+        } catch { /* einzelne Mail-Fehler ignorieren */ }
+      }
+    } catch (e) { console.warn('[DEX] participant deletion warning mail failed:', e); }
+  }
+
   async function deleteEvent(eventId: string): Promise<boolean> {
     // v18.3: Demo-Showcase-Event → No-Op (kein SP-Backend). Defense in depth;
     // die UI blendet den Löschen-Button für das Demo-Event ohnehin aus.
@@ -4544,7 +4673,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         const inner = `
           <p style="margin:0 0 12px;">Hallo zusammen,</p>
           <p style="margin:0 0 12px;">wir hoffen, euer Event <strong>&bdquo;${ev.title}&ldquo;</strong> ist gut verlaufen und alle hatten eine schöne Zeit!</p>
-          <p style="margin:0 0 12px;">Ein kurzer Hinweis zur Aufbewahrung: Die <strong>Teilnehmerübersicht bleibt noch ein Jahr gespeichert</strong> (Datenschutz-/Aufbewahrungsvorgabe). Danach wird sie entfernt.</p>
+          <p style="margin:0 0 12px;">Ein kurzer Hinweis zur Aufbewahrung: Die <strong>Teilnehmerübersicht bleibt noch 3 Monate gespeichert</strong> (Datenschutz-/Aufbewahrungsvorgabe). Danach wird sie gelöscht — das Event und die wichtigsten Kennzahlen bleiben im Statistik-Archiv erhalten. Ihr werdet rund eine Woche vorher noch einmal erinnert.</p>
           ${linkLine}
           <p style="margin:0 0 12px;">Vielen Dank, dass ihr das Event organisiert habt!</p>`;
         const body = wrapTemplate('#86bc25', 'Danke für euer Event!', ev.title, inner);
@@ -4960,7 +5089,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns, restoreCustomFieldDescriptions,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, fixAllEventColumns, restoreCustomFieldDescriptions,
         sendAdminInquiry,
         requestOrganizerRole, requestCoOrganizerApprovals, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,
