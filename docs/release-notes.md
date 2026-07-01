@@ -8,6 +8,8 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 26.34.0 | 2026-07-01 | Bugfix | Handbuch-Artikel zum Event-Wizard war veraltet (7 Schritte) — der Wizard hat inzwischen 10 Schritte. Komplett überarbeitet und detailliert (Grundlagen, Organizer & Team, Sub-Events, Ort & Programm, Kapazität & Sichtbarkeit, Felder, Kommunikation, Team-Anmeldung, Dokumente, Fun-Zone) inkl. Such-Stichwörter. |
+| 26.34.0 | 2026-07-01 | Feature | Rollenverwaltung: Die Spalte „Coordinated Events" zeigt nur noch die Anzahl als klickbaren Chip — ein Klick klappt die Event-Titel aus. Hält die Tabelle bei Organizern mit vielen Events übersichtlich. |
 | 26.33.0 | 2026-07-01 | Bugfix | Ticket-/Benachrichtigungs-Links aus den Mails funktionieren jetzt auch beim Anklicken aus Outlook oder Microsoft Teams. Vorher hängten Outlook/Teams eigene Parameter an, wodurch SharePoint mit „No item exists" abbrach. Die App-Parameter stehen jetzt im URL-Anker (den der Server ignoriert). Gilt für alle Deep-Links (Tickets, Admin-Center-Sprung, Antwort ansehen, Handbuch, Organizer-Freigabe, Team-Beitritt). |
 | 26.33.0 | 2026-07-01 | Feature | Neue Rolle „IT-Admin": volle Admin-Rechte, aber KEINE Benachrichtigungs-Mails (Ticket-Fragen, Wochenbericht, Organisator-Anträge, Inaktiv-Hinweise). Für technische Administratoren, die Zugriff brauchen, aber nicht im Mail-Verteiler stehen sollen. |
 | 26.33.0 | 2026-07-01 | Feature | Ticket-Erinnerung: Öffnet ein Power-User die App und liegen Fragen ≥ 2 Werktage unbeantwortet, geht einmal pro Tag eine Sammel-Erinnerung an die Power-User. |
