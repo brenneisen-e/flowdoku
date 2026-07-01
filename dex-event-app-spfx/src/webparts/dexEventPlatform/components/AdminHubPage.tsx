@@ -13,6 +13,7 @@ import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useDialog } from '../context/DialogContext';
+import { useIsMobile } from '../utils/useIsMobile';
 import { Settings, Users, Mail, Book, FileText, Trash2, Columns, BarChart3 } from './Icons';
 import { RELEASE_NOTES, RELEASE_BEREICHE } from '../data/releaseNotes';
 
@@ -42,6 +43,7 @@ export default function AdminHubPage(): React.ReactElement {
   const { locale } = useLanguage();
   const { confirmDialog, showAlert } = useDialog();
   const isDe = locale === 'de';
+  const isMobile = useIsMobile();
   const adminLike = isAdmin || originalIsAdmin;
 
   const [archTotal, setArchTotal] = React.useState(0);
@@ -431,8 +433,8 @@ export default function AdminHubPage(): React.ReactElement {
       </p>
       <div style={{ ...cardStyle, padding: 0, overflow: 'hidden' }}>
         {LIST_DOCS.map((l, i) => (
-          <div key={l.name} style={{ display: 'flex', gap: 14, padding: '12px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--dex-gray-100)', alignItems: 'baseline' }}>
-            <a href={listUrl(l.name)} target="_blank" rel="noopener noreferrer" style={{ flexShrink: 0, fontFamily: 'Consolas, monospace', fontSize: '0.82rem', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700, minWidth: 190, textDecoration: 'none' }}
+          <div key={l.name} style={{ display: 'flex', gap: 14, flexWrap: 'wrap', padding: '12px 16px', borderTop: i === 0 ? 'none' : '1px solid var(--dex-gray-100)', alignItems: 'baseline' }}>
+            <a href={listUrl(l.name)} target="_blank" rel="noopener noreferrer" style={{ flexShrink: 0, fontFamily: 'Consolas, monospace', fontSize: '0.82rem', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700, minWidth: 150, textDecoration: 'none' }}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
             >{l.name}</a>

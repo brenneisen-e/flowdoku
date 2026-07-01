@@ -35,6 +35,7 @@ import OrganizerList from './OrganizerList';
 // Kachel-Modal des Admin Centers.
 import { buildOutlookLocation } from '../utils/eventFormat';
 import { setActiveWizardStep } from '../utils/wizardStepContext';
+import { useIsMobile } from '../utils/useIsMobile';
 import { Icon } from '@fluentui/react/lib/Icon';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { de } from 'date-fns/locale';
@@ -720,6 +721,8 @@ export default function EventCreationPage(): React.ReactElement {
   const { t, locale } = useLanguage();
   // v20.4: App-Modals statt nativer Browser-Dialoge.
   const { confirmDialog, showAlert } = useDialog();
+  // Mobile-Breakpoint (≤768px) für responsive Grid-/Flex-Anpassungen im Wizard.
+  const isMobile = useIsMobile();
   const isDe = locale === 'de';
 
   // Edit-Modus: wenn wir auf 'edit-event' sind und eine selectedEventId haben
@@ -8050,7 +8053,7 @@ export default function EventCreationPage(): React.ReactElement {
                           background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
                           border: '1px solid var(--dex-gray-200)',
                         }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, marginBottom: 8 }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr auto', gap: 8, marginBottom: 8 }}>
                             <div>
                               <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.location')}</label>
                               <input type="text" className="form-input" value={tt.location} onChange={e => updateSub({ transferTimes: seTransfers.map(x => x.id === tt.id ? { ...x, location: e.target.value } : x) })} placeholder="Stadt..." style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
@@ -8069,7 +8072,7 @@ export default function EventCreationPage(): React.ReactElement {
                               </button>
                             </div>
                           </div>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr', gap: 8 }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr 2fr', gap: 8 }}>
                             <div>
                               <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.date')}</label>
                               <input type="date" className="form-input" value={tt.date} onChange={e => updateSub({ transferTimes: seTransfers.map(x => x.id === tt.id ? { ...x, date: e.target.value } : x) })} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
@@ -8313,7 +8316,7 @@ export default function EventCreationPage(): React.ReactElement {
                     border: '1px solid var(--dex-gray-200)',
                   }}>
                     {/* Zeile 1: Stadt + Treffpunkt + Adresse + Löschen */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8, marginBottom: 8 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr auto', gap: 8, marginBottom: 8 }}>
                       <div>
                         <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.location')}</label>
                         <input type="text" className="form-input" list={`transfer-locations-${tt.id}`} value={tt.location} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, location: e.target.value } : x))} placeholder="Stadt eingeben..." style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
@@ -8338,7 +8341,7 @@ export default function EventCreationPage(): React.ReactElement {
                       </div>
                     </div>
                     {/* Zeile 2: Datum + Abfahrt + Ankunft + Beschreibung */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr', gap: 8 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr 2fr', gap: 8 }}>
                       <div>
                         <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.transfers.date')}</label>
                         <input type="date" className="form-input" value={tt.date} onChange={e => setTransferTimes(transferTimes.map(x => x.id === tt.id ? { ...x, date: e.target.value } : x))} style={{ padding: '6px 8px', fontSize: '0.85rem' }} />
@@ -8816,7 +8819,7 @@ export default function EventCreationPage(): React.ReactElement {
                             v15.0: „Max. Teilnehmer" entfällt aus dieser
                             Karte — Kapazität wird jetzt in Schritt 4
                             (Kapazität) pro Sub-Event-Tab gepflegt. */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                             <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.start')}</label>
                             <DatePicker

@@ -18,6 +18,7 @@ import { Icon } from '@fluentui/react/lib/Icon';
 import EventCard from './EventCard';
 import { CachedBg } from './CachedImage';
 import { prewarmImages } from '../utils/imageCache';
+import { useIsMobile } from '../utils/useIsMobile';
 
 /**
  * Prüft ob ein User-Standort zu einem LocationFilter passt.
@@ -487,6 +488,7 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
   const { navigate } = useNavigation();
   const { t } = useLanguage();
   const { canCreateEvents } = useRoles();
+  const isMobile = useIsMobile();
   return (
     <div className="my-events-list">
       {events.map(event => {

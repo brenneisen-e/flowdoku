@@ -139,7 +139,7 @@ export default function ParticipantsPage(): React.ReactElement {
       ) : (
         <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+            <table style={{ width: '100%', minWidth: 640, borderCollapse: 'collapse', fontSize: '0.85rem' }}>
               <thead>
                 <tr style={{ borderBottom: '2px solid var(--dex-gray-200)', background: 'var(--dex-gray-50)' }}>
                   <th style={{ textAlign: 'left', padding: '10px 12px' }}>{t('profile.firstname')}</th>

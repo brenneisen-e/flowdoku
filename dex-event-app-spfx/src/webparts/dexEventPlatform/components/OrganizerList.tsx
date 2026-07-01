@@ -64,7 +64,7 @@ function ContactLinks({ email, isDe }: { email: string; isDe: boolean }): React.
     <span style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
       <a
         href={`mailto:${email}`}
-        style={{ fontSize: '0.75rem', color: 'var(--dex-green, #86bc25)', textDecoration: 'none', fontWeight: 600, whiteSpace: 'nowrap' }}
+        style={{ fontSize: '0.75rem', color: 'var(--dex-green, #86bc25)', textDecoration: 'none', fontWeight: 600, whiteSpace: 'normal', wordBreak: 'break-all', textAlign: 'center' }}
         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'underline'; }}
         onMouseLeave={e => { (e.currentTarget as HTMLElement).style.textDecoration = 'none'; }}
       >{email}</a>
@@ -194,6 +194,16 @@ function OrganizerChip({ name, email, sizeClass, isOpen, onOpen, onScheduleClose
     }
   };
 
+  // v26.36: Tap außerhalb schließt die per-Tap geöffnete Karte (Handy).
+  React.useEffect(() => {
+    if (!isOpen) return;
+    const onDocClick = (ev: MouseEvent): void => {
+      if (wrapperRef.current && !wrapperRef.current.contains(ev.target as Node)) onScheduleClose();
+    };
+    document.addEventListener('click', onDocClick, true);
+    return () => document.removeEventListener('click', onDocClick, true);
+  }, [isOpen, onScheduleClose]);
+
   return (
     <span
       ref={wrapperRef}
@@ -209,6 +219,10 @@ function OrganizerChip({ name, email, sizeClass, isOpen, onOpen, onScheduleClose
       }}
       onMouseEnter={() => { onCancelClose(); openPopover(); }}
       onMouseLeave={onScheduleClose}
+      // v26.36: TAP-Toggle für Touch/Handy — ohne Hover wäre die Kontaktkarte
+      // (E-Mail + Teams-Chat) auf dem Handy sonst unerreichbar. Desktop-Hover
+      // bleibt unverändert. Tap außerhalb schließt (siehe Effekt unten).
+      onClick={(e) => { e.stopPropagation(); if (isOpen) { onScheduleClose(); } else { onCancelClose(); openPopover(); } }}
     >
       {!failed && email ? (
         <img
@@ -246,19 +260,21 @@ function OrganizerChip({ name, email, sizeClass, isOpen, onOpen, onScheduleClose
             position: 'fixed',
             top: coords.above ? undefined : coords.y,
             bottom: coords.above ? window.innerHeight - coords.y : undefined,
-            left: coords.x,
+            // v26.36: x-Position + Breite in den Viewport clampen, damit die
+            // Karte auf schmalen Handy-Screens nicht seitlich aus dem Bild ragt.
+            left: (() => { const hw = Math.min(150, window.innerWidth * 0.45); return Math.min(Math.max(coords.x, hw), window.innerWidth - hw); })(),
             transform: 'translateX(-50%)',
             zIndex: 2000,
             background: '#fff', borderRadius: 10, padding: 12,
             boxShadow: '0 8px 24px rgba(0,0,0,0.18)',
             border: '1px solid var(--dex-gray-200)',
-            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, maxWidth: '90vw',
             // v23.25: pointerEvents aktiv, damit die Maus in die Karte fahren
             // und auf die Mail-Adresse klicken kann.
           }}
         >
           {/* v23.25: freundlicher Hinweis-Kopf. */}
-          <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap', marginBottom: 2 }}>
+          <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', whiteSpace: 'normal', textAlign: 'center', marginBottom: 2 }}>
             {isDe ? 'Bei Fragen wende dich gerne an:' : 'If you have any questions, feel free to reach out:'}
           </span>
           <img
@@ -269,7 +285,7 @@ function OrganizerChip({ name, email, sizeClass, isOpen, onOpen, onScheduleClose
               objectFit: 'cover', background: 'var(--dex-gray-200)',
             }}
           />
-          <span style={{ fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'nowrap' }}>{name}</span>
+          <span style={{ fontSize: '0.8rem', fontWeight: 600, whiteSpace: 'normal', wordBreak: 'break-word', textAlign: 'center' }}>{name}</span>
           {/* v23.25/v23.26: klickbarer Mailto- + Teams-Chat-Link. */}
           <ContactLinks email={email} isDe={isDe} />
           {/* v11.95: JobTitle + Standort aus dem SP-Profil — lazy beim

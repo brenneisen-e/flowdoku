@@ -9,8 +9,10 @@ import { useLanguage } from '../context/LanguageContext';
 import { Calendar, Pin, Settings, QrCode, Star, Users, MessageSquare } from './Icons';
 import InquiryModal from './InquiryModal';
 import { useTickets } from '../context/TicketContext';
+import { useIsMobile } from '../utils/useIsMobile';
 
 export default function StartPage(): React.ReactElement {
+  const isMobile = useIsMobile();
   const { navigate } = useNavigation();
   const { canCreateEvents, isAdmin, isPowerUser } = useRoles();
   const { events, isEventsLoading, getMyProxyRegistrations } = useEvents();
@@ -171,6 +173,106 @@ export default function StartPage(): React.ReactElement {
     { key: 'support', title: isDe ? 'Support' : 'Support', tiles: showTicketsTile ? [tileTickets] : [] },
     { key: 'verwaltung', title: isDe ? 'Verwaltung' : 'Administration', tiles: [...(showAssistTile ? [tileAssist] : []), ...(showAdminHubTile ? [tileAdminHub] : [])] },
   ].filter(c => c.tiles.length > 0);
+
+  // v26.37: Auf dem Handy verschwenden die quadratischen Kacheln viel
+  // vertikalen Platz. Stattdessen rendern wir dieselben Menüpunkte (gleiche
+  // Icons/Labels/Handler) als kompakte, volle-Breite-Zeilen mit Chevron.
+  type RowItem = {
+    key: string;
+    icon: React.ReactNode;
+    label: string;
+    subtitle: string;
+    badge?: number;
+    onClick?: () => void;
+    inquiry?: boolean; // Organizer-Zeile ohne Rechte → Inquiry-Modal statt Navigation
+  };
+  const rowClusters: Array<{ key: string; title: string; items: RowItem[] }> = [
+    {
+      key: 'teilnahme', title: isDe ? 'Teilnahme' : 'Participation',
+      items: [
+        { key: 'register', icon: <Calendar size={24} strokeWidth={1.6} />, label: t('start.register'), subtitle: t('start.register.desc'), onClick: () => navigate('register') },
+        { key: 'my-events', icon: <Pin size={24} strokeWidth={1.6} />, label: t('start.myevents'), subtitle: t('start.myevents.desc'), onClick: () => navigate('my-events') },
+      ],
+    },
+    {
+      key: 'organisation', title: isDe ? 'Organisation' : 'Organization',
+      items: [
+        isOrganizer
+          ? { key: 'admin', icon: <Settings size={24} strokeWidth={1.6} />, label: t('start.admin'), subtitle: t('start.admin.desc'), onClick: () => navigate('admin') }
+          : { key: 'admin', icon: <Settings size={24} strokeWidth={1.6} />, label: t('start.admin'), subtitle: isDe ? 'Organizer werden?' : 'Want to become an organizer?', inquiry: true },
+        ...(showCheckInTile ? [{ key: 'check-in', icon: <QrCode size={24} strokeWidth={1.6} />, label: isDe ? 'Check-In' : 'Check-in', subtitle: isDe ? 'Teilnehmer einchecken' : 'Check in attendees', onClick: () => navigate('check-in') }] : []),
+      ],
+    },
+    {
+      key: 'support', title: isDe ? 'Support' : 'Support',
+      items: showTicketsTile ? [{ key: 'tickets', icon: <MessageSquare size={24} strokeWidth={1.6} />, label: 'Tickets', subtitle: isDe ? 'Fragen beantworten' : 'Answer questions', badge: openTicketCount > 0 ? openTicketCount : undefined, onClick: () => navigate('tickets') }] : [],
+    },
+    {
+      key: 'verwaltung', title: isDe ? 'Verwaltung' : 'Administration',
+      items: [
+        ...(showAssistTile ? [{ key: 'assistant', icon: <Users size={24} strokeWidth={1.6} />, label: isDe ? 'Assistenz' : 'Assistant', subtitle: isDe ? 'Anmeldungen für andere' : 'Registrations for others', onClick: () => navigate('assistant') }] : []),
+        ...(showAdminHubTile ? [{ key: 'admin-hub', icon: <Star size={24} strokeWidth={1.6} />, label: 'Admin', subtitle: isDe ? 'Verwaltung & Prozesse' : 'Administration & processes', onClick: () => navigate('admin-hub') }] : []),
+      ],
+    },
+  ].filter(c => c.items.length > 0);
+
+  if (isMobile) {
+    return (
+      <div className="page-container">
+        <div className="dex-start-rows" style={{ maxWidth: 520, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 20 }}>
+          {rowClusters.map(c => (
+            <div key={c.key}>
+              <div style={{
+                fontSize: '0.78rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.6px',
+                color: 'var(--dex-gray-500)', margin: '0 4px 8px',
+              }}>{c.title}</div>
+              <div style={{
+                background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 14,
+                overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+              }}>
+                {c.items.map((it, i) => (
+                  <button
+                    key={it.key}
+                    type="button"
+                    onClick={it.inquiry ? () => setShowInquiry(true) : it.onClick}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 14, width: '100%',
+                      minHeight: 58, padding: '10px 14px', textAlign: 'left', cursor: 'pointer',
+                      background: 'transparent', border: 'none', fontFamily: 'inherit',
+                      borderTop: i === 0 ? 'none' : '1px solid var(--dex-gray-100)',
+                    }}
+                  >
+                    <span style={{
+                      flex: '0 0 auto', width: 42, height: 42, borderRadius: '50%',
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      background: 'rgba(134,188,37,0.12)', color: 'var(--dex-green-dark, #4a7c1f)',
+                    }}>{it.icon}</span>
+                    <span style={{ flex: '1 1 auto', minWidth: 0 }}>
+                      <span style={{ display: 'block', fontWeight: 700, fontSize: '0.98rem', color: 'var(--dex-gray-800)', lineHeight: 1.25 }}>
+                        {it.label}
+                      </span>
+                      <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-500)', lineHeight: 1.3, marginTop: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {it.subtitle}
+                      </span>
+                    </span>
+                    {typeof it.badge === 'number' && (
+                      <span style={{
+                        flex: '0 0 auto', background: '#ed8b00', color: '#fff', borderRadius: 12,
+                        minWidth: 22, height: 22, padding: '0 6px', display: 'inline-flex',
+                        alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700,
+                      }}>{it.badge}</span>
+                    )}
+                    <span style={{ flex: '0 0 auto', color: 'var(--dex-gray-300)', fontSize: '1.5rem', lineHeight: 1, marginLeft: 2 }} aria-hidden="true">›</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+        <InquiryModal open={showInquiry} onClose={() => setShowInquiry(false)} />
+      </div>
+    );
+  }
 
   return (
     <div className="page-container">

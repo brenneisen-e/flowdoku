@@ -14,6 +14,7 @@ import { useRoles } from '../context/RoleContext';
 // wie die Event-Liste) — sonst sieht jeder Hauptevent-Teilnehmer alle Sub-Events.
 import { isEventVisibleForUser } from './EventListPage';
 import { useCachedImage } from '../utils/imageCache';
+import { useIsMobile } from '../utils/useIsMobile';
 import { isRegistrationFullyClosed } from '../utils/eventFormat';
 import { useLanguage, translations as appTranslations, Locale } from '../context/LanguageContext';
 // v20.4: modernes Alert-Modal statt window.alert.
@@ -104,6 +105,8 @@ export default function RegistrationPage(): React.ReactElement {
   const { locale: appLocale } = useLanguage();
   // v20.4: App-Modal statt nativem Browser-Alert.
   const { showAlert } = useDialog();
+  // Mobile-Breakpoint für kompaktere Handy-Darstellung (einklappbare Sektionen etc.).
+  const isMobile = useIsMobile();
   const event = events.find(e => e.id === selectedEventId);
 
   // v18.35: Erzwungene Anmeldesprache. Hat der Organizer für dieses Event eine
@@ -2320,7 +2323,9 @@ export default function RegistrationPage(): React.ReactElement {
             style={{
               display: 'flex',
               // Hochkant -> Bild links + Inhalt rechts | Querformat -> Bild oben + Inhalt drunter
-              flexDirection: imgOrientation === 'portrait' ? 'row' : 'column',
+              // Auf dem Handy IMMER Bild oben + Inhalt drunter, damit Titel/Datum
+              // nicht auf ~110px zusammengequetscht werden.
+              flexDirection: isMobile ? 'column' : (imgOrientation === 'portrait' ? 'row' : 'column'),
               gap: 12,
               alignItems: 'stretch',
             }}
@@ -2339,9 +2344,12 @@ export default function RegistrationPage(): React.ReactElement {
                 overflow: 'hidden',
                 // Hochkant: schmal links + volle Karten-Höhe
                 // Querformat: volle Breite oben, Höhe richtet sich nach Bild-Aspect (kein Crop)
-                ...(imgOrientation === 'portrait'
-                  ? { flex: '0 0 220px', alignSelf: 'stretch', minHeight: 360, display: 'flex' }
-                  : { width: '100%', display: 'flex', justifyContent: 'center' }),
+                // Handy: immer volle Breite mit begrenzter Höhe (kein 360px-Block).
+                ...(isMobile
+                  ? { width: '100%', maxHeight: 200, display: 'flex', justifyContent: 'center' }
+                  : imgOrientation === 'portrait'
+                    ? { flex: '0 0 220px', alignSelf: 'stretch', minHeight: 360, display: 'flex' }
+                    : { width: '100%', display: 'flex', justifyContent: 'center' }),
               }}
             >
               {event.imageUrl && (
@@ -2353,7 +2361,11 @@ export default function RegistrationPage(): React.ReactElement {
                   // Bildteil weggecroppt). Hintergrundfarbe der Hülle ist
                   // bereits gray-100 — das ergibt einen sauberen, neutralen
                   // Letterbox-Rahmen statt eines Bildschnitts.
-                  style={event.imageDisplay?.hero
+                  style={isMobile
+                    // Handy: Bild füllt die begrenzte 200px-Höhe (cover), damit
+                    // die Karte kompakt bleibt und der Rest ohne Scrollen sichtbar ist.
+                    ? { width: '100%', maxHeight: 200, height: 'auto', objectFit: 'cover', display: 'block' }
+                    : event.imageDisplay?.hero
                     // v23.22: Pro-Ansicht-Darstellung (Hero) — volles Bild
                     // (contain), Größe über max. Höhe steuerbar (behebt „Foto zu
                     // groß") + optionaler Zoom. Zentriert auf weißem Hintergrund.
@@ -3600,7 +3612,7 @@ export default function RegistrationPage(): React.ReactElement {
                     </div>
                   );
                 })()}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                   {(() => {
                     const optA = { id: 'Durchstarter', label: splitLabelA, desc: splitLabelA === 'Durchstarter' ? t('reg.starter.durch.desc') : '', cap: durchCap, count: starterCounts?.durch ?? 0, wait: starterCounts?.durchWait ?? 0, color: 'var(--dex-green-dark, #6b9a1e)' };
                     const optB = { id: 'Funstarter', label: splitLabelB, desc: splitLabelB === 'Funstarter' ? t('reg.starter.fun.desc') : '', cap: funCap, count: starterCounts?.fun ?? 0, wait: starterCounts?.funWait ?? 0, color: 'var(--dex-orange, #ff8c00)' };
@@ -4344,8 +4356,8 @@ export default function RegistrationPage(): React.ReactElement {
                     ? <><strong>{okCount}</strong> bereit zum Anmelden{dupCount > 0 ? `, ${dupCount} Duplikat(e)` : ''}{nfCount > 0 ? `, ${nfCount} nicht gefunden` : ''}. Prüfe die Tabelle — nicht passende Zeilen kannst du entfernen.</>
                     : <><strong>{okCount}</strong> ready to register{dupCount > 0 ? `, ${dupCount} duplicate(s)` : ''}{nfCount > 0 ? `, ${nfCount} not found` : ''}. Review the table — remove rows that don&apos;t fit.</>}
                 </p>
-                <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 8 }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <div style={{ maxHeight: 320, overflowY: 'auto', overflowX: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 8 }}>
+                  <table style={{ width: '100%', minWidth: 560, borderCollapse: 'collapse' }}>
                     <thead>
                       <tr>
                         <th style={thStyle}>{locale === 'de' ? 'Vorname' : 'First name'}</th>

@@ -630,7 +630,17 @@
       .page-container { padding: 16px 12px; }
 
       /* Header */
-      .header { padding: 0 12px; height: 52px; }
+      /* v26.36: Auf dem Handy darf die Kontroll-Leiste umbrechen statt zu
+         clippen — sonst werden die rechten Buttons (Avatar, DE/EN, Info,
+         Handbuch) abgeschnitten und die Suche kollabiert zum Schlitz. */
+      .header {
+        padding: 8px 12px;
+        height: auto;
+        flex-wrap: wrap;
+        row-gap: 8px;
+      }
+      .header-left { gap: 8px; }
+      .header-right { gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
       .header-title { font-size: 0.85rem; padding-left: 10px; }
       .header-logo { font-size: 1.1rem; }
 
