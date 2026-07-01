@@ -26,6 +26,7 @@ import { isEventOver } from '../utils/eventFormat';
 // v20.2: + statische Check-in-URL für die QR-Kachel im Event-Detail.
 // v20.3: + Default-Zeitfenster (2 Std. vor Start bis Event-Ende) zur Vorbelegung.
 import { generateSelfCheckInToken, buildStaticCheckInUrl, defaultCheckInWindow } from '../utils/selfCheckIn';
+import { useIsMobile } from '../utils/useIsMobile';
 // v20.0 (Audit): xlsx + qrcode werden nicht mehr statisch importiert, sondern
 // erst beim tatsächlichen Gebrauch (Export-Klick / QR-Vorschau) als eigener
 // Chunk nachgeladen — spart ~1 MB im Haupt-Bundle.
@@ -864,6 +865,7 @@ type ConsolidatedRow = {
 };
 
 export default function AdminPage(): React.ReactElement {
+  const isMobile = useIsMobile();
   const { navigate, selectedEventId } = useNavigation();
   // v14.11: zusätzlich `events` (alle Events inkl. Sub-Events) als `allEvents`
   // für die Parent-Lookup-Logik im konsolidierten View + im Sub-Event-Detail.
@@ -5889,7 +5891,10 @@ export default function AdminPage(): React.ReactElement {
         const closable = adminToast.kind !== 'cancelling';
         return (
           <div style={{
-            position: 'fixed', top: 80, right: 20, zIndex: 1000, maxWidth: 460,
+            position: 'fixed', top: 80, zIndex: 1000,
+            ...(isMobile
+              ? { left: 12, right: 12, maxWidth: 'min(460px, calc(100vw - 24px))' }
+              : { right: 20, maxWidth: 460 }),
             padding: '14px 18px', borderRadius: 'var(--dex-radius, 12px)',
             background: '#fff',
             border: `1px solid ${accent}`,
@@ -6446,8 +6451,8 @@ export default function AdminPage(): React.ReactElement {
               {(() => {
                 const rowStyle: React.CSSProperties = {
                   display: 'grid',
-                  gridTemplateColumns: '160px 1fr',
-                  gap: 12,
+                  gridTemplateColumns: isMobile ? '1fr' : '160px 1fr',
+                  gap: isMobile ? 2 : 12,
                   padding: '10px 0',
                   borderBottom: '1px solid var(--dex-gray-200)',
                   fontSize: '0.9rem',
@@ -8553,7 +8558,7 @@ export default function AdminPage(): React.ReactElement {
                 </p>
               ) : (
                 <>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 24 }}>
                     <div style={{ padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 12, textAlign: 'center' }}>
                       <div style={{ fontSize: '1.6rem', fontWeight: 700, color: 'var(--dex-green-dark, #6b9a1e)' }}>{totalCompleted}</div>
                       <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>Abgeschlossen</div>
@@ -11847,7 +11852,7 @@ export default function AdminPage(): React.ReactElement {
                 </div>
               );
               return (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   {/* Anrede zuerst (read-only) */}
                   <div>{renderReadOnly(isDe ? 'Anrede' : 'Salutation', editForm.Anrede || '')}</div>
                   {/* Vorname + Nachname editierbar */}
@@ -11920,7 +11925,7 @@ export default function AdminPage(): React.ReactElement {
                           ? 'Nur diese Felder werden gespeichert.'
                           : 'Only these fields will be saved.'}
                       </p>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                         {selectedEvent.eventSpecificFields.map(cf => {
                           // eslint-disable-next-line @typescript-eslint/no-explicit-any
                           const sp = (cf as any).spInternalName || '';
@@ -12205,7 +12210,7 @@ export default function AdminPage(): React.ReactElement {
               );
             }
             return (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 {parentFields.map(cf => {
                   const value = mainFieldsEditForm[cf.id] || '';
                   const setVal = (v: string): void => setMainFieldsEditForm(prev => ({ ...prev, [cf.id]: v }));

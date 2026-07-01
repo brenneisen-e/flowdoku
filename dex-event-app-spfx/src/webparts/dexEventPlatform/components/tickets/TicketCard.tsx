@@ -157,9 +157,11 @@ export default function TicketCard(props: { ticket: DexTicket; defaultExpanded?:
           {/* v26.8: Foto-Kontaktkarte des Fragestellers (Hover → Teams-Chat). */}
           <PersonContactHover email={ticket.askerEmail} name={ticket.askerName || ticket.askerEmail} size={30}
             subline={contactSubline(ticket.askerJobTitle, ticket.askerLocation)} isDe={isDe} />
-          <span style={{ display: 'inline-flex', flexDirection: 'column', lineHeight: 1.25 }}>
-            <strong style={{ fontSize: '0.92rem' }}>{ticket.askerName || ticket.askerEmail}</strong>
-            <span style={{ fontSize: 12, color: 'var(--dex-gray-400,#a0a0a0)' }}>
+          <span style={{ display: 'inline-flex', flexDirection: 'column', lineHeight: 1.25, flex: '1 1 0', minWidth: 0, overflow: 'hidden' }}>
+            <strong style={{ fontSize: '0.92rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ticket.askerName || ticket.askerEmail}</strong>
+            {/* v26.36: Sub-Zeile abschneiden statt die Karte über den Handy-
+                Viewport hinauszuschieben (role · jobTitle · location · event). */}
+            <span style={{ fontSize: 12, color: 'var(--dex-gray-400,#a0a0a0)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {ticket.askerRole}
               {contactSubline(ticket.askerJobTitle, ticket.askerLocation) ? ` · ${contactSubline(ticket.askerJobTitle, ticket.askerLocation)}` : ''}
               {ticket.eventTitle ? ` · ${ticket.eventTitle}` : ''}

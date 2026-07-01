@@ -7303,7 +7303,7 @@ export default function EventCreationPage(): React.ReactElement {
                     ? 'Standardmäßig wird der Organizer für Rückfragen aus dem Team angezeigt. Wenn du stattdessen (oder zusätzlich) jemand Externen angeben willst — z.B. eine Service-Mailadresse oder eine Kontaktperson vor Ort — dann hier eintragen. Erscheint auf der Anmelde-Seite und in „Meine Events" zusätzlich zu den Organizern. Hat KEINE App-Berechtigung, ist nur ein Anzeige-Feld.'
                     : 'By default the organizer is shown as the contact for questions from the team. If you want to add an external contact instead (or in addition) — e.g. a service email or an on-site contact — enter it here. Appears on the registration page and in „My Events" in addition to the organizers. Has NO app permissions, display-only.'}
                 </p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 10 }}>
+                <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 10 }}>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-700)', marginBottom: 4 }}>
                       {isDe ? 'Name' : 'Name'}
@@ -13595,7 +13595,7 @@ export default function EventCreationPage(): React.ReactElement {
           popperPlacement: 'bottom-start' as const, isClearable: true, autoComplete: 'off',
         };
         const outlookDateEditor = (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <label style={{ fontSize: '0.68rem', color: 'var(--dex-gray-400)' }}>Start</label>
               <DatePicker {...dpCommon} selected={olIsoToDate(olStartOverrideVal)} onChange={(d: Date | null) => setOlStart(olDateToIso(d))} placeholderText={olStart ? olFmt(olStart) + ' (übernommen)' : 'Start'} />
@@ -14020,8 +14020,8 @@ export default function EventCreationPage(): React.ReactElement {
                 <div key={si} style={{ marginBottom: 14 }}>
                   <div style={{ fontWeight: 700, fontSize: '0.85rem', color: 'var(--dex-green-dark, #4a7c1f)', borderBottom: '1px solid var(--dex-gray-100)', paddingBottom: 4, marginBottom: 6 }}>{sec.title}</div>
                   {sec.rows.map((r, ri) => (
-                    <div key={ri} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '4px 0', fontSize: '0.8rem' }}>
-                      <span style={{ flex: '0 0 230px', color: 'var(--dex-gray-500)' }}>{r.label}</span>
+                    <div key={ri} style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', alignItems: 'flex-start', gap: isMobile ? 2 : 10, padding: '4px 0', fontSize: '0.8rem' }}>
+                      <span style={{ flex: isMobile ? '0 0 auto' : '0 0 230px', width: isMobile ? '100%' : undefined, color: 'var(--dex-gray-500)' }}>{r.label}</span>
                       <span style={{ flex: 1, color: 'var(--dex-gray-800)', minWidth: 0, overflowWrap: 'anywhere' }}>{r.value}</span>
                       {chip(r.status)}
                     </div>

@@ -518,7 +518,7 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
             }}
             onClick={() => navigate(targetPage, event.id)}
           >
-            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 12, width: '100%' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: 12, width: '100%', flexDirection: isMobile ? 'column' : 'row' }}>
               <div style={{ flex: '1 1 200px', minWidth: 0, display: 'flex', alignItems: 'center', gap: 16 }}>
                 <CachedBg url={event.imageUrl} style={{
                   width: 60, height: 40, borderRadius: 'var(--dex-radius)', flexShrink: 0,
@@ -548,7 +548,7 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
                   </p>
                 </div>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', width: isMobile ? '100%' : undefined }}>
                 <span style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
                   {event.currentParticipants}/{event.maxParticipants || '∞'} Teilnehmer
                 </span>
@@ -571,7 +571,7 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
                   <>
                     <button
                       className="btn btn-primary"
-                      style={{ fontSize: '0.78rem', padding: '6px 14px' }}
+                      style={{ fontSize: '0.78rem', padding: '6px 14px', width: isMobile ? '100%' : undefined }}
                       onClick={(e) => { e.stopPropagation(); navigate('my-events'); }}
                     >
                       {t('myevents.title')}
@@ -580,7 +580,7 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
                     {(canCreateEvents || isOwn) && (
                       <button
                         className="btn btn-secondary"
-                        style={{ fontSize: '0.78rem', padding: '6px 14px' }}
+                        style={{ fontSize: '0.78rem', padding: '6px 14px', width: isMobile ? '100%' : undefined }}
                         onClick={(e) => { e.stopPropagation(); navigate('registration', event.id, 'register-other'); }}
                       >
                         {t('reg.registerother')}
@@ -590,7 +590,7 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
                 ) : (
                   <button
                     className="btn btn-primary"
-                    style={{ fontSize: '0.78rem', padding: '6px 14px' }}
+                    style={{ fontSize: '0.78rem', padding: '6px 14px', width: isMobile ? '100%' : undefined }}
                     onClick={(e) => { e.stopPropagation(); navigate('registration', event.id); }}
                   >
                     {t('reg.register')}

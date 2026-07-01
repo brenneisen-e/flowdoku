@@ -283,7 +283,7 @@ export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open
             damit auf einen Blick klar ist dass das die Desktop-Ansicht ist. */}
         <div style={{
           flex: 1,
-          padding: '24px 24px 36px',
+          padding: isMobile ? '8px 8px 12px' : '24px 24px 36px',
           overflow: 'auto',
           background: 'var(--dex-gray-100, #f4f4f5)',
           display: 'flex', justifyContent: 'center',
@@ -335,16 +335,21 @@ export const RegisterPreviewModal: React.FC<RegisterPreviewModalProps> = ({ open
                 </PreviewContextStack>
               </div>
             </div>
-            {/* Laptop-Stand */}
-            <div style={{
-              position: 'absolute', left: -12, right: -12, bottom: 0, height: 12,
-              background: 'linear-gradient(180deg, #2a2a2a, #111)',
-              borderRadius: '0 0 12px 12px',
-            }} />
-            <div style={{
-              position: 'absolute', left: '40%', right: '40%', bottom: 8, height: 4,
-              background: '#444', borderRadius: '0 0 6px 6px',
-            }} />
+            {/* Laptop-Stand — auf dem Handy ausgeblendet (die -12px links/rechts
+                verursachen sonst ein paar px horizontales Scrollen). */}
+            {!isMobile && (
+              <>
+                <div style={{
+                  position: 'absolute', left: -12, right: -12, bottom: 0, height: 12,
+                  background: 'linear-gradient(180deg, #2a2a2a, #111)',
+                  borderRadius: '0 0 12px 12px',
+                }} />
+                <div style={{
+                  position: 'absolute', left: '40%', right: '40%', bottom: 8, height: 4,
+                  background: '#444', borderRadius: '0 0 6px 6px',
+                }} />
+              </>
+            )}
           </div>
         </div>
 
