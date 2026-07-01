@@ -15,6 +15,7 @@ import { useTickets } from '../context/TicketContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useRoles } from '../context/RoleContext';
 import { DexTicket } from '../types';
+import { deepLinkParams } from '../utils/deepLink';
 import TicketCard from './tickets/TicketCard';
 
 export default function TicketsPage(): React.ReactElement {
@@ -25,7 +26,7 @@ export default function TicketsPage(): React.ReactElement {
 
   const [closedOpen, setClosedOpen] = React.useState(false);
   const deepLinkId = React.useMemo<number | null>(() => {
-    try { const v = new URLSearchParams(window.location.search).get('id'); return v ? Number(v) : null; } catch { return null; }
+    try { const v = deepLinkParams().get('id'); return v ? Number(v) : null; } catch { return null; }
   }, []);
 
   React.useEffect(() => { reloadTickets().catch(() => { /* */ }); }, [reloadTickets]);

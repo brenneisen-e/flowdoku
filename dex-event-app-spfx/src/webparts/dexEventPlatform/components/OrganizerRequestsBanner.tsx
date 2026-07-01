@@ -13,6 +13,7 @@ import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
 import Modal from './Modal';
+import { deepLinkParams } from '../utils/deepLink';
 import { Settings, Check, X } from './Icons';
 
 type Req = { id: number; email: string; name: string; location: string; message: string; created: string };
@@ -41,7 +42,7 @@ export default function OrganizerRequestsBanner(): React.ReactElement | null {
   React.useEffect(() => {
     if (!adminLike) return;
     try {
-      const p = new URLSearchParams(window.location.search);
+      const p = deepLinkParams();
       if (p.get('action') === 'approveorg') setOpen(true);
     } catch { /* */ }
   }, [adminLike]);

@@ -472,7 +472,12 @@ export interface Registration {
   eventSpecificData: Record<string, string>;
 }
 
-export type UserRole = 'Admin' | 'Organizer' | 'User';
+// v26.33: 'IT-Admin' = technischer Admin mit den GLEICHEN Rechten wie 'Admin',
+// aber bewusst KEIN Empfänger der Benachrichtigungs-Mails (Ticket-Fragen,
+// Wochenbericht, Organizer-Anträge, Inaktiv-Hinweise). Da alle Empfänger-Listen
+// exakt auf Role='Admin' filtern, wird ein IT-Admin dort automatisch NICHT
+// aufgenommen — er behält aber vollen App-Zugriff (isAdmin = true).
+export type UserRole = 'Admin' | 'IT-Admin' | 'Organizer' | 'User';
 
 export interface User {
   id: string;

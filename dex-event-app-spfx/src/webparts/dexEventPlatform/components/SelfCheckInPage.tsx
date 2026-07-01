@@ -3,6 +3,7 @@ import { Icon } from '@fluentui/react/lib/Icon';
 import { useEvents, SelfCheckInResult } from '../context/EventContext';
 import { useNavigation } from '../context/NavigationContext';
 import { useLanguage } from '../context/LanguageContext';
+import { deepLinkParams } from '../utils/deepLink';
 // v20.4: persönliche Begrüßung („Hallo <Vorname>,") auf dem Ergebnis-Screen.
 import { useCurrentUser } from '../context/UserContext';
 
@@ -39,7 +40,7 @@ const SelfCheckInPage: React.FC<{ onLeave?: (_page: 'start' | 'my-events') => vo
     didRun.current = true;
     (async () => {
       try {
-        const params = new URLSearchParams(window.location.search);
+        const params = deepLinkParams();
         const token = params.get('token') || undefined;
         const eventParam = params.get('event');
         const code = params.get('code') || undefined;

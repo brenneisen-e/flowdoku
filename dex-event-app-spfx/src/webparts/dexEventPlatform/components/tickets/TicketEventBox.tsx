@@ -11,6 +11,7 @@ import * as React from 'react';
 import { Icon } from '@fluentui/react/lib/Icon';
 import { useTickets } from '../../context/TicketContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { deepLinkParams } from '../../utils/deepLink';
 import TicketCard from './TicketCard';
 
 export default function TicketEventBox(props: { eventId: string }): React.ReactElement | null {
@@ -22,7 +23,7 @@ export default function TicketEventBox(props: { eventId: string }): React.ReactE
   const openCount = openCountForEvent(props.eventId);
 
   const deepLinkTicketId = React.useMemo<number | null>(() => {
-    try { const v = new URLSearchParams(window.location.search).get('ticket'); return v ? Number(v) : null; } catch { return null; }
+    try { const v = deepLinkParams().get('ticket'); return v ? Number(v) : null; } catch { return null; }
   }, []);
 
   const [collapsed, setCollapsed] = React.useState<boolean>(openCount === 0 && deepLinkTicketId == null);

@@ -13,6 +13,7 @@ import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../types';
 import { EventService, SPEvent, CustomField, SPRegistration, SPParticipant, ReseedSummary, AssistantLink } from '../services/EventService';
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
+import { buildHashDeepLink } from '../utils/deepLink';
 import { isEventOver } from '../utils/eventFormat';
 import { registrationEmail, externalInvitationEmail, coOrganizerAddedEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
 import { APP_VERSION } from '../version';
@@ -2691,7 +2692,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       const tpl = await eventService.getEmailTemplate('TeamJoinRequest', lang).catch(() => null);
       const leadFirst = lead.Vorname || '';
       const leadFull = `${lead.Vorname || ''} ${lead.Nachname || ''}`.trim() || lead.ParticipantEmail;
-      const appUrl = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView&action=teamjoin&request=${result.itemId || 0}`;
+      const appUrl = buildHashDeepLink(`${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, { action: 'teamjoin', request: result.itemId || 0 });
       const teamNameStr = teamNameFromMembers ? `„${teamNameFromMembers}"` : '';
       const vars: Record<string, string> = {
         Name: leadFirst || leadFull,
@@ -4167,7 +4168,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       const actionLabel = requestType === 'cancel'
         ? (isDe ? 'Abmeldung' : 'Cancellation')
         : (isDe ? 'Änderung der Angaben' : 'Change of details');
-      const deepLink = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView&action=assistreq&id=${link.id}`;
+      const deepLink = buildHashDeepLink(`${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, { action: 'assistreq', id: link.id });
       const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const heading = isDe ? 'Anforderung an dich' : 'Request for you';
       const sub = isDe ? `${actionLabel} — ${link.eventTitle || ''}` : `${actionLabel} — ${link.eventTitle || ''}`;
@@ -4968,7 +4969,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         if (admins.length > 0) {
           const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
           const appBase = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`;
-          const approveUrl = created.itemId ? `${appBase}&action=approveorg&request=${created.itemId}` : appBase;
+          const approveUrl = created.itemId ? buildHashDeepLink(appBase, { action: 'approveorg', request: created.itemId }) : appBase;
           const inner = `
             <p style="margin:0 0 12px;">Hallo zusammen,</p>
             <p style="margin:0 0 12px;"><strong>${esc(name || mail)}</strong> möchte <strong>Organizer</strong> werden und kann dann eigene Events anlegen und verwalten.</p>
@@ -5171,7 +5172,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const list = newPeople.map(p => `<li><strong>${esc(p.name || p.email)}</strong>${p.name ? ` (${esc(p.email)})` : ''}</li>`).join('');
     const heading = isDe ? 'Möglicherweise inaktives Konto' : 'Possibly inactive account';
     const sub = event.title;
-    const appUrl = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView&action=admin&event=${eventId}`;
+    const appUrl = buildHashDeepLink(`${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, { action: 'admin', event: eventId });
     const body = isDe
       ? `<p>Hallo,</p>
          <p>bei deinem Event <strong>${esc(event.title)}</strong> ${newPeople.length === 1 ? 'gibt es eine angemeldete Person, die' : 'gibt es angemeldete Personen, die'} <strong>womöglich Deloitte verlassen ${newPeople.length === 1 ? 'hat' : 'haben'}</strong> (kein aktives Konto mehr). An ${newPeople.length === 1 ? 'diese Person' : 'diese Personen'} kommen Bestätigungs-Mails und Outlook-Termine <strong>möglicherweise nicht an</strong>:</p>

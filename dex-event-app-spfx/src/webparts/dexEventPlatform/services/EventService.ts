@@ -1050,6 +1050,24 @@ export class EventService {
     }
   }
 
+  /** v26.33: Wurde seit `sinceIso` (inkl.) schon eine Mail dieses Typs in die
+   *  Queue gelegt? Grundlage für tages-entdoppelte Reminder (z.B. Ticket-
+   *  Erinnerung höchstens einmal pro Tag, egal wie viele Power-User die App
+   *  öffnen). */
+  public async hasQueuedEmailSince(emailType: string, sinceIso: string): Promise<boolean> {
+    try {
+      const safeType = (emailType || '').replace(/'/g, "''");
+      const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items?$select=Id&$filter=EmailType eq '${safeType}' and Created ge datetime'${encodeURIComponent(sinceIso)}'&$top=1`;
+      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      if (!resp.ok) return false;
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      return Array.isArray(items) && items.length > 0;
+    } catch {
+      return false;
+    }
+  }
+
   /** v26.35: Für jedes Event das FRÜHESTE „ParticipantDeletionWarning"-Sendedatum
    *  (Created in der DEX_Emails-Queue). Grundlage für die 1-Wochen-Frist zwischen
    *  Vorwarnung an die Organizer und der Löschung der Teilnehmerliste. */
@@ -5442,7 +5460,7 @@ export class EventService {
             if (roleResp.ok) {
               const rd = await roleResp.json();
               const rItems = rd.value || rd.d?.results || [];
-              if (rItems.length > 0 && rItems[0].Role === 'Admin') isAdmin = true;
+              if (rItems.length > 0 && (rItems[0].Role === 'Admin' || rItems[0].Role === 'IT-Admin')) isAdmin = true;
             }
           } catch { /* ignore */ }
 
@@ -6544,7 +6562,7 @@ export class EventService {
                   if (roleResp.ok) {
                     const rd = await roleResp.json();
                     const rItems = rd.value || rd.d?.results || [];
-                    if (rItems.length > 0 && rItems[0].Role === 'Admin') isAdmin = true;
+                    if (rItems.length > 0 && (rItems[0].Role === 'Admin' || rItems[0].Role === 'IT-Admin')) isAdmin = true;
                   }
                 } catch { /* ignore */ }
                 if (!isEventOrganizer && !isAdmin) {
@@ -8939,7 +8957,7 @@ export class EventService {
       if (resp.ok) {
         const data = await resp.json();
         const items = data.value || data.d?.results || [];
-        if (items.length > 0 && (items[0].Role === 'Admin' || items[0].Role === 'Organizer')) return true;
+        if (items.length > 0 && (items[0].Role === 'Admin' || items[0].Role === 'IT-Admin' || items[0].Role === 'Organizer')) return true;
       }
     } catch { /* ignore - fallback auf weitere Checks */ }
 

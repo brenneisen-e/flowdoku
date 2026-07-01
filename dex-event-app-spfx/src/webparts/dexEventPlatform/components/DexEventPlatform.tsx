@@ -20,6 +20,7 @@ import { RoleProvider, useRoles } from '../context/RoleContext';
 // v22.21: Geführtes Tutorial (Onboarding-Tour) — Provider + Overlay.
 import { TutorialProvider } from './tutorial/TutorialGuide';
 import { TicketProvider } from '../context/TicketContext';
+import { deepLinkParams } from '../utils/deepLink';
 import Header from './Header';
 import LandingPage from './LandingPage';
 import StartPage from './StartPage';
@@ -239,7 +240,7 @@ function AppContent(): React.ReactElement {
   // Lade-Spinner, sobald wir erkennen dass ein Cancel-Deep-Link aktiv ist.
   const isCancelDeepLink = React.useMemo(() => {
     try {
-      const params = new URLSearchParams(window.location.search);
+      const params = deepLinkParams();
       return params.get('action') === 'cancel' && !!params.get('event');
     } catch { return false; }
   }, []);
@@ -254,7 +255,7 @@ function AppContent(): React.ReactElement {
   // die Deep-Link-Parameter aus der URL entfernt und dann navigiert.
   const [isSelfCheckInDeepLink, setIsSelfCheckInDeepLink] = React.useState<boolean>(() => {
     try {
-      return new URLSearchParams(window.location.search).get('action') === 'selfcheckin';
+      return deepLinkParams().get('action') === 'selfcheckin';
     } catch { return false; }
   });
   const leaveSelfCheckIn = React.useCallback((page: 'start' | 'my-events'): void => {
@@ -317,7 +318,7 @@ function AppContent(): React.ReactElement {
     if (didHandleDeepLink.current) return;
     if (isEventsLoading) return;
     try {
-      const params = new URLSearchParams(window.location.search);
+      const params = deepLinkParams();
       const action = params.get('action');
       const eventParam = params.get('event');
       if (action === 'cancel' && eventParam) {
