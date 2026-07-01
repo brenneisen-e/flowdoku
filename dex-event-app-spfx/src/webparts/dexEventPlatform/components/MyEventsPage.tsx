@@ -18,14 +18,14 @@ import { useCurrentUser } from '../context/UserContext';
 // (gleiche Logik wie Anmeldeseite/Event-Liste).
 import { isEventVisibleForUser } from './EventListPage';
 import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime, QuizQuestion } from '../types';
-import { SPRegistration } from '../services/EventService';
+import { SPRegistration, EventCommRow } from '../services/EventService';
 import { wrapTemplate } from '../services/EmailTemplates';
 import { isEventOver } from '../utils/eventFormat';
 import { useLanguage } from '../context/LanguageContext';
 // v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
 import { useDialog } from '../context/DialogContext';
 // v11.99: RefreshCw nicht mehr benötigt (Page-Level-Refresh-Button entfernt).
-import { X, Pencil, QrCode } from './Icons';
+import { X, Pencil, QrCode, Mail } from './Icons';
 import { InfoTooltip } from './InfoTooltip';
 import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
@@ -690,7 +690,7 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
 
 export default function MyEventsPage(): React.ReactElement {
   const { navigate, selectedEventId, navIntent, clearIntent } = useNavigation();
-  const { topLevelEvents, childEventsOf, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, cancelTeamMember, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, registerForEvent, getAllRegistrations, getTeamMembers, addTeamMember, listTeamJoinRequestsForEvent, decideTeamJoinRequest, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest } = useEvents();
+  const { topLevelEvents, childEventsOf, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, cancelTeamMember, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, registerForEvent, getAllRegistrations, getTeamMembers, addTeamMember, listTeamJoinRequestsForEvent, decideTeamJoinRequest, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, getEventComms } = useEvents();
   const { currentUser } = useCurrentUser();
   const currentUserEmail = (currentUser?.email || '').toLowerCase();
   // v24.41: Assistenz-Verknüpfungen — INFO-Ansicht für Anmeldungen, die jemand
@@ -933,6 +933,25 @@ export default function MyEventsPage(): React.ReactElement {
     } catch {
       showAlert(isDe ? 'QR-Code konnte nicht erzeugt werden.' : 'QR code could not be generated.', { variant: 'error' });
     }
+  };
+  // Teilnehmer-Nachrichten-Ansicht: pro Event die Broadcast-Mails (Einladung,
+  // Ankündigungen) aus dem dauerhaften Kommunikations-Log lesen.
+  const [commsModal, setCommsModal] = React.useState<{ eventId: string; eventTitle: string } | null>(null);
+  const [commsRows, setCommsRows] = React.useState<EventCommRow[]>([]);
+  const [commsLoading, setCommsLoading] = React.useState(false);
+  const [commsOpenId, setCommsOpenId] = React.useState<number | null>(null);
+  const openComms = (ev: DeloitteEvent): void => {
+    setCommsModal({ eventId: ev.id, eventTitle: ev.title || '' });
+    setCommsRows([]);
+    setCommsOpenId(null);
+    setCommsLoading(true);
+    getEventComms(ev.id)
+      .then(rows => {
+        const sorted = (rows || []).slice().sort((a, b) => new Date(b.created).getTime() - new Date(a.created).getTime());
+        setCommsRows(sorted);
+      })
+      .catch(() => { setCommsRows([]); })
+      .then(() => { setCommsLoading(false); });
   };
   const isDe = locale === 'de';
   const [myEvents, setMyEvents] = React.useState<MyEventEntry[]>([]);
@@ -2043,7 +2062,10 @@ export default function MyEventsPage(): React.ReactElement {
                   // keine Custom-Felder hat, aber die Anmeldung QR-fähig ist —
                   // sonst fehlte der „Mein QR-Code"-Button bei Events ohne
                   // Abfragefelder (z.B. einfaches Sommerfest).
-                  (displayData.length > 0 || (event.eventSpecificFields || []).filter((f: EventSpecificField) => f.label).length > 0 || (!sessionsOnly && !!event.eventNumber && ['Angemeldet', 'QR versendet', 'Eingecheckt'].indexOf(registration.Status) >= 0)) && (
+                  // Die Aktions-Zeile rendert immer, da sie jetzt mindestens den
+                  // „Nachrichten zum Event"-Button enthält (zusätzlich zu den
+                  // optionalen Angaben-Tags und dem QR-Button).
+                  (
                     <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
                       {displayData.map(({ label, value, type }) => (
                         <FieldAnswerTag key={label} label={label} value={value} type={type} />
@@ -2086,6 +2108,21 @@ export default function MyEventsPage(): React.ReactElement {
                           <QrCode size={12} /> {isDe ? 'Mein QR-Code' : 'My QR code'}
                         </button>
                       )}
+                      {/* Nachrichten zum Event: Broadcast-Mails (Einladung,
+                          Ankündigungen) aus dem Kommunikations-Log lesen. */}
+                      <button
+                        type="button"
+                        className="btn btn-outline"
+                        onClick={() => openComms(event)}
+                        style={{
+                          fontSize: '0.78rem', padding: '5px 12px', borderRadius: 6,
+                          width: 'auto', cursor: 'pointer',
+                          display: 'inline-flex', alignItems: 'center', gap: 4,
+                        }}
+                        title={isDe ? 'Nachrichten zu diesem Event ansehen' : 'View messages for this event'}
+                      >
+                        <Mail size={12} /> {isDe ? 'Nachrichten zum Event' : 'Event messages'}
+                      </button>
                     </div>
                   )
                 ) : (
@@ -3183,6 +3220,81 @@ export default function MyEventsPage(): React.ReactElement {
           </p>
           <div style={{ textAlign: 'right' }}>
             <button className="btn btn-secondary" onClick={() => setMyQrModal(null)} style={{ fontSize: '0.85rem' }}>
+              {isDe ? 'Schließen' : 'Close'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* Nachrichten-zum-Event-Modal: listet die Broadcast-Mails (Einladung,
+          Ankündigungen) aus dem Kommunikations-Log; ein Klick öffnet den vollen
+          HTML-Body (im isolierten iframe gerendert). */}
+      {commsModal && (
+        <Modal
+          open={true}
+          onClose={() => setCommsModal(null)}
+          maxWidth={640}
+          ariaLabel={isDe ? 'Nachrichten zum Event' : 'Event messages'}
+        >
+          <h3 style={{ margin: 0, fontSize: '1.05rem' }}>
+            {isDe ? 'Nachrichten zum Event' : 'Event messages'}
+          </h3>
+          <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--dex-gray-500)' }}>
+            {commsModal.eventTitle}
+          </p>
+          {commsLoading ? (
+            <p style={{ margin: '8px 0', fontSize: '0.9rem', color: 'var(--dex-gray-600)' }}>
+              {isDe ? 'Wird geladen…' : 'Loading…'}
+            </p>
+          ) : commsRows.length === 0 ? (
+            <p style={{ margin: '8px 0', fontSize: '0.9rem', color: 'var(--dex-gray-600)' }}>
+              {isDe ? 'Zu diesem Event gibt es noch keine Nachrichten.' : 'There are no messages for this event yet.'}
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: '60vh', overflowY: 'auto' }}>
+              {commsRows.map(row => {
+                const isOpen = commsOpenId === row.id;
+                return (
+                  <div
+                    key={row.id}
+                    style={{
+                      border: '1px solid var(--dex-gray-200)', borderRadius: 10,
+                      background: 'var(--dex-gray-50, #fafafa)', overflow: 'hidden',
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setCommsOpenId(prev => (prev === row.id ? null : row.id))}
+                      aria-expanded={isOpen}
+                      style={{
+                        display: 'block', width: '100%', textAlign: 'left',
+                        background: 'none', border: 'none', cursor: 'pointer', padding: '10px 14px',
+                      }}
+                    >
+                      <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--dex-gray-800)', wordBreak: 'break-word' }}>
+                        {row.subject || (isDe ? '(ohne Betreff)' : '(no subject)')}
+                      </div>
+                      <div style={{ marginTop: 2, fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+                        {formatDate(row.created)} · {isDe ? 'von' : 'from'} {row.sentByName || row.sentByEmail || '—'}
+                      </div>
+                    </button>
+                    {isOpen && (
+                      <div style={{ borderTop: '1px solid var(--dex-gray-200)', background: '#fff' }}>
+                        <iframe
+                          title={row.subject || 'message'}
+                          srcDoc={row.bodyHtml || ''}
+                          sandbox=""
+                          style={{ width: '100%', height: 360, border: 'none', display: 'block' }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div style={{ textAlign: 'right' }}>
+            <button className="btn btn-secondary" onClick={() => setCommsModal(null)} style={{ fontSize: '0.85rem' }}>
               {isDe ? 'Schließen' : 'Close'}
             </button>
           </div>

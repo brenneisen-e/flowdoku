@@ -30,7 +30,7 @@ import { useIsMobile } from '../utils/useIsMobile';
 // v20.0 (Audit): xlsx + qrcode werden nicht mehr statisch importiert, sondern
 // erst beim tatsächlichen Gebrauch (Export-Klick / QR-Vorschau) als eigener
 // Chunk nachgeladen — spart ~1 MB im Haupt-Bundle.
-import { EventService } from '../services/EventService';
+import { EventService, EventCommRow } from '../services/EventService';
 import { qrCodeEmail, qrEmailDefaults, buildQrBlockHtml, QrEmailOverride, cancellationEmail, promotionEmail, wrapTemplate, replacePlaceholders, buildEmailFromTemplate, getCachedLogoBase64, getCachedOrbBase64, injectIntoEmailContent } from '../services/EmailTemplates';
 import { applyEventTemplateOverride, formatOrganizerList } from '../context/EventContext';
 import { HtmlEditorModal } from './HtmlEditorModal';
@@ -1566,6 +1566,23 @@ export default function AdminPage(): React.ReactElement {
   const inviteHydratingRef = React.useRef(false);
   // v22.5: kurzes „Gespeichert"-Feedback nach Klick auf den Speichern-Button.
   const [inviteDraftSaved, setInviteDraftSaved] = React.useState(false);
+  // Gesendete-Rundmails-Viewer: liest den durablen Kommunikations-Log
+  // (DEX_EventComms) für das aktuell gewählte Event, neueste zuerst.
+  const [showCommsModal, setShowCommsModal] = React.useState(false);
+  const [commsLoading, setCommsLoading] = React.useState(false);
+  const [commsRows, setCommsRows] = React.useState<EventCommRow[]>([]);
+  const [commsExpandedId, setCommsExpandedId] = React.useState<number | null>(null);
+  const openCommsModal = (): void => {
+    if (!eventServiceRef || !selectedEvent) return;
+    setShowCommsModal(true);
+    setCommsExpandedId(null);
+    setCommsLoading(true);
+    setCommsRows([]);
+    eventServiceRef.getEventComms(selectedEvent.id)
+      .then(rows => { setCommsRows(rows); })
+      .catch(() => { setCommsRows([]); })
+      .then(() => { setCommsLoading(false); }, () => { setCommsLoading(false); });
+  };
   const [showExportMenu, setShowExportMenu] = React.useState(false);
   // v17.12: Zielgruppen-Picker für Excel-Export.
   const [excelTargetModal, setExcelTargetModal] = React.useState<null | { mode: 'deloitte' | 'b2run' }>(null);
@@ -7283,6 +7300,21 @@ export default function AdminPage(): React.ReactElement {
               onClick={openInviteModal}
             />
 
+            {/* 4c. Gesendete Rundmails — durabler Kommunikations-Log
+                (DEX_EventComms). Zeigt alle versendeten Broadcast-Mails
+                (Einladung / Massenmail) mit Zeitstempel + Absender; Klick
+                auf eine Zeile blendet den kompletten HTML-Body ein. */}
+            <ActionTile
+              icon={<Mail size={18} />}
+              category="mails"
+              title={isDe ? 'Gesendete Mails' : 'Sent emails'}
+              desc={isDe
+                ? 'Zeigt alle versendeten Rundmails (Einladung / Massenmail) zu diesem Event mit Zeitstempel und Absender. Klick auf eine Zeile öffnet den kompletten Mail-Text.'
+                : 'Shows all broadcast emails (invitation / mass mail) sent for this event with timestamp and sender. Click a row to open the full mail body.'}
+              badge="organizer"
+              onClick={openCommsModal}
+            />
+
             {/* 5. Excel-Download (mit Dropdown Deloitte/B2Run-View)
                 Wrapper braucht display:flex, damit der innere Button auf die
                 volle Grid-Zellen-Höhe gestreckt wird — sonst sieht die Kachel
@@ -12506,6 +12538,92 @@ export default function AdminPage(): React.ReactElement {
         </Modal>
       )}
 
+      {/* Gesendete Rundmails — Kommunikations-Log (DEX_EventComms) des Events.
+          Liste (neueste zuerst); Klick auf eine Zeile blendet den kompletten
+          HTML-Body ein — gerendert wie die QR-Mail-Vorschau (iframe/srcDoc,
+          isoliert per sandbox=""). */}
+      {showCommsModal && selectedEvent && (
+        <Modal
+          open={showCommsModal}
+          onClose={() => setShowCommsModal(false)}
+          maxWidth={760}
+          padding={0}
+          ariaLabel={isDe ? 'Gesendete Rundmails' : 'Sent broadcast emails'}
+        >
+          <div style={{
+            padding: '14px 18px', borderBottom: '1px solid var(--dex-gray-200)',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12,
+          }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <h3 style={{ margin: 0, fontSize: '1.05rem' }}>{isDe ? 'Gesendete Rundmails' : 'Sent broadcast emails'}</h3>
+              <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>{selectedEvent.title}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCommsModal(false)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-gray-500)', padding: 4 }}
+              aria-label={isDe ? 'Schließen' : 'Close'}
+            >
+              <X size={22} />
+            </button>
+          </div>
+          <div style={{ maxHeight: '65vh', overflowY: 'auto', padding: '10px 18px 18px' }}>
+            {commsLoading ? (
+              <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', padding: '16px 0' }}>{isDe ? 'Wird geladen…' : 'Loading…'}</p>
+            ) : commsRows.length === 0 ? (
+              <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', padding: '16px 0' }}>{isDe ? 'Es wurden noch keine Rundmails zu diesem Event versendet.' : 'No broadcast emails have been sent for this event yet.'}</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {commsRows.map(row => {
+                  const expanded = commsExpandedId === row.id;
+                  const typeLabel = row.emailType === 'Einladung'
+                    ? (isDe ? 'Einladung' : 'Invitation')
+                    : row.emailType === 'Massenmail'
+                      ? (isDe ? 'Massenmail' : 'Mass mail')
+                      : row.emailType;
+                  return (
+                    <div key={row.id} style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 8, overflow: 'hidden' }}>
+                      <button
+                        type="button"
+                        onClick={() => setCommsExpandedId(prev => prev === row.id ? null : row.id)}
+                        style={{
+                          width: '100%', textAlign: 'left', background: expanded ? 'var(--dex-gray-100)' : '#fff',
+                          border: 'none', cursor: 'pointer', padding: '10px 12px',
+                          display: 'flex', alignItems: 'flex-start', gap: 10,
+                        }}
+                      >
+                        <span style={{ marginTop: 2, flex: '0 0 auto', color: 'var(--dex-gray-500)', display: 'inline-flex' }}>{expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</span>
+                        <span style={{ minWidth: 0, flex: 1 }}>
+                          <span style={{ display: 'block', fontWeight: 700, fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>{row.subject || (isDe ? '(ohne Betreff)' : '(no subject)')}</span>
+                          <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                            {typeLabel} · {formatDate(row.created)} · {isDe ? 'von' : 'from'} {row.sentByName || (isDe ? 'Unbekannt' : 'Unknown')}
+                          </span>
+                        </span>
+                      </button>
+                      {expanded && (
+                        <div style={{ borderTop: '1px solid var(--dex-gray-200)', background: '#f5f5f5', padding: 10 }}>
+                          <iframe
+                            title={isDe ? 'Mail-Vorschau' : 'Email preview'}
+                            srcDoc={row.bodyHtml}
+                            sandbox=""
+                            style={{ width: '100%', height: 420, border: 'none', borderRadius: 6, background: '#fff' }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <div style={{ padding: '12px 18px', borderTop: '1px solid var(--dex-gray-200)', display: 'flex', justifyContent: 'flex-end' }}>
+            <button className="btn btn-secondary" onClick={() => setShowCommsModal(false)} style={{ fontSize: '0.85rem' }}>
+              {isDe ? 'Schließen' : 'Close'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
       {/* v17.10: Step 1 — Zielgruppen-Picker für Massenmail. Erscheint vor
           dem RichText-Editor. */}
       {massmailMode === 'pick' && selectedEvent && (() => {
@@ -12828,6 +12946,7 @@ export default function AdminPage(): React.ReactElement {
               'Massenmail', selectedEvent.title, selectedEvent.id,
               ccString,
             );
+            try { await eventServiceRef.logEventComm({ eventId: selectedEvent.id, eventTitle: selectedEvent.title, subject: resolvedSubject, bodyHtml: fullBody, emailType: 'Massenmail' }); } catch { /* */ }
             setEmailSending(false);
             const ccInfo = ccString ? ` (Organizer auf CC: ${ccList.length})` : ' (Organizer schon in Empfängerliste)';
             showAlert(`E-Mail an ${recipients.length} Empfänger in die Warteschlange eingetragen.${ccInfo}`);
@@ -13005,6 +13124,7 @@ export default function AdminPage(): React.ReactElement {
               'Einladung', selectedEvent.title, selectedEvent.id,
               ccString || undefined,
             );
+            try { await eventServiceRef.logEventComm({ eventId: selectedEvent.id, eventTitle: selectedEvent.title, subject: resolvedSubject, bodyHtml: fullBody, emailType: 'Einladung' }); } catch { /* */ }
             setInviteSending(false);
             showAlert(isDe
               ? `Einladungs-Mail an ${targetEmails.length} Empfänger in die Warteschlange eingetragen.`

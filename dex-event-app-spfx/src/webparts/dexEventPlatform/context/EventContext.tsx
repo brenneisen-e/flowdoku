@@ -11,7 +11,7 @@
 import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { DeloitteEvent } from '../types';
-import { EventService, SPEvent, CustomField, SPRegistration, SPParticipant, ReseedSummary, AssistantLink } from '../services/EventService';
+import { EventService, SPEvent, CustomField, SPRegistration, SPParticipant, ReseedSummary, AssistantLink, EventCommRow } from '../services/EventService';
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
 import { buildHashDeepLink } from '../utils/deepLink';
 import { isEventOver } from '../utils/eventFormat';
@@ -509,6 +509,9 @@ interface EventContextType {
   /** v26.40: Erkannte Ex-Deloitte-Personen automatisch abmelden (Event-Setting
    *  inactiveHandling='autoderegister'). Gibt die abgemeldeten Personen zurück. */
   autoDeregisterInactive: (eventId: string, people: Array<{ email: string; name: string }>) => Promise<Array<{ email: string; name: string }>>;
+  /** v26.41: Kommunikations-Log (Event-Rundmails) eines Events — für die
+   *  Teilnehmer-Ansicht unter „Meine Events" und die Organizer-Historie. */
+  getEventComms: (eventId: string) => Promise<EventCommRow[]>;
   /** v24.59: Bereits benachrichtigte Teilnehmer-E-Mails (lowercase) eines Events
    *  — damit die Landing-Page schon-benachrichtigte Konten ausblenden kann. */
   getSentInactiveNotices: (eventId: string) => Promise<Set<string>>;
@@ -831,6 +834,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         safeRun('ensureEmailTemplatesList', () => eventService.ensureEmailTemplatesList(), parallelMarks),
         safeRun('ensureIDReorderList', () => eventService.ensureIDReorderList(), parallelMarks),
         safeRun('ensureChangeLogList', () => eventService.ensureChangeLogList(), parallelMarks),
+        safeRun('ensureEventCommsList', () => eventService.ensureEventCommsList(), parallelMarks),
         safeRun('ensureTeamJoinRequestsList', () => eventService.ensureTeamJoinRequestsList(), parallelMarks),
         safeRun('ensureOutlookLocksList', () => eventService.ensureOutlookLocksList(), parallelMarks),
         safeRun('ensureAccessFixList', () => eventService.ensureAccessFixList(), parallelMarks),
@@ -1796,6 +1800,23 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             finalBody = finalBody.replace(/<\/body>/i, `${tipRow}</body>`);
           } else {
             finalBody = injectIntoEmailContent(finalBody, mobileAppTip);
+          }
+        }
+        // v26.41: Wurde zu diesem Event bereits eine Rundmail versendet (Einladung/
+        // Massenmail/Ankündigung), bekommen Spät-Anmelder:innen (und via denselben
+        // Pfad Nachrücker) in ihrer Anmeldebestätigung den Hinweis, dass sie die
+        // bisherige Kommunikation in der App unter „Meine Events" nachlesen können.
+        if (status === 'Angemeldet' && !isExternalInvite && !isExternalRecipient) {
+          let priorComms = false;
+          try { priorComms = await eventService.hasEventComms(eventId); } catch { priorComms = false; }
+          if (priorComms) {
+            const isDeComm = (lang || 'EN').toUpperCase() === 'DE';
+            const commsBox = `<div style="margin:0 0 16px;padding:12px 16px;background:#eef4fb;border:1px solid #0076a8;border-radius:8px;font-size:13px;line-height:1.55;color:#0b4a6f;">`
+              + (isDeComm
+                ? `<strong>Bereits versendete Infos zu diesem Event.</strong><br>Zu diesem Event wurde vorab schon per Mail kommuniziert (z.&nbsp;B. eine Einladung oder Ankündigung). Du findest diese bisherige Kommunikation jederzeit in der DEX App unter <strong>&bdquo;Meine Events&ldquo;</strong> beim Event — so bist du auf dem gleichen Stand.`
+                : `<strong>Earlier updates for this event.</strong><br>Some information about this event was already sent out by email (e.g. an invitation or announcement). You can read this previous communication any time in the DEX App under <strong>&bdquo;My Events&ldquo;</strong> on the event — so you're fully up to date.`)
+              + `</div>`;
+            finalBody = injectIntoEmailContent(finalBody, commsBox);
           }
         }
         // v18.41: People-Picker-Felder mit „CC bei Mail" → ausgewählte
@@ -5272,6 +5293,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return removed;
   }
 
+  // v26.41: Kommunikations-Log (Rundmails) eines Events lesen.
+  async function getEventComms(eventId: string): Promise<EventCommRow[]> {
+    try { return await eventService.getEventComms(eventId); }
+    catch { return []; }
+  }
+
   return React.createElement(
     EventContext.Provider,
     {
@@ -5296,7 +5323,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, restoreCustomFieldDescriptions,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, restoreCustomFieldDescriptions,
         sendAdminInquiry,
         requestOrganizerRole, requestCoOrganizerApprovals, notifyNewCoOrganizers, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,
