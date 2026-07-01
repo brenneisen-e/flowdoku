@@ -13,6 +13,7 @@ import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useDialog } from '../context/DialogContext';
+import { useIsMobile } from '../utils/useIsMobile';
 import { Mail, Check, X } from './Icons';
 import { wrapTemplate } from '../services/EmailTemplates';
 
@@ -53,6 +54,7 @@ export default function EmailTemplatesPage(): React.ReactElement {
   const { locale } = useLanguage();
   const { showAlert } = useDialog();
   const isDe = locale === 'de';
+  const isMobile = useIsMobile();
   const adminLike = isAdmin || originalIsAdmin;
 
   const [templates, setTemplates] = React.useState<Tpl[]>([]);
@@ -178,7 +180,7 @@ export default function EmailTemplatesPage(): React.ReactElement {
 
             {open && (
               <div style={{ padding: '4px 16px 16px', borderTop: '1px solid var(--dex-gray-100)' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(280px, 1fr) minmax(280px, 1fr)', gap: 18, alignItems: 'start' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'minmax(280px, 1fr) minmax(280px, 1fr)', gap: 18, alignItems: 'start' }}>
                   {/* Editor */}
                   <div>
                     <div style={{ marginBottom: 10 }}>

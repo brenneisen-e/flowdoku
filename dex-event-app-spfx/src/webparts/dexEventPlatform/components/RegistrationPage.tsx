@@ -81,6 +81,82 @@ const isPlausibleEmail = (e: string): boolean => {
   return true;
 };
 
+/**
+ * Einklappbare Formular-Sektion für die Handy-Ansicht.
+ *
+ * Auf dem Desktop (isMobile=false) wird EXAKT wie bisher gerendert: der
+ * Header (mit optionalen Action-Buttons in `headerExtra`) plus der Body sind
+ * immer sichtbar, ohne Chevron und ohne Toggle — das Verhalten bleibt
+ * unverändert.
+ *
+ * Auf dem Handy (isMobile=true) wird der Header zu einer antippbaren Zeile mit
+ * Chevron (▸/▾). Der Body ist per Default eingeklappt (`defaultOpen=false`),
+ * damit die Anmeldemaske kompakt bleibt und man nicht ewig scrollen muss.
+ * Etwaige Action-Buttons aus `headerExtra` bleiben auch eingeklappt bedienbar
+ * (sie stehen weiter im Header, nur der reine Titel-Bereich toggelt).
+ *
+ * WICHTIG: Es werden keine Feldnamen, kein State und keine Validierung
+ * verändert — nur die Sichtbarkeit des bereits gerenderten Bodys.
+ */
+function CollapsibleSection(props: {
+  isMobile: boolean;
+  icon: string;
+  title: React.ReactNode;
+  /** Zusätzlicher Header-Inhalt rechts (z.B. Toggle-Buttons). */
+  headerExtra?: React.ReactNode;
+  defaultOpen?: boolean;
+  children: React.ReactNode;
+}): React.ReactElement {
+  const { isMobile, icon, title, headerExtra, defaultOpen, children } = props;
+  const [open, setOpen] = React.useState<boolean>(defaultOpen ?? !isMobile);
+
+  // Desktop: unverändertes Markup (Header + Body immer sichtbar, kein Chevron).
+  if (!isMobile) {
+    return (
+      <>
+        {headerExtra ? (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <Icon iconName={icon} style={{ fontSize: 16 }} />
+              {title}
+            </div>
+            {headerExtra}
+          </div>
+        ) : (
+          <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <Icon iconName={icon} style={{ fontSize: 16 }} />
+            {title}
+          </div>
+        )}
+        {children}
+      </>
+    );
+  }
+
+  // Handy: antippbarer Header + einklappbarer Body.
+  return (
+    <>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+        <div
+          className="section-header"
+          role="button"
+          tabIndex={0}
+          aria-expanded={open}
+          onClick={() => setOpen(o => !o)}
+          onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(o => !o); } }}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', flex: headerExtra ? '0 1 auto' : '1 1 auto', userSelect: 'none' }}
+        >
+          <span aria-hidden="true" style={{ fontSize: 12, width: 12, display: 'inline-block' }}>{open ? '▾' : '▸'}</span>
+          <Icon iconName={icon} style={{ fontSize: 16 }} />
+          {title}
+        </div>
+        {headerExtra}
+      </div>
+      {open && children}
+    </>
+  );
+}
+
 export default function RegistrationPage(): React.ReactElement {
   // v11.98: Beim Mount nach oben scrollen. Sonst behält der scrollende
   // .main-content-Container die Position aus der vorherigen Seite (z.B.
@@ -3524,11 +3600,11 @@ export default function RegistrationPage(): React.ReactElement {
               einer Zeile. Legende mit ROTEM Stern (vorher war der Stern
               in der Erklärung grau, jetzt im Deloitte-Rot wie alle echten
               Required-Marker). */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <Icon iconName="EditNote" style={{ fontSize: 16 }} />
-              {t('reg.eventinfo')}
-            </div>
+          <CollapsibleSection
+            isMobile={isMobile}
+            icon="EditNote"
+            title={t('reg.eventinfo')}
+            headerExtra={
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12, padding: '0 12px' }}>
               <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
                 <span style={{ color: 'var(--dex-red, #da291c)', fontWeight: 700, marginRight: 2 }}>*</span> = {t('reg.requiredfield')}
@@ -3546,7 +3622,8 @@ export default function RegistrationPage(): React.ReactElement {
                 <Trash2 size={14} /> {locale === 'de' ? 'Zurücksetzen' : 'Reset'}
               </button>
             </span>
-          </div>
+            }
+          >
           <div style={{ padding: '24px 20px' }}>
             {/* v11.10: Group-Selection ist ein eigener, IMMER sichtbarer
                 Block (sofern das Event Split-Capacity hat). Vorher war er
@@ -3996,6 +4073,7 @@ export default function RegistrationPage(): React.ReactElement {
               </div>
             )}
           </div>
+          </CollapsibleSection>
         </div>
         )}
       </div>

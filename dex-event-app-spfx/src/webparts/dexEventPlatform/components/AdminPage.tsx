@@ -9229,6 +9229,39 @@ export default function AdminPage(): React.ReactElement {
           const count = teamEntries.length;
           const canManage = isAdmin || isOrganizerFor(selectedEvent);
 
+          // v26.x (Mobile): HTML5-Drag&Drop feuert auf Touch-Geräten nicht.
+          // Deshalb auf dem Handy pro Person ein simples Auswahlmenü zum
+          // Umsortieren anbieten — reine Zusatz-UI, die Drag-Logik bleibt
+          // unangetastet. Nutzt denselben Pfad (moveRegToTeam) wie der Drop.
+          const teamSelectOptions = teamEntries.map(te => ({
+            tid: te.tid,
+            label: te.members.find(mm => !!mm.TeamName)?.TeamName || `${selectedEvent.teamTermSingular || 'Team'} ${te.tid}`,
+          }));
+          const MobileTeamSelect = (reg: SPRegistration): React.ReactElement => {
+            const curTid = reg.TeamId || '';
+            return (
+              <select
+                value={curTid}
+                aria-label={isDe ? 'Team ändern' : 'Change team'}
+                onChange={e => {
+                  const target = e.target.value;
+                  const opt = teamSelectOptions.find(o => o.tid === target);
+                  moveRegToTeam(reg, target, opt?.label).catch(() => { /* */ });
+                }}
+                style={{
+                  marginTop: 6, width: '100%', fontSize: '0.82rem',
+                  padding: '6px 8px', borderRadius: 8,
+                  border: '1px solid var(--dex-gray-300)', background: '#fff',
+                }}
+              >
+                <option value="">{isDe ? `Ohne ${selectedEvent.teamTermSingular || 'Team'}` : `No ${selectedEvent.teamTermSingular || 'team'}`}</option>
+                {teamSelectOptions.map(o => (
+                  <option key={o.tid} value={o.tid}>{o.label}</option>
+                ))}
+              </select>
+            );
+          };
+
           const statusBadge = (st: string): React.ReactElement | null => {
             if (!st || st === 'Angemeldet') return null;
             const colorMap: Record<string, string> = {
@@ -9374,6 +9407,7 @@ export default function AdminPage(): React.ReactElement {
                                 <div style={{ fontSize: '0.88rem', fontWeight: 500 }}>{name}{statusBadge(m.Status)}</div>
                                 <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)' }}>{m.ParticipantEmail}</div>
                                 {dept && <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', marginTop: 1 }}>{dept}</div>}
+                                {isMobile && canManage && teamSelectOptions.length > 0 && MobileTeamSelect(m)}
                               </div>
                             </div>
                           );
@@ -9483,6 +9517,7 @@ export default function AdminPage(): React.ReactElement {
                                       <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', marginTop: 1 }}>{dept}</div>
                                     );
                                   })()}
+                                  {isMobile && canManage && MobileTeamSelect(m)}
                                 </div>
                                 {isLead && (
                                   <span style={{

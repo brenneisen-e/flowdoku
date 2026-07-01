@@ -7998,23 +7998,23 @@ export default function EventCreationPage(): React.ReactElement {
                           background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
                           border: '1px solid var(--dex-gray-200)',
                         }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 120 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 120, flexBasis: isMobile ? '100%' : undefined }}>
                             <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.date')}</label>
                             <input type="date" className="form-input" value={item.date} onChange={e => updateSubAgendaItem(item.id, { date: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
                           </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80, flexBasis: isMobile ? '100%' : undefined }}>
                             <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.time')}</label>
                             <input type="time" className="form-input" value={item.time} onChange={e => updateSubAgendaItem(item.id, { time: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
                           </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 80, flexBasis: isMobile ? '100%' : undefined }}>
                             <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.endtime')}</label>
                             <input type="time" className="form-input" value={item.endTime || ''} onChange={e => updateSubAgendaItem(item.id, { endTime: e.target.value })} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
                           </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150, flexBasis: isMobile ? '100%' : undefined }}>
                             <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.title')}</label>
                             <input type="text" className="form-input" value={item.title} onChange={e => updateSubAgendaItem(item.id, { title: e.target.value })} placeholder={t('create.agenda.title')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
                           </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, flex: 1, minWidth: 150, flexBasis: isMobile ? '100%' : undefined }}>
                             <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.agenda.desc')}</label>
                             <input type="text" className="form-input" value={item.description || ''} onChange={e => updateSubAgendaItem(item.id, { description: e.target.value })} placeholder={t('create.agenda.desc')} style={{ padding: '4px 8px', fontSize: '0.85rem' }} />
                           </div>
@@ -9644,7 +9644,7 @@ export default function EventCreationPage(): React.ReactElement {
                   {/* v10.20: zwei Text-Inputs für die frei wählbaren Bezeichnungen.
                       Wenn der Organizer nichts einträgt, fällt die Registration-
                       Seite auf 'Durchstarter' / 'Funstarter' zurück. */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                  <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
                     <div>
                       <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
                         {isDe ? 'Bezeichnung Gruppe A' : 'Group A label'}
@@ -9672,7 +9672,7 @@ export default function EventCreationPage(): React.ReactElement {
                       />
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div>
                       <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
                         <Icon iconName="People" style={{ fontSize: 14, marginRight: 6, color: 'var(--dex-green-dark, #6b9a1e)' }} />
@@ -9819,7 +9819,7 @@ export default function EventCreationPage(): React.ReactElement {
                           </>
                         )} />
                       </label>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                         <div>
                           <label style={{ display: 'block', fontSize: '0.78rem', marginBottom: 4, color: 'var(--dex-gray-600)' }}>Durchstarter →</label>
                           <select
@@ -10158,7 +10158,7 @@ export default function EventCreationPage(): React.ReactElement {
                     ? <><strong>Was du hier einstellst:</strong> einen eigenen Begriff für die Teams — z.B. <strong>„Break-Out Session“</strong>, „Gruppe“ oder „Tisch“. Leer = Standard „Team“.<br /><br /><strong>Anzeige in der App:</strong> ersetzt das Wort „Team“ überall (Organizer Center, „Meine Events“, Anmeldeformular).</>
                     : <><strong>What this controls:</strong> a custom term for the teams — e.g. <strong>“Break-Out session”</strong>, “group” or “table”. Empty = default “Team”.<br /><br /><strong>Where you see it:</strong> replaces the word “Team” everywhere (organizer center, “My Events”, registration form).</>} />
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                   <input
                     type="text" className="form-input"
                     value={teamTermSingular}

@@ -2383,7 +2383,7 @@ export default function MyEventsPage(): React.ReactElement {
                     weil es keine echte Parent-Registrierung gibt. Sessions werden
                     über die Sub-Event-Sektion oben gemanagt. */}
                 {!sessionsOnly && (
-                  <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--dex-gray-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--dex-gray-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                     <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)' }}>
                       {t('myevents.registeredon')}: {formatDate(registration.RegistrationDate)}
                     </span>
