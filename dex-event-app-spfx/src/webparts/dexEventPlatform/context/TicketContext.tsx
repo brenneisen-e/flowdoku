@@ -55,6 +55,10 @@ export interface AnswerInput {
   screenshots: File[];
 }
 
+/** v26.32: Ergebnis einer Ticket-Übernahme. `conflict` = ein anderer Power-User
+ *  war schneller (dann steht in `claimedByName`, wer es hat). */
+export interface ClaimResult { ok: boolean; conflict?: boolean; claimedByName?: string }
+
 interface TicketContextType {
   tickets: DexTicket[];
   myTickets: DexTicket[];
@@ -64,7 +68,9 @@ interface TicketContextType {
   reloadTickets: () => Promise<void>;
   reloadMyTickets: () => Promise<void>;
   createTicket: (input: AskInput) => Promise<boolean>;
-  claimTicket: (ticketId: number) => Promise<void>;
+  /** v26.32: übernimmt ein Ticket; `onlyIfOpen` (Klick auf ein offenes Ticket)
+   *  verhindert das stille Überschreiben, wenn jemand schneller war. */
+  claimTicket: (ticketId: number, opts?: { onlyIfOpen?: boolean }) => Promise<ClaimResult>;
   releaseTicket: (ticketId: number) => Promise<void>;
   answerTicket: (input: AnswerInput) => Promise<boolean>;
   /** v26.8: Auf eine beantwortete Frage erneut antworten (Fragesteller → nur an
@@ -327,10 +333,13 @@ export function TicketProvider(props: { context: WebPartContext; children: React
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventService, roles, isAdmin, myEmailLc, currentUser, events, selectedEventId, shouldLoadAll]);
 
-  const claimTicket = React.useCallback(async (ticketId: number): Promise<void> => {
+  const claimTicket = React.useCallback(async (ticketId: number, opts?: { onlyIfOpen?: boolean }): Promise<ClaimResult> => {
     const name = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || (currentUser.email || '');
-    await eventService.claimTicket(ticketId, currentUser.email || '', name);
+    const res = await eventService.claimTicket(ticketId, currentUser.email || '', name, opts);
+    // Immer neu laden: bei Erfolg zeigt die Liste „In Bearbeitung" mit meinem
+    // Namen, bei Konflikt den tatsächlichen (fremden) Übernehmer.
     await reloadTickets();
+    return { ok: res.ok, conflict: res.conflict, claimedByName: res.claimedByName };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventService, currentUser]);
 

@@ -10247,16 +10247,66 @@ export class EventService {
   }
 
   /** Ticket „in Bearbeitung" nehmen (Claim). */
-  public async claimTicket(itemId: number, email: string, name: string): Promise<boolean> {
+  /**
+   * v26.32: Ticket übernehmen mit OPTIMISTIC CONCURRENCY, damit nicht zwei
+   * Power-User gleichzeitig dasselbe Ticket übernehmen. Ablauf:
+   *   1. Aktuellen Stand (Status/Claim) + ETag lesen.
+   *   2. `onlyIfOpen` (Standard beim Klick auf ein OFFENES Ticket): ist es
+   *      inzwischen von jemand anderem übernommen/geschlossen → conflict.
+   *   3. Bedingter MERGE mit IF-MATCH=<ETag>. Hat zwischen Schritt 1 und 3
+   *      jemand geschrieben → HTTP 412 → wir lesen den aktuellen Claimer nach
+   *      und melden conflict (kein stilles Überschreiben mehr).
+   * Rückgabe: { ok, conflict?, claimedByName?, status? }.
+   */
+  public async claimTicket(
+    itemId: number, email: string, name: string, opts?: { onlyIfOpen?: boolean }
+  ): Promise<{ ok: boolean; conflict?: boolean; claimedByName?: string; status?: string }> {
+    const itemUrl = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items(${itemId})`;
+    const readCurrent = async (): Promise<{ status: string; claimEmail: string; claimName: string; etag: string } | null> => {
+      try {
+        const getResp = await this.context.spHttpClient.get(
+          `${itemUrl}?$select=Status,ClaimedByEmail,ClaimedByName`,
+          SPHttpClient.configurations.v1,
+          { headers: { 'Accept': 'application/json;odata=nometadata' } }
+        );
+        if (!getResp.ok) return null;
+        const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
+        const data = await getResp.json();
+        return {
+          status: String(data.Status || 'Open'),
+          claimEmail: String(data.ClaimedByEmail || ''),
+          claimName: String(data.ClaimedByName || ''),
+          etag,
+        };
+      } catch { return null; }
+    };
     try {
-      const resp = await this._merge(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items(${itemId})`,
-        { 'Status': 'InProgress', 'ClaimedByEmail': email, 'ClaimedByName': name, 'ClaimedAt': new Date().toISOString() }
+      const cur = await readCurrent();
+      if (!cur || !cur.etag) return { ok: false };
+      const meLc = (email || '').toLowerCase();
+      const takenByOther = cur.claimEmail && cur.claimEmail.toLowerCase() !== meLc;
+      // Beim Klick auf ein OFFENES Ticket: schon vergeben/geschlossen? → Konflikt.
+      if (opts?.onlyIfOpen && (cur.status !== 'Open') && takenByOther) {
+        return { ok: false, conflict: true, claimedByName: cur.claimName || cur.claimEmail, status: cur.status };
+      }
+      // Bereits beantwortet/geschlossen → nie überschreiben.
+      if (cur.status === 'Closed') {
+        return { ok: false, conflict: true, claimedByName: cur.claimName || cur.claimEmail, status: cur.status };
+      }
+      const resp = await this._mergeIfMatch(
+        itemUrl,
+        { 'Status': 'InProgress', 'ClaimedByEmail': email, 'ClaimedByName': name, 'ClaimedAt': new Date().toISOString() },
+        cur.etag
       );
-      return resp.ok;
+      if (resp.status === 412) {
+        // Race verloren (jemand war zwischen Lesen und Schreiben schneller).
+        const after = await readCurrent();
+        return { ok: false, conflict: true, claimedByName: after ? (after.claimName || after.claimEmail) : undefined, status: after?.status };
+      }
+      return { ok: resp.ok };
     } catch (err) {
       console.warn('[DEX] claimTicket failed:', err);
-      return false;
+      return { ok: false };
     }
   }
 
@@ -10626,34 +10676,36 @@ export class EventService {
     // aus der Queue). Hängengebliebene Pendings bleiben so in der
     // Arbeitsliste sichtbar, wo der Admin sie sehen soll.
     if (String(r['Status'] || '') === 'Pending') return false;
-    // v26.26: Verwaiste Zeilen (KEINEM Event zugeordnet, EventId leer/'0', oder
-    // Event bereits gelöscht) werden NICHT mehr sofort archiviert, sondern erst,
-    // wenn sie mindestens 1 Monat alt sind. Sonst verschwinden frische event-lose
-    // Mails (Ticket-Bestätigungen/-Benachrichtigungen, Organizer-Anträge,
-    // Wochenbericht — alle mit EventId='0') sofort aus der Queue. Zeilen eines
-    // wirklich ABGELAUFENEN Events bleiben sofort archivreif (das Event ist vorbei).
+    // v26.32: Generelle 1-Monats-Karenz — KEINE Zeile wird archiviert, solange
+    // sie jünger als ~1 Monat ist, egal ob sie event-los ist (EventId leer/'0'),
+    // an ein bereits ABGELAUFENES Event hängt oder zu einem gelöschten (verwaisten)
+    // Event gehört. So bleiben frische Mails (Ticket-/Anfrage-Bestätigungen,
+    // Organizer-Anträge, Wochenbericht — auch solche zu einer Frage über ein
+    // schon vergangenes Event) mindestens einen Monat in der Queue sichtbar.
+    // Vorher (v26.26) griff die Karenz NUR für event-lose/verwaiste Zeilen;
+    // Mails abgelaufener Events verschwanden sofort — genau das war das Problem.
     const ORPHAN_GRACE_MS = 30 * 24 * 60 * 60 * 1000; // ~1 Monat
-    const oldEnough = (): boolean => {
-      const c = String(r['Created'] || '');
-      if (!c) return false; // ohne Erstellungsdatum konservativ NICHT archivieren
-      const t = new Date(c).getTime();
-      if (isNaN(t)) return false;
-      return (Date.now() - t) >= ORPHAN_GRACE_MS;
-    };
+    const c = String(r['Created'] || '');
+    const createdTs = c ? new Date(c).getTime() : NaN;
+    // Ohne/mit ungültigem Erstellungsdatum konservativ NICHT archivieren.
+    if (isNaN(createdTs)) return false;
+    if ((Date.now() - createdTs) < ORPHAN_GRACE_MS) return false;
+    // Ab hier ist die Zeile ≥ 1 Monat alt.
     if (matchBy === 'eventId') {
       const id = String(r['EventId'] || '').trim();
-      // Keinem Event zugeordnet (leer/'0') → Orphan-Regel (erst nach 1 Monat).
-      if (!id || id === '0') return oldEnough();
-      // Event abgelaufen → sofort archivreif.
+      // Keinem Event zugeordnet (leer/'0') → archivreif (alt genug).
+      if (!id || id === '0') return true;
+      // Event abgelaufen → archivreif.
       if (expiredEventIds.has(id)) return true;
-      // Event existiert nicht mehr (gelöscht/verwaist) → erst nach 1 Monat.
-      if (allEventIds.size > 0 && !allEventIds.has(id)) return oldEnough();
+      // Event existiert nicht mehr (gelöscht/verwaist) → archivreif.
+      if (allEventIds.size > 0 && !allEventIds.has(id)) return true;
+      // Event noch aktiv → nicht archivieren.
       return false;
     }
     const su = String(r['SubsiteUrl'] || '').toLowerCase().trim();
-    if (!su) return oldEnough();
+    if (!su) return true;
     if (expiredSubsiteUrls.has(su)) return true;
-    if (allSubsiteUrls.size > 0 && !allSubsiteUrls.has(su)) return oldEnough();
+    if (allSubsiteUrls.size > 0 && !allSubsiteUrls.has(su)) return true;
     return false;
   }
 
