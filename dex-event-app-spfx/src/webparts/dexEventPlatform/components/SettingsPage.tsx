@@ -17,6 +17,40 @@ import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
 import { PersonContactHover } from './PersonContactHover';
 
+/**
+ * v26.34: „Coordinated Events"-Zelle — zeigt standardmäßig nur die ANZAHL der
+ * betreuten Events als klickbaren Chip; ein Klick klappt die Titel-Badges aus.
+ * Hält die Rollen-Tabelle bei Organizern mit vielen Events kompakt.
+ * Modul-Level-Komponente (stabile Identität) → Aufklapp-Zustand bleibt pro Zeile
+ * erhalten, auch wenn die Elternkomponente neu rendert.
+ */
+function CoordinatedEventsCell(props: { titles: string[]; isDe: boolean }): React.ReactElement {
+  const { titles, isDe } = props;
+  const [open, setOpen] = React.useState(false);
+  if (titles.length === 0) return <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
+  const word = isDe ? (titles.length === 1 ? 'Event' : 'Events') : (titles.length === 1 ? 'event' : 'events');
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        title={open ? (isDe ? 'Zuklappen' : 'Collapse') : (isDe ? 'Events anzeigen' : 'Show events')}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '2px 10px', borderRadius: 999, border: '1px solid rgba(134,188,37,0.35)', background: 'rgba(134,188,37,0.14)', color: 'var(--dex-green-dark)', fontSize: '0.74rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}
+      >
+        {titles.length} {word}
+        <span aria-hidden="true" style={{ fontSize: '0.7rem' }}>{open ? '▾' : '▸'}</span>
+      </button>
+      {open && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 6 }}>
+          {titles.map((t2, idx) => (
+            <span key={idx} style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 10, background: 'rgba(134,188,37,0.14)', color: 'var(--dex-green-dark)', fontSize: '0.72rem', fontWeight: 600 }}>{t2}</span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { currentUser } = useCurrentUser();
@@ -432,7 +466,7 @@ export default function SettingsPage(): React.ReactElement {
             ) : <span style={{ color: 'var(--dex-gray-300)' }}>—</span>}
           </td>
           <td style={{ ...tdS, fontSize: '0.78rem', color: 'var(--dex-gray-600)', maxWidth: 280 }}>
-            {r.role === 'User' ? <span style={{ color: 'var(--dex-gray-300)' }}>—</span> : eventBadges(evts)}
+            {r.role === 'User' ? <span style={{ color: 'var(--dex-gray-300)' }}>—</span> : <CoordinatedEventsCell titles={evts} isDe={isDe} />}
           </td>
           <td style={{ ...tdS, textAlign: 'right' }}>
             {!isSelf && (
