@@ -1,8 +1,8 @@
 /**
  * QuestionButton (v26.0.0)
  *
- * Grüner „Hast du Fragen?"-Button im Header (alle eingeloggten User, nicht auf
- * der Landing Page). Öffnet ein Modal, in dem man:
+ * Grüner „Hast du Fragen?"-Button im Header (alle eingeloggten User, seit
+ * v26.34 auch auf der Landing Page). Öffnet ein Modal, in dem man:
  *  - eine oder MEHRERE Fragen stellen kann (per „+"),
  *  - schon beim Tippen passende Handbuch-Artikel vorgeschlagen bekommt
  *    (Selbsthilfe, bevor ein Ticket rausgeht — auch für normale User),
@@ -132,7 +132,19 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
     }
     return false;
   };
-  const pickableEvents = (topLevelEvents || []).filter((e) => !e.isFictive || askerIsOrgLike);
+  // v26.34: Anzeige „Name | Datum" pro Option.
+  const fmtEventOpt = (e: DeloitteEvent): string => {
+    const d = e.startDate ? new Date(e.startDate) : null;
+    const dateStr = d && !isNaN(d.getTime())
+      ? d.toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : '';
+    return dateStr ? `${e.title} | ${dateStr}` : e.title;
+  };
+  // v26.34: Nur AKTIVE Events, alphabetisch sortiert.
+  const pickableEvents = (topLevelEvents || [])
+    .filter((e) => (!e.isFictive || askerIsOrgLike) && e.status === 'Active')
+    .slice()
+    .sort((a, b) => (a.title || '').localeCompare(b.title || '', isDe ? 'de' : 'en'));
   const myEventsList = pickableEvents.filter(isMineFor);
   const otherEventsList = pickableEvents.filter((e) => !isMineFor(e));
   // v26.30: Vorausgewähltes Event (z.B. ein Sub-Event auf dem Register-Screen),
@@ -289,15 +301,15 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
                 style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: '1px solid var(--dex-gray-300,#d1d1d1)', fontFamily: 'inherit', fontSize: '0.9rem', background: '#fff' }}
               >
                 <option value="">{isDe ? 'Kein bestimmtes Event – allgemeine Frage' : 'No specific event – general question'}</option>
-                {selExtra && (<option value={selExtra.id}>{selExtra.title}</option>)}
+                {selExtra && (<option value={selExtra.id}>{fmtEventOpt(selExtra)}</option>)}
                 {myEventsList.length > 0 && (
                   <optgroup label={isDe ? 'Deine Events' : 'Your events'}>
-                    {myEventsList.map((e) => (<option key={e.id} value={e.id}>{e.title}</option>))}
+                    {myEventsList.map((e) => (<option key={e.id} value={e.id}>{fmtEventOpt(e)}</option>))}
                   </optgroup>
                 )}
                 {otherEventsList.length > 0 && (
                   <optgroup label={isDe ? 'Weitere Events' : 'Other events'}>
-                    {otherEventsList.map((e) => (<option key={e.id} value={e.id}>{e.title}</option>))}
+                    {otherEventsList.map((e) => (<option key={e.id} value={e.id}>{fmtEventOpt(e)}</option>))}
                   </optgroup>
                 )}
               </select>

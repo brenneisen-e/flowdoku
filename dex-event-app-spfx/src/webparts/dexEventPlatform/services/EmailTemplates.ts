@@ -449,9 +449,30 @@ export function externalInvitationEmail(
   recipientName: string,
   eventTitle: string,
   registeredByName: string,
-  isDe: boolean
+  isDe: boolean,
+  opts?: { startDate?: string; endDate?: string; location?: string }
 ): { subject: string; body: string } {
   const privacyUrl = 'https://www.deloitte.com/de/de/legal/privacy.html';
+  const locale = isDe ? 'de-DE' : 'en-GB';
+  // v26.33: „Wann/Wo"-Block aus Start-/Enddatum + Ort (Ort nur falls vorhanden).
+  const whenStr = (() => {
+    const s = opts?.startDate ? new Date(opts.startDate) : null;
+    if (!s || isNaN(s.getTime())) return '';
+    const dateStr = s.toLocaleDateString(locale, { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
+    const t1 = s.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+    let time = t1;
+    const e = opts?.endDate ? new Date(opts.endDate) : null;
+    if (e && !isNaN(e.getTime())) time = `${t1}–${e.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}`;
+    return `${dateStr}, ${time}${isDe ? ' Uhr' : ''}`;
+  })();
+  const loc = (opts?.location || '').trim();
+  const detailsRows = [
+    whenStr ? `<tr><td style="padding:2px 14px 2px 0;color:#555;white-space:nowrap;vertical-align:top;">${isDe ? 'Wann' : 'When'}:</td><td style="padding:2px 0;"><strong>${whenStr}</strong></td></tr>` : '',
+    loc ? `<tr><td style="padding:2px 14px 2px 0;color:#555;white-space:nowrap;vertical-align:top;">${isDe ? 'Wo' : 'Where'}:</td><td style="padding:2px 0;"><strong>${loc}</strong></td></tr>` : '',
+  ].filter(Boolean).join('');
+  const detailsBlock = detailsRows
+    ? `<table style="margin:10px 0 4px;border-collapse:collapse;font-size:14px;">${detailsRows}</table>`
+    : '';
   if (isDe) {
     return {
       subject: `Einladung: ${eventTitle}`,
@@ -461,6 +482,7 @@ export function externalInvitationEmail(
         eventTitle,
         `<p>Hallo ${recipientName},</p>
         <p>${registeredByName ? `<strong>${registeredByName}</strong> hat dich` : 'Du wurdest'} zum Event <strong>${eventTitle}</strong> eingeladen.</p>
+        ${detailsBlock}
         <p>Wenn du teilnehmen möchtest, <strong>bestätige bitte diese Einladung, indem du auf diese E-Mail antwortest</strong>. Deine Zusage geht damit an die anmeldende Person und die Organisator:innen (in Kopie).</p>
         <p style="margin-top:16px;font-size:13px;color:#555;">Es gelten die <a href="${privacyUrl}" style="color:${GREEN};font-weight:600;">Datenschutzhinweise von Deloitte</a>. Deine Daten werden ausschließlich zur Organisation dieses Events verarbeitet. Einen Widerruf kannst du jederzeit an <a href="mailto:privacy@deloitte.de" style="color:${GREEN};">privacy@deloitte.de</a> richten.</p>
         <p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
@@ -475,6 +497,7 @@ export function externalInvitationEmail(
       eventTitle,
       `<p>Dear ${recipientName},</p>
       <p>${registeredByName ? `<strong>${registeredByName}</strong> has invited you` : 'You have been invited'} to the event <strong>${eventTitle}</strong>.</p>
+      ${detailsBlock}
       <p>If you would like to attend, <strong>please confirm this invitation by replying to this email</strong>. Your reply reaches the person who registered you and the organizers (on copy).</p>
       <p style="margin-top:16px;font-size:13px;color:#555;">Deloitte's <a href="${privacyUrl}" style="color:${GREEN};font-weight:600;">data protection notice</a> applies. Your data is processed solely to organise this event. You may withdraw at any time via <a href="mailto:privacy@deloitte.de" style="color:${GREEN};">privacy@deloitte.de</a>.</p>
       <p style="margin-top:24px;"><strong>Best regards</strong><br><br><strong>Your Event Team</strong></p>`
@@ -635,6 +658,44 @@ export function organizerOnboardingEmail(recipientName: string, role: 'Organizer
       <p style="margin-top:24px;"><strong>Du hast Fragen?</strong> Nutze dafür bitte das Ticketsystem direkt in der App: Oben rechts in der Kopfzeile findest du den grünen Button <strong>&bdquo;Hast du Fragen?&ldquo;</strong>. Ein Klick öffnet ein Fenster, in dem du deine Frage(n) stellst &mdash; auf Wunsch mit einem Screenshot deines Bildschirms. Schon beim Tippen schlägt dir die App passende Handbuch-Artikel vor. Deine Frage geht an das DEX-Team, das sich darum kümmert und dir in der App antwortet.</p>
 
       <p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein DEX-Team</strong></p>`
+    ),
+  };
+}
+
+/**
+ * v26.34: „Du bist jetzt Co-Organizer"-Mail. Wird verschickt, wenn eine Person
+ * nachträglich (beim Bearbeiten eines Events) als (Co-)Organizer hinzugefügt wird
+ * — inkl. Hinweis auf den Zugriff auf die Teilnehmerliste und die separat
+ * versendete Outlook-Kalendereinladung. Folgt der Event-Sprache (DE/EN).
+ */
+export function coOrganizerAddedEmail(
+  recipientName: string,
+  eventTitle: string,
+  actorName: string,
+  isDe: boolean,
+  appUrl?: string
+): { subject: string; body: string } {
+  const link = appUrl || APP_URL;
+  if (isDe) {
+    return {
+      subject: `Du bist jetzt Co-Organizer: ${eventTitle}`,
+      body: wrapTemplate(GREEN, 'Du bist jetzt Co-Organizer', eventTitle,
+        `<p>Hallo ${recipientName},</p>
+        <p>${actorName ? `<strong>${actorName}</strong> hat dich` : 'Du wurdest'} als <strong>Co-Organizer</strong> für das Event <strong>${eventTitle}</strong> hinzugefügt.</p>
+        <p>Du kannst das Event ab sofort mitverwalten und hast <strong>Zugriff auf die Teilnehmerliste</strong> — öffne dazu das <a href="${link}" style="color:${GREEN};font-weight:600;">Organizer Center der DEX App</a>.</p>
+        <p>Außerdem hast du eine <strong>Outlook-Kalendereinladung</strong> zum Event erhalten.</p>
+        <p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+      ),
+    };
+  }
+  return {
+    subject: `You are now a co-organizer: ${eventTitle}`,
+    body: wrapTemplate(GREEN, 'You are now a co-organizer', eventTitle,
+      `<p>Dear ${recipientName},</p>
+      <p>${actorName ? `<strong>${actorName}</strong> has added you` : 'You have been added'} as a <strong>co-organizer</strong> for the event <strong>${eventTitle}</strong>.</p>
+      <p>You can now help manage the event and have <strong>access to the participant list</strong> — open the <a href="${link}" style="color:${GREEN};font-weight:600;">Organizer Center in the DEX App</a>.</p>
+      <p>You have also received an <strong>Outlook calendar invitation</strong> for the event.</p>
+      <p style="margin-top:24px;"><strong>Best regards</strong><br><br><strong>Your Event Team</strong></p>`
     ),
   };
 }

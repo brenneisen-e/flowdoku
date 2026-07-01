@@ -14,7 +14,7 @@ import { DeloitteEvent } from '../types';
 import { EventService, SPEvent, CustomField, SPRegistration, SPParticipant, ReseedSummary, AssistantLink } from '../services/EventService';
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
 import { isEventOver } from '../utils/eventFormat';
-import { registrationEmail, externalInvitationEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
+import { registrationEmail, externalInvitationEmail, coOrganizerAddedEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
 import { APP_VERSION } from '../version';
 import { RELEASE_NOTES } from '../data/releaseNotes';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
@@ -468,6 +468,9 @@ interface EventContextType {
    *  Freigabe) anlegen. orgNames/orgEmails sind die 1:1-gepaarten Strings aus
    *  sanitizeOrganizerPairs (Namen „; "-, Mails ";"-getrennt). Best-effort. */
   requestCoOrganizerApprovals: (orgNames: string, orgEmails: string, eventTitle: string) => Promise<void>;
+  /** v26.34: Neu hinzugefügte (Co-)Organizer per Mail informieren (Zugriff auf
+   *  die Teilnehmerliste) + Outlook-Kalendereinladung. Best-effort. */
+  notifyNewCoOrganizers: (eventId: string, eventTitle: string, added: Array<{ name: string; email: string }>, isDe: boolean, disableOutlook?: boolean) => Promise<void>;
   /** v23.37: offene Organizer-Anträge (für den Admin-Hinweis beim App-Start). */
   getOpenOrganizerRequests: () => Promise<Array<{ id: number; email: string; name: string; location: string; message: string; created: string }>>;
   /** v23.37: Antrag entscheiden — Status setzen + Antragsteller informieren.
@@ -1670,7 +1673,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       const spTemplateRaw = isExternalInvite ? null : await eventService.getEmailTemplate(templateType, lang).catch(() => null);
       const spTemplate = applyEventTemplateOverride(spTemplateRaw, event.emailTemplateOverrides, templateType);
       if (isExternalInvite) {
-        emailData = externalInvitationEmail(nameToUse, event.title, currentUserName, lang.toUpperCase() === 'DE');
+        emailData = externalInvitationEmail(
+          nameToUse, event.title,
+          `${parsed.firstName} ${parsed.lastName}`.trim() || currentUserName,
+          lang.toUpperCase() === 'DE',
+          { startDate: event.startDate, endDate: event.endDate, location: event.location }
+        );
       } else if (spTemplate) {
         emailData = buildEmailFromTemplate(spTemplate, vars);
       } else {
@@ -4961,6 +4969,45 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     }
   }
 
+  /**
+   * v26.34: Neu hinzugefügte Co-Organizer benachrichtigen — „Du wurdest von X zum
+   * Co-Organizer gemacht und kannst nun auf die Teilnehmerliste zugreifen" — plus
+   * eine Outlook-Kalendereinladung zum Event. Wird beim Event-Speichern für die
+   * DIFFERENZ (neue Organizer, die vorher nicht dabei waren) aufgerufen. Best-effort.
+   */
+  async function notifyNewCoOrganizers(
+    eventId: string,
+    eventTitle: string,
+    added: Array<{ name: string; email: string }>,
+    isDe: boolean,
+    disableOutlook?: boolean
+  ): Promise<void> {
+    if (!eventService || !added || added.length === 0) return;
+    let appUrl = '';
+    try { appUrl = `${props.context.pageContext.web.absoluteUrl}/SitePages/DEX.aspx`; } catch { appUrl = ''; }
+    // Anzeigename des Anmeldenden „Vorname Nachname" (displayName ist oft „Nachname, Vorname").
+    const actorDisplay = (() => {
+      const p = (currentUserName || '').split(',').map(s => s.trim());
+      return p.length === 2 ? `${p[1]} ${p[0]}` : (currentUserName || '');
+    })();
+    const seen = new Set<string>();
+    for (const person of added) {
+      const email = (person.email || '').trim();
+      const lc = email.toLowerCase();
+      if (!email || email.indexOf('@') < 0 || seen.has(lc)) continue;
+      seen.add(lc);
+      const name = (person.name || '').trim() || email;
+      try {
+        const { subject, body } = coOrganizerAddedEmail(name, eventTitle, actorDisplay, isDe, appUrl);
+        await eventService.queueEmail(subject, email, name, body, 'CoOrganizerAdded', eventTitle, eventId || '0');
+      } catch { /* Mail best-effort */ }
+      // Outlook-Kalendereinladung — nur Deloitte-Adressen, nur wenn Outlook aktiv.
+      if (!disableOutlook && /@(.*\.)?deloitte\.de$/i.test(email)) {
+        try { await eventService.queueOutlookEvent(email, eventId, eventTitle, 'Einladen'); } catch { /* */ }
+      }
+    }
+  }
+
   async function getOpenOrganizerRequests(): Promise<Array<{ id: number; email: string; name: string; location: string; message: string; created: string }>> {
     try {
       const list = await eventService.getOrganizerRequests(true);
@@ -5115,7 +5162,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelTeamMember,
         getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, fixAllEventColumns, restoreCustomFieldDescriptions,
         sendAdminInquiry,
-        requestOrganizerRole, requestCoOrganizerApprovals, getOpenOrganizerRequests, markOrganizerRequestDecided,
+        requestOrganizerRole, requestCoOrganizerApprovals, notifyNewCoOrganizers, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,
         getAllEmailTemplates,
         updateEmailTemplate,
