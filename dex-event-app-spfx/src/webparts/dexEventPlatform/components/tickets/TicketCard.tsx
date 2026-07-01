@@ -161,6 +161,15 @@ export default function TicketCard(props: { ticket: DexTicket; defaultExpanded?:
         ))}
       </div>
 
+      {/* v26.30: Frage aus dem Event-Wizard → direkt zum Schritt springen. */}
+      {ticket.askWizardStep != null && ticket.askWizardStep >= 1 && (
+        <button type="button" onClick={() => jumpToWizardStep(ticket.askWizardStep as number)}
+          style={{ marginTop: 8, textAlign: 'left', background: '#fff', border: '1px solid var(--dex-green,#86bc25)', borderRadius: 6, padding: '6px 9px', cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.82rem', color: 'var(--dex-green-dark,#4a7c1f)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          <Icon iconName="DocumentManagement" style={{ fontSize: 12 }} />
+          {isDe ? `Frage aus Event-Wizard · Schritt ${ticket.askWizardStep}: ${stepLabels[ticket.askWizardStep - 1] || ''} öffnen` : `Question from event wizard · step ${ticket.askWizardStep}: ${stepLabels[ticket.askWizardStep - 1] || ''} — open`}
+        </button>
+      )}
+
       {/* Screenshots des Fragestellers */}
       {askShots.length > 0 && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>

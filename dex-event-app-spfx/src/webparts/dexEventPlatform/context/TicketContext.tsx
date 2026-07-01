@@ -35,6 +35,12 @@ export interface AskInput {
   questions: string[];
   /** Optionale Screenshots des aktuellen Bildschirms (ask_-Anhänge). */
   screenshots: File[];
+  /** v26.30: Explizit im Frage-Modal gewähltes Event ('' = bewusst „kein Event"
+   *  → Power-User). undefined = kein Signal → Seiten-Kontext (selectedEventId). */
+  eventId?: string;
+  /** v26.30: 1-basierter Wizard-Schritt, in dem die Frage gestellt wurde
+   *  (Organizer im Event-Wizard) — null/undefined = nicht im Wizard. */
+  askWizardStep?: number | null;
 }
 
 export interface AnswerInput {
@@ -180,8 +186,11 @@ export function TicketProvider(props: { context: WebPartContext; children: React
     const askerRole = isAdmin ? 'Admin' : (roles.find(r => (r.userEmail || '').toLowerCase() === myEmailLc)?.role || 'User');
     const askerIsOrganizerLike = askerRole === 'Organizer' || askerRole === 'Admin';
 
-    // Event-Kontext (falls auf einer Event-Seite gefragt wurde).
-    const ctxEvent = selectedEventId ? (events || []).find(e => e.id === selectedEventId) : undefined;
+    // v26.30: Explizit im Frage-Modal gewähltes Event hat Vorrang. '' = bewusst
+    // „kein Event" → Power-User. undefined (kein Signal) → Seiten-Kontext
+    // (selectedEventId), wie bisher.
+    const resolvedEventId = input.eventId !== undefined ? (input.eventId || '') : (selectedEventId || '');
+    const ctxEvent = resolvedEventId ? (events || []).find(e => e.id === resolvedEventId) : undefined;
 
     let audience: TicketAudience = 'PowerUser';
     let eventId = '';
@@ -213,6 +222,7 @@ export function TicketProvider(props: { context: WebPartContext; children: React
       askerLocation: currentUser.location || '',
       askerJobTitle: currentUser.jobTitle || '',
       audience, eventId, eventTitle, assignedOrganizers, pageContext,
+      askWizardStep: input.askWizardStep ?? null,
     });
     if (id == null) return false;
 

@@ -25,7 +25,7 @@ export default function LandingPage() {
         <p>
           The Event Experience Platform is a new solution for managing participants at Deloitte
           events such as office or department meetings and company runs (e.g., JPMorgan, B2Run). The
-          platform was developed by Eike Brenneisen, Andreas Enk and Nils Felten. Currently in its
+          platform was developed by Eike Brenneisen and Nils Felten. Currently in its
           pilot phase, the platform may still have a few quirks &ndash; but rest assured, we're
           continuously refining and expanding its capabilities. Over the coming months, it will be
           rolled out to support more and more events across the firm. If you have any questions,

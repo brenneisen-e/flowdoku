@@ -228,7 +228,7 @@ export default function LandingInfoModal({ open, locale, onClose }: Props): Reac
               : 'Your event or department wants to use DEX? Drop us a line — we\'ll respond quickly and help with setup.'}
           </p>
           <a
-            href="mailto:ebrenneisen@deloitte.de;nifelten@deloitte.de;aenk@deloitte.de?subject=DEX Event Experience Platform – Interesse"
+            href="mailto:ebrenneisen@deloitte.de;nifelten@deloitte.de?subject=DEX Event Experience Platform – Interesse"
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 8,
               padding: '10px 20px', borderRadius: 8,
@@ -246,7 +246,7 @@ export default function LandingInfoModal({ open, locale, onClose }: Props): Reac
             fontSize: '0.78rem', color: 'var(--dex-gray-500)', textAlign: 'center',
           }}>
             {isDE ? 'Entwickelt von ' : 'Built by '}
-            <strong>Eike Brenneisen</strong>, <strong>Andreas Enk</strong> {isDE ? 'und' : 'and'} <strong>Nils Felten</strong>.
+            <strong>Eike Brenneisen</strong> {isDE ? 'und' : 'and'} <strong>Nils Felten</strong>.
           </div>
         </div>
       </div>

@@ -1963,7 +1963,13 @@ export default function RegistrationPage(): React.ReactElement {
     // damit ohne Beschreibungen keine unnötigen Lücken entstehen.
     const hasAnyInlineHelp = (event?.eventSpecificFields || []).some(ff => ff.helpTextStyle === 'inline' && !!pickFieldHelp(ff));
     const inlineHelpSlot = inlineHelpEl || (hasAnyInlineHelp
-      ? <div aria-hidden="true" style={{ marginTop: 2, marginBottom: 6, minHeight: '2.9em' }} />
+      // v26.17: Der leere Platzhalter muss dieselben Font-Metriken (fontSize/
+      // lineHeight) wie der echte Inline-Hilfetext tragen, da sich 'minHeight'
+      // in 'em' auf die EIGENE font-size bezieht. Ohne fontSize erbte der
+      // Platzhalter die größere .form-group-Schrift und reservierte ~8px mehr
+      // Höhe → die Eingabe eines Feldes OHNE Beschreibung stand tiefer als die
+      // des Nachbarfeldes MIT Beschreibung (z.B. „Food Allergies" vs. „Hotel").
+      ? <div aria-hidden="true" style={{ fontSize: '0.78rem', lineHeight: 1.45, marginTop: 2, marginBottom: 6, minHeight: '2.9em' }} />
       : null);
     // v19.0: Ausgefüllte Felder bekommen die gleiche grüne Hervorhebung wie die
     // ausgewählten Event-Sections (grüner Rand + zarter grüner Hintergrund).

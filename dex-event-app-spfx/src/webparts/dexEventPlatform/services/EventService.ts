@@ -4379,6 +4379,162 @@ export class EventService {
     }
   }
 
+  // =====================================================================
+  // v26.32: Löschkonzept — Teilnehmerliste 3 Monate nach Event-Ende löschen;
+  // Event + KPIs bleiben im Statistik-Archiv (DEX_EventStats) erhalten.
+  // =====================================================================
+
+  private static readonly EVENTSTATS_LIST = 'DEX_EventStats';
+  private static readonly EVENTSTATS_ITEM_TYPE = 'SP.Data.DEX_x005f_EventStatsListItem';
+
+  /** Legt DEX_EventStats (Statistik-Archiv, KEINE PII) an, falls nicht vorhanden. */
+  public async ensureEventStatsList(): Promise<void> {
+    const listName = EventService.EVENTSTATS_LIST;
+    try { if (await this.listExists(listName)) return; } catch { /* weiter — anlegen versuchen */ }
+    const createResp = await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'Statistik-Archiv (v26): KPIs eines Events, nachdem die Teilnehmerliste nach 3 Monaten gelöscht wurde. Enthält KEINE personenbezogenen Daten.',
+      'BaseTemplate': 100,
+      'AllowContentTypes': false,
+    });
+    if (!createResp.ok) { console.warn('[DEX] DEX_EventStats konnte nicht angelegt werden — vermutlich fehlen Owner-Rechte.'); return; }
+    const fields: Array<{ title: string; type: number }> = [
+      { title: 'EventNumber', type: 9 }, { title: 'EventTitle', type: 2 },
+      { title: 'EventType', type: 2 }, { title: 'EventLocation', type: 2 },
+      { title: 'EventStart', type: 4 }, { title: 'EventEnd', type: 4 },
+      { title: 'MaxParticipants', type: 9 }, { title: 'RegisteredCount', type: 9 },
+      { title: 'QRSentCount', type: 9 }, { title: 'CheckedInCount', type: 9 },
+      { title: 'NoShowCount', type: 9 }, { title: 'WaitlistCount', type: 9 },
+      { title: 'DeregisteredCount', type: 9 }, { title: 'ArchivedByEmail', type: 2 },
+      { title: 'ArchivedDate', type: 4 },
+    ];
+    for (const f of fields) {
+      try {
+        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
+          '__metadata': { 'type': 'SP.Field' }, 'Title': f.title, 'FieldTypeKind': f.type, 'Required': false,
+        });
+      } catch { /* einzelne Feld-Fehler ignorieren */ }
+    }
+  }
+
+  /** EventNumbers, für die bereits ein Statistik-Archiv-Eintrag existiert. */
+  public async getArchivedStatsEventNumbers(): Promise<Set<number>> {
+    const out = new Set<number>();
+    try {
+      if (!(await this.listExists(EventService.EVENTSTATS_LIST))) return out;
+      let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.EVENTSTATS_LIST}')/items?$select=EventNumber&$top=5000`;
+      while (url) {
+        const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        if (!resp.ok) break;
+        const data = await resp.json();
+        const items = data.value || data.d?.results || [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const it of (items as any[])) { const n = Number(it.EventNumber); if (!Number.isNaN(n)) out.add(n); }
+        url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
+      }
+    } catch { /* best-effort */ }
+    return out;
+  }
+
+  /**
+   * Berechnet die KPIs eines Events aus der Teilnehmerliste und schreibt EINE
+   * Zeile ins DEX_EventStats (keine PII). Muss VOR dem Löschen der Subsite
+   * laufen. Idempotent: existiert schon eine Zeile für die EventNumber, wird
+   * nichts geschrieben (true).
+   */
+  public async archiveEventStats(meta: {
+    eventNumber: number; eventTitle: string; eventType?: string; location?: string;
+    startDate?: string; endDate?: string; maxParticipants?: number; subsiteUrl?: string;
+  }): Promise<boolean> {
+    try {
+      await this.ensureEventStatsList();
+      const existing = await this.getArchivedStatsEventNumbers();
+      if (existing.has(meta.eventNumber)) return true;
+      const regs = meta.subsiteUrl ? await this.getAllRegistrations(meta.subsiteUrl) : [];
+      const countBy = (pred: (s: string) => boolean): number => regs.filter(r => pred(r.Status || '')).length;
+      const me = (this.context.pageContext.user.email || '').toLowerCase();
+      const resp = await this._post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.EVENTSTATS_LIST}')/items`,
+        {
+          '__metadata': { 'type': EventService.EVENTSTATS_ITEM_TYPE },
+          'Title': `${meta.eventNumber}: ${(meta.eventTitle || '').slice(0, 200)}`,
+          'EventNumber': meta.eventNumber, 'EventTitle': meta.eventTitle || '',
+          'EventType': meta.eventType || '', 'EventLocation': meta.location || '',
+          'EventStart': meta.startDate || null, 'EventEnd': meta.endDate || null,
+          'MaxParticipants': typeof meta.maxParticipants === 'number' ? meta.maxParticipants : null,
+          'RegisteredCount': countBy(s => s === 'Angemeldet' || s === 'QR versendet' || s === 'Eingecheckt'),
+          'QRSentCount': countBy(s => s === 'QR versendet' || s === 'Eingecheckt'),
+          'CheckedInCount': countBy(s => s === 'Eingecheckt'),
+          'NoShowCount': countBy(s => s === 'No-Show'),
+          'WaitlistCount': countBy(s => s === 'Warteliste'),
+          'DeregisteredCount': countBy(s => s === 'Abgemeldet'),
+          'ArchivedByEmail': me, 'ArchivedDate': new Date().toISOString(),
+        }
+      );
+      return resp.ok;
+    } catch (err) { console.warn('[DEX] archiveEventStats failed:', err); return false; }
+  }
+
+  /** Rollback: entfernt die (soeben geschriebene) Statistik-Zeile(n) einer
+   *  EventNumber — genutzt, wenn die anschließende Löschung fehlschlägt, damit
+   *  das Event beim nächsten Lauf erneut verarbeitet wird. */
+  public async deleteEventStatsRow(eventNumber: number): Promise<boolean> {
+    try {
+      const url = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.EVENTSTATS_LIST}')/items?$select=Id&$filter=EventNumber eq ${eventNumber}&$top=50`;
+      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      if (!resp.ok) return false;
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      let ok = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const it of (items as any[])) {
+        try { await this._delete(`${this.siteUrl}/_api/web/lists/getbytitle('${EventService.EVENTSTATS_LIST}')/items(${it.Id})`); }
+        catch { ok = false; }
+      }
+      return ok;
+    } catch { return false; }
+  }
+
+  /**
+   * Löscht die Teilnehmerliste (Subsite) eines Events, LÄSST das DEX_Events-Item
+   * bestehen (Event bleibt sichtbar; KPIs stehen im DEX_EventStats). Bereinigt
+   * zusätzlich DEX_Participants (EventNumber entfernen). Gegenstück zu
+   * deleteEvent(), das auch das Event-Item entfernt.
+   */
+  public async deleteParticipantData(eventId: number): Promise<boolean> {
+    try {
+      const event = await this.getEvent(eventId);
+      if (!event) return false;
+      if (event.SubsiteUrl) {
+        try { await this._post(`${event.SubsiteUrl}/_api/web/recycle`, {}); }
+        catch { console.warn('[DEX] Teilnehmer-Subsite konnte nicht recycelt werden:', event.SubsiteUrl); }
+      }
+      if (event.RegistrationListName && event.RegistrationListName !== 'Teilnehmer') {
+        try { await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${event.RegistrationListName.replace(/'/g, "''")}')/recycle`, {}); }
+        catch { /* */ }
+      }
+      if (event.EventNumber) {
+        try {
+          const allParticipants = await this.getAllParticipants();
+          const en = String(event.EventNumber);
+          const promises = allParticipants
+            .filter(p => (p.EventRegistered?.split(',').map(s => s.trim()).includes(en)) || (p.EventOnWaitlist?.split(',').map(s => s.trim()).includes(en)))
+            .map(p => this.removeParticipantEvent(p.Email, event.EventNumber).catch(() => null));
+          await Promise.all(promises);
+        } catch { /* */ }
+      }
+      try {
+        await this.writeChangeLog({
+          action: 'ParticipantListDeleted', targetType: 'Event', targetId: String(eventId),
+          targetName: event.Title || '', eventId: String(eventId), eventTitle: event.Title || '',
+          details: { subsiteUrl: event.SubsiteUrl || '', eventNumber: event.EventNumber, note: 'Teilnehmerliste gelöscht (3-Monats-Löschkonzept); KPIs im DEX_EventStats.' },
+        });
+      } catch { /* */ }
+      return true;
+    } catch { return false; }
+  }
+
   /**
    * v11.69: Löscht NUR das DEX_Events-Listenitem — KEIN Cascade auf Subsite,
    * KEIN Outlook-DeleteEvent in die Queue, KEIN EventImage-Recycle, KEIN
@@ -9763,6 +9919,7 @@ export class EventService {
       { title: 'TicketEventTitle', type: 2 },
       { title: 'AssignedOrganizers', type: 3, note: true },
       { title: 'PageContext', type: 2 },
+      { title: 'AskWizardStep', type: 9 },
       { title: 'AnswerText', type: 3, note: true },
       { title: 'AnswerArticleIds', type: 3, note: true },
       { title: 'AnswerWizardStep', type: 9 },
@@ -9806,12 +9963,12 @@ export class EventService {
     const listName = EventService.TICKETS_LIST;
     try {
       const check = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName&$filter=InternalName eq 'FollowUps'`,
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName&$filter=InternalName eq 'AskWizardStep'`,
         SPHttpClient.configurations.v1);
       if (check.ok) {
         const d = await check.json();
         const arr = d.value || d.d?.results || [];
-        if (Array.isArray(arr) && arr.length > 0) return; // schon migriert
+        if (Array.isArray(arr) && arr.length > 0) return; // schon migriert (AskWizardStep vorhanden)
       }
     } catch { /* weiter — versuchen anzulegen */ }
     const extra: Array<{ title: string; type: number; note?: boolean }> = [
@@ -9820,6 +9977,7 @@ export class EventService {
       { title: 'AnsweredByLocation', type: 2 },
       { title: 'AnsweredByJobTitle', type: 2 },
       { title: 'FollowUps', type: 3, note: true },
+      { title: 'AskWizardStep', type: 9 },
     ];
     for (const f of extra) {
       try {
@@ -9841,6 +9999,7 @@ export class EventService {
     askerLocation?: string; askerJobTitle?: string;
     audience: string; eventId: string; eventTitle: string;
     assignedOrganizers: string[]; pageContext: string;
+    askWizardStep?: number | null;
   }): Promise<number | null> {
     try {
       const first = (t.questions[0] || 'Frage').replace(/\s+/g, ' ').trim().slice(0, 240) || 'Frage';
@@ -9857,6 +10016,7 @@ export class EventService {
           'TicketEventId': t.eventId || '', 'TicketEventTitle': t.eventTitle || '',
           'AssignedOrganizers': JSON.stringify(t.assignedOrganizers || []),
           'PageContext': t.pageContext || '',
+          'AskWizardStep': (t.askWizardStep == null) ? null : t.askWizardStep,
         }
       );
       if (!resp.ok) return null;
@@ -9891,7 +10051,7 @@ export class EventService {
   /** Alle Tickets laden (inkl. Anhänge per $expand). Neueste zuerst. */
   public async getTickets(): Promise<DexTicket[]> {
     try {
-      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AnswerText,AnswerArticleIds,AnswerWizardStep,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
+      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AskWizardStep,AnswerText,AnswerArticleIds,AnswerWizardStep,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
       const url = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items?$select=${sel}&$expand=AttachmentFiles&$orderby=Created desc&$top=500`;
       const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
       if (!resp.ok) return [];
@@ -9909,7 +10069,7 @@ export class EventService {
    *  Ask-Modal — der Fragesteller sieht Status + Antwort in der App). */
   public async getMyTickets(email: string): Promise<DexTicket[]> {
     try {
-      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AnswerText,AnswerArticleIds,AnswerWizardStep,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
+      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AskWizardStep,AnswerText,AnswerArticleIds,AnswerWizardStep,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
       const safe = (email || '').replace(/'/g, "''");
       const url = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items?$select=${sel}&$expand=AttachmentFiles&$filter=AskerEmail eq '${safe}'&$orderby=Created desc&$top=100`;
       const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
@@ -9936,6 +10096,7 @@ export class EventService {
       return { fileName: fn, url: a.ServerRelativeUrl || '', kind };
     });
     const stepRaw = it.AnswerWizardStep;
+    const askStepRaw = it.AskWizardStep;
     const parseFollowUps = (s: unknown): TicketFollowUp[] => {
       try {
         const a = JSON.parse((s as string) || '[]');
@@ -9965,6 +10126,7 @@ export class EventService {
       eventTitle: it.TicketEventTitle || '',
       assignedOrganizers: parseArr(it.AssignedOrganizers),
       pageContext: it.PageContext || '',
+      askWizardStep: (askStepRaw === 0 || (askStepRaw != null && askStepRaw !== '')) ? Number(askStepRaw) : null,
       answerText: it.AnswerText || '',
       answerArticleIds: parseArr(it.AnswerArticleIds),
       answerWizardStep: (stepRaw === 0 || (stepRaw != null && stepRaw !== '')) ? Number(stepRaw) : null,

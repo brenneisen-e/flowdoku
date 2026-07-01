@@ -52,7 +52,7 @@ export const events: DeloitteEvent[] = [
     title: 'JPMorgan Lauf || Warteliste',
     type: 'JPMorgan',
     status: 'Active',
-    organizers: ['Eike Brenneisen', 'Andreas Enk'],
+    organizers: ['Eike Brenneisen'],
     location: 'Frankfurt',
     locationAudience: ['Frankfurt', 'All'],
     startDate: '2026-06-03T19:00:00',
