@@ -1780,7 +1780,18 @@ export function EventProvider(props: { context: WebPartContext; children: React.
               ? `<strong>💡 Tipp: DEX auf dem Handy nutzen.</strong><br>Wenn du DEX auf deinem Smartphone öffnen möchtest, installiere vorher die offizielle <strong>Microsoft-SharePoint-App</strong> aus dem App Store (iPhone/iPad) bzw. Google Play Store (Android) und öffne DEX darüber. Im normalen Handy-Browser lädt die Seite teilweise nicht zuverlässig.`
               : `<strong>💡 Tip: Using DEX on your phone.</strong><br>If you'd like to open DEX on your smartphone, first install the official <strong>Microsoft SharePoint app</strong> from the App Store (iPhone/iPad) or Google Play Store (Android) and open DEX from there. In the regular mobile browser the page sometimes does not load reliably.`)
             + `</div>`;
-          finalBody = injectIntoEmailContent(finalBody, mobileAppTip);
+          // v26.39: Tipp GANZ UNTEN einfügen — direkt unter der „Made with DEX
+          // App"-Zeile (als eigene Tabellen-Row), statt oben über der Anrede.
+          const tipRow = `<tr><td style="padding:4px 30px 20px 30px;">${mobileAppTip}</td></tr>`;
+          const madeWithRe = /(Made with DEX App<\/a>\s*<\/td>\s*<\/tr>)/i;
+          if (madeWithRe.test(finalBody)) {
+            finalBody = finalBody.replace(madeWithRe, `$1\n${tipRow}`);
+          } else if (/<\/body>/i.test(finalBody)) {
+            // Kein „Made with DEX App" in der Vorlage → als Fallback vor </body>.
+            finalBody = finalBody.replace(/<\/body>/i, `${tipRow}</body>`);
+          } else {
+            finalBody = injectIntoEmailContent(finalBody, mobileAppTip);
+          }
         }
         // v18.41: People-Picker-Felder mit „CC bei Mail" → ausgewählte
         // Person(en) auf CC der An-/Warteliste-Mail (NICHT im Outlook-Termin).
@@ -4749,9 +4760,24 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         return isEventOver(e);
       });
       if (overEvents.length === 0) return;
+      // v26.39: Persistenter Dedup-Marker (DEX_PostEventMails) statt der
+      // transienten DEX_Emails-Queue — die wurde nach Versand + Archivierung
+      // wieder leer, wodurch die Mail beim nächsten App-Öffnen ERNEUT rausging.
+      const newlyCreated = await eventService.ensurePostEventMailsList().catch(() => false);
+      if (newlyCreated) {
+        // Erststart nach dem Update: ALLE bereits abgelaufenen (sichtbaren)
+        // Events als „erledigt" markieren, damit sie KEINE (weitere) Mail
+        // bekommen. Nur ab jetzt neu ablaufende Events erhalten die Mail — dann
+        // genau einmal. So endet die Wiederhol-Schleife ohne Extra-Versand.
+        const overAll = (events || []).filter(e => !e.parentEventId && !e.isFictive && isEventOver(e));
+        for (const e of overAll) { try { await eventService.recordPostEventMail(e.id); } catch { /* */ } }
+        return;
+      }
+      const sentIds = await eventService.getPostEventMailSentEventIds().catch(() => new Set<string>());
       let appUrl = '';
       try { appUrl = `${props.context.pageContext.web.absoluteUrl}/SitePages/DEX.aspx`; } catch { appUrl = ''; }
       for (const ev of overEvents) {
+        if (sentIds.has(String(ev.id))) continue; // schon verschickt (persistenter Marker)
         const key = `dex_posteventmail_${ev.id}`;
         let already = false;
         try { already = !!window.localStorage.getItem(key); } catch { already = false; }
@@ -4769,9 +4795,6 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // Dedupe case-insensitiv (eine Adresse nicht doppelt im To).
         const seen = new Set<string>();
         const recipients = orgEmails.filter(e => { const lc = e.toLowerCase(); if (seen.has(lc)) return false; seen.add(lc); return true; });
-        let alreadyQueued = false;
-        try { alreadyQueued = await eventService.hasQueuedEmail('PostEventOrganizer', ev.id); } catch { alreadyQueued = false; }
-        if (alreadyQueued) { try { window.localStorage.setItem(key, String(Date.now())); } catch { /* */ } continue; }
         const linkLine = appUrl
           ? `<p style="margin:0 0 12px;">Ihr findet die Teilnehmerübersicht jederzeit im <a href="${appUrl}" style="color:#86bc25;font-weight:600;">Organizer Center der DEX App</a> — dort könnt ihr sie auch als Excel exportieren.</p>`
           : `<p style="margin:0 0 12px;">Ihr findet die Teilnehmerübersicht jederzeit im Organizer Center der DEX App — dort könnt ihr sie auch als Excel exportieren.</p>`;
@@ -4787,6 +4810,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             `Dein Event „${ev.title}" — danke & Hinweis zur Aufbewahrung`,
             recipients.join('; '), recipients.join('; '), body, 'PostEventOrganizer', ev.title, ev.id,
           );
+          // v26.39: persistenten Marker setzen — verhindert erneuten Versand,
+          // auch nachdem die DEX_Emails-Zeile längst archiviert/gelöscht wurde.
+          await eventService.recordPostEventMail(ev.id);
           try { window.localStorage.setItem(key, String(Date.now())); } catch { /* */ }
         } catch { /* einzelne Mail-Fehler ignorieren */ }
       }

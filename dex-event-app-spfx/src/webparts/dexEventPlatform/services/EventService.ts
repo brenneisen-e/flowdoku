@@ -6341,6 +6341,62 @@ export class EventService {
     } catch (err) { console.warn('[DEX] recordInactiveNotice failed:', err); }
   }
 
+  /**
+   * v26.39: `DEX_PostEventMails` — PERSISTENTER Dedup-Marker für die Post-Event-
+   * „Danke & Hinweis zur Aufbewahrung"-Mail an die Organizer. Vorher hing die
+   * Entdopplung an der TRANSIENTEN `DEX_Emails`-Queue (nach Versand + Archivierung
+   * wieder leer → `hasQueuedEmail` fand nichts → Mail wurde beim nächsten
+   * App-Öffnen ERNEUT verschickt) + Browser-`localStorage` (pro Gerät/User). Ein
+   * dauerhafter Marker pro EventId behebt das geräte- und zeitübergreifend.
+   * Rückgabe: true = Liste wurde JETZT NEU angelegt (Erststart → Altbestand seeden).
+   */
+  public async ensurePostEventMailsList(): Promise<boolean> {
+    const listName = 'DEX_PostEventMails';
+    try { if (await this.listExists(listName)) return false; } catch { return false; }
+    const cr = await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'Dedup (v26.39): „Danke & Hinweis zur Aufbewahrung"-Mail wurde für dieses Event bereits an die Organizer verschickt. Ein Marker pro Event — verhindert Mehrfachversand.',
+      'BaseTemplate': 100, 'AllowContentTypes': false,
+    });
+    if (!cr.ok) return false;
+    for (const f of [{ title: 'EventId', type: 2 }, { title: 'SentByEmail', type: 2 }]) {
+      try { await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, { '__metadata': { 'type': 'SP.Field' }, 'Title': f.title, 'FieldTypeKind': f.type, 'Required': false }); } catch { /* */ }
+    }
+    try { await this.configureDefaultView(listName, ['EventId', 'SentByEmail', 'Created']); } catch { /* */ }
+    try { await this.setQueueListPermissions(listName); } catch { /* */ }
+    return true;
+  }
+
+  /** v26.39: Alle EventIds, für die die Post-Event-Mail schon raus ist. */
+  public async getPostEventMailSentEventIds(): Promise<Set<string>> {
+    const out = new Set<string>();
+    try {
+      if (!(await this.listExists('DEX_PostEventMails'))) return out;
+      let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_PostEventMails')/items?$select=EventId&$top=5000`;
+      while (url) {
+        const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        if (!resp.ok) break;
+        const data = await resp.json();
+        for (const it of (data.value || data.d?.results || [])) { const e = String(it.EventId || '').trim(); if (e) out.add(e); }
+        url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
+      }
+    } catch { /* */ }
+    return out;
+  }
+
+  /** v26.39: Marker setzen — Post-Event-Mail für dieses Event ist erledigt. */
+  public async recordPostEventMail(eventId: string | number): Promise<void> {
+    try {
+      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_PostEventMails')/items`, {
+        '__metadata': { 'type': 'SP.Data.DEX_x005f_PostEventMailsListItem' },
+        'Title': `${eventId}`.slice(0, 250),
+        'EventId': String(eventId),
+        'SentByEmail': (this.context.pageContext.user.email || '').toLowerCase(),
+      });
+    } catch (err) { console.warn('[DEX] recordPostEventMail failed:', err); }
+  }
+
   public async ensureOutlookLocksList(): Promise<void> {
     const listName = 'DEX_OutlookLocks';
     const exists = await this.listExists(listName);
