@@ -657,7 +657,12 @@
       .landing { overflow: auto; }
       .landing__hero { padding: 16px 12px; gap: 16px; }
       .landing__card { padding: 20px 16px; gap: 16px; border-radius: 16px; }
-      .landing__orb { width: clamp(140px, 35vw, 200px); height: clamp(140px, 35vw, 200px); }
+      /* v26.37: Auf dem Handy NICHT animieren. Der rotierende Conic-Gradient-Orb
+         wird vom mobilen Compositor auf eine eigene GPU-Ebene gehoben, die beim
+         Verlassen der Landing Page (z.B. Klick auf „Start") nicht sofort verworfen
+         wird — dadurch blitzt der Orb kurz auf dem nächsten Screen nach. Statisch
+         gerendert entsteht keine solche Ebene und kein „Nachziehen". */
+      .landing__orb { width: clamp(140px, 35vw, 200px); height: clamp(140px, 35vw, 200px); animation: none; }
       .landing__text h1 { font-size: 1.3rem; }
       .landing__text p { font-size: 0.9rem; }
       /* v10.25: Sprechblase „Möchtest du die DEX App auch für dein Event

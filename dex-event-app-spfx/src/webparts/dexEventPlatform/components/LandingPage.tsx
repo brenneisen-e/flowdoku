@@ -906,7 +906,9 @@ export default function LandingPage(): React.ReactElement {
           <button className="btn btn-lg btn-block btn-outline" data-tour="landing-start" onClick={() => navigate('start')} style={{ maxWidth: 360 }}>
             {t('landing.start')}
           </button>
-          {showOrganizerCta && (
+          {/* v26.37: „DEX für dein Event nutzen"-Box auf dem Handy ausblenden —
+              spart Platz; die Anfrage-Funktion bleibt am Desktop erhalten. */}
+          {showOrganizerCta && !isMobile && (
           <div
             className="landing__actions"
             style={{
