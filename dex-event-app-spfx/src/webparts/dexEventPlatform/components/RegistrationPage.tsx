@@ -3361,16 +3361,18 @@ export default function RegistrationPage(): React.ReactElement {
               </div>
             )}
           </div>
+          </CollapsibleSection>
         </div>
 
         {/* v11.82: Team-Anmeldung-Card — separat unter „Persönliche Daten",
             nur sichtbar wenn der Toggle aktiv ist. */}
         {isTeamCapable && isTeamMode && !registerForOther && !parentAlreadyRegistered && (
           <div className="registration-form" style={{ marginTop: 24 }}>
-            <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <Icon iconName="People" style={{ fontSize: 16 }} />
-              {locale === 'de' ? 'Team-Anmeldung' : 'Team registration'}
-            </div>
+            <CollapsibleSection
+              isMobile={isMobile}
+              icon="People"
+              title={locale === 'de' ? 'Team-Anmeldung' : 'Team registration'}
+            >
             <div style={{ padding: '24px 20px' }}>
               {/* Pflicht-Hinweis-Box ganz oben — auffällig orange. */}
               <div style={{
@@ -3495,6 +3497,7 @@ export default function RegistrationPage(): React.ReactElement {
                 </label>
               </div>
             </div>
+            </CollapsibleSection>
           </div>
         )}
 
@@ -3507,10 +3510,11 @@ export default function RegistrationPage(): React.ReactElement {
             */}
         {event && event.teamRegistrationEnabled && event.teamOpenSlotsVisible && !registerForOther && openTeamsLoaded && openTeams.length > 0 && !parentAlreadyRegistered && (
           <div className="registration-form" style={{ marginBottom: 16 }}>
-            <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <Icon iconName="People" style={{ fontSize: 16 }} />
-              {locale === 'de' ? 'Offene Teams — einem unvollständigen Team beitreten' : 'Open teams — join an incomplete team'}
-            </div>
+            <CollapsibleSection
+              isMobile={isMobile}
+              icon="People"
+              title={locale === 'de' ? 'Offene Teams — einem unvollständigen Team beitreten' : 'Open teams — join an incomplete team'}
+            >
             <div style={{ padding: '20px' }}>
               <p style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>
                 {locale === 'de'
