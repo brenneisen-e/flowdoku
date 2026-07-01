@@ -46,7 +46,7 @@ export default function SettingsPage(): React.ReactElement {
   const organizerEventMap = React.useMemo<Record<string, string[]>>(() => {
     const map: Record<string, string[]> = {};
     for (const role of roles) {
-      if (role.role !== 'Organizer' && role.role !== 'Admin') continue;
+      if (role.role !== 'Organizer' && role.role !== 'Admin' && role.role !== 'IT-Admin') continue;
       const emailLc = (role.userEmail || '').toLowerCase();
       if (!emailLc) continue;
       const matched: string[] = [];
@@ -339,9 +339,10 @@ export default function SettingsPage(): React.ReactElement {
     const hit = (parts: Array<string | undefined>): boolean => !q || parts.some(s => (s || '').toLowerCase().indexOf(q) >= 0);
     const matchRole = (r: typeof roles[number]): boolean => { const p = profiles[(r.userEmail || '').toLowerCase()] || {}; return hit([r.userName, r.userEmail, p.jobTitle, p.location, r.location]); };
     const matchAgg = (x: { email: string; name: string }): boolean => { const p = profiles[x.email] || {}; return hit([x.name, x.email, p.jobTitle, p.location]); };
-    const admins = [...roles].filter(r => r.role === 'Admin').filter(matchRole).sort(byName);
+    // v26.33: IT-Admins zählen zur Admin-Gruppe (gleiche Rechte).
+    const admins = [...roles].filter(r => r.role === 'Admin' || r.role === 'IT-Admin').filter(matchRole).sort(byName);
     const organizers = [...roles].filter(r => r.role === 'Organizer').filter(matchRole).sort(byName);
-    const usersLeft = [...roles].filter(r => r.role !== 'Admin' && r.role !== 'Organizer').filter(matchRole).sort(byName);
+    const usersLeft = [...roles].filter(r => r.role !== 'Admin' && r.role !== 'IT-Admin' && r.role !== 'Organizer').filter(matchRole).sort(byName);
     const eventBadges = (titles: string[]): React.ReactNode => titles.length === 0
       ? <span style={{ color: 'var(--dex-gray-300)' }}>—</span>
       : <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>{titles.map((t2, idx) => (
@@ -366,6 +367,8 @@ export default function SettingsPage(): React.ReactElement {
     );
     // v24.87: Status-Badges (Admin/Organizer/User + Co-Organizer/Tester/Check-in).
     const adminPill = catPill('Admin', '#e8f5e9', '#2e7d32');
+    // v26.33: IT-Admin — volle Admin-Rechte, aber kein Empfänger der Mails.
+    const itAdminPill = catPill('IT-Admin', '#ede7f6', '#5e35b1');
     const organizerPill = catPill('Organizer', 'rgba(0,118,168,0.10)', 'var(--dex-blue, #0076a8)');
     const userPill = catPill('User', '#f5f5f5', '#666');
     const coOrgPill = catPill('Co-Organizer', 'rgba(237,139,0,0.15)', 'var(--dex-orange-dark, #b35a00)');
@@ -399,6 +402,7 @@ export default function SettingsPage(): React.ReactElement {
               disabled={isSelf}
             >
               <option value="Admin">Admin</option>
+              <option value="IT-Admin">IT-Admin</option>
               <option value="Organizer">Organizer</option>
               <option value="User">User</option>
             </select>
@@ -406,6 +410,7 @@ export default function SettingsPage(): React.ReactElement {
           <td style={tdS}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
               {r.role === 'Admin' && adminPill}
+              {r.role === 'IT-Admin' && itAdminPill}
               {r.role === 'Organizer' && organizerPill}
               {r.role === 'User' && userPill}
               {/* v24.87: globaler Organizer, der zusätzlich Events betreut → auch Co-Organizer. */}
@@ -699,6 +704,7 @@ export default function SettingsPage(): React.ReactElement {
                   >
                     <option value="Organizer">Organizer</option>
                     <option value="Admin">Admin</option>
+                    <option value="IT-Admin">IT-Admin (volle Rechte, keine Mails)</option>
                   </select>
                 </div>
 

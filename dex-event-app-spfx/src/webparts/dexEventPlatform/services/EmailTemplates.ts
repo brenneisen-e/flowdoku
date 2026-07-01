@@ -8,6 +8,7 @@
  */
 
 import { SPHttpClient } from '@microsoft/sp-http';
+import { buildHashDeepLink } from '../utils/deepLink';
 
 const GREEN = '#86bc25';
 const SITE_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform';
@@ -620,7 +621,7 @@ export function eventCreatedEmail(recipientName: string, eventTitle: string, sub
  * Vornamen verwenden (analog qrCodeEmail / registrationEmail).
  */
 export function organizerOnboardingEmail(recipientName: string, role: 'Organizer' | 'Admin' = 'Organizer'): { subject: string; body: string } {
-  const manualUrl = `${APP_URL}&action=manual`;
+  const manualUrl = buildHashDeepLink(APP_URL, { action: 'manual' });
   const roleLabelDe = role === 'Admin' ? 'Admin' : 'Organizer';
   // Anrede: Vorname extrahieren. "Nachname, Vorname" -> Teil nach Komma,
   // sonst erstes Wort. Fallback: kompletter Name.

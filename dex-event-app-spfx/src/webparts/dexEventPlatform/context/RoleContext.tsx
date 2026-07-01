@@ -49,7 +49,7 @@ interface RoleContextType {
 function migrateRole(spRole: string): UserRole {
   if (spRole === 'SuperAdmin') return 'Admin';
   if (spRole === 'EventAdmin') return 'Organizer';
-  if (spRole === 'Admin' || spRole === 'Organizer' || spRole === 'User') return spRole as UserRole;
+  if (spRole === 'Admin' || spRole === 'IT-Admin' || spRole === 'Organizer' || spRole === 'User') return spRole as UserRole;
   return 'User';
 }
 
@@ -170,7 +170,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     const success = await spService.addRole(userEmail, userName, role, location, currentUserName);
     if (success) {
       try {
-        if (role === 'Admin') {
+        if (role === 'Admin' || role === 'IT-Admin') {
           await spService.grantFullControlOnRolesList(userEmail);
           await spService.grantFullControlOnEventsList(userEmail);
           await spService.grantOrganizerPermissions(userEmail); // Site-Rechte für Subsite-Erstellung
@@ -189,7 +189,7 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
     const success = await spService.updateRole(itemId, newRole);
     if (success && oldRole) {
       try {
-        if (newRole === 'Admin') {
+        if (newRole === 'Admin' || newRole === 'IT-Admin') {
           await spService.grantFullControlOnRolesList(oldRole.userEmail);
           await spService.grantFullControlOnEventsList(oldRole.userEmail);
           await spService.grantOrganizerPermissions(oldRole.userEmail);
@@ -259,15 +259,17 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   // Reload bestehen bleibt. Beenden via Banner-Klick oben.
   const isImpersonating = typeof window !== 'undefined' && !!window.localStorage?.getItem('dex_demo_impersonation');
   const effectiveRole: UserRole = isImpersonating ? 'User' : currentUserRole;
-  const isAdmin = effectiveRole === 'Admin';
-  const isOrganizer = effectiveRole === 'Organizer' || effectiveRole === 'Admin';
+  // v26.33: IT-Admin hat die gleichen App-Rechte wie Admin (nur keine Mails —
+  // das regelt die exakte Role='Admin'-Filterung in den Empfänger-Listen).
+  const isAdmin = effectiveRole === 'Admin' || effectiveRole === 'IT-Admin';
+  const isOrganizer = effectiveRole === 'Organizer' || isAdmin;
   const canCreateEvents = isOrganizer;
   // v26: Power-User-Flag des aktuellen Users aus DEX_Roles. Im Demo-/
   // Impersonations-Modus bewusst false (wie isAdmin) — der Demo-User soll
   // exakt das sehen, was ein normaler User sieht.
   const myRoleEntry = roles.find(r => (r.userEmail || '').toLowerCase() === currentUserEmail.toLowerCase());
   const isPowerUser = !isImpersonating && !!myRoleEntry?.isPowerUser;
-  const originalIsAdmin = currentUserRole === 'Admin';
+  const originalIsAdmin = currentUserRole === 'Admin' || currentUserRole === 'IT-Admin';
   const siteUrl = props.context.pageContext.web.absoluteUrl;
 
   // v20.0 (Audit): Context-Value memoizen. Die Rollen-Methoden schließen nur

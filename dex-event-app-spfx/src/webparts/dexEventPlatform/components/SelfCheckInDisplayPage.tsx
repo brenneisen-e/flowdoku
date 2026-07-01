@@ -4,6 +4,7 @@ import * as QRCode from 'qrcode';
 import { useEvents } from '../context/EventContext';
 import { useNavigation } from '../context/NavigationContext';
 import { useRoles } from '../context/RoleContext';
+import { deepLinkParams } from '../utils/deepLink';
 import { useLanguage } from '../context/LanguageContext';
 import { DeloitteEvent } from '../types';
 import { buildRotatingCheckInUrl, SELF_CHECKIN_STEP_SECONDS } from '../utils/selfCheckIn';
@@ -31,7 +32,7 @@ const SelfCheckInDisplayPage: React.FC = () => {
     let id = selectedEventId;
     if (!id) {
       try {
-        const p = new URLSearchParams(window.location.search);
+        const p = deepLinkParams();
         id = p.get('event');
       } catch { /* */ }
     }

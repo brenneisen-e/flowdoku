@@ -35,6 +35,8 @@ import { ticketsSection } from './sections/tickets';
 import { demoImpersonationSection } from './sections/demoImpersonation';
 import { templatesReseedSection } from './sections/templatesReseed';
 import { peoplePickerScopeSection } from './sections/peoplePickerScope';
+import { distributionGroupsSection } from './sections/distributionGroups';
+import { mobileUsageSection } from './sections/mobileUsage';
 
 export type Locale = 'de' | 'en';
 
@@ -47,9 +49,11 @@ export function getManualSections(locale: Locale): ManualSection[] {
     findEventSection(locale),
     myEventsSection(locale),
     profileSection(locale),
+    mobileUsageSection(locale),
     checkInSection(locale),
     selfCheckInSection(locale),
     createEventSection(locale),
+    distributionGroupsSection(locale),
     editEventSection(locale),
     subEventsSection(locale),
     b2runSection(locale),

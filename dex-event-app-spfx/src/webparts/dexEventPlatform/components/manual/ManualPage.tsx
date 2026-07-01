@@ -14,6 +14,7 @@ import { useCurrentUser } from '../../context/UserContext';
 import { useLanguage } from '../../context/LanguageContext';
 // v20.4: App-Modal statt window.prompt als Copy-Fallback.
 import { useDialog } from '../../context/DialogContext';
+import { deepLinkParams } from '../../utils/deepLink';
 import { ManualSection, ManualPerspectiveBlock, ManualStep, ManualPerspective } from './types';
 import { PlaceholderShot } from './ManualMockups';
 import { getManualSections } from './handbookContent';
@@ -73,7 +74,7 @@ export default function ManualPage(): React.ReactElement {
         window.localStorage.removeItem('dex_open_manual_section');
         if (visibleSections.some(s => s.id === hinted)) return hinted;
       }
-      const params = new URLSearchParams(window.location.search);
+      const params = deepLinkParams();
       const sec = params.get('section');
       if (sec && visibleSections.some(s => s.id === sec)) return sec;
     } catch { /* URL-Parsing-Fehler ignorieren */ }

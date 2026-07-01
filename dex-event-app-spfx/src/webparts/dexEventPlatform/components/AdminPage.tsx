@@ -15,6 +15,7 @@ import { useCurrentUser } from '../context/UserContext';
 import { useRoles } from '../context/RoleContext';
 import { useLanguage } from '../context/LanguageContext';
 import { DeloitteEvent } from '../types';
+import { buildHashDeepLink } from '../utils/deepLink';
 import { SPRegistration } from '../services/EventService';
 import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2, ChevronUp, ChevronDown, QrCode, Search, Info, Calendar, Pin } from './Icons';
 import OrganizerList from './OrganizerList';
@@ -7213,7 +7214,8 @@ export default function AdminPage(): React.ReactElement {
                 const base = (typeof window !== 'undefined' && window.location)
                   ? `${window.location.origin}${window.location.pathname}`
                   : `${siteUrl}/SitePages/DEX.aspx`;
-                const url = `${base}?env=WebView&action=admin&event=${selectedEvent.id}`;
+                // v26.33: Deep-Link-Parameter im Hash (Outlook/Teams-resistent).
+                const url = buildHashDeepLink(`${base}?env=WebView`, { action: 'admin', event: selectedEvent.id });
                 if (typeof navigator !== 'undefined' && navigator.clipboard) {
                   navigator.clipboard.writeText(url).then(() => {
                     setCopiedDeepLink(true);

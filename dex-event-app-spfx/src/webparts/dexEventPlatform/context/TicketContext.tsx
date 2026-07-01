@@ -24,6 +24,7 @@ import { EventService } from '../services/EventService';
 import { DexTicket, TicketAudience } from '../types';
 import { wrapTemplate } from '../services/EmailTemplates';
 import { subscribeListChanges } from '../utils/spListRealtime';
+import { buildHashDeepLink, deepLinkParams } from '../utils/deepLink';
 import { useRoles } from './RoleContext';
 import { useCurrentUser } from './UserContext';
 import { useEvents } from './EventContext';
@@ -55,6 +56,27 @@ export interface AnswerInput {
   screenshots: File[];
 }
 
+/** v26.32: Ergebnis einer Ticket-Übernahme. `conflict` = ein anderer Power-User
+ *  war schneller (dann steht in `claimedByName`, wer es hat). */
+export interface ClaimResult { ok: boolean; conflict?: boolean; claimedByName?: string }
+
+/** v26.33: Anzahl VOLLER Werktage (Mo–Fr, ohne Feiertage) zwischen zwei Daten.
+ *  Grundlage für die „≥ 2 Werktage unbeantwortet"-Ticket-Erinnerung. */
+function businessDaysBetween(from: Date, to: Date): number {
+  if (!(to > from)) return 0;
+  const cur = new Date(from.getTime()); cur.setHours(0, 0, 0, 0);
+  const end = new Date(to.getTime()); end.setHours(0, 0, 0, 0);
+  let count = 0;
+  let guard = 0;
+  while (cur < end && guard < 3660) {
+    cur.setDate(cur.getDate() + 1);
+    const dow = cur.getDay(); // 0 = So, 6 = Sa
+    if (dow !== 0 && dow !== 6) count++;
+    guard++;
+  }
+  return count;
+}
+
 interface TicketContextType {
   tickets: DexTicket[];
   myTickets: DexTicket[];
@@ -64,7 +86,9 @@ interface TicketContextType {
   reloadTickets: () => Promise<void>;
   reloadMyTickets: () => Promise<void>;
   createTicket: (input: AskInput) => Promise<boolean>;
-  claimTicket: (ticketId: number) => Promise<void>;
+  /** v26.32: übernimmt ein Ticket; `onlyIfOpen` (Klick auf ein offenes Ticket)
+   *  verhindert das stille Überschreiben, wenn jemand schneller war. */
+  claimTicket: (ticketId: number, opts?: { onlyIfOpen?: boolean }) => Promise<ClaimResult>;
   releaseTicket: (ticketId: number) => Promise<void>;
   answerTicket: (input: AnswerInput) => Promise<boolean>;
   /** v26.8: Auf eine beantwortete Frage erneut antworten (Fragesteller → nur an
@@ -104,6 +128,9 @@ export function TicketProvider(props: { context: WebPartContext; children: React
   const [tickets, setTickets] = React.useState<DexTicket[]>([]);
   const [myTickets, setMyTickets] = React.useState<DexTicket[]>([]);
   const [isTicketsLoading, setIsTicketsLoading] = React.useState<boolean>(false);
+  // v26.33: true, sobald die Ticket-Liste MINDESTENS EINMAL geladen wurde —
+  // Trigger für die tägliche Ticket-Erinnerung (erst nach echtem Load prüfen).
+  const [ticketsLoadedOnce, setTicketsLoadedOnce] = React.useState<boolean>(false);
 
   const myEmailLc = (currentUser.email || '').toLowerCase();
 
@@ -125,6 +152,7 @@ export function TicketProvider(props: { context: WebPartContext; children: React
     try {
       const list = await eventService.getTickets();
       setTickets(list);
+      setTicketsLoadedOnce(true);
     } catch { /* best-effort */ }
     setIsTicketsLoading(false);
   }, [eventService]);
@@ -212,7 +240,7 @@ export function TicketProvider(props: { context: WebPartContext; children: React
       }
     }
 
-    const pageContext = (() => { try { return new URLSearchParams(window.location.search).get('action') || window.location.pathname; } catch { return ''; } })();
+    const pageContext = (() => { try { return deepLinkParams().get('action') || window.location.pathname; } catch { return ''; } })();
 
     const id = await eventService.createTicket({
       questions,
@@ -255,8 +283,8 @@ export function TicketProvider(props: { context: WebPartContext; children: React
 
     if (toEmails.length > 0) {
       const link = audience === 'PowerUser'
-        ? `${appBase}&action=tickets&id=${id}`
-        : `${appBase}&action=admin&event=${encodeURIComponent(eventId)}&ticket=${id}`;
+        ? buildHashDeepLink(appBase, { action: 'tickets', id })
+        : buildHashDeepLink(appBase, { action: 'admin', event: eventId, ticket: id });
       const qHtml = questions.length === 1
         ? `<p style="margin:6px 0 0;">${esc(questions[0])}</p>`
         : `<ul style="margin:8px 0 0 18px;padding:0;">${questions.map(q => `<li style="margin-bottom:6px;">${esc(q)}</li>`).join('')}</ul>`;
@@ -327,10 +355,13 @@ export function TicketProvider(props: { context: WebPartContext; children: React
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventService, roles, isAdmin, myEmailLc, currentUser, events, selectedEventId, shouldLoadAll]);
 
-  const claimTicket = React.useCallback(async (ticketId: number): Promise<void> => {
+  const claimTicket = React.useCallback(async (ticketId: number, opts?: { onlyIfOpen?: boolean }): Promise<ClaimResult> => {
     const name = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || (currentUser.email || '');
-    await eventService.claimTicket(ticketId, currentUser.email || '', name);
+    const res = await eventService.claimTicket(ticketId, currentUser.email || '', name, opts);
+    // Immer neu laden: bei Erfolg zeigt die Liste „In Bearbeitung" mit meinem
+    // Namen, bei Konflikt den tatsächlichen (fremden) Übernehmer.
     await reloadTickets();
+    return { ok: res.ok, conflict: res.conflict, claimedByName: res.claimedByName };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventService, currentUser]);
 
@@ -363,7 +394,7 @@ export function TicketProvider(props: { context: WebPartContext; children: React
     if (t.askerEmail) {
       const articleHtml = (input.articles || []).length > 0
         ? `<p style="margin:16px 0 0;"><strong>Passende Handbuch-Artikel:</strong></p>
-           <ul style="margin:8px 0 0 18px;padding:0;">${(input.articles || []).map(a => `<li style="margin-bottom:4px;"><a href="${appBase}&action=manual&section=${encodeURIComponent(a.id)}" style="color:${GREEN};font-weight:600;">${esc(a.title)}</a></li>`).join('')}</ul>`
+           <ul style="margin:8px 0 0 18px;padding:0;">${(input.articles || []).map(a => `<li style="margin-bottom:4px;"><a href="${buildHashDeepLink(appBase, { action: 'manual', section: a.id })}" style="color:${GREEN};font-weight:600;">${esc(a.title)}</a></li>`).join('')}</ul>`
         : '';
       const wizardHtml = (input.wizardStep != null)
         ? `<p style="margin:16px 0 0;padding:10px 12px;background:#f1f7e8;border:1px solid ${GREEN};border-radius:6px;"><strong>Im Event-Wizard:</strong> Schritt ${input.wizardStep}${input.wizardStepLabel ? ` — ${esc(input.wizardStepLabel)}` : ''}.</p>`
@@ -380,7 +411,7 @@ export function TicketProvider(props: { context: WebPartContext; children: React
         <div style="margin:6px 0 0;white-space:pre-wrap;">${esc(input.answerText || '').replace(/\n/g, '<br>')}</div>
         ${articleHtml}
         ${wizardHtml}
-        ${ctaButton(`${appBase}&action=ask`, 'Antwort in der App ansehen')}
+        ${ctaButton(buildHashDeepLink(appBase, { action: 'ask' }), 'Antwort in der App ansehen')}
         <p style="margin:18px 0 0;color:#666;font-size:13px;">Du findest diese Antwort jederzeit in der App über den grünen Button <strong>&bdquo;Hast du Fragen?&ldquo;</strong> (oben rechts) unter <strong>&bdquo;Deine Fragen&ldquo;</strong>. Falls noch etwas offen ist, stelle dort einfach eine neue Frage.</p>
         ${noReplyHintHtml}
       `;
@@ -434,9 +465,9 @@ export function TicketProvider(props: { context: WebPartContext; children: React
     if (toEmail) {
       const link = iAmAsker
         ? (ticket.audience === 'PowerUser'
-            ? `${appBase}&action=tickets&id=${ticket.id}`
-            : `${appBase}&action=admin&event=${encodeURIComponent(ticket.eventId)}&ticket=${ticket.id}`)
-        : `${appBase}&action=ask`;
+            ? buildHashDeepLink(appBase, { action: 'tickets', id: ticket.id })
+            : buildHashDeepLink(appBase, { action: 'admin', event: ticket.eventId, ticket: ticket.id }))
+        : buildHashDeepLink(appBase, { action: 'ask' });
       const heading = iAmAsker ? 'Rückfrage zu einer beantworteten Frage' : 'Neue Antwort auf deine Frage';
       const introLine = iAmAsker
         ? `<strong>${esc(myName)}</strong> hat auf deine Antwort im DEX-Ticketsystem reagiert${ticket.eventTitle ? ` (Event: <strong>${esc(ticket.eventTitle)}</strong>)` : ''}.`
@@ -486,6 +517,64 @@ export function TicketProvider(props: { context: WebPartContext; children: React
   }, [ticketsForEvent]);
 
   const powerUserQueue = React.useMemo(() => tickets.filter(t => t.audience === 'PowerUser'), [tickets]);
+
+  // v26.33: Ticket-Erinnerung. Öffnet ein Beantworter (Power-User/Admin) die App
+  // und liegen Power-User-Fragen ≥ 2 Werktage unbeantwortet, geht EINMAL PRO TAG
+  // (queue- + browser-entdoppelt) eine Sammel-Erinnerung an die Power-User.
+  const ticketReminderRan = React.useRef(false);
+  React.useEffect(() => {
+    if (ticketReminderRan.current) return;
+    if (!canAnswerTickets || !ticketsLoadedOnce) return;
+    ticketReminderRan.current = true;
+    void (async (): Promise<void> => {
+      try {
+        const now = new Date();
+        const overdue = powerUserQueue.filter(t => {
+          if (t.status === 'Closed') return false;
+          if (t.answeredAt) return false;
+          const created = t.created ? new Date(t.created) : null;
+          if (!created || isNaN(created.getTime())) return false;
+          return businessDaysBetween(created, now) >= 2;
+        });
+        if (overdue.length === 0) return;
+        // Browser-Tages-Dedup.
+        const dayKey = `dex_ticketreminder_${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+        try { if (window.localStorage.getItem(dayKey)) return; } catch { /* */ }
+        // Queue-Tages-Dedup (falls mehrere Power-User heute schon geöffnet haben).
+        const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0).toISOString();
+        try { if (await eventService.hasQueuedEmailSince('TicketReminder', startOfToday)) { try { window.localStorage.setItem(dayKey, '1'); } catch { /* */ } return; } } catch { /* */ }
+        // Empfänger: Power-User (Fallback Admins). IT-Admins sind hier NICHT dabei.
+        const pu = roles.filter(r => r.isPowerUser && r.userEmail);
+        let toEmails = pu.map(r => r.userEmail);
+        let toNames = pu.map(r => r.userName || r.userEmail);
+        if (toEmails.length === 0) {
+          const admins = roles.filter(r => r.role === 'Admin' && r.userEmail);
+          toEmails = admins.map(r => r.userEmail); toNames = admins.map(r => r.userName || r.userEmail);
+        }
+        if (toEmails.length === 0) return;
+        const link = buildHashDeepLink(appBase, { action: 'tickets' });
+        const rows = overdue.slice(0, 30).map(t => {
+          const q = (t.questions && t.questions[0]) ? t.questions[0] : '(ohne Text)';
+          const created = t.created ? new Date(t.created) : now;
+          const days = businessDaysBetween(created, now);
+          return `<li style="margin-bottom:8px;"><strong>${esc(q.slice(0, 140))}</strong><br><span style="color:#777;font-size:12px;">von ${esc(t.askerName || t.askerEmail || 'unbekannt')} · seit ${days} Werktagen offen${t.eventTitle ? ` · Event: ${esc(t.eventTitle)}` : ''}</span></li>`;
+        }).join('');
+        const inner = `
+          <p style="margin:0 0 6px;">Hallo,</p>
+          <p style="margin:0 0 14px;">im DEX-Ticketsystem warten <strong>${overdue.length} Frage${overdue.length > 1 ? 'n' : ''}</strong> seit mindestens zwei Werktagen auf eine Antwort:</p>
+          <ul style="margin:0 0 4px 18px;padding:0;">${rows}</ul>
+          ${overdue.length > 30 ? `<p style="margin:6px 0 0;color:#777;font-size:12px;">… und weitere.</p>` : ''}
+          ${ctaButton(link, 'Offene Tickets ansehen')}
+          ${noReplyHintHtml}
+        `;
+        const subject = `Erinnerung: ${overdue.length} offene Ticket${overdue.length > 1 ? 's' : ''} im DEX-Ticketsystem`;
+        const body = wrapTemplate(GREEN, 'Offene Tickets warten auf Antwort', 'DEX-Support', inner);
+        await eventService.queueEmail(subject, toEmails.join('; '), toNames.join('; '), body, 'TicketReminder', 'DEX-Ticket', '0');
+        try { window.localStorage.setItem(dayKey, '1'); } catch { /* */ }
+      } catch (e) { console.warn('[DEX] ticket reminder failed:', e); }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canAnswerTickets, ticketsLoadedOnce]);
 
   const value = React.useMemo<TicketContextType>(() => ({
     tickets, myTickets, isTicketsLoading, canAnswerTickets,

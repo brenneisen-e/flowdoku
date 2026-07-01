@@ -17,6 +17,7 @@ import { useTickets } from '../../context/TicketContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { useNavigation } from '../../context/NavigationContext';
 import { useCurrentUser } from '../../context/UserContext';
+import { useDialog } from '../../context/DialogContext';
 import { listManualArticles, openManualArticle, ManualArticle } from '../../utils/manualSearch';
 import PersonContactHover from '../PersonContactHover';
 import { renderTicketThread, contactSubline } from './ticketThread';
@@ -35,6 +36,7 @@ export default function TicketCard(props: { ticket: DexTicket; defaultExpanded?:
   const { locale } = useLanguage();
   const { navigate } = useNavigation();
   const { currentUser } = useCurrentUser();
+  const { showAlert } = useDialog();
   const isDe = locale === 'de';
   const myEmailLc = (currentUser.email || '').toLowerCase();
 
@@ -81,8 +83,24 @@ export default function TicketCard(props: { ticket: DexTicket; defaultExpanded?:
   };
 
   const startAnswering = async (): Promise<void> => {
-    if (ticket.status === 'Open') { await claimTicket(ticket.id); }
-    else if (ticket.status === 'InProgress' && !claimedByMe) { await claimTicket(ticket.id); }
+    // v26.32: Beim Übernehmen eines OFFENEN Tickets hart gegen Race absichern —
+    // war ein anderer Power-User schneller, kommt ein Konflikt-Hinweis statt
+    // stillem Überschreiben. Das bewusste Übernehmen eines bereits „in
+    // Bearbeitung" befindlichen Tickets (Takeover) bleibt wie gehabt erlaubt.
+    if (ticket.status === 'Open') {
+      const res = await claimTicket(ticket.id, { onlyIfOpen: true });
+      if (!res.ok) {
+        if (res.conflict) {
+          const who = res.claimedByName
+            ? (isDe ? `„${res.claimedByName}" hat dieses Ticket gerade übernommen.` : `"${res.claimedByName}" just took this ticket.`)
+            : (isDe ? 'Dieses Ticket wurde gerade von jemand anderem übernommen.' : 'This ticket was just taken by someone else.');
+          showAlert(who, { variant: 'info' });
+        }
+        return; // NICHT aufklappen — das Ticket gehört jemand anderem.
+      }
+    } else if (ticket.status === 'InProgress' && !claimedByMe) {
+      await claimTicket(ticket.id);
+    }
     setExpanded(true);
   };
 

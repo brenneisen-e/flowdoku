@@ -73,7 +73,7 @@ export class SharePointService {
             },
             body: JSON.stringify({
               '__metadata': { 'type': 'SP.FieldChoice' },
-              'Choices': { 'results': ['Admin', 'Organizer', 'User'] },
+              'Choices': { 'results': ['Admin', 'IT-Admin', 'Organizer', 'User'] },
             }),
           }
         );
