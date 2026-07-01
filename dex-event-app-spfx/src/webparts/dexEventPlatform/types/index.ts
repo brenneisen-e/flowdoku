@@ -556,6 +556,9 @@ export interface DexTicket {
   assignedOrganizers: string[];
   /** Page-ID / Bildschirm, von dem die Frage gestellt wurde. */
   pageContext: string;
+  /** v26.30: 1-basierter Event-Wizard-Schritt, in dem die Frage gestellt wurde
+   *  (Organizer im Wizard) — null = nicht im Wizard. */
+  askWizardStep: number | null;
   answerText: string;
   /** IDs der in der Antwort verlinkten Handbuch-Artikel. */
   answerArticleIds: string[];

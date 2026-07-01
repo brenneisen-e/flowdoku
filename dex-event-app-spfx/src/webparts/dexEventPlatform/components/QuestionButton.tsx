@@ -21,7 +21,8 @@ import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { searchManual, openManualArticle, getManualSection, ManualArticle } from '../utils/manualSearch';
 import { captureScreen } from '../utils/screenshot';
-import { DexTicket } from '../types';
+import { getActiveWizardStep } from '../utils/wizardStepContext';
+import { DexTicket, DeloitteEvent } from '../types';
 import PersonContactHover from './PersonContactHover';
 import { renderTicketThread, contactSubline } from './tickets/ticketThread';
 import ImageAnnotateModal from './ImageAnnotateModal';
@@ -34,12 +35,17 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
   const { locale } = useLanguage();
   const { navigate, selectedEventId } = useNavigation();
   const { currentUserRole, isAdmin } = useRoles();
-  const { events } = useEvents();
+  const { events, topLevelEvents, getMyEventNumbers, childEventsOf } = useEvents();
   const isDe = locale === 'de';
 
   const [open, setOpen] = React.useState(false);
   const [tab, setTab] = React.useState<'ask' | 'mine'>('ask');
   const [questions, setQuestions] = React.useState<string[]>(['']);
+  // v26.30: Explizite Event-Zuordnung der Frage + eigene Event-Nummern (für die
+  // Gruppe „Deine Events" im Auswahl-Dropdown).
+  const [selEventId, setSelEventId] = React.useState<string>('');
+  const [myNums, setMyNums] = React.useState<{ registered: number[]; waitlisted: number[] }>({ registered: [], waitlisted: [] });
+  const [askWizardStep, setAskWizardStep] = React.useState<number | null>(null);
   const [shots, setShots] = React.useState<ShotRef[]>([]);
   // v26.10: Index des Screenshots, der gerade groß markiert wird (null = keiner).
   const [annotateIdx, setAnnotateIdx] = React.useState<number | null>(null);
@@ -78,6 +84,18 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, tab]);
 
+  // v26.30: Beim Öffnen die eigenen Event-Nummern laden (für „Deine Events") und
+  // das aktuell betrachtete Event (falls sichtbar) vorauswählen.
+  React.useEffect(() => {
+    if (!open) return;
+    getMyEventNumbers().then(setMyNums).catch(() => { /* */ });
+    const ctxId = selectedEventId || '';
+    setSelEventId(ctxId && (events || []).some((e) => e.id === ctxId) ? ctxId : '');
+    // v26.30: Wird aus dem Event-Wizard heraus gefragt, den Schritt zuordnen.
+    setAskWizardStep(getActiveWizardStep());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
   // Object-URLs der Screenshots beim Unmount freigeben.
   React.useEffect(() => () => { shots.forEach((s) => { try { URL.revokeObjectURL(s.url); } catch { /* */ } }); }, [shots]);
 
@@ -98,13 +116,28 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
   const openModal = (): void => { resetForm(); setTab('ask'); setOpen(true); };
   const closeModal = (): void => { if (submitting || capturing) return; setOpen(false); resetForm(); };
 
-  // Routing-Hinweis: wohin geht die Frage?
-  const ctxEvent = selectedEventId ? (events || []).find((e) => e.id === selectedEventId) : undefined;
+  // Routing-Hinweis: wohin geht die Frage? (v26.30: explizit gewähltes Event)
+  const ctxEvent = selEventId ? (events || []).find((e) => e.id === selEventId) : undefined;
   const askerIsOrgLike = currentUserRole === 'Organizer' || isAdmin;
   const ctxOrgs = ctxEvent
     ? Array.from(new Set([...(ctxEvent.organizerEmails || []), ...(ctxEvent.coOrganizerEmails || [])].map((x) => (x || '').trim()).filter(Boolean)))
     : [];
   const goesToOrganizer = !askerIsOrgLike && !!ctxEvent && ctxOrgs.length > 0;
+  // v26.30: Auswahl-Optionen — „Deine Events" (angemeldet/Warteliste) vs. weitere
+  // sichtbare Events. Test-Events (isFictive) nur für Organizer/Admins.
+  const isMineFor = (ev: DeloitteEvent): boolean => {
+    if (myNums.registered.indexOf(ev.eventNumber) >= 0 || myNums.waitlisted.indexOf(ev.eventNumber) >= 0) return true;
+    if (ev.subEventsOnlyMode) {
+      return childEventsOf(ev.id).some((k) => myNums.registered.indexOf(k.eventNumber) >= 0 || myNums.waitlisted.indexOf(k.eventNumber) >= 0);
+    }
+    return false;
+  };
+  const pickableEvents = (topLevelEvents || []).filter((e) => !e.isFictive || askerIsOrgLike);
+  const myEventsList = pickableEvents.filter(isMineFor);
+  const otherEventsList = pickableEvents.filter((e) => !isMineFor(e));
+  // v26.30: Vorausgewähltes Event (z.B. ein Sub-Event auf dem Register-Screen),
+  // das nicht in der Top-Level-Liste steht, trotzdem als Option anbieten.
+  const selExtra = (ctxEvent && !pickableEvents.some((e) => e.id === ctxEvent.id)) ? ctxEvent : undefined;
   const routingText = goesToOrganizer
     ? (isDe ? `Deine Frage geht an die Organisator:innen von „${ctxEvent!.title}".` : `Your question goes to the organizers of "${ctxEvent!.title}".`)
     : (isDe ? 'Deine Frage geht an das DEX-Support-Team (Power-User).' : 'Your question goes to the DEX support team (power users).');
@@ -149,6 +182,8 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
     const ok = await ticketCtx.createTicket({
       questions: questions.map((q) => q.trim()).filter(Boolean),
       screenshots: shots.map((s) => s.file),
+      eventId: selEventId,
+      askWizardStep,
     });
     setSubmitting(false);
     if (ok) {
@@ -239,6 +274,48 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
                 ? 'Stell deine Frage(n) — wir schauen direkt, ob das Handbuch schon weiterhilft. Wenn nicht, schickst du die Frage als Ticket ab.'
                 : 'Ask your question(s) — we instantly check whether the manual already helps. If not, you submit it as a ticket.'}
             </p>
+
+            {/* v26.30: Zu welchem Event gehört die Frage? Steuert das Routing —
+                Event mit Organizern → an dessen Organizer; „kein Event" oder ein
+                Event ohne Organizer → an das DEX-Support-Team (Power-User). */}
+            <div>
+              <label htmlFor="dex-q-event" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700,#444)', marginBottom: 4 }}>
+                {isDe ? 'Zu welchem Event ist deine Frage?' : 'Which event is your question about?'}
+              </label>
+              <select
+                id="dex-q-event"
+                value={selEventId}
+                onChange={(e) => setSelEventId(e.target.value)}
+                style={{ width: '100%', padding: '9px 11px', borderRadius: 8, border: '1px solid var(--dex-gray-300,#d1d1d1)', fontFamily: 'inherit', fontSize: '0.9rem', background: '#fff' }}
+              >
+                <option value="">{isDe ? 'Kein bestimmtes Event – allgemeine Frage' : 'No specific event – general question'}</option>
+                {selExtra && (<option value={selExtra.id}>{selExtra.title}</option>)}
+                {myEventsList.length > 0 && (
+                  <optgroup label={isDe ? 'Deine Events' : 'Your events'}>
+                    {myEventsList.map((e) => (<option key={e.id} value={e.id}>{e.title}</option>))}
+                  </optgroup>
+                )}
+                {otherEventsList.length > 0 && (
+                  <optgroup label={isDe ? 'Weitere Events' : 'Other events'}>
+                    {otherEventsList.map((e) => (<option key={e.id} value={e.id}>{e.title}</option>))}
+                  </optgroup>
+                )}
+              </select>
+            </div>
+
+            {/* v26.30: Herkunft aus dem Event-Wizard — wird der Antwort mitgegeben. */}
+            {askWizardStep != null && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#f1f7e8', border: '1px solid var(--dex-green,#86bc25)', borderRadius: 8, padding: '7px 10px' }}>
+                <Icon iconName="DocumentManagement" style={{ fontSize: 14, color: 'var(--dex-green-dark,#4a7c1f)' }} />
+                <span style={{ flex: 1, fontSize: '0.82rem', color: 'var(--dex-gray-700,#444)' }}>
+                  {isDe ? `Frage aus dem Event-Wizard – Schritt ${askWizardStep} (wird für die Antwort mitgegeben).` : `Question from the event wizard – step ${askWizardStep} (shared with the responder).`}
+                </span>
+                <button type="button" onClick={() => setAskWizardStep(null)} title={isDe ? 'Wizard-Schritt nicht mitschicken' : 'Do not include the wizard step'}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--dex-gray-400,#a0a0a0)', padding: 2 }}>
+                  <Icon iconName="Cancel" style={{ fontSize: 13 }} />
+                </button>
+              </div>
+            )}
 
             {questions.map((q, idx) => (
               <div key={idx} style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>

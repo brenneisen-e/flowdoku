@@ -34,6 +34,7 @@ import OrganizerList from './OrganizerList';
 // Center, QR-Kachel im Event-Detail); Zeitfenster + Deaktivieren im
 // Kachel-Modal des Admin Centers.
 import { buildOutlookLocation } from '../utils/eventFormat';
+import { setActiveWizardStep } from '../utils/wizardStepContext';
 import { Icon } from '@fluentui/react/lib/Icon';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { de } from 'date-fns/locale';
@@ -1828,6 +1829,13 @@ export default function EventCreationPage(): React.ReactElement {
     }
     return 0;
   });
+  // v26.30: aktuellen Wizard-Schritt (1-basiert, passend zur DexTicket-
+  // Konvention) für den Header-Frage-Button melden — so wird die Frage eines
+  // Organizers direkt dem Wizard-Schritt zugeordnet. Beim Verlassen zurücksetzen.
+  React.useEffect(() => {
+    setActiveWizardStep(currentStep + 1);
+    return () => setActiveWizardStep(null);
+  }, [currentStep]);
   const [selectedTemplate, setSelectedTemplate] = React.useState<'blank' | 'b2run'>('blank');
   // EventType wird bei neuen Events aus dem Template abgeleitet; bei Edit
   // bleibt der gespeicherte Wert erhalten.

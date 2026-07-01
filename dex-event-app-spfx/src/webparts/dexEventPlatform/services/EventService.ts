@@ -9763,6 +9763,7 @@ export class EventService {
       { title: 'TicketEventTitle', type: 2 },
       { title: 'AssignedOrganizers', type: 3, note: true },
       { title: 'PageContext', type: 2 },
+      { title: 'AskWizardStep', type: 9 },
       { title: 'AnswerText', type: 3, note: true },
       { title: 'AnswerArticleIds', type: 3, note: true },
       { title: 'AnswerWizardStep', type: 9 },
@@ -9806,12 +9807,12 @@ export class EventService {
     const listName = EventService.TICKETS_LIST;
     try {
       const check = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName&$filter=InternalName eq 'FollowUps'`,
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName&$filter=InternalName eq 'AskWizardStep'`,
         SPHttpClient.configurations.v1);
       if (check.ok) {
         const d = await check.json();
         const arr = d.value || d.d?.results || [];
-        if (Array.isArray(arr) && arr.length > 0) return; // schon migriert
+        if (Array.isArray(arr) && arr.length > 0) return; // schon migriert (AskWizardStep vorhanden)
       }
     } catch { /* weiter — versuchen anzulegen */ }
     const extra: Array<{ title: string; type: number; note?: boolean }> = [
@@ -9820,6 +9821,7 @@ export class EventService {
       { title: 'AnsweredByLocation', type: 2 },
       { title: 'AnsweredByJobTitle', type: 2 },
       { title: 'FollowUps', type: 3, note: true },
+      { title: 'AskWizardStep', type: 9 },
     ];
     for (const f of extra) {
       try {
@@ -9841,6 +9843,7 @@ export class EventService {
     askerLocation?: string; askerJobTitle?: string;
     audience: string; eventId: string; eventTitle: string;
     assignedOrganizers: string[]; pageContext: string;
+    askWizardStep?: number | null;
   }): Promise<number | null> {
     try {
       const first = (t.questions[0] || 'Frage').replace(/\s+/g, ' ').trim().slice(0, 240) || 'Frage';
@@ -9857,6 +9860,7 @@ export class EventService {
           'TicketEventId': t.eventId || '', 'TicketEventTitle': t.eventTitle || '',
           'AssignedOrganizers': JSON.stringify(t.assignedOrganizers || []),
           'PageContext': t.pageContext || '',
+          'AskWizardStep': (t.askWizardStep == null) ? null : t.askWizardStep,
         }
       );
       if (!resp.ok) return null;
@@ -9891,7 +9895,7 @@ export class EventService {
   /** Alle Tickets laden (inkl. Anhänge per $expand). Neueste zuerst. */
   public async getTickets(): Promise<DexTicket[]> {
     try {
-      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AnswerText,AnswerArticleIds,AnswerWizardStep,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
+      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AskWizardStep,AnswerText,AnswerArticleIds,AnswerWizardStep,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
       const url = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items?$select=${sel}&$expand=AttachmentFiles&$orderby=Created desc&$top=500`;
       const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
       if (!resp.ok) return [];
@@ -9909,7 +9913,7 @@ export class EventService {
    *  Ask-Modal — der Fragesteller sieht Status + Antwort in der App). */
   public async getMyTickets(email: string): Promise<DexTicket[]> {
     try {
-      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AnswerText,AnswerArticleIds,AnswerWizardStep,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
+      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AskWizardStep,AnswerText,AnswerArticleIds,AnswerWizardStep,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
       const safe = (email || '').replace(/'/g, "''");
       const url = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items?$select=${sel}&$expand=AttachmentFiles&$filter=AskerEmail eq '${safe}'&$orderby=Created desc&$top=100`;
       const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
@@ -9936,6 +9940,7 @@ export class EventService {
       return { fileName: fn, url: a.ServerRelativeUrl || '', kind };
     });
     const stepRaw = it.AnswerWizardStep;
+    const askStepRaw = it.AskWizardStep;
     const parseFollowUps = (s: unknown): TicketFollowUp[] => {
       try {
         const a = JSON.parse((s as string) || '[]');
@@ -9965,6 +9970,7 @@ export class EventService {
       eventTitle: it.TicketEventTitle || '',
       assignedOrganizers: parseArr(it.AssignedOrganizers),
       pageContext: it.PageContext || '',
+      askWizardStep: (askStepRaw === 0 || (askStepRaw != null && askStepRaw !== '')) ? Number(askStepRaw) : null,
       answerText: it.AnswerText || '',
       answerArticleIds: parseArr(it.AnswerArticleIds),
       answerWizardStep: (stepRaw === 0 || (stepRaw != null && stepRaw !== '')) ? Number(stepRaw) : null,
