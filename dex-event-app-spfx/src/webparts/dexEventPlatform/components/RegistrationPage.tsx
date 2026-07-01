@@ -2855,11 +2855,12 @@ export default function RegistrationPage(): React.ReactElement {
               rechts daneben). Vorher saß der Toggle unter dem Header
               im Body — wenig auffällig. „* = Required field"-Legende
               ist hier weg und sitzt jetzt am Event-Specific-Header. */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-            <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-              <Icon iconName="ContactInfo" style={{ fontSize: 16 }} />
-              {t('reg.personalinfo')}
-            </div>
+          <CollapsibleSection
+            isMobile={isMobile}
+            icon="ContactInfo"
+            title={t('reg.personalinfo')}
+            headerExtra={(canRegisterForOther || (registerForOther && canCreateEvents)) ? (
+            <>
             {canRegisterForOther && (
               <button
                 type="button"
@@ -2906,7 +2907,9 @@ export default function RegistrationPage(): React.ReactElement {
                 {locale === 'de' ? 'Massenimport' : 'Bulk import'}
               </button>
             )}
-          </div>
+            </>
+            ) : undefined}
+          >
           <div style={{ padding: '24px 20px' }}>
             {canRegisterForOther && (
               <>
