@@ -4476,6 +4476,26 @@ export class EventService {
     } catch (err) { console.warn('[DEX] archiveEventStats failed:', err); return false; }
   }
 
+  /** Rollback: entfernt die (soeben geschriebene) Statistik-Zeile(n) einer
+   *  EventNumber — genutzt, wenn die anschließende Löschung fehlschlägt, damit
+   *  das Event beim nächsten Lauf erneut verarbeitet wird. */
+  public async deleteEventStatsRow(eventNumber: number): Promise<boolean> {
+    try {
+      const url = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.EVENTSTATS_LIST}')/items?$select=Id&$filter=EventNumber eq ${eventNumber}&$top=50`;
+      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      if (!resp.ok) return false;
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      let ok = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const it of (items as any[])) {
+        try { await this._delete(`${this.siteUrl}/_api/web/lists/getbytitle('${EventService.EVENTSTATS_LIST}')/items(${it.Id})`); }
+        catch { ok = false; }
+      }
+      return ok;
+    } catch { return false; }
+  }
+
   /**
    * Löscht die Teilnehmerliste (Subsite) eines Events, LÄSST das DEX_Events-Item
    * bestehen (Event bleibt sichtbar; KPIs stehen im DEX_EventStats). Bereinigt

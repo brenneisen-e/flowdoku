@@ -3822,7 +3822,17 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         });
         if (!archivedOk) { failed++; continue; }
         const delOk = await eventService.deleteParticipantData(Number(e.id));
-        if (delOk) deleted++; else failed++;
+        if (delOk) { deleted++; }
+        else {
+          // Löschung fehlgeschlagen → Statistik-Zeile zurückrollen, damit das
+          // Event beim nächsten Lauf erneut verarbeitet wird. Die Subsite
+          // existiert noch (Löschung schlug fehl), daher sind die dann neu
+          // berechneten KPIs korrekt — sonst bliebe die Teilnehmerliste (PII)
+          // verwaist zurück (Archiv-Eintrag würde sie fälschlich als „erledigt"
+          // markieren).
+          try { await eventService.deleteEventStatsRow(e.eventNumber); } catch { /* */ }
+          failed++;
+        }
       } catch { failed++; }
     }
     if (onProgress) onProgress(due.length, due.length, '');

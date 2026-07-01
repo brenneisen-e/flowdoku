@@ -1304,8 +1304,8 @@ export default function AdminPage(): React.ReactElement {
       const endRaw = confirmDeleteEvent.endDate || confirmDeleteEvent.startDate;
       const endTs = endRaw ? new Date(endRaw).getTime() : 0;
       // v26.32: Aufbewahrung 3 Monate (statt vormals 1 Jahr) — konsistent mit dem
-      // Teilnehmerlisten-Löschkonzept.
-      const retentionCutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
+      // Teilnehmerlisten-Löschkonzept (Kalendermonate wie participantDeleteDueTs).
+      const retentionCutoff = (() => { const d = new Date(); d.setMonth(d.getMonth() - 3); return d.getTime(); })();
       const overRetention = endTs > 0 && endTs < retentionCutoff;
       if (externalCount > 0) {
         // Ehemals aktiv (echte Teilnehmer) → geschützt.
