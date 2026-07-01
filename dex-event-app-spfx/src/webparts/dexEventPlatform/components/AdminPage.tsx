@@ -5795,6 +5795,28 @@ export default function AdminPage(): React.ReactElement {
     ? waitlistRegs.filter(r => !r.PreferredStarterType || (r.PreferredStarterType !== 'Durchstarter' && r.PreferredStarterType !== 'Funstarter'))
     : [];
 
+  // v26.31: Wahre FIFO-Position je Wartelisten-Person (Rang nach TeilnehmerID
+  // innerhalb der jeweiligen Gruppe), berechnet aus der UNGEFILTERTEN Liste —
+  // damit die „Platz"-Anzeige auch beim Suchen/Filtern korrekt bleibt (sonst
+  // zeigte eine gefilterte Trefferliste fälschlich Platz 1, 2, …).
+  const waitlistTruePos: Record<number, number> = (() => {
+    const map: Record<number, number> = {};
+    const rank = (arr: SPRegistration[]): void => {
+      arr.slice()
+        .sort((a, b) => (a.TeilnehmerID || 0) - (b.TeilnehmerID || 0))
+        .forEach((r, idx) => { if (typeof r.Id === 'number') map[r.Id] = idx + 1; });
+    };
+    const all = registrations.filter(r => r.Status === 'Warteliste');
+    if (isSplitCapacity) {
+      rank(all.filter(r => r.PreferredStarterType === 'Durchstarter'));
+      rank(all.filter(r => r.PreferredStarterType === 'Funstarter'));
+      rank(all.filter(r => !r.PreferredStarterType || (r.PreferredStarterType !== 'Durchstarter' && r.PreferredStarterType !== 'Funstarter')));
+    } else {
+      rank(all);
+    }
+    return map;
+  })();
+
   // Roommate-Matching: durchsucht CustomData nach roommate-Type Feldern, extrahiert
   // Email aus "Name <email>"-Format, baut Map Email -> Partner-Email. Match-Badge,
   // wenn beide sich gegenseitig ausgewählt haben.
@@ -9986,7 +10008,13 @@ export default function AdminPage(): React.ReactElement {
 
               const renderCell = (id: string, reg: SPRegistration, i: number): React.ReactNode => {
                 if (id === 'id') {
-                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-400)' }}>{reg.TeilnehmerID || (i + 1)}</td>;
+                  // v26.31: Beim Filtern die laufende Treffer-Nr. „#n" voranstellen
+                  // und die echte TeilnehmerID (Platz) in Klammern zeigen — analog zur
+                  // Warteliste; ohne Filter unverändert nur die TeilnehmerID.
+                  const idCell = query
+                    ? `#${i + 1}${reg.TeilnehmerID ? ` (#${reg.TeilnehmerID})` : ''}`
+                    : (reg.TeilnehmerID || (i + 1));
+                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-400)' }}>{idCell}</td>;
                 }
                 // v23.33: eingeklappte „Teilnehmer"-Zelle — Foto + zweizeilig
                 // (Name fett, darunter „Position • Standort" ohne Länder-Präfix).
@@ -10730,18 +10758,18 @@ export default function AdminPage(): React.ReactElement {
                       {sortedRegs.map((reg, i) => {
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         const anyReg = reg as any;
-                        // v17.8: Position bleibt die FIFO-Position basierend auf der ORIGINAL-
-                        // Reihenfolge (TeilnehmerID asc), unabhängig von der aktuellen Sortierung.
-                        // Wenn der User nach Nachname sortiert, soll trotzdem klar sein, wer
-                        // Platz 1 / 2 / 3 ist.
-                        const fifoIdx = regs
-                          .slice()
-                          .sort((a, b) => (a.TeilnehmerID || 0) - (b.TeilnehmerID || 0))
-                          .findIndex(r => r.Id === reg.Id);
-                        const pos = fifoIdx >= 0 ? fifoIdx + 1 : i + 1;
+                        // v17.8/v26.31: „Platz" = wahre FIFO-Position (TeilnehmerID
+                        // asc) aus der UNGEFILTERTEN Warteliste (waitlistTruePos),
+                        // unabhängig von Sortierung UND Suchfilter — sonst zeigte eine
+                        // gefilterte Trefferliste fälschlich Platz 1, 2, … Beim Filtern
+                        // wird zusätzlich die laufende Treffer-Nummer „#n" vorangestellt.
+                        const truePos = waitlistTruePos[reg.Id];
+                        const posDisplay = (truePos != null)
+                          ? (query ? `#${i + 1} (Platz ${truePos})` : String(truePos))
+                          : String(i + 1);
                         return (
                         <tr key={reg.Id} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                          <td style={{ padding: 8, fontWeight: 600, color: accentColor }}>{pos}</td>
+                          <td style={{ padding: 8, fontWeight: 600, color: accentColor }}>{posDisplay}</td>
                           <td style={{ padding: 8, fontWeight: 500 }}>{reg.Vorname || '-'}</td>
                           <td style={{ padding: 8, fontWeight: 500 }}>{reg.Nachname || '-'}</td>
                           <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{reg.ParticipantEmail}</td>
