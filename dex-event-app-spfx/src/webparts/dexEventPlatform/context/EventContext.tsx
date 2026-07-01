@@ -1768,6 +1768,20 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             finalBody = injectIntoEmailContent(finalBody, externalHint);
           }
         }
+        // v26.37: Standard-Tipp in der Anmeldebestätigung interner User —
+        // DEX auf dem Handy am besten über die offizielle Microsoft-SharePoint-
+        // App öffnen (der mobile Browser lädt die Seite teils nicht zuverlässig,
+        // v.a. Android). Nicht für externe Empfänger/Einladungen (nutzen DEX nicht)
+        // und nur bei der eigentlichen Anmeldebestätigung ('Angemeldet').
+        if (status === 'Angemeldet' && !isExternalInvite && !isExternalRecipient) {
+          const isDeMail = (lang || 'EN').toUpperCase() === 'DE';
+          const mobileAppTip = `<div style="margin:0 0 16px;padding:12px 16px;background:#f1f7e8;border:1px solid #86bc25;border-radius:8px;font-size:13px;line-height:1.55;color:#3d5a1a;">`
+            + (isDeMail
+              ? `<strong>💡 Tipp: DEX auf dem Handy nutzen.</strong><br>Wenn du DEX auf deinem Smartphone öffnen möchtest, installiere vorher die offizielle <strong>Microsoft-SharePoint-App</strong> aus dem App Store (iPhone/iPad) bzw. Google Play Store (Android) und öffne DEX darüber. Im normalen Handy-Browser lädt die Seite teilweise nicht zuverlässig.`
+              : `<strong>💡 Tip: Using DEX on your phone.</strong><br>If you'd like to open DEX on your smartphone, first install the official <strong>Microsoft SharePoint app</strong> from the App Store (iPhone/iPad) or Google Play Store (Android) and open DEX from there. In the regular mobile browser the page sometimes does not load reliably.`)
+            + `</div>`;
+          finalBody = injectIntoEmailContent(finalBody, mobileAppTip);
+        }
         // v18.41: People-Picker-Felder mit „CC bei Mail" → ausgewählte
         // Person(en) auf CC der An-/Warteliste-Mail (NICHT im Outlook-Termin).
         // v18.53: opts.extraCc (übergreifende CC aus dem Hauptformular im
