@@ -43,7 +43,9 @@ export default function LandingPage(): React.ReactElement {
   // Organizer überflüssig — sie haben die Funktionen schon. Admins sehen sie
   // bewusst weiter (um die normale User-Ansicht der Landing Page zu prüfen).
   const showOrganizerCta = !canCreateEvents || isAdmin;
-  const { isEventsLoading, getArchivableCount, runArchiveExpired, scanInactiveAccounts, notifyOrganizerOfInactive, getSentInactiveNotices, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, deleteEvent, countExternalRegistrations, refreshEvents } = useEvents();
+  const { isEventsLoading, getArchivableCount, runArchiveExpired, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getSentInactiveNotices, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, deleteEvent, countExternalRegistrations, refreshEvents } = useEvents();
+  // v26.40: Modal-Hinweis nach automatischer Abmeldung von Ex-Deloitte-Personen.
+  const [autoDeregModal, setAutoDeregModal] = React.useState<Array<{ title: string; people: Array<{ email: string; name: string }> }> | null>(null);
   // v24.51: „Organizer benachrichtigen" pro Event (inaktive Konten).
   const [notifyBusyId, setNotifyBusyId] = React.useState<string | null>(null);
   const [notifyResult, setNotifyResult] = React.useState<Record<string, string>>({});
@@ -237,6 +239,10 @@ export default function LandingPage(): React.ReactElement {
     const relevant = (events || []).filter(e =>
       e.status === 'Active' && (e.subsiteUrl || '').trim() && (isAdmin || isOrgOf(e)));
     if (relevant.length === 0) { setInactiveSummary([]); return undefined; }
+    // v26.40: Event-Setting — 'autoderegister' = automatisch abmelden (+ Modal),
+    // 'notify' (Default) = im Organizer-Hinweis anzeigen.
+    const isAutoDereg = (eventId: string): boolean =>
+      (events || []).find(e => e.id === eventId)?.inactiveHandling === 'autoderegister';
     const CACHE = 'dex_inactivesummary';
     // v22.46: Signatur der relevanten Events — ändert sich die Event-Liste
     // (neues Event, Status-Wechsel), wird neu gescannt statt 24h zu warten.
@@ -250,7 +256,9 @@ export default function LandingPage(): React.ReactElement {
         const parsed = JSON.parse(raw) as { ts?: number; sig?: string; items?: InactiveItem[] };
         if (parsed && typeof parsed.ts === 'number' && Array.isArray(parsed.items)) {
           const liveIds = new Set(relevant.map(e => e.id));
-          const cached = parsed.items.filter(it => liveIds.has(it.eventId));
+          // v26.40: Nur 'notify'-Events in den Organizer-Hinweis; 'autoderegister'
+          // wird beim frischen Scan automatisch abgemeldet (nicht hier anzeigen).
+          const cached = parsed.items.filter(it => liveIds.has(it.eventId) && !isAutoDereg(it.eventId));
           // v24.59: bereits benachrichtigte Konten gleich ausblenden.
           filterNotified(cached).then(f => { if (!cancelled) setInactiveSummary(f); }).catch(() => { if (!cancelled) setInactiveSummary(cached); });
           if (Date.now() - parsed.ts < 24 * 60 * 60 * 1000 && parsed.sig === sig) stale = false;
@@ -264,7 +272,19 @@ export default function LandingPage(): React.ReactElement {
           if (cancelled) return;
           // Rohscan cachen (für die nächste Anzeige), aber benachrichtigte ausblenden.
           try { window.localStorage.setItem(CACHE, JSON.stringify({ ts: Date.now(), sig, items })); } catch { /* */ }
-          const filtered = await filterNotified(items);
+          // v26.40: Events mit 'autoderegister' → erkannte Ex-Deloitte-Personen
+          // automatisch abmelden und dem Organizer als Modal melden.
+          const autoItems = items.filter(it => isAutoDereg(it.eventId));
+          if (autoItems.length > 0) {
+            const report: Array<{ title: string; people: Array<{ email: string; name: string }> }> = [];
+            for (const it of autoItems) {
+              try { const removed = await autoDeregisterInactive(it.eventId, it.people); if (removed.length > 0) report.push({ title: it.title, people: removed }); } catch { /* */ }
+            }
+            if (!cancelled && report.length > 0) setAutoDeregModal(report);
+          }
+          // Nur 'notify'-Events landen im Organizer-Hinweis.
+          const notifyItems = items.filter(it => !isAutoDereg(it.eventId));
+          const filtered = await filterNotified(notifyItems);
           if (!cancelled) setInactiveSummary(filtered);
         })
         .catch(() => { /* best-effort */ });
@@ -722,6 +742,38 @@ export default function LandingPage(): React.ReactElement {
       )}
 
       {/* v22: Fortschritts-/Ergebnis-Modal der Archivierung. */}
+      {/* v26.40: Modal-Hinweis nach automatischer Abmeldung von Ex-Deloitte-Personen. */}
+      {autoDeregModal && (
+        <Modal
+          open={true}
+          onClose={() => setAutoDeregModal(null)}
+          dismissable={true}
+          maxWidth={560}
+          ariaLabel={isDe ? 'Automatisch abgemeldet' : 'Auto-deregistered'}
+        >
+          <h3 style={{ margin: '0 0 10px', fontSize: '1.05rem' }}>
+            {isDe ? 'Automatisch abgemeldet: Konten ohne Deloitte-Zugang' : 'Auto-deregistered: accounts without Deloitte access'}
+          </h3>
+          <p style={{ margin: '0 0 12px', fontSize: '0.9rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+            {isDe
+              ? 'Für die folgenden Events ist eingestellt, dass Personen ohne aktives Deloitte-Konto automatisch abgemeldet werden. Diese Personen wurden soeben abgemeldet (die Warteliste rückt ggf. nach):'
+              : 'These events are set to auto-deregister people without an active Deloitte account. The following people were just deregistered (the waitlist may move up):'}
+          </p>
+          {autoDeregModal.map((ev, i) => (
+            <div key={i} style={{ marginBottom: 12 }}>
+              <div style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: 4 }}>{ev.title}</div>
+              <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.88rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                {ev.people.map((p, j) => <li key={j}>{p.name}{p.name && p.name !== p.email ? ` (${p.email})` : ''}</li>)}
+              </ul>
+            </div>
+          ))}
+          <div style={{ marginTop: 14, textAlign: 'right' }}>
+            <button className="btn btn-primary" style={{ fontSize: '0.88rem', padding: '9px 18px' }} onClick={() => setAutoDeregModal(null)}>
+              {isDe ? 'Verstanden' : 'Got it'}
+            </button>
+          </div>
+        </Modal>
+      )}
       {archModal && (
         <Modal
           open={true}

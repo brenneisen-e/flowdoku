@@ -206,7 +206,7 @@ const EVENT_AUDIT_LABELS: Record<string, string> = {
   LastDeregisterDate: 'Letzte Abmeldung', MaxParticipants: 'Teilnehmerzahl',
   WaitlistEnabled: 'Warteliste', DisableEmails: 'E-Mails',
   DisableRegistrationEmail: 'Anmelde-Bestätigung', DisableCancellationEmail: 'Abmelde-Bestätigung',
-  AutoDeregisterOnDecline: 'Outlook-Absage = Abmeldung', DisableOutlook: 'Outlook-Termin',
+  AutoDeregisterOnDecline: 'Outlook-Absage = Abmeldung', InactiveHandling: 'Ex-Deloitte-Konto: Verhalten', DisableOutlook: 'Outlook-Termin',
   EmailLanguage: 'Mail-Sprache', RegistrationLanguage: 'Anmeldesprache',
   CustomFields: 'Eventfelder', Agenda: 'Agenda', Transfers: 'Transferzeiten', FunZone: 'Quiz',
   OutlookBody: 'Outlook-Text', OutlookSubject: 'Outlook-Betreff', OutlookLocation: 'Outlook-Ort',
@@ -506,6 +506,9 @@ interface EventContextType {
   /** v24.51: Organizer per Mail über (ein) inaktives Konto informieren — mit
    *  Dedup über alle Admins (nur einmal pro Event+Person). */
   notifyOrganizerOfInactive: (eventId: string, people: Array<{ email: string; name: string }>) => Promise<{ sent: number; skipped: number; noOrganizer?: boolean }>;
+  /** v26.40: Erkannte Ex-Deloitte-Personen automatisch abmelden (Event-Setting
+   *  inactiveHandling='autoderegister'). Gibt die abgemeldeten Personen zurück. */
+  autoDeregisterInactive: (eventId: string, people: Array<{ email: string; name: string }>) => Promise<Array<{ email: string; name: string }>>;
   /** v24.59: Bereits benachrichtigte Teilnehmer-E-Mails (lowercase) eines Events
    *  — damit die Landing-Page schon-benachrichtigte Konten ausblenden kann. */
   getSentInactiveNotices: (eventId: string) => Promise<Set<string>>;
@@ -653,6 +656,7 @@ export interface CreateEventInput {
   disableRegistrationEmail?: boolean; // v19.21: keine Anmelde-Bestätigung
   disableCancellationEmail?: boolean; // v19.21: keine Abmelde-Bestätigung
   autoDeregisterOnDecline?: boolean; // v19.23: Outlook-Absage = Auto-Abmeldung
+  inactiveHandling?: 'notify' | 'autoderegister'; // v26.40
   disableOutlook?: boolean;
   outlookDirty?: boolean; // v11.57: Outlook-Update ausstehend nach Bearbeitung
   notifyOrgRegisterMode?: 'never' | 'always' | 'fromDate';
@@ -1147,6 +1151,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       disableRegistrationEmail: !!e.DisableRegistrationEmail,
       disableCancellationEmail: !!e.DisableCancellationEmail,
       autoDeregisterOnDecline: !!e.AutoDeregisterOnDecline,
+      inactiveHandling: e.InactiveHandling === 'autoderegister' ? 'autoderegister' : 'notify',
       disableOutlook: !!e.DisableOutlook,
       // v14.5: requireSubEventSelection als Piggyback im EmailTemplateOverrides-
       // JSON (kein neues SP-Feld nötig).
@@ -5235,6 +5240,38 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return { sent: newPeople.length, skipped: people.length - newPeople.length };
   }
 
+  /**
+   * v26.40: Erkannte Ex-Deloitte-Personen automatisch abmelden (nur wenn das
+   * Event `inactiveHandling === 'autoderegister'` hat). Nutzt denselben Pfad wie
+   * das manuelle Abmelden im Organizer Center (Abmelde-Mail/Outlook-Ausladung/
+   * Nachrücken via Flow). Gibt die tatsächlich abgemeldeten Personen zurück —
+   * die Landing Page zeigt daraus einen Modal-Hinweis für den Organizer.
+   */
+  async function autoDeregisterInactive(
+    eventId: string,
+    people: Array<{ email: string; name: string }>
+  ): Promise<Array<{ email: string; name: string }>> {
+    const event = events.find(e => e.id === eventId);
+    if (!event || !event.subsiteUrl) return [];
+    const removed: Array<{ email: string; name: string }> = [];
+    let regs: SPRegistration[] = [];
+    try { regs = await eventService.getAllRegistrations(event.subsiteUrl); } catch { return []; }
+    const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
+    const actorName = (currentUserName || '').trim() || currentUserEmail;
+    for (const p of people) {
+      const em = (p.email || '').toLowerCase().trim();
+      if (!em) continue;
+      const reg = regs.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === em && ACTIVE.indexOf(r.Status) >= 0);
+      if (!reg) continue;
+      try {
+        const ok = await eventService.cancelRegistration(event.subsiteUrl, reg.Id, actorName, currentUserEmail);
+        if (ok) removed.push({ email: em, name: p.name || em });
+      } catch (err) { console.warn('[DEX] autoDeregisterInactive failed for', em, err); }
+    }
+    if (removed.length > 0) { try { await loadEvents(); } catch { /* */ } }
+    return removed;
+  }
+
   return React.createElement(
     EventContext.Provider,
     {
@@ -5259,7 +5296,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, restoreCustomFieldDescriptions,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, restoreCustomFieldDescriptions,
         sendAdminInquiry,
         requestOrganizerRole, requestCoOrganizerApprovals, notifyNewCoOrganizers, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,
