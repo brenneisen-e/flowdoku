@@ -316,6 +316,29 @@ export interface SelfCheckInResult {
   closesAt?: string;  // ISO, bei status='closed'
 }
 
+/** v26.33: Eine Zeile aus dem Statistik-Archiv (DEX_EventStats) — reine KPIs
+ *  eines Events, dessen Teilnehmerliste nach dem 3-Monats-Löschkonzept gelöscht
+ *  wurde. Enthält KEINE personenbezogenen Daten. */
+export interface EventStatsRow {
+  id: number;
+  eventNumber: number;
+  eventTitle: string;
+  eventType: string;
+  location: string;
+  startDate: string;
+  endDate: string;
+  maxParticipants: number | null;
+  registeredCount: number;
+  qrSentCount: number;
+  checkedInCount: number;
+  noShowCount: number;
+  waitlistCount: number;
+  deregisteredCount: number;
+  organizer: string;
+  archivedByEmail: string;
+  archivedDate: string;
+}
+
 interface EventContextType {
   events: DeloitteEvent[];
   /** Top-Level-Events (ohne parentEventId) — was in EventListPage/MyEventsPage angezeigt wird. */
@@ -506,6 +529,9 @@ interface EventContextType {
   getParticipantDeletionDue: () => Promise<DeloitteEvent[]>;
   runParticipantDeletion: (onProgress?: (done: number, total: number, label: string) => void) => Promise<{ deleted: number; failed: number }>;
   maybeSendParticipantDeletionWarnings: () => Promise<void>;
+  /** v26.33: Liest das Statistik-Archiv (DEX_EventStats) — KPIs gelöschter
+   *  Teilnehmerlisten für die Admin-Center-Kachel „Statistik-Archiv". */
+  getEventStats: () => Promise<EventStatsRow[]>;
   updateMyRegistration: (eventId: string, customData: Record<string, string>) => Promise<boolean>;
   /** v10.27: Split-Capacity-Gruppen-Wechsel für die eigene Registrierung.
    *  Nimmt die App-internen Wert-IDs ('Durchstarter' | 'Funstarter') —
@@ -3797,32 +3823,53 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   }
 
   /** Events, deren Teilnehmerliste fällig ist (≥3 Mon.) und noch NICHT archiviert. */
+  // v26.35: Kandidaten = ab 1 Woche VOR der 3-Monats-Frist (dann läuft die
+  // Vorwarnung), noch mit Subsite, kein Entwurf, noch nicht archiviert.
+  function participantDeletionCandidates(now: number): DeloitteEvent[] {
+    return (events || []).filter(e => {
+      const due = participantDeleteDueTs(e);
+      return isParticipantDeletionCandidate(e) && due > 0 && (due - PARTICIPANT_WARN_LEAD_MS) <= now;
+    });
+  }
+
+  /** Löschbar ERST, wenn die Vorwarn-Mail an die Organizer raus ist UND danach
+   *  mindestens 1 Woche vergangen ist — sonst könnte gelöscht werden, ohne dass
+   *  je gewarnt wurde. */
   async function getParticipantDeletionDue(): Promise<DeloitteEvent[]> {
     if (!eventService) return [];
     const now = Date.now();
-    const cands = (events || []).filter(e => {
-      const due = participantDeleteDueTs(e);
-      return isParticipantDeletionCandidate(e) && due > 0 && due <= now;
-    });
+    const cands = participantDeletionCandidates(now);
     if (cands.length === 0) return [];
     let archived = new Set<number>();
     try { archived = await eventService.getArchivedStatsEventNumbers(); } catch { archived = new Set(); }
-    return cands.filter(e => !archived.has(e.eventNumber));
+    let warnDates: Record<string, string> = {};
+    try { warnDates = await eventService.getParticipantDeletionWarningDates(); } catch { warnDates = {}; }
+    return cands.filter(e => {
+      if (archived.has(e.eventNumber)) return false;
+      const sent = warnDates[String(e.id)];
+      const sentTs = sent ? new Date(sent).getTime() : 0;
+      return sentTs > 0 && (sentTs + PARTICIPANT_WARN_LEAD_MS) <= now;
+    });
   }
 
-  /** Events im Vorwarn-Fenster (3 Mon. − 1 Woche … 3 Mon.), noch nicht archiviert. */
+  /** Events, deren Löschung ansteht, aber die 1-Wochen-Frist seit der Vorwarnung
+   *  noch NICHT abgelaufen ist (bzw. die Warnung noch aussteht). */
   async function getParticipantDeletionWarnings(): Promise<DeloitteEvent[]> {
     if (!eventService) return [];
     const now = Date.now();
-    const cands = (events || []).filter(e => {
-      if (!isParticipantDeletionCandidate(e)) return false;
-      const due = participantDeleteDueTs(e);
-      return due > 0 && (due - PARTICIPANT_WARN_LEAD_MS) <= now && now < due;
-    });
+    const cands = participantDeletionCandidates(now);
     if (cands.length === 0) return [];
     let archived = new Set<number>();
     try { archived = await eventService.getArchivedStatsEventNumbers(); } catch { archived = new Set(); }
-    return cands.filter(e => !archived.has(e.eventNumber));
+    let warnDates: Record<string, string> = {};
+    try { warnDates = await eventService.getParticipantDeletionWarningDates(); } catch { warnDates = {}; }
+    return cands.filter(e => {
+      if (archived.has(e.eventNumber)) return false;
+      const sent = warnDates[String(e.id)];
+      const sentTs = sent ? new Date(sent).getTime() : 0;
+      // Noch NICHT löschbar → im Warn-/Wartezustand.
+      return !(sentTs > 0 && (sentTs + PARTICIPANT_WARN_LEAD_MS) <= now);
+    });
   }
 
   /** Admin-Aktion: KPIs archivieren, dann Teilnehmerliste löschen (Event bleibt). */
@@ -3837,10 +3884,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       if (onProgress) onProgress(i, due.length, e.title || '');
       try {
         // Erst KPIs sichern — nur bei Erfolg die (unwiderrufliche) Löschung starten.
+        const orgNames = Array.from(new Set(
+          [...(e.organizers || []), ...(e.coOrganizerNames || [])].map(x => (x || '').trim()).filter(Boolean)
+        )).join(', ');
         const archivedOk = await eventService.archiveEventStats({
           eventNumber: e.eventNumber, eventTitle: e.title, eventType: e.type,
           location: e.location, startDate: e.startDate, endDate: e.endDate,
           maxParticipants: e.maxParticipants, subsiteUrl: e.subsiteUrl,
+          organizer: orgNames,
         });
         if (!archivedOk) { failed++; continue; }
         const delOk = await eventService.deleteParticipantData(Number(e.id));
@@ -3905,6 +3956,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         } catch { /* einzelne Mail-Fehler ignorieren */ }
       }
     } catch (e) { console.warn('[DEX] participant deletion warning mail failed:', e); }
+  }
+
+  /** v26.33: Liest das Statistik-Archiv (DEX_EventStats) für die Admin-Kachel. */
+  async function getEventStats(): Promise<EventStatsRow[]> {
+    if (!eventService) return [];
+    try { return await eventService.getEventStats(); }
+    catch (e) { console.warn('[DEX] getEventStats failed:', e); return []; }
   }
 
   async function deleteEvent(eventId: string): Promise<boolean> {
@@ -5160,7 +5218,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, fixAllEventColumns, restoreCustomFieldDescriptions,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, restoreCustomFieldDescriptions,
         sendAdminInquiry,
         requestOrganizerRole, requestCoOrganizerApprovals, notifyNewCoOrganizers, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,

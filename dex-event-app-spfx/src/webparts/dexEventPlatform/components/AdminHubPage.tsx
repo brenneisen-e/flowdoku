@@ -13,7 +13,7 @@ import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useDialog } from '../context/DialogContext';
-import { Settings, Users, Mail, Book, FileText, Trash2, Columns } from './Icons';
+import { Settings, Users, Mail, Book, FileText, Trash2, Columns, BarChart3 } from './Icons';
 import { RELEASE_NOTES, RELEASE_BEREICHE } from '../data/releaseNotes';
 
 // Erklärung aller DEX_*-Listen in Klartext (was tut die Liste, warum gibt es sie).
@@ -228,6 +228,7 @@ export default function AdminHubPage(): React.ReactElement {
     { icon: <Users size={28} />, title: isDe ? 'Rollenverwaltung' : 'Role management', desc: isDe ? 'User, Organizer und Admins zuweisen oder entfernen.' : 'Assign or remove users, organizers and admins.', onClick: () => navigate('settings') },
     { icon: <Columns size={28} />, title: isDe ? 'Rollenmatrix' : 'Role matrix', desc: isDe ? 'Übersicht: wer welche Rechte hat (User, Organizer, Admin).' : 'Overview: who has which permissions (user, organizer, admin).', onClick: () => navigate('role-matrix') },
     { icon: <Mail size={28} />, title: isDe ? 'Mail-Vorlagen' : 'Mail templates', desc: isDe ? 'Globale Standard-Mails (Anmeldung, Warteliste, Abmeldung …) ansehen und bearbeiten — mit Live-Vorschau.' : 'View and edit the global default emails — with live preview.', onClick: () => navigate('email-templates') },
+    { icon: <BarChart3 size={28} />, title: isDe ? 'Statistik-Archiv' : 'Statistics archive', desc: isDe ? 'Kennzahlen gelöschter Teilnehmerlisten: welches Event, wann, von wem organisiert, mit welcher Teilnehmerzahl (ohne PII).' : 'KPIs of deleted participant lists: which event, when, organized by whom, with how many participants (no PII).', onClick: () => navigate('stats-archive') },
     { icon: <Book size={28} />, title: isDe ? 'Handbuch' : 'Manual', desc: isDe ? 'Ausführliche Anleitung zu allen Funktionen.' : 'Detailed guide for all features.', onClick: () => navigate('manual') },
   ];
 
