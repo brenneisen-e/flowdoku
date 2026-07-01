@@ -439,6 +439,50 @@ export function registrationEmail(recipientName: string, eventTitle: string): { 
 }
 
 /**
+ * v26.33: Einladung für externe Dritte (kein Deloitte-Postfach), die von jemand
+ * anderem stellvertretend angemeldet wurden. Statt einer Anmeldebestätigung:
+ * eine Einladung mit Bitte um Bestätigung per Antwort-Mail + Deloitte-
+ * Datenschutzhinweis. Die Mail geht an die externe Person; die anmeldende Person
+ * und alle Organizer stehen auf CC (so erreicht die Zusage-Antwort alle).
+ */
+export function externalInvitationEmail(
+  recipientName: string,
+  eventTitle: string,
+  registeredByName: string,
+  isDe: boolean
+): { subject: string; body: string } {
+  const privacyUrl = 'https://www.deloitte.com/de/de/legal/privacy.html';
+  if (isDe) {
+    return {
+      subject: `Einladung: ${eventTitle}`,
+      body: wrapTemplate(
+        GREEN,
+        'Einladung zum Event',
+        eventTitle,
+        `<p>Hallo ${recipientName},</p>
+        <p>${registeredByName ? `<strong>${registeredByName}</strong> hat dich` : 'Du wurdest'} zum Event <strong>${eventTitle}</strong> eingeladen.</p>
+        <p>Wenn du teilnehmen möchtest, <strong>bestätige bitte diese Einladung, indem du auf diese E-Mail antwortest</strong>. Deine Zusage geht damit an die anmeldende Person und die Organisator:innen (in Kopie).</p>
+        <p style="margin-top:16px;font-size:13px;color:#555;">Es gelten die <a href="${privacyUrl}" style="color:${GREEN};font-weight:600;">Datenschutzhinweise von Deloitte</a>. Deine Daten werden ausschließlich zur Organisation dieses Events verarbeitet. Einen Widerruf kannst du jederzeit an <a href="mailto:privacy@deloitte.de" style="color:${GREEN};">privacy@deloitte.de</a> richten.</p>
+        <p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+      ),
+    };
+  }
+  return {
+    subject: `Invitation: ${eventTitle}`,
+    body: wrapTemplate(
+      GREEN,
+      'Event invitation',
+      eventTitle,
+      `<p>Dear ${recipientName},</p>
+      <p>${registeredByName ? `<strong>${registeredByName}</strong> has invited you` : 'You have been invited'} to the event <strong>${eventTitle}</strong>.</p>
+      <p>If you would like to attend, <strong>please confirm this invitation by replying to this email</strong>. Your reply reaches the person who registered you and the organizers (on copy).</p>
+      <p style="margin-top:16px;font-size:13px;color:#555;">Deloitte's <a href="${privacyUrl}" style="color:${GREEN};font-weight:600;">data protection notice</a> applies. Your data is processed solely to organise this event. You may withdraw at any time via <a href="mailto:privacy@deloitte.de" style="color:${GREEN};">privacy@deloitte.de</a>.</p>
+      <p style="margin-top:24px;"><strong>Best regards</strong><br><br><strong>Your Event Team</strong></p>`
+    ),
+  };
+}
+
+/**
  * Warteliste-Bestätigung
  */
 export function waitlistEmail(recipientName: string, eventTitle: string, position?: number): { subject: string; body: string } {
