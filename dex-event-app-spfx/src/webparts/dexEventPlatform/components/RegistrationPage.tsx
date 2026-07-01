@@ -21,7 +21,7 @@ import { useLanguage, translations as appTranslations, Locale } from '../context
 import { useDialog } from '../context/DialogContext';
 import { Salutation, EventSpecificField } from '../types';
 import { Icon } from '@fluentui/react/lib/Icon';
-import { Trash2, Send, X } from './Icons';
+import { Send, X } from './Icons';
 import { InfoTooltip } from './InfoTooltip';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 import OrganizerList from './OrganizerList';
@@ -105,13 +105,17 @@ function CollapsibleSection(props: {
   /** Zusätzlicher Header-Inhalt rechts (z.B. Toggle-Buttons). */
   headerExtra?: React.ReactNode;
   defaultOpen?: boolean;
+  /** v26.37: false = auf dem Handy NICHT einklappbar (immer sichtbar), z.B. für
+   *  die eventspezifischen Felder, die der Teilnehmer aktiv ausfüllen muss. */
+  collapsible?: boolean;
   children: React.ReactNode;
 }): React.ReactElement {
-  const { isMobile, icon, title, headerExtra, defaultOpen, children } = props;
+  const { isMobile, icon, title, headerExtra, defaultOpen, collapsible, children } = props;
   const [open, setOpen] = React.useState<boolean>(defaultOpen ?? !isMobile);
 
-  // Desktop: unverändertes Markup (Header + Body immer sichtbar, kein Chevron).
-  if (!isMobile) {
+  // Desktop ODER explizit nicht-einklappbar: unverändertes Markup (Header + Body
+  // immer sichtbar, kein Chevron).
+  if (!isMobile || collapsible === false) {
     return (
       <>
         {headerExtra ? (
@@ -1674,28 +1678,7 @@ export default function RegistrationPage(): React.ReactElement {
     }
   };
 
-  const handleClear = (): void => {
-    setSalutation('');
-    setFirstName('');
-    setSurname('');
-    setEmail('');
-    setEventSpecific({});
-    setRegisterForOther(false);
-    // v18.15: „Zurücksetzen" leert jetzt auch die Event-Section-/Sub-Event-
-    // Auswahl, die Gruppen-Wahl und den Team-Modus — vorher blieb die Auswahl
-    // bestehen (der Button schien „kaputt").
-    setSelectedSessions(new Set());
-    setSessionFieldValues({});
-    setRegisterForParent(true);
-    setPreferredStarterType('');
-    setIsTeamMode(false);
-    setTeamName('');
-    setTeamMembers([]);
-    setTeamMemberFields({});
-    setTeamConsentConfirmed(false);
-    setShowErrors(false);
-    setError('');
-  };
+  // v26.37: „Zurücksetzen"-Button (und handleClear) entfernt — auf Wunsch.
 
   // v18.11: Proaktive Absage („Ich nehme nicht teil"). Keine Pflichtfelder
   // nötig — der User signalisiert nur, dass er nicht kommt.
@@ -3612,23 +3595,12 @@ export default function RegistrationPage(): React.ReactElement {
             isMobile={isMobile}
             icon="EditNote"
             title={t('reg.eventinfo')}
+            collapsible={false}
             headerExtra={
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12, padding: '0 12px' }}>
               <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
                 <span style={{ color: 'var(--dex-red, #da291c)', fontWeight: 700, marginRight: 2 }}>*</span> = {t('reg.requiredfield')}
               </span>
-              {/* v18.12: „Zurücksetzen" ersetzt den früheren „Löschen"-Button
-                  aus der Aktions-Zeile — leert das Formular (Eingaben). */}
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={handleClear}
-                disabled={isSubmitting}
-                style={{ fontSize: '0.78rem', padding: '4px 12px' }}
-                title={locale === 'de' ? 'Eingaben zurücksetzen' : 'Reset inputs'}
-              >
-                <Trash2 size={14} /> {locale === 'de' ? 'Zurücksetzen' : 'Reset'}
-              </button>
             </span>
             }
           >
