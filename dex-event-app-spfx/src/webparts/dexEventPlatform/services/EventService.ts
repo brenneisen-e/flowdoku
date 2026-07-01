@@ -1050,6 +1050,31 @@ export class EventService {
     }
   }
 
+  /** v26.35: Für jedes Event das FRÜHESTE „ParticipantDeletionWarning"-Sendedatum
+   *  (Created in der DEX_Emails-Queue). Grundlage für die 1-Wochen-Frist zwischen
+   *  Vorwarnung an die Organizer und der Löschung der Teilnehmerliste. */
+  public async getParticipantDeletionWarningDates(): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    try {
+      let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items?$select=EventId,Created&$filter=EmailType eq 'ParticipantDeletionWarning'&$top=5000`;
+      while (url) {
+        const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        if (!resp.ok) break;
+        const data = await resp.json();
+        const items = data.value || data.d?.results || [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const it of (items as any[])) {
+          const eid = String(it.EventId || '');
+          const created = it.Created || '';
+          if (!eid || !created) continue;
+          if (!out[eid] || new Date(created).getTime() < new Date(out[eid]).getTime()) out[eid] = created;
+        }
+        url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
+      }
+    } catch { /* best-effort */ }
+    return out;
+  }
+
   /** v26.13: Versions-Historie der CustomFields-Spalte eines DEX_Events-Items
    *  (neueste zuerst). Grundlage für die Wiederherstellung versehentlich
    *  überschriebener Custom-Field-Beschreibungen (helpText etc.) aus der
@@ -4387,18 +4412,11 @@ export class EventService {
   private static readonly EVENTSTATS_LIST = 'DEX_EventStats';
   private static readonly EVENTSTATS_ITEM_TYPE = 'SP.Data.DEX_x005f_EventStatsListItem';
 
-  /** Legt DEX_EventStats (Statistik-Archiv, KEINE PII) an, falls nicht vorhanden. */
+  /** Legt DEX_EventStats (Statistik-Archiv, KEINE PII) an, falls nicht vorhanden.
+   *  Existiert die Liste bereits, werden nur fehlende (neue) Spalten nachgerüstet
+   *  — z.B. `Organizer` (v26.33), das es in früheren Versionen noch nicht gab. */
   public async ensureEventStatsList(): Promise<void> {
     const listName = EventService.EVENTSTATS_LIST;
-    try { if (await this.listExists(listName)) return; } catch { /* weiter — anlegen versuchen */ }
-    const createResp = await this._post(`${this.siteUrl}/_api/web/lists`, {
-      '__metadata': { 'type': 'SP.List' },
-      'Title': listName,
-      'Description': 'Statistik-Archiv (v26): KPIs eines Events, nachdem die Teilnehmerliste nach 3 Monaten gelöscht wurde. Enthält KEINE personenbezogenen Daten.',
-      'BaseTemplate': 100,
-      'AllowContentTypes': false,
-    });
-    if (!createResp.ok) { console.warn('[DEX] DEX_EventStats konnte nicht angelegt werden — vermutlich fehlen Owner-Rechte.'); return; }
     const fields: Array<{ title: string; type: number }> = [
       { title: 'EventNumber', type: 9 }, { title: 'EventTitle', type: 2 },
       { title: 'EventType', type: 2 }, { title: 'EventLocation', type: 2 },
@@ -4407,9 +4425,35 @@ export class EventService {
       { title: 'QRSentCount', type: 9 }, { title: 'CheckedInCount', type: 9 },
       { title: 'NoShowCount', type: 9 }, { title: 'WaitlistCount', type: 9 },
       { title: 'DeregisteredCount', type: 9 }, { title: 'ArchivedByEmail', type: 2 },
-      { title: 'ArchivedDate', type: 4 },
+      { title: 'ArchivedDate', type: 4 }, { title: 'Organizer', type: 3 },
     ];
+    let exists = false;
+    try { exists = await this.listExists(listName); } catch { exists = false; }
+    if (!exists) {
+      const createResp = await this._post(`${this.siteUrl}/_api/web/lists`, {
+        '__metadata': { 'type': 'SP.List' },
+        'Title': listName,
+        'Description': 'Statistik-Archiv (v26): KPIs eines Events, nachdem die Teilnehmerliste nach 3 Monaten gelöscht wurde. Enthält KEINE personenbezogenen Daten.',
+        'BaseTemplate': 100,
+        'AllowContentTypes': false,
+      });
+      if (!createResp.ok) { console.warn('[DEX] DEX_EventStats konnte nicht angelegt werden — vermutlich fehlen Owner-Rechte.'); return; }
+    }
+    // Nur fehlende Felder anlegen (idempotent): bestehende Internal-Names holen.
+    const have = new Set<string>();
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName&$top=200`,
+        SPHttpClient.configurations.v1,
+      );
+      if (resp.ok) {
+        const data = await resp.json();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const f of ((data.value || data.d?.results || []) as any[])) { if (f.InternalName) have.add(String(f.InternalName)); }
+      }
+    } catch { /* dann versuchen wir einfach alle anzulegen */ }
     for (const f of fields) {
+      if (have.has(f.title)) continue;
       try {
         await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, {
           '__metadata': { 'type': 'SP.Field' }, 'Title': f.title, 'FieldTypeKind': f.type, 'Required': false,
@@ -4438,6 +4482,62 @@ export class EventService {
   }
 
   /**
+   * Liest alle Zeilen aus dem Statistik-Archiv (DEX_EventStats). Reine KPI-
+   * Daten, KEINE PII. Für die Anzeige-Kachel „Statistik-Archiv" im Admin Center.
+   */
+  public async getEventStats(): Promise<Array<{
+    id: number; eventNumber: number; eventTitle: string; eventType: string;
+    location: string; startDate: string; endDate: string; maxParticipants: number | null;
+    registeredCount: number; qrSentCount: number; checkedInCount: number;
+    noShowCount: number; waitlistCount: number; deregisteredCount: number;
+    organizer: string; archivedByEmail: string; archivedDate: string;
+  }>> {
+    const out: Array<{
+      id: number; eventNumber: number; eventTitle: string; eventType: string;
+      location: string; startDate: string; endDate: string; maxParticipants: number | null;
+      registeredCount: number; qrSentCount: number; checkedInCount: number;
+      noShowCount: number; waitlistCount: number; deregisteredCount: number;
+      organizer: string; archivedByEmail: string; archivedDate: string;
+    }> = [];
+    try {
+      if (!(await this.listExists(EventService.EVENTSTATS_LIST))) return out;
+      const sel = 'Id,EventNumber,EventTitle,EventType,EventLocation,EventStart,EventEnd,MaxParticipants,RegisteredCount,QRSentCount,CheckedInCount,NoShowCount,WaitlistCount,DeregisteredCount,Organizer,ArchivedByEmail,ArchivedDate';
+      let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.EVENTSTATS_LIST}')/items?$select=${sel}&$orderby=ArchivedDate desc&$top=5000`;
+      while (url) {
+        const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        if (!resp.ok) break;
+        const data = await resp.json();
+        const items = data.value || data.d?.results || [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const it of (items as any[])) {
+          const num = (v: unknown): number => { const n = Number(v); return Number.isNaN(n) ? 0 : n; };
+          out.push({
+            id: Number(it.Id),
+            eventNumber: num(it.EventNumber),
+            eventTitle: it.EventTitle || '',
+            eventType: it.EventType || '',
+            location: it.EventLocation || '',
+            startDate: it.EventStart || '',
+            endDate: it.EventEnd || '',
+            maxParticipants: (it.MaxParticipants === null || it.MaxParticipants === undefined) ? null : num(it.MaxParticipants),
+            registeredCount: num(it.RegisteredCount),
+            qrSentCount: num(it.QRSentCount),
+            checkedInCount: num(it.CheckedInCount),
+            noShowCount: num(it.NoShowCount),
+            waitlistCount: num(it.WaitlistCount),
+            deregisteredCount: num(it.DeregisteredCount),
+            organizer: EventService.stripNoteWrapper(it.Organizer) || '',
+            archivedByEmail: it.ArchivedByEmail || '',
+            archivedDate: it.ArchivedDate || '',
+          });
+        }
+        url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
+      }
+    } catch (err) { console.warn('[DEX] getEventStats failed:', err); }
+    return out;
+  }
+
+  /**
    * Berechnet die KPIs eines Events aus der Teilnehmerliste und schreibt EINE
    * Zeile ins DEX_EventStats (keine PII). Muss VOR dem Löschen der Subsite
    * laufen. Idempotent: existiert schon eine Zeile für die EventNumber, wird
@@ -4446,6 +4546,7 @@ export class EventService {
   public async archiveEventStats(meta: {
     eventNumber: number; eventTitle: string; eventType?: string; location?: string;
     startDate?: string; endDate?: string; maxParticipants?: number; subsiteUrl?: string;
+    organizer?: string;
   }): Promise<boolean> {
     try {
       await this.ensureEventStatsList();
@@ -4470,6 +4571,7 @@ export class EventService {
           'WaitlistCount': countBy(s => s === 'Warteliste'),
           'DeregisteredCount': countBy(s => s === 'Abgemeldet'),
           'ArchivedByEmail': me, 'ArchivedDate': new Date().toISOString(),
+          'Organizer': meta.organizer || '',
         }
       );
       return resp.ok;

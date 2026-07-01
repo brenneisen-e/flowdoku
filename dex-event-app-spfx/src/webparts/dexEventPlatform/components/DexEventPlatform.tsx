@@ -54,6 +54,7 @@ const ManualPage = React.lazy(() => import('./manual/ManualPage'));
 const AssistantPage = React.lazy(() => import('./AssistantPage'));
 const TicketsPage = React.lazy(() => import('./TicketsPage'));
 const ArchitecturePage = React.lazy(() => import('./ArchitecturePage'));
+const StatsArchivePage = React.lazy(() => import('./StatsArchivePage'));
 
 export interface IDexEventPlatformProps {
   context: WebPartContext;
@@ -739,6 +740,8 @@ function AppContent(): React.ReactElement {
         return <TicketsPage />;
       case 'architecture':
         return <ArchitecturePage />;
+      case 'stats-archive':
+        return <StatsArchivePage />;
       default:
         return <LandingPage />;
     }
