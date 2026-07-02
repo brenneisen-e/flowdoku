@@ -1467,6 +1467,49 @@ export class EventService {
       }
     }
     if (checkedSet.size === 0) return { ok: false, inactive: [] };
+    // v26.42: ZWEITER Durchgang für nicht gefundene Adressen — KONTO-UMBENENNUNG
+    // erkennen (z.B. Heirat: UPN + primäre Mail wechseln auf den neuen Nachnamen,
+    // die ALTE Adresse bleibt als smtp:-Alias am selben, weiterhin AKTIVEN Konto).
+    // Der mail/UPN-Filter oben findet solche Konten nicht → früher Fehlalarm
+    // „hat Deloitte verlassen". proxyAddresses enthält die alte Adresse als Alias.
+    // Best-effort: schlägt die Abfrage fehl (z.B. Berechtigung), bleibt das
+    // bisherige Verhalten — der Durchgang kann Personen nur RETTEN, nie zusätzlich
+    // belasten.
+    const missing = candidates.filter(e => checkedSet.has(e) && !activeSet.has(e));
+    // 2 Klauseln je Adresse (smtp:/SMTP: — der Präfix-Vergleich ist case-sensitiv,
+    // Sekundär-Aliasse tragen 'smtp:', der Primär-Eintrag 'SMTP:') → 7×2 = 14 ≤ 15.
+    for (let i = 0; i < missing.length; i += BATCH) {
+      const batch = missing.slice(i, i + BATCH);
+      const clauses = batch
+        .map(e => `proxyAddresses/any(p: p eq 'smtp:${esc(e)}') or proxyAddresses/any(p: p eq 'SMTP:${esc(e)}')`)
+        .join(' or ');
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const resp: any = await client.api('/users')
+          .header('ConsistencyLevel', 'eventual')
+          .query({ '$count': 'true' })
+          .filter(`(${clauses})`)
+          .select('mail,userPrincipalName,accountEnabled,proxyAddresses')
+          .top(999)
+          .get();
+        const found = (resp?.value || []) as Array<{ mail?: string; userPrincipalName?: string; accountEnabled?: boolean; proxyAddresses?: string[] }>;
+        for (const u of found) {
+          if (u.accountEnabled === false) continue; // wirklich deaktiviert
+          // Alle Aliasse des Kontos als aktiv markieren — darunter die alte Adresse.
+          for (const p of (u.proxyAddresses || [])) {
+            const addr = String(p || '').replace(/^smtps?:/i, '').trim().toLowerCase();
+            if (addr) activeSet.add(addr);
+          }
+          if (u.mail) activeSet.add(u.mail.toLowerCase());
+          if (u.userPrincipalName) activeSet.add(u.userPrincipalName.toLowerCase());
+          console.warn('[DEX] checkAccountsActive: Konto umbenannt (Alias-Treffer), NICHT inaktiv:', u.mail || u.userPrincipalName);
+        }
+      } catch (err) {
+        // 403/400 (fehlende Graph-Berechtigung für proxyAddresses o.ä.) →
+        // keine Rettung möglich, Verhalten wie vor v26.42.
+        console.warn('[DEX] checkAccountsActive proxy-alias pass failed:', err);
+      }
+    }
     const inactive = candidates.filter(e => checkedSet.has(e) && !activeSet.has(e));
     return { ok: true, inactive };
   }

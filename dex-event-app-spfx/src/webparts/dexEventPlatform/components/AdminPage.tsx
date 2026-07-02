@@ -2803,7 +2803,8 @@ export default function AdminPage(): React.ReactElement {
       .map(r => (r.ParticipantEmail || '').trim().toLowerCase())
       .filter(Boolean)));
     if (emails.length === 0) return undefined;
-    const cacheKey = `dex_acctcheck_${selectedEvent.id}`;
+    // v26.42: _v2 — alte Caches enthielten Fehlalarme für umbenannte Konten (Heirat).
+    const cacheKey = `dex_acctcheck_v2_${selectedEvent.id}`;
     try {
       const raw = window.localStorage.getItem(cacheKey);
       if (raw) {
