@@ -31,7 +31,11 @@ import { useIsMobile } from '../utils/useIsMobile';
 // erst beim tatsächlichen Gebrauch (Export-Klick / QR-Vorschau) als eigener
 // Chunk nachgeladen — spart ~1 MB im Haupt-Bundle.
 import { EventService, EventCommRow } from '../services/EventService';
-import { qrCodeEmail, qrEmailDefaults, buildQrBlockHtml, QrEmailOverride, cancellationEmail, promotionEmail, wrapTemplate, replacePlaceholders, buildEmailFromTemplate, getCachedLogoBase64, getCachedOrbBase64, injectIntoEmailContent } from '../services/EmailTemplates';
+import { qrCodeEmail, qrEmailDefaults, buildQrBlockHtml, QrEmailOverride, cancellationEmail, promotionEmail, wrapTemplate, replacePlaceholders, buildEmailFromTemplate, getCachedLogoBase64, getCachedOrbBase64, injectIntoEmailContent, externalInvitationEmail } from '../services/EmailTemplates';
+// v26.47: Externe Anmeldung — Einladung als .eml-Entwurf (X-Unsent) zum
+// Selbst-Versenden durch die anmeldende Person (App kann keine externen
+// Adressen anmailen).
+import { buildUnsentEmlDraft, downloadEml } from '../utils/emlDraft';
 import { applyEventTemplateOverride, formatOrganizerList } from '../context/EventContext';
 import { HtmlEditorModal } from './HtmlEditorModal';
 import { InfoTooltip } from './InfoTooltip';
@@ -10288,6 +10292,18 @@ export default function AdminPage(): React.ReactElement {
                   );
                 }
                 if (id === 'status') {
+                  // v26.47: Externe Anmeldung mit offener Datenschutz-Rückmeldung
+                  // (ConsentReview='Pending') — oranger Badge statt des normalen
+                  // Status, solange die Person noch aktiv (nicht abgemeldet) ist.
+                  if (reg.ConsentReview === 'Pending' && reg.Status !== 'Abgemeldet') {
+                    return (
+                      <td key={id} style={{ padding: 8 }}>
+                        <span className="badge" style={{ background: '#fff3e0', color: '#b35a00' }}>
+                          {isDe ? 'Angemeldet (Datenschutzrückmeldung offen)' : 'Registered (privacy confirmation pending)'}
+                        </span>
+                      </td>
+                    );
+                  }
                   return (
                     <td key={id} style={{ padding: 8 }}>
                       <span className={`badge ${reg.Status === 'Eingecheckt' ? 'badge-green' : 'badge-gray'}`}>
@@ -10629,6 +10645,75 @@ export default function AdminPage(): React.ReactElement {
                         {eventOver ? (isDe ? 'Abmelden (Ohne E-Mail)' : 'Cancel (no email)') : (isDe ? 'Abmelden' : 'Cancel')}
                       </button>
                       )}
+                      {/* v26.47: Externe Anmeldung mit offener Datenschutz-
+                          Rückmeldung — die App kann keine externen Adressen
+                          anmailen, deshalb lädt die anmeldende Person die
+                          Einladung als .eml-Entwurf herunter und verschickt sie
+                          selbst; die Rückmeldung wird danach hier bestätigt. */}
+                      {reg.ConsentReview === 'Pending' && (() => {
+                        const fullName = `${reg.Vorname || ''} ${reg.Nachname || ''}`.trim() || reg.ParticipantName;
+                        return (
+                          <>
+                            <button
+                              className="btn btn-secondary"
+                              style={{ fontSize: '0.75rem', padding: '4px 10px', color: '#b35a00' }}
+                              title={isDe
+                                ? 'Einladungs-Mail als .eml-Entwurf herunterladen — in Outlook öffnen und selbst an die externe Person senden.'
+                                : 'Download the invitation email as an .eml draft — open it in Outlook and send it to the external person yourself.'}
+                              onClick={() => {
+                                if (!selectedEvent) return;
+                                const mailDe = (selectedEvent.emailLanguage || 'EN').toUpperCase() === 'DE';
+                                const { subject, body } = externalInvitationEmail(
+                                  fullName,
+                                  selectedEvent.title,
+                                  reg.RegisteredByName || '',
+                                  mailDe,
+                                  { startDate: selectedEvent.startDate, endDate: selectedEvent.endDate, location: selectedEvent.location }
+                                );
+                                const eml = buildUnsentEmlDraft({
+                                  to: [reg.ParticipantEmail],
+                                  cc: ['no_reply.events@deloitte.de', ...Array.from(new Set([...(selectedEvent.organizerEmails || []), ...(selectedEvent.coOrganizerEmails || [])].filter(Boolean)))],
+                                  subject,
+                                  html: body,
+                                });
+                                downloadEml('Einladung_' + (reg.ParticipantEmail || 'extern'), eml);
+                              }}
+                            >
+                              {isDe ? 'Einladung (.eml)' : 'Invitation (.eml)'}
+                            </button>
+                            <button
+                              className="btn btn-secondary"
+                              style={{ fontSize: '0.75rem', padding: '4px 10px', color: '#b35a00' }}
+                              title={isDe
+                                ? 'Bestätigen, dass die externe Person auf die Datenschutz-Einladung geantwortet hat.'
+                                : 'Confirm that the external person has responded to the privacy invitation.'}
+                              onClick={async () => {
+                                if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                                const ok = await eventServiceRef.confirmConsentReview(
+                                  selectedEvent.subsiteUrl,
+                                  reg.Id,
+                                  { eventId: selectedEvent.id, eventTitle: selectedEvent.title, participantName: fullName }
+                                );
+                                const regs = await getAllRegistrations(selectedEvent.id);
+                                setRegistrations(regs);
+                                if (ok) {
+                                  showAlert(
+                                    isDe ? `Datenschutz-Rückmeldung von ${fullName} bestätigt.` : `Privacy confirmation of ${fullName} recorded.`,
+                                    { variant: 'success' }
+                                  );
+                                } else {
+                                  showAlert(
+                                    isDe ? 'Bestätigen fehlgeschlagen — bitte erneut versuchen.' : 'Confirmation failed — please try again.',
+                                    { variant: 'error' }
+                                  );
+                                }
+                              }}
+                            >
+                              {isDe ? 'Rückmeldung bestätigen' : 'Confirm response'}
+                            </button>
+                          </>
+                        );
+                      })()}
                     </td>
                   );
                 }
