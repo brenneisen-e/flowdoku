@@ -10460,6 +10460,11 @@ export default function EventCreationPage(): React.ReactElement {
                         ? 'Dieses Event sieht nach dem B2Run Köln aus — übernimm die offiziellen Meldefelder mit einem Klick. Der Excel-Export im Organizer Center füllt damit die offizielle Meldedatei exakt aus.'
                         : 'This event looks like the B2Run Köln — adopt the official entry fields with one click. The Excel export in the Organizer Center then fills in the official entry file exactly.'}
                     </p>
+                    <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600, #4b5563)', marginTop: -6, marginBottom: 12 }}>
+                      {isDe
+                        ? <><strong>Startblock:</strong> wird NICHT als Feld abgefragt — die Teilnehmenden wählen Durchstarter/Funstarter über die <strong>Gruppen-Auswahl</strong> (Split-Kapazität im Schritt „Kapazität &amp; Sichtbarkeit"). Der Export übersetzt die Gruppe automatisch in die offiziellen Startblock-Texte.</>
+                        : <><strong>Start block:</strong> is NOT asked as a field — attendees pick Durchstarter/Funstarter via the <strong>group selection</strong> (split capacity in the &ldquo;Capacity &amp; visibility&rdquo; step). The export automatically translates the group into the official start-block texts.</>}
+                    </p>
                     <ul style={{ listStyle: 'none', margin: '0 0 12px', padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
                       {b2rkTemplate.map(f => {
                         const exists = customFields.some(p => p.id === f.id);

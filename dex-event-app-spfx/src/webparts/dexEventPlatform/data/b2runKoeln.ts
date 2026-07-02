@@ -83,12 +83,10 @@ export function b2runKoelnTemplateFields(isDe: boolean): CustomField[] {
         ? 'Wird 1:1 in die offizielle B2Run-Meldedatei übernommen (Spalte „Anrede").'
         : 'Copied 1:1 into the official B2Run entry file (column "Anrede").',
     },
-    {
-      id: 'b2run_startblock',
-      label: 'Startblock',
-      type: 'select', required: true, visible: true,
-      options: [B2RUN_KOELN_STARTBLOCK_DURCHSTARTER, B2RUN_KOELN_STARTBLOCK_FUNSTARTER],
-    },
+    // KEIN Startblock-Abfragefeld: Die Teilnehmenden wählen Durchstarter/
+    // Funstarter über den GRUPPEN-SPLIT (Split-Kapazität, Schritt „Kapazität
+    // & Sichtbarkeit"). Der Export mappt StarterType automatisch auf die
+    // exakten Startblock-Texte der Meldedatei (mapStarterTypeToStartblock).
     {
       id: 'b2run_datenschutz',
       label: isDe ? 'Zustimmung AGB & Datenschutzhinweise (b2run.de)' : 'Consent to T&C & privacy notice (b2run.de)',
@@ -107,13 +105,14 @@ export function b2runKoelnTemplateFields(isDe: boolean): CustomField[] {
     {
       id: 'b2run_mobilnummer',
       label: isDe ? 'Mobilnummer (für den Infoservice)' : 'Mobile number (for the info service)',
-      type: 'text', required: false, visible: true,
+      // PFLICHT, sobald sichtbar (Infoservice = ja): Die Anmeldemaske hat für
+      // b2run_mobilnummer zusätzlich eine hartkodierte Validierung — Pflicht
+      // genau dann, wenn b2run_infoservice='true' (RegistrationPage).
+      type: 'text', required: true, visible: true,
       showIf: { fieldId: 'b2run_infoservice', values: ['true'] },
     },
-    {
-      id: 'b2run_nordicwalker',
-      label: isDe ? 'Als Nordic Walker teilnehmen' : 'Take part as a Nordic walker',
-      type: 'checkbox', required: false, visible: true,
-    },
+    // Nordic Walker wird bewusst NICHT abgefragt (Maintainer-Entscheidung) —
+    // die Excel-Spalte „Nordic Walker" bleibt im Export erhalten und wird
+    // mit „Nein" gefüllt (Default der Original-Vorlage).
   ];
 }
