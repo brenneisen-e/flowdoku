@@ -15,7 +15,7 @@ import { EventService, SPEvent, CustomField, SPRegistration, SPParticipant, Rese
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
 import { buildHashDeepLink } from '../utils/deepLink';
 import { isEventOver } from '../utils/eventFormat';
-import { registrationEmail, externalInvitationEmail, coOrganizerAddedEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
+import { registrationEmail, externalInviteInstructionEmail, coOrganizerAddedEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
 import { APP_VERSION } from '../version';
 import { RELEASE_NOTES } from '../data/releaseNotes';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
@@ -1701,19 +1701,27 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // {{Name}} in E-Mail-Anreden: nur Vorname (firstNameToUse ist bei Self-Reg
       // aus dem displayName gesplittet, bei "Für andere registrieren" explizit gesetzt).
       const vars = { Name: firstNameToUse, EventTitle: event.title, Organizer: formatOrganizerList(event.organizers, lang), AppUrl: `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, WaitlistPosition: posText };
-      // v26.33: Externe Dritte (kein Deloitte-Postfach), die stellvertretend
-      // angemeldet wurden, bekommen statt der Anmeldebestätigung eine EINLADUNG
-      // (Bestätigung per Antwort-Mail; Anmelder + Organizer auf CC).
+      // v26.47: Externe Dritte (kein Deloitte-Postfach), die stellvertretend
+      // angemeldet wurden — der Mail-Flow kann externe Adressen NICHT erreichen.
+      // Deshalb: (1) Registrierung als „Datenschutzrückmeldung offen" markieren
+      // (ConsentReview='Pending'), (2) INSTRUKTIONS-Mail an die ANMELDENDE
+      // Person (intern, zustellbar) mit den 3 Schritten — den fertigen
+      // Einladungs-Entwurf (.eml) lädt sie in der Teilnehmerliste herunter und
+      // verschickt ihn aus dem eigenen Postfach.
       const isExternalInvite = status === 'Angemeldet' && isProxyRegistration && isExternalParticipant;
+      if (isExternalInvite) {
+        try { await eventService.markConsentPendingByEmail(subsiteUrl, emailToUse); }
+        catch (err) { console.warn('[DEX] markConsentPendingByEmail failed:', err); }
+      }
       let emailData: { subject: string; body: string };
       const spTemplateRaw = isExternalInvite ? null : await eventService.getEmailTemplate(templateType, lang).catch(() => null);
       const spTemplate = applyEventTemplateOverride(spTemplateRaw, event.emailTemplateOverrides, templateType);
       if (isExternalInvite) {
-        emailData = externalInvitationEmail(
-          nameToUse, event.title,
-          `${parsed.firstName} ${parsed.lastName}`.trim() || currentUserName,
-          lang.toUpperCase() === 'DE',
-          { startDate: event.startDate, endDate: event.endDate, location: event.location }
+        const orgCenterUrl = buildHashDeepLink(`${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, { action: 'admin', event: eventId });
+        const registrantFirst = (currentUserName || '').split(' ')[0] || currentUserName;
+        emailData = externalInviteInstructionEmail(
+          registrantFirst, nameToUse, emailToUse, event.title,
+          lang.toUpperCase() === 'DE', orgCenterUrl
         );
       } else if (spTemplate) {
         emailData = buildEmailFromTemplate(spTemplate, vars);
@@ -1749,20 +1757,15 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // versendet (Microsoft blockt das ohne Federation, s.u.
         // skipOutlookForExternal).
         const isExternalRecipient = !!emailToUse && !/@(.*\.)?deloitte\.de$/i.test(emailToUse);
-        // v26.45: Externe EINLADUNG geht AN die externe Person UND die anmeldende
-        // Person (vorher: Anmelder:in nur auf CC). So erreicht die Zusage per
-        // „Allen antworten" direkt den Anmelder — vorher landete eine schlichte
-        // Antwort nur im No_Reply-Gruppenpostfach (Absender der Mail).
-        const isExternalInviteWithRegistrant = isExternalInvite && !!currentUserEmail
-          && currentUserEmail.toLowerCase() !== (emailToUse || '').toLowerCase();
-        const finalRecipient = isExternalInviteWithRegistrant
-          ? `${emailToUse};${currentUserEmail}`
-          : emailToUse;
+        // v26.47: Bei externer Einladung geht die INSTRUKTIONS-Mail an die
+        // ANMELDENDE Person (intern, zustellbar) — an externe Adressen kann der
+        // Mail-Flow nicht zustellen. Die eigentliche Einladung verschickt die
+        // anmeldende Person als .eml-Entwurf aus dem eigenen Postfach
+        // (Download in der Teilnehmerliste).
+        const finalRecipient = isExternalInvite ? currentUserEmail : emailToUse;
         const finalSubject = emailData.subject;
         let finalBody = emailData.body;
-        const finalRecipientName = isExternalInviteWithRegistrant
-          ? `${nameToUse}; ${currentUserName || currentUserEmail}`
-          : nameToUse;
+        const finalRecipientName = isExternalInvite ? (currentUserName || currentUserEmail) : nameToUse;
         // CC-Adressen, die zusätzlich zu den Feld-CCs gelten (Organizer bei
         // externer Anmeldung).
         let externalCcExtra = '';
@@ -1770,10 +1773,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           // v26.33: ALLE Organizer (inkl. Co-Organizer) auf CC.
           const allOrganizers = [...(event.organizerEmails || []), ...(event.coOrganizerEmails || [])].filter(Boolean);
           if (isExternalInvite) {
-            // v26.45: Anmelder:in steht jetzt im An-Feld (s.o.) — auf CC nur noch
-            // die Organizer. KEINE Anmeldebestätigungs-Hinweisbox (die Einladung
-            // trägt ihren eigenen Text).
-            externalCcExtra = allOrganizers.filter(Boolean).join(';');
+            // v26.47: Instruktions-Mail nur an den Anmelder — kein CC nötig
+            // (Organizer sehen den offenen Status in der Teilnehmerliste).
+            externalCcExtra = '';
           } else {
             externalCcExtra = allOrganizers.join(';');
             // Hinweis-Box VOR dem Original-Body — adressiert an die externe Person.

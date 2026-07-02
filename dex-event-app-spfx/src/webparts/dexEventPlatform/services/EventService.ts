@@ -675,6 +675,12 @@ export interface SPRegistration {
   /** v11.36: '' = normal, 'Pending' = vom „Überbuchung prüfen"-Lauf als
    *  über Gruppen-/Event-Kapazität markiert; wartet auf Admin-Entscheidung. */
   OverbookReview?: string;
+  /** v26.47: Externe stellvertretende Anmeldung — '' = normal/bestätigt,
+   *  'Pending' = Datenschutz-Rückmeldung der externen Person steht noch aus
+   *  (Anmelder verschickt die Einladung selbst; Mail-Flow kann externe
+   *  Adressen nicht erreichen). Anzeige: „Angemeldet (Datenschutzrückmeldung
+   *  offen)"; Bestätigung per Button in der Teilnehmerliste. */
+  ConsentReview?: string;
   RegistrationDate: string;
   RegisteredByName?: string;   // Audit: Name des Users der die Anmeldung durchführte
   RegisteredByEmail?: string;  // Audit: E-Mail des Users der die Anmeldung durchführte
@@ -4891,6 +4897,7 @@ export class EventService {
       // „Überbuchung prüfen"-Lauf als über Kapazität erkannt; der Admin
       // entscheidet pro Person (auf Warteliste / Platz behalten).
       { title: 'OverbookReview', type: 2 },
+      { title: 'ConsentReview', type: 2 }, // v26.47: Externe Anmeldung — 'Pending' = Datenschutz-Rückmeldung offen
       // v11.82: Team-Anmeldung — drei Spalten gruppieren Mitglieder eines
       // gemeinsam angemeldeten Teams. TeamId = UUID (gleicher Wert für alle
       // Mitglieder), TeamLead = true nur für die anmeldende Person, TeamName
@@ -7159,6 +7166,51 @@ export class EventService {
     return out;
   }
 
+  /** v26.47: Externe stellvertretende Anmeldung als „Datenschutz-Rückmeldung
+   *  offen" markieren (ConsentReview='Pending'). Lookup per E-Mail auf der
+   *  jüngsten aktiven Zeile — läuft direkt nach der Registrierung. */
+  public async markConsentPendingByEmail(subsiteUrl: string, participantEmail: string): Promise<boolean> {
+    try {
+      const emailLc = (participantEmail || '').trim().toLowerCase();
+      if (!emailLc) return false;
+      const resp = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,ParticipantEmail,Status&$orderby=Id desc&$top=200`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return false;
+      const data = await resp.json();
+      const items = (data.value || data.d?.results || []) as Array<{ Id: number; ParticipantEmail?: string; Status?: string }>;
+      const hit = items.find(it => (it.ParticipantEmail || '').trim().toLowerCase() === emailLc && it.Status !== 'Abgemeldet');
+      if (!hit) return false;
+      const m = await this._merge(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${hit.Id})`,
+        { 'ConsentReview': 'Pending' }
+      );
+      return m.ok;
+    } catch (err) { console.warn('[DEX] markConsentPendingByEmail failed:', err); return false; }
+  }
+
+  /** v26.47: Datenschutz-Rückmeldung der externen Person bestätigen —
+   *  ConsentReview zurücksetzen (Button in der Teilnehmerliste). */
+  public async confirmConsentReview(subsiteUrl: string, itemId: number, meta?: { eventId?: string; eventTitle?: string; participantName?: string }): Promise<boolean> {
+    try {
+      const m = await this._merge(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+        { 'ConsentReview': '' }
+      );
+      if (m.ok && meta?.eventId) {
+        try {
+          await this.writeChangeLog({
+            action: 'ExternalConsentConfirmed', targetType: 'Participant', targetId: String(itemId),
+            targetName: meta.participantName || '', eventId: meta.eventId, eventTitle: meta.eventTitle || '',
+            details: { note: 'Datenschutz-Rückmeldung der externen Person bestätigt (v26.47).' },
+          });
+        } catch { /* Audit best-effort */ }
+      }
+      return m.ok;
+    } catch (err) { console.warn('[DEX] confirmConsentReview failed:', err); return false; }
+  }
+
   /**
    * Alle Registrierungen für ein Event laden (nur für Organizer/Admin)
    */
@@ -7906,6 +7958,7 @@ export class EventService {
       { title: 'ReplacedParticipantEmail', type: 2 },  // E-Mail der Person, deren Cancel den Platz freigab
       { title: 'ReplacedByParticipantEmail', type: 2 },// E-Mail der nachrückenden Person (Spiegelbild)
       { title: 'OverbookReview', type: 2 },    // v11.36: Überbuchungs-Review-Marker
+      { title: 'ConsentReview', type: 2 },     // v26.47: Externe Anmeldung — 'Pending' = Datenschutz-Rückmeldung offen
       { title: 'TeamId', type: 2 },            // v11.82: UUID einer Team-Anmeldung (leer = Solo)
       { title: 'TeamLead', type: 8 },          // v11.82: Boolean — true für die anmeldende Person
       { title: 'TeamName', type: 2 },          // v11.82: optionaler frei wählbarer Team-Name
