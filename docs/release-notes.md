@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 26.46.0 | 2026-07-02 | Bugfix | Externe Einladungsmail gestrafft: Erklär-Satz zur anmeldenden Person/CC entfernt — es bleibt der kurze Hinweis „… indem du über ‚Allen antworten' auf diese E-Mail antwortest." |
 | 26.45.0 | 2026-07-02 | Feature | Externe Einladungsmail: geht jetzt AN externe Person UND anmeldende Person (vorher Anmelder nur CC) — „Allen antworten" erreicht so direkt den Anmelder statt des No-Reply-Postfachs; Organizer bleiben CC. Datenschutz-Text durch Einwilligungs-Formulierung mit Eventname + Link („hier") auf die Deloitte-Datenschutzhinweise ersetzt; Bestätigungs-Hinweis nennt explizit „Allen antworten". |
 | 26.44.0 | 2026-07-02 | Feature | Roommate-Match-Ansicht: Bei Events mit Zimmerpartner-Feld gruppiert der Button „Matches anzeigen" (neben der Teilnehmersuche) die Liste in Zweier-Gruppen (nur gegenseitige Auswahl = Match) + Cluster „Ohne Preferred Roommate oder Match". Excel-Export bekommt die Spalte „Roommate-Match" mit derselben Zuordnung. |
 | 26.44.0 | 2026-07-02 | Bugfix | Foto in der „Preferred roommate"-Spalte zeigt jetzt per Hover/Tap dieselbe Kontaktkarte wie die anderen Personen-Fotos (vorher reines Bild ohne Mouse-over). |
