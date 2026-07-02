@@ -4327,7 +4327,12 @@ export class EventService {
     }
   }
 
+  /** v26.51: Klartext-Grund des letzten fehlgeschlagenen updateEvent-Aufrufs —
+   *  wird dem Organizer in der Fehlermeldung angezeigt (vorher nur Konsole). */
+  public lastUpdateEventError = '';
+
   public async updateEvent(eventId: number, updates: Record<string, unknown>): Promise<boolean> {
+    this.lastUpdateEventError = '';
     try {
       const payload = {
         '__metadata': { 'type': 'SP.Data.DEX_x005f_EventsListItem' },
@@ -4350,10 +4355,26 @@ export class EventService {
       );
       if (!response.ok) {
         const errText = await response.text().catch(() => '');
-        console.warn('[DEX] updateEvent failed:', response.status, errText.substring(0, 200));
+        console.warn('[DEX] updateEvent failed:', response.status, errText.substring(0, 400));
+        // SharePoint-Fehlertext extrahieren (verbose: error.message.value).
+        let spMsg = '';
+        try {
+          const parsed = JSON.parse(errText);
+          spMsg = parsed?.error?.message?.value || parsed?.['odata.error']?.message?.value || '';
+        } catch { /* kein JSON */ }
+        const statusHint = response.status === 403
+          ? 'Keine Berechtigung — du brauchst Schreibrechte auf der Event-Liste (Organizer/Admin).'
+          : response.status === 404
+            ? 'Das Event wurde in der Liste nicht gefunden — womöglich wurde es zwischenzeitlich gelöscht.'
+            : response.status === 409 || response.status === 412
+              ? 'Das Event wurde zeitgleich von jemand anderem geändert — bitte neu laden und erneut speichern.'
+              : '';
+        this.lastUpdateEventError = [`HTTP ${response.status}`, statusHint, spMsg && spMsg !== statusHint ? spMsg.slice(0, 300) : '']
+          .filter(Boolean).join(' — ');
       }
       return response.ok;
-    } catch {
+    } catch (err) {
+      this.lastUpdateEventError = `Netzwerkfehler — keine Verbindung zu SharePoint${err instanceof Error && err.message ? ` (${err.message.slice(0, 150)})` : ''}.`;
       return false;
     }
   }

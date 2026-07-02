@@ -473,6 +473,9 @@ interface EventContextType {
    *  Anmeldungen bleibt erhalten. */
   deleteEventItemOnly: (eventId: string) => Promise<boolean>;
   updateEvent: (eventId: string, updates: Record<string, unknown>) => Promise<boolean>;
+  /** v26.51: Klartext-Grund, warum das letzte updateEvent fehlschlug — für die
+   *  Fehlermeldung im Wizard (vorher stand der Grund nur in der Konsole). */
+  getLastEventUpdateError: () => string;
   /** v22.42: Automatischer Hintergrund-Fix der Zeilen-Autoren (Sichtbarkeit
    *  von Fremd-Anmeldungen). Läuft beim Admin-Start gedrosselt (1×/24h) über
    *  alle aktiven Subsites — best-effort, blockiert nichts. */
@@ -3761,6 +3764,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return eventService.unarchiveEventForOrganizer(eventId, currentUserEmail);
   }
 
+  // v26.51: Klartext-Grund des letzten fehlgeschlagenen updateEvent (Service).
+  function getLastEventUpdateError(): string {
+    try { return eventService.lastUpdateEventError || ''; } catch { return ''; }
+  }
+
   async function updateEvent(eventId: string, updates: Record<string, unknown>): Promise<boolean> {
     // v19.33: Roh-Stand VOR dem Update holen, damit das Audit-Log nur die
     // WIRKLICH geänderten Felder protokolliert (Vorher → Nachher). Vorher loggte
@@ -5338,7 +5346,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, restoreCustomFieldDescriptions,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, getLastEventUpdateError, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, restoreCustomFieldDescriptions,
         sendAdminInquiry,
         requestOrganizerRole, requestCoOrganizerApprovals, notifyNewCoOrganizers, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,
