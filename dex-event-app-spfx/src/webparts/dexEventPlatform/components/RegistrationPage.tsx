@@ -3136,8 +3136,8 @@ export default function RegistrationPage(): React.ReactElement {
                     }}>
                       <div style={{ fontWeight: 700, marginBottom: 8, fontSize: '0.95rem' }}>
                         {locale === 'de'
-                          ? (isExternal ? 'Schriftliche Zustimmung der Person einholen' : 'Vorab die Zustimmung der Person einholen')
-                          : (isExternal ? 'Get the person\'s written consent' : 'Get the person\'s consent up front')}
+                          ? (isExternal ? 'Einladung & Datenschutz-Rückmeldung laufen über dich' : 'Vorab die Zustimmung der Person einholen')
+                          : (isExternal ? 'You send the invitation & collect the privacy confirmation' : 'Get the person\'s consent up front')}
                       </div>
                       {externalPerson && (
                         <div style={{ marginBottom: 8, fontWeight: 600 }}>
@@ -3148,8 +3148,12 @@ export default function RegistrationPage(): React.ReactElement {
                       )}
                       <div style={{ marginBottom: 8 }}>
                         {locale === 'de'
-                          ? <>Mit dem Absenden meldest du {pickedName ? <><strong>{pickedName}</strong></> : <>die {externalPerson ? 'externe ' : 'ausgewählte '}Person</>} stellvertretend an. Bitte stelle sicher, dass die Person ihrer Anmeldung <strong>VORHER {isExternal ? 'schriftlich ' : ''}zugestimmt</strong> hat — eine Anmeldung ohne Einverständnis ist nicht erlaubt.</>
-                          : <>By submitting you register {pickedName ? <><strong>{pickedName}</strong></> : <>the {externalPerson ? 'external ' : 'selected '}person</>} on their behalf. Please make sure the person has <strong>{isExternal ? 'consented in writing' : 'consented up front'}</strong> — registering people without their consent is not allowed.</>}
+                          ? (isExternal
+                              ? <>Mit dem Absenden setzt du {pickedName ? <><strong>{pickedName}</strong></> : <>die externe Person</>} mit dem Status <strong>&bdquo;Angemeldet (Datenschutzrückmeldung offen)&ldquo;</strong> auf die Teilnehmerliste. Final wird die Anmeldung erst, wenn die Person auf deine Einladung geantwortet hat und du die Rückmeldung in der Teilnehmerliste bestätigt hast.</>
+                              : <>Mit dem Absenden meldest du {pickedName ? <><strong>{pickedName}</strong></> : <>die ausgewählte Person</>} stellvertretend an. Bitte stelle sicher, dass die Person ihrer Anmeldung <strong>VORHER zugestimmt</strong> hat — eine Anmeldung ohne Einverständnis ist nicht erlaubt.</>)
+                          : (isExternal
+                              ? <>Submitting puts {pickedName ? <><strong>{pickedName}</strong></> : <>the external person</>} on the participant list with the status <strong>&ldquo;Registered (privacy confirmation pending)&rdquo;</strong>. The registration only becomes final once the person has replied to your invitation and you have confirmed the response in the participant list.</>
+                              : <>By submitting you register {pickedName ? <><strong>{pickedName}</strong></> : <>the selected person</>} on their behalf. Please make sure the person has <strong>consented up front</strong> — registering people without their consent is not allowed.</>)}
                       </div>
                       {isExternal && (
                         <div style={{
@@ -3159,12 +3163,12 @@ export default function RegistrationPage(): React.ReactElement {
                         }}>
                           <div style={{ fontWeight: 700, marginBottom: 4 }}>
                             {locale === 'de'
-                              ? 'Externe Person — kein Kalendereintrag'
-                              : 'External person — no calendar invite'}
+                              ? 'Externe Person — so läuft die Einladung'
+                              : 'External person — how the invitation works'}
                           </div>
                           {locale === 'de'
-                            ? <>{email.trim() ? <>Die Adresse <strong>{email}</strong> gehört nicht zum Deloitte-Deutschland-Tenant. </> : <>Eine externe Adresse gehört nicht zum Deloitte-Deutschland-Tenant. </>}Die Person bekommt deshalb <strong>keinen Outlook-Termin</strong> (an externe Adressen können wir keine Termine versenden). Die <strong>Anmeldebestätigung per E-Mail</strong> geht direkt an die Person, mit den <strong>Organizern auf CC</strong> als Nachweis. Die Zustimmung ist <strong>schriftlich</strong> einzuholen.</>
-                            : <>{email.trim() ? <>The address <strong>{email}</strong> is not part of the Deloitte Germany tenant. </> : <>An external address is not part of the Deloitte Germany tenant. </>}The person will therefore <strong>not receive an Outlook calendar invite</strong> (we cannot send invites to external addresses). The <strong>confirmation email</strong> is sent directly to the person, with the <strong>organizers on CC</strong> as a record. Consent must be obtained <strong>in writing</strong>.</>}
+                            ? <>{email.trim() ? <>Die Adresse <strong>{email}</strong> gehört nicht zum Deloitte-Deutschland-Tenant. </> : <>Eine externe Adresse gehört nicht zum Deloitte-Deutschland-Tenant. </>}Die App kann an externe Adressen <strong>weder E-Mails noch Outlook-Termine</strong> versenden. Deshalb: Nach dem Absenden bekommst <strong>du eine E-Mail mit den nächsten Schritten</strong> — in der Teilnehmerliste lädst du den <strong>fertigen Einladungs-Entwurf</strong> herunter und verschickst ihn aus deinem eigenen Postfach (nur noch auf &bdquo;Senden&ldquo; klicken). Sobald die Person per Antwort-Mail zusagt, bestätigst du die <strong>Datenschutz-Rückmeldung</strong> per Klick in der Teilnehmerliste.</>
+                            : <>{email.trim() ? <>The address <strong>{email}</strong> is not part of the Deloitte Germany tenant. </> : <>An external address is not part of the Deloitte Germany tenant. </>}The app can send <strong>neither emails nor Outlook invites</strong> to external addresses. Therefore: after submitting, <strong>you receive an email with the next steps</strong> — download the <strong>ready-made invitation draft</strong> from the participant list and send it from your own mailbox (just click &ldquo;Send&rdquo;). Once the person confirms by reply, confirm the <strong>privacy response</strong> with one click in the participant list.</>}
                         </div>
                       )}
                       <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 12, cursor: 'pointer' }}>
@@ -3178,10 +3182,10 @@ export default function RegistrationPage(): React.ReactElement {
                           <span style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>
                           {locale === 'de'
                             ? (isExternal
-                                ? 'Ich bestätige, dass die schriftliche Zustimmung der Person zur stellvertretenden Anmeldung vorliegt.'
+                                ? 'Ich habe verstanden, dass ich die Einladung selbst an die Person versende und ihre Datenschutz-Rückmeldung abwarte, bevor die Anmeldung final wird.'
                                 : 'Ich bestätige, dass die Person ihrer stellvertretenden Anmeldung zugestimmt hat.')
                             : (isExternal
-                                ? 'I confirm that the person\'s written consent to this registration on their behalf is on file.'
+                                ? 'I understand that I will send the invitation to the person myself and wait for their privacy confirmation before the registration becomes final.'
                                 : 'I confirm that the person has consented to this registration on their behalf.')}
                         </span>
                       </label>

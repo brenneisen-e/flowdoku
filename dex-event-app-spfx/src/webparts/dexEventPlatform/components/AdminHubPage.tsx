@@ -16,6 +16,8 @@ import { useDialog } from '../context/DialogContext';
 import { useIsMobile } from '../utils/useIsMobile';
 import { Settings, Users, Mail, Book, FileText, Trash2, Columns, BarChart3 } from './Icons';
 import { RELEASE_NOTES, RELEASE_BEREICHE } from '../data/releaseNotes';
+import { EventService } from '../services/EventService';
+import { setCachedLogoBase64 } from '../services/EmailTemplates';
 
 // Erklärung aller DEX_*-Listen in Klartext (was tut die Liste, warum gibt es sie).
 const LIST_DOCS: Array<{ name: string; de: string }> = [
@@ -53,6 +55,18 @@ export default function AdminHubPage(): React.ReactElement {
   const [fixProgress, setFixProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
   const [restoreProgress, setRestoreProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
   const [restorePreview, setRestorePreview] = React.useState<Array<{ eventId: string; eventTitle: string; fields: Array<{ label: string; props: string[] }> }> | null>(null);
+  // v26.51: Logo & Branding — zentrales Default-Logo (Mails) + Logo-Video.
+  // AdminHubPage hat sonst keinen SPFx-Kontext; Instanz wie in AdminPage erzeugen.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const spfxContext = (window as any).__dexSpfxContext;
+  const eventServiceRef = React.useMemo(() => spfxContext ? new EventService(spfxContext) : null, []);
+  const [branding, setBranding] = React.useState<{ logoBase64: string; videoUrl: string; videoFileName: string } | null>(null);
+  const [brandingBusy, setBrandingBusy] = React.useState<'' | 'logo' | 'video'>('');
+  // Cache-Buster fürs Video: fester Dateiname + Overwrite ⇒ ohne ?ver würde der
+  // Browser nach einem Tausch weiter das alte Video aus dem Cache zeigen.
+  const [videoVer, setVideoVer] = React.useState(0);
+  const logoInputRef = React.useRef<HTMLInputElement>(null);
+  const videoInputRef = React.useRef<HTMLInputElement>(null);
   // Release-Notes: Volltext-Suche + Bereichs-Filter + Art-Filter.
   const [rnSearch, setRnSearch] = React.useState('');
   const [rnBereich, setRnBereich] = React.useState<string>('');
@@ -85,6 +99,15 @@ export default function AdminHubPage(): React.ReactElement {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminLike]);
+
+  // v26.51: aktuelles Branding (Default-Logo + Logo-Video) einmalig laden.
+  React.useEffect(() => {
+    if (!eventServiceRef || !adminLike) return;
+    let cancelled = false;
+    eventServiceRef.getBranding().then(b => { if (!cancelled) setBranding(b); }).catch(() => { /* */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!adminLike) return <div className="page-container" />;
 
@@ -223,6 +246,81 @@ export default function AdminHubPage(): React.ReactElement {
     finally { setBusy(''); }
   };
 
+  // v26.51: Logo & Branding — Download des aktuellen Logos (Data-URI → Datei).
+  const doDownloadLogo = (): void => {
+    if (!branding || !branding.logoBase64) return;
+    const a = document.createElement('a');
+    a.href = branding.logoBase64;
+    a.download = 'DEX_Logo.png';
+    a.click();
+  };
+
+  // v26.51: Neues Default-Logo (PNG) hochladen — gilt für alle NEU versendeten Mails.
+  const onLogoFileChosen = (e: React.ChangeEvent<HTMLInputElement>): void => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file || !eventServiceRef) return;
+    // Klare Regel: > 1,5 MB ablehnen — das Logo wird in jede Mail eingebettet.
+    if (file.size > 1.5 * 1024 * 1024) {
+      showAlert(
+        isDe
+          ? 'Die Datei ist größer als 1,5 MB. Das Logo wird in jede E-Mail eingebettet — bitte das PNG vorher komprimieren (z. B. auf unter 1,5 MB) und erneut hochladen.'
+          : 'The file is larger than 1.5 MB. The logo is embedded into every email — please compress the PNG first (e.g. to below 1.5 MB) and upload again.',
+        { variant: 'error' });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUri = typeof reader.result === 'string' ? reader.result : '';
+      if (dataUri.indexOf('data:image/png') !== 0) {
+        showAlert(isDe ? 'Bitte eine PNG-Datei auswählen.' : 'Please choose a PNG file.', { variant: 'error' });
+        return;
+      }
+      setBrandingBusy('logo');
+      eventServiceRef.saveBrandingLogo(dataUri)
+        .then(ok => {
+          if (ok) {
+            setCachedLogoBase64(dataUri); // Mails derselben Sitzung sofort mit neuem Logo
+            setBranding(prev => prev ? { ...prev, logoBase64: dataUri } : { logoBase64: dataUri, videoUrl: '', videoFileName: '' });
+            showAlert(isDe ? 'Neues Logo gespeichert — alle neuen Mails nutzen es ab sofort.' : 'New logo saved — all new emails will use it from now on.', { variant: 'success' });
+          } else {
+            showAlert(isDe ? 'Logo konnte nicht gespeichert werden.' : 'The logo could not be saved.', { variant: 'error' });
+          }
+        })
+        .catch(() => showAlert(isDe ? 'Logo konnte nicht gespeichert werden.' : 'The logo could not be saved.', { variant: 'error' }))
+        .finally(() => setBrandingBusy(''));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // v26.51: Neues Logo-Video hochladen (SiteAssets, fester Name, Overwrite).
+  const onVideoFileChosen = (e: React.ChangeEvent<HTMLInputElement>): void => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file || !eventServiceRef) return;
+    if (file.size > 100 * 1024 * 1024) {
+      showAlert(
+        isDe
+          ? 'Die Datei ist größer als 100 MB — bitte das Video vorher komprimieren und erneut hochladen.'
+          : 'The file is larger than 100 MB — please compress the video first and upload again.',
+        { variant: 'error' });
+      return;
+    }
+    setBrandingBusy('video');
+    eventServiceRef.uploadBrandingVideo(file)
+      .then(url => {
+        if (url) {
+          setBranding(prev => prev ? { ...prev, videoUrl: url, videoFileName: file.name } : { logoBase64: '', videoUrl: url, videoFileName: file.name });
+          setVideoVer(v => v + 1);
+          showAlert(isDe ? 'Neues Logo-Video hochgeladen.' : 'New logo video uploaded.', { variant: 'success' });
+        } else {
+          showAlert(isDe ? 'Video konnte nicht hochgeladen werden.' : 'The video could not be uploaded.', { variant: 'error' });
+        }
+      })
+      .catch(() => showAlert(isDe ? 'Video konnte nicht hochgeladen werden.' : 'The video could not be uploaded.', { variant: 'error' }))
+      .finally(() => setBrandingBusy(''));
+  };
+
   const tools: Array<{ icon: React.ReactNode; title: string; desc: string; onClick: () => void }> = [
     { icon: <Users size={28} />, title: isDe ? 'Organizer Center' : 'Organizer center', desc: isDe ? 'Teilnehmer, Prozesse, Audit-Log, SharePoint-Liste — alle Event-Werkzeuge pro Event.' : 'Attendees, processes, audit log, SharePoint list — all per-event tools.', onClick: () => navigate('admin') },
     { icon: <Settings size={28} />, title: isDe ? 'Prozessübersicht' : 'Process overview', desc: isDe ? 'Wie die Abläufe in DEX funktionieren — verständlich erklärt.' : 'How the DEX processes work — explained simply.', onClick: () => navigate('flowcharts') },
@@ -285,6 +383,67 @@ export default function AdminHubPage(): React.ReactElement {
           </span>
         </div>
       </div>
+
+      {/* v26.51: Logo & Branding — Default-Mail-Logo tauschen/herunterladen + Logo-Video */}
+      {adminLike && (
+        <>
+          <h2 style={{ fontSize: '1.15rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Logo & Branding' : 'Logo & branding'}</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14, marginBottom: 28 }}>
+            <div style={cardStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><FileText size={18} /></span>
+                <span style={{ fontWeight: 700 }}>{isDe ? 'DEX-Logo (PNG)' : 'DEX logo (PNG)'}</span>
+              </div>
+              {branding && branding.logoBase64 ? (
+                <img src={branding.logoBase64} alt="DEX Logo" style={{ maxWidth: '100%', maxHeight: 90, display: 'block', margin: '0 auto 10px', background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 8 }} />
+              ) : (
+                <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-400)', fontStyle: 'italic', margin: '0 0 10px' }}>{isDe ? 'Noch kein Logo hinterlegt.' : 'No logo stored yet.'}</p>
+              )}
+              <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
+                {isDe
+                  ? 'Wird als Standard-Logo in allen E-Mails der App genutzt. Nach einem Tausch tragen alle NEU versendeten Mails automatisch das neue Logo — bereits versendete bleiben unverändert.'
+                  : 'Used as the default logo in all emails sent by the app. After a swap, all NEWLY sent emails automatically carry the new logo — emails already sent remain unchanged.'}
+              </p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '8px 12px', flex: 1 }} disabled={!branding || !branding.logoBase64} onClick={doDownloadLogo}>
+                  {isDe ? 'Aktuelles Logo herunterladen' : 'Download current logo'}
+                </button>
+                <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 12px', flex: 1 }} disabled={brandingBusy !== '' || !eventServiceRef} onClick={() => { if (logoInputRef.current) logoInputRef.current.click(); }}>
+                  {brandingBusy === 'logo' ? (isDe ? 'Wird gespeichert…' : 'Saving…') : (isDe ? 'Neues Logo hochladen (PNG)' : 'Upload new logo (PNG)')}
+                </button>
+              </div>
+              <input ref={logoInputRef} type="file" accept="image/png" style={{ display: 'none' }} onChange={onLogoFileChosen} />
+            </div>
+            <div style={cardStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><FileText size={18} /></span>
+                <span style={{ fontWeight: 700 }}>{isDe ? 'DEX-Logo-Video' : 'DEX logo video'}</span>
+              </div>
+              {branding && branding.videoUrl ? (
+                <video key={videoVer} src={branding.videoUrl + (videoVer ? `?ver=${videoVer}` : '')} controls style={{ width: '100%', maxHeight: 160, borderRadius: 8, background: '#000', marginBottom: 10 }} />
+              ) : (
+                <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-400)', fontStyle: 'italic', margin: '0 0 10px' }}>{isDe ? 'Noch kein Video hinterlegt.' : 'No video stored yet.'}</p>
+              )}
+              <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
+                {isDe
+                  ? 'Zentral abgelegtes Logo-Video (z. B. für Intranet-Artikel und Präsentationen) — hier tauschen und herunterladen.'
+                  : 'Centrally stored logo video (e.g. for intranet articles and presentations) — swap and download it here.'}
+              </p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {branding && branding.videoUrl ? (
+                  <a className="btn btn-secondary" href={branding.videoUrl} download={branding.videoFileName || 'DEX_Logo_Video.mp4'} style={{ fontSize: '0.82rem', padding: '8px 12px', flex: 1, textAlign: 'center', textDecoration: 'none' }}>
+                    {isDe ? 'Video herunterladen' : 'Download video'}
+                  </a>
+                ) : null}
+                <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 12px', flex: 1 }} disabled={brandingBusy !== '' || !eventServiceRef} onClick={() => { if (videoInputRef.current) videoInputRef.current.click(); }}>
+                  {brandingBusy === 'video' ? (isDe ? 'Wird hochgeladen…' : 'Uploading…') : (isDe ? 'Neues Video hochladen' : 'Upload new video')}
+                </button>
+              </div>
+              <input ref={videoInputRef} type="file" accept="video/mp4,video/webm,video/quicktime" style={{ display: 'none' }} onChange={onVideoFileChosen} />
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Archiv & Löschung */}
       <h2 style={{ fontSize: '1.15rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Archiv & Löschung' : 'Archive & deletion'}</h2>

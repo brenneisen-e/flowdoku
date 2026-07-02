@@ -20,6 +20,10 @@ let cachedOrbBase64 = '';
 
 export function getCachedOrbBase64(): string { return cachedOrbBase64; }
 export function getCachedLogoBase64(): string { return cachedLogoBase64; }
+/** v26.50: Nach einem Logo-Tausch im Admin-Center („Logo & Branding") den
+ *  Session-Cache aktualisieren — neue Mails derselben Sitzung nutzen sofort
+ *  das neue Logo, ohne Reload. */
+export function setCachedLogoBase64(v: string): void { if (v) cachedLogoBase64 = v; }
 
 function getDate(): string {
   return new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -503,6 +507,64 @@ export function externalInvitationEmail(
       <p>If you would like to attend, <strong>please confirm this invitation by replying to this email via &ldquo;Reply all&rdquo;</strong>.</p>
       <p style="margin-top:16px;font-size:13px;color:#555;">By registering for the event <strong>${eventTitle}</strong>, you consent to the processing of your personal data for the purpose of organising and running the event. This includes in particular the collection, storage and use of the data you provide for registration, communication and attendance handling.</p>
       <p style="font-size:13px;color:#555;">Further information on how your data is processed is available <a href="${privacyUrl}" style="color:${GREEN};font-weight:600;">here</a> in Deloitte's data protection notice.</p>
+      <p style="margin-top:24px;"><strong>Best regards</strong><br><br><strong>Your Event Team</strong></p>`
+    ),
+  };
+}
+
+/**
+ * v26.47: Instruktions-Mail an die ANMELDENDE Person nach einer externen
+ * stellvertretenden Anmeldung. Hintergrund: Der Mail-Flow (no_reply-Postfach)
+ * kann externe Adressen NICHT erreichen — die Einladung verschickt deshalb
+ * die anmeldende Person selbst (fertiger .eml-Entwurf zum Download in der
+ * Teilnehmerliste). Bis zur Datenschutz-Rückmeldung der externen Person steht
+ * sie mit Status „Angemeldet (Datenschutzrückmeldung offen)" auf der Liste.
+ */
+export function externalInviteInstructionEmail(
+  registrantFirstName: string,
+  externalName: string,
+  externalEmail: string,
+  eventTitle: string,
+  isDe: boolean,
+  orgCenterUrl: string
+): { subject: string; body: string } {
+  const btn = (href: string, label: string): string =>
+    `<p style="margin:18px 0 0;"><a href="${href}" style="display:inline-block;background:${GREEN};color:#ffffff;text-decoration:none;padding:11px 24px;border-radius:6px;font-weight:600;font-size:14px;">${label}</a></p>`;
+  if (isDe) {
+    return {
+      subject: `Externe Anmeldung: ${externalName} — deine nächsten Schritte`,
+      body: wrapTemplate(
+        GREEN,
+        'Externe Anmeldung — nächste Schritte',
+        eventTitle,
+        `<p>Hallo ${registrantFirstName},</p>
+        <p>du hast <strong>${externalName}</strong> (${externalEmail}) für das Event <strong>${eventTitle}</strong> angemeldet. Da es sich um eine externe Adresse handelt, kann die App die Einladung <strong>nicht direkt zustellen</strong> — bitte übernimm das in drei kurzen Schritten:</p>
+        <ol style="margin:12px 0 0 18px;padding:0;line-height:1.7;">
+          <li><strong>${externalName} steht bereits auf der Teilnehmerliste</strong> — mit dem Status <strong>&bdquo;Angemeldet (Datenschutzrückmeldung offen)&ldquo;</strong>.</li>
+          <li>Öffne das Event im Organizer Center und lade in der Teilnehmerzeile von ${externalName} den <strong>fertigen Einladungs-Entwurf (.eml)</strong> herunter. An, Betreff und Text sind vorausgefüllt (an die externe Person; no_reply + Organisator:innen in Kopie) — Datei in Outlook öffnen und auf <strong>&bdquo;Senden&ldquo;</strong> klicken. <span style="color:#555;">(Zeigt Outlook die Datei als empfangene Mail an, nutze einfach &bdquo;Weiterleiten&ldquo;.)</span></li>
+          <li>Sobald die Datenschutz-Rückmeldung von ${externalName} per Mail da ist, klicke in der Teilnehmerliste auf <strong>&bdquo;Rückmeldung bestätigen&ldquo;</strong> — der Status wechselt auf &bdquo;Angemeldet&ldquo;.</li>
+        </ol>
+        <p style="margin-top:14px;padding:10px 14px;background:#fff3e0;border:1px solid #ed8b00;border-radius:8px;font-size:13px;color:#7a4a00;">Kein Zugriff auf das Organizer Center? Bitte eine:n der Organisator:innen, die Schritte zu übernehmen.</p>
+        ${btn(orgCenterUrl, 'Event im Organizer Center öffnen')}
+        <p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
+      ),
+    };
+  }
+  return {
+    subject: `External registration: ${externalName} — your next steps`,
+    body: wrapTemplate(
+      GREEN,
+      'External registration — next steps',
+      eventTitle,
+      `<p>Hi ${registrantFirstName},</p>
+      <p>you registered <strong>${externalName}</strong> (${externalEmail}) for the event <strong>${eventTitle}</strong>. Since this is an external address, the app <strong>cannot deliver the invitation directly</strong> — please take over in three quick steps:</p>
+      <ol style="margin:12px 0 0 18px;padding:0;line-height:1.7;">
+        <li><strong>${externalName} is already on the participant list</strong> — with the status <strong>&ldquo;Registered (privacy confirmation pending)&rdquo;</strong>.</li>
+        <li>Open the event in the Organizer Center and download the <strong>ready-made invitation draft (.eml)</strong> from ${externalName}'s row. To, subject and text are pre-filled (to the external person; no_reply + organizers in copy) — open the file in Outlook and click <strong>&ldquo;Send&rdquo;</strong>. <span style="color:#555;">(If Outlook shows the file as a received mail, simply use &ldquo;Forward&rdquo;.)</span></li>
+        <li>Once ${externalName}'s privacy confirmation arrives by email, click <strong>&ldquo;Confirm response&rdquo;</strong> in the participant list — the status switches to &ldquo;Registered&rdquo;.</li>
+      </ol>
+      <p style="margin-top:14px;padding:10px 14px;background:#fff3e0;border:1px solid #ed8b00;border-radius:8px;font-size:13px;color:#7a4a00;">No access to the Organizer Center? Ask one of the organizers to take over these steps.</p>
+      ${btn(orgCenterUrl, 'Open event in the Organizer Center')}
       <p style="margin-top:24px;"><strong>Best regards</strong><br><br><strong>Your Event Team</strong></p>`
     ),
   };
