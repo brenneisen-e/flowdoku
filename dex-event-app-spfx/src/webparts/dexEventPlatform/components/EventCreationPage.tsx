@@ -14,6 +14,9 @@ import { useLanguage } from '../context/LanguageContext';
 // v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
 import { useDialog } from '../context/DialogContext';
 import { EventService, CustomField } from '../services/EventService';
+// v26.48: zentrale B2Run-Köln-Vorlage (Titel-Erkennung + 7 Meldefelder mit
+// deterministischen IDs für den offiziellen Excel-Export).
+import { isB2RunKoelnTitle, b2runKoelnTemplateFields } from '../data/b2runKoeln';
 import { eventCreatedEmail, buildOutlookBody, stripOutlookWrapper, parseOutlookHeadings, replacePlaceholders, getCachedOrbBase64 } from '../services/EmailTemplates';
 import { exportSummaryAsPdf, exportSummaryAsDoc, SummaryData } from '../services/EventSummaryExport';
 import { EventType, AgendaItem } from '../types';
@@ -10436,6 +10439,66 @@ export default function EventCreationPage(): React.ReactElement {
                   ? <>Das heißt: keine Daten bezüglich Rasse oder ethnischer Herkunft, religiöser oder philosophischer Überzeugungen, Gewerkschaftsmitgliedschaft, politischer Meinungen, medizinischer oder gesundheitlicher Zustände oder Informationen über das Sexualleben oder die sexuelle Orientierung einer Person. Falls sensible personenbezogene Daten gesammelt werden müssen, kontaktiere zuerst das Team unter <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>
                   : <>That means: no data on race or ethnic origin, religious or philosophical beliefs, trade-union membership, political opinions, medical or health conditions, or information about a person&apos;s sex life or sexual orientation. If sensitive personal data must be collected, contact the team first at <a href="mailto:privacy@deloitte.de" style={{ color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 600 }}>privacy@deloitte.de</a>.</>}
               </WizardHint>
+
+              {/* v26.48: B2Run-Köln-Vorlage — Vorschlags-Box, erscheint nur
+                  wenn der Event-Titel „B2Run Köln" enthält (greift auch im
+                  Edit-Modus, da `title` aus editEvent vorbefüllt ist). Rein
+                  additiv: ergänzt fehlende Template-Felder per Klick, der
+                  bestehende Suggested-Felder-Katalog bleibt unberührt. */}
+              {isB2RunKoelnTitle(title) && (() => {
+                const b2rkTemplate = b2runKoelnTemplateFields(isDe);
+                const b2rkMissing = b2rkTemplate.filter(f => !customFields.some(p => p.id === f.id));
+                const b2rkTypeTag = (ty: CustomField['type']): string =>
+                  ty === 'select' ? (isDe ? 'Auswahl' : 'Select') : ty === 'checkbox' ? 'Checkbox' : 'Text';
+                return (
+                  <div className="form-group" style={{ marginBottom: 16, padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)' }}>
+                    <label className="form-label" style={{ marginBottom: 4 }}>
+                      {isDe ? 'B2Run-Köln-Vorlage' : 'B2Run Köln template'}
+                    </label>
+                    <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600, #4b5563)', marginTop: 0, marginBottom: 12 }}>
+                      {isDe
+                        ? 'Dieses Event sieht nach dem B2Run Köln aus — übernimm die offiziellen Meldefelder mit einem Klick. Der Excel-Export im Organizer Center füllt damit die offizielle Meldedatei exakt aus.'
+                        : 'This event looks like the B2Run Köln — adopt the official entry fields with one click. The Excel export in the Organizer Center then fills in the official entry file exactly.'}
+                    </p>
+                    <ul style={{ listStyle: 'none', margin: '0 0 12px', padding: 0, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {b2rkTemplate.map(f => {
+                        const exists = customFields.some(p => p.id === f.id);
+                        return (
+                          <li key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8rem' }}>
+                            <span style={{ width: 16, display: 'inline-flex', justifyContent: 'center', color: 'var(--dex-green)' }} title={exists ? (isDe ? 'Bereits im Event' : 'Already in the event') : undefined}>
+                              {exists ? <Check size={14} /> : null}
+                            </span>
+                            <span style={{ fontWeight: exists ? 400 : 500 }}>{f.label}</span>
+                            <span style={{ fontSize: '0.68rem', padding: '1px 8px', borderRadius: 999, background: '#fff', border: '1px solid var(--dex-green)', color: 'var(--dex-green-dark, #15803d)', whiteSpace: 'nowrap' }}>
+                              {b2rkTypeTag(f.type)}
+                            </span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <button
+                      type="button"
+                      className="btn"
+                      disabled={b2rkMissing.length === 0}
+                      onClick={() => setCustomFields(prev => [
+                        ...prev,
+                        ...b2runKoelnTemplateFields(isDe)
+                          .filter(f => !prev.some(p => p.id === f.id))
+                          .map(f => ({ ...f, options: f.options || [] })),
+                      ])}
+                      style={{
+                        fontSize: '0.85rem', padding: '6px 14px', border: 'none', color: '#fff',
+                        background: b2rkMissing.length === 0 ? 'var(--dex-gray-300, #d1d5db)' : 'var(--dex-green)',
+                        cursor: b2rkMissing.length === 0 ? 'default' : 'pointer',
+                      }}
+                    >
+                      {b2rkMissing.length === 0
+                        ? (isDe ? 'Alles übernommen' : 'All adopted')
+                        : (isDe ? 'Alle übernehmen' : 'Adopt all')}
+                    </button>
+                  </div>
+                );
+              })()}
 
               {/* v18.57: Anrede-Abfrage-Toggle nach unten verschoben — sitzt jetzt
                   direkt unter den „Vorgeschlagene Felder"-Buttons. */}
