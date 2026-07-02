@@ -484,8 +484,9 @@ export function externalInvitationEmail(
         `<p>Hallo ${recipientName},</p>
         <p>${registeredByName ? `<strong>${registeredByName}</strong> hat dich` : 'Du wurdest'} zum Event <strong>${eventTitle}</strong> eingeladen.</p>
         ${detailsBlock}
-        <p>Wenn du teilnehmen möchtest, <strong>bestätige bitte diese Einladung, indem du auf diese E-Mail antwortest</strong>. Deine Zusage geht damit an die anmeldende Person und die Organisator:innen (in Kopie).</p>
-        <p style="margin-top:16px;font-size:13px;color:#555;">Es gelten die <a href="${privacyUrl}" style="color:${GREEN};font-weight:600;">Datenschutzhinweise von Deloitte</a>. Deine Daten werden ausschließlich zur Organisation dieses Events verarbeitet. Einen Widerruf kannst du jederzeit an <a href="mailto:privacy@deloitte.de" style="color:${GREEN};">privacy@deloitte.de</a> richten.</p>
+        <p>Wenn du teilnehmen möchtest, <strong>bestätige bitte diese Einladung, indem du über &bdquo;Allen antworten&ldquo; auf diese E-Mail antwortest</strong>. Diese Einladung ging auch an ${registeredByName ? `<strong>${registeredByName}</strong> als anmeldende Person` : 'die anmeldende Person'} — deine Zusage erreicht sie damit direkt; die Organisator:innen erhalten sie in Kopie.</p>
+        <p style="margin-top:16px;font-size:13px;color:#555;">Mit deiner Anmeldung zum Event <strong>${eventTitle}</strong> willigst du ein, dass deine personenbezogenen Daten zum Zweck der Organisation und Durchführung der Veranstaltung verarbeitet werden. Dies umfasst insbesondere die Erhebung, Speicherung und Nutzung der von dir angegebenen Daten zur Anmeldung, Kommunikation und Teilnahmeabwicklung.</p>
+        <p style="font-size:13px;color:#555;">Weitere Informationen zur Verarbeitung deiner Daten findest du <a href="${privacyUrl}" style="color:${GREEN};font-weight:600;">hier</a> in den Datenschutzhinweisen von Deloitte.</p>
         <p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
       ),
     };
@@ -499,8 +500,9 @@ export function externalInvitationEmail(
       `<p>Dear ${recipientName},</p>
       <p>${registeredByName ? `<strong>${registeredByName}</strong> has invited you` : 'You have been invited'} to the event <strong>${eventTitle}</strong>.</p>
       ${detailsBlock}
-      <p>If you would like to attend, <strong>please confirm this invitation by replying to this email</strong>. Your reply reaches the person who registered you and the organizers (on copy).</p>
-      <p style="margin-top:16px;font-size:13px;color:#555;">Deloitte's <a href="${privacyUrl}" style="color:${GREEN};font-weight:600;">data protection notice</a> applies. Your data is processed solely to organise this event. You may withdraw at any time via <a href="mailto:privacy@deloitte.de" style="color:${GREEN};">privacy@deloitte.de</a>.</p>
+      <p>If you would like to attend, <strong>please confirm this invitation by replying to this email via &ldquo;Reply all&rdquo;</strong>. This invitation was also sent to ${registeredByName ? `<strong>${registeredByName}</strong> as the person who registered you` : 'the person who registered you'} — your confirmation reaches them directly; the organizers receive it in copy.</p>
+      <p style="margin-top:16px;font-size:13px;color:#555;">By registering for the event <strong>${eventTitle}</strong>, you consent to the processing of your personal data for the purpose of organising and running the event. This includes in particular the collection, storage and use of the data you provide for registration, communication and attendance handling.</p>
+      <p style="font-size:13px;color:#555;">Further information on how your data is processed is available <a href="${privacyUrl}" style="color:${GREEN};font-weight:600;">here</a> in Deloitte's data protection notice.</p>
       <p style="margin-top:24px;"><strong>Best regards</strong><br><br><strong>Your Event Team</strong></p>`
     ),
   };
