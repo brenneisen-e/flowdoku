@@ -17,6 +17,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { DeloitteEvent } from '../types';
 import { buildHashDeepLink } from '../utils/deepLink';
 import { SPRegistration } from '../services/EventService';
+import { B2RUN_KOELN_HEADERS, B2RUN_KOELN_ALTERSKLASSE, mapAnredeToB2Run, mapStarterTypeToStartblock, isB2RunKoelnTitle } from '../data/b2runKoeln';
 import { Plus, Users, FileText, Trash2, Copy, Mail, Send, Download, Pencil, ExternalLink, AlertCircle, Hash, Columns, Wrench, RefreshCw, X, Check, Link2, ChevronUp, ChevronDown, QrCode, Search, Info, Calendar, Pin } from './Icons';
 import OrganizerList from './OrganizerList';
 import { PersonContactHover } from './PersonContactHover';
@@ -3216,7 +3217,7 @@ export default function AdminPage(): React.ReactElement {
   /**
    * CSV Export für Teilnehmerlisten.
    * - 'deloitte': alle internen Felder (Anrede, Name, Email, Department, Location, JobTitle, Phone, Status, ...)
-   * - 'b2run': Format laut B2Run Excel-Template (Nr, Anrede, Vorname, Nachname, E-Mail, Startblock, Zustimmung AGB, Anonym, Gruppe, Strasse, PLZ, Stadt, Mobilnummer, Infoservice, Altersklasse)
+   * - 'b2run': Format exakt wie die offizielle B2Run-Köln-Meldedatei (16 Spalten laut B2RUN_KOELN_HEADERS: Nr., Anrede, Vorname, Nachname, E-Mail, Startblock, Zustimmung AGB & Datenschutzhinweise, Anonym, Gruppe, Straße/PLZ/Stadt (privat), Mobilnummer, Verwendung Infoservice, Altersklasse, Nordic Walker)
    */
   const exportCsv = (mode: 'deloitte' | 'b2run', audience: 'active' | 'activePlusWait' | 'waitOnly' | 'withCancelled' = 'active'): void => {
     if (!selectedEvent) return;
@@ -3243,36 +3244,35 @@ export default function AdminPage(): React.ReactElement {
     };
 
     let headers: string[] = [];
-    let rows: string[][] = [];
+    let rows: (string | number)[][] = [];
 
     if (mode === 'b2run') {
-      // Reihenfolge exakt wie B2Run Excel
-      headers = [
-        'Nr.', 'Anrede', 'Vorname', 'Nachname', 'E-Mail',
-        'Startblock', 'Zustimmung AGB & Datenschutzhinweise', 'Anonym',
-        'Gruppe', 'Strasse und Hausnummer (privat)', 'PLZ (privat)', 'Stadt (privat)',
-        'Mobilnummer', 'Verwendung Infoservice', 'Altersklasse',
-      ];
-      rows = activeRegsForExport.map(r => {
+      // v26.48: Struktur exakt wie die OFFIZIELLE B2Run-Köln-Meldedatei
+      // (Deloitte_Teilnehmer_-innen_b2run-koeln-<jahr>.xlsx) — 16 Spalten
+      // inkl. „Straße" mit ß und der neuen Spalte „Nordic Walker".
+      // Zentrale Spec in data/b2runKoeln.ts.
+      headers = [...B2RUN_KOELN_HEADERS];
+      rows = activeRegsForExport.map((r, idx) => {
         const cd = parseCustom(r.CustomData || '{}');
         const vorname = r.Vorname || (r.ParticipantName || '').split(' ').slice(0, -1).join(' ') || '';
         const nachname = r.Nachname || (r.ParticipantName || '').split(' ').slice(-1).join(' ') || '';
         return [
-          String(r.TeilnehmerID || ''),
-          r.Anrede || '',
+          idx + 1, // Nr. — laufende Nummer 1..n (die offizielle Datei nummeriert fortlaufend, NICHT TeilnehmerID)
+          cd.b2run_geschlecht || mapAnredeToB2Run(r.Anrede), // 'männlich'/'weiblich'/'divers' (klein, wie Original)
           vorname,
           nachname,
           r.ParticipantEmail || '',
-          cd.b2run_startblock || '',
+          cd.b2run_startblock || mapStarterTypeToStartblock(r.StarterType),
           cd.b2run_datenschutz ? 'Ja' : 'Nein',
           cd.b2run_anonym ? 'Ja' : 'Nein',
           cd.b2run_gruppe || '',
-          '', // Strasse - nicht abgefragt
-          '', // PLZ - nicht abgefragt
-          '', // Stadt - nicht abgefragt
+          '', // Straße und Hausnummer (privat) — nicht abgefragt, darf leer bleiben
+          '', // PLZ (privat) — nicht abgefragt
+          '', // Stadt (privat) — nicht abgefragt
           cd.b2run_mobilnummer || '',
-          cd.b2run_infoservice ? 'Ja' : 'Nein',
-          cd.b2run_altersklasse || '',
+          cd.b2run_infoservice ? 1 : 0, // Original-Datei nutzt 0/1 (Zahl), nicht Ja/Nein
+          cd.b2run_altersklasse || B2RUN_KOELN_ALTERSKLASSE,
+          cd.b2run_nordicwalker ? 'Ja' : 'Nein',
         ];
       });
     } else {
@@ -3345,9 +3345,17 @@ export default function AdminPage(): React.ReactElement {
     // XLSX Export — natives Excel-Format, automatische Spalten-Breiten, keine
     // CSV-Escaping-Quirks. Gilt für beide Modi (Teilnehmerliste + B2Run).
     const aoa: (string | number)[][] = [headers, ...rows];
-    const sheetName = mode === 'b2run' ? 'B2Run' : 'Teilnehmer';
+    // v26.48: Sheet-Name wie in der offiziellen Meldedatei („B2Run Köln <Jahr>",
+    // ≤31 Zeichen — XLSX-Limit unkritisch). Jahr aus dem Event-Startdatum.
+    const b2runYear = selectedEvent.startDate ? String(new Date(selectedEvent.startDate).getFullYear()) : '';
+    const sheetName = mode === 'b2run' ? ('B2Run Köln ' + b2runYear).trim() : 'Teilnehmer';
     const filePrefix = mode === 'b2run' ? 'B2Run' : 'Teilnehmer';
-    const fileName = `${filePrefix}_${safeName}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    // v26.48: Bei B2Run-Köln-Events exakt der offizielle Dateiname des
+    // Veranstalters (Deloitte_Teilnehmer_-innen_b2run-koeln-<jahr>.xlsx);
+    // sonst bleibt das bisherige Namensschema.
+    const fileName = mode === 'b2run' && isB2RunKoelnTitle(selectedEvent.title)
+      ? `Deloitte_Teilnehmer_-innen_b2run-koeln${b2runYear ? '-' + b2runYear : ''}.xlsx`
+      : `${filePrefix}_${safeName}_${new Date().toISOString().slice(0, 10)}.xlsx`;
 
     // v20.0 (Audit): xlsx erst beim Export-Klick als Chunk nachladen — die
     // Bibliothek ist mit Abstand die schwerste Dependency und wird nur hier
@@ -7409,7 +7417,7 @@ export default function AdminPage(): React.ReactElement {
                 icon={<Download size={18} />}
                 category="participants"
                 title={isDe ? 'Excel-Export' : 'Excel export'}
-                desc={selectedEvent && selectedEvent.type === 'B2Run'
+                desc={selectedEvent && (selectedEvent.type === 'B2Run' || isB2RunKoelnTitle(selectedEvent.title))
                   ? (isDe
                     ? "Lädt die Teilnehmerliste als Excel. Wahl zwischen 'Deloitte Felder' (alle internen Spalten + Custom-Fields) oder 'B2Run View' (importierbar in b2run.com)."
                     : "Downloads the participant list as Excel. Choose between 'Deloitte fields' (all internal columns + custom fields) or 'B2Run view' (importable into b2run.com).")
@@ -7420,7 +7428,9 @@ export default function AdminPage(): React.ReactElement {
                 onClick={() => {
                   // v17.12: Erst Zielgruppe abfragen, dann erst exportieren.
                   // Bei B2Run zusätzlich noch View-Auswahl im Dropdown.
-                  if (selectedEvent && selectedEvent.type === 'B2Run') {
+                  // v26.48: auch für Events ohne B2Run-Wizard-Template, deren
+                  // Titel „B2Run Köln" enthält (offizielle Meldedatei-Export).
+                  if (selectedEvent && (selectedEvent.type === 'B2Run' || isB2RunKoelnTitle(selectedEvent.title))) {
                     setShowExportMenu(!showExportMenu);
                   } else {
                     setExcelAudience('active');
@@ -7454,7 +7464,7 @@ export default function AdminPage(): React.ReactElement {
                         : 'All internal fields: name, email, department, location, position, status, registration date + all custom fields of the event.'}
                     </div>
                   </button>
-                  {selectedEvent && selectedEvent.type === 'B2Run' && (
+                  {selectedEvent && (selectedEvent.type === 'B2Run' || isB2RunKoelnTitle(selectedEvent.title)) && (
                     <button
                       type="button"
                       onClick={() => { setShowExportMenu(false); setExcelAudience('active'); setExcelTargetModal({ mode: 'b2run' }); }}
