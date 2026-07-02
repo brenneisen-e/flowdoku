@@ -2787,6 +2787,10 @@ export default function AdminPage(): React.ReactElement {
   const [columnOrder, setColumnOrder] = React.useState<string[]>([]);
   const [hiddenColumns, setHiddenColumns] = React.useState<string[]>([]);
   const [showColumnPicker, setShowColumnPicker] = React.useState(false);
+  // v26.44: „Matches anzeigen" — gruppiert die Teilnehmer-Tabelle in gegenseitige
+  // Roommate-Paare (Match 1, Match 2, …) + Rest-Cluster. Nur relevant, wenn das
+  // Event überhaupt eine Roommate-Spalte hat.
+  const [showMatches, setShowMatches] = React.useState(false);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const spfxContext = (window as any).__dexSpfxContext;
@@ -3107,6 +3111,11 @@ export default function AdminPage(): React.ReactElement {
     hasWaitlistActivity,
   ]);
 
+  // v26.44: gibt es überhaupt eine Roommate-Spalte? Steuert den
+  // „Matches anzeigen"-Toggle, die Paar-Gruppierung der Teilnehmer-Tabelle
+  // und die „Roommate-Match"-Spalte im Excel-Export.
+  const hasRoommateColumn = availableColumns.some(c => c.id === 'roommate');
+
   const columnStorageKey = selectedEvent ? `dex_admin_columns_${selectedEvent.id}` : '';
   // localStorage-Load beim Event-Wechsel.
   React.useEffect(() => {
@@ -3278,6 +3287,23 @@ export default function AdminPage(): React.ReactElement {
       const customLabels: Array<{ id: string; label: string }> = (selectedEvent.eventSpecificFields || []).map(f => ({ id: f.id, label: f.label }));
       headers = headers.concat(customLabels.map(cf => cf.label));
 
+      // v26.44: „Roommate-Match"-Spalte — nur wenn das Event eine Roommate-
+      // Spalte hat. Paare werden über die VOLLE Export-Zeilenmenge berechnet
+      // (nicht über den UI-Suchfilter), gleiche Dedupe-Logik wie die
+      // „Matches anzeigen"-Gruppierung in der Teilnehmer-Tabelle.
+      const roommatePairLabelByEmail: Record<string, string> = {};
+      if (hasRoommateColumn) {
+        const nameOf = (x: SPRegistration): string =>
+          `${x.Vorname || ''} ${x.Nachname || ''}`.trim() || x.ParticipantName || x.ParticipantEmail || '';
+        computeRoommatePairs(activeRegsForExport).forEach(([a, b], pi) => {
+          const ea = (a.ParticipantEmail || '').trim().toLowerCase();
+          const eb = (b.ParticipantEmail || '').trim().toLowerCase();
+          roommatePairLabelByEmail[ea] = `Match ${pi + 1} (mit ${nameOf(b)})`;
+          roommatePairLabelByEmail[eb] = `Match ${pi + 1} (mit ${nameOf(a)})`;
+        });
+        headers.push('Roommate-Match');
+      }
+
       rows = activeRegsForExport.map(r => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const anyReg = r as any;
@@ -3302,7 +3328,12 @@ export default function AdminPage(): React.ReactElement {
           if (typeof v === 'boolean') return v ? 'Ja' : 'Nein';
           return String(v);
         });
-        return base.concat(customValues);
+        const row = base.concat(customValues);
+        if (hasRoommateColumn) {
+          row.push(roommatePairLabelByEmail[(r.ParticipantEmail || '').trim().toLowerCase()]
+            || 'Ohne Preferred Roommate oder Match');
+        }
+        return row;
       });
     }
 
@@ -5887,6 +5918,37 @@ export default function AdminPage(): React.ReactElement {
     const reverse = roommateChoice[choice.partnerEmail];
     const mutual = !!reverse && reverse.partnerEmail === email;
     return { partnerName: choice.partnerName || choice.partnerEmail, partnerEmail: choice.partnerEmail, mutual };
+  };
+
+  // v26.44: berechnet die gegenseitigen Roommate-Paare INNERHALB einer
+  // Zeilenmenge. Ein Paar zählt nur, wenn BEIDE Personen in `rows` enthalten
+  // sind — ist der Partner rausgefiltert (Suche) oder gar nicht (mehr)
+  // registriert, gilt die Person als „ohne Match". Dedupe über den Schlüssel
+  // aus beiden lowercased E-Mails (sortiert + gejoint), damit jedes Paar genau
+  // EINMAL erscheint. Wird sowohl von der „Matches anzeigen"-Gruppierung als
+  // auch vom Excel-Export („Roommate-Match"-Spalte) benutzt.
+  const computeRoommatePairs = (rows: SPRegistration[]): Array<[SPRegistration, SPRegistration]> => {
+    const byEmail: Record<string, SPRegistration> = {};
+    for (const r of rows) {
+      const e = (r.ParticipantEmail || '').trim().toLowerCase();
+      if (e && !byEmail[e]) byEmail[e] = r;
+    }
+    const seen = new Set<string>();
+    const pairs: Array<[SPRegistration, SPRegistration]> = [];
+    for (const r of rows) {
+      const email = (r.ParticipantEmail || '').trim().toLowerCase();
+      if (!email) continue;
+      const info = getRoommateInfo(r);
+      if (!info || !info.mutual) continue;
+      const partnerEmail = (info.partnerEmail || '').trim().toLowerCase();
+      const partner = byEmail[partnerEmail];
+      if (!partner || partner === r) continue;
+      const key = [email, partnerEmail].sort().join('|');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      pairs.push([r, partner]);
+    }
+    return pairs;
   };
 
   return (
@@ -8818,6 +8880,24 @@ export default function AdminPage(): React.ReactElement {
             onChange={e => setSearchQuery(e.target.value)}
             style={{ maxWidth: 280, padding: '6px 12px', fontSize: '0.85rem' }}
           />
+          {/* v26.44: „Matches anzeigen" — nur bei Events mit Roommate-Spalte.
+              Gruppiert die Tabelle in gegenseitige Paare (Match 1, 2, …) +
+              Rest-Cluster; wirkt auf die aktuell gefilterte Trefferliste. */}
+          {!isConsolidatedMode && hasRoommateColumn && (
+            <button
+              type="button"
+              className={showMatches ? 'btn btn-primary' : 'btn btn-secondary'}
+              style={{ fontSize: '0.8rem', padding: '6px 12px' }}
+              onClick={() => setShowMatches(v => !v)}
+              title={isDe
+                ? 'Gegenseitige Roommate-Auswahlen als Paare gruppiert anzeigen'
+                : 'Group mutual roommate picks as pairs'}
+            >
+              {showMatches
+                ? (isDe ? 'Matches ausblenden' : 'Hide matches')
+                : (isDe ? 'Matches anzeigen' : 'Show matches')}
+            </button>
+          )}
         </div>
         {/* v15.14: Legende für die Pastel-Hintergründe — sowohl in der
             Sub-Event-Detail-Ansicht (Parent-CFs + eigene CFs) als auch im
@@ -10297,13 +10377,11 @@ export default function AdminPage(): React.ReactElement {
                         const photoEmail = (info.partnerEmail || '').trim();
                         return (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            {/* v26.43: Foto mit Kontaktkarte (Hover/Tap) — wie die
+                                anderen Personen-Fotos in der Tabelle; vorher ein
+                                nacktes <img> ohne Mouse-over. */}
                             {photoEmail && (
-                              <img
-                                src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(photoEmail)}&size=S`}
-                                alt={info.partnerName}
-                                onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }}
-                                style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }}
-                              />
+                              <PersonContactHover email={photoEmail} name={info.partnerName} size={24} isDe={isDe} />
                             )}
                             <span>{info.partnerName}</span>
                             {info.mutual && (
@@ -10665,21 +10743,12 @@ export default function AdminPage(): React.ReactElement {
                       Default 'split' — getrennte Tabellen pro Gruppe,
                       kleinere zuerst. */}
                   {(() => {
-                    const renderTable = (rows: SPRegistration[], indexOffset: number): React.ReactElement => (
-                      // v24.96: eigener Scroll-Container um die Tabelle → der
-                      // thead (position:sticky top:0) klebt zuverlässig an dessen
-                      // oberem Rand (CSS-sticky relativ zu DIESEM Container, nicht
-                      // zum Fenster — Letzteres ist im SP-Canvas unzuverlässig).
-                      <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
-                        <thead>
-                          <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
-                            {effectiveColumnIds.map(id => renderHeader(id))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {rows.map((reg, i) => {
-                            const isOverbook = reg.OverbookReview === 'Pending';
+                    const renderTable = (rows: SPRegistration[], indexOffset: number): React.ReactElement => {
+                      // v26.44: eine normale Teilnehmer-Zeile — herausgezogen, damit
+                      // die „Matches anzeigen"-Gruppierung dieselbe Zeilen-JSX
+                      // wiederverwenden kann (keine Duplizierung der Zellen-Logik).
+                      const renderBodyRow = (reg: SPRegistration, i: number): React.ReactElement => {
+                        const isOverbook = reg.OverbookReview === 'Pending';
                             // v22.44: Inaktive Deloitte-Konten dauerhaft orange
                             // markieren (bis zur Abmeldung) — gleiche Optik wie
                             // die Überbuchungs-Markierung. inactiveAccounts kommt
@@ -10710,14 +10779,84 @@ export default function AdminPage(): React.ReactElement {
                                     : {}),
                                 }}
                               >
-                                {effectiveColumnIds.map(id => renderCell(id, reg, indexOffset + i))}
+                                {effectiveColumnIds.map(id => renderCell(id, reg, i))}
                               </tr>
                             );
-                          })}
-                        </tbody>
-                      </table>
-                      </div>
-                    );
+                      };
+
+                      // v26.44: „Matches anzeigen" — Anzeige-Zeilen mit eingestreuten
+                      // Gruppen-Header-Zeilen: [Match 1, A, B, Match 2, C, D, …,
+                      // Rest-Header, …Rest]. Paare kommen aus computeRoommatePairs
+                      // über die AKTUELL gefilterten rows (Suche wirkt also weiter);
+                      // die Gruppierung übersteuert solange die normale Spalten-
+                      // Sortierung (der Rest-Cluster behält die aktuelle
+                      // Sortierreihenfolge). Toggle aus → displayRows = null →
+                      // Rendering exakt wie bisher.
+                      type DisplayRow = { header: string; muted?: boolean } | { reg: SPRegistration };
+                      const displayRows: DisplayRow[] | null = (() => {
+                        if (!showMatches || !hasRoommateColumn) return null;
+                        const pairs = computeRoommatePairs(rows);
+                        const inPair = new Set<string>();
+                        for (const [a, b] of pairs) {
+                          inPair.add((a.ParticipantEmail || '').trim().toLowerCase());
+                          inPair.add((b.ParticipantEmail || '').trim().toLowerCase());
+                        }
+                        const rest = rows.filter(r => !inPair.has((r.ParticipantEmail || '').trim().toLowerCase()));
+                        const nameOf = (r: SPRegistration): string =>
+                          `${r.Vorname || ''} ${r.Nachname || ''}`.trim() || r.ParticipantName || r.ParticipantEmail || '';
+                        const out: DisplayRow[] = [];
+                        pairs.forEach(([a, b], pi) => {
+                          out.push({ header: `Match ${pi + 1}: ${nameOf(a)} & ${nameOf(b)}` });
+                          out.push({ reg: a });
+                          out.push({ reg: b });
+                        });
+                        out.push({
+                          header: isDe
+                            ? `Ohne Preferred Roommate oder Match (${rest.length})`
+                            : `Without preferred roommate or match (${rest.length})`,
+                          muted: true,
+                        });
+                        for (const r of rest) out.push({ reg: r });
+                        return out;
+                      })();
+                      let matchRowIdx = 0;
+                      return (
+                        // v24.96: eigener Scroll-Container um die Tabelle → der
+                        // thead (position:sticky top:0) klebt zuverlässig an dessen
+                        // oberem Rand (CSS-sticky relativ zu DIESEM Container, nicht
+                        // zum Fenster — Letzteres ist im SP-Canvas unzuverlässig).
+                        <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                          <thead>
+                            <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
+                              {effectiveColumnIds.map(id => renderHeader(id))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {displayRows
+                              ? displayRows.map((dr, di) => ('header' in dr)
+                                ? (
+                                  <tr key={`match-grp-${di}`}>
+                                    <td
+                                      colSpan={effectiveColumnIds.length}
+                                      style={{
+                                        padding: '6px 8px', fontWeight: 700, fontSize: '0.78rem',
+                                        background: dr.muted ? 'var(--dex-gray-100, #f3f4f6)' : 'rgba(134,188,37,0.10)',
+                                        color: dr.muted ? 'var(--dex-gray-600)' : 'var(--dex-green-dark, #4a7c1f)',
+                                        borderBottom: '1px solid var(--dex-gray-100)',
+                                      }}
+                                    >
+                                      {dr.header}
+                                    </td>
+                                  </tr>
+                                )
+                                : renderBodyRow(dr.reg, indexOffset + (matchRowIdx++)))
+                              : rows.map((reg, i) => renderBodyRow(reg, indexOffset + i))}
+                          </tbody>
+                        </table>
+                        </div>
+                      );
+                    };
 
                     if (!isSplitCapacity || splitParticipantsView === 'merged') {
                       return (
