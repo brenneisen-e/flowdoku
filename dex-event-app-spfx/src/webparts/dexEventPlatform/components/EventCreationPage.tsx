@@ -1078,6 +1078,7 @@ export default function EventCreationPage(): React.ReactElement {
   // Top-Level-Event). Persistiert als DEX_Events-Spalte; der
   // DEX_OutlookDeclineHandler-Flow liest die Spalte und meldet die Person ab.
   const [autoDeregisterOnDecline, setAutoDeregisterOnDecline] = React.useState(editEvent ? !!editEvent.autoDeregisterOnDecline : false);
+  const [inactiveHandling, setInactiveHandling] = React.useState<'notify' | 'autoderegister'>(editEvent && editEvent.inactiveHandling === 'autoderegister' ? 'autoderegister' : 'notify');
   const [disableOutlook, setDisableOutlook] = React.useState(editEvent ? !!editEvent.disableOutlook : false);
   // v14.4: Acknowledgement, dass bei Top-Level-Kommunikation = AUS die
   // Teilnehmer sich für mindestens ein Sub-Event anmelden müssen. Vorausgewählt
@@ -1353,6 +1354,7 @@ export default function EventCreationPage(): React.ReactElement {
     disableRegistrationEmail?: boolean;
     disableCancellationEmail?: boolean;
     autoDeregisterOnDecline?: boolean;
+    inactiveHandling?: 'notify' | 'autoderegister';
     disableOutlook?: boolean;
     /** Per-Sub-Event Custom-Fields (v10.11+). Ersetzt die hardcoded Funstarter/
      *  Durchstarter-Frage bei B2Run — wer eine zusätzliche Auswahl-Frage pro
@@ -1504,6 +1506,7 @@ export default function EventCreationPage(): React.ReactElement {
       disableRegistrationEmail: k.disableRegistrationEmail,
       disableCancellationEmail: k.disableCancellationEmail,
       autoDeregisterOnDecline: k.autoDeregisterOnDecline,
+      inactiveHandling: k.inactiveHandling,
       disableOutlook: k.disableOutlook,
       // v11.57: pro-Sub-Event Kommunikations-Felder laden
       emailLanguage: k.emailLanguage || (locale === 'de' ? 'DE' : 'EN'),
@@ -3064,6 +3067,7 @@ export default function EventCreationPage(): React.ReactElement {
         disableRegistrationEmail: !!draft.disableRegistrationEmail,
         disableCancellationEmail: !!draft.disableCancellationEmail,
         autoDeregisterOnDecline: !!draft.autoDeregisterOnDecline,
+        inactiveHandling: (draft.inactiveHandling === 'autoderegister' ? 'autoderegister' : 'notify') as 'notify' | 'autoderegister',
         disableOutlook: !!draft.disableOutlook,
         isFictive: isFictive,
         askSalutation: !!draft.askSalutation,
@@ -3228,6 +3232,7 @@ export default function EventCreationPage(): React.ReactElement {
           'DisableRegistrationEmail': childPayload.disableRegistrationEmail,
           'DisableCancellationEmail': childPayload.disableCancellationEmail,
           'AutoDeregisterOnDecline': childPayload.autoDeregisterOnDecline,
+          'InactiveHandling': childPayload.inactiveHandling || 'notify',
           'DisableOutlook': childPayload.disableOutlook,
           'OutlookSubject': subOutlookSubject,
           'OutlookStart': (draft.outlookStart || '') || null,
@@ -3295,6 +3300,7 @@ export default function EventCreationPage(): React.ReactElement {
         disableRegistrationEmail,
         disableCancellationEmail,
         autoDeregisterOnDecline,
+        inactiveHandling,
         disableOutlook,
         // v14.4: Mail-Text-Overrides pro Sub-Event mitspiegeln.
         emailTemplateOverrides: { ...emailTemplateOverrides },
@@ -3318,6 +3324,7 @@ export default function EventCreationPage(): React.ReactElement {
         disableRegistrationEmail,
         disableCancellationEmail,
         autoDeregisterOnDecline,
+        inactiveHandling,
         disableOutlook,
         emailTemplateOverrides: { ...emailTemplateOverrides },
       };
@@ -3337,6 +3344,7 @@ export default function EventCreationPage(): React.ReactElement {
         setDisableRegistrationEmail(!!snap.disableRegistrationEmail);
         setDisableCancellationEmail(!!snap.disableCancellationEmail);
         setAutoDeregisterOnDecline(!!snap.autoDeregisterOnDecline);
+        setInactiveHandling(snap.inactiveHandling === 'autoderegister' ? 'autoderegister' : 'notify');
         setDisableOutlook(!!snap.disableOutlook);
         setEmailTemplateOverrides(snap.emailTemplateOverrides || {});
       }
@@ -3354,6 +3362,7 @@ export default function EventCreationPage(): React.ReactElement {
         setDisableRegistrationEmail(!!sub.disableRegistrationEmail);
         setDisableCancellationEmail(!!sub.disableCancellationEmail);
         setAutoDeregisterOnDecline(!!sub.autoDeregisterOnDecline);
+        setInactiveHandling(sub.inactiveHandling === 'autoderegister' ? 'autoderegister' : 'notify');
         setDisableOutlook(!!sub.disableOutlook);
         setEmailTemplateOverrides(sub.emailTemplateOverrides || {});
       }
@@ -3374,6 +3383,7 @@ export default function EventCreationPage(): React.ReactElement {
     disableRegistrationEmail: boolean;
     disableCancellationEmail: boolean;
     autoDeregisterOnDecline: boolean;
+    inactiveHandling?: 'notify' | 'autoderegister';
     disableOutlook: boolean;
     emailTemplateOverrides: Record<string, EmailOverrideEntry>;
   } | null>(null);
@@ -3398,6 +3408,7 @@ export default function EventCreationPage(): React.ReactElement {
         disableRegistrationEmail,
         disableCancellationEmail,
         autoDeregisterOnDecline,
+        inactiveHandling,
         disableOutlook,
         emailTemplateOverrides: { ...emailTemplateOverrides },
       } : s);
@@ -3432,6 +3443,7 @@ export default function EventCreationPage(): React.ReactElement {
     disableRegistrationEmail: boolean;
     disableCancellationEmail: boolean;
     autoDeregisterOnDecline: boolean;
+    inactiveHandling?: 'notify' | 'autoderegister';
     disableOutlook: boolean;
     emailTemplateOverrides: Record<string, EmailOverrideEntry>;
   } => {
@@ -3448,6 +3460,7 @@ export default function EventCreationPage(): React.ReactElement {
         disableRegistrationEmail,
         disableCancellationEmail,
         autoDeregisterOnDecline,
+        inactiveHandling,
         disableOutlook,
         emailTemplateOverrides,
       };
@@ -3469,6 +3482,7 @@ export default function EventCreationPage(): React.ReactElement {
       disableRegistrationEmail,
       disableCancellationEmail,
       autoDeregisterOnDecline,
+      inactiveHandling,
       disableOutlook,
       emailTemplateOverrides,
     };
@@ -3550,6 +3564,7 @@ export default function EventCreationPage(): React.ReactElement {
     const effDisableCancellationEmail = topComm.disableCancellationEmail;
     // v19.24: Auto-Abmeldung jetzt per Sub-Event gespiegelt → top-level auflösen.
     const effAutoDeregisterOnDecline = topComm.autoDeregisterOnDecline;
+    const effInactiveHandling = topComm.inactiveHandling || 'notify';
     const effDisableOutlook = topComm.disableOutlook;
 
     // v14.4 / v14.5: Wenn das Hauptevent Sub-Events hat UND die
@@ -3816,6 +3831,7 @@ export default function EventCreationPage(): React.ReactElement {
       updates['DisableCancellationEmail'] = effDisableCancellationEmail;
       // v19.23: Outlook-Absage = Auto-Abmeldung (Top-Level-Event).
       updates['AutoDeregisterOnDecline'] = effAutoDeregisterOnDecline;
+      updates['InactiveHandling'] = effInactiveHandling;
       updates['DisableOutlook'] = effDisableOutlook;
       // v11.57: OutlookDirty schreiben. Wenn Outlook-relevante Aenderungen
       // anstehen und der Organizer im Update-Confirm-Modal die Checkbox
@@ -4441,6 +4457,7 @@ export default function EventCreationPage(): React.ReactElement {
         disableCancellationEmail: effDisableCancellationEmail,
         // v19.23/v19.24: Outlook-Absage = Auto-Abmeldung (Top-Level aufgelöst).
         autoDeregisterOnDecline: effAutoDeregisterOnDecline,
+        inactiveHandling: effInactiveHandling,
         disableOutlook: effDisableOutlook,
         notifyOrgRegisterMode,
         notifyOrgRegisterFromDate: notifyOrgRegisterMode === 'fromDate' && notifyOrgRegisterFromDate ? berlinLocalToUtcIso(notifyOrgRegisterFromDate) : '',
@@ -5123,7 +5140,7 @@ export default function EventCreationPage(): React.ReactElement {
       docsLen: (documents || []).length,
       subEventsLen: (subEvents || []).length,
       outlookBody, outlookHeading, outlookSubheading, outlookSubject,
-      disableEmails, disableRegistrationEmail, disableCancellationEmail, autoDeregisterOnDecline, disableOutlook,
+      disableEmails, disableRegistrationEmail, disableCancellationEmail, autoDeregisterOnDecline, inactiveHandling, disableOutlook,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       emailTemplateOverridesHash: JSON.stringify(emailTemplateOverrides || {}),
     });
@@ -5136,7 +5153,7 @@ export default function EventCreationPage(): React.ReactElement {
     teamRegistrationEnabled, teamSize, askTeamName, teamPartialAllowed,
     teamOpenSlotsVisible, teamJoinRequiresApproval, askSalutation, requireSubEventSelection,
     customFields, agenda, documents, subEvents,
-    outlookBody, outlookHeading, outlookSubheading, outlookSubject, disableEmails, disableRegistrationEmail, disableCancellationEmail, autoDeregisterOnDecline, disableOutlook,
+    outlookBody, outlookHeading, outlookSubheading, outlookSubject, disableEmails, disableRegistrationEmail, disableCancellationEmail, autoDeregisterOnDecline, inactiveHandling, disableOutlook,
     emailTemplateOverrides,
   ]);
   React.useEffect(() => {
@@ -12220,6 +12237,10 @@ export default function EventCreationPage(): React.ReactElement {
                         autoDeregisterOnDecline
                           ? (isDe ? 'eine Termin-Absage meldet die Person automatisch vom Event ab' : 'declining the invite auto-deregisters the person')
                           : (isDe ? 'eine Termin-Absage löst nur eine Erinnerung aus, keine automatische Abmeldung' : 'declining only triggers a reminder, no auto-deregistration'), true)}
+                      {row('info', isDe ? 'Person nicht mehr bei Deloitte' : 'Person no longer at Deloitte',
+                        inactiveHandling === 'autoderegister'
+                          ? (isDe ? 'wird automatisch abgemeldet (beim Öffnen der App durch einen Organizer)' : 'is auto-deregistered (when an organizer opens the app)')
+                          : (isDe ? 'Organizer wird per E-Mail informiert (Standard)' : 'the organizer is notified by email (default)'))}
                       {row('info', isDe ? 'Mail-Sprache' : 'Mail language', emailLanguage === 'DE' ? (isDe ? 'Deutsch' : 'German') : (isDe ? 'Englisch' : 'English'))}
                       {row('info', isDe ? 'Organizer bei An-/Abmeldungen' : 'Organizers on registrations/cancellations', bccLabel)}
                     </div>
@@ -12410,6 +12431,41 @@ export default function EventCreationPage(): React.ReactElement {
                       </span>
                     </label>
                   )}
+                  {/* inactiveHandling: Verhalten, wenn eine angemeldete Person
+                      nicht mehr bei Deloitte arbeitet. 'notify' = Organizer per
+                      Mail informieren (Standard), 'autoderegister' = automatisch
+                      abmelden (beim Öffnen der App durch einen Organizer). */}
+                  <div style={{ marginTop: 8, marginLeft: 24, paddingLeft: 12, borderLeft: '3px solid var(--dex-orange, #ed8b00)' }}>
+                    <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: 6 }}>
+                      {isDe ? 'Wenn eine angemeldete Person nicht mehr bei Deloitte arbeitet:' : 'If a registered person no longer works at Deloitte:'}
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginBottom: 6 }}>
+                      <input
+                        type="radio"
+                        name="inactiveHandling"
+                        value="notify"
+                        checked={inactiveHandling === 'notify'}
+                        onChange={() => setInactiveHandling('notify')}
+                        style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 1, flexShrink: 0 }}
+                      />
+                      <span style={{ fontSize: '0.85rem' }}>
+                        {isDe ? 'Organizer per E-Mail informieren (Standard)' : 'Notify the organizer by email (default)'}
+                      </span>
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                      <input
+                        type="radio"
+                        name="inactiveHandling"
+                        value="autoderegister"
+                        checked={inactiveHandling === 'autoderegister'}
+                        onChange={() => setInactiveHandling('autoderegister')}
+                        style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 1, flexShrink: 0 }}
+                      />
+                      <span style={{ fontSize: '0.85rem' }}>
+                        {isDe ? 'Automatisch abmelden (beim Öffnen der App durch einen Organizer)' : 'Auto-deregister (when an organizer opens the app)'}
+                      </span>
+                    </label>
+                  </div>
                   {/* v15.3: Toggle „Anmeldung für mindestens ein Sub-Event
                       verpflichtend" wurde entfernt — der gleiche Effekt wird
                       jetzt komplett über den „Nur Sub-Events"-Modus in
@@ -13966,6 +14022,7 @@ export default function EventCreationPage(): React.ReactElement {
             ...(!disableEmails && (disableRegistrationEmail || disableCancellationEmail) ? [{ label: isDe ? 'Einzeln deaktiviert' : 'Individually disabled', value: [disableRegistrationEmail ? (isDe ? 'Anmelde-Bestätigung' : 'registration confirmation') : '', disableCancellationEmail ? (isDe ? 'Abmelde-Bestätigung' : 'cancellation confirmation') : ''].filter(Boolean).join(', '), status: 'ok' as CheckStatus }] : []),
             { label: isDe ? 'Outlook-Termin' : 'Outlook invite', value: disableOutlook ? (isDe ? 'deaktiviert' : 'disabled') : (isDe ? 'aktiv' : 'on'), status: disableOutlook ? 'ok' : 'default' },
             { label: isDe ? 'Auto-Abmeldung bei Outlook-Absage' : 'Auto-cancel on Outlook decline', value: autoDeregisterOnDecline ? (isDe ? 'an' : 'on') : (isDe ? 'aus' : 'off'), status: autoDeregisterOnDecline ? 'ok' : 'default' },
+            { label: isDe ? 'Person nicht mehr bei Deloitte' : 'Person no longer at Deloitte', value: inactiveHandling === 'autoderegister' ? (isDe ? 'automatisch abmelden' : 'auto-deregister') : (isDe ? 'Organizer informieren' : 'notify organizer'), status: inactiveHandling === 'autoderegister' ? 'ok' : 'default' },
           ],
         });
         sections.push({

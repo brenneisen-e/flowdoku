@@ -186,6 +186,7 @@ const NACHRUECKEN_BODY_EN = wrapTemplateForStorage(
   `<p>Dear {{Name}},</p>
 <p>Great news! A spot has become available \u2014 you have <strong>moved up from the waitlist</strong> for the event <strong>{{EventTitle}}</strong> and are now a <strong>confirmed participant</strong>.</p>
 <p>You are now on the official participant list.</p>
+<p style="padding:10px 14px;background:#eef4fb;border:1px solid #0076a8;border-radius:8px;"><strong>Catch up on earlier updates:</strong> Any information already sent out for this event (e.g. an invitation or announcement) is available in the DEX App under <strong>\u201CMy Events\u201D</strong> on this event \u2014 so you\u2019re fully up to date.</p>
 <p>You can review your participation any time in the <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView">DEX App</a> under <strong>\u201CMy Events\u201D</strong>.</p>
 <p>If you are unable to attend after all, please cancel your registration as soon as possible via the App so that the next person on the waitlist can move up.</p>
 <p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
@@ -198,6 +199,7 @@ const NACHRUECKEN_BODY_DE = wrapTemplateForStorage(
   `<p>Hallo {{Name}},</p>
 <p>gute Nachrichten! Ein Platz ist frei geworden \u2014 du bist von der <strong>Warteliste nachger\u00FCckt</strong> f\u00FCr das Event <strong>{{EventTitle}}</strong> und bist jetzt <strong>fester Teilnehmer</strong>.</p>
 <p>Du stehst nun auf der offiziellen Teilnehmerliste.</p>
+<p style="padding:10px 14px;background:#eef4fb;border:1px solid #0076a8;border-radius:8px;"><strong>Bisherige Infos nachlesen:</strong> Alle bereits zu diesem Event versendeten Informationen (z.\u00A0B. Einladung oder Ank\u00FCndigung) findest du in der DEX App unter <strong>\u201EMeine Events\u201C</strong> beim Event \u2014 so bist du auf dem gleichen Stand.</p>
 <p>Deine Teilnahme kannst du jederzeit in der <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView">DEX App</a> unter <strong>\u201EMeine Events\u201C</strong> einsehen.</p>
 <p>Falls du doch nicht teilnehmen kannst, melde dich bitte zeitnah \u00FCber die App ab, damit die n\u00E4chste Person von der Warteliste nachr\u00FCcken kann.</p>
 <p style="margin-top:24px;"><strong>Viele Gr\u00FC\u00DFe</strong><br><br><strong>Dein Event-Team</strong></p>`
@@ -468,6 +470,19 @@ export interface DeclinedAttendee {
 
 // v18.66: Ergebnis-Zusammenfassung des Template-Reseeds, damit die UI dem
 // Admin konkret zurückmeldet, was passiert ist (statt nur "erfolgreich").
+/** v26.41: Eine Zeile aus dem Kommunikations-Log (DEX_EventComms) — eine
+ *  Event-Rundmail (Einladung/Massenmail/Ankündigung) mit Zeitstempel. */
+export interface EventCommRow {
+  id: number;
+  eventId: string;
+  subject: string;
+  bodyHtml: string;
+  emailType: string;
+  sentByName: string;
+  sentByEmail: string;
+  created: string;
+}
+
 export interface ReseedSummary {
   created: number;
   updated: number;
@@ -533,6 +548,7 @@ export interface SPEvent {
   DisableRegistrationEmail?: boolean; // v19.21: true = keine Anmelde-Bestätigung (Master DisableEmails sticht weiterhin)
   DisableCancellationEmail?: boolean; // v19.21: true = keine Abmelde-Bestätigung
   AutoDeregisterOnDecline?: boolean; // v19.23: true = Outlook-Absage meldet automatisch vom Event ab
+  InactiveHandling?: string; // v26.40: 'notify' (Default, Organizer informieren) | 'autoderegister' (automatisch abmelden), wenn eine Person Deloitte verlassen hat
   DisableOutlook: boolean; // true = keine Outlook-Kalendereintraege
   OutlookDirty?: boolean; // v11.57: true = Outlook-relevante Felder geändert, Update an Teilnehmer-Termine noch nicht angestoßen
   AutoSendQRCode?: boolean; // v9.15: true = nach Anmeldung automatisch QR-Code-Mail versenden
@@ -3282,6 +3298,7 @@ export class EventService {
       { title: 'DisableRegistrationEmail', type: 8, metaType: 'SP.Field' }, // v19.21 Boolean - keine Anmelde-Bestätigung
       { title: 'DisableCancellationEmail', type: 8, metaType: 'SP.Field' }, // v19.21 Boolean - keine Abmelde-Bestätigung
       { title: 'AutoDeregisterOnDecline', type: 8, metaType: 'SP.Field' }, // v19.23 Boolean - Outlook-Absage = Auto-Abmeldung
+      { title: 'InactiveHandling', type: 2, metaType: 'SP.Field' }, // v26.40 Text - 'notify' | 'autoderegister' bei Ex-Deloitte-Konten
       { title: 'DisableOutlook', type: 8, metaType: 'SP.Field' }, // Boolean - keine Outlook-Kalendereintraege
       { title: 'OutlookDirty', type: 8, metaType: 'SP.Field' }, // v11.57 Boolean - Outlook-Update ausstehend nach Bearbeitung
       { title: 'AutoSendQRCode', type: 8, metaType: 'SP.Field' }, // v9.15 Boolean - QR-Code automatisch nach Anmeldung versenden
@@ -3698,7 +3715,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,MandatoryRegistration,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactOrganizerEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,OutlookSubject,OutlookStart,OutlookEnd,OutlookLocation,EmailLanguage,RegistrationLanguage,EmailTemplateOverrides,DisableEmails,DisableRegistrationEmail,DisableCancellationEmail,AutoDeregisterOnDecline,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,ConfirmDialogEnabled,ConfirmDialogMode,ConfirmDialogText,SelfCheckInEnabled,SelfCheckInToken,SelfCheckInFrom,SelfCheckInTo,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl,Modified,Created';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,MandatoryRegistration,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactOrganizerEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,OutlookSubject,OutlookStart,OutlookEnd,OutlookLocation,EmailLanguage,RegistrationLanguage,EmailTemplateOverrides,DisableEmails,DisableRegistrationEmail,DisableCancellationEmail,AutoDeregisterOnDecline,InactiveHandling,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,ConfirmDialogEnabled,ConfirmDialogMode,ConfirmDialogText,SelfCheckInEnabled,SelfCheckInToken,SelfCheckInFrom,SelfCheckInTo,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl,Modified,Created';
 
   /**
    * Strip SharePoint-Note-Field-Wrapper.
@@ -3893,6 +3910,7 @@ export class EventService {
     disableRegistrationEmail?: boolean;
     disableCancellationEmail?: boolean;
     autoDeregisterOnDecline?: boolean;
+    inactiveHandling?: string;
     disableOutlook?: boolean;
     notifyOrgRegisterMode?: 'never' | 'always' | 'fromDate';
     notifyOrgRegisterFromDate?: string;
@@ -4111,6 +4129,7 @@ export class EventService {
         'DisableRegistrationEmail': !!event.disableRegistrationEmail,
         'DisableCancellationEmail': !!event.disableCancellationEmail,
         'AutoDeregisterOnDecline': !!event.autoDeregisterOnDecline,
+        'InactiveHandling': event.inactiveHandling === 'autoderegister' ? 'autoderegister' : 'notify',
         'DisableOutlook': !!event.disableOutlook,
         'NotifyOrgRegisterMode': (() => {
           const m = event.notifyOrgRegisterMode || 'never';
@@ -6395,6 +6414,91 @@ export class EventService {
         'SentByEmail': (this.context.pageContext.user.email || '').toLowerCase(),
       });
     } catch (err) { console.warn('[DEX] recordPostEventMail failed:', err); }
+  }
+
+  // =====================================================================
+  // v26.41: DEX_EventComms — dauerhaftes Kommunikations-Log der EVENT-RUNDMAILS
+  // (Einladung, Massenmail, Ankündigungen). Organizer sehen die Historie im
+  // Organizer Center; Teilnehmer die Rundmails unter „Meine Events" (Nachrücker/
+  // Spätanmelder können nachlesen). KEINE persönlichen Bestätigungsmails.
+  // Lesbar für alle Site-Nutzer (Rundmails sind nicht vertraulich); geschrieben
+  // nur bei Organizer-Aktionen (queueEmail-Begleitung).
+  // =====================================================================
+  public async ensureEventCommsList(): Promise<void> {
+    const listName = 'DEX_EventComms';
+    try { if (await this.listExists(listName)) return; } catch { return; }
+    const cr = await this._post(`${this.siteUrl}/_api/web/lists`, {
+      '__metadata': { 'type': 'SP.List' },
+      'Title': listName,
+      'Description': 'Kommunikations-Log (v26.41): Event-Rundmails (Einladung/Massenmail/Ankündigung) mit Zeitstempel — Organizer-Historie + Teilnehmer-Ansicht unter „Meine Events". Keine persönlichen Bestätigungsmails.',
+      'BaseTemplate': 100, 'AllowContentTypes': false,
+    });
+    if (!cr.ok) { console.warn('[DEX] DEX_EventComms konnte nicht angelegt werden.'); return; }
+    const fields: Array<{ title: string; type: number; note?: boolean }> = [
+      { title: 'EventId', type: 2 }, { title: 'EventTitle', type: 2 },
+      { title: 'Subject', type: 2 }, { title: 'BodyHtml', type: 3, note: true },
+      { title: 'EmailType', type: 2 }, { title: 'SentByEmail', type: 2 }, { title: 'SentByName', type: 2 },
+    ];
+    for (const f of fields) {
+      try {
+        const payload: Record<string, unknown> = { '__metadata': { 'type': f.note ? 'SP.FieldMultiLineText' : 'SP.Field' }, 'Title': f.title, 'FieldTypeKind': f.type, 'Required': false };
+        if (f.note) { payload['RichText'] = false; payload['NumberOfLines'] = 12; }
+        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
+      } catch { /* einzelne Feld-Fehler ignorieren */ }
+    }
+    try { await this.configureDefaultView(listName, ['EventId', 'EventTitle', 'Subject', 'EmailType', 'SentByName', 'Created']); } catch { /* */ }
+    // KEIN Inheritance-Break: alle Site-Nutzer dürfen die Rundmails lesen.
+  }
+
+  /** Eine gesendete Event-Rundmail ins Log schreiben. */
+  public async logEventComm(meta: { eventId: string | number; eventTitle: string; subject: string; bodyHtml: string; emailType: string }): Promise<void> {
+    try {
+      await this.ensureEventCommsList();
+      await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_EventComms')/items`, {
+        '__metadata': { 'type': 'SP.Data.DEX_x005f_EventCommsListItem' },
+        'Title': `${meta.eventId}: ${(meta.subject || '').slice(0, 180)}`.slice(0, 250),
+        'EventId': String(meta.eventId), 'EventTitle': meta.eventTitle || '',
+        'Subject': meta.subject || '', 'BodyHtml': meta.bodyHtml || '',
+        'EmailType': meta.emailType || '',
+        'SentByEmail': (this.context.pageContext.user.email || '').toLowerCase(),
+        'SentByName': this.context.pageContext.user.displayName || '',
+      });
+    } catch (err) { console.warn('[DEX] logEventComm failed:', err); }
+  }
+
+  /** Alle Rundmails eines Events (neueste zuerst). */
+  public async getEventComms(eventId: string | number): Promise<EventCommRow[]> {
+    const out: EventCommRow[] = [];
+    try {
+      if (!(await this.listExists('DEX_EventComms'))) return out;
+      const esc = String(eventId).replace(/'/g, "''");
+      const sel = 'Id,EventId,Subject,BodyHtml,EmailType,SentByName,SentByEmail,Created';
+      let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EventComms')/items?$select=${sel}&$filter=EventId eq '${esc}'&$orderby=Created desc&$top=500`;
+      while (url) {
+        const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        if (!resp.ok) break;
+        const data = await resp.json();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        for (const it of ((data.value || data.d?.results || []) as any[])) {
+          out.push({ id: Number(it.Id), eventId: String(it.EventId || ''), subject: it.Subject || '', bodyHtml: it.BodyHtml || '', emailType: it.EmailType || '', sentByName: it.SentByName || '', sentByEmail: it.SentByEmail || '', created: it.Created || '' });
+        }
+        url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
+      }
+    } catch (err) { console.warn('[DEX] getEventComms failed:', err); }
+    return out;
+  }
+
+  /** Gibt es überhaupt Rundmails zu diesem Event? (für den Anmeldemail-Hinweis) */
+  public async hasEventComms(eventId: string | number): Promise<boolean> {
+    try {
+      if (!(await this.listExists('DEX_EventComms'))) return false;
+      const esc = String(eventId).replace(/'/g, "''");
+      const resp = await this.context.spHttpClient.get(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_EventComms')/items?$select=Id&$filter=EventId eq '${esc}'&$top=1`, SPHttpClient.configurations.v1);
+      if (!resp.ok) return false;
+      const data = await resp.json();
+      const items = data.value || data.d?.results || [];
+      return Array.isArray(items) && items.length > 0;
+    } catch { return false; }
   }
 
   public async ensureOutlookLocksList(): Promise<void> {

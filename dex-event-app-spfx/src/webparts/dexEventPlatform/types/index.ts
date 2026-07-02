@@ -171,6 +171,11 @@ export interface DeloitteEvent {
   disableRegistrationEmail?: boolean; // v19.21: Wenn true: keine Anmelde-Bestätigung (Master disableEmails sticht weiterhin)
   disableCancellationEmail?: boolean; // v19.21: Wenn true: keine Abmelde-Bestätigung
   autoDeregisterOnDecline?: boolean; // v19.23: Wenn true: Outlook-Absage meldet automatisch vom Event ab (Flow-getrieben)
+  /** v26.40: Verhalten, wenn erkannt wird, dass eine angemeldete Person nicht
+   *  mehr bei Deloitte ist. 'notify' (Default) = Organizer per Mail informieren
+   *  (Organizer entscheidet). 'autoderegister' = beim Öffnen der App durch einen
+   *  Organizer automatisch abmelden (mit Modal-Hinweis). */
+  inactiveHandling?: 'notify' | 'autoderegister';
   disableOutlook?: boolean;  // Wenn true: keine Outlook-Kalendereintraege
   /** v14.5: Wenn true UND es existieren Sub-Events, muss der Teilnehmer
    *  beim Anmelden mindestens ein Sub-Event auswählen. Typischer Use-Case:
