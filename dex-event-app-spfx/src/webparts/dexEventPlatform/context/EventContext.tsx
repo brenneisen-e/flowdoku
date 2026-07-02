@@ -1749,10 +1749,20 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // versendet (Microsoft blockt das ohne Federation, s.u.
         // skipOutlookForExternal).
         const isExternalRecipient = !!emailToUse && !/@(.*\.)?deloitte\.de$/i.test(emailToUse);
-        const finalRecipient = emailToUse;
+        // v26.45: Externe EINLADUNG geht AN die externe Person UND die anmeldende
+        // Person (vorher: Anmelder:in nur auf CC). So erreicht die Zusage per
+        // „Allen antworten" direkt den Anmelder — vorher landete eine schlichte
+        // Antwort nur im No_Reply-Gruppenpostfach (Absender der Mail).
+        const isExternalInviteWithRegistrant = isExternalInvite && !!currentUserEmail
+          && currentUserEmail.toLowerCase() !== (emailToUse || '').toLowerCase();
+        const finalRecipient = isExternalInviteWithRegistrant
+          ? `${emailToUse};${currentUserEmail}`
+          : emailToUse;
         const finalSubject = emailData.subject;
         let finalBody = emailData.body;
-        const finalRecipientName = nameToUse;
+        const finalRecipientName = isExternalInviteWithRegistrant
+          ? `${nameToUse}; ${currentUserName || currentUserEmail}`
+          : nameToUse;
         // CC-Adressen, die zusätzlich zu den Feld-CCs gelten (Organizer bei
         // externer Anmeldung).
         let externalCcExtra = '';
@@ -1760,10 +1770,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           // v26.33: ALLE Organizer (inkl. Co-Organizer) auf CC.
           const allOrganizers = [...(event.organizerEmails || []), ...(event.coOrganizerEmails || [])].filter(Boolean);
           if (isExternalInvite) {
-            // Einladung: zusätzlich der/die Anmelder:in auf CC — so erreicht die
-            // Bestätigung per Antwort-Mail alle. KEINE Anmeldebestätigungs-Hinweisbox
-            // (die Einladung trägt ihren eigenen Text).
-            externalCcExtra = [currentUserEmail, ...allOrganizers].filter(Boolean).join(';');
+            // v26.45: Anmelder:in steht jetzt im An-Feld (s.o.) — auf CC nur noch
+            // die Organizer. KEINE Anmeldebestätigungs-Hinweisbox (die Einladung
+            // trägt ihren eigenen Text).
+            externalCcExtra = allOrganizers.filter(Boolean).join(';');
           } else {
             externalCcExtra = allOrganizers.join(';');
             // Hinweis-Box VOR dem Original-Body — adressiert an die externe Person.
@@ -1827,11 +1837,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         const ccMerged = (() => {
           const seen = new Set<string>();
           const out: string[] = [];
+          // v26.45: ALLE An-Empfänger ausschließen (bei der externen Einladung
+          // steht auch der/die Anmelder:in im An-Feld — nicht zusätzlich auf CC).
+          const toSet = new Set(finalRecipient.split(';').map(s => s.trim().toLowerCase()).filter(Boolean));
           // v18.74: externalCcExtra (Organizer bei externer Anmeldung) mitmergen.
           for (const part of [ccOwn, opts?.extraCc || '', externalCcExtra]) {
             for (const e of part.split(';').map(s => s.trim()).filter(Boolean)) {
               const lc = e.toLowerCase();
-              if (lc !== (emailToUse || '').toLowerCase() && !seen.has(lc)) { seen.add(lc); out.push(e); }
+              if (!toSet.has(lc) && !seen.has(lc)) { seen.add(lc); out.push(e); }
             }
           }
           return out.join(';');
