@@ -20,6 +20,10 @@ let cachedOrbBase64 = '';
 
 export function getCachedOrbBase64(): string { return cachedOrbBase64; }
 export function getCachedLogoBase64(): string { return cachedLogoBase64; }
+/** v26.50: Nach einem Logo-Tausch im Admin-Center („Logo & Branding") den
+ *  Session-Cache aktualisieren — neue Mails derselben Sitzung nutzen sofort
+ *  das neue Logo, ohne Reload. */
+export function setCachedLogoBase64(v: string): void { if (v) cachedLogoBase64 = v; }
 
 function getDate(): string {
   return new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });

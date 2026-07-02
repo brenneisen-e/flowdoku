@@ -9012,6 +9012,119 @@ export class EventService {
     }
   }
 
+  // ==================== v26.50: Logo & Branding (Admin-Center) ====================
+  // Zentrale Ablage des Default-Logos (PNG) + Logo-Videos. Das PNG lebt in der
+  // _Config-Zeile von DEX_EmailTemplates (LogoBase64) — ALLE neu versendeten
+  // Mails nutzen es automatisch — und wird zusätzlich als
+  // SiteAssets/DEX_Logos/Deloitte_Logo.png gespiegelt (Fallback-Pfad von
+  // loadLogosAsBase64). Das Video liegt als SiteAssets/DEX_Logos/dex-logo-video.*.
+
+  private static readonly BRANDING_VIDEO_BASENAME = 'dex-logo-video';
+
+  /** Aktuelles Branding: Logo (Data-URI) + Video-URL (leer wenn keins da). */
+  public async getBranding(): Promise<{ logoBase64: string; videoUrl: string; videoFileName: string }> {
+    let logoBase64 = '';
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id,LogoBase64`,
+        SPHttpClient.configurations.v1
+      );
+      if (resp.ok) {
+        const d = await resp.json();
+        const it = (d.value || d.d?.results || [])[0];
+        if (it && it.LogoBase64) logoBase64 = String(it.LogoBase64);
+      }
+    } catch { /* */ }
+    if (!logoBase64) {
+      try { logoBase64 = await this.loadFileAsBase64('DEX_Logos/Deloitte_Logo.png'); } catch { /* */ }
+    }
+    // Video: feste Kandidaten-Namen prüfen (mp4 bevorzugt).
+    let videoUrl = '';
+    let videoFileName = '';
+    const serverRel = this.context.pageContext.web.serverRelativeUrl;
+    for (const ext of ['mp4', 'webm', 'mov']) {
+      const name = `${EventService.BRANDING_VIDEO_BASENAME}.${ext}`;
+      try {
+        const check = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/GetFileByServerRelativeUrl('${serverRel}/SiteAssets/DEX_Logos/${name}')?$select=Exists,ServerRelativeUrl`,
+          SPHttpClient.configurations.v1
+        );
+        if (check.ok) {
+          videoUrl = `${new URL(this.siteUrl).origin}${serverRel}/SiteAssets/DEX_Logos/${name}`;
+          videoFileName = name;
+          break;
+        }
+      } catch { /* nächster Kandidat */ }
+    }
+    return { logoBase64, videoUrl, videoFileName };
+  }
+
+  /** Neues Default-Logo (PNG als Data-URI) speichern: _Config.LogoBase64 (Mails)
+   *  + Spiegelung nach SiteAssets/DEX_Logos/Deloitte_Logo.png (Fallback). */
+  public async saveBrandingLogo(logoDataUri: string): Promise<boolean> {
+    if (!logoDataUri || logoDataUri.indexOf('data:image/') !== 0) return false;
+    let ok = false;
+    try {
+      // _Config-Zeile finden bzw. anlegen, dann MERGE.
+      const listName = 'DEX_EmailTemplates';
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+      let cfgId = 0;
+      if (resp.ok) {
+        const d = await resp.json();
+        const it = (d.value || d.d?.results || [])[0];
+        if (it) cfgId = Number(it.Id);
+      }
+      if (cfgId > 0) {
+        const m = await this._merge(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items(${cfgId})`, { 'LogoBase64': logoDataUri });
+        ok = m.ok;
+      } else {
+        const c = await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
+          '__metadata': { 'type': 'SP.Data.DEX_x005f_EmailTemplatesListItem' },
+          'Title': '_Config', 'TemplateType': '_Config', 'LogoBase64': logoDataUri,
+        });
+        ok = c.ok;
+      }
+    } catch (err) { console.warn('[DEX] saveBrandingLogo (_Config) failed:', err); }
+    // Spiegel nach SiteAssets (best-effort — Fallback-Pfad + Download-Quelle).
+    try {
+      await this.ensureAssetsFolders();
+      const b64 = logoDataUri.split(',')[1] || '';
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const serverRel = this.context.pageContext.web.serverRelativeUrl;
+      await this.context.spHttpClient.post(
+        `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${serverRel}/SiteAssets/DEX_Logos')/Files/add(url='Deloitte_Logo.png',overwrite=true)`,
+        SPHttpClient.configurations.v1,
+        { headers: { 'Accept': 'application/json;odata=nometadata' }, body: bytes.buffer as ArrayBuffer }
+      );
+    } catch (err) { console.warn('[DEX] saveBrandingLogo (SiteAssets mirror) failed:', err); }
+    return ok;
+  }
+
+  /** Neues Logo-Video nach SiteAssets/DEX_Logos hochladen (fester Name,
+   *  overwrite). Liefert die absolute URL oder '' bei Fehler. */
+  public async uploadBrandingVideo(file: File): Promise<string> {
+    try {
+      await this.ensureAssetsFolders();
+      const ext = (file.name.split('.').pop() || 'mp4').toLowerCase();
+      const safeExt = ['mp4', 'webm', 'mov'].indexOf(ext) >= 0 ? ext : 'mp4';
+      const name = `${EventService.BRANDING_VIDEO_BASENAME}.${safeExt}`;
+      const serverRel = this.context.pageContext.web.serverRelativeUrl;
+      const buf = await file.arrayBuffer();
+      const resp = await this.context.spHttpClient.post(
+        `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${serverRel}/SiteAssets/DEX_Logos')/Files/add(url='${name}',overwrite=true)`,
+        SPHttpClient.configurations.v1,
+        { headers: { 'Accept': 'application/json;odata=nometadata' }, body: buf }
+      );
+      if (!resp.ok) return '';
+      return `${new URL(this.siteUrl).origin}${serverRel}/SiteAssets/DEX_Logos/${name}`;
+    } catch (err) { console.warn('[DEX] uploadBrandingVideo failed:', err); return ''; }
+  }
+
   /**
    * Event-Bild als Attachment an ein DEX_Events-Item anhängen.
    * Löscht zuerst alle bestehenden Bild-Attachments (Präfix __eventimage__),
