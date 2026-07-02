@@ -243,7 +243,9 @@ export default function LandingPage(): React.ReactElement {
     // 'notify' (Default) = im Organizer-Hinweis anzeigen.
     const isAutoDereg = (eventId: string): boolean =>
       (events || []).find(e => e.id === eventId)?.inactiveHandling === 'autoderegister';
-    const CACHE = 'dex_inactivesummary';
+    // v26.42: Cache-Key auf _v2 — alte Scans enthielten Fehlalarme für UMBENANNTE
+    // Konten (z.B. Heirat); die neue Alias-Prüfung braucht einen frischen Scan.
+    const CACHE = 'dex_inactivesummary_v2';
     // v22.46: Signatur der relevanten Events — ändert sich die Event-Liste
     // (neues Event, Status-Wechsel), wird neu gescannt statt 24h zu warten.
     const sig = relevant.map(e => e.id).sort().join('|');
