@@ -6601,12 +6601,30 @@ export default function AdminPage(): React.ReactElement {
                   // nur EINE Aussage zeigen. (v22.22: gilt auch, wenn alle
                   // Sub-Sections die Sichtbarkeit des Gesamt-Events erben.)
                   const everythingSame = hasChildren && allChildrenSame && (childVis[0].text === parentVisText || childVis[0].inherits);
+                  // v26.43: Konkrete Fehlt-Hinweise statt nur generischem Text —
+                  // welche Grundangaben sind noch leer? (Organizer-Feedback: „warum
+                  // sagt mir die Box nicht, dass die Beschreibung fehlt?")
+                  const missingBits: string[] = [];
+                  if (!(selectedEvent.description || '').trim()) missingBits.push(isDe ? 'Beschreibung' : 'description');
+                  if (!(selectedEvent.location || '').trim()) missingBits.push(isDe ? 'Ort' : 'location');
+                  if (!(selectedEvent.imageUrl || '').trim()) missingBits.push(isDe ? 'Event-Bild' : 'event image');
                   const steps: Array<{ title: string; body: React.ReactNode }> = [
                     {
                       title: isDe ? 'Event finalisieren' : 'Finalize the event',
-                      body: isDe
-                        ? 'Über „Event bearbeiten" Felder, Bild und Texte vervollständigen.'
-                        : 'Use “Edit event” to complete fields, image and texts.',
+                      body: (
+                        <>
+                          {isDe
+                            ? 'Über „Event bearbeiten" Felder, Bild und Texte vervollständigen.'
+                            : 'Use “Edit event” to complete fields, image and texts.'}
+                          {missingBits.length > 0 && (
+                            <span style={{ display: 'block', marginTop: 5, padding: '6px 8px', borderRadius: 6, background: '#fff4e5', border: '1px solid #ed8b00', color: '#8a4b00', fontSize: '0.74rem', lineHeight: 1.45 }}>
+                              {isDe
+                                ? <>Fehlt noch: <strong>{missingBits.join(', ')}</strong>.</>
+                                : <>Still missing: <strong>{missingBits.join(', ')}</strong>.</>}
+                            </span>
+                          )}
+                        </>
+                      ),
                     },
                     {
                       title: isDe ? 'Test-An- und Abmeldung' : 'Test registration & cancellation',
