@@ -4150,9 +4150,10 @@ export class EventService {
         'OutlookEnd': event.outlookEnd || null,
         // v18.34/v18.40: Outlook-Ort = manuelle Überschreibung, sonst
         // automatisch aus Veranstaltungsort + Adresse. Flow mappt OutlookLocation 1:1.
-        'OutlookLocation': (event.outlookLocation && event.outlookLocation.trim())
+        // v26.54: hart auf 255 kappen (einzeilige Text-Spalte — s. updateEvent).
+        'OutlookLocation': ((event.outlookLocation && event.outlookLocation.trim())
           ? event.outlookLocation.trim()
-          : buildOutlookLocation(event.location, event.locationAddress),
+          : buildOutlookLocation(event.location, event.locationAddress)).slice(0, 255),
         'LocationFilter': event.locationFilter,
         'Audience': event.audience,
         'AudienceResolvedEmails': event.audienceResolvedEmails || '',
@@ -4346,7 +4347,7 @@ export class EventService {
    *  wird dem Organizer in der Fehlermeldung angezeigt (vorher nur Konsole). */
   public lastUpdateEventError = '';
 
-  public async updateEvent(eventId: number, updates: Record<string, unknown>): Promise<boolean> {
+  public async updateEvent(eventId: number, updates: Record<string, unknown>, retried?: boolean): Promise<boolean> {
     this.lastUpdateEventError = '';
     try {
       const payload = {
@@ -4386,12 +4387,74 @@ export class EventService {
               : '';
         this.lastUpdateEventError = [`HTTP ${response.status}`, statusHint, spMsg && spMsg !== statusHint ? spMsg.slice(0, 300) : '']
           .filter(Boolean).join(' — ');
+
+        // v26.54: „Invalid text value" = ein String-Wert passt nicht in eine
+        // EINZEILIGE Text-Spalte (255-Zeichen-Limit). SharePoint nennt das
+        // betroffene Feld nicht — wir diagnostizieren selbst: Payload-Werte
+        // gegen die Live-Feldtypen der Liste halten. Spalten, die laut
+        // Schema-Definition ohnehin mehrzeilig (Note) sein sollten, werden
+        // sofort migriert und der Save EINMAL automatisch wiederholt. Alle
+        // anderen Treffer werden in der Fehlermeldung beim Namen genannt.
+        if (/invalid text value|text field contains invalid data/i.test(spMsg)) {
+          const offenders = await this.findInvalidTextFields('DEX_Events', updates);
+          if (offenders.length > 0) {
+            console.warn('[DEX] updateEvent: Werte passen nicht in einzeilige Text-Spalten:',
+              offenders.map((o) => `${o.internalName} (${o.length} Zeichen${o.intendedNote ? ', sollte Note sein' : ''})`).join(', '));
+            const healable = offenders.filter((o) => o.intendedNote);
+            if (!retried && healable.length > 0) {
+              for (const o of healable) {
+                await this._upgradeTextFieldToNote('DEX_Events', o.title);
+              }
+              return this.updateEvent(eventId, updates, true);
+            }
+            this.lastUpdateEventError += ` | ${offenders
+              .map((o) => `Betroffenes Feld: „${o.title}" — ${o.length} Zeichen, die Spalte ist einzeiliger Text (max. 255 Zeichen)`)
+              .join('; ')}`;
+          }
+        }
       }
       return response.ok;
     } catch (err) {
       this.lastUpdateEventError = `Netzwerkfehler — keine Verbindung zu SharePoint${err instanceof Error && err.message ? ` (${err.message.slice(0, 150)})` : ''}.`;
       return false;
     }
+  }
+
+  /**
+   * v26.54: Diagnose-Helfer für „Invalid text value. A text field contains
+   * invalid data." beim Event-Update. Findet alle String-Werte im Update-
+   * Payload, die zu lang für eine einzeilige Text-Spalte sind (> 255 Zeichen
+   * oder mit Zeilenumbrüchen), deren Ziel-Spalte auf der LIVE-Liste aber
+   * tatsächlich als einzeiliger Text ('Text') liegt. `intendedNote` markiert
+   * Spalten, die laut Schema-Definition (getEventsFieldDefinitions) eigentlich
+   * mehrzeilig (Typ 3, Note) sein sollten — die dürfen automatisch per
+   * _upgradeTextFieldToNote geheilt werden.
+   */
+  private async findInvalidTextFields(
+    listName: string,
+    updates: Record<string, unknown>
+  ): Promise<Array<{ internalName: string; title: string; length: number; intendedNote: boolean }>> {
+    const out: Array<{ internalName: string; title: string; length: number; intendedNote: boolean }> = [];
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName,Title,TypeAsString&$filter=Hidden eq false&$top=300`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return out;
+      const data = await resp.json();
+      const fields: Array<{ InternalName: string; Title: string; TypeAsString: string }> = data.value || [];
+      const defs = this.getEventsFieldDefinitions();
+      for (const key of Object.keys(updates)) {
+        const v = updates[key];
+        if (typeof v !== 'string') continue;
+        if (v.length <= 255 && v.indexOf('\n') < 0) continue;
+        const f = fields.filter((x) => x.InternalName === key)[0];
+        if (!f || f.TypeAsString !== 'Text') continue;
+        const def = defs.filter((d) => d.title === key)[0];
+        out.push({ internalName: key, title: f.Title, length: v.length, intendedNote: !!def && def.type === 3 });
+      }
+    } catch { /* Diagnose darf den Fehlerpfad nie zusätzlich brechen */ }
+    return out;
   }
 
   /**
