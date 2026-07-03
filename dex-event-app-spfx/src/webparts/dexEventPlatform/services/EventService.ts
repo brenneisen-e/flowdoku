@@ -9181,22 +9181,30 @@ export class EventService {
 
   private static readonly BRANDING_VIDEO_BASENAME = 'dex-logo-video';
 
-  /** Aktuelles Branding: Logo (Data-URI) + Video-URL (leer wenn keins da). */
-  public async getBranding(): Promise<{ logoBase64: string; videoUrl: string; videoFileName: string }> {
+  /** Aktuelles Branding: Deloitte-Logo + DEX-Orb (Data-URIs) + Video-URL
+   *  (leer wenn keins da). v26.58: orbBase64 ergänzt — das eigentliche
+   *  DEX-Logo (bunter Ring, _Config.DefaultImageBase64 bzw. dex-orb.png);
+   *  LogoBase64 ist das Deloitte-Logo der E-Mail-Kopfzeile. */
+  public async getBranding(): Promise<{ logoBase64: string; orbBase64: string; videoUrl: string; videoFileName: string }> {
     let logoBase64 = '';
+    let orbBase64 = '';
     try {
       const resp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id,LogoBase64`,
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EmailTemplates')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id,LogoBase64,DefaultImageBase64`,
         SPHttpClient.configurations.v1
       );
       if (resp.ok) {
         const d = await resp.json();
         const it = (d.value || d.d?.results || [])[0];
         if (it && it.LogoBase64) logoBase64 = String(it.LogoBase64);
+        if (it && it.DefaultImageBase64) orbBase64 = String(it.DefaultImageBase64);
       }
     } catch { /* */ }
     if (!logoBase64) {
       try { logoBase64 = await this.loadFileAsBase64('DEX_Logos/Deloitte_Logo.png'); } catch { /* */ }
+    }
+    if (!orbBase64) {
+      try { orbBase64 = await this.loadFileAsBase64('DEX_Logos/dex-orb.png'); } catch { /* */ }
     }
     // Video: feste Kandidaten-Namen prüfen (mp4 bevorzugt).
     let videoUrl = '';
@@ -9216,7 +9224,53 @@ export class EventService {
         }
       } catch { /* nächster Kandidat */ }
     }
-    return { logoBase64, videoUrl, videoFileName };
+    return { logoBase64, orbBase64, videoUrl, videoFileName };
+  }
+
+  /** v26.58: Neues DEX-Logo (Orb, PNG als Data-URI) speichern:
+   *  _Config.DefaultImageBase64 (Default-Mail-Bild / {{ORB_URL}}-Fallback)
+   *  + Spiegelung nach SiteAssets/DEX_Logos/dex-orb.png. */
+  public async saveBrandingOrb(orbDataUri: string): Promise<boolean> {
+    if (!orbDataUri || orbDataUri.indexOf('data:image/') !== 0) return false;
+    let ok = false;
+    try {
+      const listName = 'DEX_EmailTemplates';
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items?$filter=TemplateType eq '_Config'&$top=1&$select=Id`,
+        SPHttpClient.configurations.v1
+      );
+      let cfgId = 0;
+      if (resp.ok) {
+        const d = await resp.json();
+        const it = (d.value || d.d?.results || [])[0];
+        if (it) cfgId = Number(it.Id);
+      }
+      if (cfgId > 0) {
+        const m = await this._merge(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items(${cfgId})`, { 'DefaultImageBase64': orbDataUri });
+        ok = m.ok;
+      } else {
+        const c = await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/items`, {
+          '__metadata': { 'type': 'SP.Data.DEX_x005f_EmailTemplatesListItem' },
+          'Title': '_Config', 'TemplateType': '_Config', 'DefaultImageBase64': orbDataUri,
+        });
+        ok = c.ok;
+      }
+    } catch (err) { console.warn('[DEX] saveBrandingOrb (_Config) failed:', err); }
+    // Spiegel nach SiteAssets (best-effort — Fallback-Pfad + Download-Quelle).
+    try {
+      await this.ensureAssetsFolders();
+      const b64 = orbDataUri.split(',')[1] || '';
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const serverRel = this.context.pageContext.web.serverRelativeUrl;
+      await this.context.spHttpClient.post(
+        `${this.siteUrl}/_api/web/GetFolderByServerRelativeUrl('${serverRel}/SiteAssets/DEX_Logos')/Files/add(url='dex-orb.png',overwrite=true)`,
+        SPHttpClient.configurations.v1,
+        { headers: { 'Accept': 'application/json;odata=nometadata' }, body: bytes.buffer as ArrayBuffer }
+      );
+    } catch (err) { console.warn('[DEX] saveBrandingOrb (SiteAssets mirror) failed:', err); }
+    return ok;
   }
 
   /** Neues Default-Logo (PNG als Data-URI) speichern: _Config.LogoBase64 (Mails)
@@ -11086,6 +11140,30 @@ export class EventService {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return items.map((i: any) => ({ id: i.Id, email: i.RequesterEmail || '', name: i.RequesterName || '', location: i.RequesterLocation || '', message: i.Message || '', status: i.Status || '', created: i.Created || '' }));
     } catch { return []; }
+  }
+
+  /** v26.58: Einzelnen Organizer-Antrag inkl. Entscheidungs-Metadaten laden —
+   *  für den approveorg-Deep-Link, wenn der Antrag bereits entschieden wurde
+   *  („bereits freigegeben durch X am Y" statt kommentarlos Landing Page). */
+  public async getOrganizerRequestDetails(id: number): Promise<{ id: number; email: string; name: string; status: string; decidedByEmail: string; decidedDate: string } | null> {
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerRequests')/items(${id})?$select=Id,RequesterEmail,RequesterName,Status,DecidedByEmail,DecidedDate`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return null;
+      const d = await resp.json();
+      const it = d.d || d;
+      if (!it || !it.Id) return null;
+      return {
+        id: Number(it.Id),
+        email: String(it.RequesterEmail || ''),
+        name: String(it.RequesterName || ''),
+        status: String(it.Status || ''),
+        decidedByEmail: String(it.DecidedByEmail || ''),
+        decidedDate: String(it.DecidedDate || ''),
+      };
+    } catch { return null; }
   }
 
   public async updateOrganizerRequestStatus(id: number, status: 'Approved' | 'Rejected', decidedByEmail: string): Promise<boolean> {

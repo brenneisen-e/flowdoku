@@ -12,6 +12,8 @@ import * as React from 'react';
 import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
+import { useNavigation } from '../context/NavigationContext';
+import { useDialog } from '../context/DialogContext';
 import Modal from './Modal';
 import { deepLinkParams } from '../utils/deepLink';
 import { Settings, Check, X } from './Icons';
@@ -20,8 +22,10 @@ type Req = { id: number; email: string; name: string; location: string; message:
 
 export default function OrganizerRequestsBanner(): React.ReactElement | null {
   const { isAdmin, originalIsAdmin, addRole, refreshRoles } = useRoles();
-  const { getOpenOrganizerRequests, markOrganizerRequestDecided } = useEvents();
+  const { getOpenOrganizerRequests, markOrganizerRequestDecided, getOrganizerRequestDetails } = useEvents();
   const { locale } = useLanguage();
+  const { navigate } = useNavigation();
+  const { showAlert } = useDialog();
   const isDe = locale === 'de';
   const adminLike = isAdmin || originalIsAdmin;
 
@@ -29,6 +33,9 @@ export default function OrganizerRequestsBanner(): React.ReactElement | null {
   const [open, setOpen] = React.useState(false);
   const [busyId, setBusyId] = React.useState<number | null>(null);
   const [loaded, setLoaded] = React.useState(false);
+  // v26.58: Deep-Link nur EINMAL behandeln (der Effekt läuft bei jedem
+  // requests-Update erneut).
+  const deepLinkHandledRef = React.useRef(false);
 
   const reload = React.useCallback(async (): Promise<void> => {
     if (!adminLike) return;
@@ -39,13 +46,49 @@ export default function OrganizerRequestsBanner(): React.ReactElement | null {
   React.useEffect(() => { void reload(); }, [reload]);
 
   // Deep-Link aus der Antrags-Mail: Modal automatisch öffnen (nur als Admin).
+  // v26.58: Ist der verlinkte Antrag NICHT mehr offen (ein anderer Admin war
+  // schneller), landete man vorher kommentarlos auf der Landing Page — jetzt
+  // geht es in die Rollenverwaltung mit dem Hinweis, wer wann entschieden hat.
   React.useEffect(() => {
-    if (!adminLike) return;
+    if (!adminLike || !loaded || deepLinkHandledRef.current) return;
     try {
       const p = deepLinkParams();
-      if (p.get('action') === 'approveorg') setOpen(true);
+      if (p.get('action') !== 'approveorg') return;
+      deepLinkHandledRef.current = true;
+      const reqId = Number(p.get('request') || 0);
+      const stillOpen = reqId > 0 ? requests.some(r => r.id === reqId) : requests.length > 0;
+      if (stillOpen) { setOpen(true); return; }
+      void (async () => {
+        let msg = isDe
+          ? 'Dieser Organizer-Antrag wurde bereits bearbeitet.'
+          : 'This organizer request has already been handled.';
+        if (reqId > 0) {
+          try {
+            const det = await getOrganizerRequestDetails(reqId);
+            if (det) {
+              const who = det.decidedByEmail || (isDe ? 'einen anderen Admin' : 'another admin');
+              const when = det.decidedDate
+                ? new Date(det.decidedDate).toLocaleString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                : '';
+              const person = det.name || det.email;
+              if (det.status === 'Approved') {
+                msg = isDe
+                  ? `Der Antrag von ${person} wurde bereits${when ? ` am ${when}` : ''} durch ${who} freigegeben — die Person ist Organizer.`
+                  : `The request from ${person} was already approved${when ? ` on ${when}` : ''} by ${who} — the person is an organizer.`;
+              } else if (det.status === 'Rejected') {
+                msg = isDe
+                  ? `Der Antrag von ${person} wurde bereits${when ? ` am ${when}` : ''} durch ${who} abgelehnt.`
+                  : `The request from ${person} was already rejected${when ? ` on ${when}` : ''} by ${who}.`;
+              }
+            }
+          } catch { /* generische Meldung reicht */ }
+        }
+        navigate('settings');
+        showAlert(msg, { variant: 'info' });
+      })();
     } catch { /* */ }
-  }, [adminLike]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminLike, loaded, requests]);
 
   if (!adminLike || !loaded || requests.length === 0) return null;
 

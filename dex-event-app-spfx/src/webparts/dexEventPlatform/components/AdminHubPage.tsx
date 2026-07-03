@@ -17,7 +17,7 @@ import { useIsMobile } from '../utils/useIsMobile';
 import { Settings, Users, Mail, Book, FileText, Trash2, Columns, BarChart3 } from './Icons';
 import { RELEASE_NOTES, RELEASE_BEREICHE } from '../data/releaseNotes';
 import { EventService } from '../services/EventService';
-import { setCachedLogoBase64 } from '../services/EmailTemplates';
+import { setCachedLogoBase64, setCachedOrbBase64 } from '../services/EmailTemplates';
 
 // Erklärung aller DEX_*-Listen in Klartext (was tut die Liste, warum gibt es sie).
 const LIST_DOCS: Array<{ name: string; de: string }> = [
@@ -60,12 +60,15 @@ export default function AdminHubPage(): React.ReactElement {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const spfxContext = (window as any).__dexSpfxContext;
   const eventServiceRef = React.useMemo(() => spfxContext ? new EventService(spfxContext) : null, []);
-  const [branding, setBranding] = React.useState<{ logoBase64: string; videoUrl: string; videoFileName: string } | null>(null);
-  const [brandingBusy, setBrandingBusy] = React.useState<'' | 'logo' | 'video'>('');
+  // v26.58: getrennte Assets — logoBase64 = Deloitte-Logo (E-Mail-Kopfzeile,
+  // weißer Schriftzug!), orbBase64 = das eigentliche DEX-Logo (bunter Ring).
+  const [branding, setBranding] = React.useState<{ logoBase64: string; orbBase64: string; videoUrl: string; videoFileName: string } | null>(null);
+  const [brandingBusy, setBrandingBusy] = React.useState<'' | 'logo' | 'orb' | 'video'>('');
   // Cache-Buster fürs Video: fester Dateiname + Overwrite ⇒ ohne ?ver würde der
   // Browser nach einem Tausch weiter das alte Video aus dem Cache zeigen.
   const [videoVer, setVideoVer] = React.useState(0);
   const logoInputRef = React.useRef<HTMLInputElement>(null);
+  const orbInputRef = React.useRef<HTMLInputElement>(null);
   const videoInputRef = React.useRef<HTMLInputElement>(null);
   // Release-Notes: Volltext-Suche + Bereichs-Filter + Art-Filter.
   const [rnSearch, setRnSearch] = React.useState('');
@@ -251,7 +254,16 @@ export default function AdminHubPage(): React.ReactElement {
     if (!branding || !branding.logoBase64) return;
     const a = document.createElement('a');
     a.href = branding.logoBase64;
-    a.download = 'DEX_Logo.png';
+    a.download = 'Deloitte_Logo.png';
+    a.click();
+  };
+
+  // v26.58: Download des DEX-Logos (Orb).
+  const doDownloadOrb = (): void => {
+    if (!branding || !branding.orbBase64) return;
+    const a = document.createElement('a');
+    a.href = branding.orbBase64;
+    a.download = 'DEX_Logo_Orb.png';
     a.click();
   };
 
@@ -281,13 +293,51 @@ export default function AdminHubPage(): React.ReactElement {
         .then(ok => {
           if (ok) {
             setCachedLogoBase64(dataUri); // Mails derselben Sitzung sofort mit neuem Logo
-            setBranding(prev => prev ? { ...prev, logoBase64: dataUri } : { logoBase64: dataUri, videoUrl: '', videoFileName: '' });
+            setBranding(prev => prev ? { ...prev, logoBase64: dataUri } : { logoBase64: dataUri, orbBase64: '', videoUrl: '', videoFileName: '' });
             showAlert(isDe ? 'Neues Logo gespeichert — alle neuen Mails nutzen es ab sofort.' : 'New logo saved — all new emails will use it from now on.', { variant: 'success' });
           } else {
             showAlert(isDe ? 'Logo konnte nicht gespeichert werden.' : 'The logo could not be saved.', { variant: 'error' });
           }
         })
         .catch(() => showAlert(isDe ? 'Logo konnte nicht gespeichert werden.' : 'The logo could not be saved.', { variant: 'error' }))
+        .finally(() => setBrandingBusy(''));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // v26.58: Neues DEX-Logo (Orb, PNG) hochladen — Default-Mail-Bild für Events
+  // ohne eigenes Bild ({{ORB_URL}}-Fallback) + zentrale Download-Quelle.
+  const onOrbFileChosen = (e: React.ChangeEvent<HTMLInputElement>): void => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file || !eventServiceRef) return;
+    if (file.size > 1.5 * 1024 * 1024) {
+      showAlert(
+        isDe
+          ? 'Die Datei ist größer als 1,5 MB. Das Bild wird in Mails eingebettet — bitte das PNG vorher komprimieren und erneut hochladen.'
+          : 'The file is larger than 1.5 MB. The image is embedded into emails — please compress the PNG first and upload again.',
+        { variant: 'error' });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUri = typeof reader.result === 'string' ? reader.result : '';
+      if (dataUri.indexOf('data:image/png') !== 0) {
+        showAlert(isDe ? 'Bitte eine PNG-Datei auswählen.' : 'Please choose a PNG file.', { variant: 'error' });
+        return;
+      }
+      setBrandingBusy('orb');
+      eventServiceRef.saveBrandingOrb(dataUri)
+        .then(ok => {
+          if (ok) {
+            setCachedOrbBase64(dataUri);
+            setBranding(prev => prev ? { ...prev, orbBase64: dataUri } : { logoBase64: '', orbBase64: dataUri, videoUrl: '', videoFileName: '' });
+            showAlert(isDe ? 'Neues DEX-Logo gespeichert.' : 'New DEX logo saved.', { variant: 'success' });
+          } else {
+            showAlert(isDe ? 'DEX-Logo konnte nicht gespeichert werden.' : 'The DEX logo could not be saved.', { variant: 'error' });
+          }
+        })
+        .catch(() => showAlert(isDe ? 'DEX-Logo konnte nicht gespeichert werden.' : 'The DEX logo could not be saved.', { variant: 'error' }))
         .finally(() => setBrandingBusy(''));
     };
     reader.readAsDataURL(file);
@@ -310,7 +360,7 @@ export default function AdminHubPage(): React.ReactElement {
     eventServiceRef.uploadBrandingVideo(file)
       .then(url => {
         if (url) {
-          setBranding(prev => prev ? { ...prev, videoUrl: url, videoFileName: file.name } : { logoBase64: '', videoUrl: url, videoFileName: file.name });
+          setBranding(prev => prev ? { ...prev, videoUrl: url, videoFileName: file.name } : { logoBase64: '', orbBase64: '', videoUrl: url, videoFileName: file.name });
           setVideoVer(v => v + 1);
           showAlert(isDe ? 'Neues Logo-Video hochgeladen.' : 'New logo video uploaded.', { variant: 'success' });
         } else {
@@ -389,27 +439,57 @@ export default function AdminHubPage(): React.ReactElement {
         <>
           <h2 style={{ fontSize: '1.15rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Logo & Branding' : 'Logo & branding'}</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 14, marginBottom: 28 }}>
+            {/* v26.58: DEX-Logo = der bunte Orb-Ring (vorher zeigte diese Karte
+                fälschlich das Deloitte-Mail-Logo, dessen weißer Schriftzug auf
+                weißem Grund unsichtbar war — „nur ein grüner Punkt"). */}
             <div style={cardStyle}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                 <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><FileText size={18} /></span>
-                <span style={{ fontWeight: 700 }}>{isDe ? 'DEX-Logo (PNG)' : 'DEX logo (PNG)'}</span>
+                <span style={{ fontWeight: 700 }}>{isDe ? 'DEX-Logo (Orb, PNG)' : 'DEX logo (orb, PNG)'}</span>
+              </div>
+              {branding && branding.orbBase64 ? (
+                <img src={branding.orbBase64} alt="DEX Orb" style={{ maxWidth: '100%', maxHeight: 90, display: 'block', margin: '0 auto 10px', background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 8 }} />
+              ) : (
+                <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-400)', fontStyle: 'italic', margin: '0 0 10px' }}>{isDe ? 'Noch kein DEX-Logo hinterlegt.' : 'No DEX logo stored yet.'}</p>
+              )}
+              <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
+                {isDe
+                  ? 'Der bunte DEX-Ring — Standard-Bild in Mails von Events ohne eigenes Event-Bild und zentrale Download-Quelle (z. B. für Intranet-Artikel). Neue Mails nutzen nach einem Tausch automatisch das neue Bild.'
+                  : 'The colourful DEX ring — default image in emails of events without their own image and central download source (e.g. for intranet articles). New emails automatically use the new image after a swap.'}
+              </p>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '8px 12px', flex: 1 }} disabled={!branding || !branding.orbBase64} onClick={doDownloadOrb}>
+                  {isDe ? 'Herunterladen' : 'Download'}
+                </button>
+                <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 12px', flex: 1 }} disabled={brandingBusy !== '' || !eventServiceRef} onClick={() => { if (orbInputRef.current) orbInputRef.current.click(); }}>
+                  {brandingBusy === 'orb' ? (isDe ? 'Wird gespeichert…' : 'Saving…') : (isDe ? 'Neues hochladen (PNG)' : 'Upload new (PNG)')}
+                </button>
+              </div>
+              <input ref={orbInputRef} type="file" accept="image/png" style={{ display: 'none' }} onChange={onOrbFileChosen} />
+            </div>
+            <div style={cardStyle}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><FileText size={18} /></span>
+                <span style={{ fontWeight: 700 }}>{isDe ? 'Deloitte-Logo (E-Mail-Kopfzeile)' : 'Deloitte logo (email header)'}</span>
               </div>
               {branding && branding.logoBase64 ? (
-                <img src={branding.logoBase64} alt="DEX Logo" style={{ maxWidth: '100%', maxHeight: 90, display: 'block', margin: '0 auto 10px', background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 8 }} />
+                // Dunkle Vorschau-Fläche: das Logo ist ein WEISSER Schriftzug für
+                // den schwarzen Mail-Header — auf Weiß wäre nur der grüne Punkt sichtbar.
+                <img src={branding.logoBase64} alt="Deloitte Logo" style={{ maxWidth: '100%', maxHeight: 90, display: 'block', margin: '0 auto 10px', background: '#0d0d0d', border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 12 }} />
               ) : (
                 <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-400)', fontStyle: 'italic', margin: '0 0 10px' }}>{isDe ? 'Noch kein Logo hinterlegt.' : 'No logo stored yet.'}</p>
               )}
               <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
                 {isDe
-                  ? 'Wird als Standard-Logo in allen E-Mails der App genutzt. Nach einem Tausch tragen alle NEU versendeten Mails automatisch das neue Logo — bereits versendete bleiben unverändert.'
-                  : 'Used as the default logo in all emails sent by the app. After a swap, all NEWLY sent emails automatically carry the new logo — emails already sent remain unchanged.'}
+                  ? 'Weißer Deloitte-Schriftzug in der schwarzen Kopfzeile aller App-Mails (Vorschau deshalb auf Dunkel). Nach einem Tausch tragen alle NEU versendeten Mails automatisch das neue Logo — bereits versendete bleiben unverändert.'
+                  : 'White Deloitte wordmark in the black header of all app emails (hence the dark preview). After a swap, all NEWLY sent emails automatically carry the new logo — emails already sent remain unchanged.'}
               </p>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <button className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '8px 12px', flex: 1 }} disabled={!branding || !branding.logoBase64} onClick={doDownloadLogo}>
-                  {isDe ? 'Aktuelles Logo herunterladen' : 'Download current logo'}
+                  {isDe ? 'Herunterladen' : 'Download'}
                 </button>
                 <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 12px', flex: 1 }} disabled={brandingBusy !== '' || !eventServiceRef} onClick={() => { if (logoInputRef.current) logoInputRef.current.click(); }}>
-                  {brandingBusy === 'logo' ? (isDe ? 'Wird gespeichert…' : 'Saving…') : (isDe ? 'Neues Logo hochladen (PNG)' : 'Upload new logo (PNG)')}
+                  {brandingBusy === 'logo' ? (isDe ? 'Wird gespeichert…' : 'Saving…') : (isDe ? 'Neues hochladen (PNG)' : 'Upload new (PNG)')}
                 </button>
               </div>
               <input ref={logoInputRef} type="file" accept="image/png" style={{ display: 'none' }} onChange={onLogoFileChosen} />
@@ -426,8 +506,8 @@ export default function AdminHubPage(): React.ReactElement {
               )}
               <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
                 {isDe
-                  ? 'Zentral abgelegtes Logo-Video (z. B. für Intranet-Artikel und Präsentationen) — hier tauschen und herunterladen.'
-                  : 'Centrally stored logo video (e.g. for intranet articles and presentations) — swap and download it here.'}
+                  ? 'Zentral abgelegtes Logo-Video (z. B. für Intranet-Artikel und Präsentationen) — hier tauschen und herunterladen. Hinweis: Der animierte Ring in der App selbst ist KEIN Video, sondern wird von der App live gerendert — hier liegt die Video-Datei zum Weitergeben, sobald sie einmal hochgeladen wurde.'
+                  : 'Centrally stored logo video (e.g. for intranet articles and presentations) — swap and download it here. Note: the animated ring in the app itself is NOT a video but rendered live by the app — this slot stores the shareable video file once uploaded.'}
               </p>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 {branding && branding.videoUrl ? (
