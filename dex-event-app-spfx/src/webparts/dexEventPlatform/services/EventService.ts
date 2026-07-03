@@ -610,6 +610,9 @@ export interface CustomField {
   /** v18.41: People-Picker (user/roommate): ausgewählte Person bei An-/Abmelde-
    *  Mail auf CC (nicht im Outlook-Termin). */
   ccOnEmails?: boolean;
+  /** v26.60: roommate-Felder — false schaltet die separate
+   *  „Zimmerpartner-Anfrage"-Mail ab (undefined = an, Bestandsverhalten). */
+  notifyRoommate?: boolean;
   /** v7.21: Sichtbarkeitsbedingung — Feld nur anzeigen wenn das Quell-Feld
    *  einen der `values` als Antwort hat. */
   showIf?: { fieldId: string; values: string[] };
@@ -10623,6 +10626,7 @@ export class EventService {
       { title: 'AssignedOrganizers', type: 3, note: true },
       { title: 'PageContext', type: 2 },
       { title: 'AskWizardStep', type: 9 },
+      { title: 'Category', type: 2 }, // v26.60: 'Question' | 'Bug'
       { title: 'AnswerWizardMarker', type: 2 }, // v26.52: Markierungsbox (JSON {x,y,w,h} in %) auf der Wizard-Vorschau
       { title: 'AnswerText', type: 3, note: true },
       { title: 'AnswerArticleIds', type: 3, note: true },
@@ -10682,6 +10686,7 @@ export class EventService {
       { title: 'AnsweredByJobTitle', type: 2 },
       { title: 'FollowUps', type: 3, note: true },
       { title: 'AskWizardStep', type: 9 },
+      { title: 'Category', type: 2 }, // v26.60: 'Question' | 'Bug'
       { title: 'AnswerWizardMarker', type: 2 }, // v26.52: Markierungsbox (JSON {x,y,w,h} in %) auf der Wizard-Vorschau
     ];
     for (const f of extra) {
@@ -10705,6 +10710,9 @@ export class EventService {
     audience: string; eventId: string; eventTitle: string;
     assignedOrganizers: string[]; pageContext: string;
     askWizardStep?: number | null;
+    /** v26.60: 'bug' = Bug-Report (Benachrichtigung an die DEX-Maintainer
+     *  statt an alle Power-User); sonst inhaltliche Frage. */
+    category?: 'question' | 'bug';
   }): Promise<number | null> {
     try {
       const first = (t.questions[0] || 'Frage').replace(/\s+/g, ' ').trim().slice(0, 240) || 'Frage';
@@ -10722,6 +10730,7 @@ export class EventService {
           'AssignedOrganizers': JSON.stringify(t.assignedOrganizers || []),
           'PageContext': t.pageContext || '',
           'AskWizardStep': (t.askWizardStep == null) ? null : t.askWizardStep,
+          'Category': t.category === 'bug' ? 'Bug' : 'Question',
         }
       );
       if (!resp.ok) return null;
@@ -10756,7 +10765,7 @@ export class EventService {
   /** Alle Tickets laden (inkl. Anhänge per $expand). Neueste zuerst. */
   public async getTickets(): Promise<DexTicket[]> {
     try {
-      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AskWizardStep,AnswerText,AnswerArticleIds,AnswerWizardStep,AnswerWizardMarker,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
+      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AskWizardStep,Category,AnswerText,AnswerArticleIds,AnswerWizardStep,AnswerWizardMarker,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
       const url = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items?$select=${sel}&$expand=AttachmentFiles&$orderby=Created desc&$top=500`;
       const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
       if (!resp.ok) return [];
@@ -10774,7 +10783,7 @@ export class EventService {
    *  Ask-Modal — der Fragesteller sieht Status + Antwort in der App). */
   public async getMyTickets(email: string): Promise<DexTicket[]> {
     try {
-      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AskWizardStep,AnswerText,AnswerArticleIds,AnswerWizardStep,AnswerWizardMarker,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
+      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AskWizardStep,Category,AnswerText,AnswerArticleIds,AnswerWizardStep,AnswerWizardMarker,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
       const safe = (email || '').replace(/'/g, "''");
       const url = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items?$select=${sel}&$expand=AttachmentFiles&$filter=AskerEmail eq '${safe}'&$orderby=Created desc&$top=100`;
       const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
@@ -10831,6 +10840,8 @@ export class EventService {
       eventTitle: it.TicketEventTitle || '',
       assignedOrganizers: parseArr(it.AssignedOrganizers),
       pageContext: it.PageContext || '',
+      // v26.60: Bug-Report vs. inhaltliche Frage (Bestand ohne Category = Frage).
+      category: (it.Category === 'Bug' ? 'bug' : 'question') as DexTicket['category'],
       askWizardStep: (askStepRaw === 0 || (askStepRaw != null && askStepRaw !== '')) ? Number(askStepRaw) : null,
       answerText: it.AnswerText || '',
       answerArticleIds: parseArr(it.AnswerArticleIds),

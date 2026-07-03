@@ -51,6 +51,9 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
   const [selEventId, setSelEventId] = React.useState<string>('');
   const [myNums, setMyNums] = React.useState<{ registered: number[]; waitlisted: number[] }>({ registered: [], waitlisted: [] });
   const [askWizardStep, setAskWizardStep] = React.useState<number | null>(null);
+  // v26.60: Organizer unterscheiden beim Einreichen zwischen inhaltlicher
+  // Frage (→ Power-User) und Bug-Report (→ DEX-Maintainer Nils + Eike).
+  const [askCategory, setAskCategory] = React.useState<'question' | 'bug'>('question');
   const [shots, setShots] = React.useState<ShotRef[]>([]);
   // v26.10: Index des Screenshots, der gerade groß markiert wird (null = keiner).
   const [annotateIdx, setAnnotateIdx] = React.useState<number | null>(null);
@@ -204,11 +207,12 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
       screenshots: shots.map((s) => s.file),
       eventId: selEventId,
       askWizardStep,
+      category: askCategory,
     });
     setSubmitting(false);
     if (ok) {
       shots.forEach((s) => { try { URL.revokeObjectURL(s.url); } catch { /* */ } });
-      setShots([]); setQuestions(['']); setHits([]); setDone(true);
+      setShots([]); setQuestions(['']); setHits([]); setDone(true); setAskCategory('question');
     }
   };
 
@@ -298,6 +302,39 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
             {/* v26.30: Zu welchem Event gehört die Frage? Steuert das Routing —
                 Event mit Organizern → an dessen Organizer; „kein Event" oder ein
                 Event ohne Organizer → an das DEX-Support-Team (Power-User). */}
+            {/* v26.60: Organizer/Admins unterscheiden beim Einreichen zwischen
+                inhaltlicher Frage (→ Power-User) und Bug (→ DEX-Maintainer). */}
+            {(currentUserRole === 'Organizer' || isAdmin) && (
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700,#444)', marginBottom: 4 }}>
+                  {isDe ? 'Worum geht es?' : 'What is it about?'}
+                </label>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button type="button" onClick={() => setAskCategory('question')}
+                    style={{ flex: '1 1 180px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '9px 12px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.85rem', fontWeight: 600,
+                      border: askCategory === 'question' ? '2px solid var(--dex-green,#86bc25)' : '1px solid var(--dex-gray-300,#d1d1d1)',
+                      background: askCategory === 'question' ? '#f1f7e8' : '#fff',
+                      color: askCategory === 'question' ? 'var(--dex-green-dark,#4a7c1f)' : 'var(--dex-gray-600,#666)' }}>
+                    <Icon iconName="Help" style={{ fontSize: 14 }} />
+                    {isDe ? 'Inhaltliche Frage' : 'Content question'}
+                  </button>
+                  <button type="button" onClick={() => setAskCategory('bug')}
+                    style={{ flex: '1 1 180px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 7, padding: '9px 12px', borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.85rem', fontWeight: 600,
+                      border: askCategory === 'bug' ? '2px solid #ed8b00' : '1px solid var(--dex-gray-300,#d1d1d1)',
+                      background: askCategory === 'bug' ? '#fff8ef' : '#fff',
+                      color: askCategory === 'bug' ? '#b35a00' : 'var(--dex-gray-600,#666)' }}>
+                    <Icon iconName="Bug" style={{ fontSize: 14 }} />
+                    {isDe ? 'Bug / Fehler melden' : 'Report a bug'}
+                  </button>
+                </div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500,#808080)', marginTop: 4 }}>
+                  {askCategory === 'bug'
+                    ? (isDe ? 'Bug-Reports gehen direkt an das DEX-Entwicklungsteam.' : 'Bug reports go directly to the DEX development team.')
+                    : (isDe ? 'Inhaltliche Fragen beantworten die DEX-Power-User.' : 'Content questions are answered by the DEX power users.')}
+                </div>
+              </div>
+            )}
+
             <div>
               <label htmlFor="dex-q-event" style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700,#444)', marginBottom: 4 }}>
                 {isDe ? 'Zu welchem Event ist deine Frage?' : 'Which event is your question about?'}

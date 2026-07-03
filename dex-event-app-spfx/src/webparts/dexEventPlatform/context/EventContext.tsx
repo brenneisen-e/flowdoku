@@ -1424,6 +1424,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // v18.41: CC-bei-Mail-Flag durchreichen — collectCcEmailsFromFields liest es.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ccOnEmails: !!(cf as any).ccOnEmails,
+        // v26.60: Roommate-Benachrichtigung — nur explizites false schaltet ab.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        notifyRoommate: (cf as any).notifyRoommate !== false,
         // v11.16: onlyForGroup aus dem persistierten Feld durchreichen.
         // Wurde im Wizard sauber gespeichert (CustomFields-JSON enthält
         // den Schlüssel), aber der Loader hat ihn nie zurückgelesen —
@@ -1951,6 +1954,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       if (!event.disableEmails) {
         for (const f of event.eventSpecificFields) {
           if (f.type !== 'roommate') continue;
+          // v26.60 BUG-FIX (Organizer-Feedback): Diese Anfrage-Mail lief bisher
+          // IMMER — der CC-Schalter des Felds betraf nur die Kopie der
+          // An-/Abmelde-Mail. Jetzt schaltet der neue Wizard-Schalter
+          // „Ausgewählte Person automatisch benachrichtigen" sie ab.
+          if (f.notifyRoommate === false) continue;
           const v = customData[f.id];
           if (!v) continue;
           const m = v.match(/<([^>]+@[^>]+)>/);

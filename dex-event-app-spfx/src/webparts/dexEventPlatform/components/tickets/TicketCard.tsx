@@ -164,6 +164,12 @@ export default function TicketCard(props: { ticket: DexTicket; defaultExpanded?:
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ padding: '2px 9px', borderRadius: 10, background: si.bg, color: si.col, fontSize: 12, fontWeight: 700 }}>{si.label}</span>
+          {/* v26.60: Bug-Reports sichtbar markieren (gehen an die DEX-Maintainer). */}
+          {ticket.category === 'bug' && (
+            <span style={{ padding: '2px 9px', borderRadius: 10, background: '#fff8ef', border: '1px solid #ed8b00', color: '#b35a00', fontSize: 12, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <Icon iconName="Bug" style={{ fontSize: 11 }} /> Bug
+            </span>
+          )}
           {/* v26.8: Foto-Kontaktkarte des Fragestellers (Hover → Teams-Chat). */}
           <PersonContactHover email={ticket.askerEmail} name={ticket.askerName || ticket.askerEmail} size={30}
             subline={contactSubline(ticket.askerJobTitle, ticket.askerLocation)} isDe={isDe} />

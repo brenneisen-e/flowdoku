@@ -424,6 +424,11 @@ export interface EventSpecificField {
    *  des Teilnehmers auf CC gesetzt (z.B. die Assistenz). Betrifft NUR die
    *  E-Mails — NICHT den Outlook-Termin. */
   ccOnEmails?: boolean;
+  /** v26.60: Nur für `type === 'roommate'`. Steuert die separate
+   *  „Zimmerpartner-Anfrage"-Mail an die ausgewählte Person direkt nach der
+   *  Anmeldung. Default (undefined) = true (Bestandsverhalten); explizit
+   *  false = keine Benachrichtigungs-Mail an den Roommate. */
+  notifyRoommate?: boolean;
   /** Optionale externe Links (AGB, Datenschutz etc.) unter dem Feld */
   externalLinks?: Array<{ label: string; url: string }>;
   /** v7.11: Wenn `type === 'select'` und `multi === true`, wird das Feld als
@@ -569,6 +574,10 @@ export interface DexTicket {
   /** v26.30: 1-basierter Event-Wizard-Schritt, in dem die Frage gestellt wurde
    *  (Organizer im Wizard) — null = nicht im Wizard. */
   askWizardStep: number | null;
+  /** v26.60: 'bug' = Bug-Report (Benachrichtigung geht an die DEX-Maintainer
+   *  statt an alle Power-User) · 'question' = inhaltliche Frage (Default,
+   *  auch für Bestandstickets ohne Category-Spalte). */
+  category: 'question' | 'bug';
   answerText: string;
   /** IDs der in der Antwort verlinkten Handbuch-Artikel. */
   answerArticleIds: string[];

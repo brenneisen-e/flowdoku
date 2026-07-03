@@ -2103,7 +2103,9 @@ export default function RegistrationPage(): React.ReactElement {
         searchUserByEmail={searchUser}
         placeholder={tEvent('reg.userfield.placeholder')}
         errorStyle={showErrors && field.required && !vals[field.id]?.trim() ? errorBorder : {}}
-        hint={field.type === 'roommate' ? tEvent('reg.userfield.notifyhint') : undefined}
+        // v26.60: „Person wird benachrichtigt"-Hinweis nur, wenn die
+        // Zimmerpartner-Anfrage-Mail nicht abgeschaltet wurde.
+        hint={field.type === 'roommate' && field.notifyRoommate !== false ? tEvent('reg.userfield.notifyhint') : undefined}
         forcedIsDe={locale === 'de'}
       />
     ) : field.type === 'checkbox' ? (

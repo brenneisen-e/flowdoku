@@ -42,6 +42,10 @@ export interface AskInput {
   /** v26.30: 1-basierter Wizard-Schritt, in dem die Frage gestellt wurde
    *  (Organizer im Event-Wizard) — null/undefined = nicht im Wizard. */
   askWizardStep?: number | null;
+  /** v26.60: 'bug' = Bug-Report — landet im Ticketsystem, die Benachrichtigung
+   *  geht aber NUR an die DEX-Maintainer (statt an alle Power-User).
+   *  undefined/'question' = inhaltliche Frage (bisheriges Verhalten). */
+  category?: 'question' | 'bug';
 }
 
 export interface AnswerInput {
@@ -242,6 +246,16 @@ export function TicketProvider(props: { context: WebPartContext; children: React
       }
     }
 
+    // v26.60: Bug-Reports landen IMMER in der Power-User-Queue (Ticketsystem),
+    // die Benachrichtigung geht aber unten nur an die DEX-Maintainer. Ein
+    // Event-Bezug bleibt als Kontext erhalten, Organizer-Routing entfällt.
+    const category: 'question' | 'bug' = input.category === 'bug' ? 'bug' : 'question';
+    if (category === 'bug') {
+      audience = 'PowerUser';
+      assignedOrganizers = [];
+      if (ctxEvent) { eventId = ctxEvent.id; eventTitle = ctxEvent.title; }
+    }
+
     const pageContext = (() => { try { return deepLinkParams().get('action') || window.location.pathname; } catch { return ''; } })();
 
     const id = await eventService.createTicket({
@@ -253,6 +267,7 @@ export function TicketProvider(props: { context: WebPartContext; children: React
       askerJobTitle: currentUser.jobTitle || '',
       audience, eventId, eventTitle, assignedOrganizers, pageContext,
       askWizardStep: input.askWizardStep ?? null,
+      category,
     });
     if (id == null) return false;
 
@@ -265,7 +280,13 @@ export function TicketProvider(props: { context: WebPartContext; children: React
     let toEmails: string[] = [];
     let toNames: string[] = [];
     let cc = '';
-    if (audience === 'PowerUser') {
+    if (category === 'bug') {
+      // v26.60: Bug-Reports gehen NUR an die DEX-Maintainer (Wunsch: „Bug ist
+      // für Nils und Eike, inhaltliche Fragen für die Power-User") — gleiche
+      // feste Adressen wie die DEX-Anfrage-Mail (sendAdminInquiry).
+      toEmails = ['ebrenneisen@deloitte.de', 'nifelten@deloitte.de'];
+      toNames = ['Eike Brenneisen', 'Nils Felten'];
+    } else if (audience === 'PowerUser') {
       const pu = roles.filter(r => r.isPowerUser && r.userEmail);
       if (pu.length > 0) { toEmails = pu.map(r => r.userEmail); toNames = pu.map(r => r.userName || r.userEmail); }
       const admins = roles.filter(r => r.role === 'Admin' && r.userEmail).map(r => r.userEmail);
@@ -290,19 +311,22 @@ export function TicketProvider(props: { context: WebPartContext; children: React
       const qHtml = questions.length === 1
         ? `<p style="margin:6px 0 0;">${esc(questions[0])}</p>`
         : `<ul style="margin:8px 0 0 18px;padding:0;">${questions.map(q => `<li style="margin-bottom:6px;">${esc(q)}</li>`).join('')}</ul>`;
+      const isBug = category === 'bug';
       const inner = `
         <p style="margin:0 0 6px;">Hallo,</p>
-        <p style="margin:0 0 16px;">im DEX-Ticketsystem ist eine neue Frage eingegangen${eventTitle ? ` (Event: <strong>${esc(eventTitle)}</strong>)` : ''}.</p>
+        <p style="margin:0 0 16px;">im DEX-Ticketsystem ist ${isBug ? 'ein neuer <strong>Bug-Report</strong>' : 'eine neue Frage'} eingegangen${eventTitle ? ` (Event: <strong>${esc(eventTitle)}</strong>)` : ''}.</p>
         <p style="margin:0;"><strong>Von:</strong> ${esc(toNamesAskerLabel(currentUser))}</p>
-        <p style="margin:14px 0 0;"><strong>Frage${questions.length > 1 ? 'n' : ''}:</strong></p>
+        <p style="margin:14px 0 0;"><strong>${isBug ? 'Beschreibung' : `Frage${questions.length > 1 ? 'n' : ''}`}:</strong></p>
         ${qHtml}
         ${ctaButton(link, 'Ticket öffnen & beantworten')}
         ${noReplyHintHtml}
       `;
-      const subject = questions.length === 1
-        ? `Neue Frage im DEX-Ticketsystem`
-        : `Neue Fragen (${questions.length}) im DEX-Ticketsystem`;
-      const body = wrapTemplate(GREEN, 'Neue Frage im Ticketsystem', eventTitle || 'DEX-Support', inner);
+      const subject = isBug
+        ? `Neuer Bug-Report im DEX-Ticketsystem`
+        : questions.length === 1
+          ? `Neue Frage im DEX-Ticketsystem`
+          : `Neue Fragen (${questions.length}) im DEX-Ticketsystem`;
+      const body = wrapTemplate(isBug ? '#ed8b00' : GREEN, isBug ? 'Neuer Bug-Report' : 'Neue Frage im Ticketsystem', eventTitle || 'DEX-Support', inner);
       try {
         await eventService.queueEmail(
           subject, toEmails.join('; '), toNames.join('; '), body,
