@@ -697,7 +697,7 @@ async function resolveAudienceMembersToCsv(
 
 export default function EventCreationPage(): React.ReactElement {
   const { goBack, selectedEventId, currentPage, setNavigationGuard } = useNavigation();
-  const { events, childEventsOf, createEvent, updateEvent, getLastEventUpdateError, deleteEvent, deleteEventItemOnly, refreshEvents, requestCoOrganizerApprovals, notifyNewCoOrganizers } = useEvents();
+  const { events, childEventsOf, createEvent, updateEvent, getLastEventUpdateError, deleteEvent, deleteEventItemOnly, refreshEvents, requestCoOrganizerApprovals, notifyNewCoOrganizers, notifyAdminsExternalAudienceAccess } = useEvents();
   const { currentUser } = useCurrentUser();
   // searchGroups + searchUsersByLocation werden seit v19.x ausschließlich im
   // ausgelagerten <AudiencePicker> verwendet (eigener useRoles-Hook dort).
@@ -4008,6 +4008,20 @@ export default function EventCreationPage(): React.ReactElement {
       console.log('[DEX][edit-save] updates.CustomFields about to POST:', updates['CustomFields']);
       const success = await updateEvent(selectedEventId, updates);
       if (success) {
+        // v26.57: NEU zur Zielgruppe hinzugekommene Personen außerhalb von
+        // @deloitte.de → Approve-Mail an die Admins (SharePoint ist im Default
+        // nur für Deloitte DE ALL freigeschaltet; internationale Kolleg:innen
+        // brauchen zusätzlich Site-Zugriff). Nur der Diff gegen den vorherigen
+        // Stand, damit nicht bei jedem Save erneut gemailt wird. Fire-and-forget.
+        try {
+          const prevAudLc = new Set((editEvent?.audienceFilter || []).map(a => (a || '').trim().toLowerCase()));
+          const addedNonDe = audience.split(',')
+            .map(s => s.trim())
+            .filter(a => a.indexOf('@') > 0 && !a.toLowerCase().endsWith('@deloitte.de') && !prevAudLc.has(a.toLowerCase()));
+          if (addedNonDe.length > 0) {
+            void notifyAdminsExternalAudienceAccess(title, addedNonDe, `${currentUser.firstName} ${currentUser.surname}`.trim()).catch(() => { /* */ });
+          }
+        } catch { /* darf den Save nie stören */ }
         setProgress(65);
         setProgressLabel(isDe ? 'Berechtigungen werden gesetzt...' : 'Setting permissions...');
         // v9.35: Berechtigungs-Sync — beim Edit können neue Co-Organizer hinzugekommen
@@ -4568,6 +4582,18 @@ export default function EventCreationPage(): React.ReactElement {
         try {
           await requestCoOrganizerApprovals(sanitizedOrgPairCreate.orgString, sanitizedOrgPairCreate.orgEmailString, title);
         } catch (err) { console.warn('[DEX] Co-Organizer-Freigabe-Anträge (Create) fehlgeschlagen:', err); }
+
+        // v26.57: Zielgruppen-Personen außerhalb von @deloitte.de → Approve-Mail
+        // an die Admins für den Site-Zugriff (SharePoint-Default: nur Deloitte
+        // DE ALL). Beim Neu-Anlegen zählt jede Nicht-DE-Adresse. Fire-and-forget.
+        try {
+          const nonDe = audience.split(',')
+            .map(s => s.trim())
+            .filter(a => a.indexOf('@') > 0 && !a.toLowerCase().endsWith('@deloitte.de'));
+          if (nonDe.length > 0) {
+            void notifyAdminsExternalAudienceAccess(title, nonDe, `${currentUser.firstName} ${currentUser.surname}`.trim()).catch(() => { /* */ });
+          }
+        } catch { /* darf den Save nie stören */ }
 
         // v11.87: Sub-Events bekommen den Bereich (topEnd..90) gleichmäßig
         // aufgeteilt — pro Sub-Event ein eigener Stage-Slot. persistSubEventsForParent

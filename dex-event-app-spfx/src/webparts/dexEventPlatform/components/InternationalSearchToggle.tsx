@@ -14,12 +14,14 @@ interface Props {
 const InternationalSearchToggle: React.FC<Props> = ({ checked, onChange, isDe = true, compact = false, query }) => {
   // v24.3: erst ab dem ersten eingetippten Zeichen anzeigen.
   if (query !== undefined && query.trim().length === 0) return null;
+  // v26.57: International = ALLE Deloitte-Member-Firm-Domains (nicht nur
+  // @deloitte.com) — z. B. Österreich @deloitte.at, Schweiz @deloitte.ch.
   const label = isDe
-    ? 'Auch international suchen (@deloitte.com)'
-    : 'Search internationally too (@deloitte.com)';
+    ? 'Auch international suchen (z. B. @deloitte.com, @deloitte.at)'
+    : 'Search internationally too (e.g. @deloitte.com, @deloitte.at)';
   const hint = isDe
-    ? 'Standardmäßig wird nur in der deutschen Member-Firm (@deloitte.de) gesucht.'
-    : 'By default only the German member firm (@deloitte.de) is searched.';
+    ? 'Standardmäßig wird nur in der deutschen Member-Firm (@deloitte.de) gesucht. International = alle Deloitte-Domains (z. B. @deloitte.com, @deloitte.at, @deloitte.ch).'
+    : 'By default only the German member firm (@deloitte.de) is searched. International = all Deloitte domains (e.g. @deloitte.com, @deloitte.at, @deloitte.ch).';
   return (
     <label
       title={hint}

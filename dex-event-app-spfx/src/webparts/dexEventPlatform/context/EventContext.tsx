@@ -583,6 +583,11 @@ interface EventContextType {
   subscribeEventRealtime: (eventId: string, kind: 'counter' | 'participants', onChange: () => void) => Promise<() => void>;
   markExpiredEventsAsCompleted: () => Promise<number>;
   sendAdminInquiry: (requesterName: string, requesterEmail: string, eventName: string, message: string, requesterLocation?: string, requesterJobTitle?: string) => Promise<boolean>;
+  /** v26.57: Approve-Mail an die Admins, wenn Personen AUSSERHALB von
+   *  @deloitte.de zur Zielgruppe eines Events hinzugefügt wurden — der
+   *  SharePoint ist im Default nur für Deloitte DE ALL freigeschaltet,
+   *  internationale Kolleg:innen brauchen also zusätzlich Site-Zugriff. */
+  notifyAdminsExternalAudienceAccess: (eventTitle: string, persons: string[], requesterName: string) => Promise<void>;
   /** v12.12: Admin-Aktion zum Re-Seed der Default-Email-Templates in
    *  DEX_EmailTemplates. Überschreibt die aktuelle Subject/Heading/BodyHtml
    *  jedes Standard-Templates mit den Default-Werten aus dem Code. */
@@ -4559,6 +4564,56 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   }
 
   /**
+   * v26.57: Approve-Mail an die Admins, wenn Personen AUSSERHALB von
+   * @deloitte.de zur Zielgruppe eines Events hinzugefügt wurden. Hintergrund:
+   * Der SharePoint ist im Default nur für Deloitte DE ALL freigeschaltet —
+   * internationale Member-Firm-Kolleg:innen (z. B. @deloitte.at) sehen die
+   * App sonst gar nicht, selbst wenn sie in der Zielgruppe stehen. Die Mail
+   * listet die Personen auf und verlinkt direkt die Site-Berechtigungsseite.
+   * Fehler hier dürfen den Event-Save nie blockieren (Aufrufer feuern
+   * fire-and-forget mit .catch).
+   */
+  async function notifyAdminsExternalAudienceAccess(eventTitle: string, persons: string[], requesterName: string): Promise<void> {
+    const unique = Array.from(new Set(persons.map(p => (p || '').trim().toLowerCase()).filter(Boolean)));
+    if (unique.length === 0) return;
+    try {
+      // v26.57: Wer schon Site-Zugriff hat (direkt oder über eine Gruppe),
+      // braucht keine Freigabe mehr — aus der Mail rausfiltern. Nicht
+      // prüfbare Fälle (null) bleiben drin: lieber einmal zu viel
+      // benachrichtigen als eine nötige Freigabe verpassen.
+      const accessChecks = await Promise.all(unique.map(async p => ({
+        email: p,
+        hasAccess: await eventService.userHasSiteAccess(p),
+      })));
+      const needsAccess = accessChecks.filter(c => c.hasAccess !== true).map(c => c.email);
+      if (needsAccess.length === 0) return;
+      const admins = await eventService.getRoleEmails('Admin');
+      if (admins.length === 0) return;
+      const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      const permissionsUrl = `${eventService.siteUrl}/_layouts/15/user.aspx`;
+      const alreadyOk = unique.length - needsAccess.length;
+      const inner = `
+        <p style="margin:0 0 12px;">Hallo zusammen,</p>
+        <p style="margin:0 0 12px;">beim Event <strong>${esc(eventTitle || '—')}</strong> wurden Personen <strong>außerhalb von @deloitte.de</strong> zur Zielgruppe hinzugefügt${requesterName ? ` (durch ${esc(requesterName)})` : ''}:</p>
+        <ul style="margin:0 0 12px;padding-left:20px;">
+          ${needsAccess.map(p => `<li style="margin:2px 0;"><a href="mailto:${esc(p)}">${esc(p)}</a></li>`).join('')}
+        </ul>
+        ${alreadyOk > 0 ? `<p style="margin:0 0 12px;color:#777;font-size:13px;">${alreadyOk} weitere hinzugefügte ${alreadyOk === 1 ? 'Person hat' : 'Personen haben'} bereits Zugriff auf die Site und ${alreadyOk === 1 ? 'ist' : 'sind'} hier nicht aufgeführt.</p>` : ''}
+        <p style="margin:0 0 12px;">Der SharePoint ist im Default nur für <strong>Deloitte DE ALL</strong> freigeschaltet — damit diese Personen die DEX App (und damit das Event) überhaupt öffnen können, müssen sie zusätzlich auf der Site berechtigt werden.</p>
+        <p style="margin:20px 0;text-align:center;"><a href="${permissionsUrl}" style="display:inline-block;padding:12px 26px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Site-Berechtigungen öffnen &amp; freigeben</a></p>
+        <p style="margin:0;color:#777;font-size:13px;">Berechtigen geht nur mit Site-Owner-Rechten. Ohne Freigabe bleiben die Personen zwar in der Zielgruppe, können die App aber nicht aufrufen.</p>
+      `;
+      const body = wrapTemplate('#ed8b00', 'SharePoint-Zugriff benötigt', esc(eventTitle || '—'), inner);
+      await eventService.queueEmail(
+        `SharePoint-Zugriff benötigt: ${unique.length} ${unique.length === 1 ? 'Person' : 'Personen'} außerhalb @deloitte.de (${eventTitle || 'Event'})`,
+        admins.join('; '), 'Admins', body, 'Info', eventTitle || '', '0', undefined, undefined, 'High'
+      );
+    } catch (e) {
+      console.warn('[DEX] notifyAdminsExternalAudienceAccess failed:', e);
+    }
+  }
+
+  /**
    * Onboarding-Mail an einen neu ernannten Organizer (oder Admin) verschicken.
    * Subject + Body kommen aus EmailTemplates.organizerOnboardingEmail (Deloitte-
    * Layout inkl. Header/Footer). Die DEX-Verantwortlichen werden im Cc
@@ -5391,6 +5446,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelTeamMember,
         getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, getLastEventUpdateError, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, restoreCustomFieldDescriptions,
         sendAdminInquiry,
+        notifyAdminsExternalAudienceAccess,
         requestOrganizerRole, requestCoOrganizerApprovals, notifyNewCoOrganizers, getOpenOrganizerRequests, markOrganizerRequestDecided,
         reseedDefaultEmailTemplates,
         getAllEmailTemplates,
