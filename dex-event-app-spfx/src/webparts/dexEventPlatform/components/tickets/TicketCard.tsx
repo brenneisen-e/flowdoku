@@ -23,6 +23,11 @@ import PersonContactHover from '../PersonContactHover';
 import { renderTicketThread, contactSubline } from './ticketThread';
 import ImageAnnotateModal from '../ImageAnnotateModal';
 
+// v26.52: Live-Wizard-Vorschau mit Markierungsbox. MUSS lazy bleiben — die
+// Modal-Datei importiert EventCreationPage statisch, und die ist im
+// Haupt-Router ebenfalls lazy (sonst landet der ganze Wizard im Main-Bundle).
+const WizardStepPreviewModal = React.lazy(() => import('./WizardStepPreviewModal'));
+
 function wizardStepLabels(isDe: boolean): string[] {
   // 1-basiert; Reihenfolge identisch zum Event-Wizard (EventCreationPage.steps).
   return isDe
@@ -44,6 +49,10 @@ export default function TicketCard(props: { ticket: DexTicket; defaultExpanded?:
   const [answerText, setAnswerText] = React.useState('');
   const [selected, setSelected] = React.useState<ManualArticle[]>([]);
   const [wizardStep, setWizardStep] = React.useState<number>(0); // 0 = keiner, sonst 1..10
+  // v26.52: Markierungsbox auf der Live-Wizard-Vorschau (Prozent-Koordinaten).
+  const [wizardMarker, setWizardMarker] = React.useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [markerModalOpen, setMarkerModalOpen] = React.useState(false);
+  const [answerPreviewOpen, setAnswerPreviewOpen] = React.useState(false);
   const [articles, setArticles] = React.useState<ManualArticle[]>([]);
   const [articleQuery, setArticleQuery] = React.useState('');
   const [showArticlePicker, setShowArticlePicker] = React.useState(false);
@@ -124,10 +133,11 @@ export default function TicketCard(props: { ticket: DexTicket; defaultExpanded?:
       articles: selected.map((s) => ({ id: s.id, title: s.title })),
       wizardStep: wizardStep || null,
       wizardStepLabel: wizardStep ? stepLabels[wizardStep - 1] : undefined,
+      wizardMarker: wizardStep ? wizardMarker : null,
       screenshots: imgFile ? [imgFile] : [],
     });
     setBusy(false);
-    if (ok) { setExpanded(false); setAnswerText(''); setSelected([]); setWizardStep(0); setImgFile(null); }
+    if (ok) { setExpanded(false); setAnswerText(''); setSelected([]); setWizardStep(0); setWizardMarker(null); setImgFile(null); }
   };
 
   const jumpToWizardStep = (step1: number): void => {
@@ -240,11 +250,21 @@ export default function TicketCard(props: { ticket: DexTicket; defaultExpanded?:
             </div>
           )}
           {ticket.answerWizardStep != null && ticket.answerWizardStep >= 1 && (
-            <button type="button" onClick={() => jumpToWizardStep(ticket.answerWizardStep as number)}
-              style={{ marginTop: 6, textAlign: 'left', background: '#fff', border: '1px solid var(--dex-green,#86bc25)', borderRadius: 6, padding: '6px 9px', cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.82rem', color: 'var(--dex-green-dark,#4a7c1f)', fontWeight: 600 }}>
-              <Icon iconName="DocumentManagement" style={{ fontSize: 12, marginRight: 5 }} />
-              {isDe ? `Event-Wizard · Schritt ${ticket.answerWizardStep}: ${stepLabels[ticket.answerWizardStep - 1] || ''} öffnen` : `Open event wizard · step ${ticket.answerWizardStep}: ${stepLabels[ticket.answerWizardStep - 1] || ''}`}
-            </button>
+            <div style={{ marginTop: 6, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <button type="button" onClick={() => jumpToWizardStep(ticket.answerWizardStep as number)}
+                style={{ textAlign: 'left', background: '#fff', border: '1px solid var(--dex-green,#86bc25)', borderRadius: 6, padding: '6px 9px', cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.82rem', color: 'var(--dex-green-dark,#4a7c1f)', fontWeight: 600 }}>
+                <Icon iconName="DocumentManagement" style={{ fontSize: 12, marginRight: 5 }} />
+                {isDe ? `Event-Wizard · Schritt ${ticket.answerWizardStep}: ${stepLabels[ticket.answerWizardStep - 1] || ''} öffnen` : `Open event wizard · step ${ticket.answerWizardStep}: ${stepLabels[ticket.answerWizardStep - 1] || ''}`}
+              </button>
+              {/* v26.52: Vorschau mit gespeicherter Markierungsbox („hier klicken"). */}
+              {ticket.answerWizardMarker && (
+                <button type="button" onClick={() => setAnswerPreviewOpen(true)}
+                  style={{ textAlign: 'left', background: '#fff8ef', border: '1px solid #ed8b00', borderRadius: 6, padding: '6px 9px', cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.82rem', color: '#b35a00', fontWeight: 600 }}>
+                  <Icon iconName="Preview" style={{ fontSize: 12, marginRight: 5 }} />
+                  {isDe ? 'Markierung ansehen' : 'View marked spot'}
+                </button>
+              )}
+            </div>
           )}
           {ansShots.length > 0 && (
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
@@ -342,16 +362,29 @@ export default function TicketCard(props: { ticket: DexTicket; defaultExpanded?:
           {/* Event-Wizard-Schritt */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
             <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-700,#444)' }}>{isDe ? 'Event-Wizard-Schritt einbinden:' : 'Embed event-wizard step:'}</label>
-            <select value={wizardStep} onChange={(e) => setWizardStep(Number(e.target.value))}
+            <select value={wizardStep} onChange={(e) => { setWizardStep(Number(e.target.value)); setWizardMarker(null); }}
               style={{ padding: '6px 10px', borderRadius: 6, border: '1px solid var(--dex-gray-300,#d1d1d1)', fontFamily: 'inherit', fontSize: '0.85rem' }}>
               <option value={0}>{isDe ? '— keiner —' : '— none —'}</option>
               {stepLabels.map((lbl, i) => (<option key={i} value={i + 1}>{`${isDe ? 'Schritt' : 'Step'} ${i + 1}: ${lbl}`}</option>))}
             </select>
+            {/* v26.52: Statt in den echten Wizard wegzunavigieren, öffnet der
+                Button die Live-Vorschau des Schritts im Modal — dort kann per
+                Drag eine Markierungsbox („hier klicken") gesetzt werden. */}
             {wizardStep > 0 && (
-              <button type="button" onClick={() => jumpToWizardStep(wizardStep)}
+              <button type="button" onClick={() => setMarkerModalOpen(true)}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: '1px solid var(--dex-green,#86bc25)', color: 'var(--dex-green-dark,#4a7c1f)', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600, fontFamily: 'inherit' }}>
-                <Icon iconName="OpenInNewWindow" style={{ fontSize: 12 }} /> {isDe ? 'Schritt ansehen' : 'View step'}
+                <Icon iconName="Preview" style={{ fontSize: 12 }} /> {isDe ? 'Wizard anzeigen & markieren' : 'Show wizard & mark spot'}
               </button>
+            )}
+            {wizardStep > 0 && wizardMarker && (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: '#fff8ef', border: '1px solid #ed8b00', borderRadius: 14, padding: '3px 10px', fontSize: '0.78rem', color: '#b35a00', fontWeight: 600 }}>
+                <Icon iconName="SingleColumnEdit" style={{ fontSize: 11 }} />
+                {isDe ? 'Markierung gesetzt' : 'Marker set'}
+                <button type="button" onClick={() => setWizardMarker(null)} aria-label={isDe ? 'Markierung entfernen' : 'Remove marker'}
+                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: '#b35a00', padding: 0, display: 'inline-flex' }}>
+                  <Icon iconName="Cancel" style={{ fontSize: 10 }} />
+                </button>
+              </span>
             )}
           </div>
 
@@ -385,6 +418,34 @@ export default function TicketCard(props: { ticket: DexTicket; defaultExpanded?:
             </button>
           </div>
         </div>
+      )}
+
+      {/* v26.52: Live-Wizard-Vorschau — Composer (markieren) bzw. Antwort (ansehen).
+          Conditional render + Suspense, damit der Chunk erst beim Öffnen lädt. */}
+      {markerModalOpen && wizardStep > 0 && (
+        <React.Suspense fallback={null}>
+          <WizardStepPreviewModal
+            step={wizardStep}
+            stepLabel={stepLabels[wizardStep - 1]}
+            isDe={isDe}
+            editable={true}
+            initialMarker={wizardMarker}
+            onClose={() => setMarkerModalOpen(false)}
+            onSave={(m) => setWizardMarker(m)}
+          />
+        </React.Suspense>
+      )}
+      {answerPreviewOpen && ticket.answerWizardStep != null && (
+        <React.Suspense fallback={null}>
+          <WizardStepPreviewModal
+            step={ticket.answerWizardStep}
+            stepLabel={stepLabels[ticket.answerWizardStep - 1]}
+            isDe={isDe}
+            editable={false}
+            initialMarker={ticket.answerWizardMarker}
+            onClose={() => setAnswerPreviewOpen(false)}
+          />
+        </React.Suspense>
       )}
 
       {/* v26.10: Antwort-Bild vergrößern + transparente Boxen darübersetzen. */}

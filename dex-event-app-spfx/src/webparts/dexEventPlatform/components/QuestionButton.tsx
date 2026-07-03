@@ -28,6 +28,11 @@ import { renderTicketThread, contactSubline } from './tickets/ticketThread';
 import ImageAnnotateModal from './ImageAnnotateModal';
 import InquiryModal from './InquiryModal';
 
+// v26.52: Live-Wizard-Vorschau der Antwort (mit Markierungsbox). MUSS lazy
+// bleiben — QuestionButton ist im Main-Bundle, die Modal-Datei zieht aber
+// EventCreationPage rein (im Haupt-Router ebenfalls lazy geladen).
+const WizardStepPreviewModal = React.lazy(() => import('./tickets/WizardStepPreviewModal'));
+
 interface ShotRef { file: File; url: string; }
 
 export default function QuestionButton(props: { isMobile?: boolean }): React.ReactElement | null {
@@ -63,6 +68,9 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
   // v26.8: Rückfrage des Fragestellers auf eine Antwort (pro Ticket ein Entwurf).
   const [replyDrafts, setReplyDrafts] = React.useState<Record<number, string>>({});
   const [replyBusyId, setReplyBusyId] = React.useState<number | null>(null);
+  // v26.52: Ticket, dessen Antwort-Wizard-Schritt gerade als Live-Vorschau
+  // (mit Markierungsbox) geöffnet ist. null = zu.
+  const [wizardPreviewTicket, setWizardPreviewTicket] = React.useState<DexTicket | null>(null);
 
   // Live-Handbuch-Suche (debounced) auf den eingegebenen Fragetext.
   const queryText = questions.join(' ').trim();
@@ -508,9 +516,20 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
                       </div>
                     )}
                     {tk.answerWizardStep != null && (
-                      <div style={{ marginTop: 6, fontSize: '0.8rem', color: 'var(--dex-gray-600,#666)' }}>
-                        <Icon iconName="DocumentManagement" style={{ fontSize: 12, marginRight: 5 }} />
-                        {isDe ? `Im Event-Wizard: Schritt ${tk.answerWizardStep}` : `In the event wizard: step ${tk.answerWizardStep}`}
+                      <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600,#666)' }}>
+                          <Icon iconName="DocumentManagement" style={{ fontSize: 12, marginRight: 5 }} />
+                          {isDe ? `Im Event-Wizard: Schritt ${tk.answerWizardStep}` : `In the event wizard: step ${tk.answerWizardStep}`}
+                        </span>
+                        {/* v26.52: Echten Wizard-Schritt als Read-only-Vorschau öffnen —
+                            inkl. Markierungsbox („hier klicken"), falls gesetzt. */}
+                        <button type="button" onClick={() => setWizardPreviewTicket(tk)}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: tk.answerWizardMarker ? '#fff8ef' : '#fff', border: `1px solid ${tk.answerWizardMarker ? '#ed8b00' : 'var(--dex-green,#86bc25)'}`, borderRadius: 6, padding: '4px 9px', cursor: 'pointer', fontFamily: 'inherit', fontSize: '0.78rem', fontWeight: 600, color: tk.answerWizardMarker ? '#b35a00' : 'var(--dex-green-dark,#4a7c1f)' }}>
+                          <Icon iconName="Preview" style={{ fontSize: 11 }} />
+                          {tk.answerWizardMarker
+                            ? (isDe ? 'Vorschau mit Markierung ansehen' : 'View preview with marker')
+                            : (isDe ? 'Vorschau ansehen' : 'View preview')}
+                        </button>
                       </div>
                     )}
                   </div>
@@ -538,6 +557,19 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
           </div>
         )}
       </Modal>
+
+      {/* v26.52: Live-Wizard-Vorschau der Antwort (read-only, mit Markierung). */}
+      {wizardPreviewTicket && wizardPreviewTicket.answerWizardStep != null && (
+        <React.Suspense fallback={null}>
+          <WizardStepPreviewModal
+            step={wizardPreviewTicket.answerWizardStep}
+            isDe={isDe}
+            editable={false}
+            initialMarker={wizardPreviewTicket.answerWizardMarker}
+            onClose={() => setWizardPreviewTicket(null)}
+          />
+        </React.Suspense>
+      )}
 
       {/* v26.10: Screenshot vergrößern + transparente Boxen darübersetzen. */}
       <ImageAnnotateModal

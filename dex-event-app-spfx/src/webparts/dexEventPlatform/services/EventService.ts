@@ -2630,9 +2630,9 @@ export class EventService {
    * 100 neuesten; für den „bisher genutzt für"-Gesamtwert brauchen wir aber
    * wirklich alle Events.
    */
-  public async getAllEventsForKpi(): Promise<Array<{ id: number; parentEventId: string; status: string; subsiteUrl: string }>> {
-    const out: Array<{ id: number; parentEventId: string; status: string; subsiteUrl: string }> = [];
-    let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=Id,ParentEventId,EventStatus,SubsiteUrl&$top=5000`;
+  public async getAllEventsForKpi(): Promise<Array<{ id: number; parentEventId: string; status: string; subsiteUrl: string; isFictive: boolean }>> {
+    const out: Array<{ id: number; parentEventId: string; status: string; subsiteUrl: string; isFictive: boolean }> = [];
+    let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items?$select=Id,ParentEventId,EventStatus,SubsiteUrl,IsFictive&$top=5000`;
     let guard = 0;
     while (url && guard < 20) {
       guard++;
@@ -2646,7 +2646,7 @@ export class EventService {
       const items = data.value || data.d?.results || [];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       for (const it of items as any[]) {
-        out.push({ id: it.Id, parentEventId: it.ParentEventId || '', status: it.EventStatus || '', subsiteUrl: it.SubsiteUrl || '' });
+        out.push({ id: it.Id, parentEventId: it.ParentEventId || '', status: it.EventStatus || '', subsiteUrl: it.SubsiteUrl || '', isFictive: !!it.IsFictive });
       }
       url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
     }
@@ -2672,9 +2672,12 @@ export class EventService {
         console.warn(`${LOG} Keine Event-Zeilen geladen — Recompute übersprungen (Cache bleibt unverändert).`);
         return null;
       }
-      // Wie der bisherige Recompute: abgesagte Events + Entwürfe
-      // ('Under Construction') zählen NICHT, alles andere (Active/Completed) schon.
-      const counted = all.filter(e => e.status !== 'Cancelled' && e.status !== 'Under Construction');
+      // Abgesagte Events + Entwürfe zählen NICHT, alles andere (Active/
+      // Completed, inkl. abgelaufener) schon. v26.52 BUG-FIX: Entwürfe sind
+      // seit v11.89 das IsFictive-FLAG — vorher wurde nur der Legacy-Status
+      // 'Under Construction' ausgefiltert, moderne Entwürfe/Test-Events
+      // zählten fälschlich mit (Events UND deren Test-Teilnehmer).
+      const counted = all.filter(e => e.status !== 'Cancelled' && e.status !== 'Under Construction' && !e.isFictive);
       const events = counted.filter(e => !e.parentEventId).length;
       // eslint-disable-next-line no-console
       console.log(`${LOG} ${all.length} Event-Zeilen geladen → ${counted.length} werden gezählt (inkl. abgelaufener), davon ${events} Haupt-Events. Summiere Teilnehmer pro Subsite …`);
@@ -10430,6 +10433,7 @@ export class EventService {
       { title: 'AssignedOrganizers', type: 3, note: true },
       { title: 'PageContext', type: 2 },
       { title: 'AskWizardStep', type: 9 },
+      { title: 'AnswerWizardMarker', type: 2 }, // v26.52: Markierungsbox (JSON {x,y,w,h} in %) auf der Wizard-Vorschau
       { title: 'AnswerText', type: 3, note: true },
       { title: 'AnswerArticleIds', type: 3, note: true },
       { title: 'AnswerWizardStep', type: 9 },
@@ -10488,6 +10492,7 @@ export class EventService {
       { title: 'AnsweredByJobTitle', type: 2 },
       { title: 'FollowUps', type: 3, note: true },
       { title: 'AskWizardStep', type: 9 },
+      { title: 'AnswerWizardMarker', type: 2 }, // v26.52: Markierungsbox (JSON {x,y,w,h} in %) auf der Wizard-Vorschau
     ];
     for (const f of extra) {
       try {
@@ -10561,7 +10566,7 @@ export class EventService {
   /** Alle Tickets laden (inkl. Anhänge per $expand). Neueste zuerst. */
   public async getTickets(): Promise<DexTicket[]> {
     try {
-      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AskWizardStep,AnswerText,AnswerArticleIds,AnswerWizardStep,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
+      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AskWizardStep,AnswerText,AnswerArticleIds,AnswerWizardStep,AnswerWizardMarker,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
       const url = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items?$select=${sel}&$expand=AttachmentFiles&$orderby=Created desc&$top=500`;
       const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
       if (!resp.ok) return [];
@@ -10579,7 +10584,7 @@ export class EventService {
    *  Ask-Modal — der Fragesteller sieht Status + Antwort in der App). */
   public async getMyTickets(email: string): Promise<DexTicket[]> {
     try {
-      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AskWizardStep,AnswerText,AnswerArticleIds,AnswerWizardStep,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
+      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AskWizardStep,AnswerText,AnswerArticleIds,AnswerWizardStep,AnswerWizardMarker,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
       const safe = (email || '').replace(/'/g, "''");
       const url = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items?$select=${sel}&$expand=AttachmentFiles&$filter=AskerEmail eq '${safe}'&$orderby=Created desc&$top=100`;
       const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
@@ -10640,6 +10645,14 @@ export class EventService {
       answerText: it.AnswerText || '',
       answerArticleIds: parseArr(it.AnswerArticleIds),
       answerWizardStep: (stepRaw === 0 || (stepRaw != null && stepRaw !== '')) ? Number(stepRaw) : null,
+      // v26.52: Markierungsbox (JSON {x,y,w,h} in Prozent) — defensiv parsen.
+      answerWizardMarker: (() => {
+        try {
+          const m = JSON.parse(it.AnswerWizardMarker || 'null');
+          if (m && typeof m.x === 'number' && typeof m.y === 'number' && typeof m.w === 'number' && typeof m.h === 'number') return m;
+        } catch { /* */ }
+        return null;
+      })(),
       answeredByEmail: it.AnsweredByEmail || '',
       answeredByName: it.AnsweredByName || '',
       answeredByLocation: it.AnsweredByLocation || '',
@@ -10735,6 +10748,7 @@ export class EventService {
   /** Ticket beantworten + schließen. */
   public async answerTicket(itemId: number, a: {
     answerText: string; articleIds: string[]; wizardStep: number | null;
+    wizardMarker?: { x: number; y: number; w: number; h: number } | null;
     answeredByEmail: string; answeredByName: string;
     answeredByLocation?: string; answeredByJobTitle?: string;
   }): Promise<boolean> {
@@ -10745,6 +10759,7 @@ export class EventService {
         'AnswerText': a.answerText || '',
         'AnswerArticleIds': JSON.stringify(a.articleIds || []),
         'AnswerWizardStep': (a.wizardStep == null) ? null : a.wizardStep,
+        'AnswerWizardMarker': a.wizardMarker ? JSON.stringify(a.wizardMarker) : '',
         'AnsweredByEmail': a.answeredByEmail,
         'AnsweredByName': a.answeredByName,
         'AnsweredByLocation': a.answeredByLocation || '',
