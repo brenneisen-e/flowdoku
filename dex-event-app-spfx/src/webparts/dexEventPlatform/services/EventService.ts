@@ -10665,20 +10665,15 @@ export class EventService {
   }
 
   /** v26.8: fehlende Felder auf einer bereits existierenden DEX_Tickets-Liste
-   *  nachziehen (Standort/Position für die Foto-Kontaktkarte + Rückfragen-
-   *  Verlauf). Sentinel-Feld FollowUps → wenn vorhanden, ist nichts zu tun. */
+   *  nachziehen.
+   *  v26.61 BUG-FIX: Vorher diente AskWizardStep als Sentinel („vorhanden →
+   *  nichts zu tun") — dadurch wurden JÜNGERE Spalten (AnswerWizardMarker
+   *  v26.52, Category v26.60) auf Bestandslisten NIE angelegt; der Ticket-
+   *  Select lief in HTTP 400 und die Tickets-Seite blieb komplett leer.
+   *  Jetzt: echter Feld-Diff — vorhandene InternalNames laden und nur
+   *  Fehlendes anlegen (Sentinel-Muster ist für wachsende Listen tabu). */
   private async ensureTicketExtraFields(): Promise<void> {
     const listName = EventService.TICKETS_LIST;
-    try {
-      const check = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName&$filter=InternalName eq 'AskWizardStep'`,
-        SPHttpClient.configurations.v1);
-      if (check.ok) {
-        const d = await check.json();
-        const arr = d.value || d.d?.results || [];
-        if (Array.isArray(arr) && arr.length > 0) return; // schon migriert (AskWizardStep vorhanden)
-      }
-    } catch { /* weiter — versuchen anzulegen */ }
     const extra: Array<{ title: string; type: number; note?: boolean }> = [
       { title: 'AskerLocation', type: 2 },
       { title: 'AskerJobTitle', type: 2 },
@@ -10689,7 +10684,19 @@ export class EventService {
       { title: 'Category', type: 2 }, // v26.60: 'Question' | 'Bug'
       { title: 'AnswerWizardMarker', type: 2 }, // v26.52: Markierungsbox (JSON {x,y,w,h} in %) auf der Wizard-Vorschau
     ];
+    let existing: Set<string> | null = null;
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName&$filter=Hidden eq false&$top=200`,
+        SPHttpClient.configurations.v1);
+      if (resp.ok) {
+        const d = await resp.json();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        existing = new Set(((d.value || d.d?.results || []) as any[]).map(f => String(f.InternalName)));
+      }
+    } catch { /* Diff nicht lesbar → alle versuchen (Duplikate schlagen einzeln fehl) */ }
     for (const f of extra) {
+      if (existing && existing.has(f.title)) continue;
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const payload: Record<string, any> = {
@@ -10762,15 +10769,41 @@ export class EventService {
     }
   }
 
+  /** Voller Ticket-Select (inkl. neuerer Spalten Category/AnswerWizardMarker). */
+  private static readonly TICKETS_SEL_FULL = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AskWizardStep,Category,AnswerText,AnswerArticleIds,AnswerWizardStep,AnswerWizardMarker,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
+  /** Legacy-Select ohne die jüngeren Spalten — Fallback, wenn die Live-Liste
+   *  sie (noch) nicht hat und auch nicht angelegt werden können. */
+  private static readonly TICKETS_SEL_LEGACY = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AskWizardStep,AnswerText,AnswerArticleIds,AnswerWizardStep,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
+
+  /** v26.61: Ticket-Items robust laden. HTTP 400 heißt fast immer: eine neu
+   *  eingeführte Spalte fehlt auf der Live-Liste (der alte Sentinel-Bug in
+   *  ensureTicketExtraFields hat Category/AnswerWizardMarker nie angelegt).
+   *  Selbstheilung: Spalten nachziehen → EIN Retry mit vollem Select →
+   *  andernfalls Legacy-Select ohne die neuen Spalten, damit die Tickets-Seite
+   *  NIE leer bleibt (fehlende Werte fallen auf Defaults zurück).
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async _getTicketItems(suffix: string): Promise<any[] | null> {
+    const base = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items?$select=`;
+    let resp = await this.context.spHttpClient.get(`${base}${EventService.TICKETS_SEL_FULL}${suffix}`, SPHttpClient.configurations.v1);
+    if (resp.status === 400) {
+      try { await this.ensureTicketExtraFields(); } catch { /* */ }
+      resp = await this.context.spHttpClient.get(`${base}${EventService.TICKETS_SEL_FULL}${suffix}`, SPHttpClient.configurations.v1);
+      if (resp.status === 400) {
+        console.warn('[DEX] Ticket-Select weiterhin 400 — Fallback auf Legacy-Spalten (ohne Category/AnswerWizardMarker).');
+        resp = await this.context.spHttpClient.get(`${base}${EventService.TICKETS_SEL_LEGACY}${suffix}`, SPHttpClient.configurations.v1);
+      }
+    }
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    return data.value || data.d?.results || [];
+  }
+
   /** Alle Tickets laden (inkl. Anhänge per $expand). Neueste zuerst. */
   public async getTickets(): Promise<DexTicket[]> {
     try {
-      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AskWizardStep,Category,AnswerText,AnswerArticleIds,AnswerWizardStep,AnswerWizardMarker,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
-      const url = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items?$select=${sel}&$expand=AttachmentFiles&$orderby=Created desc&$top=500`;
-      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
-      if (!resp.ok) return [];
-      const data = await resp.json();
-      const items = data.value || data.d?.results || [];
+      const items = await this._getTicketItems('&$expand=AttachmentFiles&$orderby=Created desc&$top=500');
+      if (!items) return [];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return (items as any[]).map((it) => this._mapTicket(it));
     } catch (err) {
@@ -10783,13 +10816,9 @@ export class EventService {
    *  Ask-Modal — der Fragesteller sieht Status + Antwort in der App). */
   public async getMyTickets(email: string): Promise<DexTicket[]> {
     try {
-      const sel = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AskWizardStep,Category,AnswerText,AnswerArticleIds,AnswerWizardStep,AnswerWizardMarker,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
       const safe = (email || '').replace(/'/g, "''");
-      const url = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items?$select=${sel}&$expand=AttachmentFiles&$filter=AskerEmail eq '${safe}'&$orderby=Created desc&$top=100`;
-      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
-      if (!resp.ok) return [];
-      const data = await resp.json();
-      const items = data.value || data.d?.results || [];
+      const items = await this._getTicketItems(`&$expand=AttachmentFiles&$filter=AskerEmail eq '${safe}'&$orderby=Created desc&$top=100`);
+      if (!items) return [];
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return (items as any[]).map((it) => this._mapTicket(it));
     } catch (err) {
