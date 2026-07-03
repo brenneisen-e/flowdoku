@@ -24,6 +24,8 @@ export function getCachedLogoBase64(): string { return cachedLogoBase64; }
  *  Session-Cache aktualisieren — neue Mails derselben Sitzung nutzen sofort
  *  das neue Logo, ohne Reload. */
 export function setCachedLogoBase64(v: string): void { if (v) cachedLogoBase64 = v; }
+/** v26.58: dito für das DEX-Orb (Default-Mail-Bild / {{ORB_URL}}-Fallback). */
+export function setCachedOrbBase64(v: string): void { if (v) cachedOrbBase64 = v; }
 
 function getDate(): string {
   return new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });

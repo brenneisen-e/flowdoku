@@ -503,6 +503,9 @@ interface EventContextType {
   /** v23.37: Antrag entscheiden — Status setzen + Antragsteller informieren.
    *  Die eigentliche Rollenvergabe macht der Aufrufer über useRoles().addRole. */
   markOrganizerRequestDecided: (id: number, status: 'Approved' | 'Rejected', email: string, name: string) => Promise<boolean>;
+  /** v26.58: Einzelnen Antrag inkl. Entscheidungs-Metadaten (Status,
+   *  DecidedByEmail, DecidedDate) — für den approveorg-Deep-Link. */
+  getOrganizerRequestDetails: (id: number) => Promise<{ id: number; email: string; name: string; status: string; decidedByEmail: string; decidedDate: string } | null>;
   /** v22.45: Scannt die übergebenen Events auf Teilnehmer ohne aktives
    *  Deloitte-Konto (für die Landing-Page-Warnung der Organizer/Admins). */
   scanInactiveAccounts: (evs: Array<{ id: string; title: string; subsiteUrl?: string }>) => Promise<Array<{ eventId: string; title: string; people: Array<{ email: string; name: string }> }>>;
@@ -5448,6 +5451,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         sendAdminInquiry,
         notifyAdminsExternalAudienceAccess,
         requestOrganizerRole, requestCoOrganizerApprovals, notifyNewCoOrganizers, getOpenOrganizerRequests, markOrganizerRequestDecided,
+        getOrganizerRequestDetails: (id: number) => eventService.getOrganizerRequestDetails(id),
         reseedDefaultEmailTemplates,
         getAllEmailTemplates,
         updateEmailTemplate,
