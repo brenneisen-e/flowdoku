@@ -831,6 +831,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       await Promise.all([
         safeRun('upgradeAudienceFieldToNote', () => eventService.upgradeAudienceFieldToNote(), parallelMarks),
         safeRun('upgradeOrganizerFieldsToNote', () => eventService.upgradeOrganizerFieldsToNote(), parallelMarks),
+        safeRun('upgradeConfirmDialogTextToNote', () => eventService.upgradeConfirmDialogTextToNote(), parallelMarks),
         safeRun('ensureEmailsList', () => eventService.ensureEmailsList(), parallelMarks),
         safeRun('ensureOutlookList', () => eventService.ensureOutlookList(), parallelMarks),
         safeRun('ensureParticipantsList', () => eventService.ensureParticipantsList(), parallelMarks),
