@@ -4594,6 +4594,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       if (admins.length === 0) return;
       const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       const permissionsUrl = `${eventService.siteUrl}/_layouts/15/user.aspx`;
+      // v26.59: Der Button vergibt die Leserechte DIREKT (grantaccess-Deep-Link
+      // → GrantAccessHandler in der App) statt auf die rohe SharePoint-
+      // Berechtigungsseite zu verlinken. Die manuelle Seite bleibt als
+      // Fallback-Link unten drin.
+      const appBase = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`;
+      const grantUrl = buildHashDeepLink(appBase, { action: 'grantaccess', emails: needsAccess.join(';') });
       const alreadyOk = unique.length - needsAccess.length;
       const inner = `
         <p style="margin:0 0 12px;">Hallo zusammen,</p>
@@ -4603,8 +4609,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         </ul>
         ${alreadyOk > 0 ? `<p style="margin:0 0 12px;color:#777;font-size:13px;">${alreadyOk} weitere hinzugefügte ${alreadyOk === 1 ? 'Person hat' : 'Personen haben'} bereits Zugriff auf die Site und ${alreadyOk === 1 ? 'ist' : 'sind'} hier nicht aufgeführt.</p>` : ''}
         <p style="margin:0 0 12px;">Der SharePoint ist im Default nur für <strong>Deloitte DE ALL</strong> freigeschaltet — damit diese Personen die DEX App (und damit das Event) überhaupt öffnen können, müssen sie zusätzlich auf der Site berechtigt werden.</p>
-        <p style="margin:20px 0;text-align:center;"><a href="${permissionsUrl}" style="display:inline-block;padding:12px 26px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Site-Berechtigungen öffnen &amp; freigeben</a></p>
-        <p style="margin:0;color:#777;font-size:13px;">Berechtigen geht nur mit Site-Owner-Rechten. Ohne Freigabe bleiben die Personen zwar in der Zielgruppe, können die App aber nicht aufrufen.</p>
+        <p style="margin:20px 0;text-align:center;"><a href="${grantUrl}" style="display:inline-block;padding:12px 26px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Zugriff jetzt freigeben (ein Klick)</a></p>
+        <p style="margin:0;color:#777;font-size:13px;">Der Button öffnet die DEX App und vergibt automatisch Leserechte über die Besucher-Gruppe der Site — funktioniert nur als Admin. Alternativ manuell über die <a href="${permissionsUrl}" style="color:#4a7c1f;">Site-Berechtigungen</a>.</p>
       `;
       const body = wrapTemplate('#ed8b00', 'SharePoint-Zugriff benötigt', esc(eventTitle || '—'), inner);
       await eventService.queueEmail(

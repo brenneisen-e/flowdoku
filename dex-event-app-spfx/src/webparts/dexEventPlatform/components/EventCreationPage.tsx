@@ -3005,10 +3005,14 @@ export default function EventCreationPage(): React.ReactElement {
       const subOutlookSubject = (draft.outlookSubject || '').trim();
       const subEmailLogo = draft.emailLogoBase64 || '';
       const subOutlookLogo = draft.outlookLogoBase64 || '';
-      // Outlook-Body wrappen, wenn vorhanden — sonst leer lassen, der Flow
-      // bzw. Create-Pfad setzt einen Default-Body.
+      // Outlook-Body wrappen. v26.59 BUG-FIX: Ohne eigenen Text wurde der Body
+      // bisher LEER gespeichert („der Flow setzt einen Default" — stimmte
+      // nicht, der Flow mappt 1:1) → die Outlook-Einladung der Sub-Events kam
+      // komplett ohne Text an. Jetzt bekommen Sub-Events denselben
+      // Default-Body wie das Haupt-Event (v7.4-Pattern: Anmeldebestätigung +
+      // Abmelde-Hinweis über die App + Organizer-Kontakt).
       let wrappedSubOutlookBody = '';
-      if (subOutlookBodyRaw) {
+      {
         const vars = {
           EventTitle: draft.title.trim(),
           Organizer: organizer,
@@ -3017,7 +3021,17 @@ export default function EventCreationPage(): React.ReactElement {
           StartDate: draft.startDate ? new Date(draft.startDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
           EndDate: draft.endDate ? new Date(draft.endDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
         };
-        const resolvedBody = replacePlaceholders(subOutlookBodyRaw, vars);
+        const escHtmlSub = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        const orgNamesSub = formatOrganizerList([organizer], subEmailLang);
+        const APP_URL_SUB = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
+        const defaultSubBody = subEmailLang === 'EN'
+          ? `<p>You are registered for the event <strong>${escHtmlSub(draft.title.trim())}</strong>.</p>`
+            + `<p>If you are unable to attend, please cancel your registration in time via the <a href="${APP_URL_SUB}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;My Events&ldquo;).</p>`
+            + `<p>For organizational questions please contact <strong>${escHtmlSub(orgNamesSub || 'the organizer')}</strong>.</p>`
+          : `<p>Du bist für das Event <strong>${escHtmlSub(draft.title.trim())}</strong> angemeldet.</p>`
+            + `<p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="${APP_URL_SUB}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;Meine Events&ldquo;) ab.</p>`
+            + `<p>Bei organisatorischen Fragen wende dich bitte an <strong>${escHtmlSub(orgNamesSub || 'den Organizer')}</strong>.</p>`;
+        const resolvedBody = subOutlookBodyRaw ? replacePlaceholders(subOutlookBodyRaw, vars) : defaultSubBody;
         const resolvedHead = subOutlookHeading ? replacePlaceholders(subOutlookHeading, vars) : draft.title.trim();
         const resolvedSub2 = subOutlookSub ? replacePlaceholders(subOutlookSub, vars) : undefined;
         // v18.73: Sub-Events erben das Header-Bild-Layout des Hauptevents.

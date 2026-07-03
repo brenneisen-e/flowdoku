@@ -11166,6 +11166,55 @@ export class EventService {
     } catch { return null; }
   }
 
+  /** v26.59: Einer Person Leserechte auf die Site geben. Weg: User im Web
+   *  sicherstellen (ensureuser), dann in die Standard-Besucher-Gruppe
+   *  (associatedvisitorgroup, Permission Level „Lesen") aufnehmen — Gruppen-
+   *  Mitgliedschaft ist sauberer als Einzel-Berechtigungen. Fallback: direkte
+   *  Read-Rollenzuweisung (RoleTypeKind=2) aufs Web, falls es keine
+   *  Besucher-Gruppe gibt. Erfordert Berechtigungs-Verwaltungsrechte des
+   *  Aufrufers (Admins haben Full Control). Genutzt vom grantaccess-Deep-Link
+   *  aus der „SharePoint-Zugriff benötigt"-Mail. */
+  public async grantSiteReadAccess(email: string): Promise<boolean> {
+    const mail = (email || '').trim();
+    if (!mail) return false;
+    try {
+      const ensure = await this._post(`${this.siteUrl}/_api/web/ensureuser`, { 'logonName': `i:0#.f|membership|${mail}` });
+      if (!ensure.ok) return false;
+      const ud = await ensure.json();
+      const userId = Number(ud?.d?.Id ?? ud?.Id ?? 0);
+      const loginName = String(ud?.d?.LoginName ?? ud?.LoginName ?? '') || `i:0#.f|membership|${mail}`;
+      if (!userId) return false;
+      try {
+        const vg = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/associatedvisitorgroup?$select=Id`,
+          SPHttpClient.configurations.v1
+        );
+        if (vg.ok) {
+          const vgd = await vg.json();
+          const gid = Number(vgd?.Id ?? vgd?.d?.Id ?? 0);
+          if (gid > 0) {
+            const add = await this._post(`${this.siteUrl}/_api/web/sitegroups(${gid})/users`, {
+              '__metadata': { 'type': 'SP.User' },
+              'LoginName': loginName,
+            });
+            if (add.ok) return true;
+          }
+        }
+      } catch { /* Fallback unten */ }
+      const rd = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/roledefinitions?$filter=RoleTypeKind eq 2&$select=Id&$top=1`,
+        SPHttpClient.configurations.v1
+      );
+      if (!rd.ok) return false;
+      const rdd = await rd.json();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const roleId = Number(((rdd.value || rdd.d?.results || [])[0] as any)?.Id || 0);
+      if (!roleId) return false;
+      const ra = await this._post(`${this.siteUrl}/_api/web/roleassignments/addroleassignment(principalid=${userId},roledefid=${roleId})`, {});
+      return ra.ok;
+    } catch { return false; }
+  }
+
   public async updateOrganizerRequestStatus(id: number, status: 'Approved' | 'Rejected', decidedByEmail: string): Promise<boolean> {
     try {
       const r = await this._merge(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_OrganizerRequests')/items(${id})`, {
