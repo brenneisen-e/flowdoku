@@ -30,6 +30,7 @@ import MyEventsPage from './MyEventsPage';
 import ProfilePage from './ProfilePage';
 import SelfCheckInPage from './SelfCheckInPage';
 import OrganizerRequestsBanner from './OrganizerRequestsBanner';
+import GrantAccessHandler from './GrantAccessHandler';
 import { KpiRow } from './LandingPage';
 
 // v20.0 (Audit): Route-Level-Code-Splitting. Die schweren Sekundär-Seiten
@@ -763,6 +764,9 @@ function AppContent(): React.ReactElement {
           anzeigt (er gibt null zurueck, wenn keine Antraege offen sind). Den
           Abstand traegt jetzt der Banner selbst, nur wenn er wirklich rendert. */}
       {!isBootLoading && <OrganizerRequestsBanner />}
+      {/* v26.59: grantaccess-Deep-Link aus der „SharePoint-Zugriff benötigt"-Mail
+          — vergibt als Admin direkt Leserechte und zeigt das Ergebnis als Modal. */}
+      {!isBootLoading && <GrantAccessHandler />}
 
       {successBanner && (
         <div
