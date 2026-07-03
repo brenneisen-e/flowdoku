@@ -3593,6 +3593,54 @@ export class EventService {
   }
 
   /**
+   * v26.57: Best-effort-Check, ob eine Person bereits Zugriff auf die Site
+   * hat (mindestens Seiten ansehen). Genutzt vor der „SharePoint-Zugriff
+   * benötigt"-Admin-Mail bei internationalen Zielgruppen-Personen — wer schon
+   * berechtigt ist, taucht in der Mail nicht mehr auf.
+   *
+   * Ablauf: LoginName über siteusers auflösen (für Gäste weicht er mit
+   * #EXT#-Format von der Mail ab), dann getusereffectivepermissions und das
+   * ViewPages-Bit prüfen. Gruppen-basierte Rechte (z. B. „Deloitte DE ALL")
+   * löst SharePoint dabei serverseitig mit auf.
+   *
+   * Rückgabe: true = hat Zugriff · false = sicher kein Zugriff · null = nicht
+   * prüfbar (User unbekannt, keine Enumerate-Permissions-Rechte des Aufrufers,
+   * Netzwerkfehler). Aufrufer behandeln null wie „kein Zugriff" — lieber
+   * einmal zu viel benachrichtigen als eine Freigabe verpassen.
+   */
+  public async userHasSiteAccess(email: string): Promise<boolean | null> {
+    const mail = (email || '').trim();
+    if (!mail) return null;
+    try {
+      let login = `i:0#.f|membership|${mail.toLowerCase()}`;
+      try {
+        const resp = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/siteusers?$filter=Email eq '${encodeURIComponent(mail.replace(/'/g, "''"))}'&$select=LoginName&$top=1`,
+          SPHttpClient.configurations.v1
+        );
+        if (resp.ok) {
+          const data = await resp.json();
+          const item = (data.value || data.d?.results || [])[0];
+          if (item && item.LoginName) login = item.LoginName;
+        }
+      } catch { /* Fallback auf membership-Claim */ }
+      const permResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/getusereffectivepermissions(@u)?@u='${encodeURIComponent(login.replace(/'/g, "''"))}'`,
+        SPHttpClient.configurations.v1
+      );
+      if (!permResp.ok) return null;
+      const perm = await permResp.json();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const raw: any = (perm && (perm as any).GetUserEffectivePermissions) || (perm as any).d?.GetUserEffectivePermissions || perm;
+      const low = Number(raw?.Low || 0);
+      // ViewPages = 0x20000 — reicht, um die App-Seite zu öffnen.
+      return (low & 0x20000) !== 0;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Generischer Helper: migriert ein einzelnes Single-Line-Text-Feld einer Liste auf
    * Multi-Line-Text (Note). Idempotent — wenn das Feld schon Note ist, no-op. Wenn das
    * Feld einen anderen Typ hat (Choice/Number/etc.), no-op mit Warnung.

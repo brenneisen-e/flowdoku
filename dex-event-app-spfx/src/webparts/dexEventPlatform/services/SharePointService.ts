@@ -985,15 +985,23 @@ export class SharePointService {
     }
 
     // v13.6: Member-Firm-Filter. Default: nur @deloitte.de (DEALL-Equivalent).
-    // Mit includeInternational=true zusätzlich @deloitte.com erlaubt (internationale
-    // Member-Firms wie DEUS/DECH/DECEMEA, die alle auf @deloitte.com mappen). Andere
-    // Domains (Gast-Accounts, externe Tenants) bleiben in beiden Modi geblockt.
-    const allowedSuffixes = includeInternational
-      ? ['@deloitte.de', '@deloitte.com']
-      : ['@deloitte.de'];
+    // v26.57: Mit includeInternational=true sind ALLE Deloitte-Member-Firm-
+    // Domains erlaubt — nicht nur @deloitte.com. Internationale Member-Firms
+    // haben eigene Länder-Domains (Österreich @deloitte.at, Schweiz
+    // @deloitte.ch, UK @deloitte.co.uk, teils Subdomains wie @xy.deloitte.com).
+    // Vorher wurde z. B. „Gerald Vlk (Deloitte AT)" mit @deloitte.at auch im
+    // International-Modus rausgefiltert und war im Zielgruppen-Picker
+    // unauffindbar. Nicht-Deloitte-Domains (Gast-Accounts fremder Firmen,
+    // externe Tenants) bleiben in beiden Modi geblockt.
+    const isDeloitteDomain = (mail: string): boolean => {
+      const at = mail.lastIndexOf('@');
+      if (at < 0) return false;
+      const domain = mail.slice(at + 1);
+      return domain.indexOf('deloitte.') === 0 || domain.indexOf('.deloitte.') >= 0;
+    };
     const memberFirmFiltered = all.filter(u => {
       const mail = (u.email || '').toLowerCase();
-      return allowedSuffixes.some(s => mail.endsWith(s));
+      return includeInternational ? isDeloitteDomain(mail) : mail.endsWith('@deloitte.de');
     });
     all.length = 0;
     all.push(...memberFirmFiltered);
