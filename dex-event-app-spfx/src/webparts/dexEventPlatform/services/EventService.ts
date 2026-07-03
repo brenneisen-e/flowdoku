@@ -3321,7 +3321,13 @@ export class EventService {
       { title: 'MaxParticipants', type: 9 },
       { title: 'WaitlistEnabled', type: 8 },
       { title: 'MandatoryRegistration', type: 8 },
-      { title: 'EventImageUrl', type: 2 },
+      // v26.55: EventImageUrl ist Note (mehrzeilig) statt Single-Line-Text —
+      // SharePoint-Asset-URLs (SiteAssets-Pfad + langer Original-Dateiname)
+      // überschreiten real das 255-Zeichen-Limit (MD Academy: 261 Zeichen) und
+      // ließen den kompletten Event-Save mit „Invalid text value" abbrechen.
+      // Bestands-Listen migriert upgradeOverflowTextFieldsToNote() beim Boot
+      // bzw. die Selbstheilung in updateEvent() beim ersten fehlschlagenden Save.
+      { title: 'EventImageUrl', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 2 },
       { title: 'EmailImageBase64', type: 3 }, // Base64 Event-Bild für E-Mails/Outlook (Flow ersetzt {{ORB_URL}})
       // Organizer + OrganizerEmail sind Multi-Line-Text (Note) damit sie auch bei
       // 10+ Co-Organizern nicht abgeschnitten werden (Single-Line-Text ist auf 255
@@ -3568,15 +3574,22 @@ export class EventService {
   }
 
   /**
-   * v26.53: Migration `ConfirmDialogText` (Freitext des Bestätigungs-Dialogs vor
-   * dem Absenden, v18.75) auf Multi-Line-Text. Auf Bestands-Listen liegt die
-   * Spalte als Single-Line-Text (255 Zeichen) — ein längerer Hinweistext (z. B.
-   * Stornoregeln der MD Academy, ~450 Zeichen) ließ den kompletten Event-Save
-   * mit „Invalid text value. A text field contains invalid data." (HTTP 500)
-   * abbrechen. Idempotent: ist die Spalte schon Note, passiert nichts.
+   * v26.53/v26.55: Migration überlauf-gefährdeter Single-Line-Text-Spalten auf
+   * Multi-Line-Text (Note). Auf Bestands-Listen liegen diese Spalten als
+   * einzeiliger Text (255-Zeichen-Limit) — längere Werte ließen den kompletten
+   * Event-Save mit „Invalid text value. A text field contains invalid data."
+   * (HTTP 500) abbrechen. Konkrete Fälle:
+   *  - ConfirmDialogText (v26.53): Freitext des Bestätigungs-Dialogs, z. B.
+   *    Stornoregeln mit ~450 Zeichen.
+   *  - EventImageUrl (v26.55): SiteAssets-Bild-URL mit langem Original-
+   *    Dateinamen, real 261 Zeichen (MD Academy 2026).
+   * Idempotent: ist eine Spalte schon Note, passiert nichts. Zusätzlich heilt
+   * updateEvent() solche Spalten seit v26.54 auch beim fehlschlagenden Save
+   * selbst (Boot-Ensure läuft nur einmal pro Version — s. ENSURE_FLAG_KEY).
    */
-  public async upgradeConfirmDialogTextToNote(): Promise<void> {
+  public async upgradeOverflowTextFieldsToNote(): Promise<void> {
     await this._upgradeTextFieldToNote('DEX_Events', 'ConfirmDialogText');
+    await this._upgradeTextFieldToNote('DEX_Events', 'EventImageUrl');
   }
 
   /**
