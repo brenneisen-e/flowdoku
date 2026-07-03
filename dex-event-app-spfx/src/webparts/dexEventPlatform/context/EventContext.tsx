@@ -4488,6 +4488,47 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     const messageHtml = escape(message).replace(/\r?\n/g, '<br>');
+    // v26.56: Fachliche Anforderung — die Anfrage-Mail enthält einen Deep-Link,
+    // über den Admins die anfragende Person direkt als Organizer freigeben
+    // können. Dazu wird (wie beim „Organizer werden"-Antrag) ein nachverfolg-
+    // barer Antrag in DEX_OrganizerRequests angelegt und der bestehende
+    // approveorg-Deep-Link genutzt. Nur wenn die Person nicht ohnehin schon
+    // Organizer/Admin ist; ein bereits offener Antrag wird wiederverwendet
+    // statt dupliziert. Fehler hier dürfen die Anfrage-Mail nie blockieren.
+    let approveBlock = '';
+    try {
+      const mailLc = (requesterEmail || '').trim().toLowerCase();
+      if (mailLc) {
+        const [orgs, admins, itAdmins] = await Promise.all([
+          eventService.getRoleEmails('Organizer'),
+          eventService.getRoleEmails('Admin'),
+          eventService.getRoleEmails('IT-Admin'),
+        ]);
+        const hasRole = orgs.concat(admins, itAdmins).some(e => (e || '').toLowerCase() === mailLc);
+        if (!hasRole) {
+          const open = await eventService.getOrganizerRequests(true);
+          const existing = open.filter(r => (r.email || '').toLowerCase() === mailLc)[0];
+          let requestId = existing ? existing.id : 0;
+          if (!requestId) {
+            const created = await eventService.createOrganizerRequest(
+              requesterEmail.trim(),
+              requesterName || requesterEmail,
+              requesterLocation || '',
+              `DEX-Anfrage zum Event „${eventName || '—'}": ${message}`.slice(0, 500)
+            );
+            if (created.ok && created.itemId) requestId = created.itemId;
+          }
+          if (requestId) {
+            const appBase = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`;
+            const approveUrl = buildHashDeepLink(appBase, { action: 'approveorg', request: requestId });
+            approveBlock = `
+      <p style="margin:20px 0 6px;text-align:center;"><a href="${approveUrl}" style="display:inline-block;padding:12px 26px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">${escape(requesterName || requesterEmail)} als Organizer freigeben</a></p>
+      <p style="margin:0;color:#777;font-size:13px;text-align:center;">Öffnet die App und bestätigt den automatisch angelegten Organizer-Antrag — Freigeben geht nur als Admin.</p>
+    `;
+          }
+        }
+      }
+    } catch (e) { console.warn('[DEX] sendAdminInquiry: Freigabe-Deep-Link übersprungen:', e); }
     const bodyInner = `
       <p>Hallo DEX-Team,</p>
       <p>es gibt eine neue Anfrage zur DEX Event Experience Platform:</p>
@@ -4500,6 +4541,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       </table>
       <p style="color:#555;font-weight:600;margin-bottom:4px;">Worum geht es:</p>
       <p>${messageHtml}</p>
+      ${approveBlock}
       <p style="margin-top:24px;color:#888;font-size:0.85rem;">${escape(requesterName)} ist im Cc und kann direkt geantwortet werden.</p>
     `;
     const body = wrapTemplate('#86bc25', 'Neue DEX-Anfrage', `Event: ${eventName || '-'}`, bodyInner);
