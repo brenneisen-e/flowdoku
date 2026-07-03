@@ -52,6 +52,8 @@ export interface AnswerInput {
   /** 1-basierter Event-Wizard-Schritt (null = keiner). */
   wizardStep: number | null;
   wizardStepLabel?: string;
+  /** v26.52: Markierungsbox auf der Live-Wizard-Vorschau ({x,y,w,h} in %). */
+  wizardMarker?: { x: number; y: number; w: number; h: number } | null;
   /** Optionale Screenshots (ans_-Anhänge), z.B. der Wizard-Schritt. */
   screenshots: File[];
 }
@@ -378,6 +380,7 @@ export function TicketProvider(props: { context: WebPartContext; children: React
       answerText: input.answerText || '',
       articleIds: (input.articles || []).map(a => a.id),
       wizardStep: input.wizardStep,
+      wizardMarker: input.wizardMarker || null,
       answeredByEmail: currentUser.email || '',
       answeredByName,
       answeredByLocation: currentUser.location || '',

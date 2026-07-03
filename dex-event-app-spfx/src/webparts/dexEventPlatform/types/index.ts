@@ -574,6 +574,10 @@ export interface DexTicket {
   answerArticleIds: string[];
   /** 1-basierter Event-Wizard-Schritt, der in der Antwort eingebunden ist (null = keiner). */
   answerWizardStep: number | null;
+  /** v26.52: Markierungsbox auf der Live-Wizard-Vorschau des Antwort-Schritts —
+   *  „hier klicken". Prozent-Koordinaten relativ zum Vorschau-Container
+   *  (x/y = linke obere Ecke, w/h = Größe). null = keine Markierung. */
+  answerWizardMarker: { x: number; y: number; w: number; h: number } | null;
   answeredByEmail: string;
   answeredByName: string;
   /** v26.8: Standort + Position der/des Beantwortenden (für Foto-Kontaktkarte). */
