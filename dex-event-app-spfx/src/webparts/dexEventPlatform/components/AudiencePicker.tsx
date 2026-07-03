@@ -84,8 +84,22 @@ export default function AudiencePicker({
   const { searchUsers, searchGroups, getGroupMembers, searchUsersByLocation } = useRoles();
 
   const audience = value;
+  // v26.60 BUG-FIX: Funktions-Updates dürfen NICHT gegen das Closure-`value`
+  // aufgelöst werden. Der Massenimport ruft addAudienceItem für jeden Treffer
+  // im selben (async) Durchlauf auf — die laufende Schleife hält die ALTEN
+  // Props, jeder Add rechnete „alter Stand + diese eine Person" und der letzte
+  // gewann: von ~200 importierten E-Mails blieb nur die LETZTE übrig.
+  // Lösung: stabile Refs. `audienceRef` trägt den zuletzt gerenderten Prop-Wert,
+  // `pendingAudienceRef` akkumuliert schnelle Sequenz-Adds, bis der Parent den
+  // neuen Wert zurückgespielt hat (dann Reset via Effect).
+  const audienceRef = React.useRef(audience);
+  audienceRef.current = audience;
+  const pendingAudienceRef = React.useRef<string | null>(null);
+  React.useEffect(() => { pendingAudienceRef.current = null; }, [value]);
   const setAudience = (updater: string | ((prev: string) => string)): void => {
-    const next = typeof updater === 'function' ? (updater as (prev: string) => string)(audience) : updater;
+    const base = pendingAudienceRef.current !== null ? pendingAudienceRef.current : audienceRef.current;
+    const next = typeof updater === 'function' ? (updater as (prev: string) => string)(base) : updater;
+    pendingAudienceRef.current = next;
     onChange(next);
   };
 
@@ -153,15 +167,22 @@ export default function AudiencePicker({
   const [excludeSortDir, setExcludeSortDir] = React.useState<'asc' | 'desc'>('asc');
   const [excludePage, setExcludePage] = React.useState(0);
 
+  // v26.60 BUG-FIX: functional setState statt Closure-Read. Der Massenimport
+  // ruft addAudienceItem für JEDEN Treffer im selben Durchlauf auf — mit dem
+  // Closure-`audience` rechnete jeder Aufruf „alter Stand + diese eine Person"
+  // und der letzte gewann: von ~200 importierten E-Mails landete nur die
+  // LETZTE in der Zielgruppe. (Gleicher Bug wie beim Co-Organizer-Import,
+  // dort seit jeher functional — siehe EventCreationPage bulkOrganizer onAdd.)
   const addAudienceItem = (val: string): void => {
-    const list = audience.split(',').map(s => s.trim()).filter(Boolean);
-    if (list.indexOf(val) >= 0) return;
-    list.push(val);
-    setAudience(list.join(', '));
+    setAudience(prev => {
+      const list = prev.split(',').map(s => s.trim()).filter(Boolean);
+      if (list.indexOf(val) >= 0) return prev;
+      list.push(val);
+      return list.join(', ');
+    });
   };
   const removeAudienceItem = (val: string): void => {
-    const list = audience.split(',').map(s => s.trim()).filter(Boolean).filter(x => x !== val);
-    setAudience(list.join(', '));
+    setAudience(prev => prev.split(',').map(s => s.trim()).filter(Boolean).filter(x => x !== val).join(', '));
   };
 
   const openMembersModal = async (groupEmail: string): Promise<void> => {

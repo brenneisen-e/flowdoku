@@ -109,6 +109,9 @@ interface CustomFieldInput {
   /** v18.41: Nur People-Picker (user/roommate): ausgewählte Person bei
    *  An-/Abmelde-Mail auf CC setzen (nicht im Outlook-Termin). */
   ccOnEmails?: boolean;
+  /** v26.60: Nur roommate — false schaltet die separate
+   *  „Zimmerpartner-Anfrage"-Mail ab (undefined = an). */
+  notifyRoommate?: boolean;
   /** v7.11: Bei type=select erlaubt true Mehrfachauswahl (Checkbox-Liste statt
    *  Single-Dropdown). Wert wird " | "-getrennt gespeichert. */
   multi?: boolean;
@@ -217,6 +220,9 @@ function serializeCustomFields(
           : {}),
         // v18.41: CC-bei-Mail nur für People-Picker-Felder persistieren.
         ...((f.type === 'user' || f.type === 'roommate') && f.ccOnEmails ? { ccOnEmails: true } : {}),
+        // v26.60: Roommate-Benachrichtigung — nur das explizite ABSCHALTEN
+        // persistieren (undefined = an, Bestandsverhalten bleibt unverändert).
+        ...(f.type === 'roommate' && f.notifyRoommate === false ? { notifyRoommate: false } : {}),
       } as CustomField;
     });
 }
@@ -1061,6 +1067,8 @@ export default function EventCreationPage(): React.ReactElement {
       ...(f.externalLinks && f.externalLinks.length > 0 ? { externalLinks: f.externalLinks.map(x => ({ ...x })) } : {}),
       // v18.41: CC-bei-Mail-Flag beim Edit-Mount mit-übernehmen.
       ...(f.ccOnEmails ? { ccOnEmails: true } : {}),
+      // v26.60: abgeschaltete Roommate-Benachrichtigung mit-übernehmen.
+      ...(f.notifyRoommate === false ? { notifyRoommate: false } : {}),
     })) : []
   );
   const [outlookBody, setOutlookBody] = React.useState(editEvent ? stripOutlookWrapper(editEvent.outlookBody || '') : '');
@@ -2735,6 +2743,7 @@ export default function EventCreationPage(): React.ReactElement {
         ...(f.optionsEn && f.optionsEn.length > 0 ? { optionsEn: [...f.optionsEn] } : {}),
         ...(f.externalLinks && f.externalLinks.length > 0 ? { externalLinks: f.externalLinks.map(x => ({ ...x })) } : {}),
         ...(f.ccOnEmails ? { ccOnEmails: true } : {}),
+        ...(f.notifyRoommate === false ? { notifyRoommate: false } : {}),
       })));
       // Bild: Vorschau sofort, Datei best-effort vom SP-Anhang nachladen.
       if (ev.imageUrl) {
@@ -4143,6 +4152,7 @@ export default function EventCreationPage(): React.ReactElement {
                 // auch im zweiten Write mit, sonst droppt der spInternalName-
                 // Merge die Property direkt nach dem Speichern wieder.
                 ...((f.type === 'user' || f.type === 'roommate') && f.ccOnEmails ? { ccOnEmails: true } : {}),
+                ...(f.type === 'roommate' && f.notifyRoommate === false ? { notifyRoommate: false } : {}),
               }));
             // v11.6 BUG-FIX: vorher wurde hier `isB2runTemplate` (= b2run_*-
             // Custom-Fields vorhanden) als Indikator genutzt. Das war falsch,
@@ -11416,6 +11426,38 @@ export default function EventCreationPage(): React.ReactElement {
                     />
 
                     {isExpanded && (<>
+                    {/* v26.60: Roommate-Feld → separate Zimmerpartner-Anfrage-Mail
+                        an die ausgewählte Person abschaltbar (Default: an). Diese
+                        Mail ist UNABHÄNGIG vom CC-Schalter darunter — das war der
+                        gemeldete Bug: „CC ausgestellt, Mails kommen trotzdem". */}
+                    {field.type === 'roommate' && (
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={field.notifyRoommate !== false}
+                          onChange={e => updateCustomField(field.id, { notifyRoommate: e.target.checked ? undefined : false })}
+                          style={{ marginTop: 2 }}
+                        />
+                        <span style={{ flex: 1 }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+                            {isDe ? 'Ausgewählte Person automatisch benachrichtigen (Zimmerpartner-Anfrage-Mail)' : 'Automatically notify the selected person (roommate request email)'}
+                          </span>
+                          <InfoTooltip text={isDe ? (
+                            <>
+                              <strong>Was du hier einstellst:</strong> ob die als Zimmerpartner <strong>ausgewählte Person</strong> direkt nach der Anmeldung eine eigene <strong>&bdquo;Zimmerpartner-Anfrage&ldquo;-Mail</strong> bekommt (&bdquo;X hat dich als Zimmerpartner angegeben&ldquo;).<br /><br />
+                              <strong>Unabhängig vom CC-Schalter:</strong> Diese Benachrichtigung ist eine EIGENE Mail — der CC-Schalter darunter steuert nur die Kopie der An-/Abmelde-Mail.<br /><br />
+                              <strong>Ausgeschaltet:</strong> die ausgewählte Person bekommt gar keine automatische Mail mehr; auch der Hinweis dazu im Anmeldeformular wird ausgeblendet.
+                            </>
+                          ) : (
+                            <>
+                              <strong>What this controls:</strong> whether the person <strong>selected as roommate</strong> receives a dedicated <strong>roommate request email</strong> right after registration.<br /><br />
+                              <strong>Independent of the CC toggle:</strong> this notification is a SEPARATE email — the CC toggle below only controls the copy of the registration/cancellation email.<br /><br />
+                              <strong>When off:</strong> the selected person receives no automatic email at all; the hint in the registration form is hidden too.
+                            </>
+                          )} />
+                        </span>
+                      </label>
+                    )}
                     {/* v18.41: People-Picker-Feld → ausgewählte Person bei
                         An-/Abmelde-Mail auf CC (nur für user/roommate-Felder). */}
                     {(field.type === 'user' || field.type === 'roommate') && (
