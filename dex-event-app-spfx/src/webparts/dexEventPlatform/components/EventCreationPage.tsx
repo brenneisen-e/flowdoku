@@ -3679,7 +3679,10 @@ export default function EventCreationPage(): React.ReactElement {
           : '',
         // v18.34/v18.40: Outlook-Ort = manuelle Überschreibung, sonst Auto aus
         // Veranstaltungsort + Adresse. Flow mappt OutlookLocation 1:1.
-        'OutlookLocation': outlookLocationOverride.trim() || buildOutlookLocation(location, { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity }),
+        // v26.54: hart auf 255 kappen — die Spalte ist einzeiliger Text, ein
+        // überlanger Ort+Adresse-String ließ sonst den KOMPLETTEN Save mit
+        // „Invalid text value" (HTTP 500) abbrechen.
+        'OutlookLocation': (outlookLocationOverride.trim() || buildOutlookLocation(location, { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity })).slice(0, 255),
         'LocationFilter': locationFilter,
         'Audience': audience,
         // v16.4: Audience-DLs vor-aufgelöst mitschreiben.
