@@ -3568,6 +3568,18 @@ export class EventService {
   }
 
   /**
+   * v26.53: Migration `ConfirmDialogText` (Freitext des Bestätigungs-Dialogs vor
+   * dem Absenden, v18.75) auf Multi-Line-Text. Auf Bestands-Listen liegt die
+   * Spalte als Single-Line-Text (255 Zeichen) — ein längerer Hinweistext (z. B.
+   * Stornoregeln der MD Academy, ~450 Zeichen) ließ den kompletten Event-Save
+   * mit „Invalid text value. A text field contains invalid data." (HTTP 500)
+   * abbrechen. Idempotent: ist die Spalte schon Note, passiert nichts.
+   */
+  public async upgradeConfirmDialogTextToNote(): Promise<void> {
+    await this._upgradeTextFieldToNote('DEX_Events', 'ConfirmDialogText');
+  }
+
+  /**
    * Generischer Helper: migriert ein einzelnes Single-Line-Text-Feld einer Liste auf
    * Multi-Line-Text (Note). Idempotent — wenn das Feld schon Note ist, no-op. Wenn das
    * Feld einen anderen Typ hat (Choice/Number/etc.), no-op mit Warnung.
