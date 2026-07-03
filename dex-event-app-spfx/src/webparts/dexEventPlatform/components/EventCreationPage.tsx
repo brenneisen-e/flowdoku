@@ -697,7 +697,7 @@ async function resolveAudienceMembersToCsv(
 
 export default function EventCreationPage(): React.ReactElement {
   const { goBack, selectedEventId, currentPage, setNavigationGuard } = useNavigation();
-  const { events, childEventsOf, createEvent, updateEvent, deleteEvent, deleteEventItemOnly, refreshEvents, requestCoOrganizerApprovals, notifyNewCoOrganizers } = useEvents();
+  const { events, childEventsOf, createEvent, updateEvent, getLastEventUpdateError, deleteEvent, deleteEventItemOnly, refreshEvents, requestCoOrganizerApprovals, notifyNewCoOrganizers } = useEvents();
   const { currentUser } = useCurrentUser();
   // searchGroups + searchUsersByLocation werden seit v19.x ausschließlich im
   // ausgelagerten <AudiencePicker> verwendet (eigener useRoles-Hook dort).
@@ -985,6 +985,31 @@ export default function EventCreationPage(): React.ReactElement {
       setLastDeregisterDate(fmt(lastCancel));
       autoFillRanRef.current = true;
     } catch { /* */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startDate]);
+  // v26.51: Wird das START-Datum GEÄNDERT (v.a. beim Bearbeiten: Event wird
+  // verschoben), wandern gesetzte An-/Abmeldefristen relativ mit — gleiche
+  // Logik wie vorher: War die Anmeldefrist 1 Woche vor dem Event, liegt sie
+  // nach der Verschiebung wieder 1 Woche vor dem (neuen) Event-Beginn.
+  const prevStartForShiftRef = React.useRef(startDate);
+  React.useEffect(() => {
+    const prev = prevStartForShiftRef.current;
+    prevStartForShiftRef.current = startDate;
+    if (!prev || !startDate || prev === startDate) return;
+    const oldTs = new Date(prev).getTime();
+    const newTs = new Date(startDate).getTime();
+    if (!isFinite(oldTs) || !isFinite(newTs)) return;
+    const delta = newTs - oldTs;
+    if (!delta) return;
+    const fmt = (d: Date): string => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}T${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    const shift = (val: string): string => {
+      if (!val) return val;
+      const t = new Date(val).getTime();
+      if (!isFinite(t)) return val;
+      return fmt(new Date(t + delta));
+    };
+    setRegistrationDeadline(v => shift(v));
+    setLastDeregisterDate(v => shift(v));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [startDate]);
   const [maxParticipants, setMaxParticipants] = React.useState(
@@ -3585,6 +3610,31 @@ export default function EventCreationPage(): React.ReactElement {
       return;
     }
 
+    // v26.51: Fristen-Validierung — An-/Abmeldefrist darf NICHT nach dem
+    // Event-Beginn liegen (ergibt keinen Sinn und führte zu inkonsistenten
+    // Zuständen). Gilt für Anlegen UND Bearbeiten.
+    if (startDate) {
+      const startTs = new Date(startDate).getTime();
+      const fmtDt = (v: string): string => {
+        try { return new Date(v).toLocaleString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); }
+        catch { return v; }
+      };
+      if (isFinite(startTs)) {
+        if (registrationDeadline && new Date(registrationDeadline).getTime() > startTs) {
+          showAlert(isDe
+            ? `Die Anmeldefrist (${fmtDt(registrationDeadline)}) liegt NACH dem Event-Beginn (${fmtDt(startDate)}). Bitte setze die Frist auf einen Zeitpunkt vor dem Event.`
+            : `The registration deadline (${fmtDt(registrationDeadline)}) is AFTER the event start (${fmtDt(startDate)}). Please set the deadline to a time before the event.`, { variant: 'error' });
+          return;
+        }
+        if (lastDeregisterDate && new Date(lastDeregisterDate).getTime() > startTs) {
+          showAlert(isDe
+            ? `Die Abmeldefrist (${fmtDt(lastDeregisterDate)}) liegt NACH dem Event-Beginn (${fmtDt(startDate)}). Bitte setze die Frist auf einen Zeitpunkt vor dem Event.`
+            : `The deregistration deadline (${fmtDt(lastDeregisterDate)}) is AFTER the event start (${fmtDt(startDate)}). Please set the deadline to a time before the event.`, { variant: 'error' });
+          return;
+        }
+      }
+    }
+
     setIsSubmitting(true);
     setError('');
     setProgress(0);
@@ -4209,7 +4259,16 @@ export default function EventCreationPage(): React.ReactElement {
       } else {
         setIsSubmitting(false);
         setProgress(0);
-        setError('Event konnte nicht aktualisiert werden.');
+        // v26.51: Grund IMMER mit anzeigen (vorher stand er nur in der Konsole).
+        const reason = getLastEventUpdateError();
+        setError(
+          (isDe ? 'Event konnte nicht aktualisiert werden.' : 'The event could not be updated.')
+          + (reason
+            ? `${isDe ? ' Grund: ' : ' Reason: '}${reason}`
+            : (isDe
+              ? ' Grund unbekannt — bitte Details aus der Browser-Konsole (F12) an das DEX-Team melden.'
+              : ' Unknown reason — please report the details from the browser console (F12) to the DEX team.'))
+        );
       }
     } else {
       // Neues Event erstellen — v11.87: Progress wird per Callback-Stage vom
