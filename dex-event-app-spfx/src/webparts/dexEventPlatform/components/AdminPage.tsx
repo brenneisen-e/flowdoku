@@ -874,7 +874,9 @@ export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
   // v14.11: zusätzlich `events` (alle Events inkl. Sub-Events) als `allEvents`
   // für die Parent-Lookup-Logik im konsolidierten View + im Sub-Event-Detail.
-  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead, registerForEvent, subscribeEventRealtime } = useEvents();
+  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead, registerForEvent, subscribeEventRealtime, sendCompleteRegistrationReminder } = useEvents();
+  // v26.67: laufende „Erinnerung senden"-Aktion pro verwaister Anmeldung (Id).
+  const [reminderBusyId, setReminderBusyId] = React.useState<number | null>(null);
   // v24.38: läuft gerade ein „Zur Klammer hinzufügen" für diese E-Mail?
   const [addingToKlammer, setAddingToKlammer] = React.useState<string | null>(null);
   // v24.40: Modal „Assistenz zuordnen" — Person an eine gewählte Assistenz
@@ -5441,18 +5443,51 @@ export default function AdminPage(): React.ReactElement {
                       </span>
                     )}
                     {canManage && (
-                      <button
-                        type="button"
-                        className="btn btn-outline"
-                        style={{ marginLeft: 'auto', fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-red, #c00)', borderColor: 'var(--dex-red, #c00)' }}
-                        onClick={async () => {
-                          if (!(await confirmDialog(isDe ? `Verwaiste Anmeldung von ${nm} still entfernen?` : `Silently remove the orphaned registration of ${nm}?`, { danger: true, confirmLabel: isDe ? 'Entfernen' : 'Remove' }))) return;
-                          await performSilentDuplicateDelete(r);
-                          showAlert(isDe ? 'Verwaiste Anmeldung entfernt — die Person kann jetzt wieder angemeldet werden.' : 'Orphaned registration removed — the person can be registered again now.', { variant: 'success' });
-                        }}
-                      >
-                        {isDe ? 'Geist entfernen' : 'Remove ghost'}
-                      </button>
+                      <div style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
+                        {/* v26.67 (A): Erinnerung senden — die Person (bzw. die
+                            anmeldende Person) bitten, die Anmeldung abzuschließen,
+                            statt sie nur zu entfernen. */}
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-green-dark, #4a7c1f)', borderColor: 'var(--dex-green, #86bc25)' }}
+                          disabled={reminderBusyId === r.Id}
+                          onClick={async () => {
+                            if (!selectedEvent) return;
+                            setReminderBusyId(r.Id);
+                            const ok = await sendCompleteRegistrationReminder({
+                              eventId: selectedEvent.id,
+                              eventTitle: selectedEvent.title,
+                              participantEmail: r.ParticipantEmail || '',
+                              participantName: nm,
+                              registeredByEmail: r.RegisteredByEmail || '',
+                              registeredByName: r.RegisteredByName || '',
+                            }).catch(() => false);
+                            setReminderBusyId(null);
+                            showAlert(
+                              ok
+                                ? (isProxy
+                                    ? (isDe ? `Erinnerung an ${actorLabel} gesendet (${nm} auf Kopie) — mit Link zum Abschließen der Anmeldung.` : `Reminder sent to ${actorLabel} (${nm} on copy) — with a link to complete the registration.`)
+                                    : (isDe ? `Erinnerung an ${nm} gesendet — mit Link zum Abschließen der Anmeldung.` : `Reminder sent to ${nm} — with a link to complete the registration.`))
+                                : (isDe ? 'Erinnerung konnte nicht gesendet werden.' : 'The reminder could not be sent.'),
+                              { variant: ok ? 'success' : 'error' });
+                          }}
+                        >
+                          {reminderBusyId === r.Id ? (isDe ? 'Wird gesendet…' : 'Sending…') : (isDe ? 'Erinnerung senden' : 'Send reminder')}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-red, #c00)', borderColor: 'var(--dex-red, #c00)' }}
+                          onClick={async () => {
+                            if (!(await confirmDialog(isDe ? `Verwaiste Anmeldung von ${nm} still entfernen?` : `Silently remove the orphaned registration of ${nm}?`, { danger: true, confirmLabel: isDe ? 'Entfernen' : 'Remove' }))) return;
+                            await performSilentDuplicateDelete(r);
+                            showAlert(isDe ? 'Verwaiste Anmeldung entfernt — die Person kann jetzt wieder angemeldet werden.' : 'Orphaned registration removed — the person can be registered again now.', { variant: 'success' });
+                          }}
+                        >
+                          {isDe ? 'Geist entfernen' : 'Remove ghost'}
+                        </button>
+                      </div>
                     )}
                   </div>
                 );
