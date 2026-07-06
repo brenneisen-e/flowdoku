@@ -117,7 +117,7 @@ function ImpersonationBanner(props: { currentPage?: string }): React.ReactElemen
 function AppContent(): React.ReactElement {
   const { currentPage, navigate } = useNavigation();
   const { isAdmin, isRolesLoading } = useRoles();
-  const { markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, reconcileCounters, isEventsLoading, events, getKpiCache, updateKpiCache, getKpiTotals } = useEvents();
+  const { markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, reconcileCounters, isEventsLoading, events, getKpiCache, recomputeEventKpiOnly } = useEvents();
 
   // v11.52: KPI-Boxen im Boot-Loader. Live-Zählung ueber alle Event-
   // Subsites war zu langsam (Counts kommen erst nach mehreren Sekunden) —
@@ -147,9 +147,16 @@ function AppContent(): React.ReactElement {
   const kpiRefreshedRef = React.useRef(false);
   React.useEffect(() => {
     if (isEventsLoading || isRolesLoading) return;
-    // v26.4: Den „bisher genutzt für"-Gesamtwert berechnet die App über die
-    // ADMINS neu — und zwar über ALLE Events (paginiert), nicht nur die geladenen
-    // 100. Normale User bewegen den Zähler live per ±1 bei An-/Abmeldung (bumpKpi*).
+    // v26.64: Neue, schlanke KPI-Architektur (Maintainer-Entscheidung):
+    //  • „Events" = direkt aus DEX_Events (billig, exakt — IsFictive/Status/
+    //    ParentEventId stehen dort). Nur diese Zahl berechnet ein Admin beim
+    //    Boot neu — ein einziger Listen-Read, KEIN Subsite-Scan mehr.
+    //  • „Teilnehmer" = der Live-Bump-Counter in _Config, den alle Rollen bei
+    //    jeder An-/Abmeldung selbst ±1 fortschreiben (bumpKpiParticipants).
+    //    Dieser Live-Wert ist FÜHREND und wird NICHT mehr durch einen teuren
+    //    40-Subsite-Scan überschrieben (der zog den Boot in die Länge und war
+    //    trotzdem nur ein einmal-pro-Session-Snapshot).
+    // Normale User lesen nur den Cache; der Recompute läuft für Admins.
     if (!isAdmin) return;
     if (!events || events.length === 0) return; // erst wenn die App bereit ist
     if (kpiRefreshedRef.current) return;
@@ -158,24 +165,19 @@ function AppContent(): React.ReactElement {
     try {
       if (sessionStorage.getItem(SESSION_KEY) === '1') {
         // eslint-disable-next-line no-console
-        console.log('[DEX KPI] Gesamtwert wurde in dieser Browser-Session bereits neu berechnet — übersprungen (Cache ist aktuell).');
+        console.log('[DEX KPI] Events-Zahl in dieser Browser-Session bereits neu berechnet — übersprungen.');
         return;
       }
     } catch { /* */ }
-    // Korrekter Gesamtwert über ALLE Events (inkl. abgelaufener/Completed; ohne
-    // abgesagte + Entwürfe), Teilnehmer inkl. Sub-Events. Best-effort, läuft im
-    // Hintergrund (sequentielle Subsite-Counts).
     // eslint-disable-next-line no-console
-    console.log('[DEX KPI] Admin-Session erkannt — starte einmalige Neu-Berechnung des Startbildschirm-Zählers über ALLE Events.');
-    getKpiTotals()
-      .then(totals => {
-        if (!totals) return undefined;
-        setKpiCache(totals);
-        return updateKpiCache(totals).then(ok => {
-          // eslint-disable-next-line no-console
-          console.log(`[DEX KPI] In _Config ${ok ? 'gespeichert' : 'NICHT gespeichert (Schreibfehler)'} — ${ok ? 'der nächste Boot zeigt den neuen Wert.' : 'Cache unverändert.'}`);
-          if (ok) { try { sessionStorage.setItem(SESSION_KEY, '1'); } catch { /* */ } }
-        });
+    console.log('[DEX KPI] Admin-Session — Events-Zahl aus DEX_Events neu berechnen (Teilnehmer bleibt der Live-Counter).');
+    recomputeEventKpiOnly()
+      .then(events2 => {
+        if (events2 === null) return;
+        setKpiCache(prev => ({ participants: prev?.participants ?? 0, events: events2 }));
+        // eslint-disable-next-line no-console
+        console.log(`[DEX KPI] Events-Zahl aktualisiert: ${events2} (in _Config gespeichert).`);
+        try { sessionStorage.setItem(SESSION_KEY, '1'); } catch { /* */ }
       })
       .catch(() => { /* */ });
     // eslint-disable-next-line react-hooks/exhaustive-deps

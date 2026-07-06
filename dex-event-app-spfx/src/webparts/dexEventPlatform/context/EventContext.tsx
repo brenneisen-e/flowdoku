@@ -15,7 +15,8 @@ import { EventService, SPEvent, CustomField, SPRegistration, SPParticipant, Rese
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
 import { buildHashDeepLink } from '../utils/deepLink';
 import { isEventOver } from '../utils/eventFormat';
-import { registrationEmail, externalInviteInstructionEmail, coOrganizerAddedEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
+import { registrationEmail, externalInviteInstructionEmail, externalInvitationEmail, coOrganizerAddedEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
+import { buildUnsentEmlDraft } from '../utils/emlDraft';
 import { APP_VERSION } from '../version';
 import { RELEASE_NOTES } from '../data/releaseNotes';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
@@ -608,6 +609,9 @@ interface EventContextType {
   /** v26.4: Korrekte KPI-Gesamtwerte über ALLE Events (paginiert, nicht nur die
    *  geladenen 100) — Admin-Recompute für den „bisher genutzt für"-Boot-Zähler. */
   getKpiTotals: () => Promise<{ participants: number; events: number } | null>;
+  /** v26.63: NUR die Events-Zahl neu berechnen — allein aus DEX_Events, ohne den
+   *  teuren Subsite-Teilnehmer-Scan. Liefert die neue Events-Zahl oder null. */
+  recomputeEventKpiOnly: () => Promise<number | null>;
   /**
    * Onboarding-Mail an einen frisch ernannten Organizer/Admin verschicken.
    * Cc geht automatisch an die DEX-Verantwortlichen, der Body wird ins
@@ -942,6 +946,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         if (!evt.subsiteUrl) return evt;
         try {
           const counts = await eventService.getRegistrationCount(evt.subsiteUrl);
+          // v26.63: Frische Zahl best-effort nach DEX_Events.CurrentParticipants
+          // zurückschreiben, wenn sie vom gespeicherten Wert abweicht. Klappt nur
+          // für Organizer/Admins (Schreibrecht) — bei normalen Usern schlägt der
+          // MERGE still fehl. Nur Haupt-/Sub-Events mit numerischer Item-Id.
+          if (counts.registered !== evt.currentParticipants && /^\d+$/.test(evt.id)) {
+            eventService.persistCurrentParticipants(Number(evt.id), counts.registered).catch(() => { /* best-effort */ });
+          }
           return { ...evt, currentParticipants: counts.registered, waitlistCount: counts.waitlist };
         } catch {
           return evt;
@@ -1077,8 +1088,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       subsiteMap.current[e.Id.toString()] = e.SubsiteUrl;
     }
 
-    // Teilnehmeranzahl: default 0, wird lazy geladen wenn User ein Event oeffnet
-    const currentParticipants = 0;
+    // Teilnehmeranzahl: v26.63 aus der persistierten DEX_Events-Spalte
+    // CurrentParticipants als Startwert (statt hart 0) — so ist die Zahl auch
+    // ohne Subsite-Scan verfügbar. loadParticipantCountsForEvents überschreibt
+    // sie mit der frischen Zahl, sobald ein Event geöffnet/geladen wird.
+    const currentParticipants = (typeof e.CurrentParticipants === 'number') ? e.CurrentParticipants : 0;
     const waitlistCount = 0;
 
     // Custom Fields parsen
@@ -1729,6 +1743,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         catch (err) { console.warn('[DEX] markConsentPendingByEmail failed:', err); }
       }
       let emailData: { subject: string; body: string };
+      // v26.62: Bei externer Einladung den fertigen .eml-Entwurf DIREKT an die
+      // Instruktions-Mail anhängen (Feedback: „warum so umständlich?") — der
+      // Anmelder muss dann nicht mehr ins Organizer Center. Gleicher Inhalt
+      // wie der Download-Button in der Teilnehmerliste. Der Download bleibt
+      // als Fallback bestehen (z. B. solange der Mail-Flow Anhänge noch nicht
+      // weiterreicht oder wenn der Entwurf später erneut gebraucht wird).
+      let externalInviteEml: { fileName: string; content: string } | undefined;
       const spTemplateRaw = isExternalInvite ? null : await eventService.getEmailTemplate(templateType, lang).catch(() => null);
       const spTemplate = applyEventTemplateOverride(spTemplateRaw, event.emailTemplateOverrides, templateType);
       if (isExternalInvite) {
@@ -1738,6 +1759,20 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           registrantFirst, nameToUse, emailToUse, event.title,
           lang.toUpperCase() === 'DE', orgCenterUrl
         );
+        try {
+          const inv = externalInvitationEmail(
+            nameToUse, event.title, currentUserName || '',
+            lang.toUpperCase() === 'DE',
+            { startDate: event.startDate, endDate: event.endDate, location: event.location }
+          );
+          const eml = buildUnsentEmlDraft({
+            to: [emailToUse],
+            cc: ['no_reply.events@deloitte.de', ...Array.from(new Set([...(event.organizerEmails || []), ...(event.coOrganizerEmails || [])].filter(Boolean)))],
+            subject: inv.subject,
+            html: inv.body,
+          });
+          externalInviteEml = { fileName: `Einladung_${emailToUse}.eml`, content: eml };
+        } catch (emlErr) { console.warn('[DEX] externalInviteEml build failed:', emlErr); }
       } else if (spTemplate) {
         emailData = buildEmailFromTemplate(spTemplate, vars);
       } else {
@@ -1869,7 +1904,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         const ccFromFields = ccMerged || undefined;
         eventService.queueEmail(
           finalSubject, finalRecipient, finalRecipientName, finalBody,
-          templateType, event.title, eventId, ccFromFields, bcc
+          templateType, event.title, eventId, ccFromFields, bcc,
+          undefined,
+          // v26.62: .eml-Einladungs-Entwurf direkt an der Instruktions-Mail.
+          isExternalInvite ? externalInviteEml : undefined
         ).catch(err => console.warn('[DEX] queueEmail failed:', err));
       }
 
@@ -5472,6 +5510,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         sendOrganizerOnboarding,
         getKpiCache: () => eventService.getKpiCache(),
         updateKpiCache: (v) => eventService.updateKpiCache(v),
+        recomputeEventKpiOnly: () => eventService.recomputeEventKpiOnly(),
         getKpiTotals: () => eventService.getKpiTotals(),
       },
     },
