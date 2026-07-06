@@ -5401,94 +5401,126 @@ export default function AdminPage(): React.ReactElement {
       const em = (r.ParticipantEmail || '').toLowerCase().trim();
       return !!em && !anySubEmails.has(em);
     });
+    // v26.68: Bei aktiver Suche eine zusätzliche „ID"-Spalte mit der echten
+    // TeilnehmerID aus der Klammer-/Hauptevent-Liste einblenden. Die „#"-Spalte
+    // bleibt die laufende Durchzählung der aktuellen Ansicht — die ID hilft, die
+    // gefilterte Person eindeutig in der SharePoint-Liste wiederzufinden.
+    const searchActive = !!(searchQuery || '').trim();
+    const bracketTidByEmail: Record<string, number> = {};
+    for (const rr of registrations) {
+      const em = (rr.ParticipantEmail || '').toLowerCase().trim();
+      if (em && typeof rr.TeilnehmerID === 'number' && !(em in bracketTidByEmail)) bracketTidByEmail[em] = rr.TeilnehmerID;
+    }
     return (
       <div style={{ overflowX: 'auto' }}>
-        {/* v23.7: Geister-/verwaiste Klammer-Anmeldungen — sichtbar machen +
-            still entfernbar, damit eine blockierte (Neu-)Anmeldung wieder geht. */}
+        {/* v23.7: Unvollständige Klammer-Anmeldungen (nur Klammer, kein Sub-Event)
+            sichtbar machen — mit Erinnerungs- oder Entfernen-Option, damit eine
+            blockierte (Neu-)Anmeldung wieder möglich wird. */}
         {orphanShadowRegs.length > 0 && (
           <div style={{ marginBottom: 16, padding: 14, borderRadius: 10, border: '1px solid var(--dex-red, #c00)', background: 'rgba(200,0,0,0.06)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
               <Icon iconName="Warning" style={{ fontSize: 16, color: 'var(--dex-red, #c00)' }} />
               <strong style={{ color: 'var(--dex-red, #c00)', fontSize: '0.9rem' }}>
-                {isDe ? `Verwaiste Anmeldungen (${orphanShadowRegs.length})` : `Orphaned registrations (${orphanShadowRegs.length})`}
+                {isDe ? `Unvollständige Anmeldungen (${orphanShadowRegs.length})` : `Incomplete registrations (${orphanShadowRegs.length})`}
               </strong>
             </div>
             <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
               {isDe
-                ? 'Diese Personen haben eine Klammer-Anmeldung, sind aber in KEINEM Sub-Event aktiv angemeldet — meist ein Rest aus einer abgebrochenen Anmeldung. Solche Geister tauchen in der Teilnehmerliste unten nicht auf, blockieren aber eine erneute (auch stellvertretende) Anmeldung der Person. Hier still entfernen, dann ist die Anmeldung wieder möglich.'
-                : 'These people have a bracket registration but are NOT actively registered for any sub-event — usually a leftover from an interrupted registration. Such ghosts don’t show in the participant list below but block re-registering the person (also on their behalf). Remove them silently here to make registration possible again.'}
+                ? 'Diese Personen haben eine Klammer-Anmeldung, sind aber in keinem Sub-Event aktiv angemeldet — in der Regel ein unvollständiger Rest aus einer abgebrochenen Anmeldung. Solche Rest-Anmeldungen erscheinen in der Teilnehmerliste unten nicht, blockieren aber eine erneute (auch stellvertretende) Anmeldung. Du hast zwei Möglichkeiten: über „Erinnerung senden“ der Person – bzw. der Person, die sie angemeldet hat – einen Link zum Abschließen der Anmeldung schicken, oder die Rest-Anmeldung entfernen, sodass eine Neuanmeldung wieder möglich ist.'
+                : 'These people have an umbrella registration but are not actively registered for any sub-event — usually an incomplete leftover from an interrupted registration. Such leftover registrations don’t appear in the participant list below, but they block a new (or on-behalf) registration. You have two options: use „Send reminder“ to send the person – or whoever registered them – a link to complete the registration, or remove the leftover registration so a new one becomes possible.'}
             </p>
             <p style={{ margin: '0 0 10px', padding: '8px 10px', borderRadius: 6, background: 'rgba(237,139,0,0.10)', border: '1px solid var(--dex-orange, #ed8b00)', fontSize: '0.8rem', color: 'var(--dex-orange-dark, #b35a00)', lineHeight: 1.5 }}>
               {isDe
-                ? <><strong>Wichtig:</strong> Nach dem Entfernen ist die Person <strong>nicht</strong> angemeldet. Bitte gib der Person — bzw. der Person, die sie angemeldet hat (siehe „Versuch von …“) — Bescheid, dass sie sich <strong>erneut anmelden</strong> muss.</>
-                : <><strong>Important:</strong> After removal the person is <strong>not</strong> registered. Please let the person — or whoever registered them (see „attempted by …“) — know that they need to <strong>register again</strong>.</>}
+                ? <><strong>Hinweis:</strong> Nach dem Entfernen ist die Person <strong>nicht</strong> angemeldet. Informiere die Person – bzw. die Person, die sie angemeldet hat –, dass eine <strong>erneute Anmeldung</strong> nötig ist. Alternativ kannst du über <strong>„Erinnerung senden“</strong> direkt einen Link zum Abschließen verschicken.</>
+                : <><strong>Note:</strong> After removal the person is <strong>not</strong> registered. Let the person – or whoever registered them – know that a <strong>new registration</strong> is required. Alternatively, use <strong>„Send reminder“</strong> to send a completion link directly.</>}
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {orphanShadowRegs.map(r => {
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              {orphanShadowRegs.map((r, oi) => {
                 const nm = (r.Vorname && r.Nachname) ? `${r.Vorname} ${r.Nachname}` : (r.ParticipantName || r.ParticipantEmail);
-                // v23.8: Bei Fremd-Anmeldung (RegisteredBy ≠ Teilnehmer) zeigen,
-                // WER die Anmeldung versucht hat — hilft, die Assistenz/den
-                // Organizer zu identifizieren, der den Geist erzeugt hat.
+                // v23.8: Bei stellvertretender Anmeldung (RegisteredBy ≠ Teilnehmer)
+                // zeigen, WER die Anmeldung durchgeführt hat — hilft, die Assistenz
+                // bzw. den Organizer zu identifizieren.
                 const actorEmail = (r.RegisteredByEmail || '').trim();
                 const isProxy = !!actorEmail && actorEmail.toLowerCase() !== (r.ParticipantEmail || '').trim().toLowerCase();
                 const actorLabel = (r.RegisteredByName || '').trim() || actorEmail;
+                // v26.68: Profil-Zusatzinfos (Position, Standort, Unternehmen) —
+                // liegen als Property auf der Registrierung, hier für Foto-Subline
+                // und die Meta-Zeile genutzt.
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                const anyR = r as any;
+                const jobTitle = String(anyR.JobTitle || '').trim();
+                const loc = stripLocPrefix(String(r.Location || ''));
+                const subline = [jobTitle, loc, String(r.Company || '').trim()].filter(Boolean).join(' • ');
                 return (
-                  <div key={r.Id} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.84rem' }}>
-                    <strong>{nm}</strong>
-                    <span style={{ color: 'var(--dex-gray-500)' }}>{r.ParticipantEmail}</span>
-                    <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.78rem' }}>· {translateStatus(r.Status, isDe)}</span>
-                    {isProxy && (
-                      <span style={{ color: 'var(--dex-gray-600)', fontSize: '0.78rem' }}>
-                        · {isDe ? 'Versuch von' : 'attempted by'} <strong>{actorLabel}</strong>
-                      </span>
-                    )}
-                    {canManage && (
-                      <div style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
-                        {/* v26.67 (A): Erinnerung senden — die Person (bzw. die
-                            anmeldende Person) bitten, die Anmeldung abzuschließen,
-                            statt sie nur zu entfernen. */}
-                        <button
-                          type="button"
-                          className="btn btn-outline"
-                          style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-green-dark, #4a7c1f)', borderColor: 'var(--dex-green, #86bc25)' }}
-                          disabled={reminderBusyId === r.Id}
-                          onClick={async () => {
-                            if (!selectedEvent) return;
-                            setReminderBusyId(r.Id);
-                            const ok = await sendCompleteRegistrationReminder({
-                              eventId: selectedEvent.id,
-                              eventTitle: selectedEvent.title,
-                              participantEmail: r.ParticipantEmail || '',
-                              participantName: nm,
-                              registeredByEmail: r.RegisteredByEmail || '',
-                              registeredByName: r.RegisteredByName || '',
-                            }).catch(() => false);
-                            setReminderBusyId(null);
-                            showAlert(
-                              ok
-                                ? (isProxy
-                                    ? (isDe ? `Erinnerung an ${actorLabel} gesendet (${nm} auf Kopie) — mit Link zum Abschließen der Anmeldung.` : `Reminder sent to ${actorLabel} (${nm} on copy) — with a link to complete the registration.`)
-                                    : (isDe ? `Erinnerung an ${nm} gesendet — mit Link zum Abschließen der Anmeldung.` : `Reminder sent to ${nm} — with a link to complete the registration.`))
-                                : (isDe ? 'Erinnerung konnte nicht gesendet werden.' : 'The reminder could not be sent.'),
-                              { variant: ok ? 'success' : 'error' });
-                          }}
-                        >
-                          {reminderBusyId === r.Id ? (isDe ? 'Wird gesendet…' : 'Sending…') : (isDe ? 'Erinnerung senden' : 'Send reminder')}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-outline"
-                          style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-red, #c00)', borderColor: 'var(--dex-red, #c00)' }}
-                          onClick={async () => {
-                            if (!(await confirmDialog(isDe ? `Verwaiste Anmeldung von ${nm} still entfernen?` : `Silently remove the orphaned registration of ${nm}?`, { danger: true, confirmLabel: isDe ? 'Entfernen' : 'Remove' }))) return;
-                            await performSilentDuplicateDelete(r);
-                            showAlert(isDe ? 'Verwaiste Anmeldung entfernt — die Person kann jetzt wieder angemeldet werden.' : 'Orphaned registration removed — the person can be registered again now.', { variant: 'success' });
-                          }}
-                        >
-                          {isDe ? 'Geist entfernen' : 'Remove ghost'}
-                        </button>
+                  <div key={r.Id} style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: '10px 0', borderTop: oi > 0 ? '1px solid rgba(200,0,0,0.14)' : 'none' }}>
+                    {/* v26.68: Foto mit Hover-Kontaktkarte, wie in der Teilnehmerliste. */}
+                    {(r.ParticipantEmail || '') ? (
+                      <PersonContactHover email={r.ParticipantEmail || ''} name={nm} size={40} subline={subline} isDe={isDe} />
+                    ) : null}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: '0.86rem' }}>
+                        <strong>{nm}</strong>
+                        <span style={{ color: 'var(--dex-gray-500)', marginLeft: 8 }}>{r.ParticipantEmail}</span>
                       </div>
-                    )}
+                      {(jobTitle || loc) && (
+                        <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>{[jobTitle, loc].filter(Boolean).join(' • ')}</div>
+                      )}
+                      <div style={{ fontSize: '0.76rem', color: 'var(--dex-gray-500)' }}>
+                        {translateStatus(r.Status, isDe)}
+                        {r.RegistrationDate ? <> · {isDe ? 'angemeldet am' : 'registered on'} {formatDate(r.RegistrationDate)}</> : null}
+                        {' · '}
+                        {isProxy
+                          ? <>{isDe ? 'angemeldet durch' : 'registered by'} <strong>{actorLabel}</strong></>
+                          : (isDe ? 'selbst angemeldet' : 'self-registered')}
+                      </div>
+                      {canManage && (
+                        <div style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+                          {/* v26.67 (A): Erinnerung senden — die Person (bzw. die
+                              anmeldende Person) bitten, die Anmeldung abzuschließen,
+                              statt sie nur zu entfernen. */}
+                          <button
+                            type="button"
+                            className="btn btn-outline"
+                            style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-green-dark, #4a7c1f)', borderColor: 'var(--dex-green, #86bc25)' }}
+                            disabled={reminderBusyId === r.Id}
+                            onClick={async () => {
+                              if (!selectedEvent) return;
+                              setReminderBusyId(r.Id);
+                              const ok = await sendCompleteRegistrationReminder({
+                                eventId: selectedEvent.id,
+                                eventTitle: selectedEvent.title,
+                                participantEmail: r.ParticipantEmail || '',
+                                participantName: nm,
+                                registeredByEmail: r.RegisteredByEmail || '',
+                                registeredByName: r.RegisteredByName || '',
+                              }).catch(() => false);
+                              setReminderBusyId(null);
+                              showAlert(
+                                ok
+                                  ? (isProxy
+                                      ? (isDe ? `Erinnerung an ${actorLabel} gesendet (${nm} auf Kopie) — mit Link zum Abschließen der Anmeldung.` : `Reminder sent to ${actorLabel} (${nm} on copy) — with a link to complete the registration.`)
+                                      : (isDe ? `Erinnerung an ${nm} gesendet — mit Link zum Abschließen der Anmeldung.` : `Reminder sent to ${nm} — with a link to complete the registration.`))
+                                  : (isDe ? 'Erinnerung konnte nicht gesendet werden.' : 'The reminder could not be sent.'),
+                                { variant: ok ? 'success' : 'error' });
+                            }}
+                          >
+                            {reminderBusyId === r.Id ? (isDe ? 'Wird gesendet…' : 'Sending…') : (isDe ? 'Erinnerung senden' : 'Send reminder')}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-outline"
+                            style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-red, #c00)', borderColor: 'var(--dex-red, #c00)' }}
+                            onClick={async () => {
+                              if (!(await confirmDialog(isDe ? `Unvollständige Anmeldung von ${nm} entfernen? Die Person kann sich danach neu anmelden.` : `Remove the incomplete registration of ${nm}? The person can register again afterwards.`, { danger: true, confirmLabel: isDe ? 'Entfernen' : 'Remove' }))) return;
+                              await performSilentDuplicateDelete(r);
+                              showAlert(isDe ? 'Rest-Anmeldung entfernt — die Person kann jetzt wieder angemeldet werden.' : 'Leftover registration removed — the person can be registered again now.', { variant: 'success' });
+                            }}
+                          >
+                            {isDe ? 'Rest-Anmeldung entfernen' : 'Remove leftover'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -5565,6 +5597,10 @@ export default function AdminPage(): React.ReactElement {
                   Erst-Anmeldung. */}
               <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('id')}
                 title={isDe ? 'Laufende Nummer in dieser Ansicht (nicht die Teilnehmer-ID der Liste — die ist pro Sub-Event unterschiedlich)' : 'Row number in this view (not the SharePoint participant ID — that differs per sub-event)'}>#{sortArrow('id')}</th>
+              {/* v26.68: echte Teilnehmer-ID (Klammer-Liste) — nur bei aktiver Suche. */}
+              {searchActive && (
+                <th style={{ textAlign: 'left', padding: 8 }} title={isDe ? 'Teilnehmer-ID in der Hauptevent-/Klammer-Teilnehmerliste' : 'Participant ID in the main-event / bracket list'}>ID</th>
+              )}
               {personalColsCollapsed ? (
                 // v26.65 BUG-FIX: Sortier-Klick auf das GANZE <th> (vorher nur auf
                 // den kleinen Text-<span> — daneben klicken sortierte nicht). Der
@@ -5640,6 +5676,10 @@ export default function AdminPage(): React.ReactElement {
                         TID pro Sub-Event hat — sortbar bleibt es ueber
                         Vorname/Nachname/Email-Spalten. */}
                     <td style={{ padding: 8, color: 'var(--dex-gray-400)' }}>{idx + 1}</td>
+                    {/* v26.68: echte Teilnehmer-ID (Klammer-Liste) — nur bei Suche. */}
+                    {searchActive && (
+                      <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontWeight: 600 }}>{bracketTidByEmail[row.emailKey] ?? row.teilnehmerId ?? '–'}</td>
+                    )}
                     {personalColsCollapsed ? (
                       <td style={{ padding: 8 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
@@ -5669,7 +5709,21 @@ export default function AdminPage(): React.ReactElement {
                       </td>
                     ) : (
                       <>
-                        <td style={{ padding: 8, fontWeight: 500 }}>{highlightMatch(row.vorname || '-')}</td>
+                        {/* v26.68: auch in der aufgeklappten Ansicht ein Foto mit
+                            Hover-Kontaktkarte zeigen (vorher nur im eingeklappten
+                            2-Spalten-Modus) — links neben dem Vornamen. */}
+                        <td style={{ padding: 8, fontWeight: 500 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                            <PersonContactHover
+                              email={row.email || ''}
+                              name={`${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email || '-'}
+                              size={28}
+                              subline={[row.jobTitle || '', stripLocPrefix(row.location || ''), row.company || ''].filter(Boolean).join(' • ')}
+                              isDe={isDe}
+                            />
+                            <span>{highlightMatch(row.vorname || '-')}</span>
+                          </span>
+                        </td>
                         <td style={{ padding: 8, fontWeight: 500 }}>{highlightMatch(row.nachname || '-')}</td>
                         <td style={{ padding: 8, color: 'var(--dex-gray-600)' }}>{highlightMatch(row.email)}</td>
                         <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{highlightMatch(row.jobTitle || '-')}</td>
@@ -5747,13 +5801,11 @@ export default function AdminPage(): React.ReactElement {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                               {persons.map((p, pi) => (
                                 <span key={pi} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+                                  {/* v26.68: Foto mit Kontaktkarte (Hover → E-Mail/Teams),
+                                      wie bei allen anderen Personen-Fotos der Liste — vorher
+                                      war es ein reines <img> ohne Mouse-over. */}
                                   {p.email ? (
-                                    <img
-                                      src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(p.email)}&size=S`}
-                                      alt={p.name}
-                                      onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                                      style={{ width: 24, height: 24, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-200)', flexShrink: 0 }}
-                                    />
+                                    <PersonContactHover email={p.email} name={p.name} size={24} isDe={isDe} />
                                   ) : null}
                                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{highlightMatch(p.name)}</span>
                                 </span>
@@ -5800,73 +5852,41 @@ export default function AdminPage(): React.ReactElement {
                       );
                     })}
                     <td style={{ padding: 8 }}>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-                        <button
-                          type="button"
-                          className="btn btn-secondary"
-                          style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                          onClick={() => setExpandedConsolidatedEmail(isExpanded ? null : row.emailKey)}
-                        >
-                          {isExpanded ? (isDe ? 'Schließen' : 'Close') : (isDe ? 'Details' : 'Details')}
-                          {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                        </button>
-                        {/* v19.30 (Feature A): Hauptevent-Felder bearbeiten —
-                            nur wenn es Hauptevent-Custom-Felder gibt UND die
-                            Person eine Hauptevent-Registrierung hat. */}
-                        {canManage && !orgPastLock && editableParentFieldCount > 0 && hasParentReg(row.emailKey) && (
-                          <button
-                            type="button"
+                      {/* v26.68: Die früheren Einzel-Buttons (Details / Felder /
+                          Zur Klammer / Assistenz zuordnen / Abmelden) in EIN
+                          Auswahl-Dropdown zusammengefasst — spart Platz und hält
+                          die Aktions-Spalte schmal. Ein natives <select> ist im
+                          horizontal scrollbaren Tabellen-Container am robustesten
+                          (kein Abschneiden durch overflow). */}
+                      {(() => {
+                        const showFelder = canManage && !orgPastLock && editableParentFieldCount > 0 && hasParentReg(row.emailKey);
+                        const showKlammer = canManage && !orgPastLock && isConsolidatedMode && !hasParentReg(row.emailKey);
+                        const showAssist = canManage && !orgPastLock;
+                        const showAbmelden = canManage && !orgPastLock;
+                        return (
+                          <select
                             className="btn btn-secondary"
-                            style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                            title={isDe ? 'Felder des Hauptevents dieser Person bearbeiten' : 'Edit this person’s main-event fields'}
-                            onClick={() => openMainFieldsEdit(row.emailKey, `${row.vorname} ${row.nachname}`.trim() || row.email)}
+                            value=""
+                            style={{ fontSize: '0.75rem', padding: '4px 10px', cursor: 'pointer', maxWidth: 170 }}
+                            aria-label={isDe ? 'Aktionen für diese Person' : 'Actions for this person'}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              if (v === 'details') setExpandedConsolidatedEmail(isExpanded ? null : row.emailKey);
+                              else if (v === 'felder') openMainFieldsEdit(row.emailKey, `${row.vorname} ${row.nachname}`.trim() || row.email);
+                              else if (v === 'klammer') { if (addingToKlammer !== row.emailKey) void addToKlammer(row); }
+                              else if (v === 'assist') { setAssignAssistRow(row); setAssignAssistValue(''); }
+                              else if (v === 'abmelden') openDeregModal(row);
+                            }}
                           >
-                            <Pencil size={12} /> {isDe ? 'Felder' : 'Fields'}
-                          </button>
-                        )}
-                        {/* v24.38: Fehlende Klammer-Anmeldung — Person hat NUR
-                            Sub-Event-Zeilen, aber keine Hauptevent-/Klammer-
-                            Anmeldung (Daten-Anomalie). Als Fehler markieren +
-                            Knopf zum Nachtragen der Klammer-Anmeldung. */}
-                        {canManage && !orgPastLock && isConsolidatedMode && !hasParentReg(row.emailKey) && (
-                          <button
-                            type="button"
-                            className="btn btn-secondary"
-                            style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--dex-orange, #ed8b00)', borderColor: 'var(--dex-orange, #ed8b00)' }}
-                            title={isDe ? 'Fehlende Hauptanmeldung: Diese Person ist nur in Sub-Events angemeldet, fehlt aber am Klammer-Event. Klick fügt die fehlende Klammer-Anmeldung hinzu (ohne Mail/Outlook).' : 'Missing main registration: this person is only in sub-events but missing on the umbrella event. Click adds the missing umbrella registration (no mail/Outlook).'}
-                            disabled={addingToKlammer === row.emailKey}
-                            onClick={() => { void addToKlammer(row); }}
-                          >
-                            <Plus size={12} /> {addingToKlammer === row.emailKey ? '…' : (isDe ? 'Zur Klammer hinzufügen' : 'Add to umbrella')}
-                          </button>
-                        )}
-                        {/* v24.40: Assistenz zuordnen — Person an eine gewählte
-                            Assistenz übergeben (Klammer + alle Sub-Events). */}
-                        {canManage && !orgPastLock && (
-                          <button
-                            type="button"
-                            className="btn btn-secondary"
-                            style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 4 }}
-                            title={isDe ? 'Diese Anmeldung (Klammer + Sub-Events) einer Assistenz übergeben, damit sie sie in ihrer „Assistenz"-Kachel verwalten kann.' : 'Hand this registration (umbrella + sub-events) to an assistant so they can manage it in their „Assistant" tile.'}
-                            onClick={() => { setAssignAssistRow(row); setAssignAssistValue(''); }}
-                          >
-                            <Users size={12} /> {isDe ? 'Assistenz zuordnen' : 'Assign assistant'}
-                          </button>
-                        )}
-                        {/* v19.30 (Feature B): Abmelden mit Sub-Event-Auswahl.
-                            v24.8 (O): bei abgeschlossenen Events für Organizer gesperrt. */}
-                        {canManage && !orgPastLock && (
-                          <button
-                            type="button"
-                            className="btn btn-secondary"
-                            style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--dex-red, #c00)' }}
-                            title={isDe ? 'Aus einzelnen oder allen Sub-Events abmelden' : 'Deregister from selected or all sub-events'}
-                            onClick={() => openDeregModal(row)}
-                          >
-                            <Trash2 size={12} /> {isDe ? 'Abmelden' : 'Cancel'}
-                          </button>
-                        )}
-                      </div>
+                            <option value="" disabled>{isDe ? 'Aktionen…' : 'Actions…'}</option>
+                            <option value="details">{isExpanded ? (isDe ? 'Details schließen' : 'Close details') : (isDe ? 'Details anzeigen' : 'Show details')}</option>
+                            {showFelder && <option value="felder">{isDe ? 'Hauptevent-Felder bearbeiten' : 'Edit main-event fields'}</option>}
+                            {showKlammer && <option value="klammer">{addingToKlammer === row.emailKey ? '…' : (isDe ? 'Zur Klammer hinzufügen' : 'Add to umbrella')}</option>}
+                            {showAssist && <option value="assist">{isDe ? 'Assistenz zuordnen' : 'Assign assistant'}</option>}
+                            {showAbmelden && <option value="abmelden">{isDe ? 'Abmelden' : 'Cancel registration'}</option>}
+                          </select>
+                        );
+                      })()}
                     </td>
                   </tr>
                   {isExpanded && (
