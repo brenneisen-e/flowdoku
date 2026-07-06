@@ -2920,6 +2920,13 @@ export default function AdminPage(): React.ReactElement {
     const shareOrg = (e: DeloitteEvent): boolean => { const o = orgSet(e); for (const x of Array.from(selOrg)) { if (o.has(x)) return true; } return false; };
     return (events || []).filter(e => {
       if (e.id === selectedEvent.id || e.parentEventId) return false;
+      // v26.66 BUG-FIX: Klammer-Beziehung ist KEIN Duplikat. Sub-Events (mit
+      // parentEventId) sind oben schon raus — aber wenn das SELEKTIERTE Event
+      // selbst ein Sub-Event ist, hat sein Hauptevent (Parent) keinen
+      // parentEventId und wurde fälschlich als Duplikat gemeldet (z. B.
+      // „P/D Meeting T&T+ 2026" ⇄ dessen Sub-Event „… | DINNER"). Parent des
+      // selektierten Sub-Events explizit ausschließen.
+      if (selectedEvent.parentEventId && String(e.id) === String(selectedEvent.parentEventId)) return false;
       const eDay = dayKey(e.startDate);
       // gleicher Tag (falls beide ein Datum haben).
       if (selDay && eDay && eDay !== selDay) return false;
