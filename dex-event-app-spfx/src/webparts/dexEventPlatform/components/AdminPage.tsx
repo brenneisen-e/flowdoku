@@ -874,7 +874,9 @@ export default function AdminPage(): React.ReactElement {
   const { navigate, selectedEventId } = useNavigation();
   // v14.11: zusätzlich `events` (alle Events inkl. Sub-Events) als `allEvents`
   // für die Parent-Lookup-Logik im konsolidierten View + im Sub-Event-Detail.
-  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead, registerForEvent, subscribeEventRealtime } = useEvents();
+  const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead, registerForEvent, subscribeEventRealtime, sendCompleteRegistrationReminder } = useEvents();
+  // v26.67: laufende „Erinnerung senden"-Aktion pro verwaister Anmeldung (Id).
+  const [reminderBusyId, setReminderBusyId] = React.useState<number | null>(null);
   // v24.38: läuft gerade ein „Zur Klammer hinzufügen" für diese E-Mail?
   const [addingToKlammer, setAddingToKlammer] = React.useState<string | null>(null);
   // v24.40: Modal „Assistenz zuordnen" — Person an eine gewählte Assistenz
@@ -2920,6 +2922,13 @@ export default function AdminPage(): React.ReactElement {
     const shareOrg = (e: DeloitteEvent): boolean => { const o = orgSet(e); for (const x of Array.from(selOrg)) { if (o.has(x)) return true; } return false; };
     return (events || []).filter(e => {
       if (e.id === selectedEvent.id || e.parentEventId) return false;
+      // v26.66 BUG-FIX: Klammer-Beziehung ist KEIN Duplikat. Sub-Events (mit
+      // parentEventId) sind oben schon raus — aber wenn das SELEKTIERTE Event
+      // selbst ein Sub-Event ist, hat sein Hauptevent (Parent) keinen
+      // parentEventId und wurde fälschlich als Duplikat gemeldet (z. B.
+      // „P/D Meeting T&T+ 2026" ⇄ dessen Sub-Event „… | DINNER"). Parent des
+      // selektierten Sub-Events explizit ausschließen.
+      if (selectedEvent.parentEventId && String(e.id) === String(selectedEvent.parentEventId)) return false;
       const eDay = dayKey(e.startDate);
       // gleicher Tag (falls beide ein Datum haben).
       if (selDay && eDay && eDay !== selDay) return false;
@@ -5026,15 +5035,29 @@ export default function AdminPage(): React.ReactElement {
     const s = text == null ? '' : String(text);
     if (!query || !s) return s;
     const lower = s.toLowerCase();
-    let idx = lower.indexOf(query);
-    if (idx < 0) return s;
+    // v26.65: pro Such-Wort hervorheben (analog zur Token-Suche). Alle
+    // Treffer-Bereiche sammeln, überlappungsfrei zusammenführen, dann rendern —
+    // so wird bei „Alexander Knoth" jedes der beiden Wörter grün markiert.
+    const tokens = query.split(/\s+/).filter(Boolean);
+    const ranges: Array<[number, number]> = [];
+    for (const t of tokens) {
+      let idx = lower.indexOf(t);
+      while (idx >= 0) { ranges.push([idx, idx + t.length]); idx = lower.indexOf(t, idx + t.length); }
+    }
+    if (ranges.length === 0) return s;
+    ranges.sort((a, b) => a[0] - b[0]);
+    const merged: Array<[number, number]> = [];
+    for (const r of ranges) {
+      const last = merged[merged.length - 1];
+      if (last && r[0] <= last[1]) { last[1] = Math.max(last[1], r[1]); }
+      else merged.push([r[0], r[1]]);
+    }
     const parts: React.ReactNode[] = [];
     let i = 0; let k = 0;
-    while (idx >= 0) {
-      if (idx > i) parts.push(s.slice(i, idx));
-      parts.push(<mark key={k++} style={{ background: 'rgba(134,188,37,0.5)', color: 'inherit', padding: 0, borderRadius: 2 }}>{s.slice(idx, idx + query.length)}</mark>);
-      i = idx + query.length;
-      idx = lower.indexOf(query, i);
+    for (const [a, b] of merged) {
+      if (a > i) parts.push(s.slice(i, a));
+      parts.push(<mark key={k++} style={{ background: 'rgba(134,188,37,0.5)', color: 'inherit', padding: 0, borderRadius: 2 }}>{s.slice(a, b)}</mark>);
+      i = b;
     }
     if (i < s.length) parts.push(s.slice(i));
     return <>{parts}</>;
@@ -5043,25 +5066,25 @@ export default function AdminPage(): React.ReactElement {
   // Status und alle Custom-Field-Antworten).
   const matchesSearch = (reg: SPRegistration): boolean => {
     if (!query) return true;
+    // v26.65: Token-basierte Suche über EINEN kombinierten Text (analog zur
+    // konsolidierten Ansicht) — jedes getippte Wort muss irgendwo vorkommen,
+    // Reihenfolge egal. Vorher war der volle Name nur in der Reihenfolge
+    // „Vorname Nachname" findbar; „Knoth Alexander" oder feldübergreifende
+    // Kombinationen („Alexander Berlin") gingen nicht.
+    const tokens = query.split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return true;
     const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || '');
-    if (name.toLowerCase().includes(query)) return true;
-    if ((reg.ParticipantEmail || '').toLowerCase().includes(query)) return true;
-    if (String(reg.TeilnehmerID || '').includes(query)) return true;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const anyReg = reg as any;
-    if (String(anyReg.JobTitle || '').toLowerCase().includes(query)) return true;
-    if (String(anyReg.Location || '').toLowerCase().includes(query)) return true;
-    if (String(reg.Status || '').toLowerCase().includes(query)) return true;
+    let hay = `${name} ${reg.ParticipantEmail || ''} ${String(reg.TeilnehmerID || '')} ${String(anyReg.JobTitle || '')} ${String(anyReg.Location || '')} ${String(reg.Status || '')}`;
     if (reg.CustomData) {
       try {
         const cd = JSON.parse(reg.CustomData);
-        for (const ck of Object.keys(cd)) {
-          const v = cd[ck];
-          if (v != null && String(v).toLowerCase().includes(query)) return true;
-        }
+        for (const ck of Object.keys(cd)) { const v = cd[ck]; if (v != null) hay += ' ' + String(v); }
       } catch { /* */ }
     }
-    return false;
+    hay = hay.toLowerCase();
+    return tokens.every(t => hay.indexOf(t) >= 0);
   };
 
   const sortRegs = (a: SPRegistration, b: SPRegistration): number => {
@@ -5243,25 +5266,29 @@ export default function AdminPage(): React.ReactElement {
     };
     const parentRegOf = (row: ConsolidatedRow): SPRegistration | undefined =>
       registrations.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === row.emailKey);
-    const scanCd = (cdStr?: string): boolean => {
-      if (!cdStr) return false;
-      try { const cd = JSON.parse(cdStr); for (const ck of Object.keys(cd)) { const v = cd[ck]; if (v != null && String(v).toLowerCase().indexOf(q) >= 0) return true; } } catch { /* */ }
-      return false;
+    // v26.65: CustomData-Werte als durchsuchbaren Text zusammenfügen (statt
+    // pro Wert gegen den GANZEN Query zu matchen) — Basis für die Token-Suche.
+    const cdHaystack = (cdStr?: string): string => {
+      if (!cdStr) return '';
+      try { const cd = JSON.parse(cdStr); return Object.keys(cd).map(ck => (cd[ck] == null ? '' : String(cd[ck]))).join(' '); } catch { return ''; }
     };
-    // v23.32: konsolidierte Suche über ALLE Spalten (inkl. Job Title, Standort,
-    // Parent- + Sub-Event-Custom-Felder).
+    // v26.65 BUG-FIX: Token-basierte Suche über EINEN kombinierten Text aus allen
+    // durchsuchbaren Feldern. Vorher wurde der komplette Suchstring gegen jedes
+    // Einzelfeld geprüft — „Alexander Knoth" (Vor- + Nachname) fand nichts, weil
+    // der ganze String weder nur im Vor- noch nur im Nachnamen steht. Jetzt muss
+    // JEDES getrennte Wort irgendwo im kombinierten Text vorkommen (Reihenfolge
+    // egal → „Knoth Alexander" findet dieselbe Person, Job Title/Standort/Custom-
+    // Felder werden weiter mitdurchsucht).
     const matches = (row: ConsolidatedRow): boolean => {
       if (!q) return true;
-      if (row.vorname.toLowerCase().indexOf(q) >= 0) return true;
-      if (row.nachname.toLowerCase().indexOf(q) >= 0) return true;
-      if (row.email.toLowerCase().indexOf(q) >= 0) return true;
-      if (String(row.teilnehmerId || '').indexOf(q) >= 0) return true;
-      if ((row.jobTitle || '').toLowerCase().indexOf(q) >= 0) return true;
-      if ((row.location || '').toLowerCase().indexOf(q) >= 0) return true;
+      const tokens = q.split(/\s+/).filter(Boolean);
+      if (tokens.length === 0) return true;
       const pReg = parentRegOf(row);
-      if (pReg && scanCd(pReg.CustomData)) return true;
-      for (const cid of Object.keys(row.perChild)) { const r = row.perChild[cid]; if (r && scanCd(r.CustomData)) return true; }
-      return false;
+      let hay = `${row.vorname} ${row.nachname} ${row.email} ${String(row.teilnehmerId || '')} ${row.jobTitle || ''} ${row.location || ''} ${row.company || ''}`;
+      if (pReg) hay += ' ' + cdHaystack(pReg.CustomData);
+      for (const cid of Object.keys(row.perChild)) { const r = row.perChild[cid]; if (r) hay += ' ' + cdHaystack(r.CustomData); }
+      hay = hay.toLowerCase();
+      return tokens.every(t => hay.indexOf(t) >= 0);
     };
     const filtered = consolidatedRows.filter(matches);
     const cs = consolidatedSort;
@@ -5416,18 +5443,51 @@ export default function AdminPage(): React.ReactElement {
                       </span>
                     )}
                     {canManage && (
-                      <button
-                        type="button"
-                        className="btn btn-outline"
-                        style={{ marginLeft: 'auto', fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-red, #c00)', borderColor: 'var(--dex-red, #c00)' }}
-                        onClick={async () => {
-                          if (!(await confirmDialog(isDe ? `Verwaiste Anmeldung von ${nm} still entfernen?` : `Silently remove the orphaned registration of ${nm}?`, { danger: true, confirmLabel: isDe ? 'Entfernen' : 'Remove' }))) return;
-                          await performSilentDuplicateDelete(r);
-                          showAlert(isDe ? 'Verwaiste Anmeldung entfernt — die Person kann jetzt wieder angemeldet werden.' : 'Orphaned registration removed — the person can be registered again now.', { variant: 'success' });
-                        }}
-                      >
-                        {isDe ? 'Geist entfernen' : 'Remove ghost'}
-                      </button>
+                      <div style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
+                        {/* v26.67 (A): Erinnerung senden — die Person (bzw. die
+                            anmeldende Person) bitten, die Anmeldung abzuschließen,
+                            statt sie nur zu entfernen. */}
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-green-dark, #4a7c1f)', borderColor: 'var(--dex-green, #86bc25)' }}
+                          disabled={reminderBusyId === r.Id}
+                          onClick={async () => {
+                            if (!selectedEvent) return;
+                            setReminderBusyId(r.Id);
+                            const ok = await sendCompleteRegistrationReminder({
+                              eventId: selectedEvent.id,
+                              eventTitle: selectedEvent.title,
+                              participantEmail: r.ParticipantEmail || '',
+                              participantName: nm,
+                              registeredByEmail: r.RegisteredByEmail || '',
+                              registeredByName: r.RegisteredByName || '',
+                            }).catch(() => false);
+                            setReminderBusyId(null);
+                            showAlert(
+                              ok
+                                ? (isProxy
+                                    ? (isDe ? `Erinnerung an ${actorLabel} gesendet (${nm} auf Kopie) — mit Link zum Abschließen der Anmeldung.` : `Reminder sent to ${actorLabel} (${nm} on copy) — with a link to complete the registration.`)
+                                    : (isDe ? `Erinnerung an ${nm} gesendet — mit Link zum Abschließen der Anmeldung.` : `Reminder sent to ${nm} — with a link to complete the registration.`))
+                                : (isDe ? 'Erinnerung konnte nicht gesendet werden.' : 'The reminder could not be sent.'),
+                              { variant: ok ? 'success' : 'error' });
+                          }}
+                        >
+                          {reminderBusyId === r.Id ? (isDe ? 'Wird gesendet…' : 'Sending…') : (isDe ? 'Erinnerung senden' : 'Send reminder')}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-red, #c00)', borderColor: 'var(--dex-red, #c00)' }}
+                          onClick={async () => {
+                            if (!(await confirmDialog(isDe ? `Verwaiste Anmeldung von ${nm} still entfernen?` : `Silently remove the orphaned registration of ${nm}?`, { danger: true, confirmLabel: isDe ? 'Entfernen' : 'Remove' }))) return;
+                            await performSilentDuplicateDelete(r);
+                            showAlert(isDe ? 'Verwaiste Anmeldung entfernt — die Person kann jetzt wieder angemeldet werden.' : 'Orphaned registration removed — the person can be registered again now.', { variant: 'success' });
+                          }}
+                        >
+                          {isDe ? 'Geist entfernen' : 'Remove ghost'}
+                        </button>
+                      </div>
                     )}
                   </div>
                 );
@@ -5499,13 +5559,21 @@ export default function AdminPage(): React.ReactElement {
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
           <thead>
             <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
-              <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('id')}>#{sortArrow('id')}</th>
+              {/* v26.65: Header-Tooltip stellt klar, dass „#" die laufende Zeilen-
+                  nummer dieser Ansicht ist — NICHT die Teilnehmer-ID der SharePoint-
+                  Liste (die pro Sub-Event unterschiedlich ist). Sortiert nach
+                  Erst-Anmeldung. */}
+              <th style={{ textAlign: 'left', padding: 8, cursor: 'pointer', userSelect: 'none' }} onClick={() => handleSortConsolidated('id')}
+                title={isDe ? 'Laufende Nummer in dieser Ansicht (nicht die Teilnehmer-ID der Liste — die ist pro Sub-Event unterschiedlich)' : 'Row number in this view (not the SharePoint participant ID — that differs per sub-event)'}>#{sortArrow('id')}</th>
               {personalColsCollapsed ? (
-                <th style={{ textAlign: 'left', padding: 8, userSelect: 'none', whiteSpace: 'nowrap' }}>
-                  <span style={{ cursor: 'pointer' }} onClick={() => handleSortConsolidated('nachname')}>{isDe ? 'Teilnehmer' : 'Participant'}{sortArrow('nachname')}</span>
+                // v26.65 BUG-FIX: Sortier-Klick auf das GANZE <th> (vorher nur auf
+                // den kleinen Text-<span> — daneben klicken sortierte nicht). Der
+                // Ausklapp-Button stoppt die Propagation, damit er nicht sortiert.
+                <th style={{ textAlign: 'left', padding: 8, userSelect: 'none', whiteSpace: 'nowrap', cursor: 'pointer' }} onClick={() => handleSortConsolidated('nachname')}>
+                  <span>{isDe ? 'Teilnehmer' : 'Participant'}{sortArrow('nachname')}</span>
                   <button
                     type="button"
-                    onClick={() => setPersonalColsCollapsed(false)}
+                    onClick={(e) => { e.stopPropagation(); setPersonalColsCollapsed(false); }}
                     title={isDe ? 'Personen-Spalten ausklappen' : 'Expand personal columns'}
                     style={{ marginLeft: 8, border: 'none', cursor: 'pointer', background: 'var(--dex-green)', color: '#fff', width: 20, height: 20, borderRadius: '50%', fontSize: '0.8rem', fontWeight: 700, lineHeight: '20px', textAlign: 'center', padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', verticalAlign: 'middle' }}
                   >»</button>

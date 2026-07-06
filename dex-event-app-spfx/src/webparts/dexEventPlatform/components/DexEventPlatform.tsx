@@ -365,6 +365,14 @@ function AppContent(): React.ReactElement {
         } else {
           navigate(targetPage);
         }
+      } else if (action === 'register' && eventParam) {
+        // v26.67: Deep-Link aus der „Anmeldung abschließen"-Erinnerung — direkt
+        // zur Anmeldeseite mit vorgewähltem Event (SharePoint-Item-ID; Fallback
+        // eventNumber). Die Person kann dort ihre Programmpunkte auswählen.
+        didHandleDeepLink.current = true;
+        let evt = events.find(e => e.id === eventParam);
+        if (!evt) { const n = parseInt(eventParam, 10); if (!isNaN(n)) evt = events.find(e => e.eventNumber === n); }
+        navigate('register', evt ? evt.id : undefined);
       } else if (action === 'event-created' || action === 'event-updated') {
         // v9.43: Deep-Link nach Event-Erstellung/-Update. Wird vom EventCreationPage-
         // Success-Button aufgerufen mit window.location.href = '...?action=event-

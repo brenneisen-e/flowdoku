@@ -1474,10 +1474,15 @@ export default function RegistrationPage(): React.ReactElement {
       const isSubOnlyMode = !!(event && event.subEventsOnlyMode);
       const sessionsBeingAdded = childEvents.some(ce => selectedSessions.has(ce.id) && !sessionMeta[ce.id]?.wasRegistered);
       const parentAlreadyHasRow = !!myParentReg;
-      const shouldShadowRegisterParent = isSubOnlyMode && sessionsBeingAdded && !parentAlreadyHasRow && !registerForOther;
-      if (willRegisterParent || registerForOther || shouldShadowRegisterParent) {
-        setSubmitProgress(30);
-        setSubmitProgressLabel(locale === 'de' ? 'Haupt-Event wird angemeldet…' : 'Registering for main event…');
+      // v26.67 (B): deckt jetzt Selbst- UND Fremd-Anmeldung ab (das frühere
+      // `!registerForOther` entfällt — die Klammer läuft im subEventsOnly-Modus
+      // in beiden Fällen ZUM SCHLUSS über den Schritt-3-Block unten).
+      const shouldShadowRegisterParent = isSubOnlyMode && sessionsBeingAdded && !parentAlreadyHasRow;
+      // v26.67 (B): Gemeinsame Klammer-/Parent-Anmelde-Routine. `bestEffort` =
+      // true bei der subEventsOnly-Schatten-Zeile, die JETZT NACH den Sub-Events
+      // angelegt wird — ein Fehlschlag darf die (gültigen) Sub-Event-Anmeldungen
+      // nicht als Fehler markieren.
+      const doParentRegistration = async (bestEffort: boolean): Promise<void> => {
         const parentResult = await registerForEvent(
           selectedEventId!,
           customData,
@@ -1492,6 +1497,11 @@ export default function RegistrationPage(): React.ReactElement {
             ? { proxyConsentConfirmed: true, actorAllowedAsAssistant, ...(ccSelfEmail ? { extraCc: ccSelfEmail } : {}) }
             : (delegateCc ? { extraCc: delegateCc } : undefined)
         );
+        if (bestEffort) {
+          // Schatten-Klammer: Erfolg zählt mit, aber kein Fehler-Durchschlag.
+          if (parentResult.ok) anySuccess = true;
+          return;
+        }
         parentOk = parentResult.ok;
         if (parentOk) {
           anySuccess = true;
@@ -1502,6 +1512,19 @@ export default function RegistrationPage(): React.ReactElement {
         // der echte Grund (Berechtigung / Deadline / technischer Fehler) wird
         // jetzt aus registerForEvent durchgereicht.
         else setError(regFailMessage(parentResult.reason));
+      };
+      // v26.67 (B) BUG-FIX: Im subEventsOnly-Modus ist die „Parent"-Anmeldung nur
+      // eine Schatten-/Klammer-Zeile (Daten-Vollständigkeit) — sie wird jetzt ZUM
+      // SCHLUSS angelegt (siehe Schritt 3), nachdem mind. ein Sub-Event steht.
+      // Bricht der Vorgang vorher ab, ist die Person sichtbar in ihren Sub-Events
+      // angemeldet statt als unsichtbarer, blockierender „Geist" zurückzubleiben.
+      // Bei NORMALEN Events (nicht subEventsOnly) bleibt der Parent die eigentliche
+      // Anmeldung und läuft weiterhin ZUERST. (willRegisterParent ist im
+      // subEventsOnly-Modus immer false.)
+      if (!isSubOnlyMode && (willRegisterParent || registerForOther)) {
+        setSubmitProgress(30);
+        setSubmitProgressLabel(locale === 'de' ? 'Haupt-Event wird angemeldet…' : 'Registering for main event…');
+        await doParentRegistration(false);
         setSubmitProgress(50);
       } else if (isSubOnlyMode && parentAlreadyHasRow && sessionsBeingAdded && !registerForOther) {
         // v18.59: Die Schatten-Parent-Zeile existiert bereits (frühere
@@ -1546,6 +1569,9 @@ export default function RegistrationPage(): React.ReactElement {
       // versteckt — Beobachtung des Users: 'beim register for someone else kann
       // man nur fürs Main Event anmelden, nicht für die Sub-Events'. Fix.
       let subOpsDone = 0;
+      // v26.67 (B): mind. eine NEUE Sub-Event-Anmeldung erfolgreich? Gate für
+      // die nachgelagerte Schatten-Klammer.
+      let anySubRegSuccess = false;
       for (const ce of childEvents) {
         const wasReg = sessionMeta[ce.id]?.wasRegistered;
         const isSel = selectedSessions.has(ce.id);
@@ -1573,7 +1599,7 @@ export default function RegistrationPage(): React.ReactElement {
             ? { ...(seExtraCc ? { extraCc: seExtraCc } : {}), ...(registerForOther ? { proxyConsentConfirmed: true, actorAllowedAsAssistant } : {}) }
             : undefined;
           const subRes = await registerForEvent(ce.id, seFieldValues, firstTrim, surnameTrim, participantEmail, sType, seOpts);
-          if (subRes.ok) anySuccess = true;
+          if (subRes.ok) { anySuccess = true; anySubRegSuccess = true; }
           else lastSubReason = subRes.reason;
           subOpsDone++;
           setSubmitProgress(50 + Math.floor((subOpsDone / Math.max(subOps, 1)) * 40));
@@ -1590,6 +1616,17 @@ export default function RegistrationPage(): React.ReactElement {
           subOpsDone++;
           setSubmitProgress(50 + Math.floor((subOpsDone / Math.max(subOps, 1)) * 40));
         }
+      }
+      // v26.67 (B) Schritt 3: Schatten-/Klammer-Zeile im subEventsOnly-Modus
+      // JETZT anlegen — erst nachdem mind. ein Sub-Event erfolgreich angemeldet
+      // wurde. So kann kein unsichtbarer „Geist" entstehen (Klammer ohne
+      // Sub-Event). Deckt Selbst- (shouldShadowRegisterParent) UND
+      // Fremd-Anmeldung (registerForOther) ab; ohne neue Sub-Event-Anmeldung
+      // (z. B. nur Abmeldungen) wird keine leere Klammer erzeugt.
+      if (shouldShadowRegisterParent && anySubRegSuccess) {
+        setSubmitProgress(92);
+        setSubmitProgressLabel(locale === 'de' ? 'Hauptevent-Daten werden gespeichert…' : 'Saving main-event data…');
+        await doParentRegistration(true);
       }
       setSubmitProgress(95);
       setSubmitProgressLabel(locale === 'de' ? 'Bestätigungen werden versandt…' : 'Confirmations are being queued…');

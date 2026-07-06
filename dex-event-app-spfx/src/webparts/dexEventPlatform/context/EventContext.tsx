@@ -587,6 +587,11 @@ interface EventContextType {
   subscribeEventRealtime: (eventId: string, kind: 'counter' | 'participants', onChange: () => void) => Promise<() => void>;
   markExpiredEventsAsCompleted: () => Promise<number>;
   sendAdminInquiry: (requesterName: string, requesterEmail: string, eventName: string, message: string, requesterLocation?: string, requesterJobTitle?: string) => Promise<boolean>;
+  /** v26.67: Erinnerungs-Mail an eine „verwaiste" (Geister-)Anmeldung — die
+   *  Person (bzw. die anmeldende Person bei Fremd-Anmeldung) hat eine Klammer-
+   *  Zeile, aber kein Sub-Event ausgewählt; die Mail bittet sie, die Anmeldung
+   *  abzuschließen, und verlinkt direkt die Anmeldeseite des Events. */
+  sendCompleteRegistrationReminder: (args: { eventId: string; eventTitle: string; participantEmail: string; participantName: string; registeredByEmail?: string; registeredByName?: string }) => Promise<boolean>;
   /** v26.57: Approve-Mail an die Admins, wenn Personen AUSSERHALB von
    *  @deloitte.de zur Zielgruppe eines Events hinzugefügt wurden — der
    *  SharePoint ist im Default nur für Deloitte DE ALL freigeschaltet,
@@ -4528,6 +4533,48 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     return eventService.updateEmailTemplate(id, fields);
   }
 
+  // v26.67 (A): Erinnerung an eine verwaiste Klammer-Anmeldung — die Person
+  // hat die Anmeldung nicht abgeschlossen (kein Sub-Event gewählt). Bei
+  // Fremd-Anmeldung geht die Mail an die ANMELDENDE Person (die kann es in der
+  // App abschließen), die Person selbst kommt auf CC; bei Selbst-Anmeldung an
+  // die Person. Deep-Link öffnet direkt die Anmeldeseite des Events.
+  async function sendCompleteRegistrationReminder(args: { eventId: string; eventTitle: string; participantEmail: string; participantName: string; registeredByEmail?: string; registeredByName?: string }): Promise<boolean> {
+    const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const participant = (args.participantEmail || '').trim();
+    if (!participant) return false;
+    const actor = (args.registeredByEmail || '').trim();
+    const isProxy = !!actor && actor.toLowerCase() !== participant.toLowerCase();
+    const appBase = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`;
+    const link = buildHashDeepLink(appBase, { action: 'register', event: args.eventId });
+    const btn = `<p style="margin:20px 0;text-align:center;"><a href="${link}" style="display:inline-block;padding:12px 26px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Anmeldung jetzt abschließen</a></p>`;
+    const firstName = (nm: string): string => (nm || '').includes(',') ? (nm.split(',')[1] || '').trim() : (nm.split(/\s+/)[0] || '');
+    let to: string; let toName: string; let cc: string | undefined; let inner: string;
+    if (isProxy) {
+      to = actor; toName = args.registeredByName || actor;
+      cc = participant;
+      inner = `
+        <p style="margin:0 0 12px;">Hallo ${esc(firstName(args.registeredByName || ''))},</p>
+        <p style="margin:0 0 12px;">du hast <strong>${esc(args.participantName || participant)}</strong> für das Event <strong>${esc(args.eventTitle)}</strong> angemeldet — die Anmeldung ist aber <strong>noch nicht abgeschlossen</strong>: Es wurde noch kein Programmpunkt (Sub-Event) ausgewählt. Solange das offen ist, gilt die Person als <strong>nicht angemeldet</strong>.</p>
+        <p style="margin:0 0 12px;">Bitte öffne die Anmeldung und wähle die gewünschten Programmpunkte aus, damit die Anmeldung gültig wird.</p>
+        ${btn}
+        <p style="margin:0;color:#777;font-size:13px;">Die betroffene Person ist auf Kopie (CC).</p>`;
+    } else {
+      to = participant; toName = args.participantName || participant;
+      inner = `
+        <p style="margin:0 0 12px;">Hallo ${esc(firstName(args.participantName || ''))},</p>
+        <p style="margin:0 0 12px;">deine Anmeldung für das Event <strong>${esc(args.eventTitle)}</strong> ist <strong>noch nicht abgeschlossen</strong>: Es wurde noch kein Programmpunkt (Sub-Event) ausgewählt. Solange das offen ist, bist du <strong>nicht angemeldet</strong>.</p>
+        <p style="margin:0 0 12px;">Bitte öffne die Anmeldung und wähle die gewünschten Programmpunkte aus, damit deine Anmeldung gültig wird.</p>
+        ${btn}`;
+    }
+    const body = wrapTemplate('#86bc25', 'Anmeldung noch abschließen', esc(args.eventTitle), inner);
+    try {
+      return await eventService.queueEmail(
+        `Bitte Anmeldung abschließen: ${args.eventTitle}`,
+        to, toName, body, 'RegistrationReminder', args.eventTitle, args.eventId, cc || undefined, undefined, 'High'
+      );
+    } catch (e) { console.warn('[DEX] sendCompleteRegistrationReminder failed:', e); return false; }
+  }
+
   async function sendAdminInquiry(
     requesterName: string,
     requesterEmail: string,
@@ -5501,6 +5548,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelTeamMember,
         getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, getLastEventUpdateError, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, restoreCustomFieldDescriptions,
         sendAdminInquiry,
+        sendCompleteRegistrationReminder,
         notifyAdminsExternalAudienceAccess,
         requestOrganizerRole, requestCoOrganizerApprovals, notifyNewCoOrganizers, getOpenOrganizerRequests, markOrganizerRequestDecided,
         getOrganizerRequestDetails: (id: number) => eventService.getOrganizerRequestDetails(id),
