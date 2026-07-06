@@ -1590,6 +1590,20 @@ export default function AdminPage(): React.ReactElement {
       .catch(() => { setCommsRows([]); })
       .then(() => { setCommsLoading(false); }, () => { setCommsLoading(false); });
   };
+  // v26.69: laufendes Löschen einer Log-Zeile (Id) im Kommunikations-Log.
+  const [commsDeletingId, setCommsDeletingId] = React.useState<number | null>(null);
+  const deleteCommRow = async (row: EventCommRow): Promise<void> => {
+    if (!eventServiceRef || !selectedEvent) return;
+    setCommsDeletingId(row.id);
+    const ok = await eventServiceRef.deleteEventComm(row.id).catch(() => false);
+    setCommsDeletingId(null);
+    if (!ok) {
+      showAlert(isDe ? 'Eintrag konnte nicht gelöscht werden.' : 'The entry could not be deleted.', { variant: 'error' });
+      return;
+    }
+    setCommsRows(prev => prev.filter(r => r.id !== row.id));
+    showAlert(isDe ? 'Eintrag aus dem Kommunikations-Log entfernt.' : 'Entry removed from the communication log.', { variant: 'success' });
+  };
   const [showExportMenu, setShowExportMenu] = React.useState(false);
   // v17.12: Zielgruppen-Picker für Excel-Export.
   const [excelTargetModal, setExcelTargetModal] = React.useState<null | { mode: 'deloitte' | 'b2run' }>(null);
@@ -12924,23 +12938,44 @@ export default function AdminPage(): React.ReactElement {
                       : row.emailType;
                   return (
                     <div key={row.id} style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 8, overflow: 'hidden' }}>
-                      <button
-                        type="button"
-                        onClick={() => setCommsExpandedId(prev => prev === row.id ? null : row.id)}
-                        style={{
-                          width: '100%', textAlign: 'left', background: expanded ? 'var(--dex-gray-100)' : '#fff',
-                          border: 'none', cursor: 'pointer', padding: '10px 12px',
-                          display: 'flex', alignItems: 'flex-start', gap: 10,
-                        }}
-                      >
-                        <span style={{ marginTop: 2, flex: '0 0 auto', color: 'var(--dex-gray-500)', display: 'inline-flex' }}>{expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</span>
-                        <span style={{ minWidth: 0, flex: 1 }}>
-                          <span style={{ display: 'block', fontWeight: 700, fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>{row.subject || (isDe ? '(ohne Betreff)' : '(no subject)')}</span>
-                          <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
-                            {typeLabel} · {formatDate(row.created)} · {isDe ? 'von' : 'from'} {row.sentByName || (isDe ? 'Unbekannt' : 'Unknown')}
+                      <div style={{ display: 'flex', alignItems: 'stretch' }}>
+                        <button
+                          type="button"
+                          onClick={() => setCommsExpandedId(prev => prev === row.id ? null : row.id)}
+                          style={{
+                            flex: 1, minWidth: 0, textAlign: 'left', background: expanded ? 'var(--dex-gray-100)' : '#fff',
+                            border: 'none', cursor: 'pointer', padding: '10px 12px',
+                            display: 'flex', alignItems: 'flex-start', gap: 10,
+                          }}
+                        >
+                          <span style={{ marginTop: 2, flex: '0 0 auto', color: 'var(--dex-gray-500)', display: 'inline-flex' }}>{expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</span>
+                          <span style={{ minWidth: 0, flex: 1 }}>
+                            <span style={{ display: 'block', fontWeight: 700, fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>{row.subject || (isDe ? '(ohne Betreff)' : '(no subject)')}</span>
+                            <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                              {typeLabel} · {formatDate(row.created)} · {isDe ? 'von' : 'from'} {row.sentByName || (isDe ? 'Unbekannt' : 'Unknown')}
+                            </span>
                           </span>
-                        </span>
-                      </button>
+                        </button>
+                        {/* v26.69: Log-Eintrag löschen — z. B. ein versehentlich
+                            protokollierter Eintrag, der den „Bereits versendete
+                            Infos"-Hinweis fälschlich auslöst. */}
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!(await confirmDialog(isDe ? `Diesen Log-Eintrag „${row.subject || '(ohne Betreff)'}" wirklich löschen? Der Eintrag verschwindet aus den event-bezogenen Nachrichten der Teilnehmer, und der „Bereits versendete Infos"-Hinweis entfällt, falls dies der letzte Eintrag war.` : `Really delete this log entry „${row.subject || '(no subject)'}"? It disappears from participants’ event messages, and the „earlier updates" hint is removed if this was the last entry.`, { danger: true, confirmLabel: isDe ? 'Löschen' : 'Delete' }))) return;
+                            void deleteCommRow(row);
+                          }}
+                          disabled={commsDeletingId === row.id}
+                          title={isDe ? 'Diesen Log-Eintrag löschen' : 'Delete this log entry'}
+                          style={{
+                            flex: '0 0 auto', background: expanded ? 'var(--dex-gray-100)' : '#fff', border: 'none',
+                            borderLeft: '1px solid var(--dex-gray-200)', cursor: 'pointer', padding: '0 14px',
+                            color: 'var(--dex-red, #c00)', display: 'inline-flex', alignItems: 'center',
+                          }}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                       {expanded && (
                         <div style={{ borderTop: '1px solid var(--dex-gray-200)', background: '#f5f5f5', padding: 10 }}>
                           <iframe
@@ -13465,7 +13500,16 @@ export default function AdminPage(): React.ReactElement {
               'Einladung', selectedEvent.title, selectedEvent.id,
               ccString || undefined,
             );
-            try { await eventServiceRef.logEventComm({ eventId: selectedEvent.id, eventTitle: selectedEvent.title, subject: resolvedSubject, bodyHtml: fullBody, emailType: 'Einladung' }); } catch { /* */ }
+            // v26.69: NUR echte Broadcasts an den Mailverteiler ins Kommunikations-
+            // Log schreiben. Der „An mich (zum Weiterleiten)"-Selbstversand
+            // (inviteTarget === 'organizer') geht nur an die eigene Mailbox — das
+            // ist eine Vorbereitung, KEINE Kommunikation an die Teilnehmer. Solche
+            // Selbstversände dürfen den „Bereits versendete Infos"-Hinweis in
+            // späteren Anmeldebestätigungen nicht auslösen und sollen auch nicht in
+            // den event-bezogenen Nachrichten der Teilnehmer auftauchen.
+            if (inviteTarget === 'audience') {
+              try { await eventServiceRef.logEventComm({ eventId: selectedEvent.id, eventTitle: selectedEvent.title, subject: resolvedSubject, bodyHtml: fullBody, emailType: 'Einladung' }); } catch { /* */ }
+            }
             setInviteSending(false);
             showAlert(isDe
               ? `Einladungs-Mail an ${targetEmails.length} Empfänger in die Warteschlange eingetragen.`

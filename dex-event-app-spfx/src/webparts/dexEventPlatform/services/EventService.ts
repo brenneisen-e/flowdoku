@@ -6769,6 +6769,18 @@ export class EventService {
     return out;
   }
 
+  /** v26.69: Eine Log-Zeile aus dem Kommunikations-Log löschen — z. B. wenn ein
+   *  Eintrag versehentlich protokolliert wurde und den „Bereits versendete Infos"-
+   *  Hinweis fälschlich auslöst. Gibt true bei Erfolg zurück. */
+  public async deleteEventComm(id: number): Promise<boolean> {
+    try {
+      if (!(await this.listExists('DEX_EventComms'))) return false;
+      const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_EventComms')/items(${Number(id)})`;
+      const resp = await this._delete(url);
+      return resp.ok;
+    } catch (err) { console.warn('[DEX] deleteEventComm failed:', err); return false; }
+  }
+
   /** Gibt es überhaupt Rundmails zu diesem Event? (für den Anmeldemail-Hinweis) */
   public async hasEventComms(eventId: string | number): Promise<boolean> {
     try {
