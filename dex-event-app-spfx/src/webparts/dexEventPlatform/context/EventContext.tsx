@@ -15,7 +15,8 @@ import { EventService, SPEvent, CustomField, SPRegistration, SPParticipant, Rese
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
 import { buildHashDeepLink } from '../utils/deepLink';
 import { isEventOver } from '../utils/eventFormat';
-import { registrationEmail, externalInviteInstructionEmail, coOrganizerAddedEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
+import { registrationEmail, externalInviteInstructionEmail, externalInvitationEmail, coOrganizerAddedEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
+import { buildUnsentEmlDraft } from '../utils/emlDraft';
 import { APP_VERSION } from '../version';
 import { RELEASE_NOTES } from '../data/releaseNotes';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
@@ -1729,6 +1730,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         catch (err) { console.warn('[DEX] markConsentPendingByEmail failed:', err); }
       }
       let emailData: { subject: string; body: string };
+      // v26.62: Bei externer Einladung den fertigen .eml-Entwurf DIREKT an die
+      // Instruktions-Mail anhängen (Feedback: „warum so umständlich?") — der
+      // Anmelder muss dann nicht mehr ins Organizer Center. Gleicher Inhalt
+      // wie der Download-Button in der Teilnehmerliste. Der Download bleibt
+      // als Fallback bestehen (z. B. solange der Mail-Flow Anhänge noch nicht
+      // weiterreicht oder wenn der Entwurf später erneut gebraucht wird).
+      let externalInviteEml: { fileName: string; content: string } | undefined;
       const spTemplateRaw = isExternalInvite ? null : await eventService.getEmailTemplate(templateType, lang).catch(() => null);
       const spTemplate = applyEventTemplateOverride(spTemplateRaw, event.emailTemplateOverrides, templateType);
       if (isExternalInvite) {
@@ -1738,6 +1746,20 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           registrantFirst, nameToUse, emailToUse, event.title,
           lang.toUpperCase() === 'DE', orgCenterUrl
         );
+        try {
+          const inv = externalInvitationEmail(
+            nameToUse, event.title, currentUserName || '',
+            lang.toUpperCase() === 'DE',
+            { startDate: event.startDate, endDate: event.endDate, location: event.location }
+          );
+          const eml = buildUnsentEmlDraft({
+            to: [emailToUse],
+            cc: ['no_reply.events@deloitte.de', ...Array.from(new Set([...(event.organizerEmails || []), ...(event.coOrganizerEmails || [])].filter(Boolean)))],
+            subject: inv.subject,
+            html: inv.body,
+          });
+          externalInviteEml = { fileName: `Einladung_${emailToUse}.eml`, content: eml };
+        } catch (emlErr) { console.warn('[DEX] externalInviteEml build failed:', emlErr); }
       } else if (spTemplate) {
         emailData = buildEmailFromTemplate(spTemplate, vars);
       } else {
@@ -1869,7 +1891,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         const ccFromFields = ccMerged || undefined;
         eventService.queueEmail(
           finalSubject, finalRecipient, finalRecipientName, finalBody,
-          templateType, event.title, eventId, ccFromFields, bcc
+          templateType, event.title, eventId, ccFromFields, bcc,
+          undefined,
+          // v26.62: .eml-Einladungs-Entwurf direkt an der Instruktions-Mail.
+          isExternalInvite ? externalInviteEml : undefined
         ).catch(err => console.warn('[DEX] queueEmail failed:', err));
       }
 

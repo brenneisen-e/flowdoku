@@ -1028,7 +1028,13 @@ export class EventService {
     cc?: string,
     bcc?: string,
     // v18.30: 'High' = Outlook hohe Wichtigkeit (rotes „!"). Default normal.
-    importance?: 'High' | 'Normal'
+    importance?: 'High' | 'Normal',
+    // v26.62: Optionaler Datei-Anhang an der Queue-Zeile (z. B. der fertige
+    // .eml-Einladungs-Entwurf bei externen Anmeldungen). Der DEX_SEND_MAIL-
+    // Flow muss die Item-Attachments an die ausgehende Mail anhängen
+    // (Get attachments → Get attachment content → Send-Email-Attachments);
+    // solange der Flow das nicht tut, wird der Anhang schlicht ignoriert.
+    attachment?: { fileName: string; content: string }
   ): Promise<boolean> {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1050,7 +1056,26 @@ export class EventService {
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items`,
         payload
       );
-      return response.ok;
+      if (!response.ok) return false;
+      if (attachment && attachment.fileName && attachment.content) {
+        try {
+          const data = await response.json();
+          const itemId = Number(data?.d?.Id ?? data?.Id ?? 0);
+          if (itemId > 0) {
+            const buf = new TextEncoder().encode(attachment.content);
+            const safeName = attachment.fileName.replace(/[^a-zA-Z0-9._@-]+/g, '_');
+            await this.context.spHttpClient.post(
+              `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items(${itemId})/AttachmentFiles/add(FileName='${encodeURIComponent(safeName)}')`,
+              SPHttpClient.configurations.v1,
+              { headers: { 'Accept': 'application/json;odata=nometadata' }, body: buf.buffer as ArrayBuffer }
+            );
+          }
+        } catch (attErr) {
+          // Anhang best-effort — die Mail selbst ist wichtiger als der Anhang.
+          console.warn('[DEX] queueEmail: Anhang konnte nicht angehängt werden:', attErr);
+        }
+      }
+      return true;
     } catch {
       return false;
     }
