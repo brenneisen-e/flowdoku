@@ -521,6 +521,7 @@ export interface SPEvent {
   RegistrationDeadline: string;
   LastDeregisterDate: string;
   MaxParticipants: number;
+  CurrentParticipants?: number; // v26.63: persistierte aktuelle Teilnehmerzahl (von Organizer/Admin gepflegt)
   WaitlistEnabled: boolean;
   MandatoryRegistration?: boolean; // v24.64: Pflicht-Sub-Event (pro Sub-Event)
   EventImageUrl: string;
@@ -2606,6 +2607,43 @@ export class EventService {
   public async bumpKpiEvents(delta: number): Promise<number | null> {
     return this.bumpKpiField('TotalEventsCount', delta);
   }
+
+  /**
+   * v26.63: NUR die Events-Kennzahl der Startseite neu berechnen — allein aus
+   * DEX_Events (ein Read, paginiert), OHNE die teure Subsite-Teilnehmer-
+   * Schleife. Möglich, weil DEX_Events pro Zeile alles Nötige trägt: IsFictive
+   * (Entwurf), EventStatus (Cancelled/Under Construction) und ParentEventId
+   * (Sub-Event). Gezählt werden veröffentlichte Haupt-Events (inkl. abgelaufener).
+   * Der Teilnehmer-Zählerwert bleibt unverändert erhalten. Liefert die neue
+   * Events-Zahl oder null bei Fehler.
+   */
+  public async recomputeEventKpiOnly(): Promise<number | null> {
+    const all = await this.getAllEventsForKpi();
+    if (all.length === 0) return null;
+    const events = all.filter(e =>
+      e.status !== 'Cancelled' && e.status !== 'Under Construction' && !e.isFictive && !e.parentEventId
+    ).length;
+    const cache = await this.getKpiCache();
+    const ok = await this.updateKpiCache({ events, participants: cache?.participants ?? 0 });
+    return ok ? events : null;
+  }
+
+  /**
+   * v26.63: Denormalisierte Teilnehmerzahl `CurrentParticipants` am DEX_Events-
+   * Item aktualisieren. Best-effort — der MERGE klappt nur für Organizer/Admins
+   * (Schreibrecht auf DEX_Events); bei normalen Usern (nur Lesen) schlägt er
+   * still fehl, was gewollt ist. Liefert true bei Erfolg. Kein Fehler-Throw.
+   */
+  public async persistCurrentParticipants(eventId: number, count: number): Promise<boolean> {
+    if (!Number.isFinite(eventId) || eventId <= 0 || !Number.isFinite(count) || count < 0) return false;
+    try {
+      const resp = await this._merge(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})`,
+        { 'CurrentParticipants': count }
+      );
+      return resp.ok || resp.status === 406;
+    } catch { return false; }
+  }
   private async bumpKpiField(field: string, delta: number): Promise<number | null> {
     if (!Number.isFinite(delta) || delta === 0) return null;
     const itemUrl = await this.getConfigItemUrl();
@@ -3347,6 +3385,11 @@ export class EventService {
       { title: 'RegistrationDeadline', type: 4 },
       { title: 'LastDeregisterDate', type: 4 },
       { title: 'MaxParticipants', type: 9 },
+      // v26.63: Denormalisierte aktuelle Teilnehmerzahl am Event-Item. Wird von
+      // Organizern/Admins gepflegt (nur die haben Schreibrechte auf DEX_Events)
+      // — beim Laden der echten Zahl best-effort persistiert. So ist die
+      // Teilnehmerzahl pro Event ohne Subsite-Scan aus DEX_Events lesbar.
+      { title: 'CurrentParticipants', type: 9 },
       { title: 'WaitlistEnabled', type: 8 },
       { title: 'MandatoryRegistration', type: 8 },
       // v26.55: EventImageUrl ist Note (mehrzeilig) statt Single-Line-Text —
@@ -3868,7 +3911,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,WaitlistEnabled,MandatoryRegistration,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactOrganizerEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,OutlookSubject,OutlookStart,OutlookEnd,OutlookLocation,EmailLanguage,RegistrationLanguage,EmailTemplateOverrides,DisableEmails,DisableRegistrationEmail,DisableCancellationEmail,AutoDeregisterOnDecline,InactiveHandling,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,ConfirmDialogEnabled,ConfirmDialogMode,ConfirmDialogText,SelfCheckInEnabled,SelfCheckInToken,SelfCheckInFrom,SelfCheckInTo,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl,Modified,Created';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,CurrentParticipants,WaitlistEnabled,MandatoryRegistration,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactOrganizerEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,OutlookSubject,OutlookStart,OutlookEnd,OutlookLocation,EmailLanguage,RegistrationLanguage,EmailTemplateOverrides,DisableEmails,DisableRegistrationEmail,DisableCancellationEmail,AutoDeregisterOnDecline,InactiveHandling,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,ConfirmDialogEnabled,ConfirmDialogMode,ConfirmDialogText,SelfCheckInEnabled,SelfCheckInToken,SelfCheckInFrom,SelfCheckInTo,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl,Modified,Created';
 
   /**
    * Strip SharePoint-Note-Field-Wrapper.

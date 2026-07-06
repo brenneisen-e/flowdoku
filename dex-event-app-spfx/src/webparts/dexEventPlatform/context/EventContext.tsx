@@ -609,6 +609,9 @@ interface EventContextType {
   /** v26.4: Korrekte KPI-Gesamtwerte über ALLE Events (paginiert, nicht nur die
    *  geladenen 100) — Admin-Recompute für den „bisher genutzt für"-Boot-Zähler. */
   getKpiTotals: () => Promise<{ participants: number; events: number } | null>;
+  /** v26.63: NUR die Events-Zahl neu berechnen — allein aus DEX_Events, ohne den
+   *  teuren Subsite-Teilnehmer-Scan. Liefert die neue Events-Zahl oder null. */
+  recomputeEventKpiOnly: () => Promise<number | null>;
   /**
    * Onboarding-Mail an einen frisch ernannten Organizer/Admin verschicken.
    * Cc geht automatisch an die DEX-Verantwortlichen, der Body wird ins
@@ -943,6 +946,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         if (!evt.subsiteUrl) return evt;
         try {
           const counts = await eventService.getRegistrationCount(evt.subsiteUrl);
+          // v26.63: Frische Zahl best-effort nach DEX_Events.CurrentParticipants
+          // zurückschreiben, wenn sie vom gespeicherten Wert abweicht. Klappt nur
+          // für Organizer/Admins (Schreibrecht) — bei normalen Usern schlägt der
+          // MERGE still fehl. Nur Haupt-/Sub-Events mit numerischer Item-Id.
+          if (counts.registered !== evt.currentParticipants && /^\d+$/.test(evt.id)) {
+            eventService.persistCurrentParticipants(Number(evt.id), counts.registered).catch(() => { /* best-effort */ });
+          }
           return { ...evt, currentParticipants: counts.registered, waitlistCount: counts.waitlist };
         } catch {
           return evt;
@@ -1078,8 +1088,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       subsiteMap.current[e.Id.toString()] = e.SubsiteUrl;
     }
 
-    // Teilnehmeranzahl: default 0, wird lazy geladen wenn User ein Event oeffnet
-    const currentParticipants = 0;
+    // Teilnehmeranzahl: v26.63 aus der persistierten DEX_Events-Spalte
+    // CurrentParticipants als Startwert (statt hart 0) — so ist die Zahl auch
+    // ohne Subsite-Scan verfügbar. loadParticipantCountsForEvents überschreibt
+    // sie mit der frischen Zahl, sobald ein Event geöffnet/geladen wird.
+    const currentParticipants = (typeof e.CurrentParticipants === 'number') ? e.CurrentParticipants : 0;
     const waitlistCount = 0;
 
     // Custom Fields parsen
@@ -5497,6 +5510,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         sendOrganizerOnboarding,
         getKpiCache: () => eventService.getKpiCache(),
         updateKpiCache: (v) => eventService.updateKpiCache(v),
+        recomputeEventKpiOnly: () => eventService.recomputeEventKpiOnly(),
         getKpiTotals: () => eventService.getKpiTotals(),
       },
     },

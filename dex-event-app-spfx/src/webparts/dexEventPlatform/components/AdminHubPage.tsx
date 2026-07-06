@@ -41,7 +41,7 @@ export default function AdminHubPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { isAdmin, originalIsAdmin, siteUrl } = useRoles();
   const listUrl = (name: string): string => `${siteUrl}/Lists/${name}`;
-  const { getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns, restoreCustomFieldDescriptions, reseedDefaultEmailTemplates, maybeSendWeeklyReport } = useEvents();
+  const { getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns, restoreCustomFieldDescriptions, reseedDefaultEmailTemplates, maybeSendWeeklyReport, recomputeEventKpiOnly } = useEvents();
   const { locale } = useLanguage();
   const { confirmDialog, showAlert } = useDialog();
   const isDe = locale === 'de';
@@ -50,7 +50,9 @@ export default function AdminHubPage(): React.ReactElement {
 
   const [archTotal, setArchTotal] = React.useState(0);
   const [delTotal, setDelTotal] = React.useState(0);
-  const [busy, setBusy] = React.useState<'' | 'arch' | 'del' | 'fixcols' | 'restoredesc' | 'reseed' | 'weekly'>('');
+  const [busy, setBusy] = React.useState<'' | 'arch' | 'del' | 'fixcols' | 'restoredesc' | 'reseed' | 'weekly' | 'kpi'>('');
+  // v26.63: zuletzt neu berechnete Events-Zahl (für die Erfolgs-Anzeige).
+  const [kpiResult, setKpiResult] = React.useState<number | null>(null);
   // v24.33: Fortschritt für das globale „Spalten fixen".
   const [fixProgress, setFixProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
   const [restoreProgress, setRestoreProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
@@ -113,6 +115,35 @@ export default function AdminHubPage(): React.ReactElement {
   }, []);
 
   if (!adminLike) return <div className="page-container" />;
+
+  // v26.63: Startseiten-Zähler (KPI „Events"/„Teilnehmer") sofort neu berechnen.
+  // Hintergrund: Der angezeigte Wert ist ein persistenter Zähler in _Config, der
+  // von normalen Usern nur per ±1 bewegt wird und über die Zeit vom echten Stand
+  // abweichen kann. Die automatische Voll-Neuberechnung läuft sonst nur 1×/Session
+  // beim Admin-Boot im Hintergrund — dieser Button erzwingt sie jederzeit.
+  const doRecomputeKpi = async (): Promise<void> => {
+    if (busy) return;
+    setBusy('kpi');
+    setKpiResult(null);
+    try {
+      // v26.63: NUR die Events-Zahl neu berechnen — allein aus DEX_Events, ohne
+      // den teuren Subsite-Scan. Der Teilnehmer-Zählerwert bleibt unberührt.
+      const events = await recomputeEventKpiOnly();
+      if (events === null) {
+        showAlert(isDe ? 'Neuberechnung fehlgeschlagen — bitte später erneut versuchen.' : 'Recompute failed — please try again later.', { variant: 'error' });
+        return;
+      }
+      setKpiResult(events);
+      try { sessionStorage.setItem('dex-kpi-cache-refreshed', '1'); } catch { /* */ }
+      showAlert(
+        isDe
+          ? `Events-Zähler neu berechnet: ${events} Events. Gespeichert — die Startseite zeigt den Wert ab dem nächsten Laden.`
+          : `Events counter recomputed: ${events} events. Saved — the landing page shows it on next load.`,
+        { variant: 'success' });
+    } catch {
+      showAlert(isDe ? 'Neuberechnung fehlgeschlagen.' : 'Recompute failed.', { variant: 'error' });
+    } finally { setBusy(''); }
+  };
 
   const doArchive = async (): Promise<void> => {
     if (busy || archTotal === 0) return;
@@ -583,6 +614,27 @@ export default function AdminHubPage(): React.ReactElement {
           )}
           <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { void doFixAllColumns(); }}>
             {busy === 'fixcols' ? (isDe ? 'Wird geprüft…' : 'Checking…') : (isDe ? 'Jetzt alle prüfen' : 'Check all now')}
+          </button>
+        </div>
+
+        {/* v26.63: Startseiten-Zähler (Events/Teilnehmer) neu berechnen. */}
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><BarChart3 size={18} /></span>
+            <span style={{ fontWeight: 700 }}>{isDe ? 'Startseiten-Zähler neu berechnen' : 'Recompute landing-page counter'}</span>
+          </div>
+          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
+            {isDe
+              ? 'Berechnet die Kennzahl „Events" auf der Startseite frisch aus der Event-Liste (ohne Entwürfe, abgesagte und Sub-Events; abgelaufene zählen mit) — schnell, ohne die Teilnehmerlisten zu scannen. Der angezeigte Wert ist ein gespeicherter Zähler, der sonst nur einmal pro Admin-Sitzung automatisch aktualisiert wird. Der Teilnehmer-Zähler bleibt unverändert.'
+              : 'Recomputes the „Events" KPI on the landing page straight from the event list (excluding drafts, cancelled and sub-events; past ones count) — fast, without scanning the participant lists. The shown value is a stored counter that otherwise only refreshes once per admin session. The attendee counter is left unchanged.'}
+          </p>
+          {kpiResult !== null && (
+            <div style={{ margin: '0 0 10px', padding: '8px 12px', background: '#f1f7e8', border: '1px solid var(--dex-green, #86bc25)', borderRadius: 8, fontSize: '0.82rem', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600 }}>
+              {isDe ? `Ergebnis: ${kpiResult} Events` : `Result: ${kpiResult} events`}
+            </div>
+          )}
+          <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { void doRecomputeKpi(); }}>
+            {busy === 'kpi' ? (isDe ? 'Wird berechnet…' : 'Computing…') : (isDe ? 'Events-Zähler neu berechnen' : 'Recompute events counter')}
           </button>
         </div>
 
