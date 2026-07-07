@@ -1883,7 +1883,20 @@ export function EventProvider(props: { context: WebPartContext; children: React.
                 ? `<strong>Bereits versendete Infos zu diesem Event.</strong><br>Zu diesem Event wurde vorab schon per Mail kommuniziert (z.&nbsp;B. eine Einladung oder Ankündigung). Du findest diese bisherige Kommunikation jederzeit in der DEX App unter <strong>&bdquo;Meine Events&ldquo;</strong> beim Event — so bist du auf dem gleichen Stand.`
                 : `<strong>Earlier updates for this event.</strong><br>Some information about this event was already sent out by email (e.g. an invitation or announcement). You can read this previous communication any time in the DEX App under <strong>&bdquo;My Events&ldquo;</strong> on the event — so you're fully up to date.`)
               + `</div>`;
-            finalBody = injectIntoEmailContent(finalBody, commsBox);
+            // v26.69: Hinweis ans Ende verschoben (vorher oben über der Anrede) —
+            // als eigene Tabellen-Row direkt UNTER „Made with DEX App" und damit
+            // ÜBER der grünen Mobil-Tipp-Box. Die grüne Box wurde oben bereits nach
+            // „Made with DEX App" eingefügt; ein zweiter Insert an derselben Stelle
+            // landet DAVOR (blau über grün).
+            const commsRow = `<tr><td style="padding:4px 30px 4px 30px;">${commsBox}</td></tr>`;
+            const madeWithReComms = /(Made with DEX App<\/a>\s*<\/td>\s*<\/tr>)/i;
+            if (madeWithReComms.test(finalBody)) {
+              finalBody = finalBody.replace(madeWithReComms, `$1\n${commsRow}`);
+            } else if (/<\/body>/i.test(finalBody)) {
+              finalBody = finalBody.replace(/<\/body>/i, `${commsRow}</body>`);
+            } else {
+              finalBody = injectIntoEmailContent(finalBody, commsBox);
+            }
           }
         }
         // v18.41: People-Picker-Felder mit „CC bei Mail" → ausgewählte
