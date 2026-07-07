@@ -18,7 +18,7 @@ export function actionsSection(locale: 'de' | 'en'): ManualSection {
       : 'Every action from the actions dropdown explained — export the attendee list, QR codes, emails, check-in and repair tools.',
     visibleFor: ['Organizer', 'Admin'],
     keywords: isDe
-      ? 'Aktionen Aktion auswählen Dropdown Menü Werkzeuge Organizer Center Admin Center Kategorien Suchfeld Excel-Export Teilnehmerliste xlsx herunterladen Zielgruppe Matrix Sub-Event-Blätter IDs neu vergeben Nummern renummerieren Von Warteliste nachrücken Überbuchung prüfen Outlook-Absagen prüfen Massenmail E-Mail versenden Einladungsmail E-Mails kopieren Check-in starten QR-Codes versenden Self-Check-in Event bearbeiten In SharePoint öffnen Deep-Link kopieren Audit-Log Änderungsprotokoll Spalten fixen Zugriff reparieren Counter zurücksetzen B2Run migrieren Custom-Fields reparieren Wartung Reparatur'
+      ? 'Aktionen Aktion auswählen Dropdown Menü Werkzeuge Organizer Center Admin Center Kategorien Suchfeld Excel-Export Teilnehmerliste xlsx herunterladen Zielgruppe Matrix Sub-Event-Blätter IDs neu vergeben Nummern renummerieren Von Warteliste nachrücken Überbuchung prüfen Outlook-Absagen prüfen Massenmail E-Mail versenden Einladungsmail E-Mails kopieren Check-in starten QR-Codes versenden Self-Check-in Event bearbeiten In SharePoint öffnen Deep-Link kopieren Audit-Log Änderungsprotokoll Spalten fixen Zugriff reparieren Counter zurücksetzen Custom-Fields reparieren Wartung Reparatur'
       : 'actions pick an action dropdown menu tools organizer center admin center categories search box Excel export attendee list xlsx download target group matrix sub-event sheets reassign IDs renumber promote from waitlist check overbooking check Outlook declines mass email send email invitation email copy emails start check-in send QR codes self check-in edit event open in SharePoint copy deep link audit log change history fix columns repair access reset counter migrate B2Run repair custom fields maintenance repair',
     perspectives: [
       {
@@ -130,7 +130,6 @@ export function actionsSection(locale: 'de' | 'en'): ManualSection {
                     <li><strong>Spalten fixen</strong> — legt fehlende Spalten in der Teilnehmerliste an und bringt sie in die richtige Reihenfolge (nach Schema-Änderungen).</li>
                     <li><strong>Fremd-Anmeldungen: Zugriff reparieren</strong> — sorgt dafür, dass jemand, der von einer anderen Person angemeldet wurde, seine Anmeldung in „Meine Events“ sieht und sich selbst abmelden kann.</li>
                     <li><strong>Counter zurücksetzen</strong> — setzt den internen Platz-Zähler neu auf den echten Bestand (Sonderfall nach Störungen).</li>
-                    <li><strong>Legacy-B2Run migrieren</strong> — stellt ein altes B2Run-Event auf das aktuelle Standard-Schema um.</li>
                     <li><strong>Custom-Fields / Felder reparieren</strong> — holt verloren geglaubte eigene Abfragen zurück bzw. repariert beschädigte Feld-Definitionen.</li>
                   </ul>
                 ) : (
@@ -138,7 +137,6 @@ export function actionsSection(locale: 'de' | 'en'): ManualSection {
                     <li><strong>Fix columns</strong> — creates missing columns in the attendee list and puts them in the right order (after schema changes).</li>
                     <li><strong>Repair proxy-registration access</strong> — makes sure someone who was registered by another person sees their registration in “My Events” and can cancel it themselves.</li>
                     <li><strong>Reset counter</strong> — resets the internal seat counter to the real headcount (edge case after disruptions).</li>
-                    <li><strong>Migrate legacy B2Run</strong> — converts an old B2Run event to the current standard schema.</li>
                     <li><strong>Restore / repair custom fields</strong> — brings back custom questions believed lost or repairs broken field definitions.</li>
                   </ul>
                 )}
