@@ -3267,27 +3267,31 @@ export default function EventCreationPage(): React.ReactElement {
       // Abmelde-Hinweis über die App + Organizer-Kontakt).
       let wrappedSubOutlookBody = '';
       {
+        const orgNamesSub = formatOrganizerList([organizer], subEmailLang);
         const vars = {
           EventTitle: draft.title.trim(),
-          Organizer: organizer,
+          // v27.5: {{Organizer}} auf normalisierte Namen ("Vorname Nachname",
+          // mit „und" verbunden) statt roher „Nachname, Vorname"-Join.
+          Organizer: orgNamesSub || organizer,
+          ContactEmail: contactEmail.trim(),
           Location: draft.location || '',
           Address: '',
           StartDate: draft.startDate ? new Date(draft.startDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
           EndDate: draft.endDate ? new Date(draft.endDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
         };
         const escHtmlSub = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-        const orgNamesSub = formatOrganizerList([organizer], subEmailLang);
         const APP_URL_SUB = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
         const defaultSubBody = subEmailLang === 'EN'
           ? `<p>You are registered for the event <strong>${escHtmlSub(draft.title.trim())}</strong>.</p>`
             + `<p>If you are unable to attend, please cancel your registration in time via the <a href="${APP_URL_SUB}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;My Events&ldquo;).</p>`
             + `<p>For organizational questions please contact <strong>${escHtmlSub(orgNamesSub || 'the organizer')}</strong>.</p>`
-          : `<p>Du bist für das Event <strong>${escHtmlSub(draft.title.trim())}</strong> angemeldet.</p>`
-            + `<p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="${APP_URL_SUB}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;Meine Events&ldquo;) ab.</p>`
-            + `<p>Bei organisatorischen Fragen wende dich bitte an <strong>${escHtmlSub(orgNamesSub || 'den Organizer')}</strong>.</p>`;
+          : `<p>Ihr seid für das Event <strong>${escHtmlSub(draft.title.trim())}</strong> angemeldet.</p>`
+            + `<p>Falls ihr nicht teilnehmen könnt, meldet euch bitte rechtzeitig über die <a href="${APP_URL_SUB}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;Meine Events&ldquo;) ab.</p>`
+            + `<p>Bei organisatorischen Fragen wendet euch bitte an <strong>${escHtmlSub(orgNamesSub || 'den Organizer')}</strong>.</p>`;
         const resolvedBody = subOutlookBodyRaw ? replacePlaceholders(subOutlookBodyRaw, vars) : defaultSubBody;
         const resolvedHead = subOutlookHeading ? replacePlaceholders(subOutlookHeading, vars) : draft.title.trim();
-        const resolvedSub2 = subOutlookSub ? replacePlaceholders(subOutlookSub, vars) : undefined;
+        // v27.5: Default-Unter-Überschrift = Ort (nicht Datum).
+        const resolvedSub2 = subOutlookSub ? replacePlaceholders(subOutlookSub, vars) : (draft.location || undefined);
         // v18.73: Sub-Events erben das Header-Bild-Layout des Hauptevents.
         const wrapped = buildOutlookBody(resolvedHead, resolvedBody, resolvedSub2, { imageWidth: headerImageLayout.width, imagePaddingV: headerImageLayout.paddingV, imagePaddingH: headerImageLayout.paddingH });
         wrappedSubOutlookBody = wrapped.replace(/\{\{ORB_URL\}\}/g, subOutlookLogo || getCachedOrbBase64() || '');
@@ -3982,7 +3986,9 @@ export default function EventCreationPage(): React.ReactElement {
       // Outlook-Body: Variablen werden bereits hier aufgelöst (gleicher Body für alle Teilnehmer).
       const outlookVars: Record<string, string> = {
         EventTitle: title,
-        Organizer: organizer,
+        // v27.5: normalisierte Organizer-Namen für {{Organizer}} (siehe unten).
+        Organizer: formatOrganizerList([organizer], effEmailLanguage) || organizer,
+        ContactEmail: contactEmail.trim(),
         Location: location,
         Address: [addrStreet, addrHouseNo].filter(Boolean).join(' ') + ((addrZip || addrCity) ? ', ' + [addrZip, addrCity].filter(Boolean).join(' ') : ''),
         StartDate: startDate ? new Date(startDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
@@ -4014,7 +4020,8 @@ export default function EventCreationPage(): React.ReactElement {
         ? replacePlaceholders(effOutlookBody, outlookVars)
         : defaultOutlookBody;
       const resolvedOlHeading = effOutlookHeading ? replacePlaceholders(effOutlookHeading, outlookVars) : title;
-      const resolvedOlSub = effOutlookSubheading ? replacePlaceholders(effOutlookSubheading, outlookVars) : undefined;
+      // v27.5: Default-Unter-Überschrift = Ort (nicht Datum).
+      const resolvedOlSub = effOutlookSubheading ? replacePlaceholders(effOutlookSubheading, outlookVars) : (location || undefined);
       // v18.73: Header-Bild Größe + Innenabstand (event-weit) in den Outlook-Body.
       const wrappedOutlook = buildOutlookBody(resolvedOlHeading, resolvedBody, resolvedOlSub, { imageWidth: headerImageLayout.width, imagePaddingV: headerImageLayout.paddingV, imagePaddingH: headerImageLayout.paddingH });
       // v11.93: Top-Level-Logo aus dem Resolver — sonst würde beim Speichern
@@ -4670,17 +4677,19 @@ export default function EventCreationPage(): React.ReactElement {
           // immer das Outlook-Layout mit einem Default-Body erzeugen,
           // der auf den Organizer für organisatorische Fragen verweist
           // (analog zur Anmeldebestätigungs-Mail).
+          // v24.60: Namen wie die Anmelde-Mail normalisieren + mit „und"/„and"
+          // verbinden (nicht stumpf Komma-getrennt).
+          const orgNames = formatOrganizerList([organizer], effEmailLanguage);
           const vars = {
             EventTitle: title,
-            Organizer: organizer,
+            // v27.5: {{Organizer}} = normalisierte Namen statt roher Join.
+            Organizer: orgNames || organizer,
+            ContactEmail: contactEmail.trim(),
             Location: location,
             Address: [addrStreet, addrHouseNo].filter(Boolean).join(' ') + ((addrZip || addrCity) ? ', ' + [addrZip, addrCity].filter(Boolean).join(' ') : ''),
             StartDate: startDate ? new Date(startDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
             EndDate: endDate ? new Date(endDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
           };
-          // v24.60: Namen wie die Anmelde-Mail normalisieren + mit „und"/„and"
-          // verbinden (nicht stumpf Komma-getrennt).
-          const orgNames = formatOrganizerList([organizer], effEmailLanguage);
           const escHtml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
           // v9.8: gleicher Default-Body wie im Update-Pfad — inkl. Abmelde-Hinweis
           // mit Link auf die App ("Meine Events"-Tab).
@@ -4689,12 +4698,13 @@ export default function EventCreationPage(): React.ReactElement {
             ? `<p>You are registered for the event <strong>${escHtml(title)}</strong>.</p>`
               + `<p>If you are unable to attend, please cancel your registration in time via the <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;My Events&ldquo;).</p>`
               + `<p>For organizational questions please contact <strong>${escHtml(orgNames || 'the organizer')}</strong>.</p>`
-            : `<p>Du bist für das Event <strong>${escHtml(title)}</strong> angemeldet.</p>`
-              + `<p>Falls du nicht teilnehmen kannst, melde dich bitte rechtzeitig über die <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;Meine Events&ldquo;) ab.</p>`
-              + `<p>Bei organisatorischen Fragen wende dich bitte an <strong>${escHtml(orgNames || 'den Organizer')}</strong>.</p>`;
+            : `<p>Ihr seid für das Event <strong>${escHtml(title)}</strong> angemeldet.</p>`
+              + `<p>Falls ihr nicht teilnehmen könnt, meldet euch bitte rechtzeitig über die <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;Meine Events&ldquo;) ab.</p>`
+              + `<p>Bei organisatorischen Fragen wendet euch bitte an <strong>${escHtml(orgNames || 'den Organizer')}</strong>.</p>`;
           const resolvedBody = effOutlookBody ? replacePlaceholders(effOutlookBody, vars) : defaultBody;
           const resolvedHeading = effOutlookHeading ? replacePlaceholders(effOutlookHeading, vars) : title;
-          const resolvedSub = effOutlookSubheading ? replacePlaceholders(effOutlookSubheading, vars) : undefined;
+          // v27.5: Default-Unter-Überschrift = Ort (nicht Datum).
+          const resolvedSub = effOutlookSubheading ? replacePlaceholders(effOutlookSubheading, vars) : (location || undefined);
           // v18.73: Header-Bild Größe + Innenabstand (event-weit) in den Outlook-Body.
           const wrapped = buildOutlookBody(resolvedHeading, resolvedBody, resolvedSub, { imageWidth: headerImageLayout.width, imagePaddingV: headerImageLayout.paddingV, imagePaddingH: headerImageLayout.paddingH });
           // v11.93: Logo aus Top-Level-Resolver, sonst landet beim Speichern
@@ -7170,6 +7180,7 @@ export default function EventCreationPage(): React.ReactElement {
                     open={!!logoCropTarget}
                     src={logoCropTarget === 'email' ? emailLogoPreview : outlookLogoPreview}
                     isDe={isDe}
+                    allowAspect
                     onClose={() => setLogoCropTarget(null)}
                     onApply={(dataUrl) => {
                       if (logoCropTarget === 'email') setEmailLogoPreview(dataUrl);
@@ -14552,7 +14563,9 @@ export default function EventCreationPage(): React.ReactElement {
                 return title || 'Event Title';
               })(),
               Name: 'Max Mustermann',
-              Organizer: organizer || 'Organisator',
+              // v27.5: normalisierte Organizer-Namen ("Vorname Nachname" + „und").
+              Organizer: formatOrganizerList([organizer], emailLanguage) || organizer || 'Organisator',
+              ContactEmail: contactEmail.trim() || 'kontakt@deloitte.de',
               AppUrl: 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView',
               WaitlistPosition: '1',
               Address: [addrStreet, addrHouseNo].filter(Boolean).join(' ') + ((addrZip || addrCity) ? ', ' + [addrZip, addrCity].filter(Boolean).join(' ') : ''),
@@ -14569,6 +14582,9 @@ export default function EventCreationPage(): React.ReactElement {
               // Platzhalter „{{Name}}" stehen blieb.
               { key: '{{EventTitle}}', label: 'Event' },
               { key: '{{Organizer}}', label: 'Organizer' },
+              // v27.5: {{ContactEmail}} nur anbieten, wenn eine Ansprechpartner-
+              // Mail hinterlegt ist (Schritt „Ansprechpartner").
+              ...(contactEmail.trim() ? [{ key: '{{ContactEmail}}', label: 'Kontakt-Mail' }] : []),
               { key: '{{Location}}', label: 'Ort' },
               { key: '{{Address}}', label: 'Adresse' },
               { key: '{{StartDate}}', label: 'Start' },
@@ -14578,6 +14594,7 @@ export default function EventCreationPage(): React.ReactElement {
               { key: '{{Name}}', label: 'Name' },
               { key: '{{EventTitle}}', label: 'Event' },
               { key: '{{Organizer}}', label: 'Organizer' },
+              ...(contactEmail.trim() ? [{ key: '{{ContactEmail}}', label: 'Kontakt-Mail' }] : []),
               { key: '{{AppUrl}}', label: 'App Link' },
               { key: '{{WaitlistPosition}}', label: 'Waitlist #' },
             ]}

@@ -485,7 +485,8 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     // damit der User in der Vorschau genau das sieht, was nachher im Termin steht
     // (inkl. Deloitte-Signatur + Legal-Disclaimer im Footer).
     const olHeading = replacePlaceholdersPlain(outlookHeading || '', previewVars) || previewVars.EventTitle || 'Event Title';
-    const olSub = replacePlaceholdersPlain(outlookSubheading || '', previewVars) || previewVars.EventDate || 'Event Details';
+    // v27.5: Default-Unter-Überschrift = Ort (nicht mehr Datum/Uhrzeit).
+    const olSub = replacePlaceholdersPlain(outlookSubheading || '', previewVars) || previewVars.Location || previewVars.EventDate || 'Event Details';
     const bodyForOutlook = bodyWithVars || '<p style="color:#999;font-style:italic;">Hier erscheint der Body — beginne im Editor links zu tippen.</p>';
     // Wenn der Body bereits ein kompletter wrapTemplate-Output ist (z.B. aus editEvent
     // ohne Strip), 1:1 anzeigen — sonst doppelt wickeln.
@@ -728,7 +729,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                       className="form-input"
                       value={outlookSubheading || ''}
                       onChange={e => onOutlookSubheadingChange && onOutlookSubheadingChange(e.target.value)}
-                      placeholder={previewVars.EventDate || 'Event Details'}
+                      placeholder={previewVars.Location || previewVars.EventDate || 'Event Details'}
                       style={{ fontSize: '0.85rem' }}
                     />
                   </div>

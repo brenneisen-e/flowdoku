@@ -14,6 +14,11 @@ import Modal from './Modal';
  * - „Übernehmen" liefert das Ergebnis als PNG-Data-URL + File zurück (PNG, damit
  *   transparente Kreis-Ecken erhalten bleiben).
  *
+ * v27.5: Optionaler `allowAspect`-Modus für Kopfbilder (Mail-/Outlook-Header):
+ *   frei wählbares Seitenverhältnis (Quadrat / 3:2 / 16:9 / Banner). Dadurch
+ *   kann ein Querformat-Foto zu einem breiten Banner zugeschnitten werden und
+ *   der Organizer kann oben/unten wegschneiden (Bild vertikal verschieben).
+ *
  * Hinweis: Bei bereits hochgeladenen Bildern (SharePoint-URL) kann das Canvas
  * aus CORS-Gründen „tainted" sein — dann scheitert das Exportieren und wir
  * zeigen einen Hinweis (Bild bitte neu auswählen). Bei frisch ausgewählten
@@ -28,13 +33,28 @@ interface Props {
   /** v23.25: optionaler Zusatzblock (z.B. „Darstellung pro Ansicht") —
       wird unter den Zuschnitt-Reglern, über den Aktions-Buttons gerendert. */
   children?: React.ReactNode;
+  /** v27.5: Seitenverhältnis frei wählbar (für Kopfbilder). Blendet die
+      Kreis/Quadrat-Wahl aus und zeigt stattdessen Aspekt-Presets. */
+  allowAspect?: boolean;
+  /** v27.5: Start-Seitenverhältnis (Breite/Höhe) im allowAspect-Modus.
+      Default 16/9 (breites Banner). Ignoriert, wenn allowAspect nicht gesetzt. */
+  defaultAspect?: number;
 }
 
-const FRAME = 320; // Anzeige-Kantenlänge der Vorschau (px)
-const OUT = 700;   // Ausgabe-Kantenlänge (px)
+const FRAME = 320; // Anzeige-Breite der Vorschau (px)
+const OUT = 700;   // Ausgabe-Breite (px)
 
-export default function ImageCropModal({ open, src, isDe, onClose, onApply, children }: Props): React.ReactElement | null {
+// v27.5: Aspekt-Presets für Kopfbilder (Breite : Höhe).
+const ASPECT_PRESETS: Array<{ a: number; de: string; en: string }> = [
+  { a: 1, de: 'Quadrat', en: 'Square' },
+  { a: 3 / 2, de: '3:2', en: '3:2' },
+  { a: 16 / 9, de: '16:9', en: '16:9' },
+  { a: 5 / 2, de: 'Banner', en: 'Banner' },
+];
+
+export default function ImageCropModal({ open, src, isDe, onClose, onApply, children, allowAspect, defaultAspect }: Props): React.ReactElement | null {
   const [shape, setShape] = React.useState<'rect' | 'circle'>('circle');
+  const [aspect, setAspect] = React.useState<number>(allowAspect ? (defaultAspect || 16 / 9) : 1);
   const [zoom, setZoom] = React.useState(1);
   const [padding, setPadding] = React.useState(0); // 0..0.35 — weißer Rand um den Kreis
   const [offset, setOffset] = React.useState<{ x: number; y: number }>({ x: 0, y: 0 });
@@ -49,6 +69,9 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
   // Zuschnitt korrekt auf das Ausgabebild (OUT) abgebildet wird.
   const dragRef = React.useRef<{ startX: number; startY: number; baseX: number; baseY: number; scale: number } | null>(null);
 
+  // v27.5: im allowAspect-Modus ist die Form immer ein Rechteck (kein Kreis).
+  const isCircle = !allowAspect && shape === 'circle' && aspect === 1;
+
   // Bild laden, State zurücksetzen beim Öffnen.
   React.useEffect(() => {
     if (!open || !src) return;
@@ -56,6 +79,7 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
     setZoom(1);
     setPadding(0);
     setOffset({ x: 0, y: 0 });
+    setAspect(allowAspect ? (defaultAspect || 16 / 9) : 1);
     setNat(null);
     imgRef.current = null;
     const img = new Image();
@@ -63,43 +87,47 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
     img.onload = () => { imgRef.current = img; setNat({ w: img.naturalWidth || 1, h: img.naturalHeight || 1 }); };
     img.onerror = () => setError(isDe ? 'Bild konnte nicht geladen werden.' : 'Could not load image.');
     img.src = src;
-  }, [open, src, isDe]);
+  }, [open, src, isDe, allowAspect, defaultAspect]);
 
-  // Zeichen-Routine — identisch für Live-Vorschau (size=FRAME) und Export (size=OUT).
-  const drawTo = React.useCallback((canvas: HTMLCanvasElement | null, size: number): void => {
+  // Zeichen-Routine — identisch für Live-Vorschau (sizeW=FRAME) und Export (sizeW=OUT).
+  // v27.5: nicht mehr quadratisch — Höhe ergibt sich aus dem Seitenverhältnis.
+  const drawTo = React.useCallback((canvas: HTMLCanvasElement | null, sizeW: number): void => {
     if (!canvas || !nat || !imgRef.current) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    canvas.width = size;
-    canvas.height = size;
-    ctx.clearRect(0, 0, size, size);
-    const isCircle = shape === 'circle';
+    const a = aspect || 1;
+    const sizeH = Math.round(sizeW / a);
+    const frameW = FRAME;
+    const frameH = FRAME / a;
+    canvas.width = sizeW;
+    canvas.height = sizeH;
+    ctx.clearRect(0, 0, sizeW, sizeH);
     const pad = isCircle ? padding : 0;
     // Weißer Hintergrund nur, wenn ein Kreis-Rand gewünscht ist (sonst
     // transparente Ecken bzw. randloses Rechteck).
     if (isCircle && pad > 0) {
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, size, size);
+      ctx.fillRect(0, 0, sizeW, sizeH);
     }
-    // Bild-Geometrie in FRAME-Einheiten berechnen, dann auf `size` skalieren.
-    const baseScaleF = Math.max(FRAME / nat.w, FRAME / nat.h);
+    // Bild-Geometrie in FRAME-Einheiten berechnen, dann auf `sizeW` skalieren.
+    const baseScaleF = Math.max(frameW / nat.w, frameH / nat.h);
     const effF = baseScaleF * zoom;
     const dwF = nat.w * effF;
     const dhF = nat.h * effF;
-    const imgLeftF = (FRAME - dwF) / 2 + offset.x;
-    const imgTopF = (FRAME - dhF) / 2 + offset.y;
-    const k = size / FRAME;
+    const imgLeftF = (frameW - dwF) / 2 + offset.x;
+    const imgTopF = (frameH - dhF) / 2 + offset.y;
+    const k = sizeW / frameW; // gleicher Faktor für x und y (frameH/sizeH == frameW/sizeW)
     ctx.save();
     if (isCircle) {
-      const r = (size / 2) * (1 - pad);
+      const r = (sizeW / 2) * (1 - pad);
       ctx.beginPath();
-      ctx.arc(size / 2, size / 2, r, 0, Math.PI * 2);
+      ctx.arc(sizeW / 2, sizeH / 2, r, 0, Math.PI * 2);
       ctx.closePath();
       ctx.clip();
     }
     ctx.drawImage(imgRef.current, imgLeftF * k, imgTopF * k, dwF * k, dhF * k);
     ctx.restore();
-  }, [nat, shape, padding, zoom, offset]);
+  }, [nat, isCircle, padding, zoom, offset, aspect]);
 
   // Live-Vorschau neu zeichnen, wenn sich etwas ändert.
   React.useEffect(() => {
@@ -152,13 +180,17 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
         {isDe ? 'Bild zuschneiden' : 'Crop image'}
       </h3>
       <p style={{ marginTop: 0, fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
-        {isDe
-          ? 'So wird das Bild gespeichert und überall angezeigt (Anmeldeseite, Karte, Mail). Ziehen zum Verschieben, Slider zum Zoomen.'
-          : 'This is exactly how the image will be saved and shown everywhere (registration page, card, mail). Drag to move, slider to zoom.'}
+        {allowAspect
+          ? (isDe
+            ? 'Wähle ein Seitenverhältnis und ziehe das Bild in Position (z.B. oben/unten wegschneiden). So erscheint es im Mail-/Outlook-Kopf.'
+            : 'Pick an aspect ratio and drag the image into place (e.g. crop off top/bottom). This is how it appears in the mail/Outlook header.')
+          : (isDe
+            ? 'So wird das Bild gespeichert und überall angezeigt (Anmeldeseite, Karte, Mail). Ziehen zum Verschieben, Slider zum Zoomen.'
+            : 'This is exactly how the image will be saved and shown everywhere (registration page, card, mail). Drag to move, slider to zoom.')}
       </p>
 
       {/* Live-Canvas-Vorschau = exaktes Ergebnis.
-          Das Backing-Store bleibt FRAME×FRAME (Zeichen-/Export-Mathematik
+          Das Backing-Store bleibt FRAME-basiert (Zeichen-/Export-Mathematik
           unverändert); per CSS wird die Canvas nur responsiv verkleinert, damit
           sie auf schmalen Karten (Handy ~295px) nicht überläuft. Die Drag-Math
           rechnet die CSS-Pixel über den Skalierungsfaktor in FRAME-Einheiten um. */}
@@ -166,13 +198,13 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
         <canvas
           ref={canvasRef}
           width={FRAME}
-          height={FRAME}
+          height={Math.round(FRAME / (aspect || 1))}
           onMouseDown={onPointerDown}
           onMouseMove={onPointerMove}
           onMouseUp={endDrag}
           onMouseLeave={endDrag}
           style={{
-            width: '100%', maxWidth: FRAME, aspectRatio: '1 / 1', height: 'auto',
+            width: '100%', maxWidth: FRAME, aspectRatio: String(aspect || 1), height: 'auto',
             cursor: 'grab', userSelect: 'none',
             borderRadius: 12, boxShadow: 'inset 0 0 0 1px var(--dex-gray-200)',
             background: '#f3f3f1', touchAction: 'none',
@@ -180,15 +212,31 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
         />
       </div>
 
-      {/* Form-Wahl */}
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 14 }}>
-        <button type="button" className={`btn ${shape === 'circle' ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: '0.82rem' }} onClick={() => setShape('circle')}>
-          {isDe ? 'Kreis' : 'Circle'}
-        </button>
-        <button type="button" className={`btn ${shape === 'rect' ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: '0.82rem' }} onClick={() => setShape('rect')}>
-          {isDe ? 'Quadrat' : 'Square'}
-        </button>
-      </div>
+      {/* v27.5: Seitenverhältnis-Wahl (nur Kopfbild-Modus) ODER Form-Wahl. */}
+      {allowAspect ? (
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 14, flexWrap: 'wrap' }}>
+          {ASPECT_PRESETS.map(p => (
+            <button
+              key={p.a}
+              type="button"
+              className={`btn ${Math.abs(aspect - p.a) < 0.001 ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ fontSize: '0.82rem' }}
+              onClick={() => setAspect(p.a)}
+            >
+              {isDe ? p.de : p.en}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 14 }}>
+          <button type="button" className={`btn ${shape === 'circle' ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: '0.82rem' }} onClick={() => setShape('circle')}>
+            {isDe ? 'Kreis' : 'Circle'}
+          </button>
+          <button type="button" className={`btn ${shape === 'rect' ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: '0.82rem' }} onClick={() => setShape('rect')}>
+            {isDe ? 'Quadrat' : 'Square'}
+          </button>
+        </div>
+      )}
 
       {/* Zoom */}
       <div style={{ marginTop: 14 }}>
@@ -197,7 +245,7 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
       </div>
 
       {/* Kreis-Rand (nur im Kreis-Modus) */}
-      {shape === 'circle' && (
+      {isCircle && (
         <div style={{ marginTop: 10 }}>
           <label style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
             {isDe ? 'Weißer Rand um den Kreis' : 'White margin around the circle'}
