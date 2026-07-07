@@ -2202,9 +2202,11 @@ If_Counter_Stale (If -> Patch_Counter):
 
 **Trigger:** Neuer Eintrag in DEX_Emails
 **Zweck:** E-Mails aus Queue versenden über Shared Mailbox (no_reply.events@deloitte.de)
-**Letztes Update:** 2026-04-29 (v8.5/v8.6: Cc + Bcc-Support)
+**Letztes Update:** 2026-07-07 (v26.62/v26.70: `.eml`-Anhänge mitsenden)
 
-Ablauf: Trigger → Config laden (Logo + Default-Bild aus DEX_EmailTemplates via GetItems) → Event laden → Compose_Logo (aus Config) → Compose_Image (Event-Bild oder Default) → Platzhalter ersetzen → Email senden (mit Cc + Bcc) → Status=Sent
+Ablauf: Trigger → **Initialize_Attachments** (Array) → Config laden (Logo + Default-Bild aus DEX_EmailTemplates via GetItems) → Event laden → Compose_Logo (aus Config) → Compose_Image (Event-Bild oder Default) → **Get_Attachments → Apply_to_each_Attachment (Get_Attachment_Content → Append_Attachment)** → Platzhalter ersetzen → Email senden (mit Cc + Bcc + Attachments) → Status=Sent
+
+> **Wichtig (v26.70):** Die Action im Loop MUSS `Get_Attachment_Content` heißen — die `ContentBytes`-Expression in `Append_Attachment` (`body('Get_Attachment_Content')?['$content']`) referenziert genau diesen Namen. Bleibt die Action unbenannt/leer, kommt der Anhang leer an.
 
 ### UI-Anleitung 2026-07-07 (v26.62/v26.70) — `.eml`-Anhang aus DEX_Emails mitsenden (externe Einladung)
 
@@ -2428,6 +2430,17 @@ TRIGGER:
   "splitOn": "@triggerOutputs()?['body/value']"
 }
 
+INITIALIZE_ATTACHMENTS (v26.62/v26.70 — Array-Sammelvariable für .eml-Anhänge):
+{
+  "type": "InitializeVariable",
+  "inputs": {
+    "variables": [
+      { "name": "MailAttachments", "type": "array" }
+    ]
+  },
+  "runAfter": {}
+}
+
 GET_CONFIG (Logo + Default-Bild aus DEX_EmailTemplates via GetItems):
 {
   "type": "OpenApiConnection",
@@ -2444,7 +2457,7 @@ GET_CONFIG (Logo + Default-Bild aus DEX_EmailTemplates via GetItems):
       "operationId": "GetItems"
     }
   },
-  "runAfter": {}
+  "runAfter": { "Initialize_Attachments": ["Succeeded"] }
 }
 
 GET_EVENT (Event-Daten für EventId):
@@ -2480,17 +2493,73 @@ COMPOSE_IMAGE (Event-Bild oder Default-Bild):
   "runAfter": { "Compose_Logo": ["Succeeded"] }
 }
 
-SEND_EMAIL (Shared Mailbox, mit Cc + Bcc seit v8.5):
+GET_ATTACHMENTS (v26.62/v26.70 — Anhänge der DEX_Emails-Zeile auslesen):
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+      "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
+      "itemId": "@triggerBody()?['ID']"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline",
+      "operationId": "GetItemAttachments"
+    }
+  },
+  "runAfter": { "Compose_Image": ["Succeeded"] }
+}
+
+APPLY_TO_EACH_ATTACHMENT (v26.62/v26.70 — je Anhang Inhalt holen + in MailAttachments sammeln):
+{
+  "type": "Foreach",
+  "foreach": "@body('Get_Attachments')",
+  "actions": {
+    "Get_Attachment_Content": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+          "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
+          "itemId": "@triggerBody()?['ID']",
+          "attachmentId": "@items('Apply_to_each_Attachment')?['Id']"
+        },
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connection": "shared_sharepointonline",
+          "operationId": "GetAttachmentContent"
+        }
+      },
+      "runAfter": {}
+    },
+    "Append_Attachment": {
+      "type": "AppendToArrayVariable",
+      "inputs": {
+        "name": "MailAttachments",
+        "value": {
+          "Name": "@{items('Apply_to_each_Attachment')?['DisplayName']}",
+          "ContentBytes": "@{body('Get_Attachment_Content')?['$content']}"
+        }
+      },
+      "runAfter": { "Get_Attachment_Content": ["Succeeded"] }
+    }
+  },
+  "runAfter": { "Get_Attachments": ["Succeeded"] }
+}
+
+SEND_EMAIL (Shared Mailbox, mit Cc + Bcc seit v8.5, Attachments seit v26.62/v26.70):
 {
   "type": "OpenApiConnection",
   "inputs": {
     "parameters": {
       "emailMessage/MailboxAddress": "no_reply.events@deloitte.de",
-      "emailMessage/To": "@triggerBody()?['Recipient']",
+      "emailMessage/To": "@last(split(replace(coalesce(triggerOutputs()?['body/Recipient'], ''), '</div>', ''), '\">'))",
       "emailMessage/Subject": "@triggerBody()?['Title']",
       "emailMessage/Body": "<p class=\"editor-paragraph\">@{replace(replace(triggerBody()?['Body'], '{{LOGO_URL}}', outputs('Compose_Logo')), '{{ORB_URL}}', outputs('Compose_Image'))}</p>",
-      "emailMessage/Cc": "@triggerBody()?['Cc']",
-      "emailMessage/Bcc": "@triggerOutputs()?['body/Bcc']",
+      "emailMessage/Cc": "@last(split(replace(coalesce(triggerBody()?['Cc'], ''), '</div>', ''), '\">'))",
+      "emailMessage/Bcc": "@last(split(replace(coalesce(triggerOutputs()?['body/Bcc'], ''), '</div>', ''), '\">'))",
+      "emailMessage/Attachments": "@variables('MailAttachments')",
       "emailMessage/Importance": "Normal"
     },
     "host": {
@@ -2499,7 +2568,7 @@ SEND_EMAIL (Shared Mailbox, mit Cc + Bcc seit v8.5):
       "operationId": "SharedMailboxSendEmailV2"
     }
   },
-  "runAfter": { "Compose_Image": ["Succeeded"] }
+  "runAfter": { "Apply_to_each_Attachment": ["Succeeded"] }
 }
 
 SET_SENT:
