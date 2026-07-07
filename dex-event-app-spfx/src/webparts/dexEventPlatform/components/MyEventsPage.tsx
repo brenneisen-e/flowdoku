@@ -103,10 +103,11 @@ function formatDateRange(start: string, end: string): string {
   if (!start) return '-';
   const s = new Date(start);
   const e = end ? new Date(end) : null;
-  const sDate = s.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  // v27.8: Wochentag mit anzeigen (z.B. „Mittwoch, 09.09.2026").
+  const sDate = s.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
   const sTime = s.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   if (!e) return `${sDate}, ${sTime}`;
-  const eDate = e.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  const eDate = e.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
   const eTime = e.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   // Gleicher Tag: "14.04.2026, 14:00 – 18:00"
   if (sDate === eDate) return `${sDate}, ${sTime} – ${eTime}`;
@@ -1940,21 +1941,38 @@ export default function MyEventsPage(): React.ReactElement {
 
                     {/* Kompakte Info-Zeile: Location + Datum inline, umbricht auf schmalen Bildschirmen */}
                     <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', alignItems: 'flex-start', gap: '6px 24px', fontSize: '0.88rem', color: 'var(--dex-gray-700)' }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-                        <Icon iconName="MapPin" style={{ fontSize: 14, color: 'var(--dex-gray-500)', marginTop: 2 }} />
-                        <div>
-                          <div style={{ fontWeight: 700, color: 'var(--dex-gray-800)' }}>{event.location || '-'}</div>
-                          {event.locationAddress && (event.locationAddress.street || event.locationAddress.city) && (
-                            <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 1 }}>
-                              {[event.locationAddress.street, event.locationAddress.houseNo].filter(Boolean).join(' ')}
-                              {(event.locationAddress.zip || event.locationAddress.city) ? ', ' : ''}
-                              {[event.locationAddress.zip, event.locationAddress.city].filter(Boolean).join(' ')}
-                            </div>
-                          )}
-                        </div>
+                      {/* v27.8: Ort einzeilig als „Name, Stadt" (vorher zweizeilig
+                          mit voller Adresse). */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Icon iconName="MapPin" style={{ fontSize: 14, color: 'var(--dex-gray-500)' }} />
+                        <span style={{ fontWeight: 700, color: 'var(--dex-gray-800)' }}>
+                          {[event.location, event.locationAddress && event.locationAddress.city].filter(Boolean).join(', ') || '-'}
+                        </span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon iconName="Calendar" style={{ fontSize: 14, color: 'var(--dex-gray-500)' }} /> {formatDateRange(event.startDate, event.endDate)}</div>
                     </div>
+
+                    {/* v27.7: Gruppe (Durchstarter/Funstarter bzw. eigene
+                        Beschriftung) anzeigen, in der die Person angemeldet ist.
+                        StarterType = effektive Gruppe; auf der Warteliste ist er
+                        leer, dann steht der Wunsch in PreferredStarterType. */}
+                    {(() => {
+                      const grp = (registration.StarterType || registration.PreferredStarterType || '').trim();
+                      if (!grp) return null;
+                      const grpLabel = grp === 'Durchstarter'
+                        ? ((event.splitLabelA && event.splitLabelA.trim()) || 'Durchstarter')
+                        : grp === 'Funstarter'
+                          ? ((event.splitLabelB && event.splitLabelB.trim()) || 'Funstarter')
+                          : grp;
+                      return (
+                        <div style={{ marginTop: 8 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', fontWeight: 600, padding: '4px 10px', borderRadius: 999, background: 'rgba(134,188,37,0.14)', color: 'var(--dex-green-dark, #4a7c1f)', border: '1px solid rgba(134,188,37,0.30)' }}>
+                            <Icon iconName="Group" style={{ fontSize: 13 }} />
+                            {(isDe ? 'Gruppe: ' : 'Group: ')}{grpLabel}
+                          </span>
+                        </div>
+                      );
+                    })()}
 
                     {/* Organizer mit Foto (Hover vergrößert). v24.12: einzelne ausblendbar. */}
                     {event.organizers.length > 0 && !(event.hideOrganizer && !event.hideOrganizerIndividualOnly) && (

@@ -13777,6 +13777,7 @@ export default function AdminPage(): React.ReactElement {
           open={!!composerCrop}
           src={composerCrop === 'invite' ? inviteEventPhotoB64 : massmailEventPhotoB64}
           isDe={isDe}
+          allowAspect
           onClose={() => setComposerCrop(null)}
           onApply={(dataUrl) => {
             if (composerCrop === 'invite') setInviteEventPhotoB64(dataUrl);
