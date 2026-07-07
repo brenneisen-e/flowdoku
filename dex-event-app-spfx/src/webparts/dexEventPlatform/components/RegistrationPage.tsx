@@ -2279,11 +2279,11 @@ export default function RegistrationPage(): React.ReactElement {
         const distinctCats = Array.from(new Set(cats.map(c => (c || '').trim()).filter(Boolean)));
         return (
           <select className="form-select" value={vals[field.id] || ''} onChange={e => setVals({ ...vals, [field.id]: e.target.value })} style={inputStyleGreen}>
-            <option value="">{tEvent('reg.pleaseselect')}</option>
+            <option value="" disabled hidden>{tEvent('reg.pleaseselect')}</option>
             {distinctCats.map(cat => (
               <optgroup key={cat} label={cat}>
                 {opts.map((opt, i) => ((cats[i] || '').trim() === cat && (opt || '').trim())
-                  ? <option key={`${cat}-${i}`} value={opt}>{pickOptionLabel(field, i, opt)}</option>
+                  ? <option key={`${cat}-${i}`} value={`${cat} ${opt}`}>{pickOptionLabel(field, i, opt)}</option>
                   : null)}
               </optgroup>
             ))}
@@ -2295,7 +2295,7 @@ export default function RegistrationPage(): React.ReactElement {
       })()
     ) : field.type === 'select' ? (
       <select className="form-select" value={vals[field.id] || ''} onChange={e => setVals({ ...vals, [field.id]: e.target.value })} style={inputStyleGreen}>
-        <option value="">{tEvent('reg.pleaseselect')}</option>
+        <option value="" disabled hidden>{tEvent('reg.pleaseselect')}</option>
         {field.options && field.options.map((opt, i) => <option key={opt} value={opt}>{pickOptionLabel(field, i, opt)}</option>)}
       </select>
     ) : field.type === 'user' || field.type === 'roommate' ? (
