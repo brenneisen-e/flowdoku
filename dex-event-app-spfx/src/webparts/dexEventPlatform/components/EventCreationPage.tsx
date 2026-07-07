@@ -11891,14 +11891,9 @@ export default function EventCreationPage(): React.ReactElement {
                       <div className="dex-fielddesc-rt" style={{ border: '1px solid var(--dex-gray-300)', borderRadius: 6, background: '#fff' }}>
                         <RichText
                           value={field.helpText || ''}
-                          placeholder={isDe ? 'Beschreibung (optional) — Fett & Links über die Leiste' : 'Description (optional) — bold & links via the toolbar'}
+                          placeholder={isDe ? 'Beschreibung (optional)' : 'Description (optional)'}
                           onChange={(text: string) => { updateCustomField(field.id, { helpText: text }); return text; }}
                         />
-                      </div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', marginTop: 4, lineHeight: 1.4 }}>
-                        {isDe
-                          ? 'Text markieren und über die Leiste fett setzen; Links über das Link-Symbol einfügen. Formatiert dargestellt wird das bei der Anzeige als Text unter dem Feld-Titel.'
-                          : 'Select text and use the toolbar to make it bold; add links via the link icon. It is rendered formatted with the display as text below the field title.'}
                       </div>
                       {field.helpText && field.helpText.trim() && (
                         <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>

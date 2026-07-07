@@ -44,6 +44,7 @@ export interface ReleaseNote {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '27.0.0', date: '2026-07-07', bereich: 'Event-Erstellung', type: 'Bugfix', text: 'Der Editor für Feld-Beschreibungen ist jetzt kompakt (vorher unnötig hoch) und der Platzhalter zeigt schlicht „Beschreibung (optional)" statt des verwirrenden „Fett & Links"-Hinweises. Formatieren (Fett, Links) geht weiterhin über die kleine Leiste über dem Feld.' },
   { version: '26.99.0', date: '2026-07-07', bereich: 'Anmeldung', type: 'Feature', text: 'Beim stellvertretenden Anmelden („Für andere Person registrieren") ist die ausführliche Ablauf-Erklärung jetzt in den geführten Wizard (Schritt „Zustimmung") gewandert. Auf der eigentlichen Anmeldeseite bleibt dadurch nur ein kurzer Hinweis + der Pflicht-Haken; die Details lassen sich dort per „So läuft das ab" bei Bedarf noch aufklappen.' },
   { version: '26.98.0', date: '2026-07-07', bereich: 'E-Mails', type: 'Feature', text: 'Auch direkt im Einladungs- und Massenmail-Fenster kannst du das Event-Foto jetzt zuschneiden: Sobald „Event-Foto" als Kopfbild gewählt ist, erscheint der Button „Foto zuschneiden" — es öffnet sich derselbe Bild-Editor.' },
   { version: '26.97.0', date: '2026-07-07', bereich: 'E-Mails', type: 'Feature', text: 'Das Bild für den Mail-Kopf und den Outlook-Termin lässt sich jetzt auch zuschneiden: In den Schritten „Logo für die E-Mails" und „Bild für den Outlook-Termin" gibt es beim hochgeladenen Bild einen Button „Zuschneiden" — es öffnet sich derselbe Bild-Editor wie beim Event-Bild.' },
