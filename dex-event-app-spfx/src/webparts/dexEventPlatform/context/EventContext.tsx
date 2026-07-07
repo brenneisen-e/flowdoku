@@ -691,6 +691,8 @@ export interface CreateEventInput {
   funstarterCapacity?: number;
   splitLabelA?: string;
   splitLabelB?: string;
+  splitDescA?: string; // v26.72: Beschreibung Gruppe A (mehrzeilig)
+  splitDescB?: string; // v26.72: Beschreibung Gruppe B (mehrzeilig)
   splitSharedWaitlist?: boolean;
   allowAttendeeUpload?: boolean;
   attendeeUploadHint?: string;
@@ -1336,6 +1338,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       funstarterCapacity: typeof e.FunstarterCapacity === 'number' ? e.FunstarterCapacity : undefined,
       splitLabelA: e.SplitLabelA || undefined,
       splitLabelB: e.SplitLabelB || undefined,
+      splitDescA: e.SplitDescA || undefined,
+      splitDescB: e.SplitDescB || undefined,
       splitSharedWaitlist: !!e.SplitSharedWaitlist,
       allowAttendeeUpload: !!e.AllowAttendeeUpload,
       attendeeUploadHint: e.AttendeeUploadHint || undefined,
@@ -1432,6 +1436,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // v7.11: multi-Flag durchreichen, damit RegistrationPage Mehrfachauswahl rendern kann
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         multi: !!(cf as any).multi,
+        // v26.74: Vorauswahl (Single-Select) durchreichen — RegistrationPage
+        // belegt das Feld damit vor, der Wizard zeigt sie im Feld-Editor.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        defaultValue: (cf as any).defaultValue || undefined,
         // v24.25: withTime — bei Datums-Feldern (type='date') auch die Uhrzeit
         // mit abfragen (datetime-local statt date).
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1743,27 +1751,15 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // Einladungs-Entwurf (.eml) lädt sie in der Teilnehmerliste herunter und
       // verschickt ihn aus dem eigenen Postfach.
       const isExternalInvite = status === 'Angemeldet' && isProxyRegistration && isExternalParticipant;
+      // v26.73: Download-Deeplink für den .eml-Entwurf. Der Anhang darf per
+      // Deloitte-Mail-Regel NICHT direkt mitgeschickt werden (NDR: „…cannot send
+      // email attachments"). Statt dessen: den fertigen Entwurf als Attachment an
+      // der Teilnehmer-Zeile ablegen und in der Instruktions-Mail einen Deeplink
+      // setzen, der die Datei beim Klick in der App herunterlädt.
+      let inviteDownloadUrl = '';
       if (isExternalInvite) {
         try { await eventService.markConsentPendingByEmail(subsiteUrl, emailToUse); }
         catch (err) { console.warn('[DEX] markConsentPendingByEmail failed:', err); }
-      }
-      let emailData: { subject: string; body: string };
-      // v26.62: Bei externer Einladung den fertigen .eml-Entwurf DIREKT an die
-      // Instruktions-Mail anhängen (Feedback: „warum so umständlich?") — der
-      // Anmelder muss dann nicht mehr ins Organizer Center. Gleicher Inhalt
-      // wie der Download-Button in der Teilnehmerliste. Der Download bleibt
-      // als Fallback bestehen (z. B. solange der Mail-Flow Anhänge noch nicht
-      // weiterreicht oder wenn der Entwurf später erneut gebraucht wird).
-      let externalInviteEml: { fileName: string; content: string } | undefined;
-      const spTemplateRaw = isExternalInvite ? null : await eventService.getEmailTemplate(templateType, lang).catch(() => null);
-      const spTemplate = applyEventTemplateOverride(spTemplateRaw, event.emailTemplateOverrides, templateType);
-      if (isExternalInvite) {
-        const orgCenterUrl = buildHashDeepLink(`${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, { action: 'admin', event: eventId });
-        const registrantFirst = (currentUserName || '').split(' ')[0] || currentUserName;
-        emailData = externalInviteInstructionEmail(
-          registrantFirst, nameToUse, emailToUse, event.title,
-          lang.toUpperCase() === 'DE', orgCenterUrl
-        );
         try {
           const inv = externalInvitationEmail(
             nameToUse, event.title, currentUserName || '',
@@ -1776,8 +1772,26 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             subject: inv.subject,
             html: inv.body,
           });
-          externalInviteEml = { fileName: `Einladung_${emailToUse}.eml`, content: eml };
-        } catch (emlErr) { console.warn('[DEX] externalInviteEml build failed:', emlErr); }
+          const invItemId = await eventService.storeInviteEmlByEmail(subsiteUrl, emailToUse, eml).catch(() => 0);
+          if (invItemId > 0) {
+            inviteDownloadUrl = buildHashDeepLink(`${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, { action: 'downloadinvite', event: eventId, item: invItemId, email: emailToUse, name: nameToUse });
+          }
+        } catch (emlErr) { console.warn('[DEX] invite .eml store failed:', emlErr); }
+      }
+      let emailData: { subject: string; body: string };
+      // v26.73: Die eigentliche Einladung (.eml) wird NICHT an die Mail gehängt
+      // (Mail-Regel blockt Anhänge). Sie liegt als Attachment an der Teilnehmer-
+      // Zeile; der Anmelder holt sie per Deeplink-Button in der App und leitet sie
+      // aus dem eigenen Postfach weiter (die App/der Flow sendet NIE an Externe).
+      const spTemplateRaw = isExternalInvite ? null : await eventService.getEmailTemplate(templateType, lang).catch(() => null);
+      const spTemplate = applyEventTemplateOverride(spTemplateRaw, event.emailTemplateOverrides, templateType);
+      if (isExternalInvite) {
+        const orgCenterUrl = buildHashDeepLink(`${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, { action: 'admin', event: eventId });
+        const registrantFirst = (currentUserName || '').split(' ')[0] || currentUserName;
+        emailData = externalInviteInstructionEmail(
+          registrantFirst, nameToUse, emailToUse, event.title,
+          lang.toUpperCase() === 'DE', orgCenterUrl, inviteDownloadUrl
+        );
       } else if (spTemplate) {
         emailData = buildEmailFromTemplate(spTemplate, vars);
       } else {
@@ -1828,9 +1842,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           // v26.33: ALLE Organizer (inkl. Co-Organizer) auf CC.
           const allOrganizers = [...(event.organizerEmails || []), ...(event.coOrganizerEmails || [])].filter(Boolean);
           if (isExternalInvite) {
-            // v26.47: Instruktions-Mail nur an den Anmelder — kein CC nötig
-            // (Organizer sehen den offenen Status in der Teilnehmerliste).
-            externalCcExtra = '';
+            // v26.71: Instruktions-Mail geht an den Anmelder (To); die
+            // Organisator:innen kommen zusätzlich auf CC (Kopie/Nachweis). Es
+            // steht KEINE externe Adresse in To/CC — die App sendet nie an
+            // Externe (dedupe/To-Ausschluss passiert weiter unten in ccMerged).
+            externalCcExtra = allOrganizers.join(';');
           } else {
             externalCcExtra = allOrganizers.join(';');
             // Hinweis-Box VOR dem Original-Body — adressiert an die externe Person.
@@ -1924,8 +1940,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           finalSubject, finalRecipient, finalRecipientName, finalBody,
           templateType, event.title, eventId, ccFromFields, bcc,
           undefined,
-          // v26.62: .eml-Einladungs-Entwurf direkt an der Instruktions-Mail.
-          isExternalInvite ? externalInviteEml : undefined
+          // v26.71: KEIN Anhang mehr — die Deloitte-Mail-Flow-Regel blockt
+          // Power-Automate-Mails mit Anhang (NDR). Der .eml-Entwurf wird im
+          // Organizer Center heruntergeladen und aus dem eigenen Postfach
+          // weitergeleitet.
+          undefined
         ).catch(err => console.warn('[DEX] queueEmail failed:', err));
       }
 

@@ -752,6 +752,31 @@ export default function RegistrationPage(): React.ReactElement {
     if (eventSpecific.b2run_startblock === mappedBlock) return;
     setEventSpecific(prev => ({ ...prev, b2run_startblock: mappedBlock }));
   }, [preferredStarterType, durchstarterBlock, funstarterBlock, hasStarterBlockMapping]);
+  // v26.74: Vorauswahl bei Single-Select-Feldern — den vom Organizer gesetzten
+  // Default einmal vorbelegen (nur wenn der Teilnehmer das Feld noch nicht
+  // berührt hat; ein bewusstes Leeren bleibt erhalten). Läuft, sobald die
+  // Event-Felder verfügbar sind bzw. sich ihre Defaults ändern.
+  const selectDefaultsSig = (event?.eventSpecificFields || [])
+    .filter(f => f.type === 'select' && !f.multi && f.defaultValue)
+    .map(f => `${f.id}=${f.defaultValue}`).join('|');
+  React.useEffect(() => {
+    const fields = event?.eventSpecificFields || [];
+    const defaults: Record<string, string> = {};
+    for (const f of fields) {
+      if (f.type === 'select' && !f.multi && f.defaultValue && (f.options || []).indexOf(f.defaultValue) >= 0) {
+        defaults[f.id] = f.defaultValue;
+      }
+    }
+    if (Object.keys(defaults).length === 0) return;
+    setEventSpecific(prev => {
+      let changed = false;
+      const next = { ...prev };
+      for (const k of Object.keys(defaults)) {
+        if (next[k] === undefined) { next[k] = defaults[k]; changed = true; }
+      }
+      return changed ? next : prev;
+    });
+  }, [selectDefaultsSig]);
   React.useEffect(() => {
     if (!isSplitGroup || !event?.subsiteUrl) return;
     (async () => {
@@ -1881,12 +1906,25 @@ export default function RegistrationPage(): React.ReactElement {
 
   if (submitted) {
     const sessionsOnlyHint = sessionsOnlySubmitted;
-    const successHeadline = sessionsOnlyHint
+    // v26.71: Externe stellvertretende Anmeldung — die Person ist NICHT final
+    // angemeldet, sondern nur in der Teilnehmerliste hinterlegt (Datenschutz-
+    // rückmeldung offen). Es geht KEINE Mail an die externe Adresse und KEIN
+    // Kalendereintrag; der Anmelder verschickt die Einladung selbst und
+    // bestätigt danach. Deshalb hier NICHT „erfolgreich registriert" texten.
+    const isExternalProxy = registerForOther && isExternalEmailAddr((email || '').trim());
+    const proxyName = `${firstName} ${surname}`.trim() || email;
+    const successHeadline = isExternalProxy
+      ? (locale === 'de' ? 'In der Teilnehmerliste hinterlegt' : 'Added to the participant list')
+      : sessionsOnlyHint
       ? (childTermPlural
           ? (locale === 'de' ? `Für ${childTermPlural} angemeldet` : `Registered for ${childTermPlural}`)
           : (t('reg.success.sessionsonly.title') || 'Für Sessions angemeldet'))
       : (submittedAsWaitlist ? t('reg.waitlisttitle') : t('reg.success'));
-    const successBody = sessionsOnlyHint
+    const successBody = isExternalProxy
+      ? (locale === 'de'
+          ? `${proxyName} wurde in der Teilnehmerliste hinterlegt — mit dem Status „Angemeldet (Datenschutzrückmeldung offen)". Da „${email}" eine externe Adresse ist, versendet die App KEINE Mail dorthin und KEINEN Kalendereintrag. Du bekommst eine E-Mail (Organisator:innen in Kopie) mit einem Button, über den du den fertigen Einladungs-Entwurf direkt herunterlädst — leite ihn aus deinem eigenen Postfach an ${proxyName} weiter und bestätige nach ihrer Rückmeldung die Datenschutz-Zustimmung in der Teilnehmerliste.`
+          : `${proxyName} has been added to the participant list — with status „Registered (privacy confirmation pending)". Since „${email}" is an external address, the app sends NO email there and NO calendar entry. You'll receive an email (organizers in copy) with a button to download the ready-made invitation draft directly — forward it from your own mailbox to ${proxyName}, and confirm the privacy consent in the participant list once they reply.`)
+      : sessionsOnlyHint
       ? (event.subEventsOnlyMode
           ? (childTermSingular
               ? (locale === 'de'
@@ -1925,7 +1963,7 @@ export default function RegistrationPage(): React.ReactElement {
               Liste der gewählten Sections (dynamische Organizer-Bezeichnung) und
               der Mail/Outlook-Satz NUR wenn für die gewählten Sections wirklich
               Mail bzw. Outlook aktiv ist. */}
-          {sessionsOnlyHint && event.subEventsOnlyMode ? (() => {
+          {!isExternalProxy && sessionsOnlyHint && event.subEventsOnlyMode ? (() => {
             const selectedChildren = childEvents.filter(ce => selectedSessions.has(ce.id));
             const anyEmail = selectedChildren.some(ce => !ce.disableEmails);
             const anyOutlook = selectedChildren.some(ce => !ce.disableOutlook);
@@ -3688,15 +3726,16 @@ export default function RegistrationPage(): React.ReactElement {
                       <span style={{ color: 'var(--dex-gray-700)', fontWeight: 700 }}>
                         {locale === 'de' ? 'Gesamtkapazität:' : 'Total capacity:'} {totalCap} {locale === 'de' ? 'Plätze' : 'seats'}
                       </span>
-                      <span style={{ color: 'var(--dex-gray-300)' }}>·</span>
-                      {totalFree > 0 ? (
-                        <span style={{ color: 'var(--dex-green-dark, #6b9a1e)', fontWeight: 700 }}>
-                          {totalFree} {locale === 'de' ? 'frei' : 'free'}
-                        </span>
-                      ) : (
-                        <span style={{ color: 'var(--dex-red, #c00)', fontWeight: 700 }}>
-                          {locale === 'de' ? 'ausgebucht' : 'fully booked'}
-                        </span>
+                      {/* v26.72: „X frei" in der Gesamt-Zeile entfernt — die
+                          Verfügbarkeit steht bereits pro Gruppe in den Karten.
+                          Nur bei komplett ausgebucht bleibt ein Hinweis. */}
+                      {totalFree <= 0 && (
+                        <>
+                          <span style={{ color: 'var(--dex-gray-300)' }}>·</span>
+                          <span style={{ color: 'var(--dex-red, #c00)', fontWeight: 700 }}>
+                            {locale === 'de' ? 'ausgebucht' : 'fully booked'}
+                          </span>
+                        </>
                       )}
                       {totalWait > 0 && (
                         <>
@@ -3714,8 +3753,11 @@ export default function RegistrationPage(): React.ReactElement {
                 })()}
                 <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                   {(() => {
-                    const optA = { id: 'Durchstarter', label: splitLabelA, desc: splitLabelA === 'Durchstarter' ? t('reg.starter.durch.desc') : '', cap: durchCap, count: starterCounts?.durch ?? 0, wait: starterCounts?.durchWait ?? 0, color: 'var(--dex-green-dark, #6b9a1e)' };
-                    const optB = { id: 'Funstarter', label: splitLabelB, desc: splitLabelB === 'Funstarter' ? t('reg.starter.fun.desc') : '', cap: funCap, count: starterCounts?.fun ?? 0, wait: starterCounts?.funWait ?? 0, color: 'var(--dex-orange, #ff8c00)' };
+                    // v26.72: Beschreibung pro Gruppe frei konfigurierbar
+                    // (splitDescA/B aus dem Wizard); Fallback auf den B2Run-
+                    // Standardtext nur bei den Default-Labels.
+                    const optA = { id: 'Durchstarter', label: splitLabelA, desc: (event?.splitDescA && event.splitDescA.trim()) || (splitLabelA === 'Durchstarter' ? t('reg.starter.durch.desc') : ''), cap: durchCap, count: starterCounts?.durch ?? 0, wait: starterCounts?.durchWait ?? 0 };
+                    const optB = { id: 'Funstarter', label: splitLabelB, desc: (event?.splitDescB && event.splitDescB.trim()) || (splitLabelB === 'Funstarter' ? t('reg.starter.fun.desc') : ''), cap: funCap, count: starterCounts?.fun ?? 0, wait: starterCounts?.funWait ?? 0 };
                     // v11.25: pure UI-Reihenfolge — bei reversed wird Karte B
                     // zuerst gerendert. Interne IDs/Capacities/StarterType der
                     // Anmeldungen bleiben unangetastet.
@@ -3724,6 +3766,8 @@ export default function RegistrationPage(): React.ReactElement {
                     const free = opt.cap - opt.count;
                     const isFull = free <= 0;
                     const isActive = preferredStarterType === opt.id;
+                    // v26.72: gewählte Box grün, nicht-gewählte grau (vorher A grün / B orange).
+                    const accent = isActive ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500, #6b7280)';
                     return (
                       <button
                         key={opt.id}
@@ -3732,17 +3776,17 @@ export default function RegistrationPage(): React.ReactElement {
                         style={{
                           padding: 14, textAlign: 'left',
                           borderRadius: 'var(--dex-radius, 12px)',
-                          border: isActive ? `2px solid ${opt.color}` : '2px solid var(--dex-gray-200)',
+                          border: isActive ? `2px solid ${accent}` : '2px solid var(--dex-gray-200)',
                           background: isActive ? 'var(--dex-green-light, #f0fdf4)' : '#fff',
                           cursor: 'pointer', transition: 'all 0.15s',
                           position: 'relative',
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                          <strong style={{ color: opt.color, fontSize: '0.95rem' }}>{opt.label}</strong>
-                          {isActive && <span style={{ color: opt.color, fontSize: '0.8rem' }}>✓</span>}
+                          <strong style={{ color: accent, fontSize: '0.95rem' }}>{opt.label}</strong>
+                          {isActive && <span style={{ color: accent, fontSize: '0.8rem' }}>✓</span>}
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginBottom: 6 }}>{opt.desc}</div>
+                        {opt.desc && <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)', marginBottom: 6, whiteSpace: 'pre-wrap' }}>{opt.desc}</div>}
                         <div style={{ fontSize: '0.78rem' }}>
                           {isFull ? (
                             <span style={{ color: 'var(--dex-red, #c00)', fontWeight: 600 }}>{t('reg.starter.full')}</span>
@@ -3750,7 +3794,7 @@ export default function RegistrationPage(): React.ReactElement {
                             // v19.19: nie negativ — bei Überbuchung greift der
                             // isFull-Zweig oben (zeigt „Voll"), die echte
                             // Überbuchungszahl bleibt dem Organizer/Admin vorbehalten.
-                            <span style={{ color: opt.color }}>{`${Math.max(0, free)} / ${opt.cap} ${t('reg.starter.free')}`}</span>
+                            <span style={{ color: accent }}>{`${Math.max(0, free)} / ${opt.cap} ${t('reg.starter.free')}`}</span>
                           )}
                           {/* v19.19: Warteliste pro Gruppe — nur bei GETRENNTEN
                               Wartelisten. Bei gemeinsamer Warteliste steht die

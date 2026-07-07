@@ -2208,7 +2208,21 @@ Ablauf: Trigger → **Initialize_Attachments** (Array) → Config laden (Logo + 
 
 > **Wichtig (v26.70):** Die Action im Loop MUSS `Get_Attachment_Content` heißen — die `ContentBytes`-Expression in `Append_Attachment` (`body('Get_Attachment_Content')?['$content']`) referenziert genau diesen Namen. Bleibt die Action unbenannt/leer, kommt der Anhang leer an.
 
-### UI-Anleitung 2026-07-07 (v26.62/v26.70) — `.eml`-Anhang aus DEX_Emails mitsenden (externe Einladung)
+### ⛔ OBSOLET (2026-07-07, v26.71) — `.eml`-Anhang funktioniert im Deloitte-Tenant NICHT
+
+**Wichtig:** Der unten beschriebene Anhang-Ansatz wurde in **v26.71 zurückgebaut** und
+darf NICHT verwendet werden. Grund: Die Deloitte-Mail-Flow-Regel blockt **jede** über
+Power Automate versendete Mail, die einen Anhang trägt (NDR-Text: *„Power Apps and Power
+Automate cannot be used to send emails to external (non-Deloitte) recipients or to send
+email attachments"*) — d. h. die Instruktions-Mail käme mit `.eml`-Anhang **gar nicht mehr**
+beim Anmelder an. Ab v26.71 hängt die App die `.eml` NICHT mehr an; der Anmelder lädt den
+Entwurf im **Organizer Center** herunter und leitet ihn aus dem eigenen Postfach weiter.
+Die unten gebauten Flow-Actions (Get_Attachments / Apply_to_each_Attachment / … ) sind
+damit **wirkungslos** (kein DEX_Emails-Item trägt mehr einen Anhang → `MailAttachments`
+bleibt leer → Send ohne Anhang) und können im Flow **entfernt** oder belassen werden
+(harmlos). Die folgende Anleitung bleibt nur als Historie stehen.
+
+### UI-Anleitung 2026-07-07 (v26.62/v26.70) — `.eml`-Anhang aus DEX_Emails mitsenden (externe Einladung) [OBSOLET, siehe oben]
 
 **Hintergrund:** Bei der stellvertretenden Anmeldung externer Personen hängt die App
 den fertigen Einladungs-Entwurf als `.eml`-Datei DIREKT an die DEX_Emails-Queue-Zeile

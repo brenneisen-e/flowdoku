@@ -239,6 +239,10 @@ export interface DeloitteEvent {
    *  "VIP" / "Standard". Bei B2Run-Legacy-Events leer = Default. */
   splitLabelA?: string;
   splitLabelB?: string;
+  /** v26.72: frei konfigurierbare Beschreibung pro Gruppe — erscheint unter
+   *  dem Gruppen-Namen in der Auswahl-Karte auf der Anmeldeseite (mehrzeilig). */
+  splitDescA?: string;
+  splitDescB?: string;
   /** v10.20: Warteliste-Verhalten bei aktiver Split-Capacity.
    *  - false / undefined (Default): zwei getrennte Wartelisten — eine pro
    *    Gruppe, Nachrück-Logik bleibt typ-bewusst (alter B2Run-Stil).
@@ -436,6 +440,10 @@ export interface EventSpecificField {
    *  in `eventSpecificData[id]` als " | "-getrennter String gespeichert (Pipe
    *  mit Spaces, damit Optionen mit Komma im Label nicht zerrissen werden). */
   multi?: boolean;
+  /** v26.74: Nur für `type === 'select'` ohne `multi`. Optionale Vorauswahl —
+   *  eine der `options`, die im Anmeldeformular vorausgewählt ist (leer/
+   *  undefined = keine Vorauswahl, „Bitte wählen"). */
+  defaultValue?: string;
   /** v7.21: Sichtbarkeitsbedingung. Wenn gesetzt, wird das Feld nur dann
    *  angezeigt, wenn das Quell-Feld (`fieldId`) einen der `values` als
    *  Antwort hat. Beispiel: Roommate-Feld nur sichtbar wenn Zimmerart =

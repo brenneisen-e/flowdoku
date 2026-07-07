@@ -564,6 +564,8 @@ export interface SPEvent {
   FunstarterCapacity?: number;   // Split-Capacity Gruppe B (historisch B2Run-Funstarter)
   SplitLabelA?: string; // v10.20: frei wählbare Bezeichnung Gruppe A
   SplitLabelB?: string; // v10.20: frei wählbare Bezeichnung Gruppe B
+  SplitDescA?: string; // v26.72: Beschreibung Gruppe A (mehrzeilig)
+  SplitDescB?: string; // v26.72: Beschreibung Gruppe B (mehrzeilig)
   SplitSharedWaitlist?: boolean; // v10.20: true = gemeinsame Warteliste, false = getrennt (Default)
   AllowAttendeeUpload?: boolean; // v11.0: Teilnehmer können PDF an ihre Anmeldung hängen
   AttendeeUploadHint?: string;   // v11.0: optionaler Hinweistext über dem Upload-Input
@@ -3441,6 +3443,8 @@ export class EventService {
       { title: 'FunstarterCapacity', type: 9 }, // Split-Capacity Gruppe B (historisch B2Run-Funstarter)
       { title: 'SplitLabelA', type: 2 }, // v10.20: frei wählbare Bezeichnung Gruppe A (Single line text)
       { title: 'SplitLabelB', type: 2 }, // v10.20: frei wählbare Bezeichnung Gruppe B (Single line text)
+      { title: 'SplitDescA', type: 3 }, // v26.72: Beschreibung Gruppe A (Note/mehrzeilig)
+      { title: 'SplitDescB', type: 3 }, // v26.72: Beschreibung Gruppe B (Note/mehrzeilig)
       { title: 'SplitSharedWaitlist', type: 8, metaType: 'SP.Field' }, // v10.20: Boolean - true = gemeinsame Warteliste
       { title: 'AllowAttendeeUpload', type: 8, metaType: 'SP.Field' }, // v11.0: Boolean - Teilnehmer-PDF-Upload erlauben
       { title: 'AttendeeUploadHint', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 3 }, // v11.0: Hinweistext
@@ -3911,7 +3915,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,CurrentParticipants,WaitlistEnabled,MandatoryRegistration,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactOrganizerEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,OutlookSubject,OutlookStart,OutlookEnd,OutlookLocation,EmailLanguage,RegistrationLanguage,EmailTemplateOverrides,DisableEmails,DisableRegistrationEmail,DisableCancellationEmail,AutoDeregisterOnDecline,InactiveHandling,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,ConfirmDialogEnabled,ConfirmDialogMode,ConfirmDialogText,SelfCheckInEnabled,SelfCheckInToken,SelfCheckInFrom,SelfCheckInTo,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl,Modified,Created';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,CurrentParticipants,WaitlistEnabled,MandatoryRegistration,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactOrganizerEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,OutlookSubject,OutlookStart,OutlookEnd,OutlookLocation,EmailLanguage,RegistrationLanguage,EmailTemplateOverrides,DisableEmails,DisableRegistrationEmail,DisableCancellationEmail,AutoDeregisterOnDecline,InactiveHandling,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitDescA,SplitDescB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,ConfirmDialogEnabled,ConfirmDialogMode,ConfirmDialogText,SelfCheckInEnabled,SelfCheckInToken,SelfCheckInFrom,SelfCheckInTo,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl,Modified,Created';
 
   /**
    * Strip SharePoint-Note-Field-Wrapper.
@@ -4117,6 +4121,8 @@ export class EventService {
     funstarterCapacity?: number;
     splitLabelA?: string;
     splitLabelB?: string;
+    splitDescA?: string;
+    splitDescB?: string;
     splitSharedWaitlist?: boolean;
     allowAttendeeUpload?: boolean;
     attendeeUploadHint?: string;
@@ -4343,6 +4349,8 @@ export class EventService {
         'FunstarterCapacity': typeof event.funstarterCapacity === 'number' ? event.funstarterCapacity : null,
         'SplitLabelA': event.splitLabelA || '',
         'SplitLabelB': event.splitLabelB || '',
+        'SplitDescA': event.splitDescA || '',
+        'SplitDescB': event.splitDescB || '',
         'SplitSharedWaitlist': !!event.splitSharedWaitlist,
         'AllowAttendeeUpload': !!event.allowAttendeeUpload,
         'AttendeeUploadHint': event.attendeeUploadHint || '',
@@ -7431,6 +7439,60 @@ export class EventService {
       );
       return m.ok;
     } catch (err) { console.warn('[DEX] markConsentPendingByEmail failed:', err); return false; }
+  }
+
+  /** v26.73: Fertigen .eml-Einladungs-Entwurf als Attachment an der Teilnehmer-
+   *  Zeile ablegen (Zeile per E-Mail gefunden). Rückgabe = Item-Id (0 =
+   *  fehlgeschlagen). Der Deeplink in der externen Instruktions-Mail holt genau
+   *  diese Datei wieder — der Anhang darf per Deloitte-Mail-Regel nicht direkt
+   *  mitgeschickt werden. Fester Dateiname `dxinvite--Einladung.eml`. */
+  public async storeInviteEmlByEmail(subsiteUrl: string, participantEmail: string, emlContent: string): Promise<number> {
+    try {
+      const emailLc = (participantEmail || '').trim().toLowerCase();
+      if (!emailLc || !emlContent) return 0;
+      const resp = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,ParticipantEmail,Status&$orderby=Id desc&$top=500`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return 0;
+      const data = await resp.json();
+      const items = (data.value || data.d?.results || []) as Array<{ Id: number; ParticipantEmail?: string; Status?: string }>;
+      const hit = items.find(it => (it.ParticipantEmail || '').trim().toLowerCase() === emailLc && it.Status !== 'Abgemeldet');
+      if (!hit) return 0;
+      const fileName = 'dxinvite--Einladung.eml';
+      // Vorherige Version best-effort löschen (sonst 409 bei erneuter Anmeldung).
+      try {
+        await this.context.spHttpClient.post(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${hit.Id})/AttachmentFiles/getByFileName('${encodeURIComponent(fileName)}')`,
+          SPHttpClient.configurations.v1,
+          { headers: { 'IF-MATCH': '*', 'X-HTTP-Method': 'DELETE', 'Accept': 'application/json;odata=nometadata' } }
+        );
+      } catch { /* gab es noch nicht */ }
+      const buf = new TextEncoder().encode(emlContent);
+      const add = await this.context.spHttpClient.post(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${hit.Id})/AttachmentFiles/add(FileName='${encodeURIComponent(fileName)}')`,
+        SPHttpClient.configurations.v1,
+        { headers: { 'Accept': 'application/json;odata=nometadata' }, body: buf.buffer as ArrayBuffer }
+      );
+      return add.ok ? hit.Id : 0;
+    } catch (err) { console.warn('[DEX] storeInviteEmlByEmail failed:', err); return 0; }
+  }
+
+  /** v26.73: Den an der Teilnehmer-Zeile abgelegten .eml-Entwurf (per Item-Id)
+   *  wieder auslesen — für den Download-Deeplink. */
+  public async getInviteEmlByItem(subsiteUrl: string, itemId: number): Promise<{ fileName: string; content: string } | null> {
+    try {
+      if (!subsiteUrl || !itemId) return null;
+      const resp = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${Number(itemId)})/AttachmentFiles/getByFileName('${encodeURIComponent('dxinvite--Einladung.eml')}')/$value`,
+        SPHttpClient.configurations.v1,
+        { headers: { 'Accept': 'application/json;odata=nometadata' } }
+      );
+      if (!resp.ok) return null;
+      const content = await resp.text();
+      if (!content) return null;
+      return { fileName: 'Einladung.eml', content };
+    } catch (err) { console.warn('[DEX] getInviteEmlByItem failed:', err); return null; }
   }
 
   /** v26.47: Datenschutz-Rückmeldung der externen Person bestätigen —
