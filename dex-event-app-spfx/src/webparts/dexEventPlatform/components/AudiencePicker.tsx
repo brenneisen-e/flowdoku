@@ -64,6 +64,13 @@ interface Props {
   cardBgSecondary?: string;
   /** Optionales Schritt-Badge (Zahl) im Mailverteiler-Label — Hauptevent zeigt es. */
   stepBadge?: React.ReactNode;
+  /** v26.89: ersetzt das interne „Mailverteiler / einzelne User"-Label durch
+   *  einen einklappbaren Header (identisch zu den anderen Sichtbarkeits-Blöcken).
+   *  Wird nur am Hauptevent gesetzt. */
+  headerSlot?: React.ReactNode;
+  /** v26.89: steuert (nur bei gesetztem headerSlot), ob der Karten-Inhalt
+   *  sichtbar ist. Default sichtbar. */
+  bodyOpen?: boolean;
   /** v22.58: optionale Tabs (Klammer + Sub-Events) für das „Sichtbarkeit
    *  prüfen"-Modal. Nur am Hauptevent/Klammer-Picker gesetzt — erlaubt das
    *  Umschalten der geprüften Sichtbarkeit je Event-Section. */
@@ -84,6 +91,8 @@ export default function AudiencePicker({
   cardBgPrimary = '#fff',
   cardBgSecondary = '#fff',
   stepBadge,
+  headerSlot,
+  bodyOpen,
 }: Props): React.ReactElement {
   const { searchUsers, searchGroups, getGroupMembers, searchUsersByLocation } = useRoles();
 
@@ -331,13 +340,21 @@ export default function AudiencePicker({
   const effAud = visTab ? visTab.audience : audience;
   const effMode: 'AND' | 'OR' = visTab ? visTab.filterMode : filterMode;
 
+  // v26.89: Der „Mailverteiler / einzelne User"-Block ist am Hauptevent
+  // einklappbar (headerSlot = derselbe Schritt-Header wie die anderen Blöcke).
+  // Ohne headerSlot bleibt der Inhalt wie bisher immer sichtbar.
+  const cardBodyVisible = headerSlot ? (bodyOpen !== false) : true;
+
   return (
     <>
       <div className="form-group" style={{ position: 'relative', padding: '16px 20px', marginBottom: 12, background: cardBgPrimary, borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-        <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {stepBadge}
-          {isDe ? 'Mailverteiler / einzelne User' : 'Mailing lists / individual users'}
-        </label>
+        {headerSlot || (
+          <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {stepBadge}
+            {isDe ? 'Mailverteiler / einzelne User' : 'Mailing lists / individual users'}
+          </label>
+        )}
+        {cardBodyVisible && (<>
         <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
           {isDe
             ? <>Wähle <strong>einzelne Personen</strong> oder ganze <strong>Mailverteiler bzw. Security-Gruppen</strong> aus. Wenn auch ein Standortfilter gesetzt ist, kannst du unten festlegen, ob beide Bedingungen (UND) oder eine davon (ODER) reichen.</>
@@ -562,6 +579,7 @@ export default function AudiencePicker({
             Statt zu suchen kannst du auch direkt die Verteiler-Mail eintippen (z.B. SAPAlliance@deloitte.com) oder Sondergruppen wie <code>DEALL</code>, <code>DEKOELN</code>.
           </p>
         </div>
+        </>)}
       </div>
 
       {middleSlot}

@@ -92,6 +92,32 @@ const isPlausibleEmail = (e: string): boolean => {
   return true;
 };
 
+// v26.91: Feld-Beschreibungen dürfen jetzt ein kleines Markdown-Subset tragen:
+//   **fett**            → <strong>
+//   [Text](https://…)   → Link (nur http/https/mailto)
+//   nackte http(s)-URL  → automatisch verlinkt
+// Alles andere wird HTML-escaped — der Organizer-Text kann also kein beliebiges
+// HTML einschleusen (nur die o.g. sicheren Elemente entstehen).
+function renderFieldDescHtml(raw: string): string {
+  if (!raw) return '';
+  const linkStyle = 'color:var(--dex-green,#86bc25);font-weight:600;text-decoration:underline;';
+  let html = raw
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  // [Text](url) — nur sichere Schemata
+  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g,
+    (_m, label, url) => `<a href="${url}" target="_blank" rel="noopener noreferrer" style="${linkStyle}">${label}</a>`);
+  // nackte http(s)-URLs (nicht die, die schon in einem href="…" stehen)
+  html = html.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g,
+    (_m, pre, url) => `${pre}<a href="${url}" target="_blank" rel="noopener noreferrer" style="${linkStyle}">${url}</a>`);
+  // **fett**
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  // Zeilenumbrüche erhalten
+  html = html.replace(/\n/g, '<br />');
+  return html;
+}
+
 /**
  * Einklappbare Formular-Sektion für die Handy-Ansicht.
  *
@@ -2040,7 +2066,7 @@ export default function RegistrationPage(): React.ReactElement {
             return (
               <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                 <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>Organizer</div>
-                <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={(event.hideOrganizer && event.hideOrganizerIndividualOnly) ? event.hiddenOrganizerEmails : []} forceIsDe={locale === 'de'} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} nameFontSize="1.05rem" />
+                <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={(event.hideOrganizer && event.hideOrganizerIndividualOnly) ? event.hiddenOrganizerEmails : []} forceIsDe={locale === 'de'} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} nameFontSize="1.05rem" hideContactPrompt={!!(event.contactName || event.contactEmail || event.contactInfo)} />
               </div>
             );
           })()}
@@ -2110,7 +2136,7 @@ export default function RegistrationPage(): React.ReactElement {
   // alle anderen Felder. Die Filter-Logik dazu unten in den
   // groupSpecificFields- bzw. generalFields-Konstanten.
   // v13.2: fRaw jetzt typsicher als EventSpecificField (vorher any).
-  const renderRegField = (fRaw: EventSpecificField, store?: Record<string, string>, setStore?: (next: Record<string, string>) => void): React.ReactElement => {
+  const renderRegField = (fRaw: EventSpecificField, store?: Record<string, string>, setStore?: (next: Record<string, string>) => void, rowIndex?: number, rowList?: EventSpecificField[]): React.ReactElement => {
     // v18.12: optionaler Wert-Store — für die Custom-Fields pro Team-Mitglied.
     // Default = eventSpecific/setEventSpecific (Lead bzw. Solo-Anmeldung).
     const vals = store || eventSpecific;
@@ -2153,15 +2179,31 @@ export default function RegistrationPage(): React.ReactElement {
       // (wie zuvor mit flexGrow) bis ganz nach unten zu ziehen, was bei Feldern
       // mit Inhalt UNTER der Eingabe (People-Picker mit „international suchen") zu
       // großen Lücken führte.
-      ? <div style={{ fontSize: '0.78rem', fontWeight: 400, color: 'var(--dex-gray-500)', lineHeight: 1.45, marginTop: 2, marginBottom: 6, minHeight: '2.9em' }}>{displayHelp}</div>
+      // v26.91: Beschreibung darf **fett** + Links enthalten (renderFieldDescHtml
+      // escaped alles andere — der Organizer-Text ist sicherer Origin).
+      ? <div style={{ fontSize: '0.78rem', fontWeight: 400, color: 'var(--dex-gray-500)', lineHeight: 1.45, marginTop: 2, marginBottom: 6, minHeight: '2.9em' }} dangerouslySetInnerHTML={{ __html: renderFieldDescHtml(displayHelp) }} />
       : null;
     // v26.16: Felder OHNE Inline-Beschreibung bekommen einen leeren Platzhalter
     // gleicher Höhe, SOBALD irgendein Feld im Formular eine Inline-Beschreibung
     // hat — damit stehen die Eingaben benachbarter Felder im 2-Spalten-Grid auf
     // gleicher Höhe (z.B. „Dressing" auf Höhe von „Gerichtauswahl"). Nur dann,
     // damit ohne Beschreibungen keine unnötigen Lücken entstehen.
-    const hasAnyInlineHelp = (event?.eventSpecificFields || []).some(ff => ff.helpTextStyle === 'inline' && !!pickFieldHelp(ff));
-    const inlineHelpSlot = inlineHelpEl || (hasAnyInlineHelp
+    // v26.91: Der leere Platzhalter für eine fehlende Inline-Beschreibung wird
+    // jetzt PRO ZEILE entschieden: nur reservieren, wenn der NEBEN diesem Feld
+    // stehende Partner in derselben 2-Spalten-Zeile eine Beschreibung hat — sonst
+    // (beide Felder ohne Beschreibung) entsteht keine leere Lücke mehr. Kennt der
+    // Aufrufer die Zeile nicht (andere Render-Kontexte), gilt das bisherige
+    // globale Verhalten (irgendein Feld hat eine Inline-Beschreibung).
+    const fieldHasInlineDesc = (ff: EventSpecificField): boolean => ff.helpTextStyle === 'inline' && !!pickFieldHelp(ff);
+    let reserveHelpSpace: boolean;
+    if (typeof rowIndex === 'number' && rowList) {
+      const partnerIdx = rowIndex % 2 === 0 ? rowIndex + 1 : rowIndex - 1;
+      const partner = rowList[partnerIdx];
+      reserveHelpSpace = !!(partner && fieldHasInlineDesc(partner));
+    } else {
+      reserveHelpSpace = (event?.eventSpecificFields || []).some(fieldHasInlineDesc);
+    }
+    const inlineHelpSlot = inlineHelpEl || (reserveHelpSpace
       // v26.17: Der leere Platzhalter muss dieselben Font-Metriken (fontSize/
       // lineHeight) wie der echte Inline-Hilfetext tragen, da sich 'minHeight'
       // in 'em' auf die EIGENE font-size bezieht. Ohne fontSize erbte der
@@ -2682,24 +2724,8 @@ export default function RegistrationPage(): React.ReactElement {
                   );
                 })()}
               </div>
-              {(() => {
-                // v24.15: „Organizer ausblenden" ohne Einzel-Modus = ALLE aus.
-                if (event.hideOrganizer && !event.hideOrganizerIndividualOnly) return null;
-                // Organizer als Chips mit Foto (Hover-Enlarge). Namen werden von "Nachname, Vorname"
-                // in "Vorname Nachname" normalisiert. v11.91: Label + Chip größer für bessere Lesbarkeit.
-                const orgs = event.organizers.reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map(o => {
-                  const trimmed = o.trim();
-                  const parts = trimmed.split(',').map(s => s.trim());
-                  return parts.length === 2 ? `${parts[1]} ${parts[0]}` : trimmed;
-                }).filter(Boolean);
-                if (orgs.length === 0) return null;
-                return (
-                  <div style={{ marginTop: 6 }}>
-                    <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, fontWeight: 600 }}>Organizer</div>
-                    <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={(event.hideOrganizer && event.hideOrganizerIndividualOnly) ? event.hiddenOrganizerEmails : []} forceIsDe={locale === 'de'} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} nameFontSize="1.05rem" />
-                  </div>
-                );
-              })()}
+              {/* v26.89: Reihenfolge getauscht — ANSPRECHPARTNER steht jetzt VOR
+                  dem ORGANIZER-Block (vorher umgekehrt). */}
               {/* v10.16: Optionaler Ansprechpartner — frei eingegebene Person
                   außerhalb des App-User-Pools. Reines Anzeige-Feld; Mailto-Link
                   wenn Email gesetzt. Wird nur gerendert wenn mindestens Name
@@ -2726,6 +2752,28 @@ export default function RegistrationPage(): React.ReactElement {
                   )}
                 </div>
               )}
+              {(() => {
+                // v24.15: „Organizer ausblenden" ohne Einzel-Modus = ALLE aus.
+                if (event.hideOrganizer && !event.hideOrganizerIndividualOnly) return null;
+                // Organizer als Chips mit Foto (Hover-Enlarge). Namen werden von "Nachname, Vorname"
+                // in "Vorname Nachname" normalisiert. v11.91: Label + Chip größer für bessere Lesbarkeit.
+                const orgs = event.organizers.reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map(o => {
+                  const trimmed = o.trim();
+                  const parts = trimmed.split(',').map(s => s.trim());
+                  return parts.length === 2 ? `${parts[1]} ${parts[0]}` : trimmed;
+                }).filter(Boolean);
+                if (orgs.length === 0) return null;
+                // v26.89: Gibt es einen expliziten Ansprechpartner, blenden wir den
+                // „Bei Fragen wende dich gerne an:"-Kopf im Organizer-Hover aus —
+                // für Rückfragen ist dann ausdrücklich der Ansprechpartner zuständig.
+                const hasExplicitContact = !!(event.contactName || event.contactEmail || event.contactInfo);
+                return (
+                  <div style={{ marginTop: 6 }}>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, fontWeight: 600 }}>Organizer</div>
+                    <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={(event.hideOrganizer && event.hideOrganizerIndividualOnly) ? event.hiddenOrganizerEmails : []} forceIsDe={locale === 'de'} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} nameFontSize="1.05rem" hideContactPrompt={hasExplicitContact} />
+                  </div>
+                );
+              })()}
               {/* v23.25: Die „X / Y Plätze frei"-Anzeige steht jetzt direkt
                   über dem Registrieren-Button (siehe registration-actions). */}
             </div>
@@ -3064,9 +3112,14 @@ export default function RegistrationPage(): React.ReactElement {
                   // „Persönliche Informationen"-Header. Standard (für andere
                   // anmelden) = GRAU (inaktiver Tab, klarer Farbunterschied);
                   // aktiv (im Fremd-Modus, „zurück zur Selbst-Anmeldung") = grün.
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  marginLeft: 'auto', // v26.88: an die rechte Ecke andocken
-                  padding: '7px 16px', borderRadius: 999,
+                  // v26.89: Der Tab dockt jetzt SPIEGELBILDLICH zum grünen
+                  // „Persönliche Informationen"-Header in die obere RECHTE Ecke
+                  // — bündig an Ober- und Rechtskante (alignSelf: stretch +
+                  // oben abgerundete Ecken wie der grüne Tab, unten eckig).
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  marginLeft: 'auto', // an die rechte Ecke schieben
+                  alignSelf: 'stretch', boxSizing: 'border-box',
+                  padding: '7px 18px', borderRadius: 'var(--dex-radius) var(--dex-radius) 0 0',
                   fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
                   transition: 'background 0.15s ease, color 0.15s ease',
                   ...(registerForOther
@@ -4246,29 +4299,33 @@ export default function RegistrationPage(): React.ReactElement {
               // oben innerhalb der Gruppen-Auswahl-Box gerendert und hier
               // ausgefiltert.
               <div className="dex-reg-fields-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              {event.eventSpecificFields
-                .filter(f => f.id !== 'b2run_mobilnummer' || eventSpecific['b2run_infoservice'] === 'true')
-                .filter(f => !(f.id === 'b2run_startblock' && hasStarterBlockMapping))
-                .filter(f => {
-                  if (!f.showIf || !f.showIf.fieldId) return true;
-                  const raw = (eventSpecific[f.showIf.fieldId] || '').trim();
-                  if (!raw) return false;
-                  const answers = raw.indexOf(' | ') >= 0
-                    ? raw.split(' | ').map(s => s.trim()).filter(Boolean)
-                    : [raw];
-                  return answers.some(a => f.showIf!.values.indexOf(a) >= 0);
-                })
-                // v11.5: Group-Spec NICHT hier rendern — die kommen oben
-                // in der Gruppen-Auswahl-Box. Hier nur 'all' / undefined
-                // (oder Events ohne Split-Capacity).
-                .filter(f => {
-                  const grp = f.onlyForGroup;
-                  if (!grp || grp === 'all') return true;
-                  if (!isSplitGroup) return true;
-                  return false;
-                })
-                .map(f => renderRegField(f))
-              }
+              {(() => {
+                // v26.91: Zuerst die WIRKLICH sichtbaren Felder ermitteln, dann mit
+                // Index rendern — so kann renderRegField pro 2-Spalten-Zeile
+                // entscheiden, ob es leeren Beschreibungs-Platz reservieren muss.
+                const visibleSpecificFields = event.eventSpecificFields
+                  .filter(f => f.id !== 'b2run_mobilnummer' || eventSpecific['b2run_infoservice'] === 'true')
+                  .filter(f => !(f.id === 'b2run_startblock' && hasStarterBlockMapping))
+                  .filter(f => {
+                    if (!f.showIf || !f.showIf.fieldId) return true;
+                    const raw = (eventSpecific[f.showIf.fieldId] || '').trim();
+                    if (!raw) return false;
+                    const answers = raw.indexOf(' | ') >= 0
+                      ? raw.split(' | ').map(s => s.trim()).filter(Boolean)
+                      : [raw];
+                    return answers.some(a => f.showIf!.values.indexOf(a) >= 0);
+                  })
+                  // v11.5: Group-Spec NICHT hier rendern — die kommen oben
+                  // in der Gruppen-Auswahl-Box. Hier nur 'all' / undefined
+                  // (oder Events ohne Split-Capacity).
+                  .filter(f => {
+                    const grp = f.onlyForGroup;
+                    if (!grp || grp === 'all') return true;
+                    if (!isSplitGroup) return true;
+                    return false;
+                  });
+                return visibleSpecificFields.map((f, i) => renderRegField(f, undefined, undefined, i, visibleSpecificFields));
+              })()}
               </div>
             )}
           </div>

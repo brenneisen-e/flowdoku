@@ -207,65 +207,6 @@ function translateStatus(status: string, isDe: boolean): string {
   }
 }
 
-// v11.14: Migriert hardcoded B2Run-Sonderbehandlungen aus dem Render-
-// Code von RegistrationPage.tsx in echte Custom-Field-Properties:
-//
-// - b2run_mobilnummer ist nur sichtbar wenn b2run_infoservice='true'
-//   → wird durch eine showIf-Bedingung auf dem Mobilnummer-Feld ersetzt.
-//   Der Pflicht-Status bleibt dynamisch (true wenn sichtbar via showIf).
-// - b2run_datenschutz hat im Render hardcoded externalLinks-Fallbacks
-//   (B2Run-AGB + Datenschutz-URL) wenn die Field-Properties leer sind
-//   → wird in das Field selbst persistiert.
-// - b2run_laufshirt wird im Render auf required=true gezwungen
-//   → wird in der Field-Property persistiert.
-//
-// Wird nur einmalig bei der Migration aufgerufen — die in-Memory-Field-
-// Liste wird mutiert; Caller speichert das Ergebnis als CustomFields-
-// JSON. Wenn keine relevanten Felder existieren, no-op.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function migrateB2RunFieldExtras(fields: any[]): { changed: boolean } {
-  let changed = false;
-  for (const f of fields) {
-    const id = String(f.id || '').toLowerCase();
-    if (id === 'b2run_mobilnummer') {
-      // v11.14: showIf-Constraint auf b2run_infoservice='true'.
-      // Damit übernimmt die generische Render-Logik die Sichtbarkeit
-      // statt der hardcoded Sonderprüfung.
-      const sf = f.showIf;
-      const alreadySet = sf && sf.fieldId === 'b2run_infoservice'
-        && Array.isArray(sf.values) && sf.values.indexOf('true') >= 0;
-      if (!alreadySet) {
-        f.showIf = { fieldId: 'b2run_infoservice', values: ['true'] };
-        // Wenn der User Infoservice aktiviert, ist die Mobilnummer
-        // Pflicht — über showIf gerendert ist die Pflicht-Logik
-        // jetzt deterministisch (Feld sichtbar ⇒ Feld Pflicht).
-        f.required = true;
-        changed = true;
-      }
-    } else if (id === 'b2run_datenschutz') {
-      // v11.14: Hardcoded B2Run-AGB- und Datenschutz-Links als
-      // externalLinks-Property persistieren, sodass der Render-
-      // Fallback-Path obsolet wird.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const links: any[] = Array.isArray(f.externalLinks) ? f.externalLinks : [];
-      if (links.length === 0) {
-        f.externalLinks = [
-          { label: 'AGB (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/agb/index.html' },
-          { label: 'Datenschutz (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-teilnahme-an-veranstaltungen.html' },
-        ];
-        changed = true;
-      }
-    } else if (id === 'b2run_laufshirt' || /laufshirt/i.test(String(f.label || ''))) {
-      // v11.14: Hardcoded required=true persistieren.
-      if (!f.required) {
-        f.required = true;
-        changed = true;
-      }
-    }
-  }
-  return { changed };
-}
-
 // v7.6: Wiederverwendbare Action-Kachel für den Aktionen-Bereich.
 // Default in Grau, beim Hover/Focus kippt Border + Icon + Hintergrund auf
 // Deloitte-Grün. Unterstützt Button (onClick), Link (href, oeffnet in neuem
@@ -1578,6 +1519,11 @@ export default function AdminPage(): React.ReactElement {
   const [inviteBody, setInviteBody] = React.useState('');
   const [inviteTarget, setInviteTarget] = React.useState<'organizer' | 'audience'>('organizer');
   const [inviteSending, setInviteSending] = React.useState(false);
+  // v26.94: Header-Bild-Größe (Breite/Innenabstand) auch in Einladungs- und
+  // Massenmail einstellbar — gleiche Steuerung wie im Wizard (inkl. „Volle
+  // Breite"). Transient pro Session; Default = bisheriges Layout (180/30/30).
+  const [inviteImageLayout, setInviteImageLayout] = React.useState<{ width: number; paddingV: number; paddingH: number }>({ width: 180, paddingV: 30, paddingH: 30 });
+  const [massmailImageLayout, setMassmailImageLayout] = React.useState<{ width: number; paddingV: number; paddingH: number }>({ width: 180, paddingV: 30, paddingH: 30 });
   // v22.5: Unter-Überschrift der Einladungsmail (vorher nicht erfasst) + Entwurf-
   // Speicherung pro Event in localStorage, damit ein angefangener Text beim
   // Schließen + erneuten Öffnen erhalten bleibt.
@@ -3858,12 +3804,110 @@ export default function AdminPage(): React.ReactElement {
   // v22.5: Einladungsmail — Default-Texte bauen, Entwurf laden/speichern
   // (localStorage pro Event), Modal öffnen, zurücksetzen.
   const inviteDraftKey = (id: string): string => `dex_invite_draft_${id}`;
+  // v26.89: B2Run-Köln-Events bekommen einen eigenen, dynamischen Einladungs-
+  // text-Vorschlag (bilingual DE + EN) — mit Datum, Ort und Platzzahl aus dem
+  // Event. Der Organizer kann ihn wie jeden anderen Entwurf frei überschreiben.
+  const buildB2RunKoelnInviteDefaults = (ev: DeloitteEvent, appUrl: string, signatureNames: string): { subject: string; heading: string; subheading: string; body: string } => {
+    const start = ev.startDate ? new Date(ev.startDate) : null;
+    const validStart = start && !isNaN(start.getTime()) ? start : null;
+    const dateDe = validStart ? validStart.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }) : '';
+    const dateEn = validStart ? validStart.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }) : '';
+    const venue = (ev.location || '').trim() || 'RheinEnergieStadion';
+    const plaetze = (ev.maxParticipants && ev.maxParticipants > 0) ? ev.maxParticipants : 100;
+    const dateLineDe = dateDe || 'Datum folgt';
+    const dateLineEn = dateEn || 'date to follow';
+    // „DEX App" als grün gestylter Link (statt der langen URL im Klartext).
+    const appLinkDe = `<a href="${appUrl}" style="color:#86bc25;font-weight:600;">DEX App</a>`;
+    const appLinkEn = `<a href="${appUrl}" style="color:#86bc25;font-weight:600;">DEX app</a>`;
+    const b2runSite = '<a href="https://www.b2run.de" style="color:#86bc25;font-weight:600;">B2RUN Website</a>';
+    const de = `
+<p>Liebes Team,</p>
+<p>es ist so weit: wir haben unseren Standort wieder für den <strong>B2Run Firmenlauf</strong> angemeldet. Es werden vorerst <strong>${plaetze} Startplätze</strong> zur Verfügung stehen. Diese werden nach dem Motto „First come, first run" vergeben.</p>
+<p>Die Startgebühren inkl. einer Spende an Menschen für Menschen, die Kosten für ein Laufshirt sowie ein Teamzelt mit einer kleinen Verpflegung nach dem Lauf werden dabei von Deloitte übernommen.</p>
+<p style="text-align:center;"><strong>Die Anmeldung ist ab sofort über die ${appLinkDe} möglich.</strong></p>
+<p><strong>Wichtige Hinweise:</strong></p>
+<ul>
+  <li>Falls ihr es nicht unter die ersten ${plaetze} schaffen solltet, meldet euch bitte trotzdem über die App an. Ihr werdet automatisch der Reihe nach auf eine Warteliste gesetzt.</li>
+  <li>Falls ihr aus wichtigen Gründen nicht am Lauf teilnehmen könnt, sagt eure Teilnahme bitte frühzeitig über die App („My Events") wieder ab. Die Plätze werden automatisch von der Warteliste – der Reihe nach – vergeben und ihr erhaltet eine automatische E-Mail.</li>
+  <li>Bitte meldet euch nur an, wenn ihr auch wirklich am B2RUN teilnehmen könnt und möchtet. <strong>Wir zahlen für jede Anmeldung eine Teilnehmergebühr, die wir im Falle eines No-Shows nicht erstattet bekommen.</strong></li>
+</ul>
+<p><strong>Infos zum Lauf/Event:</strong></p>
+<ul>
+  <li>${dateLineDe} am <strong>${venue}</strong></li>
+  <li>Beginn der Veranstaltung: 15:00 Uhr</li>
+  <li>Teamtreff Deloitte, Startnummernübergabe und Aufwärmen: 16:00 Uhr</li>
+  <li>Startzeit Deloitte: 17:00 Uhr</li>
+  <li>Distanz: 5,3 km</li>
+  <li>Anschließend: Get-Together, Teamfotos und Catering sowie Afterparty im Stadioninnenraum (ab 20:00 Uhr)</li>
+</ul>
+<p><em>Genauere Infos zu den Zeiten und Treffpunkten werden wir euch Mitte / Ende August mitteilen.</em></p>
+<p><strong>Startfelder</strong></p>
+<p>Beim B2Run gibt es zwei Startfelder: „Funstarter" und „Durchstarter".</p>
+<ul>
+  <li>Das <strong>Durchstarter</strong>-Feld ist für schnelle und ambitionierte Läufer:innen gedacht, die „freie Bahn" haben möchten (Richtwerte Männer &lt;4 Min/km, Frauen &lt;5 Min/km).</li>
+  <li>Für das <strong>Funstarter</strong>-Feld gibt es keine Richtwerte – hier steht der Laufspaß im Vordergrund.</li>
+  <li>Sofern jemand am Durchstarter-Lauf teilnehmen möchte, wählt dies entsprechend bei der Anmeldung aus. Die Laufstrecke für beide Startfelder beträgt 5,3 Kilometer.</li>
+</ul>
+<p><strong>Laufshirts</strong></p>
+<p>Für jede:n Läufer:in gibt es ein Deloitte-Laufshirt. Wählt bitte bei der Anmeldung eure Größe aus.</p>
+<p>Weitere Informationen sind auf der ${b2runSite} zu finden.</p>
+<p>Bei Fragen wendet euch bitte direkt an unser Gruppenpostfach.</p>
+<p>Auf die Plätze, fertig, los.</p>
+<p>Mit sportlichen Grüßen<br />${signatureNames}</p>`.trim();
+    const en = `
+<p>Dear team,</p>
+<p>The time has come: we have registered our location for the <strong>B2Run company run</strong> again. For now <strong>${plaetze} starting places</strong> will be available, allocated on a „first come, first run" basis.</p>
+<p>The registration fees (incl. a donation to Menschen für Menschen), the cost of a running shirt and a team tent with light refreshments after the run are covered by Deloitte.</p>
+<p style="text-align:center;"><strong>Registration is now open via the ${appLinkEn}.</strong></p>
+<p><strong>Important information:</strong></p>
+<ul>
+  <li>If you don't make it into the first ${plaetze}, please register via the app anyway. You will automatically be placed on a waiting list in order of registration.</li>
+  <li>If you are unable to take part for important reasons, please cancel your participation early via the app („My Events"). Places are allocated automatically from the waiting list – in order – and you will receive an automatic email.</li>
+  <li>Please only register if you can really take part in the B2RUN. <strong>We pay a participation fee for each registration that is not refunded in the event of a no-show.</strong></li>
+</ul>
+<p><strong>Event details:</strong></p>
+<ul>
+  <li>${dateLineEn} at <strong>${venue}</strong></li>
+  <li>Start of the event: 3:00 p.m.</li>
+  <li>Deloitte team meeting, race-number handout and warm-up: 4:00 p.m.</li>
+  <li>Deloitte start time: 5:00 p.m.</li>
+  <li>Distance: 5.3 km</li>
+  <li>Afterwards: get-together, team photos and catering plus after-party inside the stadium (from 8:00 p.m.)</li>
+</ul>
+<p><em>We will share more detailed information about times and meeting points in mid/late August.</em></p>
+<p><strong>Starting fields</strong></p>
+<p>B2Run has two starting fields: „Funstarter" and „Durchstarter".</p>
+<ul>
+  <li>The <strong>Durchstarter</strong> field is intended for fast and ambitious runners who want a „clear track" (guideline times: men &lt;4 min/km, women &lt;5 min/km).</li>
+  <li>The <strong>Funstarter</strong> field has no guideline times – the focus here is on having fun.</li>
+  <li>If you would like to take part in the Durchstarter run, please select this when registering. The distance for both fields is 5.3 kilometres.</li>
+</ul>
+<p><strong>Running shirts</strong></p>
+<p>Every runner receives a Deloitte running shirt. Please select your size when registering.</p>
+<p>Further information can be found on the ${b2runSite}.</p>
+<p>If you have any questions, please contact our group mailbox directly.</p>
+<p>On your marks, get set, go.</p>
+<p>With sporting regards<br />${signatureNames}</p>`.trim();
+    // v26.90: Zweisprachig — Hauptsprache oben, die jeweils andere Version unten
+    // (per Trennlinie abgesetzt), wie es die B2Run-Kommunikation üblicherweise macht.
+    const divider = '<p style="margin:28px 0 20px;border-top:1px solid #d0d0ce;"></p>';
+    return {
+      subject: isDe ? `Einladung zu ${ev.title}` : `Invitation to ${ev.title}`,
+      heading: isDe ? `Einladung zu ${ev.title}` : `Invitation to ${ev.title}`,
+      subheading: isDe ? `${dateLineDe} · ${plaetze} Startplätze` : `${dateLineEn} · ${plaetze} starting places`,
+      body: isDe ? `${de}\n${divider}\n${en}` : `${en}\n${divider}\n${de}`,
+    };
+  };
   const buildInviteDefaults = (ev: DeloitteEvent): { subject: string; heading: string; subheading: string; body: string } => {
     const appUrl = `${siteUrl}/SitePages/DEX.aspx?env=WebView`;
     const linkHtml = `<a href="${appUrl}" style="color:#86bc25;font-weight:600;">${appUrl}</a>`;
     const orgList = (ev.organizers || []).map(s => (s || '').trim()).filter(Boolean);
     const teamLine = isDe ? `Das ${ev.title} Orga Team` : `The ${ev.title} Organizer Team`;
     const signatureNames = orgList.length > 0 ? `${teamLine}<br />${orgList.join('<br />')}` : teamLine;
+    // v26.89: B2Run-Köln-Events erhalten den spezialisierten Vorschlag.
+    if (isB2RunKoelnTitle(ev.title)) {
+      return buildB2RunKoelnInviteDefaults(ev, appUrl, signatureNames);
+    }
     const body = isDe
       ? `<p>Hallo,</p>\n<p>wir laden dich herzlich zum Event <strong>${ev.title}</strong> ein.</p>\n<p>Du kannst dich ab sofort über unsere Event-Plattform anmelden:</p>\n<p>${linkHtml}</p>\n<p>Falls du dich im Nachgang doch nicht beteiligen kannst, ist eine <strong>Abmeldung jederzeit über dieselbe Plattform</strong> möglich — bitte gib uns rechtzeitig Bescheid, damit Wartelisten-Plätze nachrücken können.</p>\n<p>Bei Rückfragen meld dich gern bei uns.</p>\n<p>Viele Grüße<br />${signatureNames}</p>`
       : `<p>Hello,</p>\n<p>we would like to invite you to the event <strong>${ev.title}</strong>.</p>\n<p>You can register via our event platform:</p>\n<p>${linkHtml}</p>\n<p>If you change your mind, you can <strong>cancel anytime via the same platform</strong> — please let us know early so people on the waitlist can move up.</p>\n<p>Feel free to reach out if you have any questions.</p>\n<p>Best regards<br />${signatureNames}</p>`;
@@ -4061,7 +4105,7 @@ export default function AdminPage(): React.ReactElement {
       const resolvedHeading = replacePlaceholders(emailHeading, previewVars);
       const resolvedBody = replacePlaceholders(emailBody, previewVars);
       const resolvedSub = massmailSubheading.trim() ? replacePlaceholders(massmailSubheading, previewVars) : `Event ${selectedEvent.title}`;
-      const fullBody = applyMassmailHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSub, resolvedBody));
+      const fullBody = applyMassmailHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSub, resolvedBody, undefined, { imageWidth: massmailImageLayout.width, imagePaddingV: massmailImageLayout.paddingV, imagePaddingH: massmailImageLayout.paddingH }));
       await eventServiceRef.queueEmail(resolvedSubject, to, 'Organizer (Test)', fullBody, 'Massenmail', selectedEvent.title, selectedEvent.id);
       setMassmailTestMsg(isDe ? `Testmail an die Organizer (${to.split(';').length}) verschickt — bitte Postfach prüfen.` : `Test email sent to the organizers (${to.split(';').length}) — please check the mailbox.`);
     } catch (err) {
@@ -4756,187 +4800,6 @@ export default function AdminPage(): React.ReactElement {
                           onClick={e => { e.stopPropagation(); void handleArchiveEvent(event); }}
                         >{archiveBusyId === event.id ? '…' : (isDe ? 'Archivieren' : 'Archive')}</button>
                       )
-                    )}
-                    {/* v10.20 / v11.9: Migrations-Button für Legacy-B2Run-Events.
-                        Erkennt das Event als 'altes B2Run' wenn entweder
-                        type === 'B2Run' (alte EventType-Spalte) ODER mind.
-                        ein b2run_*-Custom-Field in den eventSpecificFields
-                        steht. Damit erscheint der Knopf auch wenn die alte
-                        EventType-Spalte aus DEX_Events bereits gelöscht
-                        wurde — entscheidend ist die b2run_*-Spur in der
-                        Felder-Konfiguration. Klick: entfernt b2run_*-Fields
-                        aus customFields, persistiert 'Durchstarter' /
-                        'Funstarter' als Gruppen-Labels, setzt EventType
-                        best-effort auf 'Other'. Bestehende Anmeldungen,
-                        Wartelisten und Sub-Events bleiben unverändert. */}
-                    {isAdmin && (event.type === 'B2Run' || (event.eventSpecificFields || []).some(f => (f.id || '').toLowerCase().startsWith('b2run_'))) && (
-                      <button
-                        className="btn btn-secondary"
-                        style={{ fontSize: '0.8rem', padding: '6px 12px', color: 'var(--dex-green-dark, #4a7c1f)' }}
-                        title={isDe
-                          ? 'Auf neues Standard-Event-Schema migrieren (Type entfernen, Labels Durchstarter/Funstarter explizit speichern). Bestehende Anmeldungen bleiben unverändert.'
-                          : 'Migrate to the new standard event schema (drop type, persist Durchstarter/Funstarter labels). Existing registrations remain unchanged.'}
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          if (!eventServiceRef) return;
-                          // v11.9: Migration nimmt jetzt auch Legacy-B2Run-
-                          // Sub-Events mit. Wir scannen alle Child-Events
-                          // (childEventsOf) und migrieren die mit, die
-                          // entweder type='B2Run' oder mind. ein b2run_*-
-                          // Custom-Field haben.
-                          const kids = childEventsOf(event.id);
-                          const kidsToMigrate = kids.filter(k => k.type === 'B2Run' || (k.eventSpecificFields || []).some(f => (f.id || '').toLowerCase().startsWith('b2run_')));
-                          const kidsHint = kidsToMigrate.length > 0
-                            ? (isDe
-                                ? `\n\nEs werden zusätzlich ${kidsToMigrate.length} Sub-Event(s) mitmigriert: ${kidsToMigrate.map(k => '„' + (k.title || '?') + '"').join(', ')}.`
-                                : `\n\nAdditionally ${kidsToMigrate.length} sub-event(s) will be migrated: ${kidsToMigrate.map(k => '"' + (k.title || '?') + '"').join(', ')}.`)
-                            : '';
-                          const msg = isDe
-                            ? `Event "${event.title}" auf Standard-Schema migrieren?\n\n• Type "B2Run" wird entfernt — Event sieht aus wie ein normales Deloitte-Event.\n• Bezeichnungen "Durchstarter" / "Funstarter" werden als Gruppen-Labels gespeichert (kannst du im Wizard frei ändern).\n• Falls Leistungsnachweis-Pflicht aktiv war: wird in ein reguläres Custom-Field „Leistungsnachweis vorhanden" (Checkbox, Pflicht, nur für Gruppe A) umgewandelt — bleibt also als richtige Frage erhalten.\n• Hardcoded Startblock-Mapping pro Gruppe wird ersatzlos entfernt. Bei Bedarf als Custom-Field mit Gruppen-Bindung wieder anlegen.\n• b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe, Mobilnummer etc.) BLEIBEN als generische Custom-Fields erhalten — du kannst sie danach im Wizard umbenennen oder löschen, wenn nicht mehr gebraucht.\n• Anmeldungen, Wartelisten und Sub-Events bleiben inhaltlich unverändert.${kidsHint}`
-                            : `Migrate event "${event.title}" to the standard schema?\n\n• Type "B2Run" is removed — the event will look like a standard Deloitte event.\n• Labels "Durchstarter" / "Funstarter" are persisted as group labels (editable later in the wizard).\n• If performance-proof requirement was active: it is converted into a regular custom field „Leistungsnachweis vorhanden" (checkbox, required, only for group A) — stays as a proper prompt.\n• Hardcoded per-group start-block mapping is removed. If needed, add it as a custom field bound to a group.\n• b2run_* custom fields (age group, t-shirt size, mobile etc.) are KEPT as generic custom fields — you can rename or remove them later in the wizard if no longer needed.\n• Registrations, waitlists and sub-events stay unchanged content-wise.${kidsHint}`;
-                          if (!(await confirmDialog(msg, { title: isDe ? 'B2Run migrieren' : 'Migrate B2Run', confirmLabel: isDe ? 'Migrieren' : 'Migrate' }))) return;
-                          const errors: string[] = [];
-                          const migrateOne = async (ev: DeloitteEvent): Promise<void> => {
-                            try {
-                              // v11.11: KEINE Custom-Fields mehr löschen.
-                              // Die b2run_*-Felder bleiben als generische
-                              // Custom-Fields erhalten — der Organizer kann
-                              // sie im Wizard danach selbst umbenennen oder
-                              // entfernen. Vorher (v11.9) hat die Migration
-                              // sie aggressiv aus customFields entfernt, was
-                              // zu Datenverlust geführt hat (Altersgruppe,
-                              // T-Shirt-Größe etc. waren weg, obwohl nur
-                              // die Type-Spalte und Labels umgestellt
-                              // werden sollten).
-                              // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                              const keptFields: any[] = (ev.eventSpecificFields || []).map(f => ({ ...f }));
-                              const splitActive = (ev.durchstarterCapacity || 0) > 0 && (ev.funstarterCapacity || 0) > 0;
-                              const baseUpdates: Record<string, unknown> = {
-                                'SplitLabelA': (ev.splitLabelA || 'Durchstarter'),
-                                'SplitLabelB': (ev.splitLabelB || 'Funstarter'),
-                                'SplitDescA': (ev.splitDescA || ''),
-                                'SplitDescB': (ev.splitDescB || ''),
-                                'SplitHelpText': (ev.splitHelpText || ''),
-                                'SplitSectionTitle': (ev.splitSectionTitle || ''),
-                              };
-                              // v11.13: B2Run-Extras aus
-                              // EmailTemplateOverrides._b2run nicht mehr nur
-                              // löschen, sondern in echte Custom-Fields mit
-                              // onlyForGroup-Bindung übersetzen:
-                              // - durchstarterRequiresProof → Custom-Field
-                              //   „Leistungsnachweis vorhanden" (Checkbox,
-                              //   Pflicht, onlyForGroup='A').
-                              // - durchstarterStartblock / funstarterStart-
-                              //   block (Auto-Mapping) waren reine UI-
-                              //   Convenience und werden ersatzlos entfernt.
-                              //   Wenn der Organizer pro Gruppe einen
-                              //   Startblock vorgeben will, lege er das
-                              //   manuell als Custom-Field mit
-                              //   onlyForGroup A bzw. B an.
-                              try {
-                                const overridesRaw = (ev.emailTemplateOverrides || '').toString();
-                                if (overridesRaw.trim()) {
-                                  const parsed = JSON.parse(overridesRaw);
-                                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                  const b2 = parsed && typeof parsed === 'object' ? (parsed as any)._b2run : null;
-                                  if (b2 && typeof b2 === 'object') {
-                                    if (b2.durchstarterRequiresProof) {
-                                      const PROOF_ID = 'b2run_leistungsnachweis';
-                                      const existing = keptFields.find(f => String(f.id || '').toLowerCase() === PROOF_ID);
-                                      if (existing) {
-                                        existing.onlyForGroup = 'A';
-                                        existing.required = true;
-                                        if (!existing.label) existing.label = 'Leistungsnachweis vorhanden';
-                                        if (!existing.type) existing.type = 'checkbox';
-                                        if (!existing.helpText) existing.helpText = 'Ich bestätige, dass ein entsprechender Leistungsnachweis (z.B. Wettkampfergebnis, Trainingsnachweis) vorliegt.';
-                                      } else {
-                                        keptFields.push({
-                                          id: PROOF_ID,
-                                          label: 'Leistungsnachweis vorhanden',
-                                          type: 'checkbox',
-                                          required: true,
-                                          options: [],
-                                          visible: true,
-                                          onlyForGroup: 'A',
-                                          helpText: 'Ich bestätige, dass ein entsprechender Leistungsnachweis (z.B. Wettkampfergebnis, Trainingsnachweis) vorliegt.',
-                                        });
-                                      }
-                                      baseUpdates['CustomFields'] = JSON.stringify(keptFields);
-                                    }
-                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                    delete (parsed as any)._b2run;
-                                    baseUpdates['EmailTemplateOverrides'] = JSON.stringify(parsed);
-                                  }
-                                }
-                              } catch { /* invalid JSON → einfach ignorieren */ }
-                              // v11.14: hardcoded B2Run-Field-Specials in
-                              // echte Field-Properties migrieren (showIf
-                              // für Mobilnummer, externalLinks für
-                              // Datenschutz, required für Laufshirt).
-                              const fieldExtras = migrateB2RunFieldExtras(keptFields);
-                              if (fieldExtras.changed) {
-                                baseUpdates['CustomFields'] = JSON.stringify(keptFields);
-                              }
-                              const ok = await updateEvent(ev.id, baseUpdates);
-                              try { await updateEvent(ev.id, { 'EventType': 'Other' }); } catch { /* SP-Spalte evtl. nicht vorhanden — ignoriert */ }
-                              if (!ok) { errors.push(`„${ev.title}"`); return; }
-                              // v11.11: Subsite-Spalten syncen — fehlende
-                              // Spalten werden angelegt. Die b2run_*-Spalten
-                              // bleiben drin, weil sie auch in customFields
-                              // bleiben.
-                              if (ev.subsiteUrl && eventServiceRef) {
-                                try {
-                                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                  const cfForFix: any[] = keptFields.map(f => ({
-                                    id: f.id,
-                                    label: f.label,
-                                    type: f.type,
-                                    required: !!f.required,
-                                    visible: true,
-                                    options: f.options || [],
-                                    /* eslint-disable @typescript-eslint/no-explicit-any */
-                                    spInternalName: (f as any).spInternalName || '',
-                                    ...((f as any).helpText ? { helpText: (f as any).helpText } : {}),
-                                    ...((f as any).multi ? { multi: true } : {}),
-                                    ...((f as any).showIf ? { showIf: (f as any).showIf } : {}),
-                                    /* eslint-enable @typescript-eslint/no-explicit-any */
-                                  }));
-                                  await eventServiceRef.fixRegistrationListColumns(ev.subsiteUrl, {
-                                    isB2Run: splitActive,
-                                    hasQuiz: (ev.quiz || []).length > 0,
-                                    customFields: cfForFix,
-                                  });
-                                } catch (err) { console.warn('[DEX] fixRegistrationListColumns failed for', ev.id, err); }
-                              }
-                            } catch (err) {
-                              console.warn('[DEX] migrate event failed:', ev.id, err);
-                              errors.push(`„${ev.title}"`);
-                            }
-                          };
-                          try {
-                            await migrateOne(event);
-                            for (const k of kidsToMigrate) {
-                              await migrateOne(k);
-                            }
-                            await refreshEvents();
-                            const total = 1 + kidsToMigrate.length;
-                            if (errors.length === 0) {
-                              showAlert(isDe
-                                ? `Migration abgeschlossen — ${total} Event(s) auf das Standard-Schema umgestellt.`
-                                : `Migration completed — ${total} event(s) migrated to the standard schema.`);
-                            } else {
-                              showAlert(isDe
-                                ? `Migration teilweise fehlgeschlagen bei: ${errors.join(', ')}. Siehe Browser-Console.`
-                                : `Migration partially failed for: ${errors.join(', ')}. See browser console.`);
-                            }
-                          } catch (err) {
-                            console.warn('[DEX] migrate B2Run event failed:', err);
-                            showAlert(isDe ? 'Migration fehlgeschlagen — siehe Browser-Console.' : 'Migration failed — see browser console.');
-                          }
-                        }}
-                      >
-                        {isDe ? 'B2Run migrieren' : 'Migrate B2Run'}
-                      </button>
                     )}
                     {/* v18.3: Demo-Event hat keinen Löschen-Button (kein Backend). */}
                     {!event.isDemoShowcase && (
@@ -8008,139 +7871,6 @@ export default function AdminPage(): React.ReactElement {
                     setRepairOrganizersResult(isDe ? `Fehler: ${err instanceof Error ? err.message : String(err)}` : `Error: ${err instanceof Error ? err.message : String(err)}`);
                   }
                   setIsRepairingOrganizers(false);
-                }}
-              />
-            )}
-
-            {/* v11.9: B2Run-Migration als Action-Tile im Admin-Event-Detail.
-                Erkennt Legacy-Events (type='B2Run' oder b2run_*-Custom-
-                Fields vorhanden) und bietet die gleiche Migration an wie
-                der „B2Run migrieren"-Button in der Event-Liste. Damit
-                findet der Admin den Knopf auch wenn er das Event bereits
-                ausgewählt hat. */}
-            {isAdmin && selectedEvent && (selectedEvent.type === 'B2Run' || (selectedEvent.eventSpecificFields || []).some(f => (f.id || '').toLowerCase().startsWith('b2run_'))) && (
-              <ActionTile
-                icon={<RefreshCw size={18} />}
-                category="maintenance"
-                title={isDe ? 'Legacy-B2Run migrieren' : 'Migrate legacy B2Run'}
-                desc={isDe
-                  ? "Stellt ein altes B2Run-Event auf das normale Eventschema um. Die Gruppen heißen danach 'Durchstarter' / 'Funstarter' (im Wizard frei umbenennbar), alle Anmeldefelder, Anmeldungen, Wartelisten und Sub-Events bleiben erhalten."
-                  : "Removes the B2Run type and persists 'Durchstarter' / 'Funstarter' as regular group labels (you can rename them freely in the wizard afterwards). b2run_* custom fields (age group, t-shirt size etc.) are KEPT as generic custom fields. Registrations, waitlists and sub-events remain unchanged."}
-                badge="admin"
-                onClick={async () => {
-                  if (!eventServiceRef) return;
-                  const kids = childEventsOf(selectedEvent.id);
-                  const kidsToMigrate = kids.filter(k => k.type === 'B2Run' || (k.eventSpecificFields || []).some(f => (f.id || '').toLowerCase().startsWith('b2run_')));
-                  const msg = isDe
-                    ? `Event "${selectedEvent.title}" auf Standard-Schema migrieren?\n\n` +
-                      `• B2Run-Type wird entfernt — Event sieht aus wie ein normales Deloitte-Event.\n` +
-                      `• Bezeichnungen "Durchstarter" / "Funstarter" werden als Gruppen-Labels gespeichert (frei umbenennbar im Wizard).\n` +
-                      `• Falls Leistungsnachweis-Pflicht aktiv war: wird in ein reguläres Custom-Field „Leistungsnachweis vorhanden" (Checkbox, Pflicht, nur für Gruppe A) umgewandelt.\n` +
-                      `• Hardcoded Startblock-Mapping pro Gruppe wird ersatzlos entfernt.\n` +
-                      `• b2run_*-Custom-Fields (Altersgruppe, T-Shirt-Größe, Mobilnummer etc.) BLEIBEN als generische Custom-Fields erhalten.\n` +
-                      `• Anmeldungen, Wartelisten und Sub-Events bleiben inhaltlich unverändert.\n\n` +
-                      (kidsToMigrate.length > 0
-                        ? `Es werden zusätzlich ${kidsToMigrate.length} Sub-Event(s) mitmigriert: ${kidsToMigrate.map(k => '„' + (k.title || '?') + '"').join(', ')}.`
-                        : `Keine Sub-Events mit Legacy-B2Run-Spuren gefunden — nur das Hauptevent wird migriert.`)
-                    : `Migrate event "${selectedEvent.title}" to the standard schema?\n\n` +
-                      `• The B2Run type is removed — the event will look like a normal Deloitte event.\n` +
-                      `• Labels "Durchstarter" / "Funstarter" are stored as group labels (freely renamable in the wizard).\n` +
-                      `• If a performance-proof requirement was active: it is converted into a regular custom field „Leistungsnachweis vorhanden" (checkbox, required, only for group A).\n` +
-                      `• The hardcoded per-group start-block mapping is removed.\n` +
-                      `• b2run_* custom fields (age group, t-shirt size, mobile etc.) are KEPT as generic custom fields.\n` +
-                      `• Registrations, waitlists and sub-events stay unchanged content-wise.\n\n` +
-                      (kidsToMigrate.length > 0
-                        ? `Additionally, ${kidsToMigrate.length} sub-event(s) will be migrated: ${kidsToMigrate.map(k => '„' + (k.title || '?') + '"').join(', ')}.`
-                        : `No sub-events with legacy B2Run traces found — only the main event will be migrated.`);
-                  if (!(await confirmDialog(msg, { title: isDe ? 'B2Run migrieren' : 'Migrate B2Run', confirmLabel: isDe ? 'Migrieren' : 'Migrate' }))) return;
-                  const errors: string[] = [];
-                  const migrateOne = async (ev: DeloitteEvent): Promise<void> => {
-                    try {
-                      // v11.11: Custom-Fields werden NICHT mehr gelöscht.
-                      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                      const keptFields: any[] = (ev.eventSpecificFields || []).map(f => ({ ...f }));
-                      const baseUpdates: Record<string, unknown> = {
-                        'SplitLabelA': (ev.splitLabelA || 'Durchstarter'),
-                        'SplitLabelB': (ev.splitLabelB || 'Funstarter'),
-                        'SplitDescA': (ev.splitDescA || ''),
-                        'SplitDescB': (ev.splitDescB || ''),
-                        'SplitHelpText': (ev.splitHelpText || ''),
-                        'SplitSectionTitle': (ev.splitSectionTitle || ''),
-                      };
-                      // v11.13: B2Run-Extras aus EmailTemplateOverrides._b2run
-                      // in echte Custom-Fields mit onlyForGroup übersetzen
-                      // (siehe ausführlicher Kommentar im Card-Button-Pfad).
-                      try {
-                        const overridesRaw = (ev.emailTemplateOverrides || '').toString();
-                        if (overridesRaw.trim()) {
-                          const parsed = JSON.parse(overridesRaw);
-                          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                          const b2 = parsed && typeof parsed === 'object' ? (parsed as any)._b2run : null;
-                          if (b2 && typeof b2 === 'object') {
-                            if (b2.durchstarterRequiresProof) {
-                              const PROOF_ID = 'b2run_leistungsnachweis';
-                              const existing = keptFields.find(f => String(f.id || '').toLowerCase() === PROOF_ID);
-                              if (existing) {
-                                existing.onlyForGroup = 'A';
-                                existing.required = true;
-                                if (!existing.label) existing.label = 'Leistungsnachweis vorhanden';
-                                if (!existing.type) existing.type = 'checkbox';
-                                if (!existing.helpText) existing.helpText = 'Ich bestätige, dass ein entsprechender Leistungsnachweis (z.B. Wettkampfergebnis, Trainingsnachweis) vorliegt.';
-                              } else {
-                                keptFields.push({
-                                  id: PROOF_ID,
-                                  label: 'Leistungsnachweis vorhanden',
-                                  type: 'checkbox',
-                                  required: true,
-                                  options: [],
-                                  visible: true,
-                                  onlyForGroup: 'A',
-                                  helpText: 'Ich bestätige, dass ein entsprechender Leistungsnachweis (z.B. Wettkampfergebnis, Trainingsnachweis) vorliegt.',
-                                });
-                              }
-                              baseUpdates['CustomFields'] = JSON.stringify(keptFields);
-                            }
-                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                            delete (parsed as any)._b2run;
-                            baseUpdates['EmailTemplateOverrides'] = JSON.stringify(parsed);
-                          }
-                        }
-                      } catch { /* invalid JSON → einfach ignorieren */ }
-                      // v11.14: hardcoded B2Run-Field-Specials in echte
-                      // Field-Properties migrieren.
-                      const fieldExtras = migrateB2RunFieldExtras(keptFields);
-                      if (fieldExtras.changed) {
-                        baseUpdates['CustomFields'] = JSON.stringify(keptFields);
-                      }
-                      const ok = await updateEvent(ev.id, baseUpdates);
-                      try { await updateEvent(ev.id, { 'EventType': 'Other' }); } catch { /* SP-Spalte evtl. nicht vorhanden — ignoriert */ }
-                      if (!ok) errors.push(`„${ev.title}"`);
-                    } catch (err) {
-                      console.warn('[DEX] migrate event failed:', ev.id, err);
-                      errors.push(`„${ev.title}"`);
-                    }
-                  };
-                  try {
-                    // Hauptevent zuerst, dann alle b2run-Sub-Events.
-                    await migrateOne(selectedEvent);
-                    for (const k of kidsToMigrate) {
-                      await migrateOne(k);
-                    }
-                    await refreshEvents();
-                    if (errors.length === 0) {
-                      const total = 1 + kidsToMigrate.length;
-                      showAlert(isDe
-                        ? `Migration abgeschlossen — ${total} Event(s) auf das Standard-Schema umgestellt.`
-                        : `Migration complete — ${total} event(s) converted to the standard schema.`);
-                    } else {
-                      showAlert(isDe
-                        ? `Migration teilweise fehlgeschlagen bei: ${errors.join(', ')}. Siehe Browser-Console für Details.`
-                        : `Migration partially failed for: ${errors.join(', ')}. See browser console for details.`);
-                    }
-                  } catch (err) {
-                    console.warn('[DEX] migrate B2Run event failed:', err);
-                    showAlert(isDe ? 'Migration fehlgeschlagen — siehe Browser-Console.' : 'Migration failed — see browser console.');
-                  }
                 }}
               />
             )}
@@ -13559,7 +13289,7 @@ export default function AdminPage(): React.ReactElement {
           const resolvedSubheading = massmailSubheading.trim()
             ? replacePlaceholders(massmailSubheading, previewVars)
             : `Event ${selectedEvent.title}`;
-          const fullBody = applyMassmailHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody));
+          const fullBody = applyMassmailHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody, undefined, { imageWidth: massmailImageLayout.width, imagePaddingV: massmailImageLayout.paddingV, imagePaddingH: massmailImageLayout.paddingH }));
           const allEmails = recipients.map(r => r.ParticipantEmail).join(';');
           // v17.10: Organizer immer auf CC (falls nicht ohnehin schon
           // unter den Empfängern). Dedup per lowercase, semicolon-join.
@@ -13618,6 +13348,12 @@ export default function AdminPage(): React.ReactElement {
               { key: '{{Organizer}}', label: 'Organizer' },
             ]}
             imageBase64={(massmailHero === 'event' && massmailEventPhotoB64) ? massmailEventPhotoB64 : customLogo}
+            imageWidth={massmailImageLayout.width}
+            imagePaddingV={massmailImageLayout.paddingV}
+            imagePaddingH={massmailImageLayout.paddingH}
+            onImageWidthChange={(w) => setMassmailImageLayout(p => ({ ...p, width: w }))}
+            onImagePaddingVChange={(v) => setMassmailImageLayout(p => ({ ...p, paddingV: v }))}
+            onImagePaddingHChange={(h) => setMassmailImageLayout(p => ({ ...p, paddingH: h }))}
             headerExtra={(
               <div style={{ padding: 12, background: 'var(--dex-gray-50, #fafafa)', border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius)', marginBottom: 4 }}>
                 <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginBottom: 8 }}>
@@ -13777,7 +13513,7 @@ export default function AdminPage(): React.ReactElement {
           const resolvedSubheading = inviteSubheading && inviteSubheading.trim()
             ? replacePlaceholders(inviteSubheading, previewVars)
             : `Event ${selectedEvent.title}`;
-          const fullBody = applyInviteHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody));
+          const fullBody = applyInviteHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody, undefined, { imageWidth: inviteImageLayout.width, imagePaddingV: inviteImageLayout.paddingV, imagePaddingH: inviteImageLayout.paddingH }));
           const allEmails = targetEmails.join(';');
           const ccString = ccEmails.join(';');
           const recipientName = inviteTarget === 'organizer' ? myDisplayName : (isDe ? 'Mailverteiler' : 'Mail distribution');
@@ -13998,6 +13734,12 @@ export default function AdminPage(): React.ReactElement {
               { key: '{{Organizer}}', label: 'Organizer' },
             ]}
             imageBase64={(inviteHero === 'event' && inviteEventPhotoB64) ? inviteEventPhotoB64 : customLogo}
+            imageWidth={inviteImageLayout.width}
+            imagePaddingV={inviteImageLayout.paddingV}
+            imagePaddingH={inviteImageLayout.paddingH}
+            onImageWidthChange={(w) => setInviteImageLayout(p => ({ ...p, width: w }))}
+            onImagePaddingVChange={(v) => setInviteImageLayout(p => ({ ...p, paddingV: v }))}
+            onImagePaddingHChange={(h) => setInviteImageLayout(p => ({ ...p, paddingH: h }))}
             headerExtra={headerExtra}
             extraAction={{
               label: inviteSending

@@ -252,7 +252,10 @@ function serializeCustomFields(
 // Feld-Label nach einem Datum bzw. nach einer Person/einem Namen klingt,
 // schlägt der Wizard die passende Feldart vor (Kalender bzw. People-Picker).
 function labelLooksLikeDate(label: string): boolean {
-  return /(datum|date|check[\s-]?in|check[\s-]?out|anreise|abreise|geburtstag|birthday|deadline|frist|termin|ankunft|abfahrt|arrival|departure)/i.test(label || '');
+  // v26.91: „date" nur als eigenes Wort (\b) — sonst matchte es „Date"n in
+  // „Datenschutz(hinweise)" und schlug fälschlich eine Datums-Umstellung vor.
+  // „datum" bleibt ohne Grenze (deutsche Komposita wie „Geburtsdatum").
+  return /(datum|\bdate\b|check[\s-]?in|check[\s-]?out|anreise|abreise|geburtstag|birthday|deadline|frist|termin|ankunft|abfahrt|arrival|departure)/i.test(label || '');
 }
 function labelLooksLikeName(label: string): boolean {
   return /(\bname\b|vorname|nachname|ansprechpartner|counselor|kolleg|mitarbeiter|\bmentor\b|\bpate\b|\bbuddy\b|begleitung|\bgast\b)/i.test(label || '');
@@ -262,7 +265,10 @@ function labelLooksLikeName(label: string): boolean {
 // E-Mail) — die muss der Organizer nicht extra abfragen. „name" allein bewusst
 // NICHT (zu mehrdeutig, z.B. „Name of counselor").
 function labelLooksLikeProfile(label: string): boolean {
-  return /(vorname|nachname|first ?name|last ?name|e-?mail|abteilung|department|standort|location|\boffice\b|\bbüro\b|telefon|\bphone\b|\bmobil|\bhandy\b|firma|company|unternehmen|arbeitgeber|gesellschaft|\bgmbh\b|legal ?entity|\bentity\b|rechtsträger|member ?firm|adresse|address|job ?title)/i.test(label || '');
+  // v26.91: Telefon/Mobil/Handy bewusst NICHT mehr — eine (private) Mobilnummer
+  // z.B. für den B2Run-Infoservice steht i.d.R. NICHT im Deloitte-Profil und ist
+  // eine legitime Abfrage; der „schon automatisch erfasst"-Hinweis passte da nicht.
+  return /(vorname|nachname|first ?name|last ?name|e-?mail|abteilung|department|standort|location|\boffice\b|\bbüro\b|firma|company|unternehmen|arbeitgeber|gesellschaft|\bgmbh\b|legal ?entity|\bentity\b|rechtsträger|member ?firm|adresse|address|job ?title)/i.test(label || '');
 }
 
 /** v24.25/v24.28: Kleiner Hinweis im Feld-Editor. Drei Fälle, in dieser
@@ -1400,6 +1406,31 @@ export default function EventCreationPage(): React.ReactElement {
   const headerImageLayoutConfig = (headerImageLayout.width !== 180 || headerImageLayout.paddingV !== 30 || headerImageLayout.paddingH !== 30)
     ? { _headerImageLayout: { width: headerImageLayout.width, paddingV: headerImageLayout.paddingV, paddingH: headerImageLayout.paddingH } }
     : {};
+  // v26.95: Das Event-Foto als Mail-/Outlook-Kopfbild übernehmen. Quelle ist der
+  // frisch gewählte File (imageFile), sonst die Vorschau (Data-URL direkt, http-
+  // URL bestehender Events wird geladen). In JEDEM Fall auf 600px komprimiert,
+  // damit die Base64-Größe für die Mail-Pipeline handhabbar bleibt.
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise<string>(resolve => { const r = new FileReader(); r.onload = e => resolve((e.target?.result as string) || ''); r.onerror = () => resolve(''); r.readAsDataURL(file); });
+  const applyEventPhotoToLogo = async (setter: (b64: string) => void): Promise<void> => {
+    try {
+      let b64 = '';
+      if (imageFile) {
+        b64 = await fileToBase64(await compressImage(imageFile, 600, 0.9));
+      } else if (imagePreview && imagePreview.indexOf('data:') === 0) {
+        b64 = imagePreview;
+      } else if (imagePreview) {
+        const resp = await fetch(imagePreview, { credentials: 'include' });
+        const blob = await resp.blob();
+        const f = new File([blob], 'event-photo.jpg', { type: blob.type || 'image/jpeg' });
+        b64 = await fileToBase64(await compressImage(f, 600, 0.9));
+      }
+      if (b64) setter(b64);
+      else showAlert(isDe ? 'Kein Event-Foto vorhanden — bitte zuerst oben ein Bild hochladen.' : 'No event photo yet — please upload an image above first.', { variant: 'error' });
+    } catch {
+      showAlert(isDe ? 'Das Event-Foto konnte nicht übernommen werden.' : 'Could not use the event photo.', { variant: 'error' });
+    }
+  };
   const [dragFieldId, setDragFieldId] = React.useState<string | null>(null);
   // v18.55: Pro-Feld Ein-/Ausklapp-Status für Schritt 5 (Felder). Default =
   // eingeklappt (kompakte Karte: nur Nummer + Label + Typ + Pflicht + Aktionen);
@@ -7027,10 +7058,24 @@ export default function EventCreationPage(): React.ReactElement {
                   src={imagePreview}
                   isDe={isDe}
                   onClose={() => setImageEditOpen(false)}
-                  onApply={(dataUrl, file) => {
+                  onApply={async (dataUrl, file) => {
                     setImagePreview(dataUrl);
                     setImageFile(file);
                     setImageEditOpen(false);
+                    // v26.95: anbieten, das Foto auch als Kopfbild für die Mails
+                    // und den Outlook-Termin zu übernehmen.
+                    const useForMails = await confirmDialog(
+                      isDe
+                        ? 'Möchtest du dieses Foto auch als Bild im Kopf der E-Mails und des Outlook-Termins verwenden?'
+                        : 'Do you want to use this photo as the header image for the emails and the Outlook invite too?',
+                      { title: isDe ? 'Foto auch für Mails & Outlook?' : 'Photo for emails & Outlook too?', confirmLabel: isDe ? 'Ja, übernehmen' : 'Yes, use it' },
+                    );
+                    if (useForMails) {
+                      try {
+                        const b64 = await fileToBase64(await compressImage(file, 600, 0.9));
+                        if (b64) { setEmailLogoPreview(b64); setOutlookLogoPreview(b64); }
+                      } catch { /* still-optional, ignorieren */ }
+                    }
                   }}
                 >
                   {/* v23.19/v23.25: Optional & einklappbar — Bild pro Ansicht
@@ -9618,10 +9663,17 @@ export default function EventCreationPage(): React.ReactElement {
                     </>
                   )}
                 </p>
-                {/* v26.88: Live-Zusammenfassung „Aktuell eingestellt …" steht
-                    jetzt in der AudiencePicker-Prüfzeile (summarySlot) — direkt
-                    neben „Sichtbarkeit prüfen"/„Personen ausschließen". */}
               </div>
+
+              {/* v26.89: Live-Zusammenfassung „Aktuell eingestellt …" steht jetzt
+                  GANZ OBEN — direkt über dem Standortfilter (Schritt 13), damit man
+                  den aktuellen Sichtbarkeits-Stand sofort sieht. */}
+              {renderVisibilitySummaryBox(
+                locationFilter.split(',').map(s => s.trim()).filter(Boolean),
+                audience,
+                filterMode,
+                (excludedUsers || []).length
+              )}
 
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                 {visHeader('vis_locfilter', <StepBadge n={13} />, isDe ? 'Standortfilter' : 'Location filter')}
@@ -9675,14 +9727,9 @@ export default function EventCreationPage(): React.ReactElement {
                 isDe={isDe}
                 excludedUsers={excludedUsers}
                 onExcludedUsersChange={setExcludedUsers}
-                stepBadge={<StepBadge n={14} />}
+                headerSlot={visHeader('vis_audience', <StepBadge n={14} />, isDe ? 'Mailverteiler / einzelne User' : 'Mailing lists / individual users')}
+                bodyOpen={isVisOpen('vis_audience')}
                 cardBgPrimary={zebraS3Bg()}
-                summarySlot={renderVisibilitySummaryBox(
-                  locationFilter.split(',').map(s => s.trim()).filter(Boolean),
-                  audience,
-                  filterMode,
-                  (excludedUsers || []).length
-                )}
                 visibilityTabs={subEvents.length > 0 ? [
                   { id: 'main', title: subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Hauptevent' : 'Main event'), locationFilter, audience, filterMode },
                   ...subEvents.map(s => ({ id: s.id, title: (shortSubEventTitle(s.title, title) || (isDe ? 'Sub-Event' : 'Sub-event')).trim(), locationFilter: s.locationFilter || '', audience: s.audience || '', filterMode: (s.filterMode || 'AND') as 'AND' | 'OR' })),
@@ -9759,7 +9806,7 @@ export default function EventCreationPage(): React.ReactElement {
                   AUSSERHALB des Greyout-Wrappers (laufzeit-/sichtbarkeitsrelevant,
                   wie der AudiencePicker oben — auch im Klammer-Modus editierbar). */}
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-                {visHeader('vis_assist', <Icon iconName="People" style={{ fontSize: 16, color: 'var(--dex-green-dark, #4a7c1f)' }} />, isDe ? 'Sichtbarkeit für Assistenzen' : 'Visibility for assistants')}
+                {visHeader('vis_assist', <StepBadge n={(locationFilter && audience) ? 16 : 15} />, isDe ? 'Sichtbarkeit für Assistenzen' : 'Visibility for assistants')}
                 {isVisOpen('vis_assist') && (<>
                 <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginTop: -4, marginBottom: 12, lineHeight: 1.55 }}>
                   {isDe
@@ -9777,7 +9824,7 @@ export default function EventCreationPage(): React.ReactElement {
                   Die Sichtbarkeit oben bleibt für die Klammer editierbar. */}
               <div style={hauptGreyoutWrapperStyle()}>
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-                {visHeader('vis_fristen', <StepBadge n={(locationFilter && audience) ? 16 : 15} />, <>{isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}<InfoTooltip text={isDe
+                {visHeader('vis_fristen', <StepBadge n={(locationFilter && audience) ? 17 : 16} />, <>{isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}<InfoTooltip text={isDe
                     ? 'Bis wann können sich Teilnehmer anmelden bzw. fristgerecht abmelden? Die Abmeldefrist ist die kommunizierte Deadline — abmelden geht danach weiterhin bis zum Event-Ende, die Organizer werden dann aber automatisch informiert. Beide Werte werden anhand des Event-Datums automatisch vorgeschlagen, du kannst sie jederzeit überschreiben.'
                     : 'Until when can attendees register or cancel within the deadline? The cancellation deadline is the communicated cutoff — cancelling remains possible until the event ends, but organizers are then notified automatically. Both values are auto-suggested from the event date and can be overridden at any time.'} /></>)}
                 {isVisOpen('vis_fristen') && (<>
@@ -9890,7 +9937,7 @@ export default function EventCreationPage(): React.ReactElement {
                   Gesamtkapazität; der B2Run-Sonderfall ist Opt-in. */}
 
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-                {visHeader('vis_capacity', <StepBadge n={(locationFilter && audience) ? 17 : 16} />, isDe ? 'Teilnehmerzahl & Warteliste' : 'Capacity & waitlist')}
+                {visHeader('vis_capacity', <StepBadge n={(locationFilter && audience) ? 18 : 17} />, isDe ? 'Teilnehmerzahl & Warteliste' : 'Capacity & waitlist')}
                 {isVisOpen('vis_capacity') && (<>
               {/* v10.20: Geteilte Kapazität — generisch für beliebige Events.
                   Labels werden vom Organizer frei gewählt (z.B. "Vormittag /
@@ -10704,9 +10751,9 @@ export default function EventCreationPage(): React.ReactElement {
                   ? <>
                       <span style={{ display: 'block', marginBottom: 6 }}>Diese Daten werden bei jeder Anmeldung <strong>automatisch erfasst</strong> — du musst sie nicht abfragen:</span>
                       <ul style={{ margin: '0 0 8px', paddingLeft: 18 }}>
-                        <li><strong>Vorname</strong></li>
-                        <li><strong>Nachname</strong></li>
-                        <li><strong>E-Mail</strong></li>
+                        <li><strong>Vorname</strong> (aus dem Deloitte-Profil)</li>
+                        <li><strong>Nachname</strong> (aus dem Deloitte-Profil)</li>
+                        <li><strong>E-Mail</strong> (aus dem Deloitte-Profil)</li>
                         <li><strong>Job Title</strong> (aus dem Deloitte-Profil)</li>
                         <li><strong>Standort</strong> (aus dem Deloitte-Profil)</li>
                         <li><strong>Department</strong> (aus dem Deloitte-Profil)</li>
@@ -10716,9 +10763,9 @@ export default function EventCreationPage(): React.ReactElement {
                   : <>
                       <span style={{ display: 'block', marginBottom: 6 }}>This data is captured <strong>automatically</strong> for every registration — no need to ask for it:</span>
                       <ul style={{ margin: '0 0 8px', paddingLeft: 18 }}>
-                        <li><strong>First name</strong></li>
-                        <li><strong>Last name</strong></li>
-                        <li><strong>Email</strong></li>
+                        <li><strong>First name</strong> (from the Deloitte profile)</li>
+                        <li><strong>Last name</strong> (from the Deloitte profile)</li>
+                        <li><strong>Email</strong> (from the Deloitte profile)</li>
                         <li><strong>Job title</strong> (from the Deloitte profile)</li>
                         <li><strong>Location</strong> (from the Deloitte profile)</li>
                         <li><strong>Department</strong> (from the Deloitte profile)</li>
@@ -11825,6 +11872,12 @@ export default function EventCreationPage(): React.ReactElement {
                         onChange={e => updateCustomField(field.id, { helpText: e.target.value })}
                         style={{ width: '100%', fontSize: '0.82rem', padding: '6px 10px' }}
                       />
+                      {/* v26.91: Hinweis auf das Markdown-Subset (fett + Links). */}
+                      <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', marginTop: 4, lineHeight: 1.4 }}>
+                        {isDe
+                          ? <>Tipp: <code>**fett**</code> macht Text fett, <code>[Text](https://…)</code> erzeugt einen Link. Beides wird nur bei der Anzeige als Text unter dem Feld-Titel formatiert.</>
+                          : <>Tip: <code>**bold**</code> makes text bold, <code>[text](https://…)</code> creates a link. Both render only when shown as text below the field title.</>}
+                      </div>
                       {field.helpText && field.helpText.trim() && (
                         <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
                           <span style={{ fontWeight: 600 }}>{isDe ? 'Anzeige:' : 'Display:'}</span>
@@ -12004,6 +12057,86 @@ export default function EventCreationPage(): React.ReactElement {
                           </div>
                         )}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {/* v26.92: Bei aktivem Vorfilter werden die Optionen
+                              GRUPPIERT nach Kategorie bearbeitet — Kategorie oben,
+                              darunter die Auswahl, plus eine „Ohne Kategorie"-Gruppe
+                              (immer sichtbar). Ohne Vorfilter bleibt die flache
+                              Liste. Das Datenmodell (options/optionsEn/optionCategories
+                              als Parallel-Arrays) bleibt unverändert. */}
+                          {field.optionCategories ? (() => {
+                            const opts = field.options || [];
+                            const optsEn = field.optionsEn || [];
+                            const cats = field.optionCategories || [];
+                            const named: Array<{ category: string; items: Array<{ opt: string; optEn: string }> }> = [];
+                            const noCat: Array<{ opt: string; optEn: string }> = [];
+                            const idxByCat = new Map<string, number>();
+                            opts.forEach((o, i) => {
+                              const c = (cats[i] || '').trim();
+                              const item = { opt: o, optEn: optsEn[i] || '' };
+                              if (!c) { noCat.push(item); return; }
+                              if (!idxByCat.has(c)) { idxByCat.set(c, named.length); named.push({ category: c, items: [] }); }
+                              named[idxByCat.get(c) as number].items.push(item);
+                            });
+                            const apply = (nm: typeof named, nc: typeof noCat): void => {
+                              const nOpts: string[] = []; const nEn: string[] = []; const nCats: string[] = [];
+                              nm.forEach(g => g.items.forEach(it => { nOpts.push(it.opt); nEn.push(it.optEn); nCats.push(g.category); }));
+                              nc.forEach(it => { nOpts.push(it.opt); nEn.push(it.optEn); nCats.push(''); });
+                              updateCustomField(field.id, { options: nOpts, optionsEn: nEn, optionCategories: nCats });
+                            };
+                            const catBadge = <span style={{ flexShrink: 0, fontSize: '0.65rem', padding: '1px 6px', borderRadius: 6, background: 'rgba(134,188,37,0.14)', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700, letterSpacing: 0.3 }}>{isDe ? 'KAT' : 'CAT'}</span>;
+                            const removeBtnStyle: React.CSSProperties = { flexShrink: 0, width: 26, height: 26, borderRadius: 6, background: '#fff', border: '1px solid var(--dex-gray-300)', color: 'var(--dex-red, #c00)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', lineHeight: 1, fontWeight: 700 };
+                            const addBtnStyle: React.CSSProperties = { alignSelf: 'flex-start', marginTop: 2, display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(134,188,37,0.08)', border: '1px dashed var(--dex-green, #86bc25)', color: 'var(--dex-green-dark, #4a7c1f)', borderRadius: 6, padding: '5px 10px', fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer' };
+                            const optionRows = (items: Array<{ opt: string; optEn: string }>, onOpt: (ii: number, v: string) => void, onOptEn: (ii: number, v: string) => void, onRemove: (ii: number) => void): React.ReactNode => (
+                              items.map((it, ii) => (
+                                <div key={ii} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <span style={{ flexShrink: 0, fontSize: '0.72rem', color: 'var(--dex-gray-400)', width: 16, textAlign: 'right' }}>{ii + 1}.</span>
+                                    <input className="form-input" value={it.opt} placeholder={isDe ? 'Auswahl (z.B. S)' : 'Choice (e.g. S)'} onChange={e => onOpt(ii, e.target.value)} style={{ flex: 1, fontSize: '0.85rem', padding: '6px 10px' }} />
+                                    <button type="button" onClick={() => onRemove(ii)} title={isDe ? 'Entfernen' : 'Remove'} style={removeBtnStyle}>−</button>
+                                  </div>
+                                  {bilingualFields && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 24 }}>
+                                      <span style={{ flexShrink: 0, fontSize: '0.65rem', padding: '1px 6px', borderRadius: 6, background: 'rgba(0,90,156,0.10)', color: '#005a9c', fontWeight: 700, letterSpacing: 0.5 }}>EN</span>
+                                      <input className="form-input" value={it.optEn} placeholder={isDe ? 'Englische Variante (optional)' : 'English variant (optional)'} onChange={e => onOptEn(ii, e.target.value)} style={{ flex: 1, fontSize: '0.78rem', padding: '5px 9px' }} />
+                                    </div>
+                                  )}
+                                </div>
+                              ))
+                            );
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                {named.map((g, gi) => (
+                                  <div key={gi} style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: '10px 12px', background: 'rgba(134,188,37,0.04)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      {catBadge}
+                                      <input className="form-input" value={g.category} placeholder={isDe ? 'Kategorie (z.B. Männergrößen)' : 'Category (e.g. men’s sizes)'} onChange={e => apply(named.map((x, i) => i === gi ? { ...x, category: e.target.value } : x), noCat)} style={{ flex: 1, fontSize: '0.85rem', fontWeight: 600, padding: '6px 10px' }} />
+                                      <button type="button" onClick={() => apply(named.filter((_, i) => i !== gi), noCat)} title={isDe ? 'Kategorie entfernen' : 'Remove category'} style={removeBtnStyle}>−</button>
+                                    </div>
+                                    {optionRows(
+                                      g.items,
+                                      (ii, v) => apply(named.map((x, i) => i === gi ? { ...x, items: x.items.map((y, j) => j === ii ? { ...y, opt: v } : y) } : x), noCat),
+                                      (ii, v) => apply(named.map((x, i) => i === gi ? { ...x, items: x.items.map((y, j) => j === ii ? { ...y, optEn: v } : y) } : x), noCat),
+                                      (ii) => apply(named.map((x, i) => i === gi ? { ...x, items: x.items.filter((_, j) => j !== ii) } : x), noCat),
+                                    )}
+                                    <button type="button" onClick={() => apply(named.map((x, i) => i === gi ? { ...x, items: [...x.items, { opt: '', optEn: '' }] } : x), noCat)} style={addBtnStyle}>+ {isDe ? 'Auswahl hinzufügen' : 'Add choice'}</button>
+                                  </div>
+                                ))}
+                                <div style={{ border: '1px dashed var(--dex-gray-300)', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--dex-gray-600)' }}>
+                                    {isDe ? 'Ohne Kategorie — immer sichtbar (z.B. „T-Shirt bereits vorhanden")' : 'No category — always shown (e.g. „already have a shirt")'}
+                                  </div>
+                                  {optionRows(
+                                    noCat,
+                                    (ii, v) => apply(named, noCat.map((y, j) => j === ii ? { ...y, opt: v } : y)),
+                                    (ii, v) => apply(named, noCat.map((y, j) => j === ii ? { ...y, optEn: v } : y)),
+                                    (ii) => apply(named, noCat.filter((_, j) => j !== ii)),
+                                  )}
+                                  <button type="button" onClick={() => apply(named, [...noCat, { opt: '', optEn: '' }])} style={addBtnStyle}>+ {isDe ? 'Option ohne Kategorie' : 'Option without category'}</button>
+                                </div>
+                                <button type="button" onClick={() => apply([...named, { category: isDe ? `Kategorie ${named.length + 1}` : `Category ${named.length + 1}`, items: [{ opt: '', optEn: '' }] }], noCat)} style={{ ...addBtnStyle, marginTop: 0, borderStyle: 'solid', background: 'var(--dex-green, #86bc25)', color: '#fff', border: 'none', padding: '7px 14px', fontSize: '0.82rem' }}>+ {isDe ? 'Kategorie hinzufügen' : 'Add category'}</button>
+                              </div>
+                            );
+                          })() : <>
                           {(field.options || []).map((opt, optIdx) => (
                             <div key={optIdx} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -12113,6 +12246,7 @@ export default function EventCreationPage(): React.ReactElement {
                             <span style={{ fontSize: '1rem', lineHeight: 1, fontWeight: 700 }}>+</span>
                             {isDe ? 'Option hinzufügen' : 'Add option'}
                           </button>
+                          </>}
                           {/* v26.74: Vorauswahl (nur Single-Select) — optional
                               eine Option, die im Anmeldeformular vorausgewählt ist. */}
                           {!field.multi && (field.options || []).filter(o => (o || '').trim()).length > 0 && (
@@ -13169,6 +13303,17 @@ export default function EventCreationPage(): React.ReactElement {
                       reader.readAsDataURL(compressed);
                     }} />
                   </label>
+                  {/* v26.95: Event-Foto (falls hinterlegt) mit einem Klick als
+                      Mail-Kopfbild übernehmen — kein Extra-Upload nötig. */}
+                  {(imagePreview || imageFile) && (
+                    <button
+                      type="button"
+                      onClick={() => applyEventPhotoToLogo(setEmailLogoPreview)}
+                      style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 'var(--dex-radius)', border: '1.5px solid var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.10)', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      <Icon iconName="Photo2" style={{ fontSize: 14 }} /> {isDe ? 'Event-Foto verwenden' : 'Use event photo'}
+                    </button>
+                  )}
                   </div>
                 </details>
 
@@ -13212,6 +13357,16 @@ export default function EventCreationPage(): React.ReactElement {
                       reader.readAsDataURL(compressed);
                     }} />
                   </label>
+                  {/* v26.95: Event-Foto mit einem Klick als Outlook-Kopfbild. */}
+                  {(imagePreview || imageFile) && (
+                    <button
+                      type="button"
+                      onClick={() => applyEventPhotoToLogo(setOutlookLogoPreview)}
+                      style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 'var(--dex-radius)', border: '1.5px solid var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.10)', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      <Icon iconName="Photo2" style={{ fontSize: 14 }} /> {isDe ? 'Event-Foto verwenden' : 'Use event photo'}
+                    </button>
+                  )}
                   {renderOutlookUpdateButton()}
                   </div>
                 </details>
