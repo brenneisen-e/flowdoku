@@ -44,6 +44,7 @@ export interface ReleaseNote {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '27.7.0', date: '2026-07-07', bereich: 'Anmeldung', type: 'Feature', text: 'Auf „Meine Events" wird bei Events mit Gruppen-Auswahl (z.B. B2Run: Durchstarter/Funstarter oder eigene Beschriftungen) jetzt angezeigt, in welcher Gruppe man angemeldet ist — als grüner Chip „Gruppe: …". Auf der Warteliste zeigt der Chip die gewünschte Gruppe.' },
   { version: '27.6.0', date: '2026-07-07', bereich: 'Anmeldung', type: 'Feature', text: 'Für eine andere Person anmelden läuft jetzt vollständig über den geführten Wizard: Personensuche, externe Person und Zustimmung passieren komplett im Modal-Fenster. Auf der Anmeldeseite selbst stehen danach nur noch die grauen (nicht änderbaren) Felder der gewählten Person plus eine kompakte Zeile „Du meldest … an" mit einem „Ändern"-Link, der den Wizard wieder öffnet — kein doppelter Suchkasten und keine große Zustimmungs-Box mehr direkt im Formular.' },
   { version: '27.5.0', date: '2026-07-07', bereich: 'Outlook', type: 'Bugfix', text: 'Der Standard-Text des Outlook-Termins spricht die Teilnehmer jetzt einheitlich mit „Ihr seid für … angemeldet" an (vorher stand an einzelnen Stellen noch die Einzahl „Du bist …").' },
   { version: '27.5.0', date: '2026-07-07', bereich: 'Outlook', type: 'Bugfix', text: 'Mehrere Organizer werden im Termin-Text jetzt korrekt als „Vorname Nachname" und mit „und" verbunden angezeigt (der Platzhalter {{Organizer}}) — vorher stand die zweite Person teils in der Form „Nachname, Vorname" da.' },

@@ -1956,6 +1956,28 @@ export default function MyEventsPage(): React.ReactElement {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon iconName="Calendar" style={{ fontSize: 14, color: 'var(--dex-gray-500)' }} /> {formatDateRange(event.startDate, event.endDate)}</div>
                     </div>
 
+                    {/* v27.7: Gruppe (Durchstarter/Funstarter bzw. eigene
+                        Beschriftung) anzeigen, in der die Person angemeldet ist.
+                        StarterType = effektive Gruppe; auf der Warteliste ist er
+                        leer, dann steht der Wunsch in PreferredStarterType. */}
+                    {(() => {
+                      const grp = (registration.StarterType || registration.PreferredStarterType || '').trim();
+                      if (!grp) return null;
+                      const grpLabel = grp === 'Durchstarter'
+                        ? ((event.splitLabelA && event.splitLabelA.trim()) || 'Durchstarter')
+                        : grp === 'Funstarter'
+                          ? ((event.splitLabelB && event.splitLabelB.trim()) || 'Funstarter')
+                          : grp;
+                      return (
+                        <div style={{ marginTop: 8 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', fontWeight: 600, padding: '4px 10px', borderRadius: 999, background: 'rgba(134,188,37,0.14)', color: 'var(--dex-green-dark, #4a7c1f)', border: '1px solid rgba(134,188,37,0.30)' }}>
+                            <Icon iconName="Group" style={{ fontSize: 13 }} />
+                            {(isDe ? 'Gruppe: ' : 'Group: ')}{grpLabel}
+                          </span>
+                        </div>
+                      );
+                    })()}
+
                     {/* Organizer mit Foto (Hover vergrößert). v24.12: einzelne ausblendbar. */}
                     {event.organizers.length > 0 && !(event.hideOrganizer && !event.hideOrganizerIndividualOnly) && (
                       <div style={{ marginTop: 10 }}>
