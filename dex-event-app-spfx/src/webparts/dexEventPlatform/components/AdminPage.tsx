@@ -878,6 +878,8 @@ export default function AdminPage(): React.ReactElement {
   const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead, registerForEvent, subscribeEventRealtime, sendCompleteRegistrationReminder } = useEvents();
   // v26.67: laufende „Erinnerung senden"-Aktion pro verwaister Anmeldung (Id).
   const [reminderBusyId, setReminderBusyId] = React.useState<number | null>(null);
+  // v26.85: „Erinnerung senden" in der „Fehlende Klammer-Anmeldung"-Box (emailKey).
+  const [missingReminderKey, setMissingReminderKey] = React.useState<string | null>(null);
   // v24.38: läuft gerade ein „Zur Klammer hinzufügen" für diese E-Mail?
   const [addingToKlammer, setAddingToKlammer] = React.useState<string | null>(null);
   // v24.40: Modal „Assistenz zuordnen" — Person an eine gewählte Assistenz
@@ -5432,6 +5434,33 @@ export default function AdminPage(): React.ReactElement {
     // angemeldet sein.)
     const hasParentReg = (emailKey: string): boolean =>
       registrations.some(r => (r.ParticipantEmail || '').toLowerCase().trim() === emailKey);
+    // v26.85: Ist ein bestimmtes Hauptevent-Feld für diese Person befüllt?
+    // Gleiche Auflösung wie die Tabelle (Parent-Reg-Spalte → Parent-CustomData
+    // → Sub-Event-CustomData-Fallback), damit die „Infos fehlen"-Erkennung nicht
+    // fälschlich anschlägt.
+    const parentFieldFilled = (row: ConsolidatedRow, f: { id: string; spInternalName?: string }): boolean => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const parentReg = registrations.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === row.emailKey) as any;
+      const spName = (f as { spInternalName?: string }).spInternalName || '';
+      if (parentReg) {
+        let v: unknown = spName ? parentReg[spName] : undefined;
+        if ((v === undefined || v === null || v === '') && parentReg.CustomData) { try { v = JSON.parse(parentReg.CustomData)[f.id]; } catch { /* */ } }
+        if (v !== undefined && v !== null && v !== '') return true;
+      }
+      for (const ch of consolidatedChildren) {
+        const r = row.perChild[ch.id];
+        if (!r) continue;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let v: any = spName ? (r as any)[spName] : undefined;
+        if ((v === undefined || v === null || v === '') && r.CustomData) { try { v = JSON.parse(r.CustomData)[f.id]; } catch { /* */ } }
+        if (v !== undefined && v !== null && v !== '') return true;
+      }
+      return false;
+    };
+    // v26.85: Personen mit Klammer-Anmeldung (Hauptevent) + Sub-Event, bei denen
+    // aber PFLICHT-Hauptevent-Felder leer sind (typisch: Anmeldung im
+    // Hauptevent-Schritt abgebrochen). requiredMainFields leer → nie anschlagen.
+    const requiredMainFields = (selectedEvent.eventSpecificFields || []).filter(f => f.type !== 'user' && f.required && f.label && f.label.trim());
     // v23.7: „Verwaiste" Klammer-/Schatten-Anmeldungen erkennen — eine aktive
     // Zeile auf der KLAMMER-Subsite (registrations), deren Person in KEINEM
     // Sub-Event aktiv angemeldet ist. Das ist typischerweise ein Geist aus einer
@@ -5597,26 +5626,147 @@ export default function AdminPage(): React.ReactElement {
               </div>
               <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
                 {isDe
-                  ? 'Diese Personen sind in einem oder mehreren Sub-Events angemeldet, fehlen aber am Klammer-/Hauptevent selbst (z.B. durch eine abgebrochene Anmeldung). Dadurch fehlen u.a. die übergreifenden Klammer-Angaben und der Direkt-Bezug zum Hauptevent. Trage die fehlende Klammer-Anmeldung pro Person nach — das versendet KEINE Mail und KEINEN Outlook-Termin (reine Datenkorrektur).'
-                  : 'These people are registered for one or more sub-events but are missing on the umbrella/main event itself (e.g. due to an interrupted registration). As a result the cross-cutting umbrella details and the direct link to the main event are missing. Add the missing umbrella registration per person — this sends NO email and NO Outlook invite (data correction only).'}
+                  ? 'Diese Personen sind in einem oder mehreren Sub-Events angemeldet, fehlen aber am Klammer-/Hauptevent selbst (z.B. durch eine abgebrochene Anmeldung). Dadurch fehlen u.a. die übergreifenden Hauptevent-Angaben. Du hast zwei Möglichkeiten: über „Erinnerung senden“ bittest du die Person (bzw. die anmeldende Person) per Mail mit Direkt-Link, die fehlenden Hauptevent-Angaben in der App nachzutragen — oder du trägst die fehlende Klammer-Anmeldung mit „Zur Klammer hinzufügen“ selbst nach (versendet KEINE Mail und KEINEN Outlook-Termin, reine Datenkorrektur).'
+                  : 'These people are registered for one or more sub-events but are missing on the umbrella/main event itself (e.g. due to an interrupted registration), so the cross-cutting main-event details are missing. You have two options: use „Send reminder“ to ask the person (or whoever registered them) via email with a direct link to add the missing main-event details in the app — or add the missing umbrella registration yourself with „Add to umbrella“ (sends NO email and NO Outlook invite, data correction only).'}
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {missing.map(r => {
                   const nm = `${r.vorname || ''} ${r.nachname || ''}`.trim() || r.email;
+                  // v26.85: Akteur (selbst/stellvertretend) aus den Sub-Event-
+                  // Registrierungen ableiten — für die Reminder-Empfänger.
+                  let byEmail = '', byName = '';
+                  for (const ck of Object.keys(r.perChild)) {
+                    const cr = r.perChild[ck];
+                    if (cr && (cr.RegisteredByEmail || '').trim()) { byEmail = (cr.RegisteredByEmail || '').trim(); byName = (cr.RegisteredByName || '').trim(); break; }
+                  }
+                  const isProxy = !!byEmail && byEmail.toLowerCase() !== (r.email || '').toLowerCase();
                   return (
                     <div key={r.emailKey} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.84rem' }}>
                       <strong>{nm}</strong>
                       <span style={{ color: 'var(--dex-gray-500)' }}>{r.email}</span>
                       <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.78rem' }}>· {isDe ? `${r.activeCount} Sub-Event(s)` : `${r.activeCount} sub-event(s)`}</span>
-                      <button
-                        type="button"
-                        className="btn btn-outline"
-                        style={{ marginLeft: 'auto', fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-orange, #ed8b00)', borderColor: 'var(--dex-orange, #ed8b00)' }}
-                        disabled={addingToKlammer === r.emailKey}
-                        onClick={() => { void addToKlammer(r); }}
-                      >
-                        <Plus size={12} /> {addingToKlammer === r.emailKey ? '…' : (isDe ? 'Zur Klammer hinzufügen' : 'Add to umbrella')}
-                      </button>
+                      <div style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
+                        {/* v26.85: Erinnerung senden — Person (bzw. Anmeldende:r) bitten,
+                            die fehlenden Hauptevent-Angaben in der App nachzutragen. */}
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-green-dark, #4a7c1f)', borderColor: 'var(--dex-green, #86bc25)' }}
+                          disabled={missingReminderKey === r.emailKey}
+                          onClick={async () => {
+                            if (!selectedEvent) return;
+                            setMissingReminderKey(r.emailKey);
+                            const ok = await sendCompleteRegistrationReminder({
+                              eventId: selectedEvent.id,
+                              eventTitle: selectedEvent.title,
+                              participantEmail: r.email || '',
+                              participantName: nm,
+                              registeredByEmail: byEmail,
+                              registeredByName: byName,
+                            }).catch(() => false);
+                            setMissingReminderKey(null);
+                            showAlert(
+                              ok
+                                ? (isProxy
+                                    ? (isDe ? `Erinnerung an ${byName || byEmail} gesendet (${nm} auf Kopie) — mit Link zum Nachtragen der Hauptevent-Angaben.` : `Reminder sent to ${byName || byEmail} (${nm} on copy) — with a link to add the main-event details.`)
+                                    : (isDe ? `Erinnerung an ${nm} gesendet — mit Link zum Nachtragen der Hauptevent-Angaben.` : `Reminder sent to ${nm} — with a link to add the main-event details.`))
+                                : (isDe ? 'Erinnerung konnte nicht gesendet werden.' : 'The reminder could not be sent.'),
+                              { variant: ok ? 'success' : 'error' });
+                          }}
+                        >
+                          {missingReminderKey === r.emailKey ? (isDe ? 'Wird gesendet…' : 'Sending…') : (isDe ? 'Erinnerung senden' : 'Send reminder')}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-orange, #ed8b00)', borderColor: 'var(--dex-orange, #ed8b00)' }}
+                          disabled={addingToKlammer === r.emailKey}
+                          onClick={() => { void addToKlammer(r); }}
+                        >
+                          <Plus size={12} /> {addingToKlammer === r.emailKey ? '…' : (isDe ? 'Zur Klammer hinzufügen' : 'Add to umbrella')}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+        {/* v26.85: Klammer-Anmeldung vorhanden (+ Sub-Event), aber PFLICHT-
+            Hauptevent-Angaben fehlen — typisch nach einer abgebrochenen
+            Anmeldung. Oben als Hinweis, mit „Erinnerung senden" (Person bzw.
+            anmeldende Person bitten, die Angaben in der App nachzutragen) und
+            „Hauptevent-Felder bearbeiten" (selbst nachtragen). */}
+        {canManage && requiredMainFields.length > 0 && (() => {
+          const incomplete = consolidatedRows.filter(row => hasParentReg(row.emailKey) && row.activeCount > 0 && requiredMainFields.some(f => !parentFieldFilled(row, f)));
+          if (incomplete.length === 0) return null;
+          return (
+            <div style={{ marginBottom: 16, padding: 14, borderRadius: 10, border: '1px solid var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.07)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <Icon iconName="Warning" style={{ fontSize: 16, color: 'var(--dex-orange-dark, #b35a00)' }} />
+                <strong style={{ color: 'var(--dex-orange-dark, #b35a00)', fontSize: '0.9rem' }}>
+                  {isDe ? `Unvollständige Hauptevent-Angaben (${incomplete.length})` : `Incomplete main-event details (${incomplete.length})`}
+                </strong>
+              </div>
+              <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                {isDe
+                  ? 'Diese Personen haben eine Anmeldung (Hauptevent + Sub-Event), es fehlen aber Pflicht-Angaben aus dem Hauptevent-Schritt — meist, weil die Anmeldung vorzeitig abgebrochen wurde. Über „Erinnerung senden“ bittest du die Person (bzw. die anmeldende Person) per Mail mit Direkt-Link, die fehlenden Angaben in der App nachzutragen. Alternativ kannst du sie über „Hauptevent-Felder bearbeiten“ direkt selbst ergänzen.'
+                  : 'These people have a registration (main event + sub-event), but required answers from the main-event step are missing — usually because the registration was interrupted. Use „Send reminder“ to ask the person (or whoever registered them) via email with a direct link to add the missing answers in the app. Alternatively, add them yourself via „Edit main-event fields“.'}
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {incomplete.map(row => {
+                  const nm = `${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email;
+                  const missingLabels = requiredMainFields.filter(f => !parentFieldFilled(row, f)).map(f => f.label);
+                  let byEmail = '', byName = '';
+                  for (const ck of Object.keys(row.perChild)) {
+                    const cr = row.perChild[ck];
+                    if (cr && (cr.RegisteredByEmail || '').trim()) { byEmail = (cr.RegisteredByEmail || '').trim(); byName = (cr.RegisteredByName || '').trim(); break; }
+                  }
+                  const isProxy = !!byEmail && byEmail.toLowerCase() !== (row.email || '').toLowerCase();
+                  return (
+                    <div key={row.emailKey} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.84rem' }}>
+                      <strong>{nm}</strong>
+                      <span style={{ color: 'var(--dex-gray-500)' }}>{row.email}</span>
+                      <span style={{ color: 'var(--dex-orange-dark, #b35a00)', fontSize: '0.76rem' }} title={missingLabels.join(', ')}>· {isDe ? 'fehlt: ' : 'missing: '}{missingLabels.slice(0, 3).join(', ')}{missingLabels.length > 3 ? ` +${missingLabels.length - 3}` : ''}</span>
+                      <div style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-green-dark, #4a7c1f)', borderColor: 'var(--dex-green, #86bc25)' }}
+                          disabled={missingReminderKey === row.emailKey}
+                          onClick={async () => {
+                            if (!selectedEvent) return;
+                            setMissingReminderKey(row.emailKey);
+                            const ok = await sendCompleteRegistrationReminder({
+                              eventId: selectedEvent.id,
+                              eventTitle: selectedEvent.title,
+                              participantEmail: row.email || '',
+                              participantName: nm,
+                              registeredByEmail: byEmail,
+                              registeredByName: byName,
+                            }).catch(() => false);
+                            setMissingReminderKey(null);
+                            showAlert(
+                              ok
+                                ? (isProxy
+                                    ? (isDe ? `Erinnerung an ${byName || byEmail} gesendet (${nm} auf Kopie) — mit Link zum Nachtragen der Angaben.` : `Reminder sent to ${byName || byEmail} (${nm} on copy) — with a link to add the details.`)
+                                    : (isDe ? `Erinnerung an ${nm} gesendet — mit Link zum Nachtragen der Angaben.` : `Reminder sent to ${nm} — with a link to add the details.`))
+                                : (isDe ? 'Erinnerung konnte nicht gesendet werden.' : 'The reminder could not be sent.'),
+                              { variant: ok ? 'success' : 'error' });
+                          }}
+                        >
+                          {missingReminderKey === row.emailKey ? (isDe ? 'Wird gesendet…' : 'Sending…') : (isDe ? 'Erinnerung senden' : 'Send reminder')}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-orange, #ed8b00)', borderColor: 'var(--dex-orange, #ed8b00)' }}
+                          onClick={() => openMainFieldsEdit(row.emailKey, nm)}
+                        >
+                          {isDe ? 'Hauptevent-Felder bearbeiten' : 'Edit main-event fields'}
+                        </button>
+                      </div>
                     </div>
                   );
                 })}

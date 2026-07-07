@@ -4592,7 +4592,7 @@ export default function RegistrationPage(): React.ReactElement {
 
             {proxyStep === 1 && (
               <>
-                {!picked && (
+                {!externalPerson && !picked && (
                   <div style={{ position: 'relative' }}>
                     <input
                       className="form-input"
@@ -4648,14 +4648,14 @@ export default function RegistrationPage(): React.ReactElement {
                     {canCreateEvents && (
                       <div style={{ marginTop: 14, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
                         {locale === 'de' ? 'Person außerhalb Deloitte oder mehrere auf einmal? ' : 'External person or several at once? '}
-                        <button type="button" style={linkBtn} onClick={() => { setProxyStep(0); setExternalPerson(true); clearPick(); setOtherConsentConfirmed(false); }}>{locale === 'de' ? 'Externe Person' : 'External person'}</button>
+                        <button type="button" style={linkBtn} onClick={() => { setExternalPerson(true); clearPick(); setOtherConsentConfirmed(false); }}>{locale === 'de' ? 'Externe Person' : 'External person'}</button>
                         {' · '}
                         <button type="button" style={linkBtn} onClick={() => { setProxyStep(0); setMassImportResult(null); setMassImportRows([]); setMassImportStep('input'); setMassImportOpen(true); }}>{locale === 'de' ? 'Massenimport' : 'Bulk import'}</button>
                       </div>
                     )}
                   </div>
                 )}
-                {picked && (
+                {!externalPerson && picked && (
                   <>
                     <div style={{ padding: '10px 12px', border: '1px solid var(--dex-green, #86bc25)', borderRadius: 8, background: 'rgba(134,188,37,0.06)', display: 'flex', alignItems: 'center', gap: 10 }}>
                       <img src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(email)}&size=S`} alt={pName} onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }} style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }} />
@@ -4674,9 +4674,45 @@ export default function RegistrationPage(): React.ReactElement {
                     )}
                   </>
                 )}
+                {/* v26.85: Externe Person direkt IM Wizard erfassen (statt unten
+                    im Formular). Vor-/Nachname + E-Mail hier eingeben, „Weiter"
+                    führt zur Zustimmung. */}
+                {externalPerson && (
+                  <div>
+                    <div style={{ padding: '10px 12px', marginBottom: 12, borderRadius: 8, background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange, #ed8b00)', fontSize: '0.82rem', color: 'var(--dex-orange-dark, #b35a00)', lineHeight: 1.5 }}>
+                      {locale === 'de'
+                        ? 'Person außerhalb Deloitte (externe E-Mail-Adresse). Trage Vorname, Nachname und E-Mail ein. Nach der Zustimmung übernimmst du die Person — Einladung & Datenschutz-Rückmeldung laufen dann über dich.'
+                        : 'Person outside Deloitte (external email address). Enter first name, last name and email. After consent you take the person over — invitation & privacy confirmation then run through you.'}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: 3 }}>{t('reg.firstname') || 'Vorname'}</label>
+                        <input className="form-input" autoFocus value={firstName} onChange={e => setFirstName(e.target.value)} placeholder={t('reg.firstname') || 'Vorname'} />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: 3 }}>{t('reg.surname') || 'Nachname'}</label>
+                        <input className="form-input" value={surname} onChange={e => setSurname(e.target.value)} placeholder={t('reg.surname') || 'Nachname'} />
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: 6 }}>
+                      <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: 3 }}>E-Mail</label>
+                      <input className="form-input" type="email" value={email} onChange={e => { setEmail(e.target.value); externalEmailConfirmedRef.current = false; }} placeholder="name@firma.de" />
+                    </div>
+                    <button type="button" style={linkBtn} onClick={() => { setExternalPerson(false); clearPick(); }}>{locale === 'de' ? '← Zurück zur Personensuche' : '← Back to search'}</button>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 18 }}>
                   <button type="button" className="btn btn-secondary" onClick={cancelWizard}>{locale === 'de' ? 'Abbrechen' : 'Cancel'}</button>
-                  <button type="button" className="btn btn-primary" disabled={!picked || blocked} onClick={() => setProxyStep(2)}>{locale === 'de' ? 'Weiter' : 'Next'}</button>
+                  {externalPerson ? (
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={!(firstName.trim() && surname.trim() && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim()))}
+                      onClick={() => setProxyStep(2)}
+                    >{locale === 'de' ? 'Weiter' : 'Next'}</button>
+                  ) : (
+                    <button type="button" className="btn btn-primary" disabled={!picked || blocked} onClick={() => setProxyStep(2)}>{locale === 'de' ? 'Weiter' : 'Next'}</button>
+                  )}
                 </div>
               </>
             )}
