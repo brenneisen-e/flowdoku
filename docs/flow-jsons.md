@@ -2206,6 +2206,165 @@ If_Counter_Stale (If -> Patch_Counter):
 
 Ablauf: Trigger → Config laden (Logo + Default-Bild aus DEX_EmailTemplates via GetItems) → Event laden → Compose_Logo (aus Config) → Compose_Image (Event-Bild oder Default) → Platzhalter ersetzen → Email senden (mit Cc + Bcc) → Status=Sent
 
+### UI-Anleitung 2026-07-07 (v26.62/v26.70) — `.eml`-Anhang aus DEX_Emails mitsenden (externe Einladung)
+
+**Hintergrund:** Bei der stellvertretenden Anmeldung externer Personen hängt die App
+den fertigen Einladungs-Entwurf als `.eml`-Datei DIREKT an die DEX_Emails-Queue-Zeile
+(SharePoint-Attachment via `AttachmentFiles/add`). Der Flow liest bisher nur die
+Textfelder — der Anhang wird nicht mitgeschickt. Der Flow muss die Attachments der
+Zeile auslesen und der Send-Aktion beilegen. **WICHTIG:** Die Send-Aktion darf NICHT
+in eine Anhang-Schleife — sonst gingen normale Mails (0 Anhänge) gar nicht mehr raus.
+Deshalb Sammlung in einer Array-Variable, die bei normalen Mails leer bleibt.
+
+Übersichts-Tabelle:
+
+| # | Neu / Geändert | Name der Action | Art der Action | Stelle (Vorgänger) |
+|---|----------------|-----------------|----------------|--------------------|
+| 1 | Neu | `Initialize_Attachments` | Initialize variable | direkt nach Trigger „When an item is created" (vor `Get_Config`) |
+| 2 | Neu | `Get_Attachments` | Get attachments | nach `Compose_Image` |
+| 3 | Neu | `Apply_to_each_Attachment` | Apply to each | nach `Get_Attachments` |
+| 4 | Neu | `Get_Attachment_Content` | Get attachment content | erste Action IN `Apply_to_each_Attachment` |
+| 5 | Neu | `Append_Attachment` | Append to array variable | IN `Apply_to_each_Attachment`, nach `Get_Attachment_Content` |
+| 6 | Geändert | `Send_an_email_from_a_shared_mailbox_(V2)` | Attachments-Feld + Run-after | nach `Apply_to_each_Attachment` |
+
+#### Zeile 1 — `Initialize_Attachments` (Initialize variable) · NEU
+
+1. Auf das **+** zwischen „When an item is created" und „Get Config" → **Add an action** → **Initialize variable**.
+2. **Name:**
+
+```
+MailAttachments
+```
+
+3. **Type:** `Array` (Dropdown).
+4. **Value:** leer lassen.
+5. **⋮ → Rename** auf:
+
+```
+Initialize_Attachments
+```
+
+(`Get_Config` läuft dadurch automatisch „nach" `Initialize_Attachments` — kein weiterer Schritt nötig.)
+
+#### Zeile 2 — `Get_Attachments` (Get attachments) · NEU
+
+1. Auf das **+** zwischen „Compose_Image" und „Send an email from a shared mailbox (V2)" → **Add an action** → **SharePoint** → **Get attachments**.
+2. **Site Address** (Dropdown, oder „Enter custom value"):
+
+```
+https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform
+```
+
+3. **List Name:**
+
+```
+DEX_Emails
+```
+
+4. **Id** → **fx** → Expression:
+
+```
+triggerBody()?['ID']
+```
+
+5. **⋮ → Rename:**
+
+```
+Get_Attachments
+```
+
+#### Zeile 3 — `Apply_to_each_Attachment` (Apply to each) · NEU
+
+1. Auf das **+** unter „Get_Attachments" → **Add an action** → **Control** → **Apply to each**.
+2. **„Select an output from previous steps"** → **fx** → Expression:
+
+```
+body('Get_Attachments')
+```
+
+3. **⋮ → Rename:**
+
+```
+Apply_to_each_Attachment
+```
+
+#### Zeile 4 — `Get_Attachment_Content` (Get attachment content) · NEU
+
+1. IN „Apply_to_each_Attachment" auf **Add an action** → **SharePoint** → **Get attachment content**.
+2. **Site Address:**
+
+```
+https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform
+```
+
+3. **List Name:**
+
+```
+DEX_Emails
+```
+
+4. **Id** → **fx** → Expression:
+
+```
+triggerBody()?['ID']
+```
+
+5. **File Identifier** → **fx** → Expression:
+
+```
+items('Apply_to_each_Attachment')?['Id']
+```
+
+6. **⋮ → Rename:**
+
+```
+Get_Attachment_Content
+```
+
+#### Zeile 5 — `Append_Attachment` (Append to array variable) · NEU
+
+1. IN „Apply_to_each_Attachment", unter „Get_Attachment_Content" → **Add an action** → **Variables** → **Append to array variable**.
+2. **Name:** `MailAttachments` (Dropdown).
+3. **Value** — genau das eintragen (die `@{…}` werden zur Laufzeit aufgelöst):
+
+```json
+{
+  "Name": "@{items('Apply_to_each_Attachment')?['DisplayName']}",
+  "ContentBytes": "@{body('Get_Attachment_Content')?['$content']}"
+}
+```
+
+Falls das Feld die Ausdrücke als reinen Text stehen lässt: die beiden Werte einzeln per Dynamic Content bzw. **fx** einsetzen —
+
+```
+items('Apply_to_each_Attachment')?['DisplayName']
+```
+
+```
+body('Get_Attachment_Content')?['$content']
+```
+
+4. **⋮ → Rename:**
+
+```
+Append_Attachment
+```
+
+#### Zeile 6 — `Send_an_email_from_a_shared_mailbox_(V2)` (bestehend) · GEÄNDERT
+
+1. Aktion „Send an email from a shared mailbox (V2)" aufklappen.
+2. Bei **Advanced parameters** auf **„Show all"** (steht auf „Showing 3 of 6") → **Attachments** einblenden/auswählen.
+3. Im **Attachments**-Feld oben rechts auf **„Switch to input entire array"**.
+4. Ins Feld → **fx** → Expression:
+
+```
+variables('MailAttachments')
+```
+
+5. **Run after** prüfen: Die Aktion muss nach „Apply_to_each_Attachment" laufen (durch das Einfügen in Zeile 3 automatisch gesetzt). Falls nicht: **⋮ → Configure run after** → „Apply_to_each_Attachment" → **„is successful"** anhaken.
+
+**Ergebnis:** normale Mails ohne Anhang gehen unverändert raus (`MailAttachments` leer); externe Einladungen bekommen die `.eml` als Anhang. Danach den aktuellen Flow-JSON (Code View → kopieren) hier einpflegen.
+
 ### UI-Anleitung 2026-06-01 (v18.30) — Wichtigkeit aus der Queue lesen (hohe Wichtigkeit / rotes „!")
 
 **Hintergrund:** Die App schreibt jetzt eine neue Spalte `Importance` in
