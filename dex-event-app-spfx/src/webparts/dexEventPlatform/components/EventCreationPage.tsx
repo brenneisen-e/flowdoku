@@ -12018,6 +12018,86 @@ export default function EventCreationPage(): React.ReactElement {
                           </div>
                         )}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          {/* v26.92: Bei aktivem Vorfilter werden die Optionen
+                              GRUPPIERT nach Kategorie bearbeitet — Kategorie oben,
+                              darunter die Auswahl, plus eine „Ohne Kategorie"-Gruppe
+                              (immer sichtbar). Ohne Vorfilter bleibt die flache
+                              Liste. Das Datenmodell (options/optionsEn/optionCategories
+                              als Parallel-Arrays) bleibt unverändert. */}
+                          {field.optionCategories ? (() => {
+                            const opts = field.options || [];
+                            const optsEn = field.optionsEn || [];
+                            const cats = field.optionCategories || [];
+                            const named: Array<{ category: string; items: Array<{ opt: string; optEn: string }> }> = [];
+                            const noCat: Array<{ opt: string; optEn: string }> = [];
+                            const idxByCat = new Map<string, number>();
+                            opts.forEach((o, i) => {
+                              const c = (cats[i] || '').trim();
+                              const item = { opt: o, optEn: optsEn[i] || '' };
+                              if (!c) { noCat.push(item); return; }
+                              if (!idxByCat.has(c)) { idxByCat.set(c, named.length); named.push({ category: c, items: [] }); }
+                              named[idxByCat.get(c) as number].items.push(item);
+                            });
+                            const apply = (nm: typeof named, nc: typeof noCat): void => {
+                              const nOpts: string[] = []; const nEn: string[] = []; const nCats: string[] = [];
+                              nm.forEach(g => g.items.forEach(it => { nOpts.push(it.opt); nEn.push(it.optEn); nCats.push(g.category); }));
+                              nc.forEach(it => { nOpts.push(it.opt); nEn.push(it.optEn); nCats.push(''); });
+                              updateCustomField(field.id, { options: nOpts, optionsEn: nEn, optionCategories: nCats });
+                            };
+                            const catBadge = <span style={{ flexShrink: 0, fontSize: '0.65rem', padding: '1px 6px', borderRadius: 6, background: 'rgba(134,188,37,0.14)', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700, letterSpacing: 0.3 }}>{isDe ? 'KAT' : 'CAT'}</span>;
+                            const removeBtnStyle: React.CSSProperties = { flexShrink: 0, width: 26, height: 26, borderRadius: 6, background: '#fff', border: '1px solid var(--dex-gray-300)', color: 'var(--dex-red, #c00)', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem', lineHeight: 1, fontWeight: 700 };
+                            const addBtnStyle: React.CSSProperties = { alignSelf: 'flex-start', marginTop: 2, display: 'inline-flex', alignItems: 'center', gap: 5, background: 'rgba(134,188,37,0.08)', border: '1px dashed var(--dex-green, #86bc25)', color: 'var(--dex-green-dark, #4a7c1f)', borderRadius: 6, padding: '5px 10px', fontSize: '0.76rem', fontWeight: 600, cursor: 'pointer' };
+                            const optionRows = (items: Array<{ opt: string; optEn: string }>, onOpt: (ii: number, v: string) => void, onOptEn: (ii: number, v: string) => void, onRemove: (ii: number) => void): React.ReactNode => (
+                              items.map((it, ii) => (
+                                <div key={ii} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    <span style={{ flexShrink: 0, fontSize: '0.72rem', color: 'var(--dex-gray-400)', width: 16, textAlign: 'right' }}>{ii + 1}.</span>
+                                    <input className="form-input" value={it.opt} placeholder={isDe ? 'Auswahl (z.B. S)' : 'Choice (e.g. S)'} onChange={e => onOpt(ii, e.target.value)} style={{ flex: 1, fontSize: '0.85rem', padding: '6px 10px' }} />
+                                    <button type="button" onClick={() => onRemove(ii)} title={isDe ? 'Entfernen' : 'Remove'} style={removeBtnStyle}>−</button>
+                                  </div>
+                                  {bilingualFields && (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 24 }}>
+                                      <span style={{ flexShrink: 0, fontSize: '0.65rem', padding: '1px 6px', borderRadius: 6, background: 'rgba(0,90,156,0.10)', color: '#005a9c', fontWeight: 700, letterSpacing: 0.5 }}>EN</span>
+                                      <input className="form-input" value={it.optEn} placeholder={isDe ? 'Englische Variante (optional)' : 'English variant (optional)'} onChange={e => onOptEn(ii, e.target.value)} style={{ flex: 1, fontSize: '0.78rem', padding: '5px 9px' }} />
+                                    </div>
+                                  )}
+                                </div>
+                              ))
+                            );
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                                {named.map((g, gi) => (
+                                  <div key={gi} style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: '10px 12px', background: 'rgba(134,188,37,0.04)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                      {catBadge}
+                                      <input className="form-input" value={g.category} placeholder={isDe ? 'Kategorie (z.B. Männergrößen)' : 'Category (e.g. men’s sizes)'} onChange={e => apply(named.map((x, i) => i === gi ? { ...x, category: e.target.value } : x), noCat)} style={{ flex: 1, fontSize: '0.85rem', fontWeight: 600, padding: '6px 10px' }} />
+                                      <button type="button" onClick={() => apply(named.filter((_, i) => i !== gi), noCat)} title={isDe ? 'Kategorie entfernen' : 'Remove category'} style={removeBtnStyle}>−</button>
+                                    </div>
+                                    {optionRows(
+                                      g.items,
+                                      (ii, v) => apply(named.map((x, i) => i === gi ? { ...x, items: x.items.map((y, j) => j === ii ? { ...y, opt: v } : y) } : x), noCat),
+                                      (ii, v) => apply(named.map((x, i) => i === gi ? { ...x, items: x.items.map((y, j) => j === ii ? { ...y, optEn: v } : y) } : x), noCat),
+                                      (ii) => apply(named.map((x, i) => i === gi ? { ...x, items: x.items.filter((_, j) => j !== ii) } : x), noCat),
+                                    )}
+                                    <button type="button" onClick={() => apply(named.map((x, i) => i === gi ? { ...x, items: [...x.items, { opt: '', optEn: '' }] } : x), noCat)} style={addBtnStyle}>+ {isDe ? 'Auswahl hinzufügen' : 'Add choice'}</button>
+                                  </div>
+                                ))}
+                                <div style={{ border: '1px dashed var(--dex-gray-300)', borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                  <div style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--dex-gray-600)' }}>
+                                    {isDe ? 'Ohne Kategorie — immer sichtbar (z.B. „T-Shirt bereits vorhanden")' : 'No category — always shown (e.g. „already have a shirt")'}
+                                  </div>
+                                  {optionRows(
+                                    noCat,
+                                    (ii, v) => apply(named, noCat.map((y, j) => j === ii ? { ...y, opt: v } : y)),
+                                    (ii, v) => apply(named, noCat.map((y, j) => j === ii ? { ...y, optEn: v } : y)),
+                                    (ii) => apply(named, noCat.filter((_, j) => j !== ii)),
+                                  )}
+                                  <button type="button" onClick={() => apply(named, [...noCat, { opt: '', optEn: '' }])} style={addBtnStyle}>+ {isDe ? 'Option ohne Kategorie' : 'Option without category'}</button>
+                                </div>
+                                <button type="button" onClick={() => apply([...named, { category: isDe ? `Kategorie ${named.length + 1}` : `Category ${named.length + 1}`, items: [{ opt: '', optEn: '' }] }], noCat)} style={{ ...addBtnStyle, marginTop: 0, borderStyle: 'solid', background: 'var(--dex-green, #86bc25)', color: '#fff', border: 'none', padding: '7px 14px', fontSize: '0.82rem' }}>+ {isDe ? 'Kategorie hinzufügen' : 'Add category'}</button>
+                              </div>
+                            );
+                          })() : <>
                           {(field.options || []).map((opt, optIdx) => (
                             <div key={optIdx} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -12127,6 +12207,7 @@ export default function EventCreationPage(): React.ReactElement {
                             <span style={{ fontSize: '1rem', lineHeight: 1, fontWeight: 700 }}>+</span>
                             {isDe ? 'Option hinzufügen' : 'Add option'}
                           </button>
+                          </>}
                           {/* v26.74: Vorauswahl (nur Single-Select) — optional
                               eine Option, die im Anmeldeformular vorausgewählt ist. */}
                           {!field.multi && (field.options || []).filter(o => (o || '').trim()).length > 0 && (
