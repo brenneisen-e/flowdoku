@@ -92,14 +92,25 @@ const isPlausibleEmail = (e: string): boolean => {
   return true;
 };
 
-// v26.91: Feld-Beschreibungen dürfen jetzt ein kleines Markdown-Subset tragen:
+// v26.91: Feld-Beschreibungen dürfen ein kleines Markdown-Subset tragen:
 //   **fett**            → <strong>
 //   [Text](https://…)   → Link (nur http/https/mailto)
 //   nackte http(s)-URL  → automatisch verlinkt
-// Alles andere wird HTML-escaped — der Organizer-Text kann also kein beliebiges
-// HTML einschleusen (nur die o.g. sicheren Elemente entstehen).
+// v26.96: Neu erfasste Beschreibungen kommen aus einem echten Rich-Text-Editor
+// und sind bereits HTML. In diesem Fall wird das HTML (organizer-authored,
+// sicherer Origin) nur von gefährlichen Teilen befreit und direkt ausgegeben.
+// Alt-Beschreibungen (reiner Text / Markdown) gehen weiter durch das Subset.
 function renderFieldDescHtml(raw: string): string {
   if (!raw) return '';
+  // Enthält der Text echte HTML-Tags (Rich-Text-Editor), NICHT escapen —
+  // nur script/style/Event-Handler/javascript: entfernen.
+  if (/<[a-z][\s\S]*>/i.test(raw)) {
+    return raw
+      .replace(/<\s*script[\s\S]*?<\s*\/\s*script\s*>/gi, '')
+      .replace(/<\s*style[\s\S]*?<\s*\/\s*style\s*>/gi, '')
+      .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+      .replace(/javascript:/gi, '');
+  }
   const linkStyle = 'color:var(--dex-green,#86bc25);font-weight:600;text-decoration:underline;';
   let html = raw
     .replace(/&/g, '&amp;')
@@ -2148,18 +2159,9 @@ export default function RegistrationPage(): React.ReactElement {
     if (fRaw.id === 'b2run_mobilnummer' && vals['b2run_infoservice'] === 'true') {
       field = { ...field, required: true };
     }
-    // Fallback: b2run_datenschutz ohne gespeicherte externalLinks ->
-    // AGB + Datenschutz-Links zur Laufzeit injizieren, damit aeltere
-    // Events ohne 'Felder reparieren' trotzdem die Links zeigen.
-    if (fRaw.id === 'b2run_datenschutz' && (!fRaw.externalLinks || fRaw.externalLinks.length === 0)) {
-      field = {
-        ...field,
-        externalLinks: [
-          { label: 'AGB (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/agb/index.html' },
-          { label: 'Datenschutz (b2run.de)', url: 'https://www.b2run.de/run/de/de/organisation/datenschutz/datenschutz-teilnahme-an-veranstaltungen.html' },
-        ],
-      };
-    }
+    // v26.96: Die frühere automatische Injektion von AGB-/Datenschutz-Links
+    // für b2run_datenschutz wurde entfernt — der Organizer hinterlegt Links
+    // jetzt selbst (z.B. direkt in der Feld-Beschreibung mit dem Editor).
     // Laufshirt/T-Shirt-Feld bei B2Run ist Pflicht (falls in alten Events
     // noch nicht so markiert)
     if ((fRaw.id === 'b2run_laufshirt' || /laufshirt/i.test(fRaw.label || '')) && !fRaw.required) {
@@ -2230,7 +2232,7 @@ export default function RegistrationPage(): React.ReactElement {
             gibt schönes Hover-Popover mit der vom Organizer
             beim Event-Anlegen hinterlegten Beschreibung.
             v18.18: nur im 'tooltip'-Modus; 'inline' rendert darunter. */}
-        {displayHelp && !isInlineHelp && <InfoTooltip text={displayHelp} />}
+        {displayHelp && !isInlineHelp && <InfoTooltip text={displayHelp.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()} />}
       </label>
       {inlineHelpSlot}
       </>
@@ -2269,31 +2271,26 @@ export default function RegistrationPage(): React.ReactElement {
       // Optionen zeigen (kürzere Liste). Die Kategorie-Auswahl liegt transient
       // in vals['<id>__cat']; gespeichert wird nur der eigentliche Optionswert.
       (() => {
+        // v26.96: EINE Kombibox statt zwei Auswahlfeldern — die Kategorien sind
+        // <optgroup>-Überschriften, darunter die zugehörigen Optionen. Optionen
+        // OHNE Kategorie (leer = immer sichtbar) stehen ungruppiert am Ende.
         const cats = field.optionCategories || [];
+        const opts = field.options || [];
         const distinctCats = Array.from(new Set(cats.map(c => (c || '').trim()).filter(Boolean)));
-        const catKey = `${field.id}__cat`;
-        const selectedOpt = vals[field.id] || '';
-        const selIdx = (field.options || []).indexOf(selectedOpt);
-        const optCat = selIdx >= 0 ? (cats[selIdx] || '').trim() : '';
-        const currentCat = optCat || (vals[catKey] || '');
-        const visibleIdx = (field.options || []).map((_o, i) => i).filter(i => {
-          if (!currentCat) return false;
-          const c = (cats[i] || '').trim();
-          return c === currentCat || c === '';
-        });
         return (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <select className="form-select" value={currentCat} onChange={e => setVals({ ...vals, [catKey]: e.target.value, [field.id]: '' })} style={inputStyleGreen}>
-              <option value="">{field.prefilterLabel ? `${field.prefilterLabel}: ${tEvent('reg.pleaseselect')}` : tEvent('reg.pleaseselect')}</option>
-              {distinctCats.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-            {currentCat && (
-              <select className="form-select" value={selectedOpt} onChange={e => setVals({ ...vals, [field.id]: e.target.value })} style={inputStyleGreen}>
-                <option value="">{tEvent('reg.pleaseselect')}</option>
-                {visibleIdx.map(i => <option key={(field.options || [])[i]} value={(field.options || [])[i]}>{pickOptionLabel(field, i, (field.options || [])[i])}</option>)}
-              </select>
-            )}
-          </div>
+          <select className="form-select" value={vals[field.id] || ''} onChange={e => setVals({ ...vals, [field.id]: e.target.value })} style={inputStyleGreen}>
+            <option value="">{tEvent('reg.pleaseselect')}</option>
+            {distinctCats.map(cat => (
+              <optgroup key={cat} label={cat}>
+                {opts.map((opt, i) => ((cats[i] || '').trim() === cat && (opt || '').trim())
+                  ? <option key={`${cat}-${i}`} value={opt}>{pickOptionLabel(field, i, opt)}</option>
+                  : null)}
+              </optgroup>
+            ))}
+            {opts.map((opt, i) => ((cats[i] || '').trim() === '' && (opt || '').trim())
+              ? <option key={`nocat-${i}`} value={opt}>{pickOptionLabel(field, i, opt)}</option>
+              : null)}
+          </select>
         );
       })()
     ) : field.type === 'select' ? (
@@ -2330,7 +2327,7 @@ export default function RegistrationPage(): React.ReactElement {
         <label className="form-label">
           {field.required && <span className="required" style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>}
           {displayLabel}
-          {displayHelp && !isInlineHelp && <InfoTooltip text={displayHelp} />}
+          {displayHelp && !isInlineHelp && <InfoTooltip text={displayHelp.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()} />}
         </label>
         {inlineHelpSlot}
         <label

@@ -11863,20 +11863,22 @@ export default function EventCreationPage(): React.ReactElement {
                         wählbar — „i"-Box neben dem Label ODER Erklär-Text
                         unter dem Label. */}
                     <div style={{ marginLeft: 32, marginTop: 10 }}>
-                      <input
-                        className="form-input"
-                        placeholder={isDe
-                          ? 'Beschreibung (optional)'
-                          : 'Description (optional)'}
-                        value={field.helpText || ''}
-                        onChange={e => updateCustomField(field.id, { helpText: e.target.value })}
-                        style={{ width: '100%', fontSize: '0.82rem', padding: '6px 10px' }}
-                      />
-                      {/* v26.91: Hinweis auf das Markdown-Subset (fett + Links). */}
+                      {/* v26.96: Richtiger Editor (Toolbar mit Fett-Button +
+                          Link-über-Modal) statt Freitext/Markdown — wie bei der
+                          Event-Beschreibung. Die Beschreibung wird als HTML
+                          gespeichert und bei der Anzeige „Text unter dem Feld-
+                          Titel" formatiert dargestellt. */}
+                      <div className="dex-fielddesc-rt" style={{ border: '1px solid var(--dex-gray-300)', borderRadius: 6, background: '#fff' }}>
+                        <RichText
+                          value={field.helpText || ''}
+                          placeholder={isDe ? 'Beschreibung (optional) — Fett & Links über die Leiste' : 'Description (optional) — bold & links via the toolbar'}
+                          onChange={(text: string) => { updateCustomField(field.id, { helpText: text }); return text; }}
+                        />
+                      </div>
                       <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', marginTop: 4, lineHeight: 1.4 }}>
                         {isDe
-                          ? <>Tipp: <code>**fett**</code> macht Text fett, <code>[Text](https://…)</code> erzeugt einen Link. Beides wird nur bei der Anzeige als Text unter dem Feld-Titel formatiert.</>
-                          : <>Tip: <code>**bold**</code> makes text bold, <code>[text](https://…)</code> creates a link. Both render only when shown as text below the field title.</>}
+                          ? 'Text markieren und über die Leiste fett setzen; Links über das Link-Symbol einfügen. Formatiert dargestellt wird das bei der Anzeige als Text unter dem Feld-Titel.'
+                          : 'Select text and use the toolbar to make it bold; add links via the link icon. It is rendered formatted with the display as text below the field title.'}
                       </div>
                       {field.helpText && field.helpText.trim() && (
                         <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
@@ -13313,6 +13315,48 @@ export default function EventCreationPage(): React.ReactElement {
                     >
                       <Icon iconName="Photo2" style={{ fontSize: 14 }} /> {isDe ? 'Event-Foto verwenden' : 'Use event photo'}
                     </button>
+                  )}
+                  {/* v26.96: Bildgröße direkt hier einstellbar (vorher nur im
+                      Mail-Vorschau-Editor). Gilt event-weit für Mail- UND
+                      Outlook-Kopf. „Volle Breite" = randlos füllend. */}
+                  {(emailLogoPreview || imagePreview || imageFile) && (
+                    <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200)', borderRadius: 8 }}>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)', letterSpacing: 0.3, marginBottom: 8 }}>
+                        {isDe ? 'BILDGRÖSSE IM KOPF — gilt für Mail & Outlook-Termin' : 'HEADER IMAGE SIZE — applies to mail & Outlook invite'}
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.7rem', color: 'var(--dex-gray-600)' }}>
+                          {isDe ? 'Breite (px)' : 'Width (px)'}
+                          <input type="number" min={80} max={600} step={10} value={headerImageLayout.width}
+                            onChange={e => { const w = Math.max(80, Math.min(600, parseInt(e.target.value, 10) || 180)); setHeaderImageLayout(p => ({ ...p, width: w })); }}
+                            style={{ width: 80, height: 28, fontSize: '0.82rem', borderRadius: 4, border: '1px solid var(--dex-gray-300)', padding: '0 8px' }} />
+                        </label>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.7rem', color: 'var(--dex-gray-600)' }}>
+                          {isDe ? 'Abstand seitl.' : 'Padding sides'}
+                          <input type="number" min={0} max={80} step={2} value={headerImageLayout.paddingH}
+                            onChange={e => { const h = Math.max(0, Math.min(80, parseInt(e.target.value, 10) || 0)); setHeaderImageLayout(p => ({ ...p, paddingH: h })); }}
+                            style={{ width: 80, height: 28, fontSize: '0.82rem', borderRadius: 4, border: '1px solid var(--dex-gray-300)', padding: '0 8px' }} />
+                        </label>
+                        <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.7rem', color: 'var(--dex-gray-600)' }}>
+                          {isDe ? 'Abstand ob./unt.' : 'Padding top/bot.'}
+                          <input type="number" min={0} max={80} step={2} value={headerImageLayout.paddingV}
+                            onChange={e => { const v = Math.max(0, Math.min(80, parseInt(e.target.value, 10) || 0)); setHeaderImageLayout(p => ({ ...p, paddingV: v })); }}
+                            style={{ width: 80, height: 28, fontSize: '0.82rem', borderRadius: 4, border: '1px solid var(--dex-gray-300)', padding: '0 8px' }} />
+                        </label>
+                        <button type="button" onClick={() => setHeaderImageLayout({ width: 600, paddingV: 0, paddingH: 0 })}
+                          title={isDe ? 'Bild füllt den Kopf über die volle Breite' : 'Image fills the header full width'}
+                          style={{ height: 28, padding: '0 12px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', background: 'var(--dex-green, #86bc25)', color: '#fff', border: 'none', borderRadius: 6 }}>
+                          {isDe ? 'Volle Breite' : 'Full width'}
+                        </button>
+                        <button type="button" onClick={() => setHeaderImageLayout({ width: 180, paddingV: 30, paddingH: 30 })}
+                          style={{ height: 28, padding: '0 12px', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', background: 'transparent', color: 'var(--dex-gray-600)', border: '1px solid var(--dex-gray-300)', borderRadius: 6 }}>
+                          {isDe ? 'Standard' : 'Default'}
+                        </button>
+                      </div>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--dex-gray-400)', marginTop: 6, lineHeight: 1.4 }}>
+                        {isDe ? 'Breites Foto → „Volle Breite". Rundes Logo → schmaler, dann steht es zentriert. Die genaue Vorschau siehst du beim Bearbeiten der E-Mail-Vorlage.' : 'Wide photo → „Full width". Round logo → narrower, then it stays centered. Exact preview when editing the email template.'}
+                      </div>
+                    </div>
                   )}
                   </div>
                 </details>
