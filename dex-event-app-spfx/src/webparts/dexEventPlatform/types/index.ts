@@ -440,6 +440,10 @@ export interface EventSpecificField {
    *  in `eventSpecificData[id]` als " | "-getrennter String gespeichert (Pipe
    *  mit Spaces, damit Optionen mit Komma im Label nicht zerrissen werden). */
   multi?: boolean;
+  /** v26.74: Nur für `type === 'select'` ohne `multi`. Optionale Vorauswahl —
+   *  eine der `options`, die im Anmeldeformular vorausgewählt ist (leer/
+   *  undefined = keine Vorauswahl, „Bitte wählen"). */
+  defaultValue?: string;
   /** v7.21: Sichtbarkeitsbedingung. Wenn gesetzt, wird das Feld nur dann
    *  angezeigt, wenn das Quell-Feld (`fieldId`) einen der `values` als
    *  Antwort hat. Beispiel: Roommate-Feld nur sichtbar wenn Zimmerart =

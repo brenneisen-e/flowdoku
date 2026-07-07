@@ -115,6 +115,9 @@ interface CustomFieldInput {
   /** v7.11: Bei type=select erlaubt true Mehrfachauswahl (Checkbox-Liste statt
    *  Single-Dropdown). Wert wird " | "-getrennt gespeichert. */
   multi?: boolean;
+  /** v26.74: Vorauswahl bei Single-Select — eine der `options` ist im
+   *  Anmeldeformular vorausgewählt (leer = keine Vorauswahl). */
+  defaultValue?: string;
   /** v7.20: Optionale Beschreibung — landet als "i"-Tooltip neben dem
    *  Feld-Label im Registrierungsformular. */
   helpText?: string;
@@ -201,6 +204,11 @@ function serializeCustomFields(
           ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } }
           : {}),
         ...(optionsOut ? { options: optionsOut, ...(f.multi ? { multi: true } : {}) } : {}),
+        // v26.74: Vorauswahl nur bei Single-Select persistieren, und nur wenn der
+        // Wert eine der (bereinigten) Optionen ist.
+        ...(f.type === 'select' && !f.multi && f.defaultValue && (optionsOut || []).indexOf(f.defaultValue) >= 0
+          ? { defaultValue: f.defaultValue }
+          : {}),
         // v24.25: Uhrzeit-Flag nur bei Datums-Feldern persistieren.
         ...(f.type === 'date' && f.withTime ? { withTime: true } : {}),
         ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
@@ -1053,6 +1061,7 @@ export default function EventCreationPage(): React.ReactElement {
       id: f.id, label: f.label, type: f.type, required: f.required,
       options: f.options ? [...f.options] : [], visible: true,
       ...(f.multi ? { multi: true } : {}),
+      ...(f.defaultValue ? { defaultValue: f.defaultValue } : {}),
       ...(f.helpText ? { helpText: f.helpText } : {}),
       ...(f.helpTextStyle === 'inline' ? { helpTextStyle: 'inline' as const } : {}),
       ...(f.showIf ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } } : {}),
@@ -11868,6 +11877,29 @@ export default function EventCreationPage(): React.ReactElement {
                             <span style={{ fontSize: '1rem', lineHeight: 1, fontWeight: 700 }}>+</span>
                             {isDe ? 'Option hinzufügen' : 'Add option'}
                           </button>
+                          {/* v26.74: Vorauswahl (nur Single-Select) — optional
+                              eine Option, die im Anmeldeformular vorausgewählt ist. */}
+                          {!field.multi && (field.options || []).filter(o => (o || '').trim()).length > 0 && (
+                            <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--dex-gray-100)' }}>
+                              <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-700)', fontWeight: 600, marginBottom: 4 }}>
+                                {isDe ? 'Vorauswahl (optional)' : 'Pre-selected option (optional)'}
+                              </label>
+                              <select
+                                className="form-input"
+                                value={field.defaultValue || ''}
+                                onChange={e => updateCustomField(field.id, { defaultValue: e.target.value })}
+                                style={{ fontSize: '0.85rem', padding: '6px 10px' }}
+                              >
+                                <option value="">{isDe ? '— Keine Vorauswahl („Bitte wählen") —' : '— No pre-selection („Please choose") —'}</option>
+                                {(field.options || []).map(o => (o || '').trim()).filter(Boolean).map((o, i) => (
+                                  <option key={i} value={o}>{o}</option>
+                                ))}
+                              </select>
+                              <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                                {isDe ? 'Leer = Teilnehmer muss selbst wählen.' : 'Empty = attendee must choose themselves.'}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     )}
@@ -14062,6 +14094,8 @@ export default function EventCreationPage(): React.ReactElement {
             required: f.required,
             visible: f.visible !== false,
             options: f.type === 'select' ? f.options : undefined,
+            // v26.74: Vorauswahl an die Live-Preview weiterreichen.
+            defaultValue: f.type === 'select' && !f.multi ? f.defaultValue : undefined,
             // v7.24: helpText, multi und showIf an die Live-Preview weiterreichen,
             // damit die echte RegistrationPage genau das rendert was der
             // Teilnehmer später sieht (i-Tooltip, Multi-Select-Liste,

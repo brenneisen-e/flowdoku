@@ -752,6 +752,31 @@ export default function RegistrationPage(): React.ReactElement {
     if (eventSpecific.b2run_startblock === mappedBlock) return;
     setEventSpecific(prev => ({ ...prev, b2run_startblock: mappedBlock }));
   }, [preferredStarterType, durchstarterBlock, funstarterBlock, hasStarterBlockMapping]);
+  // v26.74: Vorauswahl bei Single-Select-Feldern — den vom Organizer gesetzten
+  // Default einmal vorbelegen (nur wenn der Teilnehmer das Feld noch nicht
+  // berührt hat; ein bewusstes Leeren bleibt erhalten). Läuft, sobald die
+  // Event-Felder verfügbar sind bzw. sich ihre Defaults ändern.
+  const selectDefaultsSig = (event?.eventSpecificFields || [])
+    .filter(f => f.type === 'select' && !f.multi && f.defaultValue)
+    .map(f => `${f.id}=${f.defaultValue}`).join('|');
+  React.useEffect(() => {
+    const fields = event?.eventSpecificFields || [];
+    const defaults: Record<string, string> = {};
+    for (const f of fields) {
+      if (f.type === 'select' && !f.multi && f.defaultValue && (f.options || []).indexOf(f.defaultValue) >= 0) {
+        defaults[f.id] = f.defaultValue;
+      }
+    }
+    if (Object.keys(defaults).length === 0) return;
+    setEventSpecific(prev => {
+      let changed = false;
+      const next = { ...prev };
+      for (const k of Object.keys(defaults)) {
+        if (next[k] === undefined) { next[k] = defaults[k]; changed = true; }
+      }
+      return changed ? next : prev;
+    });
+  }, [selectDefaultsSig]);
   React.useEffect(() => {
     if (!isSplitGroup || !event?.subsiteUrl) return;
     (async () => {

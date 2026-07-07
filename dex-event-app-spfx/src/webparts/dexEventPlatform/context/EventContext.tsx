@@ -1436,6 +1436,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // v7.11: multi-Flag durchreichen, damit RegistrationPage Mehrfachauswahl rendern kann
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         multi: !!(cf as any).multi,
+        // v26.74: Vorauswahl (Single-Select) durchreichen — RegistrationPage
+        // belegt das Feld damit vor, der Wizard zeigt sie im Feld-Editor.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        defaultValue: (cf as any).defaultValue || undefined,
         // v24.25: withTime — bei Datums-Feldern (type='date') auch die Uhrzeit
         // mit abfragen (datetime-local statt date).
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
