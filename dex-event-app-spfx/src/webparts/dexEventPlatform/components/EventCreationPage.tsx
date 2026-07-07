@@ -1967,6 +1967,15 @@ export default function EventCreationPage(): React.ReactElement {
   const [splitDescB, setSplitDescB] = React.useState<string>(
     (editEvent && editEvent.splitDescB) || ''
   );
+  // v26.83: frei wählbarer Hinweistext über der Gruppen-Auswahl (ersetzt den
+  // Standardsatz „Wähle eine der zwei Gruppen aus…" auf der Anmeldeseite).
+  const [splitHelpText, setSplitHelpText] = React.useState<string>(
+    (editEvent && editEvent.splitHelpText) || ''
+  );
+  // v26.83: frei wählbare Überschrift der Gruppen-Auswahl (statt „Gruppen-Auswahl").
+  const [splitSectionTitle, setSplitSectionTitle] = React.useState<string>(
+    (editEvent && editEvent.splitSectionTitle) || ''
+  );
   // v10.20: Warteliste-Modus bei aktiver Split-Capacity. Default false =
   // getrennte Wartelisten pro Gruppe (alter B2Run-Stil). true = eine
   // gemeinsame Warteliste, FIFO ueber beide Gruppen hinweg.
@@ -2073,6 +2082,24 @@ export default function EventCreationPage(): React.ReactElement {
   const [showPreview, setShowPreview] = React.useState(false);
   const [showRegisterPreview, setShowRegisterPreview] = React.useState(false);
   const [triedNext, setTriedNext] = React.useState(false);
+  // v26.86: Die Blöcke im Schritt „Kapazität & Sichtbarkeit" sind einzeln
+  // einklappbar und beim ersten Aufruf EINGEKLAPPT (Set enthält die offenen
+  // Keys → leer = alles zu), damit der Schritt nicht überfordert. Der äußere
+  // Block-<div> (inkl. zebraS3Bg-Alternation) bleibt erhalten; nur der Body
+  // wird ein-/ausgeblendet, die Überschrift ist der Klappschalter.
+  // Bei ausgelöster Validierung (triedNext) klappt automatisch ALLES auf, damit
+  // keine Fehlermeldung in einem eingeklappten Block versteckt bleibt.
+  const [expandedVisBlocks, setExpandedVisBlocks] = React.useState<Set<string>>(() => new Set());
+  const isVisOpen = (k: string): boolean => triedNext || expandedVisBlocks.has(k);
+  const toggleVis = (k: string): void => setExpandedVisBlocks(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  const visHeader = (key: string, badge: React.ReactNode, title: React.ReactNode): React.ReactElement => (
+    <button type="button" onClick={() => toggleVis(key)} aria-expanded={isVisOpen(key)}
+      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', padding: 0, marginBottom: isVisOpen(key) ? 8 : 0, cursor: 'pointer', textAlign: 'left' }}>
+      {badge}
+      <span className="form-label" style={{ margin: 0, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}>{title}</span>
+      <span style={{ marginLeft: 'auto', color: 'var(--dex-gray-400)', fontSize: '0.85rem', transform: isVisOpen(key) ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>▶</span>
+    </button>
+  );
   // v22.62/v22.63: Beim „Weiter"/Speichern fragt ein Modal, ob die geänderte
   // Klammer-/Hauptevent-Sichtbarkeit auf alle Sub-Events übernommen werden soll
   // — IMMER wenn die Klammer-Sichtbarkeit geändert/neu gesetzt wurde UND von
@@ -2800,6 +2827,8 @@ export default function EventCreationPage(): React.ReactElement {
         setSplitLabelB(ev.splitLabelB || '');
         setSplitDescA(ev.splitDescA || '');
         setSplitDescB(ev.splitDescB || '');
+        setSplitHelpText(ev.splitHelpText || '');
+        setSplitSectionTitle(ev.splitSectionTitle || '');
         setDurchstarterCapacity(String(ev.durchstarterCapacity || 0));
         setFunstarterCapacity(String(ev.funstarterCapacity || 0));
         setSplitSharedWaitlist(!!ev.splitSharedWaitlist);
@@ -4023,6 +4052,8 @@ export default function EventCreationPage(): React.ReactElement {
         updates['SplitLabelB'] = (splitLabelB || '').trim();
         updates['SplitDescA'] = (splitDescA || '').trim();
         updates['SplitDescB'] = (splitDescB || '').trim();
+        updates['SplitHelpText'] = (splitHelpText || '').trim();
+        updates['SplitSectionTitle'] = (splitSectionTitle || '').trim();
         updates['SplitSharedWaitlist'] = !!splitSharedWaitlist;
       } else {
         // Split deaktiviert: Kapazitäten nullen + Labels leer setzen, damit
@@ -4033,6 +4064,8 @@ export default function EventCreationPage(): React.ReactElement {
         updates['SplitLabelB'] = '';
         updates['SplitDescA'] = '';
         updates['SplitDescB'] = '';
+        updates['SplitHelpText'] = '';
+        updates['SplitSectionTitle'] = '';
         updates['SplitSharedWaitlist'] = false;
       }
       // v11.0: Teilnehmer-Upload-Setting
@@ -4653,6 +4686,8 @@ export default function EventCreationPage(): React.ReactElement {
         splitLabelB: useSplitCapacities ? (splitLabelB || '').trim() : undefined,
         splitDescA: useSplitCapacities ? (splitDescA || '').trim() : undefined,
         splitDescB: useSplitCapacities ? (splitDescB || '').trim() : undefined,
+        splitHelpText: useSplitCapacities ? (splitHelpText || '').trim() : undefined,
+        splitSectionTitle: useSplitCapacities ? (splitSectionTitle || '').trim() : undefined,
         splitSharedWaitlist: useSplitCapacities ? !!splitSharedWaitlist : undefined,
         allowAttendeeUpload: !!allowAttendeeUpload,
         attendeeUploadHint: (attendeeUploadHint || '').trim() || undefined,
@@ -5275,7 +5310,7 @@ export default function EventCreationPage(): React.ReactElement {
       text = isDe ? 'alle Mitarbeiter von Deloitte Deutschland' : 'all Deloitte Germany employees';
     } else {
       const parts: string[] = [];
-      if (locs.length) parts.push((isDe ? 'Standorte: ' : 'Locations: ') + locs.join(', '));
+      if (locs.length) parts.push((isDe ? (locs.length === 1 ? 'Standort: ' : 'Standorte: ') : (locs.length === 1 ? 'Location: ' : 'Locations: ')) + locs.join(', '));
       if (auds.length) parts.push(isDe ? `${auds.length} Verteiler/Personen` : `${auds.length} distribution lists/people`);
       const joiner = parts.length > 1
         ? (mode === 'AND' ? (isDe ? ' UND ' : ' AND ') : (isDe ? ' ODER ' : ' OR '))
@@ -6845,8 +6880,8 @@ export default function EventCreationPage(): React.ReactElement {
                 <div style={{ marginTop: 12, padding: 14, borderRadius: 'var(--dex-radius)', background: 'var(--dex-gray-50, #f7f7f7)', border: '1px solid var(--dex-gray-200)' }}>
                   <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.55, marginBottom: 12 }}>
                     {isDe
-                      ? <>Die Beschreibung ist der <strong>einladende Einleitungstext ganz oben auf der Anmeldemaske</strong> — das Erste, was deine Teilnehmenden lesen. Erzähl hier gern, <strong>worum es geht, für wen das Event ist und was man wissen sollte</strong>.<br />Ein kleiner Tipp: <strong>Zeitpunkt, Ort, Organizer und Kontaktperson musst du hier nicht angeben</strong> — die zeigt die App bereits als eigene Felder darüber an. So bleibt dein Text schön schlank und einladend. 🙂</>
-                      : <>The description is the <strong>inviting intro text right at the top of the registration form</strong> — the first thing your attendees read. Feel free to tell them <strong>what the event is about, who it&rsquo;s for and what to know</strong>.<br />A little tip: <strong>you don&rsquo;t need to add the date, location, organizer or contact person here</strong> — the app already shows those as their own fields above. That keeps your text nice and inviting. 🙂</>}
+                      ? <>Die Beschreibung ist der <strong>einladende Einleitungstext ganz oben auf der Anmeldemaske</strong> — das Erste, was deine Teilnehmenden lesen. Erzähl hier gern, <strong>worum es geht, für wen das Event ist und was man wissen sollte</strong>.<br />Ein kleiner Tipp: <strong>Zeitpunkt, Ort, Organizer und Kontaktperson musst du hier nicht angeben</strong> — die zeigt die App bereits als eigene Felder darüber an. So bleibt dein Text schön schlank und einladend.</>
+                      : <>The description is the <strong>inviting intro text right at the top of the registration form</strong> — the first thing your attendees read. Feel free to tell them <strong>what the event is about, who it&rsquo;s for and what to know</strong>.<br />A little tip: <strong>you don&rsquo;t need to add the date, location, organizer or contact person here</strong> — the app already shows those as their own fields above. That keeps your text nice and inviting.</>}
                   </div>
                   <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--dex-gray-500)', marginBottom: 8 }}>
                     {isDe ? 'Vorschläge zum Übernehmen (danach frei anpassbar):' : 'Suggestions to use (fully editable afterwards):'}
@@ -9593,10 +9628,8 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
 
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={13} />
-                  {isDe ? 'Standortfilter' : 'Location filter'}
-                </label>
+                {visHeader('vis_locfilter', <StepBadge n={13} />, isDe ? 'Standortfilter' : 'Location filter')}
+                {isVisOpen('vis_locfilter') && (<>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
                   {isDe ? (
                     <>
@@ -9626,6 +9659,7 @@ export default function EventCreationPage(): React.ReactElement {
                       : 'No location selected → event is visible to everyone.'}
                   </p>
                 )}
+                </>)}
               </div>
 
               {/* v19.x: Mailverteiler-Auswahl + Sichtbarkeit prüfen + Personen
@@ -9742,13 +9776,10 @@ export default function EventCreationPage(): React.ReactElement {
                   Die Sichtbarkeit oben bleibt für die Klammer editierbar. */}
               <div style={hauptGreyoutWrapperStyle()}>
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={(locationFilter && audience) ? 16 : 15} />
-                  {isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}
-                  <InfoTooltip text={isDe
+                {visHeader('vis_fristen', <StepBadge n={(locationFilter && audience) ? 16 : 15} />, <>{isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}<InfoTooltip text={isDe
                     ? 'Bis wann können sich Teilnehmer anmelden bzw. fristgerecht abmelden? Die Abmeldefrist ist die kommunizierte Deadline — abmelden geht danach weiterhin bis zum Event-Ende, die Organizer werden dann aber automatisch informiert. Beide Werte werden anhand des Event-Datums automatisch vorgeschlagen, du kannst sie jederzeit überschreiben.'
-                    : 'Until when can attendees register or cancel within the deadline? The cancellation deadline is the communicated cutoff — cancelling remains possible until the event ends, but organizers are then notified automatically. Both values are auto-suggested from the event date and can be overridden at any time.'} />
-                </label>
+                    : 'Until when can attendees register or cancel within the deadline? The cancellation deadline is the communicated cutoff — cancelling remains possible until the event ends, but organizers are then notified automatically. Both values are auto-suggested from the event date and can be overridden at any time.'} /></>)}
+                {isVisOpen('vis_fristen') && (<>
               {subEventsOnlyMode && (
                 <WizardHint
                   isDe={isDe}
@@ -9849,6 +9880,7 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
               {fieldHasError('deadlineAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: 8, marginBottom: 0 }}>{t('create.error.deadlineAfterStart')}</p>}
               {fieldHasError('deregAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: 8, marginBottom: 0 }}>{t('create.error.deregAfterStart')}</p>}
+              </>)}
               </div>
 
               {/* v9.17: Reihenfolge umgestellt — Standard-Teilnehmerzahl
@@ -9857,17 +9889,15 @@ export default function EventCreationPage(): React.ReactElement {
                   Gesamtkapazität; der B2Run-Sonderfall ist Opt-in. */}
 
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={(locationFilter && audience) ? 17 : 16} />
-                  {isDe ? 'Teilnehmerzahl & Warteliste' : 'Capacity & waitlist'}
-                </label>
+                {visHeader('vis_capacity', <StepBadge n={(locationFilter && audience) ? 17 : 16} />, isDe ? 'Teilnehmerzahl & Warteliste' : 'Capacity & waitlist')}
+                {isVisOpen('vis_capacity') && (<>
               {/* v10.20: Geteilte Kapazität — generisch für beliebige Events.
                   Labels werden vom Organizer frei gewählt (z.B. "Vormittag /
                   Nachmittag", "VIP / Standard", "Lauf / Walk"). Default-Fallback
                   ist 'Durchstarter' / 'Funstarter' für Backward-Compat mit
                   B2Run-Events vor v10.20. */}
               {useSplitCapacities ? (
-                <div style={{ padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)', marginBottom: 16 }}>
+                <div style={{ padding: 16, background: 'rgba(134,188,37,0.08)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)', marginBottom: 16 }}>
                   <label className="form-label" style={{ marginBottom: 4 }}>
                     {isDe ? 'Geteilte Kapazität' : 'Split capacity'}
                     <InfoTooltip text={isDe ? (
@@ -9891,6 +9921,21 @@ export default function EventCreationPage(): React.ReactElement {
                       ? 'Vergib pro Gruppe eine eigene Bezeichnung und Platzzahl. Die Bezeichnungen erscheinen auf der Anmeldeseite als zwei Auswahl-Boxen.'
                       : 'Give each group its own name and seat count. The names appear on the registration page as two selectable boxes.'}
                   </p>
+                  {/* v26.83: frei wählbare Überschrift der Gruppen-Auswahl auf der
+                      Anmeldeseite (statt „Gruppen-Auswahl"). */}
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
+                      {isDe ? 'Überschrift der Auswahl (optional)' : 'Selection heading (optional)'}
+                    </label>
+                    <input
+                      className="form-input"
+                      type="text"
+                      value={splitSectionTitle}
+                      onChange={e => setSplitSectionTitle(e.target.value)}
+                      placeholder={isDe ? 'Leer = „Gruppen-Auswahl". z.B. „Auswahl Räume", „Auswahl Laufgruppe"' : 'Empty = "Group selection". e.g. "Choose room", "Choose run group"'}
+                      maxLength={60}
+                    />
+                  </div>
                   {/* v10.20: zwei Text-Inputs für die frei wählbaren Bezeichnungen.
                       Wenn der Organizer nichts einträgt, fällt die Registration-
                       Seite auf 'Durchstarter' / 'Funstarter' zurück. */}
@@ -9953,6 +9998,25 @@ export default function EventCreationPage(): React.ReactElement {
                         style={{ resize: 'vertical' }}
                       />
                     </div>
+                  </div>
+                  {/* v26.83: frei wählbarer Hinweistext über der Gruppen-Auswahl
+                      auf der Anmeldeseite. Leer = Standardsatz. */}
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
+                      {isDe ? 'Hinweistext über der Gruppen-Auswahl (optional)' : 'Help text above the group selection (optional)'}
+                    </label>
+                    <textarea
+                      className="form-input"
+                      rows={2}
+                      value={splitHelpText}
+                      onChange={e => setSplitHelpText(e.target.value)}
+                      placeholder={isDe ? 'Leer = Standard: „Wähle eine der zwei Gruppen aus. Ist die Wunsch-Gruppe voll, kannst du automatisch in die andere wechseln oder auf der Warteliste warten."' : 'Empty = default: "Pick one of the two groups. If your preferred group is full, you can switch to the other automatically or wait on the waitlist."'}
+                      maxLength={600}
+                      style={{ resize: 'vertical', width: '100%' }}
+                    />
+                    <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', margin: '4px 0 0' }}>
+                      {isDe ? 'Dieser Text steht auf der Anmeldeseite direkt über den beiden Gruppen-Boxen. Leer lassen für den Standardtext.' : 'This text appears on the registration page right above the two group boxes. Leave empty for the default.'}
+                    </p>
                   </div>
                   <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div>
@@ -10298,6 +10362,7 @@ export default function EventCreationPage(): React.ReactElement {
                 </span>
               </label>
               )}
+              </>)}
               </div>
 
               </div>{/* v15.6: close hauptGreyoutWrapperStyle div (Step 4) */}
@@ -10713,7 +10778,7 @@ export default function EventCreationPage(): React.ReactElement {
                 const b2rkTypeTag = (ty: CustomField['type']): string =>
                   ty === 'select' ? (isDe ? 'Auswahl' : 'Select') : ty === 'checkbox' ? 'Checkbox' : 'Text';
                 return (
-                  <div className="form-group" style={{ marginBottom: 16, padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)' }}>
+                  <div className="form-group" style={{ marginBottom: 16, padding: 16, background: 'rgba(134,188,37,0.08)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)' }}>
                     <label className="form-label" style={{ marginBottom: 4 }}>
                       {isDe ? 'B2Run-Köln-Vorlage' : 'B2Run Köln template'}
                     </label>
@@ -10790,7 +10855,7 @@ export default function EventCreationPage(): React.ReactElement {
                   customFields steht (ueber das Suggested-Felder-Modal
                   ausgewählt oder beim Edit eines Legacy-Events vorhanden). */}
               {customFields.some(f => f.id === 'b2run_startblock') && (
-                <div className="form-group" style={{ marginBottom: 24, padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)' }}>
+                <div className="form-group" style={{ marginBottom: 24, padding: 16, background: 'rgba(134,188,37,0.08)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)' }}>
                   <label className="form-label" style={{ marginBottom: 4 }}>
                     {t('create.startblocks')}
                     <InfoTooltip text={isDe ? (
@@ -13216,7 +13281,7 @@ export default function EventCreationPage(): React.ReactElement {
                   return (
                     <div key={tType} style={{
                       border: '1px solid var(--dex-gray-200)', borderRadius: 8,
-                      padding: 12, marginBottom: 12, background: override ? '#f0fdf4' : '#fff',
+                      padding: 12, marginBottom: 12, background: override ? 'rgba(134,188,37,0.08)' : '#fff',
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>

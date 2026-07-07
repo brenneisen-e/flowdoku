@@ -21,7 +21,7 @@ import { useLanguage, translations as appTranslations, Locale } from '../context
 import { useDialog } from '../context/DialogContext';
 import { Salutation, EventSpecificField } from '../types';
 import { Icon } from '@fluentui/react/lib/Icon';
-import { Send, X } from './Icons';
+import { Send, X, Mail } from './Icons';
 import { InfoTooltip } from './InfoTooltip';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 import OrganizerList from './OrganizerList';
@@ -32,7 +32,8 @@ import { UserFieldPicker } from './UserFieldPicker';
 function formatDate(iso: string): string {
   const d = new Date(iso);
   return (
-    d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+    // v26.82: Wochentag (z.B. „Mi,") mit anzeigen.
+    d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }) +
     ' ' +
     d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
   );
@@ -45,7 +46,8 @@ function formatDateRange(startIso: string, endIso: string): string {
   if (!startIso) return '';
   const start = new Date(startIso);
   const end = endIso ? new Date(endIso) : null;
-  const dayFmt = { day: '2-digit', month: '2-digit', year: 'numeric' } as const;
+  // v26.82: Wochentag (z.B. „Mi,") mit anzeigen.
+  const dayFmt = { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' } as const;
   const timeFmt = { hour: '2-digit', minute: '2-digit' } as const;
   if (!end || isNaN(end.getTime())) {
     return `${start.toLocaleDateString('de-DE', dayFmt)} ${start.toLocaleTimeString('de-DE', timeFmt)}`;
@@ -2633,14 +2635,18 @@ export default function RegistrationPage(): React.ReactElement {
                     {formatDateRange(event.startDate, event.endDate)}
                   </span>
                 </div>
-                {(event.location || (event.locationAddress && (event.locationAddress.street || event.locationAddress.city))) && (
+                {(event.location || (event.locationAddress && (event.locationAddress.street || event.locationAddress.city))) && (() => {
+                  const hasAddr = !!(event.locationAddress && (event.locationAddress.street || event.locationAddress.city));
+                  return (
                   <div style={{
-                    display: 'flex', alignItems: 'flex-start', gap: 8,
+                    // v26.82: Bei nur einer Zeile (Ort ohne Adresse) das Pin-Icon
+                    // vertikal zentrieren; bei mehrzeiliger Adresse oben ausrichten.
+                    display: 'flex', alignItems: hasAddr ? 'flex-start' : 'center', gap: 8,
                     padding: '8px 12px', borderRadius: 8,
                     background: 'rgba(0,86,166,0.08)', color: '#0a3766',
                     fontSize: '0.88rem',
                   }}>
-                    <Icon iconName="POI" style={{ fontSize: 16, marginTop: 2, flexShrink: 0 }} />
+                    <Icon iconName="POI" style={{ fontSize: 16, marginTop: hasAddr ? 2 : 0, flexShrink: 0 }} />
                     <span>
                       {event.location && (
                         <span style={{ fontWeight: 700 }}>{event.location}</span>
@@ -2657,7 +2663,8 @@ export default function RegistrationPage(): React.ReactElement {
                       )}
                     </span>
                   </div>
-                )}
+                  );
+                })()}
               </div>
               {(() => {
                 // v24.15: „Organizer ausblenden" ohne Einzel-Modus = ALLE aus.
@@ -2684,20 +2691,22 @@ export default function RegistrationPage(): React.ReactElement {
               {(event.contactName || event.contactEmail || event.contactInfo) && (
                 <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--dex-gray-50, #f7f7f7)', borderRadius: 8, border: '1px solid var(--dex-gray-200)' }}>
                   {/* v11.97: Gleiche Schriftgröße + Gewicht wie das
-                      ORGANIZER-Label darüber. */}
-                  <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, fontWeight: 600 }}>
-                    {locale === 'de' ? 'Ansprechpartner' : 'Contact'}
+                      ORGANIZER-Label darüber. v26.82: mit Icon + Text in
+                      Beschreibungs-Schriftgröße (1.05rem). */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, fontWeight: 600, fontSize: '0.85rem' }}>
+                    <span style={{ display: 'inline-flex', flexShrink: 0 }}><Mail size={15} /></span>
+                    <span>{locale === 'de' ? 'Ansprechpartner' : 'Contact'}</span>
                   </div>
                   {event.contactName && (
-                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--dex-gray-800)' }}>{event.contactName}</div>
+                    <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--dex-gray-800)' }}>{event.contactName}</div>
                   )}
                   {event.contactEmail && (
-                    <div style={{ fontSize: '0.78rem', marginTop: 2 }}>
+                    <div style={{ fontSize: '1.05rem', marginTop: 2 }}>
                       <a href={`mailto:${event.contactEmail}`} style={{ color: 'var(--dex-green, #86bc25)', textDecoration: 'none' }}>{event.contactEmail}</a>
                     </div>
                   )}
                   {event.contactInfo && (
-                    <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-700)', marginTop: 4, whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>{event.contactInfo}</div>
+                    <div style={{ fontSize: '1.05rem', color: 'var(--dex-gray-700)', marginTop: 4, whiteSpace: 'pre-wrap', lineHeight: 1.3 }}>{event.contactInfo}</div>
                   )}
                 </div>
               )}
@@ -3035,16 +3044,17 @@ export default function RegistrationPage(): React.ReactElement {
                   }
                 }}
                 style={{
-                  // v23.4: als netter grüner Button statt unterstrichenem Link.
-                  // Standard (für andere anmelden) = gefüllt grün; aktiv
-                  // (zurück zur Selbst-Anmeldung) = grüner Outline.
+                  // v26.82: Als „angedockte" Tab-Optik neben dem grünen
+                  // „Persönliche Informationen"-Header. Standard (für andere
+                  // anmelden) = GRAU (inaktiver Tab, klarer Farbunterschied);
+                  // aktiv (im Fremd-Modus, „zurück zur Selbst-Anmeldung") = grün.
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                   padding: '7px 16px', borderRadius: 999,
                   fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
                   transition: 'background 0.15s ease, color 0.15s ease',
                   ...(registerForOther
-                    ? { background: '#fff', border: '1.5px solid var(--dex-green, #86bc25)', color: 'var(--dex-green-dark, #4a7c1f)' }
-                    : { background: 'var(--dex-green, #86bc25)', border: '1.5px solid var(--dex-green, #86bc25)', color: '#fff' }),
+                    ? { background: 'var(--dex-green, #86bc25)', border: '1.5px solid var(--dex-green, #86bc25)', color: '#fff' }
+                    : { background: 'var(--dex-gray-100, #eef0f2)', border: '1.5px solid var(--dex-gray-300, #cfd4d9)', color: 'var(--dex-gray-600, #5a6470)' }),
                 }}
               >
                 <Icon iconName={registerForOther ? 'Contact' : 'AddFriend'} style={{ fontSize: 14 }} />
@@ -3794,12 +3804,17 @@ export default function RegistrationPage(): React.ReactElement {
             {isSplitGroup && (
               <div style={{ marginBottom: 20, border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 16 }}>
                 <label className="form-label" style={{ fontWeight: 700, marginBottom: 6 }}>
-                  <span className="required">*</span> {locale === 'de' ? 'Gruppen-Auswahl' : 'Group selection'}
+                  <span className="required">*</span> {(event.splitSectionTitle && event.splitSectionTitle.trim()) ? event.splitSectionTitle : (locale === 'de' ? 'Gruppen-Auswahl' : 'Group selection')}
                 </label>
-                <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 10 }}>
-                  {locale === 'de'
-                    ? `Wähle eine der zwei Gruppen aus. Ist die Wunsch-Gruppe voll, kannst du automatisch in die andere wechseln oder auf der Warteliste warten.`
-                    : 'Pick one of the two groups. If your preferred group is full, you can either switch to the other or join the waitlist.'}
+                {/* v26.83: Organizer-eigener Hinweistext (splitHelpText) hat
+                    Vorrang; sonst der Standardsatz. whiteSpace pre-wrap, damit
+                    Zeilenumbrüche aus dem Wizard erhalten bleiben. */}
+                <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 10, whiteSpace: 'pre-wrap' }}>
+                  {(event.splitHelpText && event.splitHelpText.trim())
+                    ? event.splitHelpText
+                    : (locale === 'de'
+                      ? `Wähle eine der zwei Gruppen aus. Ist die Wunsch-Gruppe voll, kannst du automatisch in die andere wechseln oder auf der Warteliste warten.`
+                      : 'Pick one of the two groups. If your preferred group is full, you can either switch to the other or join the waitlist.')}
                 </p>
                 {/* v19.19: Gesamt-Kapazitäts-Zusammenfassung — Gesamtzahl der
                     Plätze, aktuell freie Plätze (geklammert ≥ 0) und die Zahl
@@ -4577,7 +4592,7 @@ export default function RegistrationPage(): React.ReactElement {
 
             {proxyStep === 1 && (
               <>
-                {!picked && (
+                {!externalPerson && !picked && (
                   <div style={{ position: 'relative' }}>
                     <input
                       className="form-input"
@@ -4633,14 +4648,14 @@ export default function RegistrationPage(): React.ReactElement {
                     {canCreateEvents && (
                       <div style={{ marginTop: 14, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
                         {locale === 'de' ? 'Person außerhalb Deloitte oder mehrere auf einmal? ' : 'External person or several at once? '}
-                        <button type="button" style={linkBtn} onClick={() => { setProxyStep(0); setExternalPerson(true); clearPick(); setOtherConsentConfirmed(false); }}>{locale === 'de' ? 'Externe Person' : 'External person'}</button>
+                        <button type="button" style={linkBtn} onClick={() => { setExternalPerson(true); clearPick(); setOtherConsentConfirmed(false); }}>{locale === 'de' ? 'Externe Person' : 'External person'}</button>
                         {' · '}
                         <button type="button" style={linkBtn} onClick={() => { setProxyStep(0); setMassImportResult(null); setMassImportRows([]); setMassImportStep('input'); setMassImportOpen(true); }}>{locale === 'de' ? 'Massenimport' : 'Bulk import'}</button>
                       </div>
                     )}
                   </div>
                 )}
-                {picked && (
+                {!externalPerson && picked && (
                   <>
                     <div style={{ padding: '10px 12px', border: '1px solid var(--dex-green, #86bc25)', borderRadius: 8, background: 'rgba(134,188,37,0.06)', display: 'flex', alignItems: 'center', gap: 10 }}>
                       <img src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(email)}&size=S`} alt={pName} onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }} style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }} />
@@ -4659,9 +4674,45 @@ export default function RegistrationPage(): React.ReactElement {
                     )}
                   </>
                 )}
+                {/* v26.85: Externe Person direkt IM Wizard erfassen (statt unten
+                    im Formular). Vor-/Nachname + E-Mail hier eingeben, „Weiter"
+                    führt zur Zustimmung. */}
+                {externalPerson && (
+                  <div>
+                    <div style={{ padding: '10px 12px', marginBottom: 12, borderRadius: 8, background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange, #ed8b00)', fontSize: '0.82rem', color: 'var(--dex-orange-dark, #b35a00)', lineHeight: 1.5 }}>
+                      {locale === 'de'
+                        ? 'Person außerhalb Deloitte (externe E-Mail-Adresse). Trage Vorname, Nachname und E-Mail ein. Nach der Zustimmung übernimmst du die Person — Einladung & Datenschutz-Rückmeldung laufen dann über dich.'
+                        : 'Person outside Deloitte (external email address). Enter first name, last name and email. After consent you take the person over — invitation & privacy confirmation then run through you.'}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: 3 }}>{t('reg.firstname') || 'Vorname'}</label>
+                        <input className="form-input" autoFocus value={firstName} onChange={e => setFirstName(e.target.value)} placeholder={t('reg.firstname') || 'Vorname'} />
+                      </div>
+                      <div>
+                        <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: 3 }}>{t('reg.surname') || 'Nachname'}</label>
+                        <input className="form-input" value={surname} onChange={e => setSurname(e.target.value)} placeholder={t('reg.surname') || 'Nachname'} />
+                      </div>
+                    </div>
+                    <div style={{ marginBottom: 6 }}>
+                      <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: 3 }}>E-Mail</label>
+                      <input className="form-input" type="email" value={email} onChange={e => { setEmail(e.target.value); externalEmailConfirmedRef.current = false; }} placeholder="name@firma.de" />
+                    </div>
+                    <button type="button" style={linkBtn} onClick={() => { setExternalPerson(false); clearPick(); }}>{locale === 'de' ? '← Zurück zur Personensuche' : '← Back to search'}</button>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 18 }}>
                   <button type="button" className="btn btn-secondary" onClick={cancelWizard}>{locale === 'de' ? 'Abbrechen' : 'Cancel'}</button>
-                  <button type="button" className="btn btn-primary" disabled={!picked || blocked} onClick={() => setProxyStep(2)}>{locale === 'de' ? 'Weiter' : 'Next'}</button>
+                  {externalPerson ? (
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      disabled={!(firstName.trim() && surname.trim() && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim()))}
+                      onClick={() => setProxyStep(2)}
+                    >{locale === 'de' ? 'Weiter' : 'Next'}</button>
+                  ) : (
+                    <button type="button" className="btn btn-primary" disabled={!picked || blocked} onClick={() => setProxyStep(2)}>{locale === 'de' ? 'Weiter' : 'Next'}</button>
+                  )}
                 </div>
               </>
             )}

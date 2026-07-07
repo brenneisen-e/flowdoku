@@ -566,6 +566,8 @@ export interface SPEvent {
   SplitLabelB?: string; // v10.20: frei wählbare Bezeichnung Gruppe B
   SplitDescA?: string; // v26.72: Beschreibung Gruppe A (mehrzeilig)
   SplitDescB?: string; // v26.72: Beschreibung Gruppe B (mehrzeilig)
+  SplitHelpText?: string; // v26.83: Hinweistext über der Gruppen-Auswahl (mehrzeilig)
+  SplitSectionTitle?: string; // v26.83: frei wählbare Überschrift der Gruppen-Auswahl
   SplitSharedWaitlist?: boolean; // v10.20: true = gemeinsame Warteliste, false = getrennt (Default)
   AllowAttendeeUpload?: boolean; // v11.0: Teilnehmer können PDF an ihre Anmeldung hängen
   AttendeeUploadHint?: string;   // v11.0: optionaler Hinweistext über dem Upload-Input
@@ -761,13 +763,65 @@ export interface PermCleanupReport {
   findings: PermCleanupFinding[];
 }
 
+// v26.81: Verwaiste Subsite (existiert als Web, wird aber von KEINEM Event in
+// DEX_Events referenziert — z.B. Test-Subsite, deren Event gelöscht wurde).
+export interface OrphanSubsite {
+  url: string;
+  serverRel: string;
+  title: string;
+  created: string;            // ISO, falls lesbar
+  hasParticipantList: boolean; // 'Teilnehmer'-Liste vorhanden → sehr wahrscheinlich Event-Rest
+  participantCount: number;    // Anzahl Zeilen in der Teilnehmerliste (0 = leer)
+}
+
+export interface OrphanScanResult {
+  websScanned: number;
+  eventSubsites: number;   // Anzahl von Events referenzierter Subsites
+  orphans: OrphanSubsite[];
+}
+
 export class EventService {
   private context: WebPartContext;
   public siteUrl: string;
+  // v26.81: Pro-Web-Request-Digest-Cache. SPFx spHttpClient injiziert den
+  // Digest nur für das AKTUELLE Web — Schreib-Requests (MERGE/DELETE) an ANDERE
+  // Webs (Subsites) werden sonst mit 403 „security validation" abgelehnt. Für
+  // solche Cross-Web-Schreibzugriffe holen wir den Digest des Ziel-Webs.
+  private _digestByWeb: Map<string, string> = new Map();
 
   constructor(context: WebPartContext) {
     this.context = context;
     this.siteUrl = context.pageContext.web.absoluteUrl;
+  }
+
+  /** Web-Basis-URL aus einer Securable-/Listen-API-URL ableiten
+   *  (…/_api/web… → Teil vor „/_api/web"). */
+  private _webOf(apiBase: string): string {
+    const idx = apiBase.indexOf('/_api/web');
+    return idx > 0 ? apiBase.slice(0, idx) : this.siteUrl;
+  }
+
+  /** Request-Digest (FormDigestValue) des angegebenen Webs holen (gecacht).
+   *  Leerer String, wenn nicht ermittelbar. */
+  private async _webDigest(webUrl: string): Promise<string> {
+    const key = (webUrl || this.siteUrl).toLowerCase().replace(/\/+$/, '');
+    const cached = this._digestByWeb.get(key);
+    if (cached) return cached;
+    try {
+      const r = await this.context.spHttpClient.post(
+        `${webUrl}/_api/contextinfo`, SPHttpClient.configurations.v1,
+        { headers: { 'Accept': 'application/json;odata=nometadata' } }
+      );
+      if (r.ok) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const d: any = await r.json();
+        const val: string = d.FormDigestValue || d.GetContextWebInformation?.FormDigestValue || d.d?.GetContextWebInformation?.FormDigestValue || '';
+        if (val) { this._digestByWeb.set(key, val); return val; }
+      } else {
+        console.warn('[DEX PermFix] contextinfo HTTP', r.status, webUrl);
+      }
+    } catch (e) { console.warn('[DEX PermFix] contextinfo ERROR', webUrl, e); }
+    return '';
   }
 
   // ==================== DEX_Emails Liste ====================
@@ -3473,6 +3527,8 @@ export class EventService {
       { title: 'SplitLabelB', type: 2 }, // v10.20: frei wählbare Bezeichnung Gruppe B (Single line text)
       { title: 'SplitDescA', type: 3 }, // v26.72: Beschreibung Gruppe A (Note/mehrzeilig)
       { title: 'SplitDescB', type: 3 }, // v26.72: Beschreibung Gruppe B (Note/mehrzeilig)
+      { title: 'SplitHelpText', type: 3 }, // v26.83: Hinweistext über der Gruppen-Auswahl (Note/mehrzeilig)
+      { title: 'SplitSectionTitle', type: 2 }, // v26.83: frei wählbare Überschrift der Gruppen-Auswahl (Single line)
       { title: 'SplitSharedWaitlist', type: 8, metaType: 'SP.Field' }, // v10.20: Boolean - true = gemeinsame Warteliste
       { title: 'AllowAttendeeUpload', type: 8, metaType: 'SP.Field' }, // v11.0: Boolean - Teilnehmer-PDF-Upload erlauben
       { title: 'AttendeeUploadHint', type: 3, metaType: 'SP.FieldMultiLineText', richText: false, numberOfLines: 3 }, // v11.0: Hinweistext
@@ -3943,7 +3999,7 @@ export class EventService {
 
   // ==================== Events CRUD ====================
 
-  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,CurrentParticipants,WaitlistEnabled,MandatoryRegistration,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactOrganizerEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,OutlookSubject,OutlookStart,OutlookEnd,OutlookLocation,EmailLanguage,RegistrationLanguage,EmailTemplateOverrides,DisableEmails,DisableRegistrationEmail,DisableCancellationEmail,AutoDeregisterOnDecline,InactiveHandling,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitDescA,SplitDescB,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,ConfirmDialogEnabled,ConfirmDialogMode,ConfirmDialogText,SelfCheckInEnabled,SelfCheckInToken,SelfCheckInFrom,SelfCheckInTo,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl,Modified,Created';
+  private static readonly EVENT_SELECT = 'Id,Title,EventStatus,EventNumber,Description,Location,LocationAddress,LocationFilter,Audience,AudienceResolvedEmails,FilterMode,StartDate,EndDate,RegistrationDeadline,LastDeregisterDate,MaxParticipants,CurrentParticipants,WaitlistEnabled,MandatoryRegistration,EventImageUrl,EmailImageBase64,Organizer,OrganizerEmail,ContactName,ContactEmail,ContactOrganizerEmail,ContactInfo,OutlookEventId,CalendarLink,OutlookBody,OutlookSubject,OutlookStart,OutlookEnd,OutlookLocation,EmailLanguage,RegistrationLanguage,EmailTemplateOverrides,DisableEmails,DisableRegistrationEmail,DisableCancellationEmail,AutoDeregisterOnDecline,InactiveHandling,DisableOutlook,OutlookDirty,AutoSendQRCode,ActiveFrom,NotifyOrgRegisterMode,NotifyOrgRegisterFromDate,NotifyOrgCancelMode,ExcludedUsers,IsFictive,DurchstarterCapacity,FunstarterCapacity,SplitLabelA,SplitLabelB,SplitDescA,SplitDescB,SplitHelpText,SplitSectionTitle,SplitSharedWaitlist,AllowAttendeeUpload,AttendeeUploadHint,AttendeeUploadLabel,AskSalutation,ConfirmDialogEnabled,ConfirmDialogMode,ConfirmDialogText,SelfCheckInEnabled,SelfCheckInToken,SelfCheckInFrom,SelfCheckInTo,TeamRegistrationEnabled,TeamSize,AskTeamName,TeamPartialAllowed,TeamOpenSlotsVisible,TeamJoinRequiresApproval,BilingualFields,CustomFields,Agenda,Transfers,Documents,FunZone,QuizClusterSize,ParentEventId,RegistrationListName,SubsiteUrl,Modified,Created';
 
   /**
    * Strip SharePoint-Note-Field-Wrapper.
@@ -4151,6 +4207,8 @@ export class EventService {
     splitLabelB?: string;
     splitDescA?: string;
     splitDescB?: string;
+    splitHelpText?: string;
+    splitSectionTitle?: string;
     splitSharedWaitlist?: boolean;
     allowAttendeeUpload?: boolean;
     attendeeUploadHint?: string;
@@ -4379,6 +4437,8 @@ export class EventService {
         'SplitLabelB': event.splitLabelB || '',
         'SplitDescA': event.splitDescA || '',
         'SplitDescB': event.splitDescB || '',
+        'SplitHelpText': event.splitHelpText || '',
+        'SplitSectionTitle': event.splitSectionTitle || '',
         'SplitSharedWaitlist': !!event.splitSharedWaitlist,
         'AllowAttendeeUpload': !!event.allowAttendeeUpload,
         'AttendeeUploadHint': event.attendeeUploadHint || '',
@@ -10675,31 +10735,54 @@ export class EventService {
       }
     };
 
-    const checkIls = async (listBase: string, label: string): Promise<void> => {
+    // Liest ReadSecurity/WriteSecurity einer Liste (roh + geparst). Loggt bei
+    // Bedarf die exakte Server-Antwort — Diagnose, warum eine Korrektur ggf.
+    // nicht greift (Format/Stale/Rechte).
+    const readIls = async (listBase: string, label: string): Promise<{ rs: number; ws: number; raw: string; status: number } | null> => {
       try {
         const resp = await this.context.spHttpClient.get(
           `${listBase}?$select=ReadSecurity,WriteSecurity`, SPHttpClient.configurations.v1,
           { headers: { 'Accept': 'application/json;odata=nometadata' } }
         );
-        if (!resp.ok) return;
+        if (!resp.ok) { console.warn('[DEX PermFix] ILS-Read HTTP', resp.status, label); return null; }
         const d = await resp.json();
-        const rs = Number(d.ReadSecurity ?? d.d?.ReadSecurity);
-        const ws = Number(d.WriteSecurity ?? d.d?.WriteSecurity);
-        if (!Number.isFinite(rs) || !Number.isFinite(ws)) return;
-        if (rs === 2 && ws === 2) return;
-        report.ilsIssues++;
-        let fixed = false;
-        if (apply) {
-          try {
-            const m = await this.context.spHttpClient.post(`${listBase}`, SPHttpClient.configurations.v1, {
-              headers: { 'Accept': 'application/json;odata=verbose', 'Content-Type': 'application/json;odata=verbose', 'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE' },
-              body: JSON.stringify({ '__metadata': { 'type': 'SP.List' }, 'ReadSecurity': 2, 'WriteSecurity': 2 }),
-            });
-            fixed = m.ok; if (fixed) report.ilsFixed++; else report.errors++;
-          } catch { report.errors++; }
-        }
-        addFinding({ scope: label, kind: 'ils', detail: `Element-Sicherheit ${rs}/${ws} statt 2/2 („nur eigene Elemente") — ${apply ? (fixed ? 'korrigiert' : 'Korrektur fehlgeschlagen') : 'würde korrigiert'}`, fixed });
-      } catch { /* ILS-Prüfung best-effort */ }
+        const raw = JSON.stringify(d).slice(0, 200);
+        return { rs: Number(d.ReadSecurity ?? d.d?.ReadSecurity), ws: Number(d.WriteSecurity ?? d.d?.WriteSecurity), raw, status: resp.status };
+      } catch (e) { console.warn('[DEX PermFix] ILS-Read ERROR', label, e); return null; }
+    };
+    const checkIls = async (listBase: string, label: string): Promise<void> => {
+      const before = await readIls(listBase, label);
+      if (!before || !Number.isFinite(before.rs) || !Number.isFinite(before.ws)) {
+        console.warn('[DEX PermFix] ILS unlesbar/format', label, 'raw=', before?.raw);
+        return;
+      }
+      if (before.rs === 2 && before.ws === 2) return;
+      report.ilsIssues++;
+      console.warn(`[DEX PermFix] ILS FALSCH ${before.rs}/${before.ws} (soll 2/2)`, label, 'raw=', before.raw);
+      let fixed = false;
+      if (apply) {
+        let mergeStatus = -1;
+        // v26.81: Digest des Ziel-Webs mitschicken (Cross-Web-Schreibzugriff).
+        const digest = await this._webDigest(this._webOf(listBase));
+        try {
+          const m = await this.context.spHttpClient.post(`${listBase}`, SPHttpClient.configurations.v1, {
+            headers: {
+              'Accept': 'application/json;odata=verbose', 'Content-Type': 'application/json;odata=verbose',
+              'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE',
+              ...(digest ? { 'X-RequestDigest': digest } : {}),
+            },
+            body: JSON.stringify({ '__metadata': { 'type': 'SP.List' }, 'ReadSecurity': 2, 'WriteSecurity': 2 }),
+          });
+          mergeStatus = m.status;
+        } catch (e) { console.warn('[DEX PermFix] ILS-MERGE ERROR', label, e); }
+        // ENTSCHEIDEND: Read-back — nur wenn der Server danach WIRKLICH 2/2
+        // meldet, gilt es als korrigiert (nicht blind dem MERGE-Status trauen).
+        const after = await readIls(listBase, label);
+        fixed = !!after && after.rs === 2 && after.ws === 2;
+        console.warn(`[DEX PermFix] ILS-FIX ${label} | MERGE-Status=${mergeStatus} | nachher=${after ? `${after.rs}/${after.ws}` : 'null'} | raw=${after?.raw} | => ${fixed ? 'OK' : 'WEITER FALSCH'}`);
+        if (fixed) report.ilsFixed++; else report.errors++;
+      }
+      addFinding({ scope: label, kind: 'ils', detail: `Element-Sicherheit ${before.rs}/${before.ws} statt 2/2 („nur eigene Elemente") — ${apply ? (fixed ? 'korrigiert' : 'Korrektur fehlgeschlagen (siehe Konsole)') : 'würde korrigiert'}`, fixed });
     };
     const ILS_LISTS = new Set(['DEX_Emails', 'DEX_Outlook', 'DEX_IDReorder']);
 
@@ -10808,10 +10891,13 @@ export class EventService {
   /** Entfernt ALLE Rollenzuweisungen eines Principals auf einem Securable
    *  (Downgrade auf „kein direktes Recht" — Leserecht über Gruppen bleibt). */
   private async _deletePrincipalAssignment(scopeBase: string, principalId: number): Promise<SPHttpClientResponse> {
+    // v26.81: Digest des Ziel-Webs mitschicken (Cross-Web-Schreibzugriff auf
+    // Subsites würde sonst mit 403 abgelehnt).
+    const digest = await this._webDigest(this._webOf(scopeBase));
     return this.context.spHttpClient.post(
       `${scopeBase}/roleassignments/getbyprincipalid(${principalId})`,
       SPHttpClient.configurations.v1,
-      { headers: { 'Accept': 'application/json;odata=verbose', 'Content-Type': 'application/json;odata=verbose', 'odata-version': '', 'IF-MATCH': '*', 'X-HTTP-Method': 'DELETE' } }
+      { headers: { 'Accept': 'application/json;odata=verbose', 'Content-Type': 'application/json;odata=verbose', 'odata-version': '', 'IF-MATCH': '*', 'X-HTTP-Method': 'DELETE', ...(digest ? { 'X-RequestDigest': digest } : {}) } }
     );
   }
 
@@ -10852,6 +10938,88 @@ export class EventService {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       return rows.map((w: any) => ({ url: w.Url || '', serverRel: w.ServerRelativeUrl || '', title: w.Title || '', unique: !!w.HasUniqueRoleAssignments })).filter(w => w.url);
     } catch { return []; }
+  }
+
+  // ==================== v26.81: Verwaiste Subsites finden ====================
+  // Vergleicht alle real existierenden Subsites (Webs) mit den von DEX_Events
+  // referenzierten SubsiteUrls. Ein Web, das von KEINEM Event (Haupt- oder
+  // Sub-Event) referenziert wird, ist ein „Rest" — z.B. eine Test-Subsite,
+  // deren Event bereits gelöscht wurde. Reine Analyse, ändert NICHTS.
+  public async findOrphanSubsites(
+    onProgress?: (msg: string, done: number, total: number) => void
+  ): Promise<OrphanScanResult> {
+    const result: OrphanScanResult = { websScanned: 0, eventSubsites: 0, orphans: [] };
+    const norm = (s: string): string => (s || '').trim().toLowerCase().replace(/\/+$/, '');
+
+    // 1. Referenzierte Subsites aus DEX_Events (alle Events inkl. Sub-Events).
+    onProgress?.('Events werden gelesen …', 0, 1);
+    const events = await this.getAllEventsForKpi();
+    const referenced = new Set<string>();
+    for (const e of events) {
+      if (e.subsiteUrl) {
+        referenced.add(norm(e.subsiteUrl));
+        try { referenced.add(norm(new URL(e.subsiteUrl).pathname)); } catch { /* */ }
+      }
+    }
+    result.eventSubsites = referenced.size;
+
+    // 2. Alle Subsites einsammeln (BFS, max. 3 Ebenen, cap 500).
+    const allWebs: Array<{ url: string; serverRel: string; title: string }> = [];
+    const seen = new Set<string>([norm(this.siteUrl)]);
+    let frontier = [this.siteUrl];
+    for (let depth = 0; depth < 3 && frontier.length > 0 && allWebs.length < 500; depth++) {
+      const next: string[] = [];
+      for (const wurl of frontier) {
+        const kids = await this._childWebs(wurl);
+        for (const k of kids) {
+          const kk = norm(k.url);
+          if (!k.url || seen.has(kk)) continue;
+          seen.add(kk);
+          allWebs.push({ url: k.url, serverRel: k.serverRel, title: k.title });
+          next.push(k.url);
+          if (allWebs.length >= 500) break;
+        }
+        if (allWebs.length >= 500) break;
+      }
+      frontier = next;
+    }
+    result.websScanned = allWebs.length;
+
+    // 3. Nicht referenzierte Webs = Rest-Kandidaten; Metadaten nachladen.
+    const candidates = allWebs.filter(w => !referenced.has(norm(w.url)) && !referenced.has(norm(w.serverRel)));
+    let i = 0;
+    for (const w of candidates) {
+      i++;
+      onProgress?.(`Prüfe „${w.title || w.serverRel}" …`, i, candidates.length);
+      let created = '';
+      try {
+        const wr = await this.context.spHttpClient.get(`${w.url}/_api/web?$select=Created,Title`, SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } });
+        if (wr.ok) { const wd = await wr.json(); created = wd.Created || wd.d?.Created || ''; }
+      } catch { /* */ }
+      let hasParticipantList = false;
+      let participantCount = 0;
+      try {
+        const lr = await this.context.spHttpClient.get(`${w.url}/_api/web/lists/getbytitle('${REG_LIST_NAME}')?$select=ItemCount`, SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } });
+        if (lr.ok) { const ld = await lr.json(); hasParticipantList = true; participantCount = Number(ld.ItemCount ?? ld.d?.ItemCount) || 0; }
+      } catch { /* Liste fehlt → kein Event-Rest oder anders strukturiert */ }
+      result.orphans.push({ url: w.url, serverRel: w.serverRel, title: w.title, created, hasParticipantList, participantCount });
+    }
+    onProgress?.('Fertig', candidates.length, candidates.length);
+    return result;
+  }
+
+  /** Löscht eine (verwaiste) Subsite endgültig — inkl. aller Listen darin.
+   *  Nur für Admins (Owner-Rechte nötig). SharePoint verlangt, dass das Web
+   *  keine eigenen Unter-Webs mehr hat. */
+  public async deleteSubsiteWeb(webUrl: string): Promise<boolean> {
+    try {
+      const digest = await this._webDigest(webUrl);
+      const resp = await this.context.spHttpClient.post(
+        `${webUrl}/_api/web`, SPHttpClient.configurations.v1,
+        { headers: { 'Accept': 'application/json;odata=verbose', 'Content-Type': 'application/json;odata=verbose', 'odata-version': '', 'IF-MATCH': '*', 'X-HTTP-Method': 'DELETE', ...(digest ? { 'X-RequestDigest': digest } : {}) } }
+      );
+      return resp.ok || resp.status === 200 || resp.status === 204;
+    } catch { return false; }
   }
 
   // ==================== v21: Archivierung ====================

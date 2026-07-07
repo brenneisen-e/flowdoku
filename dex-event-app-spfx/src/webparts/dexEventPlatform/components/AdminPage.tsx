@@ -31,7 +31,7 @@ import { useIsMobile } from '../utils/useIsMobile';
 // v20.0 (Audit): xlsx + qrcode werden nicht mehr statisch importiert, sondern
 // erst beim tatsächlichen Gebrauch (Export-Klick / QR-Vorschau) als eigener
 // Chunk nachgeladen — spart ~1 MB im Haupt-Bundle.
-import { EventService, EventCommRow, PermCleanupReport } from '../services/EventService';
+import { EventService, EventCommRow } from '../services/EventService';
 import { qrCodeEmail, qrEmailDefaults, buildQrBlockHtml, QrEmailOverride, cancellationEmail, promotionEmail, wrapTemplate, replacePlaceholders, buildEmailFromTemplate, getCachedLogoBase64, getCachedOrbBase64, injectIntoEmailContent, externalInvitationEmail } from '../services/EmailTemplates';
 // v26.47: Externe Anmeldung — Einladung als .eml-Entwurf (X-Unsent) zum
 // Selbst-Versenden durch die anmeldende Person (App kann keine externen
@@ -878,6 +878,8 @@ export default function AdminPage(): React.ReactElement {
   const { events: allEvents, topLevelEvents: events, childEventsOf, isEventsLoading, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, updateEvent, refreshEvents, addTeamMember, assignTeamlessToTeam, notifyExistingTeamMembers, transferTeamLead, registerForEvent, subscribeEventRealtime, sendCompleteRegistrationReminder } = useEvents();
   // v26.67: laufende „Erinnerung senden"-Aktion pro verwaister Anmeldung (Id).
   const [reminderBusyId, setReminderBusyId] = React.useState<number | null>(null);
+  // v26.85: „Erinnerung senden" in der „Fehlende Klammer-Anmeldung"-Box (emailKey).
+  const [missingReminderKey, setMissingReminderKey] = React.useState<string | null>(null);
   // v24.38: läuft gerade ein „Zur Klammer hinzufügen" für diese E-Mail?
   const [addingToKlammer, setAddingToKlammer] = React.useState<string | null>(null);
   // v24.40: Modal „Assistenz zuordnen" — Person an eine gewählte Assistenz
@@ -901,7 +903,7 @@ export default function AdminPage(): React.ReactElement {
     } finally { setIsRefreshing(false); }
   };
   const { currentUser } = useCurrentUser();
-  const { isAdmin, siteUrl, currentUserRole, searchUser, searchUsers, isImpersonating, roles } = useRoles();
+  const { isAdmin, siteUrl, currentUserRole, searchUser, searchUsers, isImpersonating } = useRoles();
   const { t, locale } = useLanguage();
   const isDe = locale === 'de';
   // v20.4: App-Modals statt nativer Browser-Dialoge.
@@ -1531,11 +1533,6 @@ export default function AdminPage(): React.ReactElement {
     itemDone: number; itemTotal: number;
     summary: string[] | null;
   } | null>(null);
-  // v26.79: Berechtigungen aufräumen — Modal mit Prüf-/Korrektur-Ablauf.
-  const [permCleanupOpen, setPermCleanupOpen] = React.useState(false);
-  const [permCleanupBusy, setPermCleanupBusy] = React.useState(false);
-  const [permCleanupProgress, setPermCleanupProgress] = React.useState<{ msg: string; done: number; total: number } | null>(null);
-  const [permCleanupReport, setPermCleanupReport] = React.useState<PermCleanupReport | null>(null);
   // Email Compose Modal
   const [showEmailModal, setShowEmailModal] = React.useState(false);
   // v17.10: Massmail-Target-Picker. Erst Zielgruppe wählen, dann den
@@ -4049,62 +4046,6 @@ export default function AdminPage(): React.ReactElement {
     setMassmailTesting(false);
   };
 
-  // v26.79: Berechtigungen aufräumen — Prüf-/Korrektur-Lauf über die gesamte
-  // Site-Collection. apply=false = Dry-Run (Bericht ohne Änderung), apply=true =
-  // Über-Freigaben entfernen + Element-Sicherheit korrigieren. Baut den
-  // Rollen-Kontext (Admins/Organizer aus DEX_Roles, Organizer je Subsite aus
-  // den Events) und ruft den Service.
-  const runPermCleanup = async (apply: boolean): Promise<void> => {
-    if (!eventServiceRef) return;
-    // Sicherheits-Guard: Ohne geladene DEX_Roles wäre die „erlaubt"-Liste leer
-    // → alle Admins/Organizer würden fälschlich als Über-Freigabe erscheinen
-    // (und beim Korrigieren entfernt). Lieber abbrechen und neu laden lassen.
-    if (!roles || roles.length === 0) {
-      showAlert(isDe
-        ? 'Die Rollenliste ist noch nicht geladen. Bitte kurz warten oder die Seite neu laden und erneut versuchen — ohne geladene Rollen kann die Aufräumung nicht sicher laufen.'
-        : 'The role list is not loaded yet. Please wait a moment or reload the page and try again — the cleanup cannot run safely without the roles.', { variant: 'error' });
-      return;
-    }
-    const adminEmails = (roles || []).filter(r => r.role === 'Admin' || r.role === 'IT-Admin').map(r => r.userEmail).filter(Boolean);
-    // Sicherheitsnetz: JEDE in DEX_Roles gepflegte Person gilt als sanktioniert
-    // (Admins, Organizer, Power User) und wird NIE als Über-Freigabe entfernt.
-    // Reguläre End-User stehen nicht in DEX_Roles — eine direkte Schreib-Freigabe
-    // an sie ist damit eindeutig „manuell zu viel". Der Service ergänzt pro
-    // Subsite zusätzlich die konkreten Event-Organizer.
-    const organizerEmails = (roles || []).map(r => r.userEmail).filter(Boolean);
-    // Organizer je Subsite (Haupt- + Co-Organizer, dedupliziert pro Subsite).
-    // Schlüssel: absoluter Subsite-URL UND server-relativer Pfad (ohne
-    // Trailing-Slash), damit der Service beide Formen matcht.
-    const subsiteOrganizers: Record<string, string> = {};
-    for (const ev of allEvents) {
-      const su = (ev.subsiteUrl || '').trim();
-      if (!su) continue;
-      const orgs = [...(ev.organizerEmails || []), ...(ev.coOrganizerEmails || [])].map(e => (e || '').trim()).filter(Boolean);
-      if (orgs.length === 0) continue;
-      const keys: string[] = [su.toLowerCase().replace(/\/+$/, '')];
-      try { keys.push(new URL(su).pathname.toLowerCase().replace(/\/+$/, '')); } catch { /* kein gültiger URL */ }
-      for (const k of keys) {
-        const existing = subsiteOrganizers[k] ? subsiteOrganizers[k].split(';') : [];
-        subsiteOrganizers[k] = Array.from(new Set([...existing, ...orgs])).join(';');
-      }
-    }
-    setPermCleanupBusy(true);
-    setPermCleanupProgress({ msg: isDe ? 'Wird gestartet…' : 'Starting…', done: 0, total: 1 });
-    if (apply) setPermCleanupReport(null);
-    try {
-      const report = await eventServiceRef.auditOrCleanupPermissions(
-        apply,
-        { adminEmails, organizerEmails, subsiteOrganizers, selfEmail: currentUser.email || '' },
-        (msg, done, total) => setPermCleanupProgress({ msg, done, total }),
-      );
-      setPermCleanupReport(report);
-    } catch (err) {
-      showAlert((isDe ? 'Fehler bei der Berechtigungs-Prüfung: ' : 'Error during the permission check: ') + (err instanceof Error ? err.message : String(err)), { variant: 'error' });
-    } finally {
-      setPermCleanupBusy(false);
-      setPermCleanupProgress(null);
-    }
-  };
 
   // v22.6: QR-Versand-Aktionen als benannte Funktionen (vorher inline im Modal) —
   // macht das neue kompakte Querformat-Layout lesbar. Verhalten unverändert.
@@ -4851,6 +4792,8 @@ export default function AdminPage(): React.ReactElement {
                                 'SplitLabelB': (ev.splitLabelB || 'Funstarter'),
                                 'SplitDescA': (ev.splitDescA || ''),
                                 'SplitDescB': (ev.splitDescB || ''),
+                                'SplitHelpText': (ev.splitHelpText || ''),
+                                'SplitSectionTitle': (ev.splitSectionTitle || ''),
                               };
                               // v11.13: B2Run-Extras aus
                               // EmailTemplateOverrides._b2run nicht mehr nur
@@ -5476,7 +5419,8 @@ export default function AdminPage(): React.ReactElement {
     // v23.5: 6 Personen-Spalten (#, Vorname, Nachname, Email, Job Title,
     // Standort) — eingeklappt nur 2 (#, „Teilnehmer").
     const personalColCount = personalColsCollapsed ? 2 : 6;
-    const totalColSpan = personalColCount + parentCustomFields.length + parentUserFields.length + childCustomFieldsByChild.reduce((sum, x) => sum + 1 + x.fields.length, 0) + 1;
+    // v26.84: +1 zusätzliche Spalte „Registriert von" (Akteur) neben „Details".
+    const totalColSpan = personalColCount + parentCustomFields.length + parentUserFields.length + childCustomFieldsByChild.reduce((sum, x) => sum + 1 + x.fields.length, 0) + 2;
     // v19.30: Aktionen (Hauptevent-Felder bearbeiten / abmelden) nur für
     // berechtigte Rollen (Admin oder Organizer dieses Events).
     const canManage = isAdmin || isOrganizerFor(selectedEvent);
@@ -5490,6 +5434,33 @@ export default function AdminPage(): React.ReactElement {
     // angemeldet sein.)
     const hasParentReg = (emailKey: string): boolean =>
       registrations.some(r => (r.ParticipantEmail || '').toLowerCase().trim() === emailKey);
+    // v26.85: Ist ein bestimmtes Hauptevent-Feld für diese Person befüllt?
+    // Gleiche Auflösung wie die Tabelle (Parent-Reg-Spalte → Parent-CustomData
+    // → Sub-Event-CustomData-Fallback), damit die „Infos fehlen"-Erkennung nicht
+    // fälschlich anschlägt.
+    const parentFieldFilled = (row: ConsolidatedRow, f: { id: string; spInternalName?: string }): boolean => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const parentReg = registrations.find(r => (r.ParticipantEmail || '').toLowerCase().trim() === row.emailKey) as any;
+      const spName = (f as { spInternalName?: string }).spInternalName || '';
+      if (parentReg) {
+        let v: unknown = spName ? parentReg[spName] : undefined;
+        if ((v === undefined || v === null || v === '') && parentReg.CustomData) { try { v = JSON.parse(parentReg.CustomData)[f.id]; } catch { /* */ } }
+        if (v !== undefined && v !== null && v !== '') return true;
+      }
+      for (const ch of consolidatedChildren) {
+        const r = row.perChild[ch.id];
+        if (!r) continue;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let v: any = spName ? (r as any)[spName] : undefined;
+        if ((v === undefined || v === null || v === '') && r.CustomData) { try { v = JSON.parse(r.CustomData)[f.id]; } catch { /* */ } }
+        if (v !== undefined && v !== null && v !== '') return true;
+      }
+      return false;
+    };
+    // v26.85: Personen mit Klammer-Anmeldung (Hauptevent) + Sub-Event, bei denen
+    // aber PFLICHT-Hauptevent-Felder leer sind (typisch: Anmeldung im
+    // Hauptevent-Schritt abgebrochen). requiredMainFields leer → nie anschlagen.
+    const requiredMainFields = (selectedEvent.eventSpecificFields || []).filter(f => f.type !== 'user' && f.required && f.label && f.label.trim());
     // v23.7: „Verwaiste" Klammer-/Schatten-Anmeldungen erkennen — eine aktive
     // Zeile auf der KLAMMER-Subsite (registrations), deren Person in KEINEM
     // Sub-Event aktiv angemeldet ist. Das ist typischerweise ein Geist aus einer
@@ -5655,26 +5626,147 @@ export default function AdminPage(): React.ReactElement {
               </div>
               <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
                 {isDe
-                  ? 'Diese Personen sind in einem oder mehreren Sub-Events angemeldet, fehlen aber am Klammer-/Hauptevent selbst (z.B. durch eine abgebrochene Anmeldung). Dadurch fehlen u.a. die übergreifenden Klammer-Angaben und der Direkt-Bezug zum Hauptevent. Trage die fehlende Klammer-Anmeldung pro Person nach — das versendet KEINE Mail und KEINEN Outlook-Termin (reine Datenkorrektur).'
-                  : 'These people are registered for one or more sub-events but are missing on the umbrella/main event itself (e.g. due to an interrupted registration). As a result the cross-cutting umbrella details and the direct link to the main event are missing. Add the missing umbrella registration per person — this sends NO email and NO Outlook invite (data correction only).'}
+                  ? 'Diese Personen sind in einem oder mehreren Sub-Events angemeldet, fehlen aber am Klammer-/Hauptevent selbst (z.B. durch eine abgebrochene Anmeldung). Dadurch fehlen u.a. die übergreifenden Hauptevent-Angaben. Du hast zwei Möglichkeiten: über „Erinnerung senden“ bittest du die Person (bzw. die anmeldende Person) per Mail mit Direkt-Link, die fehlenden Hauptevent-Angaben in der App nachzutragen — oder du trägst die fehlende Klammer-Anmeldung mit „Zur Klammer hinzufügen“ selbst nach (versendet KEINE Mail und KEINEN Outlook-Termin, reine Datenkorrektur).'
+                  : 'These people are registered for one or more sub-events but are missing on the umbrella/main event itself (e.g. due to an interrupted registration), so the cross-cutting main-event details are missing. You have two options: use „Send reminder“ to ask the person (or whoever registered them) via email with a direct link to add the missing main-event details in the app — or add the missing umbrella registration yourself with „Add to umbrella“ (sends NO email and NO Outlook invite, data correction only).'}
               </p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {missing.map(r => {
                   const nm = `${r.vorname || ''} ${r.nachname || ''}`.trim() || r.email;
+                  // v26.85: Akteur (selbst/stellvertretend) aus den Sub-Event-
+                  // Registrierungen ableiten — für die Reminder-Empfänger.
+                  let byEmail = '', byName = '';
+                  for (const ck of Object.keys(r.perChild)) {
+                    const cr = r.perChild[ck];
+                    if (cr && (cr.RegisteredByEmail || '').trim()) { byEmail = (cr.RegisteredByEmail || '').trim(); byName = (cr.RegisteredByName || '').trim(); break; }
+                  }
+                  const isProxy = !!byEmail && byEmail.toLowerCase() !== (r.email || '').toLowerCase();
                   return (
                     <div key={r.emailKey} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.84rem' }}>
                       <strong>{nm}</strong>
                       <span style={{ color: 'var(--dex-gray-500)' }}>{r.email}</span>
                       <span style={{ color: 'var(--dex-gray-500)', fontSize: '0.78rem' }}>· {isDe ? `${r.activeCount} Sub-Event(s)` : `${r.activeCount} sub-event(s)`}</span>
-                      <button
-                        type="button"
-                        className="btn btn-outline"
-                        style={{ marginLeft: 'auto', fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-orange, #ed8b00)', borderColor: 'var(--dex-orange, #ed8b00)' }}
-                        disabled={addingToKlammer === r.emailKey}
-                        onClick={() => { void addToKlammer(r); }}
-                      >
-                        <Plus size={12} /> {addingToKlammer === r.emailKey ? '…' : (isDe ? 'Zur Klammer hinzufügen' : 'Add to umbrella')}
-                      </button>
+                      <div style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
+                        {/* v26.85: Erinnerung senden — Person (bzw. Anmeldende:r) bitten,
+                            die fehlenden Hauptevent-Angaben in der App nachzutragen. */}
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-green-dark, #4a7c1f)', borderColor: 'var(--dex-green, #86bc25)' }}
+                          disabled={missingReminderKey === r.emailKey}
+                          onClick={async () => {
+                            if (!selectedEvent) return;
+                            setMissingReminderKey(r.emailKey);
+                            const ok = await sendCompleteRegistrationReminder({
+                              eventId: selectedEvent.id,
+                              eventTitle: selectedEvent.title,
+                              participantEmail: r.email || '',
+                              participantName: nm,
+                              registeredByEmail: byEmail,
+                              registeredByName: byName,
+                            }).catch(() => false);
+                            setMissingReminderKey(null);
+                            showAlert(
+                              ok
+                                ? (isProxy
+                                    ? (isDe ? `Erinnerung an ${byName || byEmail} gesendet (${nm} auf Kopie) — mit Link zum Nachtragen der Hauptevent-Angaben.` : `Reminder sent to ${byName || byEmail} (${nm} on copy) — with a link to add the main-event details.`)
+                                    : (isDe ? `Erinnerung an ${nm} gesendet — mit Link zum Nachtragen der Hauptevent-Angaben.` : `Reminder sent to ${nm} — with a link to add the main-event details.`))
+                                : (isDe ? 'Erinnerung konnte nicht gesendet werden.' : 'The reminder could not be sent.'),
+                              { variant: ok ? 'success' : 'error' });
+                          }}
+                        >
+                          {missingReminderKey === r.emailKey ? (isDe ? 'Wird gesendet…' : 'Sending…') : (isDe ? 'Erinnerung senden' : 'Send reminder')}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-orange, #ed8b00)', borderColor: 'var(--dex-orange, #ed8b00)' }}
+                          disabled={addingToKlammer === r.emailKey}
+                          onClick={() => { void addToKlammer(r); }}
+                        >
+                          <Plus size={12} /> {addingToKlammer === r.emailKey ? '…' : (isDe ? 'Zur Klammer hinzufügen' : 'Add to umbrella')}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+        {/* v26.85: Klammer-Anmeldung vorhanden (+ Sub-Event), aber PFLICHT-
+            Hauptevent-Angaben fehlen — typisch nach einer abgebrochenen
+            Anmeldung. Oben als Hinweis, mit „Erinnerung senden" (Person bzw.
+            anmeldende Person bitten, die Angaben in der App nachzutragen) und
+            „Hauptevent-Felder bearbeiten" (selbst nachtragen). */}
+        {canManage && requiredMainFields.length > 0 && (() => {
+          const incomplete = consolidatedRows.filter(row => hasParentReg(row.emailKey) && row.activeCount > 0 && requiredMainFields.some(f => !parentFieldFilled(row, f)));
+          if (incomplete.length === 0) return null;
+          return (
+            <div style={{ marginBottom: 16, padding: 14, borderRadius: 10, border: '1px solid var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.07)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <Icon iconName="Warning" style={{ fontSize: 16, color: 'var(--dex-orange-dark, #b35a00)' }} />
+                <strong style={{ color: 'var(--dex-orange-dark, #b35a00)', fontSize: '0.9rem' }}>
+                  {isDe ? `Unvollständige Hauptevent-Angaben (${incomplete.length})` : `Incomplete main-event details (${incomplete.length})`}
+                </strong>
+              </div>
+              <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                {isDe
+                  ? 'Diese Personen haben eine Anmeldung (Hauptevent + Sub-Event), es fehlen aber Pflicht-Angaben aus dem Hauptevent-Schritt — meist, weil die Anmeldung vorzeitig abgebrochen wurde. Über „Erinnerung senden“ bittest du die Person (bzw. die anmeldende Person) per Mail mit Direkt-Link, die fehlenden Angaben in der App nachzutragen. Alternativ kannst du sie über „Hauptevent-Felder bearbeiten“ direkt selbst ergänzen.'
+                  : 'These people have a registration (main event + sub-event), but required answers from the main-event step are missing — usually because the registration was interrupted. Use „Send reminder“ to ask the person (or whoever registered them) via email with a direct link to add the missing answers in the app. Alternatively, add them yourself via „Edit main-event fields“.'}
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {incomplete.map(row => {
+                  const nm = `${row.vorname || ''} ${row.nachname || ''}`.trim() || row.email;
+                  const missingLabels = requiredMainFields.filter(f => !parentFieldFilled(row, f)).map(f => f.label);
+                  let byEmail = '', byName = '';
+                  for (const ck of Object.keys(row.perChild)) {
+                    const cr = row.perChild[ck];
+                    if (cr && (cr.RegisteredByEmail || '').trim()) { byEmail = (cr.RegisteredByEmail || '').trim(); byName = (cr.RegisteredByName || '').trim(); break; }
+                  }
+                  const isProxy = !!byEmail && byEmail.toLowerCase() !== (row.email || '').toLowerCase();
+                  return (
+                    <div key={row.emailKey} style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: '0.84rem' }}>
+                      <strong>{nm}</strong>
+                      <span style={{ color: 'var(--dex-gray-500)' }}>{row.email}</span>
+                      <span style={{ color: 'var(--dex-orange-dark, #b35a00)', fontSize: '0.76rem' }} title={missingLabels.join(', ')}>· {isDe ? 'fehlt: ' : 'missing: '}{missingLabels.slice(0, 3).join(', ')}{missingLabels.length > 3 ? ` +${missingLabels.length - 3}` : ''}</span>
+                      <div style={{ marginLeft: 'auto', display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-green-dark, #4a7c1f)', borderColor: 'var(--dex-green, #86bc25)' }}
+                          disabled={missingReminderKey === row.emailKey}
+                          onClick={async () => {
+                            if (!selectedEvent) return;
+                            setMissingReminderKey(row.emailKey);
+                            const ok = await sendCompleteRegistrationReminder({
+                              eventId: selectedEvent.id,
+                              eventTitle: selectedEvent.title,
+                              participantEmail: row.email || '',
+                              participantName: nm,
+                              registeredByEmail: byEmail,
+                              registeredByName: byName,
+                            }).catch(() => false);
+                            setMissingReminderKey(null);
+                            showAlert(
+                              ok
+                                ? (isProxy
+                                    ? (isDe ? `Erinnerung an ${byName || byEmail} gesendet (${nm} auf Kopie) — mit Link zum Nachtragen der Angaben.` : `Reminder sent to ${byName || byEmail} (${nm} on copy) — with a link to add the details.`)
+                                    : (isDe ? `Erinnerung an ${nm} gesendet — mit Link zum Nachtragen der Angaben.` : `Reminder sent to ${nm} — with a link to add the details.`))
+                                : (isDe ? 'Erinnerung konnte nicht gesendet werden.' : 'The reminder could not be sent.'),
+                              { variant: ok ? 'success' : 'error' });
+                          }}
+                        >
+                          {missingReminderKey === row.emailKey ? (isDe ? 'Wird gesendet…' : 'Sending…') : (isDe ? 'Erinnerung senden' : 'Send reminder')}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-outline"
+                          style={{ fontSize: '0.75rem', padding: '3px 10px', color: 'var(--dex-orange, #ed8b00)', borderColor: 'var(--dex-orange, #ed8b00)' }}
+                          onClick={() => openMainFieldsEdit(row.emailKey, nm)}
+                        >
+                          {isDe ? 'Hauptevent-Felder bearbeiten' : 'Edit main-event fields'}
+                        </button>
+                      </div>
                     </div>
                   );
                 })}
@@ -5700,7 +5792,10 @@ export default function AdminPage(): React.ReactElement {
             )}
           </div>
         )}
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+        {/* v26.84: minWidth max-content, damit die Tabelle bei vielen Spalten
+            NICHT gestaucht wird, sondern über den overflowX:auto-Wrapper (oben)
+            horizontal scrollbar wird — wie in der Sub-Event-Teilnehmerliste. */}
+        <table style={{ width: '100%', minWidth: 'max-content', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
           <thead>
             <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
               {/* v26.65: Header-Tooltip stellt klar, dass „#" die laufende Zeilen-
@@ -5744,6 +5839,9 @@ export default function AdminPage(): React.ReactElement {
                   <th style={{ textAlign: 'left', padding: 8 }}>{isDe ? 'Unternehmen' : 'Company'}</th>
                 </>
               )}
+              {/* v26.84: „Registriert von" auch im Klammer-View — selbst /
+                  Assistenz / stellvertretend. */}
+              <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap' }}>{isDe ? 'Registriert von' : 'Registered by'}</th>
               {parentCustomFields.map(f => (
                 <th key={`pf-${f.id}`} onClick={() => handleSortConsolidated(`pf:${f.id}`)} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 150, verticalAlign: 'top', lineHeight: 1.25, cursor: 'pointer', userSelect: 'none', ...PASTEL_A_HEADER }} title={`${f.label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
                   {f.label}{sortArrow(`pf:${f.id}`)}
@@ -5843,6 +5941,27 @@ export default function AdminPage(): React.ReactElement {
                         <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{row.company ? highlightMatch(row.company) : '-'}</td>
                       </>
                     )}
+                    {/* v26.84: „Registriert von" — Akteur aus den Sub-Event-
+                        Registrierungen der Person ableiten (erste mit
+                        RegisteredByEmail). Proxy = Name/Mail des Anmeldenden,
+                        sonst „Selbst". */}
+                    {(() => {
+                      let actorEmail = '', actorName = '', isProxy = false;
+                      for (const ck of Object.keys(row.perChild)) {
+                        const cr = row.perChild[ck];
+                        const ae = (cr && cr.RegisteredByEmail || '').trim();
+                        if (cr && ae) {
+                          actorEmail = ae; actorName = (cr.RegisteredByName || '').trim();
+                          isProxy = ae.toLowerCase() !== (cr.ParticipantEmail || '').trim().toLowerCase();
+                          break;
+                        }
+                      }
+                      return (
+                        <td style={{ padding: 8, fontSize: '0.8rem', whiteSpace: 'nowrap', color: isProxy ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-gray-500)' }} title={isProxy ? actorEmail : ''}>
+                          {isProxy ? (actorName || actorEmail) : (isDe ? 'Selbst' : 'Self')}
+                        </td>
+                      );
+                    })()}
                     {parentCustomFields.map(f => {
                       let val = '';
                       // v15.3.1: Parent-Level-Custom-Fields zuerst aus der
@@ -6840,7 +6959,7 @@ export default function AdminPage(): React.ReactElement {
                       return isDe ? 'alle Mitarbeiter von Deloitte Deutschland' : 'all Deloitte Germany employees';
                     }
                     const parts: string[] = [];
-                    if (lc.length) parts.push((isDe ? 'Standorte: ' : 'Locations: ') + lc.join(', '));
+                    if (lc.length) parts.push((isDe ? (lc.length === 1 ? 'Standort: ' : 'Standorte: ') : (lc.length === 1 ? 'Location: ' : 'Locations: ')) + lc.join(', '));
                     if (au.length) parts.push(isDe ? `${au.length} Verteiler/Personen` : `${au.length} distributions/people`);
                     return parts.join(isDe ? ' und ' : ' and ');
                   };
@@ -7744,23 +7863,6 @@ export default function AdminPage(): React.ReactElement {
               />
             )}
 
-            {/* v26.79: Berechtigungen aufräumen (ganze Site-Collection) — Admin only.
-                Öffnet ein Modal mit Prüf- (Dry-Run) und Korrektur-Ablauf. Findet
-                manuelle Einzel-Freigaben mit Schreib-/Vollzugriff außerhalb des
-                Rollen-Konzepts und entfernt sie (Leserechte bleiben). */}
-            {isAdmin && (
-              <ActionTile
-                icon={<Wrench size={18} />}
-                category="maintenance"
-                title={isDe ? 'Berechtigungen aufräumen (ganzer SharePoint)' : 'Clean up permissions (whole SharePoint)'}
-                desc={isDe
-                  ? 'Prüft die gesamte Site-Collection (Hauptseite, alle Listen/Bibliotheken und alle Event-Subsites) auf manuelle Einzel-Freigaben, die einzelnen Personen mehr Rechte geben als im Berechtigungskonzept vorgesehen — z.B. Schreib- oder Vollzugriff auf ganze Listen. Erst kommt ein Bericht (ohne Änderung); danach kannst du die Über-Freigaben mit einem Klick entfernen. Leserechte bleiben immer erhalten (auch für internationale Kolleg:innen); Schreiben ist danach nur noch über die Gruppen und für Admins/Organizer möglich.'
-                  : 'Scans the whole site collection (main site, all lists/libraries and every event subsite) for manual individual grants that give single people more rights than the permission concept allows — e.g. write or full control on entire lists. First you get a report (no change); then you can remove the over-grants with one click. Read access always stays (including for international colleagues); writing is afterwards only possible via the groups and for admins/organizers.'}
-                badge="admin"
-                onClick={() => { setPermCleanupReport(null); setPermCleanupOpen(true); }}
-              />
-            )}
-
             {/* 8b. Organizer-Mails reparieren (alle Events) — Admin only.
                 Findet Events mit Längen-Mismatch zwischen organizers (Names) und
                 organizerEmails — typisch nach Legacy-Korruption aus v10.0–v10.2-
@@ -7938,6 +8040,8 @@ export default function AdminPage(): React.ReactElement {
                         'SplitLabelB': (ev.splitLabelB || 'Funstarter'),
                         'SplitDescA': (ev.splitDescA || ''),
                         'SplitDescB': (ev.splitDescB || ''),
+                        'SplitHelpText': (ev.splitHelpText || ''),
+                        'SplitSectionTitle': (ev.splitSectionTitle || ''),
                       };
                       // v11.13: B2Run-Extras aus EmailTemplateOverrides._b2run
                       // in echte Custom-Fields mit onlyForGroup übersetzen
@@ -8888,9 +8992,11 @@ export default function AdminPage(): React.ReactElement {
             const looksName = (s: string): boolean => /(\bname\b|vorname|nachname|ansprechpartner|counselor|kolleg|mitarbeiter|\bmentor\b|\bpate\b|\bbuddy\b|begleitung|\bgast\b)/i.test(s || '');
             // Felder, die i.d.R. schon automatisch aus dem Deloitte-Profil
             // kommen (Anrede/Vorname/Nachname/E-Mail/Abteilung/Standort/Position/
-            // Telefon) bzw. Firma/Adresse. „name" allein bewusst NICHT — das ist
-            // zu mehrdeutig (z.B. „Name of counselor").
-            const looksProfile = (s: string): boolean => /(vorname|nachname|first ?name|last ?name|e-?mail|abteilung|department|standort|location|\boffice\b|\bbüro\b|telefon|\bphone\b|\bmobil|\bhandy\b|firma|company|unternehmen|arbeitgeber|gesellschaft|\bgmbh\b|legal ?entity|\bentity\b|rechtsträger|member ?firm|adresse|address|job ?title)/i.test(s || '');
+            // „name" allein bewusst NICHT — das ist zu mehrdeutig (z.B. „Name of
+            // counselor"). v26.83: Telefon/Mobil/Handy UND Adresse RAUS — die
+            // werden NICHT automatisch aus dem Profil erfasst (Fehlalarm: der
+            // Hinweis empfahl fälschlich, eine Mobilnummer-Abfrage wegzulassen).
+            const looksProfile = (s: string): boolean => /(vorname|nachname|first ?name|last ?name|e-?mail|abteilung|department|standort|location|\boffice\b|\bbüro\b|firma|company|unternehmen|arbeitgeber|gesellschaft|\bgmbh\b|legal ?entity|\bentity\b|rechtsträger|member ?firm|job ?title)/i.test(s || '');
             // Eindeutige Feld-Namen sammeln (gleiches Label in Haupt- + mehreren
             // Sub-Events nur EINMAL nennen). Profil-Felder haben Vorrang (sie
             // sollen ganz entfallen, nicht nur die Feldart wechseln).
@@ -11855,139 +11961,6 @@ export default function AdminPage(): React.ReactElement {
                 </button>
               </div>
             </>
-          )}
-        </Modal>
-      )}
-
-      {/* v26.79: Berechtigungen aufräumen — Prüf-/Korrektur-Modal. */}
-      {permCleanupOpen && (
-        <Modal
-          open={true}
-          onClose={() => { if (!permCleanupBusy) { setPermCleanupOpen(false); setPermCleanupReport(null); } }}
-          dismissable={!permCleanupBusy}
-          maxWidth={720}
-          padding={24}
-          ariaLabel={isDe ? 'Berechtigungen aufräumen' : 'Clean up permissions'}
-        >
-          <h3 style={{ margin: '0 0 6px', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Wrench size={18} /> {isDe ? 'Berechtigungen aufräumen' : 'Clean up permissions'}
-          </h3>
-          <p style={{ margin: '0 0 14px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
-            {isDe
-              ? 'Der ganze SharePoint (Hauptseite, alle Listen/Bibliotheken und alle Event-Subsites) wird nach manuellen Einzel-Freigaben durchsucht, die einer Person mehr als Leserechte geben, obwohl sie laut Rollen-Konzept kein Admin/Organizer ist. Solche Über-Freigaben lassen sich hier entfernen — Leserechte und alle Gruppen-Berechtigungen bleiben unangetastet.'
-              : 'The whole SharePoint (main site, all lists/libraries and every event subsite) is scanned for manual individual grants that give a person more than read access even though they are not an admin/organizer per the role concept. Such over-grants can be removed here — read access and all group permissions stay untouched.'}
-          </p>
-
-          {permCleanupBusy && permCleanupProgress && (() => {
-            const { msg, done, total } = permCleanupProgress;
-            const pct = Math.min(100, Math.round((done / Math.max(1, total)) * 100));
-            return (
-              <div style={{ marginBottom: 12 }}>
-                <p style={{ margin: '0 0 6px', fontSize: '0.85rem', color: 'var(--dex-gray-700)' }}>{msg}</p>
-                <div style={{ background: 'var(--dex-gray-100, #f0f0f0)', borderRadius: 999, height: 10, overflow: 'hidden' }}>
-                  <div style={{ width: `${pct}%`, height: '100%', background: 'var(--dex-green, #86bc25)', borderRadius: 999, transition: 'width 0.2s ease' }} />
-                </div>
-                <p style={{ margin: '8px 0 0', fontSize: '0.76rem', color: 'var(--dex-gray-400)' }}>
-                  {isDe ? 'Bitte das Fenster geöffnet lassen, bis der Lauf abgeschlossen ist.' : 'Please keep this window open until the run completes.'}
-                </p>
-              </div>
-            );
-          })()}
-
-          {!permCleanupBusy && permCleanupReport && (() => {
-            const r = permCleanupReport;
-            const hasIssues = r.strayWriteFound > 0 || r.ilsIssues > 0;
-            const strayFindings = r.findings.filter(f => f.kind === 'stray-write');
-            const ilsFindings = r.findings.filter(f => f.kind === 'ils');
-            const errFindings = r.findings.filter(f => f.kind === 'error');
-            const SHOW = 200;
-            return (
-              <div>
-                <div style={{ padding: 12, borderRadius: 'var(--dex-radius)', background: hasIssues ? 'rgba(237,139,0,0.08)' : 'rgba(134,188,37,0.10)', border: `1px solid ${hasIssues ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)'}`, marginBottom: 12, fontSize: '0.85rem', color: 'var(--dex-gray-700)', lineHeight: 1.6 }}>
-                  <div style={{ fontWeight: 700, marginBottom: 4 }}>
-                    {r.apply
-                      ? (isDe ? 'Korrektur abgeschlossen' : 'Cleanup complete')
-                      : (hasIssues ? (isDe ? 'Prüfung abgeschlossen — Abweichungen gefunden' : 'Check complete — deviations found') : (isDe ? 'Prüfung abgeschlossen — alles sauber' : 'Check complete — all clean'))}
-                  </div>
-                  {isDe ? (
-                    <>Geprüft: {r.websScanned} Webs, {r.listsScanned} Listen mit eigenen Berechtigungen.<br />
-                    Über-Freigaben (Schreib-/Vollzugriff einzelner Personen): <strong>{r.strayWriteFound}</strong>{r.apply ? ` — davon ${r.strayWriteRemoved} entfernt` : ''}.<br />
-                    Element-Sicherheit falsch (sensible Listen): <strong>{r.ilsIssues}</strong>{r.apply ? ` — davon ${r.ilsFixed} korrigiert` : ''}.
-                    {r.errors > 0 ? <><br />Nicht lesbar/Fehler: {r.errors}.</> : null}</>
-                  ) : (
-                    <>Scanned: {r.websScanned} webs, {r.listsScanned} lists with unique permissions.<br />
-                    Over-grants (individual write/full control): <strong>{r.strayWriteFound}</strong>{r.apply ? ` — ${r.strayWriteRemoved} removed` : ''}.<br />
-                    Item-security wrong (sensitive lists): <strong>{r.ilsIssues}</strong>{r.apply ? ` — ${r.ilsFixed} fixed` : ''}.
-                    {r.errors > 0 ? <><br />Unreadable/errors: {r.errors}.</> : null}</>
-                  )}
-                </div>
-
-                {(strayFindings.length > 0 || ilsFindings.length > 0 || errFindings.length > 0) && (
-                  <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius)', marginBottom: 14 }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
-                      <thead>
-                        <tr style={{ position: 'sticky', top: 0, background: 'var(--dex-gray-50, #fafafa)', textAlign: 'left' }}>
-                          <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--dex-gray-200)' }}>{isDe ? 'Ort' : 'Location'}</th>
-                          <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--dex-gray-200)' }}>{isDe ? 'Person' : 'Person'}</th>
-                          <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--dex-gray-200)' }}>{isDe ? 'Befund' : 'Finding'}</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {[...strayFindings, ...ilsFindings, ...errFindings].slice(0, SHOW).map((f, i) => (
-                          <tr key={i} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
-                            <td style={{ padding: '6px 8px', color: 'var(--dex-gray-600)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }} title={f.scope}>{f.scope}</td>
-                            <td style={{ padding: '6px 8px', color: 'var(--dex-gray-700)', wordBreak: 'break-all' }}>{f.principal || '—'}</td>
-                            <td style={{ padding: '6px 8px', color: f.kind === 'error' ? 'var(--dex-red, #da291c)' : (f.fixed ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-orange-dark, #b35a00)') }}>{f.detail}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                    {r.findings.length > SHOW && (
-                      <div style={{ padding: '6px 8px', fontSize: '0.74rem', color: 'var(--dex-gray-500)' }}>
-                        {isDe ? `… und ${r.findings.length - SHOW} weitere (gekürzt).` : `… and ${r.findings.length - SHOW} more (truncated).`}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                  <button className="btn btn-secondary" onClick={() => { runPermCleanup(false).catch(() => { /* */ }); }} style={{ fontSize: '0.85rem', padding: '9px 16px' }}>
-                    {isDe ? 'Erneut prüfen' : 'Re-check'}
-                  </button>
-                  {!r.apply && hasIssues && (
-                    <button
-                      className="btn btn-primary"
-                      style={{ fontSize: '0.85rem', padding: '9px 18px' }}
-                      onClick={() => {
-                        (async () => {
-                          const ok = await confirmDialog(isDe
-                            ? `${r.strayWriteFound} Über-Freigabe(n) entfernen und ${r.ilsIssues} Element-Sicherheit(en) korrigieren?\n\nLeserechte und Gruppen-Berechtigungen bleiben erhalten. Der Vorgang kann je nach Größe einige Minuten dauern.`
-                            : `Remove ${r.strayWriteFound} over-grant(s) and fix ${r.ilsIssues} item-security setting(s)?\n\nRead access and group permissions are preserved. Depending on size this can take a few minutes.`,
-                            { confirmLabel: isDe ? 'Jetzt korrigieren' : 'Fix now' });
-                          if (ok) await runPermCleanup(true);
-                        })().catch(() => { /* */ });
-                      }}
-                    >
-                      {isDe ? 'Jetzt korrigieren' : 'Fix now'}
-                    </button>
-                  )}
-                  <button className="btn btn-outline" onClick={() => { setPermCleanupOpen(false); setPermCleanupReport(null); }} style={{ fontSize: '0.85rem', padding: '9px 16px' }}>
-                    {isDe ? 'Schließen' : 'Close'}
-                  </button>
-                </div>
-              </div>
-            );
-          })()}
-
-          {!permCleanupBusy && !permCleanupReport && (
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-              <button className="btn btn-outline" onClick={() => setPermCleanupOpen(false)} style={{ fontSize: '0.85rem', padding: '9px 16px' }}>
-                {isDe ? 'Abbrechen' : 'Cancel'}
-              </button>
-              <button className="btn btn-primary" onClick={() => { runPermCleanup(false).catch(() => { /* */ }); }} style={{ fontSize: '0.85rem', padding: '9px 18px' }}>
-                {isDe ? 'Prüfen (ohne Änderung)' : 'Check (no changes)'}
-              </button>
-            </div>
           )}
         </Modal>
       )}

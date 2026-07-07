@@ -107,6 +107,11 @@ export default function AudiencePicker({
   const [audienceSearch, setAudienceSearch] = React.useState('');
   const [audienceResults, setAudienceResults] = React.useState<Array<{ kind: 'user' | 'group'; email: string; displayName: string }>>([]);
   const [isSearchingAudience, setIsSearchingAudience] = React.useState(false);
+  // v26.83: merkt sich, welche Audience-Einträge als GRUPPE/Verteiler
+  // hinzugefügt wurden — damit der „Mitglieder werden eingefroren"-Hinweis nur
+  // erscheint, wenn wirklich ein Verteiler drin ist (nicht bei reinen Einzel-
+  // Personen). Die Adresse allein verrät Person vs. Verteiler nicht.
+  const [audienceGroupKeys, setAudienceGroupKeys] = React.useState<Set<string>>(() => new Set());
   const [audienceIncludeIntl, setAudienceIncludeIntl] = React.useState(false);
   const audienceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   // v22.7: Debounce-Timer für die Live-People-Picker-Suche im „Sichtbarkeit
@@ -337,16 +342,27 @@ export default function AudiencePicker({
         {/* v16.4: Hinweis für den Organizer, dass Mitglieder zum
             Save-Zeitpunkt eingefroren werden und das Event bei DL-
             Mitglieder-Aenderungen einmal neu gespeichert werden muss,
-            damit die neuen Mitglieder die Sichtbarkeit bekommen. */}
-        <WizardHint
-          isDe={isDe}
-          title={isDe ? 'E-Mail-Verteiler: Mitglieder werden beim Speichern hinterlegt' : 'Distribution lists: members are stored when you save'}
-          style={{ marginBottom: 12 }}
-        >
-          {isDe
-            ? <>Die Mitglieder eines E-Mail-Verteilers werden zum Zeitpunkt des Speicherns hinterlegt. Falls sich der Verteiler während des Events ändern sollte, muss das Event einmalig neu gespeichert werden, um die aktualisierte Liste zu hinterlegen.</>
-            : <>The members of an email distribution list are stored at the time you save. If the distribution list changes during the event, the event must be saved once more to store the updated list.</>}
-        </WizardHint>
+            damit die neuen Mitglieder die Sichtbarkeit bekommen.
+            v26.83: Nur anzeigen, wenn wirklich ein Verteiler/eine Gruppe in der
+            Zielgruppe steckt — ein Eintrag, der als GRUPPE hinzugefügt wurde
+            ODER kein „@"-Adressformat hat (benannte Gruppe). Reine Einzel-
+            Personen lösen den Hinweis nicht mehr aus. */}
+        {(() => {
+          const entries = audience.split(',').map(s => s.trim()).filter(Boolean);
+          const hasGroup = entries.some(e => e.indexOf('@') < 0 || audienceGroupKeys.has(e.toLowerCase()));
+          if (!hasGroup) return null;
+          return (
+            <WizardHint
+              isDe={isDe}
+              title={isDe ? 'E-Mail-Verteiler: Mitglieder werden beim Speichern hinterlegt' : 'Distribution lists: members are stored when you save'}
+              style={{ marginBottom: 12 }}
+            >
+              {isDe
+                ? <>Die Mitglieder eines E-Mail-Verteilers werden zum Zeitpunkt des Speicherns hinterlegt. Falls sich der Verteiler während des Events ändern sollte, muss das Event einmalig neu gespeichert werden, um die aktualisierte Liste zu hinterlegen.</>
+                : <>The members of an email distribution list are stored at the time you save. If the distribution list changes during the event, the event must be saved once more to store the updated list.</>}
+            </WizardHint>
+          );
+        })()}
         {/* Chip-Liste der bereits ausgewählten Audience-Einträge.
             Bei vielen Einträgen: Inline-Suche + Pagination (nur 10 sichtbar, 'Mehr anzeigen'-Button). */}
         {audience.trim().length > 0 && (() => {
@@ -509,6 +525,7 @@ export default function AudiencePicker({
                 }}
                 onMouseDown={() => {
                   addAudienceItem(r.email);
+                  if (r.kind === 'group') setAudienceGroupKeys(prev => { const n = new Set(prev); n.add((r.email || '').trim().toLowerCase()); return n; });
                   setAudienceSearch('');
                   setAudienceResults([]);
                 }}
