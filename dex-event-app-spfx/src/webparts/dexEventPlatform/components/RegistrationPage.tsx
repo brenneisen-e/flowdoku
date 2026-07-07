@@ -1881,12 +1881,25 @@ export default function RegistrationPage(): React.ReactElement {
 
   if (submitted) {
     const sessionsOnlyHint = sessionsOnlySubmitted;
-    const successHeadline = sessionsOnlyHint
+    // v26.71: Externe stellvertretende Anmeldung — die Person ist NICHT final
+    // angemeldet, sondern nur in der Teilnehmerliste hinterlegt (Datenschutz-
+    // rückmeldung offen). Es geht KEINE Mail an die externe Adresse und KEIN
+    // Kalendereintrag; der Anmelder verschickt die Einladung selbst und
+    // bestätigt danach. Deshalb hier NICHT „erfolgreich registriert" texten.
+    const isExternalProxy = registerForOther && isExternalEmailAddr((email || '').trim());
+    const proxyName = `${firstName} ${surname}`.trim() || email;
+    const successHeadline = isExternalProxy
+      ? (locale === 'de' ? 'In der Teilnehmerliste hinterlegt' : 'Added to the participant list')
+      : sessionsOnlyHint
       ? (childTermPlural
           ? (locale === 'de' ? `Für ${childTermPlural} angemeldet` : `Registered for ${childTermPlural}`)
           : (t('reg.success.sessionsonly.title') || 'Für Sessions angemeldet'))
       : (submittedAsWaitlist ? t('reg.waitlisttitle') : t('reg.success'));
-    const successBody = sessionsOnlyHint
+    const successBody = isExternalProxy
+      ? (locale === 'de'
+          ? `${proxyName} wurde in der Teilnehmerliste hinterlegt — mit dem Status „Angemeldet (Datenschutzrückmeldung offen)". Da „${email}" eine externe Adresse ist, versendet die App KEINE Mail dorthin und KEINEN Kalendereintrag. Du bekommst eine E-Mail (Organisator:innen in Kopie) mit den nächsten Schritten: den fertigen Einladungs-Entwurf im Organizer Center herunterladen, aus deinem eigenen Postfach an ${proxyName} weiterleiten und nach ihrer Rückmeldung die Datenschutz-Zustimmung in der Teilnehmerliste bestätigen.`
+          : `${proxyName} has been added to the participant list — with status „Registered (privacy confirmation pending)". Since „${email}" is an external address, the app sends NO email there and NO calendar entry. You'll receive an email (organizers in copy) with the next steps: download the ready-made invitation draft in the Organizer Center, forward it from your own mailbox to ${proxyName}, and confirm the privacy consent in the participant list once they reply.`)
+      : sessionsOnlyHint
       ? (event.subEventsOnlyMode
           ? (childTermSingular
               ? (locale === 'de'
@@ -1925,7 +1938,7 @@ export default function RegistrationPage(): React.ReactElement {
               Liste der gewählten Sections (dynamische Organizer-Bezeichnung) und
               der Mail/Outlook-Satz NUR wenn für die gewählten Sections wirklich
               Mail bzw. Outlook aktiv ist. */}
-          {sessionsOnlyHint && event.subEventsOnlyMode ? (() => {
+          {!isExternalProxy && sessionsOnlyHint && event.subEventsOnlyMode ? (() => {
             const selectedChildren = childEvents.filter(ce => selectedSessions.has(ce.id));
             const anyEmail = selectedChildren.some(ce => !ce.disableEmails);
             const anyOutlook = selectedChildren.some(ce => !ce.disableOutlook);

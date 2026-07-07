@@ -15,8 +15,7 @@ import { EventService, SPEvent, CustomField, SPRegistration, SPParticipant, Rese
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
 import { buildHashDeepLink } from '../utils/deepLink';
 import { isEventOver } from '../utils/eventFormat';
-import { registrationEmail, externalInviteInstructionEmail, externalInvitationEmail, coOrganizerAddedEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
-import { buildUnsentEmlDraft } from '../utils/emlDraft';
+import { registrationEmail, externalInviteInstructionEmail, coOrganizerAddedEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
 import { APP_VERSION } from '../version';
 import { RELEASE_NOTES } from '../data/releaseNotes';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
@@ -1748,13 +1747,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         catch (err) { console.warn('[DEX] markConsentPendingByEmail failed:', err); }
       }
       let emailData: { subject: string; body: string };
-      // v26.62: Bei externer Einladung den fertigen .eml-Entwurf DIREKT an die
-      // Instruktions-Mail anhängen (Feedback: „warum so umständlich?") — der
-      // Anmelder muss dann nicht mehr ins Organizer Center. Gleicher Inhalt
-      // wie der Download-Button in der Teilnehmerliste. Der Download bleibt
-      // als Fallback bestehen (z. B. solange der Mail-Flow Anhänge noch nicht
-      // weiterreicht oder wenn der Entwurf später erneut gebraucht wird).
-      let externalInviteEml: { fileName: string; content: string } | undefined;
+      // v26.71: Der .eml-Entwurf wird NICHT mehr an die Instruktions-Mail
+      // angehängt (v26.62 zurückgebaut). Grund: Die Deloitte-Mail-Flow-Regel
+      // blockt JEDE über Power Automate versendete Mail, die einen Anhang trägt
+      // (NDR: „Power Apps and Power Automate cannot be used to send email
+      // attachments") — mit Anhang käme die Instruktions-Mail also GAR NICHT mehr
+      // beim Anmelder an. Der fertige Entwurf bleibt per Download im Organizer
+      // Center verfügbar; der Anmelder leitet ihn aus dem eigenen Postfach an die
+      // externe Person weiter (die App/der Flow sendet NIE an externe Adressen).
       const spTemplateRaw = isExternalInvite ? null : await eventService.getEmailTemplate(templateType, lang).catch(() => null);
       const spTemplate = applyEventTemplateOverride(spTemplateRaw, event.emailTemplateOverrides, templateType);
       if (isExternalInvite) {
@@ -1764,20 +1764,6 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           registrantFirst, nameToUse, emailToUse, event.title,
           lang.toUpperCase() === 'DE', orgCenterUrl
         );
-        try {
-          const inv = externalInvitationEmail(
-            nameToUse, event.title, currentUserName || '',
-            lang.toUpperCase() === 'DE',
-            { startDate: event.startDate, endDate: event.endDate, location: event.location }
-          );
-          const eml = buildUnsentEmlDraft({
-            to: [emailToUse],
-            cc: ['no_reply.events@deloitte.de', ...Array.from(new Set([...(event.organizerEmails || []), ...(event.coOrganizerEmails || [])].filter(Boolean)))],
-            subject: inv.subject,
-            html: inv.body,
-          });
-          externalInviteEml = { fileName: `Einladung_${emailToUse}.eml`, content: eml };
-        } catch (emlErr) { console.warn('[DEX] externalInviteEml build failed:', emlErr); }
       } else if (spTemplate) {
         emailData = buildEmailFromTemplate(spTemplate, vars);
       } else {
@@ -1828,9 +1814,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           // v26.33: ALLE Organizer (inkl. Co-Organizer) auf CC.
           const allOrganizers = [...(event.organizerEmails || []), ...(event.coOrganizerEmails || [])].filter(Boolean);
           if (isExternalInvite) {
-            // v26.47: Instruktions-Mail nur an den Anmelder — kein CC nötig
-            // (Organizer sehen den offenen Status in der Teilnehmerliste).
-            externalCcExtra = '';
+            // v26.71: Instruktions-Mail geht an den Anmelder (To); die
+            // Organisator:innen kommen zusätzlich auf CC (Kopie/Nachweis). Es
+            // steht KEINE externe Adresse in To/CC — die App sendet nie an
+            // Externe (dedupe/To-Ausschluss passiert weiter unten in ccMerged).
+            externalCcExtra = allOrganizers.join(';');
           } else {
             externalCcExtra = allOrganizers.join(';');
             // Hinweis-Box VOR dem Original-Body — adressiert an die externe Person.
@@ -1924,8 +1912,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           finalSubject, finalRecipient, finalRecipientName, finalBody,
           templateType, event.title, eventId, ccFromFields, bcc,
           undefined,
-          // v26.62: .eml-Einladungs-Entwurf direkt an der Instruktions-Mail.
-          isExternalInvite ? externalInviteEml : undefined
+          // v26.71: KEIN Anhang mehr — die Deloitte-Mail-Flow-Regel blockt
+          // Power-Automate-Mails mit Anhang (NDR). Der .eml-Entwurf wird im
+          // Organizer Center heruntergeladen und aus dem eigenen Postfach
+          // weitergeleitet.
+          undefined
         ).catch(err => console.warn('[DEX] queueEmail failed:', err));
       }
 
