@@ -63,6 +63,15 @@ const isExternalEmailAddr = (e: string): boolean => {
   return !!v && !/@(.*\.)?deloitte\.de$/i.test(v);
 };
 
+// v26.75: Die Vorfilter-Kategorie-Auswahl liegt transient unter dem Schlüssel
+// '<fieldId>__cat' im Antwort-Store — sie ist reine UI-Hilfe zum Filtern der
+// Optionsliste und wird NICHT als Antwort gespeichert.
+function stripPrefilterKeys(o: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of Object.keys(o || {})) { if (!k.endsWith('__cat')) out[k] = o[k]; }
+  return out;
+}
+
 // v18.74: Strengere Plausibilitätsprüfung gegen Tippfehler bei externen
 // Adressen — fängt fehlende/zu kurze TLD, doppelte Punkte, mehrere @, führende/
 // abschließende Punkte und Whitespace/Kommas ab. Verifiziert NICHT die Existenz
@@ -1307,13 +1316,13 @@ export default function RegistrationPage(): React.ReactElement {
     setSubmitProgress(5);
     setSubmitProgressLabel(locale === 'de' ? 'Team-Anmeldung wird vorbereitet…' : 'Preparing team registration…');
     try {
-      const customData: Record<string, string> = { salutation, ...eventSpecific };
+      const customData: Record<string, string> = { salutation, ...stripPrefilterKeys(eventSpecific) };
       const leadEmail = email.trim();
       const leadFirstName = firstName.trim();
       const leadLastName = surname.trim();
       // v18.12: Custom-Field-Antworten pro Mitglied (nach Slot-Index) mitgeben.
       const members = teamMembersParsed
-        .map((m, idx) => m ? { email: m.email, displayName: m.displayName, customData: { ...(teamMemberFields[idx] || {}) } } : null)
+        .map((m, idx) => m ? { email: m.email, displayName: m.displayName, customData: stripPrefilterKeys(teamMemberFields[idx] || {}) } : null)
         .filter((m): m is { displayName: string; email: string; customData: Record<string, string> } => !!m);
       setSubmitProgress(30);
       setSubmitProgressLabel(locale === 'de'
@@ -1370,7 +1379,7 @@ export default function RegistrationPage(): React.ReactElement {
     try {
       // Event-spezifische Antworten des Beitretenden (wie bei der normalen
       // Anmeldung) — werden an den Team-Beitritt durchgereicht.
-      const customData: Record<string, string> = { salutation, ...eventSpecific };
+      const customData: Record<string, string> = { salutation, ...stripPrefilterKeys(eventSpecific) };
       setSubmitProgress(50);
       if (event.teamJoinRequiresApproval) {
         const r = await createTeamJoinRequest(event.id, pendingJoinTeam.teamId, customData);
@@ -1414,7 +1423,7 @@ export default function RegistrationPage(): React.ReactElement {
     try {
       const customData: Record<string, string> = {
         salutation,
-        ...eventSpecific,
+        ...stripPrefilterKeys(eventSpecific),
       };
       const participantEmail = email.trim();
       const firstTrim = firstName.trim();
@@ -2158,6 +2167,38 @@ export default function RegistrationPage(): React.ReactElement {
             placeholder={tEvent('reg.pleaseselect')}
             error={isErr}
           />
+        );
+      })()
+    ) : field.type === 'select' && field.optionCategories && field.optionCategories.some(c => (c || '').trim()) ? (
+      // v26.75: Vorfilter — zuerst Kategorie wählen, dann nur die passenden
+      // Optionen zeigen (kürzere Liste). Die Kategorie-Auswahl liegt transient
+      // in vals['<id>__cat']; gespeichert wird nur der eigentliche Optionswert.
+      (() => {
+        const cats = field.optionCategories || [];
+        const distinctCats = Array.from(new Set(cats.map(c => (c || '').trim()).filter(Boolean)));
+        const catKey = `${field.id}__cat`;
+        const selectedOpt = vals[field.id] || '';
+        const selIdx = (field.options || []).indexOf(selectedOpt);
+        const optCat = selIdx >= 0 ? (cats[selIdx] || '').trim() : '';
+        const currentCat = optCat || (vals[catKey] || '');
+        const visibleIdx = (field.options || []).map((_o, i) => i).filter(i => {
+          if (!currentCat) return false;
+          const c = (cats[i] || '').trim();
+          return c === currentCat || c === '';
+        });
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <select className="form-select" value={currentCat} onChange={e => setVals({ ...vals, [catKey]: e.target.value, [field.id]: '' })} style={inputStyleGreen}>
+              <option value="">{field.prefilterLabel ? `${field.prefilterLabel}: ${tEvent('reg.pleaseselect')}` : tEvent('reg.pleaseselect')}</option>
+              {distinctCats.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            {currentCat && (
+              <select className="form-select" value={selectedOpt} onChange={e => setVals({ ...vals, [field.id]: e.target.value })} style={inputStyleGreen}>
+                <option value="">{tEvent('reg.pleaseselect')}</option>
+                {visibleIdx.map(i => <option key={(field.options || [])[i]} value={(field.options || [])[i]}>{pickOptionLabel(field, i, (field.options || [])[i])}</option>)}
+              </select>
+            )}
+          </div>
         );
       })()
     ) : field.type === 'select' ? (

@@ -118,6 +118,10 @@ interface CustomFieldInput {
   /** v26.74: Vorauswahl bei Single-Select — eine der `options` ist im
    *  Anmeldeformular vorausgewählt (leer = keine Vorauswahl). */
   defaultValue?: string;
+  /** v26.75: Vorfilter — Kategorie pro Option (positional zu `options`). */
+  optionCategories?: string[];
+  /** v26.75: Beschriftung des Vorfilter-Dropdowns. */
+  prefilterLabel?: string;
   /** v7.20: Optionale Beschreibung — landet als "i"-Tooltip neben dem
    *  Feld-Label im Registrierungsformular. */
   helpText?: string;
@@ -182,13 +186,18 @@ function serializeCustomFields(
     .map(f => {
       let optionsOut: string[] | undefined;
       let optionsEnOut: string[] | undefined;
+      // v26.75: Vorfilter-Kategorien POSITIONAL zu den (bereinigten) Optionen.
+      let categoriesOut: string[] | undefined;
       if (f.type === 'select') {
         const pairs = (f.options || [])
-          .map((o, i) => ({ de: (o || '').trim(), en: ((f.optionsEn || [])[i] || '').trim() }))
+          .map((o, i) => ({ de: (o || '').trim(), en: ((f.optionsEn || [])[i] || '').trim(), cat: (((f.optionCategories || [])[i]) || '').trim() }))
           .filter(p => p.de.length > 0);
         optionsOut = pairs.map(p => p.de);
         if (bilingual && pairs.some(p => p.en.length > 0)) {
           optionsEnOut = pairs.map(p => p.en);
+        }
+        if (!f.multi && pairs.some(p => p.cat.length > 0)) {
+          categoriesOut = pairs.map(p => p.cat);
         }
       }
       return {
@@ -208,6 +217,10 @@ function serializeCustomFields(
         // Wert eine der (bereinigten) Optionen ist.
         ...(f.type === 'select' && !f.multi && f.defaultValue && (optionsOut || []).indexOf(f.defaultValue) >= 0
           ? { defaultValue: f.defaultValue }
+          : {}),
+        // v26.75: Vorfilter-Kategorien + optionale Beschriftung (nur Single-Select).
+        ...(categoriesOut
+          ? { optionCategories: categoriesOut, ...(f.prefilterLabel && f.prefilterLabel.trim() ? { prefilterLabel: f.prefilterLabel.trim() } : {}) }
           : {}),
         // v24.25: Uhrzeit-Flag nur bei Datums-Feldern persistieren.
         ...(f.type === 'date' && f.withTime ? { withTime: true } : {}),
@@ -1062,6 +1075,8 @@ export default function EventCreationPage(): React.ReactElement {
       options: f.options ? [...f.options] : [], visible: true,
       ...(f.multi ? { multi: true } : {}),
       ...(f.defaultValue ? { defaultValue: f.defaultValue } : {}),
+      ...(f.optionCategories && f.optionCategories.length > 0 ? { optionCategories: [...f.optionCategories] } : {}),
+      ...(f.prefilterLabel ? { prefilterLabel: f.prefilterLabel } : {}),
       ...(f.helpText ? { helpText: f.helpText } : {}),
       ...(f.helpTextStyle === 'inline' ? { helpTextStyle: 'inline' as const } : {}),
       ...(f.showIf ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } } : {}),
@@ -11790,13 +11805,60 @@ export default function EventCreationPage(): React.ReactElement {
                             <input
                               type="checkbox"
                               checked={!!field.multi}
-                              onChange={e => updateCustomField(field.id, { multi: e.target.checked })}
+                              onChange={e => updateCustomField(field.id, { multi: e.target.checked, ...(e.target.checked ? { optionCategories: undefined, prefilterLabel: undefined, defaultValue: undefined } : {}) })}
                               style={{ display: 'none' }}
                             />
                             <span style={{ fontSize: '0.8rem', lineHeight: 1 }}>{field.multi ? '✓' : '○'}</span>
                             {isDe ? 'Mehrfachauswahl möglich' : 'Allow multiple selection'}
                           </label>
+                          {/* v26.75: Vorfilter — nur bei Single-Select. Aktiviert
+                              pro Option ein Kategorie-Feld; die Anmeldeseite zeigt
+                              dann zuerst ein Kategorie-Dropdown und filtert die
+                              Optionsliste darauf (z.B. „Herren"/„Damen" → Größen). */}
+                          {!field.multi && (
+                            <label
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 6,
+                                padding: '4px 10px', borderRadius: 999,
+                                fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap',
+                                cursor: 'pointer', userSelect: 'none',
+                                border: `1px solid ${field.optionCategories ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                                background: field.optionCategories ? 'rgba(134,188,37,0.10)' : '#fff',
+                                color: field.optionCategories ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)',
+                              }}
+                              title={isDe
+                                ? 'Zu jeder Option eine Kategorie hinterlegen. Der Teilnehmer wählt erst die Kategorie, dann sieht er nur die passenden Optionen (kürzere Liste).'
+                                : 'Give each option a category. The attendee picks the category first and then only sees the matching options (shorter list).'}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={!!field.optionCategories}
+                                onChange={e => updateCustomField(field.id, e.target.checked
+                                  ? { optionCategories: (field.options || []).map(() => '') }
+                                  : { optionCategories: undefined, prefilterLabel: undefined })}
+                                style={{ display: 'none' }}
+                              />
+                              <span style={{ fontSize: '0.8rem', lineHeight: 1 }}>{field.optionCategories ? '✓' : '○'}</span>
+                              {isDe ? 'Vorfilter nach Kategorie' : 'Pre-filter by category'}
+                            </label>
+                          )}
                         </div>
+                        {/* v26.75: Beschriftung des Vorfilter-Dropdowns. */}
+                        {!field.multi && field.optionCategories && (
+                          <div style={{ marginBottom: 10 }}>
+                            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-600)', fontWeight: 600, marginBottom: 3 }}>
+                              {isDe ? 'Bezeichnung des Vorfilters' : 'Pre-filter label'}
+                            </label>
+                            <input
+                              className="form-input"
+                              value={field.prefilterLabel || ''}
+                              onChange={e => updateCustomField(field.id, { prefilterLabel: e.target.value })}
+                              placeholder={isDe ? 'z.B. Größentabelle, Kategorie' : 'e.g. size chart, category'}
+                              maxLength={40}
+                              style={{ fontSize: '0.85rem', padding: '6px 10px' }}
+                            />
+                          </div>
+                        )}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                           {(field.options || []).map((opt, optIdx) => (
                             <div key={optIdx} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -11824,7 +11886,14 @@ export default function EventCreationPage(): React.ReactElement {
                                     // damit Index-Mapping konsistent bleibt.
                                     const optsEn = [...(field.optionsEn || [])];
                                     if (optsEn.length > optIdx) optsEn.splice(optIdx, 1);
-                                    updateCustomField(field.id, { options: opts, optionsEn: optsEn });
+                                    // v26.75: Vorfilter-Kategorien positional mit-splicen.
+                                    const upd: Partial<CustomFieldInput> = { options: opts, optionsEn: optsEn };
+                                    if (field.optionCategories) {
+                                      const cats = [...field.optionCategories];
+                                      if (cats.length > optIdx) cats.splice(optIdx, 1);
+                                      upd.optionCategories = cats;
+                                    }
+                                    updateCustomField(field.id, upd);
                                   }}
                                   title={isDe ? 'Option entfernen' : 'Remove option'}
                                   style={{
@@ -11859,11 +11928,34 @@ export default function EventCreationPage(): React.ReactElement {
                                   />
                                 </div>
                               )}
+                              {/* v26.75: Kategorie pro Option (nur wenn Vorfilter aktiv). */}
+                              {field.optionCategories && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 32 }}>
+                                  <span style={{
+                                    flexShrink: 0, fontSize: '0.65rem',
+                                    padding: '1px 6px', borderRadius: 6,
+                                    background: 'rgba(134,188,37,0.14)',
+                                    color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700, letterSpacing: 0.3,
+                                  }}>{isDe ? 'KAT' : 'CAT'}</span>
+                                  <input
+                                    className="form-input"
+                                    value={(field.optionCategories || [])[optIdx] || ''}
+                                    placeholder={isDe ? 'Kategorie (z.B. Herren) — leer = immer sichtbar' : 'Category (e.g. men) — empty = always shown'}
+                                    onChange={e => {
+                                      const cats = [...(field.optionCategories || [])];
+                                      while (cats.length <= optIdx) cats.push('');
+                                      cats[optIdx] = e.target.value;
+                                      updateCustomField(field.id, { optionCategories: cats });
+                                    }}
+                                    style={{ flex: 1, fontSize: '0.78rem', padding: '5px 9px' }}
+                                  />
+                                </div>
+                              )}
                             </div>
                           ))}
                           <button
                             type="button"
-                            onClick={() => updateCustomField(field.id, { options: [...(field.options || []), ''] })}
+                            onClick={() => updateCustomField(field.id, { options: [...(field.options || []), ''], ...(field.optionCategories ? { optionCategories: [...field.optionCategories, ''] } : {}) })}
                             style={{
                               alignSelf: 'flex-start', marginTop: 4,
                               display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -14096,6 +14188,9 @@ export default function EventCreationPage(): React.ReactElement {
             options: f.type === 'select' ? f.options : undefined,
             // v26.74: Vorauswahl an die Live-Preview weiterreichen.
             defaultValue: f.type === 'select' && !f.multi ? f.defaultValue : undefined,
+            // v26.75: Vorfilter-Kategorien + Beschriftung an die Preview.
+            optionCategories: f.type === 'select' && !f.multi ? f.optionCategories : undefined,
+            prefilterLabel: f.type === 'select' && !f.multi ? f.prefilterLabel : undefined,
             // v7.24: helpText, multi und showIf an die Live-Preview weiterreichen,
             // damit die echte RegistrationPage genau das rendert was der
             // Teilnehmer später sieht (i-Tooltip, Multi-Select-Liste,

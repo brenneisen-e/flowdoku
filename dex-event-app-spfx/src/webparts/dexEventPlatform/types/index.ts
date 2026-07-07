@@ -444,6 +444,16 @@ export interface EventSpecificField {
    *  eine der `options`, die im Anmeldeformular vorausgewählt ist (leer/
    *  undefined = keine Vorauswahl, „Bitte wählen"). */
   defaultValue?: string;
+  /** v26.75: Nur für `type === 'select'` ohne `multi`. Vorfilter/Kategorie pro
+   *  Option — POSITIONAL zu `options` (gleicher Index). Ist mindestens eine
+   *  Kategorie gesetzt, zeigt das Anmeldeformular zuerst ein Kategorie-Dropdown
+   *  und filtert die eigentliche Optionsliste darauf (z.B. „Herren"/„Damen" →
+   *  nur die passenden Größen). Optionen mit leerer Kategorie sind in jeder
+   *  Kategorie sichtbar. */
+  optionCategories?: string[];
+  /** v26.75: Beschriftung des Vorfilter-Dropdowns (z.B. „Größentabelle"). Leer =
+   *  generisches „Kategorie". */
+  prefilterLabel?: string;
   /** v7.21: Sichtbarkeitsbedingung. Wenn gesetzt, wird das Feld nur dann
    *  angezeigt, wenn das Quell-Feld (`fieldId`) einen der `values` als
    *  Antwort hat. Beispiel: Roommate-Feld nur sichtbar wenn Zimmerart =
