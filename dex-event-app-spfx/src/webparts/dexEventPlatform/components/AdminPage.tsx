@@ -37,6 +37,7 @@ import { qrCodeEmail, qrEmailDefaults, buildQrBlockHtml, QrEmailOverride, cancel
 // Selbst-Versenden durch die anmeldende Person (App kann keine externen
 // Adressen anmailen).
 import { buildUnsentEmlDraft, downloadEml } from '../utils/emlDraft';
+import { getCachedImage } from '../utils/imageCache';
 import { applyEventTemplateOverride, formatOrganizerList } from '../context/EventContext';
 import { HtmlEditorModal } from './HtmlEditorModal';
 import { InfoTooltip } from './InfoTooltip';
@@ -1556,6 +1557,14 @@ export default function AdminPage(): React.ReactElement {
   // v22.11: Unter-Überschrift der Massenmail editierbar (Parität zur
   // Einladungsmail; vorher war das Feld sichtbar, aber nicht angebunden).
   const [massmailSubheading, setMassmailSubheading] = React.useState('');
+  // v26.78: Bild im Mail-Kopf (Hero) der Massenmail wählbar — 'logo' = Standard
+  // (DEX-Logo/Orb bzw. konfiguriertes Mail-Logo) oder 'event' = das Event-Foto.
+  // Bei 'event' wird das Event-Bild client-seitig als Base64 (getCachedImage)
+  // direkt in den {{ORB_URL}}-Platzhalter gebacken, damit es unabhängig vom
+  // Flow-Default im Mail-Kopf erscheint. massmailEventPhotoB64 wird beim Öffnen
+  // des Massenmail-Editors vorgeladen (für Vorschau + Versand).
+  const [massmailHero, setMassmailHero] = React.useState<'logo' | 'event'>('logo');
+  const [massmailEventPhotoB64, setMassmailEventPhotoB64] = React.useState<string>('');
   // v11.40: Einladungsmail-Modal — Mail mit Anmelde-Link an Organizer (zum
   // Weiterleiten) oder direkt an den hinterlegten Mailverteiler des Events.
   const [showInviteModal, setShowInviteModal] = React.useState(false);
@@ -3979,6 +3988,31 @@ export default function AdminPage(): React.ReactElement {
       }));
     } catch { /* */ }
   }, [massmailMode, showEmailModal, selectedEvent, emailSubject, emailHeading, massmailSubheading, emailBody]);
+  // v26.78: Event-Foto als Base64 vorladen, sobald der Massenmail-Editor
+  // geöffnet wird — für die Live-Vorschau und den Versand (Bild-im-Kopf-Wahl).
+  // Wechselt der Nutzer das Event, wird die Wahl auf „Standard" zurückgesetzt.
+  React.useEffect(() => {
+    if (!showEmailModal || !selectedEvent) return;
+    setMassmailHero('logo');
+    setMassmailEventPhotoB64('');
+    const url = selectedEvent.imageUrl;
+    if (!url) return;
+    let cancelled = false;
+    getCachedImage(url)
+      .then(b64 => { if (!cancelled && b64 && b64.indexOf('data:') === 0) setMassmailEventPhotoB64(b64); })
+      .catch(() => { /* Event-Foto nicht ladbar → Option bleibt ohne Vorschau/deaktiviert */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showEmailModal, selectedEvent && selectedEvent.id]);
+  // v26.78: Ersetzt den {{ORB_URL}}-Platzhalter im gewickelten Mail-HTML durch
+  // das gewählte Kopf-Bild. Bei „Event-Foto" (+ geladenem Foto) wird das
+  // Event-Bild als Base64 fest eingebacken; sonst bleibt {{ORB_URL}} erhalten,
+  // damit der Flow wie gehabt das Standard-Bild (DEX-Logo/Orb bzw. das
+  // konfigurierte Mail-Logo des Events) einsetzt.
+  const applyMassmailHero = (wrappedHtml: string): string =>
+    (massmailHero === 'event' && massmailEventPhotoB64)
+      ? wrappedHtml.replace(/\{\{ORB_URL\}\}/g, massmailEventPhotoB64)
+      : wrappedHtml;
   // Testmail mit dem aktuellen Stand an die Organizer (zur Kontrolle vor dem
   // echten Massenversand). Geht NICHT an die Teilnehmer.
   const sendMassmailTestToOrganizers = async (): Promise<void> => {
@@ -4001,7 +4035,7 @@ export default function AdminPage(): React.ReactElement {
       const resolvedHeading = replacePlaceholders(emailHeading, previewVars);
       const resolvedBody = replacePlaceholders(emailBody, previewVars);
       const resolvedSub = massmailSubheading.trim() ? replacePlaceholders(massmailSubheading, previewVars) : `Event ${selectedEvent.title}`;
-      const fullBody = wrapTemplate('#86bc25', resolvedHeading, resolvedSub, resolvedBody);
+      const fullBody = applyMassmailHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSub, resolvedBody));
       await eventServiceRef.queueEmail(resolvedSubject, to, 'Organizer (Test)', fullBody, 'Massenmail', selectedEvent.title, selectedEvent.id);
       setMassmailTestMsg(isDe ? `Testmail an die Organizer (${to.split(';').length}) verschickt — bitte Postfach prüfen.` : `Test email sent to the organizers (${to.split(';').length}) — please check the mailbox.`);
     } catch (err) {
@@ -13316,7 +13350,7 @@ export default function AdminPage(): React.ReactElement {
           const resolvedSubheading = massmailSubheading.trim()
             ? replacePlaceholders(massmailSubheading, previewVars)
             : `Event ${selectedEvent.title}`;
-          const fullBody = wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody);
+          const fullBody = applyMassmailHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody));
           const allEmails = recipients.map(r => r.ParticipantEmail).join(';');
           // v17.10: Organizer immer auf CC (falls nicht ohnehin schon
           // unter den Empfängern). Dedup per lowercase, semicolon-join.
@@ -13374,13 +13408,49 @@ export default function AdminPage(): React.ReactElement {
               { key: '{{EventTitle}}', label: 'Event' },
               { key: '{{Organizer}}', label: 'Organizer' },
             ]}
-            imageBase64={customLogo}
+            imageBase64={(massmailHero === 'event' && massmailEventPhotoB64) ? massmailEventPhotoB64 : customLogo}
             headerExtra={(
               <div style={{ padding: 12, background: 'var(--dex-gray-50, #fafafa)', border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius)', marginBottom: 4 }}>
                 <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginBottom: 8 }}>
                   {isDe
                     ? <>Geht an <strong>{recipients.length}</strong> Empfänger (die oben gewählte Gruppe). Organizer kommen automatisch auf CC.</>
                     : <>Goes to <strong>{recipients.length}</strong> recipients (the group selected above). Organizers are automatically on CC.</>}
+                </div>
+                {/* v26.78: Bild im Mail-Kopf wählen — Standard (DEX-Logo/Orb) oder
+                    das Event-Foto. „Event-Foto" nur wählbar, wenn das Event ein
+                    Bild hat (dann als Base64 in die Mail eingebacken). */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                  <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--dex-gray-600)' }}>{isDe ? 'Bild im Mail-Kopf:' : 'Header image:'}</span>
+                  <div style={{ display: 'inline-flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--dex-gray-300)' }}>
+                    {([
+                      { key: 'logo' as const, label: isDe ? 'DEX-Logo' : 'DEX logo', enabled: true },
+                      { key: 'event' as const, label: isDe ? 'Event-Foto' : 'Event photo', enabled: !!massmailEventPhotoB64 },
+                    ]).map(opt => {
+                      const active = massmailHero === opt.key;
+                      return (
+                        <button
+                          key={opt.key}
+                          type="button"
+                          disabled={emailSending || !opt.enabled}
+                          onClick={() => opt.enabled && setMassmailHero(opt.key)}
+                          title={!opt.enabled ? (isDe ? 'Dieses Event hat kein Bild hinterlegt.' : 'This event has no image set.') : undefined}
+                          style={{
+                            padding: '6px 14px', fontSize: '0.78rem', border: 'none', cursor: (opt.enabled && !emailSending) ? 'pointer' : 'not-allowed',
+                            background: active ? 'var(--dex-green)' : 'transparent',
+                            color: active ? '#fff' : (opt.enabled ? 'var(--dex-gray-600)' : 'var(--dex-gray-400)'),
+                            fontWeight: active ? 700 : 500, opacity: opt.enabled ? 1 : 0.6,
+                          }}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
+                    {massmailHero === 'event'
+                      ? (isDe ? 'Das Event-Foto erscheint im Mail-Kopf.' : 'The event photo is shown in the header.')
+                      : (isDe ? 'Standard-Bild (DEX-Logo bzw. dein Mail-Logo).' : 'Default image (DEX logo or your mail logo).')}
+                  </span>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                   <button type="button" className="btn btn-secondary" onClick={saveMassmailDraft} disabled={emailSending} style={{ fontSize: '0.78rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
