@@ -207,6 +207,57 @@ und `reactivateRegistration`. Dadurch sieht der Teilnehmer seine Anmeldung in
   Teilnehmer ohne Tenant-Login scheitern am `ensureuser` → zählen als „nicht
   möglich" (erwartbar).
 
+### Berechtigungen aufräumen — Site-weite Bereinigung (v26.79–v26.81)
+
+Admin-Tool im **globalen Admin-Hub** (`AdminHubPage`, Abschnitt „Wartung"), NICHT
+in der per-Event `AdminPage`. Zweck: manuelle **Einzel-Freigaben** (direkte
+Nutzer-Berechtigungen) finden/entfernen, die über das Rollen-Konzept hinaus
+Schreib-/Vollzugriff geben — Folge von „mal eben" per Hand vergebenen Rechten.
+
+- **Service:** `EventService.auditOrCleanupPermissions(apply, ctx, onProgress)` →
+  `PermCleanupReport`. `apply=false` = Dry-Run (Bericht, ändert nichts),
+  `apply=true` = korrigieren. Scannt die GANZE Collection: Root-Web + alle
+  Root-Listen mit `HasUniqueRoleAssignments` + alle Subsites (BFS über
+  `web/webs`, max 3 Ebenen, cap 500) + deren Unique-Listen.
+- **Klassifikation (Soll-Konzept):** Pro Securable werden via
+  `roleassignments?$expand=Member,RoleDefinitionBindings` (mit `$top=2000` +
+  nextLink — sonst OData-Kappung bei 100!) alle Zuweisungen gelesen.
+  **Entfernt** werden nur EINZEL-User (`PrincipalType=1`) mit **elevated** Rolle
+  (roleId ≠ 1073741825 Limited Access und ≠ 1073741826 Read), deren E-Mail NICHT
+  in DEX_Roles steht (`ctx.adminEmails`/`organizerEmails` = ALLE Rollen-Personen,
+  Sicherheitsnetz) bzw. — auf einer Subsite — nicht deren Event-Organizer ist
+  (`ctx.subsiteOrganizers`, Key = abs. URL + server-rel. Pfad). **Gruppen
+  (Owners/Members/Visitors/DEALL) werden NIE angefasst**; Leserechte bleiben
+  (int. Leser lesen weiter über die Visitors-Gruppe). Self + App-Principals
+  ausgenommen. Entfernen: `roleassignments/getbyprincipalid(pid)` DELETE.
+- **ILS zusätzlich:** auf Teilnehmer + DEX_Emails/Outlook/IDReorder wird
+  `ReadSecurity/WriteSecurity=2` geprüft und gesetzt (nur diese; ChangeLog
+  bleibt RS=1). `checkIls` liest nach dem MERGE **zurück** und zählt nur bei
+  echtem 2/2 als korrigiert.
+- **⚠️ Cross-Web-Digest (v26.81, wichtig!):** SPFx `spHttpClient` hängt den
+  Request-Digest NUR fürs aktuelle Web an → jeder MERGE/DELETE auf ein ANDERES
+  Web (Subsite) UND selbst auf manche Root-Listen wird mit **403** abgelehnt.
+  Das war die Ursache, warum die ILS-Korrektur flächendeckend fehlschlug UND
+  warum `setItemLevelPermissions` in diesem Tenant still nie griff (61 Listen auf
+  1/1). Fix: `_webDigest(webUrl)` holt via `POST /_api/contextinfo` den
+  `FormDigestValue` des Ziel-Webs (gecacht in `_digestByWeb`), `_webOf(apiBase)`
+  leitet die Web-URL aus der Securable-URL ab; `X-RequestDigest` wird bei
+  ILS-MERGE, Stray-DELETE und `deleteSubsiteWeb` mitgeschickt. **Merke: Alle
+  Cross-Web-Schreibzugriffe brauchen den Web-eigenen Digest.** Diagnose-Logs:
+  `console.warn('[DEX PermFix] …')` (Read-Status, MERGE-Status, Nachher-Wert).
+- **Sicherheits-Guard:** Läuft nicht ohne geladene `roles` (leere Allow-Liste
+  würde Admins/Organizer als Über-Freigabe markieren). Immer erst Dry-Run.
+
+### Verwaiste Subsites prüfen (v26.81)
+
+`EventService.findOrphanSubsites(onProgress)` → `OrphanScanResult`: BFS über alle
+Webs, Vergleich gegen die von `DEX_Events.SubsiteUrl` referenzierten Subsites
+(via `getAllEventsForKpi`). Nicht referenzierte Webs = Rest-Kandidaten (z.B.
+Test-Subsite, deren Event gelöscht wurde), angereichert um `hasParticipantList`/
+`participantCount`/`created`. `deleteSubsiteWeb(url)` = `DELETE /_api/web` (+ Web-
+Digest) — endgültig, nur wenn das Web keine Unter-Webs mehr hat. UI in
+`AdminHubPage` (Wartung): Bericht + Einzel-Löschung mit Danger-Confirm.
+
 ### ID-Konsistenz App-seitig (v22.20) — Reihenfolge immer fair + deckungsgleich mit dem Flow
 
 Leitlinie: **Die TeilnehmerID-Reihenfolge ist immer „Aktive 1..N, Warteliste

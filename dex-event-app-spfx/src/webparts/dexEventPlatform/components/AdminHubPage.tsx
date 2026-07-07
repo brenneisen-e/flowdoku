@@ -14,9 +14,10 @@ import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useDialog } from '../context/DialogContext';
 import { useIsMobile } from '../utils/useIsMobile';
-import { Settings, Users, Mail, Book, FileText, Trash2, Columns, BarChart3 } from './Icons';
+import { Settings, Users, Mail, Book, FileText, Trash2, Columns, BarChart3, Wrench } from './Icons';
 import { RELEASE_NOTES, RELEASE_BEREICHE } from '../data/releaseNotes';
-import { EventService } from '../services/EventService';
+import { EventService, PermCleanupReport, OrphanScanResult } from '../services/EventService';
+import Modal from './Modal';
 import { setCachedLogoBase64, setCachedOrbBase64 } from '../services/EmailTemplates';
 
 // Erklärung aller DEX_*-Listen in Klartext (was tut die Liste, warum gibt es sie).
@@ -39,9 +40,9 @@ const LIST_DOCS: Array<{ name: string; de: string }> = [
 
 export default function AdminHubPage(): React.ReactElement {
   const { navigate } = useNavigation();
-  const { isAdmin, originalIsAdmin, siteUrl } = useRoles();
+  const { isAdmin, originalIsAdmin, siteUrl, roles } = useRoles();
   const listUrl = (name: string): string => `${siteUrl}/Lists/${name}`;
-  const { getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns, restoreCustomFieldDescriptions, reseedDefaultEmailTemplates, maybeSendWeeklyReport, recomputeEventKpiOnly } = useEvents();
+  const { events: allEvents, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, fixAllEventColumns, restoreCustomFieldDescriptions, reseedDefaultEmailTemplates, maybeSendWeeklyReport, recomputeEventKpiOnly } = useEvents();
   const { locale } = useLanguage();
   const { confirmDialog, showAlert } = useDialog();
   const isDe = locale === 'de';
@@ -57,6 +58,18 @@ export default function AdminHubPage(): React.ReactElement {
   const [fixProgress, setFixProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
   const [restoreProgress, setRestoreProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
   const [restorePreview, setRestorePreview] = React.useState<Array<{ eventId: string; eventTitle: string; fields: Array<{ label: string; props: string[] }> }> | null>(null);
+  // v26.81: Berechtigungen aufräumen — Modal mit Prüf-/Korrektur-Ablauf.
+  const [permCleanupOpen, setPermCleanupOpen] = React.useState(false);
+  const [permCleanupBusy, setPermCleanupBusy] = React.useState(false);
+  const [permCleanupProgress, setPermCleanupProgress] = React.useState<{ msg: string; done: number; total: number } | null>(null);
+  const [permCleanupReport, setPermCleanupReport] = React.useState<PermCleanupReport | null>(null);
+  // v26.81: Verwaiste Subsites prüfen — Modal mit Bericht + Einzel-Löschung.
+  const [orphanOpen, setOrphanOpen] = React.useState(false);
+  const [orphanBusy, setOrphanBusy] = React.useState(false);
+  const [orphanProgress, setOrphanProgress] = React.useState<{ msg: string; done: number; total: number } | null>(null);
+  const [orphanResult, setOrphanResult] = React.useState<OrphanScanResult | null>(null);
+  const [orphanDeleting, setOrphanDeleting] = React.useState<Record<string, boolean>>({});
+  const [orphanDeleted, setOrphanDeleted] = React.useState<Record<string, boolean>>({});
   // v26.51: Logo & Branding — zentrales Default-Logo (Mails) + Logo-Video.
   // AdminHubPage hat sonst keinen SPFx-Kontext; Instanz wie in AdminPage erzeugen.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -143,6 +156,101 @@ export default function AdminHubPage(): React.ReactElement {
     } catch {
       showAlert(isDe ? 'Neuberechnung fehlgeschlagen.' : 'Recompute failed.', { variant: 'error' });
     } finally { setBusy(''); }
+  };
+
+  // v26.81: Berechtigungen aufräumen — Prüf-/Korrektur-Lauf über die gesamte
+  // Site-Collection. apply=false = Dry-Run (Bericht ohne Änderung), apply=true =
+  // Über-Freigaben entfernen + Element-Sicherheit korrigieren. Baut den
+  // Rollen-Kontext (Admins/Organizer aus DEX_Roles, Organizer je Subsite aus
+  // den Events) und ruft den Service.
+  const runPermCleanup = async (apply: boolean): Promise<void> => {
+    if (!eventServiceRef) { showAlert(isDe ? 'Kein SharePoint-Kontext verfügbar.' : 'No SharePoint context available.', { variant: 'error' }); return; }
+    // Sicherheits-Guard: Ohne geladene DEX_Roles wäre die „erlaubt"-Liste leer
+    // → alle Admins/Organizer würden fälschlich als Über-Freigabe erscheinen
+    // (und beim Korrigieren entfernt). Lieber abbrechen und neu laden lassen.
+    if (!roles || roles.length === 0) {
+      showAlert(isDe
+        ? 'Die Rollenliste ist noch nicht geladen. Bitte kurz warten oder die Seite neu laden und erneut versuchen — ohne geladene Rollen kann die Aufräumung nicht sicher laufen.'
+        : 'The role list is not loaded yet. Please wait a moment or reload the page and try again — the cleanup cannot run safely without the roles.', { variant: 'error' });
+      return;
+    }
+    const adminEmails = roles.filter(r => r.role === 'Admin' || r.role === 'IT-Admin').map(r => r.userEmail).filter(Boolean);
+    // Sicherheitsnetz: JEDE in DEX_Roles gepflegte Person gilt als sanktioniert
+    // und wird NIE als Über-Freigabe entfernt (reguläre User stehen nicht drin).
+    const organizerEmails = roles.map(r => r.userEmail).filter(Boolean);
+    // Organizer je Subsite (Haupt- + Co-Organizer). Schlüssel: absoluter
+    // Subsite-URL UND server-relativer Pfad (ohne Trailing-Slash).
+    const subsiteOrganizers: Record<string, string> = {};
+    for (const ev of allEvents) {
+      const su = (ev.subsiteUrl || '').trim();
+      if (!su) continue;
+      const orgs = [...(ev.organizerEmails || []), ...(ev.coOrganizerEmails || [])].map(e => (e || '').trim()).filter(Boolean);
+      if (orgs.length === 0) continue;
+      const keys: string[] = [su.toLowerCase().replace(/\/+$/, '')];
+      try { keys.push(new URL(su).pathname.toLowerCase().replace(/\/+$/, '')); } catch { /* kein gültiger URL */ }
+      for (const k of keys) {
+        const existing = subsiteOrganizers[k] ? subsiteOrganizers[k].split(';') : [];
+        subsiteOrganizers[k] = Array.from(new Set([...existing, ...orgs])).join(';');
+      }
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const selfEmail = (spfxContext as any)?.pageContext?.user?.email || '';
+    setPermCleanupBusy(true);
+    setPermCleanupProgress({ msg: isDe ? 'Wird gestartet…' : 'Starting…', done: 0, total: 1 });
+    if (apply) setPermCleanupReport(null);
+    try {
+      const report = await eventServiceRef.auditOrCleanupPermissions(
+        apply,
+        { adminEmails, organizerEmails, subsiteOrganizers, selfEmail },
+        (msg, done, total) => setPermCleanupProgress({ msg, done, total }),
+      );
+      setPermCleanupReport(report);
+    } catch (err) {
+      showAlert((isDe ? 'Fehler bei der Berechtigungs-Prüfung: ' : 'Error during the permission check: ') + (err instanceof Error ? err.message : String(err)), { variant: 'error' });
+    } finally {
+      setPermCleanupBusy(false);
+      setPermCleanupProgress(null);
+    }
+  };
+
+  // v26.81: Verwaiste Subsites suchen (Analyse, ändert nichts).
+  const runOrphanScan = async (): Promise<void> => {
+    if (!eventServiceRef) { showAlert(isDe ? 'Kein SharePoint-Kontext verfügbar.' : 'No SharePoint context available.', { variant: 'error' }); return; }
+    setOrphanBusy(true);
+    setOrphanDeleted({});
+    setOrphanProgress({ msg: isDe ? 'Wird gestartet…' : 'Starting…', done: 0, total: 1 });
+    try {
+      const res = await eventServiceRef.findOrphanSubsites((msg, done, total) => setOrphanProgress({ msg, done, total }));
+      setOrphanResult(res);
+    } catch (err) {
+      showAlert((isDe ? 'Fehler bei der Subsite-Prüfung: ' : 'Error during the subsite check: ') + (err instanceof Error ? err.message : String(err)), { variant: 'error' });
+    } finally {
+      setOrphanBusy(false);
+      setOrphanProgress(null);
+    }
+  };
+
+  const deleteOrphan = async (url: string, label: string, participantCount: number): Promise<void> => {
+    if (!eventServiceRef) return;
+    const ok = await confirmDialog(isDe
+      ? `Subsite „${label}" endgültig löschen?\n\nDie komplette Subsite inkl. aller Listen${participantCount > 0 ? ` (mit ${participantCount} Teilnehmer-Zeilen)` : ''} wird unwiderruflich entfernt. Das lässt sich NICHT rückgängig machen.`
+      : `Permanently delete subsite „${label}"?\n\nThe entire subsite including all lists${participantCount > 0 ? ` (with ${participantCount} participant rows)` : ''} will be removed irreversibly. This CANNOT be undone.`,
+      { danger: true, confirmLabel: isDe ? 'Endgültig löschen' : 'Delete permanently' });
+    if (!ok) return;
+    setOrphanDeleting(prev => ({ ...prev, [url]: true }));
+    try {
+      const done = await eventServiceRef.deleteSubsiteWeb(url);
+      if (done) {
+        setOrphanDeleted(prev => ({ ...prev, [url]: true }));
+        showAlert(isDe ? `Subsite „${label}" gelöscht.` : `Subsite „${label}" deleted.`, { variant: 'success' });
+      } else {
+        showAlert(isDe ? `Subsite „${label}" konnte nicht gelöscht werden (evtl. Unter-Webs vorhanden oder fehlende Rechte).` : `Could not delete subsite „${label}" (maybe it has subwebs or you lack permissions).`, { variant: 'error' });
+      }
+    } catch (err) {
+      showAlert((isDe ? 'Löschen fehlgeschlagen: ' : 'Deletion failed: ') + (err instanceof Error ? err.message : String(err)), { variant: 'error' });
+    } finally {
+      setOrphanDeleting(prev => ({ ...prev, [url]: false }));
+    }
   };
 
   const doArchive = async (): Promise<void> => {
@@ -682,6 +790,38 @@ export default function AdminHubPage(): React.ReactElement {
             </div>
           )}
         </div>
+
+        {/* v26.81: Berechtigungen aufräumen (ganze Site-Collection). */}
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><Wrench size={18} /></span>
+            <span style={{ fontWeight: 700 }}>{isDe ? 'Berechtigungen aufräumen (ganzer SharePoint)' : 'Clean up permissions (whole SharePoint)'}</span>
+          </div>
+          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
+            {isDe
+              ? 'Prüft die gesamte SharePoint-Seite (Hauptseite, alle Listen/Bibliotheken und alle Event-Subsites) auf manuelle Einzel-Freigaben, die einzelnen Personen mehr Rechte geben als im Berechtigungskonzept vorgesehen (z.B. Schreib-/Vollzugriff auf ganze Listen). Erst kommt ein Bericht ohne Änderung, danach kannst du die Über-Freigaben mit einem Klick entfernen. Leserechte bleiben immer erhalten (auch für internationale Kolleg:innen); Schreiben ist danach nur über die Gruppen und für Admins/Organizer möglich.'
+              : 'Scans the whole SharePoint site (main site, all lists/libraries and every event subsite) for manual individual grants that give single people more rights than the permission concept allows (e.g. write/full control on entire lists). First a report without changes, then you can remove the over-grants with one click. Read access always stays (including for international colleagues); writing is afterwards only via the groups and for admins/organizers.'}
+          </p>
+          <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { setPermCleanupReport(null); setPermCleanupOpen(true); }}>
+            {isDe ? 'Berechtigungen prüfen…' : 'Check permissions…'}
+          </button>
+        </div>
+
+        {/* v26.81: Verwaiste Subsites prüfen (Reste gelöschter Events). */}
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><Trash2 size={18} /></span>
+            <span style={{ fontWeight: 700 }}>{isDe ? 'Subsites prüfen (verwaiste Reste)' : 'Check subsites (orphans)'}</span>
+          </div>
+          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
+            {isDe
+              ? 'Findet Event-Subsites, die noch existieren, aber zu KEINEM Event mehr gehören — z.B. Test-Subsites, deren Event bereits gelöscht wurde. Zeigt pro Rest, ob eine Teilnehmerliste (und wie viele Zeilen) vorhanden ist. Anschließend kannst du jeden Rest einzeln und bewusst löschen.'
+              : 'Finds event subsites that still exist but no longer belong to any event — e.g. test subsites whose event was already deleted. Shows per orphan whether a participant list exists (and how many rows). You can then delete each orphan individually and deliberately.'}
+          </p>
+          <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { setOrphanResult(null); setOrphanOpen(true); }}>
+            {isDe ? 'Subsites prüfen…' : 'Check subsites…'}
+          </button>
+        </div>
       </div>
 
       {/* v24.97: E-Mails & Berichte — globale Mail-Werkzeuge (Reseed + Wochenbericht) */}
@@ -788,6 +928,251 @@ export default function AdminHubPage(): React.ReactElement {
           </div>
         ))}
       </div>
+
+      {/* v26.81: Berechtigungen aufräumen — Prüf-/Korrektur-Modal. */}
+      {permCleanupOpen && (
+        <Modal
+          open={true}
+          onClose={() => { if (!permCleanupBusy) { setPermCleanupOpen(false); setPermCleanupReport(null); } }}
+          dismissable={!permCleanupBusy}
+          maxWidth={720}
+          padding={24}
+          ariaLabel={isDe ? 'Berechtigungen aufräumen' : 'Clean up permissions'}
+        >
+          <h3 style={{ margin: '0 0 6px', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Wrench size={18} /> {isDe ? 'Berechtigungen aufräumen' : 'Clean up permissions'}
+          </h3>
+          <p style={{ margin: '0 0 14px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+            {isDe
+              ? 'Der ganze SharePoint (Hauptseite, alle Listen/Bibliotheken und alle Event-Subsites) wird nach manuellen Einzel-Freigaben durchsucht, die einer Person mehr als Leserechte geben, obwohl sie laut Rollen-Konzept kein Admin/Organizer ist. Solche Über-Freigaben lassen sich hier entfernen — Leserechte und alle Gruppen-Berechtigungen bleiben unangetastet.'
+              : 'The whole SharePoint (main site, all lists/libraries and every event subsite) is scanned for manual individual grants that give a person more than read access even though they are not an admin/organizer per the role concept. Such over-grants can be removed here — read access and all group permissions stay untouched.'}
+          </p>
+
+          {permCleanupBusy && permCleanupProgress && (() => {
+            const { msg, done, total } = permCleanupProgress;
+            const pct = Math.min(100, Math.round((done / Math.max(1, total)) * 100));
+            return (
+              <div style={{ marginBottom: 12 }}>
+                <p style={{ margin: '0 0 6px', fontSize: '0.85rem', color: 'var(--dex-gray-700)' }}>{msg}</p>
+                <div style={{ background: 'var(--dex-gray-100, #f0f0f0)', borderRadius: 999, height: 10, overflow: 'hidden' }}>
+                  <div style={{ width: `${pct}%`, height: '100%', background: 'var(--dex-green, #86bc25)', borderRadius: 999, transition: 'width 0.2s ease' }} />
+                </div>
+                <p style={{ margin: '8px 0 0', fontSize: '0.76rem', color: 'var(--dex-gray-400)' }}>
+                  {isDe ? 'Bitte das Fenster geöffnet lassen, bis der Lauf abgeschlossen ist.' : 'Please keep this window open until the run completes.'}
+                </p>
+              </div>
+            );
+          })()}
+
+          {!permCleanupBusy && permCleanupReport && (() => {
+            const r = permCleanupReport;
+            const hasIssues = r.strayWriteFound > 0 || r.ilsIssues > 0;
+            const strayFindings = r.findings.filter(f => f.kind === 'stray-write');
+            const ilsFindings = r.findings.filter(f => f.kind === 'ils');
+            const errFindings = r.findings.filter(f => f.kind === 'error');
+            const SHOW = 200;
+            return (
+              <div>
+                <div style={{ padding: 12, borderRadius: 'var(--dex-radius)', background: hasIssues ? 'rgba(237,139,0,0.08)' : 'rgba(134,188,37,0.10)', border: `1px solid ${hasIssues ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)'}`, marginBottom: 12, fontSize: '0.85rem', color: 'var(--dex-gray-700)', lineHeight: 1.6 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                    {r.apply
+                      ? (isDe ? 'Korrektur abgeschlossen' : 'Cleanup complete')
+                      : (hasIssues ? (isDe ? 'Prüfung abgeschlossen — Abweichungen gefunden' : 'Check complete — deviations found') : (isDe ? 'Prüfung abgeschlossen — alles sauber' : 'Check complete — all clean'))}
+                  </div>
+                  {isDe ? (
+                    <>Geprüft: {r.websScanned} Webs, {r.listsScanned} Listen mit eigenen Berechtigungen.<br />
+                    Über-Freigaben (Schreib-/Vollzugriff einzelner Personen): <strong>{r.strayWriteFound}</strong>{r.apply ? ` — davon ${r.strayWriteRemoved} entfernt` : ''}.<br />
+                    Element-Sicherheit falsch (sensible Listen): <strong>{r.ilsIssues}</strong>{r.apply ? ` — davon ${r.ilsFixed} korrigiert` : ''}.
+                    {r.errors > 0 ? <><br />Nicht lesbar/Fehler: {r.errors}.</> : null}</>
+                  ) : (
+                    <>Scanned: {r.websScanned} webs, {r.listsScanned} lists with unique permissions.<br />
+                    Over-grants (individual write/full control): <strong>{r.strayWriteFound}</strong>{r.apply ? ` — ${r.strayWriteRemoved} removed` : ''}.<br />
+                    Item-security wrong (sensitive lists): <strong>{r.ilsIssues}</strong>{r.apply ? ` — ${r.ilsFixed} fixed` : ''}.
+                    {r.errors > 0 ? <><br />Unreadable/errors: {r.errors}.</> : null}</>
+                  )}
+                </div>
+
+                {(strayFindings.length > 0 || ilsFindings.length > 0 || errFindings.length > 0) && (
+                  <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius)', marginBottom: 14 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                      <thead>
+                        <tr style={{ position: 'sticky', top: 0, background: 'var(--dex-gray-50, #fafafa)', textAlign: 'left' }}>
+                          <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--dex-gray-200)' }}>{isDe ? 'Ort' : 'Location'}</th>
+                          <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--dex-gray-200)' }}>{isDe ? 'Person' : 'Person'}</th>
+                          <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--dex-gray-200)' }}>{isDe ? 'Befund' : 'Finding'}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...strayFindings, ...ilsFindings, ...errFindings].slice(0, SHOW).map((f, i) => (
+                          <tr key={i} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
+                            <td style={{ padding: '6px 8px', color: 'var(--dex-gray-600)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }} title={f.scope}>{f.scope}</td>
+                            <td style={{ padding: '6px 8px', color: 'var(--dex-gray-700)', wordBreak: 'break-all' }}>{f.principal || '—'}</td>
+                            <td style={{ padding: '6px 8px', color: f.kind === 'error' ? 'var(--dex-red, #da291c)' : (f.fixed ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-orange-dark, #b35a00)') }}>{f.detail}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {r.findings.length > SHOW && (
+                      <div style={{ padding: '6px 8px', fontSize: '0.74rem', color: 'var(--dex-gray-500)' }}>
+                        {isDe ? `… und ${r.findings.length - SHOW} weitere (gekürzt).` : `… and ${r.findings.length - SHOW} more (truncated).`}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <button className="btn btn-secondary" onClick={() => { void runPermCleanup(false); }} style={{ fontSize: '0.85rem', padding: '9px 16px' }}>
+                    {isDe ? 'Erneut prüfen' : 'Re-check'}
+                  </button>
+                  {!r.apply && hasIssues && (
+                    <button
+                      className="btn btn-primary"
+                      style={{ fontSize: '0.85rem', padding: '9px 18px' }}
+                      onClick={() => {
+                        (async () => {
+                          const ok = await confirmDialog(isDe
+                            ? `${r.strayWriteFound} Über-Freigabe(n) entfernen und ${r.ilsIssues} Element-Sicherheit(en) korrigieren?\n\nLeserechte und Gruppen-Berechtigungen bleiben erhalten. Der Vorgang kann je nach Größe einige Minuten dauern.`
+                            : `Remove ${r.strayWriteFound} over-grant(s) and fix ${r.ilsIssues} item-security setting(s)?\n\nRead access and group permissions are preserved. Depending on size this can take a few minutes.`,
+                            { confirmLabel: isDe ? 'Jetzt korrigieren' : 'Fix now' });
+                          if (ok) await runPermCleanup(true);
+                        })().catch(() => { /* */ });
+                      }}
+                    >
+                      {isDe ? 'Jetzt korrigieren' : 'Fix now'}
+                    </button>
+                  )}
+                  <button className="btn btn-outline" onClick={() => { setPermCleanupOpen(false); setPermCleanupReport(null); }} style={{ fontSize: '0.85rem', padding: '9px 16px' }}>
+                    {isDe ? 'Schließen' : 'Close'}
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {!permCleanupBusy && !permCleanupReport && (
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn btn-outline" onClick={() => setPermCleanupOpen(false)} style={{ fontSize: '0.85rem', padding: '9px 16px' }}>
+                {isDe ? 'Abbrechen' : 'Cancel'}
+              </button>
+              <button className="btn btn-primary" onClick={() => { void runPermCleanup(false); }} style={{ fontSize: '0.85rem', padding: '9px 18px' }}>
+                {isDe ? 'Prüfen (ohne Änderung)' : 'Check (no changes)'}
+              </button>
+            </div>
+          )}
+        </Modal>
+      )}
+
+      {/* v26.81: Verwaiste Subsites — Prüf-/Lösch-Modal. */}
+      {orphanOpen && (
+        <Modal
+          open={true}
+          onClose={() => { if (!orphanBusy) { setOrphanOpen(false); setOrphanResult(null); } }}
+          dismissable={!orphanBusy}
+          maxWidth={760}
+          padding={24}
+          ariaLabel={isDe ? 'Subsites prüfen' : 'Check subsites'}
+        >
+          <h3 style={{ margin: '0 0 6px', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Trash2 size={18} /> {isDe ? 'Verwaiste Subsites' : 'Orphan subsites'}
+          </h3>
+          <p style={{ margin: '0 0 14px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+            {isDe
+              ? 'Subsites, die noch existieren, aber zu keinem Event mehr gehören (z.B. Test-Subsites gelöschter Events). Prüfe pro Eintrag, ob wirklich ein Rest vorliegt, bevor du löschst — das Löschen ist endgültig.'
+              : 'Subsites that still exist but no longer belong to any event (e.g. test subsites of deleted events). Check each entry before deleting — deletion is permanent.'}
+          </p>
+
+          {orphanBusy && orphanProgress && (() => {
+            const { msg, done, total } = orphanProgress;
+            const pct = Math.min(100, Math.round((done / Math.max(1, total)) * 100));
+            return (
+              <div style={{ marginBottom: 12 }}>
+                <p style={{ margin: '0 0 6px', fontSize: '0.85rem', color: 'var(--dex-gray-700)' }}>{msg}</p>
+                <div style={{ background: 'var(--dex-gray-100, #f0f0f0)', borderRadius: 999, height: 10, overflow: 'hidden' }}>
+                  <div style={{ width: `${pct}%`, height: '100%', background: 'var(--dex-green, #86bc25)', borderRadius: 999, transition: 'width 0.2s ease' }} />
+                </div>
+              </div>
+            );
+          })()}
+
+          {!orphanBusy && orphanResult && (() => {
+            const r = orphanResult;
+            const remaining = r.orphans.filter(o => !orphanDeleted[o.url]);
+            return (
+              <div>
+                <div style={{ padding: 12, borderRadius: 'var(--dex-radius)', background: remaining.length > 0 ? 'rgba(237,139,0,0.08)' : 'rgba(134,188,37,0.10)', border: `1px solid ${remaining.length > 0 ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)'}`, marginBottom: 12, fontSize: '0.85rem', color: 'var(--dex-gray-700)', lineHeight: 1.6 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                    {remaining.length > 0
+                      ? (isDe ? `${remaining.length} verwaiste Subsite(s) gefunden` : `${remaining.length} orphan subsite(s) found`)
+                      : (isDe ? 'Keine verwaisten Subsites' : 'No orphan subsites')}
+                  </div>
+                  {isDe
+                    ? <>{r.websScanned} Subsites geprüft, {r.eventSubsites} davon gehören zu Events.</>
+                    : <>{r.websScanned} subsites scanned, {r.eventSubsites} belong to events.</>}
+                </div>
+
+                {remaining.length > 0 && (
+                  <div style={{ maxHeight: 320, overflowY: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius)', marginBottom: 14 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                      <thead>
+                        <tr style={{ position: 'sticky', top: 0, background: 'var(--dex-gray-50, #fafafa)', textAlign: 'left' }}>
+                          <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--dex-gray-200)' }}>{isDe ? 'Subsite' : 'Subsite'}</th>
+                          <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--dex-gray-200)' }}>{isDe ? 'Teilnehmerliste' : 'Participant list'}</th>
+                          <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--dex-gray-200)' }} />
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {remaining.map((o) => (
+                          <tr key={o.url} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
+                            <td style={{ padding: '6px 8px', color: 'var(--dex-gray-700)' }}>
+                              <div style={{ fontWeight: 600 }}>{o.title || o.serverRel}</div>
+                              <a href={o.url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--dex-green-dark, #4a7c1f)', wordBreak: 'break-all', fontSize: '0.72rem' }}>{o.serverRel || o.url}</a>
+                            </td>
+                            <td style={{ padding: '6px 8px', color: o.hasParticipantList ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-gray-500)' }}>
+                              {o.hasParticipantList
+                                ? (isDe ? `ja · ${o.participantCount} Zeilen` : `yes · ${o.participantCount} rows`)
+                                : (isDe ? 'keine' : 'none')}
+                            </td>
+                            <td style={{ padding: '6px 8px', textAlign: 'right' }}>
+                              <button
+                                className="btn btn-outline"
+                                disabled={!!orphanDeleting[o.url]}
+                                onClick={() => { void deleteOrphan(o.url, o.title || o.serverRel, o.participantCount); }}
+                                style={{ fontSize: '0.74rem', padding: '5px 10px', color: 'var(--dex-red, #da291c)', borderColor: 'var(--dex-red, #da291c)' }}
+                              >
+                                {orphanDeleting[o.url] ? (isDe ? 'Löscht…' : 'Deleting…') : (isDe ? 'Löschen' : 'Delete')}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                  <button className="btn btn-secondary" onClick={() => { void runOrphanScan(); }} style={{ fontSize: '0.85rem', padding: '9px 16px' }}>
+                    {isDe ? 'Erneut prüfen' : 'Re-check'}
+                  </button>
+                  <button className="btn btn-outline" onClick={() => { setOrphanOpen(false); setOrphanResult(null); }} style={{ fontSize: '0.85rem', padding: '9px 16px' }}>
+                    {isDe ? 'Schließen' : 'Close'}
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {!orphanBusy && !orphanResult && (
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn btn-outline" onClick={() => setOrphanOpen(false)} style={{ fontSize: '0.85rem', padding: '9px 16px' }}>
+                {isDe ? 'Abbrechen' : 'Cancel'}
+              </button>
+              <button className="btn btn-primary" onClick={() => { void runOrphanScan(); }} style={{ fontSize: '0.85rem', padding: '9px 18px' }}>
+                {isDe ? 'Jetzt prüfen' : 'Check now'}
+              </button>
+            </div>
+          )}
+        </Modal>
+      )}
     </div>
   );
 }
