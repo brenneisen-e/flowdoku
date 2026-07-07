@@ -4790,6 +4790,8 @@ export default function AdminPage(): React.ReactElement {
                                 'SplitLabelB': (ev.splitLabelB || 'Funstarter'),
                                 'SplitDescA': (ev.splitDescA || ''),
                                 'SplitDescB': (ev.splitDescB || ''),
+                                'SplitHelpText': (ev.splitHelpText || ''),
+                                'SplitSectionTitle': (ev.splitSectionTitle || ''),
                               };
                               // v11.13: B2Run-Extras aus
                               // EmailTemplateOverrides._b2run nicht mehr nur
@@ -7860,6 +7862,8 @@ export default function AdminPage(): React.ReactElement {
                         'SplitLabelB': (ev.splitLabelB || 'Funstarter'),
                         'SplitDescA': (ev.splitDescA || ''),
                         'SplitDescB': (ev.splitDescB || ''),
+                        'SplitHelpText': (ev.splitHelpText || ''),
+                        'SplitSectionTitle': (ev.splitSectionTitle || ''),
                       };
                       // v11.13: B2Run-Extras aus EmailTemplateOverrides._b2run
                       // in echte Custom-Fields mit onlyForGroup übersetzen
@@ -8810,9 +8814,11 @@ export default function AdminPage(): React.ReactElement {
             const looksName = (s: string): boolean => /(\bname\b|vorname|nachname|ansprechpartner|counselor|kolleg|mitarbeiter|\bmentor\b|\bpate\b|\bbuddy\b|begleitung|\bgast\b)/i.test(s || '');
             // Felder, die i.d.R. schon automatisch aus dem Deloitte-Profil
             // kommen (Anrede/Vorname/Nachname/E-Mail/Abteilung/Standort/Position/
-            // Telefon) bzw. Firma/Adresse. „name" allein bewusst NICHT — das ist
-            // zu mehrdeutig (z.B. „Name of counselor").
-            const looksProfile = (s: string): boolean => /(vorname|nachname|first ?name|last ?name|e-?mail|abteilung|department|standort|location|\boffice\b|\bbüro\b|telefon|\bphone\b|\bmobil|\bhandy\b|firma|company|unternehmen|arbeitgeber|gesellschaft|\bgmbh\b|legal ?entity|\bentity\b|rechtsträger|member ?firm|adresse|address|job ?title)/i.test(s || '');
+            // „name" allein bewusst NICHT — das ist zu mehrdeutig (z.B. „Name of
+            // counselor"). v26.83: Telefon/Mobil/Handy UND Adresse RAUS — die
+            // werden NICHT automatisch aus dem Profil erfasst (Fehlalarm: der
+            // Hinweis empfahl fälschlich, eine Mobilnummer-Abfrage wegzulassen).
+            const looksProfile = (s: string): boolean => /(vorname|nachname|first ?name|last ?name|e-?mail|abteilung|department|standort|location|\boffice\b|\bbüro\b|firma|company|unternehmen|arbeitgeber|gesellschaft|\bgmbh\b|legal ?entity|\bentity\b|rechtsträger|member ?firm|job ?title)/i.test(s || '');
             // Eindeutige Feld-Namen sammeln (gleiches Label in Haupt- + mehreren
             // Sub-Events nur EINMAL nennen). Profil-Felder haben Vorrang (sie
             // sollen ganz entfallen, nicht nur die Feldart wechseln).

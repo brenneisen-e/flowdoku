@@ -1967,6 +1967,15 @@ export default function EventCreationPage(): React.ReactElement {
   const [splitDescB, setSplitDescB] = React.useState<string>(
     (editEvent && editEvent.splitDescB) || ''
   );
+  // v26.83: frei wählbarer Hinweistext über der Gruppen-Auswahl (ersetzt den
+  // Standardsatz „Wähle eine der zwei Gruppen aus…" auf der Anmeldeseite).
+  const [splitHelpText, setSplitHelpText] = React.useState<string>(
+    (editEvent && editEvent.splitHelpText) || ''
+  );
+  // v26.83: frei wählbare Überschrift der Gruppen-Auswahl (statt „Gruppen-Auswahl").
+  const [splitSectionTitle, setSplitSectionTitle] = React.useState<string>(
+    (editEvent && editEvent.splitSectionTitle) || ''
+  );
   // v10.20: Warteliste-Modus bei aktiver Split-Capacity. Default false =
   // getrennte Wartelisten pro Gruppe (alter B2Run-Stil). true = eine
   // gemeinsame Warteliste, FIFO ueber beide Gruppen hinweg.
@@ -2800,6 +2809,8 @@ export default function EventCreationPage(): React.ReactElement {
         setSplitLabelB(ev.splitLabelB || '');
         setSplitDescA(ev.splitDescA || '');
         setSplitDescB(ev.splitDescB || '');
+        setSplitHelpText(ev.splitHelpText || '');
+        setSplitSectionTitle(ev.splitSectionTitle || '');
         setDurchstarterCapacity(String(ev.durchstarterCapacity || 0));
         setFunstarterCapacity(String(ev.funstarterCapacity || 0));
         setSplitSharedWaitlist(!!ev.splitSharedWaitlist);
@@ -4023,6 +4034,8 @@ export default function EventCreationPage(): React.ReactElement {
         updates['SplitLabelB'] = (splitLabelB || '').trim();
         updates['SplitDescA'] = (splitDescA || '').trim();
         updates['SplitDescB'] = (splitDescB || '').trim();
+        updates['SplitHelpText'] = (splitHelpText || '').trim();
+        updates['SplitSectionTitle'] = (splitSectionTitle || '').trim();
         updates['SplitSharedWaitlist'] = !!splitSharedWaitlist;
       } else {
         // Split deaktiviert: Kapazitäten nullen + Labels leer setzen, damit
@@ -4033,6 +4046,8 @@ export default function EventCreationPage(): React.ReactElement {
         updates['SplitLabelB'] = '';
         updates['SplitDescA'] = '';
         updates['SplitDescB'] = '';
+        updates['SplitHelpText'] = '';
+        updates['SplitSectionTitle'] = '';
         updates['SplitSharedWaitlist'] = false;
       }
       // v11.0: Teilnehmer-Upload-Setting
@@ -4653,6 +4668,8 @@ export default function EventCreationPage(): React.ReactElement {
         splitLabelB: useSplitCapacities ? (splitLabelB || '').trim() : undefined,
         splitDescA: useSplitCapacities ? (splitDescA || '').trim() : undefined,
         splitDescB: useSplitCapacities ? (splitDescB || '').trim() : undefined,
+        splitHelpText: useSplitCapacities ? (splitHelpText || '').trim() : undefined,
+        splitSectionTitle: useSplitCapacities ? (splitSectionTitle || '').trim() : undefined,
         splitSharedWaitlist: useSplitCapacities ? !!splitSharedWaitlist : undefined,
         allowAttendeeUpload: !!allowAttendeeUpload,
         attendeeUploadHint: (attendeeUploadHint || '').trim() || undefined,
@@ -9891,6 +9908,21 @@ export default function EventCreationPage(): React.ReactElement {
                       ? 'Vergib pro Gruppe eine eigene Bezeichnung und Platzzahl. Die Bezeichnungen erscheinen auf der Anmeldeseite als zwei Auswahl-Boxen.'
                       : 'Give each group its own name and seat count. The names appear on the registration page as two selectable boxes.'}
                   </p>
+                  {/* v26.83: frei wählbare Überschrift der Gruppen-Auswahl auf der
+                      Anmeldeseite (statt „Gruppen-Auswahl"). */}
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
+                      {isDe ? 'Überschrift der Auswahl (optional)' : 'Selection heading (optional)'}
+                    </label>
+                    <input
+                      className="form-input"
+                      type="text"
+                      value={splitSectionTitle}
+                      onChange={e => setSplitSectionTitle(e.target.value)}
+                      placeholder={isDe ? 'Leer = „Gruppen-Auswahl". z.B. „Auswahl Räume", „Auswahl Laufgruppe"' : 'Empty = "Group selection". e.g. "Choose room", "Choose run group"'}
+                      maxLength={60}
+                    />
+                  </div>
                   {/* v10.20: zwei Text-Inputs für die frei wählbaren Bezeichnungen.
                       Wenn der Organizer nichts einträgt, fällt die Registration-
                       Seite auf 'Durchstarter' / 'Funstarter' zurück. */}
@@ -9953,6 +9985,25 @@ export default function EventCreationPage(): React.ReactElement {
                         style={{ resize: 'vertical' }}
                       />
                     </div>
+                  </div>
+                  {/* v26.83: frei wählbarer Hinweistext über der Gruppen-Auswahl
+                      auf der Anmeldeseite. Leer = Standardsatz. */}
+                  <div style={{ marginBottom: 12 }}>
+                    <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
+                      {isDe ? 'Hinweistext über der Gruppen-Auswahl (optional)' : 'Help text above the group selection (optional)'}
+                    </label>
+                    <textarea
+                      className="form-input"
+                      rows={2}
+                      value={splitHelpText}
+                      onChange={e => setSplitHelpText(e.target.value)}
+                      placeholder={isDe ? 'Leer = Standard: „Wähle eine der zwei Gruppen aus. Ist die Wunsch-Gruppe voll, kannst du automatisch in die andere wechseln oder auf der Warteliste warten."' : 'Empty = default: "Pick one of the two groups. If your preferred group is full, you can switch to the other automatically or wait on the waitlist."'}
+                      maxLength={600}
+                      style={{ resize: 'vertical', width: '100%' }}
+                    />
+                    <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', margin: '4px 0 0' }}>
+                      {isDe ? 'Dieser Text steht auf der Anmeldeseite direkt über den beiden Gruppen-Boxen. Leer lassen für den Standardtext.' : 'This text appears on the registration page right above the two group boxes. Leave empty for the default.'}
+                    </p>
                   </div>
                   <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div>

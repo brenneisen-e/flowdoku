@@ -218,7 +218,7 @@ const EVENT_AUDIT_LABELS: Record<string, string> = {
   ContactName: 'Ansprechpartner', ContactEmail: 'Kontakt-Mail', ContactInfo: 'Kontakt-Info',
   EventImageUrl: 'Event-Bild', EmailImageBase64: 'Mail-Logo', EmailTemplateOverrides: 'Mail-Vorlagen',
   DurchstarterCapacity: 'Kapazität Gruppe A', FunstarterCapacity: 'Kapazität Gruppe B',
-  SplitLabelA: 'Label Gruppe A', SplitLabelB: 'Label Gruppe B', SplitSharedWaitlist: 'Gemeinsame Warteliste',
+  SplitLabelA: 'Label Gruppe A', SplitLabelB: 'Label Gruppe B', SplitHelpText: 'Gruppen-Hinweistext', SplitSectionTitle: 'Gruppen-Überschrift', SplitSharedWaitlist: 'Gemeinsame Warteliste',
   TeamRegistrationEnabled: 'Team-Anmeldung', TeamSize: 'Teamgröße', AskTeamName: 'Team-Name abfragen',
   AskSalutation: 'Anrede abfragen', BilingualFields: 'Zweisprachig',
   ConfirmDialogEnabled: 'Bestätigungs-Dialog', SelfCheckInEnabled: 'Self-Check-in',
@@ -693,6 +693,8 @@ export interface CreateEventInput {
   splitLabelB?: string;
   splitDescA?: string; // v26.72: Beschreibung Gruppe A (mehrzeilig)
   splitDescB?: string; // v26.72: Beschreibung Gruppe B (mehrzeilig)
+  splitHelpText?: string; // v26.83: Hinweistext über der Gruppen-Auswahl
+  splitSectionTitle?: string; // v26.83: frei wählbare Überschrift der Gruppen-Auswahl
   splitSharedWaitlist?: boolean;
   allowAttendeeUpload?: boolean;
   attendeeUploadHint?: string;
@@ -1340,6 +1342,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       splitLabelB: e.SplitLabelB || undefined,
       splitDescA: e.SplitDescA || undefined,
       splitDescB: e.SplitDescB || undefined,
+      splitHelpText: e.SplitHelpText || undefined,
+      splitSectionTitle: e.SplitSectionTitle || undefined,
       splitSharedWaitlist: !!e.SplitSharedWaitlist,
       allowAttendeeUpload: !!e.AllowAttendeeUpload,
       attendeeUploadHint: e.AttendeeUploadHint || undefined,

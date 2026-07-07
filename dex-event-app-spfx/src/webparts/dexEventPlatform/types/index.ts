@@ -243,6 +243,12 @@ export interface DeloitteEvent {
    *  dem Gruppen-Namen in der Auswahl-Karte auf der Anmeldeseite (mehrzeilig). */
   splitDescA?: string;
   splitDescB?: string;
+  /** v26.83: frei wählbarer Hinweistext über der Gruppen-Auswahl auf der
+   *  Anmeldeseite (ersetzt den Standardsatz „Wähle eine der zwei Gruppen aus…"). */
+  splitHelpText?: string;
+  /** v26.83: frei wählbare Überschrift der Gruppen-Auswahl auf der Anmeldeseite
+   *  (ersetzt „Gruppen-Auswahl", z.B. „Auswahl Räume", „Auswahl Laufgruppe"). */
+  splitSectionTitle?: string;
   /** v10.20: Warteliste-Verhalten bei aktiver Split-Capacity.
    *  - false / undefined (Default): zwei getrennte Wartelisten — eine pro
    *    Gruppe, Nachrück-Logik bleibt typ-bewusst (alter B2Run-Stil).

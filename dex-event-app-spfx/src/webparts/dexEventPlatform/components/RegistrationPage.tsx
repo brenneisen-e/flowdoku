@@ -3804,12 +3804,17 @@ export default function RegistrationPage(): React.ReactElement {
             {isSplitGroup && (
               <div style={{ marginBottom: 20, border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: 16 }}>
                 <label className="form-label" style={{ fontWeight: 700, marginBottom: 6 }}>
-                  <span className="required">*</span> {locale === 'de' ? 'Gruppen-Auswahl' : 'Group selection'}
+                  <span className="required">*</span> {(event.splitSectionTitle && event.splitSectionTitle.trim()) ? event.splitSectionTitle : (locale === 'de' ? 'Gruppen-Auswahl' : 'Group selection')}
                 </label>
-                <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 10 }}>
-                  {locale === 'de'
-                    ? `Wähle eine der zwei Gruppen aus. Ist die Wunsch-Gruppe voll, kannst du automatisch in die andere wechseln oder auf der Warteliste warten.`
-                    : 'Pick one of the two groups. If your preferred group is full, you can either switch to the other or join the waitlist.'}
+                {/* v26.83: Organizer-eigener Hinweistext (splitHelpText) hat
+                    Vorrang; sonst der Standardsatz. whiteSpace pre-wrap, damit
+                    Zeilenumbrüche aus dem Wizard erhalten bleiben. */}
+                <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 10, whiteSpace: 'pre-wrap' }}>
+                  {(event.splitHelpText && event.splitHelpText.trim())
+                    ? event.splitHelpText
+                    : (locale === 'de'
+                      ? `Wähle eine der zwei Gruppen aus. Ist die Wunsch-Gruppe voll, kannst du automatisch in die andere wechseln oder auf der Warteliste warten.`
+                      : 'Pick one of the two groups. If your preferred group is full, you can either switch to the other or join the waitlist.')}
                 </p>
                 {/* v19.19: Gesamt-Kapazitäts-Zusammenfassung — Gesamtzahl der
                     Plätze, aktuell freie Plätze (geklammert ≥ 0) und die Zahl
