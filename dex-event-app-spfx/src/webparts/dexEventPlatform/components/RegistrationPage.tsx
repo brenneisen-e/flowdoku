@@ -2283,7 +2283,7 @@ export default function RegistrationPage(): React.ReactElement {
             {distinctCats.map(cat => (
               <optgroup key={cat} label={cat}>
                 {opts.map((opt, i) => ((cats[i] || '').trim() === cat && (opt || '').trim())
-                  ? <option key={`${cat}-${i}`} value={`${cat} ${opt}`}>{pickOptionLabel(field, i, opt)}</option>
+                  ? <option key={`${cat}-${i}`} value={`${cat} ${opt}`}>{cat} {pickOptionLabel(field, i, opt)}</option>
                   : null)}
               </optgroup>
             ))}
