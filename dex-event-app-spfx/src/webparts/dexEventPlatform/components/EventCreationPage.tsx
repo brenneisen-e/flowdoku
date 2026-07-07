@@ -289,6 +289,49 @@ function reinsertOrganizerPlaceholder(body: string, organizers: string[]): strin
   return body;
 }
 
+// v27.4: Kompakter Beschreibungs-Editor mit DAUERHAFT sichtbarer Mini-Leiste
+// (Fett + Link). Die Buttons formatieren die Markierung (kein Markdown-Tippen);
+// gespeichert wird ein kleines Markdown-Subset, das die Anmeldeseite rendert.
+function FieldDescEditor({ value, onChange, isDe }: { value: string; onChange: (v: string) => void; isDe: boolean }): React.ReactElement {
+  const ref = React.useRef<HTMLTextAreaElement>(null);
+  const applyWrap = (before: string, after: string, ph: string): void => {
+    const ta = ref.current; if (!ta) return;
+    const s = ta.selectionStart; const e = ta.selectionEnd;
+    const sel = value.substring(s, e) || ph;
+    const next = value.substring(0, s) + before + sel + after + value.substring(e);
+    onChange(next);
+    window.setTimeout(() => { try { ta.focus(); ta.setSelectionRange(s + before.length, s + before.length + sel.length); } catch { /* */ } }, 0);
+  };
+  const insertLink = (): void => {
+    const ta = ref.current; if (!ta) return;
+    const s = ta.selectionStart; const e = ta.selectionEnd;
+    const url = (window.prompt(isDe ? 'Link-Adresse (https://…):' : 'Link URL (https://…):', 'https://') || '').trim();
+    if (!url) return;
+    const sel = value.substring(s, e) || (isDe ? 'Link-Text' : 'link text');
+    const next = value.substring(0, s) + `[${sel}](${url})` + value.substring(e);
+    onChange(next);
+    window.setTimeout(() => { try { ta.focus(); } catch { /* */ } }, 0);
+  };
+  const btn: React.CSSProperties = { height: 26, minWidth: 30, padding: '0 8px', fontSize: '0.8rem', cursor: 'pointer', background: '#fff', border: '1px solid var(--dex-gray-300)', borderRadius: 4, color: 'var(--dex-gray-700)' };
+  return (
+    <div style={{ border: '1px solid var(--dex-gray-300)', borderRadius: 6, background: '#fff' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', borderBottom: '1px solid var(--dex-gray-200)' }}>
+        <button type="button" title={isDe ? 'Fett' : 'Bold'} onMouseDown={e => e.preventDefault()} onClick={() => applyWrap('**', '**', isDe ? 'fetter Text' : 'bold text')} style={{ ...btn, fontWeight: 800 }}>F</button>
+        <button type="button" title={isDe ? 'Link einfügen' : 'Insert link'} onMouseDown={e => e.preventDefault()} onClick={insertLink} style={{ ...btn, display: 'inline-flex', alignItems: 'center', gap: 5 }}>🔗 {isDe ? 'Link' : 'Link'}</button>
+        <span style={{ marginLeft: 'auto', fontSize: '0.66rem', color: 'var(--dex-gray-400)' }}>{isDe ? 'Text markieren, dann Button' : 'Select text, then button'}</span>
+      </div>
+      <textarea
+        ref={ref}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={isDe ? 'Beschreibung (optional)' : 'Description (optional)'}
+        rows={2}
+        style={{ width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', resize: 'vertical', fontSize: '0.85rem', lineHeight: 1.45, padding: '8px 10px', fontFamily: 'inherit', background: 'transparent', color: 'var(--dex-gray-800)' }}
+      />
+    </div>
+  );
+}
+
 /** v24.25/v24.28: Kleiner Hinweis im Feld-Editor. Drei Fälle, in dieser
  *  Priorität: (1) `profile` — das Feld wird ohnehin schon automatisch erfasst
  *  (kein Umstell-Button, nur Hinweis); (2) `date` — besser Kalender-Feld;
@@ -11945,18 +11988,13 @@ export default function EventCreationPage(): React.ReactElement {
                         wählbar — „i"-Box neben dem Label ODER Erklär-Text
                         unter dem Label. */}
                     <div style={{ marginLeft: 32, marginTop: 10 }}>
-                      {/* v26.96: Richtiger Editor (Toolbar mit Fett-Button +
-                          Link-über-Modal) statt Freitext/Markdown — wie bei der
-                          Event-Beschreibung. Die Beschreibung wird als HTML
-                          gespeichert und bei der Anzeige „Text unter dem Feld-
-                          Titel" formatiert dargestellt. */}
-                      <div className="dex-fielddesc-rt" style={{ border: '1px solid var(--dex-gray-300)', borderRadius: 6, background: '#fff' }}>
-                        <RichText
-                          value={field.helpText || ''}
-                          placeholder={isDe ? 'Beschreibung (optional)' : 'Description (optional)'}
-                          onChange={(text: string) => { updateCustomField(field.id, { helpText: text }); return text; }}
-                        />
-                      </div>
+                      {/* v27.4: Kompakter Editor mit dauerhaft sichtbarer Leiste
+                          (Fett + Link) statt der pnp-RichText-Bubble. */}
+                      <FieldDescEditor
+                        value={field.helpText || ''}
+                        onChange={text => updateCustomField(field.id, { helpText: text })}
+                        isDe={isDe}
+                      />
                       {field.helpText && field.helpText.trim() && (
                         <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
                           <span style={{ fontWeight: 600 }}>{isDe ? 'Anzeige:' : 'Display:'}</span>
