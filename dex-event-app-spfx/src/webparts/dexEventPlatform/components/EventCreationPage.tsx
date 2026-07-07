@@ -1105,6 +1105,10 @@ export default function EventCreationPage(): React.ReactElement {
   const [imagePreview, setImagePreview] = React.useState(editEvent ? (editEvent.imageUrl || '') : '');
   // v23.15: Bild-Editor (Zuschneiden / Kreis) offen?
   const [imageEditOpen, setImageEditOpen] = React.useState(false);
+  // v26.97: Zuschneiden des Mail-/Outlook-Kopfbildes (nutzt dasselbe
+  // ImageCropModal wie das Event-Bild). Ziel = welches Logo gerade zugeschnitten
+  // wird ('email' oder 'outlook').
+  const [logoCropTarget, setLogoCropTarget] = React.useState<'email' | 'outlook' | null>(null);
   // v23.19: Optionale Pro-Ansicht-Darstellung (Zoom + vertikale Position).
   // Default leer = Standard (cover/zentriert) — nur auf Wunsch eingestellt.
   type ImgView = { zoom: number; posY: number; height?: number };
@@ -7053,6 +7057,22 @@ export default function EventCreationPage(): React.ReactElement {
                     Data-URL (Vorschau) + File (Upload) zurück.
                     v23.25: „Darstellung pro Ansicht" lebt jetzt IN diesem Modal
                     (children), damit alle Bild-Einstellungen an einem Ort sind. */}
+                {/* v26.97: Zuschneiden des Mail-/Outlook-Kopfbildes — gleiches
+                    Modal, Ziel via logoCropTarget. Ergebnis (Data-URL) direkt in
+                    das jeweilige Logo. */}
+                {logoCropTarget && (
+                  <ImageCropModal
+                    open={!!logoCropTarget}
+                    src={logoCropTarget === 'email' ? emailLogoPreview : outlookLogoPreview}
+                    isDe={isDe}
+                    onClose={() => setLogoCropTarget(null)}
+                    onApply={(dataUrl) => {
+                      if (logoCropTarget === 'email') setEmailLogoPreview(dataUrl);
+                      else setOutlookLogoPreview(dataUrl);
+                      setLogoCropTarget(null);
+                    }}
+                  />
+                )}
                 <ImageCropModal
                   open={imageEditOpen}
                   src={imagePreview}
@@ -13277,6 +13297,8 @@ export default function EventCreationPage(): React.ReactElement {
                   {emailLogoPreview && (
                     <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
                       <img src={emailLogoPreview} alt="Event-Logo für Mails" style={{ maxWidth: 220, maxHeight: 140, borderRadius: 4 }} />
+                      <button className="btn btn-secondary" style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+                        onClick={() => setLogoCropTarget('email')}>{isDe ? 'Zuschneiden' : 'Crop'}</button>
                       <button className="btn btn-secondary" style={{ fontSize: '0.7rem', padding: '2px 8px', color: 'var(--dex-red, #c00)' }}
                         onClick={() => setEmailLogoPreview('')}>{t('create.eventlogo.remove')}</button>
                     </div>
@@ -13377,6 +13399,8 @@ export default function EventCreationPage(): React.ReactElement {
                   {outlookLogoPreview && (
                     <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
                       <img src={outlookLogoPreview} alt="Event-Logo für Outlook" style={{ maxWidth: 220, maxHeight: 140, borderRadius: 4 }} />
+                      <button className="btn btn-secondary" style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+                        onClick={() => setLogoCropTarget('outlook')}>{isDe ? 'Zuschneiden' : 'Crop'}</button>
                       <button className="btn btn-secondary" style={{ fontSize: '0.7rem', padding: '2px 8px', color: 'var(--dex-red, #c00)' }}
                         onClick={() => setOutlookLogoPreview('')}>{t('create.eventlogo.remove')}</button>
                     </div>
