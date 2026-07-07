@@ -270,6 +270,24 @@ function labelLooksLikeProfile(label: string): boolean {
   // eine legitime Abfrage; der „schon automatisch erfasst"-Hinweis passte da nicht.
   return /(vorname|nachname|first ?name|last ?name|e-?mail|abteilung|department|standort|location|\boffice\b|\bbüro\b|firma|company|unternehmen|arbeitgeber|gesellschaft|\bgmbh\b|legal ?entity|\bentity\b|rechtsträger|member ?firm|adresse|address|job ?title)/i.test(label || '');
 }
+// v27.3: Der Outlook-Body wird beim Speichern mit fest aufgelöstem {{Organizer}}
+// gespeichert. Kommen später Organizer dazu, blieb der alte Name eingebacken.
+// Beim Edit-Laden mappen wir den eingebackenen Organizer-Namen wieder auf
+// {{Organizer}} zurück — dann löst der nächste Save mit ALLEN aktuellen
+// Organizern neu auf. Sicher: findet sich nichts, bleibt der Body unverändert.
+function reinsertOrganizerPlaceholder(body: string, organizers: string[]): string {
+  if (!body || !organizers || organizers.length === 0) return body;
+  if (body.indexOf('{{Organizer}}') >= 0) return body; // schon Platzhalter
+  const names = organizers.map(n => (n || '').trim()).filter(Boolean);
+  const full = names.join('; ');
+  if (full && body.indexOf(full) >= 0) return body.split(full).join('{{Organizer}}');
+  // Bereits „kaputte"/veraltete Bodies: den ersten enthaltenen Organizer-Namen
+  // (längster zuerst, um Teil-Treffer zu vermeiden) auf den Platzhalter mappen.
+  for (const n of [...names].sort((a, b) => b.length - a.length)) {
+    if (n.length >= 3 && body.indexOf(n) >= 0) return body.split(n).join('{{Organizer}}');
+  }
+  return body;
+}
 
 /** v24.25/v24.28: Kleiner Hinweis im Feld-Editor. Drei Fälle, in dieser
  *  Priorität: (1) `profile` — das Feld wird ohnehin schon automatisch erfasst
@@ -1147,7 +1165,7 @@ export default function EventCreationPage(): React.ReactElement {
       ...(f.notifyRoommate === false ? { notifyRoommate: false } : {}),
     })) : []
   );
-  const [outlookBody, setOutlookBody] = React.useState(editEvent ? stripOutlookWrapper(editEvent.outlookBody || '') : '');
+  const [outlookBody, setOutlookBody] = React.useState(editEvent ? reinsertOrganizerPlaceholder(stripOutlookWrapper(editEvent.outlookBody || ''), editEvent.organizers || []) : '');
   // Outlook-Termin-Header: beide Ueberschriften sind pro Event editierbar.
   // Default: eventTitle + formatiertes Startdatum. Parsed aus bestehendem
   // OutlookBody, falls der User sie schon angepasst hat.
