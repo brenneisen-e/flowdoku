@@ -690,6 +690,8 @@ export interface CreateEventInput {
   funstarterCapacity?: number;
   splitLabelA?: string;
   splitLabelB?: string;
+  splitDescA?: string; // v26.72: Beschreibung Gruppe A (mehrzeilig)
+  splitDescB?: string; // v26.72: Beschreibung Gruppe B (mehrzeilig)
   splitSharedWaitlist?: boolean;
   allowAttendeeUpload?: boolean;
   attendeeUploadHint?: string;
@@ -1335,6 +1337,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       funstarterCapacity: typeof e.FunstarterCapacity === 'number' ? e.FunstarterCapacity : undefined,
       splitLabelA: e.SplitLabelA || undefined,
       splitLabelB: e.SplitLabelB || undefined,
+      splitDescA: e.SplitDescA || undefined,
+      splitDescB: e.SplitDescB || undefined,
       splitSharedWaitlist: !!e.SplitSharedWaitlist,
       allowAttendeeUpload: !!e.AllowAttendeeUpload,
       attendeeUploadHint: e.AttendeeUploadHint || undefined,

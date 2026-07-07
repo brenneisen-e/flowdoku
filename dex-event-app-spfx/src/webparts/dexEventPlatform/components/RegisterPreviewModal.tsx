@@ -82,6 +82,8 @@ export interface RegisterPreviewData {
   funstarterCapacity?: number;
   splitLabelA?: string;
   splitLabelB?: string;
+  splitDescA?: string;
+  splitDescB?: string;
   splitSharedWaitlist?: boolean;
 }
 
@@ -129,6 +131,8 @@ function buildSynthEvent(data: RegisterPreviewData): DeloitteEvent {
     ...(data.funstarterCapacity ? { funstarterCapacity: data.funstarterCapacity } : {}),
     ...(data.splitLabelA ? { splitLabelA: data.splitLabelA } : {}),
     ...(data.splitLabelB ? { splitLabelB: data.splitLabelB } : {}),
+    ...(data.splitDescA ? { splitDescA: data.splitDescA } : {}),
+    ...(data.splitDescB ? { splitDescB: data.splitDescB } : {}),
     ...(data.splitSharedWaitlist ? { splitSharedWaitlist: true } : {}),
     currentParticipants: 0,
     waitlistCount: 0,

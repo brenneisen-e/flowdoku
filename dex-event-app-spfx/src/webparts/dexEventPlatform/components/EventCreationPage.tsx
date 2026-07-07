@@ -1893,6 +1893,14 @@ export default function EventCreationPage(): React.ReactElement {
   const [splitLabelB, setSplitLabelB] = React.useState<string>(
     (editEvent && editEvent.splitLabelB) || ''
   );
+  // v26.72: frei konfigurierbare Beschreibung pro Gruppe (mehrzeilig) —
+  // erscheint unter dem Gruppen-Namen in der Auswahl-Karte auf der Anmeldeseite.
+  const [splitDescA, setSplitDescA] = React.useState<string>(
+    (editEvent && editEvent.splitDescA) || ''
+  );
+  const [splitDescB, setSplitDescB] = React.useState<string>(
+    (editEvent && editEvent.splitDescB) || ''
+  );
   // v10.20: Warteliste-Modus bei aktiver Split-Capacity. Default false =
   // getrennte Wartelisten pro Gruppe (alter B2Run-Stil). true = eine
   // gemeinsame Warteliste, FIFO ueber beide Gruppen hinweg.
@@ -2724,6 +2732,8 @@ export default function EventCreationPage(): React.ReactElement {
         setUseSplitCapacities(true);
         setSplitLabelA(ev.splitLabelA || '');
         setSplitLabelB(ev.splitLabelB || '');
+        setSplitDescA(ev.splitDescA || '');
+        setSplitDescB(ev.splitDescB || '');
         setDurchstarterCapacity(String(ev.durchstarterCapacity || 0));
         setFunstarterCapacity(String(ev.funstarterCapacity || 0));
         setSplitSharedWaitlist(!!ev.splitSharedWaitlist);
@@ -3945,6 +3955,8 @@ export default function EventCreationPage(): React.ReactElement {
         // Fallback in der Registration-UI ('Durchstarter' / 'Funstarter').
         updates['SplitLabelA'] = (splitLabelA || '').trim();
         updates['SplitLabelB'] = (splitLabelB || '').trim();
+        updates['SplitDescA'] = (splitDescA || '').trim();
+        updates['SplitDescB'] = (splitDescB || '').trim();
         updates['SplitSharedWaitlist'] = !!splitSharedWaitlist;
       } else {
         // Split deaktiviert: Kapazitäten nullen + Labels leer setzen, damit
@@ -3953,6 +3965,8 @@ export default function EventCreationPage(): React.ReactElement {
         updates['FunstarterCapacity'] = null;
         updates['SplitLabelA'] = '';
         updates['SplitLabelB'] = '';
+        updates['SplitDescA'] = '';
+        updates['SplitDescB'] = '';
         updates['SplitSharedWaitlist'] = false;
       }
       // v11.0: Teilnehmer-Upload-Setting
@@ -4571,6 +4585,8 @@ export default function EventCreationPage(): React.ReactElement {
         funstarterCapacity: useSplitCapacities ? (parseInt(funstarterCapacity, 10) || 0) : undefined,
         splitLabelA: useSplitCapacities ? (splitLabelA || '').trim() : undefined,
         splitLabelB: useSplitCapacities ? (splitLabelB || '').trim() : undefined,
+        splitDescA: useSplitCapacities ? (splitDescA || '').trim() : undefined,
+        splitDescB: useSplitCapacities ? (splitDescB || '').trim() : undefined,
         splitSharedWaitlist: useSplitCapacities ? !!splitSharedWaitlist : undefined,
         allowAttendeeUpload: !!allowAttendeeUpload,
         attendeeUploadHint: (attendeeUploadHint || '').trim() || undefined,
@@ -9801,6 +9817,38 @@ export default function EventCreationPage(): React.ReactElement {
                         onChange={e => setSplitLabelB(e.target.value)}
                         placeholder={isDe ? 'z.B. Nachmittag, Standard, Funstarter' : 'e.g. afternoon, standard, fun'}
                         maxLength={40}
+                      />
+                    </div>
+                  </div>
+                  {/* v26.72: optionale Beschreibung pro Gruppe — erscheint unter
+                      dem Gruppen-Namen in der Auswahl-Karte auf der Anmeldeseite. */}
+                  <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
+                        {isDe ? 'Beschreibung Gruppe A (optional)' : 'Group A description (optional)'}
+                      </label>
+                      <textarea
+                        className="form-input"
+                        rows={2}
+                        value={splitDescA}
+                        onChange={e => setSplitDescA(e.target.value)}
+                        placeholder={isDe ? 'Kurzer Zusatztext, z.B. „inkl. Mittagessen"' : 'Short note, e.g. "incl. lunch"'}
+                        maxLength={400}
+                        style={{ resize: 'vertical' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: 4 }}>
+                        {isDe ? 'Beschreibung Gruppe B (optional)' : 'Group B description (optional)'}
+                      </label>
+                      <textarea
+                        className="form-input"
+                        rows={2}
+                        value={splitDescB}
+                        onChange={e => setSplitDescB(e.target.value)}
+                        placeholder={isDe ? 'Kurzer Zusatztext, z.B. „ohne Mittagessen"' : 'Short note, e.g. "without lunch"'}
+                        maxLength={400}
+                        style={{ resize: 'vertical' }}
                       />
                     </div>
                   </div>

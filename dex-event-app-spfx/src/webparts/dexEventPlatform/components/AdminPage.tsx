@@ -4753,6 +4753,8 @@ export default function AdminPage(): React.ReactElement {
                               const baseUpdates: Record<string, unknown> = {
                                 'SplitLabelA': (ev.splitLabelA || 'Durchstarter'),
                                 'SplitLabelB': (ev.splitLabelB || 'Funstarter'),
+                                'SplitDescA': (ev.splitDescA || ''),
+                                'SplitDescB': (ev.splitDescB || ''),
                               };
                               // v11.13: B2Run-Extras aus
                               // EmailTemplateOverrides._b2run nicht mehr nur
@@ -8211,6 +8213,8 @@ export default function AdminPage(): React.ReactElement {
                       const baseUpdates: Record<string, unknown> = {
                         'SplitLabelA': (ev.splitLabelA || 'Durchstarter'),
                         'SplitLabelB': (ev.splitLabelB || 'Funstarter'),
+                        'SplitDescA': (ev.splitDescA || ''),
+                        'SplitDescB': (ev.splitDescB || ''),
                       };
                       // v11.13: B2Run-Extras aus EmailTemplateOverrides._b2run
                       // in echte Custom-Fields mit onlyForGroup übersetzen

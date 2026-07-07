@@ -3701,15 +3701,16 @@ export default function RegistrationPage(): React.ReactElement {
                       <span style={{ color: 'var(--dex-gray-700)', fontWeight: 700 }}>
                         {locale === 'de' ? 'Gesamtkapazität:' : 'Total capacity:'} {totalCap} {locale === 'de' ? 'Plätze' : 'seats'}
                       </span>
-                      <span style={{ color: 'var(--dex-gray-300)' }}>·</span>
-                      {totalFree > 0 ? (
-                        <span style={{ color: 'var(--dex-green-dark, #6b9a1e)', fontWeight: 700 }}>
-                          {totalFree} {locale === 'de' ? 'frei' : 'free'}
-                        </span>
-                      ) : (
-                        <span style={{ color: 'var(--dex-red, #c00)', fontWeight: 700 }}>
-                          {locale === 'de' ? 'ausgebucht' : 'fully booked'}
-                        </span>
+                      {/* v26.72: „X frei" in der Gesamt-Zeile entfernt — die
+                          Verfügbarkeit steht bereits pro Gruppe in den Karten.
+                          Nur bei komplett ausgebucht bleibt ein Hinweis. */}
+                      {totalFree <= 0 && (
+                        <>
+                          <span style={{ color: 'var(--dex-gray-300)' }}>·</span>
+                          <span style={{ color: 'var(--dex-red, #c00)', fontWeight: 700 }}>
+                            {locale === 'de' ? 'ausgebucht' : 'fully booked'}
+                          </span>
+                        </>
                       )}
                       {totalWait > 0 && (
                         <>
@@ -3727,8 +3728,11 @@ export default function RegistrationPage(): React.ReactElement {
                 })()}
                 <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                   {(() => {
-                    const optA = { id: 'Durchstarter', label: splitLabelA, desc: splitLabelA === 'Durchstarter' ? t('reg.starter.durch.desc') : '', cap: durchCap, count: starterCounts?.durch ?? 0, wait: starterCounts?.durchWait ?? 0, color: 'var(--dex-green-dark, #6b9a1e)' };
-                    const optB = { id: 'Funstarter', label: splitLabelB, desc: splitLabelB === 'Funstarter' ? t('reg.starter.fun.desc') : '', cap: funCap, count: starterCounts?.fun ?? 0, wait: starterCounts?.funWait ?? 0, color: 'var(--dex-orange, #ff8c00)' };
+                    // v26.72: Beschreibung pro Gruppe frei konfigurierbar
+                    // (splitDescA/B aus dem Wizard); Fallback auf den B2Run-
+                    // Standardtext nur bei den Default-Labels.
+                    const optA = { id: 'Durchstarter', label: splitLabelA, desc: (event?.splitDescA && event.splitDescA.trim()) || (splitLabelA === 'Durchstarter' ? t('reg.starter.durch.desc') : ''), cap: durchCap, count: starterCounts?.durch ?? 0, wait: starterCounts?.durchWait ?? 0 };
+                    const optB = { id: 'Funstarter', label: splitLabelB, desc: (event?.splitDescB && event.splitDescB.trim()) || (splitLabelB === 'Funstarter' ? t('reg.starter.fun.desc') : ''), cap: funCap, count: starterCounts?.fun ?? 0, wait: starterCounts?.funWait ?? 0 };
                     // v11.25: pure UI-Reihenfolge — bei reversed wird Karte B
                     // zuerst gerendert. Interne IDs/Capacities/StarterType der
                     // Anmeldungen bleiben unangetastet.
@@ -3737,6 +3741,8 @@ export default function RegistrationPage(): React.ReactElement {
                     const free = opt.cap - opt.count;
                     const isFull = free <= 0;
                     const isActive = preferredStarterType === opt.id;
+                    // v26.72: gewählte Box grün, nicht-gewählte grau (vorher A grün / B orange).
+                    const accent = isActive ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500, #6b7280)';
                     return (
                       <button
                         key={opt.id}
@@ -3745,17 +3751,17 @@ export default function RegistrationPage(): React.ReactElement {
                         style={{
                           padding: 14, textAlign: 'left',
                           borderRadius: 'var(--dex-radius, 12px)',
-                          border: isActive ? `2px solid ${opt.color}` : '2px solid var(--dex-gray-200)',
+                          border: isActive ? `2px solid ${accent}` : '2px solid var(--dex-gray-200)',
                           background: isActive ? 'var(--dex-green-light, #f0fdf4)' : '#fff',
                           cursor: 'pointer', transition: 'all 0.15s',
                           position: 'relative',
                         }}
                       >
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                          <strong style={{ color: opt.color, fontSize: '0.95rem' }}>{opt.label}</strong>
-                          {isActive && <span style={{ color: opt.color, fontSize: '0.8rem' }}>✓</span>}
+                          <strong style={{ color: accent, fontSize: '0.95rem' }}>{opt.label}</strong>
+                          {isActive && <span style={{ color: accent, fontSize: '0.8rem' }}>✓</span>}
                         </div>
-                        <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginBottom: 6 }}>{opt.desc}</div>
+                        {opt.desc && <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)', marginBottom: 6, whiteSpace: 'pre-wrap' }}>{opt.desc}</div>}
                         <div style={{ fontSize: '0.78rem' }}>
                           {isFull ? (
                             <span style={{ color: 'var(--dex-red, #c00)', fontWeight: 600 }}>{t('reg.starter.full')}</span>
@@ -3763,7 +3769,7 @@ export default function RegistrationPage(): React.ReactElement {
                             // v19.19: nie negativ — bei Überbuchung greift der
                             // isFull-Zweig oben (zeigt „Voll"), die echte
                             // Überbuchungszahl bleibt dem Organizer/Admin vorbehalten.
-                            <span style={{ color: opt.color }}>{`${Math.max(0, free)} / ${opt.cap} ${t('reg.starter.free')}`}</span>
+                            <span style={{ color: accent }}>{`${Math.max(0, free)} / ${opt.cap} ${t('reg.starter.free')}`}</span>
                           )}
                           {/* v19.19: Warteliste pro Gruppe — nur bei GETRENNTEN
                               Wartelisten. Bei gemeinsamer Warteliste steht die

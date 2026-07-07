@@ -239,6 +239,10 @@ export interface DeloitteEvent {
    *  "VIP" / "Standard". Bei B2Run-Legacy-Events leer = Default. */
   splitLabelA?: string;
   splitLabelB?: string;
+  /** v26.72: frei konfigurierbare Beschreibung pro Gruppe — erscheint unter
+   *  dem Gruppen-Namen in der Auswahl-Karte auf der Anmeldeseite (mehrzeilig). */
+  splitDescA?: string;
+  splitDescB?: string;
   /** v10.20: Warteliste-Verhalten bei aktiver Split-Capacity.
    *  - false / undefined (Default): zwei getrennte Wartelisten — eine pro
    *    Gruppe, Nachrück-Logik bleibt typ-bewusst (alter B2Run-Stil).
