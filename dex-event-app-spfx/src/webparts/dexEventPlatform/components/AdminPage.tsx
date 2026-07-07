@@ -5417,7 +5417,8 @@ export default function AdminPage(): React.ReactElement {
     // v23.5: 6 Personen-Spalten (#, Vorname, Nachname, Email, Job Title,
     // Standort) — eingeklappt nur 2 (#, „Teilnehmer").
     const personalColCount = personalColsCollapsed ? 2 : 6;
-    const totalColSpan = personalColCount + parentCustomFields.length + parentUserFields.length + childCustomFieldsByChild.reduce((sum, x) => sum + 1 + x.fields.length, 0) + 1;
+    // v26.84: +1 zusätzliche Spalte „Registriert von" (Akteur) neben „Details".
+    const totalColSpan = personalColCount + parentCustomFields.length + parentUserFields.length + childCustomFieldsByChild.reduce((sum, x) => sum + 1 + x.fields.length, 0) + 2;
     // v19.30: Aktionen (Hauptevent-Felder bearbeiten / abmelden) nur für
     // berechtigte Rollen (Admin oder Organizer dieses Events).
     const canManage = isAdmin || isOrganizerFor(selectedEvent);
@@ -5641,7 +5642,10 @@ export default function AdminPage(): React.ReactElement {
             )}
           </div>
         )}
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+        {/* v26.84: minWidth max-content, damit die Tabelle bei vielen Spalten
+            NICHT gestaucht wird, sondern über den overflowX:auto-Wrapper (oben)
+            horizontal scrollbar wird — wie in der Sub-Event-Teilnehmerliste. */}
+        <table style={{ width: '100%', minWidth: 'max-content', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
           <thead>
             <tr style={{ borderBottom: '2px solid var(--dex-gray-200)' }}>
               {/* v26.65: Header-Tooltip stellt klar, dass „#" die laufende Zeilen-
@@ -5685,6 +5689,9 @@ export default function AdminPage(): React.ReactElement {
                   <th style={{ textAlign: 'left', padding: 8 }}>{isDe ? 'Unternehmen' : 'Company'}</th>
                 </>
               )}
+              {/* v26.84: „Registriert von" auch im Klammer-View — selbst /
+                  Assistenz / stellvertretend. */}
+              <th style={{ textAlign: 'left', padding: 8, whiteSpace: 'nowrap' }}>{isDe ? 'Registriert von' : 'Registered by'}</th>
               {parentCustomFields.map(f => (
                 <th key={`pf-${f.id}`} onClick={() => handleSortConsolidated(`pf:${f.id}`)} style={{ textAlign: 'left', padding: 8, fontSize: '0.78rem', whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 150, verticalAlign: 'top', lineHeight: 1.25, cursor: 'pointer', userSelect: 'none', ...PASTEL_A_HEADER }} title={`${f.label} — ${isDe ? 'Hauptevent-Feld' : 'main-event field'}`}>
                   {f.label}{sortArrow(`pf:${f.id}`)}
@@ -5784,6 +5791,27 @@ export default function AdminPage(): React.ReactElement {
                         <td style={{ padding: 8, color: 'var(--dex-gray-600)', fontSize: '0.8rem' }}>{row.company ? highlightMatch(row.company) : '-'}</td>
                       </>
                     )}
+                    {/* v26.84: „Registriert von" — Akteur aus den Sub-Event-
+                        Registrierungen der Person ableiten (erste mit
+                        RegisteredByEmail). Proxy = Name/Mail des Anmeldenden,
+                        sonst „Selbst". */}
+                    {(() => {
+                      let actorEmail = '', actorName = '', isProxy = false;
+                      for (const ck of Object.keys(row.perChild)) {
+                        const cr = row.perChild[ck];
+                        const ae = (cr && cr.RegisteredByEmail || '').trim();
+                        if (cr && ae) {
+                          actorEmail = ae; actorName = (cr.RegisteredByName || '').trim();
+                          isProxy = ae.toLowerCase() !== (cr.ParticipantEmail || '').trim().toLowerCase();
+                          break;
+                        }
+                      }
+                      return (
+                        <td style={{ padding: 8, fontSize: '0.8rem', whiteSpace: 'nowrap', color: isProxy ? 'var(--dex-orange-dark, #b35a00)' : 'var(--dex-gray-500)' }} title={isProxy ? actorEmail : ''}>
+                          {isProxy ? (actorName || actorEmail) : (isDe ? 'Selbst' : 'Self')}
+                        </td>
+                      );
+                    })()}
                     {parentCustomFields.map(f => {
                       let val = '';
                       // v15.3.1: Parent-Level-Custom-Fields zuerst aus der
