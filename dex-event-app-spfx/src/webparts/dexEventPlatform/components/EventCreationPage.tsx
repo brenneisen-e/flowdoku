@@ -1435,6 +1435,50 @@ export default function EventCreationPage(): React.ReactElement {
       showAlert(isDe ? 'Das Event-Foto konnte nicht übernommen werden.' : 'Could not use the event photo.', { variant: 'error' });
     }
   };
+  // v27.2: Größensteuerung fürs Kopfbild als wiederverwendbarer Block (Schritt 23
+  // UND 24) — inkl. verkleinerter Live-Vorschau, die zeigt, wie groß das Bild im
+  // Mail-/Outlook-Kopf steht. `headerImageLayout` gilt event-weit (Mail + Outlook).
+  const renderHeaderSizeControl = (previewSrc: string): React.ReactElement => {
+    const PREV_W = 260; const sc = PREV_W / 600;
+    const numInput = (val: number, min: number, max: number, def: number, set: (n: number) => void): React.ReactElement => (
+      <input type="number" min={min} max={max} step={min === 80 ? 10 : 2} value={val}
+        onChange={e => set(Math.max(min, Math.min(max, parseInt(e.target.value, 10) || def)))}
+        style={{ width: 78, height: 28, fontSize: '0.82rem', borderRadius: 4, border: '1px solid var(--dex-gray-300)', padding: '0 8px' }} />
+    );
+    const lbl: React.CSSProperties = { display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.7rem', color: 'var(--dex-gray-600)' };
+    return (
+      <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200)', borderRadius: 8 }}>
+        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)', letterSpacing: 0.3, marginBottom: 8 }}>
+          {isDe ? 'BILDGRÖSSE IM KOPF — gilt für Mail & Outlook-Termin' : 'HEADER IMAGE SIZE — applies to mail & Outlook invite'}
+        </div>
+        <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
+            <label style={lbl}>{isDe ? 'Breite (px)' : 'Width (px)'}{numInput(headerImageLayout.width, 80, 600, 180, n => setHeaderImageLayout(p => ({ ...p, width: n })))}</label>
+            <label style={lbl}>{isDe ? 'Abstand seitl.' : 'Padding sides'}{numInput(headerImageLayout.paddingH, 0, 80, 0, n => setHeaderImageLayout(p => ({ ...p, paddingH: n })))}</label>
+            <label style={lbl}>{isDe ? 'Abstand ob./unt.' : 'Padding top/bot.'}{numInput(headerImageLayout.paddingV, 0, 80, 0, n => setHeaderImageLayout(p => ({ ...p, paddingV: n })))}</label>
+            <button type="button" onClick={() => setHeaderImageLayout({ width: 600, paddingV: 0, paddingH: 0 })}
+              title={isDe ? 'Bild füllt den Kopf über die volle Breite' : 'Image fills the header full width'}
+              style={{ height: 28, padding: '0 12px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', background: 'var(--dex-green, #86bc25)', color: '#fff', border: 'none', borderRadius: 6 }}>
+              {isDe ? 'Volle Breite' : 'Full width'}
+            </button>
+            <button type="button" onClick={() => setHeaderImageLayout({ width: 180, paddingV: 30, paddingH: 30 })}
+              style={{ height: 28, padding: '0 12px', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', background: 'transparent', color: 'var(--dex-gray-600)', border: '1px solid var(--dex-gray-300)', borderRadius: 6 }}>
+              {isDe ? 'Standard' : 'Default'}
+            </button>
+          </div>
+          {previewSrc && (
+            <div style={{ width: PREV_W, flexShrink: 0, border: '1px solid var(--dex-gray-200)', borderRadius: 4, overflow: 'hidden', background: '#fff' }}>
+              <div style={{ textAlign: 'center', padding: `${Math.round(headerImageLayout.paddingV * sc)}px ${Math.round(headerImageLayout.paddingH * sc)}px` }}>
+                <img src={previewSrc} alt="" style={{ display: 'inline-block', width: '100%', maxWidth: Math.max(20, Math.round(headerImageLayout.width * sc)), height: 'auto' }} />
+              </div>
+              <div style={{ borderTop: '2px solid var(--dex-green, #86bc25)' }} />
+              <div style={{ fontSize: '0.6rem', color: 'var(--dex-gray-400)', textAlign: 'center', padding: '2px 0' }}>{isDe ? 'So groß im Mail-Kopf (verkleinert)' : 'Size in the mail header (scaled)'}</div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
   const [dragFieldId, setDragFieldId] = React.useState<string | null>(null);
   // v18.55: Pro-Feld Ein-/Ausklapp-Status für Schritt 5 (Felder). Default =
   // eingeklappt (kompakte Karte: nur Nummer + Label + Typ + Pflicht + Aktionen);
@@ -11891,14 +11935,9 @@ export default function EventCreationPage(): React.ReactElement {
                       <div className="dex-fielddesc-rt" style={{ border: '1px solid var(--dex-gray-300)', borderRadius: 6, background: '#fff' }}>
                         <RichText
                           value={field.helpText || ''}
-                          placeholder={isDe ? 'Beschreibung (optional) — Fett & Links über die Leiste' : 'Description (optional) — bold & links via the toolbar'}
+                          placeholder={isDe ? 'Beschreibung (optional)' : 'Description (optional)'}
                           onChange={(text: string) => { updateCustomField(field.id, { helpText: text }); return text; }}
                         />
-                      </div>
-                      <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', marginTop: 4, lineHeight: 1.4 }}>
-                        {isDe
-                          ? 'Text markieren und über die Leiste fett setzen; Links über das Link-Symbol einfügen. Formatiert dargestellt wird das bei der Anzeige als Text unter dem Feld-Titel.'
-                          : 'Select text and use the toolbar to make it bold; add links via the link icon. It is rendered formatted with the display as text below the field title.'}
                       </div>
                       {field.helpText && field.helpText.trim() && (
                         <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
@@ -13338,48 +13377,7 @@ export default function EventCreationPage(): React.ReactElement {
                       <Icon iconName="Photo2" style={{ fontSize: 14 }} /> {isDe ? 'Event-Foto verwenden' : 'Use event photo'}
                     </button>
                   )}
-                  {/* v26.96: Bildgröße direkt hier einstellbar (vorher nur im
-                      Mail-Vorschau-Editor). Gilt event-weit für Mail- UND
-                      Outlook-Kopf. „Volle Breite" = randlos füllend. */}
-                  {(emailLogoPreview || imagePreview || imageFile) && (
-                    <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200)', borderRadius: 8 }}>
-                      <div style={{ fontSize: '0.7rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)', letterSpacing: 0.3, marginBottom: 8 }}>
-                        {isDe ? 'BILDGRÖSSE IM KOPF — gilt für Mail & Outlook-Termin' : 'HEADER IMAGE SIZE — applies to mail & Outlook invite'}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 12, flexWrap: 'wrap' }}>
-                        <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.7rem', color: 'var(--dex-gray-600)' }}>
-                          {isDe ? 'Breite (px)' : 'Width (px)'}
-                          <input type="number" min={80} max={600} step={10} value={headerImageLayout.width}
-                            onChange={e => { const w = Math.max(80, Math.min(600, parseInt(e.target.value, 10) || 180)); setHeaderImageLayout(p => ({ ...p, width: w })); }}
-                            style={{ width: 80, height: 28, fontSize: '0.82rem', borderRadius: 4, border: '1px solid var(--dex-gray-300)', padding: '0 8px' }} />
-                        </label>
-                        <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.7rem', color: 'var(--dex-gray-600)' }}>
-                          {isDe ? 'Abstand seitl.' : 'Padding sides'}
-                          <input type="number" min={0} max={80} step={2} value={headerImageLayout.paddingH}
-                            onChange={e => { const h = Math.max(0, Math.min(80, parseInt(e.target.value, 10) || 0)); setHeaderImageLayout(p => ({ ...p, paddingH: h })); }}
-                            style={{ width: 80, height: 28, fontSize: '0.82rem', borderRadius: 4, border: '1px solid var(--dex-gray-300)', padding: '0 8px' }} />
-                        </label>
-                        <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.7rem', color: 'var(--dex-gray-600)' }}>
-                          {isDe ? 'Abstand ob./unt.' : 'Padding top/bot.'}
-                          <input type="number" min={0} max={80} step={2} value={headerImageLayout.paddingV}
-                            onChange={e => { const v = Math.max(0, Math.min(80, parseInt(e.target.value, 10) || 0)); setHeaderImageLayout(p => ({ ...p, paddingV: v })); }}
-                            style={{ width: 80, height: 28, fontSize: '0.82rem', borderRadius: 4, border: '1px solid var(--dex-gray-300)', padding: '0 8px' }} />
-                        </label>
-                        <button type="button" onClick={() => setHeaderImageLayout({ width: 600, paddingV: 0, paddingH: 0 })}
-                          title={isDe ? 'Bild füllt den Kopf über die volle Breite' : 'Image fills the header full width'}
-                          style={{ height: 28, padding: '0 12px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', background: 'var(--dex-green, #86bc25)', color: '#fff', border: 'none', borderRadius: 6 }}>
-                          {isDe ? 'Volle Breite' : 'Full width'}
-                        </button>
-                        <button type="button" onClick={() => setHeaderImageLayout({ width: 180, paddingV: 30, paddingH: 30 })}
-                          style={{ height: 28, padding: '0 12px', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', background: 'transparent', color: 'var(--dex-gray-600)', border: '1px solid var(--dex-gray-300)', borderRadius: 6 }}>
-                          {isDe ? 'Standard' : 'Default'}
-                        </button>
-                      </div>
-                      <div style={{ fontSize: '0.68rem', color: 'var(--dex-gray-400)', marginTop: 6, lineHeight: 1.4 }}>
-                        {isDe ? 'Breites Foto → „Volle Breite". Rundes Logo → schmaler, dann steht es zentriert. Die genaue Vorschau siehst du beim Bearbeiten der E-Mail-Vorlage.' : 'Wide photo → „Full width". Round logo → narrower, then it stays centered. Exact preview when editing the email template.'}
-                      </div>
-                    </div>
-                  )}
+                  {(emailLogoPreview || imagePreview || imageFile) && renderHeaderSizeControl(emailLogoPreview || imagePreview)}
                   </div>
                 </details>
 
@@ -13435,6 +13433,8 @@ export default function EventCreationPage(): React.ReactElement {
                       <Icon iconName="Photo2" style={{ fontSize: 14 }} /> {isDe ? 'Event-Foto verwenden' : 'Use event photo'}
                     </button>
                   )}
+                  {/* v27.2: Größensteuerung + Vorschau auch hier in Schritt 24. */}
+                  {(outlookLogoPreview || imagePreview || imageFile) && renderHeaderSizeControl(outlookLogoPreview || imagePreview)}
                   {renderOutlookUpdateButton()}
                   </div>
                 </details>

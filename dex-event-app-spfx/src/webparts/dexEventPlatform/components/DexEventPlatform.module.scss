@@ -243,6 +243,15 @@
     .card:hover { box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08); }
     .card-clickable { cursor: pointer; }
 
+    /* v26.100: Kompakter Feld-Beschreibungs-Editor (RichText/Quill). Ohne das
+       ist der Editor unnötig hoch (Quill-Default min-height ~150px). */
+    :global(.dex-fielddesc-rt) {
+      :global(.ql-container) { font-size: 0.85rem; border: none; }
+      :global(.ql-toolbar) { border: none; border-bottom: 1px solid var(--dex-gray-200, #e5e7eb); padding: 4px 6px; }
+      :global(.ql-editor) { min-height: 52px; max-height: 220px; padding: 8px 10px; }
+      :global(.ql-editor.ql-blank::before) { font-style: normal; color: var(--dex-gray-400, #9aa3ad); left: 10px; }
+    }
+
     /* Section headers */
     .section-header {
       background: var(--dex-green); color: var(--dex-white); padding: 10px 20px;
