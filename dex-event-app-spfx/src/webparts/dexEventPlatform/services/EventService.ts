@@ -7441,6 +7441,60 @@ export class EventService {
     } catch (err) { console.warn('[DEX] markConsentPendingByEmail failed:', err); return false; }
   }
 
+  /** v26.73: Fertigen .eml-Einladungs-Entwurf als Attachment an der Teilnehmer-
+   *  Zeile ablegen (Zeile per E-Mail gefunden). Rückgabe = Item-Id (0 =
+   *  fehlgeschlagen). Der Deeplink in der externen Instruktions-Mail holt genau
+   *  diese Datei wieder — der Anhang darf per Deloitte-Mail-Regel nicht direkt
+   *  mitgeschickt werden. Fester Dateiname `dxinvite--Einladung.eml`. */
+  public async storeInviteEmlByEmail(subsiteUrl: string, participantEmail: string, emlContent: string): Promise<number> {
+    try {
+      const emailLc = (participantEmail || '').trim().toLowerCase();
+      if (!emailLc || !emlContent) return 0;
+      const resp = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,ParticipantEmail,Status&$orderby=Id desc&$top=500`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return 0;
+      const data = await resp.json();
+      const items = (data.value || data.d?.results || []) as Array<{ Id: number; ParticipantEmail?: string; Status?: string }>;
+      const hit = items.find(it => (it.ParticipantEmail || '').trim().toLowerCase() === emailLc && it.Status !== 'Abgemeldet');
+      if (!hit) return 0;
+      const fileName = 'dxinvite--Einladung.eml';
+      // Vorherige Version best-effort löschen (sonst 409 bei erneuter Anmeldung).
+      try {
+        await this.context.spHttpClient.post(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${hit.Id})/AttachmentFiles/getByFileName('${encodeURIComponent(fileName)}')`,
+          SPHttpClient.configurations.v1,
+          { headers: { 'IF-MATCH': '*', 'X-HTTP-Method': 'DELETE', 'Accept': 'application/json;odata=nometadata' } }
+        );
+      } catch { /* gab es noch nicht */ }
+      const buf = new TextEncoder().encode(emlContent);
+      const add = await this.context.spHttpClient.post(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${hit.Id})/AttachmentFiles/add(FileName='${encodeURIComponent(fileName)}')`,
+        SPHttpClient.configurations.v1,
+        { headers: { 'Accept': 'application/json;odata=nometadata' }, body: buf.buffer as ArrayBuffer }
+      );
+      return add.ok ? hit.Id : 0;
+    } catch (err) { console.warn('[DEX] storeInviteEmlByEmail failed:', err); return 0; }
+  }
+
+  /** v26.73: Den an der Teilnehmer-Zeile abgelegten .eml-Entwurf (per Item-Id)
+   *  wieder auslesen — für den Download-Deeplink. */
+  public async getInviteEmlByItem(subsiteUrl: string, itemId: number): Promise<{ fileName: string; content: string } | null> {
+    try {
+      if (!subsiteUrl || !itemId) return null;
+      const resp = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${Number(itemId)})/AttachmentFiles/getByFileName('${encodeURIComponent('dxinvite--Einladung.eml')}')/$value`,
+        SPHttpClient.configurations.v1,
+        { headers: { 'Accept': 'application/json;odata=nometadata' } }
+      );
+      if (!resp.ok) return null;
+      const content = await resp.text();
+      if (!content) return null;
+      return { fileName: 'Einladung.eml', content };
+    } catch (err) { console.warn('[DEX] getInviteEmlByItem failed:', err); return null; }
+  }
+
   /** v26.47: Datenschutz-Rückmeldung der externen Person bestätigen —
    *  ConsentReview zurücksetzen (Button in der Teilnehmerliste). */
   public async confirmConsentReview(subsiteUrl: string, itemId: number, meta?: { eventId?: string; eventTitle?: string; participantName?: string }): Promise<boolean> {

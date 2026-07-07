@@ -528,7 +528,10 @@ export function externalInviteInstructionEmail(
   externalEmail: string,
   eventTitle: string,
   isDe: boolean,
-  orgCenterUrl: string
+  orgCenterUrl: string,
+  // v26.73: Deeplink, der die App öffnet und die an der Teilnehmer-Zeile
+  // abgelegte .eml sofort herunterlädt. Leer = nur Organizer-Center-Fallback.
+  downloadUrl: string = ''
 ): { subject: string; body: string } {
   const btn = (href: string, label: string): string =>
     `<p style="margin:18px 0 0;"><a href="${href}" style="display:inline-block;background:${GREEN};color:#ffffff;text-decoration:none;padding:11px 24px;border-radius:6px;font-weight:600;font-size:14px;">${label}</a></p>`;
@@ -543,11 +546,12 @@ export function externalInviteInstructionEmail(
         <p>du hast <strong>${externalName}</strong> (${externalEmail}) für das Event <strong>${eventTitle}</strong> angemeldet. Da es sich um eine externe Adresse handelt, kann die App die Einladung <strong>nicht direkt zustellen</strong> — bitte übernimm das in drei kurzen Schritten:</p>
         <ol style="margin:12px 0 0 18px;padding:0;line-height:1.7;">
           <li><strong>${externalName} steht bereits auf der Teilnehmerliste</strong> — mit dem Status <strong>&bdquo;Angemeldet (Datenschutzrückmeldung offen)&ldquo;</strong>.</li>
-          <li>Lade den <strong>fertigen Einladungs-Entwurf (.eml)</strong> im <strong>Organizer Center</strong> herunter — in der Teilnehmerzeile von ${externalName} (Button unten). An, Betreff und Text sind vorausgefüllt (an die externe Person; Organisator:innen in Kopie) — in Outlook öffnen und auf <strong>&bdquo;Senden&ldquo;</strong> klicken. <span style="color:#555;">(Zeigt Outlook die Datei als empfangene Mail an, nutze einfach &bdquo;Weiterleiten&ldquo;.)</span></li>
+          <li>Klicke unten auf <strong>&bdquo;Einladungs-Entwurf herunterladen&ldquo;</strong> — die DEX App öffnet sich und lädt den fertigen Entwurf (.eml) sofort herunter. An, Betreff und Text sind vorausgefüllt (an die externe Person; Organisator:innen in Kopie) — in Outlook öffnen und auf <strong>&bdquo;Senden&ldquo;</strong> klicken. <span style="color:#555;">(Zeigt Outlook die Datei als empfangene Mail an, nutze einfach &bdquo;Weiterleiten&ldquo;.)</span></li>
           <li>Sobald die Datenschutz-Rückmeldung von ${externalName} per Mail da ist, klicke in der Teilnehmerliste auf <strong>&bdquo;Rückmeldung bestätigen&ldquo;</strong> — der Status wechselt auf &bdquo;Angemeldet&ldquo;.</li>
         </ol>
         <p style="margin-top:14px;padding:10px 14px;background:#fff3e0;border:1px solid #ed8b00;border-radius:8px;font-size:13px;color:#7a4a00;">Kein Zugriff auf das Organizer Center? Bitte eine:n der Organisator:innen, die Schritte zu übernehmen.</p>
-        ${btn(orgCenterUrl, 'Event im Organizer Center öffnen')}
+        ${downloadUrl ? btn(downloadUrl, 'Einladungs-Entwurf herunterladen') : ''}
+        <p style="margin:10px 0 0;font-size:12px;color:#888;">Alternativ: <a href="${orgCenterUrl}" style="color:${GREEN};font-weight:600;">im Organizer Center öffnen</a> und den Entwurf in der Teilnehmerzeile herunterladen.</p>
         <p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
       ),
     };
@@ -562,11 +566,12 @@ export function externalInviteInstructionEmail(
       <p>you registered <strong>${externalName}</strong> (${externalEmail}) for the event <strong>${eventTitle}</strong>. Since this is an external address, the app <strong>cannot deliver the invitation directly</strong> — please take over in three quick steps:</p>
       <ol style="margin:12px 0 0 18px;padding:0;line-height:1.7;">
         <li><strong>${externalName} is already on the participant list</strong> — with the status <strong>&ldquo;Registered (privacy confirmation pending)&rdquo;</strong>.</li>
-        <li>Download the <strong>ready-made invitation draft (.eml)</strong> from the <strong>Organizer Center</strong> — in ${externalName}'s row (button below). To, subject and text are pre-filled (to the external person; organizers in copy) — open it in Outlook and click <strong>&ldquo;Send&rdquo;</strong>. <span style="color:#555;">(If Outlook shows the file as a received mail, simply use &ldquo;Forward&rdquo;.)</span></li>
+        <li>Click <strong>&ldquo;Download invitation draft&rdquo;</strong> below — the DEX App opens and downloads the ready-made draft (.eml) right away. To, subject and text are pre-filled (to the external person; organizers in copy) — open it in Outlook and click <strong>&ldquo;Send&rdquo;</strong>. <span style="color:#555;">(If Outlook shows the file as a received mail, simply use &ldquo;Forward&rdquo;.)</span></li>
         <li>Once ${externalName}'s privacy confirmation arrives by email, click <strong>&ldquo;Confirm response&rdquo;</strong> in the participant list — the status switches to &ldquo;Registered&rdquo;.</li>
       </ol>
       <p style="margin-top:14px;padding:10px 14px;background:#fff3e0;border:1px solid #ed8b00;border-radius:8px;font-size:13px;color:#7a4a00;">No access to the Organizer Center? Ask one of the organizers to take over these steps.</p>
-      ${btn(orgCenterUrl, 'Open event in the Organizer Center')}
+      ${downloadUrl ? btn(downloadUrl, 'Download invitation draft') : ''}
+      <p style="margin:10px 0 0;font-size:12px;color:#888;">Alternatively: <a href="${orgCenterUrl}" style="color:${GREEN};font-weight:600;">open the Organizer Center</a> and download the draft from the participant's row.</p>
       <p style="margin-top:24px;"><strong>Best regards</strong><br><br><strong>Your Event Team</strong></p>`
     ),
   };

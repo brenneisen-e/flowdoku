@@ -15,7 +15,8 @@ import { EventService, SPEvent, CustomField, SPRegistration, SPParticipant, Rese
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
 import { buildHashDeepLink } from '../utils/deepLink';
 import { isEventOver } from '../utils/eventFormat';
-import { registrationEmail, externalInviteInstructionEmail, coOrganizerAddedEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
+import { registrationEmail, externalInviteInstructionEmail, externalInvitationEmail, coOrganizerAddedEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
+import { buildUnsentEmlDraft } from '../utils/emlDraft';
 import { APP_VERSION } from '../version';
 import { RELEASE_NOTES } from '../data/releaseNotes';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
@@ -1746,19 +1747,38 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // Einladungs-Entwurf (.eml) lädt sie in der Teilnehmerliste herunter und
       // verschickt ihn aus dem eigenen Postfach.
       const isExternalInvite = status === 'Angemeldet' && isProxyRegistration && isExternalParticipant;
+      // v26.73: Download-Deeplink für den .eml-Entwurf. Der Anhang darf per
+      // Deloitte-Mail-Regel NICHT direkt mitgeschickt werden (NDR: „…cannot send
+      // email attachments"). Statt dessen: den fertigen Entwurf als Attachment an
+      // der Teilnehmer-Zeile ablegen und in der Instruktions-Mail einen Deeplink
+      // setzen, der die Datei beim Klick in der App herunterlädt.
+      let inviteDownloadUrl = '';
       if (isExternalInvite) {
         try { await eventService.markConsentPendingByEmail(subsiteUrl, emailToUse); }
         catch (err) { console.warn('[DEX] markConsentPendingByEmail failed:', err); }
+        try {
+          const inv = externalInvitationEmail(
+            nameToUse, event.title, currentUserName || '',
+            lang.toUpperCase() === 'DE',
+            { startDate: event.startDate, endDate: event.endDate, location: event.location }
+          );
+          const eml = buildUnsentEmlDraft({
+            to: [emailToUse],
+            cc: ['no_reply.events@deloitte.de', ...Array.from(new Set([...(event.organizerEmails || []), ...(event.coOrganizerEmails || [])].filter(Boolean)))],
+            subject: inv.subject,
+            html: inv.body,
+          });
+          const invItemId = await eventService.storeInviteEmlByEmail(subsiteUrl, emailToUse, eml).catch(() => 0);
+          if (invItemId > 0) {
+            inviteDownloadUrl = buildHashDeepLink(`${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`, { action: 'downloadinvite', event: eventId, item: invItemId, email: emailToUse, name: nameToUse });
+          }
+        } catch (emlErr) { console.warn('[DEX] invite .eml store failed:', emlErr); }
       }
       let emailData: { subject: string; body: string };
-      // v26.71: Der .eml-Entwurf wird NICHT mehr an die Instruktions-Mail
-      // angehängt (v26.62 zurückgebaut). Grund: Die Deloitte-Mail-Flow-Regel
-      // blockt JEDE über Power Automate versendete Mail, die einen Anhang trägt
-      // (NDR: „Power Apps and Power Automate cannot be used to send email
-      // attachments") — mit Anhang käme die Instruktions-Mail also GAR NICHT mehr
-      // beim Anmelder an. Der fertige Entwurf bleibt per Download im Organizer
-      // Center verfügbar; der Anmelder leitet ihn aus dem eigenen Postfach an die
-      // externe Person weiter (die App/der Flow sendet NIE an externe Adressen).
+      // v26.73: Die eigentliche Einladung (.eml) wird NICHT an die Mail gehängt
+      // (Mail-Regel blockt Anhänge). Sie liegt als Attachment an der Teilnehmer-
+      // Zeile; der Anmelder holt sie per Deeplink-Button in der App und leitet sie
+      // aus dem eigenen Postfach weiter (die App/der Flow sendet NIE an Externe).
       const spTemplateRaw = isExternalInvite ? null : await eventService.getEmailTemplate(templateType, lang).catch(() => null);
       const spTemplate = applyEventTemplateOverride(spTemplateRaw, event.emailTemplateOverrides, templateType);
       if (isExternalInvite) {
@@ -1766,7 +1786,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         const registrantFirst = (currentUserName || '').split(' ')[0] || currentUserName;
         emailData = externalInviteInstructionEmail(
           registrantFirst, nameToUse, emailToUse, event.title,
-          lang.toUpperCase() === 'DE', orgCenterUrl
+          lang.toUpperCase() === 'DE', orgCenterUrl, inviteDownloadUrl
         );
       } else if (spTemplate) {
         emailData = buildEmailFromTemplate(spTemplate, vars);

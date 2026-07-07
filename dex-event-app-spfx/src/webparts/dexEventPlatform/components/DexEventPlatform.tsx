@@ -31,6 +31,7 @@ import ProfilePage from './ProfilePage';
 import SelfCheckInPage from './SelfCheckInPage';
 import OrganizerRequestsBanner from './OrganizerRequestsBanner';
 import GrantAccessHandler from './GrantAccessHandler';
+import InviteDownloadHandler from './InviteDownloadHandler';
 import { KpiRow } from './LandingPage';
 
 // v20.0 (Audit): Route-Level-Code-Splitting. Die schweren Sekundär-Seiten
@@ -777,6 +778,9 @@ function AppContent(): React.ReactElement {
       {/* v26.59: grantaccess-Deep-Link aus der „SharePoint-Zugriff benötigt"-Mail
           — vergibt als Admin direkt Leserechte und zeigt das Ergebnis als Modal. */}
       {!isBootLoading && <GrantAccessHandler />}
+      {/* v26.73: downloadinvite-Deep-Link aus der externen Instruktions-Mail —
+          lädt den an der Teilnehmer-Zeile abgelegten .eml-Entwurf per Button. */}
+      {!isBootLoading && <InviteDownloadHandler />}
 
       {successBanner && (
         <div
