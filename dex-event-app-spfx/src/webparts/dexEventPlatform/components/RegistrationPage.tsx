@@ -3398,7 +3398,14 @@ export default function RegistrationPage(): React.ReactElement {
                             : <>Enter the external person&rsquo;s <strong>first name, last name and email address</strong> in the fields below.</>}
                         </div>
                       )}
-                      <div style={{ marginBottom: 8 }}>
+                      {/* v26.98: Die ausführliche Ablauf-Erklärung ist jetzt
+                          eingeklappt — auf der Anmeldeseite bleibt nur der kurze
+                          Hinweis (Überschrift) + der Pflicht-Haken sichtbar. */}
+                      <details style={{ marginBottom: 4 }}>
+                        <summary style={{ cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, color: '#7a4a00', userSelect: 'none' }}>
+                          {locale === 'de' ? 'So läuft das ab (Details anzeigen)' : 'How it works (show details)'}
+                        </summary>
+                      <div style={{ marginBottom: 8, marginTop: 8 }}>
                         {locale === 'de'
                           ? (isExternal
                               ? <>Mit dem Absenden setzt du {pickedName ? <><strong>{pickedName}</strong></> : <>die externe Person</>} mit dem Status <strong>&bdquo;Angemeldet (Datenschutzrückmeldung offen)&ldquo;</strong> auf die Teilnehmerliste. Final wird die Anmeldung erst, wenn die Person auf deine Einladung geantwortet hat und du die Rückmeldung in der Teilnehmerliste bestätigt hast.</>
@@ -3423,6 +3430,7 @@ export default function RegistrationPage(): React.ReactElement {
                             : <>{email.trim() ? <>The address <strong>{email}</strong> is not part of the Deloitte Germany tenant. </> : <>An external address is not part of the Deloitte Germany tenant. </>}The app can send <strong>neither emails nor Outlook invites</strong> to external addresses. Therefore: after submitting, <strong>you receive an email with the next steps</strong> — download the <strong>ready-made invitation draft</strong> from the participant list and send it from your own mailbox (just click &ldquo;Send&rdquo;). Once the person confirms by reply, confirm the <strong>privacy response</strong> with one click in the participant list.</>}
                         </div>
                       )}
+                      </details>
                       <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 12, cursor: 'pointer' }}>
                         <input
                           type="checkbox"
@@ -4792,10 +4800,19 @@ export default function RegistrationPage(): React.ReactElement {
 
             {proxyStep === 2 && (
               <>
+                {/* v26.98: Die ausführliche Ablauf-Erklärung lebt jetzt HIER im
+                    Wizard-Schritt „Zustimmung" (statt als große Box auf der
+                    Anmeldeseite). Auf der Anmeldeseite bleibt danach nur ein
+                    kurzer Hinweis + der Pflicht-Haken. */}
                 <div style={{ padding: '12px 14px', background: 'rgba(237,139,0,0.10)', border: '2px solid var(--dex-orange, #ed8b00)', borderRadius: 8, color: '#7a4a00', fontSize: '0.86rem', lineHeight: 1.55 }}>
                   {locale === 'de'
                     ? <>Mit dem Absenden meldest du <strong>{pName}</strong> stellvertretend an. Bitte stelle sicher, dass die Person ihrer Anmeldung <strong>vorher zugestimmt</strong> hat — eine Anmeldung ohne Einverständnis ist nicht erlaubt.</>
                     : <>By submitting you register <strong>{pName}</strong> on their behalf. Please make sure the person has <strong>consented up front</strong> — registering people without their consent is not allowed.</>}
+                  <div style={{ marginTop: 8 }}>
+                    {locale === 'de'
+                      ? <>Die Person taucht danach normal in der Teilnehmerliste auf. Muss sie doch nicht teilnehmen, kann die Anmeldung jederzeit wieder storniert werden — am besten gibst du kurz Bescheid, damit Wartelisten-Plätze nachrücken.</>
+                      : <>The person then appears normally in the participant list. If they cannot attend after all, the registration can be cancelled at any time — best let us know so waitlist spots can move up.</>}
+                  </div>
                 </div>
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 12, cursor: 'pointer' }}>
                   <input type="checkbox" checked={otherConsentConfirmed} onChange={e => setOtherConsentConfirmed(e.target.checked)} style={{ marginTop: 3 }} />
