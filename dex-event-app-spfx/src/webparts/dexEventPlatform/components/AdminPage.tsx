@@ -1519,6 +1519,11 @@ export default function AdminPage(): React.ReactElement {
   const [inviteBody, setInviteBody] = React.useState('');
   const [inviteTarget, setInviteTarget] = React.useState<'organizer' | 'audience'>('organizer');
   const [inviteSending, setInviteSending] = React.useState(false);
+  // v26.94: Header-Bild-Größe (Breite/Innenabstand) auch in Einladungs- und
+  // Massenmail einstellbar — gleiche Steuerung wie im Wizard (inkl. „Volle
+  // Breite"). Transient pro Session; Default = bisheriges Layout (180/30/30).
+  const [inviteImageLayout, setInviteImageLayout] = React.useState<{ width: number; paddingV: number; paddingH: number }>({ width: 180, paddingV: 30, paddingH: 30 });
+  const [massmailImageLayout, setMassmailImageLayout] = React.useState<{ width: number; paddingV: number; paddingH: number }>({ width: 180, paddingV: 30, paddingH: 30 });
   // v22.5: Unter-Überschrift der Einladungsmail (vorher nicht erfasst) + Entwurf-
   // Speicherung pro Event in localStorage, damit ein angefangener Text beim
   // Schließen + erneuten Öffnen erhalten bleibt.
@@ -4100,7 +4105,7 @@ export default function AdminPage(): React.ReactElement {
       const resolvedHeading = replacePlaceholders(emailHeading, previewVars);
       const resolvedBody = replacePlaceholders(emailBody, previewVars);
       const resolvedSub = massmailSubheading.trim() ? replacePlaceholders(massmailSubheading, previewVars) : `Event ${selectedEvent.title}`;
-      const fullBody = applyMassmailHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSub, resolvedBody));
+      const fullBody = applyMassmailHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSub, resolvedBody, undefined, { imageWidth: massmailImageLayout.width, imagePaddingV: massmailImageLayout.paddingV, imagePaddingH: massmailImageLayout.paddingH }));
       await eventServiceRef.queueEmail(resolvedSubject, to, 'Organizer (Test)', fullBody, 'Massenmail', selectedEvent.title, selectedEvent.id);
       setMassmailTestMsg(isDe ? `Testmail an die Organizer (${to.split(';').length}) verschickt — bitte Postfach prüfen.` : `Test email sent to the organizers (${to.split(';').length}) — please check the mailbox.`);
     } catch (err) {
@@ -13284,7 +13289,7 @@ export default function AdminPage(): React.ReactElement {
           const resolvedSubheading = massmailSubheading.trim()
             ? replacePlaceholders(massmailSubheading, previewVars)
             : `Event ${selectedEvent.title}`;
-          const fullBody = applyMassmailHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody));
+          const fullBody = applyMassmailHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody, undefined, { imageWidth: massmailImageLayout.width, imagePaddingV: massmailImageLayout.paddingV, imagePaddingH: massmailImageLayout.paddingH }));
           const allEmails = recipients.map(r => r.ParticipantEmail).join(';');
           // v17.10: Organizer immer auf CC (falls nicht ohnehin schon
           // unter den Empfängern). Dedup per lowercase, semicolon-join.
@@ -13343,6 +13348,12 @@ export default function AdminPage(): React.ReactElement {
               { key: '{{Organizer}}', label: 'Organizer' },
             ]}
             imageBase64={(massmailHero === 'event' && massmailEventPhotoB64) ? massmailEventPhotoB64 : customLogo}
+            imageWidth={massmailImageLayout.width}
+            imagePaddingV={massmailImageLayout.paddingV}
+            imagePaddingH={massmailImageLayout.paddingH}
+            onImageWidthChange={(w) => setMassmailImageLayout(p => ({ ...p, width: w }))}
+            onImagePaddingVChange={(v) => setMassmailImageLayout(p => ({ ...p, paddingV: v }))}
+            onImagePaddingHChange={(h) => setMassmailImageLayout(p => ({ ...p, paddingH: h }))}
             headerExtra={(
               <div style={{ padding: 12, background: 'var(--dex-gray-50, #fafafa)', border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius)', marginBottom: 4 }}>
                 <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginBottom: 8 }}>
@@ -13502,7 +13513,7 @@ export default function AdminPage(): React.ReactElement {
           const resolvedSubheading = inviteSubheading && inviteSubheading.trim()
             ? replacePlaceholders(inviteSubheading, previewVars)
             : `Event ${selectedEvent.title}`;
-          const fullBody = applyInviteHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody));
+          const fullBody = applyInviteHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody, undefined, { imageWidth: inviteImageLayout.width, imagePaddingV: inviteImageLayout.paddingV, imagePaddingH: inviteImageLayout.paddingH }));
           const allEmails = targetEmails.join(';');
           const ccString = ccEmails.join(';');
           const recipientName = inviteTarget === 'organizer' ? myDisplayName : (isDe ? 'Mailverteiler' : 'Mail distribution');
@@ -13723,6 +13734,12 @@ export default function AdminPage(): React.ReactElement {
               { key: '{{Organizer}}', label: 'Organizer' },
             ]}
             imageBase64={(inviteHero === 'event' && inviteEventPhotoB64) ? inviteEventPhotoB64 : customLogo}
+            imageWidth={inviteImageLayout.width}
+            imagePaddingV={inviteImageLayout.paddingV}
+            imagePaddingH={inviteImageLayout.paddingH}
+            onImageWidthChange={(w) => setInviteImageLayout(p => ({ ...p, width: w }))}
+            onImagePaddingVChange={(v) => setInviteImageLayout(p => ({ ...p, paddingV: v }))}
+            onImagePaddingHChange={(h) => setInviteImageLayout(p => ({ ...p, paddingH: h }))}
             headerExtra={headerExtra}
             extraAction={{
               label: inviteSending
