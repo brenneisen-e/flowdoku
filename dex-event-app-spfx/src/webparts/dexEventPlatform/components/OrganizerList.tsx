@@ -29,6 +29,9 @@ export interface OrganizerListProps {
   /** v24.11: Sprache erzwingen (z.B. Anmeldeseite mit fest englischer
    *  Formularsprache). undefined = App-Sprache. */
   forceIsDe?: boolean;
+  /** v26.88: optionale Schriftgröße für den Organizer-NAMEN (Chip) — z.B.
+   *  '1.05rem', damit er so groß wie der Ansprechpartner-Text ist. */
+  nameFontSize?: string;
 }
 
 // v11.95: pro Email einmalig profile-lookup, Ergebnis App-weit gecached
@@ -135,8 +138,8 @@ function OrganizerCardEntry({ name, email, forceIsDe }: { name: string; email: s
   );
 }
 
-function OrganizerChip({ name, email, sizeClass, isOpen, onOpen, onScheduleClose, onCancelClose, forceIsDe }: {
-  name: string; email: string; sizeClass: 'sm' | 'md'; forceIsDe?: boolean;
+function OrganizerChip({ name, email, sizeClass, isOpen, onOpen, onScheduleClose, onCancelClose, forceIsDe, nameFontSize }: {
+  name: string; email: string; sizeClass: 'sm' | 'md'; forceIsDe?: boolean; nameFontSize?: string;
   // v23.47: Auf/Zu-Status wird vom Eltern-Container gesteuert, damit IMMER nur
   // EIN Popover gleichzeitig offen ist (schnelles Wechseln zwischen Organizern
   // zeigte vorher kurz beide — der verzögerte Close des ersten überlappte mit
@@ -249,7 +252,7 @@ function OrganizerChip({ name, email, sizeClass, isOpen, onOpen, onScheduleClose
           }}
         >{initials}</span>
       )}
-      <span style={{ whiteSpace: 'nowrap' }}>{name}</span>
+      <span style={{ whiteSpace: 'nowrap', fontSize: nameFontSize }}>{name}</span>
 
       {/* Hover-Vergrößerung: fixed positioning damit Container-Overflow nichts abschneidet */}
       {isOpen && email && !failed && coords && (
@@ -405,8 +408,8 @@ function OrganizerCardTile({ items, forceIsDe }: { items: Array<{ name: string; 
  * vorige sofort (statt erst nach dem 200ms-Verzögerungs-Close — der vorher kurz
  * BEIDE Popover gleichzeitig zeigte).
  */
-function OrganizerChipRow({ items, sizeClass, compact, forceIsDe }: {
-  items: Array<{ name: string; email: string }>; sizeClass: 'sm' | 'md'; compact: boolean; forceIsDe?: boolean;
+function OrganizerChipRow({ items, sizeClass, compact, forceIsDe, nameFontSize }: {
+  items: Array<{ name: string; email: string }>; sizeClass: 'sm' | 'md'; compact: boolean; forceIsDe?: boolean; nameFontSize?: string;
 }): React.ReactElement {
   const [openIdx, setOpenIdx] = React.useState<number | null>(null);
   // Verzögertes Schließen, damit die Maus über die 8px-Lücke vom Chip in die
@@ -429,6 +432,7 @@ function OrganizerChipRow({ items, sizeClass, compact, forceIsDe }: {
           email={o.email}
           sizeClass={sizeClass}
           forceIsDe={forceIsDe}
+          nameFontSize={nameFontSize}
           isOpen={openIdx === i}
           onOpen={() => { cancelClose(); setOpenIdx(i); }}
           onScheduleClose={scheduleClose}
@@ -439,7 +443,7 @@ function OrganizerChipRow({ items, sizeClass, compact, forceIsDe }: {
   );
 }
 
-export default function OrganizerList({ names, emails, size = 'md', compact = false, display = 'chip', hiddenEmails, forceIsDe }: OrganizerListProps): React.ReactElement | null {
+export default function OrganizerList({ names, emails, size = 'md', compact = false, display = 'chip', hiddenEmails, forceIsDe, nameFontSize }: OrganizerListProps): React.ReactElement | null {
   let items = pairNamesEmails(names, emails).filter(o => !!o.name);
   // v24.8 (J): einzeln ausgeblendete Organizer aus der Anzeige nehmen (Rechte bleiben).
   if (hiddenEmails && hiddenEmails.length > 0) {
@@ -449,5 +453,5 @@ export default function OrganizerList({ names, emails, size = 'md', compact = fa
   if (items.length === 0) return null;
   // v23.26: Großer Modus = EINE gemeinsame Kachel mit allen Organizern.
   if (display === 'card') return <OrganizerCardTile items={items} forceIsDe={forceIsDe} />;
-  return <OrganizerChipRow items={items} sizeClass={size} compact={compact} forceIsDe={forceIsDe} />;
+  return <OrganizerChipRow items={items} sizeClass={size} compact={compact} forceIsDe={forceIsDe} nameFontSize={nameFontSize} />;
 }

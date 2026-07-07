@@ -9347,14 +9347,8 @@ export default function EventCreationPage(): React.ReactElement {
                           ? <>Dieses Sub-Event übernimmt <strong>standardmäßig die Sichtbarkeit {subEventsOnlyMode ? 'der Klammer' : 'des Hauptevents'}</strong> (Standortfilter + Mailverteiler sind unten vorbefüllt). Du kannst den Empfängerkreis hier aber <strong>jederzeit anpassen</strong> — oder mit „Vom Hauptevent kopieren“ oben erneut übernehmen.</>
                           : <>This sub-event <strong>inherits the visibility {subEventsOnlyMode ? 'of the bracket' : 'of the main event'}</strong> by default (location filter + mailing lists are pre-filled below). You can <strong>change the audience here at any time</strong> — or re-apply it with “Copy from main event” above.</>}
                       </p>
-                      {/* v22.22: Live-Zusammenfassung der aktuellen Sichtbarkeit
-                          dieses Sub-Events. */}
-                      {renderVisibilitySummaryBox(
-                        seLocationFilterList,
-                        se.audience || '',
-                        (se.filterMode as 'AND' | 'OR') || 'OR',
-                        (se.excludedUsers || []).length
-                      )}
+                      {/* v26.88: Live-Zusammenfassung wandert in die
+                          AudiencePicker-Prüfzeile (summarySlot). */}
                     </div>
 
                     <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
@@ -9396,6 +9390,12 @@ export default function EventCreationPage(): React.ReactElement {
                       onExcludedUsersChange={updater => setSubEvents(prev => prev.map((x, i) => i === seIdx ? { ...x, excludedUsers: updater(x.excludedUsers || []) } : x))}
                       stepBadge={<StepBadge n={14} />}
                       cardBgPrimary={zebraS3Bg()}
+                      summarySlot={renderVisibilitySummaryBox(
+                        seLocationFilterList,
+                        se.audience || '',
+                        (se.filterMode as 'AND' | 'OR') || 'OR',
+                        (se.excludedUsers || []).length
+                      )}
                       middleSlot={(seLocationFilterList.length > 0 && (se.audience || '').trim().length > 0) ? (
                         <div className="form-group" style={{ padding: '16px 20px 16px 30px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                           <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -9618,13 +9618,9 @@ export default function EventCreationPage(): React.ReactElement {
                     </>
                   )}
                 </p>
-                {/* v22.22: Live-Zusammenfassung der aktuellen Sichtbarkeit. */}
-                {renderVisibilitySummaryBox(
-                  locationFilter.split(',').map(s => s.trim()).filter(Boolean),
-                  audience,
-                  filterMode,
-                  (excludedUsers || []).length
-                )}
+                {/* v26.88: Live-Zusammenfassung „Aktuell eingestellt …" steht
+                    jetzt in der AudiencePicker-Prüfzeile (summarySlot) — direkt
+                    neben „Sichtbarkeit prüfen"/„Personen ausschließen". */}
               </div>
 
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
@@ -9681,6 +9677,12 @@ export default function EventCreationPage(): React.ReactElement {
                 onExcludedUsersChange={setExcludedUsers}
                 stepBadge={<StepBadge n={14} />}
                 cardBgPrimary={zebraS3Bg()}
+                summarySlot={renderVisibilitySummaryBox(
+                  locationFilter.split(',').map(s => s.trim()).filter(Boolean),
+                  audience,
+                  filterMode,
+                  (excludedUsers || []).length
+                )}
                 visibilityTabs={subEvents.length > 0 ? [
                   { id: 'main', title: subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Hauptevent' : 'Main event'), locationFilter, audience, filterMode },
                   ...subEvents.map(s => ({ id: s.id, title: (shortSubEventTitle(s.title, title) || (isDe ? 'Sub-Event' : 'Sub-event')).trim(), locationFilter: s.locationFilter || '', audience: s.audience || '', filterMode: (s.filterMode || 'AND') as 'AND' | 'OR' })),
@@ -9757,10 +9759,8 @@ export default function EventCreationPage(): React.ReactElement {
                   AUSSERHALB des Greyout-Wrappers (laufzeit-/sichtbarkeitsrelevant,
                   wie der AudiencePicker oben — auch im Klammer-Modus editierbar). */}
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Icon iconName="People" style={{ fontSize: 16, color: 'var(--dex-green-dark, #4a7c1f)' }} />
-                  {isDe ? 'Sichtbarkeit für Assistenzen' : 'Visibility for assistants'}
-                </label>
+                {visHeader('vis_assist', <Icon iconName="People" style={{ fontSize: 16, color: 'var(--dex-green-dark, #4a7c1f)' }} />, isDe ? 'Sichtbarkeit für Assistenzen' : 'Visibility for assistants')}
+                {isVisOpen('vis_assist') && (<>
                 <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginTop: -4, marginBottom: 12, lineHeight: 1.55 }}>
                   {isDe
                     ? <>Standardmäßig sieht eine <strong>Assistenz</strong> (Personen mit dem Job-Title „Assistenz“) nur Events, die sie auch als normale Nutzerin/normaler Nutzer sehen würde — also nur, wenn sie selbst in den oben gesetzten Standort-/Verteiler-Kreis fällt. Aktivierst du diese Option, sehen <strong>alle Assistenzen</strong> dieses Event in ihrer Übersicht, unabhängig von den Filtern oben — damit sie z.B. stellvertretend einen Partner oder eine Direktorin anmelden können.</>
@@ -9770,6 +9770,7 @@ export default function EventCreationPage(): React.ReactElement {
                   <input type="checkbox" checked={assistantsCanSee} onChange={e => setAssistantsCanSee(e.target.checked)} />
                   <span>{isDe ? 'Assistenzen dürfen dieses Event generell sehen (auch außerhalb des Filterkreises)' : 'Assistants may see this event in general (even outside the filter audience)'}</span>
                 </label>
+                </>)}
               </div>
 
               {/* v19.27: Greyout-Wrapper beginnt erst HIER (Fristen + Teilnehmerzahl).

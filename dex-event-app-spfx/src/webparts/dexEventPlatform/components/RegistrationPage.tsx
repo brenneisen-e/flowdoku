@@ -2040,7 +2040,7 @@ export default function RegistrationPage(): React.ReactElement {
             return (
               <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                 <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>Organizer</div>
-                <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={(event.hideOrganizer && event.hideOrganizerIndividualOnly) ? event.hiddenOrganizerEmails : []} forceIsDe={locale === 'de'} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} />
+                <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={(event.hideOrganizer && event.hideOrganizerIndividualOnly) ? event.hiddenOrganizerEmails : []} forceIsDe={locale === 'de'} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} nameFontSize="1.05rem" />
               </div>
             );
           })()}
@@ -2636,29 +2636,45 @@ export default function RegistrationPage(): React.ReactElement {
                   </span>
                 </div>
                 {(event.location || (event.locationAddress && (event.locationAddress.street || event.locationAddress.city))) && (() => {
-                  const hasAddr = !!(event.locationAddress && (event.locationAddress.street || event.locationAddress.city));
+                  const addr = event.locationAddress;
+                  const hasAddr = !!(addr && (addr.street || addr.city));
+                  const hasStreet = !!(addr && addr.street);
+                  const cityLine = addr ? [addr.zip, addr.city].filter(Boolean).join(' ') : '';
+                  // v26.88: Nur Name + Stadt (KEINE Straße) → einzeilig „Name, Stadt"
+                  // (z.B. „RheinEnergieSTADION, Köln") statt Name/Stadt untereinander.
+                  const nameCityInline = !!(event.location && cityLine && !hasStreet);
+                  // v26.82: Pin-Icon nur bei echter Mehrzeiler-Adresse oben
+                  // ausrichten; bei einer Zeile (inkl. „Name, Stadt") zentrieren.
+                  const multiLine = hasAddr && !nameCityInline;
                   return (
                   <div style={{
-                    // v26.82: Bei nur einer Zeile (Ort ohne Adresse) das Pin-Icon
-                    // vertikal zentrieren; bei mehrzeiliger Adresse oben ausrichten.
-                    display: 'flex', alignItems: hasAddr ? 'flex-start' : 'center', gap: 8,
+                    display: 'flex', alignItems: multiLine ? 'flex-start' : 'center', gap: 8,
                     padding: '8px 12px', borderRadius: 8,
                     background: 'rgba(0,86,166,0.08)', color: '#0a3766',
                     fontSize: '0.88rem',
                   }}>
-                    <Icon iconName="POI" style={{ fontSize: 16, marginTop: hasAddr ? 2 : 0, flexShrink: 0 }} />
+                    <Icon iconName="POI" style={{ fontSize: 16, marginTop: multiLine ? 2 : 0, flexShrink: 0 }} />
                     <span>
-                      {event.location && (
-                        <span style={{ fontWeight: 700 }}>{event.location}</span>
-                      )}
-                      {event.locationAddress && (event.locationAddress.street || event.locationAddress.city) && (
+                      {nameCityInline ? (
                         <>
-                          <br />
-                          <span style={{ fontWeight: 400 }}>
-                            {[event.locationAddress.street, event.locationAddress.houseNo].filter(Boolean).join(' ')}
-                            {(event.locationAddress.zip || event.locationAddress.city) && <br />}
-                            {[event.locationAddress.zip, event.locationAddress.city].filter(Boolean).join(' ')}
-                          </span>
+                          <span style={{ fontWeight: 700 }}>{event.location}</span>
+                          <span style={{ fontWeight: 400 }}>{`, ${cityLine}`}</span>
+                        </>
+                      ) : (
+                        <>
+                          {event.location && (
+                            <span style={{ fontWeight: 700 }}>{event.location}</span>
+                          )}
+                          {addr && (addr.street || addr.city) && (
+                            <>
+                              <br />
+                              <span style={{ fontWeight: 400 }}>
+                                {[addr.street, addr.houseNo].filter(Boolean).join(' ')}
+                                {(addr.zip || addr.city) && <br />}
+                                {[addr.zip, addr.city].filter(Boolean).join(' ')}
+                              </span>
+                            </>
+                          )}
                         </>
                       )}
                     </span>
@@ -2680,7 +2696,7 @@ export default function RegistrationPage(): React.ReactElement {
                 return (
                   <div style={{ marginTop: 6 }}>
                     <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, fontWeight: 600 }}>Organizer</div>
-                    <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={(event.hideOrganizer && event.hideOrganizerIndividualOnly) ? event.hiddenOrganizerEmails : []} forceIsDe={locale === 'de'} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} />
+                    <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={(event.hideOrganizer && event.hideOrganizerIndividualOnly) ? event.hiddenOrganizerEmails : []} forceIsDe={locale === 'de'} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} nameFontSize="1.05rem" />
                   </div>
                 );
               })()}
@@ -3049,6 +3065,7 @@ export default function RegistrationPage(): React.ReactElement {
                   // anmelden) = GRAU (inaktiver Tab, klarer Farbunterschied);
                   // aktiv (im Fremd-Modus, „zurück zur Selbst-Anmeldung") = grün.
                   display: 'inline-flex', alignItems: 'center', gap: 6,
+                  marginLeft: 'auto', // v26.88: an die rechte Ecke andocken
                   padding: '7px 16px', borderRadius: 999,
                   fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
                   transition: 'background 0.15s ease, color 0.15s ease',
@@ -3890,7 +3907,9 @@ export default function RegistrationPage(): React.ReactElement {
                           padding: 14, textAlign: 'left',
                           borderRadius: 'var(--dex-radius, 12px)',
                           border: isActive ? `2px solid ${accent}` : '2px solid var(--dex-gray-200)',
-                          background: isActive ? 'var(--dex-green-light, #f0fdf4)' : '#fff',
+                          // v26.88: Standard-Grün (wie die Geschlecht-/Feld-Füllung,
+                          // greenFilledStyle) statt Off-Brand #f0fdf4.
+                          background: isActive ? 'rgba(134,188,37,0.06)' : '#fff',
                           cursor: 'pointer', transition: 'all 0.15s',
                           position: 'relative',
                         }}
