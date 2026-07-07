@@ -743,7 +743,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                     HEADER-BILD
                   </div>
                   <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', margin: '0 0 10px', lineHeight: 1.45 }}>
-                    Größe und Innenabstand des Bildes im Kopf. Gilt für den <strong>Mail-</strong> und den <strong>Outlook-Termin-Kopf</strong>. Tipp: ein kleiner Innenabstand lässt das Bild fast bis an den Rand laufen.
+                    Größe und Innenabstand des Bildes im Kopf. Gilt für den <strong>Mail-</strong> und den <strong>Outlook-Termin-Kopf</strong>. Bei einem <strong>breiten Foto</strong> klick auf <strong>Volle Breite</strong> — dann füllt es den Kopf komplett aus (Höhe passt sich automatisch an). Bei einem <strong>runden Logo</strong> (z.B. DEX-Orb) nimm eine kleinere Breite, dann steht es zentriert in der Mitte. Die Vorschau rechts zeigt es sofort.
                   </p>
                   <div style={{ display: 'flex', alignItems: 'flex-end', gap: 14, flexWrap: 'wrap' }}>
                     <label style={{ display: 'flex', flexDirection: 'column', gap: 3, fontSize: '0.72rem', color: 'var(--dex-gray-600)' }}>
@@ -777,6 +777,19 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                         />
                       </label>
                     )}
+                    {/* v26.93: Ein-Klick „Volle Breite" — Bild füllt den Kopf
+                        randlos (Breite 600 = Spaltenbreite, Abstand seitlich 0).
+                        Für breite Event-Fotos gedacht; die Höhe skaliert
+                        proportional mit. */}
+                    <button
+                      type="button"
+                      onMouseDown={e => e.preventDefault()}
+                      onClick={() => { onImageWidthChange(600); if (onImagePaddingHChange) onImagePaddingHChange(0); if (onImagePaddingVChange) onImagePaddingVChange(0); }}
+                      style={{ height: 30, padding: '0 12px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', background: 'var(--dex-green, #86bc25)', color: '#fff', border: 'none', borderRadius: 6 }}
+                      title="Bild füllt den Kopf über die volle Breite (Höhe passt sich an)"
+                    >
+                      Volle Breite
+                    </button>
                     <button
                       type="button"
                       onMouseDown={e => e.preventDefault()}
