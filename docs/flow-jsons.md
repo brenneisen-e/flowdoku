@@ -2202,9 +2202,170 @@ If_Counter_Stale (If -> Patch_Counter):
 
 **Trigger:** Neuer Eintrag in DEX_Emails
 **Zweck:** E-Mails aus Queue versenden über Shared Mailbox (no_reply.events@deloitte.de)
-**Letztes Update:** 2026-04-29 (v8.5/v8.6: Cc + Bcc-Support)
+**Letztes Update:** 2026-07-07 (v26.62/v26.70: `.eml`-Anhänge mitsenden)
 
-Ablauf: Trigger → Config laden (Logo + Default-Bild aus DEX_EmailTemplates via GetItems) → Event laden → Compose_Logo (aus Config) → Compose_Image (Event-Bild oder Default) → Platzhalter ersetzen → Email senden (mit Cc + Bcc) → Status=Sent
+Ablauf: Trigger → **Initialize_Attachments** (Array) → Config laden (Logo + Default-Bild aus DEX_EmailTemplates via GetItems) → Event laden → Compose_Logo (aus Config) → Compose_Image (Event-Bild oder Default) → **Get_Attachments → Apply_to_each_Attachment (Get_Attachment_Content → Append_Attachment)** → Platzhalter ersetzen → Email senden (mit Cc + Bcc + Attachments) → Status=Sent
+
+> **Wichtig (v26.70):** Die Action im Loop MUSS `Get_Attachment_Content` heißen — die `ContentBytes`-Expression in `Append_Attachment` (`body('Get_Attachment_Content')?['$content']`) referenziert genau diesen Namen. Bleibt die Action unbenannt/leer, kommt der Anhang leer an.
+
+### UI-Anleitung 2026-07-07 (v26.62/v26.70) — `.eml`-Anhang aus DEX_Emails mitsenden (externe Einladung)
+
+**Hintergrund:** Bei der stellvertretenden Anmeldung externer Personen hängt die App
+den fertigen Einladungs-Entwurf als `.eml`-Datei DIREKT an die DEX_Emails-Queue-Zeile
+(SharePoint-Attachment via `AttachmentFiles/add`). Der Flow liest bisher nur die
+Textfelder — der Anhang wird nicht mitgeschickt. Der Flow muss die Attachments der
+Zeile auslesen und der Send-Aktion beilegen. **WICHTIG:** Die Send-Aktion darf NICHT
+in eine Anhang-Schleife — sonst gingen normale Mails (0 Anhänge) gar nicht mehr raus.
+Deshalb Sammlung in einer Array-Variable, die bei normalen Mails leer bleibt.
+
+Übersichts-Tabelle:
+
+| # | Neu / Geändert | Name der Action | Art der Action | Stelle (Vorgänger) |
+|---|----------------|-----------------|----------------|--------------------|
+| 1 | Neu | `Initialize_Attachments` | Initialize variable | direkt nach Trigger „When an item is created" (vor `Get_Config`) |
+| 2 | Neu | `Get_Attachments` | Get attachments | nach `Compose_Image` |
+| 3 | Neu | `Apply_to_each_Attachment` | Apply to each | nach `Get_Attachments` |
+| 4 | Neu | `Get_Attachment_Content` | Get attachment content | erste Action IN `Apply_to_each_Attachment` |
+| 5 | Neu | `Append_Attachment` | Append to array variable | IN `Apply_to_each_Attachment`, nach `Get_Attachment_Content` |
+| 6 | Geändert | `Send_an_email_from_a_shared_mailbox_(V2)` | Attachments-Feld + Run-after | nach `Apply_to_each_Attachment` |
+
+#### Zeile 1 — `Initialize_Attachments` (Initialize variable) · NEU
+
+1. Auf das **+** zwischen „When an item is created" und „Get Config" → **Add an action** → **Initialize variable**.
+2. **Name:**
+
+```
+MailAttachments
+```
+
+3. **Type:** `Array` (Dropdown).
+4. **Value:** leer lassen.
+5. **⋮ → Rename** auf:
+
+```
+Initialize_Attachments
+```
+
+(`Get_Config` läuft dadurch automatisch „nach" `Initialize_Attachments` — kein weiterer Schritt nötig.)
+
+#### Zeile 2 — `Get_Attachments` (Get attachments) · NEU
+
+1. Auf das **+** zwischen „Compose_Image" und „Send an email from a shared mailbox (V2)" → **Add an action** → **SharePoint** → **Get attachments**.
+2. **Site Address** (Dropdown, oder „Enter custom value"):
+
+```
+https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform
+```
+
+3. **List Name:**
+
+```
+DEX_Emails
+```
+
+4. **Id** → **fx** → Expression:
+
+```
+triggerBody()?['ID']
+```
+
+5. **⋮ → Rename:**
+
+```
+Get_Attachments
+```
+
+#### Zeile 3 — `Apply_to_each_Attachment` (Apply to each) · NEU
+
+1. Auf das **+** unter „Get_Attachments" → **Add an action** → **Control** → **Apply to each**.
+2. **„Select an output from previous steps"** → **fx** → Expression:
+
+```
+body('Get_Attachments')
+```
+
+3. **⋮ → Rename:**
+
+```
+Apply_to_each_Attachment
+```
+
+#### Zeile 4 — `Get_Attachment_Content` (Get attachment content) · NEU
+
+1. IN „Apply_to_each_Attachment" auf **Add an action** → **SharePoint** → **Get attachment content**.
+2. **Site Address:**
+
+```
+https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform
+```
+
+3. **List Name:**
+
+```
+DEX_Emails
+```
+
+4. **Id** → **fx** → Expression:
+
+```
+triggerBody()?['ID']
+```
+
+5. **File Identifier** → **fx** → Expression:
+
+```
+items('Apply_to_each_Attachment')?['Id']
+```
+
+6. **⋮ → Rename:**
+
+```
+Get_Attachment_Content
+```
+
+#### Zeile 5 — `Append_Attachment` (Append to array variable) · NEU
+
+1. IN „Apply_to_each_Attachment", unter „Get_Attachment_Content" → **Add an action** → **Variables** → **Append to array variable**.
+2. **Name:** `MailAttachments` (Dropdown).
+3. **Value** — genau das eintragen (die `@{…}` werden zur Laufzeit aufgelöst):
+
+```json
+{
+  "Name": "@{items('Apply_to_each_Attachment')?['DisplayName']}",
+  "ContentBytes": "@{body('Get_Attachment_Content')?['$content']}"
+}
+```
+
+Falls das Feld die Ausdrücke als reinen Text stehen lässt: die beiden Werte einzeln per Dynamic Content bzw. **fx** einsetzen —
+
+```
+items('Apply_to_each_Attachment')?['DisplayName']
+```
+
+```
+body('Get_Attachment_Content')?['$content']
+```
+
+4. **⋮ → Rename:**
+
+```
+Append_Attachment
+```
+
+#### Zeile 6 — `Send_an_email_from_a_shared_mailbox_(V2)` (bestehend) · GEÄNDERT
+
+1. Aktion „Send an email from a shared mailbox (V2)" aufklappen.
+2. Bei **Advanced parameters** auf **„Show all"** (steht auf „Showing 3 of 6") → **Attachments** einblenden/auswählen.
+3. Im **Attachments**-Feld oben rechts auf **„Switch to input entire array"**.
+4. Ins Feld → **fx** → Expression:
+
+```
+variables('MailAttachments')
+```
+
+5. **Run after** prüfen: Die Aktion muss nach „Apply_to_each_Attachment" laufen (durch das Einfügen in Zeile 3 automatisch gesetzt). Falls nicht: **⋮ → Configure run after** → „Apply_to_each_Attachment" → **„is successful"** anhaken.
+
+**Ergebnis:** normale Mails ohne Anhang gehen unverändert raus (`MailAttachments` leer); externe Einladungen bekommen die `.eml` als Anhang. Danach den aktuellen Flow-JSON (Code View → kopieren) hier einpflegen.
 
 ### UI-Anleitung 2026-06-01 (v18.30) — Wichtigkeit aus der Queue lesen (hohe Wichtigkeit / rotes „!")
 
@@ -2269,6 +2430,17 @@ TRIGGER:
   "splitOn": "@triggerOutputs()?['body/value']"
 }
 
+INITIALIZE_ATTACHMENTS (v26.62/v26.70 — Array-Sammelvariable für .eml-Anhänge):
+{
+  "type": "InitializeVariable",
+  "inputs": {
+    "variables": [
+      { "name": "MailAttachments", "type": "array" }
+    ]
+  },
+  "runAfter": {}
+}
+
 GET_CONFIG (Logo + Default-Bild aus DEX_EmailTemplates via GetItems):
 {
   "type": "OpenApiConnection",
@@ -2285,7 +2457,7 @@ GET_CONFIG (Logo + Default-Bild aus DEX_EmailTemplates via GetItems):
       "operationId": "GetItems"
     }
   },
-  "runAfter": {}
+  "runAfter": { "Initialize_Attachments": ["Succeeded"] }
 }
 
 GET_EVENT (Event-Daten für EventId):
@@ -2321,17 +2493,73 @@ COMPOSE_IMAGE (Event-Bild oder Default-Bild):
   "runAfter": { "Compose_Logo": ["Succeeded"] }
 }
 
-SEND_EMAIL (Shared Mailbox, mit Cc + Bcc seit v8.5):
+GET_ATTACHMENTS (v26.62/v26.70 — Anhänge der DEX_Emails-Zeile auslesen):
+{
+  "type": "OpenApiConnection",
+  "inputs": {
+    "parameters": {
+      "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+      "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
+      "itemId": "@triggerBody()?['ID']"
+    },
+    "host": {
+      "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+      "connection": "shared_sharepointonline",
+      "operationId": "GetItemAttachments"
+    }
+  },
+  "runAfter": { "Compose_Image": ["Succeeded"] }
+}
+
+APPLY_TO_EACH_ATTACHMENT (v26.62/v26.70 — je Anhang Inhalt holen + in MailAttachments sammeln):
+{
+  "type": "Foreach",
+  "foreach": "@body('Get_Attachments')",
+  "actions": {
+    "Get_Attachment_Content": {
+      "type": "OpenApiConnection",
+      "inputs": {
+        "parameters": {
+          "dataset": "https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform",
+          "table": "57aa0840-df98-41ae-a39b-323c0b80ae3b",
+          "itemId": "@triggerBody()?['ID']",
+          "attachmentId": "@items('Apply_to_each_Attachment')?['Id']"
+        },
+        "host": {
+          "apiId": "/providers/Microsoft.PowerApps/apis/shared_sharepointonline",
+          "connection": "shared_sharepointonline",
+          "operationId": "GetAttachmentContent"
+        }
+      },
+      "runAfter": {}
+    },
+    "Append_Attachment": {
+      "type": "AppendToArrayVariable",
+      "inputs": {
+        "name": "MailAttachments",
+        "value": {
+          "Name": "@{items('Apply_to_each_Attachment')?['DisplayName']}",
+          "ContentBytes": "@{body('Get_Attachment_Content')?['$content']}"
+        }
+      },
+      "runAfter": { "Get_Attachment_Content": ["Succeeded"] }
+    }
+  },
+  "runAfter": { "Get_Attachments": ["Succeeded"] }
+}
+
+SEND_EMAIL (Shared Mailbox, mit Cc + Bcc seit v8.5, Attachments seit v26.62/v26.70):
 {
   "type": "OpenApiConnection",
   "inputs": {
     "parameters": {
       "emailMessage/MailboxAddress": "no_reply.events@deloitte.de",
-      "emailMessage/To": "@triggerBody()?['Recipient']",
+      "emailMessage/To": "@last(split(replace(coalesce(triggerOutputs()?['body/Recipient'], ''), '</div>', ''), '\">'))",
       "emailMessage/Subject": "@triggerBody()?['Title']",
       "emailMessage/Body": "<p class=\"editor-paragraph\">@{replace(replace(triggerBody()?['Body'], '{{LOGO_URL}}', outputs('Compose_Logo')), '{{ORB_URL}}', outputs('Compose_Image'))}</p>",
-      "emailMessage/Cc": "@triggerBody()?['Cc']",
-      "emailMessage/Bcc": "@triggerOutputs()?['body/Bcc']",
+      "emailMessage/Cc": "@last(split(replace(coalesce(triggerBody()?['Cc'], ''), '</div>', ''), '\">'))",
+      "emailMessage/Bcc": "@last(split(replace(coalesce(triggerOutputs()?['body/Bcc'], ''), '</div>', ''), '\">'))",
+      "emailMessage/Attachments": "@variables('MailAttachments')",
       "emailMessage/Importance": "Normal"
     },
     "host": {
@@ -2340,7 +2568,7 @@ SEND_EMAIL (Shared Mailbox, mit Cc + Bcc seit v8.5):
       "operationId": "SharedMailboxSendEmailV2"
     }
   },
-  "runAfter": { "Compose_Image": ["Succeeded"] }
+  "runAfter": { "Apply_to_each_Attachment": ["Succeeded"] }
 }
 
 SET_SENT:
