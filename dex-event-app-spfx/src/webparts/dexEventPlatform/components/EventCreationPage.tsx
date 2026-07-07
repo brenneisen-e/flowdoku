@@ -2082,6 +2082,24 @@ export default function EventCreationPage(): React.ReactElement {
   const [showPreview, setShowPreview] = React.useState(false);
   const [showRegisterPreview, setShowRegisterPreview] = React.useState(false);
   const [triedNext, setTriedNext] = React.useState(false);
+  // v26.86: Die Blöcke im Schritt „Kapazität & Sichtbarkeit" sind einzeln
+  // einklappbar und beim ersten Aufruf EINGEKLAPPT (Set enthält die offenen
+  // Keys → leer = alles zu), damit der Schritt nicht überfordert. Der äußere
+  // Block-<div> (inkl. zebraS3Bg-Alternation) bleibt erhalten; nur der Body
+  // wird ein-/ausgeblendet, die Überschrift ist der Klappschalter.
+  // Bei ausgelöster Validierung (triedNext) klappt automatisch ALLES auf, damit
+  // keine Fehlermeldung in einem eingeklappten Block versteckt bleibt.
+  const [expandedVisBlocks, setExpandedVisBlocks] = React.useState<Set<string>>(() => new Set());
+  const isVisOpen = (k: string): boolean => triedNext || expandedVisBlocks.has(k);
+  const toggleVis = (k: string): void => setExpandedVisBlocks(prev => { const n = new Set(prev); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  const visHeader = (key: string, badge: React.ReactNode, title: React.ReactNode): React.ReactElement => (
+    <button type="button" onClick={() => toggleVis(key)} aria-expanded={isVisOpen(key)}
+      style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', padding: 0, marginBottom: isVisOpen(key) ? 8 : 0, cursor: 'pointer', textAlign: 'left' }}>
+      {badge}
+      <span className="form-label" style={{ margin: 0, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 8 }}>{title}</span>
+      <span style={{ marginLeft: 'auto', color: 'var(--dex-gray-400)', fontSize: '0.85rem', transform: isVisOpen(key) ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>▶</span>
+    </button>
+  );
   // v22.62/v22.63: Beim „Weiter"/Speichern fragt ein Modal, ob die geänderte
   // Klammer-/Hauptevent-Sichtbarkeit auf alle Sub-Events übernommen werden soll
   // — IMMER wenn die Klammer-Sichtbarkeit geändert/neu gesetzt wurde UND von
@@ -9610,10 +9628,8 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
 
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={13} />
-                  {isDe ? 'Standortfilter' : 'Location filter'}
-                </label>
+                {visHeader('vis_locfilter', <StepBadge n={13} />, isDe ? 'Standortfilter' : 'Location filter')}
+                {isVisOpen('vis_locfilter') && (<>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
                   {isDe ? (
                     <>
@@ -9643,6 +9659,7 @@ export default function EventCreationPage(): React.ReactElement {
                       : 'No location selected → event is visible to everyone.'}
                   </p>
                 )}
+                </>)}
               </div>
 
               {/* v19.x: Mailverteiler-Auswahl + Sichtbarkeit prüfen + Personen
@@ -9759,13 +9776,10 @@ export default function EventCreationPage(): React.ReactElement {
                   Die Sichtbarkeit oben bleibt für die Klammer editierbar. */}
               <div style={hauptGreyoutWrapperStyle()}>
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={(locationFilter && audience) ? 16 : 15} />
-                  {isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}
-                  <InfoTooltip text={isDe
+                {visHeader('vis_fristen', <StepBadge n={(locationFilter && audience) ? 16 : 15} />, <>{isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}<InfoTooltip text={isDe
                     ? 'Bis wann können sich Teilnehmer anmelden bzw. fristgerecht abmelden? Die Abmeldefrist ist die kommunizierte Deadline — abmelden geht danach weiterhin bis zum Event-Ende, die Organizer werden dann aber automatisch informiert. Beide Werte werden anhand des Event-Datums automatisch vorgeschlagen, du kannst sie jederzeit überschreiben.'
-                    : 'Until when can attendees register or cancel within the deadline? The cancellation deadline is the communicated cutoff — cancelling remains possible until the event ends, but organizers are then notified automatically. Both values are auto-suggested from the event date and can be overridden at any time.'} />
-                </label>
+                    : 'Until when can attendees register or cancel within the deadline? The cancellation deadline is the communicated cutoff — cancelling remains possible until the event ends, but organizers are then notified automatically. Both values are auto-suggested from the event date and can be overridden at any time.'} /></>)}
+                {isVisOpen('vis_fristen') && (<>
               {subEventsOnlyMode && (
                 <WizardHint
                   isDe={isDe}
@@ -9866,6 +9880,7 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
               {fieldHasError('deadlineAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: 8, marginBottom: 0 }}>{t('create.error.deadlineAfterStart')}</p>}
               {fieldHasError('deregAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: 8, marginBottom: 0 }}>{t('create.error.deregAfterStart')}</p>}
+              </>)}
               </div>
 
               {/* v9.17: Reihenfolge umgestellt — Standard-Teilnehmerzahl
@@ -9874,10 +9889,8 @@ export default function EventCreationPage(): React.ReactElement {
                   Gesamtkapazität; der B2Run-Sonderfall ist Opt-in. */}
 
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={(locationFilter && audience) ? 17 : 16} />
-                  {isDe ? 'Teilnehmerzahl & Warteliste' : 'Capacity & waitlist'}
-                </label>
+                {visHeader('vis_capacity', <StepBadge n={(locationFilter && audience) ? 17 : 16} />, isDe ? 'Teilnehmerzahl & Warteliste' : 'Capacity & waitlist')}
+                {isVisOpen('vis_capacity') && (<>
               {/* v10.20: Geteilte Kapazität — generisch für beliebige Events.
                   Labels werden vom Organizer frei gewählt (z.B. "Vormittag /
                   Nachmittag", "VIP / Standard", "Lauf / Walk"). Default-Fallback
@@ -10349,6 +10362,7 @@ export default function EventCreationPage(): React.ReactElement {
                 </span>
               </label>
               )}
+              </>)}
               </div>
 
               </div>{/* v15.6: close hauptGreyoutWrapperStyle div (Step 4) */}
