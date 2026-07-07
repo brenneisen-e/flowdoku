@@ -32,6 +32,10 @@ export interface OrganizerListProps {
   /** v26.88: optionale Schriftgröße für den Organizer-NAMEN (Chip) — z.B.
    *  '1.05rem', damit er so groß wie der Ansprechpartner-Text ist. */
   nameFontSize?: string;
+  /** v26.89: Gibt es für das Event einen expliziten Ansprechpartner, wird der
+   *  „Bei Fragen wende dich gerne an:"-Kopf im Hover/der Karte ausgeblendet —
+   *  für Rückfragen ist dann der Ansprechpartner zuständig, nicht der Organizer. */
+  hideContactPrompt?: boolean;
 }
 
 // v11.95: pro Email einmalig profile-lookup, Ergebnis App-weit gecached
@@ -138,8 +142,8 @@ function OrganizerCardEntry({ name, email, forceIsDe }: { name: string; email: s
   );
 }
 
-function OrganizerChip({ name, email, sizeClass, isOpen, onOpen, onScheduleClose, onCancelClose, forceIsDe, nameFontSize }: {
-  name: string; email: string; sizeClass: 'sm' | 'md'; forceIsDe?: boolean; nameFontSize?: string;
+function OrganizerChip({ name, email, sizeClass, isOpen, onOpen, onScheduleClose, onCancelClose, forceIsDe, nameFontSize, hideContactPrompt }: {
+  name: string; email: string; sizeClass: 'sm' | 'md'; forceIsDe?: boolean; nameFontSize?: string; hideContactPrompt?: boolean;
   // v23.47: Auf/Zu-Status wird vom Eltern-Container gesteuert, damit IMMER nur
   // EIN Popover gleichzeitig offen ist (schnelles Wechseln zwischen Organizern
   // zeigte vorher kurz beide — der verzögerte Close des ersten überlappte mit
@@ -276,10 +280,13 @@ function OrganizerChip({ name, email, sizeClass, isOpen, onOpen, onScheduleClose
             // und auf die Mail-Adresse klicken kann.
           }}
         >
-          {/* v23.25: freundlicher Hinweis-Kopf. */}
-          <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', whiteSpace: 'normal', textAlign: 'center', marginBottom: 2 }}>
-            {isDe ? 'Bei Fragen wende dich gerne an:' : 'If you have any questions, feel free to reach out:'}
-          </span>
+          {/* v23.25: freundlicher Hinweis-Kopf. v26.89: entfällt, wenn das Event
+              einen expliziten Ansprechpartner hat. */}
+          {!hideContactPrompt && (
+            <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', whiteSpace: 'normal', textAlign: 'center', marginBottom: 2 }}>
+              {isDe ? 'Bei Fragen wende dich gerne an:' : 'If you have any questions, feel free to reach out:'}
+            </span>
+          )}
           <img
             src={photoUrl(email, 'L')}
             alt={name}
@@ -376,7 +383,7 @@ function pairNamesEmails(names: string[], emails: string[]): Array<{ name: strin
   return result;
 }
 
-function OrganizerCardTile({ items, forceIsDe }: { items: Array<{ name: string; email: string }>; forceIsDe?: boolean }): React.ReactElement {
+function OrganizerCardTile({ items, forceIsDe, hideContactPrompt }: { items: Array<{ name: string; email: string }>; forceIsDe?: boolean; hideContactPrompt?: boolean }): React.ReactElement {
   const { locale } = useLanguage();
   const isDe = forceIsDe !== undefined ? forceIsDe : locale === 'de';
   // v23.26: EINE Kachel mit allen Organizern nebeneinander (statt einzeln
@@ -389,9 +396,11 @@ function OrganizerCardTile({ items, forceIsDe }: { items: Array<{ name: string; 
         padding: '14px 20px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', maxWidth: '100%',
       }}
     >
-      <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
-        {isDe ? 'Bei Fragen wende dich gerne an:' : 'If you have any questions, feel free to reach out:'}
-      </span>
+      {!hideContactPrompt && (
+        <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
+          {isDe ? 'Bei Fragen wende dich gerne an:' : 'If you have any questions, feel free to reach out:'}
+        </span>
+      )}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, justifyContent: 'center', alignItems: 'flex-start' }}>
         {items.map((o, i) => (
           <OrganizerCardEntry key={`${o.email || o.name}-${i}`} name={o.name} email={o.email} forceIsDe={forceIsDe} />
@@ -408,8 +417,8 @@ function OrganizerCardTile({ items, forceIsDe }: { items: Array<{ name: string; 
  * vorige sofort (statt erst nach dem 200ms-Verzögerungs-Close — der vorher kurz
  * BEIDE Popover gleichzeitig zeigte).
  */
-function OrganizerChipRow({ items, sizeClass, compact, forceIsDe, nameFontSize }: {
-  items: Array<{ name: string; email: string }>; sizeClass: 'sm' | 'md'; compact: boolean; forceIsDe?: boolean; nameFontSize?: string;
+function OrganizerChipRow({ items, sizeClass, compact, forceIsDe, nameFontSize, hideContactPrompt }: {
+  items: Array<{ name: string; email: string }>; sizeClass: 'sm' | 'md'; compact: boolean; forceIsDe?: boolean; nameFontSize?: string; hideContactPrompt?: boolean;
 }): React.ReactElement {
   const [openIdx, setOpenIdx] = React.useState<number | null>(null);
   // Verzögertes Schließen, damit die Maus über die 8px-Lücke vom Chip in die
@@ -433,6 +442,7 @@ function OrganizerChipRow({ items, sizeClass, compact, forceIsDe, nameFontSize }
           sizeClass={sizeClass}
           forceIsDe={forceIsDe}
           nameFontSize={nameFontSize}
+          hideContactPrompt={hideContactPrompt}
           isOpen={openIdx === i}
           onOpen={() => { cancelClose(); setOpenIdx(i); }}
           onScheduleClose={scheduleClose}
@@ -443,7 +453,7 @@ function OrganizerChipRow({ items, sizeClass, compact, forceIsDe, nameFontSize }
   );
 }
 
-export default function OrganizerList({ names, emails, size = 'md', compact = false, display = 'chip', hiddenEmails, forceIsDe, nameFontSize }: OrganizerListProps): React.ReactElement | null {
+export default function OrganizerList({ names, emails, size = 'md', compact = false, display = 'chip', hiddenEmails, forceIsDe, nameFontSize, hideContactPrompt }: OrganizerListProps): React.ReactElement | null {
   let items = pairNamesEmails(names, emails).filter(o => !!o.name);
   // v24.8 (J): einzeln ausgeblendete Organizer aus der Anzeige nehmen (Rechte bleiben).
   if (hiddenEmails && hiddenEmails.length > 0) {
@@ -452,6 +462,6 @@ export default function OrganizerList({ names, emails, size = 'md', compact = fa
   }
   if (items.length === 0) return null;
   // v23.26: Großer Modus = EINE gemeinsame Kachel mit allen Organizern.
-  if (display === 'card') return <OrganizerCardTile items={items} forceIsDe={forceIsDe} />;
-  return <OrganizerChipRow items={items} sizeClass={size} compact={compact} forceIsDe={forceIsDe} nameFontSize={nameFontSize} />;
+  if (display === 'card') return <OrganizerCardTile items={items} forceIsDe={forceIsDe} hideContactPrompt={hideContactPrompt} />;
+  return <OrganizerChipRow items={items} sizeClass={size} compact={compact} forceIsDe={forceIsDe} nameFontSize={nameFontSize} hideContactPrompt={hideContactPrompt} />;
 }

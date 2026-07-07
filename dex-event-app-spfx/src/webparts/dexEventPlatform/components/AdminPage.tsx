@@ -3858,12 +3858,84 @@ export default function AdminPage(): React.ReactElement {
   // v22.5: Einladungsmail — Default-Texte bauen, Entwurf laden/speichern
   // (localStorage pro Event), Modal öffnen, zurücksetzen.
   const inviteDraftKey = (id: string): string => `dex_invite_draft_${id}`;
+  // v26.89: B2Run-Köln-Events bekommen einen eigenen, dynamischen Einladungs-
+  // text-Vorschlag (bilingual DE + EN) — mit Datum, Ort und Platzzahl aus dem
+  // Event. Der Organizer kann ihn wie jeden anderen Entwurf frei überschreiben.
+  const buildB2RunKoelnInviteDefaults = (ev: DeloitteEvent, linkHtml: string, signatureNames: string): { subject: string; heading: string; subheading: string; body: string } => {
+    const start = ev.startDate ? new Date(ev.startDate) : null;
+    const validStart = start && !isNaN(start.getTime()) ? start : null;
+    const dateDe = validStart ? validStart.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }) : '';
+    const dateEn = validStart ? validStart.toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }) : '';
+    const startTime = validStart ? validStart.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '';
+    const venue = (ev.location || '').trim() || 'RheinEnergieStadion';
+    const plaetze = (ev.maxParticipants && ev.maxParticipants > 0) ? ev.maxParticipants : 100;
+    const dateLineDe = dateDe || (isDe ? 'Datum folgt' : 'date to follow');
+    const dateLineEn = dateEn || 'date to follow';
+    const startLineDe = startTime ? ` · Start Deloitte: ${startTime} Uhr` : '';
+    const startLineEn = startTime ? ` · Deloitte start: ${startTime}` : '';
+    const de = `
+<p>Liebes Team,</p>
+<p>es ist so weit: wir haben unseren Standort wieder für den <strong>B2Run Firmenlauf</strong> angemeldet. Vorerst stehen <strong>${plaetze} Startplätze</strong> zur Verfügung — vergeben nach dem Motto „First come, first run".</p>
+<p>Die <strong>Startgebühren</strong> (inkl. Spende an Menschen für Menschen), das <strong>Laufshirt</strong> sowie ein <strong>Teamzelt mit kleiner Verpflegung</strong> nach dem Lauf werden von Deloitte übernommen.</p>
+<p>Die Anmeldung ist ab sofort über die Event Experience Platform möglich:</p>
+<p>${linkHtml}</p>
+<p><strong>Wichtige Hinweise:</strong></p>
+<ul>
+  <li>Schaffst du es nicht unter die ersten ${plaetze}, melde dich bitte trotzdem an — du kommst automatisch der Reihe nach auf die <strong>Warteliste</strong>.</li>
+  <li>Kannst du doch nicht teilnehmen, sag deine Teilnahme bitte <strong>frühzeitig über „My Events" wieder ab</strong>. Freie Plätze rücken automatisch von der Warteliste nach.</li>
+  <li>Bitte melde dich nur an, wenn du auch wirklich teilnehmen kannst — für jede Anmeldung zahlen wir eine Teilnehmergebühr, die bei einem No-Show nicht erstattet wird.</li>
+</ul>
+<p><strong>Infos zum Lauf:</strong></p>
+<ul>
+  <li>${dateLineDe} am <strong>${venue}</strong>${startLineDe}</li>
+  <li>Distanz: <strong>6,0 km</strong> (beide Startfelder)</li>
+  <li>Anschließend: Get-Together, Teamfotos, Catering &amp; Afterparty im Stadioninnenraum</li>
+</ul>
+<p><strong>Startfelder:</strong> Beim B2Run gibt es zwei Felder — „<strong>Durchstarter</strong>" (schnelle, ambitionierte Läufer:innen mit „freier Bahn", Richtwerte Männer &lt;4 Min/km, Frauen &lt;5 Min/km) und „<strong>Funstarter</strong>" (kein Richtwert, der Laufspaß zählt). Dein Startfeld wählst du bei der Anmeldung.</p>
+<p><strong>Laufshirt:</strong> Für jede:n Läufer:in gibt es ein Deloitte-Laufshirt — bitte bei der Anmeldung die Größe auswählen.</p>
+<p>Auf die Plätze, fertig, los. 🏃</p>
+<p>Mit sportlichen Grüßen<br />${signatureNames}</p>`.trim();
+    const en = `
+<p>Dear team,</p>
+<p>The time has come: we have registered our location for the <strong>B2Run company run</strong> again. For now <strong>${plaetze} starting places</strong> are available — allocated on a „first come, first run" basis.</p>
+<p>The <strong>registration fees</strong> (incl. a donation to Menschen für Menschen), the <strong>running shirt</strong> and a <strong>team tent with light refreshments</strong> after the run are covered by Deloitte.</p>
+<p>Registration is now open via the Event Experience Platform:</p>
+<p>${linkHtml}</p>
+<p><strong>Important information:</strong></p>
+<ul>
+  <li>If you don't make it into the first ${plaetze}, please register anyway — you will automatically be placed on the <strong>waiting list</strong> in order of registration.</li>
+  <li>If you can no longer take part, please <strong>cancel early via „My Events"</strong> so places can move up from the waiting list.</li>
+  <li>Please only register if you can really attend — we pay a participation fee per registration that is not refunded for a no-show.</li>
+</ul>
+<p><strong>Event details:</strong></p>
+<ul>
+  <li>${dateLineEn} at <strong>${venue}</strong>${startLineEn}</li>
+  <li>Distance: <strong>6.0 km</strong> (both starting fields)</li>
+  <li>Afterwards: get-together, team photos, catering &amp; after-party inside the stadium</li>
+</ul>
+<p><strong>Starting fields:</strong> B2Run has two fields — „<strong>Durchstarter</strong>" (fast, ambitious runners who want a clear track; guideline men &lt;4 min/km, women &lt;5 min/km) and „<strong>Funstarter</strong>" (no guideline — the fun of running counts). You choose your field when registering.</p>
+<p><strong>Running shirt:</strong> Every runner gets a Deloitte running shirt — please select your size when registering.</p>
+<p>On your marks, get set, go. 🏃</p>
+<p>With sporting regards<br />${signatureNames}</p>`.trim();
+    const divider = '<p style="margin:24px 0;border-top:1px solid #d0d0ce;"></p>';
+    return {
+      subject: isDe ? `Lauf mit uns! ${ev.title}` : `Run with us! ${ev.title}`,
+      heading: ev.title,
+      subheading: [dateLineDe, `${plaetze} Startplätze`].filter(Boolean).join(' · '),
+      // Bilingual (DE + EN) — so wie die B2Run-Kommunikation üblicherweise rausgeht.
+      body: `${de}\n${divider}\n${en}`,
+    };
+  };
   const buildInviteDefaults = (ev: DeloitteEvent): { subject: string; heading: string; subheading: string; body: string } => {
     const appUrl = `${siteUrl}/SitePages/DEX.aspx?env=WebView`;
     const linkHtml = `<a href="${appUrl}" style="color:#86bc25;font-weight:600;">${appUrl}</a>`;
     const orgList = (ev.organizers || []).map(s => (s || '').trim()).filter(Boolean);
     const teamLine = isDe ? `Das ${ev.title} Orga Team` : `The ${ev.title} Organizer Team`;
     const signatureNames = orgList.length > 0 ? `${teamLine}<br />${orgList.join('<br />')}` : teamLine;
+    // v26.89: B2Run-Köln-Events erhalten den spezialisierten Vorschlag.
+    if (isB2RunKoelnTitle(ev.title)) {
+      return buildB2RunKoelnInviteDefaults(ev, linkHtml, signatureNames);
+    }
     const body = isDe
       ? `<p>Hallo,</p>\n<p>wir laden dich herzlich zum Event <strong>${ev.title}</strong> ein.</p>\n<p>Du kannst dich ab sofort über unsere Event-Plattform anmelden:</p>\n<p>${linkHtml}</p>\n<p>Falls du dich im Nachgang doch nicht beteiligen kannst, ist eine <strong>Abmeldung jederzeit über dieselbe Plattform</strong> möglich — bitte gib uns rechtzeitig Bescheid, damit Wartelisten-Plätze nachrücken können.</p>\n<p>Bei Rückfragen meld dich gern bei uns.</p>\n<p>Viele Grüße<br />${signatureNames}</p>`
       : `<p>Hello,</p>\n<p>we would like to invite you to the event <strong>${ev.title}</strong>.</p>\n<p>You can register via our event platform:</p>\n<p>${linkHtml}</p>\n<p>If you change your mind, you can <strong>cancel anytime via the same platform</strong> — please let us know early so people on the waitlist can move up.</p>\n<p>Feel free to reach out if you have any questions.</p>\n<p>Best regards<br />${signatureNames}</p>`;

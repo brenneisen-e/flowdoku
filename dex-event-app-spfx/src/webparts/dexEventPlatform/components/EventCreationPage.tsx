@@ -9618,10 +9618,17 @@ export default function EventCreationPage(): React.ReactElement {
                     </>
                   )}
                 </p>
-                {/* v26.88: Live-Zusammenfassung „Aktuell eingestellt …" steht
-                    jetzt in der AudiencePicker-Prüfzeile (summarySlot) — direkt
-                    neben „Sichtbarkeit prüfen"/„Personen ausschließen". */}
               </div>
+
+              {/* v26.89: Live-Zusammenfassung „Aktuell eingestellt …" steht jetzt
+                  GANZ OBEN — direkt über dem Standortfilter (Schritt 13), damit man
+                  den aktuellen Sichtbarkeits-Stand sofort sieht. */}
+              {renderVisibilitySummaryBox(
+                locationFilter.split(',').map(s => s.trim()).filter(Boolean),
+                audience,
+                filterMode,
+                (excludedUsers || []).length
+              )}
 
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                 {visHeader('vis_locfilter', <StepBadge n={13} />, isDe ? 'Standortfilter' : 'Location filter')}
@@ -9675,14 +9682,9 @@ export default function EventCreationPage(): React.ReactElement {
                 isDe={isDe}
                 excludedUsers={excludedUsers}
                 onExcludedUsersChange={setExcludedUsers}
-                stepBadge={<StepBadge n={14} />}
+                headerSlot={visHeader('vis_audience', <StepBadge n={14} />, isDe ? 'Mailverteiler / einzelne User' : 'Mailing lists / individual users')}
+                bodyOpen={isVisOpen('vis_audience')}
                 cardBgPrimary={zebraS3Bg()}
-                summarySlot={renderVisibilitySummaryBox(
-                  locationFilter.split(',').map(s => s.trim()).filter(Boolean),
-                  audience,
-                  filterMode,
-                  (excludedUsers || []).length
-                )}
                 visibilityTabs={subEvents.length > 0 ? [
                   { id: 'main', title: subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Hauptevent' : 'Main event'), locationFilter, audience, filterMode },
                   ...subEvents.map(s => ({ id: s.id, title: (shortSubEventTitle(s.title, title) || (isDe ? 'Sub-Event' : 'Sub-event')).trim(), locationFilter: s.locationFilter || '', audience: s.audience || '', filterMode: (s.filterMode || 'AND') as 'AND' | 'OR' })),
@@ -9759,7 +9761,7 @@ export default function EventCreationPage(): React.ReactElement {
                   AUSSERHALB des Greyout-Wrappers (laufzeit-/sichtbarkeitsrelevant,
                   wie der AudiencePicker oben — auch im Klammer-Modus editierbar). */}
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-                {visHeader('vis_assist', <Icon iconName="People" style={{ fontSize: 16, color: 'var(--dex-green-dark, #4a7c1f)' }} />, isDe ? 'Sichtbarkeit für Assistenzen' : 'Visibility for assistants')}
+                {visHeader('vis_assist', <StepBadge n={(locationFilter && audience) ? 16 : 15} />, isDe ? 'Sichtbarkeit für Assistenzen' : 'Visibility for assistants')}
                 {isVisOpen('vis_assist') && (<>
                 <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginTop: -4, marginBottom: 12, lineHeight: 1.55 }}>
                   {isDe
@@ -9777,7 +9779,7 @@ export default function EventCreationPage(): React.ReactElement {
                   Die Sichtbarkeit oben bleibt für die Klammer editierbar. */}
               <div style={hauptGreyoutWrapperStyle()}>
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-                {visHeader('vis_fristen', <StepBadge n={(locationFilter && audience) ? 16 : 15} />, <>{isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}<InfoTooltip text={isDe
+                {visHeader('vis_fristen', <StepBadge n={(locationFilter && audience) ? 17 : 16} />, <>{isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}<InfoTooltip text={isDe
                     ? 'Bis wann können sich Teilnehmer anmelden bzw. fristgerecht abmelden? Die Abmeldefrist ist die kommunizierte Deadline — abmelden geht danach weiterhin bis zum Event-Ende, die Organizer werden dann aber automatisch informiert. Beide Werte werden anhand des Event-Datums automatisch vorgeschlagen, du kannst sie jederzeit überschreiben.'
                     : 'Until when can attendees register or cancel within the deadline? The cancellation deadline is the communicated cutoff — cancelling remains possible until the event ends, but organizers are then notified automatically. Both values are auto-suggested from the event date and can be overridden at any time.'} /></>)}
                 {isVisOpen('vis_fristen') && (<>
@@ -9890,7 +9892,7 @@ export default function EventCreationPage(): React.ReactElement {
                   Gesamtkapazität; der B2Run-Sonderfall ist Opt-in. */}
 
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-                {visHeader('vis_capacity', <StepBadge n={(locationFilter && audience) ? 17 : 16} />, isDe ? 'Teilnehmerzahl & Warteliste' : 'Capacity & waitlist')}
+                {visHeader('vis_capacity', <StepBadge n={(locationFilter && audience) ? 18 : 17} />, isDe ? 'Teilnehmerzahl & Warteliste' : 'Capacity & waitlist')}
                 {isVisOpen('vis_capacity') && (<>
               {/* v10.20: Geteilte Kapazität — generisch für beliebige Events.
                   Labels werden vom Organizer frei gewählt (z.B. "Vormittag /
@@ -10704,9 +10706,9 @@ export default function EventCreationPage(): React.ReactElement {
                   ? <>
                       <span style={{ display: 'block', marginBottom: 6 }}>Diese Daten werden bei jeder Anmeldung <strong>automatisch erfasst</strong> — du musst sie nicht abfragen:</span>
                       <ul style={{ margin: '0 0 8px', paddingLeft: 18 }}>
-                        <li><strong>Vorname</strong></li>
-                        <li><strong>Nachname</strong></li>
-                        <li><strong>E-Mail</strong></li>
+                        <li><strong>Vorname</strong> (aus dem Deloitte-Profil)</li>
+                        <li><strong>Nachname</strong> (aus dem Deloitte-Profil)</li>
+                        <li><strong>E-Mail</strong> (aus dem Deloitte-Profil)</li>
                         <li><strong>Job Title</strong> (aus dem Deloitte-Profil)</li>
                         <li><strong>Standort</strong> (aus dem Deloitte-Profil)</li>
                         <li><strong>Department</strong> (aus dem Deloitte-Profil)</li>
@@ -10716,9 +10718,9 @@ export default function EventCreationPage(): React.ReactElement {
                   : <>
                       <span style={{ display: 'block', marginBottom: 6 }}>This data is captured <strong>automatically</strong> for every registration — no need to ask for it:</span>
                       <ul style={{ margin: '0 0 8px', paddingLeft: 18 }}>
-                        <li><strong>First name</strong></li>
-                        <li><strong>Last name</strong></li>
-                        <li><strong>Email</strong></li>
+                        <li><strong>First name</strong> (from the Deloitte profile)</li>
+                        <li><strong>Last name</strong> (from the Deloitte profile)</li>
+                        <li><strong>Email</strong> (from the Deloitte profile)</li>
                         <li><strong>Job title</strong> (from the Deloitte profile)</li>
                         <li><strong>Location</strong> (from the Deloitte profile)</li>
                         <li><strong>Department</strong> (from the Deloitte profile)</li>

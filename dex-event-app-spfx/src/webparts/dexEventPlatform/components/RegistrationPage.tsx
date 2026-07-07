@@ -2040,7 +2040,7 @@ export default function RegistrationPage(): React.ReactElement {
             return (
               <div style={{ marginTop: 24, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
                 <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, fontWeight: 600 }}>Organizer</div>
-                <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={(event.hideOrganizer && event.hideOrganizerIndividualOnly) ? event.hiddenOrganizerEmails : []} forceIsDe={locale === 'de'} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} nameFontSize="1.05rem" />
+                <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={(event.hideOrganizer && event.hideOrganizerIndividualOnly) ? event.hiddenOrganizerEmails : []} forceIsDe={locale === 'de'} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} nameFontSize="1.05rem" hideContactPrompt={!!(event.contactName || event.contactEmail || event.contactInfo)} />
               </div>
             );
           })()}
@@ -2682,24 +2682,8 @@ export default function RegistrationPage(): React.ReactElement {
                   );
                 })()}
               </div>
-              {(() => {
-                // v24.15: „Organizer ausblenden" ohne Einzel-Modus = ALLE aus.
-                if (event.hideOrganizer && !event.hideOrganizerIndividualOnly) return null;
-                // Organizer als Chips mit Foto (Hover-Enlarge). Namen werden von "Nachname, Vorname"
-                // in "Vorname Nachname" normalisiert. v11.91: Label + Chip größer für bessere Lesbarkeit.
-                const orgs = event.organizers.reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map(o => {
-                  const trimmed = o.trim();
-                  const parts = trimmed.split(',').map(s => s.trim());
-                  return parts.length === 2 ? `${parts[1]} ${parts[0]}` : trimmed;
-                }).filter(Boolean);
-                if (orgs.length === 0) return null;
-                return (
-                  <div style={{ marginTop: 6 }}>
-                    <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, fontWeight: 600 }}>Organizer</div>
-                    <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={(event.hideOrganizer && event.hideOrganizerIndividualOnly) ? event.hiddenOrganizerEmails : []} forceIsDe={locale === 'de'} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} nameFontSize="1.05rem" />
-                  </div>
-                );
-              })()}
+              {/* v26.89: Reihenfolge getauscht — ANSPRECHPARTNER steht jetzt VOR
+                  dem ORGANIZER-Block (vorher umgekehrt). */}
               {/* v10.16: Optionaler Ansprechpartner — frei eingegebene Person
                   außerhalb des App-User-Pools. Reines Anzeige-Feld; Mailto-Link
                   wenn Email gesetzt. Wird nur gerendert wenn mindestens Name
@@ -2726,6 +2710,28 @@ export default function RegistrationPage(): React.ReactElement {
                   )}
                 </div>
               )}
+              {(() => {
+                // v24.15: „Organizer ausblenden" ohne Einzel-Modus = ALLE aus.
+                if (event.hideOrganizer && !event.hideOrganizerIndividualOnly) return null;
+                // Organizer als Chips mit Foto (Hover-Enlarge). Namen werden von "Nachname, Vorname"
+                // in "Vorname Nachname" normalisiert. v11.91: Label + Chip größer für bessere Lesbarkeit.
+                const orgs = event.organizers.reduce<string[]>((acc, o) => [...acc, ...o.split(';')], []).map(o => {
+                  const trimmed = o.trim();
+                  const parts = trimmed.split(',').map(s => s.trim());
+                  return parts.length === 2 ? `${parts[1]} ${parts[0]}` : trimmed;
+                }).filter(Boolean);
+                if (orgs.length === 0) return null;
+                // v26.89: Gibt es einen expliziten Ansprechpartner, blenden wir den
+                // „Bei Fragen wende dich gerne an:"-Kopf im Organizer-Hover aus —
+                // für Rückfragen ist dann ausdrücklich der Ansprechpartner zuständig.
+                const hasExplicitContact = !!(event.contactName || event.contactEmail || event.contactInfo);
+                return (
+                  <div style={{ marginTop: 6 }}>
+                    <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, fontWeight: 600 }}>Organizer</div>
+                    <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={(event.hideOrganizer && event.hideOrganizerIndividualOnly) ? event.hiddenOrganizerEmails : []} forceIsDe={locale === 'de'} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} nameFontSize="1.05rem" hideContactPrompt={hasExplicitContact} />
+                  </div>
+                );
+              })()}
               {/* v23.25: Die „X / Y Plätze frei"-Anzeige steht jetzt direkt
                   über dem Registrieren-Button (siehe registration-actions). */}
             </div>
@@ -3064,9 +3070,14 @@ export default function RegistrationPage(): React.ReactElement {
                   // „Persönliche Informationen"-Header. Standard (für andere
                   // anmelden) = GRAU (inaktiver Tab, klarer Farbunterschied);
                   // aktiv (im Fremd-Modus, „zurück zur Selbst-Anmeldung") = grün.
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  marginLeft: 'auto', // v26.88: an die rechte Ecke andocken
-                  padding: '7px 16px', borderRadius: 999,
+                  // v26.89: Der Tab dockt jetzt SPIEGELBILDLICH zum grünen
+                  // „Persönliche Informationen"-Header in die obere RECHTE Ecke
+                  // — bündig an Ober- und Rechtskante (alignSelf: stretch +
+                  // oben abgerundete Ecken wie der grüne Tab, unten eckig).
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  marginLeft: 'auto', // an die rechte Ecke schieben
+                  alignSelf: 'stretch', boxSizing: 'border-box',
+                  padding: '7px 18px', borderRadius: 'var(--dex-radius) var(--dex-radius) 0 0',
                   fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
                   transition: 'background 0.15s ease, color 0.15s ease',
                   ...(registerForOther
