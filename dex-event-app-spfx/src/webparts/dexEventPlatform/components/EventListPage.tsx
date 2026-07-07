@@ -196,6 +196,32 @@ export default function EventListPage(): React.ReactElement {
     getMyEventNumbers().then(setMyNumbers).catch(err => console.warn('[DEX]', err));
   }, [events]);
 
+  // v26.77: Anmeldestart / Anmeldeschluss in ECHTZEIT umschalten.
+  // Die Karten werten `activeFrom` (Anmeldung ab) bzw. den Anmeldeschluss beim
+  // Rendern gegen Date.now() aus. Ohne Auslöser bliebe eine offene Liste aber
+  // stehen — wer um 10:59:59 wartet, sähe die Kachel erst nach einem Reload
+  // frei. Ein präziser Timer auf die NÄCHSTE anstehende Grenze (Anmeldestart
+  // ODER Anmeldeschluss unter allen sichtbaren Events) erzwingt exakt zu diesem
+  // Zeitpunkt ein Re-Render → die Kachel schaltet für jeden offenen Client live
+  // um (10:59:59 → 11:00:00 = Kachel wird frei), ganz ohne Neuladen.
+  const [nowTick, setNowTick] = React.useState(0);
+  React.useEffect(() => {
+    const now = Date.now();
+    const boundaries: number[] = [];
+    for (const e of (events || [])) {
+      if (e.activeFrom) { const ts = new Date(e.activeFrom).getTime(); if (ts > now) boundaries.push(ts); }
+      if (e.registrationDeadline) { const ts = new Date(e.registrationDeadline).getTime(); if (ts > now) boundaries.push(ts); }
+    }
+    if (boundaries.length === 0) return;
+    const next = Math.min(...boundaries);
+    // +1 s Puffer, damit Date.now() beim erzwungenen Re-Render sicher HINTER der
+    // Grenze liegt. setTimeout-Delay ist auf ~24,8 Tage begrenzt → clampen; nach
+    // dem Feuern armt der Effekt (nowTick-Dependency) für die nächste Grenze neu.
+    const delay = Math.min(Math.max(next - now, 0) + 1000, 2147483647);
+    const id = window.setTimeout(() => setNowTick(v => v + 1), delay);
+    return () => window.clearTimeout(id);
+  }, [events, nowTick]);
+
   // v11.89: "Nur aktive Events" blendet jetzt sowohl Entwürfe (IsFictive
   // oder ActiveFrom in der Zukunft) als auch Cancelled/Completed aus —
   // konsistent mit der Konsolidierung „Entwurf = Entwurf, kein zweites
@@ -278,7 +304,12 @@ export default function EventListPage(): React.ReactElement {
       const tb = b.startDate ? new Date(b.startDate).getTime() : Number.POSITIVE_INFINITY;
       return ta - tb;
     });
-  }, [events, onlyActive, isAdmin, currentEmailLc, currentUser.email, currentUser.location, groupEmails, isOwnOrganizer]);
+    // v26.77: nowTick als Dependency → wenn der Echtzeit-Timer eine Anmeldestart-
+    // /Anmeldeschluss-Grenze überschreitet, wird die Filter-/Sortierkette neu
+    // ausgewertet. So erscheinen auch bis dahin ausgeblendete Events (Anmeldung
+    // ab in der Zukunft ohne Vorschau) live in dem Moment, in dem sie öffnen.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [events, onlyActive, isAdmin, currentEmailLc, currentUser.email, currentUser.location, groupEmails, isOwnOrganizer, nowTick]);
 
   if (isEventsLoading) {
     return (
