@@ -1406,6 +1406,31 @@ export default function EventCreationPage(): React.ReactElement {
   const headerImageLayoutConfig = (headerImageLayout.width !== 180 || headerImageLayout.paddingV !== 30 || headerImageLayout.paddingH !== 30)
     ? { _headerImageLayout: { width: headerImageLayout.width, paddingV: headerImageLayout.paddingV, paddingH: headerImageLayout.paddingH } }
     : {};
+  // v26.95: Das Event-Foto als Mail-/Outlook-Kopfbild übernehmen. Quelle ist der
+  // frisch gewählte File (imageFile), sonst die Vorschau (Data-URL direkt, http-
+  // URL bestehender Events wird geladen). In JEDEM Fall auf 600px komprimiert,
+  // damit die Base64-Größe für die Mail-Pipeline handhabbar bleibt.
+  const fileToBase64 = (file: File): Promise<string> =>
+    new Promise<string>(resolve => { const r = new FileReader(); r.onload = e => resolve((e.target?.result as string) || ''); r.onerror = () => resolve(''); r.readAsDataURL(file); });
+  const applyEventPhotoToLogo = async (setter: (b64: string) => void): Promise<void> => {
+    try {
+      let b64 = '';
+      if (imageFile) {
+        b64 = await fileToBase64(await compressImage(imageFile, 600, 0.9));
+      } else if (imagePreview && imagePreview.indexOf('data:') === 0) {
+        b64 = imagePreview;
+      } else if (imagePreview) {
+        const resp = await fetch(imagePreview, { credentials: 'include' });
+        const blob = await resp.blob();
+        const f = new File([blob], 'event-photo.jpg', { type: blob.type || 'image/jpeg' });
+        b64 = await fileToBase64(await compressImage(f, 600, 0.9));
+      }
+      if (b64) setter(b64);
+      else showAlert(isDe ? 'Kein Event-Foto vorhanden — bitte zuerst oben ein Bild hochladen.' : 'No event photo yet — please upload an image above first.', { variant: 'error' });
+    } catch {
+      showAlert(isDe ? 'Das Event-Foto konnte nicht übernommen werden.' : 'Could not use the event photo.', { variant: 'error' });
+    }
+  };
   const [dragFieldId, setDragFieldId] = React.useState<string | null>(null);
   // v18.55: Pro-Feld Ein-/Ausklapp-Status für Schritt 5 (Felder). Default =
   // eingeklappt (kompakte Karte: nur Nummer + Label + Typ + Pflicht + Aktionen);
@@ -7033,10 +7058,24 @@ export default function EventCreationPage(): React.ReactElement {
                   src={imagePreview}
                   isDe={isDe}
                   onClose={() => setImageEditOpen(false)}
-                  onApply={(dataUrl, file) => {
+                  onApply={async (dataUrl, file) => {
                     setImagePreview(dataUrl);
                     setImageFile(file);
                     setImageEditOpen(false);
+                    // v26.95: anbieten, das Foto auch als Kopfbild für die Mails
+                    // und den Outlook-Termin zu übernehmen.
+                    const useForMails = await confirmDialog(
+                      isDe
+                        ? 'Möchtest du dieses Foto auch als Bild im Kopf der E-Mails und des Outlook-Termins verwenden?'
+                        : 'Do you want to use this photo as the header image for the emails and the Outlook invite too?',
+                      { title: isDe ? 'Foto auch für Mails & Outlook?' : 'Photo for emails & Outlook too?', confirmLabel: isDe ? 'Ja, übernehmen' : 'Yes, use it' },
+                    );
+                    if (useForMails) {
+                      try {
+                        const b64 = await fileToBase64(await compressImage(file, 600, 0.9));
+                        if (b64) { setEmailLogoPreview(b64); setOutlookLogoPreview(b64); }
+                      } catch { /* still-optional, ignorieren */ }
+                    }
                   }}
                 >
                   {/* v23.19/v23.25: Optional & einklappbar — Bild pro Ansicht
@@ -13264,6 +13303,17 @@ export default function EventCreationPage(): React.ReactElement {
                       reader.readAsDataURL(compressed);
                     }} />
                   </label>
+                  {/* v26.95: Event-Foto (falls hinterlegt) mit einem Klick als
+                      Mail-Kopfbild übernehmen — kein Extra-Upload nötig. */}
+                  {(imagePreview || imageFile) && (
+                    <button
+                      type="button"
+                      onClick={() => applyEventPhotoToLogo(setEmailLogoPreview)}
+                      style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 'var(--dex-radius)', border: '1.5px solid var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.10)', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      <Icon iconName="Photo2" style={{ fontSize: 14 }} /> {isDe ? 'Event-Foto verwenden' : 'Use event photo'}
+                    </button>
+                  )}
                   </div>
                 </details>
 
@@ -13307,6 +13357,16 @@ export default function EventCreationPage(): React.ReactElement {
                       reader.readAsDataURL(compressed);
                     }} />
                   </label>
+                  {/* v26.95: Event-Foto mit einem Klick als Outlook-Kopfbild. */}
+                  {(imagePreview || imageFile) && (
+                    <button
+                      type="button"
+                      onClick={() => applyEventPhotoToLogo(setOutlookLogoPreview)}
+                      style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 'var(--dex-radius)', border: '1.5px solid var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.10)', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      <Icon iconName="Photo2" style={{ fontSize: 14 }} /> {isDe ? 'Event-Foto verwenden' : 'Use event photo'}
+                    </button>
+                  )}
                   {renderOutlookUpdateButton()}
                   </div>
                 </details>
