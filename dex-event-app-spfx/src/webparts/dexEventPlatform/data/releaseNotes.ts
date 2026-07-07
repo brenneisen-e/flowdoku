@@ -44,6 +44,7 @@ export interface ReleaseNote {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '26.98.0', date: '2026-07-07', bereich: 'E-Mails', type: 'Feature', text: 'Auch direkt im Einladungs- und Massenmail-Fenster kannst du das Event-Foto jetzt zuschneiden: Sobald „Event-Foto" als Kopfbild gewählt ist, erscheint der Button „Foto zuschneiden" — es öffnet sich derselbe Bild-Editor.' },
   { version: '26.97.0', date: '2026-07-07', bereich: 'E-Mails', type: 'Feature', text: 'Das Bild für den Mail-Kopf und den Outlook-Termin lässt sich jetzt auch zuschneiden: In den Schritten „Logo für die E-Mails" und „Bild für den Outlook-Termin" gibt es beim hochgeladenen Bild einen Button „Zuschneiden" — es öffnet sich derselbe Bild-Editor wie beim Event-Bild.' },
   { version: '26.96.0', date: '2026-07-07', bereich: 'Event-Erstellung', type: 'Feature', text: 'Feld-Beschreibungen bekommen einen echten Editor: Statt Markdown zu tippen, markierst du Text und machst ihn über die Leiste fett oder fügst Links über das Link-Symbol ein — genau wie bei der Event-Beschreibung. Bestehende Beschreibungen bleiben erhalten.' },
   { version: '26.96.0', date: '2026-07-07', bereich: 'Anmeldung', type: 'Feature', text: 'Auswahlfelder mit Kategorien erscheinen im Anmeldeformular jetzt als EINE Kombibox: Die Kategorien (z.B. „Männergrößen"/„Damengrößen") sind Überschriften, darunter stehen die passenden Größen; Optionen ohne Kategorie (z.B. „T-Shirt bereits vorhanden") stehen zusätzlich immer zur Auswahl. Vorher waren es zwei getrennte Dropdowns.' },

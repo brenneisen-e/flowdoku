@@ -40,6 +40,7 @@ import { buildUnsentEmlDraft, downloadEml } from '../utils/emlDraft';
 import { getCachedImage } from '../utils/imageCache';
 import { applyEventTemplateOverride, formatOrganizerList } from '../context/EventContext';
 import { HtmlEditorModal } from './HtmlEditorModal';
+import ImageCropModal from './ImageCropModal';
 import { InfoTooltip } from './InfoTooltip';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 import Modal from './Modal';
@@ -1510,6 +1511,8 @@ export default function AdminPage(): React.ReactElement {
   const [massmailEventPhotoB64, setMassmailEventPhotoB64] = React.useState<string>('');
   // v26.88: dieselbe „Bild im Mail-Kopf"-Wahl für die EINLADUNGSMAIL.
   const [inviteHero, setInviteHero] = React.useState<'logo' | 'event'>('logo');
+  // v26.98: Event-Foto im Mail-Composer zuschneiden (invite/massmail).
+  const [composerCrop, setComposerCrop] = React.useState<'invite' | 'massmail' | null>(null);
   const [inviteEventPhotoB64, setInviteEventPhotoB64] = React.useState<string>('');
   // v11.40: Einladungsmail-Modal — Mail mit Anmelde-Link an Organizer (zum
   // Weiterleiten) oder direkt an den hinterlegten Mailverteiler des Events.
@@ -13391,6 +13394,12 @@ export default function AdminPage(): React.ReactElement {
                       );
                     })}
                   </div>
+                  {massmailHero === 'event' && !!massmailEventPhotoB64 && (
+                    <button type="button" disabled={emailSending} onClick={() => setComposerCrop('massmail')}
+                      style={{ padding: '5px 12px', fontSize: '0.75rem', fontWeight: 600, cursor: emailSending ? 'not-allowed' : 'pointer', border: '1px solid var(--dex-green, #86bc25)', borderRadius: 6, background: 'rgba(134,188,37,0.10)', color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                      {isDe ? 'Foto zuschneiden' : 'Crop photo'}
+                    </button>
+                  )}
                   <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
                     {massmailHero === 'event'
                       ? (isDe ? 'Das Event-Foto erscheint im Mail-Kopf.' : 'The event photo is shown in the header.')
@@ -13663,6 +13672,12 @@ export default function AdminPage(): React.ReactElement {
                   );
                 })}
               </div>
+              {inviteHero === 'event' && !!inviteEventPhotoB64 && (
+                <button type="button" disabled={inviteSending} onClick={() => setComposerCrop('invite')}
+                  style={{ padding: '5px 12px', fontSize: '0.75rem', fontWeight: 600, cursor: inviteSending ? 'not-allowed' : 'pointer', border: '1px solid var(--dex-green, #86bc25)', borderRadius: 6, background: 'rgba(134,188,37,0.10)', color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                  {isDe ? 'Foto zuschneiden' : 'Crop photo'}
+                </button>
+              )}
               <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
                 {inviteHero === 'event'
                   ? (isDe ? 'Das Event-Foto erscheint im Mail-Kopf.' : 'The event photo is shown in the header.')
@@ -13755,6 +13770,21 @@ export default function AdminPage(): React.ReactElement {
           />
         );
       })()}
+
+      {/* v26.98: Zuschneiden des Event-Fotos im Mail-Composer (invite/massmail). */}
+      {composerCrop && (
+        <ImageCropModal
+          open={!!composerCrop}
+          src={composerCrop === 'invite' ? inviteEventPhotoB64 : massmailEventPhotoB64}
+          isDe={isDe}
+          onClose={() => setComposerCrop(null)}
+          onApply={(dataUrl) => {
+            if (composerCrop === 'invite') setInviteEventPhotoB64(dataUrl);
+            else setMassmailEventPhotoB64(dataUrl);
+            setComposerCrop(null);
+          }}
+        />
+      )}
 
       {/* ===== OUTLOOK-DECLINE-CHECK MODAL (Admin only) ===== */}
       {showDeclineModal && declineResult && (
