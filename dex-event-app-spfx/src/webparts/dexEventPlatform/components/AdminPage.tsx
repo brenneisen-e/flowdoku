@@ -6779,7 +6779,7 @@ export default function AdminPage(): React.ReactElement {
                       return isDe ? 'alle Mitarbeiter von Deloitte Deutschland' : 'all Deloitte Germany employees';
                     }
                     const parts: string[] = [];
-                    if (lc.length) parts.push((isDe ? 'Standorte: ' : 'Locations: ') + lc.join(', '));
+                    if (lc.length) parts.push((isDe ? (lc.length === 1 ? 'Standort: ' : 'Standorte: ') : (lc.length === 1 ? 'Location: ' : 'Locations: ')) + lc.join(', '));
                     if (au.length) parts.push(isDe ? `${au.length} Verteiler/Personen` : `${au.length} distributions/people`);
                     return parts.join(isDe ? ' und ' : ' and ');
                   };

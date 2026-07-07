@@ -5275,7 +5275,7 @@ export default function EventCreationPage(): React.ReactElement {
       text = isDe ? 'alle Mitarbeiter von Deloitte Deutschland' : 'all Deloitte Germany employees';
     } else {
       const parts: string[] = [];
-      if (locs.length) parts.push((isDe ? 'Standorte: ' : 'Locations: ') + locs.join(', '));
+      if (locs.length) parts.push((isDe ? (locs.length === 1 ? 'Standort: ' : 'Standorte: ') : (locs.length === 1 ? 'Location: ' : 'Locations: ')) + locs.join(', '));
       if (auds.length) parts.push(isDe ? `${auds.length} Verteiler/Personen` : `${auds.length} distribution lists/people`);
       const joiner = parts.length > 1
         ? (mode === 'AND' ? (isDe ? ' UND ' : ' AND ') : (isDe ? ' ODER ' : ' OR '))
@@ -6845,8 +6845,8 @@ export default function EventCreationPage(): React.ReactElement {
                 <div style={{ marginTop: 12, padding: 14, borderRadius: 'var(--dex-radius)', background: 'var(--dex-gray-50, #f7f7f7)', border: '1px solid var(--dex-gray-200)' }}>
                   <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.55, marginBottom: 12 }}>
                     {isDe
-                      ? <>Die Beschreibung ist der <strong>einladende Einleitungstext ganz oben auf der Anmeldemaske</strong> — das Erste, was deine Teilnehmenden lesen. Erzähl hier gern, <strong>worum es geht, für wen das Event ist und was man wissen sollte</strong>.<br />Ein kleiner Tipp: <strong>Zeitpunkt, Ort, Organizer und Kontaktperson musst du hier nicht angeben</strong> — die zeigt die App bereits als eigene Felder darüber an. So bleibt dein Text schön schlank und einladend. 🙂</>
-                      : <>The description is the <strong>inviting intro text right at the top of the registration form</strong> — the first thing your attendees read. Feel free to tell them <strong>what the event is about, who it&rsquo;s for and what to know</strong>.<br />A little tip: <strong>you don&rsquo;t need to add the date, location, organizer or contact person here</strong> — the app already shows those as their own fields above. That keeps your text nice and inviting. 🙂</>}
+                      ? <>Die Beschreibung ist der <strong>einladende Einleitungstext ganz oben auf der Anmeldemaske</strong> — das Erste, was deine Teilnehmenden lesen. Erzähl hier gern, <strong>worum es geht, für wen das Event ist und was man wissen sollte</strong>.<br />Ein kleiner Tipp: <strong>Zeitpunkt, Ort, Organizer und Kontaktperson musst du hier nicht angeben</strong> — die zeigt die App bereits als eigene Felder darüber an. So bleibt dein Text schön schlank und einladend.</>
+                      : <>The description is the <strong>inviting intro text right at the top of the registration form</strong> — the first thing your attendees read. Feel free to tell them <strong>what the event is about, who it&rsquo;s for and what to know</strong>.<br />A little tip: <strong>you don&rsquo;t need to add the date, location, organizer or contact person here</strong> — the app already shows those as their own fields above. That keeps your text nice and inviting.</>}
                   </div>
                   <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--dex-gray-500)', marginBottom: 8 }}>
                     {isDe ? 'Vorschläge zum Übernehmen (danach frei anpassbar):' : 'Suggestions to use (fully editable afterwards):'}
@@ -9867,7 +9867,7 @@ export default function EventCreationPage(): React.ReactElement {
                   ist 'Durchstarter' / 'Funstarter' für Backward-Compat mit
                   B2Run-Events vor v10.20. */}
               {useSplitCapacities ? (
-                <div style={{ padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)', marginBottom: 16 }}>
+                <div style={{ padding: 16, background: 'rgba(134,188,37,0.08)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)', marginBottom: 16 }}>
                   <label className="form-label" style={{ marginBottom: 4 }}>
                     {isDe ? 'Geteilte Kapazität' : 'Split capacity'}
                     <InfoTooltip text={isDe ? (
@@ -10713,7 +10713,7 @@ export default function EventCreationPage(): React.ReactElement {
                 const b2rkTypeTag = (ty: CustomField['type']): string =>
                   ty === 'select' ? (isDe ? 'Auswahl' : 'Select') : ty === 'checkbox' ? 'Checkbox' : 'Text';
                 return (
-                  <div className="form-group" style={{ marginBottom: 16, padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)' }}>
+                  <div className="form-group" style={{ marginBottom: 16, padding: 16, background: 'rgba(134,188,37,0.08)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)' }}>
                     <label className="form-label" style={{ marginBottom: 4 }}>
                       {isDe ? 'B2Run-Köln-Vorlage' : 'B2Run Köln template'}
                     </label>
@@ -10790,7 +10790,7 @@ export default function EventCreationPage(): React.ReactElement {
                   customFields steht (ueber das Suggested-Felder-Modal
                   ausgewählt oder beim Edit eines Legacy-Events vorhanden). */}
               {customFields.some(f => f.id === 'b2run_startblock') && (
-                <div className="form-group" style={{ marginBottom: 24, padding: 16, background: 'var(--dex-green-light, #f0fdf4)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)' }}>
+                <div className="form-group" style={{ marginBottom: 24, padding: 16, background: 'rgba(134,188,37,0.08)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)' }}>
                   <label className="form-label" style={{ marginBottom: 4 }}>
                     {t('create.startblocks')}
                     <InfoTooltip text={isDe ? (
@@ -13216,7 +13216,7 @@ export default function EventCreationPage(): React.ReactElement {
                   return (
                     <div key={tType} style={{
                       border: '1px solid var(--dex-gray-200)', borderRadius: 8,
-                      padding: 12, marginBottom: 12, background: override ? '#f0fdf4' : '#fff',
+                      padding: 12, marginBottom: 12, background: override ? 'rgba(134,188,37,0.08)' : '#fff',
                     }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div>

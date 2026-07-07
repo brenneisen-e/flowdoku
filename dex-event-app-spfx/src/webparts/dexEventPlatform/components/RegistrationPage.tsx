@@ -21,7 +21,7 @@ import { useLanguage, translations as appTranslations, Locale } from '../context
 import { useDialog } from '../context/DialogContext';
 import { Salutation, EventSpecificField } from '../types';
 import { Icon } from '@fluentui/react/lib/Icon';
-import { Send, X } from './Icons';
+import { Send, X, Mail } from './Icons';
 import { InfoTooltip } from './InfoTooltip';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 import OrganizerList from './OrganizerList';
@@ -32,7 +32,8 @@ import { UserFieldPicker } from './UserFieldPicker';
 function formatDate(iso: string): string {
   const d = new Date(iso);
   return (
-    d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+    // v26.82: Wochentag (z.B. „Mi,") mit anzeigen.
+    d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }) +
     ' ' +
     d.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
   );
@@ -45,7 +46,8 @@ function formatDateRange(startIso: string, endIso: string): string {
   if (!startIso) return '';
   const start = new Date(startIso);
   const end = endIso ? new Date(endIso) : null;
-  const dayFmt = { day: '2-digit', month: '2-digit', year: 'numeric' } as const;
+  // v26.82: Wochentag (z.B. „Mi,") mit anzeigen.
+  const dayFmt = { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' } as const;
   const timeFmt = { hour: '2-digit', minute: '2-digit' } as const;
   if (!end || isNaN(end.getTime())) {
     return `${start.toLocaleDateString('de-DE', dayFmt)} ${start.toLocaleTimeString('de-DE', timeFmt)}`;
@@ -2633,14 +2635,18 @@ export default function RegistrationPage(): React.ReactElement {
                     {formatDateRange(event.startDate, event.endDate)}
                   </span>
                 </div>
-                {(event.location || (event.locationAddress && (event.locationAddress.street || event.locationAddress.city))) && (
+                {(event.location || (event.locationAddress && (event.locationAddress.street || event.locationAddress.city))) && (() => {
+                  const hasAddr = !!(event.locationAddress && (event.locationAddress.street || event.locationAddress.city));
+                  return (
                   <div style={{
-                    display: 'flex', alignItems: 'flex-start', gap: 8,
+                    // v26.82: Bei nur einer Zeile (Ort ohne Adresse) das Pin-Icon
+                    // vertikal zentrieren; bei mehrzeiliger Adresse oben ausrichten.
+                    display: 'flex', alignItems: hasAddr ? 'flex-start' : 'center', gap: 8,
                     padding: '8px 12px', borderRadius: 8,
                     background: 'rgba(0,86,166,0.08)', color: '#0a3766',
                     fontSize: '0.88rem',
                   }}>
-                    <Icon iconName="POI" style={{ fontSize: 16, marginTop: 2, flexShrink: 0 }} />
+                    <Icon iconName="POI" style={{ fontSize: 16, marginTop: hasAddr ? 2 : 0, flexShrink: 0 }} />
                     <span>
                       {event.location && (
                         <span style={{ fontWeight: 700 }}>{event.location}</span>
@@ -2657,7 +2663,8 @@ export default function RegistrationPage(): React.ReactElement {
                       )}
                     </span>
                   </div>
-                )}
+                  );
+                })()}
               </div>
               {(() => {
                 // v24.15: „Organizer ausblenden" ohne Einzel-Modus = ALLE aus.
@@ -2684,20 +2691,22 @@ export default function RegistrationPage(): React.ReactElement {
               {(event.contactName || event.contactEmail || event.contactInfo) && (
                 <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--dex-gray-50, #f7f7f7)', borderRadius: 8, border: '1px solid var(--dex-gray-200)' }}>
                   {/* v11.97: Gleiche Schriftgröße + Gewicht wie das
-                      ORGANIZER-Label darüber. */}
-                  <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, fontWeight: 600 }}>
-                    {locale === 'de' ? 'Ansprechpartner' : 'Contact'}
+                      ORGANIZER-Label darüber. v26.82: mit Icon + Text in
+                      Beschreibungs-Schriftgröße (1.05rem). */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, fontWeight: 600, fontSize: '0.85rem' }}>
+                    <span style={{ display: 'inline-flex', flexShrink: 0 }}><Mail size={15} /></span>
+                    <span>{locale === 'de' ? 'Ansprechpartner' : 'Contact'}</span>
                   </div>
                   {event.contactName && (
-                    <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--dex-gray-800)' }}>{event.contactName}</div>
+                    <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--dex-gray-800)' }}>{event.contactName}</div>
                   )}
                   {event.contactEmail && (
-                    <div style={{ fontSize: '0.78rem', marginTop: 2 }}>
+                    <div style={{ fontSize: '1.05rem', marginTop: 2 }}>
                       <a href={`mailto:${event.contactEmail}`} style={{ color: 'var(--dex-green, #86bc25)', textDecoration: 'none' }}>{event.contactEmail}</a>
                     </div>
                   )}
                   {event.contactInfo && (
-                    <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-700)', marginTop: 4, whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>{event.contactInfo}</div>
+                    <div style={{ fontSize: '1.05rem', color: 'var(--dex-gray-700)', marginTop: 4, whiteSpace: 'pre-wrap', lineHeight: 1.3 }}>{event.contactInfo}</div>
                   )}
                 </div>
               )}
@@ -3035,16 +3044,17 @@ export default function RegistrationPage(): React.ReactElement {
                   }
                 }}
                 style={{
-                  // v23.4: als netter grüner Button statt unterstrichenem Link.
-                  // Standard (für andere anmelden) = gefüllt grün; aktiv
-                  // (zurück zur Selbst-Anmeldung) = grüner Outline.
+                  // v26.82: Als „angedockte" Tab-Optik neben dem grünen
+                  // „Persönliche Informationen"-Header. Standard (für andere
+                  // anmelden) = GRAU (inaktiver Tab, klarer Farbunterschied);
+                  // aktiv (im Fremd-Modus, „zurück zur Selbst-Anmeldung") = grün.
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                   padding: '7px 16px', borderRadius: 999,
                   fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
                   transition: 'background 0.15s ease, color 0.15s ease',
                   ...(registerForOther
-                    ? { background: '#fff', border: '1.5px solid var(--dex-green, #86bc25)', color: 'var(--dex-green-dark, #4a7c1f)' }
-                    : { background: 'var(--dex-green, #86bc25)', border: '1.5px solid var(--dex-green, #86bc25)', color: '#fff' }),
+                    ? { background: 'var(--dex-green, #86bc25)', border: '1.5px solid var(--dex-green, #86bc25)', color: '#fff' }
+                    : { background: 'var(--dex-gray-100, #eef0f2)', border: '1.5px solid var(--dex-gray-300, #cfd4d9)', color: 'var(--dex-gray-600, #5a6470)' }),
                 }}
               >
                 <Icon iconName={registerForOther ? 'Contact' : 'AddFriend'} style={{ fontSize: 14 }} />
