@@ -1440,6 +1440,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // belegt das Feld damit vor, der Wizard zeigt sie im Feld-Editor.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         defaultValue: (cf as any).defaultValue || undefined,
+        // v26.75: Vorfilter-Kategorien + Beschriftung durchreichen.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        optionCategories: Array.isArray((cf as any).optionCategories) ? (cf as any).optionCategories : undefined,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        prefilterLabel: (cf as any).prefilterLabel || undefined,
         // v24.25: withTime — bei Datums-Feldern (type='date') auch die Uhrzeit
         // mit abfragen (datetime-local statt date).
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

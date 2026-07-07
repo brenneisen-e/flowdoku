@@ -118,6 +118,10 @@ interface CustomFieldInput {
   /** v26.74: Vorauswahl bei Single-Select — eine der `options` ist im
    *  Anmeldeformular vorausgewählt (leer = keine Vorauswahl). */
   defaultValue?: string;
+  /** v26.75: Vorfilter — Kategorie pro Option (positional zu `options`). */
+  optionCategories?: string[];
+  /** v26.75: Beschriftung des Vorfilter-Dropdowns. */
+  prefilterLabel?: string;
   /** v7.20: Optionale Beschreibung — landet als "i"-Tooltip neben dem
    *  Feld-Label im Registrierungsformular. */
   helpText?: string;
@@ -182,13 +186,18 @@ function serializeCustomFields(
     .map(f => {
       let optionsOut: string[] | undefined;
       let optionsEnOut: string[] | undefined;
+      // v26.75: Vorfilter-Kategorien POSITIONAL zu den (bereinigten) Optionen.
+      let categoriesOut: string[] | undefined;
       if (f.type === 'select') {
         const pairs = (f.options || [])
-          .map((o, i) => ({ de: (o || '').trim(), en: ((f.optionsEn || [])[i] || '').trim() }))
+          .map((o, i) => ({ de: (o || '').trim(), en: ((f.optionsEn || [])[i] || '').trim(), cat: (((f.optionCategories || [])[i]) || '').trim() }))
           .filter(p => p.de.length > 0);
         optionsOut = pairs.map(p => p.de);
         if (bilingual && pairs.some(p => p.en.length > 0)) {
           optionsEnOut = pairs.map(p => p.en);
+        }
+        if (!f.multi && pairs.some(p => p.cat.length > 0)) {
+          categoriesOut = pairs.map(p => p.cat);
         }
       }
       return {
@@ -208,6 +217,10 @@ function serializeCustomFields(
         // Wert eine der (bereinigten) Optionen ist.
         ...(f.type === 'select' && !f.multi && f.defaultValue && (optionsOut || []).indexOf(f.defaultValue) >= 0
           ? { defaultValue: f.defaultValue }
+          : {}),
+        // v26.75: Vorfilter-Kategorien + optionale Beschriftung (nur Single-Select).
+        ...(categoriesOut
+          ? { optionCategories: categoriesOut, ...(f.prefilterLabel && f.prefilterLabel.trim() ? { prefilterLabel: f.prefilterLabel.trim() } : {}) }
           : {}),
         // v24.25: Uhrzeit-Flag nur bei Datums-Feldern persistieren.
         ...(f.type === 'date' && f.withTime ? { withTime: true } : {}),
@@ -709,6 +722,48 @@ async function resolveAudienceMembersToCsv(
   return Array.from(out).join(';');
 }
 
+// v26.77: Fünf einladende Beschreibungs-Vorlagen als Starthilfe für Organizer.
+// Bewusst OHNE Zeit, Ort, Organizer oder Kontaktperson — diese stehen bereits
+// als eigene Felder auf der Anmeldemaske. Der Organizer kann eine Vorlage per
+// Klick übernehmen und dann anpassen. Jede Vorlage in DE + EN.
+const DESCRIPTION_TEMPLATES: Array<{ key: string; labelDe: string; labelEn: string; de: string; en: string }> = [
+  {
+    key: 'sport',
+    labelDe: 'Sport & Lauf',
+    labelEn: 'Sports & running',
+    de: '<p>Lauf mit uns! Sei Teil des Deloitte-Teams und erlebe einen sportlichen Tag mit Kolleginnen und Kollegen. Egal ob du für die Bestzeit gehst oder einfach die Stimmung genießen möchtest – gemeinsam sind wir am Start. Wir freuen uns riesig auf dich!</p>',
+    en: '<p>Run with us! Be part of the Deloitte team and enjoy a sporty day with your colleagues. Whether you are chasing a personal best or simply soaking up the atmosphere – we are at the start line together. We can&rsquo;t wait to see you!</p>',
+  },
+  {
+    key: 'workshop',
+    labelDe: 'Workshop & Weiterbildung',
+    labelEn: 'Workshop & training',
+    de: '<p>In diesem Workshop dreht sich alles um praxisnahe Impulse für deinen Arbeitsalltag. Du bekommst konkrete Einblicke, tauschst dich mit anderen aus und nimmst neue Ideen mit nach Hause. Bring gerne deine Fragen und Erfahrungen mit – wir gestalten den Tag gemeinsam.</p>',
+    en: '<p>This workshop is all about hands-on impulses for your daily work. You will gain concrete insights, exchange ideas with others and take fresh inspiration home with you. Bring your questions and experiences along – we will shape the day together.</p>',
+  },
+  {
+    key: 'network',
+    labelDe: 'Netzwerken & After Work',
+    labelEn: 'Networking & after work',
+    de: '<p>Zeit zum Netzwerken! In entspannter Atmosphäre kommen wir zusammen, tauschen uns aus und lernen neue Gesichter kennen. Freu dich auf gute Gespräche, den ein oder anderen Snack und einen lockeren Ausklang. Komm einfach vorbei – wir freuen uns auf dich!</p>',
+    en: '<p>Time to connect! In a relaxed setting we come together, share ideas and meet new faces. Look forward to good conversations, a few snacks and an easy-going get-together. Just drop by – we would love to see you!</p>',
+  },
+  {
+    key: 'conference',
+    labelDe: 'Konferenz & Fachevent',
+    labelEn: 'Conference & expert event',
+    de: '<p>Freu dich auf einen Tag voller spannender Vorträge, praxisnaher Sessions und wertvoller Begegnungen. Expertinnen und Experten teilen ihr Wissen, und du hast reichlich Gelegenheit, dich zu vernetzen und neue Perspektiven mitzunehmen.</p>',
+    en: '<p>Look forward to a day full of inspiring talks, hands-on sessions and valuable encounters. Experts share their knowledge, and you will have plenty of opportunity to network and gain fresh perspectives.</p>',
+  },
+  {
+    key: 'celebration',
+    labelDe: 'Team-Event & Feier',
+    labelEn: 'Team event & celebration',
+    de: '<p>Wir haben etwas zu feiern – und du bist herzlich eingeladen! Freu dich auf einen geselligen Abend mit gutem Essen, netten Menschen und bester Stimmung. Lass uns gemeinsam eine richtig schöne Zeit verbringen. Wir freuen uns auf dich!</p>',
+    en: '<p>We&rsquo;ve got something to celebrate – and you are warmly invited! Look forward to a sociable evening with good food, great people and a wonderful atmosphere. Let&rsquo;s enjoy some quality time together. We can&rsquo;t wait to see you!</p>',
+  },
+];
+
 export default function EventCreationPage(): React.ReactElement {
   const { goBack, selectedEventId, currentPage, setNavigationGuard } = useNavigation();
   const { events, childEventsOf, createEvent, updateEvent, getLastEventUpdateError, deleteEvent, deleteEventItemOnly, refreshEvents, requestCoOrganizerApprovals, notifyNewCoOrganizers, notifyAdminsExternalAudienceAccess } = useEvents();
@@ -1062,6 +1117,8 @@ export default function EventCreationPage(): React.ReactElement {
       options: f.options ? [...f.options] : [], visible: true,
       ...(f.multi ? { multi: true } : {}),
       ...(f.defaultValue ? { defaultValue: f.defaultValue } : {}),
+      ...(f.optionCategories && f.optionCategories.length > 0 ? { optionCategories: [...f.optionCategories] } : {}),
+      ...(f.prefilterLabel ? { prefilterLabel: f.prefilterLabel } : {}),
       ...(f.helpText ? { helpText: f.helpText } : {}),
       ...(f.helpTextStyle === 'inline' ? { helpTextStyle: 'inline' as const } : {}),
       ...(f.showIf ? { showIf: { fieldId: f.showIf.fieldId, values: [...f.showIf.values] } } : {}),
@@ -6781,6 +6838,42 @@ export default function EventCreationPage(): React.ReactElement {
                       : (isDe ? 'Keine Beschreibung gesetzt — klicke „Bearbeiten" zum Hinzufügen.' : 'No description set — click „Edit" to add one.')}
                   </span>
                 </div>
+                {/* v26.77: Starthilfe für die Beschreibung — freundliche Klarstellung,
+                    dass die Beschreibung der Einleitungstext der Anmeldemaske ist
+                    (KEINE Zeit/Ort/Organizer/Kontaktperson, das sind eigene Felder),
+                    fünf Vorlagen zum Übernehmen + „keine Beschreibung"-Button. */}
+                <div style={{ marginTop: 12, padding: 14, borderRadius: 'var(--dex-radius)', background: 'var(--dex-gray-50, #f7f7f7)', border: '1px solid var(--dex-gray-200)' }}>
+                  <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.55, marginBottom: 12 }}>
+                    {isDe
+                      ? <>Die Beschreibung ist der <strong>einladende Einleitungstext ganz oben auf der Anmeldemaske</strong> — das Erste, was deine Teilnehmenden lesen. Erzähl hier gern, <strong>worum es geht, für wen das Event ist und was man wissen sollte</strong>.<br />Ein kleiner Tipp: <strong>Zeitpunkt, Ort, Organizer und Kontaktperson musst du hier nicht angeben</strong> — die zeigt die App bereits als eigene Felder darüber an. So bleibt dein Text schön schlank und einladend. 🙂</>
+                      : <>The description is the <strong>inviting intro text right at the top of the registration form</strong> — the first thing your attendees read. Feel free to tell them <strong>what the event is about, who it&rsquo;s for and what to know</strong>.<br />A little tip: <strong>you don&rsquo;t need to add the date, location, organizer or contact person here</strong> — the app already shows those as their own fields above. That keeps your text nice and inviting. 🙂</>}
+                  </div>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--dex-gray-500)', marginBottom: 8 }}>
+                    {isDe ? 'Vorschläge zum Übernehmen (danach frei anpassbar):' : 'Suggestions to use (fully editable afterwards):'}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {DESCRIPTION_TEMPLATES.map(tpl => (
+                      <button
+                        key={tpl.key}
+                        type="button"
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.78rem', padding: '5px 12px' }}
+                        title={(isDe ? tpl.de : tpl.en).replace(/<[^>]+>/g, '').replace(/&rsquo;/g, '’')}
+                        onClick={() => setDescription(isDe ? tpl.de : tpl.en)}
+                      >
+                        {isDe ? tpl.labelDe : tpl.labelEn}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className="btn"
+                      style={{ fontSize: '0.78rem', padding: '5px 12px', background: 'transparent', border: '1px dashed var(--dex-gray-300)', color: 'var(--dex-gray-500)' }}
+                      onClick={() => setDescription('')}
+                    >
+                      {isDe ? 'Ich möchte keine Beschreibung nutzen' : 'I don’t want to use a description'}
+                    </button>
+                  </div>
+                </div>
                 {/* v18.73: Hinweis, wenn Name/Datum/Ort des Events redundant in
                     der Beschreibung stehen — die werden bereits separat auf der
                     Anmelde-Seite angezeigt. Mit klickbarem Beispieltext. */}
@@ -11790,13 +11883,60 @@ export default function EventCreationPage(): React.ReactElement {
                             <input
                               type="checkbox"
                               checked={!!field.multi}
-                              onChange={e => updateCustomField(field.id, { multi: e.target.checked })}
+                              onChange={e => updateCustomField(field.id, { multi: e.target.checked, ...(e.target.checked ? { optionCategories: undefined, prefilterLabel: undefined, defaultValue: undefined } : {}) })}
                               style={{ display: 'none' }}
                             />
                             <span style={{ fontSize: '0.8rem', lineHeight: 1 }}>{field.multi ? '✓' : '○'}</span>
                             {isDe ? 'Mehrfachauswahl möglich' : 'Allow multiple selection'}
                           </label>
+                          {/* v26.75: Vorfilter — nur bei Single-Select. Aktiviert
+                              pro Option ein Kategorie-Feld; die Anmeldeseite zeigt
+                              dann zuerst ein Kategorie-Dropdown und filtert die
+                              Optionsliste darauf (z.B. „Herren"/„Damen" → Größen). */}
+                          {!field.multi && (
+                            <label
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 6,
+                                padding: '4px 10px', borderRadius: 999,
+                                fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap',
+                                cursor: 'pointer', userSelect: 'none',
+                                border: `1px solid ${field.optionCategories ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                                background: field.optionCategories ? 'rgba(134,188,37,0.10)' : '#fff',
+                                color: field.optionCategories ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-600)',
+                              }}
+                              title={isDe
+                                ? 'Zu jeder Option eine Kategorie hinterlegen. Der Teilnehmer wählt erst die Kategorie, dann sieht er nur die passenden Optionen (kürzere Liste).'
+                                : 'Give each option a category. The attendee picks the category first and then only sees the matching options (shorter list).'}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={!!field.optionCategories}
+                                onChange={e => updateCustomField(field.id, e.target.checked
+                                  ? { optionCategories: (field.options || []).map(() => '') }
+                                  : { optionCategories: undefined, prefilterLabel: undefined })}
+                                style={{ display: 'none' }}
+                              />
+                              <span style={{ fontSize: '0.8rem', lineHeight: 1 }}>{field.optionCategories ? '✓' : '○'}</span>
+                              {isDe ? 'Vorfilter nach Kategorie' : 'Pre-filter by category'}
+                            </label>
+                          )}
                         </div>
+                        {/* v26.75: Beschriftung des Vorfilter-Dropdowns. */}
+                        {!field.multi && field.optionCategories && (
+                          <div style={{ marginBottom: 10 }}>
+                            <label style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-600)', fontWeight: 600, marginBottom: 3 }}>
+                              {isDe ? 'Bezeichnung des Vorfilters' : 'Pre-filter label'}
+                            </label>
+                            <input
+                              className="form-input"
+                              value={field.prefilterLabel || ''}
+                              onChange={e => updateCustomField(field.id, { prefilterLabel: e.target.value })}
+                              placeholder={isDe ? 'z.B. Größentabelle, Kategorie' : 'e.g. size chart, category'}
+                              maxLength={40}
+                              style={{ fontSize: '0.85rem', padding: '6px 10px' }}
+                            />
+                          </div>
+                        )}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                           {(field.options || []).map((opt, optIdx) => (
                             <div key={optIdx} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
@@ -11824,7 +11964,14 @@ export default function EventCreationPage(): React.ReactElement {
                                     // damit Index-Mapping konsistent bleibt.
                                     const optsEn = [...(field.optionsEn || [])];
                                     if (optsEn.length > optIdx) optsEn.splice(optIdx, 1);
-                                    updateCustomField(field.id, { options: opts, optionsEn: optsEn });
+                                    // v26.75: Vorfilter-Kategorien positional mit-splicen.
+                                    const upd: Partial<CustomFieldInput> = { options: opts, optionsEn: optsEn };
+                                    if (field.optionCategories) {
+                                      const cats = [...field.optionCategories];
+                                      if (cats.length > optIdx) cats.splice(optIdx, 1);
+                                      upd.optionCategories = cats;
+                                    }
+                                    updateCustomField(field.id, upd);
                                   }}
                                   title={isDe ? 'Option entfernen' : 'Remove option'}
                                   style={{
@@ -11859,11 +12006,34 @@ export default function EventCreationPage(): React.ReactElement {
                                   />
                                 </div>
                               )}
+                              {/* v26.75: Kategorie pro Option (nur wenn Vorfilter aktiv). */}
+                              {field.optionCategories && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 32 }}>
+                                  <span style={{
+                                    flexShrink: 0, fontSize: '0.65rem',
+                                    padding: '1px 6px', borderRadius: 6,
+                                    background: 'rgba(134,188,37,0.14)',
+                                    color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 700, letterSpacing: 0.3,
+                                  }}>{isDe ? 'KAT' : 'CAT'}</span>
+                                  <input
+                                    className="form-input"
+                                    value={(field.optionCategories || [])[optIdx] || ''}
+                                    placeholder={isDe ? 'Kategorie (z.B. Herren) — leer = immer sichtbar' : 'Category (e.g. men) — empty = always shown'}
+                                    onChange={e => {
+                                      const cats = [...(field.optionCategories || [])];
+                                      while (cats.length <= optIdx) cats.push('');
+                                      cats[optIdx] = e.target.value;
+                                      updateCustomField(field.id, { optionCategories: cats });
+                                    }}
+                                    style={{ flex: 1, fontSize: '0.78rem', padding: '5px 9px' }}
+                                  />
+                                </div>
+                              )}
                             </div>
                           ))}
                           <button
                             type="button"
-                            onClick={() => updateCustomField(field.id, { options: [...(field.options || []), ''] })}
+                            onClick={() => updateCustomField(field.id, { options: [...(field.options || []), ''], ...(field.optionCategories ? { optionCategories: [...field.optionCategories, ''] } : {}) })}
                             style={{
                               alignSelf: 'flex-start', marginTop: 4,
                               display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -14096,6 +14266,9 @@ export default function EventCreationPage(): React.ReactElement {
             options: f.type === 'select' ? f.options : undefined,
             // v26.74: Vorauswahl an die Live-Preview weiterreichen.
             defaultValue: f.type === 'select' && !f.multi ? f.defaultValue : undefined,
+            // v26.75: Vorfilter-Kategorien + Beschriftung an die Preview.
+            optionCategories: f.type === 'select' && !f.multi ? f.optionCategories : undefined,
+            prefilterLabel: f.type === 'select' && !f.multi ? f.prefilterLabel : undefined,
             // v7.24: helpText, multi und showIf an die Live-Preview weiterreichen,
             // damit die echte RegistrationPage genau das rendert was der
             // Teilnehmer später sieht (i-Tooltip, Multi-Select-Liste,

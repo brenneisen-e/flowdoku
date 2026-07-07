@@ -63,6 +63,15 @@ const isExternalEmailAddr = (e: string): boolean => {
   return !!v && !/@(.*\.)?deloitte\.de$/i.test(v);
 };
 
+// v26.75: Die Vorfilter-Kategorie-Auswahl liegt transient unter dem Schlüssel
+// '<fieldId>__cat' im Antwort-Store — sie ist reine UI-Hilfe zum Filtern der
+// Optionsliste und wird NICHT als Antwort gespeichert.
+function stripPrefilterKeys(o: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const k of Object.keys(o || {})) { if (!k.endsWith('__cat')) out[k] = o[k]; }
+  return out;
+}
+
 // v18.74: Strengere Plausibilitätsprüfung gegen Tippfehler bei externen
 // Adressen — fängt fehlende/zu kurze TLD, doppelte Punkte, mehrere @, führende/
 // abschließende Punkte und Whitespace/Kommas ab. Verifiziert NICHT die Existenz
@@ -522,6 +531,10 @@ export default function RegistrationPage(): React.ReactElement {
   // ebenfalls eine explizite Bestätigung, dass die Person der Anmeldung
   // zugestimmt hat — analog zur Team-Anmelde-Pflicht.
   const [otherConsentConfirmed, setOtherConsentConfirmed] = React.useState(false);
+  // v26.76: Geführter Wizard für die stellvertretende Anmeldung (interner Fall):
+  // 0 = geschlossen, 1 = Person suchen, 2 = Zustimmung. Nach „OK" ist die Person
+  // übernommen und die persönlichen Felder vorbefüllt.
+  const [proxyStep, setProxyStep] = React.useState<0 | 1 | 2>(0);
   // v11.83: Offene Teams (Slots-frei) + Beitritts-Flow.
   const [openTeams, setOpenTeams] = React.useState<Array<{ teamId: string; teamName: string; activeCount: number; teamSize: number; leadEmail: string; leadDisplayName: string }>>([]);
   const [openTeamsLoaded, setOpenTeamsLoaded] = React.useState(false);
@@ -1307,13 +1320,13 @@ export default function RegistrationPage(): React.ReactElement {
     setSubmitProgress(5);
     setSubmitProgressLabel(locale === 'de' ? 'Team-Anmeldung wird vorbereitet…' : 'Preparing team registration…');
     try {
-      const customData: Record<string, string> = { salutation, ...eventSpecific };
+      const customData: Record<string, string> = { salutation, ...stripPrefilterKeys(eventSpecific) };
       const leadEmail = email.trim();
       const leadFirstName = firstName.trim();
       const leadLastName = surname.trim();
       // v18.12: Custom-Field-Antworten pro Mitglied (nach Slot-Index) mitgeben.
       const members = teamMembersParsed
-        .map((m, idx) => m ? { email: m.email, displayName: m.displayName, customData: { ...(teamMemberFields[idx] || {}) } } : null)
+        .map((m, idx) => m ? { email: m.email, displayName: m.displayName, customData: stripPrefilterKeys(teamMemberFields[idx] || {}) } : null)
         .filter((m): m is { displayName: string; email: string; customData: Record<string, string> } => !!m);
       setSubmitProgress(30);
       setSubmitProgressLabel(locale === 'de'
@@ -1370,7 +1383,7 @@ export default function RegistrationPage(): React.ReactElement {
     try {
       // Event-spezifische Antworten des Beitretenden (wie bei der normalen
       // Anmeldung) — werden an den Team-Beitritt durchgereicht.
-      const customData: Record<string, string> = { salutation, ...eventSpecific };
+      const customData: Record<string, string> = { salutation, ...stripPrefilterKeys(eventSpecific) };
       setSubmitProgress(50);
       if (event.teamJoinRequiresApproval) {
         const r = await createTeamJoinRequest(event.id, pendingJoinTeam.teamId, customData);
@@ -1414,7 +1427,7 @@ export default function RegistrationPage(): React.ReactElement {
     try {
       const customData: Record<string, string> = {
         salutation,
-        ...eventSpecific,
+        ...stripPrefilterKeys(eventSpecific),
       };
       const participantEmail = email.trim();
       const firstTrim = firstName.trim();
@@ -2042,6 +2055,53 @@ export default function RegistrationPage(): React.ReactElement {
     );
   }
 
+  // v26.76: gemeinsame Auswahl-Logik für die stellvertretende Anmeldung —
+  // wird sowohl im Wizard als auch (Fallback) inline genutzt. Übernimmt Name/
+  // E-Mail aus dem Suchtreffer, lädt das Profil nach und prüft Doppel-Anmeldung
+  // + Gästekreis (thirdPartyCheck).
+  const pickProxyUser = (u: { email: string; displayName: string; location?: string; jobTitle?: string }): void => {
+    let uFirstName = '';
+    let uSurname = '';
+    if (u.displayName.includes(',')) {
+      const parts = u.displayName.split(',').map(s => s.trim());
+      uSurname = parts[0] || '';
+      uFirstName = parts[1] || '';
+    } else {
+      const parts = u.displayName.split(' ');
+      uFirstName = parts[0] || '';
+      uSurname = parts.slice(1).join(' ') || '';
+    }
+    setFirstName(uFirstName);
+    setSurname(uSurname);
+    setEmail(u.email);
+    setUserSearch(u.displayName);
+    setUserResults([]);
+    setPickedUserProfile({ jobTitle: u.jobTitle || '', location: u.location || '' });
+    searchUser(u.email).then(p => {
+      if (p) {
+        setPickedUserProfile({
+          jobTitle: p.jobTitle || u.jobTitle || '',
+          department: p.department || '',
+          location: p.location || u.location || '',
+          mobilePhone: p.mobilePhone || '',
+        });
+      }
+    }).catch(() => { /* silent */ });
+    setThirdPartyCheck(null);
+    if (event) {
+      (async () => {
+        const existing = await checkRegistrationByEmail(event.id, u.email).catch(() => null);
+        const alreadyRegistered = !!existing && existing.Status !== 'Abgemeldet';
+        const notInAudience = !isEventVisibleForUser(event, u.email, u.location || '', [], u.jobTitle || '');
+        setThirdPartyCheck({
+          alreadyRegistered,
+          notInAudience,
+          registeredName: (existing && (existing.ParticipantName || `${existing.Vorname || ''} ${existing.Nachname || ''}`.trim())) || u.displayName || '',
+          registeredDate: (existing && existing.RegistrationDate) || '',
+        });
+      })();
+    }
+  };
   // v11.5: Custom-Field-Renderer extrahiert — wird zweimal verwendet:
   // einmal direkt in der Gruppen-Auswahl-Box für Felder mit
   // onlyForGroup-Constraint, einmal im Eventspez-2-Spalten-Grid für
@@ -2158,6 +2218,38 @@ export default function RegistrationPage(): React.ReactElement {
             placeholder={tEvent('reg.pleaseselect')}
             error={isErr}
           />
+        );
+      })()
+    ) : field.type === 'select' && field.optionCategories && field.optionCategories.some(c => (c || '').trim()) ? (
+      // v26.75: Vorfilter — zuerst Kategorie wählen, dann nur die passenden
+      // Optionen zeigen (kürzere Liste). Die Kategorie-Auswahl liegt transient
+      // in vals['<id>__cat']; gespeichert wird nur der eigentliche Optionswert.
+      (() => {
+        const cats = field.optionCategories || [];
+        const distinctCats = Array.from(new Set(cats.map(c => (c || '').trim()).filter(Boolean)));
+        const catKey = `${field.id}__cat`;
+        const selectedOpt = vals[field.id] || '';
+        const selIdx = (field.options || []).indexOf(selectedOpt);
+        const optCat = selIdx >= 0 ? (cats[selIdx] || '').trim() : '';
+        const currentCat = optCat || (vals[catKey] || '');
+        const visibleIdx = (field.options || []).map((_o, i) => i).filter(i => {
+          if (!currentCat) return false;
+          const c = (cats[i] || '').trim();
+          return c === currentCat || c === '';
+        });
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <select className="form-select" value={currentCat} onChange={e => setVals({ ...vals, [catKey]: e.target.value, [field.id]: '' })} style={inputStyleGreen}>
+              <option value="">{field.prefilterLabel ? `${field.prefilterLabel}: ${tEvent('reg.pleaseselect')}` : tEvent('reg.pleaseselect')}</option>
+              {distinctCats.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+            {currentCat && (
+              <select className="form-select" value={selectedOpt} onChange={e => setVals({ ...vals, [field.id]: e.target.value })} style={inputStyleGreen}>
+                <option value="">{tEvent('reg.pleaseselect')}</option>
+                {visibleIdx.map(i => <option key={(field.options || [])[i]} value={(field.options || [])[i]}>{pickOptionLabel(field, i, (field.options || [])[i])}</option>)}
+              </select>
+            )}
+          </div>
         );
       })()
     ) : field.type === 'select' ? (
@@ -2933,8 +3025,14 @@ export default function RegistrationPage(): React.ReactElement {
                   // v19.6: CC-Frage-Entscheidung beim Moduswechsel zurücksetzen.
                   ccSelfDecidedRef.current = false;
                   ccSelfRef.current = false;
-                  if (!registerForOther) { setFirstName(''); setSurname(''); setEmail(''); setUserSearch(''); setUserResults([]); }
-                  else { setFirstName(currentUser.firstName); setSurname(currentUser.surname); setEmail(currentUser.email); setUserSearch(''); setUserResults([]); }
+                  if (!registerForOther) {
+                    setFirstName(''); setSurname(''); setEmail(''); setUserSearch(''); setUserResults([]);
+                    // v26.76: geführten Wizard öffnen (Person suchen → Zustimmung).
+                    setProxyStep(1);
+                  } else {
+                    setFirstName(currentUser.firstName); setSurname(currentUser.surname); setEmail(currentUser.email); setUserSearch(''); setUserResults([]);
+                    setProxyStep(0);
+                  }
                 }}
                 style={{
                   // v23.4: als netter grüner Button statt unterstrichenem Link.
@@ -2986,7 +3084,7 @@ export default function RegistrationPage(): React.ReactElement {
                     UNTEN gewandert (direkt unter die „@deloitte.com"-Such-Zeile,
                     siehe weiter unten) und in der Schriftgröße an diese Zeile
                     angeglichen. */}
-                {registerForOther && !externalPerson && (
+                {registerForOther && !externalPerson && proxyStep === 0 && (
                   <div className="form-group" style={{ position: 'relative', marginBottom: 20 }}>
                     {/* v11.97: Label entfernt — Suche ist selbsterklärend (Placeholder). */}
                     <input
@@ -3191,7 +3289,7 @@ export default function RegistrationPage(): React.ReactElement {
                     enthält zusätzlich einen Spezial-Hinweis für externe
                     Adressen (kein Outlook-Termin, Mail zur Weiterleitung
                     an die Organizer). */}
-                {registerForOther && (() => {
+                {registerForOther && proxyStep === 0 && (() => {
                   // v15.22: Hinweis-Box bereits anzeigen, sobald „Für andere
                   // registrieren" aktiv ist — nicht erst wenn die E-Mail
                   // gefüllt ist. Der User soll sofort sehen, dass eine
@@ -4442,6 +4540,157 @@ export default function RegistrationPage(): React.ReactElement {
 
       {/* v9.22: Modal für externe Email-Anmeldung */}
       {/* v18.13: Massenimport-Modal. */}
+      {/* v26.76: Geführter Wizard für die stellvertretende Anmeldung (interner
+          Fall): Schritt 1 Person suchen (mit Foto), Schritt 2 Zustimmung. Nach
+          „OK" ist die Person übernommen und die persönlichen Felder vorbefüllt.
+          Externe Person / Massenimport bleiben als eigene Wege erhalten. */}
+      {proxyStep > 0 && (() => {
+        const cancelWizard = (): void => {
+          setRegisterForOther(false);
+          setProxyStep(0);
+          setFirstName(currentUser.firstName); setSurname(currentUser.surname); setEmail(currentUser.email);
+          setUserSearch(''); setUserResults([]); setPickedUserProfile(null);
+          setThirdPartyCheck(null); setOtherConsentConfirmed(false); setExternalPerson(false);
+        };
+        const clearPick = (): void => {
+          setFirstName(''); setSurname(''); setEmail(''); setUserSearch(''); setUserResults([]);
+          setThirdPartyCheck(null); setPickedUserProfile(null);
+        };
+        const linkBtn: React.CSSProperties = { background: 'none', border: 'none', padding: 0, color: 'var(--dex-blue, #0076a8)', textDecoration: 'underline', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 600 };
+        const picked = !!email.trim();
+        const blocked = !!(thirdPartyCheck && thirdPartyCheck.alreadyRegistered);
+        const pName = `${firstName} ${surname}`.trim() || email;
+        return (
+          <Modal
+            open={proxyStep > 0}
+            onClose={cancelWizard}
+            maxWidth={560}
+            padding={24}
+            ariaLabel={locale === 'de' ? 'Für eine andere Person anmelden' : 'Register another person'}
+          >
+            <h3 style={{ margin: '0 0 2px', fontSize: '1.1rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
+              {locale === 'de' ? 'Für eine andere Person anmelden' : 'Register another person'}
+            </h3>
+            <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginBottom: 14 }}>
+              {locale === 'de' ? `Schritt ${proxyStep} von 2 — ${proxyStep === 1 ? 'Person suchen' : 'Zustimmung'}` : `Step ${proxyStep} of 2 — ${proxyStep === 1 ? 'find person' : 'consent'}`}
+            </div>
+
+            {proxyStep === 1 && (
+              <>
+                {!picked && (
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      className="form-input"
+                      autoFocus
+                      value={userSearch}
+                      onChange={e => {
+                        const val = e.target.value;
+                        setUserSearch(val);
+                        if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+                        if (val.length >= 2) {
+                          searchTimerRef.current = setTimeout(async () => {
+                            setIsSearchingUser(true);
+                            const results = await searchUsers(val, userSearchIncludeIntl);
+                            setUserResults(results);
+                            setIsSearchingUser(false);
+                          }, 300);
+                        } else { setUserResults([]); }
+                      }}
+                      placeholder={t('reg.searchplaceholder') || 'Name oder E-Mail eingeben...'}
+                    />
+                    <InternationalSearchToggle
+                      query={userSearch}
+                      checked={userSearchIncludeIntl}
+                      onChange={async next => {
+                        setUserSearchIncludeIntl(next);
+                        const val = userSearch.trim();
+                        if (val.length >= 2) { setIsSearchingUser(true); try { setUserResults(await searchUsers(val, next)); } catch { /* */ } setIsSearchingUser(false); }
+                      }}
+                    />
+                    {isSearchingUser && <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: 8 }}>{locale === 'de' ? 'Wird gesucht…' : 'Searching…'}</p>}
+                    {userResults.length > 0 && (
+                      <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 8, marginTop: 8 }}>
+                        {userResults.map(u => {
+                          const assistantOnly = isAssistant && !canCreateEvents;
+                          const targetAllowed = !assistantOnly || isAllowedTargetForAssistant(u.jobTitle);
+                          return (
+                            <div
+                              key={u.email}
+                              onClick={() => { if (targetAllowed) pickProxyUser(u); }}
+                              title={targetAllowed ? '' : 'Assistants can only register Partners or Directors for events.'}
+                              style={{ padding: '8px 12px', cursor: targetAllowed ? 'pointer' : 'not-allowed', opacity: targetAllowed ? 1 : 0.45, borderBottom: '1px solid var(--dex-gray-100)', display: 'flex', alignItems: 'center', gap: 10 }}
+                            >
+                              <img src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(u.email)}&size=S`} alt={u.displayName} onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }} style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }} />
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{u.displayName}</div>
+                                <div style={{ color: 'var(--dex-gray-500)', fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.email}{u.jobTitle ? ` · ${u.jobTitle}` : ''}{u.location ? ` · ${u.location}` : ''}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {canCreateEvents && (
+                      <div style={{ marginTop: 14, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                        {locale === 'de' ? 'Person außerhalb Deloitte oder mehrere auf einmal? ' : 'External person or several at once? '}
+                        <button type="button" style={linkBtn} onClick={() => { setProxyStep(0); setExternalPerson(true); clearPick(); setOtherConsentConfirmed(false); }}>{locale === 'de' ? 'Externe Person' : 'External person'}</button>
+                        {' · '}
+                        <button type="button" style={linkBtn} onClick={() => { setProxyStep(0); setMassImportResult(null); setMassImportRows([]); setMassImportStep('input'); setMassImportOpen(true); }}>{locale === 'de' ? 'Massenimport' : 'Bulk import'}</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {picked && (
+                  <>
+                    <div style={{ padding: '10px 12px', border: '1px solid var(--dex-green, #86bc25)', borderRadius: 8, background: 'rgba(134,188,37,0.06)', display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <img src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(email)}&size=S`} alt={pName} onError={e => { (e.currentTarget as HTMLImageElement).style.visibility = 'hidden'; }} style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0 }} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700 }}>{pName}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}{pickedUserProfile?.jobTitle ? ` · ${pickedUserProfile.jobTitle}` : ''}</div>
+                      </div>
+                      <button type="button" style={linkBtn} onClick={clearPick}>{locale === 'de' ? 'Ändern' : 'Change'}</button>
+                    </div>
+                    {thirdPartyCheck && (thirdPartyCheck.alreadyRegistered || thirdPartyCheck.notInAudience) && (
+                      <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, fontSize: '0.8rem', background: thirdPartyCheck.alreadyRegistered ? 'rgba(200,30,30,0.07)' : 'rgba(237,139,0,0.08)', border: `1px solid ${thirdPartyCheck.alreadyRegistered ? 'var(--dex-red)' : 'var(--dex-orange)'}`, color: thirdPartyCheck.alreadyRegistered ? 'var(--dex-red)' : 'var(--dex-orange)' }}>
+                        {thirdPartyCheck.alreadyRegistered
+                          ? (locale === 'de' ? 'Diese Person ist bereits für dieses Event angemeldet.' : 'This person is already registered for this event.')
+                          : (locale === 'de' ? 'Hinweis: Diese Person ist nicht im Gästekreis dieses Events — die Anmeldung ist trotzdem möglich.' : 'Note: this person is not in this event’s audience — registration is still possible.')}
+                      </div>
+                    )}
+                  </>
+                )}
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 18 }}>
+                  <button type="button" className="btn btn-secondary" onClick={cancelWizard}>{locale === 'de' ? 'Abbrechen' : 'Cancel'}</button>
+                  <button type="button" className="btn btn-primary" disabled={!picked || blocked} onClick={() => setProxyStep(2)}>{locale === 'de' ? 'Weiter' : 'Next'}</button>
+                </div>
+              </>
+            )}
+
+            {proxyStep === 2 && (
+              <>
+                <div style={{ padding: '12px 14px', background: 'rgba(237,139,0,0.10)', border: '2px solid var(--dex-orange, #ed8b00)', borderRadius: 8, color: '#7a4a00', fontSize: '0.86rem', lineHeight: 1.55 }}>
+                  {locale === 'de'
+                    ? <>Mit dem Absenden meldest du <strong>{pName}</strong> stellvertretend an. Bitte stelle sicher, dass die Person ihrer Anmeldung <strong>vorher zugestimmt</strong> hat — eine Anmeldung ohne Einverständnis ist nicht erlaubt.</>
+                    : <>By submitting you register <strong>{pName}</strong> on their behalf. Please make sure the person has <strong>consented up front</strong> — registering people without their consent is not allowed.</>}
+                </div>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 12, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={otherConsentConfirmed} onChange={e => setOtherConsentConfirmed(e.target.checked)} style={{ marginTop: 3 }} />
+                  <span style={{ flex: 1, color: 'var(--dex-gray-800)' }}>
+                    <span style={{ color: 'var(--dex-red)', marginRight: 4 }}>*</span>
+                    {locale === 'de'
+                      ? 'Ich bestätige, dass die Person ihrer stellvertretenden Anmeldung zugestimmt hat.'
+                      : 'I confirm that the person has consented to this registration on their behalf.'}
+                  </span>
+                </label>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, marginTop: 18 }}>
+                  <button type="button" className="btn btn-secondary" onClick={() => setProxyStep(1)}>{locale === 'de' ? 'Zurück' : 'Back'}</button>
+                  <button type="button" className="btn btn-primary" disabled={!otherConsentConfirmed} onClick={() => setProxyStep(0)}>{locale === 'de' ? 'OK, Person übernehmen' : 'OK, take over person'}</button>
+                </div>
+              </>
+            )}
+          </Modal>
+        );
+      })()}
       {massImportOpen && (
         <Modal
           open={massImportOpen}
