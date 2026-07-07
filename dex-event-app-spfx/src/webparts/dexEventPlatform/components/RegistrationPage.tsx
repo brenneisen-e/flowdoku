@@ -574,6 +574,13 @@ export default function RegistrationPage(): React.ReactElement {
   // 0 = geschlossen, 1 = Person suchen, 2 = Zustimmung. Nach „OK" ist die Person
   // übernommen und die persönlichen Felder vorbefüllt.
   const [proxyStep, setProxyStep] = React.useState<0 | 1 | 2>(0);
+  // v27.6: Der frühere INLINE-Ablauf für „Für andere Person anmelden"
+  // (Personensuche + Extern-Umschalter + große Zustimmungs-Box direkt im
+  // Anmeldeformular) ist vollständig in den geführten Wizard-Modal gewandert.
+  // Auf dem Hauptformular steht danach nur eine kompakte Zusammenfassung +
+  // die grauen (read-only) Felder. Dieses Flag lässt die Alt-UI dauerhaft aus,
+  // bewahrt sie aber als Referenz (kein Setter → immer false).
+  const [showInlineProxyPicker] = React.useState(false);
   // v11.83: Offene Teams (Slots-frei) + Beitritts-Flow.
   const [openTeams, setOpenTeams] = React.useState<Array<{ teamId: string; teamName: string; activeCount: number; teamSize: number; leadEmail: string; leadDisplayName: string }>>([]);
   const [openTeamsLoaded, setOpenTeamsLoaded] = React.useState(false);
@@ -3161,7 +3168,21 @@ export default function RegistrationPage(): React.ReactElement {
                     UNTEN gewandert (direkt unter die „@deloitte.com"-Such-Zeile,
                     siehe weiter unten) und in der Schriftgröße an diese Zeile
                     angeglichen. */}
-                {registerForOther && !externalPerson && proxyStep === 0 && (
+                {/* v27.6: Kompakte Zusammenfassung der stellvertretend
+                    anzumeldenden Person. Auswahl/Extern/Zustimmung passieren
+                    komplett im Wizard-Modal — „Ändern" öffnet ihn wieder. */}
+                {registerForOther && proxyStep === 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20, padding: '10px 12px', borderRadius: 'var(--dex-radius-md)', background: 'rgba(134,188,37,0.08)', border: '1px solid var(--dex-green, #86bc25)' }}>
+                    <Icon iconName="Contact" style={{ fontSize: 18, color: 'var(--dex-green-dark, #4a7c1f)', flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>{locale === 'de' ? 'Du meldest an' : 'You are registering'}</div>
+                      <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{`${firstName} ${surname}`.trim() || email || (locale === 'de' ? '— keine Person gewählt —' : '— no person selected —')}</div>
+                      {!!email && <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{email}</div>}
+                    </div>
+                    <button type="button" onClick={() => setProxyStep(1)} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--dex-blue, #0076a8)', textDecoration: 'underline', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, flexShrink: 0 }}>{locale === 'de' ? 'Ändern' : 'Change'}</button>
+                  </div>
+                )}
+                {showInlineProxyPicker && !externalPerson && proxyStep === 0 && (
                   <div className="form-group" style={{ position: 'relative', marginBottom: 20 }}>
                     {/* v11.97: Label entfernt — Suche ist selbsterklärend (Placeholder). */}
                     <input
@@ -3339,7 +3360,7 @@ export default function RegistrationPage(): React.ReactElement {
                     Schriftgröße (12px) wie der International-Toggle. Nur für
                     Organizer/Admins (nicht Assistenten). Blendet den People-
                     Picker aus und macht Vorname/Nachname/E-Mail frei eintragbar. */}
-                {registerForOther && canCreateEvents && (
+                {showInlineProxyPicker && canCreateEvents && (
                   <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 4, marginBottom: 16, cursor: 'pointer', fontSize: 12, color: 'var(--dex-gray-700, #444)', userSelect: 'none' }}>
                     <input
                       type="checkbox"
@@ -3366,7 +3387,7 @@ export default function RegistrationPage(): React.ReactElement {
                     enthält zusätzlich einen Spezial-Hinweis für externe
                     Adressen (kein Outlook-Termin, Mail zur Weiterleitung
                     an die Organizer). */}
-                {registerForOther && proxyStep === 0 && (() => {
+                {showInlineProxyPicker && proxyStep === 0 && (() => {
                   // v15.22: Hinweis-Box bereits anzeigen, sobald „Für andere
                   // registrieren" aktiv ist — nicht erst wenn die E-Mail
                   // gefüllt ist. Der User soll sofort sehen, dass eine
@@ -3517,17 +3538,17 @@ export default function RegistrationPage(): React.ReactElement {
                 über die Validation). */}
             <div className="form-group">
               <label className="form-label">{t('reg.firstname')}</label>
-              <input className="form-input" value={firstName} onChange={e => { if (externalPerson) setFirstName(e.target.value); }} placeholder={t('reg.firstname')} disabled={!externalPerson} style={{ background: externalPerson ? '#fff' : 'var(--dex-gray-100)', ...(showErrors && !firstName.trim() ? errorBorder : {}) }} />
+              <input className="form-input" value={firstName} onChange={e => { if (externalPerson) setFirstName(e.target.value); }} placeholder={t('reg.firstname')} disabled style={{ background: 'var(--dex-gray-100)', ...(showErrors && !firstName.trim() ? errorBorder : {}) }} />
             </div>
 
             <div className="form-group">
               <label className="form-label">{t('reg.surname')}</label>
-              <input className="form-input" value={surname} onChange={e => { if (externalPerson) setSurname(e.target.value); }} placeholder={t('reg.surname')} disabled={!externalPerson} style={{ background: externalPerson ? '#fff' : 'var(--dex-gray-100)', ...(showErrors && !surname.trim() ? errorBorder : {}) }} />
+              <input className="form-input" value={surname} onChange={e => { if (externalPerson) setSurname(e.target.value); }} placeholder={t('reg.surname')} disabled style={{ background: 'var(--dex-gray-100)', ...(showErrors && !surname.trim() ? errorBorder : {}) }} />
             </div>
 
             <div className="form-group">
               <label className="form-label">{t('reg.email')}</label>
-              <input className="form-input" type="email" value={email} onChange={e => { if (externalPerson) { setEmail(e.target.value); externalEmailConfirmedRef.current = false; /* v18.74: Tippfehler-Check bei Änderung erneut erzwingen */ } }} placeholder={externalPerson ? 'name@firma.de' : 'email@deloitte.de'} disabled={!externalPerson} style={{ background: externalPerson ? '#fff' : 'var(--dex-gray-100)', ...(showErrors && !email.trim() ? errorBorder : {}) }} />
+              <input className="form-input" type="email" value={email} onChange={e => { if (externalPerson) { setEmail(e.target.value); externalEmailConfirmedRef.current = false; /* v18.74: Tippfehler-Check bei Änderung erneut erzwingen */ } }} placeholder={externalPerson ? 'name@firma.de' : 'email@deloitte.de'} disabled style={{ background: 'var(--dex-gray-100)', ...(showErrors && !email.trim() ? errorBorder : {}) }} />
             </div>
 
             {/* v11.94/v11.97/v12.0: Zusätzliche read-only-Profildaten aus dem
