@@ -824,6 +824,43 @@ export class EventService {
     return '';
   }
 
+  /**
+   * v26.87: Setzt ReadSecurity/WriteSecurity einer Liste ZUVERLÄSSIG.
+   * Der frühere `odata=verbose`+`__metadata`-MERGE schlug FLÄCHENDECKEND mit
+   * HTTP 400 („Bad Request") fehl — auch auf dem aktuellen Web, nicht nur
+   * cross-web: SPFx `spHttpClient` erzwingt den Header `odata-version: 3.0`,
+   * unter dem die Verbose-`__metadata`-Annotation im Body ungültig ist. Daher
+   * jetzt `nometadata` OHNE `__metadata` (wie PnPjs) + der Request-Digest des
+   * Ziel-Webs (nötig für Schreibzugriff auf Subsites). Dadurch griff die
+   * Element-Sicherheit („nur eigene Elemente") bislang NIE — weder bei der
+   * Listen-Erstellung noch beim Admin-Aufräumen. Gibt den HTTP-Status zurück
+   * (-1 bei Exception).
+   */
+  private async _setListSecurity(
+    listBase: string,
+    values: { ReadSecurity?: number; WriteSecurity?: number },
+  ): Promise<number> {
+    try {
+      const digest = await this._webDigest(this._webOf(listBase));
+      const resp = await this.context.spHttpClient.post(
+        listBase, SPHttpClient.configurations.v1,
+        {
+          headers: {
+            'Accept': 'application/json;odata=nometadata',
+            'Content-Type': 'application/json;odata=nometadata',
+            'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE',
+            ...(digest ? { 'X-RequestDigest': digest } : {}),
+          },
+          body: JSON.stringify(values),
+        }
+      );
+      return resp.status;
+    } catch (e) {
+      console.warn('[DEX] _setListSecurity ERROR', listBase, e);
+      return -1;
+    }
+  }
+
   // ==================== DEX_Emails Liste ====================
 
   /**
@@ -1051,24 +1088,8 @@ export class EventService {
       }
     } catch { /* */ }
 
-    // Item-Level Security
-    try {
-      await this.context.spHttpClient.post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`,
-        SPHttpClient.configurations.v1,
-        {
-          headers: {
-            'Accept': 'application/json;odata=verbose',
-            'Content-Type': 'application/json;odata=verbose',
-            'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE',
-          },
-          body: JSON.stringify({
-            '__metadata': { 'type': 'SP.List' },
-            'ReadSecurity': 2, 'WriteSecurity': 2,
-          }),
-        }
-      );
-    } catch { /* */ }
+    // Item-Level Security (v26.87: zuverlässiger nometadata-MERGE)
+    await this._setListSecurity(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`, { ReadSecurity: 2, WriteSecurity: 2 });
   }
 
   /**
@@ -1905,18 +1926,9 @@ export class EventService {
       // v22.2 FIX: war vorher ein nackter POST (kein MERGE) → SharePoint
       // antwortete bei jedem Boot mit HTTP 400 (Console-Rauschen); der Wert
       // wurde nie gesetzt (Default ist ohnehin 1, daher ohne Folgen).
-      await this.context.spHttpClient.post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`,
-        SPHttpClient.configurations.v1,
-        {
-          headers: {
-            'Accept': 'application/json;odata=verbose',
-            'Content-Type': 'application/json;odata=verbose',
-            'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE',
-          },
-          body: JSON.stringify({ '__metadata': { 'type': 'SP.List' }, 'ReadSecurity': 1 }),
-        }
-      );
+      // v26.87: MERGE zusätzlich auf nometadata umgestellt (verbose+__metadata
+      // war weiterhin 400) — jetzt greift es tatsächlich.
+      await this._setListSecurity(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`, { ReadSecurity: 1 });
     } catch (e) {
       console.warn('[DEX] ensureChangeLogPermissions failed:', e);
     }
@@ -5441,27 +5453,10 @@ export class EventService {
    * Item-Level Permissions auf der Teilnehmerliste setzen.
    */
   private async setItemLevelPermissions(subsiteUrl: string): Promise<void> {
-    try {
-      await this.context.spHttpClient.post(
-        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')`,
-        SPHttpClient.configurations.v1,
-        {
-          headers: {
-            'Accept': 'application/json;odata=verbose',
-            'Content-Type': 'application/json;odata=verbose',
-            'IF-MATCH': '*',
-            'X-HTTP-Method': 'MERGE',
-          },
-          body: JSON.stringify({
-            '__metadata': { 'type': 'SP.List' },
-            'ReadSecurity': 2,
-            'WriteSecurity': 2,
-          }),
-        }
-      );
-    } catch {
-      // Item-Level Permissions konnten nicht gesetzt werden
-    }
+    // v26.87: zuverlässiger nometadata-MERGE (verbose+__metadata → HTTP 400
+    // unter SPFx odata-version 3.0; die Teilnehmerlisten waren dadurch bislang
+    // ungeschützt auf 1/1 statt „nur eigene Elemente" 2/2).
+    await this._setListSecurity(`${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')`, { ReadSecurity: 2, WriteSecurity: 2 });
   }
 
   /**
@@ -6411,23 +6406,8 @@ export class EventService {
     // Item-Level-Security: User sehen/ändern nur EIGENE Aufträge (sonst wäre
     // ablesbar, wer wen angemeldet hat). Der Flow läuft als Site-Owner und
     // sieht alle Items („Listen verwalten" hebelt die Item-Beschränkung aus).
-    try {
-      await this.context.spHttpClient.post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`,
-        SPHttpClient.configurations.v1,
-        {
-          headers: {
-            'Accept': 'application/json;odata=verbose',
-            'Content-Type': 'application/json;odata=verbose',
-            'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE',
-          },
-          body: JSON.stringify({
-            '__metadata': { 'type': 'SP.List' },
-            'ReadSecurity': 2, 'WriteSecurity': 2,
-          }),
-        }
-      );
-    } catch { /* best-effort */ }
+    // v26.87: zuverlässiger nometadata-MERGE (verbose+__metadata → HTTP 400).
+    await this._setListSecurity(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`, { ReadSecurity: 2, WriteSecurity: 2 });
   }
 
   /**
@@ -6520,23 +6500,8 @@ export class EventService {
     // bleiben ILS-geschützt auf der Subsite). So sehen beide Seiten ihre
     // relevanten Einträge (App filtert) und können Anforderungen schreiben —
     // alles ohne Flow.
-    try {
-      await this.context.spHttpClient.post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`,
-        SPHttpClient.configurations.v1,
-        {
-          headers: {
-            'Accept': 'application/json;odata=verbose',
-            'Content-Type': 'application/json;odata=verbose',
-            'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE',
-          },
-          body: JSON.stringify({
-            '__metadata': { 'type': 'SP.List' },
-            'ReadSecurity': 1, 'WriteSecurity': 1,
-          }),
-        }
-      );
-    } catch { /* best-effort */ }
+    // v26.87: zuverlässiger nometadata-MERGE (verbose+__metadata → HTTP 400).
+    await this._setListSecurity(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`, { ReadSecurity: 1, WriteSecurity: 1 });
   }
 
   /**
@@ -10637,19 +10602,9 @@ export class EventService {
     const failed: string[] = [];
     for (const listName of targets) {
       try {
-        const resp = await this.context.spHttpClient.post(
-          `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`,
-          SPHttpClient.configurations.v1,
-          {
-            headers: {
-              'Accept': 'application/json;odata=verbose',
-              'Content-Type': 'application/json;odata=verbose',
-              'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE',
-            },
-            body: JSON.stringify({ '__metadata': { 'type': 'SP.List' }, 'ReadSecurity': 2, 'WriteSecurity': 2 }),
-          }
-        );
-        if (resp.ok) fixed.push(listName); else failed.push(listName);
+        // v26.87: zuverlässiger nometadata-MERGE (verbose+__metadata → HTTP 400).
+        const st = await this._setListSecurity(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')`, { ReadSecurity: 2, WriteSecurity: 2 });
+        if (st >= 200 && st < 300) fixed.push(listName); else failed.push(listName);
       } catch { failed.push(listName); }
     }
     return { fixed, failed };
@@ -10761,20 +10716,10 @@ export class EventService {
       console.warn(`[DEX PermFix] ILS FALSCH ${before.rs}/${before.ws} (soll 2/2)`, label, 'raw=', before.raw);
       let fixed = false;
       if (apply) {
-        let mergeStatus = -1;
-        // v26.81: Digest des Ziel-Webs mitschicken (Cross-Web-Schreibzugriff).
-        const digest = await this._webDigest(this._webOf(listBase));
-        try {
-          const m = await this.context.spHttpClient.post(`${listBase}`, SPHttpClient.configurations.v1, {
-            headers: {
-              'Accept': 'application/json;odata=verbose', 'Content-Type': 'application/json;odata=verbose',
-              'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE',
-              ...(digest ? { 'X-RequestDigest': digest } : {}),
-            },
-            body: JSON.stringify({ '__metadata': { 'type': 'SP.List' }, 'ReadSecurity': 2, 'WriteSecurity': 2 }),
-          });
-          mergeStatus = m.status;
-        } catch (e) { console.warn('[DEX PermFix] ILS-MERGE ERROR', label, e); }
+        // v26.87: zuverlässiger nometadata-MERGE (Digest + kein __metadata).
+        // Der bisherige verbose+__metadata-MERGE gab unter SPFx odata-version
+        // 3.0 flächendeckend HTTP 400 zurück → nichts wurde je korrigiert.
+        const mergeStatus = await this._setListSecurity(listBase, { ReadSecurity: 2, WriteSecurity: 2 });
         // ENTSCHEIDEND: Read-back — nur wenn der Server danach WIRKLICH 2/2
         // meldet, gilt es als korrigiert (nicht blind dem MERGE-Status trauen).
         const after = await readIls(listBase, label);
