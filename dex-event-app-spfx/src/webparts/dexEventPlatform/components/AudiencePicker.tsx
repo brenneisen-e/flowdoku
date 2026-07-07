@@ -55,6 +55,9 @@ interface Props {
    *  eingeschobener Inhalt (z.B. die Filterverknüpfung ODER/UND), damit die
    *  Reihenfolge der Sichtbarkeits-Sektion identisch bleibt. */
   middleSlot?: React.ReactNode;
+  /** v26.88: Live-Zusammenfassung („Aktuell eingestellt …"), die in derselben
+   *  Zeile wie „Sichtbarkeit prüfen"/„Personen ausschließen" gerendert wird. */
+  summarySlot?: React.ReactNode;
   /** Hintergrundfarbe der Mailverteiler-Karte (Zebra-Alternation des Wizards). */
   cardBgPrimary?: string;
   /** Hintergrundfarbe der „Sichtbarkeit prüfen"-Zeile (Zebra-Alternation). */
@@ -77,6 +80,7 @@ export default function AudiencePicker({
   onExcludedUsersChange,
   visibilityTabs,
   middleSlot,
+  summarySlot,
   cardBgPrimary = '#fff',
   cardBgSecondary = '#fff',
   stepBadge,
@@ -336,8 +340,8 @@ export default function AudiencePicker({
         </label>
         <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
           {isDe
-            ? <>Wähle <strong>einzelne Personen</strong> oder ganze <strong>Mailverteiler bzw. Security-Gruppen aus Entra</strong> aus. Wenn auch ein Standortfilter gesetzt ist, kannst du unten festlegen, ob beide Bedingungen (UND) oder eine davon (ODER) reichen.</>
-            : <>Pick <strong>individual people</strong> or entire <strong>mailing lists / security groups from Entra</strong>. If you also set a location filter, you can decide below whether both conditions (AND) or either of them (OR) is enough.</>}
+            ? <>Wähle <strong>einzelne Personen</strong> oder ganze <strong>Mailverteiler bzw. Security-Gruppen</strong> aus. Wenn auch ein Standortfilter gesetzt ist, kannst du unten festlegen, ob beide Bedingungen (UND) oder eine davon (ODER) reichen.</>
+            : <>Pick <strong>individual people</strong> or entire <strong>mailing lists / security groups</strong>. If you also set a location filter, you can decide below whether both conditions (AND) or either of them (OR) is enough.</>}
         </p>
         {/* v16.4: Hinweis für den Organizer, dass Mitglieder zum
             Save-Zeitpunkt eingefroren werden und das Event bei DL-
@@ -567,8 +571,12 @@ export default function AudiencePicker({
           ausschließen" erscheint weiterhin nur, sobald ein Standortfilter
           ODER eine Audience gesetzt ist (sonst gibt es nichts auszuschließen). */}
       {(
-        <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '16px 20px', marginBottom: 12, background: cardBgSecondary, borderRadius: 8, border: '1px solid var(--dex-gray-100)', flexWrap: 'wrap' }}>
-          <button
+        <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: cardBgSecondary, borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
+          {/* v26.88: „Aktuell eingestellt …"-Zusammenfassung steht jetzt in
+              derselben Zeile wie „Sichtbarkeit prüfen"/„Personen ausschließen". */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            {summarySlot ? <div style={{ flex: '1 1 260px', minWidth: 0 }}>{summarySlot}</div> : null}
+            <button
             className="btn btn-outline"
             style={{ fontSize: '0.8rem', padding: '6px 14px', whiteSpace: 'nowrap' }}
             onClick={() => {
@@ -663,7 +671,8 @@ export default function AudiencePicker({
             )}
           </button>
           )}
-          <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: 0, lineHeight: 1.5, flex: 1, minWidth: 200 }}>
+          </div>
+          <p style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', margin: '10px 0 0', lineHeight: 1.5 }}>
             {isDe
               ? 'Öffnet eine Vorschau, mit der du anhand einer Testperson verifizieren kannst, ob das Event wirklich für den gewünschten Personenkreis sichtbar ist — ohne Filter ist es für alle sichtbar.'
               : 'Opens a preview where you can use a test person to verify whether the event is really visible to the intended audience — with no filter it is visible to everyone.'}

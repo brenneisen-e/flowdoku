@@ -1567,6 +1567,9 @@ export default function AdminPage(): React.ReactElement {
   // des Massenmail-Editors vorgeladen (für Vorschau + Versand).
   const [massmailHero, setMassmailHero] = React.useState<'logo' | 'event'>('logo');
   const [massmailEventPhotoB64, setMassmailEventPhotoB64] = React.useState<string>('');
+  // v26.88: dieselbe „Bild im Mail-Kopf"-Wahl für die EINLADUNGSMAIL.
+  const [inviteHero, setInviteHero] = React.useState<'logo' | 'event'>('logo');
+  const [inviteEventPhotoB64, setInviteEventPhotoB64] = React.useState<string>('');
   // v11.40: Einladungsmail-Modal — Mail mit Anmelde-Link an Organizer (zum
   // Weiterleiten) oder direkt an den hinterlegten Mailverteiler des Events.
   const [showInviteModal, setShowInviteModal] = React.useState(false);
@@ -4006,6 +4009,22 @@ export default function AdminPage(): React.ReactElement {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showEmailModal, selectedEvent && selectedEvent.id]);
+  // v26.88: Event-Foto AUCH für die Einladungsmail vorladen (Bild-im-Kopf-Wahl),
+  // sobald das Einladungs-Fenster geöffnet wird. Beim Event-Wechsel zurück auf
+  // „DEX-Logo".
+  React.useEffect(() => {
+    if (!showInviteModal || !selectedEvent) return;
+    setInviteHero('logo');
+    setInviteEventPhotoB64('');
+    const url = selectedEvent.imageUrl;
+    if (!url) return;
+    let cancelled = false;
+    getCachedImage(url)
+      .then(b64 => { if (!cancelled && b64 && b64.indexOf('data:') === 0) setInviteEventPhotoB64(b64); })
+      .catch(() => { /* Event-Foto nicht ladbar → Option bleibt deaktiviert */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showInviteModal, selectedEvent && selectedEvent.id]);
   // v26.78: Ersetzt den {{ORB_URL}}-Platzhalter im gewickelten Mail-HTML durch
   // das gewählte Kopf-Bild. Bei „Event-Foto" (+ geladenem Foto) wird das
   // Event-Bild als Base64 fest eingebacken; sonst bleibt {{ORB_URL}} erhalten,
@@ -4014,6 +4033,11 @@ export default function AdminPage(): React.ReactElement {
   const applyMassmailHero = (wrappedHtml: string): string =>
     (massmailHero === 'event' && massmailEventPhotoB64)
       ? wrappedHtml.replace(/\{\{ORB_URL\}\}/g, massmailEventPhotoB64)
+      : wrappedHtml;
+  // v26.88: dito für die Einladungsmail.
+  const applyInviteHero = (wrappedHtml: string): string =>
+    (inviteHero === 'event' && inviteEventPhotoB64)
+      ? wrappedHtml.replace(/\{\{ORB_URL\}\}/g, inviteEventPhotoB64)
       : wrappedHtml;
   // Testmail mit dem aktuellen Stand an die Organizer (zur Kontrolle vor dem
   // echten Massenversand). Geht NICHT an die Teilnehmer.
@@ -13753,7 +13777,7 @@ export default function AdminPage(): React.ReactElement {
           const resolvedSubheading = inviteSubheading && inviteSubheading.trim()
             ? replacePlaceholders(inviteSubheading, previewVars)
             : `Event ${selectedEvent.title}`;
-          const fullBody = wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody);
+          const fullBody = applyInviteHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody));
           const allEmails = targetEmails.join(';');
           const ccString = ccEmails.join(';');
           const recipientName = inviteTarget === 'organizer' ? myDisplayName : (isDe ? 'Mailverteiler' : 'Mail distribution');
@@ -13872,6 +13896,43 @@ export default function AdminPage(): React.ReactElement {
                 </div>
               </div>
             )}
+            {/* v26.88: Bild im Mail-Kopf — Standard (DEX-Logo/Orb) oder Event-Foto.
+                „Event-Foto" nur wählbar, wenn das Event ein Bild hat (dann als
+                Base64 fest eingebacken; sonst bleibt der ORB-Platzhalter für den
+                Flow). Spiegelt die Massenmail-Option. */}
+            <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px dashed var(--dex-gray-200)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--dex-gray-600)' }}>{isDe ? 'Bild im Mail-Kopf:' : 'Header image:'}</span>
+              <div style={{ display: 'inline-flex', borderRadius: 8, overflow: 'hidden', border: '1px solid var(--dex-gray-300)' }}>
+                {([
+                  { key: 'logo' as const, label: isDe ? 'DEX-Logo' : 'DEX logo', enabled: true },
+                  { key: 'event' as const, label: isDe ? 'Event-Foto' : 'Event photo', enabled: !!inviteEventPhotoB64 },
+                ]).map(opt => {
+                  const active = inviteHero === opt.key;
+                  return (
+                    <button
+                      key={opt.key}
+                      type="button"
+                      disabled={inviteSending || !opt.enabled}
+                      onClick={() => opt.enabled && setInviteHero(opt.key)}
+                      title={!opt.enabled ? (isDe ? 'Dieses Event hat kein Bild hinterlegt.' : 'This event has no image set.') : undefined}
+                      style={{
+                        padding: '6px 14px', fontSize: '0.78rem', border: 'none', cursor: (opt.enabled && !inviteSending) ? 'pointer' : 'not-allowed',
+                        background: active ? 'var(--dex-green)' : 'transparent',
+                        color: active ? '#fff' : (opt.enabled ? 'var(--dex-gray-600)' : 'var(--dex-gray-400)'),
+                        fontWeight: active ? 700 : 500, opacity: opt.enabled ? 1 : 0.6,
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
+                {inviteHero === 'event'
+                  ? (isDe ? 'Das Event-Foto erscheint im Mail-Kopf.' : 'The event photo is shown in the header.')
+                  : (isDe ? 'Standard-Bild (DEX-Logo bzw. dein Mail-Logo).' : 'Default image (DEX logo or your mail logo).')}
+              </span>
+            </div>
             {/* v22.5/v22.6: Entwurf speichern (Button) + Auto-Speichern-Hinweis
                 + Zurücksetzen. */}
             <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px dashed var(--dex-gray-200)' }}>
@@ -13936,7 +13997,7 @@ export default function AdminPage(): React.ReactElement {
               { key: '{{Link}}', label: isDe ? 'Anmelde-Link' : 'Registration link' },
               { key: '{{Organizer}}', label: 'Organizer' },
             ]}
-            imageBase64={customLogo}
+            imageBase64={(inviteHero === 'event' && inviteEventPhotoB64) ? inviteEventPhotoB64 : customLogo}
             headerExtra={headerExtra}
             extraAction={{
               label: inviteSending
