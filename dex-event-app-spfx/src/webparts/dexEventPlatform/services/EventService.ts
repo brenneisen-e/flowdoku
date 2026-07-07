@@ -10669,7 +10669,7 @@ export class EventService {
         }
         addFinding({
           scope: label, kind: 'stray-write', principal: email || a.title,
-          detail: `${(a.roleNames.filter(Boolean).join(', ') || 'Schreibzugriff')} — ${apply ? (fixed ? 'entfernt (Leserecht über Gruppe bleibt)' : 'Entfernen fehlgeschlagen') : 'würde entfernt (Leserecht bliebe)'}`,
+          detail: `${(a.roleNames.filter(Boolean).join(', ') || 'Schreibzugriff')} — ${apply ? (fixed ? 'Schreibrecht entfernt (Lesen bleibt, sofern Gruppenmitglied)' : 'Entfernen fehlgeschlagen') : 'würde entfernt (Lesen bleibt über Gruppe)'}`,
           fixed,
         });
       }
@@ -10768,12 +10768,24 @@ export class EventService {
    *  voll-qualifizierte API-URL bis zum Securable (…/_api/web bzw.
    *  …/_api/web/lists/getbytitle('X')). */
   private async _readRoleAssignments(scopeBase: string): Promise<Array<{ pid: number; type: number; title: string; login: string; email: string; roleIds: number[]; roleNames: string[] }>> {
-    const url = `${scopeBase}/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Title,Member/LoginName,Member/PrincipalType,Member/Email,RoleDefinitionBindings/Id,RoleDefinitionBindings/Name`;
-    const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } });
-    if (!resp.ok) throw new Error(`roleassignments ${resp.status}`);
-    const d = await resp.json();
+    // $top hoch setzen: ein über-freigegebenes Securable (genau der Fall, den
+    // wir suchen) kann viele Einzel-Zuweisungen haben — ohne $top würde OData
+    // bei 100 abschneiden und Über-Freigaben stillschweigend übersehen.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const rows: any[] = d.value || d.d?.results || [];
+    const rows: any[] = [];
+    let url: string | null = `${scopeBase}/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Title,Member/LoginName,Member/PrincipalType,Member/Email,RoleDefinitionBindings/Id,RoleDefinitionBindings/Name&$top=2000`;
+    let guard = 0;
+    while (url && guard < 20) {
+      guard++;
+      const resp: SPHttpClientResponse = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } });
+      if (!resp.ok) { if (guard === 1) throw new Error(`roleassignments ${resp.status}`); break; }
+      const d = await resp.json();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const page: any[] = d.value || d.d?.results || [];
+      for (const p of page) rows.push(p);
+      // Falls SharePoint doch paginiert: nextLink verfolgen (nometadata-Feldname).
+      url = d['odata.nextLink'] || d['@odata.nextLink'] || null;
+    }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return rows.map((ra: any) => {
       const m = ra.Member || {};

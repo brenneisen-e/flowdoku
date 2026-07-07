@@ -4056,6 +4056,15 @@ export default function AdminPage(): React.ReactElement {
   // den Events) und ruft den Service.
   const runPermCleanup = async (apply: boolean): Promise<void> => {
     if (!eventServiceRef) return;
+    // Sicherheits-Guard: Ohne geladene DEX_Roles wäre die „erlaubt"-Liste leer
+    // → alle Admins/Organizer würden fälschlich als Über-Freigabe erscheinen
+    // (und beim Korrigieren entfernt). Lieber abbrechen und neu laden lassen.
+    if (!roles || roles.length === 0) {
+      showAlert(isDe
+        ? 'Die Rollenliste ist noch nicht geladen. Bitte kurz warten oder die Seite neu laden und erneut versuchen — ohne geladene Rollen kann die Aufräumung nicht sicher laufen.'
+        : 'The role list is not loaded yet. Please wait a moment or reload the page and try again — the cleanup cannot run safely without the roles.', { variant: 'error' });
+      return;
+    }
     const adminEmails = (roles || []).filter(r => r.role === 'Admin' || r.role === 'IT-Admin').map(r => r.userEmail).filter(Boolean);
     // Sicherheitsnetz: JEDE in DEX_Roles gepflegte Person gilt als sanktioniert
     // (Admins, Organizer, Power User) und wird NIE als Über-Freigabe entfernt.
