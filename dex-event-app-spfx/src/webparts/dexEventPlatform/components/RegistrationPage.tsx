@@ -987,7 +987,11 @@ export default function RegistrationPage(): React.ReactElement {
     if (f.ccOnEmails) return true;
     return /assist|assistenz|assistenten?/i.test(`${f.label || ''} ${f.labelEn || ''}`);
   });
-  const canDelegateAssistant = (isAdmin || isPartnerOrDirector) && !registerForOther && !isTeamMode && !pendingJoinTeam && !hasAssistantCcField;
+  // v27.8: NUR noch Partner/Director — die Abfrage „Für Partner & Directoren"
+  // erschien vorher auch jedem Admin bei der eigenen Anmeldung, obwohl ein
+  // Admin nicht zwangsläufig P/D ist. Admins, die zugleich P/D sind, matchen
+  // weiter über isPartnerOrDirector.
+  const canDelegateAssistant = isPartnerOrDirector && !registerForOther && !isTeamMode && !pendingJoinTeam && !hasAssistantCcField;
   const parsedDelegateAssist = (() => {
     const m = (delegateAssistValue || '').match(/^(.+?)\s*<([^>]+@[^>]+)>\s*$/);
     return m ? { name: m[1].trim(), email: m[2].trim() } : null;
