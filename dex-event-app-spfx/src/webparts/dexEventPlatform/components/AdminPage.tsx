@@ -31,7 +31,7 @@ import { useIsMobile } from '../utils/useIsMobile';
 // v20.0 (Audit): xlsx + qrcode werden nicht mehr statisch importiert, sondern
 // erst beim tatsächlichen Gebrauch (Export-Klick / QR-Vorschau) als eigener
 // Chunk nachgeladen — spart ~1 MB im Haupt-Bundle.
-import { EventService, EventCommRow } from '../services/EventService';
+import { EventService, EventCommRow, PermCleanupReport } from '../services/EventService';
 import { qrCodeEmail, qrEmailDefaults, buildQrBlockHtml, QrEmailOverride, cancellationEmail, promotionEmail, wrapTemplate, replacePlaceholders, buildEmailFromTemplate, getCachedLogoBase64, getCachedOrbBase64, injectIntoEmailContent, externalInvitationEmail } from '../services/EmailTemplates';
 // v26.47: Externe Anmeldung — Einladung als .eml-Entwurf (X-Unsent) zum
 // Selbst-Versenden durch die anmeldende Person (App kann keine externen
@@ -901,7 +901,7 @@ export default function AdminPage(): React.ReactElement {
     } finally { setIsRefreshing(false); }
   };
   const { currentUser } = useCurrentUser();
-  const { isAdmin, siteUrl, currentUserRole, searchUser, searchUsers, isImpersonating } = useRoles();
+  const { isAdmin, siteUrl, currentUserRole, searchUser, searchUsers, isImpersonating, roles } = useRoles();
   const { t, locale } = useLanguage();
   const isDe = locale === 'de';
   // v20.4: App-Modals statt nativer Browser-Dialoge.
@@ -1531,6 +1531,11 @@ export default function AdminPage(): React.ReactElement {
     itemDone: number; itemTotal: number;
     summary: string[] | null;
   } | null>(null);
+  // v26.79: Berechtigungen aufräumen — Modal mit Prüf-/Korrektur-Ablauf.
+  const [permCleanupOpen, setPermCleanupOpen] = React.useState(false);
+  const [permCleanupBusy, setPermCleanupBusy] = React.useState(false);
+  const [permCleanupProgress, setPermCleanupProgress] = React.useState<{ msg: string; done: number; total: number } | null>(null);
+  const [permCleanupReport, setPermCleanupReport] = React.useState<PermCleanupReport | null>(null);
   // Email Compose Modal
   const [showEmailModal, setShowEmailModal] = React.useState(false);
   // v17.10: Massmail-Target-Picker. Erst Zielgruppe wählen, dann den
@@ -4042,6 +4047,54 @@ export default function AdminPage(): React.ReactElement {
       setMassmailTestMsg((isDe ? 'Fehler beim Test-Versand: ' : 'Error during test send: ') + (err instanceof Error ? err.message : String(err)));
     }
     setMassmailTesting(false);
+  };
+
+  // v26.79: Berechtigungen aufräumen — Prüf-/Korrektur-Lauf über die gesamte
+  // Site-Collection. apply=false = Dry-Run (Bericht ohne Änderung), apply=true =
+  // Über-Freigaben entfernen + Element-Sicherheit korrigieren. Baut den
+  // Rollen-Kontext (Admins/Organizer aus DEX_Roles, Organizer je Subsite aus
+  // den Events) und ruft den Service.
+  const runPermCleanup = async (apply: boolean): Promise<void> => {
+    if (!eventServiceRef) return;
+    const adminEmails = (roles || []).filter(r => r.role === 'Admin' || r.role === 'IT-Admin').map(r => r.userEmail).filter(Boolean);
+    // Sicherheitsnetz: JEDE in DEX_Roles gepflegte Person gilt als sanktioniert
+    // (Admins, Organizer, Power User) und wird NIE als Über-Freigabe entfernt.
+    // Reguläre End-User stehen nicht in DEX_Roles — eine direkte Schreib-Freigabe
+    // an sie ist damit eindeutig „manuell zu viel". Der Service ergänzt pro
+    // Subsite zusätzlich die konkreten Event-Organizer.
+    const organizerEmails = (roles || []).map(r => r.userEmail).filter(Boolean);
+    // Organizer je Subsite (Haupt- + Co-Organizer, dedupliziert pro Subsite).
+    // Schlüssel: absoluter Subsite-URL UND server-relativer Pfad (ohne
+    // Trailing-Slash), damit der Service beide Formen matcht.
+    const subsiteOrganizers: Record<string, string> = {};
+    for (const ev of allEvents) {
+      const su = (ev.subsiteUrl || '').trim();
+      if (!su) continue;
+      const orgs = [...(ev.organizerEmails || []), ...(ev.coOrganizerEmails || [])].map(e => (e || '').trim()).filter(Boolean);
+      if (orgs.length === 0) continue;
+      const keys: string[] = [su.toLowerCase().replace(/\/+$/, '')];
+      try { keys.push(new URL(su).pathname.toLowerCase().replace(/\/+$/, '')); } catch { /* kein gültiger URL */ }
+      for (const k of keys) {
+        const existing = subsiteOrganizers[k] ? subsiteOrganizers[k].split(';') : [];
+        subsiteOrganizers[k] = Array.from(new Set([...existing, ...orgs])).join(';');
+      }
+    }
+    setPermCleanupBusy(true);
+    setPermCleanupProgress({ msg: isDe ? 'Wird gestartet…' : 'Starting…', done: 0, total: 1 });
+    if (apply) setPermCleanupReport(null);
+    try {
+      const report = await eventServiceRef.auditOrCleanupPermissions(
+        apply,
+        { adminEmails, organizerEmails, subsiteOrganizers, selfEmail: currentUser.email || '' },
+        (msg, done, total) => setPermCleanupProgress({ msg, done, total }),
+      );
+      setPermCleanupReport(report);
+    } catch (err) {
+      showAlert((isDe ? 'Fehler bei der Berechtigungs-Prüfung: ' : 'Error during the permission check: ') + (err instanceof Error ? err.message : String(err)), { variant: 'error' });
+    } finally {
+      setPermCleanupBusy(false);
+      setPermCleanupProgress(null);
+    }
   };
 
   // v22.6: QR-Versand-Aktionen als benannte Funktionen (vorher inline im Modal) —
@@ -7679,6 +7732,23 @@ export default function AdminPage(): React.ReactElement {
                     setIsRepairingAccess(false);
                   }
                 }}
+              />
+            )}
+
+            {/* v26.79: Berechtigungen aufräumen (ganze Site-Collection) — Admin only.
+                Öffnet ein Modal mit Prüf- (Dry-Run) und Korrektur-Ablauf. Findet
+                manuelle Einzel-Freigaben mit Schreib-/Vollzugriff außerhalb des
+                Rollen-Konzepts und entfernt sie (Leserechte bleiben). */}
+            {isAdmin && (
+              <ActionTile
+                icon={<Wrench size={18} />}
+                category="maintenance"
+                title={isDe ? 'Berechtigungen aufräumen (ganzer SharePoint)' : 'Clean up permissions (whole SharePoint)'}
+                desc={isDe
+                  ? 'Prüft die gesamte Site-Collection (Hauptseite, alle Listen/Bibliotheken und alle Event-Subsites) auf manuelle Einzel-Freigaben, die einzelnen Personen mehr Rechte geben als im Berechtigungskonzept vorgesehen — z.B. Schreib- oder Vollzugriff auf ganze Listen. Erst kommt ein Bericht (ohne Änderung); danach kannst du die Über-Freigaben mit einem Klick entfernen. Leserechte bleiben immer erhalten (auch für internationale Kolleg:innen); Schreiben ist danach nur noch über die Gruppen und für Admins/Organizer möglich.'
+                  : 'Scans the whole site collection (main site, all lists/libraries and every event subsite) for manual individual grants that give single people more rights than the permission concept allows — e.g. write or full control on entire lists. First you get a report (no change); then you can remove the over-grants with one click. Read access always stays (including for international colleagues); writing is afterwards only possible via the groups and for admins/organizers.'}
+                badge="admin"
+                onClick={() => { setPermCleanupReport(null); setPermCleanupOpen(true); }}
               />
             )}
 
@@ -11776,6 +11846,139 @@ export default function AdminPage(): React.ReactElement {
                 </button>
               </div>
             </>
+          )}
+        </Modal>
+      )}
+
+      {/* v26.79: Berechtigungen aufräumen — Prüf-/Korrektur-Modal. */}
+      {permCleanupOpen && (
+        <Modal
+          open={true}
+          onClose={() => { if (!permCleanupBusy) { setPermCleanupOpen(false); setPermCleanupReport(null); } }}
+          dismissable={!permCleanupBusy}
+          maxWidth={720}
+          padding={24}
+          ariaLabel={isDe ? 'Berechtigungen aufräumen' : 'Clean up permissions'}
+        >
+          <h3 style={{ margin: '0 0 6px', fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Wrench size={18} /> {isDe ? 'Berechtigungen aufräumen' : 'Clean up permissions'}
+          </h3>
+          <p style={{ margin: '0 0 14px', fontSize: '0.85rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+            {isDe
+              ? 'Der ganze SharePoint (Hauptseite, alle Listen/Bibliotheken und alle Event-Subsites) wird nach manuellen Einzel-Freigaben durchsucht, die einer Person mehr als Leserechte geben, obwohl sie laut Rollen-Konzept kein Admin/Organizer ist. Solche Über-Freigaben lassen sich hier entfernen — Leserechte und alle Gruppen-Berechtigungen bleiben unangetastet.'
+              : 'The whole SharePoint (main site, all lists/libraries and every event subsite) is scanned for manual individual grants that give a person more than read access even though they are not an admin/organizer per the role concept. Such over-grants can be removed here — read access and all group permissions stay untouched.'}
+          </p>
+
+          {permCleanupBusy && permCleanupProgress && (() => {
+            const { msg, done, total } = permCleanupProgress;
+            const pct = Math.min(100, Math.round((done / Math.max(1, total)) * 100));
+            return (
+              <div style={{ marginBottom: 12 }}>
+                <p style={{ margin: '0 0 6px', fontSize: '0.85rem', color: 'var(--dex-gray-700)' }}>{msg}</p>
+                <div style={{ background: 'var(--dex-gray-100, #f0f0f0)', borderRadius: 999, height: 10, overflow: 'hidden' }}>
+                  <div style={{ width: `${pct}%`, height: '100%', background: 'var(--dex-green, #86bc25)', borderRadius: 999, transition: 'width 0.2s ease' }} />
+                </div>
+                <p style={{ margin: '8px 0 0', fontSize: '0.76rem', color: 'var(--dex-gray-400)' }}>
+                  {isDe ? 'Bitte das Fenster geöffnet lassen, bis der Lauf abgeschlossen ist.' : 'Please keep this window open until the run completes.'}
+                </p>
+              </div>
+            );
+          })()}
+
+          {!permCleanupBusy && permCleanupReport && (() => {
+            const r = permCleanupReport;
+            const hasIssues = r.strayWriteFound > 0 || r.ilsIssues > 0;
+            const strayFindings = r.findings.filter(f => f.kind === 'stray-write');
+            const ilsFindings = r.findings.filter(f => f.kind === 'ils');
+            const errFindings = r.findings.filter(f => f.kind === 'error');
+            const SHOW = 200;
+            return (
+              <div>
+                <div style={{ padding: 12, borderRadius: 'var(--dex-radius)', background: hasIssues ? 'rgba(237,139,0,0.08)' : 'rgba(134,188,37,0.10)', border: `1px solid ${hasIssues ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-green, #86bc25)'}`, marginBottom: 12, fontSize: '0.85rem', color: 'var(--dex-gray-700)', lineHeight: 1.6 }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                    {r.apply
+                      ? (isDe ? 'Korrektur abgeschlossen' : 'Cleanup complete')
+                      : (hasIssues ? (isDe ? 'Prüfung abgeschlossen — Abweichungen gefunden' : 'Check complete — deviations found') : (isDe ? 'Prüfung abgeschlossen — alles sauber' : 'Check complete — all clean'))}
+                  </div>
+                  {isDe ? (
+                    <>Geprüft: {r.websScanned} Webs, {r.listsScanned} Listen mit eigenen Berechtigungen.<br />
+                    Über-Freigaben (Schreib-/Vollzugriff einzelner Personen): <strong>{r.strayWriteFound}</strong>{r.apply ? ` — davon ${r.strayWriteRemoved} entfernt` : ''}.<br />
+                    Element-Sicherheit falsch (sensible Listen): <strong>{r.ilsIssues}</strong>{r.apply ? ` — davon ${r.ilsFixed} korrigiert` : ''}.
+                    {r.errors > 0 ? <><br />Nicht lesbar/Fehler: {r.errors}.</> : null}</>
+                  ) : (
+                    <>Scanned: {r.websScanned} webs, {r.listsScanned} lists with unique permissions.<br />
+                    Over-grants (individual write/full control): <strong>{r.strayWriteFound}</strong>{r.apply ? ` — ${r.strayWriteRemoved} removed` : ''}.<br />
+                    Item-security wrong (sensitive lists): <strong>{r.ilsIssues}</strong>{r.apply ? ` — ${r.ilsFixed} fixed` : ''}.
+                    {r.errors > 0 ? <><br />Unreadable/errors: {r.errors}.</> : null}</>
+                  )}
+                </div>
+
+                {(strayFindings.length > 0 || ilsFindings.length > 0 || errFindings.length > 0) && (
+                  <div style={{ maxHeight: 300, overflowY: 'auto', border: '1px solid var(--dex-gray-200)', borderRadius: 'var(--dex-radius)', marginBottom: 14 }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+                      <thead>
+                        <tr style={{ position: 'sticky', top: 0, background: 'var(--dex-gray-50, #fafafa)', textAlign: 'left' }}>
+                          <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--dex-gray-200)' }}>{isDe ? 'Ort' : 'Location'}</th>
+                          <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--dex-gray-200)' }}>{isDe ? 'Person' : 'Person'}</th>
+                          <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--dex-gray-200)' }}>{isDe ? 'Befund' : 'Finding'}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {[...strayFindings, ...ilsFindings, ...errFindings].slice(0, SHOW).map((f, i) => (
+                          <tr key={i} style={{ borderBottom: '1px solid var(--dex-gray-100)' }}>
+                            <td style={{ padding: '6px 8px', color: 'var(--dex-gray-600)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }} title={f.scope}>{f.scope}</td>
+                            <td style={{ padding: '6px 8px', color: 'var(--dex-gray-700)', wordBreak: 'break-all' }}>{f.principal || '—'}</td>
+                            <td style={{ padding: '6px 8px', color: f.kind === 'error' ? 'var(--dex-red, #da291c)' : (f.fixed ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-orange-dark, #b35a00)') }}>{f.detail}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {r.findings.length > SHOW && (
+                      <div style={{ padding: '6px 8px', fontSize: '0.74rem', color: 'var(--dex-gray-500)' }}>
+                        {isDe ? `… und ${r.findings.length - SHOW} weitere (gekürzt).` : `… and ${r.findings.length - SHOW} more (truncated).`}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <button className="btn btn-secondary" onClick={() => { runPermCleanup(false).catch(() => { /* */ }); }} style={{ fontSize: '0.85rem', padding: '9px 16px' }}>
+                    {isDe ? 'Erneut prüfen' : 'Re-check'}
+                  </button>
+                  {!r.apply && hasIssues && (
+                    <button
+                      className="btn btn-primary"
+                      style={{ fontSize: '0.85rem', padding: '9px 18px' }}
+                      onClick={() => {
+                        (async () => {
+                          const ok = await confirmDialog(isDe
+                            ? `${r.strayWriteFound} Über-Freigabe(n) entfernen und ${r.ilsIssues} Element-Sicherheit(en) korrigieren?\n\nLeserechte und Gruppen-Berechtigungen bleiben erhalten. Der Vorgang kann je nach Größe einige Minuten dauern.`
+                            : `Remove ${r.strayWriteFound} over-grant(s) and fix ${r.ilsIssues} item-security setting(s)?\n\nRead access and group permissions are preserved. Depending on size this can take a few minutes.`,
+                            { confirmLabel: isDe ? 'Jetzt korrigieren' : 'Fix now' });
+                          if (ok) await runPermCleanup(true);
+                        })().catch(() => { /* */ });
+                      }}
+                    >
+                      {isDe ? 'Jetzt korrigieren' : 'Fix now'}
+                    </button>
+                  )}
+                  <button className="btn btn-outline" onClick={() => { setPermCleanupOpen(false); setPermCleanupReport(null); }} style={{ fontSize: '0.85rem', padding: '9px 16px' }}>
+                    {isDe ? 'Schließen' : 'Close'}
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {!permCleanupBusy && !permCleanupReport && (
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button className="btn btn-outline" onClick={() => setPermCleanupOpen(false)} style={{ fontSize: '0.85rem', padding: '9px 16px' }}>
+                {isDe ? 'Abbrechen' : 'Cancel'}
+              </button>
+              <button className="btn btn-primary" onClick={() => { runPermCleanup(false).catch(() => { /* */ }); }} style={{ fontSize: '0.85rem', padding: '9px 18px' }}>
+                {isDe ? 'Prüfen (ohne Änderung)' : 'Check (no changes)'}
+              </button>
+            </div>
           )}
         </Modal>
       )}

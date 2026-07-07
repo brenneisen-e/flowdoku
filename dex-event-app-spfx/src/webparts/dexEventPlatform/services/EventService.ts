@@ -733,6 +733,34 @@ export interface SPParticipant {
   EventOnWaitlist: string; // Kommaseparierte EventNumbers
 }
 
+// v26.79: Ergebnis der Berechtigungs-Aufräumung (Audit / Cleanup über die
+// gesamte Site-Collection). Jede „finding"-Zeile ist eine Abweichung vom
+// Soll-Konzept oder eine durchgeführte Korrektur.
+export interface PermCleanupFinding {
+  /** Menschliche Beschreibung des betroffenen Ortes, z.B. „Liste DEX_Events" oder „Subsite B2Run Köln – Web". */
+  scope: string;
+  /** Art des Befunds. */
+  kind: 'stray-write' | 'ils' | 'inheritance' | 'error';
+  /** Betroffene Person (E-Mail/Anzeigename), falls es um eine Einzel-Freigabe geht. */
+  principal?: string;
+  /** Detailtext (welches Recht, was korrigiert wird/wurde). */
+  detail: string;
+  /** Im Apply-Lauf: wurde die Korrektur durchgeführt? (im Dry-Run immer false) */
+  fixed: boolean;
+}
+
+export interface PermCleanupReport {
+  apply: boolean;
+  websScanned: number;
+  listsScanned: number;
+  strayWriteFound: number;
+  strayWriteRemoved: number;
+  ilsIssues: number;
+  ilsFixed: number;
+  errors: number;
+  findings: PermCleanupFinding[];
+}
+
 export class EventService {
   private context: WebPartContext;
   public siteUrl: string;
@@ -10565,6 +10593,253 @@ export class EventService {
       } catch { failed.push(listName); }
     }
     return { fixed, failed };
+  }
+
+  // ==================== v26.79: Berechtigungen aufräumen ====================
+  // Scannt die GESAMTE Site-Collection (Haupt-Web + alle Listen/Bibliotheken +
+  // alle Subsites + deren Listen) und findet EINZEL-Freigaben (direkte
+  // Nutzer-Berechtigungen), die über das Rollen-Konzept hinaus SCHREIB-/Vollzugriff
+  // geben. Soll-Konzept: Schreiben nur über die Gruppen (Owners, Members,
+  // Visitors/DEALL) plus die im Rollen-Konzept vorgesehenen Einzelpersonen
+  // (Admins global; Organizer auf DEX_Events/Web-Root + ihren eigenen
+  // Event-Subsites). Alle anderen direkten Nutzer-Schreibrechte gelten als
+  // „manuelle Über-Freigabe" und werden entfernt — LESERECHTE bleiben erhalten
+  // (die betroffene Person liest weiterhin über die Visitors-/DEALL-Gruppe;
+  // internationale Leser sind bewusst OK). Gruppen werden NIE angefasst.
+  //
+  // Zusätzlich wird die Element-Sicherheit (ReadSecurity/WriteSecurity=2 „nur
+  // eigene Elemente") auf den sensiblen Listen (Teilnehmer, DEX_Emails,
+  // DEX_Outlook, DEX_IDReorder) geprüft und korrigiert.
+  //
+  // apply=false → reiner Prüf-/Dry-Run-Bericht (ändert NICHTS).
+  // apply=true  → entfernt die Über-Freigaben und korrigiert die Element-Sicherheit.
+  public async auditOrCleanupPermissions(
+    apply: boolean,
+    ctx: { adminEmails: string[]; organizerEmails: string[]; subsiteOrganizers: Record<string, string>; selfEmail: string },
+    onProgress?: (msg: string, done: number, total: number) => void
+  ): Promise<PermCleanupReport> {
+    const report: PermCleanupReport = {
+      apply, websScanned: 0, listsScanned: 0, strayWriteFound: 0, strayWriteRemoved: 0,
+      ilsIssues: 0, ilsFixed: 0, errors: 0, findings: [],
+    };
+    const MAX_FINDINGS = 800;
+    const addFinding = (f: PermCleanupFinding): void => { if (report.findings.length < MAX_FINDINGS) report.findings.push(f); };
+    const norm = (e: string): string => (e || '').trim().toLowerCase();
+    const globalAllowed = new Set([...(ctx.adminEmails || []), ...(ctx.organizerEmails || []), ctx.selfEmail].map(norm).filter(Boolean));
+    // 1073741825 = Limited Access (System-verwaltet), 1073741826 = Read → beide
+    // gelten NICHT als „Schreibrecht". Alles andere (Contribute/Edit/Design/Full
+    // Control + Custom-Level) zählt als elevated.
+    const isElevated = (ids: number[]): boolean => ids.some(id => id !== 1073741825 && id !== 1073741826);
+    const extractEmail = (login: string): string => {
+      const l = login || '';
+      const m = /\|membership\|([^|]+)$/i.exec(l) || /\|([^|]+@[^|]+)$/.exec(l);
+      return m ? m[1] : '';
+    };
+    const isSystemPrincipal = (email: string, login: string): boolean => {
+      const l = (login || '').toLowerCase();
+      if (!email) return true; // ohne E-Mail nicht sicher klassifizierbar → nicht anfassen
+      if (email.indexOf('@sharepoint') >= 0) return true;
+      if (l.indexOf('app@sharepoint') >= 0 || l.indexOf('|spo-grid') >= 0 || l.indexOf('c:0(.s|true') >= 0) return true;
+      return false;
+    };
+
+    const processSecurable = async (scopeBase: string, label: string, allowed: Set<string>): Promise<void> => {
+      let assigns: Array<{ pid: number; type: number; title: string; login: string; email: string; roleIds: number[]; roleNames: string[] }>;
+      try {
+        assigns = await this._readRoleAssignments(scopeBase);
+      } catch {
+        report.errors++;
+        addFinding({ scope: label, kind: 'error', detail: 'Berechtigungen konnten nicht gelesen werden.', fixed: false });
+        return;
+      }
+      for (const a of assigns) {
+        if (a.type !== 1) continue; // nur einzelne User (Gruppen NIE anfassen)
+        const email = norm(a.email || extractEmail(a.login));
+        if (isSystemPrincipal(email, a.login)) continue;
+        if (allowed.has(email)) continue; // Admin/Organizer/Ich → legitim
+        if (!isElevated(a.roleIds)) continue; // reine Leseberechtigung → OK (int. Leser)
+        report.strayWriteFound++;
+        let fixed = false;
+        if (apply) {
+          try {
+            const r = await this._deletePrincipalAssignment(scopeBase, a.pid);
+            fixed = r.ok || r.status === 200 || r.status === 204;
+            if (fixed) report.strayWriteRemoved++; else report.errors++;
+          } catch { report.errors++; }
+        }
+        addFinding({
+          scope: label, kind: 'stray-write', principal: email || a.title,
+          detail: `${(a.roleNames.filter(Boolean).join(', ') || 'Schreibzugriff')} — ${apply ? (fixed ? 'entfernt (Leserecht über Gruppe bleibt)' : 'Entfernen fehlgeschlagen') : 'würde entfernt (Leserecht bliebe)'}`,
+          fixed,
+        });
+      }
+    };
+
+    const checkIls = async (listBase: string, label: string): Promise<void> => {
+      try {
+        const resp = await this.context.spHttpClient.get(
+          `${listBase}?$select=ReadSecurity,WriteSecurity`, SPHttpClient.configurations.v1,
+          { headers: { 'Accept': 'application/json;odata=nometadata' } }
+        );
+        if (!resp.ok) return;
+        const d = await resp.json();
+        const rs = Number(d.ReadSecurity ?? d.d?.ReadSecurity);
+        const ws = Number(d.WriteSecurity ?? d.d?.WriteSecurity);
+        if (!Number.isFinite(rs) || !Number.isFinite(ws)) return;
+        if (rs === 2 && ws === 2) return;
+        report.ilsIssues++;
+        let fixed = false;
+        if (apply) {
+          try {
+            const m = await this.context.spHttpClient.post(`${listBase}`, SPHttpClient.configurations.v1, {
+              headers: { 'Accept': 'application/json;odata=verbose', 'Content-Type': 'application/json;odata=verbose', 'IF-MATCH': '*', 'X-HTTP-Method': 'MERGE' },
+              body: JSON.stringify({ '__metadata': { 'type': 'SP.List' }, 'ReadSecurity': 2, 'WriteSecurity': 2 }),
+            });
+            fixed = m.ok; if (fixed) report.ilsFixed++; else report.errors++;
+          } catch { report.errors++; }
+        }
+        addFinding({ scope: label, kind: 'ils', detail: `Element-Sicherheit ${rs}/${ws} statt 2/2 („nur eigene Elemente") — ${apply ? (fixed ? 'korrigiert' : 'Korrektur fehlgeschlagen') : 'würde korrigiert'}`, fixed });
+      } catch { /* ILS-Prüfung best-effort */ }
+    };
+    const ILS_LISTS = new Set(['DEX_Emails', 'DEX_Outlook', 'DEX_IDReorder']);
+
+    // ---- 1. Haupt-Web (Site-Root) ----
+    onProgress?.('Hauptseite …', 0, 1);
+    await processSecurable(`${this.siteUrl}/_api/web`, 'Hauptseite (Web-Root)', globalAllowed);
+    report.websScanned++;
+
+    // ---- 2. Listen/Bibliotheken des Haupt-Webs ----
+    const rootLists = await this._listSecurables(this.siteUrl);
+    // Alle Subsites der Collection einsammeln (BFS, max. 3 Ebenen, gedeckelt) —
+    // Event-Subsites hängen direkt unter dem Root, tiefere Verschachtelung wird
+    // vorsorglich mitgenommen, damit wirklich der GANZE SharePoint erfasst ist.
+    const subwebs: Array<{ url: string; serverRel: string; title: string; unique: boolean }> = [];
+    const seenWebs = new Set<string>([this.siteUrl.toLowerCase().replace(/\/+$/, '')]);
+    let frontier = [this.siteUrl];
+    for (let depth = 0; depth < 3 && frontier.length > 0 && subwebs.length < 500; depth++) {
+      const next: string[] = [];
+      for (const wurl of frontier) {
+        const kids = await this._childWebs(wurl);
+        for (const k of kids) {
+          const kkey = k.url.toLowerCase().replace(/\/+$/, '');
+          if (!k.url || seenWebs.has(kkey)) continue;
+          seenWebs.add(kkey);
+          subwebs.push(k);
+          next.push(k.url);
+          if (subwebs.length >= 500) break;
+        }
+        if (subwebs.length >= 500) break;
+      }
+      frontier = next;
+    }
+    const total = 1 + rootLists.length + subwebs.length;
+    let done = 1;
+    for (const l of rootLists) {
+      onProgress?.(`Liste ${l.title} …`, done, total);
+      if (l.unique) { await processSecurable(l.base, `Liste ${l.title}`, globalAllowed); report.listsScanned++; }
+      if (ILS_LISTS.has(l.title)) await checkIls(l.base, `Liste ${l.title}`);
+      done++;
+    }
+
+    // ---- 3. Subsites (Event-Subsites) + deren Listen ----
+    for (const w of subwebs) {
+      const wlabel = w.title || w.serverRel || w.url;
+      onProgress?.(`Subsite ${wlabel} …`, done, total);
+      const key = (s: string): string => norm(s).replace(/\/+$/, '');
+      const orgStr = ctx.subsiteOrganizers[key(w.serverRel)] || ctx.subsiteOrganizers[key(w.url)] || '';
+      const allowed = new Set(globalAllowed);
+      orgStr.split(/[;,]/).map(norm).filter(Boolean).forEach(e => allowed.add(e));
+      if (w.unique) { await processSecurable(`${w.url}/_api/web`, `Subsite ${wlabel} – Web`, allowed); }
+      report.websScanned++;
+      try {
+        const subLists = await this._listSecurables(w.url);
+        for (const sl of subLists) {
+          if (sl.unique) { await processSecurable(sl.base, `Subsite ${wlabel} – Liste ${sl.title}`, allowed); report.listsScanned++; }
+          if (sl.title === REG_LIST_NAME) await checkIls(sl.base, `Subsite ${wlabel} – Teilnehmerliste`);
+        }
+      } catch { /* Subsite-Listen nicht lesbar */ }
+      done++;
+    }
+    onProgress?.('Fertig', total, total);
+    return report;
+  }
+
+  /** Liest die Rollenzuweisungen eines Securables (Web oder Liste). scopeBase =
+   *  voll-qualifizierte API-URL bis zum Securable (…/_api/web bzw.
+   *  …/_api/web/lists/getbytitle('X')). */
+  private async _readRoleAssignments(scopeBase: string): Promise<Array<{ pid: number; type: number; title: string; login: string; email: string; roleIds: number[]; roleNames: string[] }>> {
+    const url = `${scopeBase}/roleassignments?$expand=Member,RoleDefinitionBindings&$select=PrincipalId,Member/Title,Member/LoginName,Member/PrincipalType,Member/Email,RoleDefinitionBindings/Id,RoleDefinitionBindings/Name`;
+    const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } });
+    if (!resp.ok) throw new Error(`roleassignments ${resp.status}`);
+    const d = await resp.json();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rows: any[] = d.value || d.d?.results || [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return rows.map((ra: any) => {
+      const m = ra.Member || {};
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const binds: any[] = ra.RoleDefinitionBindings || ra.RoleDefinitionBindings?.results || [];
+      return {
+        pid: Number(ra.PrincipalId),
+        type: Number(m.PrincipalType) || 0,
+        title: m.Title || '',
+        login: m.LoginName || '',
+        email: m.Email || '',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        roleIds: binds.map((b: any) => Number(b.Id)),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        roleNames: binds.map((b: any) => b.Name || ''),
+      };
+    });
+  }
+
+  /** Entfernt ALLE Rollenzuweisungen eines Principals auf einem Securable
+   *  (Downgrade auf „kein direktes Recht" — Leserecht über Gruppen bleibt). */
+  private async _deletePrincipalAssignment(scopeBase: string, principalId: number): Promise<SPHttpClientResponse> {
+    return this.context.spHttpClient.post(
+      `${scopeBase}/roleassignments/getbyprincipalid(${principalId})`,
+      SPHttpClient.configurations.v1,
+      { headers: { 'Accept': 'application/json;odata=verbose', 'Content-Type': 'application/json;odata=verbose', 'odata-version': '', 'IF-MATCH': '*', 'X-HTTP-Method': 'DELETE' } }
+    );
+  }
+
+  /** Alle Listen/Bibliotheken eines Webs mit Unique-Flag. base = API-URL zum
+   *  Securable der Liste. Titel mit Sonderzeichen werden für getbytitle escaped. */
+  private async _listSecurables(webUrl: string): Promise<Array<{ title: string; hidden: boolean; unique: boolean; base: string }>> {
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${webUrl}/_api/web/lists?$select=Title,Hidden,HasUniqueRoleAssignments&$top=1000`,
+        SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } }
+      );
+      if (!resp.ok) return [];
+      const d = await resp.json();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rows: any[] = d.value || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return rows.map((l: any) => ({
+        title: l.Title || '',
+        hidden: !!l.Hidden,
+        unique: !!l.HasUniqueRoleAssignments,
+        base: `${webUrl}/_api/web/lists/getbytitle('${String(l.Title || '').replace(/'/g, "''")}')`,
+      })).filter(l => l.title);
+    } catch { return []; }
+  }
+
+  /** Direkte Kind-Webs eines Webs (eine Ebene — Event-Subsites hängen direkt
+   *  unter dem Root). */
+  private async _childWebs(webUrl: string): Promise<Array<{ url: string; serverRel: string; title: string; unique: boolean }>> {
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${webUrl}/_api/web/webs?$select=Url,ServerRelativeUrl,Title,HasUniqueRoleAssignments&$top=1000`,
+        SPHttpClient.configurations.v1, { headers: { 'Accept': 'application/json;odata=nometadata' } }
+      );
+      if (!resp.ok) return [];
+      const d = await resp.json();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rows: any[] = d.value || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      return rows.map((w: any) => ({ url: w.Url || '', serverRel: w.ServerRelativeUrl || '', title: w.Title || '', unique: !!w.HasUniqueRoleAssignments })).filter(w => w.url);
+    } catch { return []; }
   }
 
   // ==================== v21: Archivierung ====================
