@@ -252,7 +252,10 @@ function serializeCustomFields(
 // Feld-Label nach einem Datum bzw. nach einer Person/einem Namen klingt,
 // schlägt der Wizard die passende Feldart vor (Kalender bzw. People-Picker).
 function labelLooksLikeDate(label: string): boolean {
-  return /(datum|date|check[\s-]?in|check[\s-]?out|anreise|abreise|geburtstag|birthday|deadline|frist|termin|ankunft|abfahrt|arrival|departure)/i.test(label || '');
+  // v26.91: „date" nur als eigenes Wort (\b) — sonst matchte es „Date"n in
+  // „Datenschutz(hinweise)" und schlug fälschlich eine Datums-Umstellung vor.
+  // „datum" bleibt ohne Grenze (deutsche Komposita wie „Geburtsdatum").
+  return /(datum|\bdate\b|check[\s-]?in|check[\s-]?out|anreise|abreise|geburtstag|birthday|deadline|frist|termin|ankunft|abfahrt|arrival|departure)/i.test(label || '');
 }
 function labelLooksLikeName(label: string): boolean {
   return /(\bname\b|vorname|nachname|ansprechpartner|counselor|kolleg|mitarbeiter|\bmentor\b|\bpate\b|\bbuddy\b|begleitung|\bgast\b)/i.test(label || '');
@@ -262,7 +265,10 @@ function labelLooksLikeName(label: string): boolean {
 // E-Mail) — die muss der Organizer nicht extra abfragen. „name" allein bewusst
 // NICHT (zu mehrdeutig, z.B. „Name of counselor").
 function labelLooksLikeProfile(label: string): boolean {
-  return /(vorname|nachname|first ?name|last ?name|e-?mail|abteilung|department|standort|location|\boffice\b|\bbüro\b|telefon|\bphone\b|\bmobil|\bhandy\b|firma|company|unternehmen|arbeitgeber|gesellschaft|\bgmbh\b|legal ?entity|\bentity\b|rechtsträger|member ?firm|adresse|address|job ?title)/i.test(label || '');
+  // v26.91: Telefon/Mobil/Handy bewusst NICHT mehr — eine (private) Mobilnummer
+  // z.B. für den B2Run-Infoservice steht i.d.R. NICHT im Deloitte-Profil und ist
+  // eine legitime Abfrage; der „schon automatisch erfasst"-Hinweis passte da nicht.
+  return /(vorname|nachname|first ?name|last ?name|e-?mail|abteilung|department|standort|location|\boffice\b|\bbüro\b|firma|company|unternehmen|arbeitgeber|gesellschaft|\bgmbh\b|legal ?entity|\bentity\b|rechtsträger|member ?firm|adresse|address|job ?title)/i.test(label || '');
 }
 
 /** v24.25/v24.28: Kleiner Hinweis im Feld-Editor. Drei Fälle, in dieser
@@ -11827,6 +11833,12 @@ export default function EventCreationPage(): React.ReactElement {
                         onChange={e => updateCustomField(field.id, { helpText: e.target.value })}
                         style={{ width: '100%', fontSize: '0.82rem', padding: '6px 10px' }}
                       />
+                      {/* v26.91: Hinweis auf das Markdown-Subset (fett + Links). */}
+                      <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-400)', marginTop: 4, lineHeight: 1.4 }}>
+                        {isDe
+                          ? <>Tipp: <code>**fett**</code> macht Text fett, <code>[Text](https://…)</code> erzeugt einen Link. Beides wird nur bei der Anzeige als Text unter dem Feld-Titel formatiert.</>
+                          : <>Tip: <code>**bold**</code> makes text bold, <code>[text](https://…)</code> creates a link. Both render only when shown as text below the field title.</>}
+                      </div>
                       {field.helpText && field.helpText.trim() && (
                         <div style={{ display: 'flex', gap: 16, marginTop: 6, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
                           <span style={{ fontWeight: 600 }}>{isDe ? 'Anzeige:' : 'Display:'}</span>
