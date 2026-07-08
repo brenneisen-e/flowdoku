@@ -17,10 +17,12 @@ import { useCurrentUser } from '../context/UserContext';
 // v22.13: Sub-Events in „Meine Events" nach ihrer EIGENEN Sichtbarkeit filtern
 // (gleiche Logik wie Anmeldeseite/Event-Liste).
 import { isEventVisibleForUser } from './EventListPage';
+// v27.10 (Refactor): ausgelagerte Helfer/Komponenten.
+import FieldAnswerTag from './FieldAnswerTag';
 import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime, QuizQuestion } from '../types';
 import { SPRegistration, EventCommRow } from '../services/EventService';
 import { wrapTemplate } from '../services/EmailTemplates';
-import { isEventOver } from '../utils/eventFormat';
+import { isEventOver, formatDate, formatDateRange } from '../utils/eventFormat';
 import { useLanguage } from '../context/LanguageContext';
 // v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
 import { useDialog } from '../context/DialogContext';
@@ -35,48 +37,8 @@ import { buildDemoShowcaseEvents, buildDemoMyRegistration } from '../services/de
 // der Viewer wird nur beim Öffnen eines Dokuments gebraucht.
 const PdfViewer = React.lazy(() => import('./PdfViewer'));
 
-// v19.34: People-Picker-Antworten (Feldtyp `user`/`roommate`) im „Meine
-// Events"-Antwort-Tag mit Profilfoto statt als Rohtext „Name <email>"
-// anzeigen — analog zum Chip im People-Picker selbst.
-const parsePersonAnswer = (v: string): { name: string; email: string } | null => {
-  const m = (v || '').match(/^(.+?)\s*<([^>]+@[^>]+)>\s*$/);
-  if (!m) return null;
-  return { name: m[1].trim(), email: m[2].trim() };
-};
-
-function FieldAnswerTag(props: { label: string; value: string; type?: string; small?: boolean }): React.ReactElement {
-  const { label, value, type, small } = props;
-  const person = (type === 'user' || type === 'roommate') ? parsePersonAnswer(value) : null;
-  const baseStyle: React.CSSProperties = {
-    fontSize: small ? '0.72rem' : '0.78rem',
-    padding: small ? '3px 8px' : '4px 10px',
-    borderRadius: 4,
-    background: 'rgba(134,188,37,0.14)',
-    color: 'var(--dex-green-dark, #4a7c1f)',
-    border: '1px solid rgba(134,188,37,0.30)',
-  };
-  if (person) {
-    return (
-      <span style={{ ...baseStyle, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-        {label}:
-        <img
-          src={`/_layouts/15/userphoto.aspx?accountname=${encodeURIComponent(person.email)}&size=L`}
-          alt={person.name}
-          onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-          style={{ width: 22, height: 22, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', transition: 'transform 0.15s', transformOrigin: 'center' }}
-          onMouseEnter={e => { (e.currentTarget as HTMLImageElement).style.transform = 'scale(2.6)'; (e.currentTarget as HTMLImageElement).style.zIndex = '20'; (e.currentTarget as HTMLImageElement).style.position = 'relative'; (e.currentTarget as HTMLImageElement).style.boxShadow = '0 6px 18px rgba(0,0,0,0.18)'; }}
-          onMouseLeave={e => { (e.currentTarget as HTMLImageElement).style.transform = 'scale(1)'; (e.currentTarget as HTMLImageElement).style.boxShadow = 'none'; }}
-        />
-        <strong>{person.name}</strong>
-      </span>
-    );
-  }
-  return (
-    <span style={baseStyle}>
-      {label}: <strong>{value}</strong>
-    </span>
-  );
-}
+// v27.10 (Refactor): FieldAnswerTag (+parsePersonAnswer) → components/FieldAnswerTag.tsx,
+// formatDate/formatDateRange → utils/eventFormat.ts (jeweils unverändert).
 
 interface MyEventEntry {
   event: DeloitteEvent;
@@ -92,28 +54,6 @@ interface MyEventEntry {
   subEventTitles?: string[];
 }
 
-function formatDate(iso: string): string {
-  if (!iso) return '-';
-  return new Date(iso).toLocaleDateString('de-DE', {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
-  });
-}
-
-function formatDateRange(start: string, end: string): string {
-  if (!start) return '-';
-  const s = new Date(start);
-  const e = end ? new Date(end) : null;
-  // v27.8: Wochentag mit anzeigen (z.B. „Mittwoch, 09.09.2026").
-  const sDate = s.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
-  const sTime = s.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-  if (!e) return `${sDate}, ${sTime}`;
-  const eDate = e.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
-  const eTime = e.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-  // Gleicher Tag: "14.04.2026, 14:00 – 18:00"
-  if (sDate === eDate) return `${sDate}, ${sTime} – ${eTime}`;
-  // Verschiedene Tage
-  return `${sDate}, ${sTime} – ${eDate}, ${eTime}`;
-}
 
 function getStatusBadgeClass(status: string): string {
   switch (status) {

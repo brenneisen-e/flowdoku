@@ -17,7 +17,7 @@ import { EventService, CustomField } from '../services/EventService';
 // v26.48: zentrale B2Run-Köln-Vorlage (Titel-Erkennung + 7 Meldefelder mit
 // deterministischen IDs für den offiziellen Excel-Export).
 import { isB2RunKoelnTitle, b2runKoelnTemplateFields } from '../data/b2runKoeln';
-import { eventCreatedEmail, buildOutlookBody, stripOutlookWrapper, parseOutlookHeadings, replacePlaceholders, getCachedOrbBase64 } from '../services/EmailTemplates';
+import { eventCreatedEmail, buildOutlookBody, buildDefaultOutlookConfirmBody, stripOutlookWrapper, parseOutlookHeadings, replacePlaceholders, getCachedOrbBase64 } from '../services/EmailTemplates';
 import { exportSummaryAsPdf, exportSummaryAsDoc, SummaryData } from '../services/EventSummaryExport';
 import { EventType, AgendaItem } from '../types';
 import { Trash2, Send, Plus, X, Users, Check } from './Icons';
@@ -39,6 +39,10 @@ import OrganizerList from './OrganizerList';
 import { buildOutlookLocation } from '../utils/eventFormat';
 import { setActiveWizardStep } from '../utils/wizardStepContext';
 import { useIsMobile } from '../utils/useIsMobile';
+// v27.10 (Refactor): reine Modul-Helfer aus dieser Datei ausgelagert.
+import { labelLooksLikeDate, labelLooksLikeName, labelLooksLikeProfile } from '../utils/fieldLabelHints';
+import { reinsertOrganizerPlaceholder } from '../utils/outlookOrganizer';
+import FieldDescEditor from './FieldDescEditor';
 import { Icon } from '@fluentui/react/lib/Icon';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { de } from 'date-fns/locale';
@@ -248,89 +252,9 @@ function serializeCustomFields(
     });
 }
 
-// v24.25: Heuristiken für die Feldart-Empfehlung im Feld-Editor — wenn das
-// Feld-Label nach einem Datum bzw. nach einer Person/einem Namen klingt,
-// schlägt der Wizard die passende Feldart vor (Kalender bzw. People-Picker).
-function labelLooksLikeDate(label: string): boolean {
-  // v26.91: „date" nur als eigenes Wort (\b) — sonst matchte es „Date"n in
-  // „Datenschutz(hinweise)" und schlug fälschlich eine Datums-Umstellung vor.
-  // „datum" bleibt ohne Grenze (deutsche Komposita wie „Geburtsdatum").
-  return /(datum|\bdate\b|check[\s-]?in|check[\s-]?out|anreise|abreise|geburtstag|birthday|deadline|frist|termin|ankunft|abfahrt|arrival|departure)/i.test(label || '');
-}
-function labelLooksLikeName(label: string): boolean {
-  return /(\bname\b|vorname|nachname|ansprechpartner|counselor|kolleg|mitarbeiter|\bmentor\b|\bpate\b|\bbuddy\b|begleitung|\bgast\b)/i.test(label || '');
-}
-// v24.28: Felder, die i.d.R. schon automatisch aus dem Deloitte-Profil kommen
-// (Standort, Abteilung, Unternehmenszugehörigkeit/Rechtsträger, Telefon, Name,
-// E-Mail) — die muss der Organizer nicht extra abfragen. „name" allein bewusst
-// NICHT (zu mehrdeutig, z.B. „Name of counselor").
-function labelLooksLikeProfile(label: string): boolean {
-  // v26.91: Telefon/Mobil/Handy bewusst NICHT mehr — eine (private) Mobilnummer
-  // z.B. für den B2Run-Infoservice steht i.d.R. NICHT im Deloitte-Profil und ist
-  // eine legitime Abfrage; der „schon automatisch erfasst"-Hinweis passte da nicht.
-  return /(vorname|nachname|first ?name|last ?name|e-?mail|abteilung|department|standort|location|\boffice\b|\bbüro\b|firma|company|unternehmen|arbeitgeber|gesellschaft|\bgmbh\b|legal ?entity|\bentity\b|rechtsträger|member ?firm|adresse|address|job ?title)/i.test(label || '');
-}
-// v27.3: Der Outlook-Body wird beim Speichern mit fest aufgelöstem {{Organizer}}
-// gespeichert. Kommen später Organizer dazu, blieb der alte Name eingebacken.
-// Beim Edit-Laden mappen wir den eingebackenen Organizer-Namen wieder auf
-// {{Organizer}} zurück — dann löst der nächste Save mit ALLEN aktuellen
-// Organizern neu auf. Sicher: findet sich nichts, bleibt der Body unverändert.
-function reinsertOrganizerPlaceholder(body: string, organizers: string[]): string {
-  if (!body || !organizers || organizers.length === 0) return body;
-  if (body.indexOf('{{Organizer}}') >= 0) return body; // schon Platzhalter
-  const names = organizers.map(n => (n || '').trim()).filter(Boolean);
-  const full = names.join('; ');
-  if (full && body.indexOf(full) >= 0) return body.split(full).join('{{Organizer}}');
-  // Bereits „kaputte"/veraltete Bodies: den ersten enthaltenen Organizer-Namen
-  // (längster zuerst, um Teil-Treffer zu vermeiden) auf den Platzhalter mappen.
-  for (const n of [...names].sort((a, b) => b.length - a.length)) {
-    if (n.length >= 3 && body.indexOf(n) >= 0) return body.split(n).join('{{Organizer}}');
-  }
-  return body;
-}
-
-// v27.4: Kompakter Beschreibungs-Editor mit DAUERHAFT sichtbarer Mini-Leiste
-// (Fett + Link). Die Buttons formatieren die Markierung (kein Markdown-Tippen);
-// gespeichert wird ein kleines Markdown-Subset, das die Anmeldeseite rendert.
-function FieldDescEditor({ value, onChange, isDe }: { value: string; onChange: (v: string) => void; isDe: boolean }): React.ReactElement {
-  const ref = React.useRef<HTMLTextAreaElement>(null);
-  const applyWrap = (before: string, after: string, ph: string): void => {
-    const ta = ref.current; if (!ta) return;
-    const s = ta.selectionStart; const e = ta.selectionEnd;
-    const sel = value.substring(s, e) || ph;
-    const next = value.substring(0, s) + before + sel + after + value.substring(e);
-    onChange(next);
-    window.setTimeout(() => { try { ta.focus(); ta.setSelectionRange(s + before.length, s + before.length + sel.length); } catch { /* */ } }, 0);
-  };
-  const insertLink = (): void => {
-    const ta = ref.current; if (!ta) return;
-    const s = ta.selectionStart; const e = ta.selectionEnd;
-    const url = (window.prompt(isDe ? 'Link-Adresse (https://…):' : 'Link URL (https://…):', 'https://') || '').trim();
-    if (!url) return;
-    const sel = value.substring(s, e) || (isDe ? 'Link-Text' : 'link text');
-    const next = value.substring(0, s) + `[${sel}](${url})` + value.substring(e);
-    onChange(next);
-    window.setTimeout(() => { try { ta.focus(); } catch { /* */ } }, 0);
-  };
-  const btn: React.CSSProperties = { height: 26, minWidth: 30, padding: '0 8px', fontSize: '0.8rem', cursor: 'pointer', background: '#fff', border: '1px solid var(--dex-gray-300)', borderRadius: 4, color: 'var(--dex-gray-700)' };
-  return (
-    <div style={{ border: '1px solid var(--dex-gray-300)', borderRadius: 6, background: '#fff' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', borderBottom: '1px solid var(--dex-gray-200)' }}>
-        <button type="button" title={isDe ? 'Fett' : 'Bold'} onMouseDown={e => e.preventDefault()} onClick={() => applyWrap('**', '**', isDe ? 'fetter Text' : 'bold text')} style={{ ...btn, fontWeight: 800 }}>F</button>
-        <button type="button" title={isDe ? 'Link einfügen' : 'Insert link'} onMouseDown={e => e.preventDefault()} onClick={insertLink} style={{ ...btn, display: 'inline-flex', alignItems: 'center', gap: 5 }}>🔗 {isDe ? 'Link' : 'Link'}</button>
-        <span style={{ marginLeft: 'auto', fontSize: '0.66rem', color: 'var(--dex-gray-400)' }}>{isDe ? 'Text markieren, dann Button' : 'Select text, then button'}</span>
-      </div>
-      <textarea
-        ref={ref}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={isDe ? 'Beschreibung (optional)' : 'Description (optional)'}
-        rows={2}
-        style={{ width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', resize: 'vertical', fontSize: '0.85rem', lineHeight: 1.45, padding: '8px 10px', fontFamily: 'inherit', background: 'transparent', color: 'var(--dex-gray-800)' }}
-      />
-    </div>
-  );
-}
+// v27.10 (Refactor): labelLooksLike*-Heuristiken → utils/fieldLabelHints.ts,
+// reinsertOrganizerPlaceholder → utils/outlookOrganizer.ts,
+// FieldDescEditor → components/FieldDescEditor.tsx (jeweils unverändert).
 
 /** v24.25/v24.28: Kleiner Hinweis im Feld-Editor. Drei Fälle, in dieser
  *  Priorität: (1) `profile` — das Feld wird ohnehin schon automatisch erfasst
@@ -3279,15 +3203,8 @@ export default function EventCreationPage(): React.ReactElement {
           StartDate: draft.startDate ? new Date(draft.startDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
           EndDate: draft.endDate ? new Date(draft.endDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
         };
-        const escHtmlSub = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-        const APP_URL_SUB = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
-        const defaultSubBody = subEmailLang === 'EN'
-          ? `<p>You are registered for the event <strong>${escHtmlSub(draft.title.trim())}</strong>.</p>`
-            + `<p>If you are unable to attend, please cancel your registration in time via the <a href="${APP_URL_SUB}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;My Events&ldquo;).</p>`
-            + `<p>For organizational questions please contact <strong>${escHtmlSub(orgNamesSub || 'the organizer')}</strong>.</p>`
-          : `<p>Ihr seid für das Event <strong>${escHtmlSub(draft.title.trim())}</strong> angemeldet.</p>`
-            + `<p>Falls ihr nicht teilnehmen könnt, meldet euch bitte rechtzeitig über die <a href="${APP_URL_SUB}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;Meine Events&ldquo;) ab.</p>`
-            + `<p>Bei organisatorischen Fragen wendet euch bitte an <strong>${escHtmlSub(orgNamesSub || 'den Organizer')}</strong>.</p>`;
+        // v27.10: Default-Body zentral in EmailTemplates (vorher hier dupliziert).
+        const defaultSubBody = buildDefaultOutlookConfirmBody(subEmailLang, draft.title.trim(), orgNamesSub);
         const resolvedBody = subOutlookBodyRaw ? replacePlaceholders(subOutlookBodyRaw, vars) : defaultSubBody;
         const resolvedHead = subOutlookHeading ? replacePlaceholders(subOutlookHeading, vars) : draft.title.trim();
         // v27.5: Default-Unter-Überschrift = Ort (nicht Datum).
@@ -4003,19 +3920,10 @@ export default function EventCreationPage(): React.ReactElement {
       // v24.60: Namen wie die Anmelde-Mail normalisieren („Schwartz, Eva" →
       // „Eva Schwartz") und mit „und"/„and" verbinden — nicht stumpf mit Komma.
       const orgNames = formatOrganizerList([organizer], effEmailLanguage);
-      const escHtml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-      // v9.8: Default-Body enthält jetzt auch den Abmelde-Hinweis analog zur
-      // Anmeldebestätigungs-Mail. Sonst weiss der Empfänger nicht, wie er
-      // sich abmelden kann — die Outlook-Decline-Funktion triggert zwar einen
-      // Reminder-Flow, aber der eigentliche App-Abmelde-Pfad ist sauberer.
-      const APP_URL_OL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
-      const defaultOutlookBody = effEmailLanguage === 'EN'
-        ? `<p>You are registered for the event <strong>${escHtml(title)}</strong>.</p>`
-          + `<p>If you are unable to attend, please cancel your registration in time via the <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;My Events&ldquo;).</p>`
-          + `<p>For organizational questions please contact <strong>${escHtml(orgNames || 'the organizer')}</strong>.</p>`
-        : `<p>Ihr seid für das Event <strong>${escHtml(title)}</strong> angemeldet.</p>`
-          + `<p>Falls ihr nicht teilnehmen könnt, meldet euch bitte rechtzeitig über die <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;Meine Events&ldquo;) ab.</p>`
-          + `<p>Bei organisatorischen Fragen wendet euch bitte an <strong>${escHtml(orgNames || 'den Organizer')}</strong>.</p>`;
+      // v9.8: Default-Body enthält auch den Abmelde-Hinweis analog zur
+      // Anmeldebestätigungs-Mail. v27.10: zentral in EmailTemplates
+      // (vorher hier + Update-/Sub-Event-Pfad dreifach dupliziert).
+      const defaultOutlookBody = buildDefaultOutlookConfirmBody(effEmailLanguage, title, orgNames);
       const resolvedBody = effOutlookBody
         ? replacePlaceholders(effOutlookBody, outlookVars)
         : defaultOutlookBody;
@@ -4690,17 +4598,9 @@ export default function EventCreationPage(): React.ReactElement {
             StartDate: startDate ? new Date(startDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
             EndDate: endDate ? new Date(endDate).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '',
           };
-          const escHtml = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-          // v9.8: gleicher Default-Body wie im Update-Pfad — inkl. Abmelde-Hinweis
-          // mit Link auf die App ("Meine Events"-Tab).
-          const APP_URL_OL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
-          const defaultBody = effEmailLanguage === 'EN'
-            ? `<p>You are registered for the event <strong>${escHtml(title)}</strong>.</p>`
-              + `<p>If you are unable to attend, please cancel your registration in time via the <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;My Events&ldquo;).</p>`
-              + `<p>For organizational questions please contact <strong>${escHtml(orgNames || 'the organizer')}</strong>.</p>`
-            : `<p>Ihr seid für das Event <strong>${escHtml(title)}</strong> angemeldet.</p>`
-              + `<p>Falls ihr nicht teilnehmen könnt, meldet euch bitte rechtzeitig über die <a href="${APP_URL_OL}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;Meine Events&ldquo;) ab.</p>`
-              + `<p>Bei organisatorischen Fragen wendet euch bitte an <strong>${escHtml(orgNames || 'den Organizer')}</strong>.</p>`;
+          // v9.8: gleicher Default-Body wie im Update-Pfad. v27.10: zentral
+          // in EmailTemplates (vorher dreifach dupliziert).
+          const defaultBody = buildDefaultOutlookConfirmBody(effEmailLanguage, title, orgNames);
           const resolvedBody = effOutlookBody ? replacePlaceholders(effOutlookBody, vars) : defaultBody;
           const resolvedHeading = effOutlookHeading ? replacePlaceholders(effOutlookHeading, vars) : title;
           // v27.5: Default-Unter-Überschrift = Ort (nicht Datum).

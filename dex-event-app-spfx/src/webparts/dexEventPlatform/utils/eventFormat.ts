@@ -94,3 +94,28 @@ export function buildOutlookLocation(
   const cityLine = [addr.zip, addr.city].map(s => (s || '').trim()).filter(Boolean).join(' ');
   return [location, streetLine, cityLine].map(s => (s || '').trim()).filter(Boolean).join(', ');
 }
+
+/** v27.10 (Refactor): unverändert aus MyEventsPage.tsx hierher verschoben. */
+export function formatDate(iso: string): string {
+  if (!iso) return '-';
+  return new Date(iso).toLocaleDateString('de-DE', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+}
+
+/** v27.10 (Refactor): unverändert aus MyEventsPage.tsx hierher verschoben. */
+export function formatDateRange(start: string, end: string): string {
+  if (!start) return '-';
+  const s = new Date(start);
+  const e = end ? new Date(end) : null;
+  // v27.8: Wochentag mit anzeigen (z.B. „Mittwoch, 09.09.2026").
+  const sDate = s.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+  const sTime = s.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  if (!e) return `${sDate}, ${sTime}`;
+  const eDate = e.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+  const eTime = e.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  // Gleicher Tag: "14.04.2026, 14:00 – 18:00"
+  if (sDate === eDate) return `${sDate}, ${sTime} – ${eTime}`;
+  // Verschiedene Tage
+  return `${sDate}, ${sTime} – ${eDate}, ${eTime}`;
+}

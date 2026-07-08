@@ -47,6 +47,34 @@ gelten zwei Regeln:
    genauso behandeln. Typ-Imports (`import type X from 'lib'`) sind erlaubt
    (werden wegcompiliert).
 
+### Modularisierung / Code-Aufteilung (v27.10) — Konvention
+
+Die großen Seiten-Komponenten (`EventCreationPage` ~15k, `AdminPage` ~15k
+Zeilen) sind historisch gewachsen. Seit v27.10 gilt: **reine Helfer und
+selbständige Klein-Komponenten gehören NICHT in die Seiten-Dateien**, sondern:
+
+1. **`utils/`** — reine Funktionen ohne React-/State-Bezug (Beispiele:
+   `fieldLabelHints.ts`, `outlookOrganizer.ts`, `emailPlausibility.ts`,
+   `fieldDescHtml.ts`, Datum-Formatter in `eventFormat.ts`).
+2. **`services/EmailTemplates.ts`** — ALLE Mail-/Outlook-Textbausteine.
+   Insbesondere `buildDefaultOutlookConfirmBody()` + `DEX_APP_URL`: der
+   Outlook-Default-Body existierte vorher dreifach kopiert in
+   EventCreationPage (Create-/Update-/Sub-Event-Pfad); der v27.5-Plural-Fix
+   musste deshalb an drei Stellen gemacht werden. Neue Default-Texte immer
+   hier zentralisieren, nie an der Call-Site duplizieren.
+3. **`data/`** — event-typ-spezifische Vorlagen/Specs (z.B. `b2runKoeln.ts`
+   inkl. `buildB2RunKoelnInviteDefaults`).
+4. **Eigene Komponenten-Dateien** für selbständige UI-Bausteine ohne
+   Seiten-State (z.B. `FieldDescEditor.tsx`, `FieldAnswerTag.tsx`).
+
+**Regeln fürs Extrahieren:** nur Modul-Scope-Code verschieben (keine
+Funktionen, die Komponenten-State schließen — die höchstens per explizitem
+Parameter entkoppeln, wie `isDe` bei `buildB2RunKoelnInviteDefaults`);
+Implementierung 1:1 kopieren (Verhalten unverändert); nach jedem Schritt
+`npx tsc --noEmit`. Nur IDENTISCHE Duplikate zusammenführen — ähnliche, aber
+abweichende Varianten (z.B. `escHtml` mit/ohne Quote-Escaping) NICHT
+vereinheitlichen, das wäre eine Verhaltensänderung.
+
 ### Event-Felder: Create- UND Update-Payloads pflegen (wiederkehrender Bug)
 
 Analog zur Custom-Field-Property-Falle gibt es eine zweite wiederkehrende

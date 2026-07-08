@@ -16,6 +16,9 @@ import { isEventVisibleForUser } from './EventListPage';
 import { useCachedImage } from '../utils/imageCache';
 import { useIsMobile } from '../utils/useIsMobile';
 import { isRegistrationFullyClosed } from '../utils/eventFormat';
+// v27.10 (Refactor): reine Modul-Helfer aus dieser Datei ausgelagert.
+import { isExternalEmailAddr, isPlausibleEmail } from '../utils/emailPlausibility';
+import { renderFieldDescHtml } from '../utils/fieldDescHtml';
 import { useLanguage, translations as appTranslations, Locale } from '../context/LanguageContext';
 // v20.4: modernes Alert-Modal statt window.alert.
 import { useDialog } from '../context/DialogContext';
@@ -59,11 +62,8 @@ function formatDateRange(startIso: string, endIso: string): string {
   return `${start.toLocaleDateString('de-DE', dayFmt)} ${start.toLocaleTimeString('de-DE', timeFmt)} – ${end.toLocaleDateString('de-DE', dayFmt)} ${end.toLocaleTimeString('de-DE', timeFmt)}`;
 }
 
-// v18.74: Externe Adresse = kein Deloitte-Deutschland-Postfach (@deloitte.de).
-const isExternalEmailAddr = (e: string): boolean => {
-  const v = (e || '').trim();
-  return !!v && !/@(.*\.)?deloitte\.de$/i.test(v);
-};
+// v27.10 (Refactor): isExternalEmailAddr/isPlausibleEmail → utils/emailPlausibility.ts,
+// renderFieldDescHtml → utils/fieldDescHtml.ts (jeweils unverändert).
 
 // v26.75: Die Vorfilter-Kategorie-Auswahl liegt transient unter dem Schlüssel
 // '<fieldId>__cat' im Antwort-Store — sie ist reine UI-Hilfe zum Filtern der
@@ -74,60 +74,6 @@ function stripPrefilterKeys(o: Record<string, string>): Record<string, string> {
   return out;
 }
 
-// v18.74: Strengere Plausibilitätsprüfung gegen Tippfehler bei externen
-// Adressen — fängt fehlende/zu kurze TLD, doppelte Punkte, mehrere @, führende/
-// abschließende Punkte und Whitespace/Kommas ab. Verifiziert NICHT die Existenz
-// des Postfachs (das geht clientseitig nicht), aber blockt offensichtliche
-// Vertipper.
-const isPlausibleEmail = (e: string): boolean => {
-  const v = (e || '').trim();
-  if (!/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(v)) return false;
-  if ((v.match(/@/g) || []).length !== 1) return false;
-  if (v.indexOf('..') >= 0) return false;
-  if (/[\s,;]/.test(v)) return false;
-  const [local, domain] = v.split('@');
-  if (!local || !domain) return false;
-  if (local.startsWith('.') || local.endsWith('.')) return false;
-  if (domain.startsWith('.') || domain.endsWith('.') || domain.startsWith('-')) return false;
-  return true;
-};
-
-// v26.91: Feld-Beschreibungen dürfen ein kleines Markdown-Subset tragen:
-//   **fett**            → <strong>
-//   [Text](https://…)   → Link (nur http/https/mailto)
-//   nackte http(s)-URL  → automatisch verlinkt
-// v26.96: Neu erfasste Beschreibungen kommen aus einem echten Rich-Text-Editor
-// und sind bereits HTML. In diesem Fall wird das HTML (organizer-authored,
-// sicherer Origin) nur von gefährlichen Teilen befreit und direkt ausgegeben.
-// Alt-Beschreibungen (reiner Text / Markdown) gehen weiter durch das Subset.
-function renderFieldDescHtml(raw: string): string {
-  if (!raw) return '';
-  // Enthält der Text echte HTML-Tags (Rich-Text-Editor), NICHT escapen —
-  // nur script/style/Event-Handler/javascript: entfernen.
-  if (/<[a-z][\s\S]*>/i.test(raw)) {
-    return raw
-      .replace(/<\s*script[\s\S]*?<\s*\/\s*script\s*>/gi, '')
-      .replace(/<\s*style[\s\S]*?<\s*\/\s*style\s*>/gi, '')
-      .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
-      .replace(/javascript:/gi, '');
-  }
-  const linkStyle = 'color:var(--dex-green,#86bc25);font-weight:600;text-decoration:underline;';
-  let html = raw
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-  // [Text](url) — nur sichere Schemata
-  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+|mailto:[^\s)]+)\)/g,
-    (_m, label, url) => `<a href="${url}" target="_blank" rel="noopener noreferrer" style="${linkStyle}">${label}</a>`);
-  // nackte http(s)-URLs (nicht die, die schon in einem href="…" stehen)
-  html = html.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g,
-    (_m, pre, url) => `${pre}<a href="${url}" target="_blank" rel="noopener noreferrer" style="${linkStyle}">${url}</a>`);
-  // **fett**
-  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  // Zeilenumbrüche erhalten
-  html = html.replace(/\n/g, '<br />');
-  return html;
-}
 
 /**
  * Einklappbare Formular-Sektion für die Handy-Ansicht.

@@ -895,6 +895,31 @@ export function infoEmail(recipientName: string, eventTitle: string, message: st
   };
 }
 
+/** v27.10: Zentrale App-URL (WebView-Deep-Link) — vorher an mehreren
+ *  Call-Sites als lokale Konstante dupliziert. */
+export const DEX_APP_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView';
+
+/**
+ * v27.10: Default-Body des Outlook-Termins (Anmeldebestätigung + Abmelde-
+ * Hinweis über die App + Organizer-Kontakt) — vorher DREIMAL identisch in
+ * EventCreationPage dupliziert (Create-/Update-/Sub-Event-Pfad; genau diese
+ * Triplikation hat den v27.5-Plural-Fix an drei Stellen nötig gemacht).
+ *
+ * Escaping bewusst wie an den ursprünglichen Call-Sites (& < > ") und NICHT
+ * das lokale escapeHtml (das zusätzlich Apostrophe escapt) — 1:1
+ * verhaltenserhaltend.
+ */
+export function buildDefaultOutlookConfirmBody(lang: string, title: string, orgNames: string): string {
+  const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return lang === 'EN'
+    ? `<p>You are registered for the event <strong>${esc(title)}</strong>.</p>`
+      + `<p>If you are unable to attend, please cancel your registration in time via the <a href="${DEX_APP_URL}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;My Events&ldquo;).</p>`
+      + `<p>For organizational questions please contact <strong>${esc(orgNames || 'the organizer')}</strong>.</p>`
+    : `<p>Ihr seid für das Event <strong>${esc(title)}</strong> angemeldet.</p>`
+      + `<p>Falls ihr nicht teilnehmen könnt, meldet euch bitte rechtzeitig über die <a href="${DEX_APP_URL}" style="color:#86bc25;font-weight:600;">DEX App</a> (&bdquo;Meine Events&ldquo;) ab.</p>`
+      + `<p>Bei organisatorischen Fragen wendet euch bitte an <strong>${esc(orgNames || 'den Organizer')}</strong>.</p>`;
+}
+
 /**
  * Outlook-Termin-Body im Deloitte-Design generieren.
  *
