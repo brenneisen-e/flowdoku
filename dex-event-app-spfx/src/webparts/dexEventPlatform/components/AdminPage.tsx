@@ -1569,7 +1569,10 @@ export default function AdminPage(): React.ReactElement {
   };
   const [showExportMenu, setShowExportMenu] = React.useState(false);
   // v17.12: Zielgruppen-Picker für Excel-Export.
-  const [excelTargetModal, setExcelTargetModal] = React.useState<null | { mode: 'deloitte' | 'b2run' }>(null);
+  // v27.9: chooseMode = die Format-Auswahl (Deloitte/B2Run) wird IM Modal
+  // getroffen statt im Anker-Dropdown (der im „Aktion auswählen"-Menü mit
+  // overflow:auto abgeschnitten wurde → Auswahl war unsichtbar).
+  const [excelTargetModal, setExcelTargetModal] = React.useState<null | { mode: 'deloitte' | 'b2run'; chooseMode?: boolean }>(null);
   const [excelAudience, setExcelAudience] = React.useState<'active' | 'activePlusWait' | 'waitOnly' | 'withCancelled'>('active');
   // v20.4: Excel-Export im Klammer-Modus — konsolidierte Matrix (eine Zeile
   // pro Person, Spalten pro Sub-Event) und/oder einzelne Sub-Event-Blätter
@@ -7246,13 +7249,14 @@ export default function AdminPage(): React.ReactElement {
                 badge="organizer"
                 onClick={() => {
                   // v17.12: Erst Zielgruppe abfragen, dann erst exportieren.
-                  // Bei B2Run zusätzlich noch View-Auswahl im Dropdown.
-                  // v26.48: auch für Events ohne B2Run-Wizard-Template, deren
-                  // Titel „B2Run Köln" enthält (offizielle Meldedatei-Export).
+                  // v27.9: Bei B2Run die Format-Auswahl (Deloitte/B2Run) DIREKT
+                  // im Modal treffen — der frühere Anker-Dropdown wurde vom
+                  // „Aktion auswählen"-Menü (overflow:auto) abgeschnitten, daher
+                  // kam die Auswahl gar nicht erst zum Vorschein.
+                  setExcelAudience('active');
                   if (selectedEvent && (selectedEvent.type === 'B2Run' || isB2RunKoelnTitle(selectedEvent.title))) {
-                    setShowExportMenu(!showExportMenu);
+                    setExcelTargetModal({ mode: 'b2run', chooseMode: true });
                   } else {
-                    setExcelAudience('active');
                     setExcelTargetModal({ mode: 'deloitte' });
                   }
                 }}
@@ -13190,7 +13194,28 @@ export default function AdminPage(): React.ReactElement {
         );
         return (
           <Modal open={true} onClose={closeAll} maxWidth={520} padding={24} ariaLabel="Excel-Export Zielgruppe">
-            <h3 style={{ margin: '0 0 14px', fontSize: '1.1rem' }}>Excel-Export — wen sollen wir exportieren?</h3>
+            <h3 style={{ margin: '0 0 14px', fontSize: '1.1rem' }}>Excel-Export</h3>
+            {/* v27.9: Format-Auswahl (Deloitte/B2Run) direkt im Modal — vorher
+                im Anker-Dropdown, das vom „Aktion auswählen"-Menü abgeschnitten
+                wurde. */}
+            {excelTargetModal.chooseMode && (
+              <div style={{ marginBottom: 14, paddingBottom: 12, borderBottom: '1px solid var(--dex-gray-200)' }}>
+                <div style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: 8 }}>{isDe ? 'Welches Format?' : 'Which format?'}</div>
+                {([
+                  { m: 'b2run' as const, label: 'B2Run View', desc: isDe ? 'Genau das Veranstalter-Format: EIN Arbeitsblatt, 16 Spalten (Nr., Anrede, Name, E-Mail, Startblock, …) — direkt bei b2run.com importierbar.' : 'Exact organizer format: ONE worksheet, 16 columns — importable at b2run.com.' },
+                  { m: 'deloitte' as const, label: isDe ? 'Deloitte Felder' : 'Deloitte fields', desc: isDe ? 'Alle internen Spalten + alle Custom-Fields des Events (für intern).' : 'All internal columns + all event custom fields (internal use).' },
+                ]).map(opt => (
+                  <label key={opt.m} style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: 10, borderRadius: 8, border: `1px solid ${excelTargetModal.mode === opt.m ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`, background: excelTargetModal.mode === opt.m ? 'rgba(134,188,37,0.08)' : '#fff', cursor: 'pointer', marginBottom: 8 }}>
+                    <input type="radio" name="excel-mode" checked={excelTargetModal.mode === opt.m} onChange={() => setExcelTargetModal({ mode: opt.m, chooseMode: true })} style={{ marginTop: 3 }} />
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.92rem' }}>{opt.label}</div>
+                      <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>{opt.desc}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            )}
+            <div style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: 8 }}>{isDe ? 'Wen sollen wir exportieren?' : 'Who should we export?'}</div>
             <Row value="active" label="Teilnehmer (alle aktiven)" desc="Status: Angemeldet, QR versendet, Eingecheckt — Default für den Check-In / die Vor-Ort-Liste." />
             <Row value="activePlusWait" label="Teilnehmer + Warteliste" desc="Alle aktiven + Wartelistler in einem Sheet, sortiert nach TeilnehmerID." />
             <Row value="waitOnly" label="Nur Warteliste" desc="Nur die Wartelistler — z.B. für Briefing." />

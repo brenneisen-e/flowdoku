@@ -44,6 +44,7 @@ export interface ReleaseNote {
 }
 
 export const RELEASE_NOTES: ReleaseNote[] = [
+  { version: '27.9.0', date: '2026-07-07', bereich: 'Verwaltung', type: 'Bugfix', text: 'Excel-Export bei B2Run-Events wieder nutzbar: Die Auswahl „Deloitte Felder / B2Run View" erscheint jetzt direkt im Export-Fenster. Vorher öffnete sie sich als kleines Aufklapp-Menü, das im (scrollbaren) „Aktion auswählen"-Menü abgeschnitten und dadurch unsichtbar war — der Export ließ sich gar nicht starten. Die B2Run-View bleibt das offizielle Veranstalter-Format: ein Arbeitsblatt, 16 Spalten, direkt bei b2run.com importierbar.' },
   { version: '27.8.0', date: '2026-07-07', bereich: 'Anmeldung', type: 'Bugfix', text: 'Auf „Meine Events" steht der Ort jetzt einzeilig als „Name, Stadt" (vorher zweizeilig mit voller Adresse) und das Datum enthält den Wochentag (z.B. „Mittwoch, 09.09.2026, 16:30 – 22:00").' },
   { version: '27.8.0', date: '2026-07-07', bereich: 'Anmeldung', type: 'Bugfix', text: 'Die Abfrage „Assistenz informieren?" („Für Partner & Directoren") erscheint bei der eigenen Anmeldung nur noch für Partner/Directoren — nicht mehr generell für alle Admins. Admins, die selbst Partner/Director sind, bekommen sie weiterhin.' },
   { version: '27.7.0', date: '2026-07-07', bereich: 'Anmeldung', type: 'Feature', text: 'Auf „Meine Events" wird bei Events mit Gruppen-Auswahl (z.B. B2Run: Durchstarter/Funstarter oder eigene Beschriftungen) jetzt angezeigt, in welcher Gruppe man angemeldet ist — als grüner Chip „Gruppe: …". Auf der Warteliste zeigt der Chip die gewünschte Gruppe.' },
