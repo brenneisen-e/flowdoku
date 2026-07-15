@@ -1,10 +1,6 @@
 // Landing Page - Startbildschirm mit animiertem Orb und Willkommensnachricht
 
-import { useNavigate } from 'react-router-dom';
-
 export default function LandingPage() {
-  const navigate = useNavigate();
-
   return (
     <div className="landing">
       <div className="landing__hero">
@@ -17,9 +13,17 @@ export default function LandingPage() {
           </h1>
           <p>Enjoy the new app to handle your registration for your Deloitte Event.</p>
         </div>
-        <button className="btn btn-lg btn-block btn-secondary" onClick={() => navigate('/start')}>
-          Start
-        </button>
+        {/* Direkter Download des aktuellen SPFx-Pakets (ZIP mit .sppkg),
+            liegt in public/downloads/ und wird von Cloudflare Pages als
+            statische Datei ausgeliefert. */}
+        <a
+          className="btn btn-lg btn-block btn-secondary"
+          style={{ justifyContent: 'center', textDecoration: 'none' }}
+          href="/downloads/dex-event-platform-v27.10.0.zip"
+          download
+        >
+          Download App (v27.10.0)
+        </a>
       </div>
       <footer className="footer-disclaimer">
         <p>
