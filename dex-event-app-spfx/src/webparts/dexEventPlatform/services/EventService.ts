@@ -7707,12 +7707,49 @@ export class EventService {
   private static readonly ACTIVE_STATI = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
 
   /**
+   * Ungefilterte Gesamt-Item-Zahl einer Liste (List-Property `ItemCount`,
+   * NICHT security-getrimmt). Dient als Vollständigkeits-Check: liefert eine
+   * Item-Abfrage weniger Zeilen als `ItemCount`, beschneidet die
+   * Element-Sicherheit („nur eigene Elemente") die Sicht des Aufrufers.
+   * -1 bei Lesefehler.
+   */
+  private async getListItemCount(subsiteUrl: string, listName: string): Promise<number> {
+    try {
+      const resp = await this.context.spHttpClient.get(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${listName}')?$select=ItemCount`,
+        SPHttpClient.configurations.v1
+      );
+      if (!resp.ok) return -1;
+      const data = await resp.json();
+      const raw = data?.ItemCount ?? data?.d?.ItemCount;
+      const n = typeof raw === 'number' ? raw : parseInt(String(raw ?? ''), 10);
+      return Number.isFinite(n) && n >= 0 ? n : -1;
+    } catch { return -1; }
+  }
+
+  /**
    * Zählt die aktiven (= nicht Warteliste/Abgemeldet) Anmeldungen, gesamt und
    * pro Starter-Gruppe. Quelle ist die echte Teilnehmerliste — wird zum Seeden
    * und Reconcilen der Sitzplatz-Counter genutzt.
+   *
+   * v27.10 REGRESSIONS-FIX: Seit v26.87 greift die Element-Sicherheit („nur
+   * eigene Elemente") auf den Teilnehmerlisten WIRKLICH — vorher schlug das
+   * Setzen still mit HTTP 400 fehl. Für normale User liefert
+   * getAllRegistrations seitdem nur noch die EIGENEN Zeilen. Eine darauf
+   * basierende Zählung wäre katastrophal zu niedrig: real beobachtet hat ein
+   * Self-Cancel über syncSeatsToActiveCount `SeatsTaken=0` geschrieben,
+   * wonach Neu-Anmeldungen an der kompletten Warteliste vorbei direkt
+   * „Angemeldet" wurden. Deshalb wird die gelesene Zeilenzahl gegen den
+   * ungefilterten `ItemCount` der Liste geprüft — ist die Sicht unvollständig
+   * (oder nicht verifizierbar), fliegt ein Fehler und die Aufrufer handeln
+   * fail-safe (Sync schreibt nichts, reserveSeat nutzt den reinen Counter).
    */
   private async getActiveCounts(subsiteUrl: string): Promise<{ total: number; durch: number; fun: number; waitlist: number }> {
     const regs = await this.getAllRegistrations(subsiteUrl);
+    const itemCount = await this.getListItemCount(subsiteUrl, REG_LIST_NAME);
+    if (itemCount < 0 || regs.length < itemCount) {
+      throw new Error(`[DEX] getActiveCounts: Sicht unvollständig (${regs.length} von ${itemCount} Items lesbar) — Zählung unbrauchbar (Item-Level-Security).`);
+    }
     const active = regs.filter(r => EventService.ACTIVE_STATI.indexOf(r.Status) >= 0);
     return {
       total: active.length,
@@ -7831,13 +7868,22 @@ export class EventService {
    * Power-Automate-Nachrück-Promotion fasst den Counter nicht an — dieser
    * Reconcile (aktive Anzahl aus der Liste) hält ihn ehrlich. Best-effort,
    * ETag-CAS, blockiert nie den aufrufenden Flow.
+   *
+   * v27.10: Liefert zurück, ob tatsächlich synchronisiert wurde. `false`
+   * heißt insbesondere: der Aufrufer sieht die Teilnehmerliste nur beschnitten
+   * (Item-Level-Security, siehe getActiveCounts) — dann wird bewusst NICHTS
+   * geschrieben und der Aufrufer muss ggf. additiv am Counter arbeiten
+   * (releaseSeatAfterCancel).
    */
   public async syncSeatsToActiveCount(
     subsiteUrl: string,
     opts: { isSplit: boolean }
-  ): Promise<void> {
+  ): Promise<boolean> {
     let counts: { total: number; durch: number; fun: number; waitlist: number };
-    try { counts = await this.getActiveCounts(subsiteUrl); } catch { return; }
+    try { counts = await this.getActiveCounts(subsiteUrl); } catch (err) {
+      console.warn('[DEX] syncSeatsToActiveCount übersprungen:', err);
+      return false;
+    }
     // v24.76: WaitlistTaken-Feld sicherstellen, sonst HTTP 400 beim MERGE auf
     // Bestands-Events (Feld noch nicht angelegt).
     await this.ensureCounterFieldsOnce(subsiteUrl);
@@ -7853,14 +7899,101 @@ export class EventService {
     for (let attempt = 0; attempt < 6; attempt++) {
       try {
         const getResp = await this.context.spHttpClient.get(counterItemUrl, SPHttpClient.configurations.v1);
+        if (!getResp.ok) return false;
+        const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
+        if (!etag) return false;
+        const patchResp = await this._mergeIfMatch(counterItemUrl, desired, etag);
+        if (patchResp.ok) return true;
+        if (patchResp.status !== 412) return false;
+        await new Promise(res => setTimeout(res, 50 + Math.floor(Math.random() * 100)));
+      } catch { return false; }
+    }
+    return false;
+  }
+
+  /**
+   * v27.10: Ein einzelnes Sitzplatz-Counter-Feld additiv anpassen (atomar per
+   * ETag-CAS, floor bei 0) — Pendant zu adjustWaitlistCounter für SeatsTaken/
+   * SeatsTakenDurch/SeatsTakenFun. Für Aufrufer OHNE Vollzugriff auf die
+   * Teilnehmerliste, die keine Absolutwerte schreiben dürfen (siehe
+   * getActiveCounts). Best-effort, blockiert nie.
+   */
+  private async adjustSeatCounterField(
+    subsiteUrl: string,
+    field: 'SeatsTaken' | 'SeatsTakenDurch' | 'SeatsTakenFun',
+    delta: number
+  ): Promise<void> {
+    if (!subsiteUrl || !delta) return;
+    const counterItemUrl = `${subsiteUrl}/_api/web/lists/getbytitle('${COUNTER_LIST_NAME}')/items(1)`;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      try {
+        const getResp = await this.context.spHttpClient.get(counterItemUrl, SPHttpClient.configurations.v1);
         if (!getResp.ok) return;
         const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
         if (!etag) return;
-        const patchResp = await this._mergeIfMatch(counterItemUrl, desired, etag);
+        const data = await getResp.json();
+        const rawVal = data?.[field] ?? data?.d?.[field];
+        // Feld nie initialisiert → additiv sinnlos; der nächste privilegierte
+        // Reconcile seedet es korrekt.
+        if (rawVal === null || rawVal === undefined) return;
+        const current = typeof rawVal === 'number' ? rawVal : (parseInt(String(rawVal), 10) || 0);
+        const next = Math.max(0, current + delta);
+        const patchResp = await this._mergeIfMatch(counterItemUrl, { [field]: next }, etag);
         if (patchResp.ok) return;
         if (patchResp.status !== 412) return;
-        await new Promise(res => setTimeout(res, 50 + Math.floor(Math.random() * 100)));
+        await new Promise(res => setTimeout(res, 40 + Math.floor(Math.random() * 80)));
       } catch { return; }
+    }
+  }
+
+  /**
+   * v27.10 REGRESSIONS-FIX: Counter-Pflege nach einer Abmeldung — ersetzt den
+   * direkten syncSeatsToActiveCount-Aufruf in den Abmelde-Pfaden (Selbst-
+   * Abmeldung, Team-Lead-Abmeldung, Assistenz-Abmeldung), die auch von
+   * NORMALEN Usern ausgelöst werden.
+   *
+   * Hintergrund: Seit die Element-Sicherheit („nur eigene Elemente", v26.87)
+   * wirklich greift, sah ein normaler User beim Reconcile nur die eigene —
+   * gerade abgemeldete — Zeile und schrieb SeatsTaken=0. Folge (real, 15.07.):
+   * Neu-Anmeldungen wurden trotz voller Warteliste direkt „Angemeldet" und
+   * überholten alle Wartenden.
+   *
+   * Ablauf jetzt:
+   * 1. Voll-Reconcile versuchen (greift nur bei Vollzugriff, z.B. Organizer/
+   *    Admin — exakteste Variante, heilt auch alte Drift).
+   * 2. Sonst additiv (ILS-sicher):
+   *    - Wartelisten-Zeile abgemeldet → WaitlistTaken −1.
+   *    - Aktive Zeile abgemeldet → Platz nur freigeben (SeatsTaken −1), wenn
+   *      die Warteliste laut Counter LEER ist. Steht jemand auf der Warteliste,
+   *      besetzt der IDReorder-/Nachrück-Flow den Platz sofort FIFO-fair —
+   *      SeatsTaken bleibt dann unverändert korrekt, und eine parallele
+   *      Neu-Anmeldung kann die Wartenden nicht überholen. Bei unbekanntem
+   *      Wartelisten-Stand: fail-closed nichts tun (privilegierter Reconcile
+   *      heilt spätestens beim nächsten Admin-/Organizer-Boot).
+   */
+  public async releaseSeatAfterCancel(
+    subsiteUrl: string,
+    opts: { isSplit: boolean; previousStatus: string; starterType?: string }
+  ): Promise<void> {
+    try {
+      const synced = await this.syncSeatsToActiveCount(subsiteUrl, { isSplit: opts.isSplit });
+      if (synced) return;
+      if (opts.previousStatus === 'Warteliste') {
+        await this.adjustWaitlistCounter(subsiteUrl, -1);
+        return;
+      }
+      if (EventService.ACTIVE_STATI.indexOf(opts.previousStatus) < 0) return;
+      const stats = await this.getCounterStats(subsiteUrl, opts.isSplit);
+      // stats.waitlist: -1 = unbekannt (Feld nie gepflegt) → fail-closed.
+      if (!stats || stats.waitlist !== 0) return;
+      await this.adjustSeatCounterField(subsiteUrl, 'SeatsTaken', -1);
+      if (opts.isSplit && opts.starterType === 'Durchstarter') {
+        await this.adjustSeatCounterField(subsiteUrl, 'SeatsTakenDurch', -1);
+      } else if (opts.isSplit && opts.starterType === 'Funstarter') {
+        await this.adjustSeatCounterField(subsiteUrl, 'SeatsTakenFun', -1);
+      }
+    } catch (err) {
+      console.warn('[DEX] releaseSeatAfterCancel failed (best-effort):', err);
     }
   }
 
@@ -8949,25 +9082,38 @@ export class EventService {
     funstarterCapacity: number,
   ): Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste' | 'Failed'; full: boolean }> {
     try {
-      // Counts aktiv-Status pro StarterType ermitteln. Aktiv = Angemeldet,
-      // QR versendet oder Eingecheckt — Abgemeldete und Wartelisten zählen
-      // nicht gegen die Kapazität.
-      const allRegs = await this.getAllRegistrations(subsiteUrl);
-      const active = allRegs.filter(r => {
-        const s = r.Status || '';
-        return s === 'Angemeldet' || s === 'QR versendet' || s === 'Eingecheckt';
-      });
-      // Den eigenen Eintrag aus der Zählung rausnehmen — wenn er heute schon
-      // in der Ziel-Gruppe stünde, würden wir einen Slot frei zählen, der
-      // gar nicht entsteht. Wenn er in der Quell-Gruppe steht, gibt der
-      // Wechsel den Quell-Slot frei und der Zielslot ist relevant.
-      const targetCount = active
-        .filter(r => r.Id !== itemId)
-        .filter(r => r.StarterType === newType)
-        .length;
+      // v27.10 REGRESSIONS-FIX: Die frühere Zählung über getAllRegistrations
+      // ist für normale User unbrauchbar, seit die Element-Sicherheit („nur
+      // eigene Elemente", v26.87) wirklich greift — sie sahen nur die eigene
+      // Zeile, zählten die Ziel-Gruppe als leer und wechselten an einer
+      // vollen Gruppe (inkl. deren Warteliste) vorbei direkt auf „Angemeldet".
+      // Stattdessen jetzt die ATOMARE Sitzplatz-Reservierung über den für
+      // alle lesbaren/schreibbaren Gruppen-Counter (gleicher Mechanismus wie
+      // bei der Neu-Anmeldung, ETag-CAS): 'reserved' → Platz sicher belegt,
+      // 'full'/'error' → fail-closed Warteliste. Der eigene Eintrag steckt
+      // bei einem echten Wechsel nie im Ziel-Gruppen-Zähler (aktiv in der
+      // ANDEREN Gruppe oder auf der Warteliste).
+      // Vorherigen Zustand der eigenen Zeile lesen (unter Item-Level-Security
+      // immer sichtbar) — für die additive Counter-Pflege unten.
+      let prevStatus = '';
+      try {
+        const ownResp = await this.context.spHttpClient.get(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})?$select=Status`,
+          SPHttpClient.configurations.v1
+        );
+        if (ownResp.ok) {
+          const ownData = await ownResp.json();
+          const own = ownData?.d ?? ownData;
+          prevStatus = own?.Status || '';
+        }
+      } catch { /* best-effort — Counter-Pflege unten fällt dann konservativ aus */ }
+      const wasActive = EventService.ACTIVE_STATI.indexOf(prevStatus) >= 0;
+      const wasWaitlist = prevStatus === 'Warteliste';
       const targetCap = newType === 'Durchstarter' ? durchstarterCapacity : funstarterCapacity;
-      const targetFree = targetCap - targetCount;
-      const goWaitlist = targetCap > 0 && targetFree <= 0;
+      const seat = targetCap > 0
+        ? await this.reserveSeat(subsiteUrl, newType, targetCap)
+        : 'reserved'; // cap <= 0 = unbegrenzt
+      const goWaitlist = seat !== 'reserved';
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const body: Record<string, any> = goWaitlist
         ? { 'Status': 'Warteliste', 'StarterType': '', 'PreferredStarterType': newType }
@@ -8988,8 +9134,29 @@ export class EventService {
       const resp = await this._merge(url, body);
       if (!resp.ok) {
         console.warn('[DEX] switchSplitGroup MERGE failed:', resp.status);
+        // Reservierten Ziel-Gruppen-Platz zurückgeben — die Zeile wurde ja
+        // nicht umgestellt.
+        if (!goWaitlist && targetCap > 0) {
+          await this.adjustSeatCounterField(subsiteUrl, this.seatFieldFor(newType), -1);
+        }
         return { ok: false, status: 'Failed', full: goWaitlist };
       }
+      // v27.10: Additive Counter-Pflege (ILS-sicher, best-effort). Nur die
+      // eindeutig sicheren Anpassungen — alles Unklare heilt der nächste
+      // privilegierte Reconcile:
+      // - Aktiv → Warteliste: WaitlistTaken +1 (der frei werdende Quell-Slot
+      //   wird bewusst NICHT dekrementiert — fail-closed, Nachrücken/Reconcile
+      //   übernimmt).
+      // - Warteliste → Aktiv: WaitlistTaken −1 (Ziel-Gruppen-Zähler hat
+      //   reserveSeat bereits atomar erhöht).
+      if (goWaitlist && wasActive) {
+        await this.adjustWaitlistCounter(subsiteUrl, +1);
+      } else if (!goWaitlist && wasWaitlist) {
+        await this.adjustWaitlistCounter(subsiteUrl, -1);
+      }
+      // Aktiv → Aktiv (Gruppenwechsel): Quell-Gruppen-Zähler bleibt bewusst
+      // stehen (fail-closed) — der nächste privilegierte Reconcile setzt ihn
+      // exakt.
       return { ok: true, status: goWaitlist ? 'Warteliste' : 'Angemeldet', full: goWaitlist };
     } catch (err) {
       console.warn('[DEX] switchSplitGroup error:', err);

@@ -1732,10 +1732,18 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // v24.73: WaitlistTaken im (für alle lesbaren) Counter hochzählen — damit
         // die Live-Warteliste-Zahl auch für normale Teilnehmer stimmt (informativ,
         // nicht überbuchungs-relevant; privilegierter Reconcile heilt Drift).
-        eventService.adjustWaitlistCounter(subsiteUrl, +1).catch(() => { /* best-effort */ });
+        // v27.10: Bump ABWARTEN und die Position aus dem Counter lesen — die
+        // frühere Listen-Zählung (getRegistrationCount) sieht für normale User
+        // seit v26.87 nur die eigenen Zeilen und lieferte immer „1".
+        try { await eventService.adjustWaitlistCounter(subsiteUrl, +1); } catch { /* best-effort */ }
         try {
-          const counts = await eventService.getRegistrationCount(subsiteUrl);
-          waitlistPosition = counts.waitlist;
+          const stats = await eventService.getCounterStats(subsiteUrl, isSplitGroup);
+          if (stats && stats.waitlist > 0) {
+            waitlistPosition = stats.waitlist;
+          } else {
+            const counts = await eventService.getRegistrationCount(subsiteUrl);
+            waitlistPosition = counts.waitlist;
+          }
         } catch { /* Position nicht ermittelbar */ }
       }
 
@@ -3198,14 +3206,21 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             );
             if (!reorderOk) console.warn('[DEX] queueIDReorder returned false');
           } catch (err) { console.warn('[DEX] queueIDReorder failed:', err); }
-          // v11.36: Sitzplatz-Counter nach der Abmeldung mit dem echten
-          // Bestand abgleichen, damit der frei gewordene Platz für die
-          // nächste Anmeldung wieder reservierbar ist (best-effort).
+          // v11.36 → v27.10: Sitzplatz-Counter nach der Abmeldung pflegen.
+          // NICHT mehr blind syncSeatsToActiveCount — ein normaler User sieht
+          // die Teilnehmerliste seit v26.87 nur beschnitten („nur eigene
+          // Elemente") und hätte den Counter mit 0 überschrieben (Ursache der
+          // Warteliste-Überholung vom 15.07.). releaseSeatAfterCancel macht
+          // den Voll-Reconcile nur bei Vollzugriff und arbeitet sonst additiv.
           try {
             const isSplit = typeof event.durchstarterCapacity === 'number'
               && typeof event.funstarterCapacity === 'number'
               && ((event.durchstarterCapacity || 0) > 0 || (event.funstarterCapacity || 0) > 0);
-            await eventService.syncSeatsToActiveCount(subsiteUrl, { isSplit });
+            await eventService.releaseSeatAfterCancel(subsiteUrl, {
+              isSplit,
+              previousStatus: myReg.Status || '',
+              starterType: myReg.StarterType || undefined,
+            });
           } catch { /* best-effort */ }
         }
       } else {
@@ -3343,11 +3358,17 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             memberRegistration.ParticipantEmail || undefined
           );
         } catch (err) { console.warn('[DEX] queueIDReorder (team-lead cancel) failed:', err); }
+        // v27.10: ILS-sichere Counter-Pflege statt blindem Voll-Sync (der
+        // Team-Lead ist ein normaler User — siehe Kommentar im Self-Cancel).
         try {
           const isSplit = typeof event.durchstarterCapacity === 'number'
             && typeof event.funstarterCapacity === 'number'
             && ((event.durchstarterCapacity || 0) > 0 || (event.funstarterCapacity || 0) > 0);
-          await eventService.syncSeatsToActiveCount(subsiteUrl, { isSplit });
+          await eventService.releaseSeatAfterCancel(subsiteUrl, {
+            isSplit,
+            previousStatus: memberRegistration.Status || '',
+            starterType: memberRegistration.StarterType || undefined,
+          });
         } catch { /* best-effort */ }
       }
       // Info-Mails an die uebrigen Team-Mitglieder. Wir löschen NICHT
@@ -3490,11 +3511,17 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           registration.ParticipantEmail || undefined
         );
       } catch (err) { console.warn('[DEX] queueIDReorder (proxy cancel) failed:', err); }
+      // v27.10: ILS-sichere Counter-Pflege statt blindem Voll-Sync (die
+      // Assistenz ist ein normaler User — siehe Kommentar im Self-Cancel).
       try {
         const isSplit = typeof event.durchstarterCapacity === 'number'
           && typeof event.funstarterCapacity === 'number'
           && ((event.durchstarterCapacity || 0) > 0 || (event.funstarterCapacity || 0) > 0);
-        await eventService.syncSeatsToActiveCount(subsiteUrl, { isSplit });
+        await eventService.releaseSeatAfterCancel(subsiteUrl, {
+          isSplit,
+          previousStatus: registration.Status || '',
+          starterType: registration.StarterType || undefined,
+        });
       } catch { /* best-effort */ }
     }
     await loadEvents();
