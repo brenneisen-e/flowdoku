@@ -7415,8 +7415,12 @@ export class EventService {
     email: string
   ): Promise<SPRegistration | null> {
     try {
+      // v27.11: $orderby=Id desc — bei mehreren Zeilen derselben Person
+      // (Alt-Duplikate) IMMER die neueste nehmen. Vorher konnte $top=1 ohne
+      // Sortierung eine alte 'Abgemeldet'-Zeile erwischen und den
+      // Reaktivierungs-Pfad statt des Duplikat-Blocks auslösen.
       const response = await this.context.spHttpClient.get(
-        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=ParticipantEmail eq '${email.replace(/'/g, "''")}'&$top=1`,
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=ParticipantEmail eq '${email.trim().replace(/'/g, "''")}'&$orderby=Id desc&$top=1`,
         SPHttpClient.configurations.v1
       );
       if (!response.ok) return null;
@@ -7973,7 +7977,7 @@ export class EventService {
    */
   public async releaseSeatAfterCancel(
     subsiteUrl: string,
-    opts: { isSplit: boolean; previousStatus: string; starterType?: string }
+    opts: { isSplit: boolean; previousStatus: string; starterType?: string; waitlistDisabled?: boolean }
   ): Promise<void> {
     try {
       const synced = await this.syncSeatsToActiveCount(subsiteUrl, { isSplit: opts.isSplit });
@@ -7983,6 +7987,19 @@ export class EventService {
         return;
       }
       if (EventService.ACTIVE_STATI.indexOf(opts.previousStatus) < 0) return;
+      // v27.11: Warteliste vom Organizer abgeschaltet → es rückt NIEMAND nach
+      // (App-Gates + Flow-Bedingung). Der Platz muss dann direkt freigegeben
+      // werden — sonst blieben frei gewordene Plätze dauerhaft als belegt
+      // gezählt (Deadlock, bis ein privilegierter Reconcile läuft).
+      if (opts.waitlistDisabled) {
+        await this.adjustSeatCounterField(subsiteUrl, 'SeatsTaken', -1);
+        if (opts.isSplit && opts.starterType === 'Durchstarter') {
+          await this.adjustSeatCounterField(subsiteUrl, 'SeatsTakenDurch', -1);
+        } else if (opts.isSplit && opts.starterType === 'Funstarter') {
+          await this.adjustSeatCounterField(subsiteUrl, 'SeatsTakenFun', -1);
+        }
+        return;
+      }
       const stats = await this.getCounterStats(subsiteUrl, opts.isSplit);
       // stats.waitlist: -1 = unbekannt (Feld nie gepflegt) → fail-closed.
       if (!stats || stats.waitlist !== 0) return;

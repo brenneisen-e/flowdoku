@@ -16,6 +16,7 @@ import { isEventVisibleForUser } from './EventListPage';
 import { useCachedImage } from '../utils/imageCache';
 import { useIsMobile } from '../utils/useIsMobile';
 import { isRegistrationFullyClosed } from '../utils/eventFormat';
+import { isDeloitteInternalEmail, isExternalEmail } from '../utils/deloitteDomain';
 import { useLanguage, translations as appTranslations, Locale } from '../context/LanguageContext';
 // v20.4: modernes Alert-Modal statt window.alert.
 import { useDialog } from '../context/DialogContext';
@@ -59,11 +60,11 @@ function formatDateRange(startIso: string, endIso: string): string {
   return `${start.toLocaleDateString('de-DE', dayFmt)} ${start.toLocaleTimeString('de-DE', timeFmt)} – ${end.toLocaleDateString('de-DE', dayFmt)} ${end.toLocaleTimeString('de-DE', timeFmt)}`;
 }
 
-// v18.74: Externe Adresse = kein Deloitte-Deutschland-Postfach (@deloitte.de).
-const isExternalEmailAddr = (e: string): boolean => {
-  const v = (e || '').trim();
-  return !!v && !/@(.*\.)?deloitte\.de$/i.test(v);
-};
+// v18.74/v27.11: Externe Adresse = kein Deloitte-Postfach. Seit v27.11 zählt
+// JEDE Member-Firm-Domain als intern (@deloitte.at, @deloitte.com, …) — die
+// International-Suche (v26.57) findet diese Kolleg:innen, also darf die
+// Anmeldung sie nicht als extern behandeln.
+const isExternalEmailAddr = (e: string): boolean => isExternalEmail(e);
 
 // v26.75: Die Vorfilter-Kategorie-Auswahl liegt transient unter dem Schlüssel
 // '<fieldId>__cat' im Antwort-Store — sie ist reine UI-Hilfe zum Filtern der
@@ -996,7 +997,15 @@ export default function RegistrationPage(): React.ReactElement {
     const m = (delegateAssistValue || '').match(/^(.+?)\s*<([^>]+@[^>]+)>\s*$/);
     return m ? { name: m[1].trim(), email: m[2].trim() } : null;
   })();
-  const parentRegBlocked = isDeadlinePassed && !parentAlreadyRegistered && !isOrganizer && !isAdmin;
+  // v27.11: Voll & Warteliste vom Organizer deaktiviert → Hauptevent nicht
+  // mehr buchbar. Vorher lief die Anmeldung still auf die (abgeschaltete)
+  // Warteliste — der WaitlistEnabled-Toggle war wirkungslos. Sub-Events
+  // bleiben über die parentRegBlocked-Mechanik weiterhin einzeln buchbar.
+  const pfActive = liveStats ? liveStats.active : (event ? (event.currentParticipants || 0) : 0);
+  const pfWaitlist = (liveStats && liveStats.waitlist >= 0) ? liveStats.waitlist : (event ? (event.waitlistCount || 0) : 0);
+  const parentFullNoWaitlist = !!event && event.maxParticipants > 0 && event.waitlistEnabled === false
+    && Math.max(0, event.maxParticipants - pfActive - pfWaitlist) <= 0;
+  const parentRegBlocked = ((isDeadlinePassed && !isOrganizer && !isAdmin) || parentFullNoWaitlist) && !parentAlreadyRegistered;
   const willRegisterParent = registerForParent && !parentAlreadyRegistered && !registerForOther && !(event && event.subEventsOnlyMode) && !parentRegBlocked;
   // Fürs Registrieren für andere bleibt der alte Flow: Parent wird immer registriert,
   // keine Session-Auswahl (siehe Render).
@@ -1534,6 +1543,20 @@ export default function RegistrationPage(): React.ReactElement {
           return locale === 'de'
             ? 'Die Anmeldung konnte nicht gespeichert werden (technischer Fehler an der Teilnehmerliste). Bitte erneut versuchen; hält es an, im Organizer Center „Spalten fixen" ausführen.'
             : 'The registration could not be saved (technical error on the participant list). Please try again; if it persists, run „Fix columns" in the organizer center.';
+        }
+        // v27.11: aktiver Duplikat-Treffer (deckt jetzt auch Externe ab).
+        if (reason === 'already-registered') {
+          return registerForOther
+            ? t('reg.thirdparty.alreadyregistered')
+            : (locale === 'de'
+              ? 'Du bist für dieses Event bereits angemeldet.'
+              : 'You are already registered for this event.');
+        }
+        // v27.11: Event voll und Warteliste vom Organizer abgeschaltet.
+        if (reason === 'full') {
+          return locale === 'de'
+            ? 'Alle Plätze sind belegt und die Warteliste ist für dieses Event deaktiviert — eine Anmeldung ist nicht mehr möglich.'
+            : 'All seats are taken and the waitlist is disabled for this event — registration is no longer possible.';
         }
         // Fallback (unbekannt / kein Grund) — bisherige generische Meldung.
         return t(registerForOther ? 'reg.error.other' : 'reg.error');
@@ -2874,8 +2897,10 @@ export default function RegistrationPage(): React.ReactElement {
                     </div>
                   )}
                   {parentRegBlocked && !parentAlreadyRegistered && (
-                    <div style={{ fontSize: '0.75rem', color: 'var(--dex-orange, #ed8b00)', marginTop: 2 }}>
-                      {t('reg.subevents.deadlinepassed') || 'Anmeldefrist abgelaufen — nur noch die offenen Sub-Events sind wählbar.'}
+                    <div style={{ fontSize: '0.75rem', color: parentFullNoWaitlist ? 'var(--dex-red, #c00)' : 'var(--dex-orange, #ed8b00)', marginTop: 2 }}>
+                      {parentFullNoWaitlist
+                        ? (locale === 'de' ? 'Alle Plätze sind belegt — die Warteliste ist für dieses Event deaktiviert.' : 'All seats are taken — the waitlist is disabled for this event.')
+                        : (t('reg.subevents.deadlinepassed') || 'Anmeldefrist abgelaufen — nur noch die offenen Sub-Events sind wählbar.')}
                     </div>
                   )}
                 </div>
@@ -3052,6 +3077,17 @@ export default function RegistrationPage(): React.ReactElement {
                                 Parents), nur die explizite UI-Zeile ist
                                 weg. */}
                           </div>
+                          {/* v27.11: Eigenes Sub-Event-Bild als Thumbnail —
+                              Sub-Events können jetzt (Wizard Schritt 3) ein
+                              eigenes Bild haben. Ohne Bild: kein Thumbnail
+                              (wie bisher). */}
+                          {ce.imageUrl && (
+                            <img
+                              src={ce.imageUrl}
+                              alt=""
+                              style={{ width: 84, height: 60, objectFit: 'cover', borderRadius: 6, flexShrink: 0, background: 'var(--dex-gray-100)' }}
+                            />
+                          )}
                         </label>
                       </div>
                     );
@@ -3205,7 +3241,8 @@ export default function RegistrationPage(): React.ReactElement {
                             // setzen. Greift erst, wenn die Eingabe eine plausible
                             // komplette Adresse ist (also nach dem Tippen).
                             const v = val.trim();
-                            const isDeloitte = /@(.*\.)?deloitte\.(de|com)$/i.test(v);
+                            // v27.11: JEDE Member-Firm-Domain zählt als intern.
+                            const isDeloitte = isDeloitteInternalEmail(v);
                             if (canCreateEvents && isPlausibleEmail(v) && !isDeloitte) {
                               setExternalPerson(true);
                               setUserSearch(''); setUserResults([]); setPickedUserProfile(null);
@@ -3396,9 +3433,10 @@ export default function RegistrationPage(): React.ReactElement {
                   // registrieren" aktiv ist — nicht erst wenn die E-Mail
                   // gefüllt ist. Der User soll sofort sehen, dass eine
                   // Zustimmung nötig ist.
-                  // v18.74: Extern, sobald der Extern-Modus aktiv ist ODER die
-                  // eingegebene E-Mail keine Deloitte-DE-Adresse ist.
-                  const isExternal = externalPerson || (!!email.trim() && !/@(.*\.)?deloitte\.de$/i.test(email.trim()));
+                  // v18.74/v27.11: Extern, sobald der Extern-Modus aktiv ist ODER
+                  // die eingegebene E-Mail kein Deloitte-Postfach ist (beliebige
+                  // Member Firm zählt als intern).
+                  const isExternal = externalPerson || isExternalEmail(email);
                   const pickedName = `${firstName} ${surname}`.trim();
                   return (
                     <div style={{
@@ -4179,8 +4217,10 @@ export default function RegistrationPage(): React.ReactElement {
                       </div>
                     )}
                     {parentRegBlocked && !parentAlreadyRegistered && (
-                      <div style={{ fontSize: '0.75rem', color: 'var(--dex-orange, #ed8b00)', marginTop: 2 }}>
-                        {tEvent('reg.subevents.deadlinepassed') || 'Anmeldefrist abgelaufen — nur noch die offenen Sub-Events sind wählbar.'}
+                      <div style={{ fontSize: '0.75rem', color: parentFullNoWaitlist ? 'var(--dex-red, #c00)' : 'var(--dex-orange, #ed8b00)', marginTop: 2 }}>
+                        {parentFullNoWaitlist
+                          ? (locale === 'de' ? 'Alle Plätze sind belegt — die Warteliste ist für dieses Event deaktiviert.' : 'All seats are taken — the waitlist is disabled for this event.')
+                          : (tEvent('reg.subevents.deadlinepassed') || 'Anmeldefrist abgelaufen — nur noch die offenen Sub-Events sind wählbar.')}
                       </div>
                     )}
                   </div>
@@ -4396,7 +4436,17 @@ export default function RegistrationPage(): React.ReactElement {
           const effWaitlist = (liveStats && liveStats.waitlist >= 0) ? liveStats.waitlist : (event.waitlistCount || 0);
           const free = Math.max(0, event.maxParticipants - effActive - effWaitlist);
           const isFull = free <= 0;
-          if (isFull && !event.waitlistEnabled) return null; // voll, keine Warteliste → nichts
+          // v27.11: voll + Warteliste deaktiviert → NICHT mehr stumm bleiben,
+          // sondern rote Badge zeigen (vorher: return null; die Anmeldung lief
+          // dann trotzdem still auf die abgeschaltete Warteliste).
+          if (isFull && !event.waitlistEnabled) {
+            return (
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'rgba(204,0,0,0.08)', color: 'var(--dex-red, #c00)', border: '1px solid var(--dex-red, #c00)', borderRadius: 999, padding: '5px 14px', fontSize: '0.82rem', fontWeight: 700 }}>
+                <Icon iconName="People" style={{ fontSize: 15 }} />
+                {locale === 'de' ? 'Alle Plätze belegt — keine Warteliste' : 'All seats taken — no waitlist'}
+              </span>
+            );
+          }
           const waitlist = isFull && !!event.waitlistEnabled;
           const nearlyFull = !isFull && free <= Math.max(1, Math.round(event.maxParticipants * 0.1));
           const isTeamEvent = !!(event.teamRegistrationEnabled && event.teamSize && event.teamSize > 1);
@@ -4802,7 +4852,7 @@ export default function RegistrationPage(): React.ReactElement {
                     </div>
                     <div style={{ marginBottom: 6 }}>
                       <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 600, marginBottom: 3 }}>E-Mail</label>
-                      <input className="form-input" type="email" value={email} onChange={e => { setEmail(e.target.value); externalEmailConfirmedRef.current = false; }} placeholder="name@firma.de" />
+                      <input className="form-input" type="email" value={email} onChange={e => { setEmail(e.target.value); externalEmailConfirmedRef.current = false; setThirdPartyCheck(null); /* v27.11: Duplikat-Check bei Adress-Änderung zurücksetzen */ }} placeholder="name@firma.de" />
                     </div>
                     <button type="button" style={linkBtn} onClick={() => { setExternalPerson(false); clearPick(); }}>{locale === 'de' ? '← Zurück zur Personensuche' : '← Back to search'}</button>
                   </div>
@@ -4814,7 +4864,31 @@ export default function RegistrationPage(): React.ReactElement {
                       type="button"
                       className="btn btn-primary"
                       disabled={!(firstName.trim() && surname.trim() && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim()))}
-                      onClick={() => setProxyStep(2)}
+                      onClick={() => {
+                        // v27.11 (Bug „Externe können mehrfach angemeldet
+                        // werden"): Duplikat-Check jetzt auch für externe
+                        // Personen — vorher lief er NUR beim Personen-Picker
+                        // (interne), Externe rutschten ungeprüft durch.
+                        // thirdPartyCheck aktiviert zugleich die bestehende
+                        // Submit-Sperre + den Button-Disable am Formular.
+                        (async () => {
+                          const existing = await checkRegistrationByEmail(event.id, email.trim()).catch(() => null);
+                          const alreadyRegistered = !!existing && existing.Status !== 'Abgemeldet';
+                          setThirdPartyCheck({
+                            alreadyRegistered,
+                            notInAudience: false,
+                            registeredName: (existing && (existing.ParticipantName || `${existing.Vorname || ''} ${existing.Nachname || ''}`.trim())) || `${firstName} ${surname}`.trim(),
+                            registeredDate: (existing && existing.RegistrationDate) || '',
+                          });
+                          if (alreadyRegistered) {
+                            showAlert(locale === 'de'
+                              ? `${email.trim()} ist bereits für dieses Event angemeldet — eine erneute Anmeldung ist nicht möglich.`
+                              : `${email.trim()} is already registered for this event — registering again is not possible.`, { variant: 'error' });
+                            return;
+                          }
+                          setProxyStep(2);
+                        })().catch(() => setProxyStep(2));
+                      }}
                     >{locale === 'de' ? 'Weiter' : 'Next'}</button>
                   ) : (
                     <button type="button" className="btn btn-primary" disabled={!picked || blocked} onClick={() => setProxyStep(2)}>{locale === 'de' ? 'Weiter' : 'Next'}</button>
