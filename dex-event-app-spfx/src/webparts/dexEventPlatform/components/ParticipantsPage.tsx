@@ -12,13 +12,13 @@ import { useRoles } from '../context/RoleContext';
 import { useNavigation } from '../context/NavigationContext';
 import { EventService, SPParticipant } from '../services/EventService';
 import { DeloitteEvent } from '../types';
-import { Users, FileText } from './Icons';
+import { Users } from './Icons';
 import { useLanguage } from '../context/LanguageContext';
 
 export default function ParticipantsPage(): React.ReactElement {
   const { navigate } = useNavigation();
   const { events } = useEvents();
-  const { siteUrl, isAdmin } = useRoles();
+  const { isAdmin } = useRoles();
   const { t } = useLanguage();
   const [participants, setParticipants] = React.useState<SPParticipant[]>([]);
   const [isLoading, setIsLoading] = React.useState(true);
@@ -54,7 +54,8 @@ export default function ParticipantsPage(): React.ReactElement {
     );
   }
 
-  const spListUrl = `${siteUrl}/Lists/DEX_Participants/AllItems.aspx`;
+  // v27.13: Direkt-Link zur SharePoint-Liste entfernt — alle Aktionen laufen
+  // über die App (direktes SP-Editieren umgeht Audit + Validierung).
 
   // Filtern
   const filtered = searchTerm
@@ -107,15 +108,7 @@ export default function ParticipantsPage(): React.ReactElement {
         <h2 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
           <Users size={24} /> {t('participants.title')}
         </h2>
-        <a
-          href={spListUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="btn btn-secondary"
-          style={{ fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: 6, textDecoration: 'none' }}
-        >
-          <FileText size={14} /> {t('participants.opensp')}
-        </a>
+        {/* v27.13: „In SharePoint öffnen"-Button entfernt — alle Aktionen in der App. */}
       </div>
 
       <div style={{ marginBottom: 16 }}>

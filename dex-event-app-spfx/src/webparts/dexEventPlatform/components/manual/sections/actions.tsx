@@ -105,14 +105,12 @@ export function actionsSection(locale: 'de' | 'en'): ManualSection {
                 {isDe ? (
                   <ul style={{ margin: '4px 0 0', paddingLeft: 18, lineHeight: 1.6 }}>
                     <li><strong>Event bearbeiten</strong> — öffnet den Wizard, um alle Einstellungen des Events zu ändern.</li>
-                    <li><strong>In SharePoint öffnen</strong> — springt zur SharePoint-Liste hinter dem Event (für Sonderfälle; im Alltag nicht nötig).</li>
                     <li><strong>Deep-Link kopieren</strong> — kopiert den direkten Link zur Anmeldeseite des Events, z.B. für eine eigene Einladung.</li>
                     <li><strong>Audit-Log / Änderungsprotokoll</strong> — öffnet das Protokoll aller Änderungen an diesem Event (wer hat wann was geändert), bereits auf das Event vorgefiltert.</li>
                   </ul>
                 ) : (
                   <ul style={{ margin: '4px 0 0', paddingLeft: 18, lineHeight: 1.6 }}>
                     <li><strong>Edit event</strong> — opens the wizard to change all settings of the event.</li>
-                    <li><strong>Open in SharePoint</strong> — jumps to the SharePoint list behind the event (for edge cases; not needed day-to-day).</li>
                     <li><strong>Copy deep link</strong> — copies the direct link to the event’s registration page, e.g. for your own invitation.</li>
                     <li><strong>Audit log / change history</strong> — opens the log of all changes to this event (who changed what and when), pre-filtered to the event.</li>
                   </ul>

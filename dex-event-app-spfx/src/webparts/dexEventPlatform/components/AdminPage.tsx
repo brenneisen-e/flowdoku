@@ -4,8 +4,9 @@
  * Zeigt alle Events des Admins. Nach Auswahl eines Events:
  * - Event bearbeiten (Daten ändern)
  * - Teilnehmerliste anzeigen
- * - Teilnehmerliste in SharePoint öffnen
  * - Neues Event erstellen
+ * (v27.13: „Teilnehmerliste in SharePoint öffnen" entfernt — alle Aktionen
+ *  laufen über die App.)
  */
 
 import * as React from 'react';
@@ -226,8 +227,9 @@ const ACTION_CATEGORY_ORDER: ActionCategoryKey[] = ['event', 'participants', 'ma
 const ACTION_CATEGORY_LABELS: Record<ActionCategoryKey, { de: string; en: string; descDe: string; descEn: string }> = {
   event: {
     de: 'Event', en: 'Event',
-    descDe: 'Event bearbeiten, in SharePoint öffnen, Link teilen, Änderungsprotokoll ansehen.',
-    descEn: 'Edit the event, open it in SharePoint, share the link, view the change history.',
+    // v27.13: „in SharePoint öffnen" entfernt — alle Aktionen laufen über die App.
+    descDe: 'Event bearbeiten, Link teilen, Änderungsprotokoll ansehen.',
+    descEn: 'Edit the event, share the link, view the change history.',
   },
   participants: {
     de: 'Teilnehmer', en: 'Participants',
@@ -7073,17 +7075,11 @@ export default function AdminPage(): React.ReactElement {
               onClick={() => navigate('edit-event', selectedEvent.id)}
             />
 
-            {/* 2. Teilnehmerliste in SharePoint öffnen */}
-            <ActionTile
-              icon={<ExternalLink size={18} />}
-              category="event"
-              title={t('admin.opensp') || 'In SharePoint öffnen'}
-              desc={isDe
-                ? 'Öffnet die SharePoint-Teilnehmerliste der Subsite in einem neuen Tab — für tiefere Bearbeitung jenseits dieser App (z.B. Massen-Edit per Spreadsheet-View).'
-                : 'Opens the SharePoint participant list of the subsite in a new tab — for deeper editing beyond this app (e.g. bulk edit via spreadsheet view).'}
-              badge="organizer"
-              href={selectedEvent.subsiteUrl ? `${selectedEvent.subsiteUrl}/Lists/Teilnehmer/AllItems.aspx` : `${siteUrl}/Lists`}
-            />
+            {/* v27.13: „In SharePoint öffnen" entfernt — alle Teilnehmer-
+                Aktionen (Bearbeiten, Export, Massenimport, Audit) laufen über
+                die App. Direktes Editieren in der rohen SP-Liste erzeugte
+                Zeilen ohne Audit-Felder und ohne Format-Validierung (siehe
+                Feedback Datenschutz-Review 07/2026). */}
 
             {/* v18.33/v20.1: Self-Check-in — QR-PDF + rotierende Live-Anzeige.
                 Seit v20.1 IMMER sichtbar für Admin/(Co-)Organizer: hat das

@@ -653,8 +653,11 @@ export function promotionEmail(recipientName: string, eventTitle: string): { sub
 
 /**
  * Event erstellt - Benachrichtigung an Organisator
+ * v27.13: subsiteUrl-Parameter bleibt für Call-Site-Kompatibilität, wird aber
+ * nicht mehr verlinkt — der SharePoint-Teilnehmerlisten-Link wurde entfernt
+ * (alle Aktionen laufen über die App).
  */
-export function eventCreatedEmail(recipientName: string, eventTitle: string, subsiteUrl: string): { subject: string; body: string } {
+export function eventCreatedEmail(recipientName: string, eventTitle: string, _subsiteUrl: string): { subject: string; body: string } {
   return {
     subject: `[Deloitte Eventmanager] - Event angelegt`,
     body: wrapTemplate(
@@ -670,9 +673,8 @@ export function eventCreatedEmail(recipientName: string, eventTitle: string, sub
         <li><strong>Einladung verschicken</strong> &ndash; optional die Einladung mit Anmelde-Link direkt aus der App versenden (an dich zum Weiterleiten oder an den Verteiler).</li>
         <li><strong>Anmeldungen verfolgen</strong> &ndash; sobald sich Teilnehmer anmelden, siehst du im Organizer Center alle Infos: Anzahl, Status und die komplette Teilnehmerliste.</li>
       </ol>
-      <p>Teilnehmerliste &amp; Verwaltung:</p>
+      <p>Teilnehmerliste &amp; Verwaltung &ndash; alles direkt in der App (Organizer Center):</p>
       <ul>
-        <li><a href="${subsiteUrl}/Lists/Teilnehmer/AllItems.aspx" style="color:${GREEN};font-weight:600;">SharePoint-Teilnehmerliste</a></li>
         <li><a href="${APP_URL}" style="color:${GREEN};font-weight:600;">DEX App</a> (Admin / Organizer)</li>
       </ul>
       <p>Viele Gr&uuml;&szlig;e<br>Team DEX App</p>

@@ -450,6 +450,9 @@ export default function RegistrationPage(): React.ReactElement {
   const [showErrors, setShowErrors] = React.useState(false);
   // v11.91: showDescription wurde entfernt — Beschreibung ist immer offen.
   const [thirdPartyCheck, setThirdPartyCheck] = React.useState<{ alreadyRegistered: boolean; notInAudience: boolean; registeredName?: string; registeredDate?: string } | null>(null);
+  // v27.13: Profil-Karte („Persönliche Informationen") — Plus-Toggle für die
+  // vollständige Liste der automatisch übernommenen Profildaten.
+  const [profileCardExpanded, setProfileCardExpanded] = React.useState(false);
 
   // Seit v6.14: integrierte Session-Auswahl direkt auf der Registrierungsseite.
   // Der User kann auf EINER Seite wählen, ob er sich für das Haupt-Event und/oder
@@ -3573,51 +3576,110 @@ export default function RegistrationPage(): React.ReactElement {
               </div>
             )}
 
-            {/* v11.97: Sternchen entfernt — die Felder Vorname, Nachname,
-                E-Mail werden read-only aus dem SP-Profil befüllt. Der User
-                kann sie ohnehin nicht ändern (außer im „Für andere Person
-                registrieren"-Modus, dort kommen die echten Required-Marker
-                über die Validation). */}
-            <div className="form-group">
-              <label className="form-label">{t('reg.firstname')}</label>
-              <input className="form-input" value={firstName} onChange={e => { if (externalPerson) setFirstName(e.target.value); }} placeholder={t('reg.firstname')} disabled style={{ background: 'var(--dex-gray-100)', ...(showErrors && !firstName.trim() ? errorBorder : {}) }} />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">{t('reg.surname')}</label>
-              <input className="form-input" value={surname} onChange={e => { if (externalPerson) setSurname(e.target.value); }} placeholder={t('reg.surname')} disabled style={{ background: 'var(--dex-gray-100)', ...(showErrors && !surname.trim() ? errorBorder : {}) }} />
-            </div>
-
-            <div className="form-group">
-              <label className="form-label">{t('reg.email')}</label>
-              <input className="form-input" type="email" value={email} onChange={e => { if (externalPerson) { setEmail(e.target.value); externalEmailConfirmedRef.current = false; /* v18.74: Tippfehler-Check bei Änderung erneut erzwingen */ } }} placeholder={externalPerson ? 'name@firma.de' : 'email@deloitte.de'} disabled style={{ background: 'var(--dex-gray-100)', ...(showErrors && !email.trim() ? errorBorder : {}) }} />
-            </div>
-
-            {/* v11.94/v11.97/v12.0: Zusätzliche read-only-Profildaten aus dem
-                SP-Profil — Job Title, Geschäftsbereich, Büro.
-                Self-Register: aus useCurrentUser(), nur Felder mit Wert.
-                For-other-Register: aus pickedUserProfile, alle Felder
-                rendern sobald jemand ausgewählt ist (auch leere — sonst
-                rätselt der Stellvertreter ob die App das Profil überhaupt
-                geladen hat). v18.50: Mobil wird nicht mehr angezeigt — wird
-                bei der eigenen Anmeldung auch nicht abgefragt. */}
+            {/* v27.13 (Feedback E. Brenneisen): Statt der grauen Feldliste eine
+                Profil-KARTE mit großem Foto, Name, Position und Standort. Ein
+                Plus-Toggle klappt die vollständige Liste der automatisch aus
+                dem M365-Profil übernommenen Daten auf; darunter der Hinweis auf
+                den automatischen Abgleich + Ticket-Verweis bei falschen Daten.
+                Gilt für die EIGENE Anmeldung UND die Anmeldung Dritter mit
+                Deloitte-Profil. Externe Personen (kein M365-Profil) und der
+                „noch niemand gewählt"-Zustand behalten die klassischen Felder. */}
             {(() => {
               const profile = registerForOther ? pickedUserProfile : currentUser;
-              // v15.22: Bei „Für andere registrieren" die Felder auch
-              // anzeigen, wenn noch kein Profil gewählt wurde — sonst
-              // wundert sich der Stellvertreter, warum nur Name + Mail
-              // sichtbar sind. Die Felder bleiben dann leer mit
-              // Placeholder „aus SP-Profil — nicht hinterlegt".
-              if (!profile && !registerForOther) return null;
-              // v18.74: Bei externen Personen gibt es kein Deloitte-Profil —
-              // Position/Geschäftsbereich/Büro gar nicht erst anzeigen.
-              if (externalPerson) return null;
               const jt = profile ? ((profile as { jobTitle?: string }).jobTitle || '') : '';
               const dept = profile ? ((profile as { department?: string }).department || '') : '';
               const loc = profile ? ((profile as { location?: string }).location || '') : '';
               // v24.29: Unternehmenszugehörigkeit / Rechtsträger read-only.
               const comp = profile ? ((profile as { company?: string }).company || '') : '';
-              if (!registerForOther && !jt && !dept && !loc && !comp) return null;
+              const displayName = `${firstName} ${surname}`.trim();
+              const showProfileCard = !externalPerson && !!email.trim() && !!displayName;
+              if (showProfileCard) {
+                const notSet = locale === 'de' ? 'nicht hinterlegt' : 'not set';
+                const initials = `${(firstName.trim()[0] || '')}${(surname.trim()[0] || '')}`.toUpperCase();
+                const detailRows: Array<{ label: string; value: string }> = [
+                  { label: locale === 'de' ? 'E-Mail' : 'Email', value: email },
+                  { label: 'Position', value: jt },
+                  { label: locale === 'de' ? 'Geschäftsbereich' : 'Business Area', value: dept },
+                  { label: locale === 'de' ? 'Unternehmen' : 'Company', value: comp },
+                  { label: locale === 'de' ? 'Büro' : 'Office', value: loc },
+                ];
+                return (
+                  <div className="form-group">
+                    <div style={{ border: '1px solid var(--dex-gray-200)', borderRadius: 12, padding: '16px 18px', background: '#fff' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                        {/* Foto: userphoto.aspx mit Initialen-Fallback (Bild
+                            liegt über dem Initialen-Kreis; bei Ladefehler
+                            wird es ausgeblendet und die Initialen bleiben). */}
+                        <div style={{ position: 'relative', width: 88, height: 88, borderRadius: '50%', background: 'var(--dex-gray-100)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '1.5rem', color: 'var(--dex-gray-500)', overflow: 'hidden' }}>
+                          {initials || '?'}
+                          <img
+                            src={`/_layouts/15/userphoto.aspx?size=L&accountname=${encodeURIComponent(email.trim())}`}
+                            alt=""
+                            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                            onError={e => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                          />
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: '1.18rem', color: 'var(--dex-gray-800)' }}>{displayName}</div>
+                          {jt && (
+                            <div style={{ color: 'var(--dex-gray-600)', marginTop: 2 }}>{jt}</div>
+                          )}
+                          {loc && (
+                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--dex-gray-500)', fontSize: '0.88rem', marginTop: 3 }}>
+                              <Icon iconName="POI" style={{ fontSize: 14, color: 'var(--dex-green-dark, #4a7c1f)' }} />
+                              {loc}
+                            </div>
+                          )}
+                        </div>
+                        {/* Plus-Toggle: zeigt ALLE automatisch übernommenen Daten. */}
+                        <button
+                          type="button"
+                          onClick={() => setProfileCardExpanded(o => !o)}
+                          title={profileCardExpanded
+                            ? (locale === 'de' ? 'Details einklappen' : 'Collapse details')
+                            : (locale === 'de' ? 'Alle automatisch übernommenen Daten anzeigen' : 'Show all automatically applied data')}
+                          aria-expanded={profileCardExpanded}
+                          style={{
+                            width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+                            border: '1px solid var(--dex-gray-300)', background: profileCardExpanded ? 'var(--dex-gray-100)' : '#fff',
+                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '1.25rem', lineHeight: 1, color: 'var(--dex-gray-600)', fontWeight: 600,
+                          }}
+                        >
+                          {profileCardExpanded ? '−' : '+'}
+                        </button>
+                      </div>
+                      {profileCardExpanded && (
+                        <div style={{ marginTop: 14, borderTop: '1px solid var(--dex-gray-100)', paddingTop: 10 }}>
+                          <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>
+                            {locale === 'de' ? 'Automatisch übernommene Daten' : 'Automatically applied data'}
+                          </div>
+                          {detailRows.map(row => (
+                            <div key={row.label} style={{ display: 'flex', gap: 10, padding: '4px 0', fontSize: '0.86rem', borderBottom: '1px solid var(--dex-gray-50, #fafafa)' }}>
+                              <span style={{ width: 140, flexShrink: 0, color: 'var(--dex-gray-500)' }}>{row.label}</span>
+                              <span style={{ color: row.value ? 'var(--dex-gray-800)' : 'var(--dex-gray-400)', wordBreak: 'break-word' }}>
+                                {row.value || `— ${notSet}`}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {/* Hinweis: automatischer M365-Abgleich + Ticket bei Fehlern. */}
+                      <div style={{ marginTop: 12, fontSize: '0.78rem', color: 'var(--dex-gray-500)', lineHeight: 1.5 }}>
+                        {locale === 'de'
+                          ? <>Diese Angaben werden automatisch mit {registerForOther ? 'dem Microsoft-Profil (M365) der ausgewählten Person' : 'deinen Microsoft-Anmeldedaten (M365-Profil)'} abgeglichen und können hier nicht bearbeitet werden. Sollte etwas nicht stimmen, eröffne bitte ein{' '}
+                            <button type="button" onClick={() => { try { window.dispatchEvent(new CustomEvent('dex-open-questions')); } catch { /* */ } }} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', fontSize: 'inherit' }}>Ticket</button>
+                            {' '}— wir haben keine Möglichkeit, die Profildaten selbst zu ändern.</>
+                          : <>These details are automatically synced with {registerForOther ? 'the selected person’s Microsoft profile (M365)' : 'your Microsoft sign-in data (M365 profile)'} and cannot be edited here. If something is wrong, please open a{' '}
+                            <button type="button" onClick={() => { try { window.dispatchEvent(new CustomEvent('dex-open-questions')); } catch { /* */ } }} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', fontSize: 'inherit' }}>ticket</button>
+                            {' '}— we have no way of changing the profile data ourselves.</>}
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              // Klassische Felder: externe Person ODER „Für andere" ohne
+              // gewählte Person (v15.22-Verhalten bleibt erhalten).
               const placeholder = locale === 'de' ? 'aus SP-Profil — nicht hinterlegt' : 'from SP profile — not set';
               const renderField = (label: string, value: string): React.ReactElement => (
                 <div className="form-group">
@@ -3633,10 +3695,29 @@ export default function RegistrationPage(): React.ReactElement {
               );
               return (
                 <>
-                  {(jt || registerForOther) && renderField(locale === 'de' ? 'Position' : 'Job Title', jt)}
-                  {(dept || registerForOther) && renderField(locale === 'de' ? 'Geschäftsbereich' : 'Business Area', dept)}
-                  {(comp || registerForOther) && renderField(locale === 'de' ? 'Unternehmen' : 'Company', comp)}
-                  {(loc || registerForOther) && renderField(locale === 'de' ? 'Büro' : 'Office', loc)}
+                  <div className="form-group">
+                    <label className="form-label">{t('reg.firstname')}</label>
+                    <input className="form-input" value={firstName} onChange={e => { if (externalPerson) setFirstName(e.target.value); }} placeholder={t('reg.firstname')} disabled style={{ background: 'var(--dex-gray-100)', ...(showErrors && !firstName.trim() ? errorBorder : {}) }} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">{t('reg.surname')}</label>
+                    <input className="form-input" value={surname} onChange={e => { if (externalPerson) setSurname(e.target.value); }} placeholder={t('reg.surname')} disabled style={{ background: 'var(--dex-gray-100)', ...(showErrors && !surname.trim() ? errorBorder : {}) }} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">{t('reg.email')}</label>
+                    <input className="form-input" type="email" value={email} onChange={e => { if (externalPerson) { setEmail(e.target.value); externalEmailConfirmedRef.current = false; /* v18.74: Tippfehler-Check bei Änderung erneut erzwingen */ } }} placeholder={externalPerson ? 'name@firma.de' : 'email@deloitte.de'} disabled style={{ background: 'var(--dex-gray-100)', ...(showErrors && !email.trim() ? errorBorder : {}) }} />
+                  </div>
+                  {/* v11.94/v15.22/v18.74: Profil-Zusatzfelder — nur im
+                      „Für andere"-Modus ohne Auswahl (Platzhalter), Externe
+                      haben kein Deloitte-Profil. */}
+                  {!externalPerson && registerForOther && (
+                    <>
+                      {renderField(locale === 'de' ? 'Position' : 'Job Title', jt)}
+                      {renderField(locale === 'de' ? 'Geschäftsbereich' : 'Business Area', dept)}
+                      {renderField(locale === 'de' ? 'Unternehmen' : 'Company', comp)}
+                      {renderField(locale === 'de' ? 'Büro' : 'Office', loc)}
+                    </>
+                  )}
                 </>
               );
             })()}
