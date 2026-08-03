@@ -30,6 +30,14 @@ import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
 import { UserFieldPicker } from './UserFieldPicker';
 
+// v27.13: ServiceNow-Portal für ECHTE IT-Tickets (Profildaten-Korrekturen).
+// Die M365-Profildaten (Name, Position, Geschäftsbereich, Büro, …) kommen aus
+// den zentralen Microsoft-Credentials — die App (und das DEX-Team) kann sie
+// nicht ändern; zuständig ist die IT über ServiceNow.
+// HINWEIS: URL bei Bedarf hier zentral anpassen (einzige Verwendungsstelle:
+// Hinweistext unter der Profil-Karte).
+const SERVICENOW_URL = 'https://deloitte.service-now.com/sp';
+
 function formatDate(iso: string): string {
   const d = new Date(iso);
   return (
@@ -3664,14 +3672,16 @@ export default function RegistrationPage(): React.ReactElement {
                           ))}
                         </div>
                       )}
-                      {/* Hinweis: automatischer M365-Abgleich + Ticket bei Fehlern. */}
+                      {/* Hinweis: automatischer M365-Abgleich. Bei falschen Daten
+                          ein ECHTES IT-Ticket über ServiceNow — die App/das
+                          DEX-Team kann die zentralen Credentials nicht ändern. */}
                       <div style={{ marginTop: 12, fontSize: '0.78rem', color: 'var(--dex-gray-500)', lineHeight: 1.5 }}>
                         {locale === 'de'
                           ? <>Diese Angaben werden automatisch mit {registerForOther ? 'dem Microsoft-Profil (M365) der ausgewählten Person' : 'deinen Microsoft-Anmeldedaten (M365-Profil)'} abgeglichen und können hier nicht bearbeitet werden. Sollte etwas nicht stimmen, eröffne bitte ein{' '}
-                            <button type="button" onClick={() => { try { window.dispatchEvent(new CustomEvent('dex-open-questions')); } catch { /* */ } }} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', fontSize: 'inherit' }}>Ticket</button>
+                            <a href={SERVICENOW_URL} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600, textDecoration: 'underline' }}>Ticket über ServiceNow</a>
                             {' '}— wir haben keine Möglichkeit, die Profildaten selbst zu ändern.</>
                           : <>These details are automatically synced with {registerForOther ? 'the selected person’s Microsoft profile (M365)' : 'your Microsoft sign-in data (M365 profile)'} and cannot be edited here. If something is wrong, please open a{' '}
-                            <button type="button" onClick={() => { try { window.dispatchEvent(new CustomEvent('dex-open-questions')); } catch { /* */ } }} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline', fontSize: 'inherit' }}>ticket</button>
+                            <a href={SERVICENOW_URL} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600, textDecoration: 'underline' }}>ticket via ServiceNow</a>
                             {' '}— we have no way of changing the profile data ourselves.</>}
                       </div>
                     </div>
