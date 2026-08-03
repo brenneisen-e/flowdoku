@@ -7,8 +7,37 @@
  */
 
 import * as React from 'react';
+import { deepLinkParams } from '../utils/deepLink';
 
 export type Page = 'landing' | 'start' | 'register' | 'registration' | 'my-events' | 'assistant' | 'create-event' | 'edit-event' | 'settings' | 'profile' | 'admin' | 'admin-hub' | 'role-matrix' | 'participants' | 'flowcharts' | 'check-in' | 'self-checkin-display' | 'help' | 'manual' | 'email-templates' | 'tickets' | 'architecture' | 'stats-archive';
+
+// v27.12 (Feedback Datenschutz-Review): Beim Seiten-Refresh landete man immer
+// wieder auf der Startseite — die Navigation lebt nur im React-State. Jetzt
+// wird die zuletzt besuchte Seite (+ Event) pro Browser-Tab in sessionStorage
+// gemerkt und beim Boot wiederhergestellt. Deep-Links (#action=…) behalten
+// Vorrang: steht ein action-Parameter in der URL, wird NICHT restauriert
+// (der Deep-Link-Effekt in DexEventPlatform navigiert ohnehin gleich weiter).
+const NAV_STORAGE_KEY = 'dex-nav-state';
+const ALL_PAGES: Page[] = ['landing', 'start', 'register', 'registration', 'my-events', 'assistant', 'create-event', 'edit-event', 'settings', 'profile', 'admin', 'admin-hub', 'role-matrix', 'participants', 'flowcharts', 'check-in', 'self-checkin-display', 'help', 'manual', 'email-templates', 'tickets', 'architecture', 'stats-archive'];
+
+function readStoredNav(): { page: Page; eventId: string | null } | null {
+  try {
+    if (deepLinkParams().get('action')) return null;
+    const raw = window.sessionStorage.getItem(NAV_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { page?: string; eventId?: string | null };
+    if (parsed && typeof parsed.page === 'string' && ALL_PAGES.indexOf(parsed.page as Page) >= 0) {
+      return { page: parsed.page as Page, eventId: parsed.eventId || null };
+    }
+  } catch { /* sessionStorage nicht verfügbar / kaputter Eintrag */ }
+  return null;
+}
+
+function storeNav(page: Page, eventId: string | null): void {
+  try {
+    window.sessionStorage.setItem(NAV_STORAGE_KEY, JSON.stringify({ page, eventId }));
+  } catch { /* best-effort */ }
+}
 
 // Optionale Absicht beim Navigieren (z.B. Registration-Seite direkt im "Für andere"-Modus oeffnen)
 export type NavIntent = 'register-other' | 'auto-cancel' | undefined;
@@ -38,8 +67,10 @@ interface HistoryEntry {
 }
 
 export function NavigationProvider(props: { children: React.ReactNode }): React.ReactElement {
-  const [currentPage, setCurrentPage] = React.useState<Page>('landing');
-  const [selectedEventId, setSelectedEventId] = React.useState<string | null>(null);
+  // v27.12: zuletzt besuchte Seite pro Tab wiederherstellen (s. readStoredNav).
+  const restoredNav = React.useRef(readStoredNav()).current;
+  const [currentPage, setCurrentPage] = React.useState<Page>(restoredNav ? restoredNav.page : 'landing');
+  const [selectedEventId, setSelectedEventId] = React.useState<string | null>(restoredNav ? restoredNav.eventId : null);
   const [navIntent, setNavIntent] = React.useState<NavIntent>(undefined);
   const [history, setHistory] = React.useState<HistoryEntry[]>([]);
   const guardRef = React.useRef<(() => Promise<boolean>) | null>(null);
@@ -61,6 +92,7 @@ export function NavigationProvider(props: { children: React.ReactNode }): React.
         setCurrentPage(page);
         setSelectedEventId(eventId || null);
         setNavIntent(intent);
+        storeNav(page, eventId || null); // v27.12: Refresh-Restore
         guardRef.current = null; // Guard nach erfolgreichem Wegnavigieren räumen.
       };
       if (guardRef.current) {
@@ -78,6 +110,7 @@ export function NavigationProvider(props: { children: React.ReactNode }): React.
           setCurrentPage(prev.page);
           setSelectedEventId(prev.eventId);
           setNavIntent(prev.intent);
+          storeNav(prev.page, prev.eventId); // v27.12: Refresh-Restore
           guardRef.current = null;
         }
       };

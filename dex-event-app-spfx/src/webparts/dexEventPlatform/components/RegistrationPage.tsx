@@ -4836,9 +4836,10 @@ export default function RegistrationPage(): React.ReactElement {
                 {externalPerson && (
                   <div>
                     <div style={{ padding: '10px 12px', marginBottom: 12, borderRadius: 8, background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange, #ed8b00)', fontSize: '0.82rem', color: 'var(--dex-orange-dark, #b35a00)', lineHeight: 1.5 }}>
+                      {/* v27.12: Wording-Feinschliff (Feedback Datenschutz-Review). */}
                       {locale === 'de'
-                        ? 'Person außerhalb Deloitte (externe E-Mail-Adresse). Trage Vorname, Nachname und E-Mail ein. Nach der Zustimmung übernimmst du die Person — Einladung & Datenschutz-Rückmeldung laufen dann über dich.'
-                        : 'Person outside Deloitte (external email address). Enter first name, last name and email. After consent you take the person over — invitation & privacy confirmation then run through you.'}
+                        ? 'Person außerhalb von Deloitte (externe E-Mail-Adresse). Trage Vorname, Nachname und E-Mail-Adresse ein. Nach der Zustimmung meldest du die Person stellvertretend an — die Einladung und die Datenschutz-Rückmeldung laufen anschließend über dich.'
+                        : 'Person outside Deloitte (external email address). Enter first name, last name and email address. After consent you register the person on their behalf — the invitation and the privacy confirmation are then handled through you.'}
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 10 }}>
                       <div>
@@ -4908,9 +4909,10 @@ export default function RegistrationPage(): React.ReactElement {
                     ? <>Mit dem Absenden meldest du <strong>{pName}</strong> stellvertretend an. Bitte stelle sicher, dass die Person ihrer Anmeldung <strong>vorher zugestimmt</strong> hat — eine Anmeldung ohne Einverständnis ist nicht erlaubt.</>
                     : <>By submitting you register <strong>{pName}</strong> on their behalf. Please make sure the person has <strong>consented up front</strong> — registering people without their consent is not allowed.</>}
                   <div style={{ marginTop: 8 }}>
+                    {/* v27.12: Wording-Feinschliff (Feedback Datenschutz-Review). */}
                     {locale === 'de'
-                      ? <>Die Person taucht danach normal in der Teilnehmerliste auf. Muss sie doch nicht teilnehmen, kann die Anmeldung jederzeit wieder storniert werden — am besten gibst du kurz Bescheid, damit Wartelisten-Plätze nachrücken.</>
-                      : <>The person then appears normally in the participant list. If they cannot attend after all, the registration can be cancelled at any time — best let us know so waitlist spots can move up.</>}
+                      ? <>Die Person erscheint anschließend regulär in der Teilnehmerliste. Falls sie doch nicht teilnehmen kann, lässt sich die Anmeldung jederzeit stornieren — bitte gib in dem Fall kurz Bescheid, damit Wartelisten-Plätze nachrücken können.</>
+                      : <>The person then appears in the participant list as usual. If they are unable to attend after all, the registration can be cancelled at any time — please let us know in that case so waitlist spots can be filled.</>}
                   </div>
                 </div>
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 12, cursor: 'pointer' }}>

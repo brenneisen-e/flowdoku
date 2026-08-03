@@ -692,6 +692,12 @@ export interface SPRegistration {
   RegistrationDate: string;
   RegisteredByName?: string;   // Audit: Name des Users der die Anmeldung durchführte
   RegisteredByEmail?: string;  // Audit: E-Mail des Users der die Anmeldung durchführte
+  /** v27.12: SP-Item-Metadaten als Fallback für „Registriert am/von", wenn die
+   *  Zeile NICHT über die App angelegt wurde (z.B. direkt in der SharePoint-
+   *  Listenansicht) und RegistrationDate/RegisteredBy* deshalb leer sind.
+   *  Created kommt immer mit; Author nur bei $expand=Author (getAllRegistrations). */
+  Created?: string;
+  Author?: { Title?: string; EMail?: string };
   CancellationDate: string;
   CancelledByName?: string;    // Audit: Name des Users der die Abmeldung ausgelöst hat
   CancelledByEmail?: string;   // Audit: E-Mail des Users der die Abmeldung ausgelöst hat
@@ -7585,7 +7591,11 @@ export class EventService {
     // ≥500 Teilnehmern zu fehlenden Einträgen führte: SharePoint liefert
     // bei $orderby+$top in Kombination mit Item-Level-Security nicht
     // zuverlässig nextLink, wenn die erste Page exakt voll ist.
-    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$orderby=Id asc&$top=5000`;
+    // v27.12: $select=*,Author/… + $expand=Author — der Zeilen-Autor dient als
+    // Fallback für „Registriert von", wenn die Zeile nicht über die App
+    // angelegt wurde (RegisteredBy* leer). '*' behält alle Skalar-Felder,
+    // Verhalten ist sonst identisch zum bisherigen Query ohne $select.
+    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=*,Author/Title,Author/EMail&$expand=Author&$orderby=Id asc&$top=5000`;
 
     while (url) {
       try {

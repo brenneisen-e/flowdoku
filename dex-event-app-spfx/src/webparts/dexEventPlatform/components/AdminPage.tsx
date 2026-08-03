@@ -10426,7 +10426,12 @@ export default function AdminPage(): React.ReactElement {
                   );
                 }
                 if (id === 'date') {
-                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.RegistrationDate)}</td>;
+                  // v27.12 (Feedback Datenschutz-Review): Zeilen, die nicht über
+                  // die App angelegt wurden (z.B. direkt in der SharePoint-
+                  // Liste), haben kein RegistrationDate — dann den SP-Erstell-
+                  // Zeitstempel (Created) als Fallback zeigen statt Leere.
+                  const regDate = (reg.RegistrationDate || '').trim() ? reg.RegistrationDate : (reg.Created || '');
+                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{regDate ? formatDate(regDate) : '—'}</td>;
                 }
                 if (id === 'promotedDate') {
                   // v17.15: „Nachgerückt am" — gesetzt beim Promote
@@ -10469,7 +10474,25 @@ export default function AdminPage(): React.ReactElement {
                       {(() => {
                         const actorEmail = (reg.RegisteredByEmail || '').toLowerCase();
                         const participantEmail = (reg.ParticipantEmail || '').toLowerCase();
-                        if (!actorEmail) return <span style={{ color: 'var(--dex-gray-400)' }}>-</span>;
+                        if (!actorEmail) {
+                          // v27.12 (Feedback Datenschutz-Review): Zeile wurde
+                          // nicht über die App angelegt (RegisteredBy* leer) —
+                          // dann den SP-Zeilen-Autor als Fallback zeigen.
+                          const authorEmail = (reg.Author?.EMail || '').toLowerCase();
+                          const authorName = (reg.Author?.Title || '').trim();
+                          if (!authorEmail && !authorName) return <span style={{ color: 'var(--dex-gray-400)' }}>-</span>;
+                          if (authorEmail && authorEmail === participantEmail) {
+                            return <span style={{ color: 'var(--dex-green-dark)' }}>Selbst</span>;
+                          }
+                          return (
+                            <span
+                              title={isDe ? `${reg.Author?.EMail || ''} — aus den SharePoint-Metadaten (Zeile wurde nicht über die App angelegt)` : `${reg.Author?.EMail || ''} — from SharePoint metadata (row was not created via the app)`}
+                              style={{ color: 'var(--dex-gray-500)', fontStyle: 'italic' }}
+                            >
+                              {authorName || reg.Author?.EMail}
+                            </span>
+                          );
+                        }
                         if (actorEmail === participantEmail) {
                           return <span style={{ color: 'var(--dex-green-dark)' }}>Selbst</span>;
                         }
