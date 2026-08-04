@@ -783,7 +783,11 @@ export default function RegistrationPage(): React.ReactElement {
     };
     img.src = event.imageUrl;
   }, [event?.imageUrl]);
-  const imgIsLandscape = (imgAspect ?? 1.5) >= 1.2;
+  // v28.6: Slot-Größe hängt von der BILDFORM ab — Kreis-/Quadrat-Bilder
+  // (Ratio ~1, z.B. aus dem Zuschnitt-Tool) brauchen keinen 300er-Block,
+  // Querformat bekommt Breite, Hochkant Höhe.
+  const imgSlotW = imgAspect == null ? 280 : (imgAspect >= 1.2 ? 420 : (imgAspect >= 0.8 ? 210 : 240));
+  const imgSlotH = imgAspect == null ? 260 : (imgAspect >= 1.2 ? 260 : (imgAspect >= 0.8 ? 210 : 300));
 
   // B2Run Split-Capacity: aktuelle Auslastung pro Typ laden
   // Split-UI nur wenn BEIDE Starter-Typen verfügbar sind (>0). Wenn der Admin eine
@@ -2646,7 +2650,9 @@ export default function RegistrationPage(): React.ReactElement {
               // stattdessen „Banner"-Layout wählen (event.imageBanner) — dann
               // liegt das Bild in voller Kartenbreite ÜBER den Infos (gut für
               // breite Querformat-Fotos). Handy: immer Bild oben.
-              flexDirection: (isMobile || event.imageBanner) ? 'column' : 'row',
+              // v28.6: Infos LINKS, Bild RECHTS (row-reverse — das Bild steht
+              // im DOM zuerst, wird aber rechts gerendert). Banner/Mobil: Bild oben.
+              flexDirection: (isMobile || event.imageBanner) ? 'column' : 'row-reverse',
               gap: 16,
               alignItems: (isMobile || event.imageBanner) ? 'stretch' : 'flex-start',
             }}
@@ -2676,9 +2682,9 @@ export default function RegistrationPage(): React.ReactElement {
                   // contain (kein Crop bei Postern mit Text).
                   ? { width: '100%', maxHeight: 320, display: 'flex', alignItems: 'center', justifyContent: 'center' }
                   : {
-                    flex: imgIsLandscape ? '0 0 420px' : '0 0 300px',
-                    maxWidth: imgIsLandscape ? 420 : 300,
-                    maxHeight: imgIsLandscape ? 260 : 300,
+                    flex: `0 0 ${imgSlotW}px`,
+                    maxWidth: imgSlotW,
+                    maxHeight: imgSlotH,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     alignSelf: 'center',
                   }),
@@ -2693,13 +2699,17 @@ export default function RegistrationPage(): React.ReactElement {
                   // kompakten 300er-Slot begrenzt; die Pro-Ansicht-Hero-
                   // Einstellung (Zoom/Höhe) wirkt weiter, gedeckelt auf den
                   // Slot, damit Station 1 kompakt bleibt.
+                  // v28.6: borderRadius direkt am <img> — bei contain liegt die
+                  // sichtbare Bildkante INNERHALB des Containers, dessen
+                  // overflow-Rundung griff daher nicht. Kreis-PNGs (transparente
+                  // Ecken) bleiben unverändert rund.
                   style={isMobile
-                    ? { width: '100%', maxHeight: 200, height: 'auto', objectFit: 'cover', display: 'block' }
+                    ? { width: '100%', maxHeight: 200, height: 'auto', objectFit: 'cover', display: 'block', borderRadius: 'var(--dex-radius)' }
                     : event.imageBanner
-                    ? { maxWidth: '100%', maxHeight: 320, width: 'auto', height: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto' }
+                    ? { maxWidth: '100%', maxHeight: 320, width: 'auto', height: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto', borderRadius: 'var(--dex-radius)' }
                     : event.imageDisplay?.hero
-                    ? { display: 'block', margin: '0 auto', maxWidth: '100%', maxHeight: Math.min(event.imageDisplay.hero.height ?? (imgIsLandscape ? 260 : 300), imgIsLandscape ? 260 : 300), width: 'auto', height: 'auto', objectFit: 'contain', transform: `scale(${Math.min(event.imageDisplay.hero.zoom || 1, 1.5)})`, transformOrigin: 'center center' }
-                    : { maxWidth: '100%', maxHeight: imgIsLandscape ? 260 : 300, width: 'auto', height: 'auto', objectFit: 'contain', display: 'block' }
+                    ? { display: 'block', margin: '0 auto', maxWidth: '100%', maxHeight: Math.min(event.imageDisplay.hero.height ?? imgSlotH, imgSlotH), width: 'auto', height: 'auto', objectFit: 'contain', transform: `scale(${Math.min(event.imageDisplay.hero.zoom || 1, 1.5)})`, transformOrigin: 'center center', borderRadius: 'var(--dex-radius)' }
+                    : { maxWidth: '100%', maxHeight: imgSlotH, width: 'auto', height: 'auto', objectFit: 'contain', display: 'block', borderRadius: 'var(--dex-radius)' }
                   }
                 />
               )}
@@ -3705,21 +3715,20 @@ export default function RegistrationPage(): React.ReactElement {
                   </div>
                 );
               }
-              // Klassische Felder: externe Person ODER „Für andere" ohne
-              // gewählte Person (v15.22-Verhalten bleibt erhalten).
-              const placeholder = locale === 'de' ? 'aus SP-Profil — nicht hinterlegt' : 'from SP profile — not set';
-              const renderField = (label: string, value: string): React.ReactElement => (
-                <div className="form-group">
-                  <label className="form-label">{label}</label>
-                  <input
-                    className="form-input"
-                    value={value}
-                    placeholder={registerForOther && !value ? placeholder : undefined}
-                    disabled
-                    style={{ background: 'var(--dex-gray-100)' }}
-                  />
-                </div>
-              );
+              // v28.6: „Für andere" ohne gewählte Person → KEINE leeren
+              // Alt-Felder mehr (der Wizard ist ohnehin offen); stattdessen
+              // ein kompakter Hinweis. Die Profil-Karte erscheint, sobald
+              // eine Person gewählt wurde.
+              if (registerForOther && !externalPerson) {
+                return (
+                  <div style={{ padding: '16px 18px', border: '1px dashed var(--dex-gray-300)', borderRadius: 10, background: 'var(--dex-gray-50, #fafafa)', color: 'var(--dex-gray-500)', fontSize: '0.85rem', lineHeight: 1.5 }}>
+                    {locale === 'de'
+                      ? 'Wähle zuerst eine Person aus (Fenster „Für eine andere Person anmelden") — ihre Daten erscheinen dann hier als Profil-Karte.'
+                      : 'First pick a person (window “Register another person”) — their details then appear here as a profile card.'}
+                  </div>
+                );
+              }
+              // Klassische Felder: nur noch für EXTERNE Personen.
               return (
                 <>
                   <div className="form-group">
@@ -3734,17 +3743,6 @@ export default function RegistrationPage(): React.ReactElement {
                     <label className="form-label">{t('reg.email')}</label>
                     <input className="form-input" type="email" value={email} onChange={e => { if (externalPerson) { setEmail(e.target.value); externalEmailConfirmedRef.current = false; /* v18.74: Tippfehler-Check bei Änderung erneut erzwingen */ } }} placeholder={externalPerson ? 'name@firma.de' : 'email@deloitte.de'} disabled style={{ background: 'var(--dex-gray-100)', ...(showErrors && !email.trim() ? errorBorder : {}) }} />
                   </div>
-                  {/* v11.94/v15.22/v18.74: Profil-Zusatzfelder — nur im
-                      „Für andere"-Modus ohne Auswahl (Platzhalter), Externe
-                      haben kein Deloitte-Profil. */}
-                  {!externalPerson && registerForOther && (
-                    <>
-                      {renderField(locale === 'de' ? 'Position' : 'Job Title', jt)}
-                      {renderField(locale === 'de' ? 'Geschäftsbereich' : 'Business Area', dept)}
-                      {renderField(locale === 'de' ? 'Unternehmen' : 'Company', comp)}
-                      {renderField(locale === 'de' ? 'Büro' : 'Office', loc)}
-                    </>
-                  )}
                 </>
               );
             })()}

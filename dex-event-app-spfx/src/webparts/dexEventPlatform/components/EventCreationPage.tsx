@@ -7649,6 +7649,19 @@ export default function EventCreationPage(): React.ReactElement {
                         </span>
                       );
                       })}
+                      {/* v28.5: Legende zum Rückfragen-Kontakt (?-Knopf). */}
+                      <span style={{ flexBasis: '100%', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.74rem', color: 'var(--dex-gray-600)', marginTop: 4 }}>
+                        <span style={{ width: 16, height: 16, borderRadius: '50%', background: (contactOrganizerEmail || '').trim() ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-gray-400, #9aa0a6)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.66rem', fontWeight: 800, flexShrink: 0 }}>?</span>
+                        <span>
+                          {(contactOrganizerEmail || '').trim()
+                            ? (isDe
+                              ? 'Rückfragen-Kontakt markiert — diese Person bekommt auf der Anmeldeseite den orangen ?-Badge. Klick auf ihr ? entfernt die Markierung.'
+                              : 'Contact for questions marked — this person gets the orange ? badge on the registration page. Click their ? again to remove it.')
+                            : (isDe
+                              ? 'Tipp: Klicke das ? an einem Organizer, um ihn als Rückfragen-Kontakt zu markieren — er bekommt auf der Anmeldeseite einen orangen Badge mit Hinweis.'
+                              : 'Tip: click the ? on an organizer to mark them as the contact for questions — they get an orange badge with a note on the registration page.')}
+                        </span>
+                      </span>
                       {/* v24.8 (J) / v24.15 (Gate): Tipp unter den Organizer-Namen. */}
                       <span style={{ flexBasis: '100%', fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
                         {isDe
@@ -7885,6 +7898,7 @@ export default function EventCreationPage(): React.ReactElement {
                           hiddenEmails={(hideOrganizer && hideOrganizerIndividualOnly) ? hiddenOrganizerEmails : []}
                           size="md"
                           display={organizerDisplayLarge ? 'card' : 'chip'}
+                          contactEmail={contactOrganizerEmail || undefined}
                         />
                       </div>
                     );
