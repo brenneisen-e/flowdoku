@@ -890,72 +890,82 @@ export default function LandingPage(): React.ReactElement {
           </div>
           {/* v22.1: Check-in-Hinweisbox(en) — ab 2 Tage vor dem Event, sobald
               der eigene QR-Code versendet wurde. Klick auf den kleinen QR
-              öffnet ihn groß im Modal (zum Vorzeigen am Eingang). */}
-          {checkInBoxes.map(box => (
-            <button
-              key={box.eventId}
-              type="button"
-              onClick={() => { openBigQr(box).catch(() => { /* */ }); }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 14, width: '100%',
-                textAlign: 'left', marginBottom: 12, padding: '12px 14px',
-                background: 'rgba(134,188,37,0.08)',
-                border: '1.5px solid var(--dex-green, #86bc25)', borderRadius: 12,
-                cursor: 'pointer',
-              }}
-              title={isDe ? 'QR-Code groß anzeigen' : 'Show QR code enlarged'}
-            >
-              <img src={box.qrSmall} alt="QR" style={{ width: 66, height: 66, flexShrink: 0, borderRadius: 6, background: '#fff', border: '1px solid var(--dex-gray-200)' }} />
-              <span style={{ minWidth: 0 }}>
-                <span style={{ display: 'block', fontWeight: 700, fontSize: '0.92rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
-                  {isDe ? 'Check-in für' : 'Check-in for'} {box.title}
-                </span>
-                <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
-                  {isDe
-                    ? 'Dein persönlicher QR-Code — antippen zum Vergrößern und am Eingang vorzeigen.'
-                    : 'Your personal QR code — tap to enlarge and show at the entrance.'}
-                </span>
-              </span>
-            </button>
-          ))}
-          {/* v24.13: „Du bist angemeldet"-Boxen — aktive Events, für die man
-              angemeldet ist; ausgeblendet, wenn schon eine Check-in/QR-Box läuft. */}
+              öffnet ihn groß im Modal (zum Vorzeigen am Eingang).
+              v28.13: ALLE Hinweis-Boxen (Check-in + „Du bist angemeldet") in
+              EINEM Wrapper — vorher schob das Karten-gap (bis 40px) + 12px
+              marginBottom jede Box weit auseinander. Jetzt sitzt die Gruppe
+              kompakt (10px innen), der große Karten-Abstand gilt nur noch
+              einmal um die ganze Gruppe. */}
           {(() => {
             const checkInIds = new Set(checkInBoxes.map(b => b.eventId));
-            const list = myRegBoxes.filter(b => !checkInIds.has(b.eventId));
-            return list.map(box => {
-              const startTs = new Date(box.startDate).getTime();
-              const diff = startTs - nowTick;
-              let countdown: string; let urgent = false;
-              if (diff <= 0) { countdown = isDe ? 'läuft gerade' : 'happening now'; urgent = true; }
-              else if (diff < 24 * 60 * 60 * 1000) { const h = Math.max(1, Math.ceil(diff / (60 * 60 * 1000))); countdown = isDe ? `noch ${h} ${h === 1 ? 'Stunde' : 'Stunden'}` : `in ${h} ${h === 1 ? 'hour' : 'hours'}`; urgent = true; }
-              else { const d = Math.floor(diff / (24 * 60 * 60 * 1000)); countdown = isDe ? `noch ${d} ${d === 1 ? 'Tag' : 'Tage'}` : `in ${d} ${d === 1 ? 'day' : 'days'}`; }
-              const dateLabel = new Date(box.startDate).toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-              return (
-                <button
-                  key={box.eventId}
-                  type="button"
-                  onClick={() => navigate('my-events')}
-                  style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left', marginBottom: 12, padding: '12px 14px', background: '#fff', border: '1.5px solid var(--dex-gray-200)', borderRadius: 12, cursor: 'pointer' }}
-                  title={isDe ? 'Zu „Meine Events"' : 'Go to My Events'}
-                >
-                  <div style={{ width: 66, height: 66, flexShrink: 0, borderRadius: 8, background: box.imageUrl ? `url(${box.imageUrl}) center/cover no-repeat` : 'linear-gradient(135deg, var(--dex-green, #86bc25), var(--dex-blue, #0076a8))', border: '1px solid var(--dex-gray-200)' }} />
-                  <span style={{ minWidth: 0, flex: 1 }}>
-                    <span style={{ display: 'block', fontWeight: 700, fontSize: '0.92rem', color: 'var(--dex-gray-800)' }}>
-                      {isDe
-                        ? <>Du bist für <span style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>&bdquo;{box.title}&ldquo;</span> angemeldet</>
-                        : <>You are registered for <span style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>&bdquo;{box.title}&ldquo;</span></>}
+            const regList = myRegBoxes.filter(b => !checkInIds.has(b.eventId));
+            if (checkInBoxes.length === 0 && regList.length === 0) return null;
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%' }}>
+                {checkInBoxes.map(box => (
+                  <button
+                    key={box.eventId}
+                    type="button"
+                    onClick={() => { openBigQr(box).catch(() => { /* */ }); }}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 14, width: '100%',
+                      textAlign: 'left', padding: '12px 14px',
+                      background: 'rgba(134,188,37,0.08)',
+                      border: '1.5px solid var(--dex-green, #86bc25)', borderRadius: 12,
+                      cursor: 'pointer',
+                    }}
+                    title={isDe ? 'QR-Code groß anzeigen' : 'Show QR code enlarged'}
+                  >
+                    <img src={box.qrSmall} alt="QR" style={{ width: 66, height: 66, flexShrink: 0, borderRadius: 6, background: '#fff', border: '1px solid var(--dex-gray-200)' }} />
+                    <span style={{ minWidth: 0 }}>
+                      <span style={{ display: 'block', fontWeight: 700, fontSize: '0.92rem', color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                        {isDe ? 'Check-in für' : 'Check-in for'} {box.title}
+                      </span>
+                      <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
+                        {isDe
+                          ? 'Dein persönlicher QR-Code — antippen zum Vergrößern und am Eingang vorzeigen.'
+                          : 'Your personal QR code — tap to enlarge and show at the entrance.'}
+                      </span>
                     </span>
-                    <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
-                      {dateLabel}{box.location ? ` · ${box.location}` : ''}
-                    </span>
-                  </span>
-                  <span style={{ flexShrink: 0, fontSize: '0.78rem', fontWeight: 800, padding: '4px 10px', borderRadius: 999, background: urgent ? 'rgba(218,41,28,0.10)' : 'rgba(134,188,37,0.12)', color: urgent ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)' }}>
-                    {countdown}
-                  </span>
-                </button>
-              );
-            });
+                  </button>
+                ))}
+                {/* v24.13: „Du bist angemeldet"-Boxen — aktive Events, für die man
+                    angemeldet ist; ausgeblendet, wenn schon eine Check-in/QR-Box läuft. */}
+                {regList.map(box => {
+                  const startTs = new Date(box.startDate).getTime();
+                  const diff = startTs - nowTick;
+                  let countdown: string; let urgent = false;
+                  if (diff <= 0) { countdown = isDe ? 'läuft gerade' : 'happening now'; urgent = true; }
+                  else if (diff < 24 * 60 * 60 * 1000) { const h = Math.max(1, Math.ceil(diff / (60 * 60 * 1000))); countdown = isDe ? `noch ${h} ${h === 1 ? 'Stunde' : 'Stunden'}` : `in ${h} ${h === 1 ? 'hour' : 'hours'}`; urgent = true; }
+                  else { const d = Math.floor(diff / (24 * 60 * 60 * 1000)); countdown = isDe ? `noch ${d} ${d === 1 ? 'Tag' : 'Tage'}` : `in ${d} ${d === 1 ? 'day' : 'days'}`; }
+                  const dateLabel = new Date(box.startDate).toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                  return (
+                    <button
+                      key={box.eventId}
+                      type="button"
+                      onClick={() => navigate('my-events')}
+                      style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left', padding: '12px 14px', background: '#fff', border: '1.5px solid var(--dex-gray-200)', borderRadius: 12, cursor: 'pointer' }}
+                      title={isDe ? 'Zu „Meine Events"' : 'Go to My Events'}
+                    >
+                      <div style={{ width: 66, height: 66, flexShrink: 0, borderRadius: 8, background: box.imageUrl ? `url(${box.imageUrl}) center/cover no-repeat` : 'linear-gradient(135deg, var(--dex-green, #86bc25), var(--dex-blue, #0076a8))', border: '1px solid var(--dex-gray-200)' }} />
+                      <span style={{ minWidth: 0, flex: 1 }}>
+                        <span style={{ display: 'block', fontWeight: 700, fontSize: '0.92rem', color: 'var(--dex-gray-800)' }}>
+                          {isDe
+                            ? <>Du bist für <span style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>&bdquo;{box.title}&ldquo;</span> angemeldet</>
+                            : <>You are registered for <span style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>&bdquo;{box.title}&ldquo;</span></>}
+                        </span>
+                        <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
+                          {dateLabel}{box.location ? ` · ${box.location}` : ''}
+                        </span>
+                      </span>
+                      <span style={{ flexShrink: 0, fontSize: '0.78rem', fontWeight: 800, padding: '4px 10px', borderRadius: 999, background: urgent ? 'rgba(218,41,28,0.10)' : 'rgba(134,188,37,0.12)', color: urgent ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)' }}>
+                        {countdown}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            );
           })()}
           <button className="btn btn-lg btn-block btn-outline" data-tour="landing-start" onClick={() => navigate('start')} style={{ maxWidth: 360 }}>
             {t('landing.start')}
@@ -1012,6 +1022,63 @@ export default function LandingPage(): React.ReactElement {
             </button>
           </div>
           )}
+
+          {/* v28.13: Hinweis auf die nächste DEX-Einführungsveranstaltung —
+              erscheint automatisch, wenn ein aktives, zukünftiges Top-Level-
+              Event mit „DEX … Einführung/Introduction" im Titel existiert und
+              man noch nicht angemeldet ist. Klick führt direkt auf die
+              Anmeldeseite des Events. */}
+          {(() => {
+            const isIntroTitle = (t: string): boolean => /dex/i.test(t) && /einf(ü|u)hrung|introduction|onboarding/i.test(t);
+            const intro = (events || [])
+              .filter(e => e.status === 'Active' && !e.parentEventId && !e.isFictive && !!e.startDate
+                && new Date(e.startDate).getTime() > nowTick && isIntroTitle(e.title || ''))
+              .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())[0];
+            if (!intro) return null;
+            // Schon angemeldet (oder Check-in-Phase läuft) → die Boxen oben
+            // zeigen das Event bereits, kein doppelter Hinweis.
+            if (myRegBoxes.some(b => b.eventId === intro.id) || checkInBoxes.some(b => b.eventId === intro.id)) return null;
+            const diff = new Date(intro.startDate).getTime() - nowTick;
+            const days = Math.floor(diff / 86400000);
+            const countdown = diff < 86400000
+              ? (isDe ? 'schon heute' : 'today')
+              : (isDe ? `in ${days} ${days === 1 ? 'Tag' : 'Tagen'}` : `in ${days} ${days === 1 ? 'day' : 'days'}`);
+            const dateLabel = new Date(intro.startDate).toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+            return (
+              <button
+                type="button"
+                onClick={() => navigate('registration', intro.id)}
+                className="landing__bubble"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  background: '#fff', color: 'var(--dex-gray-800)',
+                  padding: '12px 18px', borderRadius: 14,
+                  border: '1.5px solid var(--dex-green, #86bc25)',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
+                  cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
+                  width: '100%', maxWidth: 360,
+                }}
+                title={isDe ? 'Direkt zur Anmeldung' : 'Go straight to registration'}
+              >
+                <span style={{
+                  flexShrink: 0, width: 38, height: 38, borderRadius: '50%',
+                  background: 'rgba(134,188,37,0.16)', color: 'var(--dex-green-dark, #4a7c1f)',
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 19, lineHeight: 1,
+                }}>🎓</span>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: 'block', fontWeight: 800, fontSize: '0.95rem', lineHeight: 1.3 }}>
+                    {isDe
+                      ? <>Neu bei DEX? Lerne die App kennen — <span style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>{countdown}</span></>
+                      : <>New to DEX? Get to know the app — <span style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>{countdown}</span></>}
+                  </span>
+                  <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
+                    {intro.title} · {dateLabel} — {isDe ? 'klicken und direkt anmelden.' : 'click to register right away.'}
+                  </span>
+                </span>
+              </button>
+            );
+          })()}
 
           <div
             style={{
