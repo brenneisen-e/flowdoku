@@ -743,6 +743,22 @@ export class SharePointService {
    *      LoginName auflösen (UPN-Claim), dann GetPropertiesFor damit erneut
    *      aufrufen. Deckt UPN != SMTP, Guest-Accounts, Alias-SMTP-Adressen ab.
    */
+  // v28.11: Unternehmenszugehörigkeit („Deloitte Consulting" etc.) für eine
+  // FREMDE Person via Graph — die SP-UserProfile-Property „Company" ist im
+  // Tenant nicht zuverlässig gefüllt (gleiche Erkenntnis wie v24.33 beim
+  // eigenen Profil, dort /me?$select=companyName). Best-effort, leer bei
+  // fehlender Berechtigung o.ä.
+  private async fetchCompanyViaGraph(email: string): Promise<string> {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ctx = this.context as any;
+      if (!ctx.msGraphClientFactory) return '';
+      const client = await ctx.msGraphClientFactory.getClient('3');
+      const me = await client.api(`/users/${encodeURIComponent(email)}`).select('companyName').get();
+      return ((me && me.companyName) || '').trim();
+    } catch { return ''; }
+  }
+
   public async searchUserByEmail(email: string): Promise<{
     displayName: string;
     location: string;
@@ -752,11 +768,13 @@ export class SharePointService {
     // andere Person registriert.
     department?: string;
     mobilePhone?: string;
+    // v28.11: Unternehmenszugehörigkeit (SP-Profil, Fallback Graph).
+    company?: string;
   } | null> {
     if (!email) return null;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const extract = (data: any): { displayName: string; location: string; jobTitle: string; department: string; mobilePhone: string } | null => {
+    const extract = (data: any): { displayName: string; location: string; jobTitle: string; department: string; mobilePhone: string; company: string } | null => {
       if (!data || !data.DisplayName) return null;
       const props: Array<{ Key: string; Value: string }> = data.UserProfileProperties || [];
       const getProp = (keys: string[]): string => {
@@ -772,7 +790,16 @@ export class SharePointService {
         jobTitle: getProp(['Title', 'SPS-JobTitle']),
         department: getProp(['Department', 'SPS-Department']),
         mobilePhone: getProp(['CellPhone', 'SPS-MobilePhone', 'MobilePhone']),
+        company: getProp(['Company', 'SPS-Company', 'CompanyName', 'msOnline-CompanyName']),
       };
+    };
+    // v28.11: Company nachladen, wenn das SP-Profil sie nicht liefert.
+    // (displayName im Constraint — ein rein-optionaler „weak type" würde
+    // TS-Assignability für Objekte ohne company-Property brechen.)
+    const withCompany = async <T extends { displayName: string; company?: string }>(hit: T): Promise<T> => {
+      if (hit.company) return hit;
+      const c = await this.fetchCompanyViaGraph(email);
+      return c ? { ...hit, company: c } : hit;
     };
 
     // 1) Direkter Lookup per SMTP
@@ -784,7 +811,7 @@ export class SharePointService {
       if (directResp.ok) {
         const data = await directResp.json();
         const hit = extract(data);
-        if (hit && (hit.jobTitle || hit.location)) return hit;
+        if (hit && (hit.jobTitle || hit.location)) return await withCompany(hit);
         // DisplayName ohne Properties? Merken für Fallback-Default.
         if (hit) {
           // weiter zum LoginName-Pfad - vielleicht bringt der jobTitle
@@ -811,12 +838,12 @@ export class SharePointService {
             if (profileResp.ok) {
               const pData = await profileResp.json();
               const hit = extract(pData);
-              if (hit) return hit;
+              if (hit) return await withCompany(hit);
             }
           } catch { /* */ }
         }
         if (fallbackDisplayName) {
-          return { displayName: fallbackDisplayName, location: '', jobTitle: '' };
+          return await withCompany({ displayName: fallbackDisplayName, location: '', jobTitle: '' });
         }
       }
     } catch { /* User nicht gefunden */ }

@@ -9810,6 +9810,89 @@ export class EventService {
     return '';
   }
 
+  // v28.11: Präfix des UNBESCHNITTENEN Original-Bilds (bewusst KEIN
+  // '__eventimage__'-Präfix-Match, sonst würde der normale Bild-Upload es
+  // mitlöschen). Wird nur gespeichert, wenn ein Querformat-Original per
+  // App-Zuschnitt rund/quadratisch wurde — die Anmeldeseite zeigt dann
+  // lieber das Original im Querformat-Slot.
+  private static readonly ORIG_IMAGE_PREFIX = '__eventimgorig__';
+
+  /** v28.11: Alle Original-Bild-Attachments eines Events löschen (best-effort). */
+  public async deleteEventOrigImageAttachment(eventId: number): Promise<void> {
+    try {
+      const listResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles`,
+        SPHttpClient.configurations.v1
+      );
+      if (!listResp.ok) return;
+      const listData = await listResp.json();
+      const files = listData.value || listData.d?.results || [];
+      for (const f of files) {
+        const fn: string = f.FileName || '';
+        if (fn.indexOf(EventService.ORIG_IMAGE_PREFIX) === 0) {
+          try {
+            await this._delete(
+              `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/getByFileName('${encodeURIComponent(fn)}')`
+            );
+          } catch { /* ignore */ }
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  /** v28.11: Unbeschnittenes Original-Bild als zweites Attachment speichern.
+   *  Löscht vorher bestehende Originale; liefert die absolute URL. */
+  public async uploadEventOrigImageAsAttachment(eventId: number, file: File): Promise<string> {
+    try {
+      await this.deleteEventOrigImageAttachment(eventId);
+      const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+      const safeName = `${EventService.ORIG_IMAGE_PREFIX}${Date.now().toString(36)}.${ext}`;
+      const response = await this.context.spHttpClient.post(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})/AttachmentFiles/add(FileName='${encodeURIComponent(safeName)}')`,
+        SPHttpClient.configurations.v1,
+        {
+          headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+          body: file,
+        } as ISPHttpClientOptions
+      );
+      if (response.ok) {
+        const data = await response.json();
+        const relUrl = data.d?.ServerRelativeUrl || data.ServerRelativeUrl || '';
+        if (relUrl) return `${window.location.origin}${relUrl}`;
+      }
+      const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
+      return `${window.location.origin}${serverRelUrl}/Lists/DEX_Events/Attachments/${eventId}/${safeName}`;
+    } catch (err) {
+      console.warn('[DEX] uploadEventOrigImageAsAttachment error:', err);
+    }
+    return '';
+  }
+
+  /** v28.11: EINEN Schlüssel im EmailTemplateOverrides-JSON eines Events
+   *  patchen (read-modify-write). Leerer Wert entfernt den Schlüssel.
+   *  Nötig für Werte, die erst NACH dem Item-Save bekannt sind (z.B. die
+   *  Attachment-URL des Original-Bilds). */
+  public async patchEventOverridesKey(eventId: number, key: string, value: string): Promise<void> {
+    try {
+      const getResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})?$select=EmailTemplateOverrides`,
+        SPHttpClient.configurations.v1
+      );
+      if (!getResp.ok) return;
+      const data = await getResp.json();
+      const raw = data.d?.EmailTemplateOverrides || data.EmailTemplateOverrides || '';
+      let obj: Record<string, unknown> = {};
+      try { obj = raw ? JSON.parse(raw) : {}; } catch { obj = {}; }
+      if (value) obj[key] = value; else delete obj[key];
+      await this._merge(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})`,
+        { 'EmailTemplateOverrides': JSON.stringify(obj) }
+      );
+    } catch (err) {
+      console.warn('[DEX] patchEventOverridesKey fehlgeschlagen:', key, err);
+    }
+  }
+
   /**
    * EventImageUrl-Feld eines DEX_Events-Items setzen (kleines MERGE).
    */

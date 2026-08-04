@@ -1172,6 +1172,13 @@ export default function EventCreationPage(): React.ReactElement {
   const [eventImageUrl, setEventImageUrl] = React.useState(editEvent ? (editEvent.imageUrl || '') : '');
   const [imageFile, setImageFile] = React.useState<File | null>(null);
   const [imagePreview, setImagePreview] = React.useState(editEvent ? (editEvent.imageUrl || '') : '');
+  // v28.11: Frisch hochgeladenes ORIGINAL (vor dem Zuschnitt) + dessen
+  // Seitenverhältnis. Wird nur persistiert (zweites Attachment
+  // __eventimgorig__ + Piggyback _imageOrigUrl), wenn ein Querformat-
+  // Original per Zuschnitt rund/quadratisch wurde — die Event-Liste zeigt
+  // dann das Original als Kachel-Hintergrund.
+  const [imageOrigFile, setImageOrigFile] = React.useState<File | null>(null);
+  const [imageOrigAspect, setImageOrigAspect] = React.useState<number | null>(null);
   // v23.15: Bild-Editor (Zuschneiden / Kreis) offen?
   const [imageEditOpen, setImageEditOpen] = React.useState(false);
   // v26.97: Zuschneiden des Mail-/Outlook-Kopfbildes (nutzt dasselbe
@@ -1443,6 +1450,7 @@ export default function EventCreationPage(): React.ReactElement {
           // berechnete Flag, d.h. Abwählen bliebe ohne Wirkung.
           _teamTerm, _teamMembersCannotCreate, _assistantsCanSee, _previewBeforeActive, _imageDisplay,
           _organizerDisplayLarge, _hiddenOrganizers, _hideOrgIndividual, _mainEventLabel,
+          _imageOrigUrl,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -1454,6 +1462,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _inheritFlags; void _hideOrganizer; void _headerImageLayout;
         void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee; void _previewBeforeActive; void _imageDisplay;
         void _organizerDisplayLarge; void _hiddenOrganizers; void _hideOrgIndividual; void _mainEventLabel;
+        void _imageOrigUrl;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
     })() : {}
@@ -4221,6 +4230,14 @@ export default function EventCreationPage(): React.ReactElement {
         : {};
       // v28.5: Bild-Banner-Layout (Piggyback).
       const imageBannerConfig = imageBanner ? { _imageBanner: true } : {};
+      // v28.11: Bestehende Original-Bild-URL beim normalen Edit-Save
+      // WEITERTRAGEN, solange kein neues Bild gewählt wurde — sonst würde
+      // der frisch zusammengebaute Overrides-Blob sie wegwerfen. Bei neuem
+      // Bild wird sie nach dem Attachment-Upload via patchEventOverridesKey
+      // neu gesetzt (bzw. entfernt).
+      const imageOrigUrlConfig = (!imageFile && editEvent && editEvent.imageOrigUrl)
+        ? { _imageOrigUrl: editEvent.imageOrigUrl }
+        : {};
       const childTermConfig = (childTermSingular.trim() || childTermPlural.trim())
         ? { _childEventTerm: { singular: childTermSingular.trim(), plural: childTermPlural.trim() } }
         : {};
@@ -4263,7 +4280,7 @@ export default function EventCreationPage(): React.ReactElement {
       const topPiggybackConfigs: Array<Record<string, unknown>> = [
         b2runExtraConfig, qrScannerConfig, coOrganizerConfig, testTeamConfig,
         splitDispRevConfig, requireSubEventConfig, subEventsOnlyConfig,
-        subEventsDisabledConfig, imageBannerConfig, childTermConfig, teamTermConfig,
+        subEventsDisabledConfig, imageBannerConfig, imageOrigUrlConfig, childTermConfig, teamTermConfig,
         teamNoCreateConfig, mainEventLabelConfig, assistantsCanSeeConfig,
         organizerDisplayLargeConfig, previewBeforeActiveConfig,
         imageDisplayConfig, hideOrganizerConfig, hiddenOrganizersConfig,
@@ -4603,6 +4620,20 @@ export default function EventCreationPage(): React.ReactElement {
               const uploadedUrl = await svc.uploadEventImageAsAttachment(Number(selectedEventId), compressed);
               if (uploadedUrl) {
                 await svc.updateEventImageUrl(Number(selectedEventId), uploadedUrl);
+                // v28.11: Querformat-Original als zweites Attachment sichern,
+                // wenn der Zuschnitt es rund/quadratisch gemacht hat — die
+                // Event-Liste zeigt dann das Original. Sonst evtl. vorhandenes
+                // Alt-Original aufräumen.
+                try {
+                  if (imageOrigFile && (imageOrigAspect || 0) >= 1.2 && wizardImgAspect != null && wizardImgAspect < 1.2) {
+                    const origCompressed = await compressImage(imageOrigFile, 1600, 0.85);
+                    const origUrl = await svc.uploadEventOrigImageAsAttachment(Number(selectedEventId), origCompressed);
+                    if (origUrl) await svc.patchEventOverridesKey(Number(selectedEventId), '_imageOrigUrl', origUrl);
+                  } else {
+                    await svc.deleteEventOrigImageAttachment(Number(selectedEventId));
+                    await svc.patchEventOverridesKey(Number(selectedEventId), '_imageOrigUrl', '');
+                  }
+                } catch (origErr) { console.warn('[DEX] Original-Bild speichern fehlgeschlagen:', origErr); }
                 // Events neu laden, damit die UI das frische Bild ohne Hard-Refresh anzeigt
                 // (updateEvent oben hat schon einmal geladen, aber zu dem Zeitpunkt war
                 // EventImageUrl noch der alte Wert)
@@ -5112,6 +5143,15 @@ export default function EventCreationPage(): React.ReactElement {
                 const uploadedUrl = await svc.uploadEventImageAsAttachment(Number(eventId), compressed);
                 if (uploadedUrl) {
                   await svc.updateEventImageUrl(Number(eventId), uploadedUrl);
+                  // v28.11: Querformat-Original als zweites Attachment sichern
+                  // (Zuschnitt rund/quadratisch → Event-Liste zeigt Original).
+                  try {
+                    if (imageOrigFile && (imageOrigAspect || 0) >= 1.2 && wizardImgAspect != null && wizardImgAspect < 1.2) {
+                      const origCompressed = await compressImage(imageOrigFile, 1600, 0.85);
+                      const origUrl = await svc.uploadEventOrigImageAsAttachment(Number(eventId), origCompressed);
+                      if (origUrl) await svc.patchEventOverridesKey(Number(eventId), '_imageOrigUrl', origUrl);
+                    }
+                  } catch (origErr) { console.warn('[DEX] Original-Bild speichern fehlgeschlagen:', origErr); }
                   // v9.41: KEIN refreshEvents direkt nach Create. Die Subsite ist
                   // gerade erst angelegt und die SP-API ist noch nicht konsistent —
                   // ein Refresh hier kann zu 400/404 auf den Subsite-Listen und im
@@ -7287,7 +7327,7 @@ export default function EventCreationPage(): React.ReactElement {
                     />
                     <button
                       type="button"
-                      onClick={() => { setImageFile(null); setImagePreview(''); setEventImageUrl(''); }}
+                      onClick={() => { setImageFile(null); setImagePreview(''); setEventImageUrl(''); setImageOrigFile(null); setImageOrigAspect(null); }}
                       style={{
                         position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.6)',
                         color: '#fff', border: 'none', borderRadius: '50%', width: 28, height: 28,
@@ -7464,7 +7504,15 @@ export default function EventCreationPage(): React.ReactElement {
                         setImageFile(file);
                         const reader = new FileReader();
                         reader.onload = ev => {
-                          setImagePreview(ev.target?.result as string || '');
+                          const dataUrl = ev.target?.result as string || '';
+                          setImagePreview(dataUrl);
+                          // v28.11: Original + Seitenverhältnis merken, BEVOR
+                          // der Zuschnitt Preview/File ersetzt.
+                          setImageOrigFile(file);
+                          setImageOrigAspect(null);
+                          const probe = new Image();
+                          probe.onload = () => { if (probe.naturalHeight > 0) setImageOrigAspect(probe.naturalWidth / probe.naturalHeight); };
+                          probe.src = dataUrl;
                           // v28.10: Direkt nach dem Upload den Zuschnitt-
                           // Dialog öffnen (mit Kreis-Empfehlung) — vorher
                           // musste man „Bild editieren" extra anklicken.

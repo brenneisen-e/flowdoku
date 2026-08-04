@@ -163,6 +163,11 @@ export interface DeloitteEvent {
    *  Querformat-Fotos), false/undefined = kompakter Slot links neben den
    *  Infos (Standard). Piggyback `_imageBanner` in EmailTemplateOverrides. */
   imageBanner?: boolean;
+  /** v28.11: URL des unbeschnittenen Querformat-ORIGINALS (Attachment
+   *  `__eventimgorig__…`, Piggyback `_imageOrigUrl`). Nur gesetzt, wenn ein
+   *  Querformat-Foto per App-Zuschnitt rund/quadratisch wurde. Die
+   *  Event-Liste zeigt dann das Original als Kachel-Hintergrund. */
+  imageOrigUrl?: string;
   /** v17.20: Wenn true UND der Organizer hat pro Custom-Field die
    *  EN-Variante hinterlegt (`labelEn` etc.), zeigt die Anmeldeseite die
    *  Felder in der **Locale des Teilnehmers** (App-Spracheinstellung) statt

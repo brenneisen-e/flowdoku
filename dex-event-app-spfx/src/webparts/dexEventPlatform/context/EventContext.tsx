@@ -1221,6 +1221,16 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           return !!(ov && ov._imageBanner);
         } catch { return false; }
       })(),
+      // v28.11: URL des UNBESCHNITTENEN Querformat-Originals (Piggyback
+      // _imageOrigUrl) — nur gesetzt, wenn ein Querformat-Foto per App-
+      // Zuschnitt rund/quadratisch wurde. Die Event-Liste nutzt dann das
+      // Original als Kachel-Hintergrund; die Anmeldeseite behält den Kreis.
+      imageOrigUrl: ((): string => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          return (ov && typeof ov._imageOrigUrl === 'string') ? ov._imageOrigUrl : '';
+        } catch { return ''; }
+      })(),
       // v28.2: Sub-Events SOFT-deaktiviert (Piggyback _subEventsDisabled) —
       // die Kind-Events bleiben inkl. Anmeldungen gespeichert, werden aber
       // auf der Anmeldeseite nicht mehr angeboten. Wieder-Einschalten im

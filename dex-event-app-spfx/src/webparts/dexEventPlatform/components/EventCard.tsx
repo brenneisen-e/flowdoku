@@ -74,7 +74,11 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
   const { childEventsOf } = useEvents();
   // v19.22: Event-Bild über den IndexedDB-Cache — beim zweiten App-Aufruf sofort
   // da, ohne SharePoint-Roundtrip.
-  const cachedImage = useCachedImage(event.imageUrl);
+  // v28.11: Für den Kachel-Hintergrund (cover) das UNBESCHNITTENE Querformat-
+  // Original bevorzugen, falls vorhanden — ein Kreis-Zuschnitt wirkt als
+  // Kachel-Hintergrund verloren, das Original füllt die Fläche.
+  const tileImageUrl = event.imageOrigUrl || event.imageUrl;
+  const cachedImage = useCachedImage(tileImageUrl);
   // v9.8: B2Run-Events haben maxParticipants=0, weil die Kapazität auf
   // Durchstarter + Funstarter aufgeteilt ist. Die Summe gilt als
   // Gesamtkapazität — sonst zeigt die Karte fälschlich "Unbegrenzt", obwohl
