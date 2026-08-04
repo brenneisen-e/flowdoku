@@ -777,11 +777,67 @@ export default function RegistrationPage(): React.ReactElement {
   const [imgAspect, setImgAspect] = React.useState<number | null>(null);
   React.useEffect(() => {
     if (!event?.imageUrl) { setImgAspect(null); return; }
+    let cancelled = false;
     const img = new Image();
     img.onload = () => {
-      if (img.naturalHeight > 0) setImgAspect(img.naturalWidth / img.naturalHeight);
+      if (cancelled || img.naturalHeight <= 0) return;
+      const fileRatio = img.naturalWidth / img.naturalHeight;
+      let ratio = fileRatio;
+      // v28.9: CONTENT-Ratio statt reiner Datei-Ratio. Logos/Kreis-Grafiken
+      // liegen oft mit transparentem oder einfarbigem Rand in einer breiten
+      // Datei — die Datei-Ratio sortierte sie als „Querformat" ein und das
+      // Kreis-Layout (v28.7) griff nie. Wir rastern das Bild klein, prüfen
+      // ob die vier Ecken einen einheitlichen Rand bilden (transparent oder
+      // eine Farbe), trimmen diesen Rand und nehmen das Seitenverhältnis
+      // des sichtbaren Inhalts. Randlose Fotos (uneinige Ecken) und
+      // Canvas-Fehler behalten die Datei-Ratio.
+      try {
+        const W = 96;
+        const H = Math.max(1, Math.round(W / fileRatio));
+        const canvas = document.createElement('canvas');
+        canvas.width = W; canvas.height = H;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, W, H);
+          const data = ctx.getImageData(0, 0, W, H).data;
+          const px = (x: number, y: number): number[] => {
+            const i = (y * W + x) * 4;
+            return [data[i], data[i + 1], data[i + 2], data[i + 3]];
+          };
+          const corners = [px(0, 0), px(W - 1, 0), px(0, H - 1), px(W - 1, H - 1)];
+          const dist = (a: number[], b: number[]): number =>
+            Math.max(Math.abs(a[0] - b[0]), Math.abs(a[1] - b[1]), Math.abs(a[2] - b[2]));
+          const allTransparent = corners.every(c => c[3] <= 24);
+          const uniform = allTransparent || corners.every(c => c[3] > 24 && dist(c, corners[0]) <= 20);
+          if (uniform) {
+            const bg = corners[0];
+            let minX = W, minY = H, maxX = -1, maxY = -1;
+            for (let y = 0; y < H; y++) {
+              for (let x = 0; x < W; x++) {
+                const p = px(x, y);
+                const isContent = p[3] > 24 && (allTransparent || dist(p, bg) > 28);
+                if (isContent) {
+                  if (x < minX) minX = x;
+                  if (x > maxX) maxX = x;
+                  if (y < minY) minY = y;
+                  if (y > maxY) maxY = y;
+                }
+              }
+            }
+            if (maxX >= minX && maxY >= minY) {
+              const bw = maxX - minX + 1;
+              const bh = maxY - minY + 1;
+              // Nur übernehmen, wenn wirklich Rand weggefallen ist — sonst
+              // ist die Datei-Ratio genauer (voller Inhalt bis zur Kante).
+              if (bh > 0 && (bw < W || bh < H)) ratio = bw / bh;
+            }
+          }
+        }
+      } catch { /* tainted canvas o.ä. → Datei-Ratio behalten */ }
+      setImgAspect(ratio);
     };
     img.src = event.imageUrl;
+    return () => { cancelled = true; };
   }, [event?.imageUrl]);
   // v28.6: Slot-Größe hängt von der BILDFORM ab — Kreis-/Quadrat-Bilder
   // (Ratio ~1, z.B. aus dem Zuschnitt-Tool) brauchen keinen 300er-Block,
