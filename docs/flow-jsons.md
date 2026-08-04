@@ -5245,6 +5245,45 @@ direkt — keine Konvertierung nötig.
 
 **Unterschied zur Standard-Action:** zusätzliches `PreferredStarterType` im `$select` und im `$filter`. Sortierung in allen drei Branches identisch: `$orderby=TeilnehmerID asc`.
 
+## UI-Anleitung 2026-08-03 (v27.11) — Nachrücken respektiert WaitlistEnabled (Kill-Switch)
+
+**Hintergrund (Bug-Report):** „Ausstellen der Warteliste nicht möglich — nach
+Datum Abmeldungen stoppen, oder zumindest das Nachrücken der Warteliste
+stoppen." Der `WaitlistEnabled`-Toggle wurde zwar persistiert, aber beim
+Nachrücken NIRGENDS ausgewertet. Mit v27.11 ist er app-seitig ein echter
+Kill-Switch: keine neuen Warteliste-Anmeldungen bei vollem Event
+(EventContext.registerForEvent), kein client-seitiges Nachrücken beim
+Admin-Abmelden (AdminPage, Einzel- + Sub-Event-Pfad). Der Organizer kann die
+Warteliste damit z.B. nach Ablauf der Abmeldefrist gezielt abschalten
+(Event bearbeiten → Schritt „Kapazität" → Warteliste aus).
+
+**WICHTIG — der Flow muss nachgezogen werden:** Beim SELBST-Abmelden eines
+Teilnehmers macht die App bewusst kein client-seitiges Nachrücken — das
+übernimmt `DEX_IDReorder_TeilnehmerIDs`. Ohne die folgende Bedingung rückt
+der Flow auch bei abgeschalteter Warteliste weiter nach.
+
+**Änderung im Designer (DEX_IDReorder_TeilnehmerIDs):** In JEDEM
+Nachrück-Gate eine dritte AND-Bedingung ergänzen:
+
+- `Check_Nachrücken` (Standard-Branch)
+- `Check_Durchstarter_Free` und `Check_Funstarter_Free` (Split-Capacity)
+- `Check_Nachruecken_Shared` (splitSharedWaitlist-Variante)
+
+Neue Bedingung (Expression):
+
+```
+@not(equals(first(outputs('Get_EventDetails')?['body/value'])?['WaitlistEnabled'], false))
+```
+
+`not(equals(..., false))` — NICHT `equals(..., true)` — damit Alt-Events ohne
+gesetzte Spalte (`null`) sich wie bisher verhalten (Warteliste aktiv), exakt
+wie das App-Mapping `waitlistEnabled: e.WaitlistEnabled !== false`
+(EventContext). Voraussetzung: `Get_EventDetails` selektiert die Spalte
+`WaitlistEnabled` mit (ggf. im `$select` ergänzen).
+
+Nach der Änderung bitte den Flow-Export in diesem Dokument aktualisieren
+(Re-Export-Pflicht, s.o.).
+
 ## UI-Anleitung 2026-05-27 (v17.20) — Cancellation-Body in Outlook-Kalender ausgrauen (Nice-to-have)
 
 **Hintergrund:** Beim Sub-Event-Cancel (Action `Ausladen` in `DEX_Outlook`)

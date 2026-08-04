@@ -15,6 +15,7 @@ import { EventService, SPEvent, CustomField, SPRegistration, SPParticipant, Rese
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
 import { buildHashDeepLink } from '../utils/deepLink';
 import { isEventOver } from '../utils/eventFormat';
+import { isDeloitteInternalEmail, isExternalEmail } from '../utils/deloitteDomain';
 import { registrationEmail, externalInviteInstructionEmail, externalInvitationEmail, coOrganizerAddedEmail, waitlistEmail, cancellationEmail, buildEmailFromTemplate, loadLogosAsBase64, wrapTemplate, organizerOnboardingEmail, qrCodeEmail, teamInfoBlockHtml, injectIntoEmailContent } from '../services/EmailTemplates';
 import { buildUnsentEmlDraft } from '../utils/emlDraft';
 import { APP_VERSION } from '../version';
@@ -1592,6 +1593,24 @@ export function EventProvider(props: { context: WebPartContext; children: React.
 
     // Prüfen ob schon registriert
     const event = events.find(e => e.id === eventId);
+    // v27.11 (Bug „Externe können mehrfach angemeldet werden"): status-
+    // gefilterter Aktiv-Check über isUserAlreadyOnEvent — greift für ALLE
+    // Anmeldepfade (auch externe Personen, Massenimport, Admin/Assistenz),
+    // ist unabhängig von der Zeilen-Reihenfolge (das $top=1-Read unten konnte
+    // eine alte Abgemeldet-Zeile erwischen und aktive Duplikate übersehen)
+    // und blockt aktive Doppel-Anmeldungen VOR jeder Sitzplatz-Reservierung.
+    // Fail-open wie bisher (Item-Level-Security kann fremde Zeilen verbergen),
+    // aber strikt weniger Duplikate als vorher.
+    const alreadyActive = await eventService.isUserAlreadyOnEvent(subsiteUrl, (emailToUse || '').trim()).catch(() => false);
+    if (alreadyActive) {
+      if (event && event.subEventsOnlyMode) {
+        // Schatten-Zeilen-Semantik (v23.9): vorhandener Schatten blockiert
+        // die Sub-Event-Anmeldung nicht.
+        return { ok: true, status: 'Angemeldet' };
+      }
+      return { ok: false, status: 'Warteliste', reason: 'already-registered' };
+    }
+
     const existing = await eventService.getMyRegistration(subsiteUrl, emailToUse);
     if (existing && existing.Status !== 'Abgemeldet') {
       // v23.9: Im Klammer-Modus (subEventsOnlyMode) ist die Parent-Zeile NUR
@@ -1654,6 +1673,16 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       }
     }
 
+    // v27.11: Warteliste abgeschaltet → volle Events nehmen KEINE neuen
+    // Anmeldungen mehr an. Vorher fiel die Anmeldung trotz deaktivierter
+    // Warteliste still auf Status 'Warteliste' — der Toggle war wirkungslos.
+    // (Kein Counter-Rollback nötig: status 'Warteliste' heißt, reserveSeat
+    // hat NICHT reserviert. Schatten-Zeilen im subEventsOnlyMode bleiben
+    // ausgenommen — sie sind keine echte Parent-Anmeldung.)
+    if (status === 'Warteliste' && event && event.waitlistEnabled === false && !event.subEventsOnlyMode) {
+      return { ok: false, status: 'Warteliste', reason: 'full' };
+    }
+
     // FieldMap aus Custom Fields extrahieren (cf.id -> spInternalName)
     const fieldMap: Record<string, string> = {};
     if (event) {
@@ -1673,10 +1702,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
 
     // v18.74: Nachweis der Zustimmung bei stellvertretender Anmeldung. Eine
     // Anmeldung gilt als „stellvertretend", wenn die Teilnehmer-E-Mail von der
-    // des eingeloggten Users abweicht. Bei externen Adressen (kein @deloitte.de)
-    // ist die Zustimmung schriftlich einzuholen — das wird im Nachweis vermerkt.
+    // des eingeloggten Users abweicht. Bei externen Adressen (kein Deloitte-
+    // Postfach) ist die Zustimmung schriftlich einzuholen — das wird im
+    // Nachweis vermerkt. v27.11: Member-Firm-Adressen (@deloitte.at, .com, …)
+    // zählen als intern — nur echte Fremd-Domains laufen durch den Extern-Flow.
     const isProxyRegistration = (emailToUse || '').toLowerCase() !== (currentUserEmail || '').toLowerCase();
-    const isExternalParticipant = !!emailToUse && !/@(.*\.)?deloitte\.de$/i.test(emailToUse);
+    const isExternalParticipant = isExternalEmail(emailToUse);
     const proxyConsentStr = (isProxyRegistration && opts?.proxyConsentConfirmed)
       ? `${isExternalParticipant ? 'Schriftliche ' : ''}Zustimmung der Person zur stellvertretenden Anmeldung bestätigt durch ${actorName} (${actorEmail}) am ${new Date().toLocaleString('de-DE')}`
       : '';
@@ -1834,15 +1865,15 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           const orgEmails = (event.organizerEmails || []).filter(Boolean);
           if (orgEmails.length > 0) bcc = orgEmails.join(';');
         }
-        // v9.22: Externe Mail-Adresse erkennen — kein Deloitte-Postfach
-        // (@deloitte.de; auch @deloitte.com/Global zählt nicht als intern).
+        // v9.22: Externe Mail-Adresse erkennen — kein Deloitte-Postfach.
         // v18.74: Bei externen Empfängern wird die Bestätigungsmail jetzt
         // DIREKT an die externe Person versendet (vorher an den Organizer
         // umgeleitet) — mit dem Organizer auf CC (Nachweis/Kopie). Ein
         // Outlook-Kalendereintrag wird für externe Adressen weiterhin NICHT
         // versendet (Microsoft blockt das ohne Federation, s.u.
-        // skipOutlookForExternal).
-        const isExternalRecipient = !!emailToUse && !/@(.*\.)?deloitte\.de$/i.test(emailToUse);
+        // skipOutlookForExternal). v27.11: Member-Firm-Adressen (@deloitte.at,
+        // @deloitte.com, …) zählen jetzt als intern.
+        const isExternalRecipient = isExternalEmail(emailToUse);
         // v26.47: Bei externer Einladung geht die INSTRUKTIONS-Mail an die
         // ANMELDENDE Person (intern, zustellbar) — an externe Adressen kann der
         // Mail-Flow nicht zustellen. Die eigentliche Einladung verschickt die
@@ -1980,7 +2011,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // Versand bekommt KEINE Anmeldung automatisch einen QR-Code.
       const qrPhaseActive = event.autoSendQRCode === true;
       if (qrPhaseActive && status === 'Angemeldet' && !event.disableEmails && !suppressParentNotifications) {
-        const isExternalRecipientQr = !!emailToUse && !/@(.*\.)?deloitte\.de$/i.test(emailToUse);
+        // v27.11: Member-Firm-Adressen zählen als intern — QR-Mail direkt.
+        const isExternalRecipientQr = isExternalEmail(emailToUse);
         (async (): Promise<void> => {
             try {
               const qrData = `DEX|${event.eventNumber}|${emailToUse}`;
@@ -2088,13 +2120,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         }
       }
       // Outlook-Termin-Einladung in Queue eintragen
-      // v15.16: Für externe Empfänger (kein @deloitte.de) keinen
+      // v15.16: Für externe Empfänger (kein Deloitte-Postfach) keinen
       // Outlook-Termin queuen — Microsoft blockt das Versenden an externe
       // Adressen ohne Federation, deshalb ist der Eintrag immer ein
       // Bounce. Der Organizer bekommt stattdessen die Bestätigungsmail
       // mit Betreff „Weiterleitung notwendig" (s.o.) und kann darüber
-      // den externen Teilnehmer informieren.
-      const skipOutlookForExternal = !!emailToUse && !/@(.*\.)?deloitte\.de$/i.test(emailToUse);
+      // den externen Teilnehmer informieren. v27.11: Member-Firm-Postfächer
+      // zählen als intern und bekommen den Termin.
+      const skipOutlookForExternal = isExternalEmail(emailToUse);
       // v15.25: Schatten-Parent-Registrierung im subEventsOnlyMode bekommt
       // keinen Outlook-Termin (s.o. — der User „nimmt teil" an Sub-Events,
       // nicht am Parent).
@@ -3220,6 +3253,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
               isSplit,
               previousStatus: myReg.Status || '',
               starterType: myReg.StarterType || undefined,
+              // v27.11: Warteliste abgeschaltet → niemand rückt nach, der
+              // Platz muss direkt freigegeben werden (sonst Counter-Deadlock).
+              waitlistDisabled: event.waitlistEnabled === false,
             });
           } catch { /* best-effort */ }
         }
@@ -3368,6 +3404,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             isSplit,
             previousStatus: memberRegistration.Status || '',
             starterType: memberRegistration.StarterType || undefined,
+            waitlistDisabled: event.waitlistEnabled === false, // v27.11
           });
         } catch { /* best-effort */ }
       }
@@ -3521,6 +3558,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           isSplit,
           previousStatus: registration.Status || '',
           starterType: registration.StarterType || undefined,
+          waitlistDisabled: event.waitlistEnabled === false, // v27.11
         });
       } catch { /* best-effort */ }
     }
@@ -5417,8 +5455,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         const { subject, body } = coOrganizerAddedEmail(name, eventTitle, actorDisplay, isDe, appUrl);
         await eventService.queueEmail(subject, email, name, body, 'CoOrganizerAdded', eventTitle, eventId || '0');
       } catch { /* Mail best-effort */ }
-      // Outlook-Kalendereinladung — nur Deloitte-Adressen, nur wenn Outlook aktiv.
-      if (!disableOutlook && /@(.*\.)?deloitte\.de$/i.test(email)) {
+      // Outlook-Kalendereinladung — nur Deloitte-Adressen (v27.11: beliebige
+      // Member Firm), nur wenn Outlook aktiv.
+      if (!disableOutlook && isDeloitteInternalEmail(email)) {
         try { await eventService.queueOutlookEvent(email, eventId, eventTitle, 'Einladen'); } catch { /* */ }
       }
     }

@@ -692,6 +692,12 @@ export interface SPRegistration {
   RegistrationDate: string;
   RegisteredByName?: string;   // Audit: Name des Users der die Anmeldung durchführte
   RegisteredByEmail?: string;  // Audit: E-Mail des Users der die Anmeldung durchführte
+  /** v27.12: SP-Item-Metadaten als Fallback für „Registriert am/von", wenn die
+   *  Zeile NICHT über die App angelegt wurde (z.B. direkt in der SharePoint-
+   *  Listenansicht) und RegistrationDate/RegisteredBy* deshalb leer sind.
+   *  Created kommt immer mit; Author nur bei $expand=Author (getAllRegistrations). */
+  Created?: string;
+  Author?: { Title?: string; EMail?: string };
   CancellationDate: string;
   CancelledByName?: string;    // Audit: Name des Users der die Abmeldung ausgelöst hat
   CancelledByEmail?: string;   // Audit: E-Mail des Users der die Abmeldung ausgelöst hat
@@ -7415,8 +7421,12 @@ export class EventService {
     email: string
   ): Promise<SPRegistration | null> {
     try {
+      // v27.11: $orderby=Id desc — bei mehreren Zeilen derselben Person
+      // (Alt-Duplikate) IMMER die neueste nehmen. Vorher konnte $top=1 ohne
+      // Sortierung eine alte 'Abgemeldet'-Zeile erwischen und den
+      // Reaktivierungs-Pfad statt des Duplikat-Blocks auslösen.
       const response = await this.context.spHttpClient.get(
-        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=ParticipantEmail eq '${email.replace(/'/g, "''")}'&$top=1`,
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$filter=ParticipantEmail eq '${email.trim().replace(/'/g, "''")}'&$orderby=Id desc&$top=1`,
         SPHttpClient.configurations.v1
       );
       if (!response.ok) return null;
@@ -7581,7 +7591,11 @@ export class EventService {
     // ≥500 Teilnehmern zu fehlenden Einträgen führte: SharePoint liefert
     // bei $orderby+$top in Kombination mit Item-Level-Security nicht
     // zuverlässig nextLink, wenn die erste Page exakt voll ist.
-    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$orderby=Id asc&$top=5000`;
+    // v27.12: $select=*,Author/… + $expand=Author — der Zeilen-Autor dient als
+    // Fallback für „Registriert von", wenn die Zeile nicht über die App
+    // angelegt wurde (RegisteredBy* leer). '*' behält alle Skalar-Felder,
+    // Verhalten ist sonst identisch zum bisherigen Query ohne $select.
+    let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=*,Author/Title,Author/EMail&$expand=Author&$orderby=Id asc&$top=5000`;
 
     while (url) {
       try {
@@ -7973,7 +7987,7 @@ export class EventService {
    */
   public async releaseSeatAfterCancel(
     subsiteUrl: string,
-    opts: { isSplit: boolean; previousStatus: string; starterType?: string }
+    opts: { isSplit: boolean; previousStatus: string; starterType?: string; waitlistDisabled?: boolean }
   ): Promise<void> {
     try {
       const synced = await this.syncSeatsToActiveCount(subsiteUrl, { isSplit: opts.isSplit });
@@ -7983,6 +7997,19 @@ export class EventService {
         return;
       }
       if (EventService.ACTIVE_STATI.indexOf(opts.previousStatus) < 0) return;
+      // v27.11: Warteliste vom Organizer abgeschaltet → es rückt NIEMAND nach
+      // (App-Gates + Flow-Bedingung). Der Platz muss dann direkt freigegeben
+      // werden — sonst blieben frei gewordene Plätze dauerhaft als belegt
+      // gezählt (Deadlock, bis ein privilegierter Reconcile läuft).
+      if (opts.waitlistDisabled) {
+        await this.adjustSeatCounterField(subsiteUrl, 'SeatsTaken', -1);
+        if (opts.isSplit && opts.starterType === 'Durchstarter') {
+          await this.adjustSeatCounterField(subsiteUrl, 'SeatsTakenDurch', -1);
+        } else if (opts.isSplit && opts.starterType === 'Funstarter') {
+          await this.adjustSeatCounterField(subsiteUrl, 'SeatsTakenFun', -1);
+        }
+        return;
+      }
       const stats = await this.getCounterStats(subsiteUrl, opts.isSplit);
       // stats.waitlist: -1 = unbekannt (Feld nie gepflegt) → fail-closed.
       if (!stats || stats.waitlist !== 0) return;

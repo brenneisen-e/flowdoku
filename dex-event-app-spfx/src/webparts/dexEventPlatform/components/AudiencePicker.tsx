@@ -19,13 +19,37 @@
  */
 
 import * as React from 'react';
-import { X, Users, Search } from './Icons';
+import { X, Users, Search, Download } from './Icons';
 import InternationalSearchToggle from './InternationalSearchToggle';
 import BulkUserImportModal from './BulkUserImportModal';
 import WizardHint from './WizardHint';
 import { useRoles } from '../context/RoleContext';
 
 const EXCLUDE_PAGE_SIZE = 200;
+
+// v27.11: XLSX-Download-Helper (Muster aus AdminPage-Excel-Export). WICHTIG:
+// `xlsx` MUSS dynamisch importiert werden (Bundle-Regel, s. ENTWICKLUNG.md).
+// Manueller Anchor-Click statt XLSX.writeFile — SPFx-iframe-Kompatibilität.
+async function downloadXlsx(fileName: string, sheetName: string, headers: string[], rows: string[][]): Promise<void> {
+  const XLSX = await import('xlsx');
+  const aoa = [headers, ...rows];
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  const colWidths = headers.map((h, ci) => {
+    const maxLen = Math.max(h.length, ...rows.map(r => String(r[ci] || '').length));
+    return { wch: Math.min(40, Math.max(10, maxLen + 2)) };
+  });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (ws as any)['!cols'] = colWidths;
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName.slice(0, 31));
+  const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fileName; a.style.display = 'none';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
+}
 
 interface ResolvedUser {
   email: string;
@@ -140,7 +164,9 @@ export default function AudiencePicker({
   const [memberModalOpen, setMemberModalOpen] = React.useState(false);
   const [memberModalGroupName, setMemberModalGroupName] = React.useState('');
   const [memberModalLoading, setMemberModalLoading] = React.useState(false);
-  const [memberModalMembers, setMemberModalMembers] = React.useState<Array<{ email: string; displayName: string }>>([]);
+  // v27.11: Typ verbreitert — getGroupMembers liefert auch Vorname/Nachname/
+  // Position/Standort, die der Mitglieder-Export mit ausgibt.
+  const [memberModalMembers, setMemberModalMembers] = React.useState<Array<{ email: string; displayName: string; firstName?: string; lastName?: string; jobTitle?: string; location?: string }>>([]);
   const [memberModalError, setMemberModalError] = React.useState('');
 
   // Sichtbarkeit-Prüfen-Modal
@@ -760,9 +786,35 @@ export default function AudiencePicker({
             )}
             {!memberModalLoading && !memberModalError && (
               <>
-                <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-500)', marginBottom: 8 }}>
-                  {memberModalMembers.length} {isDe ? 'Mitglieder' : 'members'}
-                </p>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
+                  <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-500)', margin: 0 }}>
+                    {memberModalMembers.length} {isDe ? 'Mitglieder' : 'members'}
+                  </p>
+                  {/* v27.11: Verteiler-Mitglieder als Excel herunterladen. */}
+                  {memberModalMembers.length > 0 && (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ fontSize: '0.78rem', padding: '4px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                      onClick={() => {
+                        const headers = isDe
+                          ? ['Verteiler', 'Nachname', 'Vorname', 'Anzeigename', 'E-Mail', 'Position', 'Standort']
+                          : ['Distribution list', 'Last name', 'First name', 'Display name', 'Email', 'Position', 'Location'];
+                        const rows = memberModalMembers.map(m => [
+                          memberModalGroupName, m.lastName || '', m.firstName || '', m.displayName || '', m.email, m.jobTitle || '', m.location || '',
+                        ]);
+                        const safeName = (memberModalGroupName || 'Verteiler').replace(/[^a-zA-Z0-9]/g, '_');
+                        downloadXlsx(
+                          `${isDe ? 'Verteiler' : 'DistributionList'}_${safeName}_${new Date().toISOString().slice(0, 10)}.xlsx`,
+                          isDe ? 'Mitglieder' : 'Members',
+                          headers, rows,
+                        ).catch(err => console.warn('[DEX] Verteiler-Export fehlgeschlagen:', err));
+                      }}
+                    >
+                      <Download size={14} /> {isDe ? 'Mitgliederliste herunterladen' : 'Download member list'}
+                    </button>
+                  )}
+                </div>
                 <div style={{ maxHeight: 420, overflowY: 'auto' }}>
                   {memberModalMembers.map(m => (
                     <div key={m.email} style={{ display: 'flex', flexDirection: 'column', padding: '6px 0', borderBottom: '1px solid var(--dex-gray-100)' }}>
@@ -1268,12 +1320,38 @@ export default function AudiencePicker({
                     : visAllPeople;
                   return (
                     <>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
                         <strong style={{ fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>
                           {q
                             ? (isDe ? `${filtered.length} von ${visAllPeople.length} Personen` : `${filtered.length} of ${visAllPeople.length} people`)
                             : (isDe ? `${visAllPeople.length} Personen sehen das Event` : `${visAllPeople.length} people can see the event`)}
                         </strong>
+                        {/* v27.11: Sichtbarkeits-Zielgruppe (aufgelöste Verteiler +
+                            Standorte) als Excel herunterladen. Exportiert die
+                            aktuell gefilterte Liste. */}
+                        {visAllPeople.length > 0 && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ fontSize: '0.78rem', padding: '4px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                            onClick={() => {
+                              const headers = isDe
+                                ? ['Quelle (Verteiler/Standort)', 'Nachname', 'Vorname', 'E-Mail', 'Position', 'Standort']
+                                : ['Source (list/location)', 'Last name', 'First name', 'Email', 'Position', 'Location'];
+                              const rows = filtered.map(p => [
+                                p.source || '', p.lastName || '', p.firstName || '', p.email, p.jobTitle || '', p.location || '',
+                              ]);
+                              const safeName = ((visTab ? visTab.title : '') || 'Event').replace(/[^a-zA-Z0-9]/g, '_');
+                              downloadXlsx(
+                                `${isDe ? 'Sichtbarkeit' : 'Visibility'}_${safeName}_${new Date().toISOString().slice(0, 10)}.xlsx`,
+                                isDe ? 'Sichtbarkeit' : 'Visibility',
+                                headers, rows,
+                              ).catch(err => console.warn('[DEX] Sichtbarkeits-Export fehlgeschlagen:', err));
+                            }}
+                          >
+                            <Download size={14} /> {isDe ? 'Als Excel herunterladen' : 'Download as Excel'}
+                          </button>
+                        )}
                       </div>
                       {visNote && (
                         <div style={{ marginBottom: 8, padding: '7px 10px', borderRadius: 6, background: 'rgba(237,139,0,0.10)', border: '1px solid var(--dex-orange, #ed8b00)', fontSize: '0.76rem', color: 'var(--dex-orange, #ed8b00)', lineHeight: 1.45 }}>

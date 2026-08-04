@@ -1170,6 +1170,9 @@ export default function EventCreationPage(): React.ReactElement {
   // ImageCropModal wie das Event-Bild). Ziel = welches Logo gerade zugeschnitten
   // wird ('email' oder 'outlook').
   const [logoCropTarget, setLogoCropTarget] = React.useState<'email' | 'outlook' | null>(null);
+  // v27.11: Zuschneiden eines Sub-Event-Bildes — Index des Sub-Events in
+  // `subEvents`, dessen Bild gerade im ImageCropModal offen ist (null = zu).
+  const [subImageCropIdx, setSubImageCropIdx] = React.useState<number | null>(null);
   // v23.19: Optionale Pro-Ansicht-Darstellung (Zoom + vertikale Position).
   // Default leer = Standard (cover/zentriert) — nur auf Wunsch eingestellt.
   type ImgView = { zoom: number; posY: number; height?: number };
@@ -1670,6 +1673,15 @@ export default function EventCreationPage(): React.ReactElement {
     waitlistEnabled?: boolean;
     /** v15.3: pro Sub-Event eigene Anrede-Abfrage. */
     askSalutation?: boolean;
+    /** v27.11: Pro-Sub-Event eigenes Event-Bild (vorher konnte nur das
+     *  Haupt-Event ein Bild haben — childPayload schrieb hart '').
+     *  imagePreview = Data-URL (frisch gewählt) oder bestehende SP-URL,
+     *  imageFile = neues/zugeschnittenes Bild für den Upload beim Speichern,
+     *  imageRemoved = bestehendes Bild wurde entfernt (EventImageUrl wird
+     *  beim Speichern geleert). */
+    imagePreview?: string;
+    imageFile?: File | null;
+    imageRemoved?: boolean;
   }
   const [subEvents, setSubEvents] = React.useState<SubEventDraft[]>(() => {
     if (!editEvent) return [];
@@ -1820,6 +1832,8 @@ export default function EventCreationPage(): React.ReactElement {
       excludedUsers: ((k as any).excludedUsers || []) as string[],
       waitlistEnabled: typeof k.waitlistEnabled === 'boolean' ? k.waitlistEnabled : true,
       askSalutation: !!k.askSalutation,
+      // v27.11: bestehendes Sub-Event-Bild (SP-URL) als Vorschau laden.
+      imagePreview: k.imageUrl || '',
       // v15.0 (legacy): Inheritance-Flags werden seit v15.3 nicht mehr
       // ausgewertet. Bleiben in den geparsten Drafts, weil das Schema
       // sie noch erlaubt — Wirkung gleich Null.
@@ -3228,6 +3242,32 @@ export default function EventCreationPage(): React.ReactElement {
    * Alle Sub-Events erben Metadaten (Organizer, Audience, Email-Language,
    * Templates, Logos) vom Parent — eigenständig sind nur Titel, Daten, Ort und Kapazität.
    */
+  // v27.11: Pro-Sub-Event-Bild persistieren (gleicher Mechanismus wie das
+  // Haupt-Event-Bild: Item-Attachment hochladen + EventImageUrl-MERGE).
+  // Läuft NACH createEvent/updateEvent, weil der Attachment-Upload die
+  // DEX_Events-Item-Id braucht. Best-effort — ein Bild-Fehler darf den
+  // Sub-Event-Save nicht blockieren.
+  const persistSubEventImage = async (subDbId: string | number | null | undefined, draft: { imageFile?: File | null; imageRemoved?: boolean }): Promise<void> => {
+    const idNum = Number(subDbId);
+    if (!subDbId || !isFinite(idNum) || idNum <= 0) return;
+    if (!draft.imageFile && !draft.imageRemoved) return;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ctx = (window as any).__dexSpfxContext;
+      if (!ctx) return;
+      const svc = new EventService(ctx);
+      if (draft.imageFile) {
+        const compressed = await compressImage(draft.imageFile);
+        const uploadedUrl = await svc.uploadEventImageAsAttachment(idNum, compressed);
+        if (uploadedUrl) await svc.updateEventImageUrl(idNum, uploadedUrl);
+      } else if (draft.imageRemoved) {
+        await svc.updateEventImageUrl(idNum, '');
+      }
+    } catch (err) {
+      console.warn('[DEX][v27.11] Sub-Event-Bild speichern fehlgeschlagen:', subDbId, err);
+    }
+  };
+
   const persistSubEventsForParent = async (parentEventId: string): Promise<void> => {
     const keptDbIds = new Set<string>();
     // v11.87: Sub-Event-Progress-Callback aus dem aufrufenden handleSubmit
@@ -3408,7 +3448,9 @@ export default function EventCreationPage(): React.ReactElement {
               onProgress: subOnProgress,
             };
             try {
-              await createEvent(reusePayload);
+              const recreatedId = await createEvent(reusePayload);
+              // v27.11: Sub-Event-Bild auch auf dem Recreate-Pfad persistieren.
+              await persistSubEventImage(recreatedId, draft);
             } catch (err) {
               console.warn('[DEX][v11.69] Sub-Event-Recreate mit Subsite-Reuse fehlgeschlagen:', draft.dbId, err);
             }
@@ -3456,7 +3498,9 @@ export default function EventCreationPage(): React.ReactElement {
               onProgress: subOnProgress,
             };
             try {
-              await createEvent(reusePayload);
+              const recreatedId = await createEvent(reusePayload);
+              // v27.11: Sub-Event-Bild auch auf dem Legacy-Recreate-Pfad persistieren.
+              await persistSubEventImage(recreatedId, draft);
             } catch (err) {
               console.warn('[DEX][v11.69] Legacy-Toggle-Recreate fehlgeschlagen:', draft.dbId, err);
             }
@@ -3477,7 +3521,9 @@ export default function EventCreationPage(): React.ReactElement {
               try {
                 await deleteEvent(draft.dbId);
               } catch { /* delete-Fehler darf Re-Create nicht blockieren */ }
-              await createEvent({ ...childPayload, onProgress: subOnProgress });
+              const recreatedLegacyId = await createEvent({ ...childPayload, onProgress: subOnProgress });
+              // v27.11: Sub-Event-Bild auch hier persistieren.
+              await persistSubEventImage(recreatedLegacyId, draft);
               continue;
             } else {
               draft.disableOutlook = true;
@@ -3557,8 +3603,13 @@ export default function EventCreationPage(): React.ReactElement {
         // OutlookDirty + Update wird vom Aufrufer (handleSubmit) anhand des
         // jeweiligen Sub-Event-Snapshots gesteuert — siehe pendingSubUpdates.
         await updateEvent(draft.dbId, subUpdates);
+        // v27.11: eigenes Sub-Event-Bild persistieren (Upload/Entfernen).
+        await persistSubEventImage(draft.dbId, draft);
       } else {
-        await createEvent({ ...childPayload, onProgress: subOnProgress });
+        const newSubId = await createEvent({ ...childPayload, onProgress: subOnProgress });
+        // v27.11: Bild fürs frisch angelegte Sub-Event hochladen (braucht die
+        // neue DEX_Events-Item-Id aus createEvent).
+        await persistSubEventImage(newSubId, draft);
       }
     }
     // Entfernte Sub-Events aufräumen: deleteEvent löscht kaskadierend auch
@@ -3880,6 +3931,29 @@ export default function EventCreationPage(): React.ReactElement {
         ? 'Du hast die Kommunikation für das Hauptevent deaktiviert. Bitte aktiviere in Schritt 7 (Kommunikation, Tab „Haupt-Event") entweder den Toggle „Anmeldung für mindestens ein Sub-Event verpflichtend" ODER bestätige den Ack-Haken — sonst landen Teilnehmer stumm in der Liste.'
         : 'You disabled communication for the main event. Please either enable the toggle „Require selecting at least one sub-event" in step 6 OR tick the acknowledgement — otherwise attendees land silently in the list.');
       return;
+    }
+
+    // v27.11: Destruktive Sub-Event-Löschungen VOR dem Speichern explizit
+    // bestätigen lassen. persistSubEventsForParent löscht am Ende alle beim
+    // Edit-Start vorhandenen Sub-Events, die nicht mehr im Formular sind —
+    // kaskadierend inklusive Subsite/Teilnehmerliste. Das passierte bisher
+    // still (z.B. nach Abschalten des Sub-Event-Toggles oder Entfernen einer
+    // Karte) — Anmeldungen waren ohne Rückfrage weg.
+    if (editEvent && initialSubEventDbIds.length > 0) {
+      const keptIds = new Set(subEventsRef.current.map(s => s.dbId).filter(Boolean) as string[]);
+      const toDelete = initialSubEventDbIds.filter(id => !keptIds.has(id));
+      if (toDelete.length > 0) {
+        const titles = toDelete
+          .map(id => { const k = childEventsOf(editEvent.id).find(c => c.id === id); return k ? `„${k.title}"` : ''; })
+          .filter(Boolean).join(', ');
+        const ok = await confirmDialog(
+          isDe
+            ? `Achtung: Beim Speichern werden ${toDelete.length} Sub-Event(s) endgültig gelöscht${titles ? `: ${titles}` : ''} — inklusive Teilnehmerliste und aller Anmeldungen (93 Tage im Papierkorb). Fortfahren?`
+            : `Warning: saving will permanently delete ${toDelete.length} sub-event(s)${titles ? `: ${titles}` : ''} — including their attendee lists and all registrations (recycled for 93 days). Continue?`,
+          { danger: true, title: isDe ? 'Sub-Events löschen' : 'Delete sub-events', confirmLabel: isDe ? 'Speichern & löschen' : 'Save & delete' },
+        );
+        if (!ok) return;
+      }
     }
 
     // v26.51: Fristen-Validierung — An-/Abmeldefrist darf NICHT nach dem
@@ -5356,10 +5430,18 @@ export default function EventCreationPage(): React.ReactElement {
   };
 
   // v11.57: bei Sub-Event-Anzahl-Aenderung Tab sicher in Range halten.
+  // v27.11 BUG-FIX: NICHT direkt setActiveCommTabIdx(0) — das ließ die
+  // Step-6-State-Variablen (Mail-Sprache, Outlook-Body, Logos, disableEmails
+  // etc.) auf den SUB-EVENT-Werten stehen, die dann als Tab 0 = Top-Level
+  // galten. Beim nächsten Speichern wurden die Sub-Event-Kommunikations-
+  // Einstellungen still aufs Haupt-Event geschrieben (Datenverlust beim
+  // Abschalten des Sub-Event-Toggles). switchCommTab(0) stellt den
+  // Top-Level-Snapshot korrekt wieder her.
   React.useEffect(() => {
     if (activeCommTabIdx > subEvents.length) {
-      setActiveCommTabIdx(0);
+      switchCommTab(0);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subEvents.length, activeCommTabIdx]);
   // v15.0: gleiche Range-Garantie für die neuen Tab-Sets in den
   // Steps 3 (Ort), 4 (Kapazität) und 6 (Felder).
@@ -5612,6 +5694,11 @@ export default function EventCreationPage(): React.ReactElement {
   // schaltet der Effekt einmalig automatisch auf „ja" (Ref verhindert, dass
   // er ein bewusstes Abschalten sofort wieder überschreibt).
   const [subEventsOptIn, setSubEventsOptIn] = React.useState<boolean>(false);
+  // v27.11: Beim Abschalten des Sub-Event-Toggles werden die Drafts NICHT mehr
+  // verworfen, sondern hier geparkt — beim Wieder-Einschalten kommen sie
+  // unverändert zurück (vorher: setSubEvents([]) → alle Eingaben sofort und
+  // unwiederbringlich weg, obwohl noch gar nicht gespeichert wurde).
+  const subEventsStashRef = React.useRef<SubEventDraft[]>([]);
   const subOptInHydratedRef = React.useRef(false);
   React.useEffect(() => {
     if (!subOptInHydratedRef.current && subEvents.length > 0) {
@@ -8878,15 +8965,37 @@ export default function EventCreationPage(): React.ReactElement {
                         const on = e.target.checked;
                         if (!on && subEvents.length > 0) {
                           (async () => {
-                            const ok = await confirmDialog(
-                              isDe
-                                ? `Du hast ${subEvents.length} Sub-Event(s) angelegt. Beim Abschalten werden sie aus dem Formular entfernt. Fortfahren?`
-                                : `You created ${subEvents.length} sub-event(s). Turning this off removes them from the form. Continue?`,
-                              { danger: true, confirmLabel: isDe ? 'Sub-Events entfernen' : 'Remove sub-events' }
-                            );
-                            if (ok) { setSubEvents([]); setSubEventsOptIn(false); }
+                            // v27.11: Bei bereits GESPEICHERTEN Sub-Events klar
+                            // sagen, dass das Speichern sie endgültig löscht —
+                            // inkl. Teilnehmerliste. Unsaved Drafts werden nur
+                            // geparkt (Wieder-Einschalten stellt sie wieder her).
+                            const persistedCount = subEvents.filter(x => x.dbId).length;
+                            const msg = persistedCount > 0
+                              ? (isDe
+                                ? `Du hast ${subEvents.length} Sub-Event(s), davon ${persistedCount} bereits gespeichert. Beim Abschalten verschwinden sie aus dem Formular — beim nächsten SPEICHERN werden die gespeicherten Sub-Events endgültig gelöscht, inklusive Teilnehmerliste und aller Anmeldungen (93 Tage im Papierkorb). Schaltest du den Toggle vor dem Speichern wieder ein, bleibt alles erhalten. Fortfahren?`
+                                : `You have ${subEvents.length} sub-event(s), ${persistedCount} of them already saved. Turning this off removes them from the form — on the next SAVE the saved sub-events are permanently deleted, including their attendee lists and all registrations (recycled for 93 days). Re-enable the toggle before saving and everything is kept. Continue?`)
+                              : (isDe
+                                ? `Du hast ${subEvents.length} Sub-Event(s) angelegt. Beim Abschalten werden sie aus dem Formular entfernt — beim Wieder-Einschalten kommen die Eingaben zurück. Fortfahren?`
+                                : `You created ${subEvents.length} sub-event(s). Turning this off removes them from the form — re-enabling restores your input. Continue?`);
+                            const ok = await confirmDialog(msg, { danger: true, confirmLabel: isDe ? 'Sub-Events abschalten' : 'Turn off sub-events' });
+                            if (ok) {
+                              // v27.11: Drafts parken statt verwerfen + Modi
+                              // zurücksetzen, die ohne Sub-Events keinen Sinn
+                              // ergeben (subEventsOnlyMode mit 0 Sub-Events
+                              // machte das Event unbuchbar und Schritt 7 leer).
+                              subEventsStashRef.current = subEvents;
+                              setSubEvents([]);
+                              setSubEventsOptIn(false);
+                              if (subEventsOnlyMode) setSubEventsOnlyMode(false);
+                              if (requireSubEventSelection) setRequireSubEventSelection(false);
+                            }
                           })().catch(() => { /* */ });
                           return;
+                        }
+                        // v27.11: Wieder-Einschalten stellt geparkte Drafts wieder her.
+                        if (on && subEvents.length === 0 && subEventsStashRef.current.length > 0) {
+                          setSubEvents(subEventsStashRef.current);
+                          subEventsStashRef.current = [];
                         }
                         setSubEventsOptIn(on);
                       }}
@@ -9270,7 +9379,25 @@ export default function EventCreationPage(): React.ReactElement {
                           </div>
                           <button
                             type="button"
-                            onClick={() => setSubEvents(subEvents.filter(x => x.id !== se.id))}
+                            onClick={() => {
+                              // v27.11: Entfernen bestätigen lassen — vorher
+                              // löschte EIN Klick den Draft sofort; bei bereits
+                              // gespeicherten Sub-Events wurden beim nächsten
+                              // Speichern still Teilnehmerliste + Anmeldungen
+                              // mitgelöscht.
+                              (async () => {
+                                const seTitle = se.title || (isDe ? 'Ohne Titel' : 'Untitled');
+                                const msg = se.dbId
+                                  ? (isDe
+                                    ? `Sub-Event „${seTitle}" wirklich entfernen? Beim nächsten SPEICHERN wird es endgültig gelöscht — inklusive Teilnehmerliste und aller Anmeldungen (93 Tage im Papierkorb).`
+                                    : `Really remove sub-event "${seTitle}"? On the next SAVE it will be permanently deleted — including its attendee list and all registrations (recycled for 93 days).`)
+                                  : (isDe
+                                    ? `Sub-Event „${seTitle}" entfernen? Die eingetragenen Angaben gehen verloren.`
+                                    : `Remove sub-event "${seTitle}"? The entered details will be lost.`);
+                                const ok = await confirmDialog(msg, { danger: true, confirmLabel: isDe ? 'Entfernen' : 'Remove' });
+                                if (ok) setSubEvents(prev => prev.filter(x => x.id !== se.id));
+                              })().catch(() => { /* */ });
+                            }}
                             style={{
                               background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)',
                               fontSize: '1.1rem', padding: '4px', lineHeight: 1, marginTop: 18,
@@ -9367,6 +9494,73 @@ export default function EventCreationPage(): React.ReactElement {
                           </div>
                         </div>
 
+                        {/* v27.11: Eigenes Bild pro Sub-Event (optional).
+                            Vorher konnte nur das Haupt-Event ein Bild haben —
+                            der Sub-Event-Save schrieb EventImageUrl hart leer. */}
+                        <div style={{ marginBottom: 10 }}>
+                          <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', display: 'block', marginBottom: 4 }}>
+                            {isDe ? 'Eigenes Bild (optional)' : 'Own image (optional)'}
+                          </label>
+                          {se.imagePreview ? (
+                            <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
+                              <img
+                                src={se.imagePreview}
+                                alt=""
+                                style={{ display: 'block', maxHeight: 120, maxWidth: '100%', width: 'auto', height: 'auto', objectFit: 'contain', borderRadius: 8, background: 'var(--dex-gray-100)' }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setSubEvents(prev => prev.map((x, i) => i === idx ? { ...x, imagePreview: '', imageFile: null, imageRemoved: true } : x))}
+                                title={isDe ? 'Bild entfernen' : 'Remove image'}
+                                style={{
+                                  position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.6)',
+                                  color: '#fff', border: 'none', borderRadius: '50%', width: 24, height: 24,
+                                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                }}
+                              >
+                                <X size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSubImageCropIdx(idx)}
+                                style={{
+                                  position: 'absolute', bottom: 6, right: 6, background: 'rgba(0,0,0,0.6)',
+                                  color: '#fff', border: 'none', borderRadius: 999, padding: '3px 10px',
+                                  cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600,
+                                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                                }}
+                              >
+                                <Icon iconName="Crop" style={{ fontSize: 11 }} /> {isDe ? 'Zuschneiden' : 'Crop'}
+                              </button>
+                            </div>
+                          ) : (
+                            <label style={{
+                              display: 'inline-flex', alignItems: 'center', gap: 6,
+                              padding: '6px 12px', borderRadius: 'var(--dex-radius)',
+                              border: '2px dashed var(--dex-gray-300)', cursor: 'pointer',
+                              fontSize: '0.8rem', color: 'var(--dex-gray-600)',
+                            }}>
+                              <Plus size={13} />
+                              {isDe ? 'Bild auswählen' : 'Choose image'}
+                              <input
+                                type="file"
+                                accept="image/*"
+                                style={{ display: 'none' }}
+                                onChange={e => {
+                                  const file = e.target.files && e.target.files[0];
+                                  if (!file) return;
+                                  const reader = new FileReader();
+                                  reader.onload = ev => {
+                                    const dataUrl = (ev.target?.result as string) || '';
+                                    setSubEvents(prev => prev.map((x, i) => i === idx ? { ...x, imageFile: file, imagePreview: dataUrl, imageRemoved: false } : x));
+                                  };
+                                  reader.readAsDataURL(file);
+                                }}
+                              />
+                            </label>
+                          )}
+                        </div>
+
                         {/* v24.64: Pflichtanmeldung — wenn aktiv, MUSS der
                             Teilnehmer dieses Sub-Event bei der Anmeldung wählen
                             (er kann sich nicht ohne dieses Sub-Event anmelden). */}
@@ -9397,6 +9591,21 @@ export default function EventCreationPage(): React.ReactElement {
                       </div>
                     );
                   })}
+                  {/* v27.11: Zuschnitt-Modal für Sub-Event-Bilder — ein
+                      gemeinsames Modal für alle Karten, Ziel via subImageCropIdx. */}
+                  {subImageCropIdx !== null && subEvents[subImageCropIdx] && (
+                    <ImageCropModal
+                      open
+                      src={subEvents[subImageCropIdx].imagePreview || ''}
+                      isDe={isDe}
+                      onClose={() => setSubImageCropIdx(null)}
+                      onApply={(dataUrl, file) => {
+                        const i = subImageCropIdx;
+                        setSubEvents(prev => prev.map((x, xi) => xi === i ? { ...x, imagePreview: dataUrl, imageFile: file, imageRemoved: false } : x));
+                        setSubImageCropIdx(null);
+                      }}
+                    />
+                  )}
                   <button
                     type="button"
                     className="btn btn-outline"

@@ -4,8 +4,9 @@
  * Zeigt alle Events des Admins. Nach Auswahl eines Events:
  * - Event bearbeiten (Daten ändern)
  * - Teilnehmerliste anzeigen
- * - Teilnehmerliste in SharePoint öffnen
  * - Neues Event erstellen
+ * (v27.13: „Teilnehmerliste in SharePoint öffnen" entfernt — alle Aktionen
+ *  laufen über die App.)
  */
 
 import * as React from 'react';
@@ -23,6 +24,7 @@ import OrganizerList from './OrganizerList';
 import { PersonContactHover } from './PersonContactHover';
 import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
 import { isEventOver } from '../utils/eventFormat';
+import { isDeloitteInternalEmail, isExternalEmail } from '../utils/deloitteDomain';
 // v20.1: Self-Check-in jederzeit aktivierbar (Token-Erzeugung beim Klick).
 // v20.2: + statische Check-in-URL für die QR-Kachel im Event-Detail.
 // v20.3: + Default-Zeitfenster (2 Std. vor Start bis Event-Ende) zur Vorbelegung.
@@ -225,8 +227,9 @@ const ACTION_CATEGORY_ORDER: ActionCategoryKey[] = ['event', 'participants', 'ma
 const ACTION_CATEGORY_LABELS: Record<ActionCategoryKey, { de: string; en: string; descDe: string; descEn: string }> = {
   event: {
     de: 'Event', en: 'Event',
-    descDe: 'Event bearbeiten, in SharePoint öffnen, Link teilen, Änderungsprotokoll ansehen.',
-    descEn: 'Edit the event, open it in SharePoint, share the link, view the change history.',
+    // v27.13: „in SharePoint öffnen" entfernt — alle Aktionen laufen über die App.
+    descDe: 'Event bearbeiten, Link teilen, Änderungsprotokoll ansehen.',
+    descEn: 'Edit the event, share the link, view the change history.',
   },
   participants: {
     de: 'Teilnehmer', en: 'Participants',
@@ -845,7 +848,8 @@ export default function AdminPage(): React.ReactElement {
     } finally { setIsRefreshing(false); }
   };
   const { currentUser } = useCurrentUser();
-  const { isAdmin, siteUrl, currentUserRole, searchUser, searchUsers, isImpersonating } = useRoles();
+  // v27.11: getGroupMembers für die Verteiler-Auflösung der Einladungs-Mail.
+  const { isAdmin, siteUrl, currentUserRole, searchUser, searchUsers, getGroupMembers, isImpersonating } = useRoles();
   const { t, locale } = useLanguage();
   const isDe = locale === 'de';
   // v20.4: App-Modals statt nativer Browser-Dialoge.
@@ -954,7 +958,11 @@ export default function AdminPage(): React.ReactElement {
       && typeof selectedEvent.funstarterCapacity === 'number'
       && (selectedEvent.durchstarterCapacity > 0 || selectedEvent.funstarterCapacity > 0);
     const useTypeFilter = isSplitEvent && !selectedEvent.splitSharedWaitlist;
-    if (!eventWasOver) {
+    // v27.11: WaitlistEnabled=false ist jetzt ein echter Kill-Switch — kein
+    // automatisches Nachrücken mehr, wenn der Organizer die Warteliste
+    // abgeschaltet hat (manuelles Nachrücken über den Admin-Button bleibt
+    // als bewusster Override möglich).
+    if (!eventWasOver && selectedEvent.waitlistEnabled !== false) {
       try {
         const promoted = await eventServiceRef.promoteFirstWaitlistItem(
           selectedEvent.subsiteUrl,
@@ -1724,13 +1732,14 @@ export default function AdminPage(): React.ReactElement {
             : 'First name, last name and email must not be empty.');
           return;
         }
-        // Domain-Check: nur Deloitte-Adressen zulassen
+        // Domain-Check: nur Deloitte-Adressen zulassen (v27.11: beliebige
+        // Member-Firm-Domain, konsistent zur International-Suche v26.57).
         const lower = newEmail.toLowerCase();
-        const isDeloitte = /@(.*\.)?deloitte\.de$/.test(lower);
+        const isDeloitte = isDeloitteInternalEmail(lower);
         if (!isDeloitte) {
           setEditError(isDe
-            ? `Externe E-Mail-Adresse — nicht erlaubt. Die Plattform ist nur für Deloitte Deutschland (@deloitte.de) freigeschaltet.`
-            : `External email address — not allowed. The platform is only available for Deloitte Germany (@deloitte.de).`);
+            ? `Externe E-Mail-Adresse — nicht erlaubt. Bitte eine Deloitte-Adresse verwenden (z.B. @deloitte.de oder eine andere Member-Firm-Domain).`
+            : `External email address — not allowed. Please use a Deloitte mailbox (e.g. @deloitte.de or another member-firm domain).`);
           return;
         }
         // Existenz-Check via M365-Profile (UPN!=SMTP-aware). Wenn wir hier
@@ -2279,6 +2288,10 @@ export default function AdminPage(): React.ReactElement {
           && ((child.durchstarterCapacity || 0) > 0 || (child.funstarterCapacity || 0) > 0);
         const useTypeFilter = isSplitEvent && !child.splitSharedWaitlist;
         if (!childWasOver) {
+        // v27.11: Kein automatisches Nachrücken, wenn die Warteliste des
+        // Sub-Events abgeschaltet ist (Kill-Switch, s. Einzel-Event-Abmelden).
+        // Der ID-Reorder unten läuft weiterhin.
+        if (child.waitlistEnabled !== false) {
         try {
           const promoted = await eventServiceRef.promoteFirstWaitlistItem(
             sub,
@@ -2317,6 +2330,7 @@ export default function AdminPage(): React.ReactElement {
             }
           }
         } catch (err) { console.warn('[DEX] promoteFirstWaitlistItem failed:', err); }
+        }
         // ID-Reorder in die Queue (Flow macht nur noch Reorder).
         try {
           await eventServiceRef.queueIDReorder(
@@ -4274,7 +4288,8 @@ export default function AdminPage(): React.ReactElement {
       const firstName = reg.Vorname || (reg.ParticipantName || '').trim().split(/\s+/)[0] || name;
       const qrImageHtml = await buildQrImageHtml(qrData);
       const emailData = qrCodeEmail(firstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', name, getQrMailOverride(selectedEvent));
-      const isExternal = !!reg.ParticipantEmail && !/@(.*\.)?deloitte\.de$/i.test(reg.ParticipantEmail);
+      // v27.11: Member-Firm-Adressen zählen als intern → QR-Mail direkt.
+      const isExternal = isExternalEmail(reg.ParticipantEmail);
       if (isExternal) {
         const orgEmails = (selectedEvent.organizerEmails || []).filter(Boolean);
         const orgRecipient = orgEmails.length > 0 ? orgEmails.join(';') : currentUser.email;
@@ -7060,17 +7075,11 @@ export default function AdminPage(): React.ReactElement {
               onClick={() => navigate('edit-event', selectedEvent.id)}
             />
 
-            {/* 2. Teilnehmerliste in SharePoint öffnen */}
-            <ActionTile
-              icon={<ExternalLink size={18} />}
-              category="event"
-              title={t('admin.opensp') || 'In SharePoint öffnen'}
-              desc={isDe
-                ? 'Öffnet die SharePoint-Teilnehmerliste der Subsite in einem neuen Tab — für tiefere Bearbeitung jenseits dieser App (z.B. Massen-Edit per Spreadsheet-View).'
-                : 'Opens the SharePoint participant list of the subsite in a new tab — for deeper editing beyond this app (e.g. bulk edit via spreadsheet view).'}
-              badge="organizer"
-              href={selectedEvent.subsiteUrl ? `${selectedEvent.subsiteUrl}/Lists/Teilnehmer/AllItems.aspx` : `${siteUrl}/Lists`}
-            />
+            {/* v27.13: „In SharePoint öffnen" entfernt — alle Teilnehmer-
+                Aktionen (Bearbeiten, Export, Massenimport, Audit) laufen über
+                die App. Direktes Editieren in der rohen SP-Liste erzeugte
+                Zeilen ohne Audit-Felder und ohne Format-Validierung (siehe
+                Feedback Datenschutz-Review 07/2026). */}
 
             {/* v18.33/v20.1: Self-Check-in — QR-PDF + rotierende Live-Anzeige.
                 Seit v20.1 IMMER sichtbar für Admin/(Co-)Organizer: hat das
@@ -10413,7 +10422,12 @@ export default function AdminPage(): React.ReactElement {
                   );
                 }
                 if (id === 'date') {
-                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.RegistrationDate)}</td>;
+                  // v27.12 (Feedback Datenschutz-Review): Zeilen, die nicht über
+                  // die App angelegt wurden (z.B. direkt in der SharePoint-
+                  // Liste), haben kein RegistrationDate — dann den SP-Erstell-
+                  // Zeitstempel (Created) als Fallback zeigen statt Leere.
+                  const regDate = (reg.RegistrationDate || '').trim() ? reg.RegistrationDate : (reg.Created || '');
+                  return <td key={id} style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{regDate ? formatDate(regDate) : '—'}</td>;
                 }
                 if (id === 'promotedDate') {
                   // v17.15: „Nachgerückt am" — gesetzt beim Promote
@@ -10456,7 +10470,25 @@ export default function AdminPage(): React.ReactElement {
                       {(() => {
                         const actorEmail = (reg.RegisteredByEmail || '').toLowerCase();
                         const participantEmail = (reg.ParticipantEmail || '').toLowerCase();
-                        if (!actorEmail) return <span style={{ color: 'var(--dex-gray-400)' }}>-</span>;
+                        if (!actorEmail) {
+                          // v27.12 (Feedback Datenschutz-Review): Zeile wurde
+                          // nicht über die App angelegt (RegisteredBy* leer) —
+                          // dann den SP-Zeilen-Autor als Fallback zeigen.
+                          const authorEmail = (reg.Author?.EMail || '').toLowerCase();
+                          const authorName = (reg.Author?.Title || '').trim();
+                          if (!authorEmail && !authorName) return <span style={{ color: 'var(--dex-gray-400)' }}>-</span>;
+                          if (authorEmail && authorEmail === participantEmail) {
+                            return <span style={{ color: 'var(--dex-green-dark)' }}>Selbst</span>;
+                          }
+                          return (
+                            <span
+                              title={isDe ? `${reg.Author?.EMail || ''} — aus den SharePoint-Metadaten (Zeile wurde nicht über die App angelegt)` : `${reg.Author?.EMail || ''} — from SharePoint metadata (row was not created via the app)`}
+                              style={{ color: 'var(--dex-gray-500)', fontStyle: 'italic' }}
+                            >
+                              {authorName || reg.Author?.EMail}
+                            </span>
+                          );
+                        }
                         if (actorEmail === participantEmail) {
                           return <span style={{ color: 'var(--dex-green-dark)' }}>Selbst</span>;
                         }
@@ -11856,7 +11888,7 @@ export default function AdminPage(): React.ReactElement {
             {(() => {
               const without = registrations.filter(r => r.Status === 'Angemeldet').length;
               const withQr = registrations.filter(r => r.Status === 'QR versendet' || r.Status === 'Eingecheckt').length;
-              const externalCount = registrations.filter(r => r.Status === 'Angemeldet').filter(r => r.ParticipantEmail && !/@(.*\.)?deloitte\.de$/i.test(r.ParticipantEmail)).length;
+              const externalCount = registrations.filter(r => r.Status === 'Angemeldet').filter(r => isExternalEmail(r.ParticipantEmail)).length;
               const pill = (bg: string, fg: string, content: React.ReactNode): React.ReactElement => (
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, padding: '5px 12px', borderRadius: 999, background: bg, color: fg, fontSize: '0.8rem', fontWeight: 600 }}>{content}</span>
               );
@@ -13531,13 +13563,50 @@ export default function AdminPage(): React.ReactElement {
               : `The invitation email must NOT be sent to entire location or all-distribution lists.\n\nThe following recipients are blocked:\n\n${lines}\n\nPlease remove these addresses from the mail distribution in step 3 of event edit, or use the option "To me (for forwarding)".`);
             return;
           }
+          // v27.11 (Bug-Report): Verteiler VOR dem Versand in einzelne
+          // Mitglieder-Adressen auflösen. Vorher ging die Verteiler-Adresse
+          // roh ins To-Feld — Exchange lehnt das ab, sobald der Verteiler nur
+          // autorisierte Absender zulässt (die Shared Mailbox
+          // no_reply.events@deloitte.de ist das i.d.R. nicht); der NDR landete
+          // unsichtbar in der Shared Mailbox und für den Organizer sah alles
+          // erfolgreich aus. Auflösung via Graph (transitive Mitglieder,
+          // gleicher Resolver wie die Sichtbarkeits-Auflösung v16.4);
+          // nicht auflösbare Einträge bleiben als Direktadresse erhalten.
+          let resolvedRecipients: string[] = targetEmails;
+          if (inviteTarget === 'audience') {
+            setInviteSending(true);
+            const out: string[] = [];
+            const seen = new Set<string>();
+            const push = (e: string): void => {
+              const lc = (e || '').trim().toLowerCase();
+              if (lc && lc.indexOf('@') > 0 && !seen.has(lc)) { seen.add(lc); out.push(lc); }
+            };
+            for (const entry of targetEmails) {
+              if ((entry || '').indexOf('@') < 0) continue; // Standort-Pattern o.ä. — nicht mailbar
+              try {
+                const grp = await getGroupMembers(entry);
+                if (grp && grp.members && grp.members.length > 0) {
+                  for (const m of grp.members) push(m.email);
+                } else {
+                  push(entry); // Einzelperson ODER nicht auflösbarer Verteiler
+                }
+              } catch { push(entry); }
+            }
+            // Fallback: Live-Auflösung ergab nichts (z.B. fehlende
+            // Group.Read.All) → beim Event-Save eingefrorene Liste verwenden.
+            if (out.length === 0 && (selectedEvent.audienceResolvedEmails || []).length > 0) {
+              for (const e of selectedEvent.audienceResolvedEmails || []) push(e);
+            }
+            if (out.length > 0) resolvedRecipients = out;
+            setInviteSending(false);
+          }
           const confirmMsg = isDe
             ? (inviteTarget === 'organizer'
               ? `Einladungs-Mail an dich selbst (${myEmail}) senden? Du kannst sie anschließend aus Outlook an deinen Verteiler weiterleiten.`
-              : `Einladungs-Mail an ${audienceEmails.length} Empfänger des Mailverteilers senden?\n\n${audienceEmails.join(', ')}`)
+              : `Einladungs-Mail an ${resolvedRecipients.length} aufgelöste Empfänger des Mailverteilers senden?\n\nDie Verteiler wurden in einzelne Mitglieder-Adressen aufgelöst; die Empfänger stehen im Bcc (sehen einander nicht), du selbst im An-Feld.\n\n${resolvedRecipients.slice(0, 12).join(', ')}${resolvedRecipients.length > 12 ? `, … (+${resolvedRecipients.length - 12})` : ''}`)
             : (inviteTarget === 'organizer'
               ? `Send invitation email to yourself (${myEmail})? You can then forward it from Outlook to your distribution list.`
-              : `Send invitation email to ${audienceEmails.length} recipients of the mail distribution?\n\n${audienceEmails.join(', ')}`);
+              : `Send invitation email to ${resolvedRecipients.length} resolved recipients of the mail distribution?\n\nDistribution lists were resolved into individual member addresses; recipients are on Bcc (cannot see each other), you are in the To field.\n\n${resolvedRecipients.slice(0, 12).join(', ')}${resolvedRecipients.length > 12 ? `, … (+${resolvedRecipients.length - 12})` : ''}`);
           if (!(await confirmDialog(confirmMsg, { confirmLabel: isDe ? 'Senden' : 'Send' }))) return;
           setInviteSending(true);
           const resolvedSubject = replacePlaceholders(inviteSubject, previewVars);
@@ -13548,15 +13617,31 @@ export default function AdminPage(): React.ReactElement {
             ? replacePlaceholders(inviteSubheading, previewVars)
             : `Event ${selectedEvent.title}`;
           const fullBody = applyInviteHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody, undefined, { imageWidth: inviteImageLayout.width, imagePaddingV: inviteImageLayout.paddingV, imagePaddingH: inviteImageLayout.paddingH }));
-          const allEmails = targetEmails.join(';');
           const ccString = ccEmails.join(';');
           const recipientName = inviteTarget === 'organizer' ? myDisplayName : (isDe ? 'Mailverteiler' : 'Mail distribution');
           try {
-            await eventServiceRef.queueEmail(
-              resolvedSubject, allEmails, recipientName, fullBody,
-              'Einladung', selectedEvent.title, selectedEvent.id,
-              ccString || undefined,
-            );
+            if (inviteTarget === 'audience') {
+              // v27.11: Aufgelöste Mitglieder in Chunks (Exchange-Limit ~500
+              // Empfänger/Mail) per Bcc verschicken — wie beim Verteiler sehen
+              // die Mitglieder einander nicht. To = der auslösende Organizer,
+              // CC (übrige Organizer) nur auf dem ersten Chunk.
+              const CHUNK = 450;
+              for (let i = 0; i < resolvedRecipients.length; i += CHUNK) {
+                const chunk = resolvedRecipients.slice(i, i + CHUNK);
+                await eventServiceRef.queueEmail(
+                  resolvedSubject, myEmail, recipientName, fullBody,
+                  'Einladung', selectedEvent.title, selectedEvent.id,
+                  (i === 0 && ccString) ? ccString : undefined,
+                  chunk.join(';'),
+                );
+              }
+            } else {
+              await eventServiceRef.queueEmail(
+                resolvedSubject, targetEmails.join(';'), recipientName, fullBody,
+                'Einladung', selectedEvent.title, selectedEvent.id,
+                ccString || undefined,
+              );
+            }
             // v26.69: NUR echte Broadcasts an den Mailverteiler ins Kommunikations-
             // Log schreiben. Der „An mich (zum Weiterleiten)"-Selbstversand
             // (inviteTarget === 'organizer') geht nur an die eigene Mailbox — das
@@ -13569,8 +13654,8 @@ export default function AdminPage(): React.ReactElement {
             }
             setInviteSending(false);
             showAlert(isDe
-              ? `Einladungs-Mail an ${targetEmails.length} Empfänger in die Warteschlange eingetragen.`
-              : `Invitation email queued for ${targetEmails.length} recipient(s).`);
+              ? `Einladungs-Mail an ${inviteTarget === 'audience' ? resolvedRecipients.length : targetEmails.length} Empfänger in die Warteschlange eingetragen.`
+              : `Invitation email queued for ${inviteTarget === 'audience' ? resolvedRecipients.length : targetEmails.length} recipient(s).`);
             setShowInviteModal(false);
           } catch {
             setInviteSending(false);
