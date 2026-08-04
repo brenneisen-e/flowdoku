@@ -36,7 +36,7 @@ import { UserFieldPicker } from './UserFieldPicker';
 // nicht ändern; zuständig ist die IT über ServiceNow.
 // HINWEIS: URL bei Bedarf hier zentral anpassen (einzige Verwendungsstelle:
 // Hinweistext unter der Profil-Karte).
-const SERVICENOW_URL = 'https://deloitte.service-now.com/sp';
+const SERVICENOW_URL = 'https://deloitteemea.service-now.com/mysupport?id=de_index';
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
