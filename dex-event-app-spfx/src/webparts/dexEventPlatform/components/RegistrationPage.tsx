@@ -769,9 +769,21 @@ export default function RegistrationPage(): React.ReactElement {
     }
   }, [event?.id, registerForOther]);
 
-  // v28.3: Bild-Orientierungs-Erkennung entfernt — im „Geführte Schritte"-
-  // Layout sitzt das Bild auf dem Desktop IMMER kompakt links (contain im
-  // festen Slot), die Hochkant/Querformat-Fallunterscheidung entfällt.
+  // v28.4: Seitenverhältnis des Event-Bildes erkennen — Querformat-Fotos
+  // bekommen im „Geführte Schritte"-Layout einen BREITEREN Bild-Slot (420px
+  // statt 300px), damit sie nicht winzig in der Ecke hängen; Hochkant/
+  // Quadrat bleibt beim kompakten 300er-Slot. Das Bild sitzt vertikal
+  // mittig neben den Infos (kein toter Leerraum mehr unter dem Foto).
+  const [imgAspect, setImgAspect] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    if (!event?.imageUrl) { setImgAspect(null); return; }
+    const img = new Image();
+    img.onload = () => {
+      if (img.naturalHeight > 0) setImgAspect(img.naturalWidth / img.naturalHeight);
+    };
+    img.src = event.imageUrl;
+  }, [event?.imageUrl]);
+  const imgIsLandscape = (imgAspect ?? 1.5) >= 1.2;
 
   // B2Run Split-Capacity: aktuelle Auslastung pro Typ laden
   // Split-UI nur wenn BEIDE Starter-Typen verfügbar sind (>0). Wenn der Admin eine
@@ -2629,14 +2641,14 @@ export default function RegistrationPage(): React.ReactElement {
             className="registration-event__card"
             style={{
               display: 'flex',
-              // v28.3 („Geführte Schritte"): Auf dem Desktop IMMER Bild links +
-              // Inhalt rechts — die Karte ist jetzt volle Layoutbreite (~880px);
-              // ein Bild über die volle Breite (altes Querformat-Verhalten)
-              // dominierte die komplette Station 1. Auf dem Handy weiterhin
-              // Bild oben + Inhalt drunter.
-              flexDirection: isMobile ? 'column' : 'row',
+              // v28.3 („Geführte Schritte"): Desktop-Standard = Bild kompakt
+              // links + Inhalt rechts. v28.5: Der Organizer kann im Wizard
+              // stattdessen „Banner"-Layout wählen (event.imageBanner) — dann
+              // liegt das Bild in voller Kartenbreite ÜBER den Infos (gut für
+              // breite Querformat-Fotos). Handy: immer Bild oben.
+              flexDirection: (isMobile || event.imageBanner) ? 'column' : 'row',
               gap: 16,
-              alignItems: isMobile ? 'stretch' : 'flex-start',
+              alignItems: (isMobile || event.imageBanner) ? 'stretch' : 'flex-start',
             }}
           >
             {/* v28.3: Bild-Slot nur rendern, wenn das Event ein Bild hat —
@@ -2652,12 +2664,24 @@ export default function RegistrationPage(): React.ReactElement {
                 background: '#fff',
                 borderRadius: 'var(--dex-radius)',
                 overflow: 'hidden',
-                // v28.3: Desktop = kompakter fester Bild-Slot links (max.
-                // 300×280, contain — nichts wird abgeschnitten), Handy = volle
-                // Breite mit begrenzter Höhe.
+                // v28.3/v28.4: Desktop = fester Bild-Slot links, contain (kein
+                // Crop — Event-Bilder sind oft Poster mit Text). Querformat
+                // bekommt den breiteren 420er-Slot und sitzt vertikal mittig
+                // neben den Infos; Hochkant/Quadrat den kompakten 300er-Slot.
+                // Handy = volle Breite mit begrenzter Höhe.
                 ...(isMobile
                   ? { width: '100%', maxHeight: 200, display: 'flex', justifyContent: 'center' }
-                  : { flex: '0 0 300px', maxWidth: 300, maxHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }),
+                  : event.imageBanner
+                  // v28.5: Banner-Layout — volle Kartenbreite, Höhe begrenzt,
+                  // contain (kein Crop bei Postern mit Text).
+                  ? { width: '100%', maxHeight: 320, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+                  : {
+                    flex: imgIsLandscape ? '0 0 420px' : '0 0 300px',
+                    maxWidth: imgIsLandscape ? 420 : 300,
+                    maxHeight: imgIsLandscape ? 260 : 300,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    alignSelf: 'center',
+                  }),
               }}
             >
               {event.imageUrl && (
@@ -2671,9 +2695,11 @@ export default function RegistrationPage(): React.ReactElement {
                   // Slot, damit Station 1 kompakt bleibt.
                   style={isMobile
                     ? { width: '100%', maxHeight: 200, height: 'auto', objectFit: 'cover', display: 'block' }
+                    : event.imageBanner
+                    ? { maxWidth: '100%', maxHeight: 320, width: 'auto', height: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto' }
                     : event.imageDisplay?.hero
-                    ? { display: 'block', margin: '0 auto', maxWidth: '100%', maxHeight: Math.min(event.imageDisplay.hero.height ?? 280, 280), width: 'auto', height: 'auto', objectFit: 'contain', transform: `scale(${Math.min(event.imageDisplay.hero.zoom || 1, 1.5)})`, transformOrigin: 'center center' }
-                    : { maxWidth: '100%', maxHeight: 280, width: 'auto', height: 'auto', objectFit: 'contain', display: 'block' }
+                    ? { display: 'block', margin: '0 auto', maxWidth: '100%', maxHeight: Math.min(event.imageDisplay.hero.height ?? (imgIsLandscape ? 260 : 300), imgIsLandscape ? 260 : 300), width: 'auto', height: 'auto', objectFit: 'contain', transform: `scale(${Math.min(event.imageDisplay.hero.zoom || 1, 1.5)})`, transformOrigin: 'center center' }
+                    : { maxWidth: '100%', maxHeight: imgIsLandscape ? 260 : 300, width: 'auto', height: 'auto', objectFit: 'contain', display: 'block' }
                   }
                 />
               )}
@@ -2761,25 +2787,27 @@ export default function RegistrationPage(): React.ReactElement {
                   wenn Email gesetzt. Wird nur gerendert wenn mindestens Name
                   oder Email gepflegt sind. */}
               {(event.contactName || event.contactEmail || event.contactInfo) && (
-                <div style={{ marginTop: 12, padding: '10px 12px', background: 'var(--dex-gray-50, #f7f7f7)', borderRadius: 8, border: '1px solid var(--dex-gray-200)' }}>
-                  {/* v11.97: Gleiche Schriftgröße + Gewicht wie das
-                      ORGANIZER-Label darüber. v26.82: mit Icon + Text in
-                      Beschreibungs-Schriftgröße (1.05rem). */}
+                <div style={{ marginTop: 12 }}>
+                  {/* v28.4: Überschrift AUSSERHALB der Box — gleiche Optik und
+                      Position wie das ORGANIZER-Label darunter. */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, fontWeight: 600, fontSize: '0.85rem' }}>
                     <span style={{ display: 'inline-flex', flexShrink: 0 }}><Mail size={15} /></span>
                     <span>{locale === 'de' ? 'Ansprechpartner' : 'Contact'}</span>
                   </div>
+                  <div style={{ padding: '10px 12px', background: 'var(--dex-gray-50, #f7f7f7)', borderRadius: 8, border: '1px solid var(--dex-gray-200)' }}>
+                  {/* v28.5: Schriftgrößen wie in den Datums-/Ort-Boxen (0.88rem). */}
                   {event.contactName && (
-                    <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--dex-gray-800)' }}>{event.contactName}</div>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--dex-gray-800)' }}>{event.contactName}</div>
                   )}
                   {event.contactEmail && (
-                    <div style={{ fontSize: '1.05rem', marginTop: 2 }}>
+                    <div style={{ fontSize: '0.88rem', marginTop: 2 }}>
                       <a href={`mailto:${event.contactEmail}`} style={{ color: 'var(--dex-green, #86bc25)', textDecoration: 'none' }}>{event.contactEmail}</a>
                     </div>
                   )}
                   {event.contactInfo && (
-                    <div style={{ fontSize: '1.05rem', color: 'var(--dex-gray-700)', marginTop: 4, whiteSpace: 'pre-wrap', lineHeight: 1.3 }}>{event.contactInfo}</div>
+                    <div style={{ fontSize: '0.88rem', color: 'var(--dex-gray-700)', marginTop: 4, whiteSpace: 'pre-wrap', lineHeight: 1.4 }}>{event.contactInfo}</div>
                   )}
+                  </div>
                 </div>
               )}
               {(() => {
@@ -2800,7 +2828,7 @@ export default function RegistrationPage(): React.ReactElement {
                 return (
                   <div style={{ marginTop: 6 }}>
                     <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6, fontWeight: 600 }}>Organizer</div>
-                    <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={(event.hideOrganizer && event.hideOrganizerIndividualOnly) ? event.hiddenOrganizerEmails : []} forceIsDe={locale === 'de'} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} nameFontSize="1.05rem" hideContactPrompt={hasExplicitContact} />
+                    <OrganizerList names={orgs} emails={event.organizerEmails} hiddenEmails={(event.hideOrganizer && event.hideOrganizerIndividualOnly) ? event.hiddenOrganizerEmails : []} forceIsDe={locale === 'de'} size="md" display={event.organizerDisplayLarge ? 'card' : 'chip'} nameFontSize="1.05rem" hideContactPrompt={hasExplicitContact} fullWidth contactEmail={event.contactOrganizerEmail || undefined} />
                   </div>
                 );
               })()}

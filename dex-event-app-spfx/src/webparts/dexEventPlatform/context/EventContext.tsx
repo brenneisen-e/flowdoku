@@ -1138,6 +1138,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // v10.16: Optionaler Ansprechpartner. ContactInfo ist Note-Feld, daher
       // strippen — Name/Email sind Single-Line, kein Wrapper.
       contactName: e.ContactName || '',
+      // v28.5: als Rückfragen-Kontakt markierter Organizer (v26.18-Spalte,
+      // Wizard-UI + Anzeige kamen erst mit v28.5).
+      contactOrganizerEmail: e.ContactOrganizerEmail || '',
       contactEmail: e.ContactEmail || '',
       contactInfo: stripSpNoteWrapper(e.ContactInfo),
       location: e.Location || '',
@@ -1209,6 +1212,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         try {
           const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
           return !!(ov && ov._subEventsOnlyMode);
+        } catch { return false; }
+      })(),
+      // v28.5: Event-Bild als Banner über den Infos (Piggyback _imageBanner).
+      imageBanner: ((): boolean => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          return !!(ov && ov._imageBanner);
         } catch { return false; }
       })(),
       // v28.2: Sub-Events SOFT-deaktiviert (Piggyback _subEventsDisabled) —

@@ -158,6 +158,11 @@ export interface DeloitteEvent {
    *  „einfach Foto hochladen", ohne hier etwas einzustellen. Piggyback
    *  `_imageDisplay` in EmailTemplateOverrides. zoom: 1..3, posY: 0..100 (%). */
   imageDisplay?: { card?: { zoom: number; posY: number; height?: number }; hero?: { zoom: number; posY: number; height?: number } };
+  /** v28.5: Anmeldeseite-Layout des Event-Bildes. true = Bild liegt als
+   *  BANNER in voller Kartenbreite ÜBER den Event-Infos (gut für breite
+   *  Querformat-Fotos), false/undefined = kompakter Slot links neben den
+   *  Infos (Standard). Piggyback `_imageBanner` in EmailTemplateOverrides. */
+  imageBanner?: boolean;
   /** v17.20: Wenn true UND der Organizer hat pro Custom-Field die
    *  EN-Variante hinterlegt (`labelEn` etc.), zeigt die Anmeldeseite die
    *  Felder in der **Locale des Teilnehmers** (App-Spracheinstellung) statt

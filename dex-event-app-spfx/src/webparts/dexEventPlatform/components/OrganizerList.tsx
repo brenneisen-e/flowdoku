@@ -36,6 +36,14 @@ export interface OrganizerListProps {
    *  „Bei Fragen wende dich gerne an:"-Kopf im Hover/der Karte ausgeblendet —
    *  für Rückfragen ist dann der Ansprechpartner zuständig, nicht der Organizer. */
   hideContactPrompt?: boolean;
+  /** v28.4: Nur für display='card' — Kachel auf volle Container-Breite
+   *  strecken (z.B. Anmeldeseite: gleiche Breite wie die Datums-/Ort-Boxen).
+   *  Default false = intrinsische Breite (Bestandsverhalten). */
+  fullWidth?: boolean;
+  /** v28.5: E-Mail des als Rückfragen-Kontakt markierten Organizers
+   *  (Event-Spalte ContactOrganizerEmail). Bekommt einen orangen ?-Badge
+   *  oben rechts am Foto + Legende „Ansprechpartner für Rückfragen". */
+  contactEmail?: string;
 }
 
 // v11.95: pro Email einmalig profile-lookup, Ergebnis App-weit gecached
@@ -92,7 +100,7 @@ function ContactLinks({ email, isDe }: { email: string; isDe: boolean }): React.
  * für den „card"-Modus, wo mehrere Organizer NEBENEINANDER in EINER Kachel
  * stehen. Lädt Rolle + Standort sofort (ohne Hover).
  */
-function OrganizerCardEntry({ name, email, forceIsDe }: { name: string; email: string; forceIsDe?: boolean }): React.ReactElement {
+function OrganizerCardEntry({ name, email, forceIsDe, isContact }: { name: string; email: string; forceIsDe?: boolean; isContact?: boolean }): React.ReactElement {
   const [failed, setFailed] = React.useState(false);
   const [retryAttempt, setRetryAttempt] = React.useState(0);
   const [profile, setProfile] = React.useState<{ jobTitle: string; location: string } | null>(
@@ -121,6 +129,9 @@ function OrganizerCardEntry({ name, email, forceIsDe }: { name: string; email: s
 
   return (
     <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 5, textAlign: 'center', minWidth: 150, maxWidth: 200 }}>
+      {/* v28.5: Foto-Hülle relative, damit der orange Rückfragen-Badge oben
+          rechts am Foto sitzen kann. */}
+      <span style={{ position: 'relative', display: 'inline-flex' }}>
       {!failed && email ? (
         <img
           src={`${photoUrl(email, 'L')}${cacheBust}`}
@@ -131,6 +142,20 @@ function OrganizerCardEntry({ name, email, forceIsDe }: { name: string; email: s
       ) : (
         <span style={{ width: size, height: size, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #86bc25, #0076a8)', color: '#fff', fontSize: size * 0.36, fontWeight: 700 }}>{initials}</span>
       )}
+      {isContact && (
+        <span
+          title={isDe ? 'Ansprechpartner für Rückfragen' : 'Contact for questions'}
+          style={{
+            position: 'absolute', top: 0, right: 0,
+            width: 26, height: 26, borderRadius: '50%',
+            background: 'var(--dex-orange, #ed8b00)', color: '#fff',
+            border: '2px solid #fff', boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '0.82rem', fontWeight: 800, lineHeight: 1,
+          }}
+        >?</span>
+      )}
+      </span>
       <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--dex-gray-800)' }}>{name}</span>
       <ContactLinks email={email} isDe={isDe} />
       {profile && (profile.jobTitle || profile.location) && (
@@ -383,7 +408,7 @@ function pairNamesEmails(names: string[], emails: string[]): Array<{ name: strin
   return result;
 }
 
-function OrganizerCardTile({ items, forceIsDe, hideContactPrompt }: { items: Array<{ name: string; email: string }>; forceIsDe?: boolean; hideContactPrompt?: boolean }): React.ReactElement {
+function OrganizerCardTile({ items, forceIsDe, hideContactPrompt, fullWidth, contactEmail }: { items: Array<{ name: string; email: string }>; forceIsDe?: boolean; hideContactPrompt?: boolean; fullWidth?: boolean; contactEmail?: string }): React.ReactElement {
   const { locale } = useLanguage();
   const isDe = forceIsDe !== undefined ? forceIsDe : locale === 'de';
   // v23.26: EINE Kachel mit allen Organizern nebeneinander (statt einzeln
@@ -391,9 +416,11 @@ function OrganizerCardTile({ items, forceIsDe, hideContactPrompt }: { items: Arr
   return (
     <div
       style={{
-        display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 12,
+        // v28.4: fullWidth streckt die Kachel auf Container-Breite (Anmeldeseite).
+        display: fullWidth ? 'flex' : 'inline-flex', width: fullWidth ? '100%' : undefined,
+        flexDirection: 'column', alignItems: 'center', gap: 12,
         background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 12,
-        padding: '14px 20px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', maxWidth: '100%',
+        padding: '14px 20px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', maxWidth: '100%', boxSizing: 'border-box',
       }}
     >
       {!hideContactPrompt && (
@@ -403,9 +430,16 @@ function OrganizerCardTile({ items, forceIsDe, hideContactPrompt }: { items: Arr
       )}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, justifyContent: 'center', alignItems: 'flex-start' }}>
         {items.map((o, i) => (
-          <OrganizerCardEntry key={`${o.email || o.name}-${i}`} name={o.name} email={o.email} forceIsDe={forceIsDe} />
+          <OrganizerCardEntry key={`${o.email || o.name}-${i}`} name={o.name} email={o.email} forceIsDe={forceIsDe} isContact={!!contactEmail && !!o.email && o.email.toLowerCase() === contactEmail.toLowerCase()} />
         ))}
       </div>
+      {/* v28.5: Legende zum orangen Rückfragen-Badge. */}
+      {!!contactEmail && items.some(o => (o.email || '').toLowerCase() === contactEmail.toLowerCase()) && (
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: '0.76rem', color: 'var(--dex-gray-600)' }}>
+          <span style={{ width: 16, height: 16, borderRadius: '50%', background: 'var(--dex-orange, #ed8b00)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.68rem', fontWeight: 800, flexShrink: 0 }}>?</span>
+          {isDe ? 'Bei Rückfragen wende dich bitte an diese Person.' : 'Please reach out to this person with any questions.'}
+        </span>
+      )}
     </div>
   );
 }
@@ -453,7 +487,7 @@ function OrganizerChipRow({ items, sizeClass, compact, forceIsDe, nameFontSize, 
   );
 }
 
-export default function OrganizerList({ names, emails, size = 'md', compact = false, display = 'chip', hiddenEmails, forceIsDe, nameFontSize, hideContactPrompt }: OrganizerListProps): React.ReactElement | null {
+export default function OrganizerList({ names, emails, size = 'md', compact = false, display = 'chip', hiddenEmails, forceIsDe, nameFontSize, hideContactPrompt, fullWidth, contactEmail }: OrganizerListProps): React.ReactElement | null {
   let items = pairNamesEmails(names, emails).filter(o => !!o.name);
   // v24.8 (J): einzeln ausgeblendete Organizer aus der Anzeige nehmen (Rechte bleiben).
   if (hiddenEmails && hiddenEmails.length > 0) {
@@ -462,6 +496,6 @@ export default function OrganizerList({ names, emails, size = 'md', compact = fa
   }
   if (items.length === 0) return null;
   // v23.26: Großer Modus = EINE gemeinsame Kachel mit allen Organizern.
-  if (display === 'card') return <OrganizerCardTile items={items} forceIsDe={forceIsDe} hideContactPrompt={hideContactPrompt} />;
+  if (display === 'card') return <OrganizerCardTile items={items} forceIsDe={forceIsDe} hideContactPrompt={hideContactPrompt} fullWidth={fullWidth} contactEmail={contactEmail} />;
   return <OrganizerChipRow items={items} sizeClass={size} compact={compact} forceIsDe={forceIsDe} nameFontSize={nameFontSize} hideContactPrompt={hideContactPrompt} />;
 }
