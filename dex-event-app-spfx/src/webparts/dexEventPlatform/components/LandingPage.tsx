@@ -17,6 +17,7 @@ import { useRoles } from '../context/RoleContext';
 import { useDialog } from '../context/DialogContext';
 import Modal from './Modal';
 import { useIsMobile } from '../utils/useIsMobile';
+import { GraduationCap } from './Icons';
 
 export default function LandingPage(): React.ReactElement {
   const { navigate } = useNavigation();
@@ -352,6 +353,10 @@ export default function LandingPage(): React.ReactElement {
   // Anmeldungen (auf das Klammer-Event abgebildet). Events mit bereits
   // sichtbarer Check-in-/QR-Box werden beim Rendern ausgeblendet (sonst doppelt).
   const [myRegBoxes, setMyRegBoxes] = React.useState<Array<{ eventId: string; title: string; imageUrl?: string; startDate: string; location?: string }>>([]);
+  // v28.14: Der Einführungs-Hinweis darf erst rendern, wenn die eigenen
+  // Anmeldungen geladen sind — sonst blitzt er kurz auf und verschwindet
+  // wieder, sobald die „Du bist angemeldet"-Box das Event übernimmt.
+  const [myRegBoxesLoaded, setMyRegBoxesLoaded] = React.useState(false);
   const [nowTick, setNowTick] = React.useState(Date.now());
   React.useEffect(() => {
     const id = window.setInterval(() => setNowTick(Date.now()), 60000);
@@ -410,7 +415,7 @@ export default function LandingPage(): React.ReactElement {
         }
         if (boxes.length >= 6) break;
       }
-      if (!cancelled) setMyRegBoxes(boxes);
+      if (!cancelled) { setMyRegBoxes(boxes); setMyRegBoxesLoaded(true); }
     })().catch(() => { /* best-effort */ });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1035,6 +1040,10 @@ export default function LandingPage(): React.ReactElement {
                 && new Date(e.startDate).getTime() > nowTick && isIntroTitle(e.title || ''))
               .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())[0];
             if (!intro) return null;
+            // v28.14: Erst rendern, wenn die eigenen Anmeldungen geladen sind —
+            // sonst blitzt der Hinweis kurz auf und verschwindet, sobald die
+            // „Du bist angemeldet"-Box das Event übernimmt.
+            if (!myRegBoxesLoaded) return null;
             // Schon angemeldet (oder Check-in-Phase läuft) → die Boxen oben
             // zeigen das Event bereits, kein doppelter Hinweis.
             if (myRegBoxes.some(b => b.eventId === intro.id) || checkInBoxes.some(b => b.eventId === intro.id)) return null;
@@ -1064,8 +1073,10 @@ export default function LandingPage(): React.ReactElement {
                   flexShrink: 0, width: 38, height: 38, borderRadius: '50%',
                   background: 'rgba(134,188,37,0.16)', color: 'var(--dex-green-dark, #4a7c1f)',
                   display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 19, lineHeight: 1,
-                }}>🎓</span>
+                }}>
+                  {/* v28.14: einfarbiges SVG-Icon statt Emoji. */}
+                  <GraduationCap size={20} strokeWidth={2} />
+                </span>
                 <span style={{ minWidth: 0 }}>
                   <span style={{ display: 'block', fontWeight: 800, fontSize: '0.95rem', lineHeight: 1.3 }}>
                     {isDe
