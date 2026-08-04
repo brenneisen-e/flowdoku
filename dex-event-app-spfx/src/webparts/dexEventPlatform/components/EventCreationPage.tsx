@@ -1189,6 +1189,23 @@ export default function EventCreationPage(): React.ReactElement {
   // v28.5: Bild als Banner über den Event-Infos (statt kompakt links) —
   // Organizer-Wahl, sinnvoll für breite Querformat-Fotos. Piggyback _imageBanner.
   const [imageBanner, setImageBanner] = React.useState<boolean>(!!(editEvent && editEvent.imageBanner));
+  // v28.10: Seitenverhältnis des Wizard-Bilds — die Banner-Option ist nur für
+  // Querformat-Fotos sinnvoll und wird nur dann angeboten (Ratio >= 1.2).
+  const [wizardImgAspect, setWizardImgAspect] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    if (!imagePreview) { setWizardImgAspect(null); return; }
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => { if (!cancelled && img.naturalHeight > 0) setWizardImgAspect(img.naturalWidth / img.naturalHeight); };
+    img.src = imagePreview;
+    return () => { cancelled = true; };
+  }, [imagePreview]);
+  React.useEffect(() => {
+    // Nicht-Querformat (z.B. nach Kreis-Zuschnitt) → Banner-Flag zurücknehmen,
+    // sonst bliebe ein unsichtbar gesetztes _imageBanner am Event hängen.
+    if (wizardImgAspect != null && wizardImgAspect < 1.2 && imageBanner) setImageBanner(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wizardImgAspect]);
   // v11.20: Re-sync useEffect aus v11.19 wieder rausgenommen — der hat
   // den Wizard-State mit stale-editEvent-Daten ueberschrieben (re-sync 2
   // mit helpText="" wurde im Maintainer-DevTools beobachtet, obwohl SP
@@ -1491,13 +1508,31 @@ export default function EventCreationPage(): React.ReactElement {
   // damit die Base64-Größe für die Mail-Pipeline handhabbar bleibt.
   const fileToBase64 = (file: File): Promise<string> =>
     new Promise<string>(resolve => { const r = new FileReader(); r.onload = e => resolve((e.target?.result as string) || ''); r.onerror = () => resolve(''); r.readAsDataURL(file); });
+  // v28.10: Base64-Logos hart auf Mail-taugliche Größe bringen. Ungebremste
+  // Logos landeten bis zu DREIMAL im selben Save-Payload (OutlookBody via
+  // {{ORB_URL}}, EmailTemplateOverrides._eventLogo/_outlookLogo und
+  // EmailImageBase64) und rissen das SharePoint-REST-Limit von 2 MB
+  // („The request message is too big"). Ab ~400 KB wird auf 600px
+  // runterskaliert; schlägt das fehl, bleibt der Originalwert.
+  const shrinkLogoB64 = async (b64: string): Promise<string> => {
+    if (!b64 || b64.indexOf('data:') !== 0 || b64.length <= 400_000) return b64;
+    try {
+      const resp = await fetch(b64);
+      const blob = await resp.blob();
+      const f = new File([blob], 'logo.png', { type: blob.type || 'image/png' });
+      const out = await fileToBase64(await compressImage(f, 600, 0.85));
+      return out && out.length < b64.length ? out : b64;
+    } catch { return b64; }
+  };
   const applyEventPhotoToLogo = async (setter: (b64: string) => void): Promise<void> => {
     try {
       let b64 = '';
       if (imageFile) {
         b64 = await fileToBase64(await compressImage(imageFile, 600, 0.9));
       } else if (imagePreview && imagePreview.indexOf('data:') === 0) {
-        b64 = imagePreview;
+        // v28.10: Frischer Zuschnitt (Data-URL) ebenfalls komprimieren —
+        // vorher ging das volle Bild unkomprimiert ins Logo (2-MB-Falle).
+        b64 = await shrinkLogoB64(imagePreview);
       } else if (imagePreview) {
         const resp = await fetch(imagePreview, { credentials: 'include' });
         const blob = await resp.blob();
@@ -3916,8 +3951,12 @@ export default function EventCreationPage(): React.ReactElement {
     // etc.) fälschlich auf das Haupt-Event geschrieben.
     const topComm = resolveTopLevelCommState();
     const effEmailLanguage = topComm.emailLanguage;
-    const effEmailLogo = topComm.emailLogoBase64;
-    const effOutlookLogo = topComm.outlookLogoBase64;
+    // v28.10: Logos beim Speichern hart verkleinern (>400 KB → 600px).
+    // Rettet auch Events, bei denen früher ein unkomprimiertes Bild als
+    // Logo übernommen wurde — die ließen sich sonst gar nicht mehr
+    // speichern (SharePoint-2-MB-Limit, das Logo steckt bis zu 3× im Payload).
+    const effEmailLogo = await shrinkLogoB64(topComm.emailLogoBase64);
+    const effOutlookLogo = await shrinkLogoB64(topComm.outlookLogoBase64);
     const effOutlookBody = topComm.outlookBody;
     const effOutlookHeading = topComm.outlookHeading;
     const effOutlookSubheading = topComm.outlookSubheading;
@@ -7287,8 +7326,11 @@ export default function EventCreationPage(): React.ReactElement {
                     allowAspect
                     onClose={() => setLogoCropTarget(null)}
                     onApply={(dataUrl) => {
-                      if (logoCropTarget === 'email') setEmailLogoPreview(dataUrl);
-                      else setOutlookLogoPreview(dataUrl);
+                      // v28.10: Crop-Ergebnis ggf. verkleinern (2-MB-Schutz).
+                      void shrinkLogoB64(dataUrl).then(small => {
+                        if (logoCropTarget === 'email') setEmailLogoPreview(small);
+                        else setOutlookLogoPreview(small);
+                      });
                       setLogoCropTarget(null);
                     }}
                   />
@@ -7297,6 +7339,7 @@ export default function EventCreationPage(): React.ReactElement {
                   open={imageEditOpen}
                   src={imagePreview}
                   isDe={isDe}
+                  recommendCircle
                   onClose={() => setImageEditOpen(false)}
                   onApply={async (dataUrl, file) => {
                     setImagePreview(dataUrl);
@@ -7420,7 +7463,13 @@ export default function EventCreationPage(): React.ReactElement {
                         setImageUploadError('');
                         setImageFile(file);
                         const reader = new FileReader();
-                        reader.onload = ev => setImagePreview(ev.target?.result as string || '');
+                        reader.onload = ev => {
+                          setImagePreview(ev.target?.result as string || '');
+                          // v28.10: Direkt nach dem Upload den Zuschnitt-
+                          // Dialog öffnen (mit Kreis-Empfehlung) — vorher
+                          // musste man „Bild editieren" extra anklicken.
+                          setImageEditOpen(true);
+                        };
                         reader.readAsDataURL(file);
                       }
                     }}
@@ -7431,8 +7480,11 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
                 {/* v28.5: Layout-Wahl fürs Event-Bild auf der Anmeldeseite —
                     Banner in voller Breite ÜBER den Infos (gut für breite
-                    Querformat-Fotos) vs. kompakt links neben den Infos. */}
-                {(imagePreview || imageFile) && (
+                    Querformat-Fotos) vs. kompakt links neben den Infos.
+                    v28.10: nur noch bei Querformat-Bildern (Ratio >= 1.2)
+                    anbieten — für Kreis-/Quadrat-/Hochkant-Bilder ergibt
+                    das Banner-Layout keinen Sinn. */}
+                {(imagePreview || imageFile) && wizardImgAspect != null && wizardImgAspect >= 1.2 && (
                   <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 12, padding: '10px 12px', borderRadius: 8, border: `1px solid ${imageBanner ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`, background: imageBanner ? 'rgba(134,188,37,0.06)' : '#fff', cursor: 'pointer' }}>
                     <input
                       type="checkbox"
@@ -7602,8 +7654,8 @@ export default function EventCreationPage(): React.ReactElement {
                           >{name}</span>
                           {orgHidden && <span style={{ fontSize: '0.68rem', fontStyle: 'italic', opacity: 0.95 }}>{isDe ? '(ausgeblendet)' : '(hidden)'}</span>}
                           {/* v28.5: Rückfragen-Kontakt markieren — oranger
-                              ?-Kreis. Genau EINER; erneuter Klick entfernt die
-                              Markierung. */}
+                              Kreis. Genau EINER; erneuter Klick entfernt die
+                              Markierung. v28.10: Sprechblase statt „?". */}
                           {!!email && (
                             <button
                               type="button"
@@ -7612,7 +7664,7 @@ export default function EventCreationPage(): React.ReactElement {
                                 background: (contactOrganizerEmail || '').toLowerCase() === email.toLowerCase() ? 'var(--dex-orange, #ed8b00)' : 'rgba(255,255,255,0.2)',
                                 border: (contactOrganizerEmail || '').toLowerCase() === email.toLowerCase() ? '1.5px solid #fff' : 'none',
                                 color: '#fff', width: 22, height: 22, borderRadius: '50%', cursor: 'pointer',
-                                fontSize: '0.78rem', fontWeight: 800, lineHeight: 1,
+                                lineHeight: 1,
                                 display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                               }}
                               title={isDe
@@ -7622,7 +7674,7 @@ export default function EventCreationPage(): React.ReactElement {
                                 : ((contactOrganizerEmail || '').toLowerCase() === email.toLowerCase()
                                   ? 'Contact for questions — attendees are asked to reach out to this person. Click to remove.'
                                   : 'Mark as contact for questions (orange badge on the registration page)')}
-                            >?</button>
+                            ><Icon iconName="Chat" style={{ fontSize: 11 }} /></button>
                           )}
                           {orgList.length > 1 && i > 0 && (
                             <button
@@ -7649,17 +7701,20 @@ export default function EventCreationPage(): React.ReactElement {
                         </span>
                       );
                       })}
-                      {/* v28.5: Legende zum Rückfragen-Kontakt (?-Knopf). */}
+                      {/* v28.5: Legende zum Rückfragen-Kontakt. v28.10:
+                          Sprechblasen-Icon statt „?". */}
                       <span style={{ flexBasis: '100%', display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.74rem', color: 'var(--dex-gray-600)', marginTop: 4 }}>
-                        <span style={{ width: 16, height: 16, borderRadius: '50%', background: (contactOrganizerEmail || '').trim() ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-gray-400, #9aa0a6)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.66rem', fontWeight: 800, flexShrink: 0 }}>?</span>
+                        <span style={{ width: 16, height: 16, borderRadius: '50%', background: (contactOrganizerEmail || '').trim() ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-gray-400, #9aa0a6)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                          <Icon iconName="Chat" style={{ fontSize: 8 }} />
+                        </span>
                         <span>
                           {(contactOrganizerEmail || '').trim()
                             ? (isDe
-                              ? 'Rückfragen-Kontakt markiert — diese Person bekommt auf der Anmeldeseite den orangen ?-Badge. Klick auf ihr ? entfernt die Markierung.'
-                              : 'Contact for questions marked — this person gets the orange ? badge on the registration page. Click their ? again to remove it.')
+                              ? 'Rückfragen-Kontakt markiert — diese Person bekommt auf der Anmeldeseite den orangen Sprechblasen-Badge. Klick auf ihre Sprechblase entfernt die Markierung.'
+                              : 'Contact for questions marked — this person gets the orange chat-bubble badge on the registration page. Click their bubble again to remove it.')
                             : (isDe
-                              ? 'Tipp: Klicke das ? an einem Organizer, um ihn als Rückfragen-Kontakt zu markieren — er bekommt auf der Anmeldeseite einen orangen Badge mit Hinweis.'
-                              : 'Tip: click the ? on an organizer to mark them as the contact for questions — they get an orange badge with a note on the registration page.')}
+                              ? 'Tipp: Klicke die Sprechblase an einem Organizer, um ihn als Rückfragen-Kontakt zu markieren — er bekommt auf der Anmeldeseite einen orangen Badge mit Hinweis.'
+                              : 'Tip: click the chat bubble on an organizer to mark them as the contact for questions — they get an orange badge with a note on the registration page.')}
                         </span>
                       </span>
                       {/* v24.8 (J) / v24.15 (Gate): Tipp unter den Organizer-Namen. */}

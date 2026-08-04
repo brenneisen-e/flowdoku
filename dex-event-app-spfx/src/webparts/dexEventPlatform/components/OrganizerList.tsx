@@ -151,9 +151,13 @@ function OrganizerCardEntry({ name, email, forceIsDe, isContact }: { name: strin
             background: 'var(--dex-orange, #ed8b00)', color: '#fff',
             border: '2px solid #fff', boxShadow: '0 1px 4px rgba(0,0,0,0.25)',
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '0.82rem', fontWeight: 800, lineHeight: 1,
+            lineHeight: 1,
           }}
-        >?</span>
+        >
+          {/* v28.10: Sprechblase statt „?" — kommuniziert „ansprechen/fragen"
+              klarer als das Fragezeichen. */}
+          <Icon iconName="Chat" style={{ fontSize: 12 }} />
+        </span>
       )}
       </span>
       <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--dex-gray-800)' }}>{name}</span>
@@ -415,36 +419,42 @@ function OrganizerCardTile({ items, forceIsDe, hideContactPrompt, fullWidth, con
   // Legende den generischen „Bei Fragen…"-Kopf komplett.
   const hasContactBadge = !!contactEmail && items.some(o => (o.email || '').toLowerCase() === (contactEmail || '').toLowerCase());
   // v23.26: EINE Kachel mit allen Organizern nebeneinander (statt einzeln
-  // beim Mouse-Over). Ein Hinweis-Kopf, dann die Personen in einer Reihe.
+  // beim Mouse-Over).
+  // v28.10: Der „Bei Fragen…"-Hinweis steht AUSSERHALB über der Box (wie die
+  // Überschriften-Muster der Anmeldeseite), und die Box selbst hängt in der
+  // Breite am Inhalt (inline-flex) statt sich auf Container-Breite zu
+  // strecken — bei 2 Organizern also keine fast leere volle Zeile mehr.
   return (
-    <div
-      style={{
-        // v28.4: fullWidth streckt die Kachel auf Container-Breite (Anmeldeseite).
-        // v28.6: fullWidth = Inhalt linksbündig statt zentriert.
-        display: fullWidth ? 'flex' : 'inline-flex', width: fullWidth ? '100%' : undefined,
-        flexDirection: 'column', alignItems: fullWidth ? 'flex-start' : 'center', gap: 12,
-        background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 12,
-        padding: '14px 20px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', maxWidth: '100%', boxSizing: 'border-box',
-      }}
-    >
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: fullWidth ? 'flex-start' : 'center', gap: 6, maxWidth: '100%' }}>
       {!hideContactPrompt && !hasContactBadge && (
         <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)' }}>
           {isDe ? 'Bei Fragen wende dich gerne an:' : 'If you have any questions, feel free to reach out:'}
         </span>
       )}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, justifyContent: fullWidth ? 'flex-start' : 'center', alignItems: 'flex-start' }}>
-        {items.map((o, i) => (
-          <OrganizerCardEntry key={`${o.email || o.name}-${i}`} name={o.name} email={o.email} forceIsDe={forceIsDe} isContact={!!contactEmail && !!o.email && o.email.toLowerCase() === contactEmail.toLowerCase()} />
-        ))}
+      <div
+        style={{
+          display: 'inline-flex',
+          flexDirection: 'column', alignItems: fullWidth ? 'flex-start' : 'center', gap: 12,
+          background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 12,
+          padding: '14px 20px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', maxWidth: '100%', boxSizing: 'border-box',
+        }}
+      >
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20, justifyContent: fullWidth ? 'flex-start' : 'center', alignItems: 'flex-start' }}>
+          {items.map((o, i) => (
+            <OrganizerCardEntry key={`${o.email || o.name}-${i}`} name={o.name} email={o.email} forceIsDe={forceIsDe} isContact={!!contactEmail && !!o.email && o.email.toLowerCase() === contactEmail.toLowerCase()} />
+          ))}
+        </div>
+        {/* v28.5/v28.6: Legende zum orangen Rückfragen-Badge (ersetzt den
+            generischen Kopf). */}
+        {hasContactBadge && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: '0.76rem', color: 'var(--dex-gray-600)' }}>
+            <span style={{ width: 16, height: 16, borderRadius: '50%', background: 'var(--dex-orange, #ed8b00)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+              <Icon iconName="Chat" style={{ fontSize: 8 }} />
+            </span>
+            {isDe ? 'Ansprechpartner bei Rückfragen' : 'Contact for questions'}
+          </span>
+        )}
       </div>
-      {/* v28.5/v28.6: Legende zum orangen Rückfragen-Badge (ersetzt den
-          generischen Kopf). */}
-      {hasContactBadge && (
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: '0.76rem', color: 'var(--dex-gray-600)' }}>
-          <span style={{ width: 16, height: 16, borderRadius: '50%', background: 'var(--dex-orange, #ed8b00)', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.68rem', fontWeight: 800, flexShrink: 0 }}>?</span>
-          {isDe ? 'Ansprechpartner bei Rückfragen' : 'Contact for questions'}
-        </span>
-      )}
     </div>
   );
 }

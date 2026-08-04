@@ -4489,6 +4489,11 @@ export class EventService {
       };
 
       reportProgress('item-insert');
+      // v28.10: gleicher 2-MB-Schutz wie in updateEvent — zu große Payloads
+      // (eingebettete Logos/Bilder) sauber abfangen statt kryptischem 400.
+      if (JSON.stringify(payload).length > 1_900_000) {
+        throw new Error('Die Event-Daten überschreiten das SharePoint-Limit von 2 MB. Ursache ist fast immer ein zu großes eingebettetes Bild (Mail-Logo, Outlook-Kopfbild oder ein Bild im Mail-/Termin-Text). Bitte das Bild entfernen oder neu (kleiner) hochladen.');
+      }
       const response = await this._post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items`,
         payload
@@ -4601,6 +4606,18 @@ export class EventService {
         ...updates,
       };
 
+      // v28.10: SharePoint lehnt REST-Bodies > 2 MB mit einem kryptischen
+      // HTTP 400 ab („The request message is too big"). Vorab prüfen und
+      // eine verständliche Meldung liefern — Verursacher ist praktisch
+      // immer ein zu großes eingebettetes Bild (Mail-/Outlook-Logo oder
+      // ein ins Mail-/Termin-Template eingefügtes Bild).
+      const payloadStr = JSON.stringify(payload);
+      if (payloadStr.length > 1_900_000) {
+        this.lastUpdateEventError = 'Die Event-Daten überschreiten das SharePoint-Limit von 2 MB. Ursache ist fast immer ein zu großes eingebettetes Bild (Mail-Logo, Outlook-Kopfbild oder ein Bild im Mail-/Termin-Text). Bitte das Bild entfernen oder neu (kleiner) hochladen und erneut speichern.';
+        console.warn('[DEX] updateEvent abgebrochen: Payload', payloadStr.length, 'Bytes > 1.9 MB Schutzgrenze');
+        return false;
+      }
+
       const response = await this.context.spHttpClient.post(
         `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})`,
         SPHttpClient.configurations.v1,
@@ -4612,7 +4629,7 @@ export class EventService {
             'X-HTTP-Method': 'MERGE',
             'odata-version': '',
           },
-          body: JSON.stringify(payload),
+          body: payloadStr,
         }
       );
       if (!response.ok) {
