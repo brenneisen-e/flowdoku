@@ -183,6 +183,13 @@ export interface DeloitteEvent {
    *  Kommunikation läuft nur über die Sub-Events — dann darf niemand „nur
    *  Hauptevent" anmelden, sonst landet er ohne Bestätigung im System. */
   requireSubEventSelection?: boolean;
+  /** v28.2: Sub-Events SOFT-deaktiviert. Die Kind-Events (inkl. Subsites,
+   *  Teilnehmerlisten und Anmeldungen) bleiben vollständig gespeichert,
+   *  werden aber auf der Anmeldeseite nicht mehr angeboten. Der Wizard-
+   *  Toggle „Sub-Events nutzen?" schaltet diesen Flag — Wieder-Einschalten
+   *  stellt die Anzeige unverändert wieder her. Persistiert als Piggyback
+   *  `_subEventsDisabled` in EmailTemplateOverrides (kein neues SP-Feld). */
+  subEventsDisabled?: boolean;
   /** v14.8: „Nur Sub-Events"-Modus. Wenn true, gibt es kein
    *  Hauptevent-Anmelde-Angebot mehr — die Anmelde-Checkbox für das
    *  Hauptevent ist im RegistrationForm ausgeblendet, der Teilnehmer

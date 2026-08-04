@@ -30,14 +30,6 @@ import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
 import { UserFieldPicker } from './UserFieldPicker';
 
-// v27.13: ServiceNow-Portal für ECHTE IT-Tickets (Profildaten-Korrekturen).
-// Die M365-Profildaten (Name, Position, Geschäftsbereich, Büro, …) kommen aus
-// den zentralen Microsoft-Credentials — die App (und das DEX-Team) kann sie
-// nicht ändern; zuständig ist die IT über ServiceNow.
-// HINWEIS: URL bei Bedarf hier zentral anpassen (einzige Verwendungsstelle:
-// Hinweistext unter der Profil-Karte).
-const SERVICENOW_URL = 'https://deloitteemea.service-now.com/mysupport?id=de_index';
-
 function formatDate(iso: string): string {
   const d = new Date(iso);
   return (
@@ -458,9 +450,11 @@ export default function RegistrationPage(): React.ReactElement {
   const [showErrors, setShowErrors] = React.useState(false);
   // v11.91: showDescription wurde entfernt — Beschreibung ist immer offen.
   const [thirdPartyCheck, setThirdPartyCheck] = React.useState<{ alreadyRegistered: boolean; notInAudience: boolean; registeredName?: string; registeredDate?: string } | null>(null);
-  // v27.13: Profil-Karte („Persönliche Informationen") — Plus-Toggle für die
+  // v27.13: Profil-Karte („Persönliche Informationen") — Toggle für die
   // vollständige Liste der automatisch übernommenen Profildaten.
-  const [profileCardExpanded, setProfileCardExpanded] = React.useState(false);
+  // v28.1: standardmäßig AUSGEKLAPPT (Wunsch E.B.) — volle Transparenz ohne
+  // Klick; über den Minus-Button weiterhin einklappbar.
+  const [profileCardExpanded, setProfileCardExpanded] = React.useState(true);
 
   // Seit v6.14: integrierte Session-Auswahl direkt auf der Registrierungsseite.
   // Der User kann auf EINER Seite wählen, ob er sich für das Haupt-Event und/oder
@@ -473,6 +467,11 @@ export default function RegistrationPage(): React.ReactElement {
   // alle Sub-Sections, damit sie stellvertretend buchen können.
   const childEvents = React.useMemo(() => {
     if (!event) return [];
+    // v28.2: Sub-Events SOFT-deaktiviert (_subEventsDisabled) — für ALLE
+    // ausblenden (auch Organizer/Stellvertreter: es soll niemand mehr auf
+    // deaktivierte Sub-Events gebucht werden). Bestehende Anmeldungen
+    // bleiben unberührt (MyEvents/Admin lesen die Kinder direkt).
+    if (event.subEventsDisabled) return [];
     const all = childEventsOf(event.id);
     if (canCreateEvents || registerForOther) return all;
     // v22.68: Sub-Events im Entwurf (isFictive) sind für reguläre Teilnehmer
@@ -2626,12 +2625,13 @@ export default function RegistrationPage(): React.ReactElement {
         </div>
       )}
       <div className="registration-layout">
-        {/* Event-Info links */}
+        {/* v28.2 „Geführte Schritte": Station 1 — Dein Event. Der frühere
+            „Ausgewähltes Event"-Pill-Header entfällt (Step-Label ersetzt ihn). */}
+        <div className="reg-step-head">
+          <span className="reg-step-num">1</span>
+          <span className="reg-step-label">{locale === 'de' ? 'Dein Event' : 'Your event'}</span>
+        </div>
         <div className="registration-event">
-          <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <Icon iconName="Calendar" style={{ fontSize: 16 }} />
-            {t('reg.selectedevent')}
-          </div>
           <div
             className="registration-event__card"
             style={{
@@ -3128,6 +3128,11 @@ export default function RegistrationPage(): React.ReactElement {
             steht jetzt immer zuerst die persönliche Daten-Karte, dann die
             event-spezifischen Infos. */}
 
+        {/* v28.2: Station 2 — Deine Daten. */}
+        <div className="reg-step-head">
+          <span className="reg-step-num">2</span>
+          <span className="reg-step-label">{locale === 'de' ? 'Deine Daten — automatisch aus M365' : 'Your details — automatically from M365'}</span>
+        </div>
         {/* Persönliche Daten */}
         <div className="registration-form">
           {/* v11.97: Section-Header + Register-for-other-Toggle in einer
@@ -3672,17 +3677,13 @@ export default function RegistrationPage(): React.ReactElement {
                           ))}
                         </div>
                       )}
-                      {/* Hinweis: automatischer M365-Abgleich. Bei falschen Daten
-                          ein ECHTES IT-Ticket über ServiceNow — die App/das
-                          DEX-Team kann die zentralen Credentials nicht ändern. */}
-                      <div style={{ marginTop: 12, fontSize: '0.78rem', color: 'var(--dex-gray-500)', lineHeight: 1.5 }}>
+                      {/* v28.1: Hinweis bewusst klein + kursiv, ohne
+                          ServiceNow-Verweis (Profildaten-Fehler sind selten;
+                          der Weg zur IT ist den Kolleg:innen bekannt). */}
+                      <div style={{ marginTop: 10, fontSize: '0.68rem', fontStyle: 'italic', color: 'var(--dex-gray-400)', lineHeight: 1.45 }}>
                         {locale === 'de'
-                          ? <>Diese Angaben werden automatisch mit {registerForOther ? 'dem Microsoft-Profil (M365) der ausgewählten Person' : 'deinen Microsoft-Anmeldedaten (M365-Profil)'} abgeglichen und können hier nicht bearbeitet werden. Sollte etwas nicht stimmen, eröffne bitte ein{' '}
-                            <a href={SERVICENOW_URL} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600, textDecoration: 'underline' }}>Ticket über ServiceNow</a>
-                            {' '}— wir haben keine Möglichkeit, die Profildaten selbst zu ändern.</>
-                          : <>These details are automatically synced with {registerForOther ? 'the selected person’s Microsoft profile (M365)' : 'your Microsoft sign-in data (M365 profile)'} and cannot be edited here. If something is wrong, please open a{' '}
-                            <a href={SERVICENOW_URL} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600, textDecoration: 'underline' }}>ticket via ServiceNow</a>
-                            {' '}— we have no way of changing the profile data ourselves.</>}
+                          ? <>Diese Angaben werden automatisch mit {registerForOther ? 'dem Microsoft-Profil (M365) der ausgewählten Person' : 'deinen Microsoft-Anmeldedaten (M365-Profil)'} abgeglichen und können hier nicht bearbeitet werden.</>
+                          : <>These details are automatically synced with {registerForOther ? 'the selected person’s Microsoft profile (M365)' : 'your Microsoft sign-in data (M365 profile)'} and cannot be edited here.</>}
                       </div>
                     </div>
                   </div>
@@ -4003,6 +4004,12 @@ export default function RegistrationPage(): React.ReactElement {
             Custom-Felder, eine Gruppen-Auswahl (Split) ODER eine Sub-Event-
             Auswahl. Sonst (leeres „Keine zusätzlichen Informationen
             erforderlich") wird die Karte komplett ausgeblendet. */}
+        {/* v28.2: Station 3 — Anmeldung abschließen (immer sichtbar; die
+            Event-Felder-Karte darunter nur, wenn es etwas auszufüllen gibt). */}
+        <div className="reg-step-head">
+          <span className="reg-step-num">3</span>
+          <span className="reg-step-label">{locale === 'de' ? 'Anmeldung abschließen' : 'Complete your registration'}</span>
+        </div>
         {(event.eventSpecificFields.length > 0 || isSplitGroup || childEvents.length > 0) && (
         <div className="registration-specific">
           {/* v11.97: Section-Header + „* = Required field"-Legende in
