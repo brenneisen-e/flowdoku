@@ -2141,9 +2141,40 @@ export default function RegistrationPage(): React.ReactElement {
           ? (registerForOther
               ? t('reg.waitlistmsg.other').replace('{name}', `${firstName} ${surname}`.trim()).replace('{title}', event.title).replace('{email}', email)
               : t('reg.waitlistmsg').replace('{title}', event.title))
-          : (registerForOther
-              ? t('reg.successmsg.other').replace('{name}', `${firstName} ${surname}`.trim()).replace('{title}', event.title).replace('{email}', email)
-              : t('reg.successmsg').replace('{title}', event.title).replace('{email}', email)));
+          : (() => {
+              // v28.16: Statt der nackten E-Mail-Adresse konkret sagen, was
+              // automatisch verschickt wird — Mail-Bestätigung und Outlook-
+              // Termin jeweils nur, wenn sie für das Event aktiv sind.
+              const mailActive = !event.disableEmails && !event.disableRegistrationEmail;
+              const outlookActive = !event.disableOutlook && !!event.startDate;
+              let confirmTail = '';
+              if (registerForOther) {
+                const who = `${firstName} ${surname}`.trim() || email;
+                if (mailActive && outlookActive) confirmTail = locale === 'de'
+                  ? ` ${who} erhält automatisch eine Bestätigung per E-Mail (an ${email}) sowie einen Outlook-Kalendereintrag.`
+                  : ` ${who} will automatically receive a confirmation email (to ${email}) and an Outlook calendar invitation.`;
+                else if (mailActive) confirmTail = locale === 'de'
+                  ? ` ${who} erhält automatisch eine Bestätigung per E-Mail an ${email}.`
+                  : ` ${who} will automatically receive a confirmation email to ${email}.`;
+                else if (outlookActive) confirmTail = locale === 'de'
+                  ? ` ${who} erhält automatisch einen Outlook-Kalendereintrag.`
+                  : ` ${who} will automatically receive an Outlook calendar invitation.`;
+              } else {
+                if (mailActive && outlookActive) confirmTail = locale === 'de'
+                  ? ' Du erhältst automatisch eine Bestätigung per E-Mail sowie einen Outlook-Kalendereintrag.'
+                  : ' You will automatically receive a confirmation email and an Outlook calendar invitation.';
+                else if (mailActive) confirmTail = locale === 'de'
+                  ? ' Du erhältst automatisch eine Bestätigung per E-Mail.'
+                  : ' You will automatically receive a confirmation email.';
+                else if (outlookActive) confirmTail = locale === 'de'
+                  ? ' Du erhältst automatisch einen Outlook-Kalendereintrag.'
+                  : ' You will automatically receive an Outlook calendar invitation.';
+              }
+              const base = registerForOther
+                ? t('reg.successmsg.other').replace('{name}', `${firstName} ${surname}`.trim()).replace('{title}', event.title)
+                : t('reg.successmsg').replace('{title}', event.title);
+              return base + confirmTail;
+            })());
     return (
       <div className="page-container text-center">
         <div className="card" style={{ padding: '48px 32px', maxWidth: 720, margin: '0 auto' }}>
