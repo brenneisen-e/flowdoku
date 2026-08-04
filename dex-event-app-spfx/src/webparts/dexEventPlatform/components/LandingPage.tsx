@@ -1023,73 +1023,46 @@ export default function LandingPage(): React.ReactElement {
                 <span style={{ display: 'block', fontSize: '0.82rem', opacity: 0.95, lineHeight: 1.3, marginTop: 2 }}>
                   {locale === 'de' ? 'Werde Organizer und nutze alle Funktionen.' : 'Become an organizer and use all features.'}
                 </span>
+                {/* v28.15: Einführungs-Hinweis als weiße Pille IN der Box
+                    (statt separater Kachel, v28.13/14) — Klick führt direkt
+                    zur Anmeldeseite des Einführungs-Events. Kein <button>
+                    (verschachtelte Buttons sind invalide) — span[role=button]
+                    mit stopPropagation, damit nicht die Anfrage aufgeht. */}
+                {(() => {
+                  if (!myRegBoxesLoaded) return null;
+                  const isIntroTitle = (t: string): boolean => /dex/i.test(t) && /einf(ü|u)hrung|introduction|onboarding/i.test(t);
+                  const intro = (events || [])
+                    .filter(e => e.status === 'Active' && !e.parentEventId && !e.isFictive && !!e.startDate
+                      && new Date(e.startDate).getTime() > nowTick && isIntroTitle(e.title || ''))
+                    .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())[0];
+                  if (!intro) return null;
+                  if (myRegBoxes.some(b => b.eventId === intro.id) || checkInBoxes.some(b => b.eventId === intro.id)) return null;
+                  const dateLabel = new Date(intro.startDate).toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                  const goRegister = (): void => navigate('registration', intro.id);
+                  return (
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      onClick={e => { e.stopPropagation(); goRegister(); }}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); goRegister(); } }}
+                      title={intro.title}
+                      style={{
+                        display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8,
+                        background: '#fff', color: 'var(--dex-green-dark, #4a7c1f)',
+                        borderRadius: 999, padding: '4px 12px',
+                        fontSize: '0.78rem', fontWeight: 700, lineHeight: 1.3,
+                        boxShadow: '0 1px 3px rgba(0,0,0,0.14)', cursor: 'pointer',
+                      }}
+                    >
+                      <GraduationCap size={13} strokeWidth={2.5} />
+                      {isDe ? `Für virtuelles Training anmelden · ${dateLabel}` : `Register for the virtual training · ${dateLabel}`}
+                    </span>
+                  );
+                })()}
               </span>
             </button>
           </div>
           )}
-
-          {/* v28.13: Hinweis auf die nächste DEX-Einführungsveranstaltung —
-              erscheint automatisch, wenn ein aktives, zukünftiges Top-Level-
-              Event mit „DEX … Einführung/Introduction" im Titel existiert und
-              man noch nicht angemeldet ist. Klick führt direkt auf die
-              Anmeldeseite des Events. */}
-          {(() => {
-            const isIntroTitle = (t: string): boolean => /dex/i.test(t) && /einf(ü|u)hrung|introduction|onboarding/i.test(t);
-            const intro = (events || [])
-              .filter(e => e.status === 'Active' && !e.parentEventId && !e.isFictive && !!e.startDate
-                && new Date(e.startDate).getTime() > nowTick && isIntroTitle(e.title || ''))
-              .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())[0];
-            if (!intro) return null;
-            // v28.14: Erst rendern, wenn die eigenen Anmeldungen geladen sind —
-            // sonst blitzt der Hinweis kurz auf und verschwindet, sobald die
-            // „Du bist angemeldet"-Box das Event übernimmt.
-            if (!myRegBoxesLoaded) return null;
-            // Schon angemeldet (oder Check-in-Phase läuft) → die Boxen oben
-            // zeigen das Event bereits, kein doppelter Hinweis.
-            if (myRegBoxes.some(b => b.eventId === intro.id) || checkInBoxes.some(b => b.eventId === intro.id)) return null;
-            const diff = new Date(intro.startDate).getTime() - nowTick;
-            const days = Math.floor(diff / 86400000);
-            const countdown = diff < 86400000
-              ? (isDe ? 'schon heute' : 'today')
-              : (isDe ? `in ${days} ${days === 1 ? 'Tag' : 'Tagen'}` : `in ${days} ${days === 1 ? 'day' : 'days'}`);
-            const dateLabel = new Date(intro.startDate).toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
-            return (
-              <button
-                type="button"
-                onClick={() => navigate('registration', intro.id)}
-                className="landing__bubble"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 12,
-                  background: '#fff', color: 'var(--dex-gray-800)',
-                  padding: '12px 18px', borderRadius: 14,
-                  border: '1.5px solid var(--dex-green, #86bc25)',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                  cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit',
-                  width: '100%', maxWidth: 360,
-                }}
-                title={isDe ? 'Direkt zur Anmeldung' : 'Go straight to registration'}
-              >
-                <span style={{
-                  flexShrink: 0, width: 38, height: 38, borderRadius: '50%',
-                  background: 'rgba(134,188,37,0.16)', color: 'var(--dex-green-dark, #4a7c1f)',
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                }}>
-                  {/* v28.14: einfarbiges SVG-Icon statt Emoji. */}
-                  <GraduationCap size={20} strokeWidth={2} />
-                </span>
-                <span style={{ minWidth: 0 }}>
-                  <span style={{ display: 'block', fontWeight: 800, fontSize: '0.95rem', lineHeight: 1.3 }}>
-                    {isDe
-                      ? <>Neu bei DEX? Lerne die App kennen — <span style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>{countdown}</span></>
-                      : <>New to DEX? Get to know the app — <span style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>{countdown}</span></>}
-                  </span>
-                  <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
-                    {intro.title} · {dateLabel} — {isDe ? 'klicken und direkt anmelden.' : 'click to register right away.'}
-                  </span>
-                </span>
-              </button>
-            );
-          })()}
 
           <div
             style={{
