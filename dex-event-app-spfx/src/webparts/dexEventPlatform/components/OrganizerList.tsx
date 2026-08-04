@@ -36,6 +36,10 @@ export interface OrganizerListProps {
    *  „Bei Fragen wende dich gerne an:"-Kopf im Hover/der Karte ausgeblendet —
    *  für Rückfragen ist dann der Ansprechpartner zuständig, nicht der Organizer. */
   hideContactPrompt?: boolean;
+  /** v28.4: Nur für display='card' — Kachel auf volle Container-Breite
+   *  strecken (z.B. Anmeldeseite: gleiche Breite wie die Datums-/Ort-Boxen).
+   *  Default false = intrinsische Breite (Bestandsverhalten). */
+  fullWidth?: boolean;
 }
 
 // v11.95: pro Email einmalig profile-lookup, Ergebnis App-weit gecached
@@ -383,7 +387,7 @@ function pairNamesEmails(names: string[], emails: string[]): Array<{ name: strin
   return result;
 }
 
-function OrganizerCardTile({ items, forceIsDe, hideContactPrompt }: { items: Array<{ name: string; email: string }>; forceIsDe?: boolean; hideContactPrompt?: boolean }): React.ReactElement {
+function OrganizerCardTile({ items, forceIsDe, hideContactPrompt, fullWidth }: { items: Array<{ name: string; email: string }>; forceIsDe?: boolean; hideContactPrompt?: boolean; fullWidth?: boolean }): React.ReactElement {
   const { locale } = useLanguage();
   const isDe = forceIsDe !== undefined ? forceIsDe : locale === 'de';
   // v23.26: EINE Kachel mit allen Organizern nebeneinander (statt einzeln
@@ -391,9 +395,11 @@ function OrganizerCardTile({ items, forceIsDe, hideContactPrompt }: { items: Arr
   return (
     <div
       style={{
-        display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 12,
+        // v28.4: fullWidth streckt die Kachel auf Container-Breite (Anmeldeseite).
+        display: fullWidth ? 'flex' : 'inline-flex', width: fullWidth ? '100%' : undefined,
+        flexDirection: 'column', alignItems: 'center', gap: 12,
         background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 12,
-        padding: '14px 20px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', maxWidth: '100%',
+        padding: '14px 20px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', maxWidth: '100%', boxSizing: 'border-box',
       }}
     >
       {!hideContactPrompt && (
@@ -453,7 +459,7 @@ function OrganizerChipRow({ items, sizeClass, compact, forceIsDe, nameFontSize, 
   );
 }
 
-export default function OrganizerList({ names, emails, size = 'md', compact = false, display = 'chip', hiddenEmails, forceIsDe, nameFontSize, hideContactPrompt }: OrganizerListProps): React.ReactElement | null {
+export default function OrganizerList({ names, emails, size = 'md', compact = false, display = 'chip', hiddenEmails, forceIsDe, nameFontSize, hideContactPrompt, fullWidth }: OrganizerListProps): React.ReactElement | null {
   let items = pairNamesEmails(names, emails).filter(o => !!o.name);
   // v24.8 (J): einzeln ausgeblendete Organizer aus der Anzeige nehmen (Rechte bleiben).
   if (hiddenEmails && hiddenEmails.length > 0) {
@@ -462,6 +468,6 @@ export default function OrganizerList({ names, emails, size = 'md', compact = fa
   }
   if (items.length === 0) return null;
   // v23.26: Großer Modus = EINE gemeinsame Kachel mit allen Organizern.
-  if (display === 'card') return <OrganizerCardTile items={items} forceIsDe={forceIsDe} hideContactPrompt={hideContactPrompt} />;
+  if (display === 'card') return <OrganizerCardTile items={items} forceIsDe={forceIsDe} hideContactPrompt={hideContactPrompt} fullWidth={fullWidth} />;
   return <OrganizerChipRow items={items} sizeClass={size} compact={compact} forceIsDe={forceIsDe} nameFontSize={nameFontSize} hideContactPrompt={hideContactPrompt} />;
 }
