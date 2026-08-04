@@ -1005,6 +1005,10 @@ export default function EventCreationPage(): React.ReactElement {
   const [contactName, setContactName] = React.useState<string>(editEvent ? (editEvent.contactName || '') : '');
   const [contactEmail, setContactEmail] = React.useState<string>(editEvent ? (editEvent.contactEmail || '') : '');
   const [contactInfo, setContactInfo] = React.useState<string>(editEvent ? (editEvent.contactInfo || '') : '');
+  // v28.5: EIN Organizer kann als Rückfragen-Kontakt markiert werden —
+  // bekommt auf der Anmeldeseite einen orangen Badge + Legende (SP-Spalte
+  // ContactOrganizerEmail, v26.18; UI erst jetzt verdrahtet).
+  const [contactOrganizerEmail, setContactOrganizerEmail] = React.useState<string>(editEvent ? (editEvent.contactOrganizerEmail || '') : '');
   // v24.10 (Q2): Ansprechpartner standardmäßig eingeklappt — nur aufklappen,
   // wenn beim Bearbeiten bereits Daten hinterlegt sind.
   const [contactExpanded, setContactExpanded] = React.useState<boolean>(
@@ -1178,6 +1182,9 @@ export default function EventCreationPage(): React.ReactElement {
   type ImgView = { zoom: number; posY: number; height?: number };
   const [imageDisplay, setImageDisplay] = React.useState<{ card?: ImgView; hero?: ImgView }>(editEvent && editEvent.imageDisplay ? editEvent.imageDisplay : {});
   const [imageDisplayOpen, setImageDisplayOpen] = React.useState(false);
+  // v28.5: Bild als Banner über den Event-Infos (statt kompakt links) —
+  // Organizer-Wahl, sinnvoll für breite Querformat-Fotos. Piggyback _imageBanner.
+  const [imageBanner, setImageBanner] = React.useState<boolean>(!!(editEvent && editEvent.imageBanner));
   // v11.20: Re-sync useEffect aus v11.19 wieder rausgenommen — der hat
   // den Wizard-State mit stale-editEvent-Daten ueberschrieben (re-sync 2
   // mit helpText="" wurde im Maintainer-DevTools beobachtet, obwohl SP
@@ -1407,7 +1414,7 @@ export default function EventCreationPage(): React.ReactElement {
           _qrScanners, _coOrganizers, _testTeam,
           _splitDisplayOrderReversed,
           _requireSubEventSelection,
-          _subEventsOnlyMode, _subEventsDisabled, _childEventTerm,
+          _subEventsOnlyMode, _subEventsDisabled, _imageBanner, _childEventTerm,
           _inheritFlags, _hideOrganizer, _headerImageLayout,
           // v22.78/v23.6: diese Piggyback-Keys MÜSSEN ebenfalls gestrippt
           // werden — sonst überschreibt der stale Wert aus dem geladenen Blob
@@ -1422,7 +1429,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _eventLogo; void _outlookLogo; void _b2run;
         void _qrScanners; void _coOrganizers; void _testTeam;
         void _splitDisplayOrderReversed; void _requireSubEventSelection;
-        void _subEventsOnlyMode; void _subEventsDisabled; void _childEventTerm;
+        void _subEventsOnlyMode; void _subEventsDisabled; void _imageBanner; void _childEventTerm;
         void _inheritFlags; void _hideOrganizer; void _headerImageLayout;
         void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee; void _previewBeforeActive; void _imageDisplay;
         void _organizerDisplayLarge; void _hiddenOrganizers; void _hideOrgIndividual; void _mainEventLabel;
@@ -4049,6 +4056,8 @@ export default function EventCreationPage(): React.ReactElement {
         // v10.16: optionaler Ansprechpartner (Anzeige-Feld, kein Login)
         'ContactName': contactName.trim(),
         'ContactEmail': contactEmail.trim(),
+        // v28.5: Rückfragen-Kontakt-Organizer persistieren.
+        'ContactOrganizerEmail': (contactOrganizerEmail || '').trim(),
         'ContactInfo': contactInfo.trim(),
         // v17.22: zentraler serializeCustomFields-Helper (Options-Pairing +
         // EN-Varianten konsistent zu allen Pfaden).
@@ -4164,6 +4173,8 @@ export default function EventCreationPage(): React.ReactElement {
       const subEventsDisabledConfig = (!subEventsOptIn && subEventsRef.current.some(s => s.title && s.title.trim()))
         ? { _subEventsDisabled: true }
         : {};
+      // v28.5: Bild-Banner-Layout (Piggyback).
+      const imageBannerConfig = imageBanner ? { _imageBanner: true } : {};
       const childTermConfig = (childTermSingular.trim() || childTermPlural.trim())
         ? { _childEventTerm: { singular: childTermSingular.trim(), plural: childTermPlural.trim() } }
         : {};
@@ -4206,7 +4217,7 @@ export default function EventCreationPage(): React.ReactElement {
       const topPiggybackConfigs: Array<Record<string, unknown>> = [
         b2runExtraConfig, qrScannerConfig, coOrganizerConfig, testTeamConfig,
         splitDispRevConfig, requireSubEventConfig, subEventsOnlyConfig,
-        subEventsDisabledConfig, childTermConfig, teamTermConfig,
+        subEventsDisabledConfig, imageBannerConfig, childTermConfig, teamTermConfig,
         teamNoCreateConfig, mainEventLabelConfig, assistantsCanSeeConfig,
         organizerDisplayLargeConfig, previewBeforeActiveConfig,
         imageDisplayConfig, hideOrganizerConfig, hiddenOrganizersConfig,
@@ -4748,6 +4759,7 @@ export default function EventCreationPage(): React.ReactElement {
         organizerEmail: sanitizedOrgPairCreate.orgEmailString,
         contactName: contactName.trim(),
         contactEmail: contactEmail.trim(),
+        contactOrganizerEmail: (contactOrganizerEmail || '').trim(),
         contactInfo: contactInfo.trim(),
         outlookEventId: '',
         outlookBody: (() => {
@@ -4832,6 +4844,8 @@ export default function EventCreationPage(): React.ReactElement {
           const subEvtsDisabledExtra = (!subEventsOptIn && subEventsRef.current.some(s => s.title && s.title.trim()))
             ? { _subEventsDisabled: true }
             : {};
+          // v28.5: Bild-Banner-Layout (Piggyback).
+          const imageBannerExtra = imageBanner ? { _imageBanner: true } : {};
           const childTermExtra = (childTermSingular.trim() || childTermPlural.trim())
             ? { _childEventTerm: { singular: childTermSingular.trim(), plural: childTermPlural.trim() } }
             : {};
@@ -4872,7 +4886,7 @@ export default function EventCreationPage(): React.ReactElement {
           const createPiggybackConfigs: Array<Record<string, unknown>> = [
             b2runExtra, qrExtra, coExtra, ttExtra, splitDispRevExtra,
             reqSubEvtExtra, subEvtsOnlyExtra, subEvtsDisabledExtra,
-            childTermExtra, teamTermExtra, teamNoCreateExtra,
+            imageBannerExtra, childTermExtra, teamTermExtra, teamNoCreateExtra,
             mainEventLabelExtra, assistantsCanSeeExtra,
             organizerDisplayLargeExtra, previewBeforeActiveExtra,
             imageDisplayExtra, hideOrganizerExtra, hiddenOrganizersExtra,
@@ -7415,6 +7429,27 @@ export default function EventCreationPage(): React.ReactElement {
                 {imageUploadError && (
                   <p style={{ color: 'var(--dex-red, #c00)', fontSize: '0.8rem', marginTop: 4 }}>{imageUploadError}</p>
                 )}
+                {/* v28.5: Layout-Wahl fürs Event-Bild auf der Anmeldeseite —
+                    Banner in voller Breite ÜBER den Infos (gut für breite
+                    Querformat-Fotos) vs. kompakt links neben den Infos. */}
+                {(imagePreview || imageFile) && (
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 12, padding: '10px 12px', borderRadius: 8, border: `1px solid ${imageBanner ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`, background: imageBanner ? 'rgba(134,188,37,0.06)' : '#fff', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={imageBanner}
+                      onChange={e => setImageBanner(e.target.checked)}
+                      style={{ width: 18, height: 18, marginTop: 1, flexShrink: 0, cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '0.82rem' }}>
+                      <strong>{isDe ? 'Bild als Banner über den Event-Infos anzeigen' : 'Show image as a banner above the event info'}</strong>
+                      <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2, fontWeight: 400 }}>
+                        {isDe
+                          ? 'Empfohlen für breite Querformat-Fotos: Das Bild liegt auf der Anmeldeseite in voller Kartenbreite oben, Titel/Datum/Ort folgen darunter. Aus = Bild sitzt kompakt links neben den Infos (Standard).'
+                          : 'Recommended for wide landscape photos: the image spans the full card width at the top of the registration page, with title/date/location below. Off = compact image to the left of the info (default).'}
+                      </span>
+                    </span>
+                  </label>
+                )}
               </div>
 
 
@@ -7522,6 +7557,9 @@ export default function EventCreationPage(): React.ReactElement {
                     // Vorkommen aus organizerEmails entfernen.
                     const emailToRemove = (organizerEmails[idx] || '').toLowerCase();
                     const nextNames = orgList.filter((_, i) => i !== idx);
+                    // v28.5: War der Entfernte der Rückfragen-Kontakt → Markierung löschen.
+                    const removedEmail = (organizerEmails[idx] || '').toLowerCase();
+                    if (removedEmail && (contactOrganizerEmail || '').toLowerCase() === removedEmail) setContactOrganizerEmail('');
                     setOrganizer(nextNames.join('; '));
                     setOrganizerEmails(prev => {
                       if (!emailToRemove) return prev.filter((_, i) => i !== idx);
@@ -7563,6 +7601,29 @@ export default function EventCreationPage(): React.ReactElement {
                             style={{ cursor: canHideToggle ? 'pointer' : 'default', textDecoration: orgHidden ? 'line-through' : 'none' }}
                           >{name}</span>
                           {orgHidden && <span style={{ fontSize: '0.68rem', fontStyle: 'italic', opacity: 0.95 }}>{isDe ? '(ausgeblendet)' : '(hidden)'}</span>}
+                          {/* v28.5: Rückfragen-Kontakt markieren — oranger
+                              ?-Kreis. Genau EINER; erneuter Klick entfernt die
+                              Markierung. */}
+                          {!!email && (
+                            <button
+                              type="button"
+                              onClick={() => setContactOrganizerEmail(prev => (prev || '').toLowerCase() === email.toLowerCase() ? '' : email)}
+                              style={{
+                                background: (contactOrganizerEmail || '').toLowerCase() === email.toLowerCase() ? 'var(--dex-orange, #ed8b00)' : 'rgba(255,255,255,0.2)',
+                                border: (contactOrganizerEmail || '').toLowerCase() === email.toLowerCase() ? '1.5px solid #fff' : 'none',
+                                color: '#fff', width: 22, height: 22, borderRadius: '50%', cursor: 'pointer',
+                                fontSize: '0.78rem', fontWeight: 800, lineHeight: 1,
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                              }}
+                              title={isDe
+                                ? ((contactOrganizerEmail || '').toLowerCase() === email.toLowerCase()
+                                  ? 'Rückfragen-Kontakt — Teilnehmer werden gebeten, diese Person bei Fragen zu kontaktieren. Klicken zum Entfernen.'
+                                  : 'Als Rückfragen-Kontakt markieren (oranger Badge auf der Anmeldeseite)')
+                                : ((contactOrganizerEmail || '').toLowerCase() === email.toLowerCase()
+                                  ? 'Contact for questions — attendees are asked to reach out to this person. Click to remove.'
+                                  : 'Mark as contact for questions (orange badge on the registration page)')}
+                            >?</button>
+                          )}
                           {orgList.length > 1 && i > 0 && (
                             <button
                               type="button"
