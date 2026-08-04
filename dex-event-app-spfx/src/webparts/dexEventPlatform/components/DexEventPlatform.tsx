@@ -719,6 +719,29 @@ function AppContent(): React.ReactElement {
       case 'register':
         return <EventListPage />;
       case 'registration':
+        // v28.8 (Refresh-Fix): Die RegistrationPage darf beim Boot NICHT
+        // vor dem Events-Load mounten. Ihr „Event nicht gefunden"-Ausstieg
+        // (`if (!event) return`) liegt mitten im Komponentenkörper — mountet
+        // die Seite ohne Event (weniger Hooks) und rendert nach dem Laden
+        // MIT Event (mehr Hooks), wirft React „Rendered more hooks than
+        // during the previous render" → weißer Screen. Beim Refresh-Restore
+        // (v27.12) war genau das der Fall. Solange die Events laden, kommt
+        // deshalb HIER der Spinner; die Seite mountet erst mit fertigen Daten.
+        if (isEventsLoading) {
+          return (
+            <div className="page-container text-center">
+              <div style={{ padding: 48 }}>
+                <svg width={48} height={48} viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', margin: '0 auto 16px' }}>
+                  <circle cx={24} cy={24} r={20} fill="none" stroke="rgba(134,188,37,0.20)" strokeWidth={4} />
+                  <path d="M 24 4 A 20 20 0 0 1 44 24" fill="none" stroke="#86bc25" strokeWidth={4} strokeLinecap="round">
+                    <animateTransform attributeName="transform" type="rotate" from="0 24 24" to="360 24 24" dur="1s" repeatCount="indefinite" />
+                  </path>
+                </svg>
+                <p style={{ color: 'var(--dex-gray-400)' }}>Event wird geladen …</p>
+              </div>
+            </div>
+          );
+        }
         return <RegistrationPage />;
       case 'my-events':
         return <MyEventsPage />;
@@ -726,6 +749,26 @@ function AppContent(): React.ReactElement {
         return <AssistantPage />;
       case 'create-event':
       case 'edit-event':
+        // v28.8: gleicher Boot-Guard wie bei 'registration' — der Wizard
+        // initialisiert seinen State EINMALIG aus `editEvent` (useState-
+        // Initializer). Mountet er beim Refresh-Restore vor dem Events-Load,
+        // ist editEvent noch null → der Organizer sähe einen LEEREN Wizard,
+        // der beim Speichern ein neues Event anlegen würde.
+        if (isEventsLoading) {
+          return (
+            <div className="page-container text-center">
+              <div style={{ padding: 48 }}>
+                <svg width={48} height={48} viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', margin: '0 auto 16px' }}>
+                  <circle cx={24} cy={24} r={20} fill="none" stroke="rgba(134,188,37,0.20)" strokeWidth={4} />
+                  <path d="M 24 4 A 20 20 0 0 1 44 24" fill="none" stroke="#86bc25" strokeWidth={4} strokeLinecap="round">
+                    <animateTransform attributeName="transform" type="rotate" from="0 24 24" to="360 24 24" dur="1s" repeatCount="indefinite" />
+                  </path>
+                </svg>
+                <p style={{ color: 'var(--dex-gray-400)' }}>Event wird geladen …</p>
+              </div>
+            </div>
+          );
+        }
         return <EventCreationPage />;
       case 'settings':
         return <SettingsPage />;
