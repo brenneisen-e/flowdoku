@@ -271,6 +271,9 @@ export default function RegistrationPage(): React.ReactElement {
   // v28.11: Vergrößerte Hover-Ansicht des Event-Bilds — zeigt bevorzugt das
   // unbeschnittene Querformat-Original (falls vorhanden), sonst das Event-Bild.
   const cachedZoomImage = useCachedImage(event?.imageOrigUrl || event?.imageUrl);
+  // v28.12: Kein Auto-Zoom mehr beim Hover — der Hover zeigt nur ein
+  // Lupen-Icon, erst der KLICK darauf öffnet die Großansicht (Lightbox).
+  const [imgHovered, setImgHovered] = React.useState(false);
   const [imgZoomed, setImgZoomed] = React.useState(false);
   const tEvent = React.useCallback((key: string): string => {
     return appTranslations[eventLocale][key] || appTranslations['en'][key] || appTranslations['de'][key] || t(key) || key;
@@ -2761,13 +2764,12 @@ export default function RegistrationPage(): React.ReactElement {
             {event.imageUrl && (
             <div
               className="registration-event__image"
-              // v28.11: Mouse-Over vergrößert das Event-Bild (Overlay, zeigt
-              // bevorzugt das unbeschnittene Original).
-              onMouseEnter={() => { if (!isMobile) setImgZoomed(true); }}
-              onMouseLeave={() => setImgZoomed(false)}
+              // v28.12: Hover zeigt das Lupen-Icon; die Großansicht öffnet
+              // erst der Klick darauf.
+              onMouseEnter={() => setImgHovered(true)}
+              onMouseLeave={() => setImgHovered(false)}
               style={{
                 position: 'relative',
-                cursor: isMobile ? undefined : 'zoom-in',
                 // v11.91: Hintergrund auf Weiß gesetzt — PNGs mit Transparenz
                 // zeigten vorher den hellgrauen Hintergrund durch, was wie ein
                 // unsauberer „grauer Rand" um Logos aussah.
@@ -2837,24 +2839,59 @@ export default function RegistrationPage(): React.ReactElement {
               )}
               {/* v11.91: Info-Button entfernt — die Beschreibung ist jetzt
                   immer ausgeklappt, kein Toggle mehr nötig. */}
-              {/* v28.11: Hover-Zoom-Overlay — fixed, entkommt dem
-                  overflow:hidden des Containers; pointerEvents:none, damit
-                  das mouseleave des Containers sauber feuert. */}
-              {imgZoomed && !isMobile && (
-                <div style={{
-                  position: 'fixed', inset: 0, zIndex: 3000,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  pointerEvents: 'none', background: 'rgba(0,0,0,0.28)',
-                }}>
+              {/* v28.12: Lupen-Icon beim Hover (auf dem Handy immer sichtbar,
+                  dort gibt es kein Hover) — Klick öffnet die Lightbox.
+                  Mittig unten platziert, damit es auch im Kreis-Notch
+                  (borderRadius 50% + overflow hidden) sichtbar bleibt. */}
+              {(imgHovered || isMobile) && (
+                <button
+                  type="button"
+                  onClick={() => setImgZoomed(true)}
+                  title={locale === 'de' ? 'Bild vergrößern' : 'Enlarge image'}
+                  aria-label={locale === 'de' ? 'Bild vergrößern' : 'Enlarge image'}
+                  style={{
+                    position: 'absolute', bottom: 8, left: '50%', transform: 'translateX(-50%)',
+                    width: 30, height: 30, borderRadius: '50%', border: 'none',
+                    background: 'rgba(0,0,0,0.55)', color: '#fff',
+                    display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                    cursor: 'pointer', zIndex: 2,
+                  }}
+                >
+                  <Icon iconName="ZoomIn" style={{ fontSize: 14 }} />
+                </button>
+              )}
+              {/* v28.12: Lightbox — Klick irgendwo (oder aufs X) schließt.
+                  fixed, entkommt dem overflow:hidden des Containers. */}
+              {imgZoomed && (
+                <div
+                  onClick={() => setImgZoomed(false)}
+                  style={{
+                    position: 'fixed', inset: 0, zIndex: 3000,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: 'rgba(0,0,0,0.6)', cursor: 'zoom-out', padding: 24,
+                  }}
+                >
                   <img
                     src={cachedZoomImage}
                     alt={event.title}
                     style={{
-                      maxWidth: '70vw', maxHeight: '75vh', width: 'auto', height: 'auto',
+                      maxWidth: '82vw', maxHeight: '80vh', width: 'auto', height: 'auto',
                       objectFit: 'contain', background: '#fff', borderRadius: 12,
                       boxShadow: '0 16px 56px rgba(0,0,0,0.4)', padding: 8,
                     }}
                   />
+                  <button
+                    type="button"
+                    onClick={() => setImgZoomed(false)}
+                    aria-label={locale === 'de' ? 'Schließen' : 'Close'}
+                    style={{
+                      position: 'absolute', top: 18, right: 22,
+                      width: 36, height: 36, borderRadius: '50%', border: 'none',
+                      background: 'rgba(255,255,255,0.92)', color: 'var(--dex-gray-800)',
+                      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer', fontSize: '1.1rem', fontWeight: 700,
+                    }}
+                  >×</button>
                 </div>
               )}
             </div>
