@@ -268,6 +268,10 @@ export default function RegistrationPage(): React.ReactElement {
   const eventLocale: Locale = locale;
   // v19.22: Event-Bild über den IndexedDB-Cache (sofort beim zweiten Aufruf).
   const cachedImage = useCachedImage(event?.imageUrl);
+  // v28.11: Vergrößerte Hover-Ansicht des Event-Bilds — zeigt bevorzugt das
+  // unbeschnittene Querformat-Original (falls vorhanden), sonst das Event-Bild.
+  const cachedZoomImage = useCachedImage(event?.imageOrigUrl || event?.imageUrl);
+  const [imgZoomed, setImgZoomed] = React.useState(false);
   const tEvent = React.useCallback((key: string): string => {
     return appTranslations[eventLocale][key] || appTranslations['en'][key] || appTranslations['de'][key] || t(key) || key;
   }, [eventLocale, t]);
@@ -961,6 +965,9 @@ export default function RegistrationPage(): React.ReactElement {
     department?: string;
     location?: string;
     mobilePhone?: string;
+    // v28.11: Unternehmenszugehörigkeit der ausgewählten Person — vorher
+    // fehlte das Feld und die Profil-Karte zeigte „— nicht hinterlegt".
+    company?: string;
   } | null>(null);
   const [isSearchingUser, setIsSearchingUser] = React.useState(false);
   const [userSearchIncludeIntl, setUserSearchIncludeIntl] = React.useState(false);
@@ -2260,6 +2267,7 @@ export default function RegistrationPage(): React.ReactElement {
           department: p.department || '',
           location: p.location || u.location || '',
           mobilePhone: p.mobilePhone || '',
+          company: p.company || '',
         });
       }
     }).catch(() => { /* silent */ });
@@ -2753,8 +2761,13 @@ export default function RegistrationPage(): React.ReactElement {
             {event.imageUrl && (
             <div
               className="registration-event__image"
+              // v28.11: Mouse-Over vergrößert das Event-Bild (Overlay, zeigt
+              // bevorzugt das unbeschnittene Original).
+              onMouseEnter={() => { if (!isMobile) setImgZoomed(true); }}
+              onMouseLeave={() => setImgZoomed(false)}
               style={{
                 position: 'relative',
+                cursor: isMobile ? undefined : 'zoom-in',
                 // v11.91: Hintergrund auf Weiß gesetzt — PNGs mit Transparenz
                 // zeigten vorher den hellgrauen Hintergrund durch, was wie ein
                 // unsauberer „grauer Rand" um Logos aussah.
@@ -2824,6 +2837,26 @@ export default function RegistrationPage(): React.ReactElement {
               )}
               {/* v11.91: Info-Button entfernt — die Beschreibung ist jetzt
                   immer ausgeklappt, kein Toggle mehr nötig. */}
+              {/* v28.11: Hover-Zoom-Overlay — fixed, entkommt dem
+                  overflow:hidden des Containers; pointerEvents:none, damit
+                  das mouseleave des Containers sauber feuert. */}
+              {imgZoomed && !isMobile && (
+                <div style={{
+                  position: 'fixed', inset: 0, zIndex: 3000,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  pointerEvents: 'none', background: 'rgba(0,0,0,0.28)',
+                }}>
+                  <img
+                    src={cachedZoomImage}
+                    alt={event.title}
+                    style={{
+                      maxWidth: '70vw', maxHeight: '75vh', width: 'auto', height: 'auto',
+                      objectFit: 'contain', background: '#fff', borderRadius: 12,
+                      boxShadow: '0 16px 56px rgba(0,0,0,0.4)', padding: 8,
+                    }}
+                  />
+                </div>
+              )}
             </div>
             )}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 4px 4px 0' }}>
@@ -3486,6 +3519,7 @@ export default function RegistrationPage(): React.ReactElement {
                                       department: p.department || '',
                                       location: p.location || u.location || '',
                                       mobilePhone: p.mobilePhone || '',
+                                      company: p.company || '',
                                     });
                                   }
                                 }).catch(() => { /* silent */ });

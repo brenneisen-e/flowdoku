@@ -197,6 +197,22 @@ export function PreviewContextStack(props: {
     sendAdminInquiry: asyncNoop, refreshEvents: async () => { /* */ },
     applyEventTemplateOverride: (raw: string) => raw,
     formatOrganizerList: () => '',
+    // v28.11: Die RegistrationPage ruft diese Funktionen inzwischen in
+    // MOUNT-EFFEKTEN bzw. bei Interaktionen auf. Fehlten sie im Stub,
+    // crashte die Wizard-Vorschau mit „… is not a function" und riss den
+    // ganzen React-Baum weg (weißer Screen beim Klick auf „Vorschau").
+    registerTeam: asyncNoop,
+    declineEvent: asyncNoop,
+    listOpenTeamsForEvent: asyncArr,
+    joinTeam: asyncNoop,
+    createTeamJoinRequest: asyncNoop,
+    uploadFieldDocument: asyncNull,
+    delegateRegistrationToAssistant: asyncNoop,
+    recordProxyDelegation: asyncNoop,
+    getLiveCounterStats: asyncNull,
+    // Liefert (wie das Original) einen Unsubscribe-Callback zurück — der
+    // Effekt der RegistrationPage ruft ihn beim Unmount auf.
+    subscribeEventRealtime: async () => () => { /* */ },
   };
   return (
     <NavigationContext.Provider value={nav}>
