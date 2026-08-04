@@ -4230,12 +4230,12 @@ export default function EventCreationPage(): React.ReactElement {
         : {};
       // v28.5: Bild-Banner-Layout (Piggyback).
       const imageBannerConfig = imageBanner ? { _imageBanner: true } : {};
-      // v28.11: Bestehende Original-Bild-URL beim normalen Edit-Save
-      // WEITERTRAGEN, solange kein neues Bild gewählt wurde — sonst würde
-      // der frisch zusammengebaute Overrides-Blob sie wegwerfen. Bei neuem
-      // Bild wird sie nach dem Attachment-Upload via patchEventOverridesKey
-      // neu gesetzt (bzw. entfernt).
-      const imageOrigUrlConfig = (!imageFile && editEvent && editEvent.imageOrigUrl)
+      // v28.11: Bestehende Original-Bild-URL beim Edit-Save WEITERTRAGEN —
+      // sonst würde der frisch zusammengebaute Overrides-Blob sie wegwerfen.
+      // v28.12: auch bei neuem Bild erstmal mitschreiben; der Post-Save-Code
+      // patcht sie danach via patchEventOverridesKey auf den frischen Wert
+      // bzw. entfernt sie, wenn das neue Bild kein Original braucht.
+      const imageOrigUrlConfig = (editEvent && editEvent.imageOrigUrl)
         ? { _imageOrigUrl: editEvent.imageOrigUrl }
         : {};
       const childTermConfig = (childTermSingular.trim() || childTermPlural.trim())
@@ -4629,7 +4629,12 @@ export default function EventCreationPage(): React.ReactElement {
                     const origCompressed = await compressImage(imageOrigFile, 1600, 0.85);
                     const origUrl = await svc.uploadEventOrigImageAsAttachment(Number(selectedEventId), origCompressed);
                     if (origUrl) await svc.patchEventOverridesKey(Number(selectedEventId), '_imageOrigUrl', origUrl);
-                  } else {
+                  } else if (imageOrigFile) {
+                    // v28.12: Nur aufräumen, wenn wir die QUELLE des neuen
+                    // Bilds kennen (frischer Upload/Capture) und sie kein
+                    // Original braucht. Ohne imageOrigFile (Re-Crop eines
+                    // bereits runden Bestands) bleibt ein gespeichertes
+                    // Original unangetastet.
                     await svc.deleteEventOrigImageAttachment(Number(selectedEventId));
                     await svc.patchEventOverridesKey(Number(selectedEventId), '_imageOrigUrl', '');
                   }
@@ -7339,7 +7344,39 @@ export default function EventCreationPage(): React.ReactElement {
                     {/* v23.15: Bild editieren (zuschneiden / auf Kreis). */}
                     <button
                       type="button"
-                      onClick={() => setImageEditOpen(true)}
+                      onClick={() => {
+                        // v28.12: Beim Editieren eines BESTEHENDEN Bilds das
+                        // Original einfangen, BEVOR der Zuschnitt Preview/File
+                        // ersetzt — sonst kann die Event-Liste nach einem
+                        // Kreis-Zuschnitt nicht aufs Querformat-Original
+                        // zurückfallen (frischer Upload fängt es im
+                        // onChange-Handler ein, dieser Pfad hier fehlte).
+                        if (!imageOrigFile && imagePreview) {
+                          void (async () => {
+                            try {
+                              const resp = await fetch(imagePreview, imagePreview.indexOf('data:') === 0 ? undefined : { credentials: 'include' });
+                              const blob = await resp.blob();
+                              const f = new File([blob], `event-image-orig.${(blob.type || '').indexOf('png') >= 0 ? 'png' : 'jpg'}`, { type: blob.type || 'image/jpeg' });
+                              const objUrl = URL.createObjectURL(blob);
+                              const probe = new Image();
+                              probe.onload = () => {
+                                URL.revokeObjectURL(objUrl);
+                                if (probe.naturalHeight > 0) {
+                                  const r = probe.naturalWidth / probe.naturalHeight;
+                                  // Nur Querformat-Quellen taugen als Original —
+                                  // ein bereits runder/quadratischer Bestand
+                                  // bleibt unangetastet (gespeichertes Original
+                                  // wird dann NICHT überschrieben/gelöscht).
+                                  if (r >= 1.2) { setImageOrigFile(f); setImageOrigAspect(r); }
+                                }
+                              };
+                              probe.onerror = () => URL.revokeObjectURL(objUrl);
+                              probe.src = objUrl;
+                            } catch { /* best-effort */ }
+                          })();
+                        }
+                        setImageEditOpen(true);
+                      }}
                       style={{
                         position: 'absolute', bottom: 8, right: 8, background: 'rgba(0,0,0,0.6)',
                         color: '#fff', border: 'none', borderRadius: 999, padding: '4px 12px',
