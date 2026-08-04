@@ -1270,7 +1270,14 @@ export default function AdminPage(): React.ReactElement {
       // Teilnehmerlisten-Löschkonzept (Kalendermonate wie participantDeleteDueTs).
       const retentionCutoff = (() => { const d = new Date(); d.setMonth(d.getMonth() - 3); return d.getTime(); })();
       const overRetention = endTs > 0 && endTs < retentionCutoff;
-      if (externalCount > 0) {
+      // v28.7: Demo-Events (Titel „Demo-…" aus den Demo-Vorlagen) sind reine
+      // Vorführ-Daten — ein Admin darf sie IMMER sofort löschen, auch wenn
+      // sich Teilnehmer außerhalb des Organizer-Teams angemeldet haben. Die
+      // 3-Monats-Aufbewahrung schützt echte Teilnehmerlisten, keine Demos.
+      const isDemoEvent = /^demo[-\s]/i.test((confirmDeleteEvent.title || '').trim());
+      if (externalCount > 0 && isDemoEvent && isAdmin) {
+        setDeletePolicy({ loading: false, allowed: true, requiresTitle: false, externalCount });
+      } else if (externalCount > 0) {
         // Ehemals aktiv (echte Teilnehmer) → geschützt.
         if (!isAdmin) {
           setDeletePolicy({ loading: false, allowed: false, requiresTitle: false, externalCount,
