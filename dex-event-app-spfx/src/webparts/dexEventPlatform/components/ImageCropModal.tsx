@@ -39,6 +39,10 @@ interface Props {
   /** v27.5: Start-Seitenverhältnis (Breite/Höhe) im allowAspect-Modus.
       Default 16/9 (breites Banner). Ignoriert, wenn allowAspect nicht gesetzt. */
   defaultAspect?: number;
+  /** v28.10: „Empfohlen"-Kennzeichnung am Kreis-Zuschnitt + Hinweiszeile —
+      fürs Event-Bild, das auf der Anmeldeseite als Kreis oben mittig in die
+      Karte eingebaut wird. */
+  recommendCircle?: boolean;
 }
 
 const FRAME = 320; // Anzeige-Breite der Vorschau (px)
@@ -52,7 +56,7 @@ const ASPECT_PRESETS: Array<{ a: number; de: string; en: string }> = [
   { a: 5 / 2, de: 'Banner', en: 'Banner' },
 ];
 
-export default function ImageCropModal({ open, src, isDe, onClose, onApply, children, allowAspect, defaultAspect }: Props): React.ReactElement | null {
+export default function ImageCropModal({ open, src, isDe, onClose, onApply, children, allowAspect, defaultAspect, recommendCircle }: Props): React.ReactElement | null {
   const [shape, setShape] = React.useState<'rect' | 'circle'>('circle');
   const [aspect, setAspect] = React.useState<number>(allowAspect ? (defaultAspect || 16 / 9) : 1);
   const [zoom, setZoom] = React.useState(1);
@@ -228,14 +232,28 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
           ))}
         </div>
       ) : (
+        <>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 14 }}>
-          <button type="button" className={`btn ${shape === 'circle' ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: '0.82rem' }} onClick={() => setShape('circle')}>
+          <button type="button" className={`btn ${shape === 'circle' ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: '0.82rem', position: 'relative' }} onClick={() => setShape('circle')}>
             {isDe ? 'Kreis' : 'Circle'}
+            {recommendCircle && (
+              <span style={{ marginLeft: 6, padding: '1px 7px', borderRadius: 999, background: 'var(--dex-orange, #ed8b00)', color: '#fff', fontSize: '0.62rem', fontWeight: 800, letterSpacing: 0.4, textTransform: 'uppercase', verticalAlign: 'middle' }}>
+                {isDe ? 'Empfohlen' : 'Recommended'}
+              </span>
+            )}
           </button>
           <button type="button" className={`btn ${shape === 'rect' ? 'btn-primary' : 'btn-secondary'}`} style={{ fontSize: '0.82rem' }} onClick={() => setShape('rect')}>
             {isDe ? 'Quadrat' : 'Square'}
           </button>
         </div>
+        {recommendCircle && (
+          <p style={{ margin: '8px 0 0', fontSize: '0.75rem', color: 'var(--dex-gray-500)', textAlign: 'center', lineHeight: 1.45 }}>
+            {isDe
+              ? 'Tipp: Der kreisförmige Zuschnitt wird empfohlen — das Bild wird auf der Anmeldeseite als Kreis oben mittig in die Event-Karte eingebaut.'
+              : 'Tip: the circular crop is recommended — the image is embedded as a circle at the top center of the event card on the registration page.'}
+          </p>
+        )}
+        </>
       )}
 
       {/* Zoom */}
