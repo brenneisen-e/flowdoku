@@ -769,16 +769,9 @@ export default function RegistrationPage(): React.ReactElement {
     }
   }, [event?.id, registerForOther]);
 
-  // Bild-Orientierung erkennen (Hochkant -> links | Querformat -> oben)
-  const [imgOrientation, setImgOrientation] = React.useState<'portrait' | 'landscape'>('landscape');
-  React.useEffect(() => {
-    if (!event?.imageUrl) { setImgOrientation('landscape'); return; }
-    const img = new Image();
-    img.onload = () => {
-      setImgOrientation(img.naturalHeight > img.naturalWidth ? 'portrait' : 'landscape');
-    };
-    img.src = event.imageUrl;
-  }, [event?.imageUrl]);
+  // v28.3: Bild-Orientierungs-Erkennung entfernt — im „Geführte Schritte"-
+  // Layout sitzt das Bild auf dem Desktop IMMER kompakt links (contain im
+  // festen Slot), die Hochkant/Querformat-Fallunterscheidung entfällt.
 
   // B2Run Split-Capacity: aktuelle Auslastung pro Typ laden
   // Split-UI nur wenn BEIDE Starter-Typen verfügbar sind (>0). Wenn der Admin eine
@@ -2636,14 +2629,19 @@ export default function RegistrationPage(): React.ReactElement {
             className="registration-event__card"
             style={{
               display: 'flex',
-              // Hochkant -> Bild links + Inhalt rechts | Querformat -> Bild oben + Inhalt drunter
-              // Auf dem Handy IMMER Bild oben + Inhalt drunter, damit Titel/Datum
-              // nicht auf ~110px zusammengequetscht werden.
-              flexDirection: isMobile ? 'column' : (imgOrientation === 'portrait' ? 'row' : 'column'),
-              gap: 12,
-              alignItems: 'stretch',
+              // v28.3 („Geführte Schritte"): Auf dem Desktop IMMER Bild links +
+              // Inhalt rechts — die Karte ist jetzt volle Layoutbreite (~880px);
+              // ein Bild über die volle Breite (altes Querformat-Verhalten)
+              // dominierte die komplette Station 1. Auf dem Handy weiterhin
+              // Bild oben + Inhalt drunter.
+              flexDirection: isMobile ? 'column' : 'row',
+              gap: 16,
+              alignItems: isMobile ? 'stretch' : 'flex-start',
             }}
           >
+            {/* v28.3: Bild-Slot nur rendern, wenn das Event ein Bild hat —
+                sonst stünde links ein leerer 300px-Block. */}
+            {event.imageUrl && (
             <div
               className="registration-event__image"
               style={{
@@ -2651,48 +2649,38 @@ export default function RegistrationPage(): React.ReactElement {
                 // v11.91: Hintergrund auf Weiß gesetzt — PNGs mit Transparenz
                 // zeigten vorher den hellgrauen Hintergrund durch, was wie ein
                 // unsauberer „grauer Rand" um Logos aussah.
-                background: event.imageUrl
-                  ? '#fff'
-                  : 'linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%)',
+                background: '#fff',
                 borderRadius: 'var(--dex-radius)',
                 overflow: 'hidden',
-                // Hochkant: schmal links + volle Karten-Höhe
-                // Querformat: volle Breite oben, Höhe richtet sich nach Bild-Aspect (kein Crop)
-                // Handy: immer volle Breite mit begrenzter Höhe (kein 360px-Block).
+                // v28.3: Desktop = kompakter fester Bild-Slot links (max.
+                // 300×280, contain — nichts wird abgeschnitten), Handy = volle
+                // Breite mit begrenzter Höhe.
                 ...(isMobile
                   ? { width: '100%', maxHeight: 200, display: 'flex', justifyContent: 'center' }
-                  : imgOrientation === 'portrait'
-                    ? { flex: '0 0 220px', alignSelf: 'stretch', minHeight: 360, display: 'flex' }
-                    : { width: '100%', display: 'flex', justifyContent: 'center' }),
+                  : { flex: '0 0 300px', maxWidth: 300, maxHeight: 280, display: 'flex', alignItems: 'center', justifyContent: 'center' }),
               }}
             >
               {event.imageUrl && (
                 <img
                   src={cachedImage}
                   alt={event.title}
-                  // v11.56: Auch im Portrait-Modus 'contain', damit das Bild
-                  // vollständig sichtbar bleibt (vorher wurde der obere
-                  // Bildteil weggecroppt). Hintergrundfarbe der Hülle ist
-                  // bereits gray-100 — das ergibt einen sauberen, neutralen
-                  // Letterbox-Rahmen statt eines Bildschnitts.
+                  // v11.56: 'contain', damit das Bild vollständig sichtbar
+                  // bleibt (kein Crop). v28.3: Desktop einheitlich auf den
+                  // kompakten 300er-Slot begrenzt; die Pro-Ansicht-Hero-
+                  // Einstellung (Zoom/Höhe) wirkt weiter, gedeckelt auf den
+                  // Slot, damit Station 1 kompakt bleibt.
                   style={isMobile
-                    // Handy: Bild füllt die begrenzte 200px-Höhe (cover), damit
-                    // die Karte kompakt bleibt und der Rest ohne Scrollen sichtbar ist.
                     ? { width: '100%', maxHeight: 200, height: 'auto', objectFit: 'cover', display: 'block' }
                     : event.imageDisplay?.hero
-                    // v23.22: Pro-Ansicht-Darstellung (Hero) — volles Bild
-                    // (contain), Größe über max. Höhe steuerbar (behebt „Foto zu
-                    // groß") + optionaler Zoom. Zentriert auf weißem Hintergrund.
-                    ? { display: 'block', margin: '0 auto', maxWidth: '100%', maxHeight: (event.imageDisplay.hero.height ?? 340), width: 'auto', height: 'auto', objectFit: 'contain', transform: `scale(${event.imageDisplay.hero.zoom})`, transformOrigin: 'center center' }
-                    : imgOrientation === 'portrait'
-                      ? { width: '100%', height: '100%', objectFit: 'contain', display: 'block' }
-                      : { width: '100%', height: 'auto', maxHeight: 480, objectFit: 'contain', display: 'block' }
+                    ? { display: 'block', margin: '0 auto', maxWidth: '100%', maxHeight: Math.min(event.imageDisplay.hero.height ?? 280, 280), width: 'auto', height: 'auto', objectFit: 'contain', transform: `scale(${Math.min(event.imageDisplay.hero.zoom || 1, 1.5)})`, transformOrigin: 'center center' }
+                    : { maxWidth: '100%', maxHeight: 280, width: 'auto', height: 'auto', objectFit: 'contain', display: 'block' }
                   }
                 />
               )}
               {/* v11.91: Info-Button entfernt — die Beschreibung ist jetzt
                   immer ausgeklappt, kein Toggle mehr nötig. */}
             </div>
+            )}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 4px 4px 0' }}>
               <h4 style={{ fontSize: '1rem', margin: 0 }}>{event.title}</h4>
               {/* v11.91: Datum + Ort als prominente Badges mit Icon.
