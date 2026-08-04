@@ -1407,7 +1407,7 @@ export default function EventCreationPage(): React.ReactElement {
           _qrScanners, _coOrganizers, _testTeam,
           _splitDisplayOrderReversed,
           _requireSubEventSelection,
-          _subEventsOnlyMode, _childEventTerm,
+          _subEventsOnlyMode, _subEventsDisabled, _childEventTerm,
           _inheritFlags, _hideOrganizer, _headerImageLayout,
           // v22.78/v23.6: diese Piggyback-Keys MÜSSEN ebenfalls gestrippt
           // werden — sonst überschreibt der stale Wert aus dem geladenen Blob
@@ -1422,7 +1422,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _eventLogo; void _outlookLogo; void _b2run;
         void _qrScanners; void _coOrganizers; void _testTeam;
         void _splitDisplayOrderReversed; void _requireSubEventSelection;
-        void _subEventsOnlyMode; void _childEventTerm;
+        void _subEventsOnlyMode; void _subEventsDisabled; void _childEventTerm;
         void _inheritFlags; void _hideOrganizer; void _headerImageLayout;
         void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee; void _previewBeforeActive; void _imageDisplay;
         void _organizerDisplayLarge; void _hiddenOrganizers; void _hideOrgIndividual; void _mainEventLabel;
@@ -4158,6 +4158,12 @@ export default function EventCreationPage(): React.ReactElement {
       const subEventsOnlyConfig = subEventsOnlyMode
         ? { _subEventsOnlyMode: true }
         : {};
+      // v28.2: Sub-Events SOFT-deaktiviert — Toggle aus, aber es existieren
+      // Sub-Event-Drafts: Kinder bleiben gespeichert, werden aber auf der
+      // Anmeldeseite nicht angeboten (kein Löschen mehr über den Toggle).
+      const subEventsDisabledConfig = (!subEventsOptIn && subEventsRef.current.some(s => s.title && s.title.trim()))
+        ? { _subEventsDisabled: true }
+        : {};
       const childTermConfig = (childTermSingular.trim() || childTermPlural.trim())
         ? { _childEventTerm: { singular: childTermSingular.trim(), plural: childTermPlural.trim() } }
         : {};
@@ -4194,32 +4200,30 @@ export default function EventCreationPage(): React.ReactElement {
         });
         return Object.keys(out).length ? { _imageDisplay: out } : {};
       })();
-      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtraConfig).length > 0 || Object.keys(qrScannerConfig).length > 0 || Object.keys(coOrganizerConfig).length > 0 || Object.keys(testTeamConfig).length > 0 || Object.keys(splitDispRevConfig).length > 0 || Object.keys(requireSubEventConfig).length > 0 || Object.keys(subEventsOnlyConfig).length > 0 || Object.keys(childTermConfig).length > 0 || Object.keys(teamTermConfig).length > 0 || Object.keys(teamNoCreateConfig).length > 0 || Object.keys(mainEventLabelConfig).length > 0 || Object.keys(assistantsCanSeeConfig).length > 0 || Object.keys(organizerDisplayLargeConfig).length > 0 || Object.keys(previewBeforeActiveConfig).length > 0 || Object.keys(imageDisplayConfig).length > 0 || Object.keys(hideOrganizerConfig).length > 0 || Object.keys(hiddenOrganizersConfig).length > 0 || Object.keys(hideOrgIndividualConfig).length > 0 || Object.keys(headerImageLayoutConfig).length > 0)
-        ? JSON.stringify({
-            ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
-            ...(effOutlookLogo ? { _outlookLogo: effOutlookLogo } : {}),
-            ...b2runExtraConfig,
-            ...qrScannerConfig,
-            ...coOrganizerConfig,
-            ...testTeamConfig,
-            ...splitDispRevConfig,
-            ...requireSubEventConfig,
-            ...subEventsOnlyConfig,
-            ...childTermConfig,
-            ...teamTermConfig,
-            ...teamNoCreateConfig,
-            ...mainEventLabelConfig,
-            ...assistantsCanSeeConfig,
-            ...organizerDisplayLargeConfig,
-            ...previewBeforeActiveConfig,
-            ...imageDisplayConfig,
-            ...hideOrganizerConfig,
-            ...hiddenOrganizersConfig,
-            ...hideOrgIndividualConfig,
-            // v18.73: Header-Bild-Layout (Breite + Innenabstand) — event-weit.
-            ...headerImageLayoutConfig,
-            ...topOverrides,
-          })
+      // v28.2: Die frühere ||-Monsterkette überschritt mit dem neuen
+      // _subEventsDisabled-Config TypeScripts Union-Komplexitätslimit
+      // (TS2590) — jetzt als typisiertes Array + .some().
+      const topPiggybackConfigs: Array<Record<string, unknown>> = [
+        b2runExtraConfig, qrScannerConfig, coOrganizerConfig, testTeamConfig,
+        splitDispRevConfig, requireSubEventConfig, subEventsOnlyConfig,
+        subEventsDisabledConfig, childTermConfig, teamTermConfig,
+        teamNoCreateConfig, mainEventLabelConfig, assistantsCanSeeConfig,
+        organizerDisplayLargeConfig, previewBeforeActiveConfig,
+        imageDisplayConfig, hideOrganizerConfig, hiddenOrganizersConfig,
+        hideOrgIndividualConfig, headerImageLayoutConfig,
+      ];
+      updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || !!effEmailLogo || !!effOutlookLogo || topPiggybackConfigs.some(o => Object.keys(o).length > 0))
+        // v28.2: Object.assign statt Spread-Kette — die Literal-Spreads
+        // überschritten TypeScripts Union-Komplexitätslimit (TS2590).
+        // Piggyback-Keys sind disjunkt, die Reihenfolge im Array entspricht
+        // der alten Spread-Reihenfolge; topOverrides bleibt LETZTER Merge.
+        ? JSON.stringify(Object.assign(
+            {},
+            (effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
+            (effOutlookLogo ? { _outlookLogo: effOutlookLogo } : {}),
+            ...topPiggybackConfigs,
+            topOverrides,
+          ))
         : '';
       // v9.21: ActiveFrom als SP-DateTime
       updates['ActiveFrom'] = activeFrom ? new Date(activeFrom).toISOString() : null;
@@ -4824,6 +4828,10 @@ export default function EventCreationPage(): React.ReactElement {
           const subEvtsOnlyExtra = subEventsOnlyMode
             ? { _subEventsOnlyMode: true }
             : {};
+          // v28.2: Soft-Disable-Flag (s. Edit-Pfad).
+          const subEvtsDisabledExtra = (!subEventsOptIn && subEventsRef.current.some(s => s.title && s.title.trim()))
+            ? { _subEventsDisabled: true }
+            : {};
           const childTermExtra = (childTermSingular.trim() || childTermPlural.trim())
             ? { _childEventTerm: { singular: childTermSingular.trim(), plural: childTermPlural.trim() } }
             : {};
@@ -4860,33 +4868,27 @@ export default function EventCreationPage(): React.ReactElement {
             return Object.keys(out).length ? { _imageDisplay: out } : {};
           })();
           // v11.93: Top-Level-Logos aus dem Resolver lesen.
-          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || effEmailLogo || effOutlookLogo || Object.keys(b2runExtra).length > 0 || Object.keys(qrExtra).length > 0 || Object.keys(coExtra).length > 0 || Object.keys(ttExtra).length > 0 || Object.keys(splitDispRevExtra).length > 0 || Object.keys(reqSubEvtExtra).length > 0 || Object.keys(subEvtsOnlyExtra).length > 0 || Object.keys(childTermExtra).length > 0 || Object.keys(teamTermExtra).length > 0 || Object.keys(teamNoCreateExtra).length > 0 || Object.keys(mainEventLabelExtra).length > 0 || Object.keys(assistantsCanSeeExtra).length > 0 || Object.keys(organizerDisplayLargeExtra).length > 0 || Object.keys(previewBeforeActiveExtra).length > 0 || Object.keys(imageDisplayExtra).length > 0 || Object.keys(hideOrganizerExtra).length > 0 || Object.keys(hiddenOrganizersExtra).length > 0 || Object.keys(hideOrgIndividualExtra).length > 0 || Object.keys(headerImageLayoutConfig).length > 0;
+          // v28.2: s. Edit-Pfad — Array + .some() statt ||-Kette (TS2590).
+          const createPiggybackConfigs: Array<Record<string, unknown>> = [
+            b2runExtra, qrExtra, coExtra, ttExtra, splitDispRevExtra,
+            reqSubEvtExtra, subEvtsOnlyExtra, subEvtsDisabledExtra,
+            childTermExtra, teamTermExtra, teamNoCreateExtra,
+            mainEventLabelExtra, assistantsCanSeeExtra,
+            organizerDisplayLargeExtra, previewBeforeActiveExtra,
+            imageDisplayExtra, hideOrganizerExtra, hiddenOrganizersExtra,
+            hideOrgIndividualExtra, headerImageLayoutConfig,
+          ];
+          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || !!effEmailLogo || !!effOutlookLogo || createPiggybackConfigs.some(o => Object.keys(o).length > 0);
           return hasAny
-            ? JSON.stringify({
-                ...(effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
-                ...(effOutlookLogo ? { _outlookLogo: effOutlookLogo } : {}),
-                ...b2runExtra,
-                ...splitDispRevExtra,
-                ...qrExtra,
-                ...coExtra,
-                ...ttExtra,
-                ...reqSubEvtExtra,
-                ...subEvtsOnlyExtra,
-                ...childTermExtra,
-                ...teamTermExtra,
-                ...teamNoCreateExtra,
-                ...mainEventLabelExtra,
-                ...assistantsCanSeeExtra,
-                ...organizerDisplayLargeExtra,
-                ...previewBeforeActiveExtra,
-                ...imageDisplayExtra,
-                ...hideOrganizerExtra,
-                ...hiddenOrganizersExtra,
-                ...hideOrgIndividualExtra,
-                // v18.73: Header-Bild-Layout (Breite + Innenabstand) — event-weit.
-                ...headerImageLayoutConfig,
-                ...emailTemplateOverrides,
-              })
+            // v28.2: Object.assign statt Spread-Kette (TS2590, s. Edit-Pfad).
+            // Keys disjunkt; emailTemplateOverrides bleibt LETZTER Merge.
+            ? JSON.stringify(Object.assign(
+                {},
+                (effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
+                (effOutlookLogo ? { _outlookLogo: effOutlookLogo } : {}),
+                ...createPiggybackConfigs,
+                emailTemplateOverrides,
+              ))
             : '';
         })(),
         // v11.93: aus dem Top-Level-Resolver — Sub-Tab-Werte würden sonst
@@ -5694,16 +5696,17 @@ export default function EventCreationPage(): React.ReactElement {
   // schaltet der Effekt einmalig automatisch auf „ja" (Ref verhindert, dass
   // er ein bewusstes Abschalten sofort wieder überschreibt).
   const [subEventsOptIn, setSubEventsOptIn] = React.useState<boolean>(false);
-  // v27.11: Beim Abschalten des Sub-Event-Toggles werden die Drafts NICHT mehr
-  // verworfen, sondern hier geparkt — beim Wieder-Einschalten kommen sie
-  // unverändert zurück (vorher: setSubEvents([]) → alle Eingaben sofort und
-  // unwiederbringlich weg, obwohl noch gar nicht gespeichert wurde).
-  const subEventsStashRef = React.useRef<SubEventDraft[]>([]);
+  // v28.2 SOFT-DISABLE: Der Toggle verwirft keine Drafts mehr (v27.11-Stash
+  // entfällt) — `subEventsOptIn === false` bei vorhandenen Drafts heißt nur
+  // noch „deaktiviert": beim Speichern wird das Piggyback-Flag
+  // _subEventsDisabled gesetzt, die Kinder bleiben vollständig erhalten.
   const subOptInHydratedRef = React.useRef(false);
   React.useEffect(() => {
     if (!subOptInHydratedRef.current && subEvents.length > 0) {
       subOptInHydratedRef.current = true;
-      setSubEventsOptIn(true);
+      // v28.2: Soft-deaktivierte Events starten mit Toggle AUS — die Drafts
+      // sind trotzdem geladen und kommen beim Einschalten sofort wieder.
+      setSubEventsOptIn(!(editEvent && editEvent.subEventsDisabled));
     }
   }, [subEvents.length]);
 
@@ -8965,37 +8968,30 @@ export default function EventCreationPage(): React.ReactElement {
                         const on = e.target.checked;
                         if (!on && subEvents.length > 0) {
                           (async () => {
-                            // v27.11: Bei bereits GESPEICHERTEN Sub-Events klar
-                            // sagen, dass das Speichern sie endgültig löscht —
-                            // inkl. Teilnehmerliste. Unsaved Drafts werden nur
-                            // geparkt (Wieder-Einschalten stellt sie wieder her).
-                            const persistedCount = subEvents.filter(x => x.dbId).length;
-                            const msg = persistedCount > 0
-                              ? (isDe
-                                ? `Du hast ${subEvents.length} Sub-Event(s), davon ${persistedCount} bereits gespeichert. Beim Abschalten verschwinden sie aus dem Formular — beim nächsten SPEICHERN werden die gespeicherten Sub-Events endgültig gelöscht, inklusive Teilnehmerliste und aller Anmeldungen (93 Tage im Papierkorb). Schaltest du den Toggle vor dem Speichern wieder ein, bleibt alles erhalten. Fortfahren?`
-                                : `You have ${subEvents.length} sub-event(s), ${persistedCount} of them already saved. Turning this off removes them from the form — on the next SAVE the saved sub-events are permanently deleted, including their attendee lists and all registrations (recycled for 93 days). Re-enable the toggle before saving and everything is kept. Continue?`)
-                              : (isDe
-                                ? `Du hast ${subEvents.length} Sub-Event(s) angelegt. Beim Abschalten werden sie aus dem Formular entfernt — beim Wieder-Einschalten kommen die Eingaben zurück. Fortfahren?`
-                                : `You created ${subEvents.length} sub-event(s). Turning this off removes them from the form — re-enabling restores your input. Continue?`);
-                            const ok = await confirmDialog(msg, { danger: true, confirmLabel: isDe ? 'Sub-Events abschalten' : 'Turn off sub-events' });
+                            // v28.2 SOFT-DISABLE: Der Toggle löscht NICHTS mehr.
+                            // Die Sub-Events (inkl. Teilnehmerlisten und
+                            // Anmeldungen) bleiben gespeichert und werden beim
+                            // Speichern nur per _subEventsDisabled-Flag von der
+                            // Anmeldeseite genommen. Wieder-Einschalten stellt
+                            // alles unverändert wieder her — auch über ein
+                            // Speichern hinweg. Endgültig löschen geht weiterhin
+                            // über das X an der einzelnen Sub-Event-Karte.
+                            const ok = await confirmDialog(
+                              isDe
+                                ? `Sub-Events deaktivieren? Deine ${subEvents.length} Sub-Event(s) bleiben mit allen Eingaben und Anmeldungen gespeichert, werden Teilnehmern nach dem Speichern aber nicht mehr angeboten. Beim Wieder-Einschalten ist alles unverändert da.`
+                                : `Deactivate sub-events? Your ${subEvents.length} sub-event(s) remain stored with all input and registrations, but after saving they are no longer offered to attendees. Re-enabling restores everything unchanged.`,
+                              { confirmLabel: isDe ? 'Deaktivieren' : 'Deactivate' }
+                            );
                             if (ok) {
-                              // v27.11: Drafts parken statt verwerfen + Modi
-                              // zurücksetzen, die ohne Sub-Events keinen Sinn
-                              // ergeben (subEventsOnlyMode mit 0 Sub-Events
-                              // machte das Event unbuchbar und Schritt 7 leer).
-                              subEventsStashRef.current = subEvents;
-                              setSubEvents([]);
                               setSubEventsOptIn(false);
+                              // Modi zurücksetzen, die ohne sichtbare Sub-Events
+                              // keinen Sinn ergeben (sonst wäre das Event für
+                              // Teilnehmer unbuchbar).
                               if (subEventsOnlyMode) setSubEventsOnlyMode(false);
                               if (requireSubEventSelection) setRequireSubEventSelection(false);
                             }
                           })().catch(() => { /* */ });
                           return;
-                        }
-                        // v27.11: Wieder-Einschalten stellt geparkte Drafts wieder her.
-                        if (on && subEvents.length === 0 && subEventsStashRef.current.length > 0) {
-                          setSubEvents(subEventsStashRef.current);
-                          subEventsStashRef.current = [];
                         }
                         setSubEventsOptIn(on);
                       }}
@@ -9006,7 +9002,11 @@ export default function EventCreationPage(): React.ReactElement {
                     <strong>{isDe ? 'Sub-Events nutzen?' : 'Use sub-events?'}</strong>{' '}
                     {subEventsOptIn
                       ? (isDe ? '— ja, Konfiguration unten.' : '— yes, configuration below.')
-                      : (isDe ? '— nein (Standard). Zum Aktivieren Schalter umlegen.' : '— no (default). Flip the toggle to enable.')}
+                      : (subEvents.length > 0
+                        ? (isDe
+                          ? `— deaktiviert. ${subEvents.length} Sub-Event(s) bleiben mit allen Anmeldungen gespeichert, sind für Teilnehmer aber unsichtbar. Einschalten stellt alles wieder her.`
+                          : `— deactivated. ${subEvents.length} sub-event(s) remain stored with all registrations but are hidden from attendees. Re-enable to restore.`)
+                        : (isDe ? '— nein (Standard). Zum Aktivieren Schalter umlegen.' : '— no (default). Flip the toggle to enable.'))}
                   </span>
                 </div>
               </div>

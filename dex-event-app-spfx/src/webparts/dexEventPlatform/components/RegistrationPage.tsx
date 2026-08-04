@@ -467,6 +467,11 @@ export default function RegistrationPage(): React.ReactElement {
   // alle Sub-Sections, damit sie stellvertretend buchen können.
   const childEvents = React.useMemo(() => {
     if (!event) return [];
+    // v28.2: Sub-Events SOFT-deaktiviert (_subEventsDisabled) — für ALLE
+    // ausblenden (auch Organizer/Stellvertreter: es soll niemand mehr auf
+    // deaktivierte Sub-Events gebucht werden). Bestehende Anmeldungen
+    // bleiben unberührt (MyEvents/Admin lesen die Kinder direkt).
+    if (event.subEventsDisabled) return [];
     const all = childEventsOf(event.id);
     if (canCreateEvents || registerForOther) return all;
     // v22.68: Sub-Events im Entwurf (isFictive) sind für reguläre Teilnehmer
@@ -2620,12 +2625,13 @@ export default function RegistrationPage(): React.ReactElement {
         </div>
       )}
       <div className="registration-layout">
-        {/* Event-Info links */}
+        {/* v28.2 „Geführte Schritte": Station 1 — Dein Event. Der frühere
+            „Ausgewähltes Event"-Pill-Header entfällt (Step-Label ersetzt ihn). */}
+        <div className="reg-step-head">
+          <span className="reg-step-num">1</span>
+          <span className="reg-step-label">{locale === 'de' ? 'Dein Event' : 'Your event'}</span>
+        </div>
         <div className="registration-event">
-          <div className="section-header" style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <Icon iconName="Calendar" style={{ fontSize: 16 }} />
-            {t('reg.selectedevent')}
-          </div>
           <div
             className="registration-event__card"
             style={{
@@ -3122,6 +3128,11 @@ export default function RegistrationPage(): React.ReactElement {
             steht jetzt immer zuerst die persönliche Daten-Karte, dann die
             event-spezifischen Infos. */}
 
+        {/* v28.2: Station 2 — Deine Daten. */}
+        <div className="reg-step-head">
+          <span className="reg-step-num">2</span>
+          <span className="reg-step-label">{locale === 'de' ? 'Deine Daten — automatisch aus M365' : 'Your details — automatically from M365'}</span>
+        </div>
         {/* Persönliche Daten */}
         <div className="registration-form">
           {/* v11.97: Section-Header + Register-for-other-Toggle in einer
@@ -3993,6 +4004,12 @@ export default function RegistrationPage(): React.ReactElement {
             Custom-Felder, eine Gruppen-Auswahl (Split) ODER eine Sub-Event-
             Auswahl. Sonst (leeres „Keine zusätzlichen Informationen
             erforderlich") wird die Karte komplett ausgeblendet. */}
+        {/* v28.2: Station 3 — Anmeldung abschließen (immer sichtbar; die
+            Event-Felder-Karte darunter nur, wenn es etwas auszufüllen gibt). */}
+        <div className="reg-step-head">
+          <span className="reg-step-num">3</span>
+          <span className="reg-step-label">{locale === 'de' ? 'Anmeldung abschließen' : 'Complete your registration'}</span>
+        </div>
         {(event.eventSpecificFields.length > 0 || isSplitGroup || childEvents.length > 0) && (
         <div className="registration-specific">
           {/* v11.97: Section-Header + „* = Required field"-Legende in

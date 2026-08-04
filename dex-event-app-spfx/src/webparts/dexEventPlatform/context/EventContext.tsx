@@ -1211,6 +1211,16 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           return !!(ov && ov._subEventsOnlyMode);
         } catch { return false; }
       })(),
+      // v28.2: Sub-Events SOFT-deaktiviert (Piggyback _subEventsDisabled) —
+      // die Kind-Events bleiben inkl. Anmeldungen gespeichert, werden aber
+      // auf der Anmeldeseite nicht mehr angeboten. Wieder-Einschalten im
+      // Wizard zeigt sie unverändert an (kein Löschen mehr über den Toggle).
+      subEventsDisabled: ((): boolean => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          return !!(ov && ov._subEventsDisabled);
+        } catch { return false; }
+      })(),
       // v18.9: Organizer-Anzeige ausblenden (Piggyback _hideOrganizer).
       hideOrganizer: ((): boolean => {
         try {

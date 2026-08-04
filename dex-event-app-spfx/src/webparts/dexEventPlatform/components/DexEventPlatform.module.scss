@@ -542,19 +542,60 @@
     .event-card__register-btn { align-self: flex-end; padding: 6px 20px; font-size: 0.85rem; margin-top: 4px; }
 
     /* ========== Registration Page ==========
-       v11.2: 2x2-Layout statt der alten 3-Spalten-Reihe.
-       - Obere Reihe: Event-Karte links, persönliche Daten rechts —
-         beide gleich hoch (stretch).
-       - Untere Reihe: event-spezifische Felder als 2-Spalten-Grid
-         direkt darunter, Volle Breite.
-       Container-Breite an my-events orientiert (max-width 1100px). */
+       v28.2 „Geführte Schritte": einspaltiger vertikaler Fluss statt des
+       alten 2-Spalten-Grids (v11.2). Links eine grüne Leitlinie mit
+       nummerierten Stationen: ① Dein Event → ② Deine Daten → ③ Anmeldung.
+       Die Karten selbst (registration-event / -form / -specific) bleiben
+       unverändert — nur der äußere Fluss + Step-Header sind neu. */
     .registration-layout {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 24px;
-      align-items: stretch;
-      max-width: 1100px;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      max-width: 880px;
       margin: 0 auto;
+      position: relative;
+      padding-left: 60px;
+    }
+    .registration-layout::before {
+      content: '';
+      position: absolute;
+      left: 19px;
+      top: 34px;
+      bottom: 56px;
+      width: 3px;
+      border-radius: 2px;
+      background: linear-gradient(180deg, var(--dex-green, #86bc25), #cfe0a8);
+    }
+    .reg-step-head {
+      position: relative;
+      display: flex;
+      align-items: center;
+      min-height: 40px;
+      margin-top: 14px;
+    }
+    .reg-step-head:first-child { margin-top: 0; }
+    .reg-step-num {
+      position: absolute;
+      left: -60px;
+      top: 0;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--dex-green, #86bc25);
+      color: #fff;
+      font-weight: 800;
+      font-size: 1.05rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 0 4px rgba(134, 188, 37, 0.16);
+    }
+    .reg-step-label {
+      font-size: 0.75rem;
+      font-weight: 800;
+      letter-spacing: 0.09em;
+      text-transform: uppercase;
+      color: var(--dex-green-dark, #4a7c1f);
     }
     .registration-specific { grid-column: 1 / -1; }
     .registration-event, .registration-form, .registration-specific {
@@ -685,8 +726,10 @@
       .event-grid { grid-template-columns: 1fr; gap: 16px; }
       .event-card__image { height: 180px; }
 
-      /* Registration */
-      .registration-layout { grid-template-columns: 1fr; }
+      /* Registration — v28.2: schmalere Leitlinie/Kreise auf Mobile. */
+      .registration-layout { padding-left: 44px; }
+      .registration-layout::before { left: 13px; }
+      .reg-step-num { left: -44px; width: 30px; height: 30px; font-size: 0.9rem; }
       .registration-actions { flex-direction: column; gap: 8px; }
       /* v11.2: Custom-Field-Grid auf Mobile 1 Spalte. */
       .dex-reg-fields-grid { grid-template-columns: 1fr !important; }
