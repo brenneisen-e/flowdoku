@@ -1093,6 +1093,10 @@ export default function EventCreationPage(): React.ReactElement {
     editEvent ? editEvent.filterMode : 'OR'
   );
   const [description, setDescription] = React.useState(editEvent ? editEvent.description : '');
+  // v28.7: „Keine Beschreibung nutzen" — reiner UI-Schalter im Wizard
+  // (Default: Beschreibung nutzen). Anhaken leert die Beschreibung und
+  // blendet den Editor-Zugang aus; gespeichert wird schlicht ''.
+  const [noDescription, setNoDescription] = React.useState(false);
   // EventType wird nicht mehr als UI-Feld abgefragt (v5.2) — neue Events:
   // aus Template abgeleitet (b2run → 'B2Run', sonst → 'Other'). Bei Edit:
   // den gespeicherten Wert beibehalten. Die Variable wird weiterhin für
@@ -2928,6 +2932,9 @@ export default function EventCreationPage(): React.ReactElement {
   // Variant-spezifischen Felder auf neutralen Default zurück, damit die
   // Demo-Varianten nicht versehentlich Zustand der vorigen Variante erben.
   const resetDemoVariantBaseState = (): void => {
+    // v28.7: Demo-Vorlagen setzen immer eine Beschreibung — der
+    // „Keine Beschreibung"-Schalter darf dann nicht angehakt bleiben.
+    setNoDescription(false);
     setUseSplitCapacities(false);
     setSplitLabelA('Teilnehmergruppe 1');
     setSplitLabelB('Teilnehmergruppe 2');
@@ -7090,7 +7097,11 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
 
               <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
-                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {/* v28.7: kein <label> mehr, sondern <div> — rechts sitzt jetzt
+                    die „Keine Beschreibung"-Checkbox mit eigenem <label>;
+                    verschachtelte Labels würden Klicks auf die Überschrift
+                    fälschlich auf die Checkbox umleiten. */}
+                <div className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <StepBadge n={4} />
                   {t('create.description')}
                   <InfoTooltip text={isDe ? (
@@ -7108,10 +7119,34 @@ export default function EventCreationPage(): React.ReactElement {
                       <strong>Effect for attendees:</strong> first piece of substantive information before registering. Optional — leaving it blank is fine, but recommended for broader audiences.
                     </>
                   )} />
-                </label>
+                  {/* v28.7: „Keine Beschreibung nutzen" direkt neben der
+                      Überschrift (Default: Beschreibung nutzen). Anhaken
+                      leert die Beschreibung und blendet den Editor aus. */}
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto', fontSize: '0.78rem', fontWeight: 400, color: 'var(--dex-gray-600)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    <input
+                      type="checkbox"
+                      checked={noDescription}
+                      onChange={e => {
+                        const on = e.target.checked;
+                        setNoDescription(on);
+                        if (on) setDescription('');
+                      }}
+                      style={{ accentColor: 'var(--dex-green)' }}
+                    />
+                    {isDe ? 'Keine Beschreibung nutzen' : 'Don’t use a description'}
+                  </label>
+                </div>
                 {/* v9.39: Beschreibung als HTML-Editor (vorher plain textarea).
                     Live-Vorschau im HtmlEditorModal — wird auf der Anmelde-Seite
-                    1:1 als HTML gerendert. */}
+                    1:1 als HTML gerendert.
+                    v28.7: Die frühere Starthilfe-Box (Tipp-Text + Vorschläge,
+                    v26.77) lebt jetzt IM Editor-Dialog (headerExtra +
+                    bodyTemplates) — der Wizard-Schritt bleibt schlank. */}
+                {noDescription ? (
+                  <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', margin: 0 }}>
+                    {isDe ? 'Auf der Anmelde-Seite wird keine Beschreibung angezeigt.' : 'No description will be shown on the registration page.'}
+                  </p>
+                ) : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                   <button
                     type="button"
@@ -7127,42 +7162,7 @@ export default function EventCreationPage(): React.ReactElement {
                       : (isDe ? 'Keine Beschreibung gesetzt — klicke „Bearbeiten" zum Hinzufügen.' : 'No description set — click „Edit" to add one.')}
                   </span>
                 </div>
-                {/* v26.77: Starthilfe für die Beschreibung — freundliche Klarstellung,
-                    dass die Beschreibung der Einleitungstext der Anmeldemaske ist
-                    (KEINE Zeit/Ort/Organizer/Kontaktperson, das sind eigene Felder),
-                    fünf Vorlagen zum Übernehmen + „keine Beschreibung"-Button. */}
-                <div style={{ marginTop: 12, padding: 14, borderRadius: 'var(--dex-radius)', background: 'var(--dex-gray-50, #f7f7f7)', border: '1px solid var(--dex-gray-200)' }}>
-                  <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.55, marginBottom: 12 }}>
-                    {isDe
-                      ? <>Die Beschreibung ist der <strong>einladende Einleitungstext ganz oben auf der Anmeldemaske</strong> — das Erste, was deine Teilnehmenden lesen. Erzähl hier gern, <strong>worum es geht, für wen das Event ist und was man wissen sollte</strong>.<br />Ein kleiner Tipp: <strong>Zeitpunkt, Ort, Organizer und Kontaktperson musst du hier nicht angeben</strong> — die zeigt die App bereits als eigene Felder darüber an. So bleibt dein Text schön schlank und einladend.</>
-                      : <>The description is the <strong>inviting intro text right at the top of the registration form</strong> — the first thing your attendees read. Feel free to tell them <strong>what the event is about, who it&rsquo;s for and what to know</strong>.<br />A little tip: <strong>you don&rsquo;t need to add the date, location, organizer or contact person here</strong> — the app already shows those as their own fields above. That keeps your text nice and inviting.</>}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--dex-gray-500)', marginBottom: 8 }}>
-                    {isDe ? 'Vorschläge zum Übernehmen (danach frei anpassbar):' : 'Suggestions to use (fully editable afterwards):'}
-                  </div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                    {DESCRIPTION_TEMPLATES.map(tpl => (
-                      <button
-                        key={tpl.key}
-                        type="button"
-                        className="btn btn-secondary"
-                        style={{ fontSize: '0.78rem', padding: '5px 12px' }}
-                        title={(isDe ? tpl.de : tpl.en).replace(/<[^>]+>/g, '').replace(/&rsquo;/g, '’')}
-                        onClick={() => setDescription(isDe ? tpl.de : tpl.en)}
-                      >
-                        {isDe ? tpl.labelDe : tpl.labelEn}
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      className="btn"
-                      style={{ fontSize: '0.78rem', padding: '5px 12px', background: 'transparent', border: '1px dashed var(--dex-gray-300)', color: 'var(--dex-gray-500)' }}
-                      onClick={() => setDescription('')}
-                    >
-                      {isDe ? 'Ich möchte keine Beschreibung nutzen' : 'I don’t want to use a description'}
-                    </button>
-                  </div>
-                </div>
+                )}
                 {/* v18.73: Hinweis, wenn Name/Datum/Ort des Events redundant in
                     der Beschreibung stehen — die werden bereits separat auf der
                     Anmelde-Seite angezeigt. Mit klickbarem Beispieltext. */}
@@ -14785,6 +14785,22 @@ export default function EventCreationPage(): React.ReactElement {
             onClose={() => setHtmlEditorOpen(false)}
             defaultBodyHtml={isOutlook ? outlookDefaultBody : (isDescription ? descriptionExampleHtml : undefined)}
             title={isOutlook ? 'Outlook-Termin: Body bearbeiten' : isDescription ? (isDe ? 'Event-Beschreibung bearbeiten' : 'Edit event description') : `E-Mail-Template: ${tType}`}
+            // v28.7: Die Starthilfe (Tipp-Text + Vorschlags-Chips) lebt jetzt
+            // HIER im Editor statt als Dauer-Box im Wizard-Schritt.
+            headerExtra={isDescription ? (
+              <div style={{ padding: '10px 12px', borderRadius: 'var(--dex-radius)', background: 'var(--dex-gray-50, #f7f7f7)', border: '1px solid var(--dex-gray-200)', fontSize: '0.78rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                {isDe
+                  ? <>Die Beschreibung ist der <strong>einladende Einleitungstext ganz oben auf der Anmeldemaske</strong> — das Erste, was deine Teilnehmenden lesen. Erzähl hier gern, <strong>worum es geht, für wen das Event ist und was man wissen sollte</strong>.<br />Ein kleiner Tipp: <strong>Zeitpunkt, Ort, Organizer und Kontaktperson musst du hier nicht angeben</strong> — die zeigt die App bereits als eigene Felder darüber an. So bleibt dein Text schön schlank und einladend.</>
+                  : <>The description is the <strong>inviting intro text right at the top of the registration form</strong> — the first thing your attendees read. Feel free to tell them <strong>what the event is about, who it&rsquo;s for and what to know</strong>.<br />A little tip: <strong>you don&rsquo;t need to add the date, location, organizer or contact person here</strong> — the app already shows those as their own fields above. That keeps your text nice and inviting.</>}
+              </div>
+            ) : undefined}
+            bodyTemplates={isDescription ? DESCRIPTION_TEMPLATES.map(tpl => ({
+              key: tpl.key,
+              label: isDe ? tpl.labelDe : tpl.labelEn,
+              html: isDe ? tpl.de : tpl.en,
+              title: (isDe ? tpl.de : tpl.en).replace(/<[^>]+>/g, '').replace(/&rsquo;/g, '’'),
+            })) : undefined}
+            bodyTemplatesLabel={isDescription ? (isDe ? 'Vorschläge zum Übernehmen (danach frei anpassbar):' : 'Suggestions to use (fully editable afterwards):') : undefined}
             value={currentBody}
             onChange={(html) => {
               if (isOutlook) {

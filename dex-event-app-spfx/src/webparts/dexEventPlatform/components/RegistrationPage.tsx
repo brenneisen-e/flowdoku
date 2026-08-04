@@ -228,7 +228,7 @@ export default function RegistrationPage(): React.ReactElement {
   }, []);
 
   const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
-  const { events, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest, updateMyRegistration, uploadFieldDocument, delegateRegistrationToAssistant, recordProxyDelegation, getLiveCounterStats, subscribeEventRealtime } = useEvents();
+  const { events, isEventsLoading, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest, updateMyRegistration, uploadFieldDocument, delegateRegistrationToAssistant, recordProxyDelegation, getLiveCounterStats, subscribeEventRealtime } = useEvents();
   const { currentUser, groupEmails } = useCurrentUser();
   const { searchUsers, searchUser, isAdmin } = useRoles();
   const { locale: appLocale } = useLanguage();
@@ -788,6 +788,13 @@ export default function RegistrationPage(): React.ReactElement {
   // Querformat bekommt Breite, Hochkant Höhe.
   const imgSlotW = imgAspect == null ? 280 : (imgAspect >= 1.2 ? 420 : (imgAspect >= 0.8 ? 210 : 240));
   const imgSlotH = imgAspect == null ? 260 : (imgAspect >= 1.2 ? 260 : (imgAspect >= 0.8 ? 210 : 300));
+  // v28.7: Kreis-/Quadrat-Bilder (Ratio ~1, typisch der Kreis-Zuschnitt aus
+  // dem Wizard mit transparenten Ecken) sitzen NICHT mehr seitlich neben den
+  // Infos, sondern als eigener Kreis OBEN MITTIG, der die Oberkante der
+  // Event-Karte überlappt („eingebautes" Profilbild-Muster). Banner-Modus
+  // hat weiter Vorrang; Quer-/Hochformat behält den Seiten-Slot.
+  const imgCircleNotch = !!event?.imageUrl && !event?.imageBanner && imgAspect != null && imgAspect >= 0.8 && imgAspect < 1.2;
+  const circleSize = isMobile ? 140 : 170;
 
   // B2Run Split-Capacity: aktuelle Auslastung pro Typ laden
   // Split-UI nur wenn BEIDE Starter-Typen verfügbar sind (>0). Wenn der Admin eine
@@ -904,6 +911,27 @@ export default function RegistrationPage(): React.ReactElement {
   const searchTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   if (!event) {
+    // v28.7: Beim Browser-Refresh restauriert der NavigationContext die
+    // Anmeldeseite SOFORT, während die Events noch aus SharePoint laden —
+    // vorher stand dann fälschlich „Event nicht gefunden". Solange die
+    // Events laden, zeigen wir den Spinner (gleiches Muster wie die
+    // Event-Liste); „nicht gefunden" kommt erst, wenn das Event nach dem
+    // Laden wirklich fehlt.
+    if (isEventsLoading) {
+      return (
+        <div className="page-container text-center">
+          <div style={{ padding: 48 }}>
+            <svg width={48} height={48} viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" style={{ display: 'block', margin: '0 auto 16px' }}>
+              <circle cx={24} cy={24} r={20} fill="none" stroke="rgba(134,188,37,0.20)" strokeWidth={4} />
+              <path d="M 24 4 A 20 20 0 0 1 44 24" fill="none" stroke="#86bc25" strokeWidth={4} strokeLinecap="round">
+                <animateTransform attributeName="transform" type="rotate" from="0 24 24" to="360 24 24" dur="1s" repeatCount="indefinite" />
+              </path>
+            </svg>
+            <p style={{ color: 'var(--dex-gray-400)' }}>{locale === 'de' ? 'Event wird geladen …' : 'Loading event …'}</p>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="page-container text-center">
         <h2>{t('reg.eventnotfound')}</h2>
@@ -2640,7 +2668,13 @@ export default function RegistrationPage(): React.ReactElement {
           <span className="reg-step-num">1</span>
           <span className="reg-step-label">{locale === 'de' ? 'Dein Event' : 'Your event'}</span>
         </div>
-        <div className="registration-event">
+        <div
+          className="registration-event"
+          // v28.7: Kreis-Notch — der Kreis ragt über die Oberkante der Karte
+          // hinaus. Dafür muss das overflow:hidden der Karte weichen und
+          // oben Platz für den überstehenden Halbkreis geschaffen werden.
+          style={imgCircleNotch ? { overflow: 'visible', marginTop: circleSize / 2 } : undefined}
+        >
           <div
             className="registration-event__card"
             style={{
@@ -2652,9 +2686,10 @@ export default function RegistrationPage(): React.ReactElement {
               // breite Querformat-Fotos). Handy: immer Bild oben.
               // v28.6: Infos LINKS, Bild RECHTS (row-reverse — das Bild steht
               // im DOM zuerst, wird aber rechts gerendert). Banner/Mobil: Bild oben.
-              flexDirection: (isMobile || event.imageBanner) ? 'column' : 'row-reverse',
+              // v28.7: Kreis-Bilder → Spalte, der Kreis sitzt oben mittig.
+              flexDirection: (isMobile || event.imageBanner || imgCircleNotch) ? 'column' : 'row-reverse',
               gap: 16,
-              alignItems: (isMobile || event.imageBanner) ? 'stretch' : 'flex-start',
+              alignItems: (isMobile || event.imageBanner || imgCircleNotch) ? 'stretch' : 'flex-start',
             }}
           >
             {/* v28.3: Bild-Slot nur rendern, wenn das Event ein Bild hat —
@@ -2675,7 +2710,20 @@ export default function RegistrationPage(): React.ReactElement {
                 // bekommt den breiteren 420er-Slot und sitzt vertikal mittig
                 // neben den Infos; Hochkant/Quadrat den kompakten 300er-Slot.
                 // Handy = volle Breite mit begrenzter Höhe.
-                ...(isMobile
+                // v28.7: Kreis-/Quadrat-Bilder = eigener Kreis oben mittig,
+                // ragt zur Hälfte über die Oberkante der Karte hinaus
+                // (negativer marginTop gegen Karten-Padding + Halbkreis).
+                ...(imgCircleNotch
+                  ? {
+                    width: circleSize, height: circleSize, flex: '0 0 auto',
+                    borderRadius: '50%',
+                    border: '1px solid var(--dex-gray-200)',
+                    boxShadow: '0 2px 12px rgba(0,0,0,0.10)',
+                    alignSelf: 'center',
+                    marginTop: -(circleSize / 2 + 16),
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }
+                  : isMobile
                   ? { width: '100%', maxHeight: 200, display: 'flex', justifyContent: 'center' }
                   : event.imageBanner
                   // v28.5: Banner-Layout — volle Kartenbreite, Höhe begrenzt,
@@ -2703,7 +2751,12 @@ export default function RegistrationPage(): React.ReactElement {
                   // sichtbare Bildkante INNERHALB des Containers, dessen
                   // overflow-Rundung griff daher nicht. Kreis-PNGs (transparente
                   // Ecken) bleiben unverändert rund.
-                  style={isMobile
+                  // v28.7: Im Kreis-Notch füllt das Bild den Kreis komplett
+                  // (cover) — beim typischen Kreis-Zuschnitt (Quadrat mit
+                  // transparenten Ecken) liegt die Bildkante exakt am Rand.
+                  style={imgCircleNotch
+                    ? { width: '100%', height: '100%', objectFit: 'cover', display: 'block' }
+                    : isMobile
                     ? { width: '100%', maxHeight: 200, height: 'auto', objectFit: 'cover', display: 'block', borderRadius: 'var(--dex-radius)' }
                     : event.imageBanner
                     ? { maxWidth: '100%', maxHeight: 320, width: 'auto', height: 'auto', objectFit: 'contain', display: 'block', margin: '0 auto', borderRadius: 'var(--dex-radius)' }

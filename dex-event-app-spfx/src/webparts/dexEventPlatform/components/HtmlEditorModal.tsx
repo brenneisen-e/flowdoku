@@ -111,6 +111,12 @@ export interface HtmlEditorModalProps {
   /** v11.40: Optionaler React-Knoten oberhalb von Subject/Ueberschrift im
    *  Editor — z.B. für eine Ziel-Auswahl im Einladungsmail-Modal. */
   headerExtra?: React.ReactNode;
+  /** v28.7: Vorlagen-Chips über dem Body-Editor (z.B. Beschreibungs-
+   *  Vorschläge aus dem Wizard). Klick ersetzt den Editor-Inhalt — mit
+   *  Rückfrage, wenn schon Text drinsteht. */
+  bodyTemplates?: Array<{ key: string; label: string; html: string; title?: string }>;
+  /** v28.7: Beschriftung über den Vorlagen-Chips. */
+  bodyTemplatesLabel?: string;
 }
 
 // v18.20: px-basierte Auswahl (wie in Word). v18.23: nur px, keine
@@ -221,6 +227,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     logoBase64 = '', imageBase64 = '',
     extraAction,
     headerExtra,
+    bodyTemplates, bodyTemplatesLabel,
     previewToLine, previewSubjectLine,
   } = props;
 
@@ -860,6 +867,41 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                     </button>
                   )}
                 </div>
+                {/* v28.7: Vorlagen-Chips (z.B. Beschreibungs-Vorschläge) —
+                    ersetzen den Editor-Inhalt direkt (innerHTML), weil der
+                    contentEditable nur beim Öffnen aus `value` synct. */}
+                {bodyTemplates && bodyTemplates.length > 0 && (
+                  <div style={{ marginBottom: 8 }}>
+                    {bodyTemplatesLabel && (
+                      <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--dex-gray-500)', marginBottom: 5 }}>{bodyTemplatesLabel}</div>
+                    )}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {bodyTemplates.map(tpl => (
+                        <button
+                          key={tpl.key}
+                          type="button"
+                          className="btn btn-secondary"
+                          onMouseDown={e => e.preventDefault()}
+                          style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                          title={tpl.title}
+                          onClick={() => {
+                            const cur = editorRef.current?.innerHTML || '';
+                            const isEmpty = cur.replace(/<[^>]*>/g, '').replace(/\s/g, '').trim() === '';
+                            const apply = (): void => {
+                              if (editorRef.current) { editorRef.current.innerHTML = tpl.html; fireChange(); }
+                            };
+                            if (isEmpty) { apply(); return; }
+                            confirmDialog('Den aktuellen Text durch die Vorlage ersetzen?', { confirmLabel: 'Ersetzen' })
+                              .then(ok => { if (ok) apply(); })
+                              .catch(() => { /* */ });
+                          }}
+                        >
+                          {tpl.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {/* Toolbar */}
                 <div style={{
                   display: 'flex', flexWrap: 'wrap', gap: 4, padding: 6,

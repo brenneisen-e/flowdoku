@@ -1996,10 +1996,14 @@ export default function MyEventsPage(): React.ReactElement {
                         oder Email gepflegt sind. Spiegelt das Verhalten der
                         Registration-Page in My Events wider. */}
                     {(event.contactName || event.contactEmail || event.contactInfo) && (
-                      <div style={{ marginTop: 10, padding: '8px 10px', background: 'var(--dex-gray-50, #f7f7f7)', borderRadius: 6, border: '1px solid var(--dex-gray-200)' }}>
+                      <div style={{ marginTop: 10 }}>
+                        {/* v28.7: Überschrift AUSSERHALB der Box — gleiches
+                            Muster wie „Organizer" darüber (und wie auf der
+                            Anmelde-Seite seit v28.6). */}
                         <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
                           {(event.emailLanguage || 'EN').toUpperCase() === 'DE' ? 'Ansprechpartner' : 'Contact'}
                         </div>
+                        <div style={{ padding: '8px 10px', background: 'var(--dex-gray-50, #f7f7f7)', borderRadius: 6, border: '1px solid var(--dex-gray-200)' }}>
                         {event.contactName && (
                           <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--dex-gray-800)' }}>{event.contactName}</div>
                         )}
@@ -2011,6 +2015,7 @@ export default function MyEventsPage(): React.ReactElement {
                         {event.contactInfo && (
                           <div style={{ fontSize: '0.76rem', color: 'var(--dex-gray-700)', marginTop: 4, whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>{event.contactInfo}</div>
                         )}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2108,10 +2113,12 @@ export default function MyEventsPage(): React.ReactElement {
                         <Pencil size={12} /> {displayData.length > 0 ? t('myevents.edit') : (isDe ? 'Angaben ergänzen' : 'Add details')}
                       </button>
                       )}
-                      {/* v20.7: Persönlicher Check-in-QR — für aktive
-                          Anmeldungen jederzeit abrufbar (gleicher Code wie
-                          in der QR-Mail). */}
-                      {!sessionsOnly && !!event.eventNumber && ['Angemeldet', 'QR versendet', 'Eingecheckt'].indexOf(registration.Status) >= 0 && (
+                      {/* v20.7: Persönlicher Check-in-QR — gleicher Code wie
+                          in der QR-Mail. v28.7: erst sichtbar, NACHDEM die
+                          QR-Codes fürs Event versendet wurden (Status
+                          'QR versendet'/'Eingecheckt') — vorher wirkte der
+                          Button, als gäbe es schon einen gültigen Check-in. */}
+                      {!sessionsOnly && !!event.eventNumber && ['QR versendet', 'Eingecheckt'].indexOf(registration.Status) >= 0 && (
                         <button
                           type="button"
                           className="btn btn-outline"
