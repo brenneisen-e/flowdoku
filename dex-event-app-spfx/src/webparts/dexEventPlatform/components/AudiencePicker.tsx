@@ -292,7 +292,18 @@ export default function AudiencePicker({
           for (const m of grp.members) { const k = (m.email || '').toLowerCase(); if (k && !audMap.has(k)) audMap.set(k, toRU(m, item)); }
         } else {
           // Konnte nicht als Verteiler aufgelöst werden → als direkte Adresse behandeln + warnen.
-          if (!audMap.has(f)) audMap.set(f, { email: item, displayName: item, firstName: '', lastName: '', jobTitle: '', location: '', source: item });
+          // v28.28: Vorher landete hier eine nackte Zeile mit „–" in Vorname,
+          // Nachname und Position — die Adresse wurde einfach durchgereicht,
+          // ohne das Profil nachzuschlagen. Jetzt einmal per Personensuche
+          // auflösen, damit die Sichtbarkeits-Prüfung auch bei einzelnen
+          // Adressen einen richtigen Namen zeigt.
+          let single: ResolvedUser = { email: item, displayName: item, firstName: '', lastName: '', jobTitle: '', location: '', source: item };
+          try {
+            const hits = await searchUsers(item);
+            const exact = (hits || []).find(u => (u.email || '').toLowerCase() === f) || (hits || [])[0];
+            if (exact && (exact.email || '').toLowerCase() === f) single = toRU(exact, item);
+          } catch { /* Profil-Lookup best-effort — Adresse zählt trotzdem */ }
+          if (!audMap.has(f)) audMap.set(f, single);
           notes.push(isDe ? `„${item}“ konnte nicht als Verteiler aufgelöst werden — als einzelne Adresse behandelt` : `“${item}” could not be resolved as a distribution list — treated as a single address`);
         }
       } else if (f.startsWith('de')) {

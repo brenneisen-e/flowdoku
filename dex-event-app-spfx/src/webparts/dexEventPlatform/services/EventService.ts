@@ -3405,28 +3405,64 @@ export class EventService {
   /**
    * Alle Teilnehmer laden (für Admin-Seite).
    */
-  public async getAllParticipants(): Promise<SPParticipant[]> {
-    const allItems: SPParticipant[] = [];
-    // v28.25: KEIN `$orderby` mehr. Sortieren über eine nicht indizierte Spalte
-    // sprengt ab 5000 Listenelementen die SharePoint-Schwelle — die Abfrage
-    // scheiterte dann komplett mit HTTP 500, statt einfach unsortiert zu
-    // liefern. Seitenweise ungeordnet lesen funktioniert auch über der
-    // Schwelle; sortiert wird jetzt im Browser.
-    // $top=2000 pro Seite (statt 5000): kleinere Seiten sind schwellenfester
-    // und der nextLink führt zuverlässig durch die ganze Liste.
-    let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items?$select=Id,Title,Vorname,Nachname,Email,EventRegistered,EventOnWaitlist&$top=2000`;
-
-    while (url) {
+  /**
+   * v28.27: Das Register vollständig lesen — per ID-Fenster statt über den
+   * „nextLink".
+   *
+   * Zwei Fallen stecken hier drin, und v28.25/26 sind in beide getreten:
+   *  1. **Schwelle:** `$orderby` über eine nicht indizierte Spalte scheitert ab
+   *     5000 Listenelementen mit HTTP 500. Nach `Id` zu sortieren ist dagegen
+   *     immer erlaubt — die ID-Spalte ist von Haus aus indiziert.
+   *  2. **nextLink:** SharePoint benennt den Folgeseiten-Link je nach
+   *     ausgehandeltem OData-Format unterschiedlich (`odata.nextLink`,
+   *     `@odata.nextLink`, `d.__next`). Wer nur eine Variante prüft, hält nach
+   *     der ERSTEN Seite an und meldet fröhlich Vollständigkeit — genau das
+   *     ließ die Dubletten-Prüfung „2000 Einträge geprüft" melden, obwohl die
+   *     Liste ein Vielfaches davon enthält.
+   *
+   * Deshalb hier gar kein nextLink mehr: Wir holen aufsteigend nach `Id` und
+   * setzen als Fenster `Id gt <letzte gelesene Id>`. Das ist deterministisch,
+   * schwellenfest und formatunabhängig.
+   *
+   * @param strict wirft bei einem HTTP-Fehler, statt still eine unvollständige
+   *   Liste zu liefern (für Abläufe, die aus dem Ergebnis auf „unbekannt"
+   *   schließen).
+   */
+  private async readAllParticipants(strict: boolean): Promise<SPParticipant[]> {
+    const out: SPParticipant[] = [];
+    const PAGE = 2000;
+    const MAX_PAGES = 100; // Reißleine (200k Einträge) gegen Endlosschleifen
+    let lastId = 0;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items`
+        + `?$select=Id,Title,Vorname,Nachname,Email,EventRegistered,EventOnWaitlist`
+        + `&$orderby=Id&$top=${PAGE}&$filter=${encodeURIComponent(`Id gt ${lastId}`)}`;
+      let items: SPParticipant[] = [];
       try {
         const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
-        if (!response.ok) break;
+        if (!response.ok) {
+          if (strict) {
+            throw new Error(`DEX_Participants nicht lesbar (HTTP ${response.status}). Bei mehr als 5000 Einträgen braucht die Spalte „Email" einen Index — die App versucht ihn beim Start automatisch zu setzen (erfordert „Listen verwalten").`);
+          }
+          break;
+        }
         const data = await response.json();
-        allItems.push(...(data.value || data.d?.results || []));
-        url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
-      } catch {
+        items = (data.value || data.d?.results || []) as SPParticipant[];
+      } catch (err) {
+        if (strict) throw err;
         break;
       }
+      out.push(...items);
+      if (items.length < PAGE) break;
+      const last = items[items.length - 1];
+      if (!last || typeof last.Id !== 'number' || last.Id <= lastId) break; // Schutz vor Stillstand
+      lastId = last.Id;
     }
+    return out;
+  }
+
+  public async getAllParticipants(): Promise<SPParticipant[]> {
+    const allItems = await this.readAllParticipants(false);
     allItems.sort((a, b) =>
       (a.Nachname || '').localeCompare(b.Nachname || '', 'de')
       || (a.Vorname || '').localeCompare(b.Vorname || '', 'de'));
@@ -3566,18 +3602,7 @@ export class EventService {
    * Ergebnis auf „Person ist unbekannt" schließen (Register-Abgleich).
    */
   private async fetchAllParticipantsOrThrow(): Promise<SPParticipant[]> {
-    const out: SPParticipant[] = [];
-    let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items?$select=Id,Title,Vorname,Nachname,Email,EventRegistered,EventOnWaitlist&$top=2000`;
-    while (url) {
-      const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
-      if (!response.ok) {
-        throw new Error(`DEX_Participants nicht lesbar (HTTP ${response.status}). Bei mehr als 5000 Einträgen braucht die Spalte „Email" einen Index — die App versucht ihn beim Start automatisch zu setzen (erfordert „Listen verwalten").`);
-      }
-      const data = await response.json();
-      out.push(...(data.value || data.d?.results || []));
-      url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
-    }
-    return out;
+    return this.readAllParticipants(true);
   }
 
   public async backfillParticipantRegistry(

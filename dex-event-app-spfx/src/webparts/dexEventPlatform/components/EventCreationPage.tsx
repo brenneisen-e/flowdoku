@@ -1924,6 +1924,31 @@ export default function EventCreationPage(): React.ReactElement {
   // den Fall, dass der Outlook-Termin noch den alten Stand zeigt. Nutzt den
   // zuletzt GESPEICHERTEN Stand (der Flow liest das Event aus der Verwaltung).
   const [outlookUpdateBusy, setOutlookUpdateBusy] = React.useState(false);
+  // v28.28: Was wurde zuletzt angestoßen? Ohne diese Rückmeldung blieb im
+  // Wizard nur der unveränderte Knopf stehen — Organizer lasen das als
+  // „hat nicht funktioniert" und klickten wieder und wieder.
+  const [outlookUpdateDone, setOutlookUpdateDone] = React.useState<string>('');
+  /**
+   * v28.28: Sub-Events haben EIGENE Outlook-Termine. Der Knopf aktualisiert
+   * bisher ausschließlich den Termin des GERADE GEÖFFNETEN Tabs — steht man auf
+   * dem Hauptevent, bleiben die Sub-Event-Termine unangetastet. Das war die
+   * Ursache für „Update bei Sub-Events funktioniert nicht sauber": Es wurde
+   * schlicht ein anderer Termin aktualisiert als erwartet. Deshalb sagt der
+   * Knopf jetzt, für WELCHEN Termin er gilt, und es gibt einen zweiten für
+   * „alle Termine dieses Events".
+   */
+  const outlookUpdateTargets = (): Array<{ id: string; title: string }> => {
+    const out: Array<{ id: string; title: string }> = [];
+    if (editEvent && editEvent.disableOutlook !== true && (editEvent.outlookEventId || editEvent.calendarLink)) {
+      out.push({ id: editEvent.id, title: title || editEvent.title || '' });
+    }
+    for (const s of subEventsRef.current) {
+      if (!s.dbId || s.disableOutlook) continue;
+      if (!s.initialOutlookEventId && !s.initialCalendarLink) continue;
+      out.push({ id: s.dbId, title: s.title || '' });
+    }
+    return out;
+  };
   const triggerOutlookUpdateNow = async (): Promise<void> => {
     let targetDbId = '';
     let targetTitle = title;
@@ -1953,8 +1978,8 @@ export default function EventCreationPage(): React.ReactElement {
     }
     const ok = await confirmDialog(
       isDe
-        ? 'Der Outlook-Termin aller Teilnehmer wird mit dem zuletzt GESPEICHERTEN Stand aktualisiert. Falls du gerade etwas geändert hast, speichere bitte zuerst und klicke dann erneut hier.'
-        : 'The Outlook appointment of all attendees will be updated with the last SAVED state. If you just changed something, please save first and then click here again.',
+        ? `Der Outlook-Termin von „${targetTitle}" wird bei allen Teilnehmern mit dem zuletzt GESPEICHERTEN Stand aktualisiert. Falls du gerade etwas geändert hast, speichere bitte zuerst und klicke dann erneut hier.\n\nHinweis: Sub-Events haben eigene Termine — die aktualisierst du im jeweiligen Tab oder über „Alle Termine aktualisieren".`
+        : `The Outlook appointment of „${targetTitle}" will be updated for all attendees with the last SAVED state. If you just changed something, please save first and then click here again.\n\nNote: sub-events have their own appointments — update them in their tab or via „Update all appointments".`,
       { confirmLabel: isDe ? 'Jetzt aktualisieren' : 'Update now' },
     );
     if (!ok) return;
@@ -1964,6 +1989,9 @@ export default function EventCreationPage(): React.ReactElement {
       const ctx = (window as any).__dexSpfxContext;
       const svc = new EventService(ctx);
       await svc.queueOutlookEvent('', targetDbId, targetTitle, 'UpdateEvent');
+      setOutlookUpdateDone(isDe
+        ? `Angestoßen für „${targetTitle}" (${new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr). Die Kalender der Teilnehmer aktualisieren sich in Kürze.`
+        : `Triggered for „${targetTitle}" (${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}). Attendees' calendars will refresh shortly.`);
       showAlert(isDe ? 'Outlook-Aktualisierung wurde angestoßen — die Kalender der Teilnehmer aktualisieren sich in Kürze.' : 'Outlook update triggered — attendees will see the refreshed appointment shortly.', { variant: 'success' });
     } catch {
       showAlert(isDe ? 'Aktualisierung fehlgeschlagen — bitte erneut versuchen.' : 'Update failed — please try again.', { variant: 'error' });
@@ -1971,26 +1999,128 @@ export default function EventCreationPage(): React.ReactElement {
       setOutlookUpdateBusy(false);
     }
   };
+  /** v28.28: Haupt-Termin UND alle Sub-Event-Termine in einem Rutsch. */
+  const triggerOutlookUpdateAll = async (): Promise<void> => {
+    const targets = outlookUpdateTargets();
+    if (targets.length === 0) return;
+    const list = targets.map(t => `• ${t.title || '?'}`).join('\n');
+    const ok = await confirmDialog(
+      isDe
+        ? `Alle ${targets.length} Outlook-Termine dieses Events mit dem zuletzt GESPEICHERTEN Stand aktualisieren?\n\n${list}\n\nJede/r Teilnehmer/in bekommt pro Termin, für den sie/er angemeldet ist, eine „Aktualisierter Termin"-Benachrichtigung.`
+        : `Update all ${targets.length} Outlook appointments of this event with the last SAVED state?\n\n${list}\n\nEach attendee receives an „updated meeting" notification per appointment they are registered for.`,
+      { confirmLabel: isDe ? 'Alle aktualisieren' : 'Update all' },
+    );
+    if (!ok) return;
+    setOutlookUpdateBusy(true);
+    let done = 0;
+    let failed = 0;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const ctx = (window as any).__dexSpfxContext;
+      const svc = new EventService(ctx);
+      for (const t of targets) {
+        try { await svc.queueOutlookEvent('', t.id, t.title, 'UpdateEvent'); done += 1; }
+        catch { failed += 1; }
+      }
+    } finally {
+      setOutlookUpdateBusy(false);
+    }
+    const stamp = new Date().toLocaleTimeString(isDe ? 'de-DE' : 'en-GB', { hour: '2-digit', minute: '2-digit' });
+    setOutlookUpdateDone(isDe
+      ? `${done} Termin(e) angestoßen${failed > 0 ? `, ${failed} fehlgeschlagen` : ''} (${stamp} Uhr). Die Kalender der Teilnehmer aktualisieren sich in Kürze.`
+      : `${done} appointment(s) triggered${failed > 0 ? `, ${failed} failed` : ''} (${stamp}). Attendees' calendars will refresh shortly.`);
+    showAlert(
+      isDe ? `${done} Outlook-Termin(e) angestoßen${failed > 0 ? `, ${failed} fehlgeschlagen` : ''}.` : `${done} Outlook appointment(s) triggered${failed > 0 ? `, ${failed} failed` : ''}.`,
+      { variant: failed > 0 ? 'error' : 'success' },
+    );
+  };
+  /**
+   * v28.28: Kompakte Schalter-Zeile für „Was soll automatisch verschickt
+   * werden?". Vorher stand unter jedem Haken ein drei- bis vierzeiliger
+   * Fließtext — auf dem Schirm eine Textwüste, in der man die eigentlichen
+   * Schalter kaum noch fand. Jetzt: fette Bezeichnung, EIN kurzer Satz, alle
+   * Details im Info-Tooltip daneben.
+   */
+  const commToggleRow = (opts: {
+    checked: boolean;
+    onChange: (v: boolean) => void;
+    label: string;
+    short: string;
+    info: React.ReactNode;
+    accent?: string;
+  }): React.ReactElement => (
+    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', padding: '6px 0' }}>
+      <input
+        type="checkbox"
+        checked={opts.checked}
+        onChange={e => opts.onChange(e.target.checked)}
+        style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 2, flexShrink: 0, accentColor: opts.accent || 'var(--dex-green, #86bc25)' }}
+      />
+      <span style={{ fontSize: '0.88rem', minWidth: 0 }}>
+        <strong>{opts.label}</strong>
+        <InfoTooltip text={opts.info} />
+        <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--dex-gray-500)', lineHeight: 1.45, marginTop: 1 }}>
+          {opts.short}
+        </span>
+      </span>
+    </label>
+  );
+
   // Wiederverwendbarer Button-Block für die Outlook-Sektionen (Bild + Text).
   const renderOutlookUpdateButton = (): React.ReactNode => {
     if (!editEvent) return null; // nur beim Bearbeiten sinnvoll (Neu-Event hat noch keinen Termin)
+    // v28.28: Der Kasten war orange umrandet und wurde dadurch als Warnung
+    // („da steht noch was aus") gelesen — obwohl er nur ein dauerhaft
+    // verfügbares Werkzeug ist und nach dem Klick natürlich stehen bleibt.
+    // Jetzt neutral, mit Ziel-Angabe und sichtbarer Erfolgsmeldung.
+    const tabTitle = activeCommTabIdx > 0
+      ? (subEvents[activeCommTabIdx - 1]?.title || (childTermSingular || 'Sub-Event'))
+      : (title || editEvent.title || (isDe ? 'Hauptevent' : 'main event'));
+    const allTargets = outlookUpdateTargets();
+    const showAll = allTargets.length > 1;
     return (
-      <div style={{ marginTop: 14, padding: 10, borderRadius: 8, background: 'rgba(237,139,0,0.07)', border: '1px solid rgba(237,139,0,0.4)' }}>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          disabled={outlookUpdateBusy}
-          onClick={() => { void triggerOutlookUpdateNow(); }}
-          style={{ fontSize: '0.82rem', padding: '7px 14px' }}
-        >
-          {outlookUpdateBusy
-            ? (isDe ? 'Wird aktualisiert…' : 'Updating…')
-            : (isDe ? 'Outlook-Termin jetzt aktualisieren' : 'Update Outlook appointment now')}
-        </button>
-        <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-600)', marginTop: 6, lineHeight: 1.5 }}>
+      <div style={{ marginTop: 14, padding: 12, borderRadius: 8, background: 'var(--dex-gray-50, #f8f9fa)', border: '1px solid var(--dex-gray-200)' }}>
+        <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--dex-gray-800)', marginBottom: 6 }}>
+          {isDe ? 'Outlook-Termin manuell nachschicken (optional)' : 'Re-send the Outlook appointment manually (optional)'}
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            disabled={outlookUpdateBusy}
+            onClick={() => { void triggerOutlookUpdateNow(); }}
+            style={{ fontSize: '0.82rem', padding: '7px 14px' }}
+          >
+            {outlookUpdateBusy
+              ? (isDe ? 'Wird aktualisiert…' : 'Updating…')
+              : (isDe ? `Termin von „${tabTitle}" aktualisieren` : `Update appointment of „${tabTitle}"`)}
+          </button>
+          {showAll && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={outlookUpdateBusy}
+              onClick={() => { void triggerOutlookUpdateAll(); }}
+              style={{ fontSize: '0.82rem', padding: '7px 14px' }}
+            >
+              {isDe
+                ? `Alle ${allTargets.length} Termine aktualisieren`
+                : `Update all ${allTargets.length} appointments`}
+            </button>
+          )}
+        </div>
+        {outlookUpdateDone && (
+          <div style={{
+            marginTop: 8, padding: '6px 10px', borderRadius: 6, fontSize: '0.76rem', fontWeight: 600,
+            background: '#f1f7e8', border: '1px solid var(--dex-green, #86bc25)', color: 'var(--dex-green-dark, #4a7c1f)',
+          }}>
+            ✓ {outlookUpdateDone}
+          </div>
+        )}
+        <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-600)', marginTop: 8, lineHeight: 1.5 }}>
           {isDe
-            ? 'Falls der Outlook-Termin der Teilnehmer noch veraltet ist, klicke hier — der Kalendereintrag wird mit dem zuletzt gespeicherten Stand neu verschickt. Tipp: Wenn du gerade etwas geändert hast, zuerst speichern.'
-            : 'If the attendees’ Outlook appointment is still outdated, click here — the calendar entry is re-sent with the last saved state. Tip: if you just changed something, save first.'}
+            ? <>Nur nötig, wenn der Kalendereintrag der Teilnehmer noch veraltet ist — der Termin wird dann mit dem zuletzt <strong>gespeicherten</strong> Stand neu verschickt. Erst speichern, dann klicken. <strong>Wichtig:</strong> {childTermPlural || 'Sub-Events'} haben eigene Termine; dieser Knopf betrifft nur „{tabTitle}"{showAll ? ' — für alle auf einmal den zweiten Knopf nutzen' : ''}. Der Kasten bleibt dauerhaft stehen, er ist keine Fehlermeldung.</>
+            : <>Only needed if the attendees’ calendar entry is still outdated — the appointment is re-sent with the last <strong>saved</strong> state. Save first, then click. <strong>Important:</strong> sub-events have their own appointments; this button only affects „{tabTitle}"{showAll ? ' — use the second button for all at once' : ''}. This box is always here, it is not an error message.</>}
         </div>
       </div>
     );
@@ -13627,122 +13757,97 @@ export default function EventCreationPage(): React.ReactElement {
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
                     {t('create.notifications.hint')}
                   </p>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginBottom: 8 }}>
-                    <input
-                      type="checkbox"
-                      checked={!disableEmails}
-                      onChange={e => setDisableEmails(!e.target.checked)}
-                      style={{ width: 18, height: 18, cursor: 'pointer' }}
-                    />
-                    <span style={{ fontSize: '0.9rem' }}>
-                      <strong>{t('create.notifications.email')}</strong>
-                      <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>
-                        {t('create.notifications.email.desc')}
-                      </span>
-                    </span>
-                  </label>
+                  {/* v28.28: Zwei klar getrennte Blöcke (E-Mails / Outlook) statt
+                      einer langen Haken-Liste mit Fließtext-Wüste. Details
+                      stecken in den Info-Tooltips neben den Bezeichnungen. */}
+                  <div style={{ background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 10, padding: '10px 14px', marginBottom: 10 }}>
+                  {commToggleRow({
+                    checked: !disableEmails,
+                    onChange: v => setDisableEmails(!v),
+                    label: t('create.notifications.email'),
+                    short: isDe
+                      ? 'An- und Abmelde-Bestätigungen sowie Wartelisten-Mails.'
+                      : 'Registration and cancellation confirmations plus waitlist emails.',
+                    info: t('create.notifications.email.desc'),
+                  })}
                   {/* v19.21/v19.22: granulare Sub-Schalter — einzeln die Anmelde-
                       bzw. Abmelde-Bestätigung abschalten. Ab v19.22 pro Tab
                       (Hauptevent UND Sub-Events), nur wenn E-Mails grundsätzlich
                       aktiv sind (Master an). Der gebundene State spiegelt je nach
                       aktivem Tab den Haupt- oder Sub-Event-Wert. */}
                   {!disableEmails && (
-                    <div style={{ marginLeft: 24, paddingLeft: 12, borderLeft: '3px solid var(--dex-green, #86bc25)', display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 8 }}>
-                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                        <input
-                          type="checkbox"
-                          checked={!disableRegistrationEmail}
-                          onChange={e => setDisableRegistrationEmail(!e.target.checked)}
-                          style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 2, flexShrink: 0 }}
-                        />
-                        <span style={{ fontSize: '0.9rem' }}>
-                          <strong>{isDe ? 'Anmelde-Bestätigung schicken' : 'Send registration confirmation'}</strong>
-                          <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)', lineHeight: 1.4, marginTop: 2 }}>
-                            {isDe
-                              ? 'Wenn aktiv: Teilnehmer bekommen bei der Anmeldung eine Bestätigungs-Mail (und, falls Warteliste aktiv, die Warteliste-Mail). Haken aus = es geht keine Anmelde-Bestätigung raus — die Abmelde-Mail bleibt davon unberührt.'
-                              : 'When active: attendees receive a confirmation email on registration (plus the waitlist email if a waitlist is active). Unchecked = no registration confirmation is sent — the cancellation email is unaffected.'}
-                          </span>
-                        </span>
-                      </label>
-                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
-                        <input
-                          type="checkbox"
-                          checked={!disableCancellationEmail}
-                          onChange={e => setDisableCancellationEmail(!e.target.checked)}
-                          style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 2, flexShrink: 0 }}
-                        />
-                        <span style={{ fontSize: '0.9rem' }}>
-                          <strong>{isDe ? 'Abmelde-Bestätigung schicken' : 'Send cancellation confirmation'}</strong>
-                          <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)', lineHeight: 1.4, marginTop: 2 }}>
-                            {isDe
-                              ? 'Wenn aktiv: Teilnehmer bekommen bei einer Abmeldung eine Bestätigungs-Mail. Haken aus = es geht keine Abmelde-Bestätigung raus (z.B. wenn du Teilnehmer still abmeldest) — die Anmelde-Mail bleibt davon unberührt.'
-                              : 'When active: attendees receive a confirmation email when cancelled. Unchecked = no cancellation confirmation is sent (e.g. when you remove attendees silently) — the registration email is unaffected.'}
-                          </span>
-                        </span>
-                      </label>
+                    <div style={{ marginLeft: 26, paddingLeft: 12, borderLeft: '3px solid var(--dex-green, #86bc25)' }}>
+                      {commToggleRow({
+                        checked: !disableRegistrationEmail,
+                        onChange: v => setDisableRegistrationEmail(!v),
+                        label: isDe ? 'Anmelde-Bestätigung' : 'Registration confirmation',
+                        short: isDe ? 'Mail bei der Anmeldung (inkl. Wartelisten-Mail).' : 'Email on registration (incl. waitlist email).',
+                        info: isDe
+                          ? 'Wenn aktiv: Teilnehmer bekommen bei der Anmeldung eine Bestätigungs-Mail (und, falls Warteliste aktiv, die Warteliste-Mail). Haken aus = es geht keine Anmelde-Bestätigung raus — die Abmelde-Mail bleibt davon unberührt.'
+                          : 'When active: attendees receive a confirmation email on registration (plus the waitlist email if a waitlist is active). Unchecked = no registration confirmation is sent — the cancellation email is unaffected.',
+                      })}
+                      {commToggleRow({
+                        checked: !disableCancellationEmail,
+                        onChange: v => setDisableCancellationEmail(!v),
+                        label: isDe ? 'Abmelde-Bestätigung' : 'Cancellation confirmation',
+                        short: isDe ? 'Mail bei der Abmeldung.' : 'Email on cancellation.',
+                        info: isDe
+                          ? 'Wenn aktiv: Teilnehmer bekommen bei einer Abmeldung eine Bestätigungs-Mail. Haken aus = es geht keine Abmelde-Bestätigung raus (z.B. wenn du Teilnehmer still abmeldest) — die Anmelde-Mail bleibt davon unberührt.'
+                          : 'When active: attendees receive a confirmation email when cancelled. Unchecked = no cancellation confirmation is sent (e.g. when you remove attendees silently) — the registration email is unaffected.',
+                      })}
                     </div>
                   )}
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
-                      checked={!disableOutlook}
-                      onChange={e => setDisableOutlook(!e.target.checked)}
-                      style={{ width: 18, height: 18, cursor: 'pointer' }}
-                    />
-                    <span style={{ fontSize: '0.9rem' }}>
-                      <strong>{t('create.notifications.outlook')}</strong>
-                      <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>
-                        {t('create.notifications.outlook.desc')}
-                      </span>
-                    </span>
-                  </label>
-                  {/* Nur im Edit-Modus: explizite Bestätigung dass Outlook-Termin aktualisiert werden soll */}
-                  {isEditMode && !disableOutlook && (
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', marginLeft: 24, paddingLeft: 12, borderLeft: '3px solid var(--dex-orange, #ed8b00)' }}>
-                      <input
-                        type="checkbox"
-                        checked={triggerOutlookUpdate}
-                        onChange={e => setTriggerOutlookUpdate(e.target.checked)}
-                        style={{ width: 18, height: 18, cursor: 'pointer' }}
-                      />
-                      <span style={{ fontSize: '0.9rem' }}>
-                        <strong>{t('create.notifications.triggerupdate')}</strong>
-                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)', lineHeight: 1.4, marginTop: 2 }}>
-                          {t('create.notifications.triggerupdate.desc')}
-                        </span>
-                      </span>
-                    </label>
-                  )}
+                  </div>
+                  <div style={{ background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 10, padding: '10px 14px', marginBottom: 10 }}>
+                  {commToggleRow({
+                    checked: !disableOutlook,
+                    onChange: v => setDisableOutlook(!v),
+                    label: t('create.notifications.outlook'),
+                    short: isDe
+                      ? 'Kalendereintrag mit Datum, Ort und Infos — bei Abmeldung wieder entfernt.'
+                      : 'Calendar entry with date, location and details — removed again on cancellation.',
+                    info: t('create.notifications.outlook.desc'),
+                  })}
+                  {/* v28.28: Der Haken „Outlook-Termin der Teilnehmer
+                      aktualisieren" ist hier ENTFALLEN. Er war doppelt gemoppelt:
+                      Seit v11.57 fragt die App beim Speichern ohnehin pro
+                      betroffenem Termin (Hauptevent + jedes Sub-Event einzeln),
+                      ob die Teilnehmer eine „Aktualisierter Termin"-Mail bekommen
+                      sollen — und zwar nur dann, wenn sich wirklich etwas
+                      Outlook-Relevantes geändert hat. Ein zusätzlicher Vorab-Haken
+                      an dieser Stelle konnte dem Dialog nur widersprechen. */}
                   {/* v19.23/v19.24: Outlook-Absage = automatische Abmeldung vom
                       Event. Ab v19.24 pro Tab (Hauptevent UND Sub-Events), nur
                       sinnvoll wenn Outlook aktiv ist. Die eigentliche
                       Auto-Abmeldung läuft im Outlook-Absage-Verarbeitungsschritt
                       (Power-Automate-Flow), die App hinterlegt nur den Schalter. */}
                   {!disableOutlook && (
-                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginTop: 8, marginLeft: 24, paddingLeft: 12, borderLeft: '3px solid var(--dex-orange, #ed8b00)' }}>
-                      <input
-                        type="checkbox"
-                        checked={autoDeregisterOnDecline}
-                        onChange={e => setAutoDeregisterOnDecline(e.target.checked)}
-                        style={{ width: 18, height: 18, cursor: 'pointer', marginTop: 2, flexShrink: 0 }}
-                      />
-                      <span style={{ fontSize: '0.9rem' }}>
-                        <strong>{isDe ? 'Outlook-Absage = automatische Abmeldung' : 'Outlook decline = automatic deregistration'}</strong>
-                        <span style={{ display: 'block', fontSize: '0.75rem', color: 'var(--dex-gray-500)', lineHeight: 1.4, marginTop: 2 }}>
-                          {isDe
-                            ? 'Wenn aktiv: Sagt ein Teilnehmer den Outlook-Termin ab, wird er automatisch auch vom Event abgemeldet — der Platz wird frei und die Warteliste rückt nach. Ohne diesen Haken bekommt die Person bei einer Outlook-Absage nur eine Erinnerung, sich bei Bedarf selbst abzumelden. Hinweis: Diese Automatik greift erst, sobald die einmalige Anpassung im Outlook-Absage-Verarbeitungsschritt im Tenant eingerichtet ist.'
-                            : 'When active: if an attendee declines the Outlook invite, they are automatically deregistered from the event — the spot is freed and the waitlist moves up. Without this, a decline only triggers a reminder asking the person to deregister themselves if needed. Note: this automation only takes effect once the one-time change in the Outlook-decline processing step is set up in the tenant.'}
-                        </span>
-                      </span>
-                    </label>
+                    <div style={{ marginLeft: 26, paddingLeft: 12, borderLeft: '3px solid var(--dex-orange, #ed8b00)' }}>
+                      {commToggleRow({
+                        checked: autoDeregisterOnDecline,
+                        onChange: v => setAutoDeregisterOnDecline(v),
+                        label: isDe ? 'Outlook-Absage = Abmeldung' : 'Outlook decline = deregistration',
+                        short: isDe
+                          ? 'Termin abgesagt → Platz wird frei, Warteliste rückt nach.'
+                          : 'Invite declined → the spot is freed, the waitlist moves up.',
+                        accent: 'var(--dex-orange, #ed8b00)',
+                        info: isDe
+                          ? 'Wenn aktiv: Sagt ein Teilnehmer den Outlook-Termin ab, wird er automatisch auch vom Event abgemeldet — der Platz wird frei und die Warteliste rückt nach. Ohne diesen Haken bekommt die Person bei einer Outlook-Absage nur eine Erinnerung, sich bei Bedarf selbst abzumelden. Hinweis: Diese Automatik greift erst, sobald die einmalige Anpassung im Outlook-Absage-Verarbeitungsschritt im Tenant eingerichtet ist.'
+                          : 'When active: if an attendee declines the Outlook invite, they are automatically deregistered from the event — the spot is freed and the waitlist moves up. Without this, a decline only triggers a reminder asking the person to deregister themselves if needed. Note: this automation only takes effect once the one-time change in the Outlook-decline processing step is set up in the tenant.',
+                      })}
+                    </div>
                   )}
+                  </div>
                   {/* inactiveHandling: Verhalten, wenn eine angemeldete Person
                       nicht mehr bei Deloitte arbeitet. 'notify' = Organizer per
                       Mail informieren (Standard), 'autoderegister' = automatisch
                       abmelden (beim Öffnen der App durch einen Organizer). */}
-                  <div style={{ marginTop: 8, marginLeft: 24, paddingLeft: 12, borderLeft: '3px solid var(--dex-orange, #ed8b00)' }}>
-                    <div style={{ fontSize: '0.9rem', fontWeight: 600, marginBottom: 6 }}>
-                      {isDe ? 'Wenn eine angemeldete Person nicht mehr bei Deloitte arbeitet:' : 'If a registered person no longer works at Deloitte:'}
+                  <div style={{ background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 10, padding: '10px 14px' }}>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 600, marginBottom: 6 }}>
+                      {isDe ? 'Person arbeitet nicht mehr bei Deloitte' : 'Person no longer works at Deloitte'}
+                      <InfoTooltip text={isDe
+                        ? 'Die App erkennt beim Öffnen durch einen Organizer, wenn das Deloitte-Konto einer angemeldeten Person nicht mehr aktiv ist. „Organizer informieren" schickt dann eine Hinweis-Mail; „Automatisch abmelden" entfernt die Person direkt aus der Teilnehmerliste (Platz wird frei, Warteliste rückt nach).'
+                        : 'When an organizer opens the app, it detects registered people whose Deloitte account is no longer active. „Notify organizer" sends an info email; „Auto-deregister" removes the person from the attendee list right away (the spot is freed, the waitlist moves up).'} />
                     </div>
                     <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', marginBottom: 6 }}>
                       <input
@@ -13825,9 +13930,19 @@ export default function EventCreationPage(): React.ReactElement {
                   </summary>
                   <div style={{ marginTop: 12 }}>
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12, lineHeight: 1.5 }}>
+                    {/* v28.28: Präzisiert — die Organizer-Kopie ist normalerweise
+                        BCC (unsichtbar), bei EXTERNEN Empfängern steht der
+                        Organizer aber bewusst sichtbar auf CC (v18.74), damit die
+                        externe Person den Ansprechpartner kennt. Die frühere
+                        Formulierung „der Teilnehmer sieht nicht, dass jemand
+                        mitliest" stimmte für diesen Fall nicht. */}
+                    {/* v28.28: Die Organizer-Kopie läuft jetzt durchgehend auf
+                        CC (vorher Bcc bei internen Empfängern) — der Organizer
+                        steht damit sichtbar im Verteiler, „Allen antworten"
+                        landet beim richtigen Ansprechpartner. */}
                     {isDe
-                      ? 'Wenn aktiv, bekommt der Organizer eine versteckte Kopie der Bestätigungs-Mail, die an den Teilnehmer rausgeht — der Teilnehmer sieht nicht, dass jemand mitliest. Praktisch um zu wissen, wer sich gerade an- oder abmeldet. Bei großen Events willst du das vielleicht nicht für jede einzelne Anmeldung — dann kannst du es hier gezielt einschränken (z.B. nur kurz vorm Event, wenn kurzfristige Änderungen wichtig sind).'
-                      : 'When on, the organizer gets a hidden copy of the confirmation email sent to the attendee — the attendee doesn\'t see they were copied. Handy to know who is signing up or off. For large events you might not want this for every single sign-up — you can narrow it down here (e.g. only close to the event when last-minute changes matter).'}
+                      ? <>Wenn aktiv, steht der Organizer bei der Bestätigungs-Mail an den Teilnehmer sichtbar auf <strong>Kopie (Cc)</strong> — praktisch, um zu wissen, wer sich gerade an- oder abmeldet, und der Teilnehmer sieht direkt, wer sein Ansprechpartner ist. Bei großen Events willst du das vielleicht nicht für jede einzelne Anmeldung — dann kannst du es hier gezielt einschränken (z.B. nur kurz vorm Event, wenn kurzfristige Änderungen wichtig sind).</>
+                      : <>When on, the organizer is visibly on <strong>copy (Cc)</strong> of the confirmation email sent to the attendee — handy to know who is signing up or off, and the attendee immediately sees who to contact. For large events you might not want this for every single sign-up — you can narrow it down here (e.g. only close to the event when last-minute changes matter).</>}
                   </p>
 
                   {/* Anmeldung */}
