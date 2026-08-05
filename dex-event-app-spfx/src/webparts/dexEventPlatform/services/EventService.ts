@@ -3452,6 +3452,115 @@ export class EventService {
    * abgemeldete Personen räumt der normale Abmelde-Pfad auf.
    */
   /**
+   * v28.26: Zustand des zentralen Teilnehmer-Registers analysieren.
+   *
+   * Über die Jahre sammeln sich dort zwei Sorten Altlasten:
+   *  - **Dubletten:** mehrere Einträge zur selben E-Mail. Sie entstehen, wenn
+   *    der Lookup vor dem Schreiben scheitert (z.B. der HTTP-500-Fall aus
+   *    v28.25) — dann legt die App einen zweiten Eintrag an, und ab da landen
+   *    Anmeldungen mal im einen, mal im anderen. „Meine Events" zeigt dann je
+   *    nach Treffer nur einen Teil der Events.
+   *  - **Verwaiste Event-Nummern:** Anmeldungen zu Events, die es nicht mehr
+   *    gibt. Beim Löschen eines Events räumt die App das Register NICHT mit
+   *    auf. Harmlos (die Nummer läuft ins Leere), aber Ballast.
+   */
+  public async analyzeParticipantRegistry(validEventNumbers: number[]): Promise<{
+    total: number; duplicateGroups: number; surplusRecords: number; orphanNumbers: number; noEmail: number;
+  }> {
+    const all = await this.fetchAllParticipantsOrThrow();
+    const valid = new Set(validEventNumbers.filter(n => typeof n === 'number' && n > 0));
+    const byEmail: Record<string, SPParticipant[]> = {};
+    let noEmail = 0;
+    let orphanNumbers = 0;
+    for (const p of all) {
+      const em = (p.Email || '').trim().toLowerCase();
+      if (!em) { noEmail += 1; continue; }
+      (byEmail[em] = byEmail[em] || []).push(p);
+      if (valid.size > 0) {
+        const nums = `${p.EventRegistered || ''},${p.EventOnWaitlist || ''}`
+          .split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
+        orphanNumbers += nums.filter(n => !valid.has(n)).length;
+      }
+    }
+    let duplicateGroups = 0;
+    let surplusRecords = 0;
+    Object.keys(byEmail).forEach(em => {
+      const n = byEmail[em].length;
+      if (n > 1) { duplicateGroups += 1; surplusRecords += n - 1; }
+    });
+    return { total: all.length, duplicateGroups, surplusRecords, orphanNumbers, noEmail };
+  }
+
+  /**
+   * v28.26: Dubletten im Teilnehmer-Register zusammenführen.
+   *
+   * Je E-Mail bleibt der ÄLTESTE Eintrag (kleinste Id) stehen und erhält die
+   * VEREINIGUNG aller Event-Nummern; steht dieselbe Nummer bei einem Eintrag
+   * als „angemeldet" und beim anderen als „Warteliste", gewinnt „angemeldet".
+   * Name-Felder werden aus dem ersten nicht-leeren Wert aufgefüllt. Die
+   * überzähligen Einträge werden danach gelöscht. Es gehen also KEINE
+   * Anmelde-Informationen verloren — im Gegenteil, die zusammengeführte Zeile
+   * kennt danach alle Events der Person.
+   */
+  public async mergeDuplicateParticipants(
+    onProgress?: (done: number, total: number) => void,
+  ): Promise<{ groups: number; deleted: number; failed: number }> {
+    const all = await this.fetchAllParticipantsOrThrow();
+    const byEmail: Record<string, SPParticipant[]> = {};
+    for (const p of all) {
+      const em = (p.Email || '').trim().toLowerCase();
+      if (!em) continue;
+      (byEmail[em] = byEmail[em] || []).push(p);
+    }
+    const groups = Object.keys(byEmail).filter(em => byEmail[em].length > 1);
+    let deleted = 0;
+    let failed = 0;
+    let done = 0;
+    const parseNums = (s?: string): string[] => (s || '').split(',').map(x => x.trim()).filter(Boolean);
+    for (const em of groups) {
+      const recs = byEmail[em].slice().sort((a, b) => a.Id - b.Id);
+      const keeper = recs[0];
+      const registered = new Set<string>();
+      const waitlist = new Set<string>();
+      let vorname = '';
+      let nachname = '';
+      for (const r of recs) {
+        parseNums(r.EventRegistered).forEach(n => registered.add(n));
+        parseNums(r.EventOnWaitlist).forEach(n => waitlist.add(n));
+        if (!vorname && (r.Vorname || '').trim()) vorname = (r.Vorname || '').trim();
+        if (!nachname && (r.Nachname || '').trim()) nachname = (r.Nachname || '').trim();
+      }
+      // „Angemeldet" sticht „Warteliste" — dieselbe Nummer nie in beiden Feldern.
+      registered.forEach(n => waitlist.delete(n));
+      try {
+        const m = await this._merge(
+          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items(${keeper.Id})`,
+          {
+            'Vorname': vorname,
+            'Nachname': nachname,
+            'EventRegistered': Array.from(registered).join(','),
+            'EventOnWaitlist': Array.from(waitlist).join(','),
+          },
+        );
+        if (!m.ok) { failed += 1; done += 1; if (onProgress) onProgress(done, groups.length); continue; }
+        for (const r of recs.slice(1)) {
+          try {
+            const resp = await this.context.spHttpClient.post(
+              `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items(${r.Id})`,
+              SPHttpClient.configurations.v1,
+              { headers: { 'IF-MATCH': '*', 'X-HTTP-Method': 'DELETE', 'Accept': 'application/json;odata=nometadata' } },
+            );
+            if (resp.ok) deleted += 1; else failed += 1;
+          } catch { failed += 1; }
+        }
+      } catch { failed += 1; }
+      done += 1;
+      if (onProgress) onProgress(done, groups.length);
+    }
+    return { groups: groups.length, deleted, failed };
+  }
+
+  /**
    * v28.25: Wie `getAllParticipants`, wirft aber bei einem HTTP-Fehler, statt
    * still eine unvollständige Liste zu liefern. Für Abläufe, die aus dem
    * Ergebnis auf „Person ist unbekannt" schließen (Register-Abgleich).

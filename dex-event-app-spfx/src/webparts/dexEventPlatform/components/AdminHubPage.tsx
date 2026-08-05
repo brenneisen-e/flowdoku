@@ -54,6 +54,10 @@ export default function AdminHubPage(): React.ReactElement {
   const [busy, setBusy] = React.useState<'' | 'arch' | 'del' | 'fixcols' | 'restoredesc' | 'reseed' | 'weekly' | 'kpi'>('');
   // v26.63: zuletzt neu berechnete Events-Zahl (für die Erfolgs-Anzeige).
   const [kpiResult, setKpiResult] = React.useState<number | null>(null);
+  // v28.26: Teilnehmer-Register bereinigen (Dubletten zusammenführen).
+  const [regCleanBusy, setRegCleanBusy] = React.useState(false);
+  const [regCleanResult, setRegCleanResult] = React.useState<string | null>(null);
+  const [regCleanIsError, setRegCleanIsError] = React.useState(false);
   // v24.33: Fortschritt für das globale „Spalten fixen".
   const [fixProgress, setFixProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
   const [restoreProgress, setRestoreProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
@@ -722,6 +726,84 @@ export default function AdminHubPage(): React.ReactElement {
           )}
           <button className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }} disabled={busy !== ''} onClick={() => { void doFixAllColumns(); }}>
             {busy === 'fixcols' ? (isDe ? 'Wird geprüft…' : 'Checking…') : (isDe ? 'Jetzt alle prüfen' : 'Check all now')}
+          </button>
+        </div>
+
+        {/* v28.26: Teilnehmer-Register bereinigen — Dubletten (mehrere Einträge
+            zur selben E-Mail) zusammenführen. Sie entstehen, wenn der Lookup vor
+            dem Schreiben scheitert (siehe v28.25): Ab da landen Anmeldungen mal
+            im einen, mal im anderen Eintrag, und „Meine Events" zeigt je nach
+            Treffer nur einen Teil der Events. Site-weit, daher hier statt im
+            Organizer Center. */}
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <span style={{ color: 'var(--dex-green, #86bc25)', display: 'inline-flex' }}><Users size={18} /></span>
+            <span style={{ fontWeight: 700 }}>{isDe ? 'Teilnehmer-Register bereinigen' : 'Clean up participant registry'}</span>
+          </div>
+          <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
+            {isDe
+              ? 'Sucht in der zentralen Teilnehmer-Übersicht (DEX_Participants) nach Dubletten — mehrere Einträge zur selben E-Mail — und führt sie zusammen: Der älteste Eintrag bleibt und bekommt ALLE Event-Nummern, die überzähligen Zeilen werden gelöscht. Es geht nichts verloren; wessen Anmeldungen auf zwei Einträge verteilt waren, sieht danach wieder alle Events unter „Meine Events". Prüft zuerst und fragt vor dem Zusammenführen nach.'
+              : 'Searches the central participant registry (DEX_Participants) for duplicates — several records for the same email — and merges them: the oldest record is kept and receives ALL event numbers, the surplus rows are deleted. Nothing is lost; anyone whose registrations were split across two records sees all their events in „My events" again. Checks first and asks before merging.'}
+          </p>
+          {regCleanResult && (
+            <div style={{
+              margin: '0 0 10px', padding: '8px 12px', borderRadius: 8, fontSize: '0.8rem', lineHeight: 1.45,
+              background: regCleanIsError ? 'rgba(218,41,28,0.07)' : '#f1f7e8',
+              border: `1px solid ${regCleanIsError ? 'var(--dex-red, #c00)' : 'var(--dex-green, #86bc25)'}`,
+              color: regCleanIsError ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)',
+              fontWeight: 600,
+            }}>
+              {regCleanResult}
+            </div>
+          )}
+          <button
+            className="btn btn-primary"
+            style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%' }}
+            disabled={regCleanBusy || busy !== '' || !eventServiceRef}
+            onClick={() => {
+              (async () => {
+                if (!eventServiceRef) return;
+                setRegCleanBusy(true);
+                setRegCleanResult(null);
+                setRegCleanIsError(false);
+                try {
+                  const validNumbers = allEvents
+                    .map(e => e.eventNumber)
+                    .filter((n): n is number => typeof n === 'number' && n > 0);
+                  const info = await eventServiceRef.analyzeParticipantRegistry(validNumbers);
+                  const orphanNote = info.orphanNumbers > 0
+                    ? (isDe
+                      ? ` ${info.orphanNumbers} Verweis(e) zeigen auf gelöschte Events — wirkungslos, aber harmlos.`
+                      : ` ${info.orphanNumbers} reference(s) point to deleted events — ineffective but harmless.`)
+                    : '';
+                  if (info.duplicateGroups === 0) {
+                    setRegCleanResult(isDe
+                      ? `Keine Dubletten gefunden (${info.total} Einträge geprüft).${orphanNote}${info.noEmail > 0 ? ` ${info.noEmail} Eintrag/Einträge ohne E-Mail-Adresse.` : ''}`
+                      : `No duplicates found (${info.total} records checked).${orphanNote}${info.noEmail > 0 ? ` ${info.noEmail} record(s) without an email address.` : ''}`);
+                    setRegCleanBusy(false);
+                    return;
+                  }
+                  const ok = await confirmDialog(isDe
+                    ? `${info.duplicateGroups} Person(en) haben mehrere Einträge im Teilnehmer-Register (${info.surplusRecords} überzählige Zeile(n) von ${info.total} insgesamt).\n\nJetzt zusammenführen? Je Person bleibt der älteste Eintrag und erhält ALLE Event-Nummern der Dubletten; die überzähligen Zeilen werden gelöscht. Anmeldungen gehen dabei nicht verloren.${orphanNote ? `\n\nHinweis:${orphanNote}` : ''}`
+                    : `${info.duplicateGroups} person(s) have multiple records in the participant registry (${info.surplusRecords} surplus row(s) out of ${info.total} total).\n\nMerge now? Per person the oldest record is kept and receives ALL event numbers; the surplus rows are deleted. No registrations are lost.${orphanNote ? `\n\nNote:${orphanNote}` : ''}`,
+                    { confirmLabel: isDe ? 'Zusammenführen' : 'Merge' });
+                  if (!ok) { setRegCleanBusy(false); return; }
+                  const r = await eventServiceRef.mergeDuplicateParticipants();
+                  setRegCleanIsError(r.failed > 0);
+                  setRegCleanResult(isDe
+                    ? `${r.groups} Person(en) zusammengeführt, ${r.deleted} überzählige Zeile(n) entfernt${r.failed > 0 ? `, ${r.failed} fehlgeschlagen` : ''}.`
+                    : `${r.groups} person(s) merged, ${r.deleted} surplus row(s) removed${r.failed > 0 ? `, ${r.failed} failed` : ''}.`);
+                } catch (err) {
+                  setRegCleanIsError(true);
+                  setRegCleanResult((isDe ? 'Fehler: ' : 'Error: ') + (err instanceof Error ? err.message : String(err || '')).slice(0, 300));
+                }
+                setRegCleanBusy(false);
+              })().catch(() => { /* */ });
+            }}
+          >
+            {regCleanBusy
+              ? (isDe ? 'Wird geprüft…' : 'Checking…')
+              : (isDe ? 'Register prüfen & bereinigen' : 'Check & clean registry')}
           </button>
         </div>
 
