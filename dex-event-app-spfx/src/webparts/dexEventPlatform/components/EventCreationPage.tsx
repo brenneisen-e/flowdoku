@@ -1191,6 +1191,13 @@ export default function EventCreationPage(): React.ReactElement {
   // ImageCropModal wie das Event-Bild). Ziel = welches Logo gerade zugeschnitten
   // wird ('email' oder 'outlook').
   const [logoCropTarget, setLogoCropTarget] = React.useState<'email' | 'outlook' | null>(null);
+  // v28.30: Merker, ob das aktuell gesetzte Kopfbild per „Event-Foto
+  // uebernehmen" entstanden ist. Nur fuer die Optik des Knopfs (gruen + Haken =
+  // „ist uebernommen"). Bewusst NICHT persistiert: nach dem Neuladen zeigt die
+  // Vorschau darunter ohnehin das echte Bild, und ein zweiter Klick auf den
+  // Knopf ist folgenlos (er setzt dasselbe Bild noch einmal).
+  const [emailLogoFromPhoto, setEmailLogoFromPhoto] = React.useState(false);
+  const [outlookLogoFromPhoto, setOutlookLogoFromPhoto] = React.useState(false);
   // v27.11: Zuschneiden eines Sub-Event-Bildes — Index des Sub-Events in
   // `subEvents`, dessen Bild gerade im ImageCropModal offen ist (null = zu).
   const [subImageCropIdx, setSubImageCropIdx] = React.useState<number | null>(null);
@@ -1747,6 +1754,10 @@ export default function EventCreationPage(): React.ReactElement {
     initialStartDate?: string;
     initialEndDate?: string;
     initialOutlookBody?: string;
+    /** v28.30: Kopfbild des Outlook-Termins beim Mount. Ohne diesen Snapshot
+     *  konnte der Save-Detektor eine reine Bild-Änderung nicht erkennen — das
+     *  „Outlook-Termin aktualisieren?"-Modal bot dann nur das Hauptevent an. */
+    initialOutlookLogoBase64?: string;
     /** v15.0 (legacy, ungenutzt ab v15.3): Inheritance-Flags für
      *  pro-Sub-Event-Tabs. Mit v15.3 sind Sub-Events vollwertige Events
      *  mit eigener Konfiguration — Inherit-Flags wurden ersatzlos
@@ -1892,6 +1903,11 @@ export default function EventCreationPage(): React.ReactElement {
       initialStartDate: k.startDate || '',
       initialEndDate: k.endDate || '',
       initialOutlookBody: k.outlookBody || '',
+      // v28.30: Kopfbild-Snapshot (gleicher Piggyback-Key wie beim Hauptevent).
+      initialOutlookLogoBase64: ((): string => {
+        if (!k.emailTemplateOverrides) return '';
+        try { const o = JSON.parse(k.emailTemplateOverrides); return (o && o._outlookLogo) || ''; } catch { return ''; }
+      })(),
       customFields: (k.eventSpecificFields || []).map(f => ({
         id: f.id,
         label: f.label,
@@ -2233,7 +2249,14 @@ export default function EventCreationPage(): React.ReactElement {
   // Werten verglichen — Aenderung löst das Update-Confirm-Modal aus.
   // Im Ref, weil wir das einmal beim Mount fixieren und nicht bei Re-Renders
   // neu setzen wollen.
-  const initialOutlookSnapshot = React.useRef<{ title: string; startDate: string; endDate: string; outlookBody: string; outlookLocation: string; outlookSubject: string; outlookStart: string; outlookEnd: string; organizers: string }>({
+  const initialOutlookSnapshot = React.useRef<{ title: string; startDate: string; endDate: string; outlookBody: string; outlookLocation: string; outlookSubject: string; outlookStart: string; outlookEnd: string; organizers: string; outlookLogo: string }>({
+    // v28.30: Kopfbild des Outlook-Termins in den Snapshot. Ein Bildwechsel
+    // ändert weder den rohen Termin-Text noch das Layout — ohne diesen
+    // Vergleich blieb er für den Save-Detektor unsichtbar.
+    outlookLogo: ((): string => {
+      if (!editEvent?.emailTemplateOverrides) return '';
+      try { const o = JSON.parse(editEvent.emailTemplateOverrides); return (o && o._outlookLogo) || ''; } catch { return ''; }
+    })(),
     // v22.48: Organizer-Namen in den Snapshot — eine Organizer-Änderung ändert
     // den Outlook-Standardtext („wendet euch bitte an …") und soll daher das
     // Outlook-Update-Modal öffnen.
@@ -2267,7 +2290,7 @@ export default function EventCreationPage(): React.ReactElement {
     kind: 'top' | 'sub';
     eventId: string;
     title: string;
-    changedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'location' | 'subject' | 'layout' | 'organizer'>;
+    changedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'location' | 'subject' | 'layout' | 'organizer' | 'logo'>;
     /** v11.68: Sub-Event hat noch keinen Outlook-Termin (kein CalendarLink in
      *  DEX_Events). Body-/Titel-Change wird beim Save in DEX_Events
      *  persistiert, aber es kann KEIN UpdateEvent gequeuet werden — es gibt
@@ -5561,12 +5584,20 @@ export default function EventCreationPage(): React.ReactElement {
     const layoutChanged = headerImageLayout.width !== initLayout.width
       || headerImageLayout.paddingV !== initLayout.paddingV
       || headerImageLayout.paddingH !== initLayout.paddingH;
-    const topChangedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'location' | 'subject' | 'layout' | 'organizer'> = [];
+    // v28.30: Kopfbild-Wechsel erkennen. Das Bild steckt weder im rohen
+    // Termin-Text (es wird erst beim Wrappen als {{ORB_URL}} eingesetzt) noch
+    // im Layout — eine reine Bild-Änderung war für den Detektor deshalb
+    // unsichtbar, und das Update-Modal bot nur Events an, bei denen zufällig
+    // noch etwas anderes anders war.
+    const curTopLogo = resolveTopLevelCommState().outlookLogoBase64 || '';
+    const topLogoChanged = curTopLogo !== (snap.outlookLogo || '');
+    const topChangedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'location' | 'subject' | 'layout' | 'organizer' | 'logo'> = [];
     if (currentTitle !== (snap.title || '')) topChangedFields.push('title');
     if (!sameInstant(currentStart, snap.startDate || '')) topChangedFields.push('startDate');
     if (!sameInstant(currentEnd, snap.endDate || '')) topChangedFields.push('endDate');
     if (currentStripped !== initialStripped) topChangedFields.push('outlookBody');
     if (layoutChanged) topChangedFields.push('layout');
+    if (topLogoChanged) topChangedFields.push('logo');
     // v22.48: Organizer-Änderung. Der Outlook-Standardtext enthält die
     // Organizer-Namen („wendet euch bitte an …"). Solange der Text NICHT
     // individuell überschrieben ist (Body leer = Default), ändert eine
@@ -5616,7 +5647,13 @@ export default function EventCreationPage(): React.ReactElement {
       const initBodyStripped = stripOutlookWrapper(s.initialOutlookBody || '');
       const curBodyStripped = (s.outlookBody || '');
       const hasOutlookEvId = !!s.initialOutlookEventId || !!s.initialCalendarLink;
-      const subChangedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'layout'> = [];
+      // v28.30: Kopfbild pro Sub-Event vergleichen — und zwar das WIRKSAME.
+      // Seit v28.29 erbt ein Sub-Event ohne eigenes Bild das des Hauptevents;
+      // wechselt dort das Bild, ändert sich also auch der Sub-Event-Termin,
+      // obwohl im Sub-Draft selbst nichts steht.
+      const initSubLogo = s.initialOutlookLogoBase64 || '';
+      const curSubLogo = s.outlookLogoBase64 || curTopLogo;
+      const subChangedFields: Array<'title' | 'startDate' | 'endDate' | 'outlookBody' | 'layout' | 'logo'> = [];
       if ((s.title || '') !== initTitle) subChangedFields.push('title');
       // v11.64: auch hier semantischer Vergleich — gleiche Falle wie oben.
       if (!sameInstant(s.startDate || '', initStart)) subChangedFields.push('startDate');
@@ -5626,6 +5663,7 @@ export default function EventCreationPage(): React.ReactElement {
       // Sub-Event-Outlook-Termine (gleicher Hero-Bild-Kopf) — als eigenes
       // „layout"-Feld werten, damit das Update-Modal sie mit auflistet.
       if (layoutChanged) subChangedFields.push('layout');
+      if (curSubLogo !== initSubLogo) subChangedFields.push('logo');
       // v11.66: Debug-Log für jeden Sub-Event, damit wir in der Browser-
       // Konsole nachvollziehen können, warum das Modal manchmal nicht
       // erscheint. v11.67: JSON.stringify damit der Browser die Werte
@@ -14162,15 +14200,6 @@ export default function EventCreationPage(): React.ReactElement {
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 8 }}>
                     {t('create.eventlogo.mail.hint')}
                   </p>
-                  {emailLogoPreview && (
-                    <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <img src={emailLogoPreview} alt="Event-Logo für Mails" style={{ maxWidth: 220, maxHeight: 140, borderRadius: 4 }} />
-                      <button className="btn btn-secondary" style={{ fontSize: '0.7rem', padding: '2px 8px' }}
-                        onClick={() => setLogoCropTarget('email')}>{isDe ? 'Zuschneiden' : 'Crop'}</button>
-                      <button className="btn btn-secondary" style={{ fontSize: '0.7rem', padding: '2px 8px', color: 'var(--dex-red, #c00)' }}
-                        onClick={() => setEmailLogoPreview('')}>{t('create.eventlogo.remove')}</button>
-                    </div>
-                  )}
                   <label style={{
                     display: 'inline-flex', alignItems: 'center', gap: 8,
                     padding: '8px 16px', borderRadius: 'var(--dex-radius)',
@@ -14191,7 +14220,7 @@ export default function EventCreationPage(): React.ReactElement {
                       if (!ok) { e.target.value = ''; return; }
                       const compressed = await compressImage(file, 600, 0.9);
                       const reader = new FileReader();
-                      reader.onload = (ev) => setEmailLogoPreview(ev.target?.result as string || '');
+                      reader.onload = (ev) => { setEmailLogoPreview(ev.target?.result as string || ''); setEmailLogoFromPhoto(false); };
                       reader.readAsDataURL(compressed);
                     }} />
                   </label>
@@ -14204,11 +14233,30 @@ export default function EventCreationPage(): React.ReactElement {
                   {(imagePreview || imageFile) && (
                     <button
                       type="button"
-                      onClick={() => { void (async () => { const b = await applyEventPhotoToLogo(setEmailLogoPreview); await offerLogoToSubEvents('email', b); })(); }}
-                      style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 'var(--dex-radius)', border: '1px solid var(--dex-gray-300)', background: '#fff', color: 'var(--dex-gray-700)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}
+                      onClick={() => { void (async () => { const b = await applyEventPhotoToLogo(setEmailLogoPreview); if (b) setEmailLogoFromPhoto(true); await offerLogoToSubEvents('email', b); })(); }}
+                      style={{
+                        marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px',
+                        borderRadius: 'var(--dex-radius)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
+                        border: emailLogoFromPhoto ? '1.5px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-300)',
+                        background: emailLogoFromPhoto ? 'rgba(134,188,37,0.12)' : '#fff',
+                        color: emailLogoFromPhoto ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)',
+                      }}
                     >
-                      <Icon iconName="Photo2" style={{ fontSize: 14 }} /> {isDe ? 'Event-Foto \u00fcbernehmen' : 'Copy event photo here'}
+                      {emailLogoFromPhoto
+                        ? <><Check size={14} /> {isDe ? 'Event-Foto \u00fcbernommen' : 'Event photo applied'}</>
+                        : <><Icon iconName="Photo2" style={{ fontSize: 14 }} /> {isDe ? 'Event-Foto \u00fcbernehmen' : 'Copy event photo here'}</>}
                     </button>
+                  )}
+                  {/* v28.30: Zuschneiden/Entfernen sitzen jetzt hier statt in einer
+                      eigenen Zeile mit zweitem Vorschaubild — das Bild stand dadurch
+                      doppelt auf dem Schirm (Thumbnail oben, Groessen-Vorschau unten). */}
+                  {emailLogoPreview && (
+                    <>
+                      <button type="button" className="btn btn-secondary" style={{ marginLeft: 8, fontSize: '0.78rem', padding: '7px 12px' }}
+                        onClick={() => setLogoCropTarget('email')}>{isDe ? 'Zuschneiden' : 'Crop'}</button>
+                      <button type="button" className="btn btn-secondary" style={{ marginLeft: 8, fontSize: '0.78rem', padding: '7px 12px', color: 'var(--dex-red, #c00)' }}
+                        onClick={() => { setEmailLogoPreview(''); setEmailLogoFromPhoto(false); }}>{t('create.eventlogo.remove')}</button>
+                    </>
                   )}
                   {/* v28.29: zeigt das TATSÄCHLICH verwendete Kopfbild (eigenes /
                       vom Hauptevent geerbt / Standardlogo) statt blind das Event-Foto. */}
@@ -14232,15 +14280,6 @@ export default function EventCreationPage(): React.ReactElement {
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginBottom: 8 }}>
                     {t('create.outlooklogo.hint')}
                   </p>
-                  {outlookLogoPreview && (
-                    <div style={{ marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <img src={outlookLogoPreview} alt="Event-Logo für Outlook" style={{ maxWidth: 220, maxHeight: 140, borderRadius: 4 }} />
-                      <button className="btn btn-secondary" style={{ fontSize: '0.7rem', padding: '2px 8px' }}
-                        onClick={() => setLogoCropTarget('outlook')}>{isDe ? 'Zuschneiden' : 'Crop'}</button>
-                      <button className="btn btn-secondary" style={{ fontSize: '0.7rem', padding: '2px 8px', color: 'var(--dex-red, #c00)' }}
-                        onClick={() => setOutlookLogoPreview('')}>{t('create.eventlogo.remove')}</button>
-                    </div>
-                  )}
                   <label style={{
                     display: 'inline-flex', alignItems: 'center', gap: 8,
                     padding: '8px 16px', borderRadius: 'var(--dex-radius)',
@@ -14257,7 +14296,7 @@ export default function EventCreationPage(): React.ReactElement {
                       if (!ok) { e.target.value = ''; return; }
                       const compressed = await compressImage(file, 600, 0.9);
                       const reader = new FileReader();
-                      reader.onload = (ev) => setOutlookLogoPreview(ev.target?.result as string || '');
+                      reader.onload = (ev) => { setOutlookLogoPreview(ev.target?.result as string || ''); setOutlookLogoFromPhoto(false); };
                       reader.readAsDataURL(compressed);
                     }} />
                   </label>
@@ -14269,11 +14308,30 @@ export default function EventCreationPage(): React.ReactElement {
                   {(imagePreview || imageFile) && (
                     <button
                       type="button"
-                      onClick={() => { void (async () => { const b = await applyEventPhotoToLogo(setOutlookLogoPreview); await offerLogoToSubEvents('outlook', b); })(); }}
-                      style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 'var(--dex-radius)', border: '1px solid var(--dex-gray-300)', background: '#fff', color: 'var(--dex-gray-700)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}
+                      onClick={() => { void (async () => { const b = await applyEventPhotoToLogo(setOutlookLogoPreview); if (b) setOutlookLogoFromPhoto(true); await offerLogoToSubEvents('outlook', b); })(); }}
+                      style={{
+                        marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px',
+                        borderRadius: 'var(--dex-radius)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer',
+                        border: outlookLogoFromPhoto ? '1.5px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-300)',
+                        background: outlookLogoFromPhoto ? 'rgba(134,188,37,0.12)' : '#fff',
+                        color: outlookLogoFromPhoto ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)',
+                      }}
                     >
-                      <Icon iconName="Photo2" style={{ fontSize: 14 }} /> {isDe ? 'Event-Foto \u00fcbernehmen' : 'Copy event photo here'}
+                      {outlookLogoFromPhoto
+                        ? <><Check size={14} /> {isDe ? 'Event-Foto \u00fcbernommen' : 'Event photo applied'}</>
+                        : <><Icon iconName="Photo2" style={{ fontSize: 14 }} /> {isDe ? 'Event-Foto \u00fcbernehmen' : 'Copy event photo here'}</>}
                     </button>
+                  )}
+                  {/* v28.30: Zuschneiden/Entfernen sitzen jetzt hier statt in einer
+                      eigenen Zeile mit zweitem Vorschaubild — das Bild stand dadurch
+                      doppelt auf dem Schirm (Thumbnail oben, Groessen-Vorschau unten). */}
+                  {outlookLogoPreview && (
+                    <>
+                      <button type="button" className="btn btn-secondary" style={{ marginLeft: 8, fontSize: '0.78rem', padding: '7px 12px' }}
+                        onClick={() => setLogoCropTarget('outlook')}>{isDe ? 'Zuschneiden' : 'Crop'}</button>
+                      <button type="button" className="btn btn-secondary" style={{ marginLeft: 8, fontSize: '0.78rem', padding: '7px 12px', color: 'var(--dex-red, #c00)' }}
+                        onClick={() => { setOutlookLogoPreview(''); setOutlookLogoFromPhoto(false); }}>{t('create.eventlogo.remove')}</button>
+                    </>
                   )}
                   {/* v27.2: Größensteuerung + Vorschau auch hier in Schritt 24. */}
                   {/* v28.29: siehe Schritt 23 — echte statt geratener Vorschau. */}
@@ -16350,7 +16408,7 @@ export default function EventCreationPage(): React.ReactElement {
             }}>
               {outlookConfirmItems.map((it, idx) => {
                 const isLast = idx === outlookConfirmItems.length - 1;
-                const fieldLabelMap: Record<'title'|'startDate'|'endDate'|'outlookBody'|'location'|'subject'|'layout'|'organizer', { de: string; en: string }> = {
+                const fieldLabelMap: Record<'title'|'startDate'|'endDate'|'outlookBody'|'location'|'subject'|'layout'|'organizer'|'logo', { de: string; en: string }> = {
                   title: { de: 'Titel', en: 'Title' },
                   startDate: { de: 'Startzeit', en: 'Start time' },
                   endDate: { de: 'Endzeit', en: 'End time' },
@@ -16359,6 +16417,7 @@ export default function EventCreationPage(): React.ReactElement {
                   subject: { de: 'Betreff', en: 'Subject' },
                   layout: { de: 'Kopfbild (Größe/Abstand)', en: 'Header image (size/spacing)' },
                   organizer: { de: 'Organizer (im Termin-Text)', en: 'Organizer (in calendar body)' },
+                  logo: { de: 'Kopfbild', en: 'Header image' },
                 };
                 const changedLabels = it.changedFields.map(f => isDe ? fieldLabelMap[f].de : fieldLabelMap[f].en).join(', ');
                 const checked = !!outlookConfirmChecks[it.eventId];
