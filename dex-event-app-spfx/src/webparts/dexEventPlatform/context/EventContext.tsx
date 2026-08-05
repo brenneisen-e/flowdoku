@@ -201,6 +201,27 @@ export function collectCcEmailsFromFields(
   return out.join(';');
 }
 
+/**
+ * v28.28: Zwei CC-Listen (Semikolon-getrennt) zusammenführen — ohne Dubletten
+ * und ohne die Empfängeradresse selbst. Gebraucht, seit die Organizer-
+ * Mitlese-Kopie auf CC statt BCC läuft und sich damit eine Liste mit den
+ * CC-Feldern der Anmeldung teilt.
+ */
+export function mergeCcLists(a: string | undefined, b: string | undefined, excludeEmail?: string): string | undefined {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const exclude = (excludeEmail || '').trim().toLowerCase();
+  for (const part of [a || '', b || '']) {
+    for (const em of part.split(';').map(s => s.trim()).filter(Boolean)) {
+      const lc = em.toLowerCase();
+      if (lc === exclude || seen.has(lc)) continue;
+      seen.add(lc);
+      out.push(em);
+    }
+  }
+  return out.length ? out.join(';') : undefined;
+}
+
 // v19.33: SP-Spaltennamen → lesbare Labels fürs Event-Audit-Log.
 const EVENT_AUDIT_LABELS: Record<string, string> = {
   Title: 'Titel', Description: 'Beschreibung', Location: 'Ort', LocationAddress: 'Adresse',
@@ -1899,14 +1920,18 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // v19.21: disableRegistrationEmail = nur die Anmelde-Bestätigung
       // unterdrücken (granulares Sub-Häkchen unter dem Master „E-Mails").
       if (!event.disableEmails && !event.disableRegistrationEmail && !suppressParentNotifications && !opts?.suppressMail) {
-        // v8.5: Organizer-BCC-Modus auswerten. Bei 'always' immer BCC,
+        // v8.5: Organizer-Mitlese-Modus auswerten. Bei 'always' immer,
         // bei 'fromDate' nur wenn das konfigurierte Datum bereits erreicht
-        // ist, bei 'never'/undefined keinen BCC.
-        let bcc: string | undefined;
+        // ist, bei 'never'/undefined gar nicht.
+        // v28.28: Die Kopie geht jetzt auf CC statt BCC — der Organizer soll
+        // für die Teilnehmer:innen SICHTBAR mit im Verteiler stehen (bewusste
+        // Produktentscheidung: Transparenz, wer die Anmeldung betreut, und
+        // „Allen antworten" landet direkt beim richtigen Ansprechpartner).
+        let orgCopyCc = '';
         const mode = event.notifyOrgRegisterMode || 'never';
         if (mode === 'always' || (mode === 'fromDate' && event.notifyOrgRegisterFromDate && new Date() >= new Date(event.notifyOrgRegisterFromDate))) {
           const orgEmails = (event.organizerEmails || []).filter(Boolean);
-          if (orgEmails.length > 0) bcc = orgEmails.join(';');
+          if (orgEmails.length > 0) orgCopyCc = orgEmails.join(';');
         }
         // v9.22: Externe Mail-Adresse erkennen — kein Deloitte-Postfach.
         // v18.74: Bei externen Empfängern wird die Bestätigungsmail jetzt
@@ -2018,7 +2043,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           // steht auch der/die Anmelder:in im An-Feld — nicht zusätzlich auf CC).
           const toSet = new Set(finalRecipient.split(';').map(s => s.trim().toLowerCase()).filter(Boolean));
           // v18.74: externalCcExtra (Organizer bei externer Anmeldung) mitmergen.
-          for (const part of [ccOwn, opts?.extraCc || '', externalCcExtra]) {
+          // v28.28: orgCopyCc = Organizer-Mitlese-Kopie (früher BCC).
+          for (const part of [ccOwn, opts?.extraCc || '', externalCcExtra, orgCopyCc]) {
             for (const e of part.split(';').map(s => s.trim()).filter(Boolean)) {
               const lc = e.toLowerCase();
               if (!toSet.has(lc) && !seen.has(lc)) { seen.add(lc); out.push(e); }
@@ -2029,7 +2055,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         const ccFromFields = ccMerged || undefined;
         eventService.queueEmail(
           finalSubject, finalRecipient, finalRecipientName, finalBody,
-          templateType, event.title, eventId, ccFromFields, bcc,
+          templateType, event.title, eventId, ccFromFields, undefined,
           undefined,
           // v26.71: KEIN Anhang mehr — die Deloitte-Mail-Flow-Regel blockt
           // Power-Automate-Mails mit Anhang (NDR). Der .eml-Entwurf wird im
@@ -3201,13 +3227,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             } else {
               emailData = cancellationEmail(currentUserFirstName, event.title);
             }
-            // v8.5: Organizer-BCC bei Abmeldung auswerten. 'always' = immer,
+            // v8.5: Organizer-Mitlesen bei Abmeldung auswerten. 'always' = immer,
             // 'afterDeadline' = nur wenn lastDeregisterDate ueberschritten ist.
-            let bcc: string | undefined;
+            // v28.28: als CC statt BCC (siehe Anmelde-Pfad).
+            let orgCopyCc = '';
             const mode = event.notifyOrgCancelMode || 'never';
             if (mode === 'always' || (mode === 'afterDeadline' && event.lastDeregisterDate && new Date() > new Date(event.lastDeregisterDate))) {
               const orgEmails = (event.organizerEmails || []).filter(Boolean);
-              if (orgEmails.length > 0) bcc = orgEmails.join(';');
+              if (orgEmails.length > 0) orgCopyCc = orgEmails.join(';');
             }
             // v18.41: People-Picker-Felder mit „CC bei Mail" → ausgewählte
             // Person(en) auch bei der Abmelde-Mail auf CC (nicht im Outlook-Termin).
@@ -3234,17 +3261,17 @@ export function EventProvider(props: { context: WebPartContext; children: React.
               }
               const seen = new Set<string>();
               const merged: string[] = [];
-              for (const part of [ownCc, parentCc]) {
+              for (const part of [ownCc, parentCc, orgCopyCc]) {
                 for (const em of part.split(';').map(s => s.trim()).filter(Boolean)) {
                   const lc = em.toLowerCase();
                   if (lc !== (currentUserEmail || '').toLowerCase() && !seen.has(lc)) { seen.add(lc); merged.push(em); }
                 }
               }
               cancelCc = merged.length ? merged.join(';') : undefined;
-            } catch { cancelCc = undefined; }
+            } catch { cancelCc = orgCopyCc || undefined; }
             const emailOk = await eventService.queueEmail(
               emailData.subject, currentUserEmail, currentUserName, emailData.body,
-              'Abmeldung', event.title, eventId, cancelCc, bcc
+              'Abmeldung', event.title, eventId, cancelCc, undefined
             );
             if (!emailOk) console.warn('[DEX] queueEmail for cancellation returned false');
           } catch (err) { console.warn('[DEX] queueEmail for cancellation failed:', err); }
@@ -3399,11 +3426,12 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           } else {
             emailData = cancellationEmail(cancelledFirst, event.title);
           }
-          let bcc: string | undefined;
+          // v28.28: Organizer-Mitlese-Kopie als CC statt BCC (s.o.).
+          let orgCopyCc = '';
           const mode = event.notifyOrgCancelMode || 'never';
           if (mode === 'always' || (mode === 'afterDeadline' && event.lastDeregisterDate && new Date() > new Date(event.lastDeregisterDate))) {
             const orgEmails = (event.organizerEmails || []).filter(Boolean);
-            if (orgEmails.length > 0) bcc = orgEmails.join(';');
+            if (orgEmails.length > 0) orgCopyCc = orgEmails.join(';');
           }
           // v18.41: CC-Felder der abgemeldeten Person berücksichtigen.
           let memberCc: string | undefined;
@@ -3411,12 +3439,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
             const cd = memberRegistration.CustomData ? JSON.parse(memberRegistration.CustomData) as Record<string, string> : {};
             memberCc = collectCcEmailsFromFields(event.eventSpecificFields, cd, memberRegistration.ParticipantEmail) || undefined;
           } catch { memberCc = undefined; }
+          memberCc = mergeCcLists(memberCc, orgCopyCc, memberRegistration.ParticipantEmail);
           await eventService.queueEmail(
             emailData.subject,
             memberRegistration.ParticipantEmail,
             `${memberRegistration.Vorname || ''} ${memberRegistration.Nachname || ''}`.trim() || memberRegistration.ParticipantEmail,
             emailData.body,
-            'Abmeldung', event.title, eventId, memberCc, bcc
+            'Abmeldung', event.title, eventId, memberCc, undefined
           );
         } catch (err) { console.warn('[DEX] queueEmail for team-lead cancel failed:', err); }
       }
@@ -3557,23 +3586,25 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           const spTpl = applyEventTemplateOverride(spTplRaw, event.emailTemplateOverrides, 'Abmeldung');
           if (spTpl) emailData = buildEmailFromTemplate(spTpl, cancelVars);
           else emailData = cancellationEmail(cancelledFirst, event.title);
-          let bcc: string | undefined;
+          // v28.28: Organizer-Mitlese-Kopie als CC statt BCC (s.o.).
+          let orgCopyCc = '';
           const mode = event.notifyOrgCancelMode || 'never';
           if (mode === 'always' || (mode === 'afterDeadline' && event.lastDeregisterDate && new Date() > new Date(event.lastDeregisterDate))) {
             const orgEmails = (event.organizerEmails || []).filter(Boolean);
-            if (orgEmails.length > 0) bcc = orgEmails.join(';');
+            if (orgEmails.length > 0) orgCopyCc = orgEmails.join(';');
           }
           let memberCc: string | undefined;
           try {
             const cd = registration.CustomData ? JSON.parse(registration.CustomData) as Record<string, string> : {};
             memberCc = collectCcEmailsFromFields(event.eventSpecificFields, cd, registration.ParticipantEmail) || undefined;
           } catch { memberCc = undefined; }
+          memberCc = mergeCcLists(memberCc, orgCopyCc, registration.ParticipantEmail);
           await eventService.queueEmail(
             emailData.subject,
             registration.ParticipantEmail,
             `${registration.Vorname || ''} ${registration.Nachname || ''}`.trim() || registration.ParticipantEmail,
             emailData.body,
-            'Abmeldung', event.title, eventId, memberCc, bcc
+            'Abmeldung', event.title, eventId, memberCc, undefined
           );
         } catch (err) { console.warn('[DEX] queueEmail for proxy cancel failed:', err); }
       }
