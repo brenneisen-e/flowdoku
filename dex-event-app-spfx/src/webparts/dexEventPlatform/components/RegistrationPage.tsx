@@ -210,6 +210,11 @@ function CollapsibleSection(props: {
   );
 }
 
+// v28.19: Ergebnis der Bildform-Analyse (Content-Ratio, v28.9) pro Bild-URL
+// modulweit merken — beim erneuten Öffnen derselben Anmeldeseite steht das
+// Kreis-Layout dann schon im ersten Render fest (kein Umspringen mehr).
+const IMG_ASPECT_CACHE: Record<string, number> = {};
+
 export default function RegistrationPage(): React.ReactElement {
   // v11.98: Beim Mount nach oben scrollen. Sonst behält der scrollende
   // .main-content-Container die Position aus der vorherigen Seite (z.B.
@@ -781,10 +786,24 @@ export default function RegistrationPage(): React.ReactElement {
   // statt 300px), damit sie nicht winzig in der Ecke hängen; Hochkant/
   // Quadrat bleibt beim kompakten 300er-Slot. Das Bild sitzt vertikal
   // mittig neben den Infos (kein toter Leerraum mehr unter dem Foto).
-  const [imgAspect, setImgAspect] = React.useState<number | null>(null);
+  // v28.19: Kein Layout-Umspringen mehr — die Analyse läuft asynchron, daher:
+  // (a) Ergebnis pro URL im Modul-Cache (IMG_ASPECT_CACHE), damit der zweite
+  //     Besuch synchron im ersten Render die richtige Form kennt, und
+  // (b) `imgAspectReady` als Gate: Der Bild-Slot wird erst gerendert, wenn
+  //     die Form feststeht (oder die Analyse fehlschlug) — das Bild erscheint
+  //     dann direkt an der richtigen Stelle statt kurz rechts zu starten.
+  const [imgProbe, setImgProbe] = React.useState<{ url: string; ratio: number | null } | null>(null);
+  const imgAspectCached = event?.imageUrl ? IMG_ASPECT_CACHE[event.imageUrl] : undefined;
+  const imgAspect: number | null = imgAspectCached !== undefined
+    ? imgAspectCached
+    : (imgProbe && imgProbe.url === event?.imageUrl ? imgProbe.ratio : null);
+  const imgAspectReady = imgAspectCached !== undefined
+    || (!!imgProbe && imgProbe.url === event?.imageUrl);
   React.useEffect(() => {
-    if (!event?.imageUrl) { setImgAspect(null); return; }
+    if (!event?.imageUrl) return undefined;
+    if (IMG_ASPECT_CACHE[event.imageUrl] !== undefined) return undefined;
     let cancelled = false;
+    const probeUrl = event.imageUrl;
     const img = new Image();
     img.onload = () => {
       if (cancelled || img.naturalHeight <= 0) return;
@@ -841,9 +860,13 @@ export default function RegistrationPage(): React.ReactElement {
           }
         }
       } catch { /* tainted canvas o.ä. → Datei-Ratio behalten */ }
-      setImgAspect(ratio);
+      IMG_ASPECT_CACHE[probeUrl] = ratio;
+      setImgProbe({ url: probeUrl, ratio });
     };
-    img.src = event.imageUrl;
+    // Ladefehler: Form bleibt unbekannt (ratio null → Standard-Slot), aber
+    // das Gate öffnet, damit das Bild/Fallback nicht dauerhaft versteckt ist.
+    img.onerror = () => { if (!cancelled) setImgProbe({ url: probeUrl, ratio: null }); };
+    img.src = probeUrl;
     return () => { cancelled = true; };
   }, [event?.imageUrl]);
   // v28.6: Slot-Größe hängt von der BILDFORM ab — Kreis-/Quadrat-Bilder
@@ -2791,8 +2814,12 @@ export default function RegistrationPage(): React.ReactElement {
             }}
           >
             {/* v28.3: Bild-Slot nur rendern, wenn das Event ein Bild hat —
-                sonst stünde links ein leerer 300px-Block. */}
-            {event.imageUrl && (
+                sonst stünde links ein leerer 300px-Block.
+                v28.19: … und erst, wenn die Bildform-Analyse fertig ist
+                (imgAspectReady) — sonst startete das Bild kurz im Seiten-Slot
+                rechts und sprang dann in den Kreis. Banner-Layout hängt nicht
+                von der Form ab und rendert sofort. */}
+            {event.imageUrl && (event.imageBanner || imgAspectReady) && (
             <div
               className="registration-event__image"
               // v28.12: Hover zeigt das Lupen-Icon; die Großansicht öffnet
