@@ -49,6 +49,13 @@ export interface IDexLogoProps {
   paused?: boolean;
   /** Seed für die Form – gleicher Seed erzeugt immer dasselbe Muster */
   seed?: number;
+  /**
+   * v28.34: Maus-Antrieb. Faehrt der Zeiger ueber die Kugel, dreht sie sich in
+   * die Bewegungsrichtung — je schneller die Maus, desto kraeftiger der
+   * Anschub. Danach laeuft sie mit Reibung aus und driftet langsam in die
+   * Ruhelage zurueck, damit das Linienzentrum sichtbar bleibt. Standard: an.
+   */
+  pointerSpin?: boolean;
   className?: string;
   style?: React.CSSProperties;
   /** Wird als aria-label gesetzt. Ohne Angabe gilt die Grafik als dekorativ. */
@@ -223,7 +230,8 @@ function drawFrame(
   height: number,
   elapsed: number,
   speed: number,
-  motion: DexLogoMotion
+  motion: DexLogoMotion,
+  extraRot: number
 ): void {
   ctx.clearRect(0, 0, width, height);
 
@@ -233,9 +241,9 @@ function drawFrame(
   if (R <= 0) { return; }
 
   // Bei speed = 1 dauert ein voller Zyklus rund 12 s
-  const rot = motion === 'oscillate'
+  const rot = (motion === 'oscillate'
     ? Math.sin(elapsed * 0.00052 * speed) * 0.40
-    : elapsed * 0.00052 * speed;
+    : elapsed * 0.00052 * speed) + extraRot;
   const cosR = Math.cos(rot);
   const sinR = Math.sin(rot);
 
@@ -340,6 +348,7 @@ export const DexLogo: React.FC<IDexLogoProps> = (props: IDexLogoProps) => {
     palette,
     paused = false,
     seed = 7391,
+    pointerSpin = true,
     className,
     style,
     title
@@ -350,6 +359,9 @@ export const DexLogo: React.FC<IDexLogoProps> = (props: IDexLogoProps) => {
   const rafRef = React.useRef<number>(0);
   const elapsedRef = React.useRef<number>(0);
   const lastTsRef = React.useRef<number>(0);
+  /** Vom Zeiger erzeugter Zusatz-Winkel und dessen Geschwindigkeit (rad/ms). */
+  const userRotRef = React.useRef<number>(0);
+  const userVelRef = React.useRef<number>(0);
 
   const [measured, setMeasured] = React.useState<number>(size || 0);
   const [reducedMotion, setReducedMotion] = React.useState<boolean>(false);
@@ -443,7 +455,7 @@ export const DexLogo: React.FC<IDexLogoProps> = (props: IDexLogoProps) => {
     const animate = !paused && visible && !reducedMotion;
 
     if (!animate) {
-      drawFrame(ctx, geometry, colors, measured, measured, elapsedRef.current, speed, motion);
+      drawFrame(ctx, geometry, colors, measured, measured, elapsedRef.current, speed, motion, userRotRef.current);
       return undefined;
     }
 
@@ -455,7 +467,17 @@ export const DexLogo: React.FC<IDexLogoProps> = (props: IDexLogoProps) => {
       lastTsRef.current = ts;
       elapsedRef.current += delta;
 
-      drawFrame(ctx, geometry, colors, measured, measured, elapsedRef.current, speed, motion);
+      // v28.34: Maus-Schwung ausrollen lassen. Reibung bremst die
+      // Geschwindigkeit, eine sehr weiche Rueckstellung zieht die Kugel
+      // ueber ein paar Sekunden in die Ruhelage — sonst koennte das
+      // Linienzentrum dauerhaft auf der Rueckseite stehenbleiben.
+      const frames = delta / 16.67;
+      userRotRef.current += userVelRef.current * delta;
+      userVelRef.current *= Math.pow(0.93, frames);
+      if (Math.abs(userVelRef.current) < 0.000002) { userVelRef.current = 0; }
+      userRotRef.current *= Math.pow(0.9975, frames);
+
+      drawFrame(ctx, geometry, colors, measured, measured, elapsedRef.current, speed, motion, userRotRef.current);
       rafRef.current = window.requestAnimationFrame(loop);
     };
 
@@ -466,7 +488,9 @@ export const DexLogo: React.FC<IDexLogoProps> = (props: IDexLogoProps) => {
   const hostStyle: React.CSSProperties = {
     display: 'inline-block',
     lineHeight: 0,
-    width: size ? size : '100%'
+    width: size ? size : '100%',
+    // v28.34: Zeiger-Hinweis, dass sich die Kugel anschubsen laesst.
+    cursor: (pointerSpin && !paused && !reducedMotion) ? 'grab' : undefined
   };
   if (style) {
     for (const key in style) {
@@ -476,10 +500,36 @@ export const DexLogo: React.FC<IDexLogoProps> = (props: IDexLogoProps) => {
     }
   }
 
+  /**
+   * v28.34: Jede Zeigerbewegung gibt einen Impuls in Bewegungsrichtung. Die
+   * Staerke haengt an der zurueckgelegten Strecke pro Event — also an der
+   * Maus-Geschwindigkeit. Normiert auf die Kugelbreite, damit sich das Logo
+   * in jeder Groesse gleich anfuehlt; gedeckelt, damit ein Ruck nicht
+   * mehrere Umdrehungen ausloest.
+   */
+  const lastPointerXRef = React.useRef<number | null>(null);
+  const onPointerMove = (e: React.PointerEvent<HTMLDivElement>): void => {
+    if (!pointerSpin || paused || reducedMotion || measured <= 0) { return; }
+    const last = lastPointerXRef.current;
+    lastPointerXRef.current = e.clientX;
+    if (last === null) { return; }
+    const dx = e.clientX - last;
+    if (dx === 0) { return; }
+    let impulse = (dx / measured) * 0.0016;
+    if (impulse > 0.0022) { impulse = 0.0022; }
+    if (impulse < -0.0022) { impulse = -0.0022; }
+    userVelRef.current += impulse;
+    if (userVelRef.current > 0.006) { userVelRef.current = 0.006; }
+    if (userVelRef.current < -0.006) { userVelRef.current = -0.006; }
+  };
+  const onPointerLeave = (): void => { lastPointerXRef.current = null; };
+
   return (
     <div
       ref={hostRef}
       className={className}
+      onPointerMove={onPointerMove}
+      onPointerLeave={onPointerLeave}
       style={hostStyle}
       role={title ? 'img' : undefined}
       aria-label={title}
