@@ -189,8 +189,8 @@ export default function ImageCropModal({ open, src, isDe, onClose, onApply, chil
             ? 'Wähle ein Seitenverhältnis und ziehe das Bild in Position (z.B. oben/unten wegschneiden). So erscheint es im Mail-/Outlook-Kopf.'
             : 'Pick an aspect ratio and drag the image into place (e.g. crop off top/bottom). This is how it appears in the mail/Outlook header.')
           : (isDe
-            ? 'So wird das Bild gespeichert und überall angezeigt (Anmeldeseite, Karte, Mail). Ziehen zum Verschieben, Slider zum Zoomen.'
-            : 'This is exactly how the image will be saved and shown everywhere (registration page, card, mail). Drag to move, slider to zoom.')}
+            ? 'So erscheint das Bild auf der Anmeldeseite und der Event-Karte. In den E-Mails und im Outlook-Termin wird automatisch das unbeschnittene Originalfoto verwendet — dort ist der Kopf rechteckig. Ziehen zum Verschieben, Slider zum Zoomen.'
+            : 'This is how the image appears on the registration page and the event card. Emails and the Outlook invite automatically use the uncropped original photo — their header is rectangular. Drag to move, slider to zoom.')}
       </p>
 
       {/* Live-Canvas-Vorschau = exaktes Ergebnis.
