@@ -231,7 +231,8 @@ function drawFrame(
   elapsed: number,
   speed: number,
   motion: DexLogoMotion,
-  extraRot: number
+  extraRotY: number,
+  extraRotX: number
 ): void {
   ctx.clearRect(0, 0, width, height);
 
@@ -243,9 +244,13 @@ function drawFrame(
   // Bei speed = 1 dauert ein voller Zyklus rund 12 s
   const rot = (motion === 'oscillate'
     ? Math.sin(elapsed * 0.00052 * speed) * 0.40
-    : elapsed * 0.00052 * speed) + extraRot;
+    : elapsed * 0.00052 * speed) + extraRotY;
   const cosR = Math.cos(rot);
   const sinR = Math.sin(rot);
+  // v28.35: zweite Achse — Kippen um X. Erst um Y drehen (Laengengrad), dann
+  // um X (Breitengrad). Beides unbegrenzt, volle Umdrehungen inklusive.
+  const cosT = Math.cos(extraRotX);
+  const sinT = Math.sin(extraRotX);
 
   /* 1 — Kugelkörper: flache Fläche, im Original gibt es hier keinen Verlauf */
   ctx.save();
@@ -267,15 +272,17 @@ function drawFrame(
       const y = pts[o + 1];
       const z = pts[o + 2];
 
-      const rz = z * cosR - x * sinR;
+      const rx = x * cosR + z * sinR;
+      const z1 = z * cosR - x * sinR;
+      const ry = y * cosT - z1 * sinT;
+      const rz = z1 * cosT + y * sinT;
       if (rz <= 0) {
         drawing = false;
         continue;
       }
-      const rx = x * cosR + z * sinR;
 
       const sx = cx + rx * R;
-      const sy = cy - y * R;
+      const sy = cy - ry * R;
 
       if (drawing) {
         ctx.lineTo(sx, sy);
@@ -316,12 +323,14 @@ function drawFrame(
     const y = pts[o + 1];
     const z = pts[o + 2];
 
-    const rz = z * cosR - x * sinR;
-    if (rz <= 0.02) { continue; }
     const rx = x * cosR + z * sinR;
+    const z1 = z * cosR - x * sinR;
+    const ry = y * cosT - z1 * sinT;
+    const rz = z1 * cosT + y * sinT;
+    if (rz <= 0.02) { continue; }
 
     const sx = cx + rx * R;
-    const sy = cy - y * R;
+    const sy = cy - ry * R;
     const rad = pts[o + 3] * scale * (0.5 + 0.5 * rz);
     if (rad <= 0.05) { continue; }
 
@@ -359,9 +368,11 @@ export const DexLogo: React.FC<IDexLogoProps> = (props: IDexLogoProps) => {
   const rafRef = React.useRef<number>(0);
   const elapsedRef = React.useRef<number>(0);
   const lastTsRef = React.useRef<number>(0);
-  /** Vom Zeiger erzeugter Zusatz-Winkel und dessen Geschwindigkeit (rad/ms). */
+  /** Vom Zeiger erzeugte Zusatz-Winkel je Achse und deren Geschwindigkeit (rad/ms). */
   const userRotRef = React.useRef<number>(0);
   const userVelRef = React.useRef<number>(0);
+  const userTiltRef = React.useRef<number>(0);
+  const userTiltVelRef = React.useRef<number>(0);
 
   const [measured, setMeasured] = React.useState<number>(size || 0);
   const [reducedMotion, setReducedMotion] = React.useState<boolean>(false);
@@ -455,7 +466,7 @@ export const DexLogo: React.FC<IDexLogoProps> = (props: IDexLogoProps) => {
     const animate = !paused && visible && !reducedMotion;
 
     if (!animate) {
-      drawFrame(ctx, geometry, colors, measured, measured, elapsedRef.current, speed, motion, userRotRef.current);
+      drawFrame(ctx, geometry, colors, measured, measured, elapsedRef.current, speed, motion, userRotRef.current, userTiltRef.current);
       return undefined;
     }
 
@@ -467,17 +478,25 @@ export const DexLogo: React.FC<IDexLogoProps> = (props: IDexLogoProps) => {
       lastTsRef.current = ts;
       elapsedRef.current += delta;
 
-      // v28.34: Maus-Schwung ausrollen lassen. Reibung bremst die
-      // Geschwindigkeit, eine sehr weiche Rueckstellung zieht die Kugel
-      // ueber ein paar Sekunden in die Ruhelage — sonst koennte das
-      // Linienzentrum dauerhaft auf der Rueckseite stehenbleiben.
+      // v28.35: Maus-Schwung ausrollen lassen — jetzt auf beiden Achsen und
+      // mit soviel Nachlauf, dass ein kraeftiger Schwung ueber eine ganze
+      // Umdrehung traegt (Reibung 0.985/Frame statt 0.93). Die Rueckstellung
+      // ist bewusst sehr weich: waehrend des Auslaufens praktisch wirkungslos,
+      // holt die Kugel aber ueber die naechsten Sekunden in die Ruhelage
+      // zurueck, damit das Linienzentrum nicht dauerhaft hinten stehenbleibt.
       const frames = delta / 16.67;
+      const FRICTION = Math.pow(0.985, frames);
+      const HOMING = Math.pow(0.9992, frames);
       userRotRef.current += userVelRef.current * delta;
-      userVelRef.current *= Math.pow(0.93, frames);
+      userVelRef.current *= FRICTION;
       if (Math.abs(userVelRef.current) < 0.000002) { userVelRef.current = 0; }
-      userRotRef.current *= Math.pow(0.9975, frames);
+      userRotRef.current *= HOMING;
+      userTiltRef.current += userTiltVelRef.current * delta;
+      userTiltVelRef.current *= FRICTION;
+      if (Math.abs(userTiltVelRef.current) < 0.000002) { userTiltVelRef.current = 0; }
+      userTiltRef.current *= HOMING;
 
-      drawFrame(ctx, geometry, colors, measured, measured, elapsedRef.current, speed, motion, userRotRef.current);
+      drawFrame(ctx, geometry, colors, measured, measured, elapsedRef.current, speed, motion, userRotRef.current, userTiltRef.current);
       rafRef.current = window.requestAnimationFrame(loop);
     };
 
@@ -507,22 +526,34 @@ export const DexLogo: React.FC<IDexLogoProps> = (props: IDexLogoProps) => {
    * in jeder Groesse gleich anfuehlt; gedeckelt, damit ein Ruck nicht
    * mehrere Umdrehungen ausloest.
    */
-  const lastPointerXRef = React.useRef<number | null>(null);
+  const lastPointerRef = React.useRef<{ x: number; y: number } | null>(null);
+  /** Impuls einer Achse begrenzen und aufaddieren. */
+  const addSpin = (ref: React.MutableRefObject<number>, raw: number): void => {
+    const MAX_IMPULSE = 0.008;
+    const MAX_VEL = 0.012; // ~2 Umdrehungen Nachlauf bei vollem Schwung
+    let impulse = raw;
+    if (impulse > MAX_IMPULSE) { impulse = MAX_IMPULSE; }
+    if (impulse < -MAX_IMPULSE) { impulse = -MAX_IMPULSE; }
+    let v = ref.current + impulse;
+    if (v > MAX_VEL) { v = MAX_VEL; }
+    if (v < -MAX_VEL) { v = -MAX_VEL; }
+    ref.current = v;
+  };
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>): void => {
     if (!pointerSpin || paused || reducedMotion || measured <= 0) { return; }
-    const last = lastPointerXRef.current;
-    lastPointerXRef.current = e.clientX;
-    if (last === null) { return; }
-    const dx = e.clientX - last;
-    if (dx === 0) { return; }
-    let impulse = (dx / measured) * 0.0016;
-    if (impulse > 0.0022) { impulse = 0.0022; }
-    if (impulse < -0.0022) { impulse = -0.0022; }
-    userVelRef.current += impulse;
-    if (userVelRef.current > 0.006) { userVelRef.current = 0.006; }
-    if (userVelRef.current < -0.006) { userVelRef.current = -0.006; }
+    const last = lastPointerRef.current;
+    lastPointerRef.current = { x: e.clientX, y: e.clientY };
+    if (!last) { return; }
+    const dx = e.clientX - last.x;
+    const dy = e.clientY - last.y;
+    // Waagerecht dreht um die Y-Achse, senkrecht kippt um die X-Achse. Die
+    // Staerke haengt an der Strecke pro Event, also an der Maus-Geschwindigkeit;
+    // normiert auf die Kugelbreite, damit es sich in jeder Groesse gleich
+    // anfuehlt. Beide Achsen sind unbegrenzt — volle Umdrehungen moeglich.
+    if (dx !== 0) { addSpin(userVelRef, (dx / measured) * 0.006); }
+    if (dy !== 0) { addSpin(userTiltVelRef, (dy / measured) * 0.006); }
   };
-  const onPointerLeave = (): void => { lastPointerXRef.current = null; };
+  const onPointerLeave = (): void => { lastPointerRef.current = null; };
 
   return (
     <div
