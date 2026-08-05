@@ -62,10 +62,15 @@ export interface WrapHeadingOpts {
  * Breite + Innenabstand. Gemeinsamer Helper für wrapTemplate() und
  * wrapTemplateForStorage(), damit beide Layouts identisch bleiben.
  *
- * `width:100%` + `max-width` macht das Bild responsiv: es füllt die Spalte bis
- * zur konfigurierten Maximalbreite (bei kleinem Innenabstand also fast randlos)
- * und schrumpft auf schmalen Mobil-Clients sauber mit. Das `width`-Attribut
- * bleibt für Outlook-Desktop (ignoriert max-width) als Fallback erhalten.
+ * v28.24: Feste Pixelbreite + `max-width:100%` statt `width:100%` +
+ * `max-width:<w>px`. Grund: Outlook-Desktop rendert mit der Word-Engine und
+ * ignoriert `max-width` — dort blieb vom Paar nur `width:100%` übrig, das Bild
+ * lief also auf die volle Spaltenbreite (~540px) auf, während dieselbe Vorlage
+ * in den Mails korrekt bei der eingestellten Breite landete. Genau das war der
+ * riesige Orb im Outlook-Termin. Umgekehrt herum stimmt beides: Outlook nimmt
+ * die feste Breite, alle max-width-fähigen Clients schrumpfen auf schmalen
+ * Displays weiterhin sauber mit. Das `width`-Attribut bleibt als zusätzlicher
+ * Fallback für sehr alte Clients erhalten.
  */
 function buildHeroRow(opts?: WrapHeadingOpts): string {
   const w = (typeof opts?.imageWidth === 'number' && opts.imageWidth > 0) ? Math.round(opts.imageWidth) : 180;
@@ -73,7 +78,7 @@ function buildHeroRow(opts?: WrapHeadingOpts): string {
   const padH = (typeof opts?.imagePaddingH === 'number' && opts.imagePaddingH >= 0) ? Math.round(opts.imagePaddingH) : 30;
   return `<tr>
 <td style="background-color:#ffffff;text-align:center;padding:${padV}px ${padH}px ${padV}px ${padH}px;">
-  <img src="{{ORB_URL}}" alt="DEX Event Experience Platform" width="${w}" style="display:inline-block;width:100%;max-width:${w}px;height:auto;" />
+  <img src="{{ORB_URL}}" alt="DEX Event Experience Platform" width="${w}" style="display:inline-block;width:${w}px;max-width:100%;height:auto;" />
 </td>
 </tr>`;
 }

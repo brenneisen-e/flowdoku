@@ -90,6 +90,15 @@ interface MyEventEntry {
    *  wird bei sessionsOnly-Entries befüllt, damit der Hinweis-Text die
    *  konkreten Sub-Event-Namen in Klammern ausgeben kann. */
   subEventTitles?: string[];
+  /** v28.23: Die Anmeldung ist im zentralen Teilnehmer-Register (DEX_Participants)
+   *  belegt, die ZEILE in der Teilnehmerliste ist für die Person aber nicht
+   *  lesbar — das passiert, solange eine stellvertretend angelegte Zeile noch
+   *  der Assistenz gehört (Item-Level-Security „nur eigene Elemente"). Früher
+   *  fiel der Eintrag dadurch komplett aus „Meine Events" heraus und die Person
+   *  hielt sich für nicht angemeldet. Jetzt wird er ANGEZEIGT, aber ohne
+   *  Detaildaten und ohne Selbst-Abmeldung (die scheitert an denselben
+   *  Rechten) — mit Hinweis, sich an die Assistenz/Organizer zu wenden. */
+  hiddenRow?: boolean;
 }
 
 function formatDate(iso: string): string {
@@ -1080,7 +1089,30 @@ export default function MyEventsPage(): React.ReactElement {
       // eslint-disable-next-line no-console
       console.log(`[DEX][perf][myevents] getMyRegistration relevant n=${relevantEvents.length} = ${Math.round(performance.now() - tRel)} ms (parallel)`);
       for (const { event, reg } of relevantRegs) {
-        if (!reg) continue;
+        if (!reg) {
+          // v28.23: Das zentrale Teilnehmer-Register kennt die Anmeldung, die
+          // Zeile selbst ist aber nicht lesbar (stellvertretend angelegt, Autor
+          // noch die Assistenz → Item-Level-Security). Früher: `continue` — der
+          // Eintrag verschwand komplett, die Person hielt sich für nicht
+          // angemeldet und meldete sich ein zweites Mal an. Jetzt: Karte mit
+          // Platzhalter-Registrierung anzeigen, ohne Detaildaten/Selbst-Aktionen.
+          const onWaitlist = !!(event.eventNumber && myNumbers.waitlisted.indexOf(event.eventNumber) >= 0);
+          entries.push({
+            event,
+            registration: {
+              Id: 0,
+              Title: '',
+              ParticipantName: `${currentUser?.firstName || ''} ${currentUser?.surname || ''}`.trim(),
+              ParticipantEmail: currentUser?.email || '',
+              Status: onWaitlist ? 'Warteliste' : 'Angemeldet',
+              RegistrationDate: '',
+              CancellationDate: '',
+              CustomData: '',
+            },
+            hiddenRow: true,
+          });
+          continue;
+        }
         // v10.22: Sonderfall — Parent-Reg ist 'Abgemeldet', aber der User
         // hat noch aktive Sub-Event-Registrierungen (Hauptevent abgemeldet,
         // Sub-Events behalten). Dann zeigen wir das Parent als
@@ -1563,7 +1595,7 @@ export default function MyEventsPage(): React.ReactElement {
         // v22.22: Der Karten-Renderer ist die frühere map-Callback-Funktion —
         // unverändert, nur extrahiert, damit „Aktive Events" und „Vergangene
         // Events" dieselbe Karte in getrennten Clustern rendern können.
-        const renderMyEventCard = ({ event, registration, sessionsOnly, subEventTitles }: MyEventEntry): React.ReactElement | null => {
+        const renderMyEventCard = ({ event, registration, sessionsOnly, subEventTitles, hiddenRow }: MyEventEntry): React.ReactElement | null => {
             // Custom Data parsen und IDs zu Labels mappen
             let customData: Record<string, string> = {};
             try {
@@ -1699,6 +1731,21 @@ export default function MyEventsPage(): React.ReactElement {
                         </span>
                       )}
                     </div>
+                    {/* v28.23: Stellvertretend angelegte Anmeldung, deren Zeile
+                        für die Person (noch) nicht lesbar ist. Sie SIEHT die
+                        Anmeldung jetzt — inkl. Status —, kann sie aber nicht
+                        selbst bearbeiten oder stornieren. */}
+                    {hiddenRow && (
+                      <div style={{
+                        marginTop: 6, padding: '8px 10px', borderRadius: 6,
+                        background: 'rgba(0,118,168,0.07)', border: '1px solid rgba(0,118,168,0.35)',
+                        color: 'var(--dex-gray-700)', fontSize: '0.78rem', lineHeight: 1.5,
+                      }}>
+                        {isDe
+                          ? <>Diese Anmeldung wurde <strong>für dich angelegt</strong> (z.B. durch deine Assistenz oder die Organizer). Deine Anmeldung ist gültig — die Detailangaben und das Abmelden liegen aber bei der Person, die dich angemeldet hat. Bitte wende dich für Änderungen an sie oder an die Organizer. <strong>Melde dich nicht erneut an</strong>, sonst entsteht eine doppelte Anmeldung.</>
+                          : <>This registration was <strong>created for you</strong> (e.g. by your assistant or the organizers). Your registration is valid — the details and cancellation stay with whoever registered you. Please contact them or the organizers for changes. <strong>Do not register again</strong>, that would create a duplicate.</>}
+                      </div>
+                    )}
                     {/* v15.15: Hinweisbox „nur für Sub-Events angemeldet"
                         nur außerhalb des subEventsOnlyMode anzeigen — dort
                         ist sie redundant, weil es gar keine andere Option
@@ -2125,7 +2172,7 @@ export default function MyEventsPage(): React.ReactElement {
                           den er bearbeitet.
                           v18.38: zeigt jetzt „Angaben ergänzen", wenn noch
                           nichts ausgefüllt wurde — sonst „Angaben bearbeiten". */}
-                      {(event.eventSpecificFields || []).filter((f: EventSpecificField) => f.label).length > 0 && (
+                      {!hiddenRow && (event.eventSpecificFields || []).filter((f: EventSpecificField) => f.label).length > 0 && (
                       <button
                         type="button"
                         className="btn btn-outline"
@@ -2145,7 +2192,7 @@ export default function MyEventsPage(): React.ReactElement {
                           QR-Codes fürs Event versendet wurden (Status
                           'QR versendet'/'Eingecheckt') — vorher wirkte der
                           Button, als gäbe es schon einen gültigen Check-in. */}
-                      {!sessionsOnly && !!event.eventNumber && ['QR versendet', 'Eingecheckt'].indexOf(registration.Status) >= 0 && (
+                      {!sessionsOnly && !hiddenRow && !!event.eventNumber && ['QR versendet', 'Eingecheckt'].indexOf(registration.Status) >= 0 && (
                         <button
                           type="button"
                           className="btn btn-outline"
@@ -2356,7 +2403,7 @@ export default function MyEventsPage(): React.ReactElement {
                 )}
 
                 {/* Fun-Zone Quiz */}
-                {!sessionsOnly && event.quiz && event.quiz.length > 0 && (
+                {!sessionsOnly && !hiddenRow && event.quiz && event.quiz.length > 0 && (
                   <QuizPlayer
                     quiz={event.quiz}
                     t={t}
@@ -2446,7 +2493,7 @@ export default function MyEventsPage(): React.ReactElement {
                 {/* v11.0: Datei-Upload-Block — wird nur gerendert, wenn der
                     Organizer beim Event den Upload erlaubt hat und die
                     Anmeldung aktiv ist (nicht sessionsOnly oder abgemeldet). */}
-                {event.allowAttendeeUpload && !sessionsOnly && (
+                {event.allowAttendeeUpload && !sessionsOnly && !hiddenRow && (
                   <MyEventUpload
                     event={event}
                     list={listMyEventAttachments}
@@ -2458,7 +2505,7 @@ export default function MyEventsPage(): React.ReactElement {
                 {/* v19.0: Dokument-Custom-Felder — pro Feld ein Upload-Block,
                     damit der User die Datei auch nachträglich ergänzen/ersetzen
                     kann. */}
-                {!sessionsOnly && (event.eventSpecificFields || []).filter(f => f.type === 'document').map(df => (
+                {!sessionsOnly && !hiddenRow && (event.eventSpecificFields || []).filter(f => f.type === 'document').map(df => (
                   <MyEventDocField
                     key={df.id}
                     event={event}
@@ -2471,7 +2518,7 @@ export default function MyEventsPage(): React.ReactElement {
                 {/* Registriert am + Aktionen — im Sessions-Only-Modus ausblenden,
                     weil es keine echte Parent-Registrierung gibt. Sessions werden
                     über die Sub-Event-Sektion oben gemanagt. */}
-                {!sessionsOnly && (
+                {!sessionsOnly && !hiddenRow && (
                   <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px solid var(--dex-gray-200)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
                     <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-400)' }}>
                       {t('myevents.registeredon')}: {formatDate(registration.RegistrationDate)}
@@ -2550,7 +2597,23 @@ export default function MyEventsPage(): React.ReactElement {
                           v22.22: Bei bereits vergangenen Events entfällt der Button —
                           stattdessen ein grauer Hinweis (performCancel blockt
                           zusätzlich, auch für den Auto-Cancel-Deep-Link). */}
-                      {isEventOver(event) ? (
+                      {/* v28.23: Fremd angelegte, für die Person nicht lesbare
+                          Zeile — die Selbst-Abmeldung würde an denselben
+                          Zeilen-Rechten scheitern. Statt eines Buttons, der
+                          nicht funktioniert, ein klarer Hinweis. */}
+                      {hiddenRow ? (
+                        <span style={{
+                          fontSize: '0.8rem', color: 'var(--dex-gray-500)',
+                          padding: '8px 12px', borderRadius: 8,
+                          background: 'var(--dex-gray-50, #fafafa)',
+                          border: '1px solid var(--dex-gray-200)',
+                          lineHeight: 1.4,
+                        }}>
+                          {isDe
+                            ? 'Abmelden über die Person, die dich angemeldet hat, oder über die Organizer.'
+                            : 'To cancel, contact whoever registered you, or the organizers.'}
+                        </span>
+                      ) : isEventOver(event) ? (
                         <span style={{
                           fontSize: '0.8rem', color: 'var(--dex-gray-500)',
                           padding: '8px 12px', borderRadius: 8,

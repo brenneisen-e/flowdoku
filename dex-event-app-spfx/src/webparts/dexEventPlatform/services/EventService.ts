@@ -3372,6 +3372,65 @@ export class EventService {
     return allItems;
   }
 
+  /**
+   * v28.23: Teilnehmer-Register (DEX_Participants) für EIN Event nachziehen.
+   *
+   * DEX_Participants ist die zentrale „Schattenbuchhaltung": Pro Person stehen
+   * dort die Event-Nummern, für die sie angemeldet ist bzw. auf der Warteliste
+   * steht. Sie liegt auf der Haupt-Site und unterliegt NICHT der
+   * Item-Level-Security der Teilnehmerlisten — deshalb ist sie die einzige
+   * Quelle, die auch stellvertretend angelegte Anmeldungen zuverlässig kennt.
+   * „Meine Events" startet von hier, und seit v28.22 hängt auch die
+   * Doppel-Anmelde-Vorwarnung daran.
+   *
+   * Der Dual-Write bei jeder Anmeldung ist best-effort (`.catch(warn)`) —
+   * schlägt er fehl (Netzwerk, Rechte, Timeout), fehlt der Eintrag dauerhaft.
+   * Diese Methode gleicht ihn für die übergebene Teilnehmerliste ab: Sie
+   * ergänzt fehlende Event-Nummern und korrigiert Einträge, die im falschen
+   * Feld stehen (Warteliste ↔ angemeldet). Es wird NICHTS entfernt — für
+   * abgemeldete Personen räumt der normale Abmelde-Pfad auf.
+   */
+  public async backfillParticipantRegistry(
+    subsiteUrl: string,
+    eventNumber: number,
+    onProgress?: (done: number, total: number) => void,
+  ): Promise<{ active: number; fixed: number; failed: number }> {
+    const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
+    const regs = await this.getAllRegistrations(subsiteUrl);
+    const active = regs.filter(r => ACTIVE.indexOf(r.Status || '') >= 0
+      && (r.ParticipantEmail || '').indexOf('@') > 0);
+    if (active.length === 0 || !eventNumber) return { active: 0, fixed: 0, failed: 0 };
+    // Register EINMAL laden statt pro Person zu lesen.
+    const all = await this.getAllParticipants();
+    const byEmail: Record<string, SPParticipant> = {};
+    for (const p of all) {
+      const e = (p.Email || '').trim().toLowerCase();
+      if (e) byEmail[e] = p;
+    }
+    const en = String(eventNumber);
+    const has = (field: string | undefined): boolean =>
+      (field || '').split(',').map(s => s.trim()).indexOf(en) >= 0;
+    let fixed = 0;
+    let failed = 0;
+    let done = 0;
+    for (const r of active) {
+      const em = (r.ParticipantEmail || '').trim().toLowerCase();
+      const rec = byEmail[em];
+      const wantWaitlist = r.Status === 'Warteliste';
+      const alreadyRight = !!rec && (wantWaitlist ? has(rec.EventOnWaitlist) : has(rec.EventRegistered));
+      if (!alreadyRight) {
+        const ok = await this.upsertParticipant(
+          r.Vorname || '', r.Nachname || '', r.ParticipantEmail,
+          eventNumber, wantWaitlist ? 'Warteliste' : 'Angemeldet',
+        );
+        if (ok) fixed += 1; else failed += 1;
+      }
+      done += 1;
+      if (onProgress && (done % 10 === 0 || done === active.length)) onProgress(done, active.length);
+    }
+    return { active: active.length, fixed, failed };
+  }
+
   // ==================== DEX_Events Liste ====================
 
   /**

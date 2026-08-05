@@ -567,6 +567,10 @@ interface EventContextType {
   listFieldDocuments: (eventId: string, fieldId: string, participantEmail?: string) => Promise<Array<{ fileName: string; serverRelativeUrl: string; displayName: string }>>;
   deleteFieldDocument: (eventId: string, fileName: string, participantEmail?: string) => Promise<boolean>;
   getMyEventNumbers: () => Promise<{ registered: number[]; waitlisted: number[] }>;
+  /** v28.22: Event-Nummern einer beliebigen Person (DEX_Participants, ohne
+   *  Item-Level-Security der Teilnehmerlisten) — für die Doppel-Anmelde-
+   *  Vorwarnung, die auch fremd angelegte Zeilen erkennt. */
+  getEventNumbersForEmail: (email: string) => Promise<{ registered: number[]; waitlisted: number[] }>;
   /** v22.50: globale Teilnehmer-Liste (DEX_Participants) für die Admin-Suche.
    *  Berechtigungs-Scoping (nur Events, die der Nutzer verwalten darf) macht
    *  der Aufrufer. */
@@ -4492,6 +4496,28 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     catch (err) { console.warn('[DEX] getAllParticipants failed:', err); return []; }
   }
 
+  // v28.22: Event-Nummern (angemeldet / Warteliste) einer BELIEBIGEN Person aus
+  // DEX_Participants. Diese Liste liegt auf der Haupt-Site und unterliegt NICHT
+  // der Item-Level-Security der Teilnehmerlisten — sie kennt daher auch
+  // Anmeldungen, die jemand anders (z.B. eine Assistenz) angelegt hat und die
+  // für die betroffene Person selbst unsichtbar sind. Genau daraus entstanden
+  // die doppelten Anmeldungen: Der Vorab-Check auf der Event-Subsite fand die
+  // fremde Zeile nicht und legte fail-open eine zweite an.
+  async function getEventNumbersForEmail(email: string): Promise<{ registered: number[]; waitlisted: number[] }> {
+    const em = (email || '').trim();
+    if (!em) return { registered: [], waitlisted: [] };
+    try {
+      const record = await eventService.getParticipantByEmail(em);
+      if (!record) return { registered: [], waitlisted: [] };
+      const parse = (s?: string): number[] => s
+        ? s.split(',').map(x => parseInt(x.trim(), 10)).filter(n => !isNaN(n))
+        : [];
+      return { registered: parse(record.EventRegistered), waitlisted: parse(record.EventOnWaitlist) };
+    } catch {
+      return { registered: [], waitlisted: [] };
+    }
+  }
+
   async function getMyEventNumbers(): Promise<{ registered: number[]; waitlisted: number[] }> {
     try {
       const record = await eventService.getParticipantByEmail(currentUserEmail);
@@ -5692,7 +5718,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         cancelRegistration,
         declineEvent,
         cancelTeamMember,
-        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, getLastEventUpdateError, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, restoreCustomFieldDescriptions,
+        getMyRegistration, getMyProxyRegistrations, cancelProxyRegistration, updateProxyRegistration, handBackToParticipant, delegateRegistrationToAssistant, recordProxyDelegation, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, selfCheckIn, setTutorialDemoActive, checkRegistrationByEmail, getAllRegistrations, deleteEvent, countExternalRegistrations, getOrganizerArchivedEventIds, archiveEventForOrganizer, unarchiveEventForOrganizer, deleteEventItemOnly, updateEvent, getLastEventUpdateError, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, getMyEventNumbers, getEventNumbersForEmail, getAllParticipants, refreshEvents, refreshParticipantCounts, getLiveCounterStats, reconcileCounters, subscribeEventRealtime, markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getEventComms, getSentInactiveNotices, getArchivableCount, runArchiveExpired, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, getEventStats, fixAllEventColumns, restoreCustomFieldDescriptions,
         sendAdminInquiry,
         sendCompleteRegistrationReminder,
         notifyAdminsExternalAudienceAccess,

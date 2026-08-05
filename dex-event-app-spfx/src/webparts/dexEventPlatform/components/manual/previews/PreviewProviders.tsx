@@ -193,6 +193,7 @@ export function PreviewContextStack(props: {
     deleteEvent: asyncNoop, updateEvent: asyncNoop,
     updateMyRegistration: asyncNoop,
     getMyEventNumbers: async () => ({ registered: [], waitlisted: [] }),
+    getEventNumbersForEmail: async () => ({ registered: [], waitlisted: [] }),
     markExpiredEventsAsCompleted: async () => 0,
     sendAdminInquiry: asyncNoop, refreshEvents: async () => { /* */ },
     applyEventTemplateOverride: (raw: string) => raw,

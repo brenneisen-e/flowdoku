@@ -1069,6 +1069,78 @@ export default function AdminPage(): React.ReactElement {
     setRegistrations(regs);
     setAdminToast(null);
   };
+  // v28.23: Doppelte Klammer-Schatten-Zeilen in einem Rutsch bereinigen.
+  // Diese Zeilen tauchen in der konsolidierten Klammer-Tabelle NICHT auf (dort
+  // steht pro Person genau eine Zeile, aggregiert über die Sub-Events) — ohne
+  // diesen Knopf käme der Organizer also gar nicht an sie heran. Behalten wird
+  // je Person die Zeile mit den meisten ausgefüllten Hauptevent-Antworten
+  // (Tie-Break: die älteste), alle weiteren werden still gelöscht: keine Mail,
+  // kein Outlook, kein Nachrücken.
+  const [shadowDupBusy, setShadowDupBusy] = React.useState(false);
+  // v28.23: Abgleich des zentralen Teilnehmer-Registers (DEX_Participants).
+  const [isSyncingRegistry, setIsSyncingRegistry] = React.useState(false);
+  const [syncRegistryResult, setSyncRegistryResult] = React.useState<string | null>(null);
+  const cleanupShadowDuplicates = async (): Promise<void> => {
+    if (!eventServiceRef || !selectedEvent?.subsiteUrl || shadowDupBusy) return;
+    const groups: SPRegistration[][] = [];
+    duplicateEmails.forEach(em => {
+      const rows = registrations.filter(r => DUP_ACTIVE_STATI.indexOf(r.Status || '') >= 0
+        && (r.ParticipantEmail || '').trim().toLowerCase() === em);
+      if (rows.length > 1) groups.push(rows);
+    });
+    if (groups.length === 0) return;
+    const extra = groups.reduce((n, rows) => n + rows.length - 1, 0);
+    const ok = await confirmDialog(
+      isDe
+        ? `${extra} doppelte Klammer-Zeile(n) bei ${groups.length} Person(en) entfernen?\n\nJe Person bleibt die Zeile mit den meisten ausgefüllten Hauptevent-Antworten erhalten. Die Entfernung läuft still — ohne Abmelde-Mail, ohne Outlook-Absage, ohne Nachrücken. Die Anmeldungen in den Sub-Events bleiben unberührt.`
+        : `Remove ${extra} duplicate overall-event row(s) for ${groups.length} person(s)?\n\nFor each person the row with the most main-event answers is kept. Removal is silent — no cancellation email, no Outlook removal, no waitlist promotion. The sub-event registrations are untouched.`,
+      { danger: true, confirmLabel: isDe ? 'Zeilen entfernen' : 'Remove rows' },
+    );
+    if (!ok) return;
+    setShadowDupBusy(true);
+    const answerScore = (r: SPRegistration): number => {
+      try {
+        const o = JSON.parse(r.CustomData || '{}') as Record<string, unknown>;
+        return Object.keys(o).filter(k => String(o[k] === null || o[k] === undefined ? '' : o[k]).trim()).length;
+      } catch { return 0; }
+    };
+    let removed = 0;
+    for (const rows of groups) {
+      const sorted = rows.slice().sort((a, b) => (answerScore(b) - answerScore(a)) || (a.Id - b.Id));
+      for (const r of sorted.slice(1)) {
+        try {
+          await eventServiceRef.deleteRegistration(selectedEvent.subsiteUrl, r.Id);
+          removed += 1;
+          try {
+            await eventServiceRef.writeChangeLog({
+              action: 'RegistrationDeleted',
+              targetType: 'Participant',
+              targetId: `${r.ParticipantEmail || ''}#${r.Id}`,
+              targetName: (r.Vorname && r.Nachname) ? `${r.Vorname} ${r.Nachname}` : (r.ParticipantName || ''),
+              eventId: selectedEvent.id,
+              eventTitle: selectedEvent.title,
+              details: { note: 'Doppelte Klammer-Schatten-Zeile still entfernt (v28.23). Sub-Event-Anmeldungen unberührt.' },
+            });
+          } catch { /* best-effort */ }
+        } catch (err) { console.warn('[DEX] cleanupShadowDuplicates failed for item', r.Id, err); }
+      }
+    }
+    try {
+      const isSplit = typeof selectedEvent.durchstarterCapacity === 'number'
+        && typeof selectedEvent.funstarterCapacity === 'number'
+        && ((selectedEvent.durchstarterCapacity || 0) > 0 || (selectedEvent.funstarterCapacity || 0) > 0);
+      await eventServiceRef.syncSeatsToActiveCount(selectedEvent.subsiteUrl, { isSplit });
+    } catch { /* best-effort */ }
+    try {
+      const regs = await getAllRegistrations(selectedEvent.id);
+      setRegistrations(regs);
+    } catch { /* */ }
+    setShadowDupBusy(false);
+    showAlert(
+      isDe ? `${removed} doppelte Klammer-Zeile(n) entfernt.` : `${removed} duplicate overall-event row(s) removed.`,
+      { variant: 'success' },
+    );
+  };
   // v22.16: „Hinweise"-Box für aktive Events — Busy-State für den 1-Klick-
   // Sprach-Fix + Tick, damit „Ausblenden" (localStorage) sofort re-rendert.
   const [hintLangBusy, setHintLangBusy] = React.useState(false);
@@ -7518,6 +7590,61 @@ export default function AdminPage(): React.ReactElement {
               />
             )}
 
+            {/* v28.23: Teilnehmer-Register nachziehen. Der Dual-Write nach
+                DEX_Participants läuft best-effort — fehlt ein Eintrag, sieht die
+                Person das Event NICHT in „Meine Events" und die Doppel-Anmelde-
+                Vorwarnung (v28.22) greift für sie nicht. Diese Aktion gleicht
+                Klammer + alle Sub-Events in einem Lauf ab. */}
+            {(isAdmin || (!!selectedEvent && isOrganizerFor(selectedEvent))) && (
+              <ActionTile
+                icon={<RefreshCw size={18} />}
+                category="maintenance"
+                title={isSyncingRegistry
+                  ? (isDe ? 'Register wird abgeglichen…' : 'Syncing registry…')
+                  : (isDe ? 'Teilnehmer-Register nachziehen' : 'Sync participant registry')}
+                desc={isDe
+                  ? 'Gleicht die zentrale Teilnehmer-Übersicht mit den echten Anmeldungen dieses Events ab (inkl. aller Sub-Events). Nötig, wenn jemand angemeldet ist, das Event aber nicht in „Meine Events" sieht — dann fehlt der zentrale Eintrag, und auch die Warnung vor doppelter Anmeldung greift für diese Person nicht. Ergänzt nur fehlende Einträge; es wird nichts abgemeldet und niemand benachrichtigt.'
+                  : 'Reconciles the central participant registry with this event\'s actual registrations (including all sub-events). Needed when someone is registered but does not see the event in „My events" — the central entry is missing then, and the duplicate-registration warning does not work for that person. Only adds missing entries; nothing is cancelled and nobody is notified.'}
+                badge="organizer"
+                busy={isSyncingRegistry}
+                disabled={!selectedEvent?.subsiteUrl}
+                result={syncRegistryResult}
+                resultIsError={!!syncRegistryResult && (syncRegistryResult.indexOf('Fehler') >= 0 || syncRegistryResult.indexOf('Error') >= 0)}
+                onClick={async () => {
+                  if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                  const targets = [selectedEvent, ...childEventsOf(selectedEvent.id)]
+                    .filter(e => !!e.subsiteUrl && !!e.eventNumber);
+                  if (!(await confirmDialog(isDe
+                    ? `Teilnehmer-Register für ${targets.length} Liste(n) abgleichen (Event + Sub-Events)?\n\nFehlende Einträge werden ergänzt, damit die Betroffenen ihre Anmeldung in „Meine Events" sehen. Es werden keine Anmeldungen geändert und keine Mails verschickt. Bei vielen Teilnehmern kann das ein paar Minuten dauern.`
+                    : `Reconcile the participant registry for ${targets.length} list(s) (event + sub-events)?\n\nMissing entries are added so people see their registration in „My events". No registrations are changed and no emails are sent. With many participants this can take a few minutes.`,
+                    { confirmLabel: isDe ? 'Abgleichen' : 'Reconcile' }))) return;
+                  setIsSyncingRegistry(true);
+                  setSyncRegistryResult(null);
+                  let activeTotal = 0;
+                  let fixedTotal = 0;
+                  let failedTotal = 0;
+                  const errored: string[] = [];
+                  for (const ev of targets) {
+                    try {
+                      const r = await eventServiceRef.backfillParticipantRegistry(
+                        ev.subsiteUrl as string,
+                        ev.eventNumber as number,
+                      );
+                      activeTotal += r.active;
+                      fixedTotal += r.fixed;
+                      failedTotal += r.failed;
+                    } catch {
+                      errored.push((ev.title || '?').slice(0, 40));
+                    }
+                  }
+                  setSyncRegistryResult(isDe
+                    ? `${activeTotal} aktive Anmeldung(en) geprüft, ${fixedTotal} Register-Eintrag/Einträge ergänzt${failedTotal > 0 ? `, ${failedTotal} fehlgeschlagen` : ''}.${errored.length > 0 ? ` Fehler bei: ${errored.join(', ')}` : ''}`
+                    : `${activeTotal} active registration(s) checked, ${fixedTotal} registry entr(y/ies) added${failedTotal > 0 ? `, ${failedTotal} failed` : ''}.${errored.length > 0 ? ` Errors on: ${errored.join(', ')}` : ''}`);
+                  setIsSyncingRegistry(false);
+                }}
+              />
+            )}
+
             {/* 7c. Überbuchung prüfen — Admin ODER Organizer des Events (v11.36).
                 Markiert pro Gruppe (bzw. gesamt) die zuletzt über Kapazität
                 Angemeldeten mit OverbookReview='Pending'. Ändert KEINEN
@@ -9214,6 +9341,22 @@ export default function AdminPage(): React.ReactElement {
                     );
                   })}
                 </div>
+                {(isAdmin || isOrganizerFor(selectedEvent)) && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ marginTop: 12, fontSize: '0.8rem', padding: '6px 14px' }}
+                    disabled={shadowDupBusy}
+                    onClick={() => { cleanupShadowDuplicates().catch(() => { /* */ }); }}
+                    title={isDe
+                      ? 'Entfernt je Person die überzählige Klammer-Zeile — still, ohne Mail/Outlook/Nachrücken.'
+                      : 'Removes the surplus overall-event row per person — silently, no email/Outlook/promotion.'}
+                  >
+                    {shadowDupBusy
+                      ? (isDe ? 'Wird bereinigt…' : 'Cleaning up…')
+                      : (isDe ? 'Doppelte Zeilen bereinigen' : 'Clean up duplicate rows')}
+                  </button>
+                )}
               </div>
             );
           }
