@@ -233,12 +233,12 @@ export default function RegistrationPage(): React.ReactElement {
   }, []);
 
   const { selectedEventId, navigate, navIntent, clearIntent } = useNavigation();
-  const { events, isEventsLoading, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest, updateMyRegistration, uploadFieldDocument, delegateRegistrationToAssistant, recordProxyDelegation, getLiveCounterStats, subscribeEventRealtime } = useEvents();
+  const { events, isEventsLoading, registerForEvent, registerTeam, cancelRegistration, declineEvent, checkRegistrationByEmail, getMyRegistration, getAllRegistrations, childEventsOf, listOpenTeamsForEvent, joinTeam, createTeamJoinRequest, updateMyRegistration, uploadFieldDocument, delegateRegistrationToAssistant, recordProxyDelegation, getLiveCounterStats, subscribeEventRealtime, getEventNumbersForEmail } = useEvents();
   const { currentUser, groupEmails } = useCurrentUser();
   const { searchUsers, searchUser, isAdmin } = useRoles();
   const { locale: appLocale } = useLanguage();
   // v20.4: App-Modal statt nativem Browser-Alert.
-  const { showAlert } = useDialog();
+  const { showAlert, confirmDialog } = useDialog();
   // Mobile-Breakpoint für kompaktere Handy-Darstellung (einklappbare Sektionen etc.).
   const isMobile = useIsMobile();
   const event = events.find(e => e.id === selectedEventId);
@@ -1736,6 +1736,62 @@ export default function RegistrationPage(): React.ReactElement {
       // `!registerForOther` entfällt — die Klammer läuft im subEventsOnly-Modus
       // in beiden Fällen ZUM SCHLUSS über den Schritt-3-Block unten).
       const shouldShadowRegisterParent = isSubOnlyMode && sessionsBeingAdded && !parentAlreadyHasRow;
+
+      // v28.22: UNSICHTBARE Doppel-Anmeldung abfangen.
+      //
+      // Die Teilnehmerlisten laufen mit Item-Level-Security („nur eigene
+      // Elemente", geprüft am Zeilen-AUTOR). Meldet eine Assistenz jemanden an,
+      // bleibt sie Autor der Zeile, solange der nachträgliche Autor-Wechsel
+      // mangels Rechten scheitert (Contribute reicht dafür nicht; der
+      // DEX_AccessFix-Flow bzw. der Admin-Auto-Fix zieht ihn erst später nach).
+      // Bis dahin ist die Zeile für die betroffene Person UNSICHTBAR — weder in
+      // „Meine Events" noch für den Vorab-Check beim Anmelden. Der Check läuft
+      // fail-open (lieber eine Zeile zu viel als eine blockierte Anmeldung) und
+      // legte deshalb eine ZWEITE Anmeldung an.
+      //
+      // Gegenmittel: zusätzlich DEX_Participants fragen. Die Liste liegt auf der
+      // Haupt-Site, kennt keine Item-Level-Security und wird bei JEDER An-/
+      // Abmeldung mitgeschrieben — sie sieht also auch fremd angelegte Zeilen.
+      // Bewusst nur eine RÜCKFRAGE, keine harte Sperre: Sollte der Eintrag mal
+      // veraltet sein (Abmeldung ohne erfolgreiches Nachziehen), bleibt eine
+      // legitime Anmeldung möglich.
+      const hiddenDupTitles: string[] = [];
+      try {
+        const nums = await getEventNumbersForEmail(participantEmail);
+        const knownNumbers = new Set<number>([...nums.registered, ...nums.waitlisted]);
+        const isKnown = (n?: number): boolean => typeof n === 'number' && n > 0 && knownNumbers.has(n);
+        // Hauptevent/Klammer: nur prüfen, wenn wir jetzt wirklich eine Zeile
+        // anlegen würden und uns keine sichtbare bekannt ist.
+        const willTouchParent = (registerForParent && !parentAlreadyRegistered) || shouldShadowRegisterParent;
+        if (willTouchParent && !parentAlreadyHasRow && isKnown(event.eventNumber)) {
+          hiddenDupTitles.push(event.title);
+        }
+        for (const ce of childEvents) {
+          if (!selectedSessions.has(ce.id)) continue;
+          if (sessionMeta[ce.id]?.wasRegistered) continue;
+          if (isKnown(ce.eventNumber)) hiddenDupTitles.push(ce.title);
+        }
+      } catch { /* best-effort — im Zweifel wie bisher weiter */ }
+      if (hiddenDupTitles.length > 0) {
+        const list = hiddenDupTitles.map(x => `• ${x}`).join('\n');
+        const who = registerForOther ? (`${firstTrim} ${surnameTrim}`.trim() || participantEmail) : '';
+        const proceed = await confirmDialog(
+          locale === 'de'
+            ? (registerForOther
+              ? `${who} ist laut unseren Daten hier bereits angemeldet:\n\n${list}\n\nMöglicherweise hat sich die Person selbst angemeldet oder eine andere Assistenz hat das übernommen — dann siehst du die Zeile wegen der Zugriffsrechte auf der Teilnehmerliste nicht. Eine erneute Anmeldung würde einen ZWEITEN Platz belegen.\n\nTrotzdem anmelden?`
+              : `Du bist laut unseren Daten hier bereits angemeldet:\n\n${list}\n\nMöglicherweise hat dich jemand angemeldet (z.B. deine Assistenz) — dann siehst du die Anmeldung wegen der Zugriffsrechte auf der Teilnehmerliste nicht in „Meine Events". Eine erneute Anmeldung würde einen ZWEITEN Platz belegen.\n\nTrotzdem anmelden?`)
+            : (registerForOther
+              ? `According to our records ${who} is already registered for:\n\n${list}\n\nThe person may have registered themselves, or another assistant did it — in that case the row is hidden from you by the attendee list's permissions. Registering again would take a SECOND seat.\n\nRegister anyway?`
+              : `According to our records you are already registered for:\n\n${list}\n\nSomeone may have registered you (e.g. your assistant) — in that case the attendee list's permissions hide it from „My events". Registering again would take a SECOND seat.\n\nRegister anyway?`),
+          { danger: true, confirmLabel: locale === 'de' ? 'Trotzdem anmelden' : 'Register anyway' },
+        );
+        if (!proceed) {
+          setIsSubmitting(false);
+          setSubmitProgress(0);
+          setSubmitProgressLabel('');
+          return;
+        }
+      }
       // v26.67 (B): Gemeinsame Klammer-/Parent-Anmelde-Routine. `bestEffort` =
       // true bei der subEventsOnly-Schatten-Zeile, die JETZT NACH den Sub-Events
       // angelegt wird — ein Fehlschlag darf die (gültigen) Sub-Event-Anmeldungen
