@@ -3177,6 +3177,7 @@ export class EventService {
     const exists = await this.listExists(listName);
     if (exists) {
       await this.ensureMissingParticipantsFields(listName);
+      await this.ensureParticipantsIndexes(listName);
       await this.configureDefaultView(listName, [
         'Vorname', 'Nachname', 'Email', 'EventRegistered', 'EventOnWaitlist',
       ]);
@@ -3211,8 +3212,39 @@ export class EventService {
     await this.configureDefaultView(listName, [
       'Vorname', 'Nachname', 'Email', 'EventRegistered', 'EventOnWaitlist',
     ]);
+    await this.ensureParticipantsIndexes(listName);
 
     await this.setEmailsListPermissions(listName);
+  }
+
+  /**
+   * v28.25: Index auf der Spalte `Email` sicherstellen.
+   *
+   * DEX_Participants wächst mit jeder je angemeldeten Person. Überschreitet die
+   * Liste die SharePoint-Schwelle von 5000 Elementen, scheitert JEDE Abfrage,
+   * die auf einer NICHT indizierten Spalte filtert oder sortiert — und zwar mit
+   * HTTP 500 („exceeds the list view threshold"), nicht mit einer sprechenden
+   * Meldung. Genau das legte im Tenant `getParticipantByEmail` (Filter auf
+   * Email) und damit die gesamte Schattenbuchhaltung lahm: „Meine Events" blieb
+   * leer, jede An-/Abmeldung konnte das Register nicht mehr fortschreiben und
+   * die Reparatur-Aktion lief in eine Fehlerwand.
+   *
+   * Ein Index auf `Email` hebt die Sperre für genau diese Filter-Abfragen auf.
+   * Best-effort: Das Setzen braucht „Listen verwalten" (Admin/Organizer der
+   * Site); fehlt das Recht, bleibt alles wie bisher.
+   */
+  private async ensureParticipantsIndexes(listName: string): Promise<void> {
+    try {
+      const url = `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields/getbytitle('Email')`;
+      const resp = await this.context.spHttpClient.get(`${url}?$select=Indexed`, SPHttpClient.configurations.v1);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      if (data && data.Indexed === true) return;
+      const m = await this._merge(url, { 'Indexed': true });
+      if (!m.ok) console.warn('[DEX] Index auf DEX_Participants.Email konnte nicht gesetzt werden (HTTP ' + m.status + ') — bei >5000 Einträgen scheitern gefilterte Abfragen.');
+    } catch (err) {
+      console.warn('[DEX] ensureParticipantsIndexes fehlgeschlagen (best-effort):', err);
+    }
   }
 
   private async ensureMissingParticipantsFields(listName: string): Promise<void> {
@@ -3278,7 +3310,29 @@ export class EventService {
   ): Promise<boolean> {
     try {
       const existing = await this.getParticipantByEmail(email);
+      return this.applyParticipantEvent(existing, vorname, nachname, email, eventNumber, status);
+    } catch {
+      return false;
+    }
+  }
 
+  /**
+   * v28.25: Schreib-Teil von `upsertParticipant`, aber mit BEREITS bekanntem
+   * Register-Eintrag. Der Massen-Abgleich (backfillParticipantRegistry) lädt
+   * das Register einmal komplett und spart sich damit die Einzelabfrage pro
+   * Person — bei mehreren hundert Teilnehmern hunderte Requests weniger, und
+   * es funktioniert auch dann, wenn die Einzelabfrage an der 5000-Element-
+   * Schwelle scheitern würde.
+   */
+  private async applyParticipantEvent(
+    existing: SPParticipant | null,
+    vorname: string,
+    nachname: string,
+    email: string,
+    eventNumber: number,
+    status: string
+  ): Promise<boolean> {
+    try {
       if (existing) {
         // EventNumber zu richtigem Feld hinzufügen
         let registered = existing.EventRegistered ? existing.EventRegistered.split(',').map(s => s.trim()).filter(s => s) : [];
@@ -3353,10 +3407,14 @@ export class EventService {
    */
   public async getAllParticipants(): Promise<SPParticipant[]> {
     const allItems: SPParticipant[] = [];
-    // $top=5000 statt 500 — bei mehr als 500 jemals registrierten Personen
-    // im Tenant lieferte SharePoint mit $orderby+$top in Kombination mit
-    // ILS nicht zuverlässig nextLink, sodass Einträge fehlten.
-    let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items?$select=Id,Title,Vorname,Nachname,Email,EventRegistered,EventOnWaitlist&$orderby=Nachname,Vorname&$top=5000`;
+    // v28.25: KEIN `$orderby` mehr. Sortieren über eine nicht indizierte Spalte
+    // sprengt ab 5000 Listenelementen die SharePoint-Schwelle — die Abfrage
+    // scheiterte dann komplett mit HTTP 500, statt einfach unsortiert zu
+    // liefern. Seitenweise ungeordnet lesen funktioniert auch über der
+    // Schwelle; sortiert wird jetzt im Browser.
+    // $top=2000 pro Seite (statt 5000): kleinere Seiten sind schwellenfester
+    // und der nextLink führt zuverlässig durch die ganze Liste.
+    let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items?$select=Id,Title,Vorname,Nachname,Email,EventRegistered,EventOnWaitlist&$top=2000`;
 
     while (url) {
       try {
@@ -3369,6 +3427,9 @@ export class EventService {
         break;
       }
     }
+    allItems.sort((a, b) =>
+      (a.Nachname || '').localeCompare(b.Nachname || '', 'de')
+      || (a.Vorname || '').localeCompare(b.Vorname || '', 'de'));
     return allItems;
   }
 
@@ -3390,6 +3451,26 @@ export class EventService {
    * Feld stehen (Warteliste ↔ angemeldet). Es wird NICHTS entfernt — für
    * abgemeldete Personen räumt der normale Abmelde-Pfad auf.
    */
+  /**
+   * v28.25: Wie `getAllParticipants`, wirft aber bei einem HTTP-Fehler, statt
+   * still eine unvollständige Liste zu liefern. Für Abläufe, die aus dem
+   * Ergebnis auf „Person ist unbekannt" schließen (Register-Abgleich).
+   */
+  private async fetchAllParticipantsOrThrow(): Promise<SPParticipant[]> {
+    const out: SPParticipant[] = [];
+    let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items?$select=Id,Title,Vorname,Nachname,Email,EventRegistered,EventOnWaitlist&$top=2000`;
+    while (url) {
+      const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      if (!response.ok) {
+        throw new Error(`DEX_Participants nicht lesbar (HTTP ${response.status}). Bei mehr als 5000 Einträgen braucht die Spalte „Email" einen Index — die App versucht ihn beim Start automatisch zu setzen (erfordert „Listen verwalten").`);
+      }
+      const data = await response.json();
+      out.push(...(data.value || data.d?.results || []));
+      url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
+    }
+    return out;
+  }
+
   public async backfillParticipantRegistry(
     subsiteUrl: string,
     eventNumber: number,
@@ -3400,8 +3481,11 @@ export class EventService {
     const active = regs.filter(r => ACTIVE.indexOf(r.Status || '') >= 0
       && (r.ParticipantEmail || '').indexOf('@') > 0);
     if (active.length === 0 || !eventNumber) return { active: 0, fixed: 0, failed: 0 };
-    // Register EINMAL laden statt pro Person zu lesen.
-    const all = await this.getAllParticipants();
+    // v28.25: Register EINMAL laden — und einen Lesefehler NICHT verschlucken.
+    // Wäre die Liste nicht lesbar (z.B. 5000-Element-Schwelle) und wir liefen
+    // trotzdem weiter, hielte der Abgleich jede Person für unbekannt und legte
+    // reihenweise Dubletten an. Lieber sauber abbrechen.
+    const all = await this.fetchAllParticipantsOrThrow();
     const byEmail: Record<string, SPParticipant> = {};
     for (const p of all) {
       const e = (p.Email || '').trim().toLowerCase();
@@ -3419,8 +3503,10 @@ export class EventService {
       const wantWaitlist = r.Status === 'Warteliste';
       const alreadyRight = !!rec && (wantWaitlist ? has(rec.EventOnWaitlist) : has(rec.EventRegistered));
       if (!alreadyRight) {
-        const ok = await this.upsertParticipant(
-          r.Vorname || '', r.Nachname || '', r.ParticipantEmail,
+        // Bekannten Register-Eintrag direkt mitgeben — spart die Einzelabfrage
+        // pro Person (die an der Schwelle ohnehin scheitern könnte).
+        const ok = await this.applyParticipantEvent(
+          rec || null, r.Vorname || '', r.Nachname || '', r.ParticipantEmail,
           eventNumber, wantWaitlist ? 'Warteliste' : 'Angemeldet',
         );
         if (ok) fixed += 1; else failed += 1;
