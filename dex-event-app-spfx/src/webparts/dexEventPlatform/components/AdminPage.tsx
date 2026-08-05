@@ -798,6 +798,10 @@ function ActionsDropdown(props: { isDe: boolean }): React.ReactElement | null {
 // Sub-Events), eine pro Person. Auf Modul-Ebene definiert, damit auch
 // Handler außerhalb des Render-Bodys (z.B. das Abmelde-/Edit-Modal von
 // Feature A/B) den Typ referenzieren können.
+// v28.21: Zeilen-Status, die einen echten Platz belegen. Für die
+// Doppel-Anmelde-Erkennung: „alles außer Abgemeldet" war zu weit gefasst.
+const DUP_ACTIVE_STATI = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
+
 type ConsolidatedRow = {
   emailKey: string;
   email: string;
@@ -898,7 +902,9 @@ export default function AdminPage(): React.ReactElement {
   const duplicateEmails = React.useMemo<Set<string>>(() => {
     const counts: Record<string, number> = {};
     for (const r of registrations) {
-      if ((r.Status || '') === 'Abgemeldet') continue;
+      // v28.21: nur wirklich AKTIVE Zeilen zählen (vorher „alles außer
+      // Abgemeldet" — damit galt z.B. eine „No-Show"-Zeile als Duplikat).
+      if (DUP_ACTIVE_STATI.indexOf(r.Status || '') < 0) continue;
       const em = (r.ParticipantEmail || '').trim().toLowerCase();
       if (!em) continue;
       counts[em] = (counts[em] || 0) + 1;
@@ -5226,6 +5232,37 @@ export default function AdminPage(): React.ReactElement {
     }
     return Object.values(byEmail);
   })();
+  // v28.21: ECHTE Doppel-Anmeldungen im Klammer-Modus = zwei aktive Zeilen
+  // derselben Person in DEMSELBEN Sub-Event (nur das belegt zwei Plätze).
+  // Zwei Zeilen auf der KLAMMER sind dagegen nur doppelte Schatten-Zeilen
+  // (v15.25: die Klammer-Zeile ist reine Datenvollständigkeit, ohne Platz,
+  // Mail oder Outlook) — die meldet die rote Box nicht mehr als
+  // „Doppel-Anmeldung", sondern separat als technischen Hinweis.
+  const subEventDupGroups: Array<{ sectionTitle: string; email: string; name: string; count: number }> = (() => {
+    if (!isConsolidatedMode || !selectedEvent) return [];
+    const out: Array<{ sectionTitle: string; email: string; name: string; count: number }> = [];
+    for (const ch of consolidatedChildren) {
+      const byEmail: Record<string, SPRegistration[]> = {};
+      for (const r of (subEventRegsByEventId[ch.id] || [])) {
+        if (DUP_ACTIVE_STATI.indexOf(r.Status || '') < 0) continue;
+        const em = (r.ParticipantEmail || '').trim().toLowerCase();
+        if (!em) continue;
+        (byEmail[em] = byEmail[em] || []).push(r);
+      }
+      Object.keys(byEmail).forEach(em => {
+        const rows = byEmail[em];
+        if (rows.length < 2) return;
+        const f = rows[0];
+        out.push({
+          sectionTitle: shortSubEventTitle(ch.title, selectedEvent.title),
+          email: em,
+          name: (f.Vorname && f.Nachname) ? `${f.Vorname} ${f.Nachname}` : (f.ParticipantName || em),
+          count: rows.length,
+        });
+      });
+    }
+    return out;
+  })();
   // v14.11: Such-Filter + Sort für die konsolidierten Zeilen.
   const consolidatedFiltered: ConsolidatedRow[] = (() => {
     const q = (searchQuery || '').toLowerCase().trim();
@@ -9137,10 +9174,49 @@ export default function AdminPage(): React.ReactElement {
           // Pro betroffener E-Mail die aktiven Zeilen sammeln (Name + Teams).
           const dupGroups: Array<{ email: string; rows: SPRegistration[] }> = [];
           duplicateEmails.forEach(em => {
-            const rows = registrations.filter(r => (r.Status || '') !== 'Abgemeldet' && (r.ParticipantEmail || '').trim().toLowerCase() === em);
+            const rows = registrations.filter(r => DUP_ACTIVE_STATI.indexOf(r.Status || '') >= 0 && (r.ParticipantEmail || '').trim().toLowerCase() === em);
             if (rows.length > 1) dupGroups.push({ email: em, rows });
           });
           if (dupGroups.length === 0) return null;
+          // v28.21: Klammer-Modus — doppelte Zeilen auf der KLAMMER sind keine
+          // Doppel-Anmeldungen. Die Klammer-Zeile ist nur eine Schatten-Zeile
+          // zur Datenvollständigkeit (kein Platz, keine Mail, kein Outlook);
+          // die echten Anmeldungen liegen in den Sub-Events, und alle Zähler
+          // rechnen ohnehin pro Person entdoppelt. Solche Zeilen entstehen
+          // z.B., wenn zwei verschiedene Assistenzen dieselbe Person nach-
+          // einander anmelden — die Vorab-Prüfung sieht die fremde Zeile
+          // wegen der Zeilen-Berechtigungen nicht. Deshalb hier ein neutraler
+          // technischer Hinweis statt der roten Doppel-Anmelde-Warnung.
+          if (isConsolidatedMode) {
+            return (
+              <div style={{ marginBottom: 20, padding: 14, borderRadius: 12, border: '1px solid var(--dex-gray-200)', background: 'var(--dex-gray-50, #f7f7f7)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>
+                  <Icon iconName="Info" style={{ fontSize: 16, color: 'var(--dex-gray-500)' }} />
+                  <strong style={{ fontSize: '0.9rem', color: 'var(--dex-gray-800)' }}>
+                    {isDe ? `Doppelte Klammer-Zeilen (${dupGroups.length})` : `Duplicate overall-event rows (${dupGroups.length})`}
+                  </strong>
+                </div>
+                <p style={{ margin: '0 0 8px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                  {isDe
+                    ? <>Diese Personen haben zwei Zeilen auf dem Gesamt-Event. Das ist <strong>keine Doppel-Anmeldung</strong>: Die Klammer-Zeile hält nur die Antworten auf die Hauptevent-Felder — sie belegt keinen Platz und löst weder Mail noch Outlook-Termin aus. Die echten Anmeldungen stehen in den {selectedEvent.childEventTermPlural || 'Sub-Events'}, und alle Zähler rechnen pro Person entdoppelt. Typische Ursache: zwei verschiedene Assistenzen haben dieselbe Person nacheinander angemeldet. Aufräumen ist optional.</>
+                    : <>These people have two rows on the overall event. This is <strong>not a duplicate registration</strong>: the overall-event row only holds the answers to the main-event fields — it takes no seat and triggers neither email nor calendar invite. The real registrations are in the sub-events, and all counters de-duplicate per person. Typical cause: two different assistants registered the same person one after another. Cleaning up is optional.</>}
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {dupGroups.map(g => {
+                    const first = g.rows[0];
+                    const dispName = (first.Vorname && first.Nachname) ? `${first.Vorname} ${first.Nachname}` : (first.ParticipantName || g.email);
+                    return (
+                      <div key={g.email} style={{ fontSize: '0.8rem', color: 'var(--dex-gray-700)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
+                        <strong>{dispName}</strong>
+                        <span style={{ color: 'var(--dex-gray-500)' }}>{g.email}</span>
+                        <span style={{ color: 'var(--dex-gray-500)' }}>— {isDe ? `${g.rows.length} Klammer-Zeilen` : `${g.rows.length} overall-event rows`}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          }
           return (
             <div style={{ marginBottom: 20, padding: 16, borderRadius: 12, border: '1px solid var(--dex-red, #c00)', background: 'rgba(200,0,0,0.06)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -9172,6 +9248,41 @@ export default function AdminPage(): React.ReactElement {
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          );
+        })()}
+
+        {(() => {
+          // v28.21: ECHTE Doppel-Anmeldung im Klammer-Modus — dieselbe Person
+          // zweimal aktiv IM SELBEN Sub-Event. Nur das belegt zwei Plätze und
+          // gehört rot gemeldet; die doppelten Klammer-Schatten-Zeilen laufen
+          // über den neutralen Hinweis oben.
+          if (subEventDupGroups.length === 0) return null;
+          return (
+            <div style={{ marginBottom: 20, padding: 16, borderRadius: 12, border: '1px solid var(--dex-red, #c00)', background: 'rgba(200,0,0,0.06)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+                <Icon iconName="Warning" style={{ fontSize: 18, color: 'var(--dex-red, #c00)' }} />
+                <strong style={{ color: 'var(--dex-red, #c00)', fontSize: '0.95rem' }}>
+                  {isDe ? `Doppel-Anmeldungen erkannt (${subEventDupGroups.length})` : `Duplicate registrations detected (${subEventDupGroups.length})`}
+                </strong>
+                <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                  {isDe
+                    ? 'Dieselbe Person ist im selben Sub-Event mehrfach angemeldet und belegt dort zwei Plätze. Im jeweiligen Sub-Event-Tab kannst du die doppelte Zeile über „Abmelden" still entfernen.'
+                    : 'The same person is registered more than once in the same sub-event and occupies two seats there. Use „Cancel" in that sub-event tab to silently remove the duplicate row.'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {subEventDupGroups.map(g => (
+                  <div key={`${g.sectionTitle}::${g.email}`} style={{ fontSize: '0.84rem', color: 'var(--dex-gray-800)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}>
+                    <strong>{g.name}</strong>
+                    <span style={{ color: 'var(--dex-gray-500)' }}>{g.email}</span>
+                    <span style={{ padding: '1px 8px', borderRadius: 999, background: 'var(--dex-red, #c00)', color: '#fff', fontSize: '0.72rem', fontWeight: 700 }}>
+                      {isDe ? `${g.count}× angemeldet` : `${g.count}× registered`}
+                    </span>
+                    <span style={{ color: 'var(--dex-gray-600)' }}>— {g.sectionTitle}</span>
+                  </div>
+                ))}
               </div>
             </div>
           );
