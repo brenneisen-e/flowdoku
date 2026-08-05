@@ -113,6 +113,26 @@ async function compressImage(file: File, maxWidth: number = 1200, quality: numbe
   });
 }
 
+/**
+ * v28.32: Wenn Mail- und Outlook-Kopfbild identisch sind (der Normalfall, seit
+ * v28.29 erst recht: Sub-Events erben das Bild des Hauptevents), stand dasselbe
+ * Base64 ZWEIMAL im selben Datensatz — einmal als `_eventLogo`, einmal als
+ * `_outlookLogo`. Statt der zweiten Kopie wird jetzt nur noch ein Marker
+ * gespeichert; beim Laden wird daraus wieder das Mail-Bild. Spart bei einem
+ * Foto-Kopfbild rund ein Drittel des Speicher-Payloads.
+ */
+const outlookLogoPiggyback = (emailLogo: string, outlookLogo: string): Record<string, unknown> => {
+  if (!outlookLogo) return {};
+  if (emailLogo && outlookLogo === emailLogo) return { _outlookLogoSameAsMail: true };
+  return { _outlookLogo: outlookLogo };
+};
+/** Gegenstueck zu `outlookLogoPiggyback` beim Laden. */
+const readOutlookLogo = (ov: Record<string, unknown> | null | undefined): string => {
+  if (!ov) return '';
+  if (ov._outlookLogoSameAsMail) return (ov._eventLogo as string) || '';
+  return (ov._outlookLogo as string) || '';
+};
+
 interface CustomFieldInput {
   id: string;
   label: string;
@@ -1469,7 +1489,7 @@ export default function EventCreationPage(): React.ReactElement {
         // am Ende von handleSubmit die frisch berechneten Werte und das
         // Entfernen z.B. eines Test-Team-Mitglieds bleibt ohne Wirkung.
         const {
-          _eventLogo, _outlookLogo, _b2run,
+          _eventLogo, _outlookLogo, _outlookLogoSameAsMail, _b2run,
           _qrScanners, _coOrganizers, _testTeam,
           _splitDisplayOrderReversed,
           _requireSubEventSelection,
@@ -1486,7 +1506,7 @@ export default function EventCreationPage(): React.ReactElement {
           ...rest
         } = parsed as Record<string, unknown>;
         // Variablen nur destrukturiert, um sie aus `rest` zu entfernen.
-        void _eventLogo; void _outlookLogo; void _b2run;
+        void _eventLogo; void _outlookLogo; void _outlookLogoSameAsMail; void _b2run;
         void _qrScanners; void _coOrganizers; void _testTeam;
         void _splitDisplayOrderReversed; void _requireSubEventSelection;
         void _subEventsOnlyMode; void _subEventsDisabled; void _imageBanner; void _childEventTerm;
@@ -1509,7 +1529,7 @@ export default function EventCreationPage(): React.ReactElement {
   // und im Outlook-Termin ein event-spezifisches Bild anzeigen kann.
   const [outlookLogoPreview, setOutlookLogoPreview] = React.useState(() => {
     if (!editEvent?.emailTemplateOverrides) return '';
-    try { const o = JSON.parse(editEvent.emailTemplateOverrides); return o._outlookLogo || ''; } catch { return ''; }
+    try { return readOutlookLogo(JSON.parse(editEvent.emailTemplateOverrides)); } catch { return ''; }
   });
   // v18.73: Header-Bild (Event-Bild = {{ORB_URL}}) Größe + Innenabstand pro
   // Event. Gilt für Mail- UND Outlook-Termin-Kopf. Persistiert als Piggyback
@@ -1856,7 +1876,7 @@ export default function EventCreationPage(): React.ReactElement {
       try {
         const ov = JSON.parse(k.emailTemplateOverrides || '{}') as Record<string, unknown>;
         emailLogo = (ov?._eventLogo as string) || '';
-        outlookLogo = (ov?._outlookLogo as string) || '';
+        outlookLogo = readOutlookLogo(ov);
         inheritFlagsRaw = (ov?._inheritFlags as { capacity?: boolean; fields?: boolean; location?: boolean } | undefined);
         // Piggyback-Keys (mit Unterstrich-Prefix) rausstrippen, der Rest sind
         // die echten Mail-Template-Overrides pro TemplateType.
@@ -1941,7 +1961,7 @@ export default function EventCreationPage(): React.ReactElement {
       // v28.30: Kopfbild-Snapshot (gleicher Piggyback-Key wie beim Hauptevent).
       initialOutlookLogoBase64: ((): string => {
         if (!k.emailTemplateOverrides) return '';
-        try { const o = JSON.parse(k.emailTemplateOverrides); return (o && o._outlookLogo) || ''; } catch { return ''; }
+        try { return readOutlookLogo(JSON.parse(k.emailTemplateOverrides)); } catch { return ''; }
       })(),
       customFields: (k.eventSpecificFields || []).map(f => ({
         id: f.id,
@@ -2290,7 +2310,7 @@ export default function EventCreationPage(): React.ReactElement {
     // Vergleich blieb er für den Save-Detektor unsichtbar.
     outlookLogo: ((): string => {
       if (!editEvent?.emailTemplateOverrides) return '';
-      try { const o = JSON.parse(editEvent.emailTemplateOverrides); return (o && o._outlookLogo) || ''; } catch { return ''; }
+      try { return readOutlookLogo(JSON.parse(editEvent.emailTemplateOverrides)); } catch { return ''; }
     })(),
     // v22.48: Organizer-Namen in den Snapshot — eine Organizer-Änderung ändert
     // den Outlook-Standardtext („wendet euch bitte an …") und soll daher das
@@ -3661,7 +3681,7 @@ export default function EventCreationPage(): React.ReactElement {
       const subOverridesMerged: Record<string, unknown> = {
         ...subDraftOverrides,
         ...(subEmailLogo ? { _eventLogo: subEmailLogo } : {}),
-        ...(subOutlookLogo ? { _outlookLogo: subOutlookLogo } : {}),
+        ...outlookLogoPiggyback(subEmailLogo, subOutlookLogo),
         // v18.73: Sub-Event erbt das Header-Bild-Layout des Hauptevents, damit
         // auch die Sub-Event-Mails den gleichen Bild-Kopf nutzen.
         ...headerImageLayoutConfig,
@@ -4628,7 +4648,7 @@ export default function EventCreationPage(): React.ReactElement {
         ? JSON.stringify(Object.assign(
             {},
             (effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
-            (effOutlookLogo ? { _outlookLogo: effOutlookLogo } : {}),
+            outlookLogoPiggyback(effEmailLogo, effOutlookLogo),
             ...topPiggybackConfigs,
             topOverrides,
           ))
@@ -5323,7 +5343,7 @@ export default function EventCreationPage(): React.ReactElement {
             ? JSON.stringify(Object.assign(
                 {},
                 (effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
-                (effOutlookLogo ? { _outlookLogo: effOutlookLogo } : {}),
+                outlookLogoPiggyback(effEmailLogo, effOutlookLogo),
                 ...createPiggybackConfigs,
                 emailTemplateOverrides,
               ))
@@ -7781,20 +7801,30 @@ export default function EventCreationPage(): React.ReactElement {
                     setImagePreview(dataUrl);
                     setImageFile(file);
                     setImageEditOpen(false);
-                    // v26.95: anbieten, das Foto auch als Kopfbild für die Mails
-                    // und den Outlook-Termin zu übernehmen.
-                    const useForMails = await confirmDialog(
-                      isDe
-                        ? 'Möchtest du dieses Foto auch als Bild im Kopf der E-Mails und des Outlook-Termins verwenden?'
-                        : 'Do you want to use this photo as the header image for the emails and the Outlook invite too?',
-                      { title: isDe ? 'Foto auch für Mails & Outlook?' : 'Photo for emails & Outlook too?', confirmLabel: isDe ? 'Ja, übernehmen' : 'Yes, use it' },
-                    );
-                    if (useForMails) {
-                      try {
-                        const b64 = await fileToBase64(await compressImage(file, 600, 0.9));
-                        if (b64) { setEmailLogoPreview(b64); setOutlookLogoPreview(b64); }
-                      } catch { /* still-optional, ignorieren */ }
-                    }
+                    // v28.32: Der Kreis-Zuschnitt gilt nur noch fuer die
+                    // Anmeldeseite und die Event-Karte. Mail-Kopf und
+                    // Outlook-Termin sind RECHTECKIG — dort steht ab jetzt
+                    // automatisch das UNBESCHNITTENE Original (v26.95 fragte
+                    // stattdessen nach und nahm dann den Kreis, der im
+                    // rechteckigen Kopf sichtbar angeschnitten ankam).
+                    // Ein bereits bewusst gesetztes eigenes Kopfbild wird nicht
+                    // ueberschrieben; wer den Kreis doch im Kopf haben will,
+                    // nimmt „Bild auswaehlen".
+                    try {
+                      let srcFile: File | null = imageOrigFile;
+                      if (!srcFile && editEvent && editEvent.imageOrigUrl) {
+                        try {
+                          const resp = await fetch(editEvent.imageOrigUrl, { credentials: 'include' });
+                          const blob = await resp.blob();
+                          srcFile = new File([blob], 'event-photo.jpg', { type: blob.type || 'image/jpeg' });
+                        } catch { /* Original nicht ladbar → Zuschnitt nehmen */ }
+                      }
+                      const b64 = await fileToBase64(await compressImage(srcFile || file, 600, 0.85, true));
+                      if (b64) {
+                        if (!emailLogoPreview) { setEmailLogoPreview(b64); setEmailLogoFromPhoto(true); }
+                        if (!outlookLogoPreview) { setOutlookLogoPreview(b64); setOutlookLogoFromPhoto(true); }
+                      }
+                    } catch { /* Kopfbild ist optional — Fehler nie durchreichen */ }
                   }}
                 >
                   {/* v23.19/v23.25: Optional & einklappbar — Bild pro Ansicht
