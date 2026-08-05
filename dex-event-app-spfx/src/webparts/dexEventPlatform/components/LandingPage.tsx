@@ -1,6 +1,7 @@
 // Landing Page - Startbildschirm mit animiertem Orb und Willkommensnachricht
 
 import * as React from 'react';
+import DexLogo from './DexLogo';
 import { useNavigation } from '../context/NavigationContext';
 import { useLanguage } from '../context/LanguageContext';
 // v18.25: personalisierte Begrüßung (Vorname) im Landing-Hero — useCurrentUser
@@ -905,8 +906,12 @@ export default function LandingPage(): React.ReactElement {
               EN
             </button>
           </div>
+          {/* v28.33: animiertes DEX-Logo (Canvas) statt des rotierenden
+              Farbring-Platzhalters. Zeichnet die Höhenlinien-Kugel des
+              DEX-Logos live, pausiert automatisch bei „Bewegung reduzieren",
+              ausserhalb des Viewports und im inaktiven Tab. */}
           <div className="landing__orb">
-            <div className="landing__orb-inner" />
+            <DexLogo title="DEX" motion="oscillate" style={{ width: '100%' }} />
           </div>
           <div className="landing__text">
             <h1>
