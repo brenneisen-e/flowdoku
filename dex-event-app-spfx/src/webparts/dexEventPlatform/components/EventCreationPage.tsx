@@ -1517,6 +1517,22 @@ export default function EventCreationPage(): React.ReactElement {
   const headerImageLayoutConfig = (headerImageLayout.width !== 180 || headerImageLayout.paddingV !== 30 || headerImageLayout.paddingH !== 30)
     ? { _headerImageLayout: { width: headerImageLayout.width, paddingV: headerImageLayout.paddingV, paddingH: headerImageLayout.paddingH } }
     : {};
+  /**
+   * v28.29: Kopfbild-Layout für EINEN konkreten Outlook-/Mail-Body. Breite und
+   * Innenabstand stellt der Organizer für sein FOTO ein („Volle Breite" = 600px).
+   * Fällt ein Termin mangels eigenem Bild auf das Standard-DEX-Logo (Orb) zurück,
+   * wurde dieses bisher ebenfalls 600px breit gerendert — in Outlook ein
+   * bildschirmfüllender, unten abgeschnittener Orb. Ohne eigenes Bild deshalb
+   * max. 180px mit Mindestabstand.
+   */
+  const headerLayoutFor = (logoB64: string): { imageWidth: number; imagePaddingV: number; imagePaddingH: number } => {
+    const hasOwn = !!(logoB64 && logoB64.trim());
+    return {
+      imageWidth: hasOwn ? headerImageLayout.width : Math.min(headerImageLayout.width, 180),
+      imagePaddingV: hasOwn ? headerImageLayout.paddingV : Math.max(headerImageLayout.paddingV, 20),
+      imagePaddingH: hasOwn ? headerImageLayout.paddingH : Math.max(headerImageLayout.paddingH, 20),
+    };
+  };
   // v26.95: Das Event-Foto als Mail-/Outlook-Kopfbild übernehmen. Quelle ist der
   // frisch gewählte File (imageFile), sonst die Vorschau (Data-URL direkt, http-
   // URL bestehender Events wird geladen). In JEDEM Fall auf 600px komprimiert,
@@ -1539,9 +1555,30 @@ export default function EventCreationPage(): React.ReactElement {
       return out && out.length < b64.length ? out : b64;
     } catch { return b64; }
   };
-  const applyEventPhotoToLogo = async (setter: (b64: string) => void): Promise<void> => {
+  const applyEventPhotoToLogo = async (setter: (b64: string) => void): Promise<string> => {
     try {
       let b64 = '';
+      // v28.29 BUG-FIX: „Event-Foto verwenden" nahm bisher IMMER den Zuschnitt
+      // (imageFile/imagePreview = das runde bzw. quadratisch beschnittene
+      // Event-Bild). Im Mail-/Outlook-Kopf steht aber ein RECHTECK — das Foto
+      // kam dort sichtbar abgeschnitten an, ohne dass der Organizer das
+      // gewollt hätte. Wenn ein unbeschnittenes Original existiert (frischer
+      // Upload: imageOrigFile; gespeichertes Event: editEvent.imageOrigUrl),
+      // wird jetzt DIESES übernommen.
+      if (imageOrigFile) {
+        b64 = await fileToBase64(await compressImage(imageOrigFile, 600, 0.9));
+      } else if (editEvent && editEvent.imageOrigUrl) {
+        try {
+          const resp = await fetch(editEvent.imageOrigUrl, { credentials: 'include' });
+          const blob = await resp.blob();
+          const f = new File([blob], 'event-photo.jpg', { type: blob.type || 'image/jpeg' });
+          b64 = await fileToBase64(await compressImage(f, 600, 0.9));
+        } catch { /* Original nicht ladbar → unten auf den Zuschnitt zurückfallen */ }
+      }
+      if (b64) {
+        setter(b64);
+        return b64;
+      }
       if (imageFile) {
         b64 = await fileToBase64(await compressImage(imageFile, 600, 0.9));
       } else if (imagePreview && imagePreview.indexOf('data:') === 0) {
@@ -1556,14 +1593,16 @@ export default function EventCreationPage(): React.ReactElement {
       }
       if (b64) setter(b64);
       else showAlert(isDe ? 'Kein Event-Foto vorhanden — bitte zuerst oben ein Bild hochladen.' : 'No event photo yet — please upload an image above first.', { variant: 'error' });
+      return b64;
     } catch {
       showAlert(isDe ? 'Das Event-Foto konnte nicht übernommen werden.' : 'Could not use the event photo.', { variant: 'error' });
+      return '';
     }
   };
   // v27.2: Größensteuerung fürs Kopfbild als wiederverwendbarer Block (Schritt 23
   // UND 24) — inkl. verkleinerter Live-Vorschau, die zeigt, wie groß das Bild im
   // Mail-/Outlook-Kopf steht. `headerImageLayout` gilt event-weit (Mail + Outlook).
-  const renderHeaderSizeControl = (previewSrc: string): React.ReactElement => {
+  const renderHeaderSizeControl = (previewSrc: string, note?: string): React.ReactElement => {
     const PREV_W = 260; const sc = PREV_W / 600;
     const numInput = (val: number, min: number, max: number, def: number, set: (n: number) => void): React.ReactElement => (
       <input type="number" min={min} max={max} step={min === 80 ? 10 : 2} value={val}
@@ -1601,6 +1640,14 @@ export default function EventCreationPage(): React.ReactElement {
             </div>
           )}
         </div>
+        {/* v28.29: sagt, WOHER das gezeigte Bild kommt (eigenes / vom Hauptevent
+            geerbt / Standardlogo). Vorher zeigte die Vorschau kommentarlos das
+            Event-Foto, obwohl gespeichert etwas anderes wurde. */}
+        {note && (
+          <div style={{ marginTop: 8, fontSize: '0.72rem', color: 'var(--dex-gray-600)', lineHeight: 1.45 }}>
+            {note}
+          </div>
+        )}
       </div>
     );
   };
@@ -2119,8 +2166,8 @@ export default function EventCreationPage(): React.ReactElement {
         )}
         <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-600)', marginTop: 8, lineHeight: 1.5 }}>
           {isDe
-            ? <>Nur nötig, wenn der Kalendereintrag der Teilnehmer noch veraltet ist — der Termin wird dann mit dem zuletzt <strong>gespeicherten</strong> Stand neu verschickt. Erst speichern, dann klicken. <strong>Wichtig:</strong> {childTermPlural || 'Sub-Events'} haben eigene Termine; dieser Knopf betrifft nur „{tabTitle}"{showAll ? ' — für alle auf einmal den zweiten Knopf nutzen' : ''}. Der Kasten bleibt dauerhaft stehen, er ist keine Fehlermeldung.</>
-            : <>Only needed if the attendees’ calendar entry is still outdated — the appointment is re-sent with the last <strong>saved</strong> state. Save first, then click. <strong>Important:</strong> sub-events have their own appointments; this button only affects „{tabTitle}"{showAll ? ' — use the second button for all at once' : ''}. This box is always here, it is not an error message.</>}
+            ? <>Nur nötig, wenn der Kalendereintrag der Teilnehmer noch veraltet ist — der Termin wird dann mit dem zuletzt <strong>gespeicherten</strong> Stand neu verschickt. Erst speichern, dann klicken. <strong>Wichtig:</strong> {childTermPlural || 'Sub-Events'} haben eigene Termine; dieser Knopf betrifft nur „{tabTitle}“{showAll ? ' — für alle auf einmal den zweiten Knopf nutzen' : ''}. Der Kasten bleibt dauerhaft stehen, er ist keine Fehlermeldung.</>
+            : <>Only needed if the attendees’ calendar entry is still outdated — the appointment is re-sent with the last <strong>saved</strong> state. Save first, then click. <strong>Important:</strong> sub-events have their own appointments; this button only affects „{tabTitle}“{showAll ? ' — use the second button for all at once' : ''}. This box is always here, it is not an error message.</>}
         </div>
       </div>
     );
@@ -3479,6 +3526,17 @@ export default function EventCreationPage(): React.ReactElement {
     // Sub-Events erben Organizer + OrganizerEmail vom Parent. Einmal sanitisieren
     // statt pro Iteration, identisch für alle Children.
     const sanitizedOrgPair = sanitizeOrganizerPairs();
+    // v28.29 BUG-FIX: Kopfbild-Vererbung vom Hauptevent auf die Sub-Events.
+    // Sub-Events haben EIGENE Outlook-Termine und eigene Mails, aber praktisch
+    // nie ein eigenes Kopfbild — Schritt 23/24 wird pro Tab gepflegt, und die
+    // Vorschau dort zeigte fälschlich das Event-Foto, obwohl im Sub-Tab gar
+    // nichts hinterlegt war. Beim Speichern fiel der Sub-Event-Body deshalb
+    // auf das Standard-DEX-Logo zurück: Hauptevent-Termin mit Foto,
+    // Sub-Event-Termine mit Orb. Jetzt erbt jedes Sub-Event ohne eigenes Bild
+    // das Bild des Hauptevents; ein eigenes Bild im Sub-Tab gewinnt weiterhin.
+    const parentComm = resolveTopLevelCommState();
+    const inheritedEmailLogo = await shrinkLogoB64(parentComm.emailLogoBase64 || '');
+    const inheritedOutlookLogo = await shrinkLogoB64(parentComm.outlookLogoBase64 || '');
     // v11.60: aus dem Ref iterieren — der React-State ist beim Save evtl.
     // noch nicht propagiert, weil flushActiveCommTabToState() per setState
     // erst async wirkt. Der Ref hält synchron die letzten Tab-Werte.
@@ -3493,8 +3551,10 @@ export default function EventCreationPage(): React.ReactElement {
       const subOutlookHeading = draft.outlookHeading || draft.title || '';
       const subOutlookSub = draft.outlookSubheading || '';
       const subOutlookSubject = (draft.outlookSubject || '').trim();
-      const subEmailLogo = draft.emailLogoBase64 || '';
-      const subOutlookLogo = draft.outlookLogoBase64 || '';
+      // v28.29: eigenes Bild des Sub-Events gewinnt, sonst erbt es das
+      // Kopfbild des Hauptevents (statt still auf den Orb zu fallen).
+      const subEmailLogo = draft.emailLogoBase64 || inheritedEmailLogo;
+      const subOutlookLogo = draft.outlookLogoBase64 || inheritedOutlookLogo;
       // Outlook-Body wrappen. v26.59 BUG-FIX: Ohne eigenen Text wurde der Body
       // bisher LEER gespeichert („der Flow setzt einen Default" — stimmte
       // nicht, der Flow mappt 1:1) → die Outlook-Einladung der Sub-Events kam
@@ -3529,7 +3589,8 @@ export default function EventCreationPage(): React.ReactElement {
         // v27.5: Default-Unter-Überschrift = Ort (nicht Datum).
         const resolvedSub2 = subOutlookSub ? replacePlaceholders(subOutlookSub, vars) : (draft.location || undefined);
         // v18.73: Sub-Events erben das Header-Bild-Layout des Hauptevents.
-        const wrapped = buildOutlookBody(resolvedHead, resolvedBody, resolvedSub2, { imageWidth: headerImageLayout.width, imagePaddingV: headerImageLayout.paddingV, imagePaddingH: headerImageLayout.paddingH });
+        // v28.29: ohne eigenes/geerbtes Bild wird die Breite gekappt (Orb).
+        const wrapped = buildOutlookBody(resolvedHead, resolvedBody, resolvedSub2, headerLayoutFor(subOutlookLogo));
         wrappedSubOutlookBody = wrapped.replace(/\{\{ORB_URL\}\}/g, subOutlookLogo || getCachedOrbBase64() || '');
       }
       // Sub-Event-EmailTemplateOverrides: Logo-Piggybacks (Top-Level-Pattern)
@@ -4036,6 +4097,77 @@ export default function EventCreationPage(): React.ReactElement {
   };
 
   /**
+   * v28.29: Nach „Event-Foto übernehmen" auf dem HAUPTEVENT-Tab fragen, ob das
+   * Bild auch für alle {childTermPlural} gelten soll. Sub-Events haben eigene
+   * Mails und eigene Outlook-Termine; ohne diese Abfrage musste der Organizer
+   * das Foto in jedem Tab einzeln übernehmen — und merkte den Unterschied erst,
+   * wenn die Sub-Event-Termine mit dem Standardlogo bei den Teilnehmern landeten.
+   * Sagt er Ja, wird das Bild in JEDEN Sub-Event-Draft geschrieben (überschreibt
+   * auch bereits gesetzte eigene Bilder — das ist der Sinn der Frage); sagt er
+   * Nein, greift weiterhin die stille Vererbung für Sub-Events OHNE eigenes Bild.
+   */
+  const offerLogoToSubEvents = async (kind: 'email' | 'outlook', b64: string): Promise<void> => {
+    if (!b64 || activeCommTabIdx !== 0) return;
+    const named = subEventsRef.current.filter(x => x.title && x.title.trim());
+    if (named.length === 0) return;
+    const what = kind === 'email'
+      ? (isDe ? 'in den E-Mails' : 'in the emails')
+      : (isDe ? 'im Outlook-Termin' : 'in the Outlook appointment');
+    const term = childTermPlural || (isDe ? 'Sub-Events' : 'sub-events');
+    const ok = await confirmDialog(
+      isDe
+        ? `Das Event-Foto steht jetzt ${what} des Hauptevents.\n\nSoll es auch für die ${named.length} ${term} gelten?\n\n${named.map(x => `• ${x.title.trim()}`).join('\n')}\n\nJa = alle bekommen dieses Bild (ein dort bereits hinterlegtes eigenes Bild wird ersetzt). Nein = die ${term} behalten ihre Einstellung; wer kein eigenes Bild hat, erbt ohnehin das des Hauptevents.`
+        : `The event photo is now used ${what} of the main event.\n\nApply it to the ${named.length} ${term} as well?\n\n${named.map(x => `• ${x.title.trim()}`).join('\n')}\n\nYes = all of them get this image (any own image set there is replaced). No = they keep their setting; those without an own image inherit the main event's anyway.`,
+      { confirmLabel: isDe ? `Ja, für alle ${term}` : `Yes, for all ${term}` },
+    );
+    if (!ok) return;
+    const next = subEventsRef.current.map(x => {
+      if (!x.title || !x.title.trim()) return x;
+      return kind === 'email' ? { ...x, emailLogoBase64: b64 } : { ...x, outlookLogoBase64: b64 };
+    });
+    subEventsRef.current = next;
+    setSubEvents(next);
+    showAlert(
+      isDe ? `Bild für ${named.length} ${term} übernommen — beim Speichern werden deren Termine/Mails mit aktualisiert.`
+        : `Image applied to ${named.length} ${term} — their appointments/emails are updated on save.`,
+      { variant: 'success' },
+    );
+  };
+
+  /**
+   * v28.29: Welches Bild steht am Ende WIRKLICH im Kopf der Mail bzw. des
+   * Outlook-Termins? Die Vorschau in Schritt 23/24 hat bisher stumpf
+   * `logo || imagePreview` gezeigt — also das Event-Foto, auch wenn als Logo
+   * gar nichts hinterlegt war. Auf Sub-Event-Tabs war das der eigentliche
+   * Stolperstein: Die Vorschau zeigte das Foto, gespeichert wurde aber der
+   * Standard-Orb. Jetzt liefert dieser Helper genau das Bild, das der Save
+   * schreibt, plus einen Hinweis, woher es stammt.
+   */
+  const effectiveHeaderImage = (kind: 'email' | 'outlook', own: string): { src: string; note: string } => {
+    if (own) return { src: own, note: '' };
+    // Sub-Event-Tab: erbt seit v28.29 das Kopfbild des Hauptevents.
+    if (activeCommTabIdx > 0) {
+      const snap = topLevelCommSnapshot.current;
+      const parentLogo = snap ? (kind === 'email' ? snap.emailLogoBase64 : snap.outlookLogoBase64) : '';
+      if (parentLogo) {
+        return {
+          src: parentLogo,
+          note: isDe
+            ? 'Wird vom Hauptevent übernommen — lade oben ein eigenes Bild hoch, wenn dieser Termin ein anderes zeigen soll.'
+            : 'Inherited from the main event — upload your own image above if this appointment should show a different one.',
+        };
+      }
+    }
+    const orb = getCachedOrbBase64() || '';
+    return {
+      src: orb,
+      note: isDe
+        ? 'Kein eigenes Bild hinterlegt — es wird das Deloitte-Standardlogo verwendet. Das Event-Foto wandert NICHT automatisch hierher; dafür auf „Event-Foto verwenden" klicken.'
+        : 'No custom image set — the Deloitte default logo is used. The event photo does not move here automatically; click „Use event photo" for that.',
+    };
+  };
+
+  /**
    * Save-Side-Sanity: Organizer-Names und -Emails 1:1 paaren bevor sie nach SP
    * geschrieben werden. Pairs ohne BEIDE (Name + Email) fallen raus — verhindert
    * dass eine Mismatch-State (z.B. „Spiegel, Mirjam" gepaart mit
@@ -4299,7 +4431,7 @@ export default function EventCreationPage(): React.ReactElement {
       // v27.5: Default-Unter-Überschrift = Ort (nicht Datum).
       const resolvedOlSub = effOutlookSubheading ? replacePlaceholders(effOutlookSubheading, outlookVars) : (location || undefined);
       // v18.73: Header-Bild Größe + Innenabstand (event-weit) in den Outlook-Body.
-      const wrappedOutlook = buildOutlookBody(resolvedOlHeading, resolvedBody, resolvedOlSub, { imageWidth: headerImageLayout.width, imagePaddingV: headerImageLayout.paddingV, imagePaddingH: headerImageLayout.paddingH });
+      const wrappedOutlook = buildOutlookBody(resolvedOlHeading, resolvedBody, resolvedOlSub, headerLayoutFor(effOutlookLogo));
       // v11.93: Top-Level-Logo aus dem Resolver — sonst würde beim Speichern
       // aus einem Sub-Tab das falsche Logo aufs Haupt-Event geschrieben.
       updates['OutlookBody'] = wrappedOutlook.replace(/\{\{ORB_URL\}\}/g, effOutlookLogo || getCachedOrbBase64() || '');
@@ -5022,7 +5154,7 @@ export default function EventCreationPage(): React.ReactElement {
           // v27.5: Default-Unter-Überschrift = Ort (nicht Datum).
           const resolvedSub = effOutlookSubheading ? replacePlaceholders(effOutlookSubheading, vars) : (location || undefined);
           // v18.73: Header-Bild Größe + Innenabstand (event-weit) in den Outlook-Body.
-          const wrapped = buildOutlookBody(resolvedHeading, resolvedBody, resolvedSub, { imageWidth: headerImageLayout.width, imagePaddingV: headerImageLayout.paddingV, imagePaddingH: headerImageLayout.paddingH });
+          const wrapped = buildOutlookBody(resolvedHeading, resolvedBody, resolvedSub, headerLayoutFor(effOutlookLogo));
           // v11.93: Logo aus Top-Level-Resolver, sonst landet beim Speichern
           // aus einem Sub-Tab das Sub-Logo aufs Haupt-Event.
           return wrapped.replace(/\{\{ORB_URL\}\}/g, effOutlookLogo || getCachedOrbBase64() || '');
@@ -14065,16 +14197,25 @@ export default function EventCreationPage(): React.ReactElement {
                   </label>
                   {/* v26.95: Event-Foto (falls hinterlegt) mit einem Klick als
                       Mail-Kopfbild übernehmen — kein Extra-Upload nötig. */}
+                  {/* v28.29: neutral statt gruen gefuellt. Der gruene Rahmen plus
+                      die gruene Fuellung lasen sich wie ein AKTIVER Zustand
+                      („Event-Foto ist schon uebernommen") — war es aber nicht,
+                      und genau deshalb blieb der Kopf beim Standardlogo. */}
                   {(imagePreview || imageFile) && (
                     <button
                       type="button"
-                      onClick={() => applyEventPhotoToLogo(setEmailLogoPreview)}
-                      style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 'var(--dex-radius)', border: '1.5px solid var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.10)', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}
+                      onClick={() => { void (async () => { const b = await applyEventPhotoToLogo(setEmailLogoPreview); await offerLogoToSubEvents('email', b); })(); }}
+                      style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 'var(--dex-radius)', border: '1px solid var(--dex-gray-300)', background: '#fff', color: 'var(--dex-gray-700)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}
                     >
-                      <Icon iconName="Photo2" style={{ fontSize: 14 }} /> {isDe ? 'Event-Foto verwenden' : 'Use event photo'}
+                      <Icon iconName="Photo2" style={{ fontSize: 14 }} /> {isDe ? 'Event-Foto \u00fcbernehmen' : 'Copy event photo here'}
                     </button>
                   )}
-                  {(emailLogoPreview || imagePreview || imageFile) && renderHeaderSizeControl(emailLogoPreview || imagePreview)}
+                  {/* v28.29: zeigt das TATSÄCHLICH verwendete Kopfbild (eigenes /
+                      vom Hauptevent geerbt / Standardlogo) statt blind das Event-Foto. */}
+                  {((): React.ReactNode => {
+                    const eff = effectiveHeaderImage('email', emailLogoPreview);
+                    return renderHeaderSizeControl(eff.src, eff.note);
+                  })()}
                   </div>
                 </details>
 
@@ -14121,17 +14262,25 @@ export default function EventCreationPage(): React.ReactElement {
                     }} />
                   </label>
                   {/* v26.95: Event-Foto mit einem Klick als Outlook-Kopfbild. */}
+                  {/* v28.29: neutral statt gruen gefuellt. Der gruene Rahmen plus
+                      die gruene Fuellung lasen sich wie ein AKTIVER Zustand
+                      („Event-Foto ist schon uebernommen") — war es aber nicht,
+                      und genau deshalb blieb der Kopf beim Standardlogo. */}
                   {(imagePreview || imageFile) && (
                     <button
                       type="button"
-                      onClick={() => applyEventPhotoToLogo(setOutlookLogoPreview)}
-                      style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 'var(--dex-radius)', border: '1.5px solid var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.10)', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}
+                      onClick={() => { void (async () => { const b = await applyEventPhotoToLogo(setOutlookLogoPreview); await offerLogoToSubEvents('outlook', b); })(); }}
+                      style={{ marginLeft: 8, display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: 'var(--dex-radius)', border: '1px solid var(--dex-gray-300)', background: '#fff', color: 'var(--dex-gray-700)', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}
                     >
-                      <Icon iconName="Photo2" style={{ fontSize: 14 }} /> {isDe ? 'Event-Foto verwenden' : 'Use event photo'}
+                      <Icon iconName="Photo2" style={{ fontSize: 14 }} /> {isDe ? 'Event-Foto \u00fcbernehmen' : 'Copy event photo here'}
                     </button>
                   )}
                   {/* v27.2: Größensteuerung + Vorschau auch hier in Schritt 24. */}
-                  {(outlookLogoPreview || imagePreview || imageFile) && renderHeaderSizeControl(outlookLogoPreview || imagePreview)}
+                  {/* v28.29: siehe Schritt 23 — echte statt geratener Vorschau. */}
+                  {((): React.ReactNode => {
+                    const eff = effectiveHeaderImage('outlook', outlookLogoPreview);
+                    return renderHeaderSizeControl(eff.src, eff.note);
+                  })()}
                   {renderOutlookUpdateButton()}
                   </div>
                 </details>

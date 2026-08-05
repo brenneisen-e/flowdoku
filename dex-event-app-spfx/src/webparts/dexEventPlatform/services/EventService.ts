@@ -3428,7 +3428,7 @@ export class EventService {
    *   Liste zu liefern (für Abläufe, die aus dem Ergebnis auf „unbekannt"
    *   schließen).
    */
-  private async readAllParticipants(strict: boolean): Promise<SPParticipant[]> {
+  private async readAllParticipants(strict: boolean, onPage?: (loaded: number) => void): Promise<SPParticipant[]> {
     const out: SPParticipant[] = [];
     const PAGE = 2000;
     const MAX_PAGES = 100; // Reißleine (200k Einträge) gegen Endlosschleifen
@@ -3453,6 +3453,10 @@ export class EventService {
         break;
       }
       out.push(...items);
+      // v28.29: Nach jeder Seite melden — das Register hat inzwischen mehrere
+      // tausend Zeilen, der Lesevorgang dauert spürbar. Ohne Rückmeldung sah
+      // die Wartungs-Kachel aus, als würde nichts passieren.
+      if (onPage) { try { onPage(out.length); } catch { /* UI-Fehler nie durchreichen */ } }
       if (items.length < PAGE) break;
       const last = items[items.length - 1];
       if (!last || typeof last.Id !== 'number' || last.Id <= lastId) break; // Schutz vor Stillstand
@@ -3500,10 +3504,13 @@ export class EventService {
    *    gibt. Beim Löschen eines Events räumt die App das Register NICHT mit
    *    auf. Harmlos (die Nummer läuft ins Leere), aber Ballast.
    */
-  public async analyzeParticipantRegistry(validEventNumbers: number[]): Promise<{
+  public async analyzeParticipantRegistry(
+    validEventNumbers: number[],
+    onRead?: (loaded: number) => void,
+  ): Promise<{
     total: number; duplicateGroups: number; surplusRecords: number; orphanNumbers: number; noEmail: number;
   }> {
-    const all = await this.fetchAllParticipantsOrThrow();
+    const all = await this.fetchAllParticipantsOrThrow(onRead);
     const valid = new Set(validEventNumbers.filter(n => typeof n === 'number' && n > 0));
     const byEmail: Record<string, SPParticipant[]> = {};
     let noEmail = 0;
@@ -3540,8 +3547,9 @@ export class EventService {
    */
   public async mergeDuplicateParticipants(
     onProgress?: (done: number, total: number) => void,
+    onRead?: (loaded: number) => void,
   ): Promise<{ groups: number; deleted: number; failed: number }> {
-    const all = await this.fetchAllParticipantsOrThrow();
+    const all = await this.fetchAllParticipantsOrThrow(onRead);
     const byEmail: Record<string, SPParticipant[]> = {};
     for (const p of all) {
       const em = (p.Email || '').trim().toLowerCase();
@@ -3601,8 +3609,8 @@ export class EventService {
    * still eine unvollständige Liste zu liefern. Für Abläufe, die aus dem
    * Ergebnis auf „Person ist unbekannt" schließen (Register-Abgleich).
    */
-  private async fetchAllParticipantsOrThrow(): Promise<SPParticipant[]> {
-    return this.readAllParticipants(true);
+  private async fetchAllParticipantsOrThrow(onPage?: (loaded: number) => void): Promise<SPParticipant[]> {
+    return this.readAllParticipants(true, onPage);
   }
 
   public async backfillParticipantRegistry(

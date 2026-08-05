@@ -58,6 +58,11 @@ export default function AdminHubPage(): React.ReactElement {
   const [regCleanBusy, setRegCleanBusy] = React.useState(false);
   const [regCleanResult, setRegCleanResult] = React.useState<string | null>(null);
   const [regCleanIsError, setRegCleanIsError] = React.useState(false);
+  // v28.29: Fortschritt der Register-Bereinigung. Das Register hat mehrere
+  // tausend Zeilen — Lesen und Zusammenführen dauern spürbar, und die Kachel
+  // sah bis zum Ergebnis aus, als würde nichts passieren. `total: 0` = Phase
+  // ohne bekannte Gesamtzahl (Lesen) → unbestimmter Balken.
+  const [regCleanProgress, setRegCleanProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
   // v24.33: Fortschritt für das globale „Spalten fixen".
   const [fixProgress, setFixProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
   const [restoreProgress, setRestoreProgress] = React.useState<{ done: number; total: number; label: string } | null>(null);
@@ -745,6 +750,26 @@ export default function AdminHubPage(): React.ReactElement {
               ? 'Sucht in der zentralen Teilnehmer-Übersicht (DEX_Participants) nach Dubletten — mehrere Einträge zur selben E-Mail — und führt sie zusammen: Der älteste Eintrag bleibt und bekommt ALLE Event-Nummern, die überzähligen Zeilen werden gelöscht. Es geht nichts verloren; wessen Anmeldungen auf zwei Einträge verteilt waren, sieht danach wieder alle Events unter „Meine Events". Prüft zuerst und fragt vor dem Zusammenführen nach.'
               : 'Searches the central participant registry (DEX_Participants) for duplicates — several records for the same email — and merges them: the oldest record is kept and receives ALL event numbers, the surplus rows are deleted. Nothing is lost; anyone whose registrations were split across two records sees all their events in „My events" again. Checks first and asks before merging.'}
           </p>
+          {regCleanBusy && regCleanProgress && (
+            <div style={{ margin: '0 0 10px' }}>
+              <div style={{ height: 8, background: 'var(--dex-gray-100)', borderRadius: 999, overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%',
+                  // Lese-Phase (total = 0): Gesamtzahl ist noch unbekannt, der
+                  // Balken waechst mit den gelesenen Zeilen (2000 je Seite) und
+                  // bleibt unter 90 %, damit er nie faelschlich „fertig" wirkt.
+                  width: regCleanProgress.total > 0
+                    ? `${Math.min(100, Math.round((regCleanProgress.done / regCleanProgress.total) * 100))}%`
+                    : `${Math.max(6, Math.min(90, Math.round(regCleanProgress.done / 100)))}%`,
+                  background: 'var(--dex-green, #86bc25)',
+                  transition: 'width 0.3s',
+                }} />
+              </div>
+              <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {regCleanProgress.total > 0 ? `${regCleanProgress.done}/${regCleanProgress.total} · ` : ''}{regCleanProgress.label}
+              </div>
+            </div>
+          )}
           {regCleanResult && (
             <div style={{
               margin: '0 0 10px', padding: '8px 12px', borderRadius: 8, fontSize: '0.8rem', lineHeight: 1.45,
@@ -766,11 +791,14 @@ export default function AdminHubPage(): React.ReactElement {
                 setRegCleanBusy(true);
                 setRegCleanResult(null);
                 setRegCleanIsError(false);
+                setRegCleanProgress({ done: 0, total: 0, label: isDe ? 'Teilnehmer-Register wird gelesen…' : 'Reading participant registry…' });
                 try {
                   const validNumbers = allEvents
                     .map(e => e.eventNumber)
                     .filter((n): n is number => typeof n === 'number' && n > 0);
-                  const info = await eventServiceRef.analyzeParticipantRegistry(validNumbers);
+                  const info = await eventServiceRef.analyzeParticipantRegistry(validNumbers, loaded => {
+                    setRegCleanProgress({ done: loaded, total: 0, label: isDe ? `${loaded} Einträge gelesen…` : `${loaded} records read…` });
+                  });
                   const orphanNote = info.orphanNumbers > 0
                     ? (isDe
                       ? ` ${info.orphanNumbers} Verweis(e) zeigen auf gelöschte Events — wirkungslos, aber harmlos.`
@@ -780,15 +808,24 @@ export default function AdminHubPage(): React.ReactElement {
                     setRegCleanResult(isDe
                       ? `Keine Dubletten gefunden (${info.total} Einträge geprüft).${orphanNote}${info.noEmail > 0 ? ` ${info.noEmail} Eintrag/Einträge ohne E-Mail-Adresse.` : ''}`
                       : `No duplicates found (${info.total} records checked).${orphanNote}${info.noEmail > 0 ? ` ${info.noEmail} record(s) without an email address.` : ''}`);
+                    setRegCleanProgress(null);
                     setRegCleanBusy(false);
                     return;
                   }
+                  setRegCleanProgress(null);
                   const ok = await confirmDialog(isDe
                     ? `${info.duplicateGroups} Person(en) haben mehrere Einträge im Teilnehmer-Register (${info.surplusRecords} überzählige Zeile(n) von ${info.total} insgesamt).\n\nJetzt zusammenführen? Je Person bleibt der älteste Eintrag und erhält ALLE Event-Nummern der Dubletten; die überzähligen Zeilen werden gelöscht. Anmeldungen gehen dabei nicht verloren.${orphanNote ? `\n\nHinweis:${orphanNote}` : ''}`
                     : `${info.duplicateGroups} person(s) have multiple records in the participant registry (${info.surplusRecords} surplus row(s) out of ${info.total} total).\n\nMerge now? Per person the oldest record is kept and receives ALL event numbers; the surplus rows are deleted. No registrations are lost.${orphanNote ? `\n\nNote:${orphanNote}` : ''}`,
                     { confirmLabel: isDe ? 'Zusammenführen' : 'Merge' });
-                  if (!ok) { setRegCleanBusy(false); return; }
-                  const r = await eventServiceRef.mergeDuplicateParticipants();
+                  if (!ok) { setRegCleanProgress(null); setRegCleanBusy(false); return; }
+                  setRegCleanProgress({ done: 0, total: info.duplicateGroups, label: isDe ? 'Einträge werden zusammengeführt…' : 'Merging records…' });
+                  const r = await eventServiceRef.mergeDuplicateParticipants(
+                    (done, total) => setRegCleanProgress({
+                      done, total,
+                      label: isDe ? 'Einträge werden zusammengeführt…' : 'Merging records…',
+                    }),
+                    loaded => setRegCleanProgress({ done: loaded, total: 0, label: isDe ? `${loaded} Einträge gelesen…` : `${loaded} records read…` }),
+                  );
                   setRegCleanIsError(r.failed > 0);
                   setRegCleanResult(isDe
                     ? `${r.groups} Person(en) zusammengeführt, ${r.deleted} überzählige Zeile(n) entfernt${r.failed > 0 ? `, ${r.failed} fehlgeschlagen` : ''}.`
@@ -797,6 +834,7 @@ export default function AdminHubPage(): React.ReactElement {
                   setRegCleanIsError(true);
                   setRegCleanResult((isDe ? 'Fehler: ' : 'Error: ') + (err instanceof Error ? err.message : String(err || '')).slice(0, 300));
                 }
+                setRegCleanProgress(null);
                 setRegCleanBusy(false);
               })().catch(() => { /* */ });
             }}
