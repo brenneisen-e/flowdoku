@@ -1231,6 +1231,15 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           return (ov && typeof ov._imageOrigUrl === 'string') ? ov._imageOrigUrl : '';
         } catch { return ''; }
       })(),
+      // v28.20: Explizite Klammer-Anmeldefrist (Piggyback _klammerDeadline).
+      // Abgelaufen = Gesamt-Event zu (auch bei offenen Sub-Events); leer =
+      // wie bisher offen bis zur spätesten Sub-Event-Frist.
+      klammerDeadline: ((): string => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          return (ov && typeof ov._klammerDeadline === 'string') ? ov._klammerDeadline : '';
+        } catch { return ''; }
+      })(),
       // v28.2: Sub-Events SOFT-deaktiviert (Piggyback _subEventsDisabled) —
       // die Kind-Events bleiben inkl. Anmeldungen gespeichert, werden aber
       // auf der Anmeldeseite nicht mehr angeboten. Wieder-Einschalten im

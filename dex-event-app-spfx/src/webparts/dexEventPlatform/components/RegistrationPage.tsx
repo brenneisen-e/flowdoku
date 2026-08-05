@@ -1036,7 +1036,10 @@ export default function RegistrationPage(): React.ReactElement {
   // Sub-Events zu sind. Solange mindestens ein Sub-Event noch offen ist, kommt
   // der Teilnehmer rein und kann sich für die offenen Sub-Events anmelden —
   // auch wenn die (Klammer-/Hauptevent-)Frist abgelaufen ist.
-  const isDeadlinePassed = !!event.registrationDeadline && new Date(event.registrationDeadline) < new Date();
+  // v28.20: Auch die explizite Klammer-Frist zählt (Organizer/Admin-Banner +
+  // Parent-Reg-Block; für reguläre User greift ohnehin die Fully-Closed-Seite).
+  const isDeadlinePassed = (!!event.registrationDeadline && new Date(event.registrationDeadline) < new Date())
+    || (!!event.klammerDeadline && new Date(event.klammerDeadline) < new Date());
   const isFullyClosed = isRegistrationFullyClosed(event, childEvents);
 
   // v23.14: Vorschau vor Aktivierung — reguläre User dürfen die Anmeldeseite
@@ -1088,9 +1091,17 @@ export default function RegistrationPage(): React.ReactElement {
             <p style={{ color: 'var(--dex-gray-600)', marginBottom: 8 }}>
               {t('reg.deadlinepassed.text')}
             </p>
-            <p style={{ color: 'var(--dex-gray-400)', fontSize: '0.85rem' }}>
-              {t('reg.deadlinepassed.date')}: {new Date(event.registrationDeadline).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-            </p>
+            {/* v28.20: Bei Klammern mit expliziter Frist DIE anzeigen — die
+                Spalten-Frist ist dort ein wirkungsloser Alt-Wert (und kann
+                leer sein → Invalid Date). */}
+            {(() => {
+              const d = event.klammerDeadline || event.registrationDeadline;
+              return d ? (
+                <p style={{ color: 'var(--dex-gray-400)', fontSize: '0.85rem' }}>
+                  {t('reg.deadlinepassed.date')}: {new Date(d).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                </p>
+              ) : null;
+            })()}
             <button className="btn btn-primary mt-24" onClick={() => navigate('register')}>
               {t('reg.backtoevents')}
             </button>
@@ -2702,8 +2713,8 @@ export default function RegistrationPage(): React.ReactElement {
           {isFullyClosed ? (
             <>
               {t('reg.deadlinepassed.adminnotice')}
-              {event && event.registrationDeadline && (
-                <> {t('reg.deadlinepassed.date')}: <strong>{new Date(event.registrationDeadline).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong>.</>
+              {event && (event.klammerDeadline || event.registrationDeadline) && (
+                <> {t('reg.deadlinepassed.date')}: <strong>{new Date(event.klammerDeadline || event.registrationDeadline).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })}</strong>.</>
               )}
             </>
           ) : (

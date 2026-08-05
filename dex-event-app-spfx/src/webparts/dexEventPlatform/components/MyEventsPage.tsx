@@ -3876,7 +3876,10 @@ function MyEventSubEvents(props: {
         {visibleChildren.map(ce => {
           const isReg = registeredSet.has(ce.id);
           const isBusy = busyId === ce.id;
-          const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date());
+          // v28.20: Auch die explizite Klammer-Frist des Hauptevents sperrt
+          // das NACHTRÄGLICHE Anmelden (Abmelden bleibt möglich).
+          const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date())
+            || !!(props.parentEvent.klammerDeadline && new Date(props.parentEvent.klammerDeadline) < new Date());
           const count = counts[ce.id] || 0;
           const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
           const isFull = hasCap && count >= (ce.maxParticipants || 0);
