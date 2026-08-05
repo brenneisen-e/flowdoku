@@ -7624,6 +7624,10 @@ export default function AdminPage(): React.ReactElement {
                   let fixedTotal = 0;
                   let failedTotal = 0;
                   const errored: string[] = [];
+                  // v28.25: Den ECHTEN Fehlertext festhalten (z.B. „DEX_Participants
+                  // nicht lesbar (HTTP 500)") — vorher blieb nur ein nacktes
+                  // „Fehler bei: <Event>" übrig und die Ursache war unsichtbar.
+                  let firstErrText = '';
                   for (const ev of targets) {
                     try {
                       const r = await eventServiceRef.backfillParticipantRegistry(
@@ -7633,13 +7637,14 @@ export default function AdminPage(): React.ReactElement {
                       activeTotal += r.active;
                       fixedTotal += r.fixed;
                       failedTotal += r.failed;
-                    } catch {
+                    } catch (err) {
                       errored.push((ev.title || '?').slice(0, 40));
+                      if (!firstErrText) firstErrText = (err instanceof Error ? err.message : String(err || '')).slice(0, 300);
                     }
                   }
                   setSyncRegistryResult(isDe
-                    ? `${activeTotal} aktive Anmeldung(en) geprüft, ${fixedTotal} Register-Eintrag/Einträge ergänzt${failedTotal > 0 ? `, ${failedTotal} fehlgeschlagen` : ''}.${errored.length > 0 ? ` Fehler bei: ${errored.join(', ')}` : ''}`
-                    : `${activeTotal} active registration(s) checked, ${fixedTotal} registry entr(y/ies) added${failedTotal > 0 ? `, ${failedTotal} failed` : ''}.${errored.length > 0 ? ` Errors on: ${errored.join(', ')}` : ''}`);
+                    ? `${activeTotal} aktive Anmeldung(en) geprüft, ${fixedTotal} Register-Eintrag/Einträge ergänzt${failedTotal > 0 ? `, ${failedTotal} fehlgeschlagen` : ''}.${errored.length > 0 ? ` Fehler bei: ${errored.join(', ')}. ${firstErrText}` : ''}`
+                    : `${activeTotal} active registration(s) checked, ${fixedTotal} registry entr(y/ies) added${failedTotal > 0 ? `, ${failedTotal} failed` : ''}.${errored.length > 0 ? ` Errors on: ${errored.join(', ')}. ${firstErrText}` : ''}`);
                   setIsSyncingRegistry(false);
                 }}
               />
