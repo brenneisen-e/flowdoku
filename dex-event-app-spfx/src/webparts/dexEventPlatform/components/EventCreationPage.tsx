@@ -1107,6 +1107,12 @@ export default function EventCreationPage(): React.ReactElement {
   const [registrationDeadline, setRegistrationDeadline] = React.useState(
     editEvent ? isoToLocal(editEvent.registrationDeadline) : ''
   );
+  // v28.20: EXPLIZITE Anmeldefrist der Klammer (Piggyback _klammerDeadline).
+  // Optional — leer heißt wie bisher: offen, solange ein Sub-Event offen ist.
+  // Gesetzt + abgelaufen = Anmeldung fürs GESAMTE Event geschlossen.
+  const [klammerDeadline, setKlammerDeadline] = React.useState(
+    editEvent && editEvent.klammerDeadline ? isoToLocal(editEvent.klammerDeadline) : ''
+  );
   const [lastDeregisterDate, setLastDeregisterDate] = React.useState(editEvent ? isoToLocal(editEvent.lastDeregisterDate) : '');
   // v9.22: Auto-Fill der Deadlines wenn Start-Datum gesetzt wird und die
   // Deadlines noch leer sind. Default-Logik:
@@ -1450,7 +1456,7 @@ export default function EventCreationPage(): React.ReactElement {
           // berechnete Flag, d.h. Abwählen bliebe ohne Wirkung.
           _teamTerm, _teamMembersCannotCreate, _assistantsCanSee, _previewBeforeActive, _imageDisplay,
           _organizerDisplayLarge, _hiddenOrganizers, _hideOrgIndividual, _mainEventLabel,
-          _imageOrigUrl,
+          _imageOrigUrl, _klammerDeadline,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -1462,7 +1468,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _inheritFlags; void _hideOrganizer; void _headerImageLayout;
         void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee; void _previewBeforeActive; void _imageDisplay;
         void _organizerDisplayLarge; void _hiddenOrganizers; void _hideOrgIndividual; void _mainEventLabel;
-        void _imageOrigUrl;
+        void _imageOrigUrl; void _klammerDeadline;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
     })() : {}
@@ -2979,6 +2985,8 @@ export default function EventCreationPage(): React.ReactElement {
     // v28.7: Demo-Vorlagen setzen immer eine Beschreibung — der
     // „Keine Beschreibung"-Schalter darf dann nicht angehakt bleiben.
     setNoDescription(false);
+    // v28.20: keine Klammer-Frist aus einer vorherigen Vorlage mitschleppen.
+    setKlammerDeadline('');
     setUseSplitCapacities(false);
     setSplitLabelA('Teilnehmergruppe 1');
     setSplitLabelB('Teilnehmergruppe 2');
@@ -4238,6 +4246,12 @@ export default function EventCreationPage(): React.ReactElement {
       const imageOrigUrlConfig = (editEvent && editEvent.imageOrigUrl)
         ? { _imageOrigUrl: editEvent.imageOrigUrl }
         : {};
+      // v28.20: explizite Klammer-Frist — nur im Klammer-Modus; leeres Feld
+      // entfernt den Key (Blob wird frisch zusammengebaut).
+      const klammerDeadlineConfig: Record<string, unknown> = (() => {
+        const iso = (subEventsOnlyMode && klammerDeadline) ? deadlineToEndOfDayIso(klammerDeadline) : null;
+        return iso ? { _klammerDeadline: iso } : {};
+      })();
       const childTermConfig = (childTermSingular.trim() || childTermPlural.trim())
         ? { _childEventTerm: { singular: childTermSingular.trim(), plural: childTermPlural.trim() } }
         : {};
@@ -4280,7 +4294,7 @@ export default function EventCreationPage(): React.ReactElement {
       const topPiggybackConfigs: Array<Record<string, unknown>> = [
         b2runExtraConfig, qrScannerConfig, coOrganizerConfig, testTeamConfig,
         splitDispRevConfig, requireSubEventConfig, subEventsOnlyConfig,
-        subEventsDisabledConfig, imageBannerConfig, imageOrigUrlConfig, childTermConfig, teamTermConfig,
+        subEventsDisabledConfig, imageBannerConfig, imageOrigUrlConfig, klammerDeadlineConfig, childTermConfig, teamTermConfig,
         teamNoCreateConfig, mainEventLabelConfig, assistantsCanSeeConfig,
         organizerDisplayLargeConfig, previewBeforeActiveConfig,
         imageDisplayConfig, hideOrganizerConfig, hiddenOrganizersConfig,
@@ -4928,6 +4942,11 @@ export default function EventCreationPage(): React.ReactElement {
             : {};
           // v28.5: Bild-Banner-Layout (Piggyback).
           const imageBannerExtra = imageBanner ? { _imageBanner: true } : {};
+          // v28.20: explizite Klammer-Frist (s. Edit-Pfad).
+          const klammerDeadlineExtra: Record<string, unknown> = (() => {
+            const iso = (subEventsOnlyMode && klammerDeadline) ? deadlineToEndOfDayIso(klammerDeadline) : null;
+            return iso ? { _klammerDeadline: iso } : {};
+          })();
           const childTermExtra = (childTermSingular.trim() || childTermPlural.trim())
             ? { _childEventTerm: { singular: childTermSingular.trim(), plural: childTermPlural.trim() } }
             : {};
@@ -4968,7 +4987,7 @@ export default function EventCreationPage(): React.ReactElement {
           const createPiggybackConfigs: Array<Record<string, unknown>> = [
             b2runExtra, qrExtra, coExtra, ttExtra, splitDispRevExtra,
             reqSubEvtExtra, subEvtsOnlyExtra, subEvtsDisabledExtra,
-            imageBannerExtra, childTermExtra, teamTermExtra, teamNoCreateExtra,
+            imageBannerExtra, klammerDeadlineExtra, childTermExtra, teamTermExtra, teamNoCreateExtra,
             mainEventLabelExtra, assistantsCanSeeExtra,
             organizerDisplayLargeExtra, previewBeforeActiveExtra,
             imageDisplayExtra, hideOrganizerExtra, hiddenOrganizersExtra,
@@ -6338,7 +6357,7 @@ export default function EventCreationPage(): React.ReactElement {
                 : 'Deloitte Event Experience Platform — Terms of Use (Germany)'}
             </h2>
             <p style={{ margin: '0 0 16px', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
-              {isDe ? 'Letzte Überarbeitung: 28.04.2026' : 'Last revised: 28 April 2026'}
+              {isDe ? 'Letzte Überarbeitung: 05.08.2026' : 'Last revised: 5 August 2026'}
             </p>
 
             {/* Eingeklappte Kurzfassung — die volle Fassung kann der Nutzer
@@ -6426,6 +6445,7 @@ export default function EventCreationPage(): React.ReactElement {
                     <p style={{ marginBottom: 6 }}><strong>Als Event-Teilnehmer:</strong></p>
                     <ul style={{ marginTop: 0 }}>
                       <li>Du kannst dich für Events an- oder abmelden.</li>
+                      <li>Deine Anmeldung ist freiwillig.</li>
                       <li>Du erhältst Informationen zum jeweiligen Event.</li>
                       <li>Du hast keinen Zugriff auf die Teilnehmerliste oder Informationen über andere Teilnehmer.</li>
                       <li>Du siehst nur deine eigenen Event-Anmeldungen und -Daten.</li>
@@ -6465,7 +6485,7 @@ export default function EventCreationPage(): React.ReactElement {
 
                     <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Kontaktinformationen</h3>
                     <ul style={{ marginTop: 0 }}>
-                      <li>Datenschutz-Fragen: <a href="mailto:privacy@deloitte.de">privacy@deloitte.de</a></li>
+                      <li>Kontakt: Projektteam — Nils Kilian Felten (<a href="mailto:nifelten@deloitte.de">nifelten@deloitte.de</a>)</li>
                     </ul>
 
                     <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
@@ -6515,6 +6535,7 @@ export default function EventCreationPage(): React.ReactElement {
                     <p style={{ marginBottom: 6 }}><strong>As event attendee:</strong></p>
                     <ul style={{ marginTop: 0 }}>
                       <li>You can register for or unregister from events.</li>
+                      <li>Your registration is voluntary.</li>
                       <li>You receive information about the relevant event.</li>
                       <li>You have no access to the attendee list or information about other attendees.</li>
                       <li>You only see your own event registrations and data.</li>
@@ -6552,7 +6573,7 @@ export default function EventCreationPage(): React.ReactElement {
 
                     <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Contact</h3>
                     <ul style={{ marginTop: 0 }}>
-                      <li>Data-protection questions: <a href="mailto:privacy@deloitte.de">privacy@deloitte.de</a></li>
+                      <li>Contact: project team — Nils Kilian Felten (<a href="mailto:nifelten@deloitte.de">nifelten@deloitte.de</a>)</li>
                     </ul>
 
                     <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
@@ -9845,6 +9866,11 @@ export default function EventCreationPage(): React.ReactElement {
                         locationAddress: { street: '', houseNo: '', zip: '', city: '' },
                         agenda: [],
                         transferTimes: [],
+                        // v28.20: Hat die Klammer eine explizite Frist, starten
+                        // neue Sub-Events mit demselben Anmeldeschluss.
+                        ...(subEventsOnlyMode && klammerDeadline
+                          ? { registrationDeadline: berlinLocalToUtcIso(klammerDeadline) || '' }
+                          : {}),
                         lastDeregisterDate: '',
                         locationFilter: locationFilter,
                         audience: audience,
@@ -10047,9 +10073,22 @@ export default function EventCreationPage(): React.ReactElement {
                         {isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}
                       </label>
                       <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
-                        {isDe
+                        {/* v28.20: Im Klammer-Modus das Zusammenspiel mit der
+                            Klammer-Frist erklären — abweichende (frühere)
+                            Sub-Fristen sind ok, spätere wirken nicht. */}
+                        {subEventsOnlyMode ? (
+                          klammerDeadline ? (
+                            isDe
+                              ? <>Frei pro {childTermSingular || 'Sub-Event'} setzbar — z.B. ein <strong>früherer</strong> Anmeldeschluss nur für dieses {childTermSingular || 'Sub-Event'}. Die Klammer-Frist (<strong>{new Date(klammerDeadline).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</strong>) schließt das gesamte Event — eine spätere Frist hier hat daher keine Wirkung.</>
+                              : <>Settable per {childTermSingular || 'sub-event'} — e.g. an <strong>earlier</strong> cutoff just for this {childTermSingular || 'sub-event'}. The bracket deadline (<strong>{new Date(klammerDeadline).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</strong>) closes the entire event — a later deadline here has no effect.</>
+                          ) : (
+                            isDe
+                              ? <>Frei pro {childTermSingular || 'Sub-Event'} setzbar. Ohne Klammer-Frist bleibt das Gesamt-Event offen, solange mindestens ein {childTermSingular || 'Sub-Event'} offen ist; leer = offen bis zum Ende dieses {childTermSingular || 'Sub-Events'}.</>
+                              : <>Settable per {childTermSingular || 'sub-event'}. Without a bracket deadline the overall event stays open as long as at least one {childTermSingular || 'sub-event'} is open; empty = open until this {childTermSingular || 'sub-event'} ends.</>
+                          )
+                        ) : (isDe
                           ? <>Frei pro Sub-Event setzbar. Leer lassen → die Fristen des Hauptevents gelten.</>
-                          : <>Settable per sub-event. Leave empty → the main event’s deadlines apply.</>}
+                          : <>Settable per sub-event. Leave empty → the main event’s deadlines apply.</>)}
                       </p>
                       <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                         <div className="form-group" style={{ marginBottom: 0 }}>
@@ -10398,11 +10437,11 @@ export default function EventCreationPage(): React.ReactElement {
                   <div>
                     {isDe ? (
                       <>
-                        Die Klammer selbst ist <strong>nicht buchbar</strong>, deshalb haben ihre Fristen hier <strong>keine Wirkung</strong> (Felder ausgegraut). Maßgeblich sind die Fristen <strong>je {childTermSingular || 'Sub-Event'}-Tab</strong>: Die Anmeldung für das Gesamt-Event <strong>bleibt offen, solange mindestens ein {childTermSingular || 'Sub-Event'} noch offen ist</strong> — effektiv endet sie also mit der <strong>spätesten {childTermSingular || 'Sub-Event'}-Frist</strong>. Stell die An-/Abmeldefristen daher pro {childTermSingular || 'Sub-Event'} ein.
+                        Die Klammer selbst ist <strong>nicht buchbar</strong>. Du kannst ihr aber <strong>optional eine eigene Anmeldefrist</strong> geben: Ist sie gesetzt und abgelaufen, ist die Anmeldung für das <strong>gesamte Event geschlossen</strong> — auch wenn einzelne {childTermPlural || 'Sub-Events'} noch offen wären. <strong>Ohne</strong> Klammer-Frist gilt: Die Anmeldung bleibt offen, solange mindestens ein {childTermSingular || 'Sub-Event'} offen ist — effektiv bis zur <strong>spätesten {childTermSingular || 'Sub-Event'}-Frist</strong>. Die An-/Abmeldefristen der einzelnen {childTermPlural || 'Sub-Events'} stellst du weiterhin <strong>je {childTermSingular || 'Sub-Event'}-Tab</strong> ein.
                       </>
                     ) : (
                       <>
-                        The bracket itself is <strong>not bookable</strong>, so its deadlines here have <strong>no effect</strong> (fields greyed out). What matters are the deadlines <strong>per {childTermSingular || 'sub-event'} tab</strong>: registration for the overall event <strong>stays open as long as at least one {childTermSingular || 'sub-event'} is still open</strong> — so it effectively ends with the <strong>latest {childTermSingular || 'sub-event'} deadline</strong>. Set the registration/cancellation deadlines per {childTermSingular || 'sub-event'}.
+                        The bracket itself is <strong>not bookable</strong>, but you can <strong>optionally give it its own registration deadline</strong>: once set and passed, registration for the <strong>entire event is closed</strong> — even if individual {childTermPlural || 'sub-events'} would still be open. <strong>Without</strong> a bracket deadline the previous rule applies: registration stays open as long as at least one {childTermSingular || 'sub-event'} is open — effectively until the <strong>latest {childTermSingular || 'sub-event'} deadline</strong>. You still set the registration/cancellation deadlines of the individual {childTermPlural || 'sub-events'} <strong>per {childTermSingular || 'sub-event'} tab</strong>.
                       </>
                     )}
                   </div>
@@ -10412,7 +10451,26 @@ export default function EventCreationPage(): React.ReactElement {
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">
                     {t('create.deadline')}
-                    <InfoTooltip text={isDe ? (
+                    {/* v28.20: Im Klammer-Modus eine eigene Erklärung — was die
+                        Klammer-Frist bewirkt und wie sie mit abweichenden
+                        Sub-Event-Fristen zusammenspielt. */}
+                    <InfoTooltip text={subEventsOnlyMode ? (isDe ? (
+                      <>
+                        <strong>Anmeldefrist der Klammer (optional)</strong> — die Klammer selbst ist nicht buchbar; diese Frist wirkt als <strong>harter Anmeldeschluss für das gesamte Event</strong>.<br /><br />
+                        <strong>Gesetzt:</strong> Nach dem Stichtag ist die Anmeldung komplett geschlossen — auch wenn einzelne {childTermPlural || 'Sub-Events'} eine spätere oder gar keine eigene Frist haben. Beim Setzen wird der Termin automatisch <strong>in alle {childTermSingular || 'Sub-Event'}-Tabs übernommen</strong>.<br /><br />
+                        <strong>Abweichung pro {childTermSingular || 'Sub-Event'}:</strong> Im jeweiligen Tab kannst du die Frist danach ändern — sinnvoll ist ein <strong>früherer</strong> Schluss (das {childTermSingular || 'Sub-Event'} macht dann eher zu). Eine <strong>spätere</strong> Frist als die Klammer hat keine Wirkung, weil die Klammer das gesamte Event zuerst schließt.<br /><br />
+                        <strong>Leer:</strong> Es gelten allein die {childTermSingular || 'Sub-Event'}-Fristen — die Anmeldung bleibt offen, solange mindestens ein {childTermSingular || 'Sub-Event'} offen ist (effektiv bis zur spätesten Frist).<br /><br />
+                        Organizer und Admins können wie immer auch nach Fristablauf manuell anmelden.
+                      </>
+                    ) : (
+                      <>
+                        <strong>Bracket registration deadline (optional)</strong> — the bracket itself is not bookable; this deadline acts as a <strong>hard registration cutoff for the entire event</strong>.<br /><br />
+                        <strong>Set:</strong> past the cutoff, registration is fully closed — even if individual {childTermPlural || 'sub-events'} have a later or no own deadline. When you set it, the date is automatically <strong>copied to all {childTermSingular || 'sub-event'} tabs</strong>.<br /><br />
+                        <strong>Deviating per {childTermSingular || 'sub-event'}:</strong> you can change the deadline in each tab afterwards — an <strong>earlier</strong> cutoff makes sense (that {childTermSingular || 'sub-event'} closes sooner). A <strong>later</strong> deadline than the bracket has no effect, because the bracket closes the whole event first.<br /><br />
+                        <strong>Empty:</strong> only the {childTermSingular || 'sub-event'} deadlines apply — registration stays open as long as at least one {childTermSingular || 'sub-event'} is open (effectively until the latest deadline).<br /><br />
+                        Organizers and admins can, as always, register manually after the cutoff.
+                      </>
+                    )) : isDe ? (
                       <>
                         <strong>Anmelde-Deadline</strong> — bis zu diesem Stichtag können sich Teilnehmer selbst registrieren.<br /><br />
                         <strong>Auswirkung für Teilnehmer:</strong> nach dem Stichtag ist der <strong>Anmelden-Button gesperrt</strong> (auch via Direktlink), reguläre User können sich nicht mehr selbst eintragen. <strong>Organizer und Co-Organizer</strong> dürfen weiterhin manuell Teilnehmer anlegen — die Deadline gilt nur für Self-Registration.<br /><br />
@@ -10427,10 +10485,29 @@ export default function EventCreationPage(): React.ReactElement {
                     )} />
                   </label>
                   <DatePicker
+                    // v28.20: Im Klammer-Modus ist die Frist jetzt EDITIERBAR
+                    // (eigener State klammerDeadline, Piggyback) — gesetzt +
+                    // abgelaufen schließt das GESAMTE Event. Leer = wie bisher
+                    // offen bis zur spätesten Sub-Event-Frist.
                     selected={subEventsOnlyMode
-                      ? (effectiveKlammerDeadline ? new Date(effectiveKlammerDeadline) : null)
+                      ? (klammerDeadline ? new Date(klammerDeadline) : null)
                       : (registrationDeadline ? new Date(registrationDeadline) : null)}
-                    onChange={(date: Date | null) => setRegistrationDeadline(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
+                    onChange={(date: Date | null) => {
+                      const v = date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '';
+                      if (subEventsOnlyMode) {
+                        setKlammerDeadline(v);
+                        // v28.20: Klammer-Frist in ALLE Sub-Event-Tabs
+                        // übernehmen (dort pro Sub-Event weiter anpassbar,
+                        // z.B. auf einen früheren Schluss). Beim Leeren der
+                        // Klammer-Frist bleiben die Sub-Fristen unberührt.
+                        if (v) {
+                          const iso = berlinLocalToUtcIso(v) || '';
+                          setSubEvents(prev => prev.map(s => ({ ...s, registrationDeadline: iso })));
+                        }
+                      } else {
+                        setRegistrationDeadline(v);
+                      }
+                    }}
                     showTimeSelect
                     timeFormat="HH:mm"
                     timeIntervals={15}
@@ -10438,7 +10515,7 @@ export default function EventCreationPage(): React.ReactElement {
                     dateFormat="dd.MM.yyyy, HH:mm"
                     locale="de"
                     placeholderText={subEventsOnlyMode
-                      ? (isDe ? 'Automatisch aus Sub-Events' : 'Automatic from sub-events')
+                      ? (isDe ? 'Optional — sonst automatisch aus Sub-Events' : 'Optional — otherwise automatic from sub-events')
                       : 'Anmelde-Deadline'}
                     className="form-input"
                     wrapperClassName="dex-datepicker-wrapper"
@@ -10447,6 +10524,20 @@ export default function EventCreationPage(): React.ReactElement {
                     isClearable
                     autoComplete="off"
                   />
+                  {subEventsOnlyMode && !klammerDeadline && effectiveKlammerDeadline && (
+                    <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                      {isDe
+                        ? <>Aktuell effektiv: <strong>{new Date(effectiveKlammerDeadline).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</strong> (späteste Sub-Event-Frist)</>
+                        : <>Currently effective: <strong>{new Date(effectiveKlammerDeadline).toLocaleString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</strong> (latest sub-event deadline)</>}
+                    </div>
+                  )}
+                  {subEventsOnlyMode && klammerDeadline && (
+                    <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                      {isDe
+                        ? <>Gilt als Anmeldeschluss fürs <strong>gesamte Event</strong> und wurde in alle {childTermPlural || 'Sub-Event'}-Tabs übernommen — dort pro {childTermSingular || 'Sub-Event'} anpassbar (z.B. früherer Schluss).</>
+                        : <>Acts as the registration cutoff for the <strong>entire event</strong> and has been copied to all {childTermPlural || 'sub-event'} tabs — adjustable there per {childTermSingular || 'sub-event'} (e.g. an earlier cutoff).</>}
+                    </div>
+                  )}
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">

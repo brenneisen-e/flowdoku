@@ -209,6 +209,13 @@ export interface DeloitteEvent {
    *  Konsistenzregel: subEventsOnlyMode=true impliziert
    *  requireSubEventSelection=true. */
   subEventsOnlyMode?: boolean;
+  /** v28.20: EXPLIZITE Anmeldefrist der Klammer (Piggyback `_klammerDeadline`,
+   *  ISO). Bewusst NICHT in der Spalte RegistrationDeadline — dort liegen bei
+   *  Bestands-Klammern wirkungslose Alt-Werte (v22.54: „Klammer-Frist hat
+   *  keine Wirkung"), die sonst rückwirkend scharf würden. Gesetzt + abgelaufen
+   *  = Anmeldung fürs GESAMTE Event zu, auch wenn Sub-Events noch offen wären;
+   *  leer = wie bisher offen bis zur spätesten Sub-Event-Frist. */
+  klammerDeadline?: string;
   /** v14.8: Organizer-konfigurierbarer Begriff für die untergeordneten
    *  Events. Default „Sub-Event(s)" (DE/EN). Per Wizard-Dropdown auch
    *  „Workshop", „Session", „Programmpunkt", „Event-Section" oder

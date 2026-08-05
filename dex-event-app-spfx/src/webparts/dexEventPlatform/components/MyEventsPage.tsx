@@ -966,6 +966,12 @@ export default function MyEventsPage(): React.ReactElement {
     // v24.94: War die abgemeldete Anmeldung auf der Warteliste? Dann wurde KEIN
     // Platz frei und es rückt niemand nach — die Erfolgsmeldung muss das sagen.
     wasWaitlisted?: boolean;
+    // v28.16: Wartelisten-Zustand des Events zum Abmelde-Zeitpunkt — die
+    // Erfolgsmeldung sagt konkret, ob jemand nachrückt, statt „falls eine
+    // Warteliste besteht …" zu raten.
+    waitlistEnabled?: boolean;
+    waitlistCount?: number;
+    unlimited?: boolean;
   }>(null);
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editData, setEditData] = React.useState<Record<string, string>>({});
@@ -1348,6 +1354,11 @@ export default function MyEventsPage(): React.ReactElement {
           organizers: entry.event.organizers || [],
           organizerEmails: entry.event.organizerEmails || [],
           wasWaitlisted: entry.registration.Status === 'Warteliste',
+          // v28.16: konkreter Wartelisten-Zustand für die Erfolgsmeldung.
+          waitlistEnabled: entry.event.waitlistEnabled !== false,
+          waitlistCount: entry.event.waitlistCount || 0,
+          unlimited: !(entry.event.maxParticipants > 0)
+            && !(((entry.event.durchstarterCapacity || 0) + (entry.event.funstarterCapacity || 0)) > 0),
         });
       }
     }
@@ -1468,9 +1479,25 @@ export default function MyEventsPage(): React.ReactElement {
                 ? (isDe
                   ? <>du hast dich erfolgreich von der <strong>Warteliste</strong> des Events <strong>„{cancelSuccess.title}“</strong> abgemeldet.</>
                   : <>you have successfully removed yourself from the <strong>waitlist</strong> for <strong>“{cancelSuccess.title}”</strong>.</>)
-                : (isDe
-                  ? <>du hast dich erfolgreich vom Event <strong>„{cancelSuccess.title}“</strong> abgemeldet. Dein Platz ist wieder frei — falls eine Warteliste besteht, rückt automatisch die nächste Person nach.</>
-                  : <>you have successfully cancelled your registration for <strong>“{cancelSuccess.title}”</strong>. Your spot is free again — if there is a waitlist, the next person is promoted automatically.</>)}
+                : (() => {
+                  // v28.16: konkrete Aussage statt „falls eine Warteliste
+                  // besteht …" — die App KENNT den Zustand: unbegrenzte
+                  // Events haben keine Plätze, bei besetzter Warteliste
+                  // rückt die nächste Person nach, sonst ist der Platz
+                  // einfach wieder frei.
+                  const seatTail = cancelSuccess.unlimited
+                    ? null
+                    : (cancelSuccess.waitlistEnabled && (cancelSuccess.waitlistCount || 0) > 0)
+                      ? (isDe
+                        ? <> Dein Platz ist wieder frei — die nächste Person auf der Warteliste rückt automatisch nach.</>
+                        : <> Your spot is free again — the next person on the waitlist is promoted automatically.</>)
+                      : (isDe
+                        ? <> Dein Platz ist wieder frei.</>
+                        : <> Your spot is free again.</>);
+                  return isDe
+                    ? <>du hast dich erfolgreich vom Event <strong>„{cancelSuccess.title}“</strong> abgemeldet.{seatTail}</>
+                    : <>you have successfully cancelled your registration for <strong>“{cancelSuccess.title}”</strong>.{seatTail}</>;
+                })()}
             </p>
             <p style={{ margin: 0 }}>
               {isDe
@@ -3849,7 +3876,10 @@ function MyEventSubEvents(props: {
         {visibleChildren.map(ce => {
           const isReg = registeredSet.has(ce.id);
           const isBusy = busyId === ce.id;
-          const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date());
+          // v28.20: Auch die explizite Klammer-Frist des Hauptevents sperrt
+          // das NACHTRÄGLICHE Anmelden (Abmelden bleibt möglich).
+          const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date())
+            || !!(props.parentEvent.klammerDeadline && new Date(props.parentEvent.klammerDeadline) < new Date());
           const count = counts[ce.id] || 0;
           const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
           const isFull = hasCap && count >= (ce.maxParticipants || 0);

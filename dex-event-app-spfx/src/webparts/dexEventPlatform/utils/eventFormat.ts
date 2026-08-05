@@ -53,9 +53,18 @@ export function isRegistrationOpen(ev: { registrationDeadline?: string; startDat
  * Anmeldung sperrte, obwohl die Sub-Events noch offen waren.
  */
 export function isRegistrationFullyClosed(
-  event: { registrationDeadline?: string; startDate?: string; endDate?: string },
+  event: { registrationDeadline?: string; startDate?: string; endDate?: string; klammerDeadline?: string },
   childEvents: Array<{ registrationDeadline?: string; startDate?: string; endDate?: string }>,
 ): boolean {
+  // v28.20: EXPLIZITE Klammer-Frist (Piggyback _klammerDeadline) — vom
+  // Organizer bewusst gesetzt. Abgelaufen = Gesamt-Event zu, offene
+  // Sub-Events ändern daran nichts. (Bewusst getrennt von der Spalte
+  // RegistrationDeadline, deren Alt-Werte bei Klammern wirkungslos sind.)
+  const kdl = (event.klammerDeadline || '').trim();
+  if (kdl) {
+    const kt = new Date(kdl).getTime();
+    if (Number.isFinite(kt) && kt < Date.now()) return true;
+  }
   // Hauptevent-Gate bleibt rein frist-basiert (wie bisher) — kein
   // unerwartetes Schließen über die Event-Vorbei-Logik.
   const dl = (event.registrationDeadline || '').trim();
