@@ -6338,7 +6338,7 @@ export default function EventCreationPage(): React.ReactElement {
                 : 'Deloitte Event Experience Platform — Terms of Use (Germany)'}
             </h2>
             <p style={{ margin: '0 0 16px', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
-              {isDe ? 'Letzte Überarbeitung: 28.04.2026' : 'Last revised: 28 April 2026'}
+              {isDe ? 'Letzte Überarbeitung: 05.08.2026' : 'Last revised: 5 August 2026'}
             </p>
 
             {/* Eingeklappte Kurzfassung — die volle Fassung kann der Nutzer
@@ -6426,6 +6426,7 @@ export default function EventCreationPage(): React.ReactElement {
                     <p style={{ marginBottom: 6 }}><strong>Als Event-Teilnehmer:</strong></p>
                     <ul style={{ marginTop: 0 }}>
                       <li>Du kannst dich für Events an- oder abmelden.</li>
+                      <li>Deine Anmeldung ist freiwillig.</li>
                       <li>Du erhältst Informationen zum jeweiligen Event.</li>
                       <li>Du hast keinen Zugriff auf die Teilnehmerliste oder Informationen über andere Teilnehmer.</li>
                       <li>Du siehst nur deine eigenen Event-Anmeldungen und -Daten.</li>
@@ -6465,7 +6466,7 @@ export default function EventCreationPage(): React.ReactElement {
 
                     <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Kontaktinformationen</h3>
                     <ul style={{ marginTop: 0 }}>
-                      <li>Datenschutz-Fragen: <a href="mailto:privacy@deloitte.de">privacy@deloitte.de</a></li>
+                      <li>Kontakt: Projektteam — Nils Kilian Felten (<a href="mailto:nifelten@deloitte.de">nifelten@deloitte.de</a>)</li>
                     </ul>
 
                     <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
@@ -6515,6 +6516,7 @@ export default function EventCreationPage(): React.ReactElement {
                     <p style={{ marginBottom: 6 }}><strong>As event attendee:</strong></p>
                     <ul style={{ marginTop: 0 }}>
                       <li>You can register for or unregister from events.</li>
+                      <li>Your registration is voluntary.</li>
                       <li>You receive information about the relevant event.</li>
                       <li>You have no access to the attendee list or information about other attendees.</li>
                       <li>You only see your own event registrations and data.</li>
@@ -6552,7 +6554,7 @@ export default function EventCreationPage(): React.ReactElement {
 
                     <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Contact</h3>
                     <ul style={{ marginTop: 0 }}>
-                      <li>Data-protection questions: <a href="mailto:privacy@deloitte.de">privacy@deloitte.de</a></li>
+                      <li>Contact: project team — Nils Kilian Felten (<a href="mailto:nifelten@deloitte.de">nifelten@deloitte.de</a>)</li>
                     </ul>
 
                     <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
