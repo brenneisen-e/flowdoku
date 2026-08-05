@@ -432,17 +432,15 @@
     .landing__orb {
       width: clamp(220px, 28vh, 320px); height: clamp(220px, 28vh, 320px);
       border-radius: 50%; overflow: hidden;
-      background: conic-gradient(from 0deg, #86bc25, #0076a8 90deg, #00bcd4 150deg, #4caf50 210deg, #8bc34a 270deg, #ffeb3b 320deg, #86bc25 360deg);
+      /* v28.33: Der Farbring-Verlauf und die Dreh-Animation entfallen — die
+         Kugel wird jetzt vom DexLogo-Canvas gezeichnet. Groesse, Rundung und
+         die hoehen-responsiven Breakpoints unten bleiben unveraendert. */
       display: flex; align-items: center; justify-content: center; user-select: none; cursor: default;
-      animation: dexOrbSpin 3s linear infinite;
       position: relative;
       aspect-ratio: 1 / 1;
       flex-shrink: 0;
     }
-    .landing__orb-inner {
-      width: 65%; height: 65%; border-radius: 50%; background: #fff;
-      box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.05);
-    }
+    .landing__orb canvas { border-radius: 50%; }
     // @keyframes sind in LandingPage.tsx als inline <style> injiziert,
     // damit SPFx die Animationsnamen nicht hashed.
     .landing__text { text-align: center; max-width: 760px; }
@@ -712,7 +710,7 @@
          Verlassen der Landing Page (z.B. Klick auf „Start") nicht sofort verworfen
          wird — dadurch blitzt der Orb kurz auf dem nächsten Screen nach. Statisch
          gerendert entsteht keine solche Ebene und kein „Nachziehen". */
-      .landing__orb { width: clamp(140px, 35vw, 200px); height: clamp(140px, 35vw, 200px); animation: none; }
+      .landing__orb { width: clamp(140px, 35vw, 200px); height: clamp(140px, 35vw, 200px); }
       .landing__text h1 { font-size: 1.3rem; }
       .landing__text p { font-size: 0.9rem; }
       /* v10.25: Sprechblase „Möchtest du die DEX App auch für dein Event
