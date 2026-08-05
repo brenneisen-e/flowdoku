@@ -4898,11 +4898,50 @@ export class EventService {
       // eine verständliche Meldung liefern — Verursacher ist praktisch
       // immer ein zu großes eingebettetes Bild (Mail-/Outlook-Logo oder
       // ein ins Mail-/Termin-Template eingefügtes Bild).
+      const LIMIT = 1_900_000;
       const payloadStr = JSON.stringify(payload);
-      if (payloadStr.length > 1_900_000) {
-        this.lastUpdateEventError = 'Die Event-Daten überschreiten das SharePoint-Limit von 2 MB. Ursache ist fast immer ein zu großes eingebettetes Bild (Mail-Logo, Outlook-Kopfbild oder ein Bild im Mail-/Termin-Text). Bitte das Bild entfernen oder neu (kleiner) hochladen und erneut speichern.';
-        console.warn('[DEX] updateEvent abgebrochen: Payload', payloadStr.length, 'Bytes > 1.9 MB Schutzgrenze');
-        return false;
+      if (payloadStr.length > LIMIT) {
+        // v28.31: Statt aufzugeben in MEHREREN Requests nacheinander schreiben.
+        // Das 2-MB-Limit gilt pro REST-Aufruf, nicht pro Item — ein Event mit
+        // eingebetteten Bildern (OutlookBody + EmailTemplateOverrides +
+        // EmailImageBase64 tragen dasselbe Bild je einmal) passt problemlos,
+        // wenn man die Felder auf mehrere MERGEs verteilt. Vorher brach der
+        // Save hier still ab: In der Konsole stand nur eine Warnung, im Wizard
+        // passierte auf „Speichern" schlicht nichts.
+        const FIELD_OVERHEAD = 160; // __metadata + Klammern/Kommas
+        const entries = Object.keys(updates)
+          .map(k => ({ k, size: JSON.stringify({ [k]: updates[k] }).length }))
+          .sort((a, b) => b.size - a.size);
+        // Ein EINZELNES Feld über dem Limit lässt sich nicht aufteilen — hier
+        // hilft nur ein kleineres Bild. Feldname mitgeben, damit der Organizer
+        // weiß, wo er suchen muss.
+        const tooBig = entries.filter(e => e.size + FIELD_OVERHEAD > LIMIT);
+        if (tooBig.length > 0) {
+          this.lastUpdateEventError = `Ein einzelnes Feld ist zu groß für SharePoint (${tooBig.map(e => `${e.k}: ${Math.round(e.size / 1024)} KB`).join(', ')}). Ursache ist praktisch immer ein zu großes eingebettetes Bild (Mail-Logo, Outlook-Kopfbild oder ein Bild im Mail-/Termin-Text). Bitte das Bild entfernen oder kleiner erneut hochladen.`;
+          console.warn('[DEX] updateEvent: einzelnes Feld über dem Limit —', tooBig);
+          return false;
+        }
+        const groups: Array<Record<string, unknown>> = [];
+        let cur: Record<string, unknown> = {};
+        let curSize = FIELD_OVERHEAD;
+        for (const e of entries) {
+          if (curSize + e.size > LIMIT && Object.keys(cur).length > 0) {
+            groups.push(cur); cur = {}; curSize = FIELD_OVERHEAD;
+          }
+          cur[e.k] = updates[e.k];
+          curSize += e.size;
+        }
+        if (Object.keys(cur).length > 0) groups.push(cur);
+        console.warn(`[DEX] updateEvent: Payload ${payloadStr.length} Bytes > Limit — wird in ${groups.length} aufeinanderfolgende Schreibvorgänge aufgeteilt.`);
+        for (let i = 0; i < groups.length; i++) {
+          const ok = await this.updateEvent(eventId, groups[i], retried);
+          if (!ok) {
+            // lastUpdateEventError kommt aus dem fehlgeschlagenen Teil-Request.
+            this.lastUpdateEventError = `Teil ${i + 1} von ${groups.length} konnte nicht gespeichert werden. ${this.lastUpdateEventError}`.trim();
+            return false;
+          }
+        }
+        return true;
       }
 
       const response = await this.context.spHttpClient.post(

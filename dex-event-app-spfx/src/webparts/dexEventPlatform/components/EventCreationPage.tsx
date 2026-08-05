@@ -54,7 +54,17 @@ registerLocale('de', de);
  * Komprimiert ein Bild clientseitig via Canvas.
  * Max 1200px Breite, JPEG 80% Qualität.
  */
-async function compressImage(file: File, maxWidth: number = 1200, quality: number = 0.8): Promise<File> {
+/**
+ * v28.31: `flattenToJpeg` erzwingt JPEG auf WEISSEM Grund. Hintergrund: Der
+ * Zuschnitt-Dialog liefert PNG (fuer die transparenten Ecken des Kreis-
+ * Zuschnitts), und ein 600px-Foto als PNG wiegt schnell ~800 KB. Als Mail-/
+ * Outlook-Kopfbild steckt dieser Base64-String DREIMAL im selben Save-Payload
+ * (OutlookBody, _eventLogo, _outlookLogo) — damit riss ein einziges Event die
+ * SharePoint-Grenze von 2 MB, und „Speichern" tat nichts mehr. Der Mail-Kopf
+ * steht ohnehin auf Weiss, transparente Ecken werden also korrekt weiss
+ * gefuellt (ohne den weissen Grund wuerden sie bei JPEG schwarz).
+ */
+async function compressImage(file: File, maxWidth: number = 1200, quality: number = 0.8, flattenToJpeg: boolean = false): Promise<File> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
@@ -68,18 +78,26 @@ async function compressImage(file: File, maxWidth: number = 1200, quality: numbe
       canvas.height = height;
       const ctx = canvas.getContext('2d');
       if (!ctx) { resolve(file); return; }
-      ctx.drawImage(img, 0, 0, width, height);
       // v23.16: PNG-Quellen als PNG ausgeben — sonst gehen transparente Bereiche
       // (z.B. die per Kreis-Zuschnitt freigeschnittenen Ecken) bei der
       // JPEG-Konvertierung verloren und werden SCHWARZ gefüllt. Nur Nicht-PNG
-      // (Fotos) werden zu JPEG komprimiert.
+      // (Fotos) werden zu JPEG komprimiert. v28.31: `flattenToJpeg` sticht das
+      // — dann wird vorher weiss grundiert, die Ecken bleiben also sauber.
       const isPng = (file.type || '').toLowerCase() === 'image/png';
-      const outType = isPng ? 'image/png' : 'image/jpeg';
-      const outExt = isPng ? '.png' : '.jpg';
+      const outType = (isPng && !flattenToJpeg) ? 'image/png' : 'image/jpeg';
+      const outExt = outType === 'image/png' ? '.png' : '.jpg';
+      if (outType === 'image/jpeg') {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, width, height);
+      }
+      ctx.drawImage(img, 0, 0, width, height);
       canvas.toBlob(
         (blob) => {
-          if (!blob || blob.size >= file.size) {
-            // Komprimierung bringt nichts oder ist grösser → Original verwenden
+          if (!blob || (blob.size >= file.size && !flattenToJpeg)) {
+            // Komprimierung bringt nichts oder ist grösser → Original verwenden.
+            // Bei flattenToJpeg NICHT zurückfallen: Ein PNG-Original mag kleiner
+            // sein, taugt aber genau deshalb nicht — wir wollen hier zwingend
+            // das JPEG, damit der Save-Payload klein bleibt.
             resolve(file);
             return;
           }
@@ -1553,14 +1571,26 @@ export default function EventCreationPage(): React.ReactElement {
   // („The request message is too big"). Ab ~400 KB wird auf 600px
   // runterskaliert; schlägt das fehl, bleibt der Originalwert.
   const shrinkLogoB64 = async (b64: string): Promise<string> => {
-    if (!b64 || b64.indexOf('data:') !== 0 || b64.length <= 400_000) return b64;
-    try {
-      const resp = await fetch(b64);
-      const blob = await resp.blob();
-      const f = new File([blob], 'logo.png', { type: blob.type || 'image/png' });
-      const out = await fileToBase64(await compressImage(f, 600, 0.85));
-      return out && out.length < b64.length ? out : b64;
-    } catch { return b64; }
+    // v28.31: Schwelle von 400 KB auf 200 KB und in Stufen verkleinern, bis das
+    // Bild unter ~250 KB liegt. Dasselbe Base64 steckt DREIMAL im Save-Payload
+    // (OutlookBody, _eventLogo, _outlookLogo) — bei 800 KB je Vorkommen reisst
+    // ein einziges Event das SharePoint-Limit von 2 MB. Ausgabe immer als JPEG
+    // auf weissem Grund (siehe compressImage): PNG-Fotos sind der Hauptgrund
+    // fuer die Ausreisser.
+    const TARGET = 250_000;
+    if (!b64 || b64.indexOf('data:') !== 0 || b64.length <= 200_000) return b64;
+    let best = b64;
+    for (const w of [600, 480, 360]) {
+      try {
+        const resp = await fetch(best);
+        const blob = await resp.blob();
+        const f = new File([blob], 'logo.jpg', { type: blob.type || 'image/jpeg' });
+        const out = await fileToBase64(await compressImage(f, w, 0.82, true));
+        if (out && out.length < best.length) best = out;
+        if (best.length <= TARGET) break;
+      } catch { break; }
+    }
+    return best;
   };
   const applyEventPhotoToLogo = async (setter: (b64: string) => void): Promise<string> => {
     try {
@@ -1573,13 +1603,13 @@ export default function EventCreationPage(): React.ReactElement {
       // Upload: imageOrigFile; gespeichertes Event: editEvent.imageOrigUrl),
       // wird jetzt DIESES übernommen.
       if (imageOrigFile) {
-        b64 = await fileToBase64(await compressImage(imageOrigFile, 600, 0.9));
+        b64 = await fileToBase64(await compressImage(imageOrigFile, 600, 0.85, true));
       } else if (editEvent && editEvent.imageOrigUrl) {
         try {
           const resp = await fetch(editEvent.imageOrigUrl, { credentials: 'include' });
           const blob = await resp.blob();
           const f = new File([blob], 'event-photo.jpg', { type: blob.type || 'image/jpeg' });
-          b64 = await fileToBase64(await compressImage(f, 600, 0.9));
+          b64 = await fileToBase64(await compressImage(f, 600, 0.85, true));
         } catch { /* Original nicht ladbar → unten auf den Zuschnitt zurückfallen */ }
       }
       if (b64) {
@@ -1587,7 +1617,7 @@ export default function EventCreationPage(): React.ReactElement {
         return b64;
       }
       if (imageFile) {
-        b64 = await fileToBase64(await compressImage(imageFile, 600, 0.9));
+        b64 = await fileToBase64(await compressImage(imageFile, 600, 0.85, true));
       } else if (imagePreview && imagePreview.indexOf('data:') === 0) {
         // v28.10: Frischer Zuschnitt (Data-URL) ebenfalls komprimieren —
         // vorher ging das volle Bild unkomprimiert ins Logo (2-MB-Falle).
@@ -1596,7 +1626,7 @@ export default function EventCreationPage(): React.ReactElement {
         const resp = await fetch(imagePreview, { credentials: 'include' });
         const blob = await resp.blob();
         const f = new File([blob], 'event-photo.jpg', { type: blob.type || 'image/jpeg' });
-        b64 = await fileToBase64(await compressImage(f, 600, 0.9));
+        b64 = await fileToBase64(await compressImage(f, 600, 0.85, true));
       }
       if (b64) setter(b64);
       else showAlert(isDe ? 'Kein Event-Foto vorhanden — bitte zuerst oben ein Bild hochladen.' : 'No event photo yet — please upload an image above first.', { variant: 'error' });
@@ -1611,6 +1641,8 @@ export default function EventCreationPage(): React.ReactElement {
   // Mail-/Outlook-Kopf steht. `headerImageLayout` gilt event-weit (Mail + Outlook).
   const renderHeaderSizeControl = (previewSrc: string, note?: string): React.ReactElement => {
     const PREV_W = 260; const sc = PREV_W / 600;
+    const isFullWidthPreset = headerImageLayout.width === 600 && headerImageLayout.paddingV === 0 && headerImageLayout.paddingH === 0;
+    const isDefaultPreset = headerImageLayout.width === 180 && headerImageLayout.paddingV === 30 && headerImageLayout.paddingH === 30;
     const numInput = (val: number, min: number, max: number, def: number, set: (n: number) => void): React.ReactElement => (
       <input type="number" min={min} max={max} step={min === 80 ? 10 : 2} value={val}
         onChange={e => set(Math.max(min, Math.min(max, parseInt(e.target.value, 10) || def)))}
@@ -1627,14 +1659,17 @@ export default function EventCreationPage(): React.ReactElement {
             <label style={lbl}>{isDe ? 'Breite (px)' : 'Width (px)'}{numInput(headerImageLayout.width, 80, 600, 180, n => setHeaderImageLayout(p => ({ ...p, width: n })))}</label>
             <label style={lbl}>{isDe ? 'Abstand seitl.' : 'Padding sides'}{numInput(headerImageLayout.paddingH, 0, 80, 0, n => setHeaderImageLayout(p => ({ ...p, paddingH: n })))}</label>
             <label style={lbl}>{isDe ? 'Abstand ob./unt.' : 'Padding top/bot.'}{numInput(headerImageLayout.paddingV, 0, 80, 0, n => setHeaderImageLayout(p => ({ ...p, paddingV: n })))}</label>
+            {/* v28.31: Beide Voreinstellungen zeigen jetzt an, WELCHE gerade
+                aktiv ist. Vorher war „Volle Breite" immer gruen und „Standard"
+                immer grau — auch wenn tatsaechlich 180/30/30 (= Standard) stand. */}
             <button type="button" onClick={() => setHeaderImageLayout({ width: 600, paddingV: 0, paddingH: 0 })}
               title={isDe ? 'Bild füllt den Kopf über die volle Breite' : 'Image fills the header full width'}
-              style={{ height: 28, padding: '0 12px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', background: 'var(--dex-green, #86bc25)', color: '#fff', border: 'none', borderRadius: 6 }}>
-              {isDe ? 'Volle Breite' : 'Full width'}
+              style={{ height: 28, padding: '0 12px', fontSize: '0.72rem', fontWeight: isFullWidthPreset ? 700 : 600, cursor: 'pointer', background: isFullWidthPreset ? 'var(--dex-green, #86bc25)' : 'transparent', color: isFullWidthPreset ? '#fff' : 'var(--dex-gray-600)', border: isFullWidthPreset ? 'none' : '1px solid var(--dex-gray-300)', borderRadius: 6 }}>
+              {isFullWidthPreset ? '✓ ' : ''}{isDe ? 'Volle Breite' : 'Full width'}
             </button>
             <button type="button" onClick={() => setHeaderImageLayout({ width: 180, paddingV: 30, paddingH: 30 })}
-              style={{ height: 28, padding: '0 12px', fontSize: '0.72rem', fontWeight: 600, cursor: 'pointer', background: 'transparent', color: 'var(--dex-gray-600)', border: '1px solid var(--dex-gray-300)', borderRadius: 6 }}>
-              {isDe ? 'Standard' : 'Default'}
+              style={{ height: 28, padding: '0 12px', fontSize: '0.72rem', fontWeight: isDefaultPreset ? 700 : 600, cursor: 'pointer', background: isDefaultPreset ? 'var(--dex-green, #86bc25)' : 'transparent', color: isDefaultPreset ? '#fff' : 'var(--dex-gray-600)', border: isDefaultPreset ? 'none' : '1px solid var(--dex-gray-300)', borderRadius: 6 }}>
+              {isDefaultPreset ? '✓ ' : ''}{isDe ? 'Standard' : 'Default'}
             </button>
           </div>
           {previewSrc && (
@@ -4185,7 +4220,7 @@ export default function EventCreationPage(): React.ReactElement {
     return {
       src: orb,
       note: isDe
-        ? 'Kein eigenes Bild hinterlegt — es wird das Deloitte-Standardlogo verwendet. Das Event-Foto wandert NICHT automatisch hierher; dafür auf „Event-Foto verwenden" klicken.'
+        ? 'Kein eigenes Bild hinterlegt — es wird das Deloitte-Standardlogo verwendet. Das Event-Foto wandert NICHT automatisch hierher; dafür auf „Event-Foto übernehmen" klicken.'
         : 'No custom image set — the Deloitte default logo is used. The event photo does not move here automatically; click „Use event photo" for that.',
     };
   };
@@ -5032,14 +5067,17 @@ export default function EventCreationPage(): React.ReactElement {
         setProgress(0);
         // v26.51: Grund IMMER mit anzeigen (vorher stand er nur in der Konsole).
         const reason = getLastEventUpdateError();
-        setError(
-          (isDe ? 'Event konnte nicht aktualisiert werden.' : 'The event could not be updated.')
+        const msg = (isDe ? 'Event konnte nicht aktualisiert werden.' : 'The event could not be updated.')
           + (reason
             ? `${isDe ? ' Grund: ' : ' Reason: '}${reason}`
             : (isDe
               ? ' Grund unbekannt — bitte Details aus der Browser-Konsole (F12) an das DEX-Team melden.'
-              : ' Unknown reason — please report the details from the browser console (F12) to the DEX team.'))
-        );
+              : ' Unknown reason — please report the details from the browser console (F12) to the DEX team.'));
+        setError(msg);
+        // v28.31: Die Fehlerzeile steht ganz oben im Wizard — beim Speichern aus
+        // Schritt 6/7 war sie ausserhalb des Sichtfelds, der Klick sah aus, als
+        // wuerde schlicht nichts passieren. Zusaetzlich als Dialog zeigen.
+        showAlert(msg, { variant: 'error' });
       }
     } else {
       // Neues Event erstellen — v11.87: Progress wird per Callback-Stage vom
@@ -10719,9 +10757,12 @@ export default function EventCreationPage(): React.ReactElement {
                 </>)}
               </div>
 
-              {/* v19.27: Greyout-Wrapper beginnt erst HIER (Fristen + Teilnehmerzahl).
-                  Die Sichtbarkeit oben bleibt für die Klammer editierbar. */}
-              <div style={hauptGreyoutWrapperStyle()}>
+              {/* v28.31: Greyout-Wrapper beginnt erst NACH den Fristen. Bis v28.30
+                  lag der Fristen-Block mit in der Huelle (opacity + pointer-events:
+                  none) — im Klammer-Modus liess sich der Abschnitt deshalb nicht
+                  einmal aufklappen, obwohl die Klammer seit v28.20 eine EIGENE,
+                  wirksame Anmeldefrist haben kann. Die Teilnehmerzahl bleibt
+                  ausgegraut (die Klammer hat keine eigenen Plaetze). */}
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                 {visHeader('vis_fristen', <StepBadge n={(locationFilter && audience) ? 17 : 16} />, <>{isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}<InfoTooltip text={isDe
                     ? 'Bis wann können sich Teilnehmer anmelden bzw. fristgerecht abmelden? Die Abmeldefrist ist die kommunizierte Deadline — abmelden geht danach weiterhin bis zum Event-Ende, die Organizer werden dann aber automatisch informiert. Beide Werte werden anhand des Event-Datums automatisch vorgeschlagen, du kannst sie jederzeit überschreiben.'
@@ -10839,7 +10880,10 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                   )}
                 </div>
-                <div className="form-group" style={{ marginBottom: 0 }}>
+                {/* v28.31: Die Abmeldefrist gehoert bei einer Klammer zu den
+                    Sub-Events — hier waere sie wirkungslos. Nur dieses eine Feld
+                    ausgrauen, die Klammer-Anmeldefrist links bleibt bedienbar. */}
+                <div className="form-group" style={{ marginBottom: 0, ...(subEventsOnlyMode ? { opacity: 0.55, pointerEvents: 'none' as const, userSelect: 'none' as const } : {}) }}>
                   <label className="form-label">
                     {t('create.lastcancel')}
                     <InfoTooltip text={isDe ? (
@@ -10877,6 +10921,15 @@ export default function EventCreationPage(): React.ReactElement {
                   />
                 </div>
               </div>
+              {/* v28.31: erklaert das ausgegraute Feld, statt es kommentarlos tot
+                  aussehen zu lassen. */}
+              {subEventsOnlyMode && (
+                <p style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 8, marginBottom: 0, lineHeight: 1.5 }}>
+                  {isDe
+                    ? <>Die <strong>Abmeldefrist</strong> ist bei einer Klammer ausgegraut — sie gehört zum einzelnen {childTermSingular || 'Sub-Event'} und wird im jeweiligen Tab gesetzt. Die <strong>Anmeldefrist</strong> links gilt dagegen für das gesamte Event.</>
+                    : <>The <strong>cancellation deadline</strong> is greyed out for a bracket — it belongs to the individual {childTermSingular || 'sub-event'} and is set in its tab. The <strong>registration deadline</strong> on the left applies to the entire event.</>}
+                </p>
+              )}
               {fieldHasError('deadlineAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: 8, marginBottom: 0 }}>{t('create.error.deadlineAfterStart')}</p>}
               {fieldHasError('deregAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: 8, marginBottom: 0 }}>{t('create.error.deregAfterStart')}</p>}
               </>)}
@@ -10887,6 +10940,7 @@ export default function EventCreationPage(): React.ReactElement {
                   angezeigt. Die Mehrheit der Events nutzt nur eine
                   Gesamtkapazität; der B2Run-Sonderfall ist Opt-in. */}
 
+              <div style={hauptGreyoutWrapperStyle()}>
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                 {visHeader('vis_capacity', <StepBadge n={(locationFilter && audience) ? 18 : 17} />, isDe ? 'Teilnehmerzahl & Warteliste' : 'Capacity & waitlist')}
                 {isVisOpen('vis_capacity') && (<>
