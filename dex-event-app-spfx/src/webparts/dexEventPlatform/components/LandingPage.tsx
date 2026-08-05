@@ -55,9 +55,13 @@ export default function LandingPage(): React.ReactElement {
   // v23.40: Löschkonzept — Anzahl DEX_Archive-Einträge älter als 1 Monat (v23.48).
   const [delArchCount, setDelArchCount] = React.useState(0);
   const [delArchBusy, setDelArchBusy] = React.useState(false);
-  // v26.32: Löschkonzept — Teilnehmerlisten (3 Monate): Vorwarn- + Fällig-Zähler.
-  const [pdWarn, setPdWarn] = React.useState(0);
-  const [pdDue, setPdDue] = React.useState(0);
+  // v26.32: Löschkonzept — Teilnehmerlisten (3 Monate): Vorwarn- + Fällig-Liste.
+  // v28.17: Es werden die betroffenen Events selbst aufgehoben (nicht nur die
+  // Anzahl), damit die Admin-Boxen die Event-Titel nennen können.
+  const [pdWarnEvents, setPdWarnEvents] = React.useState<Array<{ id: string; title: string; startDate?: string; endDate?: string }>>([]);
+  const [pdDueEvents, setPdDueEvents] = React.useState<Array<{ id: string; title: string; startDate?: string; endDate?: string }>>([]);
+  const pdWarn = pdWarnEvents.length;
+  const pdDue = pdDueEvents.length;
   const [pdBusy, setPdBusy] = React.useState(false);
   // v22.45: Warnung über Teilnehmer ohne aktives Deloitte-Konto — pro Event,
   // für Organizer (eigene Events) und Admins (alle aktiven Events).
@@ -87,10 +91,10 @@ export default function LandingPage(): React.ReactElement {
     // v26.32: Teilnehmerlisten-Löschkonzept — Vorwarn-/Fällig-Zähler laden und die
     // Vorwarn-Mails an die Organizer automatisch (Queue-entdoppelt) auslösen.
     getParticipantDeletionWarnings()
-      .then(list => { if (!cancelled) setPdWarn(list.length); })
+      .then(list => { if (!cancelled) setPdWarnEvents(list); })
       .catch(() => { /* best-effort */ });
     getParticipantDeletionDue()
-      .then(list => { if (!cancelled) setPdDue(list.length); })
+      .then(list => { if (!cancelled) setPdDueEvents(list); })
       .catch(() => { /* best-effort */ });
     maybeSendParticipantDeletionWarnings().catch(() => { /* best-effort */ });
     return () => { cancelled = true; };
@@ -126,10 +130,11 @@ export default function LandingPage(): React.ReactElement {
   // dann die Teilnehmer-Subsite recyceln. Das Event bleibt in DEX_Events erhalten.
   const startParticipantDeletion = async (): Promise<void> => {
     if (pdBusy || pdDue === 0) return;
+    const pdDueTitles = pdDueEvents.map(e => `• ${e.title}`).join('\n');
     const ok = await confirmDialog(
       isDe
-        ? `Bei ${pdDue} ${pdDue === 1 ? 'Event' : 'Events'} die Teilnehmerliste endgültig löschen?\n\nDie wichtigsten Kennzahlen werden zuvor ins Statistik-Archiv übernommen. Das Event bleibt bestehen, die Teilnehmerliste wird in den SharePoint-Papierkorb verschoben.`
-        : `Delete the attendee list for ${pdDue} event(s)?\n\nThe key KPIs are archived to the statistics archive first. The event is kept; the attendee list is moved to the SharePoint recycle bin.`,
+        ? `Bei ${pdDue} ${pdDue === 1 ? 'Event' : 'Events'} die Teilnehmerliste endgültig löschen?\n\n${pdDueTitles}\n\nDie wichtigsten Kennzahlen werden zuvor ins Statistik-Archiv übernommen. Das Event bleibt bestehen, die Teilnehmerliste wird in den SharePoint-Papierkorb verschoben.`
+        : `Delete the attendee list for ${pdDue} event(s)?\n\n${pdDueTitles}\n\nThe key KPIs are archived to the statistics archive first. The event is kept; the attendee list is moved to the SharePoint recycle bin.`,
       { danger: true, confirmLabel: isDe ? 'Endgültig löschen' : 'Delete permanently' },
     );
     if (!ok) return;
@@ -142,8 +147,8 @@ export default function LandingPage(): React.ReactElement {
           : `${r.deleted} attendee list(s) archived & deleted${r.failed ? `, ${r.failed} failed` : ''}.`,
         { variant: r.failed ? 'error' : 'success' },
       );
-      try { const list = await getParticipantDeletionDue(); setPdDue(list.length); } catch { /* */ }
-      try { const w = await getParticipantDeletionWarnings(); setPdWarn(w.length); } catch { /* */ }
+      try { const list = await getParticipantDeletionDue(); setPdDueEvents(list); } catch { /* */ }
+      try { const w = await getParticipantDeletionWarnings(); setPdWarnEvents(w); } catch { /* */ }
       try { await refreshEvents(); } catch { /* */ }
     } catch {
       showAlert(isDe ? 'Löschen fehlgeschlagen — bitte erneut versuchen.' : 'Deletion failed — please try again.', { variant: 'error' });
@@ -706,11 +711,21 @@ export default function LandingPage(): React.ReactElement {
               background: 'rgba(237,139,0,0.12)', color: 'var(--dex-orange, #ed8b00)',
             }}>{isDe ? 'Nur Admin' : 'Admin only'}</span>
           </div>
-          <p style={{ margin: '0 0 4px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+          <p style={{ margin: '0 0 6px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
             {isDe
-              ? <>Bei <strong>{pdWarn}</strong> {pdWarn === 1 ? 'Event' : 'Events'} wird die Teilnehmerliste in etwa einer Woche gelöscht (3 Monate nach dem Event). Die Organizer wurden automatisch informiert, die Liste noch herunterzuladen. Event &amp; Kennzahlen bleiben im Statistik-Archiv erhalten.</>
-              : <>For <strong>{pdWarn}</strong> event(s) the attendee list will be deleted in about a week (3 months after the event). The organizers were notified automatically to download it. Event &amp; KPIs are kept in the statistics archive.</>}
+              ? <>Bei {pdWarn === 1 ? 'diesem Event' : <>diesen <strong>{pdWarn}</strong> Events</>} wird die Teilnehmerliste in etwa einer Woche gelöscht (3 Monate nach dem Event). Die Organizer wurden automatisch informiert, die Liste noch herunterzuladen. Event &amp; Kennzahlen bleiben im Statistik-Archiv erhalten:</>
+              : <>For {pdWarn === 1 ? 'this event' : <>these <strong>{pdWarn}</strong> events</>} the attendee list will be deleted in about a week (3 months after the event). The organizers were notified automatically to download it. Event &amp; KPIs are kept in the statistics archive:</>}
           </p>
+          <ul style={{ margin: 0, paddingLeft: 16, fontSize: '0.76rem', color: 'var(--dex-gray-600)', lineHeight: 1.6 }}>
+            {pdWarnEvents.map(ev => (
+              <li key={ev.id}>
+                <strong>{ev.title}</strong>
+                {(ev.endDate || ev.startDate)
+                  ? ` — ${isDe ? 'Event vom' : 'event on'} ${new Date(ev.endDate || ev.startDate || '').toLocaleDateString(isDe ? 'de-DE' : 'en-GB')}`
+                  : ''}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
       {/* v26.32: Löschkonzept — fällige Teilnehmerlisten löschen (Event bleibt, KPIs ins Archiv). */}
@@ -730,11 +745,21 @@ export default function LandingPage(): React.ReactElement {
               background: 'rgba(237,139,0,0.12)', color: 'var(--dex-orange, #ed8b00)',
             }}>{isDe ? 'Nur Admin' : 'Admin only'}</span>
           </div>
-          <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+          <p style={{ margin: '0 0 6px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
             {isDe
-              ? <>Bei <strong>{pdDue}</strong> {pdDue === 1 ? 'Event ist' : 'Events sind'} die Aufbewahrungsfrist (3 Monate) abgelaufen. Beim Löschen werden die wichtigsten Kennzahlen ins Statistik-Archiv übernommen und dann die Teilnehmerliste entfernt — das Event bleibt erhalten.</>
-              : <><strong>{pdDue}</strong> event(s) have passed the 3-month retention. Deleting archives the key KPIs to the statistics archive and then removes the attendee list — the event itself is kept.</>}
+              ? <>Bei {pdDue === 1 ? 'diesem Event ist' : <>diesen <strong>{pdDue}</strong> Events ist</>} die Aufbewahrungsfrist (3 Monate) abgelaufen. Beim Löschen werden die wichtigsten Kennzahlen ins Statistik-Archiv übernommen und dann die Teilnehmerliste entfernt — das Event bleibt erhalten:</>
+              : <>{pdDue === 1 ? 'This event has' : <>These <strong>{pdDue}</strong> events have</>} passed the 3-month retention. Deleting archives the key KPIs to the statistics archive and then removes the attendee list — the event itself is kept:</>}
           </p>
+          <ul style={{ margin: '0 0 10px', paddingLeft: 16, fontSize: '0.76rem', color: 'var(--dex-gray-600)', lineHeight: 1.6 }}>
+            {pdDueEvents.map(ev => (
+              <li key={ev.id}>
+                <strong>{ev.title}</strong>
+                {(ev.endDate || ev.startDate)
+                  ? ` — ${isDe ? 'Event vom' : 'event on'} ${new Date(ev.endDate || ev.startDate || '').toLocaleDateString(isDe ? 'de-DE' : 'en-GB')}`
+                  : ''}
+              </li>
+            ))}
+          </ul>
           <button
             className="btn btn-secondary"
             style={{ fontSize: '0.82rem', padding: '8px 16px', width: '100%', color: 'var(--dex-red, #c00)' }}
