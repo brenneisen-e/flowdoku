@@ -8,6 +8,7 @@
  */
 
 import * as React from 'react';
+import DexLogo from './DexLogo';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import styles from './DexEventPlatform.module.scss';
 import { NavigationProvider, useNavigation } from '../context/NavigationContext';
@@ -618,8 +619,13 @@ function AppContent(): React.ReactElement {
         <div className="landing" style={{ position: 'relative' }}>
           <div className="landing__hero">
             <div className="landing__card" style={{ position: 'relative', textAlign: 'center' }}>
+              {/* v28.34: Der Boot-Loader nutzte dieselbe .landing__orb-Huelle wie
+                  die Landing Page — seit v28.33 zeichnet dort aber das DexLogo-
+                  Canvas statt des Farbverlaufs, die Huelle allein blieb also leer
+                  (grosse weisse Flaeche ueber „Welcome to DEX"). Jetzt rendert der
+                  Boot-Loader dasselbe Logo, der Uebergang bleibt fluessig. */}
               <div className="landing__orb">
-                <div className="landing__orb-inner" />
+                <DexLogo title="DEX" motion="oscillate" style={{ width: '100%' }} />
               </div>
               <div className="landing__text">
                 <h1 style={{ lineHeight: 1.25 }}>
