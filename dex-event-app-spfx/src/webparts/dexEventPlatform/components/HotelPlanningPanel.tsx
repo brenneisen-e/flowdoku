@@ -1,12 +1,21 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as React from 'react';
 import { EventService, SPRegistration } from '../services/EventService';
-import { DeloitteEvent, DexHotel, DexHotelStay } from '../types';
+import { DeloitteEvent, DexHotel, DexHotelRules, DexHotelStay } from '../types';
 import { HtmlEditorModal } from './HtmlEditorModal';
 import { wrapTemplate, replacePlaceholders } from '../services/EmailTemplates';
 import { collectCcEmailsFromFields } from '../context/EventContext';
 import HotelImportModal, { IHotelImportResultRow } from './HotelImportModal';
+import HotelSetupWizard from './HotelSetupWizard';
 import PersonContactHover from './PersonContactHover';
+import DatePicker, { registerLocale } from 'react-datepicker';
+import { de } from 'date-fns/locale';
+import 'react-datepicker/dist/react-datepicker.css';
+
+// v28.57: `<input type="date">` folgt der Browser-/OS-Sprache und zeigte den
+// Kalender deshalb in amerikanischer Schreibweise (MM/TT/JJJJ). Wir nutzen
+// jetzt denselben DatePicker wie der Event-Wizard, mit deutscher Locale.
+registerLocale('de', de);
 
 /**
  * HotelPlanningPanel (v28.39)
@@ -76,6 +85,12 @@ const addDays = (day: string, n: number): string => {
 };
 
 /** „DE - Berlin" → „Berlin" (identisch zur Teilnehmerliste). */
+/** Date → 'YYYY-MM-DD' in lokaler Zeit. `toISOString()` waere hier falsch: In
+ *  MEZ/MESZ liegt Mitternacht lokal vor Mitternacht UTC, das Datum spraenge
+ *  einen Tag zurueck. */
+const toLocalDay = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 const stripLocPrefix = (loc: string): string => (loc || '').replace(/^[A-Za-z]{2}\s*[-–—]\s*/, '').trim();
 
 const fmtDay = (day: string, isDe: boolean): string => {
@@ -97,9 +112,24 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     } catch { return null; }
   }, []);
 
-  const hotels: DexHotel[] = React.useMemo(() => event.hotels || [], [event.hotels]);
-  const stays: DexHotelStay[] = React.useMemo(() => event.hotelStays || [], [event.hotelStays]);
-  const visible = !!event.hotelVisibleToAttendees;
+  /**
+   * v28.57: Stammdaten lokal spiegeln. Vorher hing jedes Anlegen eines Hotels
+   * oder Zeitraums am `await onReloadEvents()` — und das laedt im Organizer
+   * Center ALLE Events samt Custom-Fields, Teilnehmerzahlen und Anhaengen neu
+   * (mehrere Sekunden). Fuer eine Handvoll Bytes im Piggyback war das absurd.
+   * Jetzt: sofort lokal anzeigen, im Hintergrund nachladen. Der Effekt unten
+   * zieht nach, sobald der frische Event-Stand da ist.
+   */
+  const [hotelsLocal, setHotelsLocal] = React.useState<DexHotel[]>(event.hotels || []);
+  const [staysLocal, setStaysLocal] = React.useState<DexHotelStay[]>(event.hotelStays || []);
+  const [visibleLocal, setVisibleLocal] = React.useState<boolean>(!!event.hotelVisibleToAttendees);
+  React.useEffect(() => { setHotelsLocal(event.hotels || []); }, [event.hotels]);
+  React.useEffect(() => { setStaysLocal(event.hotelStays || []); }, [event.hotelStays]);
+  React.useEffect(() => { setVisibleLocal(!!event.hotelVisibleToAttendees); }, [event.hotelVisibleToAttendees]);
+
+  const hotels: DexHotel[] = hotelsLocal;
+  const stays: DexHotelStay[] = staysLocal;
+  const visible = visibleLocal;
 
   const [busy, setBusy] = React.useState('');
   const [selected, setSelected] = React.useState<Set<number>>(new Set());
@@ -317,6 +347,73 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   const [importBusy, setImportBusy] = React.useState(false);
   const [importProgress, setImportProgress] = React.useState<{ done: number; total: number } | null>(null);
 
+  // v28.58: Geführte Erst-Einrichtung.
+  const [wizardOpen, setWizardOpen] = React.useState(false);
+  const [wizardBusy, setWizardBusy] = React.useState(false);
+
+  /**
+   * v28.58: Ergebnis des Einrichtungs-Assistenten übernehmen.
+   *
+   * Reihenfolge wie beim Import: erst die Stammdaten (sonst zeigt die Tabelle
+   * hinterher Hotelnamen, die es als Hotel gar nicht gibt), dann die
+   * Zuordnungen. Die drei Piggybacks gehen einzeln raus — zusammen wären sie
+   * ein Schreibvorgang, aber `patchEventOverridesValue` liest den aktuellen
+   * Stand je Aufruf frisch und bleibt damit gegen parallele Editoren robust.
+   */
+  const applyWizard = async (payload: {
+    stays: DexHotelStay[];
+    hotels: DexHotel[];
+    rules: DexHotelRules;
+    assignments: Array<{ reg: SPRegistration; hotel: string; from: string; to: string }>;
+  }): Promise<void> => {
+    if (!svc) return;
+    if (visible && payload.assignments.length > 0) {
+      const ok = await confirmDialog(
+        isDe
+          ? `Die Hotel-Anzeige ist freigegeben — die ${payload.assignments.length} betroffenen Personen sehen ihr Hotel sofort unter „Meine Events".\n\nFortfahren?`
+          : `Hotel display is released — the ${payload.assignments.length} people affected see their hotel immediately under „My events".\n\nContinue?`,
+        { confirmLabel: isDe ? 'Ja, übernehmen' : 'Yes, apply' },
+      );
+      if (!ok) return;
+    }
+    setWizardBusy(true);
+    const prevH = hotelsLocal; const prevS = staysLocal;
+    setStaysLocal(payload.stays);
+    setHotelsLocal(payload.hotels);
+    const okS = await svc.patchEventOverridesValue(Number(event.id), '_hotelStays', payload.stays);
+    const okH = await svc.patchEventOverridesValue(Number(event.id), '_hotels', payload.hotels);
+    const okR = await svc.patchEventOverridesValue(Number(event.id), '_hotelRules', payload.rules);
+    if (!okS || !okH || !okR) {
+      setStaysLocal(prevS); setHotelsLocal(prevH);
+      setWizardBusy(false);
+      showAlert(isDe ? 'Die Einrichtung konnte nicht gespeichert werden — es wurde nichts übernommen.' : 'Could not save the setup — nothing was applied.', { variant: 'error' });
+      return;
+    }
+    let failed = 0;
+    if (payload.assignments.length > 0 && event.subsiteUrl) {
+      try { await svc.ensureHotelColumns(event.subsiteUrl); } catch { /* best effort */ }
+      setBulkProgress({ done: 0, total: payload.assignments.length });
+      for (let i = 0; i < payload.assignments.length; i++) {
+        const a = payload.assignments[i];
+        // eslint-disable-next-line no-await-in-loop
+        const ok = await svc.setHotelAssignment(event.subsiteUrl, a.reg.Id, a.hotel, toIso(a.from), toIso(a.to));
+        if (!ok) failed++;
+        setBulkProgress({ done: i + 1, total: payload.assignments.length });
+      }
+      setBulkProgress(null);
+      await onReloadRegistrations();
+    }
+    void Promise.resolve(onReloadEvents()).catch(() => { /* Hintergrund */ });
+    setWizardBusy(false);
+    setWizardOpen(false);
+    showAlert(
+      isDe
+        ? `Eingerichtet: ${payload.stays.length} Zeitraum/Zeiträume, ${payload.hotels.length} Hotel(s)${payload.assignments.length > 0 ? `, ${payload.assignments.length - failed} von ${payload.assignments.length} Zuordnung(en)` : ''}${failed > 0 ? ` — ${failed} fehlgeschlagen` : ''}.`
+        : `Set up: ${payload.stays.length} period(s), ${payload.hotels.length} hotel(s)${payload.assignments.length > 0 ? `, ${payload.assignments.length - failed} of ${payload.assignments.length} assignment(s)` : ''}${failed > 0 ? ` — ${failed} failed` : ''}.`,
+      { variant: failed > 0 ? 'error' : 'success' },
+    );
+  };
+
   /**
    * v28.49: Geprüfte Import-Zeilen übernehmen. Reihenfolge ist wichtig: erst
    * die fehlenden Hotels anlegen (EIN Schreibvorgang am Event), dann die
@@ -332,6 +429,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     setImportProgress({ done: 0, total: rowsIn.length });
     if (newHotelNames.length > 0) {
       const merged = hotels.concat(newHotelNames.map(n => ({ id: uid('h'), name: n, address: '', capacity: 0, notes: '' })));
+      setHotelsLocal(merged);
       const okH = await svc.patchEventOverridesValue(Number(event.id), '_hotels', merged);
       if (!okH) {
         setImportBusy(false); setImportProgress(null);
@@ -349,7 +447,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
       if (!ok) failed++;
       setImportProgress({ done: i + 1, total: rowsIn.length });
     }
-    await onReloadEvents();
+    void Promise.resolve(onReloadEvents()).catch(() => { /* Hintergrund */ });
     await onReloadRegistrations();
     setImportBusy(false);
     setImportProgress(null);
@@ -397,20 +495,32 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
 
   const saveHotels = async (next: DexHotel[]): Promise<void> => {
     if (!svc) return;
+    const prev = hotelsLocal;
+    setHotelsLocal(next); // sofort sichtbar
     setBusy('hotels');
     const ok = await svc.patchEventOverridesValue(Number(event.id), '_hotels', next);
     setBusy('');
-    if (!ok) { showAlert(isDe ? 'Die Hotels konnten nicht gespeichert werden.' : 'Could not save the hotels.', { variant: 'error' }); return; }
-    await onReloadEvents();
+    if (!ok) {
+      setHotelsLocal(prev); // Rollback, damit die Anzeige nicht luegt
+      showAlert(isDe ? 'Die Hotels konnten nicht gespeichert werden.' : 'Could not save the hotels.', { variant: 'error' });
+      return;
+    }
+    void Promise.resolve(onReloadEvents()).catch(() => { /* Hintergrund */ });
   };
 
   const saveStays = async (next: DexHotelStay[]): Promise<void> => {
     if (!svc) return;
+    const prev = staysLocal;
+    setStaysLocal(next);
     setBusy('stays');
     const ok = await svc.patchEventOverridesValue(Number(event.id), '_hotelStays', next);
     setBusy('');
-    if (!ok) { showAlert(isDe ? 'Die Zeiträume konnten nicht gespeichert werden.' : 'Could not save the stay templates.', { variant: 'error' }); return; }
-    await onReloadEvents();
+    if (!ok) {
+      setStaysLocal(prev);
+      showAlert(isDe ? 'Die Zeiträume konnten nicht gespeichert werden.' : 'Could not save the stay templates.', { variant: 'error' });
+      return;
+    }
+    void Promise.resolve(onReloadEvents()).catch(() => { /* Hintergrund */ });
   };
 
   const toggleVisible = async (): Promise<void> => {
@@ -426,11 +536,16 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
       );
       if (!ok) return;
     }
+    setVisibleLocal(next);
     setBusy('visible');
     const ok = await svc.patchEventOverridesValue(Number(event.id), '_hotelVisible', next);
     setBusy('');
-    if (!ok) { showAlert(isDe ? 'Die Einstellung konnte nicht gespeichert werden.' : 'Could not save the setting.', { variant: 'error' }); return; }
-    await onReloadEvents();
+    if (!ok) {
+      setVisibleLocal(!next);
+      showAlert(isDe ? 'Die Einstellung konnte nicht gespeichert werden.' : 'Could not save the setting.', { variant: 'error' });
+      return;
+    }
+    void Promise.resolve(onReloadEvents()).catch(() => { /* Hintergrund */ });
     showAlert(
       next
         ? (isDe ? 'Freigegeben — die Teilnehmer sehen ihr Hotel unter „Meine Events".' : 'Released — attendees now see their hotel under „My events".')
@@ -513,12 +628,34 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
 
   /* ---------------- Auswertungen ---------------- */
 
+  /** v28.58: Der Zeitraum, für den das Kontingent eines Hotels gilt. Ohne
+   *  Angabe der Standard-Zeitraum — Nächte darüber hinaus sind Extranächte. */
+  const baseStayOf = React.useCallback((h: DexHotel): DexHotelStay | null =>
+    stays.filter(s => s.id === h.capacityStayId)[0] || stays.filter(s => s.isDefault)[0] || stays[0] || null,
+  [stays]);
+
   const perHotel = React.useMemo(() => hotels.map(h => {
     const rows = people.filter(p => (p.Hotel || '').trim() === h.name);
     const nights = rows.reduce((sum, r) => sum + nightsBetween(toDay(r.HotelFrom), toDay(r.HotelTo)), 0);
     const cap = h.capacity || 0;
-    return { hotel: h, count: rows.length, nights, over: cap > 0 && rows.length > cap, free: cap > 0 ? cap - rows.length : null };
-  }), [hotels, people]);
+    // v28.58: Extranächte gegen den Kontingent-Zeitraum. Das Kontingent deckt
+    // nur seinen eigenen Zeitraum ab — wer früher anreist oder später abreist,
+    // muss zusätzlich gebucht werden.
+    const base = baseStayOf(h);
+    let extraBefore = 0; let extraAfter = 0;
+    if (base) {
+      for (const r of rows) {
+        const f = toDay(r.HotelFrom); const t = toDay(r.HotelTo);
+        if (!f || !t) continue;
+        extraBefore += nightsBetween(f, base.from);
+        extraAfter += nightsBetween(base.to, t);
+      }
+    }
+    return {
+      hotel: h, count: rows.length, nights, base, extraBefore, extraAfter,
+      over: cap > 0 && rows.length > cap, free: cap > 0 ? cap - rows.length : null,
+    };
+  }), [hotels, people, baseStayOf]);
 
   /** Belegung je Nacht — die Zahl, die das Hotel fürs Kontingent braucht. */
   const perNight = React.useMemo(() => {
@@ -742,6 +879,14 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                 ? <>Lege die Hotels an, gib Zeiträume als Vorlage vor und ordne die Teilnehmer zu. Die Zuordnung steht danach in der Teilnehmerliste und läuft in jeden Export mit.</>
                 : <>Create the hotels, define stay templates and assign attendees. The assignment then lives in the participant list and is part of every export.</>}
             </p>
+            {/* v28.58: Der Assistent ist der empfohlene Einstieg — bei einem
+                leeren Event als grosse Karte, danach als unauffaelliger Link. */}
+            {hotels.length > 0 && (
+              <button type="button" onClick={() => setWizardOpen(true)}
+                style={{ marginTop: 8, border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '0.8rem', color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline' }}>
+                {isDe ? 'Einrichtungs-Assistent öffnen (Zeiträume, Kontingente, Extranächte)' : 'Open setup wizard (periods, capacity, extra nights)'}
+              </button>
+            )}
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             <div style={{ padding: '8px 14px', borderRadius: 8, background: 'var(--dex-gray-50, #f7f7f5)', textAlign: 'center', minWidth: 92 }}>
@@ -783,13 +928,35 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
         </label>
       </div>
 
+      {/* ---- v28.58: Einstieg für ein noch leeres Event ---- */}
+      {hotels.length === 0 && (
+        <div style={{ ...card, borderColor: 'var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.06)' }}>
+          <h3 style={h3}>{isDe ? 'In vier Schritten eingerichtet' : 'Set up in four steps'}</h3>
+          <p style={{ ...hint, marginBottom: 10 }}>
+            {isDe
+              ? <>Der Assistent führt dich durch Zeiträume, Hotels mit Kontingent und die Verteil-Regeln — und rechnet am Ende aus, wie viele <strong>Extranächte</strong> ihr über das Kontingent hinaus buchen müsst, weil einzelne Personen früher anreisen. Vorschläge für die Zeiträume kommen aus dem Event-Datum.</>
+              : <>The wizard walks you through stay periods, hotels with capacity and the distribution rules — and works out how many <strong>extra nights</strong> you have to book beyond the contingent because some people arrive earlier. Period suggestions come from the event dates.</>}
+          </p>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <button type="button" className="btn btn-primary" style={{ fontSize: '0.85rem', padding: '9px 20px' }}
+              onClick={() => setWizardOpen(true)}>
+              {isDe ? 'Einrichtung starten' : 'Start setup'}
+            </button>
+            <button type="button" className="btn btn-secondary" style={{ fontSize: '0.85rem', padding: '9px 20px' }}
+              onClick={() => setImportOpen(true)}>
+              {isDe ? 'Bestehende Liste importieren' : 'Import existing list'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ---- Hotels ---- */}
       <div style={card}>
         <h3 style={h3}>{isDe ? 'Hotels' : 'Hotels'}</h3>
         <p style={hint}>
           {isDe
-            ? 'Kontingent = Zimmer bzw. Betten, die euch zustehen. Ist es gesetzt, warnt die Ampel bei Überbuchung.'
-            : 'Capacity = rooms or beds available to you. If set, the indicator warns about overbooking.'}
+            ? 'Kontingent = Zimmer bzw. Betten, die euch zustehen. Ist es gesetzt, warnt die Ampel bei Überbuchung. Weil ein Kontingent fast immer nur für bestimmte Nächte gilt, steht darunter, für welchen Zeitraum — alles darüber hinaus zählt als Extranacht und muss zusätzlich gebucht werden.'
+            : 'Capacity = rooms or beds available to you. If set, the indicator warns about overbooking. Because a contingent usually covers specific nights only, the period it applies to is shown below — anything beyond counts as an extra night and has to be booked on top.'}
         </p>
         {perHotel.length > 0 && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10, marginBottom: 12 }}>
@@ -808,6 +975,30 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                 <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)' }}>
                   {ph.nights} {isDe ? 'Übernachtungen gesamt' : 'room nights total'}
                 </div>
+                {/* v28.58: Kontingent-Zeitraum + Extranächte. Das Kontingent
+                    gilt nur für seinen Zeitraum — frühere Anreisen und spätere
+                    Abreisen muss das Hotel zusätzlich buchen. */}
+                {stays.length > 0 && (
+                  <div style={{ marginTop: 6, fontSize: '0.72rem', color: 'var(--dex-gray-600)' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+                      <span>{isDe ? 'Kontingent für:' : 'Capacity for:'}</span>
+                      <select
+                        value={ph.hotel.capacityStayId || (ph.base ? ph.base.id : '')}
+                        disabled={busy !== ''}
+                        onChange={e => { void saveHotels(hotels.map(x => x.id === ph.hotel.id ? { ...x, capacityStayId: e.target.value } : x)); }}
+                        style={{ ...inp, height: 24, fontSize: '0.72rem', flex: '1 1 120px' }}>
+                        {stays.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                      </select>
+                    </label>
+                    {(ph.extraBefore > 0 || ph.extraAfter > 0) && (
+                      <div style={{ marginTop: 4, color: '#b35a00', fontWeight: 600 }}>
+                        {isDe
+                          ? `${ph.extraBefore + ph.extraAfter}× Extranacht zusätzlich buchen${ph.extraBefore > 0 ? ` (${ph.extraBefore}× vorab` : ''}${ph.extraBefore > 0 && ph.extraAfter > 0 ? `, ${ph.extraAfter}× danach)` : (ph.extraBefore > 0 ? ')' : `(${ph.extraAfter}× danach)`)}`
+                          : `${ph.extraBefore + ph.extraAfter}× extra night to book on top${ph.extraBefore > 0 ? ` (${ph.extraBefore}× before` : ''}${ph.extraBefore > 0 && ph.extraAfter > 0 ? `, ${ph.extraAfter}× after)` : (ph.extraBefore > 0 ? ')' : `(${ph.extraAfter}× after)`)}`}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
                   <button type="button" onClick={() => exportRooming(ph.hotel.name)}
                     style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '0.74rem', color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline' }}>
@@ -893,16 +1084,47 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
             </span>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <input style={{ ...inp, flex: '2 1 150px' }} placeholder={isDe ? 'Bezeichnung, z.B. „Mit Vorabend"' : 'Label, e.g. „With prior evening"'}
-            value={newStay.label} onChange={e => setNewStay({ ...newStay, label: e.target.value })} />
-          <input style={{ ...inp }} type="date" value={newStay.from} onChange={e => setNewStay({ ...newStay, from: e.target.value })} />
-          <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>–</span>
-          <input style={{ ...inp }} type="date" value={newStay.to} onChange={e => setNewStay({ ...newStay, to: e.target.value })} />
-          <span style={{ fontSize: '0.76rem', color: 'var(--dex-gray-600)' }}>
+        {/* v28.57: Feld-Layout wie im Event-Wizard — form-group/form-label/form-input
+            plus derselbe react-datepicker (deutsche Locale, TT.MM.JJJJ). */}
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div className="form-group" style={{ marginBottom: 0, flex: '2 1 190px' }}>
+            <label className="form-label" style={{ fontSize: '0.8rem', marginBottom: 4 }}>
+              {isDe ? 'Bezeichnung' : 'Label'}
+            </label>
+            <input className="form-input" placeholder={isDe ? 'z.B. „Mit Vorabend"' : 'e.g. „With prior evening"'}
+              value={newStay.label} onChange={e => setNewStay({ ...newStay, label: e.target.value })} />
+          </div>
+          <div className="form-group" style={{ marginBottom: 0, flex: '1 1 160px' }}>
+            <label className="form-label" style={{ fontSize: '0.8rem', marginBottom: 4 }}>
+              {isDe ? 'Anreise' : 'Arrival'}
+            </label>
+            <DatePicker
+              selected={newStay.from ? new Date(`${newStay.from}T00:00:00`) : null}
+              onChange={(d: Date | null) => setNewStay({ ...newStay, from: d ? toLocalDay(d) : '' })}
+              dateFormat="dd.MM.yyyy" locale={isDe ? 'de' : undefined}
+              placeholderText={isDe ? 'TT.MM.JJJJ' : 'dd/mm/yyyy'}
+              className="form-input" wrapperClassName="dex-datepicker-wrapper"
+              calendarClassName="dex-datepicker-calendar" popperPlacement="bottom-start"
+              isClearable autoComplete="off" />
+          </div>
+          <div className="form-group" style={{ marginBottom: 0, flex: '1 1 160px' }}>
+            <label className="form-label" style={{ fontSize: '0.8rem', marginBottom: 4 }}>
+              {isDe ? 'Abreise' : 'Departure'}
+            </label>
+            <DatePicker
+              selected={newStay.to ? new Date(`${newStay.to}T00:00:00`) : null}
+              onChange={(d: Date | null) => setNewStay({ ...newStay, to: d ? toLocalDay(d) : '' })}
+              dateFormat="dd.MM.yyyy" locale={isDe ? 'de' : undefined}
+              placeholderText={isDe ? 'TT.MM.JJJJ' : 'dd/mm/yyyy'}
+              minDate={newStay.from ? new Date(`${newStay.from}T00:00:00`) : undefined}
+              className="form-input" wrapperClassName="dex-datepicker-wrapper"
+              calendarClassName="dex-datepicker-calendar" popperPlacement="bottom-start"
+              isClearable autoComplete="off" />
+          </div>
+          <span style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', paddingBottom: 14 }}>
             {nightsBetween(newStay.from, newStay.to)} {isDe ? 'Nächte' : 'nights'}
           </span>
-          <button type="button" className="btn btn-secondary" style={{ fontSize: '0.78rem', padding: '5px 14px' }}
+          <button type="button" className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '11px 18px', marginBottom: 1 }}
             disabled={busy !== ''}
             onClick={() => {
               const n = nightsBetween(newStay.from, newStay.to);
@@ -1387,6 +1609,23 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
         onApply={applyImport}
         busy={importBusy}
         progress={importProgress}
+      />
+
+      {/* ---- v28.58: Geführte Erst-Einrichtung ---- */}
+      <HotelSetupWizard
+        open={wizardOpen}
+        onClose={() => { if (!wizardBusy) setWizardOpen(false); }}
+        event={event}
+        people={people}
+        childEvents={childEvents || []}
+        subEmails={subEmails}
+        hotels={hotels}
+        stays={stays}
+        rules={event.hotelRules || {}}
+        isDe={isDe}
+        busy={wizardBusy}
+        wishOf={wishOf}
+        onApply={applyWizard}
       />
 
       {/* ---- Hotel-Info-Mail: gleicher Editor + Versandweg wie die QR-Mail ---- */}

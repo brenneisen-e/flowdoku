@@ -1511,7 +1511,7 @@ export default function EventCreationPage(): React.ReactElement {
           // v28.39: Hotel-Planung wird ausschliesslich im Organizer Center gepflegt.
           // Stripping verhindert, dass ein parallel offener Wizard beim Speichern
           // einen veralteten Stand zurueckschreibt.
-          _hotels, _hotelStays, _hotelVisible,
+          _hotels, _hotelStays, _hotelVisible, _hotelRules,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -1524,7 +1524,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee; void _previewBeforeActive; void _imageDisplay;
         void _organizerDisplayLarge; void _hiddenOrganizers; void _hideOrgIndividual; void _mainEventLabel;
         void _imageOrigUrl; void _klammerDeadline;
-        void _hotels; void _hotelStays; void _hotelVisible;
+        void _hotels; void _hotelStays; void _hotelVisible; void _hotelRules;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
     })() : {}
