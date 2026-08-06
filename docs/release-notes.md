@@ -8,6 +8,8 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 28.54.0 | 2026-08-06 | Feature | `HotelPlanningPanel`: Personenzelle analog zur Teilnehmerliste — `PersonContactHover` (Foto + Kontaktkarte) plus Name und Subline `JobTitle • stripLocPrefix(Location) • Company`. Alle drei Werte stehen bereits auf der Registrierungszeile (`getAllRegistrations` selektiert `*`), also ohne Zusatzabfrage. Die Spalten Nachname/Vorname/Standort/Unternehmen entfallen; die Sortierung wandert in ein Dropdown neben der Suche (`sortKey` inkl. `subs`). |
+| 28.54.0 | 2026-08-06 | Bugfix | Doppel-Load beseitigt: `HotelPlanningPanel` holte die Sub-Event-Teilnehmerlisten per `getAllRegistrations` erneut, obwohl `AdminPage.subEventRegsByEventId` sie fuer die konsolidierte Ansicht schon haelt. Neuer Prop reicht sie durch; `subEmails` ist jetzt ein `useMemo` daraus, der eigene Fetch bleibt nur als Fallback fuer nicht durchgereichte Listen. |
 | 28.53.0 | 2026-08-06 | Bugfix | `renderConsolidatedView` hatte nur `overflowX: 'auto'` — kein `maxHeight`, also kein vertikaler Scroll-Container. Jetzt `maxHeight: '70vh', overflow: 'auto'` analog zu `renderTable` der Sub-Event-Liste. |
 | 28.53.0 | 2026-08-06 | Feature | `HotelPlanningPanel`: statt einer Sammelspalte mit Chips je Sub-Event eine eigene Haken-Spalte (Kopf: Kurztitel + „angemeldet?"), gespeist aus dem `subEmails`-Cache; `subsOf` bleibt als Sortier-Schluessel. |
 | 28.52.0 | 2026-08-06 | Bugfix | `HotelPlanningPanel`: E-Mail-Subzeile aus der Nachname-Zelle entfernt (nur noch `title`-Tooltip). Die Volltextsuche deckt `ParticipantEmail` weiterhin ab. |

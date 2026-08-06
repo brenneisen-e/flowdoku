@@ -8599,6 +8599,7 @@ export default function AdminPage(): React.ReactElement {
                 registrations={registrations}
                 isDe={isDe}
                 childEvents={childEventsOf(selectedEvent.id)}
+                subEventRegsByEventId={subEventRegsByEventId}
                 onReloadRegistrations={async () => {
                   const regs = await getAllRegistrations(selectedEvent.id);
                   setRegistrations(regs);
