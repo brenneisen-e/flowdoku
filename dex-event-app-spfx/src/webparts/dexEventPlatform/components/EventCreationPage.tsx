@@ -894,6 +894,12 @@ export default function EventCreationPage(): React.ReactElement {
   // bedingungen akzeptieren. Nicht relevant beim Bearbeiten bestehender Events.
   const [tcAccepted, setTcAccepted] = React.useState(false);
   const [tcCheckbox, setTcCheckbox] = React.useState(false);
+  // v28.41: Zweite, bewusst getrennte Bestaetigung — der Organizer muss aktiv
+  // erklaeren, dass es ein internes Event ist bzw. die Deloitte-Teilnahme an
+  // einer externen Veranstaltung koordiniert. Absichtlich NICHT mit der
+  // Nutzungsbedingungs-Zustimmung zusammengelegt: Wer beides in einem Haken
+  // abnickt, hat den Einsatzbereich nicht gelesen.
+  const [internalCheckbox, setInternalCheckbox] = React.useState(false);
   const [tcExpanded, setTcExpanded] = React.useState(false);
   const { t, locale } = useLanguage();
   // v20.4: App-Modals statt nativer Browser-Dialoge.
@@ -1502,6 +1508,10 @@ export default function EventCreationPage(): React.ReactElement {
           _teamTerm, _teamMembersCannotCreate, _assistantsCanSee, _previewBeforeActive, _imageDisplay,
           _organizerDisplayLarge, _hiddenOrganizers, _hideOrgIndividual, _mainEventLabel,
           _imageOrigUrl, _klammerDeadline,
+          // v28.39: Hotel-Planung wird ausschliesslich im Organizer Center gepflegt.
+          // Stripping verhindert, dass ein parallel offener Wizard beim Speichern
+          // einen veralteten Stand zurueckschreibt.
+          _hotels, _hotelStays, _hotelVisible,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -1514,6 +1524,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee; void _previewBeforeActive; void _imageDisplay;
         void _organizerDisplayLarge; void _hiddenOrganizers; void _hideOrgIndividual; void _mainEventLabel;
         void _imageOrigUrl; void _klammerDeadline;
+        void _hotels; void _hotelStays; void _hotelVisible;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
     })() : {}
@@ -6776,7 +6787,8 @@ export default function EventCreationPage(): React.ReactElement {
                     </ul>
 
                     <p>
-                      <strong>Wichtiger Hinweis:</strong> Externe Nicht-Deloitte-Mitarbeiter werden über dieses Tool
+                      <strong>Wichtiger Hinweis:</strong> Für externe Events mit externen Teilnehmern ist die Plattform
+                      nicht vorgesehen. Externe Nicht-Deloitte-Mitarbeiter werden über dieses Tool
                       nicht koordiniert und erhalten keinen Zugang zur Plattform.
                     </p>
 
@@ -6866,7 +6878,8 @@ export default function EventCreationPage(): React.ReactElement {
                     </ul>
 
                     <p>
-                      <strong>Important note:</strong> External non-Deloitte employees are not coordinated through this
+                      <strong>Important note:</strong> The platform is not intended for external events with external
+                      attendees. External non-Deloitte employees are not coordinated through this
                       tool and will not be granted access to the platform.
                     </p>
 
@@ -6967,6 +6980,35 @@ export default function EventCreationPage(): React.ReactElement {
               </span>
             </label>
 
+            <label
+              style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10,
+                marginTop: 12, padding: 14,
+                background: internalCheckbox ? 'rgba(134,188,37,0.08)' : 'var(--dex-gray-50, #f8f9fa)',
+                border: `1px solid ${internalCheckbox ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200, #e5e7eb)'}`,
+                borderRadius: 10, cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={internalCheckbox}
+                onChange={e => setInternalCheckbox(e.target.checked)}
+                style={{ marginTop: 2, width: 18, height: 18, accentColor: 'var(--dex-green, #86bc25)', cursor: 'pointer' }}
+              />
+              <span style={{ fontSize: '0.9rem', lineHeight: 1.4 }}>
+                {isDe
+                  ? <>Ich bestätige, dass dies ein <strong>Deloitte-internes Event</strong> ist oder die <strong>Deloitte-Teilnahme an einer externen Veranstaltung</strong> koordiniert.
+                      <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-600)', marginTop: 4 }}>
+                        Für externe Events mit externen Teilnehmern ist DEX nicht vorgesehen — wende dich dafür bitte an das offizielle Brand- &amp; Marketing-Team.
+                      </span></>
+                  : <>I confirm that this is a <strong>Deloitte-internal event</strong> or coordinates <strong>Deloitte participation in an external event</strong>.
+                      <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-600)', marginTop: 4 }}>
+                        DEX is not intended for external events with external attendees — please contact the official Brand &amp; Marketing team for those.
+                      </span></>}
+              </span>
+            </label>
+
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 20 }}>
               <button
                 type="button"
@@ -6978,9 +7020,9 @@ export default function EventCreationPage(): React.ReactElement {
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={!tcCheckbox}
+                disabled={!tcCheckbox || !internalCheckbox}
                 onClick={() => setTcAccepted(true)}
-                style={{ opacity: tcCheckbox ? 1 : 0.5, cursor: tcCheckbox ? 'pointer' : 'not-allowed' }}
+                style={{ opacity: (tcCheckbox && internalCheckbox) ? 1 : 0.5, cursor: (tcCheckbox && internalCheckbox) ? 'pointer' : 'not-allowed' }}
               >
                 <Check size={16} /> {isDe ? 'Akzeptieren & weiter' : 'Accept & continue'}
               </button>

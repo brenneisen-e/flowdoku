@@ -39,10 +39,19 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
   const [sending, setSending] = React.useState(false);
   const [status, setStatus] = React.useState<'' | 'success' | 'error'>('');
   const [showInfo, setShowInfo] = React.useState(false);
+  // v28.41: Art des Events VOR allem anderen abfragen. Bei „extern" ist DEX
+  // das falsche Werkzeug — dann statt eines Formulars der Verweis ans Brand- &
+  // Marketing-Team, und der Absende-Knopf bleibt gesperrt.
+  const [eventScope, setEventScope] = React.useState<'' | 'internal' | 'external'>('');
 
   // v23.37: im Organizer-Modus reicht der Name (Nachricht optional, kein
   // Event-Name) — die allgemeine Anfrage braucht Event-Name + Nachricht.
-  const canSubmit = organizerMode ? true : (!!eventName.trim() && !!message.trim());
+  // v28.41: Ohne Angabe der Event-Art laesst sich nichts absenden, und bei
+  // „extern" bleibt der Knopf gesperrt — DEX ist dafuer schlicht das falsche
+  // Werkzeug, eine Anfrage waere fuer beide Seiten verlorene Zeit.
+  const canSubmit = organizerMode
+    ? true
+    : (!!eventName.trim() && !!message.trim() && eventScope === 'internal');
 
   async function handleSubmit(): Promise<void> {
     if (!canSubmit || sending) return;
@@ -157,6 +166,56 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
             </span>
           </div>
         </div>
+        {/* v28.40: Einsatzbereich klarstellen. Bis hierhin stand in der
+            Anfrage-Strecke nirgends, fuer welche Art von Events DEX gedacht
+            ist — die einzige Erwaehnung von „extern" war die technische
+            Aussage „keine externen APIs" in der Info-Box, die man sogar
+            falsch herum lesen kann. */}
+        {!organizerMode && (
+          <div style={{
+            padding: '12px 14px', borderRadius: 8,
+            background: 'var(--dex-gray-50, #f7f7f5)',
+            border: '1px solid var(--dex-gray-200)',
+            fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5,
+          }}>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>
+              {isDe ? 'Um was für ein Event geht es?' : 'What kind of event is it?'}
+            </div>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 8, cursor: 'pointer' }}>
+              <input type="radio" name="dexEventScope" checked={eventScope === 'internal'}
+                onChange={() => setEventScope('internal')} disabled={sending} style={{ marginTop: 3 }} />
+              <span>
+                <strong>{isDe ? 'Internes Event' : 'Internal event'}</strong>
+                <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--dex-gray-600)' }}>
+                  {isDe
+                    ? 'Ein Deloitte-internes Event — oder die Koordination der Deloitte-Teilnahme an einer externen Veranstaltung (z.B. B2Run).'
+                    : 'A Deloitte-internal event — or coordinating Deloitte participation in an external event (e.g. B2Run).'}
+                </span>
+              </span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer' }}>
+              <input type="radio" name="dexEventScope" checked={eventScope === 'external'}
+                onChange={() => setEventScope('external')} disabled={sending} style={{ marginTop: 3 }} />
+              <span>
+                <strong>{isDe ? 'Externes Event mit externen Teilnehmern' : 'External event with external attendees'}</strong>
+                <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--dex-gray-600)' }}>
+                  {isDe ? 'Gäste außerhalb von Deloitte melden sich selbst an.' : 'Guests from outside Deloitte register themselves.'}
+                </span>
+              </span>
+            </label>
+            {eventScope === 'external' && (
+              <div style={{
+                marginTop: 10, padding: '10px 12px', borderRadius: 8,
+                background: '#fef3f2', border: '1px solid var(--dex-red, #c00)',
+                color: '#7a1f1c', fontSize: '0.8rem', lineHeight: 1.55,
+              }}>
+                {isDe
+                  ? <><strong>Dafür ist DEX nicht nutzbar.</strong> Die Plattform ist auf Deloitte-interne Events ausgelegt; externe Gäste bekommen keinen Zugang und können sich nicht selbst anmelden.<br /><br />Für externe Veranstaltungen wende dich bitte an das offizielle <strong>Brand- &amp; Marketing-Team</strong> — dort gibt es die passenden Werkzeuge und Freigabewege.</>
+                  : <><strong>DEX cannot be used for this.</strong> The platform is built for Deloitte-internal events; external guests get no access and cannot register themselves.<br /><br />For external events please contact the official <strong>Brand &amp; Marketing team</strong> — they have the right tools and approval routes.</>}
+              </div>
+            )}
+          </div>
+        )}
         {!organizerMode && (
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
             {locale === 'de' ? 'Event-Name' : 'Event name'}
