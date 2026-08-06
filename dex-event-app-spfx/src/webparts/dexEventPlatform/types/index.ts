@@ -19,6 +19,27 @@ export interface DexHotel {
   /** Kontingent (Zimmer/Betten). 0 = unbegrenzt. */
   capacity?: number;
   notes?: string;
+  /** v28.58: Auf welchen Zeitraum sich das Kontingent bezieht (Id einer
+   *  `DexHotelStay`). Leer = Standard-Zeitraum. Alles, was eine Person
+   *  darueber hinaus bleibt, ist eine **Extranacht** und muss zusaetzlich
+   *  gebucht werden — genau die zeigt der Einrichtungs-Assistent aus. */
+  capacityStayId?: string;
+  /** v28.58: Fuell-Reihenfolge bei der automatischen Verteilung
+   *  (kleiner = zuerst). Ohne Wert zaehlt die Listenreihenfolge. */
+  priority?: number;
+}
+
+/** v28.58: Regeln fuer die automatische Verteilung (Piggyback `_hotelRules`).
+ *  Bewusst klein gehalten — sie merken sich die Entscheidungen aus dem
+ *  Einrichtungs-Assistenten, damit ein zweiter Durchlauf nicht bei null
+ *  anfaengt. */
+export interface DexHotelRules {
+  /** Je Sub-Event-Id: festes Hotel und/oder fester Zeitraum. */
+  bySub?: Record<string, { hotel?: string; stayId?: string }>;
+  /** Personen mit derselben Sub-Event-Kombination zusammen unterbringen. */
+  keepGroups?: boolean;
+  /** Wer im Anmeldeformular „keine Unterkunft" gewaehlt hat, wird uebersprungen. */
+  skipNoWish?: boolean;
 }
 
 /** v28.38: Vorlage fuer einen Aufenthalts-Zeitraum („Standard 24.-25.09."). */
@@ -197,6 +218,8 @@ export interface DeloitteEvent {
   /** v28.38: Sehen Teilnehmer ihr Hotel unter „Meine Events"? (`_hotelVisible`)
    *  Default false — der Organizer gibt bewusst frei. */
   hotelVisibleToAttendees?: boolean;
+  /** v28.58: Verteil-Regeln aus dem Einrichtungs-Assistenten (`_hotelRules`). */
+  hotelRules?: DexHotelRules;
   /** v17.20: Wenn true UND der Organizer hat pro Custom-Field die
    *  EN-Variante hinterlegt (`labelEn` etc.), zeigt die Anmeldeseite die
    *  Felder in der **Locale des Teilnehmers** (App-Spracheinstellung) statt

@@ -10,7 +10,7 @@
 
 import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
-import { DeloitteEvent, DexHotel, DexHotelStay } from '../types';
+import { DeloitteEvent, DexHotel, DexHotelStay, DexHotelRules } from '../types';
 import { EventService, SPEvent, CustomField, SPRegistration, SPParticipant, ReseedSummary, AssistantLink, EventCommRow } from '../services/EventService';
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
 import { buildHashDeepLink } from '../utils/deepLink';
@@ -1276,6 +1276,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
           return !!(ov && ov._hotelVisible);
         } catch { return false; }
+      })(),
+      // v28.58: Verteil-Regeln aus dem Einrichtungs-Assistenten.
+      hotelRules: ((): DexHotelRules => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          return (ov && ov._hotelRules && typeof ov._hotelRules === 'object') ? ov._hotelRules as DexHotelRules : {};
+        } catch { return {}; }
       })(),
       // v28.20: Explizite Klammer-Anmeldefrist (Piggyback _klammerDeadline).
       // Abgelaufen = Gesamt-Event zu (auch bei offenen Sub-Events); leer =
