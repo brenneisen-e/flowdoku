@@ -87,6 +87,9 @@ export default function LandingInfoModal({ open, locale, onClose }: Props): Reac
     { icon: 'Globe', title: 'Deutsch + Englisch', body: 'Kompletter Language-Switch oben links. Mails werden in der Sprache verschickt, die der Organizer pro Event festgelegt hat.' },
     { icon: 'CellPhone', title: 'Mobile-optimiert', body: 'Responsive Layout, große Touch-Targets, optimierte PDF-Vorschau für iOS/Android. Check-in geht mit Handy + QR-Scan.' },
     { icon: 'Shield', title: 'Sicher & DSGVO-konform', body: 'Läuft komplett im Deloitte-SharePoint-Tenant. Keine externen APIs. Item-Level-Security: jeder sieht nur seine eigenen Registrierungen.' },
+    // v28.40: Einsatzbereich als eigener Punkt — vorher stand nirgends, für
+    // welche Art von Events DEX gedacht ist.
+    { icon: 'Info', title: 'Wofür DEX gedacht ist', body: 'Für Deloitte-interne Events und für die Koordination der Deloitte-Teilnahme an externen Veranstaltungen. Für externe Events mit externen Teilnehmern ist das Tool nicht vorgesehen.' },
   ];
 
   const featuresEN: Feature[] = [
@@ -105,6 +108,7 @@ export default function LandingInfoModal({ open, locale, onClose }: Props): Reac
     { icon: 'Globe', title: 'German + English', body: 'Full language switch top left. Emails are sent in the language the organizer set on the event.' },
     { icon: 'CellPhone', title: 'Mobile-optimized', body: 'Responsive layout, large touch targets, optimized PDF preview for iOS/Android. Check-in works on-the-go with phone + QR scan.' },
     { icon: 'Shield', title: 'Secure & GDPR-compliant', body: 'Runs entirely inside the Deloitte SharePoint tenant. No external APIs. Item-level security: users only see their own registrations.' },
+    { icon: 'Info', title: 'What DEX is for', body: 'Deloitte-internal events and coordinating Deloitte participation in external events. The tool is not intended for external events with external attendees.' },
   ];
 
   return (

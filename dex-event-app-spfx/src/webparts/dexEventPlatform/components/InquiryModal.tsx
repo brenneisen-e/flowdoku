@@ -157,6 +157,21 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
             </span>
           </div>
         </div>
+        {/* v28.40: Einsatzbereich klarstellen. Bis hierhin stand in der
+            Anfrage-Strecke nirgends, fuer welche Art von Events DEX gedacht
+            ist — die einzige Erwaehnung von „extern" war die technische
+            Aussage „keine externen APIs" in der Info-Box, die man sogar
+            falsch herum lesen kann. */}
+        <div style={{
+          padding: '10px 12px', borderRadius: 8,
+          background: 'var(--dex-gray-50, #f7f7f5)',
+          border: '1px solid var(--dex-gray-200)',
+          fontSize: '0.78rem', color: 'var(--dex-gray-700)', lineHeight: 1.5,
+        }}>
+          {isDe
+            ? <><strong>Wofür ist DEX gedacht?</strong> Für Deloitte-interne Events und für die Koordination der Deloitte-Teilnahme an externen Veranstaltungen. Für externe Events mit externen Teilnehmern ist das Tool <strong>nicht</strong> vorgesehen.</>
+            : <><strong>What is DEX for?</strong> Deloitte-internal events and coordinating Deloitte participation in external events. The tool is <strong>not</strong> intended for external events with external attendees.</>}
+        </div>
         {!organizerMode && (
           <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
             {locale === 'de' ? 'Event-Name' : 'Event name'}

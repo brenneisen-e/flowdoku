@@ -1,6 +1,6 @@
 {
   "name": "dex-event-platform-spfx",
-  "version": "28.39.0",
+  "version": "28.40.0",
   "private": true,
   "engines": {
     "node": ">=18.17.1 <19.0.0 || >=20.0.0"

@@ -6781,7 +6781,8 @@ export default function EventCreationPage(): React.ReactElement {
                     </ul>
 
                     <p>
-                      <strong>Wichtiger Hinweis:</strong> Externe Nicht-Deloitte-Mitarbeiter werden über dieses Tool
+                      <strong>Wichtiger Hinweis:</strong> Für externe Events mit externen Teilnehmern ist die Plattform
+                      nicht vorgesehen. Externe Nicht-Deloitte-Mitarbeiter werden über dieses Tool
                       nicht koordiniert und erhalten keinen Zugang zur Plattform.
                     </p>
 
@@ -6871,7 +6872,8 @@ export default function EventCreationPage(): React.ReactElement {
                     </ul>
 
                     <p>
-                      <strong>Important note:</strong> External non-Deloitte employees are not coordinated through this
+                      <strong>Important note:</strong> The platform is not intended for external events with external
+                      attendees. External non-Deloitte employees are not coordinated through this
                       tool and will not be granted access to the platform.
                     </p>
 
