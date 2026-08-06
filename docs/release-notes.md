@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 28.45.0 | 2026-08-06 | Feature | `LandingInfoModal`: Ueberschrift „…fuer alle Deloitte-Events" → „…fuer interne Deloitte Events" (DE+EN); die Liste „Fuer welche Events eignet sich DEX?" bekommt in beiden Sprachen einen abschliessenden Negativ-Punkt mit Link auf die DeloitteNet-Seite „Event Management". |
 | 28.44.0 | 2026-08-06 | Bugfix | `markOrganizerRequestDecided` verschickte bei 'Approved' nur eine kurze Eigenbau-Mail; die vollstaendige `organizerOnboardingEmail` lief ausschliesslich ueber `SettingsPage` beim manuellen `addRole` — und dort nur als Opt-in-Prompt. Beide Wege senden jetzt dieselbe Onboarding-Mail, das manuelle Zuweisen automatisch statt auf Rueckfrage. |
 | 28.44.0 | 2026-08-06 | Feature | `SettingsPage`: Briefumschlag-Knopf je Rollenzeile (Organizer/Admin) sendet die Onboarding-Mail erneut — `resendOnboarding()` mit Bestaetigungsdialog und Ergebnis-Alert. |
 | 28.44.0 | 2026-08-06 | Feature | `organizerOnboardingEmail`: Absatz zum Einsatzbereich (interne Deloitte Events / Koordination der Deloitte-Teilnahme an externen Veranstaltungen) mit Link auf die DeloitteNet-Seite „Event Management". |
