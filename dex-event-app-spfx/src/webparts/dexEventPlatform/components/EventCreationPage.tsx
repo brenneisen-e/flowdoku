@@ -6789,7 +6789,8 @@ export default function EventCreationPage(): React.ReactElement {
                     <p>
                       <strong>Wichtiger Hinweis:</strong> Für externe Events mit externen Teilnehmern ist die Plattform
                       nicht vorgesehen. Externe Nicht-Deloitte-Mitarbeiter werden über dieses Tool
-                      nicht koordiniert und erhalten keinen Zugang zur Plattform.
+                      nicht koordiniert und erhalten keinen Zugang zur Plattform. Alles zu solchen Veranstaltungen findest du im{' '}
+                      <a href="https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx" target="_blank" rel="noopener noreferrer">Event Management im DeloitteNet</a>.
                     </p>
 
                     <p>Jedes Event, das du erstellst, muss den nachfolgenden Richtlinien folgen.</p>
@@ -6880,7 +6881,8 @@ export default function EventCreationPage(): React.ReactElement {
                     <p>
                       <strong>Important note:</strong> The platform is not intended for external events with external
                       attendees. External non-Deloitte employees are not coordinated through this
-                      tool and will not be granted access to the platform.
+                      tool and will not be granted access to the platform. Everything about such events is on{' '}
+                      <a href="https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx" target="_blank" rel="noopener noreferrer">Event Management on DeloitteNet</a>.
                     </p>
 
                     <p>Every event you create must follow the guidelines below.</p>
@@ -7000,11 +7002,11 @@ export default function EventCreationPage(): React.ReactElement {
                 {isDe
                   ? <>Ich bestätige, dass dies ein <strong>Deloitte-internes Event</strong> ist oder die <strong>Deloitte-Teilnahme an einer externen Veranstaltung</strong> koordiniert.
                       <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-600)', marginTop: 4 }}>
-                        Für externe Events mit externen Teilnehmern ist DEX nicht vorgesehen — wende dich dafür bitte an das offizielle Brand- &amp; Marketing-Team.
+                        Für externe Events mit externen Teilnehmern ist DEX nicht vorgesehen — alles dazu findest du im <a href="https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600 }}>Event Management im DeloitteNet</a>.
                       </span></>
                   : <>I confirm that this is a <strong>Deloitte-internal event</strong> or coordinates <strong>Deloitte participation in an external event</strong>.
                       <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-600)', marginTop: 4 }}>
-                        DEX is not intended for external events with external attendees — please contact the official Brand &amp; Marketing team for those.
+                        DEX is not intended for external events with external attendees — everything about those is on <a href="https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600 }}>Event Management on DeloitteNet</a>.
                       </span></>}
               </span>
             </label>
