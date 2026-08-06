@@ -24,9 +24,12 @@ export function introSection(locale: 'de' | 'en'): ManualSection {
         title: isDe ? 'Überblick für alle' : 'Overview for everyone',
         intro: (
           <>
+            {/* v28.46: Einsatzbereich gleich im ersten Satz des Handbuchs —
+                „die Event-Management-App von Deloitte" liess offen, dass die
+                Plattform auf interne Events ausgelegt ist. */}
             {isDe
-              ? 'Die DEX Event Experience Platform ist die Event-Management-App von Deloitte. Sie vereint Anmeldung, Teilnehmerverwaltung, automatische E-Mails, Outlook-Termine und Check-In in einer App.'
-              : 'The DEX Event Experience Platform is Deloitte\'s event management app. It combines registration, participant management, automated emails, Outlook invitations, and on-site check-in in one place.'}
+              ? <>Die DEX Event Experience Platform ist die Event-Management-App von Deloitte für <strong>interne Deloitte Events</strong> und für die Koordination der Deloitte-Teilnahme an externen Veranstaltungen. Sie vereint Anmeldung, Teilnehmerverwaltung, automatische E-Mails, Outlook-Termine und Check-In in einer App. Für <strong>externe Events mit externen Teilnehmern</strong> ist sie nicht vorgesehen — alles dazu findest du im <a href="https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx" target="_blank" rel="noopener noreferrer">Event Management im DeloitteNet</a>.</>
+              : <>The DEX Event Experience Platform is Deloitte&apos;s event management app for <strong>internal Deloitte events</strong> and for coordinating Deloitte participation in external events. It combines registration, participant management, automated emails, Outlook invitations, and on-site check-in in one place. It is <strong>not</strong> intended for external events with external attendees — everything about those is on <a href="https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx" target="_blank" rel="noopener noreferrer">Event Management on DeloitteNet</a>.</>}
           </>
         ),
         steps: [

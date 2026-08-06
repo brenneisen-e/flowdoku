@@ -929,7 +929,7 @@ export default function LandingPage(): React.ReactElement {
               hier laeuft sie einzeilig ueber die volle Kartenbreite. Der negative
               obere Rand zieht den Block gegen das Flex-`gap` des Hero nach oben,
               damit er direkt unter dem Text sitzt statt weit darunter. */}
-          <div style={{ width: '100%', marginTop: 'clamp(-20px, -1.4vh, -6px)' }}>
+          <div style={{ width: '100%', marginTop: 'clamp(-40px, -3.2vh, -16px)' }}>
             <div style={{ height: 1, background: 'var(--dex-gray-200, #e5e7eb)', width: '100%' }} />
             <p style={{
               fontStyle: 'italic',
