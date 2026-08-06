@@ -89,7 +89,7 @@ export default function LandingInfoModal({ open, locale, onClose }: Props): Reac
     { icon: 'Shield', title: 'Sicher & DSGVO-konform', body: 'Läuft komplett im Deloitte-SharePoint-Tenant. Keine externen APIs. Item-Level-Security: jeder sieht nur seine eigenen Registrierungen.' },
     // v28.40: Einsatzbereich als eigener Punkt — vorher stand nirgends, für
     // welche Art von Events DEX gedacht ist.
-    { icon: 'Info', title: 'Wofür DEX gedacht ist', body: 'Für Deloitte-interne Events und für die Koordination der Deloitte-Teilnahme an externen Veranstaltungen. Für externe Events mit externen Teilnehmern ist das Tool nicht vorgesehen.' },
+    { icon: 'Info', title: 'Wofür DEX gedacht ist', body: 'Für interne Deloitte Events und für die Koordination der Deloitte-Teilnahme an externen Veranstaltungen. Für externe Events mit externen Teilnehmern ist das Tool nicht vorgesehen.' },
   ];
 
   const featuresEN: Feature[] = [

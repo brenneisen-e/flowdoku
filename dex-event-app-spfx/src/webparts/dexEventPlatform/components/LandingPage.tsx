@@ -919,17 +919,22 @@ export default function LandingPage(): React.ReactElement {
             </h1>
             <p>
               {isDe
-                ? <>Willkommen bei <strong>DEX</strong>. Unsere neue App für die Organisation von <span style={{ whiteSpace: 'nowrap' }}>Deloitte Events</span>. Von der Anmeldung, bis zum Check-in. Alles an einer Stelle.</>
-                : <>Welcome to <strong>DEX</strong>. Our new app for organising <span style={{ whiteSpace: 'nowrap' }}>Deloitte events</span>. From registration to check-in. Everything in one place.</>}
-            </p>
-            {/* v28.40: Einsatzbereich direkt auf der Startseite — unauffaellig
-                kursiv, aber von Anfang an sichtbar. */}
-            <p style={{ fontStyle: 'italic', fontSize: '0.85rem', color: 'var(--dex-gray-500)', marginTop: 6 }}>
-              {isDe
-                ? 'Nur für interne Zwecke — Deloitte-interne Events und die Koordination der Deloitte-Teilnahme an externen Veranstaltungen.'
-                : 'For internal use only — Deloitte-internal events and coordinating Deloitte participation in external events.'}
+                ? <>Willkommen bei <strong>DEX</strong>. Unsere neue App für die Organisation von <span style={{ whiteSpace: 'nowrap' }}>Deloitte Events*</span>. Von der Anmeldung, bis zum Check-in. Alles an einer Stelle.</>
+                : <>Welcome to <strong>DEX</strong>. Our new app for organising <span style={{ whiteSpace: 'nowrap' }}>Deloitte events*</span>. From registration to check-in. Everything in one place.</>}
             </p>
           </div>
+          {/* v28.42: Einsatzbereich als Sternchen-Fussnote zu „Deloitte Events".
+              Bewusst AUSSERHALB von .landing__text (max-width 760px) — sonst
+              bricht die Zeile um; hier steht sie einzeilig ueber die volle
+              Kartenbreite. */}
+          <p style={{
+            fontStyle: 'italic', fontSize: '0.8rem', color: 'var(--dex-gray-500)',
+            margin: '2px 0 0', textAlign: 'center', width: '100%', maxWidth: 'none', lineHeight: 1.4,
+          }}>
+            {isDe
+              ? '* Nur für interne Zwecke — interne Deloitte Events und die Koordination der Deloitte-Teilnahme an externen Veranstaltungen.'
+              : '* For internal use only — Deloitte-internal events and coordinating Deloitte participation in external events.'}
+          </p>
           {/* v22.1: Check-in-Hinweisbox(en) — ab 2 Tage vor dem Event, sobald
               der eigene QR-Code versendet wurde. Klick auf den kleinen QR
               öffnet ihn groß im Modal (zum Vorzeigen am Eingang).

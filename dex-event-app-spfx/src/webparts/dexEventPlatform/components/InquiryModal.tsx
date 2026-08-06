@@ -40,8 +40,8 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
   const [status, setStatus] = React.useState<'' | 'success' | 'error'>('');
   const [showInfo, setShowInfo] = React.useState(false);
   // v28.41: Art des Events VOR allem anderen abfragen. Bei „extern" ist DEX
-  // das falsche Werkzeug — dann statt eines Formulars der Verweis ans Brand- &
-  // Marketing-Team, und der Absende-Knopf bleibt gesperrt.
+  // das falsche Werkzeug — dann statt eines Formulars der Verweis auf die
+  // Event-Management-Seite im DeloitteNet, und der Absende-Knopf bleibt gesperrt.
   const [eventScope, setEventScope] = React.useState<'' | 'internal' | 'external'>('');
 
   // v23.37: im Organizer-Modus reicht der Name (Nachricht optional, kein
@@ -188,7 +188,7 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
                 <strong>{isDe ? 'Internes Event' : 'Internal event'}</strong>
                 <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--dex-gray-600)' }}>
                   {isDe
-                    ? 'Ein Deloitte-internes Event — oder die Koordination der Deloitte-Teilnahme an einer externen Veranstaltung (z.B. B2Run).'
+                    ? 'Ein internes Deloitte Event — oder die Koordination der Deloitte-Teilnahme an einer externen Veranstaltung (z.B. B2Run).'
                     : 'A Deloitte-internal event — or coordinating Deloitte participation in an external event (e.g. B2Run).'}
                 </span>
               </span>
@@ -210,8 +210,8 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
                 color: '#7a1f1c', fontSize: '0.8rem', lineHeight: 1.55,
               }}>
                 {isDe
-                  ? <><strong>Dafür ist DEX nicht nutzbar.</strong> Die Plattform ist auf Deloitte-interne Events ausgelegt; externe Gäste bekommen keinen Zugang und können sich nicht selbst anmelden.<br /><br />Für externe Veranstaltungen wende dich bitte an das offizielle <strong>Brand- &amp; Marketing-Team</strong> — dort gibt es die passenden Werkzeuge und Freigabewege.</>
-                  : <><strong>DEX cannot be used for this.</strong> The platform is built for Deloitte-internal events; external guests get no access and cannot register themselves.<br /><br />For external events please contact the official <strong>Brand &amp; Marketing team</strong> — they have the right tools and approval routes.</>}
+                  ? <><strong>Dafür ist DEX nicht nutzbar.</strong> Die Plattform ist auf interne Deloitte Events ausgelegt; externe Gäste bekommen keinen Zugang und können sich nicht selbst anmelden.<br /><br />Alles zu externen Veranstaltungen findest du hier:<br /><a href="https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx" target="_blank" rel="noopener noreferrer" style={{ color: '#7a1f1c', fontWeight: 700 }}>Event Management im DeloitteNet</a></>
+                  : <><strong>DEX cannot be used for this.</strong> The platform is built for Deloitte-internal events; external guests get no access and cannot register themselves.<br /><br />Everything about external events can be found here:<br /><a href="https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx" target="_blank" rel="noopener noreferrer" style={{ color: '#7a1f1c', fontWeight: 700 }}>Event Management on DeloitteNet</a></>}
               </div>
             )}
           </div>
