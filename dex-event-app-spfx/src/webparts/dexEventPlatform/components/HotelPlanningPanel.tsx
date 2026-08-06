@@ -33,6 +33,8 @@ export interface IHotelPlanningPanelProps {
   onReloadRegistrations: () => void | Promise<void>;
   /** Events neu laden (nach dem Ändern der Stammdaten). */
   onReloadEvents: () => void | Promise<void>;
+  /** v28.51: Sub-Events der Klammer — fuer „alle aus <Sub-Event> in ein Hotel". */
+  childEvents?: DeloitteEvent[];
   showAlert: (msg: string, opts?: { variant?: 'success' | 'error' | 'info' }) => void;
   confirmDialog: (msg: string, opts?: { confirmLabel?: string; danger?: boolean }) => Promise<boolean>;
 }
@@ -78,7 +80,7 @@ const fmtDay = (day: string, isDe: boolean): string => {
 };
 
 export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IHotelPlanningPanelProps) => {
-  const { event, registrations, isDe, onReloadRegistrations, onReloadEvents, showAlert, confirmDialog } = props;
+  const { event, registrations, isDe, childEvents, onReloadRegistrations, onReloadEvents, showAlert, confirmDialog } = props;
 
   const svc = React.useMemo<EventService | null>(() => {
     try {
@@ -104,6 +106,71 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   // Schreibvorgang, bei 300 Zeilen dauert das spuerbar.
   const [bulkProgress, setBulkProgress] = React.useState<{ done: number; total: number } | null>(null);
   // v28.49: Import einer bestehenden Hotel-Liste.
+  // v28.51: Ganzes Sub-Event in EIN Hotel. Bei einer Klammer sitzt die
+  // Hotel-Zuordnung auf den Schattenzeilen der Klammer (eine Zeile je Person) —
+  // wer zu welchem Sub-Event gehoert, steht aber in der Teilnehmerliste des
+  // Sub-Events. Die Mail-Adressen holen wir deshalb bei Bedarf dort und cachen
+  // sie, statt beim Oeffnen des Panels alle Sub-Listen zu laden.
+  const [subPick, setSubPick] = React.useState('');
+  const [subHotelPick, setSubHotelPick] = React.useState('');
+  const [subEmails, setSubEmails] = React.useState<Record<string, string[]>>({});
+  const [subLoading, setSubLoading] = React.useState(false);
+
+  const loadSubEmails = async (child: DeloitteEvent): Promise<string[]> => {
+    if (subEmails[child.id]) return subEmails[child.id];
+    if (!svc || !child.subsiteUrl) return [];
+    setSubLoading(true);
+    let list: string[] = [];
+    try {
+      const regs = await svc.getAllRegistrations(child.subsiteUrl);
+      list = regs
+        .filter(r => ACTIVE_STATI.indexOf(r.Status || '') >= 0)
+        .map(r => (r.ParticipantEmail || '').trim().toLowerCase())
+        .filter(Boolean);
+    } catch { /* nicht lesbar → leere Liste, Meldung unten */ }
+    setSubEmails(prev => ({ ...prev, [child.id]: list }));
+    setSubLoading(false);
+    return list;
+  };
+
+  const assignWholeSub = async (): Promise<void> => {
+    const child = (childEvents || []).filter(c => c.id === subPick)[0];
+    if (!child || !subHotelPick) return;
+    const emails = await loadSubEmails(child);
+    if (emails.length === 0) {
+      showAlert(isDe
+        ? `Für „${child.title}" konnten keine aktiven Anmeldungen gelesen werden.`
+        : `No active registrations could be read for „${child.title}".`, { variant: 'error' });
+      return;
+    }
+    const set = new Set(emails);
+    const rows = people.filter(p => set.has((p.ParticipantEmail || '').trim().toLowerCase()));
+    if (rows.length === 0) {
+      showAlert(isDe
+        ? `Niemand aus „${child.title}" ist in dieser Liste — prüfe, ob die Teilnehmer auf Klammer-Ebene erfasst sind.`
+        : `Nobody from „${child.title}" is in this list — check whether attendees exist at bracket level.`, { variant: 'error' });
+      return;
+    }
+    const already = rows.filter(r => (r.Hotel || '').trim() && (r.Hotel || '').trim() !== subHotelPick).length;
+    const ok = await confirmDialog(
+      isDe
+        ? `Alle ${rows.length} Teilnehmer aus „${child.title}" dem Hotel „${subHotelPick}" zuordnen?${already > 0 ? `\n\n${already} davon sind aktuell einem ANDEREN Hotel zugeordnet und werden umgebucht.` : ''}`
+        : `Assign all ${rows.length} attendees from „${child.title}" to „${subHotelPick}"?${already > 0 ? `\n\n${already} of them are currently assigned to a DIFFERENT hotel and will be moved.` : ''}`,
+      { confirmLabel: isDe ? 'Zuordnen' : 'Assign' },
+    );
+    if (!ok) return;
+    setBulkProgress({ done: 0, total: rows.length });
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
+      const from = toDay(r.HotelFrom) || (defaultStay ? defaultStay.from : '');
+      const to = toDay(r.HotelTo) || (defaultStay ? defaultStay.to : '');
+      // eslint-disable-next-line no-await-in-loop
+      await writeAssignment([r], subHotelPick, from, to);
+      setBulkProgress({ done: i + 1, total: rows.length });
+    }
+    setBulkProgress(null);
+  };
+
   const [importOpen, setImportOpen] = React.useState(false);
   const [importBusy, setImportBusy] = React.useState(false);
   const [importProgress, setImportProgress] = React.useState<{ done: number; total: number } | null>(null);
@@ -791,6 +858,46 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
               <p style={{ ...hint, marginTop: 8 }}>
                 {isDe ? 'Lege zuerst oben mindestens ein Hotel an.' : 'Create at least one hotel above first.'}
               </p>
+            )}
+            {/* v28.51: Ganzes Sub-Event auf einmal — der Fall „alle Teilnehmer
+                vom Her-Space-Event in ein Hotel". Nur bei einer Klammer sinnvoll,
+                deshalb an childEvents gebunden. */}
+            {(childEvents || []).length > 0 && hotels.length > 0 && (
+              <div style={{
+                display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center',
+                padding: '8px 10px', marginBottom: 10, borderRadius: 8,
+                background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200)',
+              }}>
+                <strong style={{ fontSize: '0.8rem' }}>
+                  {isDe ? 'Ganzes Sub-Event zuordnen:' : 'Assign a whole sub-event:'}
+                </strong>
+                <select style={{ ...inp }} value={subPick} disabled={busy !== '' || subLoading}
+                  onChange={e => setSubPick(e.target.value)}>
+                  <option value="">{isDe ? '— Sub-Event wählen —' : '— pick a sub-event —'}</option>
+                  {(childEvents || []).map(c => (
+                    <option key={c.id} value={c.id}>
+                      {(c.title || '').split('|').slice(-1)[0].trim()}
+                      {subEmails[c.id] ? ` (${subEmails[c.id].length})` : ''}
+                    </option>
+                  ))}
+                </select>
+                <span style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>→</span>
+                <select style={{ ...inp }} value={subHotelPick} disabled={busy !== '' || subLoading}
+                  onChange={e => setSubHotelPick(e.target.value)}>
+                  <option value="">{isDe ? '— Hotel wählen —' : '— pick a hotel —'}</option>
+                  {hotels.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
+                </select>
+                <button type="button" className="btn btn-secondary" style={{ fontSize: '0.76rem', padding: '5px 12px' }}
+                  disabled={busy !== '' || subLoading || !subPick || !subHotelPick}
+                  onClick={() => { void assignWholeSub(); }}>
+                  {subLoading ? (isDe ? 'Lädt …' : 'Loading …') : (isDe ? 'Zuordnen' : 'Assign')}
+                </button>
+                <span style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', flexBasis: '100%' }}>
+                  {isDe
+                    ? 'Bereits gesetzte Zeiträume bleiben erhalten; wer noch keinen hat, bekommt den Standard-Zeitraum.'
+                    : 'Existing stay periods are kept; anyone without one gets the default template.'}
+                </span>
+              </div>
             )}
             {selected.size > 0 && (
               <div style={{
