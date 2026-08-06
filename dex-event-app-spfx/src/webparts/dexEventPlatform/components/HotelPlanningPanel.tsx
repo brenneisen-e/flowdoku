@@ -267,6 +267,11 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
    */
   const autoDistribute = async (): Promise<void> => {
     const candidates = people.filter(p => !(p.Hotel || '').trim() && wishOf(p) !== false);
+    // v28.61: Beim Bestätigen offenlegen, wer NICHT angefasst wird — sonst
+    // sieht eine Verteilung, die nur eine von zwei Personen bewegt, nach
+    // einem Fehler aus.
+    const skippedAssigned = people.filter(p => (p.Hotel || '').trim()).length;
+    const skippedNoWish = people.filter(p => !(p.Hotel || '').trim() && wishOf(p) === false).length;
     if (candidates.length === 0) {
       showAlert(isDe ? 'Es gibt niemanden ohne Hotel, der eine Unterkunft braucht.' : 'Nobody without a hotel needs accommodation.', { variant: 'info' });
       return;
@@ -316,8 +321,8 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     const lines = planned.map(f => `• ${f.hotel.name}: ${f.take.length}${f.unlimited ? (isDe ? ' (kein Kontingent hinterlegt)' : ' (no capacity set)') : ` (${isDe ? 'Rest' : 'left'}: ${f.left})`}`).join('\n');
     const ok = await confirmDialog(
       isDe
-        ? `${candidates.length} Person(en) ohne Hotel automatisch verteilen?\n\n${lines}${unplaced > 0 ? `\n\n${unplaced} Person(en) bleiben ohne Hotel — das Kontingent reicht nicht.` : ''}\n\nBereits zugeordnete Personen bleiben unberührt. Personen aus demselben Sub-Event werden möglichst zusammen untergebracht.`
-        : `Distribute ${candidates.length} person(s) without a hotel?\n\n${lines}${unplaced > 0 ? `\n\n${unplaced} person(s) stay without a hotel — capacity is not sufficient.` : ''}\n\nAlready assigned people are untouched. People from the same sub-event are kept together where possible.`,
+        ? `${candidates.length} von ${people.length} Person(en) automatisch verteilen?\n\n${lines}${unplaced > 0 ? `\n\n${unplaced} Person(en) bleiben ohne Hotel — das Kontingent reicht nicht.` : ''}\n\nNicht angefasst werden: ${skippedAssigned} bereits zugeordnete${skippedNoWish > 0 ? ` und ${skippedNoWish} ohne Hotel-Wunsch` : ''}. Personen aus demselben Sub-Event werden möglichst zusammen untergebracht.`
+        : `Distribute ${candidates.length} of ${people.length} person(s)?\n\n${lines}${unplaced > 0 ? `\n\n${unplaced} person(s) stay without a hotel — capacity is not sufficient.` : ''}\n\nUntouched: ${skippedAssigned} already assigned${skippedNoWish > 0 ? ` and ${skippedNoWish} without a hotel request` : ''}. People from the same sub-event are kept together where possible.`,
       { confirmLabel: isDe ? 'Verteilen' : 'Distribute' },
     );
     if (!ok) return;
@@ -461,11 +466,44 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   };
 
   // Nur aktive Anmeldungen — Abgemeldete und Warteliste brauchen kein Zimmer.
+  /**
+   * v28.61: Geschriebene Zuordnungen sofort anzeigen.
+   *
+   * Vorher hing jede Änderung eines Hotels oder Zeitraums am
+   * `await onReloadRegistrations()` — bei mehreren hundert Teilnehmern lädt
+   * das die komplette Liste neu, für eine Zelle. Jetzt liegt die Änderung als
+   * Overlay über der geladenen Liste, das Nachladen läuft im Hintergrund und
+   * das Overlay verschwindet, sobald der frische Stand denselben Wert hat.
+   */
+  const [rowOv, setRowOv] = React.useState<Record<number, { Hotel: string; HotelFrom: string; HotelTo: string }>>({});
+
+  React.useEffect(() => {
+    setRowOv(prev => {
+      const keys = Object.keys(prev);
+      if (keys.length === 0) return prev;
+      const next: Record<number, { Hotel: string; HotelFrom: string; HotelTo: string }> = {};
+      let changed = false;
+      for (const k of keys) {
+        const id = Number(k);
+        const ov = prev[id];
+        const r = registrations.filter(x => x.Id === id)[0];
+        const same = r
+          && (r.Hotel || '') === (ov.Hotel || '')
+          && toDay(r.HotelFrom) === toDay(ov.HotelFrom)
+          && toDay(r.HotelTo) === toDay(ov.HotelTo);
+        if (same) { changed = true; continue; }
+        next[id] = ov;
+      }
+      return changed ? next : prev;
+    });
+  }, [registrations]);
+
   const people = React.useMemo(
     () => registrations
       .filter(r => ACTIVE_STATI.indexOf(r.Status || '') >= 0)
+      .map(r => { const ov = rowOv[r.Id]; return ov ? { ...r, ...ov } : r; })
       .sort((a, b) => (a.ParticipantName || '').localeCompare(b.ParticipantName || '', 'de')),
-    [registrations],
+    [registrations, rowOv],
   );
 
   /** v28.48: Hat die Person im Anmeldeformular eine Unterkunft angefragt?
@@ -588,23 +626,45 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
       if (!ok) return;
     }
     setBusy('assign');
-    // Spalten sind idempotent — der erste Zuordnungs-Klick legt sie an.
-    try { await svc.ensureHotelColumns(event.subsiteUrl); } catch { /* best effort */ }
-    let failed = 0;
+    // Sofort anzeigen — geschrieben wird gleich, nachgeladen im Hintergrund.
+    const optimistic: Record<number, { Hotel: string; HotelFrom: string; HotelTo: string }> = {};
     for (const r of rows) {
-      const ok = await svc.setHotelAssignment(event.subsiteUrl, r.Id, hotel, toIso(from), toIso(to));
-      if (!ok) failed++;
+      optimistic[r.Id] = {
+        Hotel: hotel || '',
+        HotelFrom: hotel ? toIso(from) : '',
+        HotelTo: hotel ? toIso(to) : '',
+      };
     }
-    await onReloadRegistrations();
+    setRowOv(prev => ({ ...prev, ...optimistic }));
+    // Spalten sind idempotent — der erste Zuordnungs-Klick legt sie an
+    // (danach je Liste gecacht, siehe EventService).
+    try { await svc.ensureHotelColumns(event.subsiteUrl); } catch { /* best effort */ }
+    const many = rows.length > 3;
+    if (many) setBulkProgress({ done: 0, total: rows.length });
+    const failedIds: number[] = [];
+    for (let i = 0; i < rows.length; i++) {
+      // eslint-disable-next-line no-await-in-loop
+      const ok = await svc.setHotelAssignment(event.subsiteUrl, rows[i].Id, hotel, toIso(from), toIso(to));
+      if (!ok) failedIds.push(rows[i].Id);
+      if (many) setBulkProgress({ done: i + 1, total: rows.length });
+    }
+    if (many) setBulkProgress(null);
     setBusy('');
     setSelected(new Set());
-    if (failed > 0) {
+    if (failedIds.length > 0) {
+      // Nur die fehlgeschlagenen Zeilen zurückrollen — der Rest steht.
+      setRowOv(prev => {
+        const next = { ...prev };
+        for (const id of failedIds) delete next[id];
+        return next;
+      });
       showAlert(
-        isDe ? `${rows.length - failed} von ${rows.length} zugeordnet, ${failed} fehlgeschlagen. Fehlen die Spalten in der Teilnehmerliste, hilft „Spalten fixen" im Admin Center.`
-          : `${rows.length - failed} of ${rows.length} assigned, ${failed} failed. If the columns are missing, use „Fix columns" in the Admin Center.`,
+        isDe ? `${rows.length - failedIds.length} von ${rows.length} zugeordnet, ${failedIds.length} fehlgeschlagen. Fehlen die Spalten in der Teilnehmerliste, hilft „Spalten fixen" im Admin Center.`
+          : `${rows.length - failedIds.length} of ${rows.length} assigned, ${failedIds.length} failed. If the columns are missing, use „Fix columns" in the Admin Center.`,
         { variant: 'error' },
       );
     }
+    void Promise.resolve(onReloadRegistrations()).catch(() => { /* Hintergrund */ });
   };
 
   const defaultStay = stays.filter(s => s.isDefault)[0] || stays[0];
