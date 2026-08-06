@@ -11,6 +11,27 @@ export type EventStatus = 'Active' | 'Completed' | 'Cancelled';
 export type RegistrationStatus = 'Angemeldet' | 'QR versendet' | 'Warteliste' | 'Eingecheckt' | 'No-Show' | 'Abgemeldet';
 export type Salutation = 'Herr' | 'Frau' | 'Divers' | 'Keine Angabe';
 
+/** v28.38: Ein Hotel in der Event-Planung. */
+export interface DexHotel {
+  id: string;
+  name: string;
+  address?: string;
+  /** Kontingent (Zimmer/Betten). 0 = unbegrenzt. */
+  capacity?: number;
+  notes?: string;
+}
+
+/** v28.38: Vorlage fuer einen Aufenthalts-Zeitraum („Standard 24.-25.09."). */
+export interface DexHotelStay {
+  id: string;
+  label: string;
+  /** ISO-Datum (YYYY-MM-DD). */
+  from: string;
+  to: string;
+  /** Wird neuen Zuordnungen automatisch gegeben. */
+  isDefault?: boolean;
+}
+
 export interface DeloitteEvent {
   id: string;
   eventNumber: number;
@@ -168,6 +189,14 @@ export interface DeloitteEvent {
    *  Querformat-Foto per App-Zuschnitt rund/quadratisch wurde. Die
    *  Event-Liste zeigt dann das Original als Kachel-Hintergrund. */
   imageOrigUrl?: string;
+  /** v28.38: Hotel-Stammdaten des Events (Piggyback `_hotels`). Klein gehalten —
+   *  die Zuordnung pro Person steht in der Teilnehmerliste, nicht hier. */
+  hotels?: DexHotel[];
+  /** v28.38: Zeitraum-Vorlagen fuer die Zuordnung (Piggyback `_hotelStays`). */
+  hotelStays?: DexHotelStay[];
+  /** v28.38: Sehen Teilnehmer ihr Hotel unter „Meine Events"? (`_hotelVisible`)
+   *  Default false — der Organizer gibt bewusst frei. */
+  hotelVisibleToAttendees?: boolean;
   /** v17.20: Wenn true UND der Organizer hat pro Custom-Field die
    *  EN-Variante hinterlegt (`labelEn` etc.), zeigt die Anmeldeseite die
    *  Felder in der **Locale des Teilnehmers** (App-Spracheinstellung) statt
