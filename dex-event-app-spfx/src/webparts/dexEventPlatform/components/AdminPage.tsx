@@ -5550,7 +5550,12 @@ export default function AdminPage(): React.ReactElement {
       if (em && typeof rr.TeilnehmerID === 'number' && !(em in bracketTidByEmail)) bracketTidByEmail[em] = rr.TeilnehmerID;
     }
     return (
-      <div style={{ overflowX: 'auto' }}>
+      // v28.53: Eigener Scroll-Container mit Hoehenbegrenzung — analog zur
+      // Sub-Event-Teilnehmerliste (renderTable, maxHeight 70vh). Vorher hatte
+      // der Klammer-View nur overflowX, lief also ueber die volle Zeilenhoehe
+      // inline mit: Bei 400+ Teilnehmern musste man an der ganzen Tabelle
+      // vorbeiscrollen, und der sticky-thead haette keinen Bezugsrahmen.
+      <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
         {/* v23.7: Unvollständige Klammer-Anmeldungen (nur Klammer, kein Sub-Event)
             sichtbar machen — mit Erinnerungs- oder Entfernen-Option, damit eine
             blockierte (Neu-)Anmeldung wieder möglich wird. */}

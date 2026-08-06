@@ -99,7 +99,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   const [filterHotel, setFilterHotel] = React.useState<string>('__all');
   // v28.48: Suche, Sortierung und Hotel-Wunsch-Filter fuer die Personenliste.
   const [search, setSearch] = React.useState('');
-  const [sortKey, setSortKey] = React.useState<'name' | 'first' | 'loc' | 'comp' | 'wish' | 'hotel'>('name');
+  const [sortKey, setSortKey] = React.useState<'name' | 'first' | 'loc' | 'comp' | 'wish' | 'hotel' | 'subs'>('name');
   const [sortAsc, setSortAsc] = React.useState(true);
   const [hideNoWish, setHideNoWish] = React.useState(false);
   // v28.48: Fortschritt der Massenzuordnung — jede Person ist ein eigener
@@ -115,6 +115,12 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   const [subHotelPick, setSubHotelPick] = React.useState('');
   const [subEmails, setSubEmails] = React.useState<Record<string, string[]>>({});
   const [subLoading, setSubLoading] = React.useState(false);
+
+  /** Kurzform des Sub-Event-Titels („Klammer | Dinner" → „Dinner"). */
+  const shortTitle = (t: string): string => {
+    const parts = (t || '').split('|');
+    return (parts.length > 1 ? parts[parts.length - 1] : t).trim();
+  };
 
   const loadSubEmails = async (child: DeloitteEvent): Promise<string[]> => {
     if (subEmails[child.id]) return subEmails[child.id];
@@ -170,6 +176,45 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     }
     setBulkProgress(null);
   };
+
+  // v28.53: Fuer die Spalte „Angemeldet fuer" brauchen wir die Teilnehmer ALLER
+  // Sub-Events, nicht nur des ausgewaehlten. Einmal beim Aufklappen laden; der
+  // Cache aus loadSubEmails wird dabei mitbenutzt.
+  const [subsLoaded, setSubsLoaded] = React.useState(false);
+  React.useEffect(() => {
+    const kids = childEvents || [];
+    if (kids.length === 0 || subsLoaded || !svc) return;
+    let cancelled = false;
+    (async () => {
+      const acc: Record<string, string[]> = {};
+      for (const c of kids) {
+        if (!c.subsiteUrl) { acc[c.id] = []; continue; }
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const regs = await svc.getAllRegistrations(c.subsiteUrl);
+          acc[c.id] = regs
+            .filter(r => ACTIVE_STATI.indexOf(r.Status || '') >= 0)
+            .map(r => (r.ParticipantEmail || '').trim().toLowerCase())
+            .filter(Boolean);
+        } catch { acc[c.id] = []; }
+      }
+      if (cancelled) return;
+      setSubEmails(prev => ({ ...acc, ...prev }));
+      setSubsLoaded(true);
+    })().catch(() => { /* Spalte bleibt leer */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [childEvents, svc]);
+
+  /** Sub-Events, fuer die diese Person angemeldet ist (Kurztitel). */
+  const subsOf = React.useCallback((p: SPRegistration): string[] => {
+    const em = (p.ParticipantEmail || '').trim().toLowerCase();
+    if (!em) return [];
+    return (childEvents || [])
+      .filter(c => (subEmails[c.id] || []).indexOf(em) >= 0)
+      .map(c => shortTitle(c.title || ''));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [childEvents, subEmails]);
 
   const [importOpen, setImportOpen] = React.useState(false);
   const [importBusy, setImportBusy] = React.useState(false);
@@ -967,6 +1012,18 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                         </button>
                       </th>
                     ))}
+                    {/* v28.53: je Sub-Event eine eigene Haken-Spalte — dieselbe
+                        Darstellung wie in der konsolidierten Teilnehmerliste. */}
+                    {(childEvents || []).map(c => (
+                      <th key={c.id} style={{ padding: '4px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                        <span style={{ display: 'block', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: 0.3 }}>
+                          {shortTitle(c.title || '')}
+                        </span>
+                        <span style={{ display: 'block', fontSize: '0.66rem', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 400 }}>
+                          {isDe ? 'angemeldet?' : 'registered?'}
+                        </span>
+                      </th>
+                    ))}
                     <th style={{ padding: '4px 6px' }}>
                       <button type="button"
                         onClick={() => { if (sortKey === 'hotel') { setSortAsc(a => !a); } else { setSortKey('hotel'); setSortAsc(true); } }}
@@ -998,6 +1055,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                         if (sortKey === 'comp') return x.Company || '';
                         if (sortKey === 'hotel') return (x.Hotel || '').trim();
                         if (sortKey === 'wish') { const w = wishOf(x); return w === true ? '1' : w === false ? '2' : '3'; }
+                        if (sortKey === 'subs') return subsOf(x).join(', ');
                         return x.Nachname || x.ParticipantName || '';
                       };
                       return txt(a).localeCompare(txt(b), 'de') * dir;
@@ -1027,6 +1085,19 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                           <td style={{ padding: '4px 6px' }}>{p.Vorname || '—'}</td>
                           <td style={{ padding: '4px 6px' }}>{p.Location || '—'}</td>
                           <td style={{ padding: '4px 6px' }}>{p.Company || '—'}</td>
+                          {(childEvents || []).map(c => {
+                            const em = (p.ParticipantEmail || '').trim().toLowerCase();
+                            const inSub = !!em && (subEmails[c.id] || []).indexOf(em) >= 0;
+                            return (
+                              <td key={c.id} style={{ padding: '4px 6px', textAlign: 'center' }}>
+                                {!subsLoaded
+                                  ? <span style={{ color: 'var(--dex-gray-300)' }}>…</span>
+                                  : inSub
+                                    ? <span style={{ color: 'var(--dex-green, #86bc25)', fontWeight: 700 }}>✓</span>
+                                    : <span style={{ color: 'var(--dex-gray-300)' }}>—</span>}
+                              </td>
+                            );
+                          })}
                           <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
                             {((): React.ReactNode => {
                               const w = wishOf(p);
