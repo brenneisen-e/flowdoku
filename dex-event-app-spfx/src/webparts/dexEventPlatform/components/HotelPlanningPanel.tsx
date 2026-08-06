@@ -5,6 +5,7 @@ import { DeloitteEvent, DexHotel, DexHotelStay } from '../types';
 import { HtmlEditorModal } from './HtmlEditorModal';
 import { wrapTemplate, replacePlaceholders } from '../services/EmailTemplates';
 import { collectCcEmailsFromFields } from '../context/EventContext';
+import HotelImportModal, { IHotelImportResultRow } from './HotelImportModal';
 
 /**
  * HotelPlanningPanel (v28.39)
@@ -102,6 +103,55 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   // v28.48: Fortschritt der Massenzuordnung — jede Person ist ein eigener
   // Schreibvorgang, bei 300 Zeilen dauert das spuerbar.
   const [bulkProgress, setBulkProgress] = React.useState<{ done: number; total: number } | null>(null);
+  // v28.49: Import einer bestehenden Hotel-Liste.
+  const [importOpen, setImportOpen] = React.useState(false);
+  const [importBusy, setImportBusy] = React.useState(false);
+  const [importProgress, setImportProgress] = React.useState<{ done: number; total: number } | null>(null);
+
+  /**
+   * v28.49: Geprüfte Import-Zeilen übernehmen. Reihenfolge ist wichtig: erst
+   * die fehlenden Hotels anlegen (EIN Schreibvorgang am Event), dann die
+   * Zuordnungen — sonst zeigt die Auswahl in der Tabelle hinterher Namen, die
+   * es als Hotel gar nicht gibt.
+   */
+  const applyImport = async (rowsIn: IHotelImportResultRow[], newHotelNames: string[]): Promise<void> => {
+    if (!svc || !event.subsiteUrl) {
+      showAlert(isDe ? 'Kein Zugriff auf die Teilnehmerliste dieses Events.' : 'No access to this event’s participant list.', { variant: 'error' });
+      return;
+    }
+    setImportBusy(true);
+    setImportProgress({ done: 0, total: rowsIn.length });
+    if (newHotelNames.length > 0) {
+      const merged = hotels.concat(newHotelNames.map(n => ({ id: uid('h'), name: n, address: '', capacity: 0, notes: '' })));
+      const okH = await svc.patchEventOverridesValue(Number(event.id), '_hotels', merged);
+      if (!okH) {
+        setImportBusy(false); setImportProgress(null);
+        showAlert(isDe ? 'Die neuen Hotels konnten nicht gespeichert werden — es wurde nichts übernommen.' : 'Could not save the new hotels — nothing was applied.', { variant: 'error' });
+        return;
+      }
+    }
+    try { await svc.ensureHotelColumns(event.subsiteUrl); } catch { /* best effort */ }
+    let failed = 0;
+    for (let i = 0; i < rowsIn.length; i++) {
+      const r = rowsIn[i];
+      if (!r.reg) { failed++; continue; }
+      // eslint-disable-next-line no-await-in-loop
+      const ok = await svc.setHotelAssignment(event.subsiteUrl, r.reg.Id, r.hotel, r.from ? `${r.from}T00:00:00Z` : '', r.to ? `${r.to}T00:00:00Z` : '');
+      if (!ok) failed++;
+      setImportProgress({ done: i + 1, total: rowsIn.length });
+    }
+    await onReloadEvents();
+    await onReloadRegistrations();
+    setImportBusy(false);
+    setImportProgress(null);
+    setImportOpen(false);
+    showAlert(
+      isDe
+        ? `${rowsIn.length - failed} von ${rowsIn.length} Zuordnung(en) übernommen${failed > 0 ? `, ${failed} fehlgeschlagen` : ''}${newHotelNames.length > 0 ? `. ${newHotelNames.length} Hotel(s) neu angelegt.` : '.'}`
+        : `${rowsIn.length - failed} of ${rowsIn.length} assignment(s) applied${failed > 0 ? `, ${failed} failed` : ''}${newHotelNames.length > 0 ? `. ${newHotelNames.length} hotel(s) created.` : '.'}`,
+      { variant: failed > 0 ? 'error' : 'success' },
+    );
+  };
 
   // Nur aktive Anmeldungen — Abgemeldete und Warteliste brauchen kein Zimmer.
   const people = React.useMemo(
@@ -721,6 +771,10 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
               {hotels.map(h => <option key={h.id} value={h.name}>{h.name}</option>)}
             </select>
             <button type="button" className="btn btn-secondary" style={{ fontSize: '0.76rem', padding: '5px 12px' }}
+              onClick={() => setImportOpen(true)}>
+              {isDe ? 'Liste importieren' : 'Import list'}
+            </button>
+            <button type="button" className="btn btn-secondary" style={{ fontSize: '0.76rem', padding: '5px 12px' }}
               onClick={() => exportRooming()}>
               {isDe ? 'Alles als Excel (CSV)' : 'Export all (CSV)'}
             </button>
@@ -935,6 +989,18 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
           </>
         )}
       </div>
+
+      {/* ---- Import einer bestehenden Hotel-Liste ---- */}
+      <HotelImportModal
+        open={importOpen}
+        onClose={() => { if (!importBusy) setImportOpen(false); }}
+        isDe={isDe}
+        people={people}
+        hotels={hotels}
+        onApply={applyImport}
+        busy={importBusy}
+        progress={importProgress}
+      />
 
       {/* ---- Hotel-Info-Mail: gleicher Editor + Versandweg wie die QR-Mail ---- */}
       <HtmlEditorModal
