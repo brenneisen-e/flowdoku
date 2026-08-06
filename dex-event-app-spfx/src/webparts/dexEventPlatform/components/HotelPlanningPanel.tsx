@@ -480,6 +480,10 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     let found: boolean | null = null;
     for (const f of fields) {
       if (!/hotel|unterkunft|übernacht|uebernacht|accommodation|lodging/i.test(f.label || '')) continue;
+      // v28.59: Die Zusatznächte-Frage („Hotel (additional nights)") ist NICHT
+      // die Bedarfsfrage. Ein „Yes, I need ONE additional night" dort hat den
+      // Wunsch sonst auf true gezogen, obwohl die Hauptfrage „Nein" war.
+      if (/additional|extra|zusätzlich|zusaetzlich|weitere|vorab|beforehand|früher|frueher|longer/i.test(f.label || '')) continue;
       const v = (cd[f.id] || '').toLowerCase();
       if (!v) { if (found === null) found = false; continue; }
       if (/^(ja|yes)\b|^ja,|^yes,/.test(v) || /\bja\b|\byes\b/.test(v)) return true;

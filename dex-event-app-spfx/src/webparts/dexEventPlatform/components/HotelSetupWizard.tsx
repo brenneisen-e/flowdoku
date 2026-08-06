@@ -12,27 +12,37 @@ registerLocale('de', de);
 /**
  * HotelSetupWizard (v28.58)
  * -------------------------
- * Geführte Erst-Einrichtung der Hotel-Planung. Vorher musste man sich die
- * Reihenfolge selbst zusammensuchen: Zeitraum anlegen → Hotel anlegen →
- * Kontingent eintragen → verteilen → hoffen, dass es passt. Der Assistent
- * führt genau diese Kette in vier Schritten und rechnet am Ende aus, was das
- * für die Buchung bedeutet.
+ * Geführte Erst-Einrichtung der Hotel-Planung — bewusst entlang der Fragen,
+ * die ein Organizer sich ohnehin stellt, nicht entlang der Datenstruktur:
  *
- * Der eigentliche Grund für den Assistenten steckt in Schritt 4: Hotels geben
- * ihr **Kontingent fast immer für eine bestimmte Nacht** heraus („40 Zimmer für
- * die Nacht 24./25."). Wer früher anreist oder später abreist, ist damit NICHT
- * abgedeckt — diese Nächte müssen separat gebucht werden. Genau diese Zahl
- * („Hotel A: 10× Extranacht vorab") war bisher Handarbeit in Excel.
+ *   1. **Wann** braucht ihr Zimmer?      → Zeiträume
+ *   2. **Wo** habt ihr Zimmer?           → Hotels + Kontingent
+ *   3. **Wer kommt wohin?**              → Regeln
+ *   4. **Was heißt das für die Buchung?** → Verteilung + Extranächte
+ *
+ * Warum es den Assistenten überhaupt gibt: Hotels geben ihr Kontingent fast
+ * immer nur für bestimmte Nächte heraus („40 Zimmer für 24./25."). Wer früher
+ * anreist, ist NICHT abgedeckt — diese Nächte muss jemand zusätzlich buchen
+ * (bei vielen Events zahlt sie die Person selbst vor Ort). Die Zahl dafür war
+ * bisher Handarbeit in Excel; hier fällt sie in Schritt 4 heraus.
+ *
+ * Der Clou: Die meisten Anmeldeformulare fragen genau das schon ab —
+ * „Hotel (24-25 Sept): Do you require accommodation?" plus „Hotel (additional
+ * nights): Do you require additional nights beforehand?" mit Antworten wie
+ * „Yes, I need ONE additional night from 23 - 24 Sept.". Der Assistent erkennt
+ * beide Fragen, zählt die Antworten und schlägt je Antwort den passenden
+ * Zeitraum vor. Gibt es solche Felder nicht, fällt er auf die manuelle Pflege
+ * zurück — das Modal funktioniert für jedes Event.
  *
  * Rechenmodell:
- *  - Jede Person bekommt einen **Zeitraum**. Er kommt (in dieser Reihenfolge)
- *    aus einer Sub-Event-Regel, aus einer bereits gesetzten Zuordnung oder aus
- *    dem Standard-Zeitraum.
- *  - Jedes Hotel hat ein **Kontingent** und einen **Kontingent-Zeitraum**
- *    (`capacityStayId`). Eine Person belegt einen Kontingent-Platz, egal wie
- *    lange sie bleibt.
- *  - **Extranächte** = Nächte der Person außerhalb des Kontingent-Zeitraums,
- *    getrennt nach „vorab" (frühere Anreise) und „danach" (spätere Abreise).
+ *  - Jede Person bekommt einen **Zeitraum**: aus ihrer Formular-Antwort und/oder
+ *    einer Sub-Event-Regel (beides zusammen als Hülle — früheste Anreise,
+ *    späteste Abreise), sonst aus einer bestehenden Zuordnung, sonst der
+ *    Haupt-Zeitraum.
+ *  - Jedes Hotel hat ein **Kontingent** und einen **Kontingent-Zeitraum**.
+ *    Eine Person belegt einen Platz, egal wie lange sie bleibt.
+ *  - **Extranächte** = Nächte außerhalb des Kontingent-Zeitraums, getrennt nach
+ *    „vorab" (frühere Anreise) und „danach" (spätere Abreise).
  */
 
 export interface IHotelSetupWizardProps {
@@ -83,15 +93,6 @@ const nightsBetween = (from: string, to: string): number => {
   return Math.round((b - a) / 86400000);
 };
 
-/** Tage zwischen zwei Tagen, nie negativ (für die Extranacht-Rechnung). */
-const daysGap = (from: string, to: string): number => {
-  if (!from || !to) return 0;
-  const a = Date.parse(`${from}T00:00:00Z`);
-  const b = Date.parse(`${to}T00:00:00Z`);
-  if (isNaN(a) || isNaN(b) || b <= a) return 0;
-  return Math.round((b - a) / 86400000);
-};
-
 const toLocalDay = (d: Date): string =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
@@ -119,110 +120,245 @@ const coreStay = (event: DeloitteEvent): { from: string; to: string } => {
   return { from: start, to };
 };
 
+/* ---------------------------------------------------------------------- *
+ * Formular-Erkennung
+ * ---------------------------------------------------------------------- */
+
+const HOTEL_RE = /hotel|unterkunft|übernacht|uebernacht|accommodation|lodging|zimmer/i;
+const EXTRA_RE = /additional|extra|zusätzlich|zusaetzlich|weitere|vorab|beforehand|früher|frueher|verlänger|verlaenger|longer/i;
+const NO_RE = /^\s*(nein|no|kein|none|nicht)\b|^\s*-\s*$/i;
+const AFTER_RE = /after|danach|länger|laenger|abreis|departure|extend|following/i;
+const BEFORE_RE = /before|beforehand|vorab|vorher|früher|frueher|anreis|prior/i;
+const WORD_NUMS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5,
+  ein: 1, eine: 1, zwei: 2, drei: 3, vier: 4, fünf: 5, fuenf: 5,
+};
+
+/**
+ * Antwort auf die Zusatznächte-Frage deuten.
+ * `null` = nicht deutbar (der Organizer wählt dann selbst).
+ */
+const parseExtraAnswer = (ansIn: string): { nights: number; after: boolean } | null => {
+  const ans = (ansIn || '').trim();
+  if (!ans) return { nights: 0, after: false };
+  if (NO_RE.test(ans)) return { nights: 0, after: false };
+  const s = ans.toLowerCase();
+  let n = 0;
+  // „2 additional nights" / „2 Nächte" — nur Zahlen direkt vor dem Nacht-Wort,
+  // damit Datumsangaben wie „from 23 - 24 Sept." nicht mitgezählt werden.
+  const digit = s.match(/(\d+)\s*(additional\s+|extra\s+|weitere\s+|zusätzliche\s+|zusaetzliche\s+)?(night|nacht|nächte|naechte)/);
+  if (digit) n = parseInt(digit[1], 10);
+  else {
+    const keys = Object.keys(WORD_NUMS);
+    for (const w of keys) {
+      if (new RegExp(`\\b${w}\\b`, 'i').test(s)) { n = WORD_NUMS[w]; break; }
+    }
+  }
+  if (!n) return null;
+  const after = AFTER_RE.test(s) && !BEFORE_RE.test(s);
+  return { nights: n, after };
+};
+
 export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotelSetupWizardProps) => {
   const { open, event, people, childEvents, subEmails, hotels, stays, rules, isDe, busy, wishOf, onClose, onApply } = props;
 
   /* ------------------------------------------------------------------ *
-   * Schritt 1 — Zeiträume
+   * Was das Anmeldeformular schon weiß
    * ------------------------------------------------------------------ */
 
-  /** Drei Vorschläge aus dem Event-Datum: Kern, Kern + Vorabend,
-   *  Kern + Vorabend + Extranacht. Bei einem Tagesevent ergibt das genau die
-   *  klassischen 1 / 2 / 3 Nächte. */
-  const suggestions = React.useMemo<DexHotelStay[]>(() => {
-    const core = coreStay(event);
-    const n = Math.max(1, nightsBetween(core.from, core.to));
-    const mk = (from: string, to: string, extra: string): DexHotelStay => ({
-      id: `sug_${from}_${to}`,
-      label: `${nightLabel(nightsBetween(from, to), isDe)}${extra ? ` · ${extra}` : ''}`,
-      from, to,
-    });
-    return [
-      mk(core.from, core.to, isDe ? 'Standard' : 'standard'),
-      mk(addDays(core.from, -1), core.to, isDe ? 'mit Vorabend' : 'with prior evening'),
-      mk(addDays(core.from, -1), addDays(core.to, 1), isDe ? 'Vorabend + Abreisetag' : 'prior evening + extra day'),
-    ].filter((s, i, arr) => arr.findIndex(x => x.from === s.from && x.to === s.to) === i && n > 0);
-  }, [event, isDe]);
+  const answersOf = React.useCallback((p: SPRegistration): Record<string, string> => {
+    try { return JSON.parse(p.CustomData || '{}') as Record<string, string>; } catch { return {}; }
+  }, []);
 
+  /** Die beiden Hotel-Fragen im Formular: „braucht ihr ein Zimmer?" und
+   *  „braucht ihr Zusatznächte?". Erkannt über die Beschriftung — das Formular
+   *  ist pro Event frei definiert, eine feste Feld-Id gibt es nicht. */
+  const fields = React.useMemo(() => {
+    const all = (event.eventSpecificFields || []) as Array<{ id: string; label?: string; helpText?: string; options?: string[] }>;
+    const hotelish = all.filter(f => HOTEL_RE.test(`${f.label || ''} ${f.helpText || ''}`));
+    const extra = hotelish.filter(f => EXTRA_RE.test(`${f.label || ''} ${f.helpText || ''}`))[0] || null;
+    const main = hotelish.filter(f => !extra || f.id !== extra.id)[0] || null;
+    return { main, extra };
+  }, [event.eventSpecificFields]);
+
+  /** Braucht diese Person überhaupt ein Zimmer? Erkanntes Hauptfeld schlägt
+   *  die allgemeine Heuristik — sonst würde ein „No" bei den Zusatznächten
+   *  fälschlich als „kein Hotel" gelesen. */
+  const needsRoom = React.useCallback((p: SPRegistration): boolean | null => {
+    if (!fields.main) return wishOf(p);
+    const v = (answersOf(p)[fields.main.id] || '').trim();
+    if (!v) return null;
+    if (NO_RE.test(v)) return false;
+    return /\bja\b|\byes\b/i.test(v) ? true : null;
+  }, [fields.main, answersOf, wishOf]);
+
+  /** Die verschiedenen Antworten auf die Zusatznächte-Frage, mit Häufigkeit. */
+  const extraAnswers = React.useMemo(() => {
+    if (!fields.extra) return [] as Array<{ value: string; count: number }>;
+    const counts: Record<string, number> = { '': 0 };
+    // Auch die noch ungenutzten Auswahlmöglichkeiten aufnehmen — dann steht die
+    // Zuordnung schon, bevor die erste Anmeldung mit Zusatznacht eintrudelt.
+    for (const o of (fields.extra.options || [])) {
+      const v = (o || '').trim();
+      if (v) counts[v] = 0;
+    }
+    for (const p of people) {
+      const v = (answersOf(p)[fields.extra.id] || '').trim();
+      counts[v] = (counts[v] || 0) + 1;
+    }
+    return Object.keys(counts)
+      .map(v => ({ value: v, count: counts[v] }))
+      .sort((a, b) => (a.value === '' ? -1 : b.value === '' ? 1 : b.count - a.count));
+  }, [fields.extra, people, answersOf]);
+
+  /* ------------------------------------------------------------------ *
+   * Zustand
+   * ------------------------------------------------------------------ */
+
+  /** Manuell gepflegte Zeiträume: der Haupt-Zeitraum plus bewusst angelegte
+   *  Ausnahmen. Die aus Formular-Antworten abgeleiteten kommen separat dazu
+   *  (siehe `answerStays`) — die müssen mitwandern, wenn sich der
+   *  Haupt-Zeitraum ändert. */
   const [wStays, setWStays] = React.useState<DexHotelStay[]>([]);
   const [wHotels, setWHotels] = React.useState<DexHotel[]>([]);
   const [wRules, setWRules] = React.useState<DexHotelRules>({});
+  /** Antwort-Text → wie viele Nächte, vorab oder danach. */
+  const [answerMap, setAnswerMap] = React.useState<Record<string, { nights: number; after: boolean }>>({});
   const [step, setStep] = React.useState(1);
+  const [showIntro, setShowIntro] = React.useState(true);
+  const [showCustom, setShowCustom] = React.useState(false);
   const [doAssign, setDoAssign] = React.useState(true);
   const [overwrite, setOverwrite] = React.useState(false);
   const [newStay, setNewStay] = React.useState<{ label: string; from: string; to: string }>({ label: '', from: '', to: '' });
 
-  // Beim Öffnen frisch aufsetzen: Vorhandenes übernehmen, sonst die Vorschläge.
   React.useEffect(() => {
     if (!open) return;
     setStep(1);
+    setShowCustom(false);
+    // Der Überblick ist für den ersten Kontakt — wer schon eingerichtet hat,
+    // will direkt in die Felder.
+    setShowIntro(hotels.length === 0 && stays.length === 0);
+    const core = coreStay(event);
     setWStays(stays.length > 0
       ? stays.map(s => ({ ...s }))
-      : suggestions.map((s, i) => ({ ...s, id: uid('s'), isDefault: i === 0 })));
+      : [{ id: uid('s'), label: `${nightLabel(nightsBetween(core.from, core.to), isDe)} · ${isDe ? 'Standard' : 'standard'}`, from: core.from, to: core.to, isDefault: true }]);
     setWHotels(hotels.length > 0
       ? hotels.map((h, i) => ({ ...h, priority: typeof h.priority === 'number' ? h.priority : i }))
       : []);
     setWRules({
       bySub: (rules && rules.bySub) ? { ...rules.bySub } : {},
+      byAnswer: rules ? rules.byAnswer : undefined,
       keepGroups: rules && typeof rules.keepGroups === 'boolean' ? rules.keepGroups : true,
       skipNoWish: rules && typeof rules.skipNoWish === 'boolean' ? rules.skipNoWish : true,
     });
     setDoAssign(true);
     setOverwrite(false);
-    const core = coreStay(event);
     setNewStay({ label: '', from: core.from, to: core.to });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const defaultStay = React.useMemo<DexHotelStay | null>(
+  /** Antworten deuten, sobald das Modal offen ist. Nicht deutbare Antworten
+   *  landen auf 0 Nächte — sichtbar in der Tabelle und dort korrigierbar. */
+  React.useEffect(() => {
+    if (!open) return;
+    const next: Record<string, { nights: number; after: boolean }> = {};
+    for (const a of extraAnswers) {
+      const parsed = parseExtraAnswer(a.value);
+      next[a.value] = parsed || { nights: 0, after: false };
+    }
+    setAnswerMap(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, extraAnswers]);
+
+  const mainStay = React.useMemo<DexHotelStay | null>(
     () => wStays.filter(s => s.isDefault)[0] || wStays[0] || null,
     [wStays],
   );
 
-  const toggleSuggestion = (s: DexHotelStay): void => {
-    const hit = wStays.filter(x => x.from === s.from && x.to === s.to)[0];
-    if (hit) {
-      const next = wStays.filter(x => x.id !== hit.id);
-      if (next.length > 0 && !next.some(x => x.isDefault)) next[0] = { ...next[0], isDefault: true };
-      setWStays(next);
+  /** Aus den Antworten abgeleitete Zeiträume — relativ zum Haupt-Zeitraum,
+   *  damit sie mitwandern, wenn der sich ändert. */
+  const answerStays = React.useMemo<DexHotelStay[]>(() => {
+    if (!mainStay) return [];
+    const seen: Record<string, DexHotelStay> = {};
+    for (const key of Object.keys(answerMap)) {
+      const m = answerMap[key];
+      if (!m || m.nights <= 0) continue;
+      const id = `auto_${m.after ? 'a' : 'b'}_${m.nights}`;
+      if (seen[id]) continue;
+      seen[id] = {
+        id,
+        label: isDe
+          ? `${nightLabel(m.nights, isDe)} ${m.after ? 'länger' : 'früher'}`
+          : `${nightLabel(m.nights, isDe)} ${m.after ? 'longer' : 'earlier'}`,
+        from: m.after ? mainStay.from : addDays(mainStay.from, -m.nights),
+        to: m.after ? addDays(mainStay.to, m.nights) : mainStay.to,
+      };
+    }
+    return Object.keys(seen).map(k => seen[k]);
+  }, [answerMap, mainStay, isDe]);
+
+  /** Alles, was am Ende gespeichert wird und überall zur Auswahl steht. */
+  const allStays = React.useMemo<DexHotelStay[]>(() => {
+    const out = wStays.slice();
+    for (const a of answerStays) {
+      if (!out.some(s => s.from === a.from && s.to === a.to)) out.push(a);
+    }
+    return out;
+  }, [wStays, answerStays]);
+
+  const setMainRange = (from: string, to: string): void => {
+    const f = from || (mainStay ? mainStay.from : '');
+    let t = to || (mainStay ? mainStay.to : '');
+    if (!f) return;
+    if (!t || nightsBetween(f, t) <= 0) t = addDays(f, 1);
+    const label = `${nightLabel(nightsBetween(f, t), isDe)} · ${isDe ? 'Standard' : 'standard'}`;
+    if (!mainStay) {
+      setWStays([{ id: uid('s'), label, from: f, to: t, isDefault: true }]);
       return;
     }
-    setWStays(wStays.concat([{ ...s, id: uid('s'), isDefault: wStays.length === 0 }]));
+    setWStays(wStays.map(x => x.id === mainStay.id ? { ...x, from: f, to: t, label, isDefault: true } : x));
   };
 
   /* ------------------------------------------------------------------ *
-   * Schritt 4 — Verteilung + Extranächte
+   * Verteilung + Extranächte
    * ------------------------------------------------------------------ */
 
-  /** Sub-Events, für die diese Person angemeldet ist. */
   const subsOf = React.useCallback((p: SPRegistration): DeloitteEvent[] => {
     const em = (p.ParticipantEmail || '').trim().toLowerCase();
     if (!em) return [];
     return childEvents.filter(c => (subEmails[c.id] || []).indexOf(em) >= 0);
   }, [childEvents, subEmails]);
 
-  /** Der Zeitraum, den diese Person bekommen soll.
-   *  Sub-Event-Regeln gewinnen und werden zur Hülle vereinigt: früheste Anreise,
-   *  späteste Abreise. Genau daraus entstehen die Extranächte — wer zum
-   *  Vorabend-Dinner kommt, reist eben einen Tag früher an. */
+  /** Der Zeitraum dieser Person: Formular-Antwort und Sub-Event-Regeln werden
+   *  als Hülle vereinigt (früheste Anreise, späteste Abreise) — wer zum
+   *  Vorabend-Dinner kommt UND eine Zusatznacht gebucht hat, braucht beides. */
   const stayFor = React.useCallback((p: SPRegistration): { from: string; to: string } => {
-    const bySub = wRules.bySub || {};
     let from = ''; let to = '';
+    const take = (s?: { from: string; to: string } | null): void => {
+      if (!s || !s.from || !s.to) return;
+      if (!from || s.from < from) from = s.from;
+      if (!to || s.to > to) to = s.to;
+    };
+    if (fields.extra) {
+      const v = (answersOf(p)[fields.extra.id] || '').trim();
+      const m = answerMap[v];
+      if (m && m.nights > 0) take(answerStays.filter(s => s.id === `auto_${m.after ? 'a' : 'b'}_${m.nights}`)[0]);
+    }
+    const bySub = wRules.bySub || {};
     for (const c of subsOf(p)) {
       const sid = (bySub[c.id] || {}).stayId;
-      if (!sid) continue;
-      const st = wStays.filter(s => s.id === sid)[0];
-      if (!st) continue;
-      if (!from || st.from < from) from = st.from;
-      if (!to || st.to > to) to = st.to;
+      if (sid) take(allStays.filter(s => s.id === sid)[0]);
     }
-    if (from && to) return { from, to };
+    if (from && to) {
+      // Der Haupt-Zeitraum ist die Basis — Abweichungen erweitern ihn nur.
+      take(mainStay);
+      return { from, to };
+    }
     const exFrom = toDay(p.HotelFrom); const exTo = toDay(p.HotelTo);
     if (exFrom && exTo) return { from: exFrom, to: exTo };
-    return defaultStay ? { from: defaultStay.from, to: defaultStay.to } : { from: '', to: '' };
-  }, [wRules, wStays, subsOf, defaultStay]);
+    return mainStay ? { from: mainStay.from, to: mainStay.to } : { from: '', to: '' };
+  }, [fields.extra, answersOf, answerMap, answerStays, wRules, subsOf, allStays, mainStay]);
 
-  /** Festes Hotel aus einer Sub-Event-Regel (erste Regel gewinnt). */
   const forcedHotel = React.useCallback((p: SPRegistration): string => {
     const bySub = wRules.bySub || {};
     for (const c of subsOf(p)) {
@@ -235,7 +371,6 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
   interface IPlanRow {
     hotel: DexHotel;
     people: SPRegistration[];
-    /** Kontingent-Zeitraum, gegen den die Extranächte gerechnet werden. */
     base: DexHotelStay | null;
     extraBefore: number;
     extraAfter: number;
@@ -255,7 +390,7 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
     const rows: IPlanRow[] = ordered.map(h => ({
       hotel: h,
       people: [],
-      base: wStays.filter(s => s.id === h.capacityStayId)[0] || defaultStay,
+      base: allStays.filter(s => s.id === h.capacityStayId)[0] || mainStay,
       extraBefore: 0, extraAfter: 0, nights: 0,
     }));
     const byName: Record<string, IPlanRow> = {};
@@ -263,12 +398,10 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
 
     const candidates = people.filter(p => {
       if (!overwrite && (p.Hotel || '').trim()) return false;
-      if (wRules.skipNoWish && wishOf(p) === false) return false;
+      if (wRules.skipNoWish && needsRoom(p) === false) return false;
       return true;
     });
 
-    // Restkontingent: bereits zugeordnete Personen zählen mit, sonst
-    // überbuchen wir beim zweiten Durchlauf.
     const used: Record<string, number> = {};
     if (!overwrite) {
       for (const p of people) {
@@ -335,16 +468,16 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
         assignments.push({ reg: p, hotel: r.hotel.name, from: s.from, to: s.to });
         r.nights += nightsBetween(s.from, s.to);
         if (!r.base) continue;
-        r.extraBefore += daysGap(s.from, r.base.from);
-        r.extraAfter += daysGap(r.base.to, s.to);
+        r.extraBefore += nightsBetween(s.from, r.base.from);
+        r.extraAfter += nightsBetween(r.base.to, s.to);
       }
     }
     return { rows, unplaced, candidates: candidates.length, assignments };
-  }, [wHotels, wStays, wRules, people, overwrite, defaultStay, forcedHotel, subsOf, stayFor, wishOf]);
+  }, [wHotels, allStays, mainStay, wRules, people, overwrite, forcedHotel, subsOf, stayFor, needsRoom]);
 
   const needBeds = React.useMemo(
-    () => people.filter(p => !(wRules.skipNoWish && wishOf(p) === false)).length,
-    [people, wRules.skipNoWish, wishOf],
+    () => people.filter(p => !(wRules.skipNoWish && needsRoom(p) === false)).length,
+    [people, wRules.skipNoWish, needsRoom],
   );
   const totalCap = wHotels.reduce((n, h) => n + (h.capacity || 0), 0);
 
@@ -356,15 +489,85 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
   const smallInp: React.CSSProperties = { height: 34, fontSize: '0.84rem', padding: '0 10px', border: '1px solid var(--dex-gray-300)', borderRadius: 8, minWidth: 0 };
   const th: React.CSSProperties = { textAlign: 'left', padding: '6px 8px', fontSize: '0.74rem', color: 'var(--dex-gray-600)', borderBottom: '1px solid var(--dex-gray-200)', whiteSpace: 'nowrap' };
   const td: React.CSSProperties = { padding: '6px 8px', fontSize: '0.82rem', borderBottom: '1px solid var(--dex-gray-100)' };
+  const question: React.CSSProperties = { fontSize: '0.95rem', fontWeight: 700, color: 'var(--dex-gray-800)' };
+  const explain: React.CSSProperties = { fontSize: '0.84rem', color: 'var(--dex-gray-600)', lineHeight: 1.5, margin: '4px 0 10px' };
 
+  // Die Schritte tragen die Frage, die sie stellen — nicht den Fachbegriff.
+  // „Zeiträume" sagt beim ersten Mal niemandem, was zu tun ist; „Wann?" schon.
   const STEPS = isDe
-    ? ['Zeiträume', 'Hotels & Kontingente', 'Regeln', 'Vorschau']
-    : ['Stay periods', 'Hotels & capacity', 'Rules', 'Preview'];
+    ? ['Wann?', 'Wo?', 'Wer wohin?', 'Ergebnis']
+    : ['When?', 'Where?', 'Who goes where?', 'Result'];
 
   const canNext = (): boolean => {
-    if (step === 1) return wStays.length > 0;
+    if (step === 1) return !!mainStay && nightsBetween(mainStay.from, mainStay.to) > 0;
     if (step === 2) return wHotels.length > 0 && wHotels.every(h => (h.name || '').trim() !== '');
     return true;
+  };
+
+  /* ---- Überblick vor dem ersten Schritt ---- */
+  const renderIntro = (): JSX.Element => {
+    const asked = people.filter(p => needsRoom(p) === true).length;
+    const declined = people.filter(p => needsRoom(p) === false).length;
+    const withExtra = extraAnswers.filter(a => (answerMap[a.value] || { nights: 0 }).nights > 0).reduce((n, a) => n + a.count, 0);
+    const items = isDe ? [
+      { q: 'Wann braucht ihr Zimmer?', a: 'Ein Zeitraum für die meisten — plus Ausnahmen für alle, die früher anreisen oder länger bleiben.' },
+      { q: 'Welche Hotels habt ihr?', a: 'Name und das Kontingent, das ihr geblockt habt — samt der Angabe, für welche Nächte das Kontingent gilt.' },
+      { q: 'Wer kommt wohin?', a: 'Optionale Regeln, z.B. „alle vom Vorabend-Dinner ins Hotel A". Alle übrigen verteilt die App nach Kontingent.' },
+      { q: 'Was heißt das für die Buchung?', a: 'Wer in welchem Hotel liegt — und wie viele Extranächte über das Kontingent hinaus gebucht werden müssen.' },
+    ] : [
+      { q: 'When do you need rooms?', a: 'One period for most people — plus exceptions for anyone arriving earlier or staying longer.' },
+      { q: 'Which hotels do you have?', a: 'Name and the capacity you blocked — including which nights that capacity covers.' },
+      { q: 'Who goes where?', a: 'Optional rules, e.g. „everyone from the prior-evening dinner into hotel A". The rest is filled by capacity.' },
+      { q: 'What does that mean for booking?', a: 'Who stays where — and how many extra nights have to be booked beyond the capacity.' },
+    ];
+    return (
+      <div>
+        <div style={{ ...box, marginTop: 14, background: 'var(--dex-gray-50, #f7f7f5)' }}>
+          <div style={{ fontSize: '0.86rem', lineHeight: 1.6 }}>
+            {isDe
+              ? <><strong>{people.length}</strong> Personen sind angemeldet.{fields.main
+                ? <> Die Frage „{fields.main.label}" haben <strong>{asked}</strong> mit Ja beantwortet{declined > 0 ? <>, <strong>{declined}</strong> mit Nein</> : ''}.</>
+                : <> Im Anmeldeformular gibt es keine Hotel-Frage — der Assistent geht davon aus, dass grundsätzlich alle ein Zimmer brauchen können.</>}</>
+              : <><strong>{people.length}</strong> people are registered.{fields.main
+                ? <> <strong>{asked}</strong> answered „{fields.main.label}" with yes{declined > 0 ? <>, <strong>{declined}</strong> with no</> : ''}.</>
+                : <> There is no hotel question in the registration form — the wizard assumes anyone may need a room.</>}</>}
+          </div>
+          {fields.extra && (
+            <div style={{ fontSize: '0.86rem', lineHeight: 1.6, marginTop: 6, color: 'var(--dex-green-dark, #4a7c1f)' }}>
+              {isDe
+                ? <>Außerdem fragt euer Formular unter „{fields.extra.label}" nach Zusatznächten — <strong>{withExtra}</strong> Person(en) haben dort etwas angegeben. Der Assistent liest das aus und rechnet die Extranächte daraus.</>
+                : <>Your form also asks about additional nights under „{fields.extra.label}" — <strong>{withExtra}</strong> person(s) answered there. The wizard reads that and derives the extra nights from it.</>}
+            </div>
+          )}
+        </div>
+
+        <div style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--dex-gray-800)', marginTop: 16 }}>
+          {isDe ? 'Der Assistent stellt dir vier Fragen:' : 'The wizard asks you four questions:'}
+        </div>
+        <div style={{ marginTop: 8 }}>
+          {items.map((it, i) => (
+            <div key={it.q} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '8px 0', borderTop: i === 0 ? 'none' : '1px solid var(--dex-gray-100)' }}>
+              <span style={{
+                flex: '0 0 24px', width: 24, height: 24, borderRadius: '50%', background: 'var(--dex-green, #86bc25)',
+                color: '#fff', fontSize: '0.76rem', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>{i + 1}</span>
+              <div>
+                <div style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--dex-gray-800)' }}>{it.q}</div>
+                <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', lineHeight: 1.5, marginTop: 2 }}>{it.a}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ ...box, background: 'rgba(134,188,37,0.07)', borderColor: 'var(--dex-green, #86bc25)' }}>
+          <div style={{ fontSize: '0.82rem', lineHeight: 1.55 }}>
+            {isDe
+              ? <>Du kannst jederzeit zurückgehen und alles ändern. <strong>Gespeichert wird nichts</strong>, bevor du am Ende auf „Übernehmen" klickst — und die Anzeige für die Teilnehmer bleibt aus, bis du sie separat freigibst.</>
+              : <>You can go back and change anything at any time. <strong>Nothing is saved</strong> before you click „Apply" at the end — and attendee visibility stays off until you release it separately.</>}
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const renderStepper = (): JSX.Element => (
@@ -383,113 +586,232 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
     </div>
   );
 
-  /* ---- Schritt 1 ---- */
-  const renderStays = (): JSX.Element => (
-    <div>
-      <p style={{ fontSize: '0.84rem', color: 'var(--dex-gray-600)', lineHeight: 1.5, margin: '0 0 8px' }}>
-        {isDe
-          ? <>Welche Aufenthalts-Zeiträume braucht ihr? Die Vorschläge kommen aus dem Event-Datum ({fmtDay(toDay(event.startDate), true)}{toDay(event.endDate) && toDay(event.endDate) !== toDay(event.startDate) ? `–${fmtDay(toDay(event.endDate), true)}` : ''}). Ein Klick nimmt einen Vorschlag auf oder wieder heraus.</>
-          : <>Which stay periods do you need? The suggestions are derived from the event dates. Click to add or remove one.</>}
-      </p>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 8 }}>
-        {suggestions.map(s => {
-          const on = wStays.some(x => x.from === s.from && x.to === s.to);
-          return (
-            <button key={s.id} type="button" onClick={() => toggleSuggestion(s)} style={{
-              textAlign: 'left', cursor: 'pointer', padding: '10px 12px', borderRadius: 10,
-              border: `1.5px solid ${on ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-              background: on ? 'rgba(134,188,37,0.08)' : '#fff',
-            }}>
-              <div style={{ fontWeight: 700, fontSize: '0.86rem' }}>
-                {on ? '✓ ' : ''}{s.label}
-              </div>
-              <div style={{ fontSize: '0.76rem', color: 'var(--dex-gray-600)', marginTop: 2 }}>
-                {fmtDay(s.from, isDe)} – {fmtDay(s.to, isDe)}
-              </div>
-            </button>
-          );
-        })}
-      </div>
+  /* ---- Schritt 1: Wann? ---- */
+  const renderStays = (): JSX.Element => {
+    const main = mainStay;
+    const core = coreStay(event);
+    const coreFits = !!main && main.from === core.from && main.to === core.to;
+    const variants = wStays.filter(s => !main || s.id !== main.id);
 
-      <div style={box}>
-        <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: 8 }}>
-          {isDe ? 'Ausgewählte Zeiträume' : 'Selected periods'}
+    const toggleVariant = (from: string, to: string, label: string): void => {
+      const hit = wStays.filter(s => s.from === from && s.to === to)[0];
+      if (hit) {
+        if (main && hit.id === main.id) return;
+        setWStays(wStays.filter(s => s.id !== hit.id));
+        return;
+      }
+      setWStays(wStays.concat([{ id: uid('s'), label, from, to, isDefault: false }]));
+    };
+
+    const variantDefs = main ? [
+      { from: addDays(main.from, -1), to: main.to, label: isDe ? 'Einen Tag früher anreisen' : 'Arrive a day earlier' },
+      { from: main.from, to: addDays(main.to, 1), label: isDe ? 'Einen Tag länger bleiben' : 'Stay a day longer' },
+      { from: addDays(main.from, -1), to: addDays(main.to, 1), label: isDe ? 'Früher und länger' : 'Earlier and longer' },
+    ] : [];
+
+    return (
+      <div>
+        <div style={question}>{isDe ? 'Von wann bis wann braucht ihr Zimmer?' : 'From when to when do you need rooms?'}</div>
+        <p style={explain}>
+          {isDe
+            ? <>Trag den Zeitraum ein, den die <strong>meisten</strong> Teilnehmer brauchen — meist die Nacht bzw. Nächte des Events. Jede Person bekommt ihn automatisch; Abweichungen regelst du darunter.</>
+            : <>Enter the period <strong>most</strong> attendees need — usually the night(s) of the event itself. Everyone gets it automatically; exceptions are handled below.</>}
+        </p>
+
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div className="form-group" style={{ marginBottom: 0, flex: '1 1 165px' }}>
+            <label className="form-label" style={{ fontSize: '0.8rem', marginBottom: 4 }}>{isDe ? 'Anreise' : 'Arrival'}</label>
+            <DatePicker selected={main && main.from ? new Date(`${main.from}T00:00:00`) : null}
+              onChange={(d: Date | null) => { if (d) setMainRange(toLocalDay(d), main ? main.to : ''); }}
+              dateFormat="dd.MM.yyyy" locale={isDe ? 'de' : undefined} placeholderText={isDe ? 'TT.MM.JJJJ' : 'dd/mm/yyyy'}
+              className="form-input" wrapperClassName="dex-datepicker-wrapper" calendarClassName="dex-datepicker-calendar"
+              popperPlacement="bottom-start" autoComplete="off" />
+          </div>
+          <div className="form-group" style={{ marginBottom: 0, flex: '1 1 165px' }}>
+            <label className="form-label" style={{ fontSize: '0.8rem', marginBottom: 4 }}>{isDe ? 'Abreise' : 'Departure'}</label>
+            <DatePicker selected={main && main.to ? new Date(`${main.to}T00:00:00`) : null}
+              onChange={(d: Date | null) => { if (d) setMainRange(main ? main.from : '', toLocalDay(d)); }}
+              dateFormat="dd.MM.yyyy" locale={isDe ? 'de' : undefined} placeholderText={isDe ? 'TT.MM.JJJJ' : 'dd/mm/yyyy'}
+              minDate={main && main.from ? new Date(`${main.from}T00:00:00`) : undefined}
+              className="form-input" wrapperClassName="dex-datepicker-wrapper" calendarClassName="dex-datepicker-calendar"
+              popperPlacement="bottom-start" autoComplete="off" />
+          </div>
+          <div style={{ paddingBottom: 13, fontSize: '0.86rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)' }}>
+            = {main ? nightLabel(nightsBetween(main.from, main.to), isDe) : '—'}
+          </div>
         </div>
-        {wStays.length === 0 && (
-          <div style={{ fontSize: '0.8rem', color: 'var(--dex-red, #c00)' }}>
-            {isDe ? 'Bitte mindestens einen Zeitraum wählen.' : 'Please select at least one period.'}
+
+        {!coreFits && (
+          <div style={{ marginTop: 8, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+            {isDe ? 'Aus dem Event-Datum' : 'From the event dates'}:{' '}
+            <button type="button" onClick={() => setMainRange(core.from, core.to)}
+              style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline', fontSize: '0.78rem' }}>
+              {fmtDay(core.from, isDe)} – {fmtDay(core.to, isDe)} {isDe ? 'übernehmen' : 'apply'}
+            </button>
           </div>
         )}
-        {wStays.map(s => (
-          <div key={s.id} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '5px 0', borderBottom: '1px solid var(--dex-gray-100)' }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.78rem', cursor: 'pointer' }}
-              title={isDe ? 'Standard für neue Zuordnungen' : 'Default for new assignments'}>
-              <input type="radio" checked={!!s.isDefault} onChange={() => setWStays(wStays.map(x => ({ ...x, isDefault: x.id === s.id })))}
-                style={{ accentColor: 'var(--dex-green, #86bc25)' }} />
-              {isDe ? 'Standard' : 'Default'}
-            </label>
-            <input style={{ ...smallInp, flex: '2 1 160px' }} value={s.label}
-              onChange={e => setWStays(wStays.map(x => x.id === s.id ? { ...x, label: e.target.value } : x))} />
-            <span style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
-              {fmtDay(s.from, isDe)} – {fmtDay(s.to, isDe)} · {nightLabel(nightsBetween(s.from, s.to), isDe)}
-            </span>
-            <button type="button" onClick={() => {
-              const next = wStays.filter(x => x.id !== s.id);
-              if (next.length > 0 && !next.some(x => x.isDefault)) next[0] = { ...next[0], isDefault: true };
-              setWStays(next);
-            }} style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)', fontSize: '0.95rem' }}>×</button>
-          </div>
-        ))}
 
-        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 10 }}>
-          <div className="form-group" style={{ marginBottom: 0, flex: '2 1 170px' }}>
-            <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 4 }}>{isDe ? 'Eigener Zeitraum' : 'Custom period'}</label>
-            <input className="form-input" placeholder={isDe ? 'Bezeichnung' : 'Label'} value={newStay.label}
-              onChange={e => setNewStay({ ...newStay, label: e.target.value })} />
+        {/* ---- Zusatznächte aus dem Anmeldeformular ---- */}
+        {fields.extra && extraAnswers.length > 0 && (
+          <div style={{ ...box, borderColor: 'var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.05)' }}>
+            <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--dex-gray-800)' }}>
+              {isDe ? 'Zusatznächte — aus dem Anmeldeformular gelesen' : 'Additional nights — read from the registration form'}
+            </div>
+            <p style={{ ...explain, marginBottom: 8 }}>
+              {isDe
+                ? <>Eure Teilnehmer haben unter „<strong>{fields.extra.label}</strong>" selbst angegeben, ob sie länger brauchen. Der Assistent hat die Antworten gezählt und den passenden Zeitraum vorgeschlagen — prüf die Zuordnung und korrigiere sie, wo sie nicht stimmt.</>
+                : <>Your attendees stated under „<strong>{fields.extra.label}</strong>" whether they need longer. The wizard counted the answers and proposed a matching period — check and correct it where needed.</>}
+            </p>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 560 }}>
+                <thead>
+                  <tr>
+                    <th style={th}>{isDe ? 'Antwort im Formular' : 'Answer in the form'}</th>
+                    <th style={th}>{isDe ? 'Personen' : 'People'}</th>
+                    <th style={th}>{isDe ? 'Zusätzliche Nächte' : 'Additional nights'}</th>
+                    <th style={th}>{isDe ? 'Ergibt den Zeitraum' : 'Resulting period'}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {extraAnswers.map(a => {
+                    const m = answerMap[a.value] || { nights: 0, after: false };
+                    const st = m.nights > 0 ? answerStays.filter(s => s.id === `auto_${m.after ? 'a' : 'b'}_${m.nights}`)[0] : mainStay;
+                    return (
+                      <tr key={a.value || '__empty'}>
+                        <td style={{ ...td, maxWidth: 300 }}>
+                          {a.value || <span style={{ color: 'var(--dex-gray-500)' }}>{isDe ? '(keine Angabe)' : '(no answer)'}</span>}
+                        </td>
+                        <td style={{ ...td, whiteSpace: 'nowrap' }}>{a.count}</td>
+                        <td style={td}>
+                          <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                            <input type="number" min={0} max={14} style={{ ...smallInp, width: 64 }} value={m.nights}
+                              onChange={e => setAnswerMap({ ...answerMap, [a.value]: { ...m, nights: Math.max(0, parseInt(e.target.value, 10) || 0) } })} />
+                            {m.nights > 0 && (
+                              <select style={{ ...smallInp, width: 110 }} value={m.after ? 'after' : 'before'}
+                                onChange={e => setAnswerMap({ ...answerMap, [a.value]: { ...m, after: e.target.value === 'after' } })}>
+                                <option value="before">{isDe ? 'vorher' : 'before'}</option>
+                                <option value="after">{isDe ? 'danach' : 'after'}</option>
+                              </select>
+                            )}
+                          </span>
+                        </td>
+                        <td style={{ ...td, color: 'var(--dex-gray-600)', whiteSpace: 'nowrap' }}>
+                          {st ? `${fmtDay(st.from, isDe)} – ${fmtDay(st.to, isDe)} · ${nightLabel(nightsBetween(st.from, st.to), isDe)}` : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
-          <div className="form-group" style={{ marginBottom: 0, flex: '1 1 145px' }}>
-            <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 4 }}>{isDe ? 'Anreise' : 'Arrival'}</label>
-            <DatePicker selected={newStay.from ? new Date(`${newStay.from}T00:00:00`) : null}
-              onChange={(d: Date | null) => setNewStay({ ...newStay, from: d ? toLocalDay(d) : '' })}
-              dateFormat="dd.MM.yyyy" locale={isDe ? 'de' : undefined} placeholderText={isDe ? 'TT.MM.JJJJ' : 'dd/mm/yyyy'}
-              className="form-input" wrapperClassName="dex-datepicker-wrapper" calendarClassName="dex-datepicker-calendar"
-              popperPlacement="bottom-start" isClearable autoComplete="off" />
+        )}
+
+        {/* ---- Manuelle Ausnahmen ---- */}
+        <div style={box}>
+          <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--dex-gray-800)' }}>
+            {fields.extra
+              ? (isDe ? 'Weitere Ausnahmen' : 'Further exceptions')
+              : (isDe ? 'Reisen einzelne früher an oder bleiben länger?' : 'Do some arrive earlier or stay longer?')}
+            <span style={{ fontWeight: 400, color: 'var(--dex-gray-500)' }}> · {isDe ? 'optional' : 'optional'}</span>
           </div>
-          <div className="form-group" style={{ marginBottom: 0, flex: '1 1 145px' }}>
-            <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 4 }}>{isDe ? 'Abreise' : 'Departure'}</label>
-            <DatePicker selected={newStay.to ? new Date(`${newStay.to}T00:00:00`) : null}
-              onChange={(d: Date | null) => setNewStay({ ...newStay, to: d ? toLocalDay(d) : '' })}
-              dateFormat="dd.MM.yyyy" locale={isDe ? 'de' : undefined} placeholderText={isDe ? 'TT.MM.JJJJ' : 'dd/mm/yyyy'}
-              minDate={newStay.from ? new Date(`${newStay.from}T00:00:00`) : undefined}
-              className="form-input" wrapperClassName="dex-datepicker-wrapper" calendarClassName="dex-datepicker-calendar"
-              popperPlacement="bottom-start" isClearable autoComplete="off" />
+          <p style={{ ...explain, marginBottom: 8 }}>
+            {isDe
+              ? <>Zeiträume, die du hier anlegst, kannst du beim Zuordnen pro Person mit einem Klick vergeben. Alles, was über den Kontingent-Zeitraum des Hotels hinausgeht, erscheint in Schritt 4 als <strong>Extranacht</strong>.</>
+              : <>Periods you add here can be applied per person with one click when assigning. Anything beyond a hotel’s capacity period shows up as an <strong>extra night</strong> in step 4.</>}
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {variantDefs.map(v => {
+              const on = wStays.some(s => s.from === v.from && s.to === v.to && (!main || s.id !== main.id));
+              return (
+                <button key={v.label} type="button" onClick={() => toggleVariant(v.from, v.to, v.label)} style={{
+                  textAlign: 'left', cursor: 'pointer', padding: '8px 12px', borderRadius: 999, fontSize: '0.8rem',
+                  border: `1.5px solid ${on ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                  background: on ? 'rgba(134,188,37,0.10)' : '#fff',
+                }}>
+                  {on ? '✓ ' : '+ '}{v.label}
+                  <span style={{ color: 'var(--dex-gray-500)' }}> · {fmtDay(v.from, isDe)}–{fmtDay(v.to, isDe)}</span>
+                </button>
+              );
+            })}
           </div>
-          <button type="button" className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '11px 18px' }}
-            onClick={() => {
-              const n = nightsBetween(newStay.from, newStay.to);
-              if (n <= 0) return;
-              setWStays(wStays.concat([{
-                id: uid('s'),
-                label: (newStay.label || '').trim() || nightLabel(n, isDe),
-                from: newStay.from, to: newStay.to,
-                isDefault: wStays.length === 0,
-              }]));
-              setNewStay({ ...newStay, label: '' });
-            }}>
-            {isDe ? '+ Hinzufügen' : '+ Add'}
-          </button>
+
+          {variants.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              {variants.map(s => (
+                <div key={s.id} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '5px 0', borderTop: '1px solid var(--dex-gray-100)' }}>
+                  <input style={{ ...smallInp, flex: '2 1 180px' }} value={s.label}
+                    onChange={e => setWStays(wStays.map(x => x.id === s.id ? { ...x, label: e.target.value } : x))} />
+                  <span style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
+                    {fmtDay(s.from, isDe)} – {fmtDay(s.to, isDe)} · {nightLabel(nightsBetween(s.from, s.to), isDe)}
+                  </span>
+                  <button type="button" onClick={() => setWStays(wStays.filter(x => x.id !== s.id))}
+                    style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)', fontSize: '0.95rem' }}>×</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!showCustom && (
+            <button type="button" onClick={() => setShowCustom(true)}
+              style={{ marginTop: 10, border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '0.8rem', color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline' }}>
+              {isDe ? '+ Anderer Zeitraum mit eigenen Daten' : '+ Other period with custom dates'}
+            </button>
+          )}
+          {showCustom && (
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', marginTop: 12 }}>
+              <div className="form-group" style={{ marginBottom: 0, flex: '2 1 170px' }}>
+                <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 4 }}>{isDe ? 'Bezeichnung' : 'Label'}</label>
+                <input className="form-input" placeholder={isDe ? 'z.B. „Nur Sonntagnacht"' : 'e.g. „Sunday night only"'} value={newStay.label}
+                  onChange={e => setNewStay({ ...newStay, label: e.target.value })} />
+              </div>
+              <div className="form-group" style={{ marginBottom: 0, flex: '1 1 145px' }}>
+                <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 4 }}>{isDe ? 'Anreise' : 'Arrival'}</label>
+                <DatePicker selected={newStay.from ? new Date(`${newStay.from}T00:00:00`) : null}
+                  onChange={(d: Date | null) => setNewStay({ ...newStay, from: d ? toLocalDay(d) : '' })}
+                  dateFormat="dd.MM.yyyy" locale={isDe ? 'de' : undefined} placeholderText={isDe ? 'TT.MM.JJJJ' : 'dd/mm/yyyy'}
+                  className="form-input" wrapperClassName="dex-datepicker-wrapper" calendarClassName="dex-datepicker-calendar"
+                  popperPlacement="bottom-start" isClearable autoComplete="off" />
+              </div>
+              <div className="form-group" style={{ marginBottom: 0, flex: '1 1 145px' }}>
+                <label className="form-label" style={{ fontSize: '0.78rem', marginBottom: 4 }}>{isDe ? 'Abreise' : 'Departure'}</label>
+                <DatePicker selected={newStay.to ? new Date(`${newStay.to}T00:00:00`) : null}
+                  onChange={(d: Date | null) => setNewStay({ ...newStay, to: d ? toLocalDay(d) : '' })}
+                  dateFormat="dd.MM.yyyy" locale={isDe ? 'de' : undefined} placeholderText={isDe ? 'TT.MM.JJJJ' : 'dd/mm/yyyy'}
+                  minDate={newStay.from ? new Date(`${newStay.from}T00:00:00`) : undefined}
+                  className="form-input" wrapperClassName="dex-datepicker-wrapper" calendarClassName="dex-datepicker-calendar"
+                  popperPlacement="bottom-start" isClearable autoComplete="off" />
+              </div>
+              <button type="button" className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '11px 18px' }}
+                onClick={() => {
+                  const n = nightsBetween(newStay.from, newStay.to);
+                  if (n <= 0) return;
+                  setWStays(wStays.concat([{
+                    id: uid('s'),
+                    label: (newStay.label || '').trim() || nightLabel(n, isDe),
+                    from: newStay.from, to: newStay.to,
+                    isDefault: wStays.length === 0,
+                  }]));
+                  setNewStay({ ...newStay, label: '' });
+                  setShowCustom(false);
+                }}>
+                {isDe ? '+ Hinzufügen' : '+ Add'}
+              </button>
+            </div>
+          )}
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
-  /* ---- Schritt 2 ---- */
+  /* ---- Schritt 2: Wo? ---- */
   const renderHotels = (): JSX.Element => (
     <div>
-      <p style={{ fontSize: '0.84rem', color: 'var(--dex-gray-600)', lineHeight: 1.5, margin: '0 0 8px' }}>
+      <div style={question}>{isDe ? 'Welche Hotels habt ihr?' : 'Which hotels do you have?'}</div>
+      <p style={explain}>
         {isDe
-          ? <>Trag die Hotels mit ihrem Kontingent ein. <strong>Wichtig:</strong> Das Kontingent gilt fast immer nur für einen bestimmten Zeitraum — wähle rechts, für welchen. Alles darüber hinaus rechnet der Assistent im letzten Schritt als Extranacht aus.</>
-          : <>Add the hotels with their capacity. <strong>Important:</strong> capacity usually applies to one specific period — pick it on the right. Anything beyond becomes an extra night in the last step.</>}
+          ? <>Ein Hotel je Zeile. <strong>Kontingent</strong> = die Zimmer, die ihr dort geblockt habt (leer lassen, wenn es keine feste Obergrenze gibt). Weil ein Kontingent fast immer nur für bestimmte Nächte gilt, sag rechts, für welche — alles darüber hinaus wird in Schritt 4 als Extranacht ausgewiesen.</>
+          : <>One hotel per row. <strong>Capacity</strong> = the rooms you blocked there (leave empty if there is no fixed limit). Because a contingent usually covers specific nights only, state which on the right — anything beyond shows as an extra night in step 4.</>}
       </p>
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 640 }}>
@@ -519,9 +841,9 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
                     onChange={e => setWHotels(wHotels.map(x => x.id === h.id ? { ...x, capacity: parseInt(e.target.value, 10) || 0 } : x))} />
                 </td>
                 <td style={td}>
-                  <select style={{ ...smallInp, width: '100%' }} value={h.capacityStayId || (defaultStay ? defaultStay.id : '')}
+                  <select style={{ ...smallInp, width: '100%' }} value={h.capacityStayId || (mainStay ? mainStay.id : '')}
                     onChange={e => setWHotels(wHotels.map(x => x.id === h.id ? { ...x, capacityStayId: e.target.value } : x))}>
-                    {wStays.map(s => (
+                    {allStays.map(s => (
                       <option key={s.id} value={s.id}>
                         {s.label} ({fmtDay(s.from, isDe)}–{fmtDay(s.to, isDe)})
                       </option>
@@ -534,11 +856,16 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
                 </td>
               </tr>
             ))}
+            {wHotels.length === 0 && (
+              <tr><td style={{ ...td, color: 'var(--dex-gray-500)' }} colSpan={5}>
+                {isDe ? 'Noch kein Hotel — leg unten das erste an.' : 'No hotel yet — add the first one below.'}
+              </td></tr>
+            )}
           </tbody>
         </table>
       </div>
       <button type="button" className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '8px 16px', marginTop: 10 }}
-        onClick={() => setWHotels(wHotels.concat([{ id: uid('h'), name: '', address: '', capacity: 0, notes: '', priority: wHotels.length, capacityStayId: defaultStay ? defaultStay.id : '' }]))}>
+        onClick={() => setWHotels(wHotels.concat([{ id: uid('h'), name: '', address: '', capacity: 0, notes: '', priority: wHotels.length, capacityStayId: mainStay ? mainStay.id : '' }]))}>
         {isDe ? '+ Hotel' : '+ Hotel'}
       </button>
 
@@ -563,13 +890,14 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
     </div>
   );
 
-  /* ---- Schritt 3 ---- */
+  /* ---- Schritt 3: Wer wohin? ---- */
   const renderRules = (): JSX.Element => (
     <div>
-      <p style={{ fontSize: '0.84rem', color: 'var(--dex-gray-600)', lineHeight: 1.5, margin: '0 0 8px' }}>
+      <div style={question}>{isDe ? 'Wer kommt in welches Hotel?' : 'Who goes into which hotel?'}</div>
+      <p style={explain}>
         {isDe
-          ? 'Regeln bestimmen, wer wohin kommt und wie lange. Alles ist optional — ohne Regel verteilt der Assistent nach Reihenfolge und Kontingent.'
-          : 'Rules decide who goes where and for how long. Everything is optional — without rules the wizard fills by order and capacity.'}
+          ? <>Alles hier ist <strong>optional</strong>. Ohne Regel füllt die App die Hotels der Reihe nach auf, bis das Kontingent erreicht ist. Regeln brauchst du nur, wenn eine bestimmte Gruppe zusammen in ein bestimmtes Haus soll.</>
+          : <>Everything here is <strong>optional</strong>. Without rules the app fills the hotels in order until capacity is reached. You only need rules if a specific group has to go to a specific house.</>}
       </p>
 
       {childEvents.length > 0 && (
@@ -579,8 +907,8 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
           </div>
           <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginBottom: 8, lineHeight: 1.45 }}>
             {isDe
-              ? 'Z.B. „alle vom Vorabend-Dinner ins Hotel A, mit 2 Nächten". Wer in mehreren Sub-Events ist, bekommt die Hülle aus allen Zeiträumen — früheste Anreise, späteste Abreise. Genau daraus entstehen die Extranächte.'
-              : 'E.g. „everyone from the prior-evening dinner into hotel A, 2 nights". People in several sub-events get the envelope of all periods — earliest arrival, latest departure. That is where extra nights come from.'}
+              ? 'Z.B. „alle vom Vorabend-Dinner ins Hotel A, mit 2 Nächten". Wer in mehreren Sub-Events ist, bekommt die Hülle aus allen Zeiträumen — früheste Anreise, späteste Abreise.'
+              : 'E.g. „everyone from the prior-evening dinner into hotel A, 2 nights". People in several sub-events get the envelope of all periods — earliest arrival, latest departure.'}
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
@@ -611,7 +939,7 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
                       <td style={td}>
                         <select style={{ ...smallInp, width: '100%' }} value={r.stayId || ''} onChange={e => set({ stayId: e.target.value })}>
                           <option value="">{isDe ? '— Standard —' : '— default —'}</option>
-                          {wStays.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                          {allStays.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                         </select>
                       </td>
                     </tr>
@@ -620,12 +948,6 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
               </tbody>
             </table>
           </div>
-          {!childEvents.every(c => !!subEmails[c.id]) && (
-            <div style={{ fontSize: '0.76rem', color: 'var(--dex-gray-500)', marginTop: 6 }}>
-              {isDe ? 'Hinweis: Für Sub-Events ohne Personenzahl ist die Teilnehmerliste noch nicht geladen — die Regel greift trotzdem, sobald sie da ist.'
-                : 'Note: sub-events without a count have not loaded their list yet — the rule still applies once it has.'}
-            </div>
-          )}
         </div>
       )}
 
@@ -634,7 +956,7 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
           {isDe ? 'Füll-Reihenfolge' : 'Fill order'}
         </div>
         <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginBottom: 8 }}>
-          {isDe ? 'Welches Hotel soll zuerst voll werden? Oben zuerst.' : 'Which hotel fills up first? Top first.'}
+          {isDe ? 'Welches Hotel soll zuerst voll werden? Oben zuerst. Häuser ohne Kontingent kommen immer zuletzt.' : 'Which hotel fills up first? Top first. Houses without capacity always come last.'}
         </div>
         {wHotels.slice().sort((a, b) => (a.priority || 0) - (b.priority || 0)).map((h, i, arr) => (
           <div key={h.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px solid var(--dex-gray-100)' }}>
@@ -672,9 +994,11 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
           <input type="checkbox" checked={!!wRules.skipNoWish} onChange={e => setWRules({ ...wRules, skipNoWish: e.target.checked })}
             style={{ width: 16, height: 16, marginTop: 2, accentColor: 'var(--dex-green, #86bc25)' }} />
           <span>
-            {isDe ? '„Keine Unterkunft" überspringen' : 'Skip „no accommodation"'}
+            {isDe ? '„Kein Hotel nötig" überspringen' : 'Skip „no accommodation"'}
             <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
-              {isDe ? 'Wer im Anmeldeformular ausdrücklich kein Hotel wollte, bekommt keins zugeteilt.' : 'Anyone who explicitly declined accommodation is not assigned.'}
+              {fields.main
+                ? (isDe ? `Wer „${fields.main.label}" mit Nein beantwortet hat, bekommt kein Zimmer zugeteilt.` : `Anyone who answered „${fields.main.label}" with no is not assigned a room.`)
+                : (isDe ? 'Wer im Anmeldeformular ausdrücklich kein Hotel wollte, bekommt keins zugeteilt.' : 'Anyone who explicitly declined accommodation is not assigned.')}
             </span>
           </span>
         </label>
@@ -692,15 +1016,16 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
     </div>
   );
 
-  /* ---- Schritt 4 ---- */
+  /* ---- Schritt 4: Ergebnis ---- */
   const renderPreview = (): JSX.Element => {
     const extraTotal = plan.rows.reduce((n, r) => n + r.extraBefore + r.extraAfter, 0);
     return (
       <div>
-        <p style={{ fontSize: '0.84rem', color: 'var(--dex-gray-600)', lineHeight: 1.5, margin: '0 0 10px' }}>
+        <div style={question}>{isDe ? 'Passt das so?' : 'Does this look right?'}</div>
+        <p style={explain}>
           {isDe
-            ? <>So sähe die Verteilung aus. <strong>Extranächte</strong> sind Nächte außerhalb des Kontingent-Zeitraums des jeweiligen Hotels — die musst du zusätzlich buchen, das Kontingent deckt sie nicht ab.</>
-            : <>This is how the distribution would look. <strong>Extra nights</strong> fall outside each hotel’s capacity period — you have to book those on top, the contingent does not cover them.</>}
+            ? <>So sähe die Verteilung aus. <strong>Extranächte</strong> sind Nächte außerhalb des Kontingent-Zeitraums des jeweiligen Hotels — die deckt euer Kontingent nicht ab, die müssen zusätzlich gebucht werden.</>
+            : <>This is how the distribution would look. <strong>Extra nights</strong> fall outside each hotel’s capacity period — your contingent does not cover them, they have to be booked on top.</>}
         </p>
 
         <div style={{ overflowX: 'auto' }}>
@@ -745,13 +1070,13 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
         {extraTotal > 0 && (
           <div style={{ ...box, background: '#fff6e5', borderColor: '#e0a300' }}>
             <div style={{ fontSize: '0.84rem', fontWeight: 700, marginBottom: 4 }}>
-              {isDe ? `${extraTotal} Extranacht/Extranächte zusätzlich buchen` : `${extraTotal} extra night(s) to book on top`}
+              {isDe ? `${extraTotal} Extranacht/Extranächte über das Kontingent hinaus` : `${extraTotal} extra night(s) beyond the contingent`}
             </div>
             <ul style={{ margin: 0, paddingLeft: 18, fontSize: '0.82rem', lineHeight: 1.6 }}>
               {plan.rows.filter(r => r.extraBefore + r.extraAfter > 0).map(r => (
                 <li key={r.hotel.id}>
                   {isDe
-                    ? <><strong>{r.hotel.name}</strong>: {r.extraBefore > 0 ? `${r.extraBefore}× eine Nacht früher (Anreise ab ${r.base ? fmtDay(addDays(r.base.from, -1), isDe) : '—'})` : ''}{r.extraBefore > 0 && r.extraAfter > 0 ? ', ' : ''}{r.extraAfter > 0 ? `${r.extraAfter}× eine Nacht länger` : ''}</>
+                    ? <><strong>{r.hotel.name}</strong>: {r.extraBefore > 0 ? `${r.extraBefore}× eine Nacht früher (ab ${r.base ? fmtDay(addDays(r.base.from, -1), isDe) : '—'})` : ''}{r.extraBefore > 0 && r.extraAfter > 0 ? ', ' : ''}{r.extraAfter > 0 ? `${r.extraAfter}× eine Nacht länger` : ''}</>
                     : <><strong>{r.hotel.name}</strong>: {r.extraBefore > 0 ? `${r.extraBefore}× one night earlier` : ''}{r.extraBefore > 0 && r.extraAfter > 0 ? ', ' : ''}{r.extraAfter > 0 ? `${r.extraAfter}× one night longer` : ''}</>}
                 </li>
               ))}
@@ -763,8 +1088,8 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
           <div style={{ ...box, background: '#fef3f2', borderColor: 'var(--dex-red, #c00)' }}>
             <div style={{ fontSize: '0.84rem' }}>
               {isDe
-                ? `${plan.unplaced} Person(en) bleiben ohne Hotel — das Kontingent reicht nicht. Erhöhe ein Kontingent oder lege ein weiteres Hotel an.`
-                : `${plan.unplaced} person(s) stay without a hotel — capacity is not sufficient. Raise a capacity or add another hotel.`}
+                ? `${plan.unplaced} Person(en) bleiben ohne Hotel — das Kontingent reicht nicht. Geh zurück zu Schritt 2 und erhöhe ein Kontingent oder leg ein weiteres Hotel an.`
+                : `${plan.unplaced} person(s) stay without a hotel — capacity is not sufficient. Go back to step 2 and raise a capacity or add another hotel.`}
             </div>
           </div>
         )}
@@ -786,8 +1111,8 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
 
         <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', marginTop: 10, lineHeight: 1.55 }}>
           {isDe
-            ? <>Gespeichert werden: <strong>{wStays.length}</strong> Zeitraum/Zeiträume, <strong>{wHotels.length}</strong> Hotel(s){doAssign ? <>, <strong>{plan.assignments.length}</strong> Zuordnung(en)</> : ''}. Die Hotel-Anzeige für Teilnehmer bleibt unverändert — die gibst du separat frei.</>
-            : <>Will be saved: <strong>{wStays.length}</strong> period(s), <strong>{wHotels.length}</strong> hotel(s){doAssign ? <>, <strong>{plan.assignments.length}</strong> assignment(s)</> : ''}. Attendee visibility stays as it is — you release that separately.</>}
+            ? <>Gespeichert werden: <strong>{allStays.length}</strong> Zeitraum/Zeiträume, <strong>{wHotels.length}</strong> Hotel(s){doAssign ? <>, <strong>{plan.assignments.length}</strong> Zuordnung(en)</> : ''}. Die Hotel-Anzeige für Teilnehmer bleibt unverändert — die gibst du separat frei.</>
+            : <>Will be saved: <strong>{allStays.length}</strong> period(s), <strong>{wHotels.length}</strong> hotel(s){doAssign ? <>, <strong>{plan.assignments.length}</strong> assignment(s)</> : ''}. Attendee visibility stays as it is — you release that separately.</>}
         </div>
       </div>
     );
@@ -801,40 +1126,65 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
       </h2>
       <p style={{ margin: '4px 0 0', fontSize: '0.84rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
         {isDe
-          ? 'In vier Schritten von den Zeiträumen bis zur fertigen Verteilung — inklusive der Rechnung, wie viele Extranächte ihr über das Kontingent hinaus buchen müsst. Geschrieben wird erst am Ende.'
-          : 'Four steps from stay periods to a finished distribution — including how many extra nights you have to book beyond the contingent. Nothing is written before the last step.'}
+          ? 'Wann braucht ihr Zimmer, welche Hotels habt ihr, wer kommt wohin — daraus ergeben sich die Verteilung und die Extranächte. Geschrieben wird erst am Ende.'
+          : 'When do you need rooms, which hotels do you have, who goes where — that gives you the distribution and the extra nights. Nothing is written before the end.'}
       </p>
 
-      {renderStepper()}
+      {!showIntro && renderStepper()}
 
       <div style={{ maxHeight: '58vh', overflowY: 'auto', paddingRight: 4, marginTop: 10 }}>
-        {step === 1 && renderStays()}
-        {step === 2 && renderHotels()}
-        {step === 3 && renderRules()}
-        {step === 4 && renderPreview()}
+        {showIntro && renderIntro()}
+        {!showIntro && step === 1 && renderStays()}
+        {!showIntro && step === 2 && renderHotels()}
+        {!showIntro && step === 3 && renderRules()}
+        {!showIntro && step === 4 && renderPreview()}
       </div>
+
+      {/* Zwischenstand: eine Zeile mit dem, was der Assistent bis hierhin
+          verstanden hat. Ohne das weiß man beim ersten Mal nicht, ob die
+          Eingabe angekommen ist. */}
+      {!showIntro && (
+        <div style={{ marginTop: 12, padding: '8px 12px', borderRadius: 8, background: 'var(--dex-gray-50, #f7f7f5)', fontSize: '0.78rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+          <strong>{isDe ? 'Stand: ' : 'So far: '}</strong>
+          {mainStay
+            ? `${isDe ? 'Zimmer' : 'Rooms'} ${fmtDay(mainStay.from, isDe)}–${fmtDay(mainStay.to, isDe)} (${nightLabel(nightsBetween(mainStay.from, mainStay.to), isDe)})`
+            : (isDe ? 'kein Zeitraum' : 'no period')}
+          {allStays.length > 1 ? ` + ${allStays.length - 1} ${isDe ? 'Ausnahme(n)' : 'exception(s)'}` : ''}
+          {' · '}
+          {wHotels.filter(h => (h.name || '').trim()).length > 0
+            ? `${wHotels.filter(h => (h.name || '').trim()).length} ${isDe ? 'Hotel(s)' : 'hotel(s)'}${totalCap > 0 ? `, ${totalCap} ${isDe ? 'Plätze' : 'places'}` : ''}`
+            : (isDe ? 'noch kein Hotel' : 'no hotel yet')}
+          {' · '}
+          {isDe ? `${needBeds} Person(en) mit Bettenbedarf` : `${needBeds} person(s) needing a bed`}
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 16, flexWrap: 'wrap' }}>
         <button type="button" className="btn btn-secondary" disabled={busy} onClick={onClose}>
           {isDe ? 'Abbrechen' : 'Cancel'}
         </button>
-        {step > 1 && (
+        {showIntro && (
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => setShowIntro(false)}>
+            {isDe ? 'Los geht’s' : 'Let’s go'}
+          </button>
+        )}
+        {!showIntro && step > 1 && (
           <button type="button" className="btn btn-secondary" disabled={busy} onClick={() => setStep(step - 1)}>
             {isDe ? 'Zurück' : 'Back'}
           </button>
         )}
-        {step < 4 && (
+        {!showIntro && step < 4 && (
           <button type="button" className="btn btn-primary" disabled={busy || !canNext()} onClick={() => setStep(step + 1)}>
             {isDe ? 'Weiter' : 'Next'}
           </button>
         )}
-        {step === 4 && (
+        {!showIntro && step === 4 && (
           <button type="button" className="btn btn-primary" disabled={busy}
             onClick={() => {
               void onApply({
-                stays: wStays,
+                stays: allStays,
                 // Den Kontingent-Zeitraum festschreiben: In der Auswahl stand
-                // der Standard nur als Vorbelegung — ohne Wert wäre die
+                // der Haupt-Zeitraum nur als Vorbelegung — ohne Wert wäre die
                 // Extranacht-Rechnung später vom Standard abhängig, und der
                 // kann sich ändern.
                 hotels: wHotels
@@ -843,9 +1193,21 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
                     ...h,
                     name: h.name.trim(),
                     priority: typeof h.priority === 'number' ? h.priority : i,
-                    capacityStayId: h.capacityStayId || (defaultStay ? defaultStay.id : ''),
+                    capacityStayId: h.capacityStayId || (mainStay ? mainStay.id : ''),
                   })),
-                rules: wRules,
+                rules: {
+                  ...wRules,
+                  byAnswer: fields.extra
+                    ? {
+                      fieldId: fields.extra.id,
+                      map: Object.keys(answerMap).reduce((acc: Record<string, string>, k: string) => {
+                        const m = answerMap[k];
+                        acc[k] = m && m.nights > 0 ? `auto_${m.after ? 'a' : 'b'}_${m.nights}` : (mainStay ? mainStay.id : '');
+                        return acc;
+                      }, {}),
+                    }
+                    : undefined,
+                },
                 assignments: doAssign ? plan.assignments : [],
               });
             }}>
