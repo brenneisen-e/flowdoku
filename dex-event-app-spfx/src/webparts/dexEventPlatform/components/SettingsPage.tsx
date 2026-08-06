@@ -12,7 +12,7 @@ import { useLanguage } from '../context/LanguageContext';
 // v20.4: moderne Confirm-Modals statt window.confirm.
 import { useDialog } from '../context/DialogContext';
 import { UserRole } from '../types';
-import { Plus, Trash2, X } from './Icons';
+import { Plus, Trash2, X, Mail } from './Icons';
 import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
 import { PersonContactHover } from './PersonContactHover';
@@ -62,7 +62,7 @@ export default function SettingsPage(): React.ReactElement {
   const { locale } = useLanguage();
   const isDe = locale === 'de';
   // v20.4: App-Modal statt window.confirm.
-  const { confirmDialog } = useDialog();
+  const { confirmDialog, showAlert } = useDialog();
   // v13.0: Settings/Rollenverwaltung ist Admin-only. Vorher konnte ein
   // Demo-User die Seite öffnen — Admin-Controls waren zwar versteckt,
   // aber der Seitenzugriff selbst war frei. Wir nutzen originalIsAdmin
@@ -258,10 +258,17 @@ export default function SettingsPage(): React.ReactElement {
       setNewName('');
       setNewLocation('');
       setShowAddForm(false);
-      // User/-Rolle bekommt keine Onboarding-Mail — die Mail erklärt
-      // Organizer-/Admin-Funktionen, die Standard-User gar nicht haben.
+      // v28.44: Die Onboarding-Mail geht jetzt AUTOMATISCH raus — vorher war sie
+      // ein Angebot per Rueckfrage, das man wegklicken konnte, und dann startete
+      // der neue Organizer ohne Links, Handbuch und Einsatzbereich-Hinweis.
+      // Die User-Rolle bleibt aussen vor: Die Mail erklaert Organizer-/Admin-
+      // Funktionen, die Standard-User gar nicht haben.
       if (assignedRole === 'Organizer' || assignedRole === 'Admin') {
-        setOnboardingPrompt({ email: assignedEmail, name: assignedName, role: assignedRole });
+        void sendOrganizerOnboarding(assignedEmail, assignedName, assignedRole)
+          .then(sent => setStatusMsg(sent
+            ? 'Rolle zugewiesen — Onboarding-Mail wurde verschickt.'
+            : 'Rolle zugewiesen. Die Onboarding-Mail konnte nicht verschickt werden — bitte über den Briefumschlag in der Liste erneut senden.'))
+          .catch(() => { /* Status bleibt bei der Zuweisungs-Meldung */ });
       }
     } else {
       setStatusMsg('Error: Could not assign role. Please try again.');
@@ -281,6 +288,26 @@ export default function SettingsPage(): React.ReactElement {
   };
 
   const [isRemoving, setIsRemoving] = React.useState<number | null>(null);
+
+  const [onboardingResendId, setOnboardingResendId] = React.useState<number | null>(null);
+  const resendOnboarding = async (
+    itemId: number, email: string, name: string, role: 'Organizer' | 'Admin',
+  ): Promise<void> => {
+    const ok = await confirmDialog(isDe
+      ? `Onboarding-Mail an ${name || email} senden?\n\nSie enthält die wichtigsten Links, eine Anleitung für das erste Test-Event und den Hinweis, dass DEX für interne Deloitte Events gedacht ist.`
+      : `Send the onboarding mail to ${name || email}?\n\nIt contains the key links, a walkthrough for a first test event and the note that DEX is meant for internal Deloitte events.`,
+      { confirmLabel: isDe ? 'Senden' : 'Send' });
+    if (!ok) return;
+    setOnboardingResendId(itemId);
+    const sent = await sendOrganizerOnboarding(email, name, role).catch(() => false);
+    setOnboardingResendId(null);
+    showAlert(
+      sent
+        ? (isDe ? 'Onboarding-Mail wurde in die Warteschlange eingetragen.' : 'Onboarding mail has been queued.')
+        : (isDe ? 'Die Onboarding-Mail konnte nicht verschickt werden.' : 'Could not send the onboarding mail.'),
+      { variant: sent ? 'success' : 'error' },
+    );
+  };
 
   const handleRemoveRole = async (itemId: number, userName: string): Promise<void> => {
     const confirmed = await confirmDialog(`Rolle für "${userName}" entfernen?`, { danger: true, confirmLabel: isDe ? 'Entfernen' : 'Remove' });
@@ -468,7 +495,20 @@ export default function SettingsPage(): React.ReactElement {
           <td style={{ ...tdS, fontSize: '0.78rem', color: 'var(--dex-gray-600)', maxWidth: 280 }}>
             {r.role === 'User' ? <span style={{ color: 'var(--dex-gray-300)' }}>—</span> : <CoordinatedEventsCell titles={evts} isDe={isDe} />}
           </td>
-          <td style={{ ...tdS, textAlign: 'right' }}>
+          <td style={{ ...tdS, textAlign: 'right', whiteSpace: 'nowrap' }}>
+            {/* v28.44: Onboarding-Mail nachtraeglich verschicken — fuer alle,
+                die vor dieser Version Organizer wurden (und damals keine
+                bekommen haben) oder die sie nicht mehr finden. */}
+            {(r.role === 'Organizer' || r.role === 'Admin') && (
+              <button
+                onClick={() => { void resendOnboarding(r.id, r.userEmail, r.userName, r.role as 'Organizer' | 'Admin'); }}
+                disabled={onboardingResendId === r.id}
+                style={{ border: 'none', background: 'none', cursor: onboardingResendId === r.id ? 'wait' : 'pointer', color: 'var(--dex-green-dark, #4a7c1f)', padding: 4, opacity: onboardingResendId === r.id ? 0.4 : 1 }}
+                title={isDe ? 'Onboarding-Mail (erneut) senden' : 'Send onboarding mail (again)'}
+              >
+                {onboardingResendId === r.id ? '...' : <Mail size={16} />}
+              </button>
+            )}
             {!isSelf && (
               <button onClick={() => handleRemoveRole(r.id, r.userName)} disabled={isRemoving === r.id} style={{ border: 'none', background: 'none', cursor: isRemoving === r.id ? 'wait' : 'pointer', color: 'var(--dex-danger, #e53935)', padding: 4, opacity: isRemoving === r.id ? 0.4 : 1 }} title="Rolle entfernen">
                 {isRemoving === r.id ? '...' : <Trash2 size={16} />}

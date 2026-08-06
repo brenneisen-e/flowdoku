@@ -152,9 +152,11 @@ export default function LandingInfoModal({ open, locale, onClose }: Props): Reac
             DEX · {isDE ? 'Event Experience Platform' : 'Event Experience Platform'} · v{APP_VERSION}
           </div>
           <h2 style={{ fontSize: '1.8rem', fontWeight: 700, margin: 0, marginBottom: 8, lineHeight: 1.2 }}>
+            {/* v28.45: „alle Deloitte-Events" war zu weit gefasst — DEX ist auf
+                interne Events ausgelegt, nicht auf externe mit externen Gaesten. */}
             {isDE
-              ? 'Deine zentrale Plattform für alle Deloitte-Events'
-              : 'Your central platform for all Deloitte events'}
+              ? 'Deine zentrale Plattform für interne Deloitte Events'
+              : 'Your central platform for internal Deloitte events'}
           </h2>
           <p style={{ fontSize: '0.95rem', lineHeight: 1.5, opacity: 0.95, margin: 0, maxWidth: 720 }}>
             {isDE
@@ -174,6 +176,7 @@ export default function LandingInfoModal({ open, locale, onClose }: Props): Reac
                 <li><strong>Assistenz- &amp; Team-Meetings</strong> — mit Transfer- und Hotelbuchung</li>
                 <li><strong>Lauf-Events</strong> — B2Run, JPMorgan Corporate Challenge (mit Startblöcken, Split-Capacity)</li>
                 <li><strong>Alles dazwischen</strong> — von 10 Leuten am Lunch bis 500+ Personen auf einer Großveranstaltung</li>
+                <li style={{ color: 'var(--dex-gray-500)' }}><strong>Nicht</strong> für externe Events mit externen Teilnehmern — alles dazu findest du im <a href="https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx" target="_blank" rel="noopener noreferrer">Event Management im DeloitteNet</a>.</li>
               </>
             ) : (
               <>
@@ -182,6 +185,7 @@ export default function LandingInfoModal({ open, locale, onClose }: Props): Reac
                 <li><strong>Assistant &amp; team meetings</strong> — with transfer and hotel booking</li>
                 <li><strong>Running events</strong> — B2Run, JPMorgan Corporate Challenge (with start-blocks &amp; split capacity)</li>
                 <li><strong>Everything in between</strong> — from 10 people at lunch to 500+ at a flagship event</li>
+                <li style={{ color: 'var(--dex-gray-500)' }}><strong>Not</strong> for external events with external attendees — everything about those is on <a href="https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx" target="_blank" rel="noopener noreferrer">Event Management on DeloitteNet</a>.</li>
               </>
             )}
           </ul>
