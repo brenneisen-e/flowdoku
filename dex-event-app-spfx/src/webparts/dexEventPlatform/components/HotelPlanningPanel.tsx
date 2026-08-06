@@ -502,11 +502,13 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     const prev = hotelsLocal;
     setHotelsLocal(next); // sofort sichtbar
     setBusy('hotels');
-    const ok = await svc.patchEventOverridesValue(Number(event.id), '_hotels', next);
+    const res = await svc.patchEventOverridesValueEx(Number(event.id), '_hotels', next);
     setBusy('');
-    if (!ok) {
+    if (!res.ok) {
       setHotelsLocal(prev); // Rollback, damit die Anzeige nicht luegt
-      showAlert(isDe ? 'Die Hotels konnten nicht gespeichert werden.' : 'Could not save the hotels.', { variant: 'error' });
+      showAlert(
+        (isDe ? 'Die Hotels konnten nicht gespeichert werden.' : 'Could not save the hotels.')
+        + (res.detail ? `\n\n${res.detail}` : ''), { variant: 'error' });
       return;
     }
     void Promise.resolve(onReloadEvents()).catch(() => { /* Hintergrund */ });
@@ -517,11 +519,16 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     const prev = staysLocal;
     setStaysLocal(next);
     setBusy('stays');
-    const ok = await svc.patchEventOverridesValue(Number(event.id), '_hotelStays', next);
+    // v28.60: Ein leeres Array wuerde den Schluessel loeschen — genau das ist
+    // beim Entfernen des letzten Zeitraums gewollt, deshalb explizit `[]`
+    // durchreichen und den Sonderfall nicht als Fehler werten.
+    const res = await svc.patchEventOverridesValueEx(Number(event.id), '_hotelStays', next);
     setBusy('');
-    if (!ok) {
+    if (!res.ok) {
       setStaysLocal(prev);
-      showAlert(isDe ? 'Die Zeiträume konnten nicht gespeichert werden.' : 'Could not save the stay templates.', { variant: 'error' });
+      showAlert(
+        (isDe ? 'Die Zeiträume konnten nicht gespeichert werden.' : 'Could not save the stay templates.')
+        + (res.detail ? `\n\n${res.detail}` : ''), { variant: 'error' });
       return;
     }
     void Promise.resolve(onReloadEvents()).catch(() => { /* Hintergrund */ });
@@ -1072,14 +1079,19 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
               </span>
               {!st.isDefault && (
                 <button type="button" title={isDe ? 'Als Standard setzen' : 'Set as default'}
+                  disabled={busy !== ''}
                   onClick={() => { void saveStays(stays.map(x => ({ ...x, isDefault: x.id === st.id }))); }}
-                  style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, fontSize: '0.72rem', color: 'var(--dex-gray-600)' }}>
+                  style={{ border: 'none', background: 'none', cursor: busy !== '' ? 'wait' : 'pointer', padding: 0, fontSize: '0.72rem', color: 'var(--dex-gray-600)', opacity: busy !== '' ? 0.5 : 1 }}>
                   {isDe ? 'Standard' : 'Default'}
                 </button>
               )}
+              {/* v28.60: Waehrend ein Schreibvorgang laeuft gesperrt — zwei
+                  parallele Loeschungen sind ein Read-Modify-Write auf denselben
+                  Datensatz und haetten sich gegenseitig ueberschrieben. */}
               <button type="button" title={isDe ? 'Zeitraum löschen' : 'Delete template'}
+                disabled={busy !== ''}
                 onClick={() => { void saveStays(stays.filter(x => x.id !== st.id)); }}
-                style={{ border: 'none', background: 'none', cursor: 'pointer', padding: 0, color: 'var(--dex-red, #c00)', fontSize: '0.85rem', lineHeight: 1 }}>×</button>
+                style={{ border: 'none', background: 'none', cursor: busy !== '' ? 'wait' : 'pointer', padding: 0, color: 'var(--dex-red, #c00)', fontSize: '0.85rem', lineHeight: 1, opacity: busy !== '' ? 0.5 : 1 }}>×</button>
             </span>
           ))}
           {stays.length === 0 && (

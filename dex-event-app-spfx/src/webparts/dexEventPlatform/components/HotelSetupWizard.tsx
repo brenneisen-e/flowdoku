@@ -586,6 +586,131 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
     </div>
   );
 
+  /**
+   * Kalender-Streifen für Schritt 1.
+   *
+   * Ein Zeitraum aus zwei Datumsfeldern bleibt abstrakt — vor allem der
+   * Unterschied zwischen „Tag" und „Nacht" (eine Anreise am 06. mit Abreise am
+   * 07. ist EINE Nacht, nicht zwei Tage). Der Streifen zeigt deshalb je Tag
+   * eine Spalte: oben die Event-Tage, darunter je Zeitraum die belegten
+   * Nächte. Nächte, die über den Standard-Zeitraum hinausgehen, sind orange —
+   * das sind genau die Extranächte, die später über das Kontingent hinaus
+   * gebucht werden müssen.
+   */
+  const renderCalendar = (): JSX.Element | null => {
+    if (!mainStay) return null;
+    const evFrom = toDay(event.startDate) || mainStay.from;
+    const evTo = toDay(event.endDate) || evFrom;
+    let min = mainStay.from; let max = mainStay.to;
+    for (const s of allStays) {
+      if (s.from && s.from < min) min = s.from;
+      if (s.to && s.to > max) max = s.to;
+    }
+    if (evFrom < min) min = evFrom;
+    if (evTo > max) max = evTo;
+    min = addDays(min, -1);
+    max = addDays(max, 1);
+    const days: string[] = [];
+    for (let d = min; d <= max && days.length < 21; d = addDays(d, 1)) days.push(d);
+    if (days.length === 0) return null;
+
+    const rows = [mainStay].concat(allStays.filter(s => s.id !== mainStay.id));
+    const colTpl = `132px repeat(${days.length}, minmax(38px, 1fr))`;
+    const cellBase: React.CSSProperties = {
+      height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: '0.68rem', borderRight: '1px solid #fff',
+    };
+    const rowLabel: React.CSSProperties = {
+      fontSize: '0.74rem', color: 'var(--dex-gray-700)', display: 'flex', alignItems: 'center',
+      paddingRight: 8, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+    };
+
+    return (
+      <div style={{ ...box, padding: 10 }}>
+        <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--dex-gray-800)', marginBottom: 6 }}>
+          {isDe ? 'Im Kalender' : 'On the calendar'}
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <div style={{ minWidth: 132 + days.length * 38 }}>
+            {/* Kopfzeile: Wochentag + Datum */}
+            <div style={{ display: 'grid', gridTemplateColumns: colTpl, alignItems: 'end' }}>
+              <div />
+              {days.map(d => {
+                const dt = new Date(`${d}T00:00:00Z`);
+                const wd = dt.toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { weekday: 'short', timeZone: 'UTC' });
+                const we = dt.getUTCDay() === 0 || dt.getUTCDay() === 6;
+                return (
+                  <div key={d} style={{ textAlign: 'center', fontSize: '0.66rem', color: we ? 'var(--dex-gray-500)' : 'var(--dex-gray-600)', lineHeight: 1.25, paddingBottom: 3 }}>
+                    <div>{wd}</div>
+                    <div style={{ fontWeight: 700 }}>{dt.getUTCDate()}.{dt.getUTCMonth() + 1}.</div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Event-Tage */}
+            <div style={{ display: 'grid', gridTemplateColumns: colTpl, marginBottom: 4 }}>
+              <div style={rowLabel}><strong>{isDe ? 'Event' : 'Event'}</strong></div>
+              {days.map(d => {
+                const on = d >= evFrom && d <= evTo;
+                return (
+                  <div key={d} style={{
+                    ...cellBase,
+                    background: on ? 'rgba(134,188,37,0.28)' : 'var(--dex-gray-50, #f4f4f2)',
+                    color: 'var(--dex-gray-700)', fontWeight: 700,
+                  }}>{on ? (isDe ? 'Event' : 'Event') : ''}</div>
+                );
+              })}
+            </div>
+
+            {/* Zeiträume — je Zeile die belegten Nächte */}
+            {rows.map(s => (
+              <div key={s.id} style={{ display: 'grid', gridTemplateColumns: colTpl, marginBottom: 3 }}>
+                <div style={rowLabel} title={s.label}>
+                  {s.id === mainStay.id ? <strong>{s.label}</strong> : s.label}
+                </div>
+                {days.map(d => {
+                  const night = d >= s.from && d < s.to;              // Nacht vom Tag d auf d+1
+                  const inMain = d >= mainStay.from && d < mainStay.to;
+                  const extra = night && !inMain;                      // über den Standard hinaus
+                  const arrival = d === s.from;
+                  const departure = d === s.to;
+                  return (
+                    <div key={d}
+                      title={night
+                        ? (extra
+                          ? (isDe ? `Extranacht ${fmtDay(d, isDe)} → ${fmtDay(addDays(d, 1), isDe)}` : `Extra night ${fmtDay(d, isDe)} → ${fmtDay(addDays(d, 1), isDe)}`)
+                          : (isDe ? `Übernachtung ${fmtDay(d, isDe)} → ${fmtDay(addDays(d, 1), isDe)}` : `Night ${fmtDay(d, isDe)} → ${fmtDay(addDays(d, 1), isDe)}`))
+                        : (departure ? (isDe ? 'Abreise' : 'Departure') : '')}
+                      style={{
+                        ...cellBase,
+                        background: night
+                          ? (extra ? '#f3a83c' : 'var(--dex-green, #86bc25)')
+                          : (departure ? 'rgba(134,188,37,0.14)' : 'var(--dex-gray-50, #f4f4f2)'),
+                        color: night ? '#fff' : 'var(--dex-gray-500)',
+                        fontWeight: 700,
+                        borderLeft: arrival ? '2px solid var(--dex-gray-800)' : `1px solid #fff`,
+                      }}>
+                      {night ? '' : (departure ? '⇤' : '')}
+                    </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 8, fontSize: '0.72rem', color: 'var(--dex-gray-600)', alignItems: 'center' }}>
+          <span><span style={{ display: 'inline-block', width: 12, height: 12, background: 'rgba(134,188,37,0.28)', borderRadius: 2, marginRight: 5, verticalAlign: -2 }} />{isDe ? 'Event-Tag' : 'Event day'}</span>
+          <span><span style={{ display: 'inline-block', width: 12, height: 12, background: 'var(--dex-green, #86bc25)', borderRadius: 2, marginRight: 5, verticalAlign: -2 }} />{isDe ? 'Übernachtung im Standard-Zeitraum' : 'Night within the standard period'}</span>
+          <span><span style={{ display: 'inline-block', width: 12, height: 12, background: '#f3a83c', borderRadius: 2, marginRight: 5, verticalAlign: -2 }} />{isDe ? 'Extranacht (über das Kontingent hinaus)' : 'Extra night (beyond the contingent)'}</span>
+          <span><span style={{ display: 'inline-block', width: 2, height: 12, background: 'var(--dex-gray-800)', marginRight: 5, verticalAlign: -2 }} />{isDe ? 'Anreise' : 'Arrival'}</span>
+          <span>⇤ {isDe ? 'Abreise (keine Nacht mehr)' : 'Departure (no night)'}</span>
+        </div>
+      </div>
+    );
+  };
+
   /* ---- Schritt 1: Wann? ---- */
   const renderStays = (): JSX.Element => {
     const main = mainStay;
@@ -650,6 +775,8 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
             </button>
           </div>
         )}
+
+        {renderCalendar()}
 
         {/* ---- Zusatznächte aus dem Anmeldeformular ---- */}
         {fields.extra && extraAnswers.length > 0 && (

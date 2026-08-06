@@ -10327,29 +10327,98 @@ export class EventService {
    * Liefert true bei Erfolg.
    */
   public async patchEventOverridesValue(eventId: number, key: string, value: unknown): Promise<boolean> {
-    try {
-      const getResp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})?$select=EmailTemplateOverrides`,
-        SPHttpClient.configurations.v1
-      );
-      if (!getResp.ok) return false;
-      const data = await getResp.json();
-      const raw = data.d?.EmailTemplateOverrides || data.EmailTemplateOverrides || '';
-      let obj: Record<string, unknown> = {};
-      try { obj = raw ? JSON.parse(raw) : {}; } catch { obj = {}; }
-      const empty = value === undefined || value === null || value === false
-        || (Array.isArray(value) && value.length === 0);
-      if (empty) { delete obj[key]; } else { obj[key] = value; }
-      const resp = await this._merge(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})`,
-        { 'EmailTemplateOverrides': JSON.stringify(obj) }
-      );
-      return resp.ok || resp.status === 406;
-    } catch (err) {
-      console.warn('[DEX] patchEventOverridesValue fehlgeschlagen:', key, err);
-      return false;
-    }
+    const res = await this.patchEventOverridesValueEx(eventId, key, value);
+    return res.ok;
   }
+
+  /**
+   * v28.60: Wie `patchEventOverridesValue`, liefert aber den Grund mit.
+   *
+   * Vorher gab es nur true/false — bei einem Fehlschlag stand im UI „konnte
+   * nicht gespeichert werden" und sonst nichts, was die Ursachensuche
+   * unmöglich machte. Jetzt kommt der HTTP-Status samt SharePoint-Meldung
+   * zurück, und die drei typischen Stolpersteine sind abgefangen:
+   *
+   *  - **Transiente Fehler** (429 Throttling, 5xx): ein Wiederholungsversuch
+   *    nach kurzer Pause statt sofort aufzugeben.
+   *  - **Grössenlimit**: SharePoint lehnt Requests über 2 MB ab. Das Feld
+   *    trägt bei Events mit eingebetteten Logos einiges — wir prüfen vorher
+   *    und sagen es klar, statt in ein nacktes HTTP 400 zu laufen.
+   *  - **Parallele Schreibvorgänge**: Der Aufruf ist ein Read-Modify-Write.
+   *    Zwei gleichzeitige Aufrufe (z.B. schnell hintereinander geklickte
+   *    Löschungen) würden sich gegenseitig überschreiben, deshalb laufen sie
+   *    über `_ovQueue` streng nacheinander.
+   */
+  public async patchEventOverridesValueEx(
+    eventId: number, key: string, value: unknown,
+  ): Promise<{ ok: boolean; status: number; detail: string }> {
+    const run = async (): Promise<{ ok: boolean; status: number; detail: string }> => {
+      const attempt = async (): Promise<{ ok: boolean; status: number; detail: string }> => {
+        const getResp = await this.context.spHttpClient.get(
+          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})?$select=EmailTemplateOverrides`,
+          SPHttpClient.configurations.v1
+        );
+        if (!getResp.ok) {
+          return { ok: false, status: getResp.status, detail: `Lesen fehlgeschlagen (HTTP ${getResp.status})` };
+        }
+        const data = await getResp.json();
+        const raw = data.d?.EmailTemplateOverrides || data.EmailTemplateOverrides || '';
+        let obj: Record<string, unknown> = {};
+        try { obj = raw ? JSON.parse(raw) : {}; } catch { obj = {}; }
+        const empty = value === undefined || value === null || value === false
+          || (Array.isArray(value) && value.length === 0);
+        if (empty) { delete obj[key]; } else { obj[key] = value; }
+        const payload = JSON.stringify(obj);
+        if (payload.length > 1_900_000) {
+          return {
+            ok: false, status: 413,
+            detail: `Der Event-Datensatz ist mit ${(payload.length / 1048576).toFixed(2)} MB zu gross fuer einen Schreibvorgang (Limit 2 MB).`,
+          };
+        }
+        const resp = await this._merge(
+          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})`,
+          { 'EmailTemplateOverrides': payload }
+        );
+        if (resp.ok || resp.status === 406) return { ok: true, status: resp.status, detail: '' };
+        let body = '';
+        try { body = await resp.text(); } catch { /* egal */ }
+        // SharePoint verpackt die Meldung in {error:{message:{value}}}.
+        let msg = '';
+        try {
+          const j = JSON.parse(body);
+          msg = j?.error?.message?.value || j?.['odata.error']?.message?.value || '';
+        } catch { msg = (body || '').substring(0, 200); }
+        return { ok: false, status: resp.status, detail: msg || `HTTP ${resp.status}` };
+      };
+
+      for (let i = 0; i < 2; i++) {
+        try {
+          const r = await attempt();
+          if (r.ok) return r;
+          const transient = r.status === 429 || r.status >= 500;
+          if (!transient || i === 1) {
+            console.warn('[DEX] patchEventOverridesValue fehlgeschlagen:', key, r.status, r.detail);
+            return r;
+          }
+        } catch (err) {
+          if (i === 1) {
+            console.warn('[DEX] patchEventOverridesValue Ausnahme:', key, err);
+            return { ok: false, status: 0, detail: String((err as Error)?.message || err) };
+          }
+        }
+        await new Promise<void>(res => setTimeout(res, 600));
+      }
+      return { ok: false, status: 0, detail: 'unbekannt' };
+    };
+
+    // Streng nacheinander — sonst gehen parallele Read-Modify-Writes verloren.
+    const next = this._ovQueue.then(run, run);
+    this._ovQueue = next.then(() => undefined, () => undefined);
+    return next;
+  }
+
+  /** Serialisiert die Overrides-Schreibvorgänge (siehe oben). */
+  private _ovQueue: Promise<void> = Promise.resolve();
 
   /**
    * EventImageUrl-Feld eines DEX_Events-Items setzen (kleines MERGE).
