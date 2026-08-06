@@ -136,10 +136,16 @@ const readOutlookLogo = (ov: Record<string, unknown> | null | undefined): string
 interface CustomFieldInput {
   id: string;
   label: string;
-  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'document' | 'date'; // v19.0: document = Datei-Upload; v24.25: date = Kalender-Auswahl
+  // v19.0: document = Datei-Upload; v24.25: date = Kalender-Auswahl;
+  // v28.63: daterange = Übernachtungs-Zeitraum (Anreise + Abreise, Nächte berechnet)
+  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'document' | 'date' | 'daterange';
   required: boolean;
   /** v24.25: Nur für `type === 'date'` — zusätzlich die Uhrzeit abfragen. */
   withTime?: boolean;
+  /** v28.63: Nur für `type === 'daterange'` — buchbares Fenster und Nächte-Limit. */
+  rangeStart?: string;
+  rangeEnd?: string;
+  maxNights?: number;
   // Optionen als Array (incl. leerer Slots für "frisch hinzugefügte" Einträge)
   options: string[];
   visible: boolean;
@@ -262,6 +268,12 @@ function serializeCustomFields(
           : {}),
         // v24.25: Uhrzeit-Flag nur bei Datums-Feldern persistieren.
         ...(f.type === 'date' && f.withTime ? { withTime: true } : {}),
+        // v28.63: Buchbares Fenster + Nächte-Limit nur beim Zeitraum-Feld.
+        ...(f.type === 'daterange' ? {
+          ...(f.rangeStart ? { rangeStart: f.rangeStart } : {}),
+          ...(f.rangeEnd ? { rangeEnd: f.rangeEnd } : {}),
+          ...(f.maxNights && f.maxNights > 0 ? { maxNights: f.maxNights } : {}),
+        } : {}),
         ...(f.onlyForGroup && f.onlyForGroup !== 'all' ? { onlyForGroup: f.onlyForGroup } : {}),
         ...(f.type === 'checkbox' && f.confirmLabel && f.confirmLabel.trim()
           ? { confirmLabel: f.confirmLabel.trim() }
@@ -12208,6 +12220,7 @@ export default function EventCreationPage(): React.ReactElement {
                                   <option value="number">{isDe ? 'Zahl' : 'Number'}</option>
                                   <option value="checkbox">{isDe ? 'Checkbox' : 'Checkbox'}</option>
                                   <option value="date">{isDe ? 'Datum (Kalender)' : 'Date (calendar)'}</option>
+                        <option value="daterange">{isDe ? 'Übernachtungs-Zeitraum (Kalender + Nächte)' : 'Stay period (calendar + nights)'}</option>
                                 </select>
                                 <label
                                   style={{
@@ -12252,6 +12265,26 @@ export default function EventCreationPage(): React.ReactElement {
                                   />
                                   {isDe ? 'Auch Uhrzeit abfragen?' : 'Also ask for the time?'}
                                 </label>
+                              )}
+                              {field.type === 'daterange' && (
+                                <div style={{ marginLeft: 32, marginTop: 8, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                                  <div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)', marginBottom: 3 }}>{isDe ? 'Buchbar ab' : 'Bookable from'}</div>
+                                    <input type="date" className="form-input" disabled={inherit} style={{ padding: '6px 10px', fontSize: '0.85rem', width: 160 }}
+                                      value={field.rangeStart || ''} onChange={e => updateSubEventCustomField(se.id, field.id, { rangeStart: e.target.value })} />
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)', marginBottom: 3 }}>{isDe ? 'Buchbar bis' : 'Bookable until'}</div>
+                                    <input type="date" className="form-input" disabled={inherit} style={{ padding: '6px 10px', fontSize: '0.85rem', width: 160 }}
+                                      value={field.rangeEnd || ''} onChange={e => updateSubEventCustomField(se.id, field.id, { rangeEnd: e.target.value })} />
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)', marginBottom: 3 }}>{isDe ? 'Max. Nächte' : 'Max. nights'}</div>
+                                    <input type="number" min={0} className="form-input" disabled={inherit} style={{ padding: '6px 10px', fontSize: '0.85rem', width: 100 }}
+                                      placeholder={isDe ? 'offen' : 'open'}
+                                      value={field.maxNights || ''} onChange={e => updateSubEventCustomField(se.id, field.id, { maxNights: parseInt(e.target.value, 10) || 0 })} />
+                                  </div>
+                                </div>
                               )}
                               {/* v24.25: Feldart-Empfehlung (nur Datum — Sub-Event-Felder
                                   kennen den People-Picker-Typ nicht). */}
@@ -12698,6 +12731,7 @@ export default function EventCreationPage(): React.ReactElement {
                         <option value="number">{isDe ? 'Zahl' : 'Number'}</option>
                         <option value="checkbox">{isDe ? 'Checkbox' : 'Checkbox'}</option>
                         <option value="date">{isDe ? 'Datum (Kalender)' : 'Date (calendar)'}</option>
+                        <option value="daterange">{isDe ? 'Übernachtungs-Zeitraum (Kalender + Nächte)' : 'Stay period (calendar + nights)'}</option>
                         <option value="user">{isDe ? 'Person' : 'Person'}</option>
                         <option value="roommate">{isDe ? 'Roommate' : 'Roommate'}</option>
                         <option value="document">{isDe ? 'Dokument (Upload)' : 'Document (upload)'}</option>
@@ -12758,6 +12792,46 @@ export default function EventCreationPage(): React.ReactElement {
                         />
                         {isDe ? 'Auch Uhrzeit abfragen?' : 'Also ask for the time?'}
                       </label>
+                    )}
+                    {/* v28.63: Übernachtungs-Zeitraum — buchbares Fenster und Nächte-Limit.
+                        Ohne Fenster kann der Teilnehmer jedes Datum wählen; mit Fenster
+                        (z.B. 22.09.–26.09.) bleibt die Auswahl an eurem Kontingent. */}
+                    {field.type === 'daterange' && (
+                      <div style={{ marginLeft: 32, marginTop: 8, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                        <div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)', marginBottom: 3 }}>
+                            {isDe ? 'Buchbar ab' : 'Bookable from'}
+                          </div>
+                          <input type="date" className="form-input"
+                            style={{ padding: '6px 10px', fontSize: '0.85rem', width: 160 }}
+                            value={field.rangeStart || ''}
+                            onChange={e => updateCustomField(field.id, { rangeStart: e.target.value })} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)', marginBottom: 3 }}>
+                            {isDe ? 'Buchbar bis' : 'Bookable until'}
+                          </div>
+                          <input type="date" className="form-input"
+                            style={{ padding: '6px 10px', fontSize: '0.85rem', width: 160 }}
+                            value={field.rangeEnd || ''}
+                            onChange={e => updateCustomField(field.id, { rangeEnd: e.target.value })} />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)', marginBottom: 3 }}>
+                            {isDe ? 'Max. Nächte' : 'Max. nights'}
+                          </div>
+                          <input type="number" min={0} className="form-input"
+                            style={{ padding: '6px 10px', fontSize: '0.85rem', width: 100 }}
+                            placeholder={isDe ? 'offen' : 'open'}
+                            value={field.maxNights || ''}
+                            onChange={e => updateCustomField(field.id, { maxNights: parseInt(e.target.value, 10) || 0 })} />
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', flex: '1 1 220px', lineHeight: 1.45, paddingBottom: 6 }}>
+                          {isDe
+                            ? 'Der Teilnehmer wählt Anreise und Abreise; die Nächte werden angezeigt. „Ich brauche kein Hotel" ist immer mit dabei. Die Hotel-Planung übernimmt den Zeitraum direkt.'
+                            : 'The attendee picks arrival and departure; the nights are shown. „I don’t need a hotel" is always offered. Hotel planning takes the period from here.'}
+                        </div>
+                      </div>
                     )}
                     {/* v24.25: Feldart-Empfehlung (Datum/Person) anhand des Labels. */}
                     <FieldTypeSuggestion
@@ -13561,6 +13635,7 @@ export default function EventCreationPage(): React.ReactElement {
                                       <option value="number">{isDe ? 'Zahl' : 'Number'}</option>
                                       <option value="checkbox">{isDe ? 'Checkbox' : 'Checkbox'}</option>
                                       <option value="date">{isDe ? 'Datum (Kalender)' : 'Date (calendar)'}</option>
+                        <option value="daterange">{isDe ? 'Übernachtungs-Zeitraum (Kalender + Nächte)' : 'Stay period (calendar + nights)'}</option>
                                     </select>
                                     <label
                                       style={{
@@ -13627,6 +13702,26 @@ export default function EventCreationPage(): React.ReactElement {
                                       />
                                       {isDe ? 'Auch Uhrzeit abfragen?' : 'Also ask for the time?'}
                                     </label>
+                                  )}
+                                  {field.type === 'daterange' && (
+                                    <div style={{ marginLeft: 32, marginTop: 8, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                                      <div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)', marginBottom: 3 }}>{isDe ? 'Buchbar ab' : 'Bookable from'}</div>
+                                        <input type="date" className="form-input" style={{ padding: '6px 10px', fontSize: '0.85rem', width: 160 }}
+                                          value={field.rangeStart || ''} onChange={e => updateSubEventCustomField(se.id, field.id, { rangeStart: e.target.value })} />
+                                      </div>
+                                      <div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)', marginBottom: 3 }}>{isDe ? 'Buchbar bis' : 'Bookable until'}</div>
+                                        <input type="date" className="form-input" style={{ padding: '6px 10px', fontSize: '0.85rem', width: 160 }}
+                                          value={field.rangeEnd || ''} onChange={e => updateSubEventCustomField(se.id, field.id, { rangeEnd: e.target.value })} />
+                                      </div>
+                                      <div>
+                                        <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)', marginBottom: 3 }}>{isDe ? 'Max. Nächte' : 'Max. nights'}</div>
+                                        <input type="number" min={0} className="form-input" style={{ padding: '6px 10px', fontSize: '0.85rem', width: 100 }}
+                                          placeholder={isDe ? 'offen' : 'open'}
+                                          value={field.maxNights || ''} onChange={e => updateSubEventCustomField(se.id, field.id, { maxNights: parseInt(e.target.value, 10) || 0 })} />
+                                      </div>
+                                    </div>
                                   )}
                                   {/* v24.25: Feldart-Empfehlung (nur Datum). */}
                                   <FieldTypeSuggestion

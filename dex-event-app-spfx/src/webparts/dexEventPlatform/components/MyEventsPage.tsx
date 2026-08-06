@@ -30,6 +30,7 @@ import { InfoTooltip } from './InfoTooltip';
 import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
 import { buildDemoShowcaseEvents, buildDemoMyRegistration } from '../services/demoShowcaseEvent';
+import StayRangePicker from './StayRangePicker';
 
 // v20.0 (Audit): PdfViewer zieht react-pdf (+pdfjs) ins Bundle — lazy laden,
 // der Viewer wird nur beim Öffnen eines Dokuments gebraucht.
@@ -4272,6 +4273,17 @@ function MyEventSubEvents(props: {
                       </label>
                     ) : f.type === 'number' ? (
                       <input className="form-input" type="number" value={val} onChange={e => setVal(f.id, e.target.value)} style={errStyle(f)} />
+                    ) : f.type === 'daterange' ? (
+                      <StayRangePicker
+                        value={val}
+                        onChange={(next: string) => setVal(f.id, next)}
+                        isDe={isDe}
+                        rangeStart={f.rangeStart}
+                        rangeEnd={f.rangeEnd}
+                        maxNights={f.maxNights}
+                        required={f.required}
+                        compact
+                      />
                     ) : f.type === 'date' ? (
                       <input className="form-input" type={f.withTime ? 'datetime-local' : 'date'} value={val} onChange={e => setVal(f.id, e.target.value)} style={errStyle(f)} />
                     ) : (

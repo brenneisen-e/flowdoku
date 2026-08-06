@@ -605,11 +605,17 @@ export interface SPEvent {
 export interface CustomField {
   id: string;
   label: string;
-  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'document' | 'date'; // v19.0: document = Datei-Upload (Attachment); v24.25: date = Kalender-Auswahl
+  // v19.0: document = Datei-Upload (Attachment); v24.25: date = Kalender-Auswahl;
+  // v28.63: daterange = Übernachtungs-Zeitraum (Anreise + Abreise, Nächte berechnet)
+  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'document' | 'date' | 'daterange';
   required: boolean;
   options?: string[]; // für select-Felder
   /** v24.25: Nur für `type === 'date'` — zusätzlich die Uhrzeit abfragen. */
   withTime?: boolean;
+  /** v28.63: Nur für `type === 'daterange'` — buchbares Fenster + Nächte-Limit. */
+  rangeStart?: string;
+  rangeEnd?: string;
+  maxNights?: number;
   visible: boolean;
   /** v7.20: Optionaler Hilfe-/Beschreibungstext, der im Registrierungs-
    *  Formular als "i"-Tooltip neben dem Feld-Label sichtbar ist. */

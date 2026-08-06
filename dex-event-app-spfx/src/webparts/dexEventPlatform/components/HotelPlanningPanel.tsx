@@ -8,6 +8,7 @@ import { collectCcEmailsFromFields } from '../context/EventContext';
 import HotelImportModal, { IHotelImportResultRow } from './HotelImportModal';
 import HotelSetupWizard from './HotelSetupWizard';
 import PersonContactHover from './PersonContactHover';
+import { parseStayValue } from './StayRangePicker';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { de } from 'date-fns/locale';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -131,6 +132,29 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   const stays: DexHotelStay[] = staysLocal;
   const visible = visibleLocal;
 
+  /**
+   * v28.63: Der im Anmeldeformular angegebene Zeitraum (Feldtyp `daterange`).
+   * Gibt es das Feld, ist es die genaueste Quelle: Die Person hat An- und
+   * Abreise selbst gewählt, es muss nichts mehr gedeutet werden.
+   */
+  const rangeFieldId = React.useMemo(() => {
+    const f = ((event.eventSpecificFields || []) as Array<{ id: string; type?: string }>)
+      .filter(x => x.type === 'daterange')[0];
+    return f ? f.id : '';
+  }, [event.eventSpecificFields]);
+
+  const formStayOf = React.useCallback((p: SPRegistration): { none: boolean; from: string; to: string } | null => {
+    if (!rangeFieldId) return null;
+    let cd: Record<string, string> = {};
+    try { cd = JSON.parse(p.CustomData || '{}'); } catch { return null; }
+    const raw = (cd[rangeFieldId] || '').trim();
+    if (!raw) return null;
+    const parsed = parseStayValue(raw);
+    if (parsed.none) return { none: true, from: '', to: '' };
+    if (!parsed.from || !parsed.to) return null;
+    return parsed;
+  }, [rangeFieldId]);
+
   const [busy, setBusy] = React.useState('');
   const [selected, setSelected] = React.useState<Set<number>>(new Set());
   const [showRoster, setShowRoster] = React.useState(true);
@@ -211,8 +235,9 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     setBulkProgress({ done: 0, total: rows.length });
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      const from = toDay(r.HotelFrom) || (defaultStay ? defaultStay.from : '');
-      const to = toDay(r.HotelTo) || (defaultStay ? defaultStay.to : '');
+      const fs = formStayOf(r);
+      const from = toDay(r.HotelFrom) || (fs && !fs.none ? fs.from : '') || (defaultStay ? defaultStay.from : '');
+      const to = toDay(r.HotelTo) || (fs && !fs.none ? fs.to : '') || (defaultStay ? defaultStay.to : '');
       // eslint-disable-next-line no-await-in-loop
       await writeAssignment([r], subHotelPick, from, to);
       setBulkProgress({ done: i + 1, total: rows.length });
@@ -332,8 +357,10 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     let done = 0;
     for (const f of planned) {
       for (const r of f.take) {
-        const from = toDay(r.HotelFrom) || (defaultStay ? defaultStay.from : '');
-        const to = toDay(r.HotelTo) || (defaultStay ? defaultStay.to : '');
+        // v28.63: Der selbst gewählte Zeitraum schlägt die Standard-Vorlage.
+        const fs = formStayOf(r);
+        const from = toDay(r.HotelFrom) || (fs && !fs.none ? fs.from : '') || (defaultStay ? defaultStay.from : '');
+        const to = toDay(r.HotelTo) || (fs && !fs.none ? fs.to : '') || (defaultStay ? defaultStay.to : '');
         // eslint-disable-next-line no-await-in-loop
         await writeAssignment([r], f.hotel.name, from, to);
         done++;
@@ -512,6 +539,9 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
    *  einer festen Feld-ID. Ergebnis: true = ja, false = nein, null = keine
    *  Hotel-Frage im Formular. */
   const wishOf = React.useCallback((p: SPRegistration): boolean | null => {
+    // v28.63: Das Zeitraum-Feld beantwortet die Frage eindeutig.
+    const fs = formStayOf(p);
+    if (fs) return !fs.none;
     let cd: Record<string, string> = {};
     try { cd = JSON.parse(p.CustomData || '{}'); } catch { return null; }
     const fields = (event.eventSpecificFields || []) as Array<{ id: string; label?: string }>;
@@ -528,7 +558,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
       found = false;
     }
     return found;
-  }, [event.eventSpecificFields]);
+  }, [event.eventSpecificFields, formStayOf]);
 
   const assignedCount = people.filter(p => (p.Hotel || '').trim()).length;
   const openCount = people.length - assignedCount;

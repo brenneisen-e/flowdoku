@@ -3,6 +3,7 @@ import * as React from 'react';
 import Modal from './Modal';
 import { SPRegistration } from '../services/EventService';
 import { DeloitteEvent, DexHotel, DexHotelStay, DexHotelRules } from '../types';
+import { parseStayValue } from './StayRangePicker';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { de } from 'date-fns/locale';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -213,23 +214,63 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
    *  „braucht ihr Zusatznächte?". Erkannt über die Beschriftung — das Formular
    *  ist pro Event frei definiert, eine feste Feld-Id gibt es nicht. */
   const fields = React.useMemo(() => {
-    const all = (event.eventSpecificFields || []) as Array<{ id: string; label?: string; helpText?: string; options?: string[] }>;
-    const hotelish = all.filter(f => HOTEL_RE.test(`${f.label || ''} ${f.helpText || ''}`));
-    const extra = hotelish.filter(f => EXTRA_RE.test(`${f.label || ''} ${f.helpText || ''}`))[0] || null;
-    const main = hotelish.filter(f => !extra || f.id !== extra.id)[0] || null;
-    return { main, extra };
+    const all = (event.eventSpecificFields || []) as Array<{ id: string; label?: string; helpText?: string; options?: string[]; type?: string }>;
+    // v28.63: Gibt es ein Zeitraum-Feld, ist alles andere zweitrangig — dort
+    // steht die Antwort exakt statt als Fliesstext („23.09. – 25.09." statt
+    // „Yes, I need ONE additional night from 23 - 24 Sept.").
+    const range = all.filter(f => f.type === 'daterange')[0] || null;
+    const hotelish = all.filter(f => HOTEL_RE.test(`${f.label || ''} ${f.helpText || ''}`) && f.type !== 'daterange');
+    const extra = range ? null : (hotelish.filter(f => EXTRA_RE.test(`${f.label || ''} ${f.helpText || ''}`))[0] || null);
+    const main = range ? null : (hotelish.filter(f => !extra || f.id !== extra.id)[0] || null);
+    return { main, extra, range };
   }, [event.eventSpecificFields]);
+
+  /** Der im Formular angegebene Zeitraum dieser Person (nur mit `daterange`). */
+  const formStay = React.useCallback((p: SPRegistration): { none: boolean; from: string; to: string } | null => {
+    if (!fields.range) return null;
+    const raw = (answersOf(p)[fields.range.id] || '').trim();
+    if (!raw) return null;
+    const parsed = parseStayValue(raw);
+    if (parsed.none) return { none: true, from: '', to: '' };
+    if (!parsed.from || !parsed.to) return null;
+    return parsed;
+  }, [fields.range, answersOf]);
+
+  /** Die im Formular genannten Zeiträume mit Häufigkeit — die Grundlage für
+   *  Schritt 1, wenn das Event das Zeitraum-Feld nutzt. */
+  const formRanges = React.useMemo(() => {
+    if (!fields.range) return { rows: [] as Array<{ from: string; to: string; count: number }>, none: 0, unanswered: 0 };
+    const map: Record<string, { from: string; to: string; count: number }> = {};
+    let none = 0; let unanswered = 0;
+    for (const p of people) {
+      const fs = formStay(p);
+      if (!fs) { unanswered++; continue; }
+      if (fs.none) { none++; continue; }
+      const key = `${fs.from}|${fs.to}`;
+      if (!map[key]) map[key] = { from: fs.from, to: fs.to, count: 0 };
+      map[key].count++;
+    }
+    const rows = Object.keys(map).map(k => map[k]).sort((a, b) => b.count - a.count || a.from.localeCompare(b.from));
+    return { rows, none, unanswered };
+  }, [fields.range, people, formStay]);
 
   /** Braucht diese Person überhaupt ein Zimmer? Erkanntes Hauptfeld schlägt
    *  die allgemeine Heuristik — sonst würde ein „No" bei den Zusatznächten
    *  fälschlich als „kein Hotel" gelesen. */
   const needsRoom = React.useCallback((p: SPRegistration): boolean | null => {
+    // v28.63: Das Zeitraum-Feld beantwortet beides in einem: ein Zeitraum
+    // heisst „Zimmer ja", das Häkchen „kein Hotel" heisst nein.
+    if (fields.range) {
+      const fs = formStay(p);
+      if (!fs) return null;
+      return fs.none ? false : true;
+    }
     if (!fields.main) return wishOf(p);
     const v = (answersOf(p)[fields.main.id] || '').trim();
     if (!v) return null;
     if (NO_RE.test(v)) return false;
     return /\bja\b|\byes\b/i.test(v) ? true : null;
-  }, [fields.main, answersOf, wishOf]);
+  }, [fields.main, fields.range, formStay, answersOf, wishOf]);
 
   /**
    * Wer braucht überhaupt ein Zimmer? Das entscheidet allein die Bedarfsfrage
@@ -303,7 +344,8 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
     // v28.62: Steht im Namen der Bedarfsfrage ein Zeitraum („Hotel (24-25
     // Sept)"), ist DAS der Standard — danach wurde schliesslich gefragt.
     // Sonst das Event-Datum.
-    const core = labelRange || coreStay(event);
+    const top = formRanges.rows[0];
+    const core = (top ? { from: top.from, to: top.to } : null) || labelRange || coreStay(event);
     setWStays(stays.length > 0
       ? stays.map(s => ({ ...s }))
       : [{ id: uid('s'), label: `${nightLabel(nightsBetween(core.from, core.to), isDe)} · ${isDe ? 'Standard' : 'standard'}`, from: core.from, to: core.to, isDefault: true }]);
@@ -404,6 +446,9 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
       if (!from || s.from < from) from = s.from;
       if (!to || s.to > to) to = s.to;
     };
+    // v28.63: Hat die Person im Formular einen Zeitraum genannt, gilt der.
+    const fs = formStay(p);
+    if (fs && !fs.none) take(fs);
     if (fields.extra) {
       const v = (answersOf(p)[fields.extra.id] || '').trim();
       const m = answerMap[v];
@@ -422,7 +467,7 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
     const exFrom = toDay(p.HotelFrom); const exTo = toDay(p.HotelTo);
     if (exFrom && exTo) return { from: exFrom, to: exTo };
     return mainStay ? { from: mainStay.from, to: mainStay.to } : { from: '', to: '' };
-  }, [fields.extra, answersOf, answerMap, answerStays, wRules, subsOf, allStays, mainStay]);
+  }, [fields.extra, formStay, answersOf, answerMap, answerStays, wRules, subsOf, allStays, mainStay]);
 
   const forcedHotel = React.useCallback((p: SPRegistration): string => {
     const bySub = wRules.bySub || {};
@@ -862,6 +907,51 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
               style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline', fontSize: '0.78rem' }}>
               {fmtDay(core.from, isDe)} – {fmtDay(core.to, isDe)} {isDe ? 'übernehmen' : 'apply'}
             </button>
+          </div>
+        )}
+
+        {/* v28.63: Nutzt das Event das Zeitraum-Feld, kommt hier keine Deutung
+            mehr — die Teilnehmer haben ihre Nächte selbst gewählt. */}
+        {fields.range && (
+          <div style={{ ...box, borderColor: 'var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.05)' }}>
+            <div style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--dex-gray-800)' }}>
+              {isDe ? 'Zeiträume aus dem Anmeldeformular' : 'Periods from the registration form'}
+            </div>
+            <p style={{ ...explain, marginBottom: 8 }}>
+              {isDe
+                ? <>Euer Formular fragt unter „<strong>{fields.range.label}</strong>" direkt nach An- und Abreise. Jede Person bekommt genau ihren Zeitraum — der Standard oben zählt nur für alle ohne Angabe.</>
+                : <>Your form asks for arrival and departure directly under „<strong>{fields.range.label}</strong>". Everyone gets exactly their own period — the standard above only applies to those without an answer.</>}
+            </p>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 420 }}>
+                <thead>
+                  <tr>
+                    <th style={th}>{isDe ? 'Zeitraum' : 'Period'}</th>
+                    <th style={th}>{isDe ? 'Nächte' : 'Nights'}</th>
+                    <th style={th}>{isDe ? 'Personen' : 'People'}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {formRanges.rows.map(r => (
+                    <tr key={`${r.from}|${r.to}`}>
+                      <td style={td}>{fmtDay(r.from, isDe)} – {fmtDay(r.to, isDe)}</td>
+                      <td style={td}>{nightsBetween(r.from, r.to)}</td>
+                      <td style={{ ...td, fontWeight: 600 }}>{r.count}</td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td style={{ ...td, color: 'var(--dex-gray-600)' }}>{isDe ? 'Kein Hotel nötig' : 'No hotel needed'}</td>
+                    <td style={{ ...td, color: 'var(--dex-gray-500)' }}>—</td>
+                    <td style={td}>{formRanges.none}</td>
+                  </tr>
+                  <tr>
+                    <td style={{ ...td, color: 'var(--dex-gray-600)' }}>{isDe ? 'Keine Angabe (bekommt den Standard)' : 'No answer (gets the standard)'}</td>
+                    <td style={{ ...td, color: 'var(--dex-gray-500)' }}>—</td>
+                    <td style={td}>{formRanges.unanswered}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
 
