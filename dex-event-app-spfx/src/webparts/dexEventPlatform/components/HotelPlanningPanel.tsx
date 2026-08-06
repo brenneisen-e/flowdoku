@@ -6,6 +6,7 @@ import { HtmlEditorModal } from './HtmlEditorModal';
 import { wrapTemplate, replacePlaceholders } from '../services/EmailTemplates';
 import { collectCcEmailsFromFields } from '../context/EventContext';
 import HotelImportModal, { IHotelImportResultRow } from './HotelImportModal';
+import PersonContactHover from './PersonContactHover';
 
 /**
  * HotelPlanningPanel (v28.39)
@@ -35,6 +36,10 @@ export interface IHotelPlanningPanelProps {
   onReloadEvents: () => void | Promise<void>;
   /** v28.51: Sub-Events der Klammer — fuer „alle aus <Sub-Event> in ein Hotel". */
   childEvents?: DeloitteEvent[];
+  /** v28.54: Die Teilnehmerlisten der Sub-Events, die das Organizer Center fuer
+   *  die konsolidierte Ansicht ohnehin schon geladen hat. Durchreichen statt
+   *  hier ein zweites Mal abzufragen — dieselben Daten, ein Roundtrip. */
+  subEventRegsByEventId?: Record<string, SPRegistration[]>;
   showAlert: (msg: string, opts?: { variant?: 'success' | 'error' | 'info' }) => void;
   confirmDialog: (msg: string, opts?: { confirmLabel?: string; danger?: boolean }) => Promise<boolean>;
 }
@@ -70,6 +75,9 @@ const addDays = (day: string, n: number): string => {
   return new Date(t + n * 86400000).toISOString().substring(0, 10);
 };
 
+/** „DE - Berlin" → „Berlin" (identisch zur Teilnehmerliste). */
+const stripLocPrefix = (loc: string): string => (loc || '').replace(/^[A-Za-z]{2}\s*[-–—]\s*/, '').trim();
+
 const fmtDay = (day: string, isDe: boolean): string => {
   if (!day) return '—';
   const t = Date.parse(`${day}T00:00:00Z`);
@@ -80,7 +88,7 @@ const fmtDay = (day: string, isDe: boolean): string => {
 };
 
 export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IHotelPlanningPanelProps) => {
-  const { event, registrations, isDe, childEvents, onReloadRegistrations, onReloadEvents, showAlert, confirmDialog } = props;
+  const { event, registrations, isDe, childEvents, subEventRegsByEventId, onReloadRegistrations, onReloadEvents, showAlert, confirmDialog } = props;
 
   const svc = React.useMemo<EventService | null>(() => {
     try {
@@ -99,7 +107,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   const [filterHotel, setFilterHotel] = React.useState<string>('__all');
   // v28.48: Suche, Sortierung und Hotel-Wunsch-Filter fuer die Personenliste.
   const [search, setSearch] = React.useState('');
-  const [sortKey, setSortKey] = React.useState<'name' | 'first' | 'loc' | 'comp' | 'wish' | 'hotel'>('name');
+  const [sortKey, setSortKey] = React.useState<'name' | 'first' | 'loc' | 'comp' | 'wish' | 'hotel' | 'subs'>('name');
   const [sortAsc, setSortAsc] = React.useState(true);
   const [hideNoWish, setHideNoWish] = React.useState(false);
   // v28.48: Fortschritt der Massenzuordnung — jede Person ist ein eigener
@@ -113,24 +121,30 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   // sie, statt beim Oeffnen des Panels alle Sub-Listen zu laden.
   const [subPick, setSubPick] = React.useState('');
   const [subHotelPick, setSubHotelPick] = React.useState('');
-  const [subEmails, setSubEmails] = React.useState<Record<string, string[]>>({});
+  /** Nur fuer den Ausnahmefall, dass eine Sub-Liste nicht durchgereicht wurde. */
+  const [subEmailsFallback, setSubEmailsFallback] = React.useState<Record<string, SPRegistration[]>>({});
   const [subLoading, setSubLoading] = React.useState(false);
 
+  /** Kurzform des Sub-Event-Titels („Klammer | Dinner" → „Dinner"). */
+  const shortTitle = (t: string): string => {
+    const parts = (t || '').split('|');
+    return (parts.length > 1 ? parts[parts.length - 1] : t).trim();
+  };
+
   const loadSubEmails = async (child: DeloitteEvent): Promise<string[]> => {
-    if (subEmails[child.id]) return subEmails[child.id];
+    const ready = subEmails[child.id];
+    if (ready) return ready;
     if (!svc || !child.subsiteUrl) return [];
     setSubLoading(true);
-    let list: string[] = [];
-    try {
-      const regs = await svc.getAllRegistrations(child.subsiteUrl);
-      list = regs
-        .filter(r => ACTIVE_STATI.indexOf(r.Status || '') >= 0)
-        .map(r => (r.ParticipantEmail || '').trim().toLowerCase())
-        .filter(Boolean);
-    } catch { /* nicht lesbar → leere Liste, Meldung unten */ }
-    setSubEmails(prev => ({ ...prev, [child.id]: list }));
+    let regs: SPRegistration[] = [];
+    try { regs = await svc.getAllRegistrations(child.subsiteUrl); }
+    catch { /* nicht lesbar → leere Liste, Meldung beim Aufrufer */ }
+    setSubEmailsFallback(prev => ({ ...prev, [child.id]: regs }));
     setSubLoading(false);
-    return list;
+    return regs
+      .filter(r => ACTIVE_STATI.indexOf(r.Status || '') >= 0)
+      .map(r => (r.ParticipantEmail || '').trim().toLowerCase())
+      .filter(Boolean);
   };
 
   const assignWholeSub = async (): Promise<void> => {
@@ -170,6 +184,35 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     }
     setBulkProgress(null);
   };
+
+  // v28.54: Die Zugehoerigkeit je Sub-Event kommt aus den Listen, die das
+  // Organizer Center fuer die konsolidierte Ansicht schon geladen hat. Nur wenn
+  // die (noch) fehlen, holt der Panel sie selbst nach — so gibt es im Normalfall
+  // keinen zweiten Roundtrip.
+  const subEmails = React.useMemo<Record<string, string[]>>(() => {
+    const out: Record<string, string[]> = {};
+    for (const c of (childEvents || [])) {
+      const regs = (subEventRegsByEventId || {})[c.id] || subEmailsFallback[c.id];
+      if (!regs) continue;
+      out[c.id] = (Array.isArray(regs) ? regs : [])
+        .filter((r: SPRegistration) => ACTIVE_STATI.indexOf(r.Status || '') >= 0)
+        .map((r: SPRegistration) => (r.ParticipantEmail || '').trim().toLowerCase())
+        .filter(Boolean);
+    }
+    return out;
+  }, [childEvents, subEventRegsByEventId, subEmailsFallback]);
+
+  const subsLoaded = (childEvents || []).every(c => !!subEmails[c.id]);
+
+  /** Sub-Events, fuer die diese Person angemeldet ist (Kurztitel). */
+  const subsOf = React.useCallback((p: SPRegistration): string[] => {
+    const em = (p.ParticipantEmail || '').trim().toLowerCase();
+    if (!em) return [];
+    return (childEvents || [])
+      .filter(c => (subEmails[c.id] || []).indexOf(em) >= 0)
+      .map(c => shortTitle(c.title || ''));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [childEvents, subEmails]);
 
   const [importOpen, setImportOpen] = React.useState(false);
   const [importBusy, setImportBusy] = React.useState(false);
@@ -828,6 +871,18 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
             <input type="text" value={search} onChange={e => setSearch(e.target.value)}
               placeholder={isDe ? 'Suchen (Name, Standort, Hotel …)' : 'Search (name, location, hotel …)'}
               style={{ ...inp, minWidth: 210 }} />
+            {/* v28.54: Nachname/Vorname/Standort/Unternehmen sind in die
+                Teilnehmer-Spalte gewandert — die Sortierung danach bleibt hier
+                erhalten. */}
+            <select style={{ ...inp }} value={sortKey} onChange={e => { setSortKey(e.target.value as any); setSortAsc(true); }}>
+              <option value="name">{isDe ? 'Sortieren: Nachname' : 'Sort: last name'}</option>
+              <option value="first">{isDe ? 'Sortieren: Vorname' : 'Sort: first name'}</option>
+              <option value="loc">{isDe ? 'Sortieren: Standort' : 'Sort: location'}</option>
+              <option value="comp">{isDe ? 'Sortieren: Unternehmen' : 'Sort: company'}</option>
+              <option value="wish">{isDe ? 'Sortieren: Hotel-Wunsch' : 'Sort: hotel request'}</option>
+              <option value="hotel">{isDe ? 'Sortieren: Hotel' : 'Sort: hotel'}</option>
+              {(childEvents || []).length > 0 && <option value="subs">{isDe ? 'Sortieren: Sub-Events' : 'Sort: sub-events'}</option>}
+            </select>
             <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.76rem', color: 'var(--dex-gray-600)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
               <input type="checkbox" checked={hideNoWish} onChange={e => setHideNoWish(e.target.checked)} />
               {isDe ? 'ohne Hotel-Wunsch ausblenden' : 'hide without request'}
@@ -952,10 +1007,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                         onChange={e => setSelected(e.target.checked ? new Set(people.map(p => p.Id)) : new Set())} />
                     </th>
                     {([
-                      { k: 'name' as const, l: isDe ? 'Nachname' : 'Last name' },
-                      { k: 'first' as const, l: isDe ? 'Vorname' : 'First name' },
-                      { k: 'loc' as const, l: isDe ? 'Standort' : 'Location' },
-                      { k: 'comp' as const, l: isDe ? 'Unternehmen' : 'Company' },
+                      { k: 'name' as const, l: isDe ? 'Teilnehmer' : 'Participant' },
                       { k: 'wish' as const, l: isDe ? 'Hotel-Wunsch' : 'Hotel request' },
                     ]).map(col => (
                       <th key={col.k} style={{ padding: '4px 6px' }}>
@@ -965,6 +1017,18 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                         >
                           {col.l}{sortKey === col.k ? (sortAsc ? ' ▲' : ' ▼') : ''}
                         </button>
+                      </th>
+                    ))}
+                    {/* v28.53: je Sub-Event eine eigene Haken-Spalte — dieselbe
+                        Darstellung wie in der konsolidierten Teilnehmerliste. */}
+                    {(childEvents || []).map(c => (
+                      <th key={c.id} style={{ padding: '4px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                        <span style={{ display: 'block', fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: 0.3 }}>
+                          {shortTitle(c.title || '')}
+                        </span>
+                        <span style={{ display: 'block', fontSize: '0.66rem', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 400 }}>
+                          {isDe ? 'angemeldet?' : 'registered?'}
+                        </span>
                       </th>
                     ))}
                     <th style={{ padding: '4px 6px' }}>
@@ -998,6 +1062,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                         if (sortKey === 'comp') return x.Company || '';
                         if (sortKey === 'hotel') return (x.Hotel || '').trim();
                         if (sortKey === 'wish') { const w = wishOf(x); return w === true ? '1' : w === false ? '2' : '3'; }
+                        if (sortKey === 'subs') return subsOf(x).join(', ');
                         return x.Nachname || x.ParticipantName || '';
                       };
                       return txt(a).localeCompare(txt(b), 'de') * dir;
@@ -1017,13 +1082,52 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                                 return nx;
                               })} />
                           </td>
+                          {/* v28.52: Die E-Mail stand hier als zweite Zeile unter dem
+                              Nachnamen — als Unterscheidungshilfe bei Namensgleichheit
+                              gedacht, in der Praxis nur Doppelung: Die Suche findet
+                              E-Mails ohnehin. Jetzt nur noch als Tooltip auf der Zelle. */}
+                          {/* v28.54: Darstellung wie in der Teilnehmerliste — Foto mit
+                              Kontaktkarte beim Darueberfahren, darunter
+                              Position • Standort • Unternehmen. Alle drei Werte
+                              stehen bereits auf der Teilnehmerzeile, es braucht
+                              also keine zusaetzliche Abfrage. */}
                           <td style={{ padding: '4px 6px' }}>
-                            {p.Nachname || p.ParticipantName || '—'}
-                            <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{p.ParticipantEmail}</span>
+                            {((): React.ReactNode => {
+                              const vn = p.Vorname || ((p.ParticipantName || '').split(' ')[0] || '');
+                              let nn = p.Nachname || '';
+                              if (!nn && p.ParticipantName) {
+                                const parts = p.ParticipantName.trim().split(/\s+/);
+                                if (parts.length > 1) nn = parts.slice(1).join(' ');
+                              }
+                              const fullName = `${vn} ${nn}`.trim() || p.ParticipantEmail || '—';
+                              const jt = String((p as any).JobTitle || '');
+                              const loc = stripLocPrefix(String(p.Location || ''));
+                              const comp = String(p.Company || '');
+                              const sub = [jt, loc, comp].filter(Boolean).join(' • ');
+                              return (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                                  <PersonContactHover email={p.ParticipantEmail || ''} name={fullName} size={28} subline={sub} isDe={isDe} />
+                                  <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.25 }}>
+                                    <span style={{ fontWeight: 700, whiteSpace: 'nowrap' }}>{fullName}</span>
+                                    {sub && <span style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap' }}>{sub}</span>}
+                                  </div>
+                                </div>
+                              );
+                            })()}
                           </td>
-                          <td style={{ padding: '4px 6px' }}>{p.Vorname || '—'}</td>
-                          <td style={{ padding: '4px 6px' }}>{p.Location || '—'}</td>
-                          <td style={{ padding: '4px 6px' }}>{p.Company || '—'}</td>
+                          {(childEvents || []).map(c => {
+                            const em = (p.ParticipantEmail || '').trim().toLowerCase();
+                            const inSub = !!em && (subEmails[c.id] || []).indexOf(em) >= 0;
+                            return (
+                              <td key={c.id} style={{ padding: '4px 6px', textAlign: 'center' }}>
+                                {!subsLoaded
+                                  ? <span style={{ color: 'var(--dex-gray-300)' }}>…</span>
+                                  : inSub
+                                    ? <span style={{ color: 'var(--dex-green, #86bc25)', fontWeight: 700 }}>✓</span>
+                                    : <span style={{ color: 'var(--dex-gray-300)' }}>—</span>}
+                              </td>
+                            );
+                          })}
                           <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
                             {((): React.ReactNode => {
                               const w = wishOf(p);
