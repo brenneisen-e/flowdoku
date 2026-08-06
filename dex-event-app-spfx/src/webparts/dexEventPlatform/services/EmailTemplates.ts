@@ -721,6 +721,13 @@ export function organizerOnboardingEmail(recipientName: string, role: 'Organizer
       <strong>DEX App</strong> freigeschaltet. Damit kannst du
       eigene Events anlegen, Teilnehmer verwalten und Einladungen versenden.</p>
 
+      <p style="margin-top:16px;padding:10px 12px;background:#f7f7f5;border-left:3px solid ${GREEN};">
+      <strong>Wofür DEX gedacht ist:</strong> für <strong>interne Deloitte Events</strong> und für die
+      Koordination der Deloitte-Teilnahme an externen Veranstaltungen. Für
+      <strong>externe Events mit externen Teilnehmern</strong> ist die Plattform nicht vorgesehen &mdash;
+      alles dazu findest du im
+      <a href="https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx" style="color:${GREEN};font-weight:600;">Event Management im DeloitteNet</a>.</p>
+
       <p style="margin-top:24px;"><strong>Deine wichtigsten Links:</strong></p>
       <ul>
         <li><a href="${APP_URL}" style="color:${GREEN};font-weight:600;">Zur DEX App</a> &mdash; hier legst du Events an und verwaltest deine Teilnehmer.</li>

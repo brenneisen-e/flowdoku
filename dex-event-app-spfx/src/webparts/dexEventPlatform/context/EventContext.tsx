@@ -5595,14 +5595,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const appBase = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`;
         if (status === 'Approved') {
-          const inner = `
-            <p style="margin:0 0 12px;">Hallo ${esc((name || '').split(' ')[0] || '')},</p>
-            <p style="margin:0 0 12px;">gute Nachricht — du bist jetzt <strong>Organizer</strong> der DEX Event Experience Platform und kannst eigene Events anlegen und verwalten.</p>
-            <p style="margin:20px 0;text-align:center;"><a href="${appBase}" style="display:inline-block;padding:12px 26px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Zur DEX App</a></p>
-            <p style="margin:0;color:#777;font-size:13px;">Über die Kachel „Organizer" auf der Startseite kommst du in dein Organizer Center.</p>
-          `;
-          const body = wrapTemplate('#86bc25', 'Du bist jetzt Organizer', '', inner);
-          await eventService.queueEmail('Dein Organizer-Zugang ist da', email, name || email, body, 'OrganizerApproved', '', '0');
+          // v28.44 BUG-FIX: Hier ging bisher nur eine kurze Bestaetigung raus —
+          // die richtige Onboarding-Mail (Links, erstes Test-Event, Handbuch,
+          // Ticketsystem, Einsatzbereich) gab es ausschliesslich beim MANUELLEN
+          // Zuweisen einer Rolle. Wer ueber den Antragsweg Organizer wurde, hat
+          // sie also nie bekommen. Jetzt bekommen beide Wege dieselbe Mail.
+          const onboarding = organizerOnboardingEmail(name || email, 'Organizer');
+          await eventService.queueEmail(onboarding.subject, email, name || email, onboarding.body, 'OrganizerApproved', '', '0');
+          void appBase;
         } else {
           const inner = `
             <p style="margin:0 0 12px;">Hallo ${esc((name || '').split(' ')[0] || '')},</p>
