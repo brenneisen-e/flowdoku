@@ -1017,9 +1017,12 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                                 return nx;
                               })} />
                           </td>
-                          <td style={{ padding: '4px 6px' }}>
+                          {/* v28.52: Die E-Mail stand hier als zweite Zeile unter dem
+                              Nachnamen — als Unterscheidungshilfe bei Namensgleichheit
+                              gedacht, in der Praxis nur Doppelung: Die Suche findet
+                              E-Mails ohnehin. Jetzt nur noch als Tooltip auf der Zelle. */}
+                          <td style={{ padding: '4px 6px' }} title={p.ParticipantEmail || ''}>
                             {p.Nachname || p.ParticipantName || '—'}
-                            <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{p.ParticipantEmail}</span>
                           </td>
                           <td style={{ padding: '4px 6px' }}>{p.Vorname || '—'}</td>
                           <td style={{ padding: '4px 6px' }}>{p.Location || '—'}</td>
