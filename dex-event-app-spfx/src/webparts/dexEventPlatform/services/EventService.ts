@@ -1385,6 +1385,49 @@ export class EventService {
   }
 
   /**
+   * v28.37: Wer hat fuer dieses Event schon eine Einladungsmail bekommen?
+   *
+   * Liest die DEX_Emails-Zeilen vom Typ `Einladung` zum Event und sammelt
+   * Empfaenger aus `Recipient` und `Bcc` (Massenversand laeuft in 450er-Chunks
+   * ueber Bcc, im To steht dann nur der ausloesende Organizer). Adressen
+   * lowercase, dedupliziert.
+   *
+   * WICHTIG fuer den Aufrufer: Alte DEX_Emails-Zeilen werden nach rund einem
+   * Monat archiviert. Fuer laenger zurueckliegende Versaende ist die Liste
+   * daher unvollstaendig — das Ergebnis taugt zum Nachfassen innerhalb einer
+   * laufenden Einladungsrunde, nicht als lueckenlose Historie.
+   */
+  public async getInvitedRecipients(eventId: string | number): Promise<string[]> {
+    const id = String(eventId || '').trim();
+    if (!id) return [];
+    const out = new Set<string>();
+    let url: string | null = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Emails')/items`
+      + `?$select=Recipient,Bcc&$filter=EmailType eq 'Einladung' and EventId eq '${id.replace(/'/g, "''")}'&$top=500`;
+    let guard = 0;
+    while (url && guard < 20) {
+      guard++;
+      let resp: SPHttpClientResponse;
+      try { resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1); }
+      catch { break; }
+      if (!resp.ok) break;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let data: any;
+      try { data = await resp.json(); } catch { break; }
+      const items = data.value || data.d?.results || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const it of items as any[]) {
+        const raw = `${it.Recipient || ''};${it.Bcc || ''}`;
+        for (const part of raw.split(/[;,]/)) {
+          const e = (part || '').trim().toLowerCase();
+          if (e.indexOf('@') > 0) out.add(e);
+        }
+      }
+      url = data['odata.nextLink'] || data['@odata.nextLink'] || (data.d && data.d.__next) || null;
+    }
+    return Array.from(out);
+  }
+
+  /**
    * Outlook-Termin-Einladung in die Queue eintragen.
    * Flow holt Event-Details (Datum, Ort, CalendarLink) aus DEX_Events via EventId.
    */
