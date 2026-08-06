@@ -932,7 +932,7 @@ export default function LandingPage(): React.ReactElement {
             margin: '2px 0 0', textAlign: 'center', width: '100%', maxWidth: 'none', lineHeight: 1.4,
           }}>
             {isDe
-              ? '* Nur für interne Zwecke — Deloitte-interne Events und die Koordination der Deloitte-Teilnahme an externen Veranstaltungen.'
+              ? '* Nur für interne Zwecke — interne Deloitte Events und die Koordination der Deloitte-Teilnahme an externen Veranstaltungen.'
               : '* For internal use only — Deloitte-internal events and coordinating Deloitte participation in external events.'}
           </p>
           {/* v22.1: Check-in-Hinweisbox(en) — ab 2 Tage vor dem Event, sobald

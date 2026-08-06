@@ -8,6 +8,7 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 28.43.0 | 2026-08-06 | Feature | Wording: „Deloitte-interne Events" → „interne Deloitte Events" in allen vier deutschen Fassungen (`LandingPage`, `InquiryModal` x2, `LandingInfoModal`, `EventCreationPage`). Die englischen Texte bleiben unveraendert. |
 | 28.42.0 | 2026-08-06 | Feature | Verweis fuer externe Veranstaltungen zeigt auf `https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx` statt auf das Brand-&-Marketing-Team — in `InquiryModal`, im `internalCheckbox`-Hinweis und in beiden Sprachfassungen der Nutzungsbedingungen. Der Startseiten-Disclaimer wurde zur Sternchen-Fussnote hinter „Deloitte Events*" und sitzt jetzt ausserhalb von `.landing__text` (max-width 760px), damit er einzeilig ueber die volle Kartenbreite laeuft. |
 | 28.41.0 | 2026-08-06 | Feature | `InquiryModal`: neuer Pflicht-Radio `eventScope` ('internal' / 'external') ueber dem Formular. Bei 'external' ersetzt ein roter Hinweiskasten die Aufforderung zur Anfrage (Verweis aufs Brand- & Marketing-Team) und `canSubmit` bleibt false — die Anfrage kann nicht abgeschickt werden. Ersetzt den statischen v28.40-Hinweiskasten; im `organizerMode` nicht gezeigt. |
 | 28.41.0 | 2026-08-06 | Feature | `EventCreationPage`: zweiter Pflicht-Haken `internalCheckbox` im Nutzungsbedingungs-Gate (bewusst getrennt von `tcCheckbox`); „Akzeptieren & weiter" verlangt beide. |

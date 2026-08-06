@@ -188,7 +188,7 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
                 <strong>{isDe ? 'Internes Event' : 'Internal event'}</strong>
                 <span style={{ display: 'block', fontSize: '0.76rem', color: 'var(--dex-gray-600)' }}>
                   {isDe
-                    ? 'Ein Deloitte-internes Event — oder die Koordination der Deloitte-Teilnahme an einer externen Veranstaltung (z.B. B2Run).'
+                    ? 'Ein internes Deloitte Event — oder die Koordination der Deloitte-Teilnahme an einer externen Veranstaltung (z.B. B2Run).'
                     : 'A Deloitte-internal event — or coordinating Deloitte participation in an external event (e.g. B2Run).'}
                 </span>
               </span>
@@ -210,7 +210,7 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
                 color: '#7a1f1c', fontSize: '0.8rem', lineHeight: 1.55,
               }}>
                 {isDe
-                  ? <><strong>Dafür ist DEX nicht nutzbar.</strong> Die Plattform ist auf Deloitte-interne Events ausgelegt; externe Gäste bekommen keinen Zugang und können sich nicht selbst anmelden.<br /><br />Alles zu externen Veranstaltungen findest du hier:<br /><a href="https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx" target="_blank" rel="noopener noreferrer" style={{ color: '#7a1f1c', fontWeight: 700 }}>Event Management im DeloitteNet</a></>
+                  ? <><strong>Dafür ist DEX nicht nutzbar.</strong> Die Plattform ist auf interne Deloitte Events ausgelegt; externe Gäste bekommen keinen Zugang und können sich nicht selbst anmelden.<br /><br />Alles zu externen Veranstaltungen findest du hier:<br /><a href="https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx" target="_blank" rel="noopener noreferrer" style={{ color: '#7a1f1c', fontWeight: 700 }}>Event Management im DeloitteNet</a></>
                   : <><strong>DEX cannot be used for this.</strong> The platform is built for Deloitte-internal events; external guests get no access and cannot register themselves.<br /><br />Everything about external events can be found here:<br /><a href="https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx" target="_blank" rel="noopener noreferrer" style={{ color: '#7a1f1c', fontWeight: 700 }}>Event Management on DeloitteNet</a></>}
               </div>
             )}

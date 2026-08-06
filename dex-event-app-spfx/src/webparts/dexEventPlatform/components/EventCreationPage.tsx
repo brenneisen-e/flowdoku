@@ -7000,7 +7000,7 @@ export default function EventCreationPage(): React.ReactElement {
               />
               <span style={{ fontSize: '0.9rem', lineHeight: 1.4 }}>
                 {isDe
-                  ? <>Ich bestätige, dass dies ein <strong>Deloitte-internes Event</strong> ist oder die <strong>Deloitte-Teilnahme an einer externen Veranstaltung</strong> koordiniert.
+                  ? <>Ich bestätige, dass dies ein <strong>internes Deloitte Event</strong> ist oder die <strong>Deloitte-Teilnahme an einer externen Veranstaltung</strong> koordiniert.
                       <span style={{ display: 'block', fontSize: '0.8rem', color: 'var(--dex-gray-600)', marginTop: 4 }}>
                         Für externe Events mit externen Teilnehmern ist DEX nicht vorgesehen — alles dazu findest du im <a href="https://mydeloittenet.de.deloitte.com/sites/CEO/Pages/Event-Management.aspx" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600 }}>Event Management im DeloitteNet</a>.
                       </span></>
