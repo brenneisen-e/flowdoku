@@ -13853,19 +13853,23 @@ export default function AdminPage(): React.ReactElement {
         // eine Person, kein Verteiler — aber wir laufen das defensiv mit.
         const blockedInTargets = getBlockedInviteRecipients(targetEmails);
         const blockedInAudience = getBlockedInviteRecipients(audienceEmails);
+        // v28.38 BUG-FIX: Auch die Beschriftung des Senden-Knopfs muss die
+        // WIRKLICH adressierte Liste nennen — sie zeigte bisher stur die
+        // Verteilergroesse, selbst nachdem Adressen entfernt wurden.
+        const nRecipients = targetEmails.length;
         const recipientLabel = inviteTarget === 'organizer'
           ? (isDe ? `An mich (${myEmail})` : `To me (${myEmail})`)
-          : (inviteTarget === 'uninvited'
-            ? (isDe
-              ? `An noch nicht Eingeladene (${uninvitedEmails.length} Empfänger)`
-              : `To not-yet-invited (${uninvitedEmails.length} recipients)`)
-            : inviteTarget === 'pending'
-            ? (isDe
-              ? `An noch nicht Angemeldete (${pendingEmails.length === 0 ? 'niemand offen' : pendingEmails.length + ' Empfänger'})`
-              : `To not-yet-registered (${pendingEmails.length === 0 ? 'nobody left' : pendingEmails.length + ' recipients'})`)
-            : (isDe
-              ? `An Mailverteiler (${audienceEmails.length === 0 ? 'leer' : audienceEmails.length + ' Empfänger'})`
-              : `To mail distribution (${audienceEmails.length === 0 ? 'empty' : audienceEmails.length + ' recipients'})`));
+          : (isDe
+            ? `${inviteCustomEmails
+              ? 'An angepasste Auswahl'
+              : inviteTarget === 'uninvited' ? 'An noch nicht Eingeladene'
+              : inviteTarget === 'pending' ? 'An noch nicht Angemeldete'
+              : 'An Mailverteiler'} (${nRecipients === 0 ? 'leer' : nRecipients + ' Empfänger'})`
+            : `${inviteCustomEmails
+              ? 'To adjusted selection'
+              : inviteTarget === 'uninvited' ? 'To not-yet-invited'
+              : inviteTarget === 'pending' ? 'To not-yet-registered'
+              : 'To mail distribution'} (${nRecipients === 0 ? 'empty' : nRecipients + ' recipients'})`);
         const orgNames = (selectedEvent.organizers || []).join(', ');
         const appUrl = `${siteUrl}/SitePages/DEX.aspx?env=WebView`;
         const previewVars: Record<string, string> = {
@@ -14324,9 +14328,23 @@ export default function AdminPage(): React.ReactElement {
             </div>
           </div>
         );
+        // v28.38 BUG-FIX: Die „An:"-Zeile der Vorschau zeigte immer die volle
+        // Verteilergroesse — auch in den Nachfass-Modi und nach dem Entfernen
+        // einzelner Adressen. Sie muss die WIRKLICH adressierte Liste nennen,
+        // sonst widerspricht sie dem Senden-Knopf direkt daneben.
         const previewToLine = inviteTarget === 'organizer'
           ? myEmail
-          : (isDe ? `${audienceEmails.length} Empfänger des Mailverteilers` : `${audienceEmails.length} mail distribution recipients`);
+          : (isDe
+            ? `${targetEmails.length} ${targetEmails.length === 1 ? 'Empfänger' : 'Empfänger'}${
+              inviteCustomEmails ? ' (angepasste Auswahl)'
+                : inviteTarget === 'uninvited' ? ' — noch nicht eingeladen'
+                : inviteTarget === 'pending' ? ' — noch nicht angemeldet'
+                : ' des Mailverteilers'}`
+            : `${targetEmails.length} recipient(s)${
+              inviteCustomEmails ? ' (adjusted selection)'
+                : inviteTarget === 'uninvited' ? ' — not yet invited'
+                : inviteTarget === 'pending' ? ' — not yet registered'
+                : ' of the mail distribution'}`);
         const previewSubjectLine = replacePlaceholders(inviteSubject, previewVars);
         return (
           <HtmlEditorModal

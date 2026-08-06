@@ -10,7 +10,7 @@
 
 import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
-import { DeloitteEvent } from '../types';
+import { DeloitteEvent, DexHotel, DexHotelStay } from '../types';
 import { EventService, SPEvent, CustomField, SPRegistration, SPParticipant, ReseedSummary, AssistantLink, EventCommRow } from '../services/EventService';
 import { verifyRotatingCode, isWithinCheckInWindow } from '../utils/selfCheckIn';
 import { buildHashDeepLink } from '../utils/deepLink';
@@ -1255,6 +1255,27 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
           return (ov && typeof ov._imageOrigUrl === 'string') ? ov._imageOrigUrl : '';
         } catch { return ''; }
+      })(),
+      // v28.38: Hotel-Planung (Piggybacks _hotels / _hotelStays / _hotelVisible).
+      // Nur Stammdaten und Vorlagen — die Zuordnung pro Person steht in der
+      // Teilnehmerliste (Spalten Hotel/HotelFrom/HotelTo).
+      hotels: ((): DexHotel[] => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          return (ov && Array.isArray(ov._hotels)) ? ov._hotels as DexHotel[] : [];
+        } catch { return []; }
+      })(),
+      hotelStays: ((): DexHotelStay[] => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          return (ov && Array.isArray(ov._hotelStays)) ? ov._hotelStays as DexHotelStay[] : [];
+        } catch { return []; }
+      })(),
+      hotelVisibleToAttendees: ((): boolean => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          return !!(ov && ov._hotelVisible);
+        } catch { return false; }
       })(),
       // v28.20: Explizite Klammer-Anmeldefrist (Piggyback _klammerDeadline).
       // Abgelaufen = Gesamt-Event zu (auch bei offenen Sub-Events); leer =

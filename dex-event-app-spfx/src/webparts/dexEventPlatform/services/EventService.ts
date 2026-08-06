@@ -690,6 +690,11 @@ export interface SPRegistration {
    *  offen)"; Bestätigung per Button in der Teilnehmerliste. */
   ConsentReview?: string;
   RegistrationDate: string;
+  /** v28.38: Hotel-Zuordnung (Name des Hotels aus den Event-Stammdaten). */
+  Hotel?: string;
+  /** v28.38: An-/Abreise als ISO-DateTime. Die Naechte ergeben sich daraus. */
+  HotelFrom?: string;
+  HotelTo?: string;
   RegisteredByName?: string;   // Audit: Name des Users der die Anmeldung durchführte
   RegisteredByEmail?: string;  // Audit: E-Mail des Users der die Anmeldung durchführte
   /** v27.12: SP-Item-Metadaten als Fallback für „Registriert am/von", wenn die
@@ -1788,6 +1793,59 @@ export class EventService {
       } catch { /* Spalte evtl. nicht da / keine Rechte — überspringen */ }
     }
     return { updated, checked: regs.length };
+  }
+
+  // ==================== Hotel-Planung (v28.38) ====================
+
+  /**
+   * v28.38: Spalten fuer die Hotel-Zuordnung auf einer Teilnehmerliste anlegen.
+   * Die Zuordnung gehoert bewusst an die TEILNEHMERZEILE und nicht ans Event:
+   * so steht sie in der Teilnehmertabelle, laeuft in jeden bestehenden Export
+   * mit und blaeht den Event-Datensatz nicht auf (2-MB-Grenze, s. v28.31).
+   * Idempotent — vorhandene Spalten liefern 500/400 und werden ignoriert.
+   */
+  public async ensureHotelColumns(subsiteUrl: string): Promise<void> {
+    if (!subsiteUrl) return;
+    const base = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields`;
+    const fields: Array<{ title: string; type: number }> = [
+      { title: 'Hotel', type: 2 },       // Text: Name des Hotels
+      { title: 'HotelFrom', type: 4 },   // DateTime: Anreise
+      { title: 'HotelTo', type: 4 },     // DateTime: Abreise
+    ];
+    for (const f of fields) {
+      try {
+        await this._post(base, {
+          '__metadata': { 'type': 'SP.Field' },
+          'Title': f.title,
+          'FieldTypeKind': f.type,
+        });
+      } catch { /* existiert bereits oder keine Rechte — beides unkritisch */ }
+    }
+  }
+
+  /**
+   * v28.38: Hotel-Zuordnung einer einzelnen Teilnehmerzeile setzen oder loeschen
+   * (leeres Hotel = Zuordnung aufheben). Liefert true bei Erfolg.
+   */
+  public async setHotelAssignment(
+    subsiteUrl: string,
+    itemId: number,
+    hotel: string,
+    fromIso: string,
+    toIso: string,
+  ): Promise<boolean> {
+    if (!subsiteUrl || !itemId) return false;
+    try {
+      const resp = await this._merge(
+        `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${itemId})`,
+        {
+          'Hotel': hotel || '',
+          'HotelFrom': hotel ? (fromIso || null) : null,
+          'HotelTo': hotel ? (toIso || null) : null,
+        },
+      );
+      return resp.ok || resp.status === 406;
+    } catch { return false; }
   }
 
   // ==================== DEX_IDReorder Queue ====================
@@ -10259,6 +10317,37 @@ export class EventService {
       );
     } catch (err) {
       console.warn('[DEX] patchEventOverridesKey fehlgeschlagen:', key, err);
+    }
+  }
+
+  /**
+   * v28.38: Wie `patchEventOverridesKey`, aber fuer beliebige JSON-Werte
+   * (Arrays, Booleans, Objekte). `undefined`/`null`/leeres Array loeschen den
+   * Schluessel, damit die Overrides nicht mit leeren Huellen zuwachsen.
+   * Liefert true bei Erfolg.
+   */
+  public async patchEventOverridesValue(eventId: number, key: string, value: unknown): Promise<boolean> {
+    try {
+      const getResp = await this.context.spHttpClient.get(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})?$select=EmailTemplateOverrides`,
+        SPHttpClient.configurations.v1
+      );
+      if (!getResp.ok) return false;
+      const data = await getResp.json();
+      const raw = data.d?.EmailTemplateOverrides || data.EmailTemplateOverrides || '';
+      let obj: Record<string, unknown> = {};
+      try { obj = raw ? JSON.parse(raw) : {}; } catch { obj = {}; }
+      const empty = value === undefined || value === null || value === false
+        || (Array.isArray(value) && value.length === 0);
+      if (empty) { delete obj[key]; } else { obj[key] = value; }
+      const resp = await this._merge(
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items(${eventId})`,
+        { 'EmailTemplateOverrides': JSON.stringify(obj) }
+      );
+      return resp.ok || resp.status === 406;
+    } catch (err) {
+      console.warn('[DEX] patchEventOverridesValue fehlgeschlagen:', key, err);
+      return false;
     }
   }
 
