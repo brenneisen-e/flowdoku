@@ -6994,9 +6994,13 @@ export default function AdminPage(): React.ReactElement {
         {/* v22.5: „Nächste Schritte"-Box rechts neben der Detail-Card — nur für
             Entwürfe (Admin/Organizer). Erklärt, was nach dem Anlegen noch zu tun
             ist: finalisieren, Test-An-/Abmeldung, live schalten (+ wer es sieht),
-            Einladungsmail verschicken, Anmeldungen verfolgen. */}
+            Einladungsmail verschicken, Anmeldungen verfolgen.
+            v28.47: flex-grow statt 0 — auf breiten Laptop-Screens schob die
+            Detail-Card (flex 1 1 420px + gemessene minWidth) die Box in die
+            naechste Zeile, wo sie mit 460px als schmale Saeule links stand und
+            rechts daneben alles leer blieb. Mit grow fuellt sie die Zeile. */}
         {(isAdmin || isOrganizerFor(selectedEvent)) && !!selectedEvent.isFictive && !selectedEvent.isDemoShowcase && (
-          <aside style={{ flex: '0 1 460px', minWidth: 360 }}>
+          <aside style={{ flex: '1 1 360px', minWidth: 320 }}>
             <div className="card" style={{ padding: 20, background: 'rgba(134,188,37,0.05)', border: '1px solid var(--dex-green, #86bc25)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', display: 'inline-flex' }}><Info size={18} /></span>
@@ -8521,11 +8525,46 @@ export default function AdminPage(): React.ReactElement {
           Check-In-Tile, da das Aktionen-Grid für sie unten gefiltert ist. */}
       {!isQRScannerOnlyForSelected && (<>
 
+      {/* v28.47: Hinweis-Box fuer Events, die im Anmeldeformular nach einer
+          Unterkunft fragen, aber noch keine Hotels hinterlegt haben. Genau die
+          Organizer pflegen die Zuordnung sonst weiter in Excel, weil sie nicht
+          wissen, dass es das Tool gibt. Sobald das erste Hotel angelegt ist,
+          verschwindet die Box wieder. */}
+      {selectedEvent && selectedEvent.subsiteUrl && (isAdmin || isOrganizerFor(selectedEvent))
+        && (selectedEvent.hotels || []).length === 0
+        && (selectedEvent.eventSpecificFields || []).some(f =>
+          /hotel|unterkunft|übernacht|uebernacht|accommodation|lodging/i.test(`${f.label || ''} ${(f.options || []).join(' ')}`))
+        && !hotelPanelOpen && (
+        <div className="card" style={{ marginBottom: 16, borderLeft: '4px solid var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.06)' }}>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 240 }}>
+              <div style={{ fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)', marginBottom: 4 }}>
+                {isDe ? 'Dieses Event fragt nach einer Unterkunft — nutze die Hotel-Planung' : 'This event asks about accommodation — use the hotel planning'}
+              </div>
+              <div style={{ fontSize: '0.84rem', color: 'var(--dex-gray-700)', lineHeight: 1.55 }}>
+                {isDe
+                  ? <>Lege deine Hotels an, gib Zeiträume als Vorlage vor und ordne die Teilnehmer zu — mit Kontingent-Warnung, Belegung je Nacht, Rooming-Liste als Excel und personalisierter Hotel-Mail (Assistenz automatisch in Cc). Das ersetzt die Excel-Liste nebenher.</>
+                  : <>Create your hotels, define stay templates and assign attendees — with capacity warnings, occupancy per night, a rooming list as Excel and a personalised hotel email (assistant auto-CC&apos;d). It replaces the spreadsheet on the side.</>}
+              </div>
+            </div>
+            <button type="button" className="btn btn-primary" style={{ fontSize: '0.82rem', padding: '8px 16px', flexShrink: 0 }}
+              onClick={() => setHotelPanelOpen(true)}>
+              {isDe ? 'Hotel-Planung öffnen' : 'Open hotel planning'}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ===== HOTEL-PLANUNG (v28.39, collapsible) =====
           Nur fuer Organizer/Admin und nur, wenn das Event eine eigene
           Teilnehmerliste hat. Standardmaessig eingeklappt — Events ohne
           Uebernachtung sollen davon nichts merken. */}
-      {selectedEvent && !isConsolidatedMode && selectedEvent.subsiteUrl && (isAdmin || isOrganizerFor(selectedEvent)) && (
+      {/* v28.47: auch im Klammer-Modus. Die Uebernachtung haengt an der PERSON,
+          nicht am einzelnen Sub-Event — und genau eine Zeile je Person hat die
+          Teilnehmerliste der Klammer (die Schattenzeilen aus v15.25). Das ist die
+          richtige Ebene fuer die Hotel-Zuordnung; vorher war der Abschnitt bei
+          Klammer-Events komplett ausgeblendet. */}
+      {selectedEvent && selectedEvent.subsiteUrl && (isAdmin || isOrganizerFor(selectedEvent)) && (
         <div className="card" style={{ marginBottom: 16 }}>
           <button
             type="button"
