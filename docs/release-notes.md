@@ -8,6 +8,9 @@ nutzerverständlich (was sich für Organizer/Teilnehmer ändert).
 
 | Version | Datum | Art | Beschreibung |
 |---------|-------|-----|--------------|
+| 28.48.0 | 2026-08-06 | Feature | `HotelPlanningPanel`: Datums-Spalten je Person durch ein `<select>` der `hotelStays`-Vorlagen ersetzt (Wert = Stay-Id); ein nicht passender Bestand erscheint als `__custom`-Option und wird beim Wechsel nicht stillschweigend ueberschrieben. |
+| 28.48.0 | 2026-08-06 | Feature | Personenliste: eigene sortierbare Spalten (Nachname/Vorname/Standort/Unternehmen/Hotel-Wunsch/Hotel) ueber `sortKey`+`sortAsc`, Volltextsuche (`search`) und `hideNoWish`-Filter. Neuer `wishOf(p)`-Helper leitet den Hotel-Wunsch aus `CustomData` + Feld-Labels ab (true/false/null = keine Hotel-Frage im Formular). |
+| 28.48.0 | 2026-08-06 | Feature | Fortschrittsbalken (`bulkProgress`) fuer `assignSelectedTo` und `applyStayToSelected` — die Schleife schreibt je Person einzeln. |
 | 28.47.0 | 2026-08-06 | Bugfix | Hotel-Planung war per `!isConsolidatedMode` bei Klammer-Events ausgeblendet. Gate entfernt: Das Panel arbeitet dort auf der Teilnehmerliste der Klammer (Schattenzeilen, eine Zeile je Person) — die richtige Granularitaet fuer eine Uebernachtung. |
 | 28.47.0 | 2026-08-06 | Feature | Hinweisbox im Organizer Center, wenn `eventSpecificFields` (Label oder Optionen) auf hotel/unterkunft/uebernacht/accommodation/lodging matchen UND noch keine Hotels hinterlegt sind; Knopf setzt `hotelPanelOpen`. Verschwindet ab dem ersten Hotel. |
 | 28.47.0 | 2026-08-06 | Bugfix | „Naechste Schritte"-`aside` von `flex: '0 1 460px'` auf `'1 1 360px'` — auf breiten Screens schob die Detail-Card (`flex 1 1 420px` + gemessene `reservedDetailWidth`) die Box in die naechste Zeile, wo sie ohne grow als schmale Saeule stehenblieb. |

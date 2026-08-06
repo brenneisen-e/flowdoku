@@ -94,6 +94,14 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   const [selected, setSelected] = React.useState<Set<number>>(new Set());
   const [showRoster, setShowRoster] = React.useState(true);
   const [filterHotel, setFilterHotel] = React.useState<string>('__all');
+  // v28.48: Suche, Sortierung und Hotel-Wunsch-Filter fuer die Personenliste.
+  const [search, setSearch] = React.useState('');
+  const [sortKey, setSortKey] = React.useState<'name' | 'first' | 'loc' | 'comp' | 'wish' | 'hotel'>('name');
+  const [sortAsc, setSortAsc] = React.useState(true);
+  const [hideNoWish, setHideNoWish] = React.useState(false);
+  // v28.48: Fortschritt der Massenzuordnung — jede Person ist ein eigener
+  // Schreibvorgang, bei 300 Zeilen dauert das spuerbar.
+  const [bulkProgress, setBulkProgress] = React.useState<{ done: number; total: number } | null>(null);
 
   // Nur aktive Anmeldungen — Abgemeldete und Warteliste brauchen kein Zimmer.
   const people = React.useMemo(
@@ -102,6 +110,26 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
       .sort((a, b) => (a.ParticipantName || '').localeCompare(b.ParticipantName || '', 'de')),
     [registrations],
   );
+
+  /** v28.48: Hat die Person im Anmeldeformular eine Unterkunft angefragt?
+   *  Die Hotel-Frage heisst pro Event anders („Hotel room", „Hotel (24-25 Sept)",
+   *  „Room required …"), deshalb eine Heuristik ueber die Antwortwerte statt
+   *  einer festen Feld-ID. Ergebnis: true = ja, false = nein, null = keine
+   *  Hotel-Frage im Formular. */
+  const wishOf = React.useCallback((p: SPRegistration): boolean | null => {
+    let cd: Record<string, string> = {};
+    try { cd = JSON.parse(p.CustomData || '{}'); } catch { return null; }
+    const fields = (event.eventSpecificFields || []) as Array<{ id: string; label?: string }>;
+    let found: boolean | null = null;
+    for (const f of fields) {
+      if (!/hotel|unterkunft|übernacht|uebernacht|accommodation|lodging/i.test(f.label || '')) continue;
+      const v = (cd[f.id] || '').toLowerCase();
+      if (!v) { if (found === null) found = false; continue; }
+      if (/^(ja|yes)\b|^ja,|^yes,/.test(v) || /\bja\b|\byes\b/.test(v)) return true;
+      found = false;
+    }
+    return found;
+  }, [event.eventSpecificFields]);
 
   const assignedCount = people.filter(p => (p.Hotel || '').trim()).length;
   const openCount = people.length - assignedCount;
@@ -199,22 +227,29 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   const assignSelectedTo = async (hotelName: string): Promise<void> => {
     const rows = people.filter(p => selected.has(p.Id));
     if (rows.length === 0) return;
+    setBulkProgress({ done: 0, total: rows.length });
     // Zeitraum: vorhandenen behalten, sonst die Standard-Vorlage geben.
-    for (const r of rows) {
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i];
       const from = toDay(r.HotelFrom) || (defaultStay ? defaultStay.from : '');
       const to = toDay(r.HotelTo) || (defaultStay ? defaultStay.to : '');
       // eslint-disable-next-line no-await-in-loop
       await writeAssignment([r], hotelName, from, to);
+      setBulkProgress({ done: i + 1, total: rows.length });
     }
+    setBulkProgress(null);
   };
 
   const applyStayToSelected = async (stay: DexHotelStay): Promise<void> => {
     const rows = people.filter(p => selected.has(p.Id));
     if (rows.length === 0) return;
-    for (const r of rows) {
+    setBulkProgress({ done: 0, total: rows.length });
+    for (let i = 0; i < rows.length; i++) {
       // eslint-disable-next-line no-await-in-loop
-      await writeAssignment([r], (r.Hotel || '').trim(), stay.from, stay.to);
+      await writeAssignment([rows[i]], (rows[i].Hotel || '').trim(), stay.from, stay.to);
+      setBulkProgress({ done: i + 1, total: rows.length });
     }
+    setBulkProgress(null);
   };
 
   /* ---------------- Auswertungen ---------------- */
@@ -673,6 +708,13 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
             {showRoster ? (isDe ? 'einklappen' : 'collapse') : (isDe ? 'aufklappen' : 'expand')}
           </button>
           <span style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+              placeholder={isDe ? 'Suchen (Name, Standort, Hotel …)' : 'Search (name, location, hotel …)'}
+              style={{ ...inp, minWidth: 210 }} />
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.76rem', color: 'var(--dex-gray-600)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              <input type="checkbox" checked={hideNoWish} onChange={e => setHideNoWish(e.target.checked)} />
+              {isDe ? 'ohne Hotel-Wunsch ausblenden' : 'hide without request'}
+            </label>
             <select style={{ ...inp }} value={filterHotel} onChange={e => setFilterHotel(e.target.value)}>
               <option value="__all">{isDe ? 'Alle anzeigen' : 'Show all'}</option>
               <option value="__none">{isDe ? 'Nur ohne Hotel' : 'Only without hotel'}</option>
@@ -724,6 +766,19 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                   onClick={() => { void writeAssignment(people.filter(p => selected.has(p.Id)), '', '', ''); }}>
                   {isDe ? 'Zuordnung aufheben' : 'Clear assignment'}
                 </button>
+                {bulkProgress && (
+                  <div style={{ width: '100%', marginTop: 6 }}>
+                    <div style={{ height: 8, background: 'var(--dex-gray-100)', borderRadius: 999, overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%', transition: 'width 0.2s', background: 'var(--dex-green, #86bc25)',
+                        width: `${bulkProgress.total > 0 ? Math.round((bulkProgress.done / bulkProgress.total) * 100) : 0}%`,
+                      }} />
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--dex-gray-600)', marginTop: 3 }}>
+                      {bulkProgress.done}/{bulkProgress.total} {isDe ? 'zugeordnet …' : 'assigned …'}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             <div style={{ overflowX: 'auto' }}>
@@ -735,10 +790,31 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                         checked={selected.size > 0 && selected.size === people.length}
                         onChange={e => setSelected(e.target.checked ? new Set(people.map(p => p.Id)) : new Set())} />
                     </th>
-                    <th style={{ padding: '4px 6px' }}>{isDe ? 'Person' : 'Person'}</th>
-                    <th style={{ padding: '4px 6px' }}>{isDe ? 'Hotel' : 'Hotel'}</th>
-                    <th style={{ padding: '4px 6px' }}>{isDe ? 'Anreise' : 'Arrival'}</th>
-                    <th style={{ padding: '4px 6px' }}>{isDe ? 'Abreise' : 'Departure'}</th>
+                    {([
+                      { k: 'name' as const, l: isDe ? 'Nachname' : 'Last name' },
+                      { k: 'first' as const, l: isDe ? 'Vorname' : 'First name' },
+                      { k: 'loc' as const, l: isDe ? 'Standort' : 'Location' },
+                      { k: 'comp' as const, l: isDe ? 'Unternehmen' : 'Company' },
+                      { k: 'wish' as const, l: isDe ? 'Hotel-Wunsch' : 'Hotel request' },
+                    ]).map(col => (
+                      <th key={col.k} style={{ padding: '4px 6px' }}>
+                        <button type="button"
+                          onClick={() => { if (sortKey === col.k) { setSortAsc(a => !a); } else { setSortKey(col.k); setSortAsc(true); } }}
+                          style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', font: 'inherit', color: 'inherit', fontWeight: sortKey === col.k ? 700 : 400 }}
+                        >
+                          {col.l}{sortKey === col.k ? (sortAsc ? ' ▲' : ' ▼') : ''}
+                        </button>
+                      </th>
+                    ))}
+                    <th style={{ padding: '4px 6px' }}>
+                      <button type="button"
+                        onClick={() => { if (sortKey === 'hotel') { setSortAsc(a => !a); } else { setSortKey('hotel'); setSortAsc(true); } }}
+                        style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', font: 'inherit', color: 'inherit', fontWeight: sortKey === 'hotel' ? 700 : 400 }}
+                      >
+                        {isDe ? 'Hotel' : 'Hotel'}{sortKey === 'hotel' ? (sortAsc ? ' ▲' : ' ▼') : ''}
+                      </button>
+                    </th>
+                    <th style={{ padding: '4px 6px' }}>{isDe ? 'Zeitraum' : 'Stay'}</th>
                     <th style={{ padding: '4px 6px', textAlign: 'right' }}>{isDe ? 'Nächte' : 'Nights'}</th>
                   </tr>
                 </thead>
@@ -746,6 +822,25 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                   {people
                     .filter(p => filterHotel === '__all'
                       || (filterHotel === '__none' ? !(p.Hotel || '').trim() : (p.Hotel || '').trim() === filterHotel))
+                    .filter(p => !hideNoWish || wishOf(p) !== false)
+                    .filter(p => {
+                      const q = search.trim().toLowerCase();
+                      if (!q) return true;
+                      return `${p.Nachname || ''} ${p.Vorname || ''} ${p.ParticipantName || ''} ${p.ParticipantEmail || ''} ${p.Location || ''} ${p.Company || ''} ${p.Hotel || ''}`
+                        .toLowerCase().indexOf(q) >= 0;
+                    })
+                    .sort((a, b) => {
+                      const dir = sortAsc ? 1 : -1;
+                      const txt = (x: SPRegistration): string => {
+                        if (sortKey === 'first') return x.Vorname || '';
+                        if (sortKey === 'loc') return x.Location || '';
+                        if (sortKey === 'comp') return x.Company || '';
+                        if (sortKey === 'hotel') return (x.Hotel || '').trim();
+                        if (sortKey === 'wish') { const w = wishOf(x); return w === true ? '1' : w === false ? '2' : '3'; }
+                        return x.Nachname || x.ParticipantName || '';
+                      };
+                      return txt(a).localeCompare(txt(b), 'de') * dir;
+                    })
                     .map(p => {
                       const from = toDay(p.HotelFrom);
                       const to = toDay(p.HotelTo);
@@ -762,8 +857,20 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                               })} />
                           </td>
                           <td style={{ padding: '4px 6px' }}>
-                            {p.ParticipantName || p.ParticipantEmail}
+                            {p.Nachname || p.ParticipantName || '—'}
                             <span style={{ display: 'block', fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{p.ParticipantEmail}</span>
+                          </td>
+                          <td style={{ padding: '4px 6px' }}>{p.Vorname || '—'}</td>
+                          <td style={{ padding: '4px 6px' }}>{p.Location || '—'}</td>
+                          <td style={{ padding: '4px 6px' }}>{p.Company || '—'}</td>
+                          <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
+                            {((): React.ReactNode => {
+                              const w = wishOf(p);
+                              if (w === null) return <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
+                              return w
+                                ? <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Ja' : 'Yes'}</strong>
+                                : <span style={{ color: 'var(--dex-gray-500)' }}>{isDe ? 'Nein' : 'No'}</span>;
+                            })()}
                           </td>
                           <td style={{ padding: '4px 6px' }}>
                             <select style={{ ...inp, height: 26 }} value={(p.Hotel || '').trim()} disabled={busy !== ''}
@@ -778,12 +885,34 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                             </select>
                           </td>
                           <td style={{ padding: '4px 6px' }}>
-                            <input type="date" style={{ ...inp, height: 26 }} value={from} disabled={busy !== ''}
-                              onChange={e => { void writeAssignment([p], (p.Hotel || '').trim(), e.target.value, to); }} />
-                          </td>
-                          <td style={{ padding: '4px 6px' }}>
-                            <input type="date" style={{ ...inp, height: 26 }} value={to} disabled={busy !== ''}
-                              onChange={e => { void writeAssignment([p], (p.Hotel || '').trim(), from, e.target.value); }} />
+                            {/* v28.48: Statt zweier Datumsfelder je Person nur noch
+                                die Auswahl aus den oben angelegten Zeitraeumen —
+                                das war der eigentliche Zweck der Vorlagen. Passt
+                                ein bestehender Eintrag zu keiner Vorlage, steht er
+                                als eigener Eintrag drin und geht nicht verloren. */}
+                            <select
+                              style={{ ...inp, height: 26, minWidth: 190 }}
+                              value={matchesStay ? (stays.filter(st => st.from === from && st.to === to)[0] || { id: '' }).id : (from && to ? '__custom' : '')}
+                              disabled={busy !== '' || stays.length === 0}
+                              onChange={e => {
+                                const v = e.target.value;
+                                if (v === '__custom') return; // bestehender Sonderfall bleibt
+                                const st = stays.filter(x => x.id === v)[0];
+                                void writeAssignment([p], (p.Hotel || '').trim(), st ? st.from : '', st ? st.to : '');
+                              }}
+                            >
+                              <option value="">{stays.length === 0 ? (isDe ? '— erst Zeitraum anlegen —' : '— create a template first —') : (isDe ? '— kein Zeitraum —' : '— none —')}</option>
+                              {stays.map(st => (
+                                <option key={st.id} value={st.id}>
+                                  {st.label} · {fmtDay(st.from, isDe)} – {fmtDay(st.to, isDe)}
+                                </option>
+                              ))}
+                              {!matchesStay && from && to && (
+                                <option value="__custom">
+                                  {isDe ? 'abweichend' : 'custom'}: {fmtDay(from, isDe)} – {fmtDay(to, isDe)}
+                                </option>
+                              )}
+                            </select>
                           </td>
                           <td style={{ padding: '4px 6px', textAlign: 'right', whiteSpace: 'nowrap' }}>
                             {n > 0 ? n : '—'}
