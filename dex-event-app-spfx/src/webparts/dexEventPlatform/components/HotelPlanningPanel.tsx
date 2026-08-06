@@ -107,9 +107,14 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   const [filterHotel, setFilterHotel] = React.useState<string>('__all');
   // v28.48: Suche, Sortierung und Hotel-Wunsch-Filter fuer die Personenliste.
   const [search, setSearch] = React.useState('');
-  const [sortKey, setSortKey] = React.useState<'name' | 'first' | 'loc' | 'comp' | 'wish' | 'hotel' | 'subs'>('name');
+  const [sortKey, setSortKey] = React.useState<'name' | 'first' | 'job' | 'loc' | 'comp' | 'wish' | 'hotel' | 'subs'>('name');
   const [sortAsc, setSortAsc] = React.useState(true);
   const [hideNoWish, setHideNoWish] = React.useState(false);
+  // v28.55: Personen-Spalten aufklappen — analog zur Teilnehmerliste. Kompakt
+  // (Foto + Name + Unterzeile) ist der Normalfall; aufgeklappt stehen Nachname,
+  // Vorname, Position, Standort und Unternehmen als eigene Spalten, z.B. zum
+  // Vergleichen oder fuer einen Screenshot.
+  const [personColsExpanded, setPersonColsExpanded] = React.useState(false);
   // v28.48: Fortschritt der Massenzuordnung — jede Person ist ein eigener
   // Schreibvorgang, bei 300 Zeilen dauert das spuerbar.
   const [bulkProgress, setBulkProgress] = React.useState<{ done: number; total: number } | null>(null);
@@ -877,6 +882,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
             <select style={{ ...inp }} value={sortKey} onChange={e => { setSortKey(e.target.value as any); setSortAsc(true); }}>
               <option value="name">{isDe ? 'Sortieren: Nachname' : 'Sort: last name'}</option>
               <option value="first">{isDe ? 'Sortieren: Vorname' : 'Sort: first name'}</option>
+              <option value="job">{isDe ? 'Sortieren: Position' : 'Sort: position'}</option>
               <option value="loc">{isDe ? 'Sortieren: Standort' : 'Sort: location'}</option>
               <option value="comp">{isDe ? 'Sortieren: Unternehmen' : 'Sort: company'}</option>
               <option value="wish">{isDe ? 'Sortieren: Hotel-Wunsch' : 'Sort: hotel request'}</option>
@@ -997,7 +1003,12 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                 )}
               </div>
             )}
-            <div style={{ overflowX: 'auto' }}>
+            {/* v28.55: eigener Scroll-Container wie bei der Teilnehmerliste
+                (renderTable, maxHeight 70vh). Vorher lief die Zuordnungstabelle
+                bei mehreren hundert Personen inline ueber die volle Hoehe — man
+                musste an der ganzen Tabelle vorbeiscrollen, um an die Abschnitte
+                darunter zu kommen. */}
+            <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
                 <thead>
                   <tr style={{ textAlign: 'left', color: 'var(--dex-gray-600)' }}>
@@ -1006,8 +1017,46 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                         checked={selected.size > 0 && selected.size === people.length}
                         onChange={e => setSelected(e.target.checked ? new Set(people.map(p => p.Id)) : new Set())} />
                     </th>
+                    {personColsExpanded ? (
+                      <>
+                        <th style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
+                          <button type="button"
+                            onClick={() => { if (sortKey === 'name') { setSortAsc(a => !a); } else { setSortKey('name'); setSortAsc(true); } }}
+                            style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', font: 'inherit', color: 'inherit', fontWeight: sortKey === 'name' ? 700 : 400 }}>
+                            {isDe ? 'Nachname' : 'Last name'}{sortKey === 'name' ? (sortAsc ? ' ▲' : ' ▼') : ''}
+                          </button>
+                          <button type="button" onClick={() => setPersonColsExpanded(false)}
+                            title={isDe ? 'Personen-Spalten einklappen' : 'Collapse personal columns'}
+                            style={{ marginLeft: 6, border: 'none', cursor: 'pointer', background: 'var(--dex-green, #86bc25)', color: '#fff', width: 18, height: 18, borderRadius: '50%', fontSize: '0.7rem', fontWeight: 700, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', verticalAlign: 'middle' }}>«</button>
+                        </th>
+                        {([
+                          { k: 'first' as const, l: isDe ? 'Vorname' : 'First name' },
+                          { k: 'job' as const, l: isDe ? 'Position' : 'Position' },
+                          { k: 'loc' as const, l: isDe ? 'Standort' : 'Location' },
+                          { k: 'comp' as const, l: isDe ? 'Unternehmen' : 'Company' },
+                        ]).map(col => (
+                          <th key={col.k} style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
+                            <button type="button"
+                              onClick={() => { if (sortKey === col.k) { setSortAsc(a => !a); } else { setSortKey(col.k); setSortAsc(true); } }}
+                              style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', font: 'inherit', color: 'inherit', fontWeight: sortKey === col.k ? 700 : 400 }}>
+                              {col.l}{sortKey === col.k ? (sortAsc ? ' ▲' : ' ▼') : ''}
+                            </button>
+                          </th>
+                        ))}
+                      </>
+                    ) : (
+                      <th style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
+                        <button type="button"
+                          onClick={() => { if (sortKey === 'name') { setSortAsc(a => !a); } else { setSortKey('name'); setSortAsc(true); } }}
+                          style={{ border: 'none', background: 'none', padding: 0, cursor: 'pointer', font: 'inherit', color: 'inherit', fontWeight: sortKey === 'name' ? 700 : 400 }}>
+                          {isDe ? 'Teilnehmer' : 'Participant'}{sortKey === 'name' ? (sortAsc ? ' ▲' : ' ▼') : ''}
+                        </button>
+                        <button type="button" onClick={() => setPersonColsExpanded(true)}
+                          title={isDe ? 'Personen-Spalten ausklappen' : 'Expand personal columns'}
+                          style={{ marginLeft: 6, border: 'none', cursor: 'pointer', background: 'var(--dex-green, #86bc25)', color: '#fff', width: 18, height: 18, borderRadius: '50%', fontSize: '0.7rem', fontWeight: 700, padding: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', verticalAlign: 'middle' }}>»</button>
+                      </th>
+                    )}
                     {([
-                      { k: 'name' as const, l: isDe ? 'Teilnehmer' : 'Participant' },
                       { k: 'wish' as const, l: isDe ? 'Hotel-Wunsch' : 'Hotel request' },
                     ]).map(col => (
                       <th key={col.k} style={{ padding: '4px 6px' }}>
@@ -1058,6 +1107,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                       const dir = sortAsc ? 1 : -1;
                       const txt = (x: SPRegistration): string => {
                         if (sortKey === 'first') return x.Vorname || '';
+                        if (sortKey === 'job') return String((x as any).JobTitle || '');
                         if (sortKey === 'loc') return x.Location || '';
                         if (sortKey === 'comp') return x.Company || '';
                         if (sortKey === 'hotel') return (x.Hotel || '').trim();
@@ -1091,6 +1141,25 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                               Position • Standort • Unternehmen. Alle drei Werte
                               stehen bereits auf der Teilnehmerzeile, es braucht
                               also keine zusaetzliche Abfrage. */}
+                          {((): React.ReactNode => {
+                            const vn0 = p.Vorname || ((p.ParticipantName || '').split(' ')[0] || '');
+                            let nn0 = p.Nachname || '';
+                            if (!nn0 && p.ParticipantName) {
+                              const parts = p.ParticipantName.trim().split(/\s+/);
+                              if (parts.length > 1) nn0 = parts.slice(1).join(' ');
+                            }
+                            if (!personColsExpanded) return null;
+                            return (
+                              <>
+                                <td style={{ padding: '4px 6px' }} title={p.ParticipantEmail || ''}>{nn0 || '—'}</td>
+                                <td style={{ padding: '4px 6px' }}>{vn0 || '—'}</td>
+                                <td style={{ padding: '4px 6px' }}>{String((p as any).JobTitle || '') || '—'}</td>
+                                <td style={{ padding: '4px 6px' }}>{stripLocPrefix(String(p.Location || '')) || '—'}</td>
+                                <td style={{ padding: '4px 6px' }}>{p.Company || '—'}</td>
+                              </>
+                            );
+                          })()}
+                          {!personColsExpanded && (
                           <td style={{ padding: '4px 6px' }}>
                             {((): React.ReactNode => {
                               const vn = p.Vorname || ((p.ParticipantName || '').split(' ')[0] || '');
@@ -1115,6 +1184,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                               );
                             })()}
                           </td>
+                          )}
                           {(childEvents || []).map(c => {
                             const em = (p.ParticipantEmail || '').trim().toLowerCase();
                             const inSub = !!em && (subEmails[c.id] || []).indexOf(em) >= 0;
