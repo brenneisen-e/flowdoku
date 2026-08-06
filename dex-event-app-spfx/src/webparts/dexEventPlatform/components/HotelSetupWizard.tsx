@@ -377,7 +377,11 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
     nights: number;
   }
 
-  const plan = React.useMemo<{ rows: IPlanRow[]; unplaced: number; candidates: number; assignments: Array<{ reg: SPRegistration; hotel: string; from: string; to: string }> }>(() => {
+  const plan = React.useMemo<{
+    rows: IPlanRow[]; unplaced: number; candidates: number;
+    excludedAssigned: number; excludedNoWish: number;
+    assignments: Array<{ reg: SPRegistration; hotel: string; from: string; to: string }>;
+  }>(() => {
     // Priorität bestimmt die Reihenfolge — Hotels OHNE Kontingent kommen aber
     // immer zuletzt. Sonst saugt ein „unbegrenztes" Haus, das zufällig oben
     // steht, die gesamte Gruppe auf und die echten Kontingente verfallen.
@@ -396,9 +400,12 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
     const byName: Record<string, IPlanRow> = {};
     for (const r of rows) byName[r.hotel.name] = r;
 
+    // Wer faellt raus — und warum? Ohne diese Zahlen wirkt eine Verteilung,
+    // die nur eine von zwei Personen anfasst, wie ein Fehler.
+    let excludedAssigned = 0; let excludedNoWish = 0;
     const candidates = people.filter(p => {
-      if (!overwrite && (p.Hotel || '').trim()) return false;
-      if (wRules.skipNoWish && needsRoom(p) === false) return false;
+      if (!overwrite && (p.Hotel || '').trim()) { excludedAssigned++; return false; }
+      if (wRules.skipNoWish && needsRoom(p) === false) { excludedNoWish++; return false; }
       return true;
     });
 
@@ -472,7 +479,7 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
         r.extraAfter += nightsBetween(r.base.to, s.to);
       }
     }
-    return { rows, unplaced, candidates: candidates.length, assignments };
+    return { rows, unplaced, candidates: candidates.length, excludedAssigned, excludedNoWish, assignments };
   }, [wHotels, allStays, mainStay, wRules, people, overwrite, forcedHotel, subsOf, stayFor, needsRoom]);
 
   const needBeds = React.useMemo(
@@ -716,7 +723,6 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
     const main = mainStay;
     const core = coreStay(event);
     const coreFits = !!main && main.from === core.from && main.to === core.to;
-    const variants = wStays.filter(s => !main || s.id !== main.id);
 
     const toggleVariant = (from: string, to: string, label: string): void => {
       const hit = wStays.filter(s => s.from === from && s.to === to)[0];
@@ -863,19 +869,55 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
             })}
           </div>
 
-          {variants.length > 0 && (
+          {/* v28.61: ALLE Zeiträume in einer Liste — auch der Standard. Der ist
+              zwar der Anker für die Extranacht-Rechnung, aber wenn bei eurem
+              Event schlicht niemand nur eine Nacht bleibt, muss er weg können.
+              Löschen macht den nächsten Zeitraum zum Standard; nur der letzte
+              verbleibende lässt sich nicht entfernen. */}
+          {wStays.length > 0 && (
             <div style={{ marginTop: 12 }}>
-              {variants.map(s => (
-                <div key={s.id} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '5px 0', borderTop: '1px solid var(--dex-gray-100)' }}>
-                  <input style={{ ...smallInp, flex: '2 1 180px' }} value={s.label}
-                    onChange={e => setWStays(wStays.map(x => x.id === s.id ? { ...x, label: e.target.value } : x))} />
-                  <span style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
-                    {fmtDay(s.from, isDe)} – {fmtDay(s.to, isDe)} · {nightLabel(nightsBetween(s.from, s.to), isDe)}
-                  </span>
-                  <button type="button" onClick={() => setWStays(wStays.filter(x => x.id !== s.id))}
-                    style={{ marginLeft: 'auto', border: 'none', background: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)', fontSize: '0.95rem' }}>×</button>
-                </div>
-              ))}
+              <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--dex-gray-600)', marginBottom: 4 }}>
+                {isDe ? 'Eure Zeiträume' : 'Your periods'}
+              </div>
+              {wStays.map(s => {
+                const isMain = !!main && s.id === main.id;
+                return (
+                  <div key={s.id} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', padding: '5px 0', borderTop: '1px solid var(--dex-gray-100)' }}>
+                    {isMain ? (
+                      <span style={{
+                        fontSize: '0.7rem', fontWeight: 700, padding: '3px 8px', borderRadius: 999,
+                        background: 'var(--dex-green, #86bc25)', color: '#fff', whiteSpace: 'nowrap',
+                      }}>{isDe ? 'Standard' : 'Standard'}</span>
+                    ) : (
+                      <button type="button" title={isDe ? 'Diesen Zeitraum zum Standard machen' : 'Make this the standard'}
+                        onClick={() => setWStays(wStays.map(x => ({ ...x, isDefault: x.id === s.id })))}
+                        style={{
+                          fontSize: '0.7rem', padding: '3px 8px', borderRadius: 999, cursor: 'pointer',
+                          border: '1px solid var(--dex-gray-300)', background: '#fff', color: 'var(--dex-gray-600)', whiteSpace: 'nowrap',
+                        }}>{isDe ? 'als Standard' : 'make standard'}</button>
+                    )}
+                    <input style={{ ...smallInp, flex: '2 1 170px' }} value={s.label}
+                      onChange={e => setWStays(wStays.map(x => x.id === s.id ? { ...x, label: e.target.value } : x))} />
+                    <span style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
+                      {fmtDay(s.from, isDe)} – {fmtDay(s.to, isDe)} · {nightLabel(nightsBetween(s.from, s.to), isDe)}
+                    </span>
+                    <button type="button" disabled={wStays.length <= 1}
+                      title={wStays.length <= 1
+                        ? (isDe ? 'Mindestens ein Zeitraum muss bleiben.' : 'At least one period must remain.')
+                        : (isDe ? 'Zeitraum entfernen' : 'Remove period')}
+                      onClick={() => {
+                        const next = wStays.filter(x => x.id !== s.id);
+                        if (next.length > 0 && !next.some(x => x.isDefault)) next[0] = { ...next[0], isDefault: true };
+                        setWStays(next);
+                      }}
+                      style={{
+                        marginLeft: 'auto', border: 'none', background: 'none', fontSize: '0.95rem',
+                        cursor: wStays.length <= 1 ? 'default' : 'pointer',
+                        color: 'var(--dex-red, #c00)', opacity: wStays.length <= 1 ? 0.3 : 1,
+                      }}>×</button>
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -1155,6 +1197,29 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
             : <>This is how the distribution would look. <strong>Extra nights</strong> fall outside each hotel’s capacity period — your contingent does not cover them, they have to be booked on top.</>}
         </p>
 
+        {/* Wer wird ueberhaupt angefasst? */}
+        <div style={{ ...box, marginTop: 0, marginBottom: 12, background: 'var(--dex-gray-50, #f7f7f5)' }}>
+          <div style={{ fontSize: '0.82rem', lineHeight: 1.6 }}>
+            {isDe
+              ? <><strong>{people.length}</strong> aktive Teilnehmer · davon werden <strong>{plan.candidates}</strong> jetzt verteilt.</>
+              : <><strong>{people.length}</strong> active attendees · <strong>{plan.candidates}</strong> will be distributed now.</>}
+          </div>
+          {(plan.excludedAssigned > 0 || plan.excludedNoWish > 0) && (
+            <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: '0.79rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+              {plan.excludedAssigned > 0 && (
+                <li>{isDe
+                  ? <><strong>{plan.excludedAssigned}</strong> haben bereits ein Hotel und bleiben unberührt — setz oben in Schritt 3 „Bestehende Zuordnungen überschreiben", wenn sie mit verteilt werden sollen.</>
+                  : <><strong>{plan.excludedAssigned}</strong> already have a hotel and stay untouched — tick „Overwrite existing assignments" in step 3 to include them.</>}</li>
+              )}
+              {plan.excludedNoWish > 0 && (
+                <li>{isDe
+                  ? <><strong>{plan.excludedNoWish}</strong> haben im Anmeldeformular kein Zimmer gewünscht.</>
+                  : <><strong>{plan.excludedNoWish}</strong> declined a room in the registration form.</>}</li>
+              )}
+            </ul>
+          )}
+        </div>
+
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 660 }}>
             <thead>
@@ -1246,7 +1311,11 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
   };
 
   return (
-    <Modal open={open} onClose={onClose} maxWidth={900} dismissable={!busy}
+    // v28.61: `dismissable={false}` — ein Klick neben den Dialog (oder Escape)
+    // schliesst ihn nicht mehr. Im Assistenten stecken vier Schritte Eingabe,
+    // die beim versehentlichen Schliessen komplett weg waren. Raus geht es nur
+    // noch bewusst ueber „Abbrechen".
+    <Modal open={open} onClose={onClose} maxWidth={900} dismissable={false}
       ariaLabel={isDe ? 'Hotel-Planung einrichten' : 'Set up hotel planning'}>
       <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--dex-gray-800)' }}>
         {isDe ? 'Hotel-Planung einrichten' : 'Set up hotel planning'}

@@ -449,6 +449,10 @@ const OVERBOOK_APOLOGY_BODY_DE = wrapTemplateForStorage(
 
 // Fester Listenname auf jeder Subsite
 const REG_LIST_NAME = 'Teilnehmer';
+
+/** v28.61: Je Teilnehmerliste nur einmal pro Sitzung die Hotel-Spalten
+ *  anlegen — der Aufruf ist idempotent, aber nicht kostenlos (drei POSTs). */
+const HOTEL_COLS_READY = new Set<string>();
 const REG_LIST_ITEM_TYPE = 'SP.Data.TeilnehmerListItem';
 // v7.28: Counter-Liste für atomare TeilnehmerID-Vergabe (ETag-basiert).
 // Pro Subsite eine Liste mit genau einem Item, dessen NextValue beim
@@ -1806,6 +1810,11 @@ export class EventService {
    */
   public async ensureHotelColumns(subsiteUrl: string): Promise<void> {
     if (!subsiteUrl) return;
+    // v28.61: Nur EINMAL je Liste und Sitzung. Vorher lief das vor jeder
+    // einzelnen Zuordnung — drei POSTs, die alle mit „Feld existiert bereits"
+    // scheiterten, bevor ueberhaupt geschrieben wurde. Beim Umstellen eines
+    // Hotels in der Personenliste war genau das die spuerbare Verzoegerung.
+    if (HOTEL_COLS_READY.has(subsiteUrl)) return;
     const base = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/fields`;
     const fields: Array<{ title: string; type: number }> = [
       { title: 'Hotel', type: 2 },       // Text: Name des Hotels
@@ -1821,6 +1830,7 @@ export class EventService {
         });
       } catch { /* existiert bereits oder keine Rechte — beides unkritisch */ }
     }
+    HOTEL_COLS_READY.add(subsiteUrl);
   }
 
   /**
