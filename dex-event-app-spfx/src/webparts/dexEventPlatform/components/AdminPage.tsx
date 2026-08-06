@@ -8593,6 +8593,7 @@ export default function AdminPage(): React.ReactElement {
                 event={selectedEvent}
                 registrations={registrations}
                 isDe={isDe}
+                childEvents={childEventsOf(selectedEvent.id)}
                 onReloadRegistrations={async () => {
                   const regs = await getAllRegistrations(selectedEvent.id);
                   setRegistrations(regs);

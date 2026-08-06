@@ -919,28 +919,8 @@ export default function LandingPage(): React.ReactElement {
             </h1>
             <p>
               {isDe
-                ? <>Willkommen bei <strong>DEX</strong>. Unsere neue App für die Organisation von <span style={{ whiteSpace: 'nowrap' }}>Deloitte Events*</span>. Von der Anmeldung, bis zum Check-in. Alles an einer Stelle.</>
-                : <>Welcome to <strong>DEX</strong>. Our new app for organising <span style={{ whiteSpace: 'nowrap' }}>Deloitte events*</span>. From registration to check-in. Everything in one place.</>}
-            </p>
-          </div>
-          {/* v28.44: Einsatzbereich als Sternchen-Fussnote zu „Deloitte Events",
-              abgesetzt durch einen feinen Trennstrich. Bewusst AUSSERHALB von
-              .landing__text (max-width 760px) — dort waere die Zeile umgebrochen;
-              hier laeuft sie einzeilig ueber die volle Kartenbreite. Der negative
-              obere Rand zieht den Block gegen das Flex-`gap` des Hero nach oben,
-              damit er direkt unter dem Text sitzt statt weit darunter. */}
-          <div style={{ width: '100%', marginTop: 'clamp(-40px, -3.2vh, -16px)' }}>
-            <div style={{ height: 1, background: 'var(--dex-gray-200, #e5e7eb)', width: '100%' }} />
-            <p style={{
-              fontStyle: 'italic',
-              fontSize: isMobile ? '0.68rem' : '0.72rem',
-              color: 'var(--dex-gray-500)',
-              margin: '6px 0 0', textAlign: 'center', lineHeight: 1.35,
-              whiteSpace: isMobile ? 'normal' : 'nowrap',
-            }}>
-              {isDe
-                ? '* Nur für interne Zwecke — interne Deloitte Events und die Koordination der Deloitte-Teilnahme an externen Veranstaltungen.'
-                : '* For internal use only — Deloitte-internal events and coordinating Deloitte participation in external events.'}
+                ? <>Willkommen bei <strong>DEX</strong>. Unsere neue App für die Organisation von <span style={{ whiteSpace: 'nowrap' }}>Deloitte Events</span>. Von der Anmeldung, bis zum Check-in. Alles an einer Stelle.</>
+                : <>Welcome to <strong>DEX</strong>. Our new app for organising <span style={{ whiteSpace: 'nowrap' }}>Deloitte events</span>. From registration to check-in. Everything in one place.</>}
             </p>
           </div>
           {/* v22.1: Check-in-Hinweisbox(en) — ab 2 Tage vor dem Event, sobald
