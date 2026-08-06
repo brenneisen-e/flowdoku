@@ -1746,6 +1746,49 @@ export default function MyEventsPage(): React.ReactElement {
                           : <>This registration was <strong>created for you</strong> (e.g. by your assistant or the organizers). Your registration is valid — the details and cancellation stay with whoever registered you. Please contact them or the organizers for changes. <strong>Do not register again</strong>, that would create a duplicate.</>}
                       </div>
                     )}
+                    {/* v28.39: Hotel-Zuordnung — nur wenn der Organizer die
+                        Anzeige im Hotel-Bereich freigegeben hat UND fuer diese
+                        Person ein Hotel hinterlegt ist. Rein lesend; Aenderungen
+                        laufen ueber die Organizer. */}
+                    {event.hotelVisibleToAttendees && (registration.Hotel || '').trim() && (() => {
+                      const hotelName = (registration.Hotel || '').trim();
+                      const h = (event.hotels || []).filter(x => x.name === hotelName)[0];
+                      const day = (iso?: string): string => (iso ? String(iso).substring(0, 10) : '');
+                      const from = day(registration.HotelFrom);
+                      const to = day(registration.HotelTo);
+                      const nights = (from && to)
+                        ? Math.max(0, Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000))
+                        : 0;
+                      const fmt = (d: string): string => {
+                        if (!d) return '—';
+                        const t = Date.parse(`${d}T00:00:00Z`);
+                        return isNaN(t) ? d : new Date(t).toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+                      };
+                      return (
+                        <div style={{
+                          marginTop: 6, padding: '10px 12px', borderRadius: 8,
+                          background: 'rgba(134,188,37,0.07)', border: '1px solid var(--dex-green, #86bc25)',
+                          color: 'var(--dex-gray-700)', fontSize: '0.82rem', lineHeight: 1.55,
+                        }}>
+                          <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                            {isDe ? 'Deine Unterkunft' : 'Your accommodation'}
+                          </strong>
+                          <div style={{ marginTop: 2 }}>
+                            <strong>{hotelName}</strong>
+                            {h && h.address && <span style={{ color: 'var(--dex-gray-600)' }}> · {h.address}</span>}
+                          </div>
+                          {(from || to) && (
+                            <div style={{ color: 'var(--dex-gray-600)' }}>
+                              {isDe ? 'Anreise' : 'Arrival'} {fmt(from)} · {isDe ? 'Abreise' : 'Departure'} {fmt(to)}
+                              {nights > 0 && <> · {nights} {isDe ? (nights === 1 ? 'Nacht' : 'Nächte') : (nights === 1 ? 'night' : 'nights')}</>}
+                            </div>
+                          )}
+                          <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                            {isDe ? 'Für Änderungen wende dich bitte an die Organizer.' : 'For changes please contact the organizers.'}
+                          </div>
+                        </div>
+                      );
+                    })()}
                     {/* v15.15: Hinweisbox „nur für Sub-Events angemeldet"
                         nur außerhalb des subEventsOnlyMode anzeigen — dort
                         ist sie redundant, weil es gar keine andere Option
