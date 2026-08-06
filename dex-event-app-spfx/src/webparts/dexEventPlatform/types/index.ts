@@ -36,6 +36,11 @@ export interface DexHotel {
 export interface DexHotelRules {
   /** Je Sub-Event-Id: festes Hotel und/oder fester Zeitraum. */
   bySub?: Record<string, { hotel?: string; stayId?: string }>;
+  /** v28.58: Zuordnung „Antwort im Anmeldeformular → Zeitraum". Deckt den
+   *  Normalfall ab, dass das Formular die Zusatznaechte selbst abfragt
+   *  („Hotel (additional nights)"): Wer dort etwas angegeben hat, bekommt
+   *  automatisch den laengeren Zeitraum. */
+  byAnswer?: { fieldId: string; map: Record<string, string> };
   /** Personen mit derselben Sub-Event-Kombination zusammen unterbringen. */
   keepGroups?: boolean;
   /** Wer im Anmeldeformular „keine Unterkunft" gewaehlt hat, wird uebersprungen. */
