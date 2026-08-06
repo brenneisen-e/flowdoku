@@ -170,8 +170,25 @@ function buildGeometry(contourCount: number, particleCount: number, seed: number
 
   const contours: Float32Array[] = [];
 
-  for (let i = 0; i < contourCount; i++) {
-    const base = startAlpha + spread * Math.pow(i / steps, falloff);
+  // v28.35: Die gemessene Staffelung endet bei maxAlpha (2.62 von pi). Der Rest
+  // der Kugel — eine Kappe von rund 0.5 rad um den Gegenpol — traegt keine
+  // Linien. In Ruhelage liegt sie auf der Rueckseite und faellt nicht auf; seit
+  // die Kugel per Maus frei drehbar ist, wandert sie aber nach vorn und sieht
+  // dort wie ein Loch aus. Deshalb wird sie mit Linien im Abstand der
+  // aeussersten gemessenen Staffel aufgefuellt. Die Vorderseite in Ruhelage
+  // bleibt dabei unveraendert, weil ausschliesslich JENSEITS von maxAlpha
+  // ergaenzt wird.
+  const lastGap = spread * (Math.pow(1, falloff) - Math.pow((steps - 1) / steps, falloff));
+  const capStep = lastGap > 0.005 ? lastGap : 0.05;
+  const capLimit = Math.PI - 0.02;
+  let capCount = 0;
+  for (let a = maxAlpha + capStep; a < capLimit; a += capStep) { capCount++; }
+  const totalContours = contourCount + capCount;
+
+  for (let i = 0; i < totalContours; i++) {
+    const base = i < contourCount
+      ? startAlpha + spread * Math.pow(i / steps, falloff)
+      : maxAlpha + capStep * (i - contourCount + 1);
     const pts = new Float32Array((segments + 1) * 3);
 
     for (let s = 0; s <= segments; s++) {
