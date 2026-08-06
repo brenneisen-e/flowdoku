@@ -7,6 +7,14 @@ import { wrapTemplate, replacePlaceholders } from '../services/EmailTemplates';
 import { collectCcEmailsFromFields } from '../context/EventContext';
 import HotelImportModal, { IHotelImportResultRow } from './HotelImportModal';
 import PersonContactHover from './PersonContactHover';
+import DatePicker, { registerLocale } from 'react-datepicker';
+import { de } from 'date-fns/locale';
+import 'react-datepicker/dist/react-datepicker.css';
+
+// v28.57: `<input type="date">` folgt der Browser-/OS-Sprache und zeigte den
+// Kalender deshalb in amerikanischer Schreibweise (MM/TT/JJJJ). Wir nutzen
+// jetzt denselben DatePicker wie der Event-Wizard, mit deutscher Locale.
+registerLocale('de', de);
 
 /**
  * HotelPlanningPanel (v28.39)
@@ -76,6 +84,12 @@ const addDays = (day: string, n: number): string => {
 };
 
 /** „DE - Berlin" → „Berlin" (identisch zur Teilnehmerliste). */
+/** Date → 'YYYY-MM-DD' in lokaler Zeit. `toISOString()` waere hier falsch: In
+ *  MEZ/MESZ liegt Mitternacht lokal vor Mitternacht UTC, das Datum spraenge
+ *  einen Tag zurueck. */
+const toLocalDay = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 const stripLocPrefix = (loc: string): string => (loc || '').replace(/^[A-Za-z]{2}\s*[-–—]\s*/, '').trim();
 
 const fmtDay = (day: string, isDe: boolean): string => {
@@ -97,9 +111,24 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     } catch { return null; }
   }, []);
 
-  const hotels: DexHotel[] = React.useMemo(() => event.hotels || [], [event.hotels]);
-  const stays: DexHotelStay[] = React.useMemo(() => event.hotelStays || [], [event.hotelStays]);
-  const visible = !!event.hotelVisibleToAttendees;
+  /**
+   * v28.57: Stammdaten lokal spiegeln. Vorher hing jedes Anlegen eines Hotels
+   * oder Zeitraums am `await onReloadEvents()` — und das laedt im Organizer
+   * Center ALLE Events samt Custom-Fields, Teilnehmerzahlen und Anhaengen neu
+   * (mehrere Sekunden). Fuer eine Handvoll Bytes im Piggyback war das absurd.
+   * Jetzt: sofort lokal anzeigen, im Hintergrund nachladen. Der Effekt unten
+   * zieht nach, sobald der frische Event-Stand da ist.
+   */
+  const [hotelsLocal, setHotelsLocal] = React.useState<DexHotel[]>(event.hotels || []);
+  const [staysLocal, setStaysLocal] = React.useState<DexHotelStay[]>(event.hotelStays || []);
+  const [visibleLocal, setVisibleLocal] = React.useState<boolean>(!!event.hotelVisibleToAttendees);
+  React.useEffect(() => { setHotelsLocal(event.hotels || []); }, [event.hotels]);
+  React.useEffect(() => { setStaysLocal(event.hotelStays || []); }, [event.hotelStays]);
+  React.useEffect(() => { setVisibleLocal(!!event.hotelVisibleToAttendees); }, [event.hotelVisibleToAttendees]);
+
+  const hotels: DexHotel[] = hotelsLocal;
+  const stays: DexHotelStay[] = staysLocal;
+  const visible = visibleLocal;
 
   const [busy, setBusy] = React.useState('');
   const [selected, setSelected] = React.useState<Set<number>>(new Set());
@@ -332,6 +361,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     setImportProgress({ done: 0, total: rowsIn.length });
     if (newHotelNames.length > 0) {
       const merged = hotels.concat(newHotelNames.map(n => ({ id: uid('h'), name: n, address: '', capacity: 0, notes: '' })));
+      setHotelsLocal(merged);
       const okH = await svc.patchEventOverridesValue(Number(event.id), '_hotels', merged);
       if (!okH) {
         setImportBusy(false); setImportProgress(null);
@@ -349,7 +379,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
       if (!ok) failed++;
       setImportProgress({ done: i + 1, total: rowsIn.length });
     }
-    await onReloadEvents();
+    void Promise.resolve(onReloadEvents()).catch(() => { /* Hintergrund */ });
     await onReloadRegistrations();
     setImportBusy(false);
     setImportProgress(null);
@@ -397,20 +427,32 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
 
   const saveHotels = async (next: DexHotel[]): Promise<void> => {
     if (!svc) return;
+    const prev = hotelsLocal;
+    setHotelsLocal(next); // sofort sichtbar
     setBusy('hotels');
     const ok = await svc.patchEventOverridesValue(Number(event.id), '_hotels', next);
     setBusy('');
-    if (!ok) { showAlert(isDe ? 'Die Hotels konnten nicht gespeichert werden.' : 'Could not save the hotels.', { variant: 'error' }); return; }
-    await onReloadEvents();
+    if (!ok) {
+      setHotelsLocal(prev); // Rollback, damit die Anzeige nicht luegt
+      showAlert(isDe ? 'Die Hotels konnten nicht gespeichert werden.' : 'Could not save the hotels.', { variant: 'error' });
+      return;
+    }
+    void Promise.resolve(onReloadEvents()).catch(() => { /* Hintergrund */ });
   };
 
   const saveStays = async (next: DexHotelStay[]): Promise<void> => {
     if (!svc) return;
+    const prev = staysLocal;
+    setStaysLocal(next);
     setBusy('stays');
     const ok = await svc.patchEventOverridesValue(Number(event.id), '_hotelStays', next);
     setBusy('');
-    if (!ok) { showAlert(isDe ? 'Die Zeiträume konnten nicht gespeichert werden.' : 'Could not save the stay templates.', { variant: 'error' }); return; }
-    await onReloadEvents();
+    if (!ok) {
+      setStaysLocal(prev);
+      showAlert(isDe ? 'Die Zeiträume konnten nicht gespeichert werden.' : 'Could not save the stay templates.', { variant: 'error' });
+      return;
+    }
+    void Promise.resolve(onReloadEvents()).catch(() => { /* Hintergrund */ });
   };
 
   const toggleVisible = async (): Promise<void> => {
@@ -426,11 +468,16 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
       );
       if (!ok) return;
     }
+    setVisibleLocal(next);
     setBusy('visible');
     const ok = await svc.patchEventOverridesValue(Number(event.id), '_hotelVisible', next);
     setBusy('');
-    if (!ok) { showAlert(isDe ? 'Die Einstellung konnte nicht gespeichert werden.' : 'Could not save the setting.', { variant: 'error' }); return; }
-    await onReloadEvents();
+    if (!ok) {
+      setVisibleLocal(!next);
+      showAlert(isDe ? 'Die Einstellung konnte nicht gespeichert werden.' : 'Could not save the setting.', { variant: 'error' });
+      return;
+    }
+    void Promise.resolve(onReloadEvents()).catch(() => { /* Hintergrund */ });
     showAlert(
       next
         ? (isDe ? 'Freigegeben — die Teilnehmer sehen ihr Hotel unter „Meine Events".' : 'Released — attendees now see their hotel under „My events".')
@@ -893,16 +940,47 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
             </span>
           )}
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-          <input style={{ ...inp, flex: '2 1 150px' }} placeholder={isDe ? 'Bezeichnung, z.B. „Mit Vorabend"' : 'Label, e.g. „With prior evening"'}
-            value={newStay.label} onChange={e => setNewStay({ ...newStay, label: e.target.value })} />
-          <input style={{ ...inp }} type="date" value={newStay.from} onChange={e => setNewStay({ ...newStay, from: e.target.value })} />
-          <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>–</span>
-          <input style={{ ...inp }} type="date" value={newStay.to} onChange={e => setNewStay({ ...newStay, to: e.target.value })} />
-          <span style={{ fontSize: '0.76rem', color: 'var(--dex-gray-600)' }}>
+        {/* v28.57: Feld-Layout wie im Event-Wizard — form-group/form-label/form-input
+            plus derselbe react-datepicker (deutsche Locale, TT.MM.JJJJ). */}
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div className="form-group" style={{ marginBottom: 0, flex: '2 1 190px' }}>
+            <label className="form-label" style={{ fontSize: '0.8rem', marginBottom: 4 }}>
+              {isDe ? 'Bezeichnung' : 'Label'}
+            </label>
+            <input className="form-input" placeholder={isDe ? 'z.B. „Mit Vorabend"' : 'e.g. „With prior evening"'}
+              value={newStay.label} onChange={e => setNewStay({ ...newStay, label: e.target.value })} />
+          </div>
+          <div className="form-group" style={{ marginBottom: 0, flex: '1 1 160px' }}>
+            <label className="form-label" style={{ fontSize: '0.8rem', marginBottom: 4 }}>
+              {isDe ? 'Anreise' : 'Arrival'}
+            </label>
+            <DatePicker
+              selected={newStay.from ? new Date(`${newStay.from}T00:00:00`) : null}
+              onChange={(d: Date | null) => setNewStay({ ...newStay, from: d ? toLocalDay(d) : '' })}
+              dateFormat="dd.MM.yyyy" locale={isDe ? 'de' : undefined}
+              placeholderText={isDe ? 'TT.MM.JJJJ' : 'dd/mm/yyyy'}
+              className="form-input" wrapperClassName="dex-datepicker-wrapper"
+              calendarClassName="dex-datepicker-calendar" popperPlacement="bottom-start"
+              isClearable autoComplete="off" />
+          </div>
+          <div className="form-group" style={{ marginBottom: 0, flex: '1 1 160px' }}>
+            <label className="form-label" style={{ fontSize: '0.8rem', marginBottom: 4 }}>
+              {isDe ? 'Abreise' : 'Departure'}
+            </label>
+            <DatePicker
+              selected={newStay.to ? new Date(`${newStay.to}T00:00:00`) : null}
+              onChange={(d: Date | null) => setNewStay({ ...newStay, to: d ? toLocalDay(d) : '' })}
+              dateFormat="dd.MM.yyyy" locale={isDe ? 'de' : undefined}
+              placeholderText={isDe ? 'TT.MM.JJJJ' : 'dd/mm/yyyy'}
+              minDate={newStay.from ? new Date(`${newStay.from}T00:00:00`) : undefined}
+              className="form-input" wrapperClassName="dex-datepicker-wrapper"
+              calendarClassName="dex-datepicker-calendar" popperPlacement="bottom-start"
+              isClearable autoComplete="off" />
+          </div>
+          <span style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', paddingBottom: 14 }}>
             {nightsBetween(newStay.from, newStay.to)} {isDe ? 'Nächte' : 'nights'}
           </span>
-          <button type="button" className="btn btn-secondary" style={{ fontSize: '0.78rem', padding: '5px 14px' }}
+          <button type="button" className="btn btn-secondary" style={{ fontSize: '0.82rem', padding: '11px 18px', marginBottom: 1 }}
             disabled={busy !== ''}
             onClick={() => {
               const n = nightsBetween(newStay.from, newStay.to);
