@@ -2090,6 +2090,28 @@ export default function EventCreationPage(): React.ReactElement {
     }
     return out;
   };
+  /**
+   * v28.67: Gegenstueck zu outlookUpdateTargets() — Events, fuer die ein
+   * Outlook-Termin vorgesehen ist, aber KEINER existiert (weder OutlookEventId
+   * noch CalendarLink). Bisher fielen die einfach aus der Zaehlung: Bei einem
+   * Event mit Hauptevent + vier Sub-Events stand dann „Alle 2 Termine
+   * aktualisieren", ohne zu sagen, dass drei Kalendereintraege schlicht
+   * fehlen — das las sich wie ein Zaehlfehler der App statt wie der Befund,
+   * der es ist. Haeufigste Ursache war der v28.66-Bug (Sub-Event ohne Zeiten
+   * -> „Create event (V4)" bricht ab). Hier wird der Befund benannt.
+   */
+  const outlookMissingTargets = (): Array<{ id: string; title: string }> => {
+    const out: Array<{ id: string; title: string }> = [];
+    if (editEvent && editEvent.disableOutlook !== true && !editEvent.outlookEventId && !editEvent.calendarLink) {
+      out.push({ id: editEvent.id, title: title || editEvent.title || '' });
+    }
+    for (const s of subEventsRef.current) {
+      if (!s.dbId || s.disableOutlook) continue;
+      if (s.initialOutlookEventId || s.initialCalendarLink) continue;
+      out.push({ id: s.dbId, title: s.title || '' });
+    }
+    return out;
+  };
   const triggerOutlookUpdateNow = async (): Promise<void> => {
     let targetDbId = '';
     let targetTitle = title;
@@ -2219,6 +2241,9 @@ export default function EventCreationPage(): React.ReactElement {
       : (title || editEvent.title || (isDe ? 'Hauptevent' : 'main event'));
     const allTargets = outlookUpdateTargets();
     const showAll = allTargets.length > 1;
+    // v28.67: fehlende Termine benennen (s. outlookMissingTargets).
+    const missingTargets = outlookMissingTargets();
+    const totalTargets = allTargets.length + missingTargets.length;
     return (
       <div style={{ marginTop: 14, padding: 12, borderRadius: 8, background: 'var(--dex-gray-50, #f8f9fa)', border: '1px solid var(--dex-gray-200)' }}>
         <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--dex-gray-800)', marginBottom: 6 }}>
@@ -2250,6 +2275,16 @@ export default function EventCreationPage(): React.ReactElement {
             </button>
           )}
         </div>
+        {missingTargets.length > 0 && (
+          <div style={{
+            marginTop: 8, padding: '8px 10px', borderRadius: 6, fontSize: '0.76rem', lineHeight: 1.5,
+            background: '#fff8e6', border: '1px solid #e0b34d', color: '#7a5a12',
+          }}>
+            {isDe
+              ? <>Für <strong>{missingTargets.length} von {totalTargets}</strong> Terminen dieses Events gibt es noch <strong>keinen</strong> Kalendereintrag — deshalb steht oben nur „{allTargets.length}“: {missingTargets.map(m => m.title || '?').join(', ')}. Häufigste Ursache: das {childTermSingular || 'Sub-Event'} wurde ohne Start-/Endzeit gespeichert, dann kann kein Termin erzeugt werden. Zeiten nachtragen und speichern — und danach den Haken „{t('create.subevents.outlook')}“ kurz aus- und wieder einschalten und erneut speichern, damit der Termin angelegt wird (Anmeldungen bleiben erhalten).</>
+              : <>There is <strong>no</strong> calendar entry yet for <strong>{missingTargets.length} of {totalTargets}</strong> appointments of this event — that is why it says „{allTargets.length}“ above: {missingTargets.map(m => m.title || '?').join(', ')}. Most common cause: the sub-event was saved without a start/end time, so no appointment can be created. Add the times and save — then briefly switch the „{t('create.subevents.outlook')}“ checkbox off and on again and save once more so the appointment gets created (registrations are preserved).</>}
+          </div>
+        )}
         {outlookUpdateDone && (
           <div style={{
             marginTop: 8, padding: '6px 10px', borderRadius: 6, fontSize: '0.76rem', fontWeight: 600,
