@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v28.88.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v28.89.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -146,15 +146,12 @@ prüfen, welche der Bedingungen den Fall wirklich erzeugt hat
 Und: leere Auswahl heißt nicht „nichts zu tun" — wer alle gebuchten Sub-Events
 abwählt, meldet sie ab (`sessionsChanged` in `RegistrationPage`).
 
-## Der Wizard, Stand v28.88
+## Der Wizard, Stand v28.89
 
 Neun Schritte. Über dem Formular steht die **Scope-Karte**
 (`renderGlobalScopeBar`): Klammer/Haupt-Event und die Sub-Events als Reiter, ein
 gemeinsamer Index (`activeScopeIdx` / `setScope`). In Schritten ohne Scope-Bezug
 bleibt die Karte stehen und sagt, dass der Schritt für alles gilt.
-
-Schritt 1 (Grundlagen) trägt seit v28.83–v28.87 auch: „Sub-Events nutzen?",
-Bezeichnung, Anmelde-Modus und die Sub-Event-Karten.
 
 **`setScope` ruft für die Kommunikation bewusst `switchCommTab(idx)`** statt
 `setActiveCommTabIdx` — sonst gehen Sub-Event-Mailtexte verloren.
@@ -164,37 +161,45 @@ Kommunikations-Schritt steht an ihrer Stelle nur noch der Satz „Die
 Einstellungen unten gelten für den oben gewählten Reiter" plus der bisherige
 `InfoTooltip`.
 
-## Offene Arbeit, in dieser Reihenfolge
+**Schritt 1 ist seit v28.89 scope-fähig** (`SCOPE_AWARE_STEPS = [0,2,3,4,5]`).
+Titel, Start, Ende, Beschreibung und Bild sind **dieselben** Eingaben und hängen
+über `scopeSub`/`patchScopeSub` am Top-Level-State **oder** an
+`subEvents[activeScopeIdx-1]`. Zwei Dinge, die dabei leicht kippen:
 
-1. **Feld-Ebene vereinheitlichen** (der eigentlich gewünschte Endzustand):
-   `title`, `startDate`, `endDate`, `description` und Bild in Schritt 1 je nach
-   Scope an den Top-Level-State **oder** an `subEvents[activeScopeIdx-1]` binden:
+- **Zeitformate.** Top-Level ist Berliner Lokalzeit `YYYY-MM-DDTHH:MM`, ein
+  Sub-Event UTC-ISO. Umgerechnet wird nur in `subIsoToDate`/`subDateToIso` —
+  keine zweite Stelle aufmachen.
+- **Was event-weit gilt, gehört auf die Klammer.** Opt-in, Bezeichnung,
+  Anmelde-Modus, Vorlage, Entwurf/Aktivierung und die Sub-Event-Liste rendern
+  nur bei `activeScopeIdx === 0`. Neue event-weite Felder in Schritt 1 müssen in
+  diesen Block, sonst beantwortet man Grundsatzfragen „unter" einem Termin.
+- **Pflichtfelder gehören dem Hauptevent.** `getStepErrors` prüft weiter den
+  Top-Level; `proceedNext` wechselt deshalb bei Fehlern auf die Ebene, auf der
+  der Fehler steht — sonst wirkt „Weiter" wie tot.
 
-   ```tsx
-   value={activeScopeIdx > 0 ? sub.title : title}
-   onChange={v => activeScopeIdx > 0 ? patchSub({ title: v }) : setTitle(v)}
-   ```
+Die Sub-Event-Karten sind seither reine **Liste**: anlegen, „Bearbeiten"
+(`setScope(idx+1)`), entfernen, Pflichtanmeldung. Keine Editor-Felder mehr.
 
-   Wichtig: die **vorhandenen** Felder umhängen, keine zweite Box daneben bauen
-   (das wurde in v28.81 versucht und in v28.82 zurückgenommen — „alles soll
-   gleich aussehen", inklusive des „Bearbeiten & Vorschau"-Editors für die
-   Beschreibung). Danach sind die Sub-Event-Karten überflüssig und können weg.
+## Offene Arbeit
 
-2. **Reiter-Darstellung** recherchieren und neu gestalten. Bei neun Sub-Events
-   ist die Chip-Reihe grenzwertig; Kandidaten: Segmented Control, Dropdown mit
-   Suche ab N Einträgen, Scroll-Leiste mit Pfeilen. Bisher nicht recherchiert.
+Die vier Punkte aus v28.87 sind mit v28.88/v28.89 abgearbeitet (Feld-Ebene,
+Reiter-Darstellung, Outlook-Dialog, Legacy-Rollen). Was als Nächstes ansteht,
+ergibt sich aus dem Browser-Test — siehe „Umgang".
 
-3. **Outlook-Body-Dialog** übersichtlicher (Betreff/Termin/Ort, Überschriften,
-   Header-Bild, Variablen und Editor stehen ungegliedert untereinander).
-
-4. **Co-Organizer-Antrag:** `getRoleEmails('Organizer')` prüft nur den Wert
-   `Organizer`. Falls in `DEX_Roles` noch Legacy-Einträge mit `EventAdmin`
-   stehen, bekämen diese Personen unnötig einen Freigabe-Antrag.
+Bewusst **nicht** gebaut: ein Dropdown zum Springen zwischen Sub-Event-Reitern.
+Es wäre eine zweite Bedienung für dieselbe Auswahl; die gescrollte Leiste hat
+stattdessen Pfeile, Tastatur, Auto-Scroll zum aktiven Reiter und eine Zählung
+„3 / 9". Falls die Reiter bei sehr vielen Sub-Events weiter stören, ist ein
+Dropdown der nächste Kandidat — dann aber **statt** der Leiste, nicht daneben.
 
 ## Umgang
 
 Nach dem Deploy den Wizard einmal von Schritt 1 bis 9 durchklicken — die
-Umnummerierung aus v28.87 ist im Browser nicht verifiziert.
+Umnummerierung aus v28.87 ist im Browser nicht verifiziert. Für v28.89
+zusätzlich: in Schritt 1 zwischen Klammer und mehreren Sub-Events umschalten
+(Titel/Zeiten/Beschreibung/Bild müssen dem Reiter folgen), ein Sub-Event über
+die Liste anlegen und entfernen, und die Reiter-Leiste mit mehr als sechs
+Sub-Events auf Pfeile, Zählung und Auto-Scroll ansehen.
 
 **Bildschirmfotos zeigen den installierten Stand, nicht den Repo-Stand.** Ein
 Screenshot mit zehn Wizard-Schritten kam aus einem Build vor v28.87; wer daraus

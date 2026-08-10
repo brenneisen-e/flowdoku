@@ -720,25 +720,40 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                       </div>
                     )}
                   </div>
-                  <div>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', display: 'block', marginBottom: 4 }}>Überschrift (grün) <span style={{ color: 'var(--dex-gray-400)', fontWeight: 400 }}>(große Zeile IM Termin-Text)</span></label>
-                    <input
-                      className="form-input"
-                      value={outlookHeading || ''}
-                      onChange={e => onOutlookHeadingChange && onOutlookHeadingChange(e.target.value)}
-                      placeholder={previewVars.EventTitle || 'Event-Titel'}
-                      style={{ fontSize: '0.85rem' }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', display: 'block', marginBottom: 4 }}>Unter-Überschrift (schwarz)</label>
-                    <input
-                      className="form-input"
-                      value={outlookSubheading || ''}
-                      onChange={e => onOutlookSubheadingChange && onOutlookSubheadingChange(e.target.value)}
-                      placeholder={previewVars.Location || previewVars.EventDate || 'Event Details'}
-                      style={{ fontSize: '0.85rem' }}
-                    />
+                  {/* v28.89: Die beiden Überschriften standen als nackte
+                      Eingaben zwischen zwei gerahmten Blöcken („OUTLOOK-TERMIN"
+                      oben, „HEADER-BILD" darunter) — dadurch las sich der
+                      Dialog als eine lange Reihe gleichrangiger Felder, und es
+                      war nicht zu sehen, dass diese zwei IM Termin-Text landen
+                      und nicht in den Kalender-Metadaten. Jetzt ein eigener,
+                      benannter Block wie die übrigen. */}
+                  <div style={{ background: 'var(--dex-gray-50, #f7f7f5)', border: '1px solid var(--dex-gray-200, #eee)', borderRadius: 8, padding: '12px 14px' }}>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)', letterSpacing: 0.4, marginBottom: 6 }}>
+                      ÜBERSCHRIFTEN IM TERMIN-TEXT
+                    </div>
+                    <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', margin: '0 0 10px', lineHeight: 1.45 }}>
+                      Die zwei Zeilen, die im Termin <strong>über dem Text</strong> stehen — nicht der Betreff im Kalender (der steht oben).
+                    </p>
+                    <div style={{ marginBottom: 10 }}>
+                      <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', display: 'block', marginBottom: 4 }}>Überschrift (grün) <span style={{ color: 'var(--dex-gray-400)', fontWeight: 400 }}>(große Zeile IM Termin-Text)</span></label>
+                      <input
+                        className="form-input"
+                        value={outlookHeading || ''}
+                        onChange={e => onOutlookHeadingChange && onOutlookHeadingChange(e.target.value)}
+                        placeholder={previewVars.EventTitle || 'Event-Titel'}
+                        style={{ fontSize: '0.85rem' }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', display: 'block', marginBottom: 4 }}>Unter-Überschrift (schwarz)</label>
+                      <input
+                        className="form-input"
+                        value={outlookSubheading || ''}
+                        onChange={e => onOutlookSubheadingChange && onOutlookSubheadingChange(e.target.value)}
+                        placeholder={previewVars.Location || previewVars.EventDate || 'Event Details'}
+                        style={{ fontSize: '0.85rem' }}
+                      />
+                    </div>
                   </div>
                 </>
               )}
@@ -808,6 +823,21 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                       Standard
                     </button>
                   </div>
+                </div>
+              )}
+
+              {/* v28.89: Trennstrich mit Bezeichnung vor Variablen + Editor.
+                  Ohne ihn ging der eigentliche Termin-Text zwischen den
+                  Einstellungs-Blöcken unter — er ist aber das, weswegen der
+                  Dialog geöffnet wird. */}
+              {previewMode === 'outlook' && (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 10, marginTop: 4,
+                  fontSize: '0.72rem', fontWeight: 700, letterSpacing: 0.4,
+                  color: 'var(--dex-green-dark, #4a7c1f)',
+                }}>
+                  <span style={{ flexShrink: 0 }}>TEXT DES TERMINS</span>
+                  <span style={{ flex: 1, height: 1, background: 'var(--dex-gray-200, #eee)' }} />
                 </div>
               )}
 
