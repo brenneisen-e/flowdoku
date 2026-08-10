@@ -2100,6 +2100,25 @@ export default function EventCreationPage(): React.ReactElement {
    * der es ist. Haeufigste Ursache war der v28.66-Bug (Sub-Event ohne Zeiten
    * -> „Create event (V4)" bricht ab). Hier wird der Befund benannt.
    */
+  /**
+   * v28.66/v28.69: Start-/Endzeit des Hauptevents als UTC-ISO. Fallback-Quelle
+   * fuer Sub-Events ohne eigene Zeiten — sowohl beim Speichern als auch beim
+   * nachtraeglichen Anlegen fehlender Termine.
+   */
+  const parentTimesIso = (): { start: string; end: string } => ({
+    start: startDate ? berlinLocalToUtcIso(startDate) : '',
+    end: endDate ? berlinLocalToUtcIso(endDate) : '',
+  });
+  /**
+   * v28.69: dbIds von Sub-Events, deren Outlook-Termin beim naechsten Speichern
+   * ERZWUNGEN neu angelegt werden soll. Der Flow DEX_CreateOutlookEvent
+   * triggert nur auf NEUE DEX_Events-Zeilen — ein reines Update stoesst ihn
+   * nie an. persistSubEventsForParent nimmt die IDs auf und laeuft dafuer in
+   * den nicht-destruktiven Recreate-Pfad aus v11.69 (Zeile loeschen, mit
+   * existingSubsiteUrl neu anlegen; Anmeldungen, TeilnehmerIDs und Subsite
+   * bleiben unberuehrt). Wird nach dem Durchlauf geleert.
+   */
+  const forceOutlookRecreateRef = React.useRef<Set<string>>(new Set<string>());
   const outlookMissingTargets = (): Array<{ id: string; title: string }> => {
     const out: Array<{ id: string; title: string }> = [];
     if (editEvent && editEvent.disableOutlook !== true && !editEvent.outlookEventId && !editEvent.calendarLink) {
@@ -2111,6 +2130,56 @@ export default function EventCreationPage(): React.ReactElement {
       out.push({ id: s.dbId, title: s.title || '' });
     }
     return out;
+  };
+  /**
+   * v28.69: Fehlende Sub-Event-Termine direkt anlegen. Bisher stand im Kasten
+   * nur die Anleitung „Haken aus- und wieder einschalten und erneut speichern"
+   * — das ist der v11.69-Recreate-Pfad, den der Organizer von Hand ausloesen
+   * musste. Jetzt macht der Knopf genau das: fehlende Zeiten aus dem
+   * Hauptevent uebernehmen (v28.66), Recreate erzwingen, speichern.
+   * Das Hauptevent selbst wird bewusst NICHT neu angelegt — seine Item-Id
+   * steht in ParentEventId aller Sub-Events, ein Recreate wuerde die Kinder
+   * zu Waisen machen.
+   */
+  const createMissingOutlookAppointments = async (): Promise<void> => {
+    const mainId = editEvent?.id || '';
+    const missing = outlookMissingTargets().filter(m => m.id && m.id !== mainId);
+    if (missing.length === 0) return;
+    const pt = parentTimesIso();
+    const fmt = (iso: string): string => {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      return isNaN(d.getTime()) ? '—' : d.toLocaleString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    };
+    const plan = missing.map(m => {
+      const d = subEventsRef.current.find(s => s.dbId === m.id);
+      const start = (d && d.startDate) || pt.start || '';
+      const end = (d && d.endDate) || (d && d.startDate) || pt.end || pt.start || '';
+      const inherited = !(d && d.startDate);
+      return { ...m, start, end, inherited };
+    });
+    if (plan.some(p => !p.start)) {
+      showAlert(isDe
+        ? 'Das Hauptevent hat keine Startzeit — ohne die lässt sich kein Termin anlegen. Bitte zuerst in Schritt 1 die Zeiten setzen und speichern.'
+        : 'The main event has no start time — no appointment can be created without it. Please set the times in step 1 first and save.', { variant: 'error' });
+      return;
+    }
+    const list = plan.map(p => `• ${p.title || '?'}: ${fmt(p.start)} – ${fmt(p.end)}${p.inherited ? (isDe ? '  (Zeiten des Hauptevents)' : '  (main event times)') : ''}`).join('\n');
+    const ok = await confirmDialog(
+      isDe
+        ? `Für diese ${plan.length} ${plan.length === 1 ? (childTermSingular || 'Sub-Event') : (childTermPlural || 'Sub-Events')} wird jetzt ein Outlook-Termin angelegt:\n\n${list}\n\nSub-Events ohne eigene Zeiten übernehmen die Zeiten des Hauptevents. Wenn du genauere Zeiten willst, brich hier ab, trage sie oben ein und klicke danach erneut.\n\nAnmeldungen, Teilnehmer-IDs und Teilnehmerlisten bleiben dabei unverändert.`
+        : `An Outlook appointment will now be created for these ${plan.length} sub-event(s):\n\n${list}\n\nSub-events without their own times inherit the main event's times. If you want more precise times, cancel here, enter them above and click again.\n\nRegistrations, attendee IDs and attendee lists stay untouched.`,
+      { confirmLabel: isDe ? 'Termine anlegen' : 'Create appointments' },
+    );
+    if (!ok) return;
+    plan.forEach(p => forceOutlookRecreateRef.current.add(p.id));
+    setOutlookUpdateBusy(true);
+    try {
+      await handleSubmit();
+    } finally {
+      setOutlookUpdateBusy(false);
+      forceOutlookRecreateRef.current.clear();
+    }
   };
   const triggerOutlookUpdateNow = async (): Promise<void> => {
     let targetDbId = '';
@@ -2244,6 +2313,9 @@ export default function EventCreationPage(): React.ReactElement {
     // v28.67: fehlende Termine benennen (s. outlookMissingTargets).
     const missingTargets = outlookMissingTargets();
     const totalTargets = allTargets.length + missingTargets.length;
+    // v28.69: nachanlegbar sind nur Sub-Events — das Hauptevent nicht, seine
+    // Item-Id steht in ParentEventId aller Kinder (s. createMissingOutlookAppointments).
+    const missingSubIds = missingTargets.filter(m => m.id && m.id !== (editEvent?.id || ''));
     return (
       <div style={{ marginTop: 14, padding: 12, borderRadius: 8, background: 'var(--dex-gray-50, #f8f9fa)', border: '1px solid var(--dex-gray-200)' }}>
         <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--dex-gray-800)', marginBottom: 6 }}>
@@ -2281,8 +2353,23 @@ export default function EventCreationPage(): React.ReactElement {
             background: '#fff8e6', border: '1px solid #e0b34d', color: '#7a5a12',
           }}>
             {isDe
-              ? <>Für <strong>{missingTargets.length} von {totalTargets}</strong> Terminen dieses Events gibt es noch <strong>keinen</strong> Kalendereintrag — deshalb steht oben nur „{allTargets.length}“: {missingTargets.map(m => m.title || '?').join(', ')}. Häufigste Ursache: das {childTermSingular || 'Sub-Event'} wurde ohne Start-/Endzeit gespeichert, dann kann kein Termin erzeugt werden. Zeiten nachtragen und speichern — und danach den Haken „{t('create.subevents.outlook')}“ kurz aus- und wieder einschalten und erneut speichern, damit der Termin angelegt wird (Anmeldungen bleiben erhalten).</>
-              : <>There is <strong>no</strong> calendar entry yet for <strong>{missingTargets.length} of {totalTargets}</strong> appointments of this event — that is why it says „{allTargets.length}“ above: {missingTargets.map(m => m.title || '?').join(', ')}. Most common cause: the sub-event was saved without a start/end time, so no appointment can be created. Add the times and save — then briefly switch the „{t('create.subevents.outlook')}“ checkbox off and on again and save once more so the appointment gets created (registrations are preserved).</>}
+              ? <>Für <strong>{missingTargets.length} von {totalTargets}</strong> Terminen dieses Events gibt es noch <strong>keinen</strong> Kalendereintrag — deshalb steht oben nur „{allTargets.length}“: {missingTargets.map(m => m.title || '?').join(', ')}. Häufigste Ursache: das {childTermSingular || 'Sub-Event'} wurde ohne Start-/Endzeit gespeichert, dann kann kein Termin erzeugt werden. {missingSubIds.length > 0 ? <>Der Knopf unten legt die fehlenden Termine jetzt an — Sub-Events ohne eigene Zeiten übernehmen dabei die Zeiten des Hauptevents. Anmeldungen und Teilnehmerlisten bleiben unverändert.</> : <>Für das Hauptevent selbst lässt sich das hier nicht nachholen — bitte beim Support melden.</>}</>
+              : <>There is <strong>no</strong> calendar entry yet for <strong>{missingTargets.length} of {totalTargets}</strong> appointments of this event — that is why it says „{allTargets.length}“ above: {missingTargets.map(m => m.title || '?').join(', ')}. Most common cause: the sub-event was saved without a start/end time, so no appointment can be created. {missingSubIds.length > 0 ? <>The button below creates the missing appointments now — sub-events without their own times inherit the main event&apos;s times. Registrations and attendee lists stay untouched.</> : <>This cannot be repaired here for the main event itself — please contact support.</>}</>}
+            {missingSubIds.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={outlookUpdateBusy}
+                  onClick={() => { void createMissingOutlookAppointments(); }}
+                  style={{ fontSize: '0.82rem', padding: '7px 14px' }}
+                >
+                  {outlookUpdateBusy
+                    ? (isDe ? 'Wird angelegt…' : 'Creating…')
+                    : (isDe ? `${missingSubIds.length} fehlende Termine jetzt anlegen` : `Create ${missingSubIds.length} missing appointments now`)}
+                </button>
+              </div>
+            )}
           </div>
         )}
         {outlookUpdateDone && (
@@ -3674,8 +3761,7 @@ export default function EventCreationPage(): React.ReactElement {
     // Hauptevents statt, also sind dessen Zeiten der richtige Default. Nach dem
     // Speichern stehen sie sichtbar in den Sub-Event-Feldern und können dort
     // präzisiert werden.
-    const parentStartIso = startDate ? berlinLocalToUtcIso(startDate) : '';
-    const parentEndIso = endDate ? berlinLocalToUtcIso(endDate) : '';
+    const { start: parentStartIso, end: parentEndIso } = parentTimesIso();
     // v28.29 BUG-FIX: Kopfbild-Vererbung vom Hauptevent auf die Sub-Events.
     // Sub-Events haben EIGENE Outlook-Termine und eigene Mails, aber praktisch
     // nie ein eigenes Kopfbild — Schritt 23/24 wird pro Tab gepflegt, und die
@@ -3885,7 +3971,10 @@ export default function EventCreationPage(): React.ReactElement {
         const wasOutlookDisabled = !!initialMeta?.disableOutlook;
         const nowOutlookEnabled = !draft.disableOutlook;
         const hadOutlookEventId = !!(initialMeta?.outlookEventId);
-        const needsOutlookRecreate = wasOutlookDisabled && nowOutlookEnabled && !hadOutlookEventId;
+        // v28.69: „Fehlende Termine jetzt anlegen" erzwingt denselben Pfad —
+        // ein reines Update triggert den GetOnNewItems-Flow nie.
+        const forcedRecreate = forceOutlookRecreateRef.current.has(draft.dbId) && nowOutlookEnabled;
+        const needsOutlookRecreate = forcedRecreate || (wasOutlookDisabled && nowOutlookEnabled && !hadOutlookEventId);
         if (needsOutlookRecreate) {
           // v11.69: Seit dem Subsite-Reuse-Pfad muss hier KEINE destruktive
           // Lösch-Aktion mehr passieren. Wir entfernen nur die DEX_Events-
