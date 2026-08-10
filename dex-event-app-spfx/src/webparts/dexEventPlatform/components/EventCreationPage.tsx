@@ -672,11 +672,19 @@ function StickyTabStrip(props: {
                   )}
                 </div>
                 {/* Sub-Events darunter — eingerückt unter einer Klammer-Linie. */}
+                {/* v28.85: Eine Zeile statt Umbruch. Bei vielen Sub-Events
+                    brachen die Reiter in eine zweite Reihe um — die Klammer-
+                    Linie links lief dann ins Leere und die Leiste wirkte
+                    unruhig. Jetzt bleibt es eine Zeile, die bei Bedarf
+                    horizontal scrollt; die scrollbar-gutter-Reserve verhindert,
+                    dass der Inhalt beim Erscheinen der Leiste springt. */}
                 <div style={{
-                  display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'flex-end',
+                  display: 'flex', flexWrap: 'nowrap', gap: 6, alignItems: 'flex-end',
                   marginLeft: 18, paddingLeft: 16, paddingTop: 10,
                   borderLeft: '2px solid var(--dex-green, #86bc25)',
                   borderBottom: pin ? 'none' : '1px solid var(--dex-gray-200)',
+                  overflowX: 'auto', overflowY: 'hidden',
+                  scrollbarWidth: 'thin', paddingBottom: 2,
                 }}>
                   {props.tabs.slice(1).map((tab, i) => renderTabBtn(tab, i + 1))}
                 </div>
