@@ -1214,7 +1214,17 @@ export default function EventCreationPage(): React.ReactElement {
   // v28.7: „Keine Beschreibung nutzen" — reiner UI-Schalter im Wizard
   // (Default: Beschreibung nutzen). Anhaken leert die Beschreibung und
   // blendet den Editor-Zugang aus; gespeichert wird schlicht ''.
-  const [noDescription, setNoDescription] = React.useState(false);
+  const [noDescription, setNoDescription] = React.useState<boolean>(() => {
+    // v28.79: beim Bearbeiten aus dem gespeicherten Flag vorbelegen —
+    // sonst stand der Schalter nach dem Neuladen wieder auf „Beschreibung
+    // nutzen", obwohl der Organizer sie bewusst weggelassen hatte.
+    if (!editEvent) return false;
+    if ((editEvent.description || '').trim()) return false;
+    try {
+      const ov = JSON.parse(editEvent.emailTemplateOverrides || '{}');
+      return !!(ov && ov._noDescription);
+    } catch { return false; }
+  });
   // EventType wird nicht mehr als UI-Feld abgefragt (v5.2) — neue Events:
   // aus Template abgeleitet (b2run → 'B2Run', sonst → 'Other'). Bei Edit:
   // den gespeicherten Wert beibehalten. Die Variable wird weiterhin für
@@ -1586,6 +1596,8 @@ export default function EventCreationPage(): React.ReactElement {
           // Stripping verhindert, dass ein parallel offener Wizard beim Speichern
           // einen veralteten Stand zurückschreibt.
           _hotels, _hotelStays, _hotelVisible, _hotelRules,
+          // v28.79: „Keine Beschreibung nutzen"-Flag (s. noDescriptionConfig).
+          _noDescription,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -1597,7 +1609,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _inheritFlags; void _hideOrganizer; void _headerImageLayout;
         void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee; void _previewBeforeActive; void _imageDisplay;
         void _organizerDisplayLarge; void _hiddenOrganizers; void _hideOrgIndividual; void _mainEventLabel;
-        void _imageOrigUrl; void _klammerDeadline;
+        void _imageOrigUrl; void _klammerDeadline; void _noDescription;
         void _hotels; void _hotelStays; void _hotelVisible; void _hotelRules;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
@@ -4808,6 +4820,12 @@ export default function EventCreationPage(): React.ReactElement {
         : {};
       // v28.5: Bild-Banner-Layout (Piggyback).
       const imageBannerConfig = imageBanner ? { _imageBanner: true } : {};
+      // v28.79: „Keine Beschreibung nutzen" persistieren. Bisher war das ein
+      // reiner UI-Schalter — gespeichert wurde nur ein leeres Feld. Damit
+      // konnte niemand mehr unterscheiden, ob der Organizer bewusst keine
+      // Beschreibung wollte oder sie schlicht vergessen hat; die Box
+      // „Nächste Schritte" meldete sie deshalb ewig als fehlend.
+      const noDescriptionConfig = (noDescription && !description.trim()) ? { _noDescription: true } : {};
       // v28.11: Bestehende Original-Bild-URL beim Edit-Save WEITERTRAGEN —
       // sonst würde der frisch zusammengebaute Overrides-Blob sie wegwerfen.
       // v28.12: auch bei neuem Bild erstmal mitschreiben; der Post-Save-Code
@@ -4868,7 +4886,7 @@ export default function EventCreationPage(): React.ReactElement {
         teamNoCreateConfig, mainEventLabelConfig, assistantsCanSeeConfig,
         organizerDisplayLargeConfig, previewBeforeActiveConfig,
         imageDisplayConfig, hideOrganizerConfig, hiddenOrganizersConfig,
-        hideOrgIndividualConfig, headerImageLayoutConfig,
+        hideOrgIndividualConfig, headerImageLayoutConfig, noDescriptionConfig,
       ];
       updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || !!effEmailLogo || !!effOutlookLogo || topPiggybackConfigs.some(o => Object.keys(o).length > 0))
         // v28.2: Object.assign statt Spread-Kette — die Literal-Spreads
@@ -5565,6 +5583,8 @@ export default function EventCreationPage(): React.ReactElement {
             organizerDisplayLargeExtra, previewBeforeActiveExtra,
             imageDisplayExtra, hideOrganizerExtra, hiddenOrganizersExtra,
             hideOrgIndividualExtra, headerImageLayoutConfig,
+            // v28.79: „Keine Beschreibung nutzen" auch beim Anlegen merken.
+            ((noDescription && !description.trim()) ? { _noDescription: true } : {}),
           ];
           const hasAny = Object.keys(emailTemplateOverrides).length > 0 || !!effEmailLogo || !!effOutlookLogo || createPiggybackConfigs.some(o => Object.keys(o).length > 0);
           return hasAny

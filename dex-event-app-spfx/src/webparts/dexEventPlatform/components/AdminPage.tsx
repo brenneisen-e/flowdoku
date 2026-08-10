@@ -1466,6 +1466,8 @@ export default function AdminPage(): React.ReactElement {
   // v28.74: Hover-/Fokus-Reiter im Event-Details-Tabstrip (Inline-Styles
   // können kein :hover).
   const [evTabHover, setEvTabHover] = React.useState<string | null>(null);
+  // v28.79: Sichtbarkeits-Liste in der „Naechste Schritte"-Box eingeklappt.
+  const [visListOpen, setVisListOpen] = React.useState<boolean>(false);
   const [wlPosModal, setWlPosModal] = React.useState<{ reg: SPRegistration; currentPos: number; total: number } | null>(null);
   const [wlPosValue, setWlPosValue] = React.useState<string>('1');
   const [wlPosBusy, setWlPosBusy] = React.useState(false);
@@ -7104,8 +7106,20 @@ export default function AdminPage(): React.ReactElement {
                   // welche Grundangaben sind noch leer? (Organizer-Feedback: „warum
                   // sagt mir die Box nicht, dass die Beschreibung fehlt?")
                   const missingBits: string[] = [];
-                  if (!(selectedEvent.description || '').trim()) missingBits.push(isDe ? 'Beschreibung' : 'description');
-                  if (!(selectedEvent.location || '').trim()) missingBits.push(isDe ? 'Ort' : 'location');
+                  // v28.79: „Keine Beschreibung nutzen" ist eine Entscheidung,
+                  // kein Versaeumnis — der Wizard legt dafuer das Flag
+                  // `_noDescription` ab. Ohne diese Ausnahme meldete die Box
+                  // die Beschreibung dauerhaft als fehlend, obwohl der
+                  // Organizer sie bewusst weggelassen hatte.
+                  const descriptionWaived = ((): boolean => {
+                    try {
+                      const ov = JSON.parse(selectedEvent.emailTemplateOverrides || '{}');
+                      return !!(ov && ov._noDescription);
+                    } catch { return false; }
+                  })();
+                  if (!(selectedEvent.description || '').trim() && !descriptionWaived) missingBits.push(isDe ? 'Beschreibung' : 'description');
+                  const locationMissing = !(selectedEvent.location || '').trim();
+                  if (locationMissing) missingBits.push(isDe ? 'Ort' : 'location');
                   if (!(selectedEvent.imageUrl || '').trim()) missingBits.push(isDe ? 'Event-Bild' : 'event image');
                   const steps: Array<{ title: string; body: React.ReactNode }> = [
                     {
@@ -7120,6 +7134,16 @@ export default function AdminPage(): React.ReactElement {
                               {isDe
                                 ? <>Fehlt noch: <strong>{missingBits.join(', ')}</strong>.</>
                                 : <>Still missing: <strong>{missingBits.join(', ')}</strong>.</>}
+                              {/* v28.79: Beim Ort die Folge benennen — ohne ihn
+                                  steht im Outlook-Termin und in den Mails nur
+                                  das Wort „Veranstaltungsort" als Platzhalter. */}
+                              {locationMissing && (
+                                <span style={{ display: 'block', marginTop: 4 }}>
+                                  {isDe
+                                    ? <>Ohne Ort erscheint im Outlook-Termin und in den Mails nur das Wort &bdquo;Veranstaltungsort&ldquo; &mdash; die Teilnehmer wissen dann nicht, wohin sie kommen sollen.</>
+                                    : <>Without a location the Outlook invite and the emails only show the word &bdquo;venue&ldquo; &mdash; attendees will not know where to go.</>}
+                                </span>
+                              )}
                             </span>
                           )}
                         </>
@@ -7157,8 +7181,25 @@ export default function AdminPage(): React.ReactElement {
                                     </>
                                   ) : (
                                     <>
-                                      <strong style={{ color: 'var(--dex-gray-700)' }}>{isDe ? 'Sub-Sections:' : 'Sub-sections:'}</strong>
-                                      {childVis.map((c, ci) => (
+                                      {/* v28.79: Neun Zeilen Sichtbarkeit haben die Box
+                                          erschlagen und die Warnung darunter verdeckt.
+                                          Die Liste ist jetzt eingeklappt — was zaehlt
+                                          (die Abweichung) steht sichtbar darunter. */}
+                                      <button
+                                        type="button"
+                                        onClick={() => setVisListOpen(v => !v)}
+                                        style={{
+                                          background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                                          font: 'inherit', color: 'var(--dex-gray-700)', fontWeight: 700,
+                                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                                        }}
+                                      >
+                                        <span style={{ fontSize: '0.7rem' }}>{visListOpen ? '▾' : '▸'}</span>
+                                        {isDe
+                                          ? `Sub-Sections einzeln (${childVis.length})`
+                                          : `Sub-sections in detail (${childVis.length})`}
+                                      </button>
+                                      {visListOpen && childVis.map((c, ci) => (
                                         <span key={ci} style={{ display: 'block', paddingLeft: 8 }}>• <strong>{c.title}:</strong> {c.text}</span>
                                       ))}
                                       {/* v28.75: Die Liste ZEIGTE die Abweichung bisher nur —
