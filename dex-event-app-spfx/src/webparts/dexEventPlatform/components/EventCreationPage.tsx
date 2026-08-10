@@ -10802,11 +10802,45 @@ export default function EventCreationPage(): React.ReactElement {
                             <strong>{isDe ? 'Pflichtanmeldung für dieses Sub-Event' : 'Mandatory registration for this sub-event'}</strong>
                             <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2, fontWeight: 400 }}>
                               {isDe
-                                ? 'Wenn aktiv, muss jeder Teilnehmer dieses Sub-Event mitbuchen — eine Anmeldung ohne dieses Sub-Event ist dann nicht möglich.'
-                                : 'If active, every attendee must include this sub-event — registering without it is then not possible.'}
+                                ? <>Wenn aktiv, muss jeder Teilnehmer dieses Sub-Event mitbuchen — eine Anmeldung ohne dieses Sub-Event ist dann nicht möglich. <strong>Nur setzen, wenn dieser Termin für wirklich alle verpflichtend ist</strong> (z.B. eine Auftaktveranstaltung). Für „darf gebucht werden“ ist der Haken nicht nötig — ohne ihn kann jeder frei wählen.</>
+                                : <>If active, every attendee must include this sub-event — registering without it is then not possible. <strong>Only set this if the date is truly compulsory for everyone</strong> (e.g. a kick-off). For „may be booked“ the checkbox is not needed — without it everyone can choose freely.</>}
                             </span>
                           </span>
                         </label>
+                        {/* v28.77: Der Haken wurde als „dieses Sub-Event ist
+                            buchbar" missverstanden und darum bei ALLEN gesetzt.
+                            Das Ergebnis ist das Gegenteil einer Auswahl: Wer
+                            teilnehmen will, muss dann jeden einzelnen Termin
+                            mitbuchen. Diesen Zustand benennen, sobald er
+                            eintritt — mit einem Klick zum Zurücknehmen. */}
+                        {(() => {
+                          const named = subEvents.filter(s => (s.title || '').trim());
+                          const mandatoryCount = named.filter(s => s.mandatory).length;
+                          if (named.length < 2 || mandatoryCount !== named.length || !se.mandatory) return null;
+                          if (idx !== subEvents.findIndex(s => (s.title || '').trim())) return null;
+                          return (
+                            <div style={{
+                              margin: '0 0 8px', padding: '9px 11px', borderRadius: 8,
+                              background: '#fff8e6', border: '1px solid #e0b34d', color: '#7a5a12',
+                              fontSize: '0.78rem', lineHeight: 1.55,
+                            }}>
+                              <strong>{isDe ? `Alle ${named.length} Sub-Events sind als Pflicht markiert` : `All ${named.length} sub-events are marked mandatory`}</strong>
+                              <div style={{ marginTop: 3 }}>
+                                {isDe
+                                  ? <>Damit gibt es faktisch <strong>keine Auswahl mehr</strong> — wer teilnehmen möchte, muss <strong>alle {named.length}</strong> mitbuchen; wer auch nur einen Termin nicht kann, kann sich gar nicht anmelden.{subEventsOnlyMode ? <> Bei diesem Klammerevent läuft die Anmeldung ohnehin ausschließlich über die Sub-Events — der Haken ist dafür <strong>nicht nötig</strong>.</> : null} Gemeint war vermutlich, dass die Sub-Events buchbar sind — dafür lässt du den Haken einfach weg.</>
+                                  : <>That leaves <strong>no choice at all</strong> — attendees must book <strong>all {named.length}</strong>; anyone unavailable for a single date cannot register.{subEventsOnlyMode ? <> For this bracket event registration runs via the sub-events anyway — the checkbox is <strong>not needed</strong> for that.</> : null}</>}
+                              </div>
+                              <button
+                                type="button"
+                                className="btn btn-primary"
+                                style={{ fontSize: '0.78rem', padding: '5px 12px', marginTop: 8 }}
+                                onClick={() => setSubEvents(prev => prev.map(s => ({ ...s, mandatory: false })))}
+                              >
+                                {isDe ? 'Pflicht bei allen entfernen' : 'Remove mandatory from all'}
+                              </button>
+                            </div>
+                          );
+                        })()}
 
                         {/* v15: Mail- und Outlook-Toggles raus aus der Sub-Event-
                             Card — sie leben jetzt ausschliesslich in Schritt 6
