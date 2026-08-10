@@ -12861,14 +12861,36 @@ export class EventService {
     } catch { return false; }
   }
 
+  /**
+   * v28.89: OData-Filter auf die Rollen-Spalte, inklusive der ALTEN Werte.
+   *
+   * DEX_Roles kannte früher `SuperAdmin` (heute `Admin`) und `EventAdmin`
+   * (heute `Organizer`). `RoleContext.migrateRole` bildet beide weiterhin ab
+   * und schreibt sie im Hintergrund um — das passiert aber nur, wenn jemand
+   * die Rollenliste öffnet, und `updateRole` scheitert still (fehlende
+   * Schreibrechte). Es können also dauerhaft Legacy-Zeilen stehen bleiben.
+   *
+   * Für die Anzeige ist das egal, für Rechte-Prüfungen nicht: `Role eq
+   * 'Organizer'` findet einen Legacy-Organizer nicht, er gilt dann als „ohne
+   * Rolle" — und bekommt beim Speichern eines Events, in dem er als
+   * Co-Organizer steht, einen Freigabe-Antrag, obwohl er längst freigegeben
+   * ist (dasselbe beim Deep-Link der DEX-Anfrage).
+   */
+  private roleFilter(role: string): string {
+    const legacy: Record<string, string[]> = { Admin: ['SuperAdmin'], Organizer: ['EventAdmin'] };
+    const values = [role].concat(legacy[role] || []);
+    return values
+      .map(v => `Role eq '${encodeURIComponent(v.replace(/'/g, "''"))}'`)
+      .join(' or ');
+  }
+
   /** E-Mail-Adressen (Title) aller DEX_Roles-Einträge mit der gegebenen Rolle. */
   /** v23.38: Rollen-Empfänger mit E-Mail UND Anzeigename (für personalisierte
    *  Mails wie den Wochenbericht — „Hallo <Name>" statt generisch „Admin"). */
   public async getRoleRecipients(role: string): Promise<Array<{ email: string; name: string }>> {
     try {
-      const esc = role.replace(/'/g, "''");
       const resp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=Role eq '${encodeURIComponent(esc)}'&$select=Title,UserName&$top=5000`,
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=${this.roleFilter(role)}&$select=Title,UserName&$top=5000`,
         SPHttpClient.configurations.v1
       );
       if (!resp.ok) return [];
@@ -12890,9 +12912,8 @@ export class EventService {
 
   public async getRoleEmails(role: string): Promise<string[]> {
     try {
-      const esc = role.replace(/'/g, "''");
       const resp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=Role eq '${encodeURIComponent(esc)}'&$select=Title&$top=5000`,
+        `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items?$filter=${this.roleFilter(role)}&$select=Title&$top=5000`,
         SPHttpClient.configurations.v1
       );
       if (!resp.ok) return [];

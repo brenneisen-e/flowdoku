@@ -489,6 +489,95 @@ function StickyTabStrip(props: {
   const [pin, setPin] = React.useState<null | { top: number; left: number; width: number; height: number }>(null);
   // v28.72: Hover-/Fokus-Index für die Reiter (Inline-Styles können kein :hover).
   const [hoverIdx, setHoverIdx] = React.useState<number | null>(null);
+
+  /**
+   * v28.89: Die Reiter-Reihe bei vielen Sub-Events bedienbar machen.
+   *
+   * Seit v28.85 bricht die Reihe nicht mehr um, sondern scrollt — damit war
+   * das Umbruch-Problem weg, aber ein neues da: Bei neun Terminen liegt die
+   * Hälfte außerhalb des Sichtfelds, ohne dass man es sieht. Wer per Schritt
+   * oder Validierung auf einen Reiter geschickt wird, findet ihn nicht wieder;
+   * und ein waagerechter Scrollbalken ist auf dem Trackpad ein Zufallsfund.
+   *
+   * Drei Ergänzungen, bewusst am etablierten Tab-Muster orientiert (Pfeile
+   * links/rechts, aktiver Reiter wird sichtbar gehalten, Pfeiltasten):
+   *  - `ovf` sagt, ob links/rechts noch etwas liegt → nur dann ein Pfeil,
+   *  - der aktive Reiter wird nach jedem Wechsel in den sichtbaren Bereich
+   *    gescrollt (auch wenn der Wechsel von außen kommt, z.B. aus setScope),
+   *  - Pfeil links/rechts blättert von Reiter zu Reiter (Rolle „tablist"
+   *    verspricht das ohnehin — bisher tat es nichts).
+   */
+  const scrollRef = React.useRef<HTMLDivElement | null>(null);
+  const [ovf, setOvf] = React.useState<{ left: boolean; right: boolean }>({ left: false, right: false });
+  const updateOvf = React.useCallback((): void => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const max = el.scrollWidth - el.clientWidth;
+    setOvf(prev => {
+      const next = { left: el.scrollLeft > 2, right: el.scrollLeft < max - 2 };
+      return (prev.left === next.left && prev.right === next.right) ? prev : next;
+    });
+  }, []);
+  React.useEffect(() => {
+    updateOvf();
+    const el = scrollRef.current;
+    if (!el) return undefined;
+    el.addEventListener('scroll', updateOvf, { passive: true });
+    window.addEventListener('resize', updateOvf);
+    return () => {
+      el.removeEventListener('scroll', updateOvf);
+      window.removeEventListener('resize', updateOvf);
+    };
+  }, [updateOvf, props.tabs.length]);
+  React.useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const btn = el.querySelector(`[data-tabidx="${props.activeIdx}"]`) as HTMLElement | null;
+    if (btn) {
+      const left = btn.offsetLeft;
+      const right = left + btn.offsetWidth;
+      if (left < el.scrollLeft) el.scrollLeft = Math.max(0, left - 24);
+      else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth + 24;
+    }
+    updateOvf();
+  }, [props.activeIdx, props.tabs.length, updateOvf]);
+  const nudge = (dir: -1 | 1): void => {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollLeft += dir * Math.max(160, Math.round(el.clientWidth * 0.7));
+  };
+  /** Pfeiltasten blättern durch die Sub-Event-Reiter (Index 1..n). */
+  const onTabKeyDown = (e: React.KeyboardEvent): void => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    const last = props.tabs.length - 1;
+    const cur = props.activeIdx;
+    const next = e.key === 'ArrowLeft' ? cur - 1 : cur + 1;
+    if (next < 0 || next > last) return;
+    if (next === 0 && props.mainDisabled) return;
+    e.preventDefault();
+    props.onChange(next);
+  };
+  /** Kleiner runder Blätter-Knopf — nur sichtbar, wenn es dort etwas gibt. */
+  const arrowBtn = (dir: -1 | 1): React.ReactElement => (
+    <button
+      type="button"
+      onClick={() => nudge(dir)}
+      aria-label={dir === -1
+        ? (props.ariaLabel ? 'Reiter nach links' : 'Scroll tabs left')
+        : (props.ariaLabel ? 'Reiter nach rechts' : 'Scroll tabs right')}
+      tabIndex={-1}
+      style={{
+        flexShrink: 0, width: 26, height: 26, borderRadius: '50%',
+        border: '1px solid var(--dex-gray-300)', background: '#fff',
+        color: 'var(--dex-green-dark, #4a7c1f)', cursor: 'pointer',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: '0.9rem', lineHeight: 1, padding: 0, alignSelf: 'center',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.10)',
+      }}
+    >
+      {dir === -1 ? '‹' : '›'}
+    </button>
+  );
   React.useEffect(() => {
     const update = (): void => {
       // v28.82: Fixieren beim Scrollen abgeschaltet. Seit v28.78 sitzt der
@@ -558,6 +647,7 @@ function StickyTabStrip(props: {
                 key={tabIdx}
                 type="button"
                 role="tab"
+                data-tabidx={tabIdx}
                 aria-selected={active}
                 onClick={() => props.onChange(tabIdx)}
                 onMouseEnter={() => setHoverIdx(tabIdx)}
@@ -682,15 +772,47 @@ function StickyTabStrip(props: {
                     unruhig. Jetzt bleibt es eine Zeile, die bei Bedarf
                     horizontal scrollt; die scrollbar-gutter-Reserve verhindert,
                     dass der Inhalt beim Erscheinen der Leiste springt. */}
+                {/* v28.89: Pfeile links/rechts liegen NEBEN der Scroll-Fläche,
+                    nicht darüber — ein überlagerter Pfeil verdeckt sonst genau
+                    den Reiter, den man anklicken will. Sie erscheinen nur,
+                    wenn es in die Richtung überhaupt weitergeht. */}
                 <div style={{
-                  display: 'flex', flexWrap: 'nowrap', gap: 6, alignItems: 'flex-end',
+                  display: 'flex', alignItems: 'stretch', gap: 6,
                   marginLeft: 18, paddingLeft: 16, paddingTop: 10,
                   borderLeft: '2px solid var(--dex-green, #86bc25)',
                   borderBottom: pin ? 'none' : '1px solid var(--dex-gray-200)',
-                  overflowX: 'auto', overflowY: 'hidden',
-                  scrollbarWidth: 'thin', paddingBottom: 2,
                 }}>
-                  {props.tabs.slice(1).map((tab, i) => renderTabBtn(tab, i + 1))}
+                  {ovf.left && arrowBtn(-1)}
+                  <div
+                    ref={scrollRef}
+                    onKeyDown={onTabKeyDown}
+                    style={{
+                      display: 'flex', flexWrap: 'nowrap', gap: 6, alignItems: 'flex-end',
+                      flex: 1, minWidth: 0,
+                      overflowX: 'auto', overflowY: 'hidden',
+                      scrollbarWidth: 'thin', paddingBottom: 2,
+                      // Andeutung, dass rechts/links noch etwas liegt — die
+                      // Pfeile allein übersieht man beim Überfliegen.
+                      maskImage: `linear-gradient(to right, ${ovf.left ? 'transparent 0, #000 18px' : '#000 0'}, ${ovf.right ? '#000 calc(100% - 18px), transparent 100%' : '#000 100%'})`,
+                      WebkitMaskImage: `linear-gradient(to right, ${ovf.left ? 'transparent 0, #000 18px' : '#000 0'}, ${ovf.right ? '#000 calc(100% - 18px), transparent 100%' : '#000 100%'})`,
+                    }}
+                  >
+                    {props.tabs.slice(1).map((tab, i) => renderTabBtn(tab, i + 1))}
+                  </div>
+                  {ovf.right && arrowBtn(1)}
+                  {/* v28.89: Standortanzeige. Bei neun Terminen ist „der
+                      wievielte von wie vielen" die Frage, die die gescrollte
+                      Reihe allein nicht beantwortet — ein Dropdown daneben
+                      wäre eine zweite Bedienung für dieselbe Auswahl, diese
+                      Anzeige ist nur Orientierung. */}
+                  {props.tabs.length - 1 >= 5 && (
+                    <span style={{
+                      alignSelf: 'center', flexShrink: 0, fontSize: '0.72rem', fontWeight: 700,
+                      color: 'var(--dex-gray-500)', whiteSpace: 'nowrap', paddingLeft: 2,
+                    }}>
+                      {props.activeIdx > 0 ? `${props.activeIdx} / ${props.tabs.length - 1}` : `${props.tabs.length - 1}`}
+                    </span>
+                  )}
                 </div>
               </div>
             );
@@ -7088,7 +7210,25 @@ export default function EventCreationPage(): React.ReactElement {
   // „Weiter" mit Sichtbarkeits-Abfrage.
   const proceedNext = (): void => {
     setTriedNext(true);
-    if (!canProceed()) return;
+    const errs = getStepErrors();
+    if (errs.length > 0) {
+      // v28.89: Schritt 1 ist scope-fähig — die Pflichtfelder (Titel, Start,
+      // Ende) gehören aber zum Hauptevent bzw. der Klammer. Steht der Reiter
+      // auf einem Sub-Event, sind sie nicht einmal sichtbar: „Weiter" täte
+      // scheinbar nichts. Deshalb auf die Ebene wechseln, auf der der Fehler
+      // steht — beim Datums-Dreher andersherum auf das betroffene Sub-Event.
+      if (currentStep === 0) {
+        const mainFields = ['title', 'startDate', 'endDate', 'endBeforeStart'];
+        if (activeScopeIdx > 0 && errs.some(e => mainFields.indexOf(e) >= 0)) {
+          setScope(0);
+        } else if (errs.indexOf('subEventEndBeforeStart') >= 0 && errs.every(e => mainFields.indexOf(e) < 0)) {
+          const bad = subEvents.findIndex(se => se.title && se.title.trim() && se.startDate && se.endDate
+            && new Date(se.endDate) <= new Date(se.startDate));
+          if (bad >= 0) setScope(bad + 1);
+        }
+      }
+      return;
+    }
     setTriedNext(false);
     interceptVisibilityCopy(() => setCurrentStep(s => s + 1));
   };
@@ -7239,10 +7379,14 @@ export default function EventCreationPage(): React.ReactElement {
    * abgesetzte Kontext-Karte mit eigener Tönung. Zwei Achsen, zwei
    * Formsprachen — sonst liest man sie als zwei Navigationen.
    */
-  // v28.82: Schritt 1 ist NOCH NICHT scope-faehig — dafuer muessen die
-  // vorhandenen Felder (Titel, Datum, Beschreibung, Bild) an den gewaehlten
-  // Draft gebunden werden, statt daneben eine zweite Box zu stellen.
-  const SCOPE_AWARE_STEPS = [2, 3, 4, 5]; // Ort & Programm, Kapazität, Felder, Kommunikation
+  // v28.89: Schritt 1 ist jetzt ebenfalls scope-fähig. Titel, Start, Ende,
+  // Beschreibung und Bild sind DIESELBEN Eingaben — sie zeigen je nach
+  // gewählter Ebene auf den Top-Level-State oder auf den gewählten Sub-Event
+  // (siehe scopeSub/patchScopeSub unten). Der in v28.81 versuchte Weg (eine
+  // zweite Box neben den vorhandenen Feldern) wurde in v28.82 bewusst
+  // zurückgenommen: Gleichartige Angaben sollen gleich aussehen und an
+  // derselben Stelle stehen.
+  const SCOPE_AWARE_STEPS = [0, 2, 3, 4, 5]; // Grundlagen, Ort & Programm, Kapazität, Felder, Kommunikation
   const [activeScopeIdx, setActiveScopeIdx] = React.useState<number>(0);
   const setScope = (idx: number): void => {
     setActiveScopeIdx(idx);
@@ -7253,6 +7397,44 @@ export default function EventCreationPage(): React.ReactElement {
     // deshalb NICHT den State direkt setzen, sondern den Umschalter rufen.
     switchCommTab(idx);
   };
+
+  /**
+   * v28.89: Der gerade gewählte Sub-Event-Draft — oder `undefined`, wenn die
+   * Klammer/das Hauptevent bearbeitet wird. `scopeSub` ist die einzige Stelle,
+   * an der Schritt 1 entscheidet, wohin eine Eingabe geht.
+   *
+   * Absichern gegen einen Index, der auf einen gelöschten Sub-Event zeigt:
+   * `subEvents` kann sich ändern, während der Scope steht (Karte entfernt).
+   */
+  const scopeSub = activeScopeIdx > 0 ? subEvents[activeScopeIdx - 1] : undefined;
+  const patchScopeSub = (patch: Partial<SubEventDraft>): void => {
+    const i = activeScopeIdx - 1;
+    if (i < 0) return;
+    setSubEvents(prev => prev.map((x, k) => (k === i ? { ...x, ...patch } : x)));
+  };
+  /** Sub-Event-Zeiten liegen als UTC-ISO vor, der Top-Level-State als
+   *  Berliner Lokalzeit „YYYY-MM-DDTHH:MM" — beide Richtungen einmal zentral. */
+  const localStrToDate = (s: string): Date | null => {
+    if (!s) return null;
+    const d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  };
+  const dateToLocalStr = (d: Date | null): string => (d
+    ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+    : '');
+  const subIsoToDate = (iso: string): Date | null => localStrToDate(iso ? isoToLocal(iso) : '');
+  const subDateToIso = (d: Date | null): string => (d ? berlinLocalToUtcIso(dateToLocalStr(d)) : '');
+
+  // Die fünf Grundlagen-Felder, an den Scope gebunden.
+  const scTitle = scopeSub ? (scopeSub.title || '') : title;
+  const setScTitle = (v: string): void => { if (scopeSub) patchScopeSub({ title: v }); else setTitle(v); };
+  const scStart = scopeSub ? subIsoToDate(scopeSub.startDate) : localStrToDate(startDate);
+  const setScStart = (d: Date | null): void => { if (scopeSub) patchScopeSub({ startDate: subDateToIso(d) }); else setStartDate(dateToLocalStr(d)); };
+  const scEnd = scopeSub ? subIsoToDate(scopeSub.endDate) : localStrToDate(endDate);
+  const setScEnd = (d: Date | null): void => { if (scopeSub) patchScopeSub({ endDate: subDateToIso(d) }); else setEndDate(dateToLocalStr(d)); };
+  const scDescription = scopeSub ? (scopeSub.description || '') : description;
+  const setScDescription = (v: string): void => { if (scopeSub) patchScopeSub({ description: v }); else setDescription(v); };
+  const scImagePreview = scopeSub ? (scopeSub.imagePreview || '') : imagePreview;
 
   const renderPerEventTabStrip = (
     activeIdx: number,
@@ -7958,6 +8140,25 @@ export default function EventCreationPage(): React.ReactElement {
                   : 'Here you define the foundation of the event: title, date, description and image.'}
               </p>
 
+              {/* v28.89: Alles zwischen hier und dem Titel-Feld gilt für das
+                  GESAMTE Event — ob es Sub-Events gibt, wie sie heißen, wie
+                  angemeldet wird, Entwurf/Aktivierung. Auf einem Sub-Event-
+                  Reiter wäre das falsch am Platz (man würde die Grundsatzfrage
+                  „unter" einem einzelnen Termin beantworten), deshalb blenden
+                  wir es dort aus und sagen, wo es steht. */}
+              {activeScopeIdx > 0 && (
+                <WizardHint
+                  isDe={isDe}
+                  variant="description"
+                  title={isDe ? 'Du bearbeitest die Grundlagen eines Sub-Events' : 'You are editing a sub-event’s basics'}
+                  style={{ marginBottom: 12 }}
+                >
+                  {isDe
+                    ? <>Titel, Zeiten, Beschreibung und Bild unten gehören zu diesem <strong>{childTermSingular || 'Sub-Event'}</strong>. Die Angaben zum gesamten Event — ob es Sub-Events gibt, wie sie heißen, wie angemeldet wird sowie Entwurf und Aktivierung — stehen auf dem Reiter <strong>{subEventsOnlyMode ? 'Klammer' : 'Haupt-Event'}</strong> oben.</>
+                    : <>Title, times, description and image below belong to this <strong>{childTermSingular || 'sub-event'}</strong>. The settings for the event as a whole — whether it has sub-events, how they are named, how people register, plus draft and activation — live on the <strong>{subEventsOnlyMode ? 'bracket' : 'main event'}</strong> tab above.</>}
+                </WizardHint>
+              )}
+              {activeScopeIdx === 0 && (<>
               {/* v28.83: Die Opt-in-Frage steht jetzt in den GRUNDLAGEN statt in
                   Schritt 3. Ob ein Event ueberhaupt aus mehreren Teilen besteht,
                   ist eine Grundsatzfrage wie Titel und Datum — nicht etwas, das
@@ -8009,7 +8210,11 @@ export default function EventCreationPage(): React.ReactElement {
                   <span style={{ fontSize: '0.9rem' }}>
                     <strong>{isDe ? 'Sub-Events nutzen?' : 'Use sub-events?'}</strong>{' '}
                     {subEventsOptIn
-                      ? (isDe ? '— ja. Die einzelnen Sub-Events legst du in Schritt 3 an.' : '— yes. You create the individual sub-events in step 3.')
+                      // v28.89: Die einzelnen Sub-Events werden weiter unten
+                      // auf dieser Seite angelegt und über die Reiter oben
+                      // bearbeitet — der Verweis auf „Schritt 3" stimmt seit
+                      // v28.87 nicht mehr.
+                      ? (isDe ? '— ja. Die einzelnen Sub-Events legst du weiter unten an; bearbeitet werden sie über die Reiter oben.' : '— yes. You create the individual sub-events further down; edit them via the tabs above.')
                       : (subEvents.length > 0
                         ? (isDe
                           ? `— deaktiviert. ${subEvents.length} Sub-Event(s) bleiben mit allen Anmeldungen gespeichert, sind für Teilnehmer aber unsichtbar. Einschalten stellt alles wieder her.`
@@ -8464,10 +8669,12 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               </div>
 
+              </>)}{/* v28.89: Ende der event-weiten Angaben */}
+
               <div className="form-group" style={{ paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <StepBadge n={2} />
-                  <span className="required">*</span> {t('create.eventtitle')}
+                  {!scopeSub && <span className="required">*</span>} {t('create.eventtitle')}
                   <InfoTooltip text={isDe ? (
                     <>
                       <strong>Was du hier einstellst:</strong> den offiziellen Namen des Events, z.B. <em>Sommerfest 2026</em> oder <em>JPMorgan Lauf 2026</em>.<br /><br />
@@ -8484,8 +8691,18 @@ export default function EventCreationPage(): React.ReactElement {
                     </>
                   )} />
                 </label>
-                <input className="form-input" value={title} onChange={e => setTitle(e.target.value)} placeholder="z.B. Sommerfest 2026" style={errorBorderStyle('title')} />
-                {fieldHasError('title') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
+                {/* v28.89: dasselbe Feld, je nach Ebene auf Hauptevent oder
+                    Sub-Event gebunden. Die Pflicht-Markierung gilt nur fürs
+                    Hauptevent — ein Sub-Event ohne Titel blockiert den Schritt
+                    nicht (getStepErrors prüft weiterhin den Top-Level-Titel). */}
+                <input
+                  className="form-input"
+                  value={scTitle}
+                  onChange={e => setScTitle(e.target.value)}
+                  placeholder={scopeSub ? t('create.subevents.title.placeholder') : 'z.B. Sommerfest 2026'}
+                  style={scopeSub ? undefined : errorBorderStyle('title')}
+                />
+                {!scopeSub && fieldHasError('title') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
               </div>
 
               {/* v9.24: Event-Datum direkt nach Title — auto-fillt die Deadlines.
@@ -8513,7 +8730,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">
-                    <span className="required">*</span> {t('create.startdate')}
+                    {!scopeSub && <span className="required">*</span>} {t('create.startdate')}
                     <InfoTooltip text={isDe ? (
                       <>
                         <strong>Startzeitpunkt</strong> — Datum + Uhrzeit, ab wann das Event läuft. Wandert 1:1 in den <strong>Outlook-Termin</strong> jedes Teilnehmers (blockt den Kalender-Slot) und in <strong>jede Bestätigungs-Mail</strong>. Bestimmt außerdem die Standard-Vorschläge für <strong>Anmelde-Deadline</strong> (7 Tage vor Start) und <strong>Letzte Abmeldemöglichkeit</strong> (3 Tage vor Start).
@@ -8525,27 +8742,29 @@ export default function EventCreationPage(): React.ReactElement {
                     )} />
                   </label>
                   <DatePicker
-                    selected={startDate ? new Date(startDate) : null}
-                    onChange={(date: Date | null) => setStartDate(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
+                    selected={scStart}
+                    onChange={setScStart}
                     showTimeSelect
                     timeFormat="HH:mm"
                     timeIntervals={15}
                     timeCaption="Uhrzeit"
                     dateFormat="dd.MM.yyyy, HH:mm"
                     locale="de"
-                    placeholderText="Datum und Uhrzeit wählen"
+                    // v28.66: Beim Sub-Event heißt leer „Zeit des Hauptevents".
+                    placeholderText={scopeSub ? t('create.subevents.time.placeholder') : 'Datum und Uhrzeit wählen'}
                     className="form-input"
                     wrapperClassName="dex-datepicker-wrapper"
                     calendarClassName="dex-datepicker-calendar"
                     popperPlacement="bottom-start"
+                    maxDate={scopeSub ? (scEnd || undefined) : undefined}
                     isClearable
                     autoComplete="off"
                   />
-                  {fieldHasError('startDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
+                  {!scopeSub && fieldHasError('startDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label">
-                    <span className="required">*</span> {t('create.enddate')}
+                    {!scopeSub && <span className="required">*</span>} {t('create.enddate')}
                     <InfoTooltip text={isDe ? (
                       <>
                         <strong>Endzeitpunkt</strong> — Datum + Uhrzeit, wann das Event vorbei ist. Wandert 1:1 in den <strong>Outlook-Termin</strong> der Teilnehmer (sonst läuft der Termin endlos). Wichtig auch für interne Logik: nach diesem Zeitpunkt zählt das Event als <strong>vorbei</strong> — Anmeldungen werden gesperrt, das Event rutscht in der Liste nach unten und manche automatische Benachrichtigungen (z.B. Late-Cancel-Hinweise) reagieren darauf.
@@ -8557,29 +8776,42 @@ export default function EventCreationPage(): React.ReactElement {
                     )} />
                   </label>
                   <DatePicker
-                    selected={endDate ? new Date(endDate) : null}
-                    onChange={(date: Date | null) => setEndDate(date ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}T${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}` : '')}
+                    selected={scEnd}
+                    onChange={setScEnd}
                     showTimeSelect
                     timeFormat="HH:mm"
                     timeIntervals={15}
                     timeCaption="Uhrzeit"
                     dateFormat="dd.MM.yyyy, HH:mm"
                     locale="de"
-                    placeholderText="Datum und Uhrzeit wählen"
+                    placeholderText={scopeSub ? t('create.subevents.time.placeholder') : 'Datum und Uhrzeit wählen'}
                     className="form-input"
                     wrapperClassName="dex-datepicker-wrapper"
                     calendarClassName="dex-datepicker-calendar"
                     popperPlacement="bottom-start"
-                    minDate={startDate ? new Date(startDate) : undefined}
+                    minDate={scStart || undefined}
                     isClearable
                     autoComplete="off"
                   />
-                  {fieldHasError('endDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
+                  {!scopeSub && fieldHasError('endDate') && <span style={{ color: 'var(--dex-red)', fontSize: '0.75rem' }}>{t('create.error.required')}</span>}
                 </div>
               </div>
-              {fieldHasError('endBeforeStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>{t('create.error.endBeforeStart')}</p>}
+              {!scopeSub && fieldHasError('endBeforeStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>{t('create.error.endBeforeStart')}</p>}
+              {/* v28.89: Ende-vor-Start je Sub-Event — dieselbe Prüfung, die
+                  bisher an der Sub-Event-Karte hing. */}
+              {scopeSub && scStart && scEnd && scEnd <= scStart && (
+                <p style={{ color: 'var(--dex-red, #c00)', fontSize: '0.8rem', marginTop: -4, marginBottom: 8 }}>
+                  {isDe
+                    ? 'Das Enddatum dieses Sub-Events liegt vor dem Startdatum — bitte korrigieren.'
+                    : 'The end date of this sub-event is before the start date — please correct it.'}
+                </p>
+              )}
               <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: 8, marginBottom: 0 }}>
-                Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.
+                {scopeSub
+                  ? (isDe
+                    ? 'Leer lassen heißt: Dieses Sub-Event übernimmt die Zeiten des Hauptevents. Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.'
+                    : 'Leaving these empty means the sub-event inherits the main event’s times. The time is used for the attendees’ Outlook entry.')
+                  : 'Die Uhrzeit wird für den Outlook-Kalendereintrag der Teilnehmer verwendet.'}
               </p>
               </div>
 
@@ -8609,19 +8841,24 @@ export default function EventCreationPage(): React.ReactElement {
                   {/* v28.7: „Keine Beschreibung nutzen" direkt neben der
                       Überschrift (Default: Beschreibung nutzen). Anhaken
                       leert die Beschreibung und blendet den Editor aus. */}
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto', fontSize: '0.78rem', fontWeight: 400, color: 'var(--dex-gray-600)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                    <input
-                      type="checkbox"
-                      checked={noDescription}
-                      onChange={e => {
-                        const on = e.target.checked;
-                        setNoDescription(on);
-                        if (on) setDescription('');
-                      }}
-                      style={{ accentColor: 'var(--dex-green)' }}
-                    />
-                    {isDe ? 'Keine Beschreibung nutzen' : 'Don’t use a description'}
-                  </label>
+                  {/* v28.89: „Keine Beschreibung" ist eine Entscheidung fürs
+                      Hauptevent (sie steckt als Flag in EmailTemplateOverrides).
+                      Ein Sub-Event lässt seine Beschreibung schlicht leer. */}
+                  {!scopeSub && (
+                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto', fontSize: '0.78rem', fontWeight: 400, color: 'var(--dex-gray-600)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      <input
+                        type="checkbox"
+                        checked={noDescription}
+                        onChange={e => {
+                          const on = e.target.checked;
+                          setNoDescription(on);
+                          if (on) setDescription('');
+                        }}
+                        style={{ accentColor: 'var(--dex-green)' }}
+                      />
+                      {isDe ? 'Keine Beschreibung nutzen' : 'Don’t use a description'}
+                    </label>
+                  )}
                 </div>
                 {/* v9.39: Beschreibung als HTML-Editor (vorher plain textarea).
                     Live-Vorschau im HtmlEditorModal — wird auf der Anmelde-Seite
@@ -8629,7 +8866,7 @@ export default function EventCreationPage(): React.ReactElement {
                     v28.7: Die frühere Starthilfe-Box (Tipp-Text + Vorschläge,
                     v26.77) lebt jetzt IM Editor-Dialog (headerExtra +
                     bodyTemplates) — der Wizard-Schritt bleibt schlank. */}
-                {noDescription ? (
+                {(!scopeSub && noDescription) ? (
                   <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', margin: 0 }}>
                     {isDe ? 'Auf der Anmelde-Seite wird keine Beschreibung angezeigt.' : 'No description will be shown on the registration page.'}
                   </p>
@@ -8644,8 +8881,8 @@ export default function EventCreationPage(): React.ReactElement {
                     {isDe ? 'Bearbeiten & Vorschau' : 'Edit & Preview'}
                   </button>
                   <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', flex: 1, minWidth: 200 }}>
-                    {description
-                      ? `${description.replace(/<[^>]+>/g, '').substring(0, 120)}${description.length > 120 ? '…' : ''}`
+                    {scDescription
+                      ? `${scDescription.replace(/<[^>]+>/g, '').substring(0, 120)}${scDescription.length > 120 ? '…' : ''}`
                       : (isDe ? 'Keine Beschreibung gesetzt — klicke „Bearbeiten" zum Hinzufügen.' : 'No description set — click „Edit" to add one.')}
                   </span>
                 </div>
@@ -8654,6 +8891,10 @@ export default function EventCreationPage(): React.ReactElement {
                     der Beschreibung stehen — die werden bereits separat auf der
                     Anmelde-Seite angezeigt. Mit klickbarem Beispieltext. */}
                 {(() => {
+                  // v28.89: Der Redundanz-Hinweis vergleicht mit Name/Ort/Datum
+                  // des Hauptevents — auf einem Sub-Event-Reiter wäre er
+                  // irreführend.
+                  if (scopeSub) return null;
                   const plain = (description || '')
                     .replace(/<[^>]+>/g, ' ')
                     .replace(/&nbsp;/gi, ' ')
@@ -8716,10 +8957,10 @@ export default function EventCreationPage(): React.ReactElement {
                     </>
                   )} />
                 </label>
-                {imagePreview && (
+                {scImagePreview && (
                   <div style={{ position: 'relative', marginBottom: 8, display: 'block', width: 'fit-content', maxWidth: '100%' }}>
                     <img
-                      src={imagePreview}
+                      src={scImagePreview}
                       alt="Vorschau"
                       style={{
                         // Korrekte Auflösung beibehalten, nur in der Höhe begrenzen + max-Breite zur Sicherheit
@@ -8735,7 +8976,13 @@ export default function EventCreationPage(): React.ReactElement {
                     />
                     <button
                       type="button"
-                      onClick={() => { setImageFile(null); setImagePreview(''); setEventImageUrl(''); setImageOrigFile(null); setImageOrigAspect(null); }}
+                      onClick={() => {
+                        // v28.89: Auf einem Sub-Event-Reiter betrifft das
+                        // Entfernen dessen Bild — imageRemoved ist das Signal
+                        // für den Save, das gespeicherte Attachment zu löschen.
+                        if (scopeSub) { patchScopeSub({ imagePreview: '', imageFile: null, imageRemoved: true }); return; }
+                        setImageFile(null); setImagePreview(''); setEventImageUrl(''); setImageOrigFile(null); setImageOrigAspect(null);
+                      }}
                       style={{
                         position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.6)',
                         color: '#fff', border: 'none', borderRadius: '50%', width: 28, height: 28,
@@ -8748,6 +8995,10 @@ export default function EventCreationPage(): React.ReactElement {
                     <button
                       type="button"
                       onClick={() => {
+                        // v28.89: Sub-Event-Bilder haben ihr eigenes
+                        // Zuschnitt-Modal (subImageCropIdx) — Ziel ist der
+                        // gerade gewählte Reiter.
+                        if (scopeSub) { setSubImageCropIdx(activeScopeIdx - 1); return; }
                         // v28.12: Beim Editieren eines BESTEHENDEN Bilds das
                         // Original einfangen, BEVOR der Zuschnitt Preview/File
                         // ersetzt — sonst kann die Event-Liste nach einem
@@ -8942,13 +9193,30 @@ export default function EventCreationPage(): React.ReactElement {
                   transition: 'border-color 0.2s, background 0.2s',
                 }}>
                   <Plus size={16} />
-                  {imageFile ? imageFile.name : 'Bild auswählen'}
+                  {(scopeSub ? scopeSub.imageFile : imageFile)?.name || (isDe ? 'Bild auswählen' : 'Choose image')}
                   <input
                     type="file"
                     accept="image/*"
                     style={{ display: 'none' }}
                     onChange={e => {
                       const file = e.target.files && e.target.files[0];
+                      if (!file) return;
+                      // v28.89: Auf einem Sub-Event-Reiter landet das Bild im
+                      // Draft dieses Sub-Events (imageRemoved zurücksetzen,
+                      // sonst löscht der Save das gerade Hochgeladene wieder).
+                      if (scopeSub) {
+                        setImageUploadError('');
+                        const readerSe = new FileReader();
+                        readerSe.onload = ev => {
+                          patchScopeSub({
+                            imageFile: file,
+                            imagePreview: (ev.target?.result as string) || '',
+                            imageRemoved: false,
+                          });
+                        };
+                        readerSe.readAsDataURL(file);
+                        return;
+                      }
                       if (file) {
                         setImageUploadError('');
                         setImageFile(file);
@@ -8973,6 +9241,17 @@ export default function EventCreationPage(): React.ReactElement {
                     }}
                   />
                 </label>
+                {/* v28.89: Auf einem Sub-Event-Reiter gilt derselbe Upload für
+                    dieses Sub-Event. Sein Bild erscheint als Vorschaubild neben
+                    der Auswahl auf der Anmeldeseite (v27.11); Mails und
+                    Outlook-Termin haben davon unabhängig ihr eigenes Kopfbild. */}
+                {scopeSub && (
+                  <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400)', marginTop: 6, marginBottom: 0 }}>
+                    {isDe
+                      ? 'Erscheint als Vorschaubild neben diesem Sub-Event in der Auswahl auf der Anmeldeseite. Ohne eigenes Bild bleibt die Zeile dort schlicht ohne Vorschau.'
+                      : 'Shown as a thumbnail next to this sub-event in the selection on the registration page. Without its own image the row simply has no preview.'}
+                  </p>
+                )}
                 {imageUploadError && (
                   <p style={{ color: 'var(--dex-red, #c00)', fontSize: '0.8rem', marginTop: 4 }}>{imageUploadError}</p>
                 )}
@@ -8982,7 +9261,7 @@ export default function EventCreationPage(): React.ReactElement {
                     v28.10: nur noch bei Querformat-Bildern (Ratio >= 1.2)
                     anbieten — für Kreis-/Quadrat-/Hochkant-Bilder ergibt
                     das Banner-Layout keinen Sinn. */}
-                {(imagePreview || imageFile) && wizardImgAspect != null && wizardImgAspect >= 1.2 && (
+                {!scopeSub && (imagePreview || imageFile) && wizardImgAspect != null && wizardImgAspect >= 1.2 && (
                   <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginTop: 12, padding: '10px 12px', borderRadius: 8, border: `1px solid ${imageBanner ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`, background: imageBanner ? 'rgba(134,188,37,0.06)' : '#fff', cursor: 'pointer' }}>
                     <input
                       type="checkbox"
@@ -10560,8 +10839,12 @@ export default function EventCreationPage(): React.ReactElement {
               {/* v28.87: Frueher Schritt 3 („Sub-Events"). Der Schritt ist
                   entfallen; sein Inhalt haengt jetzt unten an Schritt 1
                   (Grundlagen). Der Block bleibt als Ganzes bestehen — nur
-                  seine Anzeige-Bedingung zeigt auf Schritt 1. */}
-              <div style={{ display: currentStep === 0 ? 'block' : 'none' }}>
+                  seine Anzeige-Bedingung zeigt auf Schritt 1.
+                  v28.89: …und nur auf der Klammer-/Hauptevent-Ebene. Die Liste
+                  ist die Übersicht ÜBER die Sub-Events; auf dem Reiter eines
+                  einzelnen Sub-Events stünde sie unter dessen eigenen
+                  Grundlagen und läse sich wie eine Verschachtelung. */}
+              <div style={{ display: currentStep === 0 && activeScopeIdx === 0 ? 'block' : 'none' }}>
               {/* v22.36: Erklärung, was ein Sub-Event ist (graue Beschreibungs-Box). */}
               <WizardHint
                 isDe={isDe}
@@ -10720,33 +11003,48 @@ export default function EventCreationPage(): React.ReactElement {
                     })() : null;
                     // v15: deadlineObj entfernt — der Anmeldeschluss-Editor
                     // wandert nach Schritt 4 (Kapazität) in den Sub-Event-Tab.
-                    const dateToBerlinIso = (d: Date | null): string => {
-                      if (!d) return '';
-                      const local = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-                      return berlinLocalToUtcIso(local);
-                    };
                     return (
                       <div key={se.id} style={{
                         padding: '14px 16px', marginBottom: 10, marginTop: 4,
                         background: 'var(--dex-gray-50, #fafafa)', borderRadius: 'var(--dex-radius)',
                         border: '1px solid var(--dex-gray-200)', borderLeft: '3px solid var(--dex-green, #86bc25)',
                       }}>
-                        {/* Header-Zeile: Titel (prominent) + Löschen */}
-                        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: 10 }}>
-                          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.title')}</label>
-                            <input
-                              type="text"
-                              className="form-input"
-                              value={se.title}
-                              placeholder={t('create.subevents.title.placeholder')}
-                              onChange={e => {
-                                const v = e.target.value;
-                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, title: v } : x));
-                              }}
-                              style={{ padding: '6px 10px', fontSize: '0.9rem', fontWeight: 600 }}
-                            />
+                        {/* v28.89: Die Karte ist kein Editor mehr. Titel,
+                            Zeiten, Beschreibung und Bild eines Sub-Events
+                            werden oben in DENSELBEN Feldern gepflegt wie beim
+                            Hauptevent — Reiter wählen, bearbeiten. Zwei Orte
+                            für dieselbe Angabe waren der Grund, warum niemand
+                            wusste, welcher gilt. Hier bleibt, was es sonst
+                            nirgends gibt: die Liste selbst (anlegen,
+                            umschalten, entfernen) und die Pflichtanmeldung. */}
+                        <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap' }}>
+                          <div style={{ flex: 1, minWidth: 180 }}>
+                            <div style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--dex-gray-800, #333)' }}>
+                              {shortSubEventTitle(se.title, title) || (isDe ? 'Ohne Titel' : 'Untitled')}
+                            </div>
+                            <div style={{ fontSize: '0.76rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                              {(() => {
+                                const fmt = (d: Date | null): string => (d
+                                  ? d.toLocaleString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                                  : '');
+                                const s = fmt(startDateObj);
+                                const e = fmt(endDateObj);
+                                if (!s && !e) return isDe ? 'Zeiten wie Hauptevent' : 'Times as main event';
+                                return `${s || '—'} – ${e || '—'}`;
+                              })()}
+                            </div>
                           </div>
+                          <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ fontSize: '0.8rem', padding: '5px 14px' }}
+                            onClick={() => setScope(idx + 1)}
+                            title={isDe
+                              ? 'Öffnet dieses Sub-Event oben im Reiter — Titel, Zeiten, Beschreibung und Bild stehen dann in den Feldern darüber.'
+                              : 'Opens this sub-event in the tab above — title, times, description and image then live in the fields above.'}
+                          >
+                            {isDe ? 'Bearbeiten' : 'Edit'}
+                          </button>
                           <button
                             type="button"
                             onClick={() => {
@@ -10765,173 +11063,36 @@ export default function EventCreationPage(): React.ReactElement {
                                     ? `Sub-Event „${seTitle}" entfernen? Die eingetragenen Angaben gehen verloren.`
                                     : `Remove sub-event "${seTitle}"? The entered details will be lost.`);
                                 const ok = await confirmDialog(msg, { danger: true, confirmLabel: isDe ? 'Entfernen' : 'Remove' });
-                                if (ok) setSubEvents(prev => prev.filter(x => x.id !== se.id));
+                                if (ok) {
+                                  // v28.89: Steht der Scope auf einem Reiter
+                                  // hinter dem gelöschten, zeigt er danach auf
+                                  // ein anderes Sub-Event — zurück auf die
+                                  // Klammer, das ist die einzige Ebene, die es
+                                  // sicher noch gibt.
+                                  setScope(0);
+                                  setSubEvents(prev => prev.filter(x => x.id !== se.id));
+                                }
                               })().catch(() => { /* */ });
                             }}
                             style={{
                               background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)',
-                              fontSize: '1.1rem', padding: '4px', lineHeight: 1, marginTop: 18,
+                              fontSize: '1.1rem', padding: '4px', lineHeight: 1,
                             }}
                             title={t('create.subevents.remove')}
                           >
                             <X size={16} />
                           </button>
                         </div>
-
-                        {/* Zeit-Zeile: Start + Ende + Anmeldeschluss.
-                            v15.0: „Max. Teilnehmer" entfällt aus dieser
-                            Karte — Kapazität wird jetzt in Schritt 4
-                            (Kapazität) pro Sub-Event-Tab gepflegt. */}
-                        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr 1fr', gap: 10, marginBottom: 10 }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.start')}</label>
-                            <DatePicker
-                              selected={startDateObj}
-                              onChange={(date: Date | null) => {
-                                const iso = dateToBerlinIso(date);
-                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, startDate: iso } : x));
-                              }}
-                              showTimeSelect
-                              timeFormat="HH:mm"
-                              timeIntervals={15}
-                              timeCaption="Uhrzeit"
-                              dateFormat="dd.MM.yyyy, HH:mm"
-                              locale="de"
-                              // v28.66: leer = Zeit des Hauptevents wird übernommen.
-                              placeholderText={t('create.subevents.time.placeholder')}
-                              className="form-input"
-                              wrapperClassName="dex-datepicker-wrapper"
-                              calendarClassName="dex-datepicker-calendar"
-                              popperPlacement="bottom-start"
-                              maxDate={endDateObj || undefined}
-                              isClearable
-                              autoComplete="off"
-                            />
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.end')}</label>
-                            <DatePicker
-                              selected={endDateObj}
-                              onChange={(date: Date | null) => {
-                                const iso = dateToBerlinIso(date);
-                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, endDate: iso } : x));
-                              }}
-                              showTimeSelect
-                              timeFormat="HH:mm"
-                              timeIntervals={15}
-                              timeCaption="Uhrzeit"
-                              dateFormat="dd.MM.yyyy, HH:mm"
-                              locale="de"
-                              // v28.66: leer = Zeit des Hauptevents wird übernommen.
-                              placeholderText={t('create.subevents.time.placeholder')}
-                              className="form-input"
-                              wrapperClassName="dex-datepicker-wrapper"
-                              calendarClassName="dex-datepicker-calendar"
-                              popperPlacement="bottom-start"
-                              minDate={startDateObj || undefined}
-                              isClearable
-                              autoComplete="off"
-                            />
-                          </div>
-                          {/* v15: Anmeldeschluss raus aus der Sub-Event-Card —
-                              wird jetzt in Schritt 4 (Kapazität & Sichtbarkeit)
-                              pro Sub-Event-Tab gepflegt (analog zur Kapazität
-                              mit „vom Hauptevent übernehmen"-Toggle). */}
-                        </div>
-                        {/* v18.36: Ende-vor-Start-Hinweis pro Sub-Event. */}
+                        {/* v28.89: Ende-vor-Start wird jetzt oben am Feld
+                            gemeldet (dort wird korrigiert) — hier bleibt nur
+                            der Hinweis, dass etwas nicht stimmt. */}
                         {startDateObj && endDateObj && endDateObj <= startDateObj && (
-                          <p style={{ color: 'var(--dex-red, #c00)', fontSize: '0.8rem', margin: '-4px 0 8px' }}>
+                          <p style={{ color: 'var(--dex-red, #c00)', fontSize: '0.78rem', margin: '-4px 0 8px' }}>
                             {isDe
-                              ? 'Das Enddatum dieses Sub-Events liegt vor dem Startdatum — bitte korrigieren.'
-                              : 'The end date of this sub-event is before the start date — please correct it.'}
+                              ? 'Das Enddatum liegt vor dem Startdatum — über „Bearbeiten" korrigieren.'
+                              : 'The end date is before the start date — fix it via „Edit".'}
                           </p>
                         )}
-
-                        {/* Beschreibung. v15.0: „Ort" entfällt aus dieser
-                            Karte — wird in Schritt 3 (Ort & Programm) pro
-                            Sub-Event-Tab gepflegt. */}
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10, marginBottom: 10 }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                            <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)' }}>{t('create.subevents.description')}</label>
-                            <input
-                              type="text"
-                              className="form-input"
-                              value={se.description || ''}
-                              onChange={e => {
-                                const v = e.target.value;
-                                setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, description: v } : x));
-                              }}
-                              style={{ padding: '6px 10px', fontSize: '0.85rem' }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* v27.11: Eigenes Bild pro Sub-Event (optional).
-                            Vorher konnte nur das Haupt-Event ein Bild haben —
-                            der Sub-Event-Save schrieb EventImageUrl hart leer. */}
-                        <div style={{ marginBottom: 10 }}>
-                          <label style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', display: 'block', marginBottom: 4 }}>
-                            {isDe ? 'Eigenes Bild (optional)' : 'Own image (optional)'}
-                          </label>
-                          {se.imagePreview ? (
-                            <div style={{ position: 'relative', display: 'inline-block', maxWidth: '100%' }}>
-                              <img
-                                src={se.imagePreview}
-                                alt=""
-                                style={{ display: 'block', maxHeight: 120, maxWidth: '100%', width: 'auto', height: 'auto', objectFit: 'contain', borderRadius: 8, background: 'var(--dex-gray-100)' }}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => setSubEvents(prev => prev.map((x, i) => i === idx ? { ...x, imagePreview: '', imageFile: null, imageRemoved: true } : x))}
-                                title={isDe ? 'Bild entfernen' : 'Remove image'}
-                                style={{
-                                  position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,0.6)',
-                                  color: '#fff', border: 'none', borderRadius: '50%', width: 24, height: 24,
-                                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                }}
-                              >
-                                <X size={12} />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setSubImageCropIdx(idx)}
-                                style={{
-                                  position: 'absolute', bottom: 6, right: 6, background: 'rgba(0,0,0,0.6)',
-                                  color: '#fff', border: 'none', borderRadius: 999, padding: '3px 10px',
-                                  cursor: 'pointer', fontSize: '0.72rem', fontWeight: 600,
-                                  display: 'inline-flex', alignItems: 'center', gap: 5,
-                                }}
-                              >
-                                <Icon iconName="Crop" style={{ fontSize: 11 }} /> {isDe ? 'Zuschneiden' : 'Crop'}
-                              </button>
-                            </div>
-                          ) : (
-                            <label style={{
-                              display: 'inline-flex', alignItems: 'center', gap: 6,
-                              padding: '6px 12px', borderRadius: 'var(--dex-radius)',
-                              border: '2px dashed var(--dex-gray-300)', cursor: 'pointer',
-                              fontSize: '0.8rem', color: 'var(--dex-gray-600)',
-                            }}>
-                              <Plus size={13} />
-                              {isDe ? 'Bild auswählen' : 'Choose image'}
-                              <input
-                                type="file"
-                                accept="image/*"
-                                style={{ display: 'none' }}
-                                onChange={e => {
-                                  const file = e.target.files && e.target.files[0];
-                                  if (!file) return;
-                                  const reader = new FileReader();
-                                  reader.onload = ev => {
-                                    const dataUrl = (ev.target?.result as string) || '';
-                                    setSubEvents(prev => prev.map((x, i) => i === idx ? { ...x, imageFile: file, imagePreview: dataUrl, imageRemoved: false } : x));
-                                  };
-                                  reader.readAsDataURL(file);
-                                }}
-                              />
-                            </label>
-                          )}
-                        </div>
 
                         {/* v24.64: Pflichtanmeldung — wenn aktiv, MUSS der
                             Teilnehmer dieses Sub-Event bei der Anmeldung wählen
@@ -14805,26 +14966,23 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
                 <h3 className="mb-16">{t('create.step.communication')}</h3>
 
-                {/* v11.57: Tab-Leiste für Haupt-Event vs. Sub-Events. Jeder Sub-
-                    Event kann eigene Mail-/Outlook-Einstellungen haben. Wenn keine
-                    Sub-Events existieren, blenden wir die Tabs komplett aus. */}
+                {/* v28.88: Die Reiter-Leiste stand hier ein ZWEITES Mal. Seit
+                    v28.78 trägt die Scope-Karte über dem Formular
+                    (renderGlobalScopeBar) den Umschalter für alle
+                    scope-fähigen Schritte — Kommunikation eingeschlossen, sie
+                    hängt über setScope am selben Index. Zwei identische
+                    Reiter-Reihen auf einer Seite lesen sich als zwei
+                    Navigationen: der Organizer sucht, welche die gültige ist.
+                    Die Steps „Ort & Programm", „Kapazität" und „Felder" sind
+                    schon in v28.78 entkoppelt worden, Kommunikation blieb
+                    übrig. Der Erklär-Tooltip bleibt — er sagt, was pro
+                    Sub-Event überhaupt getrennt einstellbar ist. */}
                 {subEvents.length > 0 && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                    {/* v22.71: Schritt 6 nutzt jetzt ebenfalls StickyTabStrip
-                        (Sticky-Verhalten + Klammer-Bracket-Layout). Im
-                        „Nur Sub-Events"-Modus ist der Klammer-Tab deaktiviert
-                        (Klammer-Kommunikation nicht relevant). */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <StickyTabStrip
-                        tabs={[{ label: `${subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt-Event' : 'Main event')}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`, isMain: true }, ...subEvents.map(s => ({ label: (shortSubEventTitle(s.title, title) || (isDe ? 'Sub-Event ohne Titel' : 'Untitled sub-event')).trim(), isMain: false }))]}
-                        activeIdx={activeCommTabIdx}
-                        onChange={switchCommTab}
-                        ariaLabel={isDe ? 'Event-Tab wechseln (Kommunikations-Einstellungen)' : 'Switch event tab (communication settings)'}
-                        mainBadge={subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt' : 'Main')}
-                        klammer={subEventsOnlyMode}
-                        mainDisabled={subEventsOnlyMode}
-                        mainDisabledNote={isDe ? 'nicht relevant — nur Sub-Events' : 'not relevant — sub-events only'}
-                      />
+                    <div style={{ flex: 1, minWidth: 0, fontSize: '0.84rem', color: 'var(--dex-gray-600)' }}>
+                      {isDe
+                        ? 'Die Einstellungen unten gelten für den oben gewählten Reiter.'
+                        : 'The settings below apply to the tab selected above.'}
                     </div>
                     <InfoTooltip text={isDe ? (
                       <>
@@ -16310,10 +16468,13 @@ export default function EventCreationPage(): React.ReactElement {
         // v15.19: Subheading-Override pro Event. Falls override.subheading
         // explizit gesetzt ist (auch leerer String), nutze diesen Wert.
         const currentSubheading = override?.subheading !== undefined ? override.subheading : '';
+        // v28.89: Im Beschreibungs-Modus folgt der Editor der gewählten Ebene
+        // (scDescription/setScDescription) — er wird ausschließlich aus
+        // Schritt 1 geöffnet, wo der Scope-Reiter darüber steht.
         const currentBody = isOutlook
           ? outlookBody
           : isDescription
-            ? description
+            ? scDescription
             : (override?.bodyHtml || defaultTpl?.bodyHtml || '');
         // v18.19: Überschrift-Farbe + -Größe (Override > Template-Default).
         const currentHeadingColor = (override?.headingColor) || (defaultTpl?.headingColor) || '#86bc25';
@@ -16431,7 +16592,15 @@ export default function EventCreationPage(): React.ReactElement {
             open={htmlEditorOpen}
             onClose={() => setHtmlEditorOpen(false)}
             defaultBodyHtml={isOutlook ? outlookDefaultBody : (isDescription ? descriptionExampleHtml : undefined)}
-            title={isOutlook ? 'Outlook-Termin: Body bearbeiten' : isDescription ? (isDe ? 'Event-Beschreibung bearbeiten' : 'Edit event description') : `E-Mail-Template: ${tType}`}
+            title={isOutlook
+              ? 'Outlook-Termin: Body bearbeiten'
+              : isDescription
+                ? (scopeSub
+                  ? (isDe
+                    ? `Beschreibung: ${shortSubEventTitle(scopeSub.title, title) || (childTermSingular || 'Sub-Event')}`
+                    : `Description: ${shortSubEventTitle(scopeSub.title, title) || (childTermSingular || 'sub-event')}`)
+                  : (isDe ? 'Event-Beschreibung bearbeiten' : 'Edit event description'))
+                : `E-Mail-Template: ${tType}`}
             // v28.7: Die Starthilfe (Tipp-Text + Vorschlags-Chips) lebt jetzt
             // HIER im Editor statt als Dauer-Box im Wizard-Schritt.
             headerExtra={isDescription ? (
@@ -16453,7 +16622,7 @@ export default function EventCreationPage(): React.ReactElement {
               if (isOutlook) {
                 setOutlookBody(html);
               } else if (isDescription) {
-                setDescription(html);
+                setScDescription(html);
               } else {
                 // v18.22: patchOverride bewahrt alle übrigen Override-Felder
                 // (Farbe/Größe/fett/kursiv von Über-/Unter-Überschrift).

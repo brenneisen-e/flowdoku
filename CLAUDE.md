@@ -17,8 +17,23 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 (~17k Zeilen, Wizard), `components/AdminPage.tsx` (~15k, Organizer Center),
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
-**Branch:** `claude/spfx-app-bugfixes-4kui16` — Stand **v28.87.0**.
-Nur auf diesen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
+**Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v28.89.0**. Nur auf den
+vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
+
+## Erst einrichten, dann bauen
+
+Eine frische Sitzung hat **kein `node_modules`**. Ohne Install schlägt jeder
+Befehl auf eine Art fehl, die nach einem Code-Fehler aussieht:
+
+```bash
+cd dex-event-app-spfx && npm install --no-audit --no-fund   # ~1 min, ~2300 Pakete
+```
+
+`npx tsc` zieht ohne lokale Installation ein **globales, neueres** TypeScript und
+meldet Dinge, die es im Projekt nicht gibt (`webpack-env` nicht gefunden,
+`target=ES5` deprecated). Deshalb immer den Projekt-Compiler nehmen:
+`./node_modules/.bin/tsc --noEmit -p tsconfig.json`. Dasselbe gilt für `gulp`.
 
 ## Release-Ablauf — Reihenfolge einhalten
 
@@ -33,11 +48,12 @@ cd dex-event-app-spfx
 # 2) Release Notes an ZWEI Stellen
 #    src/webparts/dexEventPlatform/data/releaseNotes.ts   (neuester Eintrag OBEN, nutzerverständlich)
 #    docs/release-notes.md                                (neueste Zeile OBEN, technisch)
-# 3) tsc
-npx tsc --noEmit -p tsconfig.json
+# 3) tsc (Projekt-Compiler, nicht npx — siehe oben)
+./node_modules/.bin/tsc --noEmit -p tsconfig.json
 # 4) Sauber bauen (stale Bundles blähen das .sppkg auf)
 rm -rf dist release temp sharepoint/solution/debug
-npx gulp bundle --ship && npx gulp package-solution --ship
+./node_modules/.bin/gulp bundle --ship; ./node_modules/.bin/gulp package-solution --ship
+#    kein && — bundle endet wegen Lint-Warnungen mit Exit 1 (s.u.)
 # 5) Paket an DREI Stellen
 cp sharepoint/solution/dex-event-platform.sppkg ../dist/dex-event-platform.sppkg
 #    ../docs/downloads/dex-event-platform-v<VERSION>.sppkg  (alte Datei per git mv umbenennen)
@@ -112,50 +128,83 @@ sonst überschreibt der alte Wert beim Speichern den frisch berechneten.
 **Inline-Styles können kein `:hover`.** Interaktive Elemente brauchen einen
 Hover-State (`hoverIdx`, `evTabHover`), sonst lesen sie sich als Beschriftung.
 
-## Der Wizard, Stand v28.87
+**Der Scope-Umschalter gehört genau einmal auf die Seite.** Seit v28.78 rendert
+`renderGlobalScopeBar` die Reiter global über dem Formular; die alten
+`StickyTabStrip`-Instanzen je Schritt sind Altlast. In Schritt Kommunikation
+stand sie bis v28.88 noch da — zwei identische Reiter-Reihen, die dasselbe
+umschalten, liest der Organizer als zwei Navigationen und sucht die gültige.
+Wer einen Schritt scope-fähig macht (`SCOPE_AWARE_STEPS`), hängt ihn an
+`setScope` und baut **keine** eigene Leiste dazu.
+
+**Guard-Meldungen müssen den tatsächlichen Grund nennen.** Die Anmeldeseite
+sperrte mit „Bitte wähle mindestens das Haupt-Event oder ein Sub-Event aus" —
+auch dort, wo es gar nichts zu wählen gibt: `willRegisterParent` ist bei
+bestehender Anmeldung immer false, und ohne Sub-Events rendert die Auswahl-UI
+gar nicht (sie hängt an `childEvents.length > 0`). Vor einer Sammel-Meldung
+prüfen, welche der Bedingungen den Fall wirklich erzeugt hat
+(`parentAlreadyRegistered`, `subEventsOnlyMode`, `parentRegBlocked`).
+Und: leere Auswahl heißt nicht „nichts zu tun" — wer alle gebuchten Sub-Events
+abwählt, meldet sie ab (`sessionsChanged` in `RegistrationPage`).
+
+## Der Wizard, Stand v28.89
 
 Neun Schritte. Über dem Formular steht die **Scope-Karte**
 (`renderGlobalScopeBar`): Klammer/Haupt-Event und die Sub-Events als Reiter, ein
 gemeinsamer Index (`activeScopeIdx` / `setScope`). In Schritten ohne Scope-Bezug
 bleibt die Karte stehen und sagt, dass der Schritt für alles gilt.
 
-Schritt 1 (Grundlagen) trägt seit v28.83–v28.87 auch: „Sub-Events nutzen?",
-Bezeichnung, Anmelde-Modus und die Sub-Event-Karten.
-
 **`setScope` ruft für die Kommunikation bewusst `switchCommTab(idx)`** statt
 `setActiveCommTabIdx` — sonst gehen Sub-Event-Mailtexte verloren.
 
-## Offene Arbeit, in dieser Reihenfolge
+Seit v28.88 hat kein Schritt mehr eine eigene Reiter-Leiste; im
+Kommunikations-Schritt steht an ihrer Stelle nur noch der Satz „Die
+Einstellungen unten gelten für den oben gewählten Reiter" plus der bisherige
+`InfoTooltip`.
 
-1. **Feld-Ebene vereinheitlichen** (der eigentlich gewünschte Endzustand):
-   `title`, `startDate`, `endDate`, `description` und Bild in Schritt 1 je nach
-   Scope an den Top-Level-State **oder** an `subEvents[activeScopeIdx-1]` binden:
+**Schritt 1 ist seit v28.89 scope-fähig** (`SCOPE_AWARE_STEPS = [0,2,3,4,5]`).
+Titel, Start, Ende, Beschreibung und Bild sind **dieselben** Eingaben und hängen
+über `scopeSub`/`patchScopeSub` am Top-Level-State **oder** an
+`subEvents[activeScopeIdx-1]`. Zwei Dinge, die dabei leicht kippen:
 
-   ```tsx
-   value={activeScopeIdx > 0 ? sub.title : title}
-   onChange={v => activeScopeIdx > 0 ? patchSub({ title: v }) : setTitle(v)}
-   ```
+- **Zeitformate.** Top-Level ist Berliner Lokalzeit `YYYY-MM-DDTHH:MM`, ein
+  Sub-Event UTC-ISO. Umgerechnet wird nur in `subIsoToDate`/`subDateToIso` —
+  keine zweite Stelle aufmachen.
+- **Was event-weit gilt, gehört auf die Klammer.** Opt-in, Bezeichnung,
+  Anmelde-Modus, Vorlage, Entwurf/Aktivierung und die Sub-Event-Liste rendern
+  nur bei `activeScopeIdx === 0`. Neue event-weite Felder in Schritt 1 müssen in
+  diesen Block, sonst beantwortet man Grundsatzfragen „unter" einem Termin.
+- **Pflichtfelder gehören dem Hauptevent.** `getStepErrors` prüft weiter den
+  Top-Level; `proceedNext` wechselt deshalb bei Fehlern auf die Ebene, auf der
+  der Fehler steht — sonst wirkt „Weiter" wie tot.
 
-   Wichtig: die **vorhandenen** Felder umhängen, keine zweite Box daneben bauen
-   (das wurde in v28.81 versucht und in v28.82 zurückgenommen — „alles soll
-   gleich aussehen", inklusive des „Bearbeiten & Vorschau"-Editors für die
-   Beschreibung). Danach sind die Sub-Event-Karten überflüssig und können weg.
+Die Sub-Event-Karten sind seither reine **Liste**: anlegen, „Bearbeiten"
+(`setScope(idx+1)`), entfernen, Pflichtanmeldung. Keine Editor-Felder mehr.
 
-2. **Reiter-Darstellung** recherchieren und neu gestalten. Bei neun Sub-Events
-   ist die Chip-Reihe grenzwertig; Kandidaten: Segmented Control, Dropdown mit
-   Suche ab N Einträgen, Scroll-Leiste mit Pfeilen. Bisher nicht recherchiert.
+## Offene Arbeit
 
-3. **Outlook-Body-Dialog** übersichtlicher (Betreff/Termin/Ort, Überschriften,
-   Header-Bild, Variablen und Editor stehen ungegliedert untereinander).
+Die vier Punkte aus v28.87 sind mit v28.88/v28.89 abgearbeitet (Feld-Ebene,
+Reiter-Darstellung, Outlook-Dialog, Legacy-Rollen). Was als Nächstes ansteht,
+ergibt sich aus dem Browser-Test — siehe „Umgang".
 
-4. **Co-Organizer-Antrag:** `getRoleEmails('Organizer')` prüft nur den Wert
-   `Organizer`. Falls in `DEX_Roles` noch Legacy-Einträge mit `EventAdmin`
-   stehen, bekämen diese Personen unnötig einen Freigabe-Antrag.
+Bewusst **nicht** gebaut: ein Dropdown zum Springen zwischen Sub-Event-Reitern.
+Es wäre eine zweite Bedienung für dieselbe Auswahl; die gescrollte Leiste hat
+stattdessen Pfeile, Tastatur, Auto-Scroll zum aktiven Reiter und eine Zählung
+„3 / 9". Falls die Reiter bei sehr vielen Sub-Events weiter stören, ist ein
+Dropdown der nächste Kandidat — dann aber **statt** der Leiste, nicht daneben.
 
 ## Umgang
 
 Nach dem Deploy den Wizard einmal von Schritt 1 bis 9 durchklicken — die
-Umnummerierung aus v28.87 ist im Browser nicht verifiziert.
+Umnummerierung aus v28.87 ist im Browser nicht verifiziert. Für v28.89
+zusätzlich: in Schritt 1 zwischen Klammer und mehreren Sub-Events umschalten
+(Titel/Zeiten/Beschreibung/Bild müssen dem Reiter folgen), ein Sub-Event über
+die Liste anlegen und entfernen, und die Reiter-Leiste mit mehr als sechs
+Sub-Events auf Pfeile, Zählung und Auto-Scroll ansehen.
+
+**Bildschirmfotos zeigen den installierten Stand, nicht den Repo-Stand.** Ein
+Screenshot mit zehn Wizard-Schritten kam aus einem Build vor v28.87; wer daraus
+auf den Code schließt, sucht Fehler an Stellen, die es nicht mehr gibt. Erst die
+Version im Bild (bzw. „Was ist neu?") mit `version.ts` abgleichen.
 
 Bei Bildschirmfotos mit Fehlern: erst die Ursache im Code belegen, dann fixen.
 Vermutungen als solche kennzeichnen. Wenn etwas nicht sauber fertig wird, lieber
