@@ -618,7 +618,7 @@ function StickyTabStrip(props: {
   return (
     <div ref={phRef} style={pin ? { height: pin.height } : undefined}>
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16,
+        display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, minWidth: 0,
         // v28.82: Im fixierten Zustand loeste sich der Reiter-Block bisher als
         // WEISSER Kasten aus der getoenten Scope-Karte — die Karte blieb
         // zurueck, der Block schwebte darueber und schnitt den gruenen
@@ -693,7 +693,7 @@ function StickyTabStrip(props: {
             const dis = !!props.mainDisabled;
             const pActive = !dis && props.activeIdx === 0;
             return (
-              <div role="tablist" aria-label={props.ariaLabel} style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: 0 }}>
+              <div role="tablist" aria-label={props.ariaLabel} style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, gap: 0 }}>
                 {/* Klammer-Ebene oben — volle Breite.
                     v28.73: Vorne steht jetzt der EVENTNAME, dahinter der
                     dezente Zusatz „(Klammerevent)" und ein Info-Icon mit der
@@ -777,8 +777,8 @@ function StickyTabStrip(props: {
                     den Reiter, den man anklicken will. Sie erscheinen nur,
                     wenn es in die Richtung überhaupt weitergeht. */}
                 <div style={{
-                  display: 'flex', alignItems: 'stretch', gap: 6,
-                  marginLeft: 18, paddingLeft: 16, paddingTop: 10,
+                  display: 'flex', alignItems: 'stretch', gap: 6, minWidth: 0,
+                  marginLeft: 18, paddingLeft: 16, paddingTop: 10, paddingRight: 2,
                   borderLeft: '2px solid var(--dex-green, #86bc25)',
                   borderBottom: pin ? 'none' : '1px solid var(--dex-gray-200)',
                 }}>
@@ -6454,11 +6454,19 @@ export default function EventCreationPage(): React.ReactElement {
     const applies = SCOPE_AWARE_STEPS.indexOf(currentStep) >= 0;
     const scopeIdx = Math.min(activeScopeIdx, subEvents.length);
     const mainLabel = `${subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt-Event' : 'Main event')}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`;
+    // v28.90: Die Karte war grün getönt und mit grünem Rand abgesetzt — sie las
+    // sich dadurch wie ein Status („hier stimmt etwas") statt wie das, was sie
+    // ist: eine Navigation. Grün bleibt der aktiven Auswahl vorbehalten.
+    // Ausserdem `overflow: hidden` (plus `minWidth: 0` weiter innen): Die
+    // Reiter-Reihe schob sich bei vielen Sub-Events über den rechten Kartenrand
+    // hinaus — Flex-Kinder haben `min-width: auto`, die Scroll-Fläche konnte
+    // ihren Container also aufblähen.
     return (
       <div style={{
         margin: '18px 0 0', padding: '12px 16px 14px', borderRadius: 14,
-        background: 'linear-gradient(180deg, rgba(134,188,37,0.09) 0%, rgba(134,188,37,0.04) 100%)',
-        border: '1px solid rgba(134,188,37,0.35)',
+        background: '#fff',
+        border: '1px solid var(--dex-gray-200, #e6e6e6)',
+        overflow: 'hidden',
       }}>
         {applies ? (
           renderPerEventTabStrip(
@@ -8159,271 +8167,6 @@ export default function EventCreationPage(): React.ReactElement {
                 </WizardHint>
               )}
               {activeScopeIdx === 0 && (<>
-              {/* v28.83: Die Opt-in-Frage steht jetzt in den GRUNDLAGEN statt in
-                  Schritt 3. Ob ein Event ueberhaupt aus mehreren Teilen besteht,
-                  ist eine Grundsatzfrage wie Titel und Datum — nicht etwas, das
-                  man erst in einem spaeteren Schritt entdeckt. Abschalten mit
-                  vorhandenen Sub-Events fragt nach (Soft-Disable, s. v28.2). */}
-              {/* v22.36: Opt-in-Frage — Default nein; erst bei „ja" erscheint
-                  die gesamte Sub-Event-Konfiguration. Abschalten mit
-                  vorhandenen Sub-Events fragt nach und verwirft sie dann. */}
-              <div style={{ background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: '12px 16px', marginBottom: 12, border: '1px solid var(--dex-gray-200)' }}>
-                <div className="toggle-wrapper" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <label className="toggle">
-                    <input
-                      type="checkbox"
-                      checked={subEventsOptIn}
-                      onChange={e => {
-                        const on = e.target.checked;
-                        if (!on && subEvents.length > 0) {
-                          (async () => {
-                            // v28.2 SOFT-DISABLE: Der Toggle löscht NICHTS mehr.
-                            // Die Sub-Events (inkl. Teilnehmerlisten und
-                            // Anmeldungen) bleiben gespeichert und werden beim
-                            // Speichern nur per _subEventsDisabled-Flag von der
-                            // Anmeldeseite genommen. Wieder-Einschalten stellt
-                            // alles unverändert wieder her — auch über ein
-                            // Speichern hinweg. Endgültig löschen geht weiterhin
-                            // über das X an der einzelnen Sub-Event-Karte.
-                            const ok = await confirmDialog(
-                              isDe
-                                ? `Sub-Events deaktivieren? Deine ${subEvents.length} Sub-Event(s) bleiben mit allen Eingaben und Anmeldungen gespeichert, werden Teilnehmern nach dem Speichern aber nicht mehr angeboten. Beim Wieder-Einschalten ist alles unverändert da.`
-                                : `Deactivate sub-events? Your ${subEvents.length} sub-event(s) remain stored with all input and registrations, but after saving they are no longer offered to attendees. Re-enabling restores everything unchanged.`,
-                              { confirmLabel: isDe ? 'Deaktivieren' : 'Deactivate' }
-                            );
-                            if (ok) {
-                              setSubEventsOptIn(false);
-                              // Modi zurücksetzen, die ohne sichtbare Sub-Events
-                              // keinen Sinn ergeben (sonst wäre das Event für
-                              // Teilnehmer unbuchbar).
-                              if (subEventsOnlyMode) setSubEventsOnlyMode(false);
-                              if (requireSubEventSelection) setRequireSubEventSelection(false);
-                            }
-                          })().catch(() => { /* */ });
-                          return;
-                        }
-                        setSubEventsOptIn(on);
-                      }}
-                    />
-                    <span className="toggle-slider" />
-                  </label>
-                  <span style={{ fontSize: '0.9rem' }}>
-                    <strong>{isDe ? 'Sub-Events nutzen?' : 'Use sub-events?'}</strong>{' '}
-                    {subEventsOptIn
-                      // v28.89: Die einzelnen Sub-Events werden weiter unten
-                      // auf dieser Seite angelegt und über die Reiter oben
-                      // bearbeitet — der Verweis auf „Schritt 3" stimmt seit
-                      // v28.87 nicht mehr.
-                      ? (isDe ? '— ja. Die einzelnen Sub-Events legst du weiter unten an; bearbeitet werden sie über die Reiter oben.' : '— yes. You create the individual sub-events further down; edit them via the tabs above.')
-                      : (subEvents.length > 0
-                        ? (isDe
-                          ? `— deaktiviert. ${subEvents.length} Sub-Event(s) bleiben mit allen Anmeldungen gespeichert, sind für Teilnehmer aber unsichtbar. Einschalten stellt alles wieder her.`
-                          : `— deactivated. ${subEvents.length} sub-event(s) remain stored with all registrations but are hidden from attendees. Re-enable to restore.`)
-                        : (isDe ? '— nein (Standard). Ein einfaches Event braucht keine. Zum Aktivieren Schalter umlegen.' : '— no (default). A simple event does not need them. Flip the toggle to enable.'))}
-                  </span>
-                </div>
-              </div>
-
-              {/* v28.84: Bezeichnung und Anmelde-Modus gehoeren zur
-                  Grundsatzfrage aus dem Schalter darueber — nicht in einen
-                  spaeteren Schritt. Beide standen bisher in Schritt 3.
-                  Sichtbar nur, wenn Sub-Events aktiv sind. */}
-              {subEventsOptIn && (<>
-              {/* Bezeichnungs-Dropdown */}
-              <div style={{
-                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
-                padding: '14px 16px', marginBottom: 12,
-                border: '1px solid var(--dex-gray-200)',
-              }}>
-                <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {isDe ? 'Bezeichnung der Sub-Events' : 'Sub-event naming'}
-                  <InfoTooltip text={isDe ? (
-                    <>
-                      <strong>Was du hier einstellst:</strong> wie die untergeordneten Bausteine in der App genannt werden. Die <strong>Standardbezeichnung</strong> ist &bdquo;Sub-Event&ldquo;. Du kannst aber z.B. &bdquo;Workshop&ldquo;, &bdquo;Session&ldquo;, &bdquo;Programmpunkt&ldquo; oder &bdquo;Event-Section&ldquo; auswählen — oder eine eigene Bezeichnung (Singular + Plural) eintippen.<br /><br />
-                      <strong>Anzeige in der App:</strong> der gewählte Begriff erscheint überall dort, wo bisher &bdquo;Sub-Event(s)&ldquo; stand — z.B. im Anmeldeformular der Teilnehmer (&bdquo;Verfügbare Workshops&ldquo;), in &bdquo;Meine Events&ldquo; und im Admin Center.
-                    </>
-                  ) : (
-                    <>
-                      <strong>What you set here:</strong> how the child building blocks are named throughout the app. The <strong>default</strong> is &bdquo;Sub-event&ldquo;. You can pick e.g. &bdquo;Workshop&ldquo;, &bdquo;Session&ldquo;, &bdquo;Programmpunkt&ldquo; or &bdquo;Event section&ldquo; — or type your own singular + plural.<br /><br />
-                      <strong>Shown in the app:</strong> the chosen term replaces &bdquo;Sub-event(s)&ldquo; everywhere — e.g. in the attendee registration form (&bdquo;Available workshops&ldquo;), in &bdquo;My events&ldquo; and in the admin center.
-                    </>
-                  )} />
-                </label>
-                {(() => {
-                  const presets = [
-                    { key: 'subevent',     singular: isDe ? 'Sub-Event' : 'Sub-event',         plural: isDe ? 'Sub-Events' : 'Sub-events' },
-                    { key: 'workshop',     singular: 'Workshop',                                plural: 'Workshops' },
-                    { key: 'session',      singular: 'Session',                                 plural: 'Sessions' },
-                    { key: 'programmpunkt', singular: isDe ? 'Programmpunkt' : 'Program item', plural: isDe ? 'Programmpunkte' : 'Program items' },
-                    { key: 'section',      singular: isDe ? 'Event-Section' : 'Event section', plural: isDe ? 'Event-Sections' : 'Event sections' },
-                  ];
-                  const matchKey = (() => {
-                    // v15.9: customTermMode hat Priorität — wer in den
-                    // Custom-Modus geklickt hat bleibt dort, auch wenn
-                    // beide Inputs noch leer sind.
-                    if (customTermMode) return 'custom';
-                    const s = (childTermSingular || '').trim();
-                    const p = (childTermPlural || '').trim();
-                    if (!s && !p) return 'subevent';
-                    const hit = presets.find(x => x.singular === s && x.plural === p);
-                    return hit ? hit.key : 'custom';
-                  })();
-                  return (
-                    <>
-                      <select
-                        className="form-input"
-                        value={matchKey}
-                        onChange={e => {
-                          const k = e.target.value;
-                          if (k === 'custom') {
-                            // v15.9: Custom-Modus sticky machen, auch ohne
-                            // initiale Werte — sonst kippt der Dropdown
-                            // sofort zurück auf 'subevent'.
-                            setCustomTermMode(true);
-                            return;
-                          }
-                          // Preset gewählt → Custom-Modus aufheben + Werte
-                          // aus dem Preset übernehmen.
-                          setCustomTermMode(false);
-                          const preset = presets.find(x => x.key === k);
-                          if (preset) {
-                            setChildTermSingular(preset.singular);
-                            setChildTermPlural(preset.plural);
-                          }
-                        }}
-                        style={{ marginTop: 6, maxWidth: 360 }}
-                      >
-                        {presets.map(p => (
-                          <option key={p.key} value={p.key}>
-                            {p.plural}
-                          </option>
-                        ))}
-                        <option value="custom">{isDe ? 'Eigene Bezeichnung…' : 'Custom term…'}</option>
-                      </select>
-                      {matchKey === 'custom' && (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10, maxWidth: 480 }}>
-                          <div>
-                            <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'Singular' : 'Singular'}</label>
-                            <input
-                              type="text"
-                              className="form-input"
-                              value={childTermSingular}
-                              onChange={e => setChildTermSingular(e.target.value)}
-                              placeholder={isDe ? 'z.B. Modul' : 'e.g. Module'}
-                              style={{ padding: '6px 10px', fontSize: '0.9rem' }}
-                            />
-                          </div>
-                          <div>
-                            <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'Plural' : 'Plural'}</label>
-                            <input
-                              type="text"
-                              className="form-input"
-                              value={childTermPlural}
-                              onChange={e => setChildTermPlural(e.target.value)}
-                              placeholder={isDe ? 'z.B. Module' : 'e.g. Modules'}
-                              style={{ padding: '6px 10px', fontSize: '0.9rem' }}
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-
-              {/* Anmelde-Modus */}
-              <div style={{
-                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
-                padding: '14px 16px', marginBottom: 16,
-                border: '1px solid var(--dex-gray-200)',
-              }}>
-                <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {isDe ? 'Anmelde-Modus' : 'Registration mode'}
-                  <InfoTooltip text={isDe ? (
-                    <>
-                      <strong>Was du hier einstellst:</strong> ob sich Teilnehmer zusätzlich zum Hauptevent für Sub-Events anmelden können (Standard) oder ob es <strong>überhaupt kein Hauptevent-Anmelden</strong> mehr gibt und die Anmeldung ausschließlich über einzelne Sub-Events läuft.<br /><br />
-                      <strong>Anzeige in der App:</strong> im Modus &bdquo;Nur Sub-Events&ldquo; ist die Anmelde-Checkbox für das Hauptevent im Teilnehmerformular ausgeblendet — der Teilnehmer muss zwingend mindestens einen Sub-Event auswählen. Im Schritt 7 (Kommunikation) wird der Haupt-Event-Tab ausgegraut, weil die Hauptevent-Kommunikation in diesem Modus nicht greift.<br /><br />
-                      <strong>Empfehlung:</strong> nutze &bdquo;Nur Sub-Events&ldquo; für Mehrtages-Programme, in denen jeder Teilnehmer aus einem Pool von Slots wählt und ein Hauptevent-Slot keinen Sinn ergibt.
-                    </>
-                  ) : (
-                    <>
-                      <strong>What you set here:</strong> whether attendees can additionally register for sub-events alongside the main event (default) or whether there is <strong>no main-event registration at all</strong> and registration runs exclusively via individual sub-events.<br /><br />
-                      <strong>Shown in the app:</strong> in &bdquo;Sub-events only&ldquo; mode the main-event registration checkbox in the attendee form is hidden — the attendee must pick at least one sub-event. In step 7 (Communication) the main-event tab is greyed out, because main-event communication does not apply in this mode.<br /><br />
-                      <strong>Tip:</strong> use &bdquo;Sub-events only&ldquo; for multi-day programmes where every attendee picks from a pool of slots and a main-event slot makes no sense.
-                    </>
-                  )} />
-                </label>
-                {/* v15.3.1: Custom-styled Radio-Cards in echtem Deloitte-Grün —
-                    weil Edge mit accentColor uneinheitlich rendert (mal solid,
-                    mal hollow), hier explizite Visual-Komposition: nativer
-                    Input visually-hidden + eigener grüner Outer-Border-Kreis
-                    mit grünem Inner-Dot wenn ausgewählt. Funktioniert 1:1 in
-                    allen Browsern + matched die Optik der Registration-Page. */}
-                {/* v28.73: Anker für den Quicklink aus dem Klammer-Info-Tooltip. */}
-                <div id="dex-subevents-mode" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
-                  {[false, true].map(modeVal => {
-                    const selected = !!subEventsOnlyMode === modeVal;
-                    return (
-                      <label
-                        key={String(modeVal)}
-                        style={{
-                          display: 'flex', alignItems: 'flex-start', gap: 10,
-                          padding: '10px 14px', borderRadius: 8,
-                          border: `1px solid ${selected ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-                          background: selected ? 'rgba(134,188,37,0.06)' : '#fff',
-                          cursor: 'pointer',
-                          transition: 'border-color 0.15s, background 0.15s',
-                        }}
-                      >
-                        {/* Hidden native radio for accessibility + form-state */}
-                        <input
-                          type="radio"
-                          name="subEventsMode"
-                          checked={selected}
-                          onChange={() => setSubEventsOnlyMode(modeVal)}
-                          style={{
-                            position: 'absolute', opacity: 0, pointerEvents: 'none',
-                            width: 1, height: 1, margin: -1, padding: 0,
-                            border: 0, overflow: 'hidden', clip: 'rect(0 0 0 0)',
-                          }}
-                        />
-                        {/* Visual custom radio */}
-                        <span
-                          aria-hidden="true"
-                          style={{
-                            display: 'inline-block',
-                            width: 18, height: 18, borderRadius: '50%',
-                            border: `2px solid ${selected ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-400, #9aa0a6)'}`,
-                            background: '#fff',
-                            position: 'relative', flexShrink: 0,
-                            marginTop: 2,
-                            transition: 'border-color 0.15s',
-                          }}
-                        >
-                          {selected && (
-                            <span style={{
-                              position: 'absolute', inset: 3,
-                              borderRadius: '50%',
-                              background: 'var(--dex-green, #86bc25)',
-                            }} />
-                          )}
-                        </span>
-                        <span style={{ fontSize: '0.88rem', flex: 1 }}>
-                          {modeVal === false
-                            ? (isDe
-                                ? <>Anmeldung für <strong>Hauptevent + {(childTermPlural || 'Sub-Events').trim() || 'Sub-Events'}</strong> (Standard)</>
-                                : <>Registration for <strong>main event + {(childTermPlural || 'sub-events').trim() || 'sub-events'}</strong> (default)</>)
-                            : (isDe
-                                ? <>Nur für <strong>{(childTermPlural || 'Sub-Events').trim() || 'Sub-Events'}</strong> (kein Hauptevent-Anmelden)</>
-                                : <>Only for <strong>{(childTermPlural || 'sub-events').trim() || 'sub-events'}</strong> (no main-event registration)</>)}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
-              </>)}
 
 
 
@@ -9254,6 +8997,60 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
                 {imageUploadError && (
                   <p style={{ color: 'var(--dex-red, #c00)', fontSize: '0.8rem', marginTop: 4 }}>{imageUploadError}</p>
+                )}
+                {/* v28.90: Pflichtanmeldung — eine Einstellung DIESES
+                    Sub-Events, deshalb hier bei seinen Grundlagen und nicht
+                    (neunmal wiederholt) in der Liste auf der Klammer-Ebene.
+                    v28.77: Der Haken wurde als „dieses Sub-Event ist buchbar"
+                    missverstanden und darum bei ALLEN gesetzt — das Ergebnis
+                    ist das Gegenteil einer Auswahl. Diesen Zustand benennen,
+                    sobald er eintritt, mit einem Klick zum Zurücknehmen. */}
+                {scopeSub && (
+                  <div style={{ marginTop: 20, paddingTop: 20, borderTop: '1px solid var(--dex-gray-100)' }}>
+                    <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px', borderRadius: 8, border: `1px solid ${scopeSub.mandatory ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`, background: scopeSub.mandatory ? 'rgba(134,188,37,0.06)' : '#fff', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={!!scopeSub.mandatory}
+                        onChange={e => patchScopeSub({ mandatory: e.target.checked })}
+                        style={{ width: 18, height: 18, marginTop: 1, flexShrink: 0, cursor: 'pointer' }}
+                      />
+                      <span style={{ fontSize: '0.85rem' }}>
+                        <strong>{isDe ? `Pflichtanmeldung für dieses ${childTermSingular || 'Sub-Event'}` : `Mandatory registration for this ${childTermSingular || 'sub-event'}`}</strong>
+                        <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2, fontWeight: 400 }}>
+                          {isDe
+                            ? <>Wenn aktiv, muss jeder Teilnehmer diesen Termin mitbuchen — eine Anmeldung ohne ihn ist dann nicht möglich. <strong>Nur setzen, wenn er für wirklich alle verpflichtend ist</strong> (z.B. eine Auftaktveranstaltung). Für &bdquo;darf gebucht werden&ldquo; ist der Haken nicht nötig.</>
+                            : <>If active, every attendee must include this date — registering without it is then not possible. <strong>Only set this if it is truly compulsory for everyone</strong> (e.g. a kick-off). For &bdquo;may be booked&ldquo; the checkbox is not needed.</>}
+                        </span>
+                      </span>
+                    </label>
+                    {(() => {
+                      const named = subEvents.filter(s => (s.title || '').trim());
+                      const mandatoryCount = named.filter(s => s.mandatory).length;
+                      if (named.length < 2 || mandatoryCount !== named.length || !scopeSub.mandatory) return null;
+                      return (
+                        <div style={{
+                          margin: '10px 0 0', padding: '9px 11px', borderRadius: 8,
+                          background: '#fff8e6', border: '1px solid #e0b34d', color: '#7a5a12',
+                          fontSize: '0.78rem', lineHeight: 1.55,
+                        }}>
+                          <strong>{isDe ? `Alle ${named.length} Sub-Events sind als Pflicht markiert` : `All ${named.length} sub-events are marked mandatory`}</strong>
+                          <div style={{ marginTop: 3 }}>
+                            {isDe
+                              ? <>Damit gibt es faktisch <strong>keine Auswahl mehr</strong> — wer teilnehmen möchte, muss <strong>alle {named.length}</strong> mitbuchen; wer auch nur einen Termin nicht kann, kann sich gar nicht anmelden.{subEventsOnlyMode ? <> Bei diesem Klammerevent läuft die Anmeldung ohnehin ausschließlich über die Sub-Events — der Haken ist dafür <strong>nicht nötig</strong>.</> : null} Gemeint war vermutlich, dass die Sub-Events buchbar sind — dafür lässt du den Haken einfach weg.</>
+                              : <>That leaves <strong>no choice at all</strong> — attendees must book <strong>all {named.length}</strong>; anyone unavailable for a single date cannot register.{subEventsOnlyMode ? <> For this bracket event registration runs via the sub-events anyway — the checkbox is <strong>not needed</strong> for that.</> : null}</>}
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            style={{ fontSize: '0.78rem', padding: '5px 12px', marginTop: 8 }}
+                            onClick={() => setSubEvents(prev => prev.map(s => ({ ...s, mandatory: false })))}
+                          >
+                            {isDe ? 'Pflicht bei allen entfernen' : 'Remove mandatory from all'}
+                          </button>
+                        </div>
+                      );
+                    })()}
+                  </div>
                 )}
                 {/* v28.5: Layout-Wahl fürs Event-Bild auf der Anmeldeseite —
                     Banner in voller Breite ÜBER den Infos (gut für breite
@@ -10845,6 +10642,85 @@ export default function EventCreationPage(): React.ReactElement {
                   einzelnen Sub-Events stünde sie unter dessen eigenen
                   Grundlagen und läse sich wie eine Verschachtelung. */}
               <div style={{ display: currentStep === 0 && activeScopeIdx === 0 ? 'block' : 'none' }}>
+              {/* v28.90: Die Frage stand ganz oben in Schritt 1, noch vor
+                  dem Event-Titel — man musste sie beantworten, bevor klar
+                  war, worum es überhaupt geht. Sie steht jetzt hinter den
+                  Grundlagen (Titel, Datum, Beschreibung, Bild) und direkt
+                  bei dem, was von ihr abhaengt: Erklaerung, Bezeichnung,
+                  Anmelde-Modus und die Liste der Sub-Events. */}
+              {/* v28.83: Die Opt-in-Frage steht jetzt in den GRUNDLAGEN statt in
+                  Schritt 3. Ob ein Event ueberhaupt aus mehreren Teilen besteht,
+                  ist eine Grundsatzfrage wie Titel und Datum — nicht etwas, das
+                  man erst in einem spaeteren Schritt entdeckt. Abschalten mit
+                  vorhandenen Sub-Events fragt nach (Soft-Disable, s. v28.2). */}
+              {/* v22.36: Opt-in-Frage — Default nein; erst bei „ja" erscheint
+                  die gesamte Sub-Event-Konfiguration. Abschalten mit
+                  vorhandenen Sub-Events fragt nach und verwirft sie dann. */}
+              <div style={{ background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: '12px 16px', marginBottom: 12, border: '1px solid var(--dex-gray-200)' }}>
+                <div className="toggle-wrapper" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={subEventsOptIn}
+                      onChange={e => {
+                        const on = e.target.checked;
+                        if (!on && subEvents.length > 0) {
+                          (async () => {
+                            // v28.2 SOFT-DISABLE: Der Toggle löscht NICHTS mehr.
+                            // Die Sub-Events (inkl. Teilnehmerlisten und
+                            // Anmeldungen) bleiben gespeichert und werden beim
+                            // Speichern nur per _subEventsDisabled-Flag von der
+                            // Anmeldeseite genommen. Wieder-Einschalten stellt
+                            // alles unverändert wieder her — auch über ein
+                            // Speichern hinweg. Endgültig löschen geht weiterhin
+                            // über das X an der einzelnen Sub-Event-Karte.
+                            const ok = await confirmDialog(
+                              isDe
+                                ? `Sub-Events deaktivieren? Deine ${subEvents.length} Sub-Event(s) bleiben mit allen Eingaben und Anmeldungen gespeichert, werden Teilnehmern nach dem Speichern aber nicht mehr angeboten. Beim Wieder-Einschalten ist alles unverändert da.`
+                                : `Deactivate sub-events? Your ${subEvents.length} sub-event(s) remain stored with all input and registrations, but after saving they are no longer offered to attendees. Re-enabling restores everything unchanged.`,
+                              { confirmLabel: isDe ? 'Deaktivieren' : 'Deactivate' }
+                            );
+                            if (ok) {
+                              setSubEventsOptIn(false);
+                              // Modi zurücksetzen, die ohne sichtbare Sub-Events
+                              // keinen Sinn ergeben (sonst wäre das Event für
+                              // Teilnehmer unbuchbar).
+                              if (subEventsOnlyMode) setSubEventsOnlyMode(false);
+                              if (requireSubEventSelection) setRequireSubEventSelection(false);
+                            }
+                          })().catch(() => { /* */ });
+                          return;
+                        }
+                        setSubEventsOptIn(on);
+                      }}
+                    />
+                    <span className="toggle-slider" />
+                  </label>
+                  {/* v28.90: „Sub-Events nutzen?" mit der Antwort „— nein
+                      (Standard)" dahinter las sich wie ein halb ausgefülltes
+                      Formularfeld. Jetzt eine schlichte Handlung — was ein
+                      Sub-Event ist, steht in der Erklär-Box direkt darunter,
+                      die muss der Schalter nicht wiederholen. Ein Zusatz
+                      erscheint nur, wenn es etwas zu sagen gibt: dass die
+                      Sub-Events unten angelegt werden, bzw. dass deaktivierte
+                      erhalten bleiben. */}
+                  <span style={{ fontSize: '0.9rem' }}>
+                    <strong>{isDe ? 'Sub-Events aktivieren' : 'Enable sub-events'}</strong>
+                    {subEventsOptIn
+                      // v28.89: Die einzelnen Sub-Events werden weiter unten
+                      // auf dieser Seite angelegt und über die Reiter oben
+                      // bearbeitet — der Verweis auf „Schritt 3" stimmt seit
+                      // v28.87 nicht mehr.
+                      ? (isDe ? ' — die einzelnen Sub-Events legst du weiter unten an; bearbeitet werden sie über die Reiter oben.' : ' — you create the individual sub-events further down; edit them via the tabs above.')
+                      : (subEvents.length > 0
+                        ? (isDe
+                          ? ` — deaktiviert. ${subEvents.length} Sub-Event(s) bleiben mit allen Anmeldungen gespeichert, sind für Teilnehmer aber unsichtbar. Einschalten stellt alles wieder her.`
+                          : ` — deactivated. ${subEvents.length} sub-event(s) remain stored with all registrations but are hidden from attendees. Re-enable to restore.`)
+                        : '')}
+                  </span>
+                </div>
+              </div>
+
               {/* v22.36: Erklärung, was ein Sub-Event ist (graue Beschreibungs-Box). */}
               <WizardHint
                 isDe={isDe}
@@ -10856,6 +10732,207 @@ export default function EventCreationPage(): React.ReactElement {
                   ? <>Ein Sub-Event ist ein <strong>eigenständiger Programmbaustein</strong> innerhalb deines Events — z.&nbsp;B. ein Workshop, eine Session, ein Networking-Dinner oder eine Lauf-Distanz. Jedes Sub-Event hat <strong>eigene Plätze, einen eigenen Termin und eine eigene Teilnehmerliste</strong>, auf Wunsch auch eigene Abfrage-Felder; Teilnehmer wählen ihre Sub-Events direkt im Anmeldeformular. Typische Beispiele: eine Konferenz mit wählbaren Workshops oder ein Sommerfest mit optionalem Abendprogramm. Einfache Events (Meeting, Lunch, Feier) brauchen <strong>keine</strong> Sub-Events.</>
                   : <>A sub-event is a <strong>separate programme building block</strong> inside your event — e.g. a workshop, a session, a networking dinner or a run distance. Each sub-event has <strong>its own seats, its own schedule and its own attendee list</strong>, optionally its own custom fields; attendees pick their sub-events directly in the registration form. Typical examples: a conference with selectable workshops or a summer party with an optional evening programme. Simple events (meeting, lunch, celebration) do <strong>not</strong> need sub-events.</>}
               </WizardHint>
+
+              {/* v28.84: Bezeichnung und Anmelde-Modus gehoeren zur
+                  Grundsatzfrage aus dem Schalter darueber — nicht in einen
+                  spaeteren Schritt. Beide standen bisher in Schritt 3.
+                  Sichtbar nur, wenn Sub-Events aktiv sind. */}
+              {subEventsOptIn && (<>
+              {/* Bezeichnungs-Dropdown */}
+              <div style={{
+                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                padding: '14px 16px', marginBottom: 12,
+                border: '1px solid var(--dex-gray-200)',
+              }}>
+                <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {isDe ? 'Bezeichnung der Sub-Events' : 'Sub-event naming'}
+                  <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> wie die untergeordneten Bausteine in der App genannt werden. Die <strong>Standardbezeichnung</strong> ist &bdquo;Sub-Event&ldquo;. Du kannst aber z.B. &bdquo;Workshop&ldquo;, &bdquo;Session&ldquo;, &bdquo;Programmpunkt&ldquo; oder &bdquo;Event-Section&ldquo; auswählen — oder eine eigene Bezeichnung (Singular + Plural) eintippen.<br /><br />
+                      <strong>Anzeige in der App:</strong> der gewählte Begriff erscheint überall dort, wo bisher &bdquo;Sub-Event(s)&ldquo; stand — z.B. im Anmeldeformular der Teilnehmer (&bdquo;Verfügbare Workshops&ldquo;), in &bdquo;Meine Events&ldquo; und im Admin Center.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> how the child building blocks are named throughout the app. The <strong>default</strong> is &bdquo;Sub-event&ldquo;. You can pick e.g. &bdquo;Workshop&ldquo;, &bdquo;Session&ldquo;, &bdquo;Programmpunkt&ldquo; or &bdquo;Event section&ldquo; — or type your own singular + plural.<br /><br />
+                      <strong>Shown in the app:</strong> the chosen term replaces &bdquo;Sub-event(s)&ldquo; everywhere — e.g. in the attendee registration form (&bdquo;Available workshops&ldquo;), in &bdquo;My events&ldquo; and in the admin center.
+                    </>
+                  )} />
+                </label>
+                {(() => {
+                  const presets = [
+                    { key: 'subevent',     singular: isDe ? 'Sub-Event' : 'Sub-event',         plural: isDe ? 'Sub-Events' : 'Sub-events' },
+                    { key: 'workshop',     singular: 'Workshop',                                plural: 'Workshops' },
+                    { key: 'session',      singular: 'Session',                                 plural: 'Sessions' },
+                    { key: 'programmpunkt', singular: isDe ? 'Programmpunkt' : 'Program item', plural: isDe ? 'Programmpunkte' : 'Program items' },
+                    { key: 'section',      singular: isDe ? 'Event-Section' : 'Event section', plural: isDe ? 'Event-Sections' : 'Event sections' },
+                  ];
+                  const matchKey = (() => {
+                    // v15.9: customTermMode hat Priorität — wer in den
+                    // Custom-Modus geklickt hat bleibt dort, auch wenn
+                    // beide Inputs noch leer sind.
+                    if (customTermMode) return 'custom';
+                    const s = (childTermSingular || '').trim();
+                    const p = (childTermPlural || '').trim();
+                    if (!s && !p) return 'subevent';
+                    const hit = presets.find(x => x.singular === s && x.plural === p);
+                    return hit ? hit.key : 'custom';
+                  })();
+                  return (
+                    <>
+                      <select
+                        className="form-input"
+                        value={matchKey}
+                        onChange={e => {
+                          const k = e.target.value;
+                          if (k === 'custom') {
+                            // v15.9: Custom-Modus sticky machen, auch ohne
+                            // initiale Werte — sonst kippt der Dropdown
+                            // sofort zurück auf 'subevent'.
+                            setCustomTermMode(true);
+                            return;
+                          }
+                          // Preset gewählt → Custom-Modus aufheben + Werte
+                          // aus dem Preset übernehmen.
+                          setCustomTermMode(false);
+                          const preset = presets.find(x => x.key === k);
+                          if (preset) {
+                            setChildTermSingular(preset.singular);
+                            setChildTermPlural(preset.plural);
+                          }
+                        }}
+                        style={{ marginTop: 6, maxWidth: 360 }}
+                      >
+                        {presets.map(p => (
+                          <option key={p.key} value={p.key}>
+                            {p.plural}
+                          </option>
+                        ))}
+                        <option value="custom">{isDe ? 'Eigene Bezeichnung…' : 'Custom term…'}</option>
+                      </select>
+                      {matchKey === 'custom' && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10, maxWidth: 480 }}>
+                          <div>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'Singular' : 'Singular'}</label>
+                            <input
+                              type="text"
+                              className="form-input"
+                              value={childTermSingular}
+                              onChange={e => setChildTermSingular(e.target.value)}
+                              placeholder={isDe ? 'z.B. Modul' : 'e.g. Module'}
+                              style={{ padding: '6px 10px', fontSize: '0.9rem' }}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'Plural' : 'Plural'}</label>
+                            <input
+                              type="text"
+                              className="form-input"
+                              value={childTermPlural}
+                              onChange={e => setChildTermPlural(e.target.value)}
+                              placeholder={isDe ? 'z.B. Module' : 'e.g. Modules'}
+                              style={{ padding: '6px 10px', fontSize: '0.9rem' }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Anmelde-Modus */}
+              <div style={{
+                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                padding: '14px 16px', marginBottom: 16,
+                border: '1px solid var(--dex-gray-200)',
+              }}>
+                <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {isDe ? 'Anmelde-Modus' : 'Registration mode'}
+                  <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> ob sich Teilnehmer zusätzlich zum Hauptevent für Sub-Events anmelden können (Standard) oder ob es <strong>überhaupt kein Hauptevent-Anmelden</strong> mehr gibt und die Anmeldung ausschließlich über einzelne Sub-Events läuft.<br /><br />
+                      <strong>Anzeige in der App:</strong> im Modus &bdquo;Nur Sub-Events&ldquo; ist die Anmelde-Checkbox für das Hauptevent im Teilnehmerformular ausgeblendet — der Teilnehmer muss zwingend mindestens einen Sub-Event auswählen. Im Schritt 7 (Kommunikation) wird der Haupt-Event-Tab ausgegraut, weil die Hauptevent-Kommunikation in diesem Modus nicht greift.<br /><br />
+                      <strong>Empfehlung:</strong> nutze &bdquo;Nur Sub-Events&ldquo; für Mehrtages-Programme, in denen jeder Teilnehmer aus einem Pool von Slots wählt und ein Hauptevent-Slot keinen Sinn ergibt.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> whether attendees can additionally register for sub-events alongside the main event (default) or whether there is <strong>no main-event registration at all</strong> and registration runs exclusively via individual sub-events.<br /><br />
+                      <strong>Shown in the app:</strong> in &bdquo;Sub-events only&ldquo; mode the main-event registration checkbox in the attendee form is hidden — the attendee must pick at least one sub-event. In step 7 (Communication) the main-event tab is greyed out, because main-event communication does not apply in this mode.<br /><br />
+                      <strong>Tip:</strong> use &bdquo;Sub-events only&ldquo; for multi-day programmes where every attendee picks from a pool of slots and a main-event slot makes no sense.
+                    </>
+                  )} />
+                </label>
+                {/* v15.3.1: Custom-styled Radio-Cards in echtem Deloitte-Grün —
+                    weil Edge mit accentColor uneinheitlich rendert (mal solid,
+                    mal hollow), hier explizite Visual-Komposition: nativer
+                    Input visually-hidden + eigener grüner Outer-Border-Kreis
+                    mit grünem Inner-Dot wenn ausgewählt. Funktioniert 1:1 in
+                    allen Browsern + matched die Optik der Registration-Page. */}
+                {/* v28.73: Anker für den Quicklink aus dem Klammer-Info-Tooltip. */}
+                <div id="dex-subevents-mode" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+                  {[false, true].map(modeVal => {
+                    const selected = !!subEventsOnlyMode === modeVal;
+                    return (
+                      <label
+                        key={String(modeVal)}
+                        style={{
+                          display: 'flex', alignItems: 'flex-start', gap: 10,
+                          padding: '10px 14px', borderRadius: 8,
+                          border: `1px solid ${selected ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+                          background: selected ? 'rgba(134,188,37,0.06)' : '#fff',
+                          cursor: 'pointer',
+                          transition: 'border-color 0.15s, background 0.15s',
+                        }}
+                      >
+                        {/* Hidden native radio for accessibility + form-state */}
+                        <input
+                          type="radio"
+                          name="subEventsMode"
+                          checked={selected}
+                          onChange={() => setSubEventsOnlyMode(modeVal)}
+                          style={{
+                            position: 'absolute', opacity: 0, pointerEvents: 'none',
+                            width: 1, height: 1, margin: -1, padding: 0,
+                            border: 0, overflow: 'hidden', clip: 'rect(0 0 0 0)',
+                          }}
+                        />
+                        {/* Visual custom radio */}
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            display: 'inline-block',
+                            width: 18, height: 18, borderRadius: '50%',
+                            border: `2px solid ${selected ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-400, #9aa0a6)'}`,
+                            background: '#fff',
+                            position: 'relative', flexShrink: 0,
+                            marginTop: 2,
+                            transition: 'border-color 0.15s',
+                          }}
+                        >
+                          {selected && (
+                            <span style={{
+                              position: 'absolute', inset: 3,
+                              borderRadius: '50%',
+                              background: 'var(--dex-green, #86bc25)',
+                            }} />
+                          )}
+                        </span>
+                        <span style={{ fontSize: '0.88rem', flex: 1 }}>
+                          {modeVal === false
+                            ? (isDe
+                                ? <>Anmeldung für <strong>Hauptevent + {(childTermPlural || 'Sub-Events').trim() || 'Sub-Events'}</strong> (Standard)</>
+                                : <>Registration for <strong>main event + {(childTermPlural || 'sub-events').trim() || 'sub-events'}</strong> (default)</>)
+                            : (isDe
+                                ? <>Nur für <strong>{(childTermPlural || 'Sub-Events').trim() || 'Sub-Events'}</strong> (kein Hauptevent-Anmelden)</>
+                                : <>Only for <strong>{(childTermPlural || 'sub-events').trim() || 'sub-events'}</strong> (no main-event registration)</>)}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              </>)}
 
               {subEventsOptIn && (<>
               {/* v24.58: Anzeige-Name des Haupt-Events in der Sub-Event-Auswahl.
@@ -11094,62 +11171,12 @@ export default function EventCreationPage(): React.ReactElement {
                           </p>
                         )}
 
-                        {/* v24.64: Pflichtanmeldung — wenn aktiv, MUSS der
-                            Teilnehmer dieses Sub-Event bei der Anmeldung wählen
-                            (er kann sich nicht ohne dieses Sub-Event anmelden). */}
-                        <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 10px', borderRadius: 8, border: `1px solid ${se.mandatory ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`, background: se.mandatory ? 'rgba(134,188,37,0.06)' : '#fff', cursor: 'pointer', marginBottom: 4 }}>
-                          <input
-                            type="checkbox"
-                            checked={!!se.mandatory}
-                            onChange={e => {
-                              const v = e.target.checked;
-                              setSubEvents(subEvents.map((x, i) => i === idx ? { ...x, mandatory: v } : x));
-                            }}
-                            style={{ width: 18, height: 18, marginTop: 1, flexShrink: 0, cursor: 'pointer' }}
-                          />
-                          <span style={{ fontSize: '0.82rem' }}>
-                            <strong>{isDe ? 'Pflichtanmeldung für dieses Sub-Event' : 'Mandatory registration for this sub-event'}</strong>
-                            <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2, fontWeight: 400 }}>
-                              {isDe
-                                ? <>Wenn aktiv, muss jeder Teilnehmer dieses Sub-Event mitbuchen — eine Anmeldung ohne dieses Sub-Event ist dann nicht möglich. <strong>Nur setzen, wenn dieser Termin für wirklich alle verpflichtend ist</strong> (z.B. eine Auftaktveranstaltung). Für „darf gebucht werden“ ist der Haken nicht nötig — ohne ihn kann jeder frei wählen.</>
-                                : <>If active, every attendee must include this sub-event — registering without it is then not possible. <strong>Only set this if the date is truly compulsory for everyone</strong> (e.g. a kick-off). For „may be booked“ the checkbox is not needed — without it everyone can choose freely.</>}
-                            </span>
-                          </span>
-                        </label>
-                        {/* v28.77: Der Haken wurde als „dieses Sub-Event ist
-                            buchbar" missverstanden und darum bei ALLEN gesetzt.
-                            Das Ergebnis ist das Gegenteil einer Auswahl: Wer
-                            teilnehmen will, muss dann jeden einzelnen Termin
-                            mitbuchen. Diesen Zustand benennen, sobald er
-                            eintritt — mit einem Klick zum Zurücknehmen. */}
-                        {(() => {
-                          const named = subEvents.filter(s => (s.title || '').trim());
-                          const mandatoryCount = named.filter(s => s.mandatory).length;
-                          if (named.length < 2 || mandatoryCount !== named.length || !se.mandatory) return null;
-                          if (idx !== subEvents.findIndex(s => (s.title || '').trim())) return null;
-                          return (
-                            <div style={{
-                              margin: '0 0 8px', padding: '9px 11px', borderRadius: 8,
-                              background: '#fff8e6', border: '1px solid #e0b34d', color: '#7a5a12',
-                              fontSize: '0.78rem', lineHeight: 1.55,
-                            }}>
-                              <strong>{isDe ? `Alle ${named.length} Sub-Events sind als Pflicht markiert` : `All ${named.length} sub-events are marked mandatory`}</strong>
-                              <div style={{ marginTop: 3 }}>
-                                {isDe
-                                  ? <>Damit gibt es faktisch <strong>keine Auswahl mehr</strong> — wer teilnehmen möchte, muss <strong>alle {named.length}</strong> mitbuchen; wer auch nur einen Termin nicht kann, kann sich gar nicht anmelden.{subEventsOnlyMode ? <> Bei diesem Klammerevent läuft die Anmeldung ohnehin ausschließlich über die Sub-Events — der Haken ist dafür <strong>nicht nötig</strong>.</> : null} Gemeint war vermutlich, dass die Sub-Events buchbar sind — dafür lässt du den Haken einfach weg.</>
-                                  : <>That leaves <strong>no choice at all</strong> — attendees must book <strong>all {named.length}</strong>; anyone unavailable for a single date cannot register.{subEventsOnlyMode ? <> For this bracket event registration runs via the sub-events anyway — the checkbox is <strong>not needed</strong> for that.</> : null}</>}
-                              </div>
-                              <button
-                                type="button"
-                                className="btn btn-primary"
-                                style={{ fontSize: '0.78rem', padding: '5px 12px', marginTop: 8 }}
-                                onClick={() => setSubEvents(prev => prev.map(s => ({ ...s, mandatory: false })))}
-                              >
-                                {isDe ? 'Pflicht bei allen entfernen' : 'Remove mandatory from all'}
-                              </button>
-                            </div>
-                          );
-                        })()}
+                        {/* v28.90: Die Pflichtanmeldung stand in JEDER Karte —
+                            bei neun Sub-Events also neunmal derselbe
+                            Erklaertext, der die Liste unlesbar machte. Sie
+                            ist eine Einstellung DIESES Sub-Events und steht
+                            deshalb jetzt bei seinen Grundlagen, auf seinem
+                            eigenen Reiter — nicht in der Klammer-Liste. */}
 
                         {/* v15: Mail- und Outlook-Toggles raus aus der Sub-Event-
                             Card — sie leben jetzt ausschliesslich in Schritt 6

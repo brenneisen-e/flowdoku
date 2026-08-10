@@ -30,6 +30,8 @@ import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
 import { UserFieldPicker } from './UserFieldPicker';
 import StayRangePicker from './StayRangePicker';
+// v28.90: Platzhalter, wenn ein Event kein eigenes Foto hat.
+import DexLogo from './DexLogo';
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -2961,6 +2963,30 @@ export default function RegistrationPage(): React.ReactElement {
                 (imgAspectReady) — sonst startete das Bild kurz im Seiten-Slot
                 rechts und sprang dann in den Kreis. Banner-Layout hängt nicht
                 von der Form ab und rendert sofort. */}
+            {/* v28.90: Ohne Event-Foto blieb der Bild-Slot leer und die Karte
+                sah anders aus als bei Events mit Bild — der erste Eindruck der
+                Anmeldeseite hing damit daran, ob jemand ein Foto hochgeladen
+                hat. Statt Leerraum steht dort jetzt das DEX-Logo. Nur auf dem
+                Desktop: Auf dem Handy liegt das Bild ÜBER den Infos und würde
+                Titel und Datum nach unten drücken. Kein Zoom-Knopf — es gibt
+                nichts zu vergrößern. */}
+            {!event.imageUrl && !isMobile && (
+              <div
+                className="registration-event__image"
+                title={locale === 'de' ? 'Für dieses Event ist kein Bild hinterlegt.' : 'No image is set for this event.'}
+                style={{
+                  background: '#fff',
+                  borderRadius: 'var(--dex-radius)',
+                  flex: `0 0 ${imgSlotW}px`,
+                  maxWidth: imgSlotW,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  alignSelf: 'center',
+                  padding: 12,
+                }}
+              >
+                <DexLogo title="DEX" motion="oscillate" style={{ width: '100%' }} />
+              </div>
+            )}
             {event.imageUrl && (event.imageBanner || imgAspectReady) && (
             <div
               className="registration-event__image"
