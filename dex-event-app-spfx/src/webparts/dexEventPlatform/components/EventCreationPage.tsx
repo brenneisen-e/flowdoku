@@ -1214,7 +1214,17 @@ export default function EventCreationPage(): React.ReactElement {
   // v28.7: „Keine Beschreibung nutzen" — reiner UI-Schalter im Wizard
   // (Default: Beschreibung nutzen). Anhaken leert die Beschreibung und
   // blendet den Editor-Zugang aus; gespeichert wird schlicht ''.
-  const [noDescription, setNoDescription] = React.useState(false);
+  const [noDescription, setNoDescription] = React.useState<boolean>(() => {
+    // v28.79: beim Bearbeiten aus dem gespeicherten Flag vorbelegen —
+    // sonst stand der Schalter nach dem Neuladen wieder auf „Beschreibung
+    // nutzen", obwohl der Organizer sie bewusst weggelassen hatte.
+    if (!editEvent) return false;
+    if ((editEvent.description || '').trim()) return false;
+    try {
+      const ov = JSON.parse(editEvent.emailTemplateOverrides || '{}');
+      return !!(ov && ov._noDescription);
+    } catch { return false; }
+  });
   // EventType wird nicht mehr als UI-Feld abgefragt (v5.2) — neue Events:
   // aus Template abgeleitet (b2run → 'B2Run', sonst → 'Other'). Bei Edit:
   // den gespeicherten Wert beibehalten. Die Variable wird weiterhin für
@@ -1586,6 +1596,8 @@ export default function EventCreationPage(): React.ReactElement {
           // Stripping verhindert, dass ein parallel offener Wizard beim Speichern
           // einen veralteten Stand zurückschreibt.
           _hotels, _hotelStays, _hotelVisible, _hotelRules,
+          // v28.79: „Keine Beschreibung nutzen"-Flag (s. noDescriptionConfig).
+          _noDescription,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -1597,7 +1609,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _inheritFlags; void _hideOrganizer; void _headerImageLayout;
         void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee; void _previewBeforeActive; void _imageDisplay;
         void _organizerDisplayLarge; void _hiddenOrganizers; void _hideOrgIndividual; void _mainEventLabel;
-        void _imageOrigUrl; void _klammerDeadline;
+        void _imageOrigUrl; void _klammerDeadline; void _noDescription;
         void _hotels; void _hotelStays; void _hotelVisible; void _hotelRules;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
@@ -4808,6 +4820,12 @@ export default function EventCreationPage(): React.ReactElement {
         : {};
       // v28.5: Bild-Banner-Layout (Piggyback).
       const imageBannerConfig = imageBanner ? { _imageBanner: true } : {};
+      // v28.79: „Keine Beschreibung nutzen" persistieren. Bisher war das ein
+      // reiner UI-Schalter — gespeichert wurde nur ein leeres Feld. Damit
+      // konnte niemand mehr unterscheiden, ob der Organizer bewusst keine
+      // Beschreibung wollte oder sie schlicht vergessen hat; die Box
+      // „Nächste Schritte" meldete sie deshalb ewig als fehlend.
+      const noDescriptionConfig = (noDescription && !description.trim()) ? { _noDescription: true } : {};
       // v28.11: Bestehende Original-Bild-URL beim Edit-Save WEITERTRAGEN —
       // sonst würde der frisch zusammengebaute Overrides-Blob sie wegwerfen.
       // v28.12: auch bei neuem Bild erstmal mitschreiben; der Post-Save-Code
@@ -4868,7 +4886,7 @@ export default function EventCreationPage(): React.ReactElement {
         teamNoCreateConfig, mainEventLabelConfig, assistantsCanSeeConfig,
         organizerDisplayLargeConfig, previewBeforeActiveConfig,
         imageDisplayConfig, hideOrganizerConfig, hiddenOrganizersConfig,
-        hideOrgIndividualConfig, headerImageLayoutConfig,
+        hideOrgIndividualConfig, headerImageLayoutConfig, noDescriptionConfig,
       ];
       updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || !!effEmailLogo || !!effOutlookLogo || topPiggybackConfigs.some(o => Object.keys(o).length > 0))
         // v28.2: Object.assign statt Spread-Kette — die Literal-Spreads
@@ -5565,6 +5583,8 @@ export default function EventCreationPage(): React.ReactElement {
             organizerDisplayLargeExtra, previewBeforeActiveExtra,
             imageDisplayExtra, hideOrganizerExtra, hiddenOrganizersExtra,
             hideOrgIndividualExtra, headerImageLayoutConfig,
+            // v28.79: „Keine Beschreibung nutzen" auch beim Anlegen merken.
+            ((noDescription && !description.trim()) ? { _noDescription: true } : {}),
           ];
           const hasAny = Object.keys(emailTemplateOverrides).length > 0 || !!effEmailLogo || !!effOutlookLogo || createPiggybackConfigs.some(o => Object.keys(o).length > 0);
           return hasAny
@@ -6263,6 +6283,66 @@ export default function EventCreationPage(): React.ReactElement {
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editEvent, subEvents.length, locationFilter, audience, filterMode]);
+
+  /**
+   * v28.78: Die globale Scope-Karte unter der Schritt-Leiste.
+   *
+   * Zwei Zustände, damit die Leiste nicht bei jedem Schritt verschwindet und
+   * wieder auftaucht (das Springen war schlimmer als der Nutzen):
+   *  - AUSWAHL: in den Schritten, die pro Sub-Event konfiguriert werden.
+   *  - GILT-FÜR-ALLE: in allen anderen. Gleiche Position, gleicher Rahmen,
+   *    aber ohne Auswahl und mit dem Satz, dass dieser Schritt für das
+   *    gesamte Event gilt. Das erklärt das Modell nebenbei mit.
+   * Ohne Sub-Events wird gar nichts gezeigt — dann gibt es nichts zu wählen.
+   */
+  const renderGlobalScopeBar = (): React.ReactElement | null => {
+    if (subEvents.length === 0) return null;
+    const named = subEvents.filter(s => (s.title || '').trim());
+    if (named.length === 0) return null;
+    const applies = SCOPE_AWARE_STEPS.indexOf(currentStep) >= 0;
+    const scopeIdx = Math.min(activeScopeIdx, subEvents.length);
+    const mainLabel = `${subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt-Event' : 'Main event')}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`;
+    return (
+      <div style={{
+        margin: '18px 0 0', padding: '12px 16px 14px', borderRadius: 14,
+        background: 'linear-gradient(180deg, rgba(134,188,37,0.09) 0%, rgba(134,188,37,0.04) 100%)',
+        border: '1px solid rgba(134,188,37,0.35)',
+      }}>
+        {applies ? (
+          renderPerEventTabStrip(
+            scopeIdx,
+            setScope,
+            mainLabel,
+            isDe ? 'Event-Ebene wechseln' : 'Switch event level',
+          )
+        ) : (
+          <>
+            <div style={{
+              fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.03em',
+              textTransform: 'uppercase', color: 'var(--dex-gray-500)', marginBottom: 6,
+            }}>
+              {isDe ? 'Welches (Sub-)Event bearbeitest du gerade?' : 'Which (sub-)event are you editing?'}
+            </div>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+              padding: '9px 14px', borderRadius: 10,
+              background: '#fff', border: '1px dashed var(--dex-gray-300)',
+              fontSize: '0.84rem', color: 'var(--dex-gray-700)',
+            }}>
+              <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                {isDe ? 'Dieser Schritt gilt für das gesamte Event' : 'This step applies to the entire event'}
+              </strong>
+              <span style={{ color: 'var(--dex-gray-600)' }}>
+                {isDe
+                  ? `— ${subEventsOnlyMode ? 'Klammer' : 'Haupt-Event'} und alle ${named.length} ${named.length === 1 ? (childTermSingular || 'Sub-Event') : (childTermPlural || 'Sub-Events')} gemeinsam. Eine Auswahl gibt es hier nicht.`
+                  : `— ${subEventsOnlyMode ? 'bracket' : 'main event'} and all ${named.length} sub-events together. There is nothing to pick here.`}
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
 
   // v15.6: Hinweis-Banner für den Hauptevent-Tab in den Steps 3/4/5, wenn
   // subEventsOnlyMode aktiv ist. Der Hauptevent ist dann nicht buchbar — die
@@ -7077,6 +7157,7 @@ export default function EventCreationPage(): React.ReactElement {
     { key: 'deregDeadline', de: 'Abmeldefrist', en: 'Cancellation deadline', fields: ['lastDeregisterDate'] },
     { key: 'place', de: 'Ort & Adresse', en: 'Location & address', fields: ['location', 'locationAddress'] },
     { key: 'mandatory', de: 'Pflichtanmeldung', en: 'Mandatory registration', fields: ['mandatory'] },
+    { key: 'communication', de: 'Kommunikation (Logo, Outlook-Text, Überschriften, Betreff, Mail-Sprache, Mail-Schalter)', en: 'Communication (logo, Outlook text, headings, subject, mail language, mail toggles)', fields: ['emailLanguage', 'emailLogoBase64', 'outlookLogoBase64', 'outlookBody', 'outlookHeading', 'outlookSubheading', 'outlookSubject', 'disableEmails', 'disableRegistrationEmail', 'disableCancellationEmail', 'autoDeregisterOnDecline', 'inactiveHandling', 'disableOutlook', 'emailTemplateOverrides'] },
     { key: 'times', de: 'Zeiten (Start & Ende) — überschreibt die Termine!', en: 'Times (start & end) — overwrites the dates!', fields: ['startDate', 'endDate'] },
   ]), []);
   const asRec = (d: SubEventDraft | undefined): Record<string, unknown> =>
@@ -7096,7 +7177,13 @@ export default function EventCreationPage(): React.ReactElement {
   const [subTransfer, setSubTransfer] = React.useState<null | { fromIdx: number; groups: string[]; targets: number[] }>(null);
   const applySubTransfer = (): void => {
     if (!subTransfer) return;
-    const src = asRec(subEvents[subTransfer.fromIdx]);
+    // v28.80: Die Kommunikationsfelder (Logo, Outlook-Text, Betreff …) stehen
+    // NICHT laufend im Draft — sie leben im UI-State und werden erst beim
+    // Reiterwechsel in den Slot geschrieben. Ohne diesen Flush wuerde man den
+    // Stand VOR der letzten Bearbeitung kopieren. Der Flush schreibt synchron
+    // in subEventsRef, deshalb wird von dort gelesen.
+    flushActiveCommTabToState();
+    const src = asRec(subEventsRef.current[subTransfer.fromIdx] || subEvents[subTransfer.fromIdx]);
     const fields: string[] = [];
     for (const g of SUB_TRANSFER_GROUPS) {
       if (subTransfer.groups.indexOf(g.key) >= 0) fields.push(...g.fields);
@@ -7105,7 +7192,13 @@ export default function EventCreationPage(): React.ReactElement {
     setSubEvents(prev => prev.map((s, i) => {
       if (subTransfer.targets.indexOf(i) < 0) return s;
       const patch: Record<string, unknown> = {};
-      for (const f of fields) patch[f] = src[f];
+      for (const f of fields) {
+        const v = src[f];
+        // v28.80: Objekte (z.B. emailTemplateOverrides) klonen — sonst teilen
+        // sich alle Ziel-Sub-Events dieselbe Referenz und eine spaetere
+        // Aenderung an einem wuerde die anderen mitziehen.
+        patch[f] = (v && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v;
+      }
       return { ...s, ...(patch as unknown as Partial<SubEventDraft>) };
     }));
     const n = subTransfer.targets.length;
@@ -7114,6 +7207,36 @@ export default function EventCreationPage(): React.ReactElement {
       ? `Einstellungen auf ${n} ${n === 1 ? (childTermSingular || 'Sub-Event') : (childTermPlural || 'Sub-Events')} übertragen. Nicht vergessen zu speichern.`
       : `Settings transferred to ${n} sub-event(s). Don't forget to save.`,
       { variant: 'success' });
+  };
+
+  /**
+   * v28.78: Der Scope-Umschalter (Klammer / Sub-Events) lebt nicht mehr in
+   * jedem Schritt, sondern EINMAL global unter der Schritt-Leiste.
+   *
+   * Vorher hatte jeder Schritt seinen eigenen Reiter-Index — man landete beim
+   * Schrittwechsel wieder auf der Klammer und musste sein Sub-Event neu
+   * suchen. Und weil der Umschalter im weissen Inhaltsbereich stand, las er
+   * sich als Teil des Schritts statt als das, was er ist: die Ebene, auf der
+   * gerade gearbeitet wird — sie traegt durch den ganzen Assistenten.
+   *
+   * Ein gemeinsamer Index bedeutet: Wer auf „Di. 08.09." steht, bleibt auf
+   * „Di. 08.09.", auch wenn er von Kapazität zu Feldern wechselt.
+   *
+   * Gestalterisch bewusst ANDERS als die Schritt-Leiste: Die Schritte sind
+   * eine Fortschritts-Spur (Kreise + Linie, ohne Rahmen), der Scope ist eine
+   * abgesetzte Kontext-Karte mit eigener Tönung. Zwei Achsen, zwei
+   * Formsprachen — sonst liest man sie als zwei Navigationen.
+   */
+  const SCOPE_AWARE_STEPS = [0, 3, 4, 5, 6]; // Ort & Programm, Kapazität, Felder, Kommunikation
+  const [activeScopeIdx, setActiveScopeIdx] = React.useState<number>(0);
+  const setScope = (idx: number): void => {
+    setActiveScopeIdx(idx);
+    setActiveLocationTabIdx(idx);
+    setActiveCapacityTabIdx(idx);
+    setActiveFieldsTabIdx(idx);
+    // Schritt 7 lagert die Kommunikationsfelder pro Reiter ein und aus —
+    // deshalb NICHT den State direkt setzen, sondern den Umschalter rufen.
+    switchCommTab(idx);
   };
 
   const renderPerEventTabStrip = (
@@ -7774,6 +7897,10 @@ export default function EventCreationPage(): React.ReactElement {
           })()}
         </div>
 
+        {/* v28.78: Scope-Karte zwischen Schritt-Leiste und Formular — eine
+            Ebene für „für wen gilt das hier?", die durch alle Schritte trägt. */}
+        {renderGlobalScopeBar()}
+
         {/* ===== Formular ===== */}
         <div>
           <div className="card" style={{ borderRadius: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
@@ -7815,6 +7942,91 @@ export default function EventCreationPage(): React.ReactElement {
                   ? 'Hier definierst du das Fundament des Events: Titel, Datum, Beschreibung und Bild.'
                   : 'Here you define the foundation of the event: title, date, description and image.'}
               </p>
+
+              {/* v28.81: Grundlagen eines Sub-Events an derselben Stelle wie die
+                  des Hauptevents. Bisher lagen Titel, Zeiten und Beschreibung
+                  eines Sub-Events ausschliesslich in Schritt 3 — man musste
+                  also fuer dieselbe Art von Angabe an zwei verschiedene Orte,
+                  je nachdem WELCHES Event gemeint war. Mit der Scope-Auswahl
+                  oben gehoert das hierher: gleiche Frage, gleiche Stelle. */}
+              {activeScopeIdx > 0 && subEvents[activeScopeIdx - 1] && (() => {
+                const sIdx = activeScopeIdx - 1;
+                const se = subEvents[sIdx];
+                const patch = (p2: Partial<SubEventDraft>): void =>
+                  setSubEvents(prev => prev.map((x, i) => i === sIdx ? { ...x, ...p2 } : x));
+                const inputStyle: React.CSSProperties = { width: '100%' };
+                return (
+                  <div style={{ marginBottom: 20 }}>
+                    <div style={{
+                      padding: '16px 18px', borderRadius: 10,
+                      background: 'var(--dex-gray-50, #fafafa)',
+                      border: '1px solid var(--dex-gray-200)',
+                      borderLeft: '4px solid var(--dex-green, #86bc25)',
+                    }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: 2 }}>
+                        {isDe ? 'Grundlagen dieses Sub-Events' : 'Basics of this sub-event'}
+                      </div>
+                      <p style={{ margin: '0 0 14px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                        {isDe
+                          ? <>Diese Angaben gehören zu <strong>„{shortSubEventTitle(se.title, title) || (childTermSingular || 'Sub-Event')}“</strong>. Dieselben Felder findest du auch in Schritt 3 — es ist derselbe Datensatz, egal wo du ihn pflegst.</>
+                          : <>These details belong to <strong>„{shortSubEventTitle(se.title, title) || 'sub-event'}“</strong>. The same fields also appear in step 3 — it is the same record either way.</>}
+                      </p>
+                      <div className="form-group">
+                        <label className="form-label">{isDe ? 'Titel' : 'Title'}</label>
+                        <input
+                          className="form-input"
+                          value={se.title || ''}
+                          onChange={e => patch({ title: e.target.value })}
+                          placeholder={isDe ? 'z.B. Di. 01.09.2026' : 'e.g. Tue 01/09/2026'}
+                          style={inputStyle}
+                        />
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
+                        <div className="form-group">
+                          <label className="form-label">{isDe ? 'Start' : 'Start'}</label>
+                          <input
+                            type="datetime-local"
+                            className="form-input"
+                            value={isoToLocal(se.startDate || '')}
+                            onChange={e => patch({ startDate: e.target.value ? berlinLocalToUtcIso(e.target.value) : '' })}
+                            style={inputStyle}
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label className="form-label">{isDe ? 'Ende' : 'End'}</label>
+                          <input
+                            type="datetime-local"
+                            className="form-input"
+                            value={isoToLocal(se.endDate || '')}
+                            onChange={e => patch({ endDate: e.target.value ? berlinLocalToUtcIso(e.target.value) : '' })}
+                            style={inputStyle}
+                          />
+                        </div>
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label">{isDe ? 'Beschreibung (optional)' : 'Description (optional)'}</label>
+                        <textarea
+                          className="form-input"
+                          value={se.description || ''}
+                          onChange={e => patch({ description: e.target.value })}
+                          rows={3}
+                          placeholder={isDe ? 'Was erwartet die Teilnehmer an diesem Termin?' : 'What can attendees expect on this date?'}
+                          style={inputStyle}
+                        />
+                      </div>
+                    </div>
+                    <div style={{
+                      marginTop: 10, padding: '8px 12px', borderRadius: 8,
+                      background: '#fff', border: '1px dashed var(--dex-gray-300)',
+                      fontSize: '0.78rem', color: 'var(--dex-gray-600)', lineHeight: 1.5,
+                    }}>
+                      {isDe
+                        ? <>Alles Weitere auf dieser Seite gehört zum <strong>{subEventsOnlyMode ? 'Klammerevent' : 'Haupt-Event'}</strong> „{title || 'Ohne Titel'}“ — wechsle oben auf {subEventsOnlyMode ? 'die Klammer' : 'das Haupt-Event'}, um es zu bearbeiten.</>
+                        : <>Everything else on this page belongs to the <strong>{subEventsOnlyMode ? 'bracket event' : 'main event'}</strong> „{title || 'Untitled'}“ — switch to it above to edit those.</>}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* v24.9 (E): „Eigenes Event als Vorlage" — prominenter Fächer aus
                   Bildern bisheriger Events. Nur im NEU-Modus, nur wenn der
@@ -9674,12 +9886,8 @@ export default function EventCreationPage(): React.ReactElement {
                   mehr, jedes Sub-Event hat eigene Werte. Per
                   „Vom Hauptevent kopieren"-Button kann der Organizer die
                   Hauptevent-Werte als Startpunkt übernehmen. */}
-              {renderPerEventTabStrip(
-                activeLocationTabIdx,
-                setActiveLocationTabIdx,
-                `${subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt-Event' : 'Main event')}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`,
-                isDe ? 'Event-Tab wechseln (Ort & Programm)' : 'Switch event tab (location & programme)'
-              )}
+              {/* v28.78: Der Scope-Umschalter steht jetzt global unter der
+                  Schritt-Leiste (renderGlobalScopeBar) — nicht mehr je Schritt. */}
 
               {activeLocationTabIdx > 0 && (() => {
                 const seIdx = activeLocationTabIdx - 1;
@@ -10943,12 +11151,8 @@ export default function EventCreationPage(): React.ReactElement {
                   Sub-Event mit Inheritance-Toggle. Sichtbarkeit, Filter,
                   Deadlines, Split-Capacity bleiben Top-Level — pro Sub-Event
                   ist nur die Platzzahl relevant. */}
-              {renderPerEventTabStrip(
-                activeCapacityTabIdx,
-                setActiveCapacityTabIdx,
-                `${subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt-Event' : 'Main event')}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`,
-                isDe ? 'Event-Tab wechseln (Kapazität)' : 'Switch event tab (capacity)'
-              )}
+              {/* v28.78: Der Scope-Umschalter steht jetzt global unter der
+                  Schritt-Leiste (renderGlobalScopeBar) — nicht mehr je Schritt. */}
 
               {activeCapacityTabIdx > 0 && (() => {
                 const seIdx = activeCapacityTabIdx - 1;
@@ -12785,14 +12989,8 @@ export default function EventCreationPage(): React.ReactElement {
                   Toggle. Im subEventsOnlyMode wird Tab 0 zu „Übergreifende
                   Felder" / „Cross-cutting fields" — die wirken dann auf alle
                   Sub-Event-Anmeldungen. */}
-              {renderPerEventTabStrip(
-                activeFieldsTabIdx,
-                setActiveFieldsTabIdx,
-                subEventsOnlyMode
-                  ? (isDe ? 'Übergreifende Felder' : 'Cross-cutting fields')
-                  : `${subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt-Event' : 'Main event')}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`,
-                isDe ? 'Event-Tab wechseln (Felder)' : 'Switch event tab (fields)'
-              )}
+              {/* v28.78: Der Scope-Umschalter steht jetzt global unter der
+                  Schritt-Leiste (renderGlobalScopeBar) — nicht mehr je Schritt. */}
 
               {activeFieldsTabIdx > 0 && (() => {
                 const seIdx = activeFieldsTabIdx - 1;
@@ -14623,6 +14821,30 @@ export default function EventCreationPage(): React.ReactElement {
                     ? 'Hier konfigurierst du alle automatischen E-Mails und Outlook-Einladungen — Sprache, Logos, Vorlagen und Versandregeln pro Aktion.'
                     : 'Here you configure all automated emails and Outlook invites — language, logos, templates and per-action send rules.'}
                 </p>
+                {/* v28.80: Kommunikation eines Sub-Events auf die anderen
+                    uebertragen — sonst muss der Organizer Logo, Outlook-Text,
+                    Betreff und Mail-Schalter bei jedem Sub-Event einzeln
+                    einstellen. Nur sichtbar, wenn ein Sub-Event ausgewaehlt
+                    ist; die Klammer-Kommunikation ist eine andere Ebene. */}
+                {activeCommTabIdx > 0 && subEvents.length > 1 && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+                      onClick={() => setSubTransfer({
+                        fromIdx: activeCommTabIdx - 1,
+                        groups: ['communication'],
+                        targets: subEvents.map((_, i) => i).filter(i => i !== activeCommTabIdx - 1),
+                      })}
+                      title={isDe
+                        ? 'Überträgt Logo, Outlook-Text, Überschriften, Betreff, Mail-Sprache und Mail-Schalter dieses Sub-Events auf andere Sub-Events'
+                        : 'Transfers logo, Outlook text, headings, subject, mail language and mail toggles of this sub-event to other sub-events'}
+                    >
+                      {isDe ? 'Kommunikation auf andere Sub-Events übertragen' : 'Transfer communication to other sub-events'}
+                    </button>
+                  </div>
+                )}
                 {renderStepIntro(
                   [
                     'Sprache der automatischen E-Mails wählen (Deutsch oder Englisch)',
