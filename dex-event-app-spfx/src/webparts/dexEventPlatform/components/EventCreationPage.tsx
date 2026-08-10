@@ -491,6 +491,17 @@ function StickyTabStrip(props: {
   const [hoverIdx, setHoverIdx] = React.useState<number | null>(null);
   React.useEffect(() => {
     const update = (): void => {
+      // v28.82: Fixieren beim Scrollen abgeschaltet. Seit v28.78 sitzt der
+      // Umschalter in einer getoenten Scope-Karte, deren Beschriftung und
+      // Erklaerung AUSSERHALB dieser Komponente liegen — beim Fixieren riss
+      // der Reiter-Block als eigener Kasten heraus, die Karte blieb zurueck
+      // und der gruene Schritt-Kopf wurde angeschnitten. Die Karte steht
+      // ohnehin ganz oben, direkt unter der Schritt-Leiste, und nach jedem
+      // Schrittwechsel ist man wieder dort. Der Nutzen des Mitscrollens wiegt
+      // die zerrissene Darstellung nicht auf.
+      setPin(null);
+      return;
+      // eslint-disable-next-line no-unreachable
       const ph = phRef.current;
       if (!ph || ph.offsetParent === null) { setPin(null); return; }
       const headerEl = document.querySelector('.header');
@@ -519,12 +530,19 @@ function StickyTabStrip(props: {
     <div ref={phRef} style={pin ? { height: pin.height } : undefined}>
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16,
+        // v28.82: Im fixierten Zustand loeste sich der Reiter-Block bisher als
+        // WEISSER Kasten aus der getoenten Scope-Karte — die Karte blieb
+        // zurueck, der Block schwebte darueber und schnitt den gruenen
+        // Schritt-Kopf an. Jetzt traegt der fixierte Zustand dieselbe Flaeche
+        // wie die Karte (deckend, damit nichts durchscheint), sitzt buendig
+        // ueber die volle Breite und schliesst mit einem klaren Rand ab.
         ...(pin ? {
           position: 'fixed', top: pin.top, left: pin.left, width: pin.width,
-          zIndex: 800, background: '#fff', boxSizing: 'border-box',
-          padding: '8px 10px 0', marginBottom: 0,
-          boxShadow: '0 6px 14px rgba(0,0,0,0.08)',
-          borderBottom: '1px solid var(--dex-gray-200)',
+          zIndex: 800, background: '#f2f7e8', boxSizing: 'border-box',
+          padding: '10px 16px 10px', marginBottom: 0,
+          borderRadius: '0 0 12px 12px',
+          boxShadow: '0 8px 18px rgba(0,0,0,0.10)',
+          borderBottom: '1px solid rgba(134,188,37,0.45)',
         } : {}),
       }}>
         {(() => {
@@ -7227,7 +7245,10 @@ export default function EventCreationPage(): React.ReactElement {
    * abgesetzte Kontext-Karte mit eigener Tönung. Zwei Achsen, zwei
    * Formsprachen — sonst liest man sie als zwei Navigationen.
    */
-  const SCOPE_AWARE_STEPS = [0, 3, 4, 5, 6]; // Ort & Programm, Kapazität, Felder, Kommunikation
+  // v28.82: Schritt 1 ist NOCH NICHT scope-faehig — dafuer muessen die
+  // vorhandenen Felder (Titel, Datum, Beschreibung, Bild) an den gewaehlten
+  // Draft gebunden werden, statt daneben eine zweite Box zu stellen.
+  const SCOPE_AWARE_STEPS = [3, 4, 5, 6]; // Ort & Programm, Kapazität, Felder, Kommunikation
   const [activeScopeIdx, setActiveScopeIdx] = React.useState<number>(0);
   const setScope = (idx: number): void => {
     setActiveScopeIdx(idx);
@@ -7943,90 +7964,6 @@ export default function EventCreationPage(): React.ReactElement {
                   : 'Here you define the foundation of the event: title, date, description and image.'}
               </p>
 
-              {/* v28.81: Grundlagen eines Sub-Events an derselben Stelle wie die
-                  des Hauptevents. Bisher lagen Titel, Zeiten und Beschreibung
-                  eines Sub-Events ausschliesslich in Schritt 3 — man musste
-                  also fuer dieselbe Art von Angabe an zwei verschiedene Orte,
-                  je nachdem WELCHES Event gemeint war. Mit der Scope-Auswahl
-                  oben gehoert das hierher: gleiche Frage, gleiche Stelle. */}
-              {activeScopeIdx > 0 && subEvents[activeScopeIdx - 1] && (() => {
-                const sIdx = activeScopeIdx - 1;
-                const se = subEvents[sIdx];
-                const patch = (p2: Partial<SubEventDraft>): void =>
-                  setSubEvents(prev => prev.map((x, i) => i === sIdx ? { ...x, ...p2 } : x));
-                const inputStyle: React.CSSProperties = { width: '100%' };
-                return (
-                  <div style={{ marginBottom: 20 }}>
-                    <div style={{
-                      padding: '16px 18px', borderRadius: 10,
-                      background: 'var(--dex-gray-50, #fafafa)',
-                      border: '1px solid var(--dex-gray-200)',
-                      borderLeft: '4px solid var(--dex-green, #86bc25)',
-                    }}>
-                      <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: 2 }}>
-                        {isDe ? 'Grundlagen dieses Sub-Events' : 'Basics of this sub-event'}
-                      </div>
-                      <p style={{ margin: '0 0 14px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
-                        {isDe
-                          ? <>Diese Angaben gehören zu <strong>„{shortSubEventTitle(se.title, title) || (childTermSingular || 'Sub-Event')}“</strong>. Dieselben Felder findest du auch in Schritt 3 — es ist derselbe Datensatz, egal wo du ihn pflegst.</>
-                          : <>These details belong to <strong>„{shortSubEventTitle(se.title, title) || 'sub-event'}“</strong>. The same fields also appear in step 3 — it is the same record either way.</>}
-                      </p>
-                      <div className="form-group">
-                        <label className="form-label">{isDe ? 'Titel' : 'Title'}</label>
-                        <input
-                          className="form-input"
-                          value={se.title || ''}
-                          onChange={e => patch({ title: e.target.value })}
-                          placeholder={isDe ? 'z.B. Di. 01.09.2026' : 'e.g. Tue 01/09/2026'}
-                          style={inputStyle}
-                        />
-                      </div>
-                      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr', gap: 12 }}>
-                        <div className="form-group">
-                          <label className="form-label">{isDe ? 'Start' : 'Start'}</label>
-                          <input
-                            type="datetime-local"
-                            className="form-input"
-                            value={isoToLocal(se.startDate || '')}
-                            onChange={e => patch({ startDate: e.target.value ? berlinLocalToUtcIso(e.target.value) : '' })}
-                            style={inputStyle}
-                          />
-                        </div>
-                        <div className="form-group">
-                          <label className="form-label">{isDe ? 'Ende' : 'End'}</label>
-                          <input
-                            type="datetime-local"
-                            className="form-input"
-                            value={isoToLocal(se.endDate || '')}
-                            onChange={e => patch({ endDate: e.target.value ? berlinLocalToUtcIso(e.target.value) : '' })}
-                            style={inputStyle}
-                          />
-                        </div>
-                      </div>
-                      <div className="form-group" style={{ marginBottom: 0 }}>
-                        <label className="form-label">{isDe ? 'Beschreibung (optional)' : 'Description (optional)'}</label>
-                        <textarea
-                          className="form-input"
-                          value={se.description || ''}
-                          onChange={e => patch({ description: e.target.value })}
-                          rows={3}
-                          placeholder={isDe ? 'Was erwartet die Teilnehmer an diesem Termin?' : 'What can attendees expect on this date?'}
-                          style={inputStyle}
-                        />
-                      </div>
-                    </div>
-                    <div style={{
-                      marginTop: 10, padding: '8px 12px', borderRadius: 8,
-                      background: '#fff', border: '1px dashed var(--dex-gray-300)',
-                      fontSize: '0.78rem', color: 'var(--dex-gray-600)', lineHeight: 1.5,
-                    }}>
-                      {isDe
-                        ? <>Alles Weitere auf dieser Seite gehört zum <strong>{subEventsOnlyMode ? 'Klammerevent' : 'Haupt-Event'}</strong> „{title || 'Ohne Titel'}“ — wechsle oben auf {subEventsOnlyMode ? 'die Klammer' : 'das Haupt-Event'}, um es zu bearbeiten.</>
-                        : <>Everything else on this page belongs to the <strong>{subEventsOnlyMode ? 'bracket event' : 'main event'}</strong> „{title || 'Untitled'}“ — switch to it above to edit those.</>}
-                    </div>
-                  </div>
-                );
-              })()}
 
               {/* v24.9 (E): „Eigenes Event als Vorlage" — prominenter Fächer aus
                   Bildern bisheriger Events. Nur im NEU-Modus, nur wenn der
