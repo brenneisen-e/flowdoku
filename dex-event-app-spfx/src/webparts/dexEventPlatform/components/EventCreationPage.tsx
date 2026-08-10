@@ -7964,6 +7964,69 @@ export default function EventCreationPage(): React.ReactElement {
                   : 'Here you define the foundation of the event: title, date, description and image.'}
               </p>
 
+              {/* v28.83: Die Opt-in-Frage steht jetzt in den GRUNDLAGEN statt in
+                  Schritt 3. Ob ein Event ueberhaupt aus mehreren Teilen besteht,
+                  ist eine Grundsatzfrage wie Titel und Datum — nicht etwas, das
+                  man erst in einem spaeteren Schritt entdeckt. Abschalten mit
+                  vorhandenen Sub-Events fragt nach (Soft-Disable, s. v28.2). */}
+              {/* v22.36: Opt-in-Frage — Default nein; erst bei „ja" erscheint
+                  die gesamte Sub-Event-Konfiguration. Abschalten mit
+                  vorhandenen Sub-Events fragt nach und verwirft sie dann. */}
+              <div style={{ background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: '12px 16px', marginBottom: 12, border: '1px solid var(--dex-gray-200)' }}>
+                <div className="toggle-wrapper" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <label className="toggle">
+                    <input
+                      type="checkbox"
+                      checked={subEventsOptIn}
+                      onChange={e => {
+                        const on = e.target.checked;
+                        if (!on && subEvents.length > 0) {
+                          (async () => {
+                            // v28.2 SOFT-DISABLE: Der Toggle löscht NICHTS mehr.
+                            // Die Sub-Events (inkl. Teilnehmerlisten und
+                            // Anmeldungen) bleiben gespeichert und werden beim
+                            // Speichern nur per _subEventsDisabled-Flag von der
+                            // Anmeldeseite genommen. Wieder-Einschalten stellt
+                            // alles unverändert wieder her — auch über ein
+                            // Speichern hinweg. Endgültig löschen geht weiterhin
+                            // über das X an der einzelnen Sub-Event-Karte.
+                            const ok = await confirmDialog(
+                              isDe
+                                ? `Sub-Events deaktivieren? Deine ${subEvents.length} Sub-Event(s) bleiben mit allen Eingaben und Anmeldungen gespeichert, werden Teilnehmern nach dem Speichern aber nicht mehr angeboten. Beim Wieder-Einschalten ist alles unverändert da.`
+                                : `Deactivate sub-events? Your ${subEvents.length} sub-event(s) remain stored with all input and registrations, but after saving they are no longer offered to attendees. Re-enabling restores everything unchanged.`,
+                              { confirmLabel: isDe ? 'Deaktivieren' : 'Deactivate' }
+                            );
+                            if (ok) {
+                              setSubEventsOptIn(false);
+                              // Modi zurücksetzen, die ohne sichtbare Sub-Events
+                              // keinen Sinn ergeben (sonst wäre das Event für
+                              // Teilnehmer unbuchbar).
+                              if (subEventsOnlyMode) setSubEventsOnlyMode(false);
+                              if (requireSubEventSelection) setRequireSubEventSelection(false);
+                            }
+                          })().catch(() => { /* */ });
+                          return;
+                        }
+                        setSubEventsOptIn(on);
+                      }}
+                    />
+                    <span className="toggle-slider" />
+                  </label>
+                  <span style={{ fontSize: '0.9rem' }}>
+                    <strong>{isDe ? 'Sub-Events nutzen?' : 'Use sub-events?'}</strong>{' '}
+                    {subEventsOptIn
+                      ? (isDe ? '— ja. Die einzelnen Sub-Events legst du in Schritt 3 an.' : '— yes. You create the individual sub-events in step 3.')
+                      : (subEvents.length > 0
+                        ? (isDe
+                          ? `— deaktiviert. ${subEvents.length} Sub-Event(s) bleiben mit allen Anmeldungen gespeichert, sind für Teilnehmer aber unsichtbar. Einschalten stellt alles wieder her.`
+                          : `— deactivated. ${subEvents.length} sub-event(s) remain stored with all registrations but are hidden from attendees. Re-enable to restore.`)
+                        : (isDe ? '— nein (Standard). Ein einfaches Event braucht keine. Zum Aktivieren Schalter umlegen.' : '— no (default). A simple event does not need them. Flip the toggle to enable.'))}
+                  </span>
+                </div>
+              </div>
+
+
+
 
               {/* v24.9 (E): „Eigenes Event als Vorlage" — prominenter Fächer aus
                   Bildern bisheriger Events. Nur im NEU-Modus, nur wenn der
@@ -10320,62 +10383,6 @@ export default function EventCreationPage(): React.ReactElement {
                   ? <>Ein Sub-Event ist ein <strong>eigenständiger Programmbaustein</strong> innerhalb deines Events — z.&nbsp;B. ein Workshop, eine Session, ein Networking-Dinner oder eine Lauf-Distanz. Jedes Sub-Event hat <strong>eigene Plätze, einen eigenen Termin und eine eigene Teilnehmerliste</strong>, auf Wunsch auch eigene Abfrage-Felder; Teilnehmer wählen ihre Sub-Events direkt im Anmeldeformular. Typische Beispiele: eine Konferenz mit wählbaren Workshops oder ein Sommerfest mit optionalem Abendprogramm. Einfache Events (Meeting, Lunch, Feier) brauchen <strong>keine</strong> Sub-Events.</>
                   : <>A sub-event is a <strong>separate programme building block</strong> inside your event — e.g. a workshop, a session, a networking dinner or a run distance. Each sub-event has <strong>its own seats, its own schedule and its own attendee list</strong>, optionally its own custom fields; attendees pick their sub-events directly in the registration form. Typical examples: a conference with selectable workshops or a summer party with an optional evening programme. Simple events (meeting, lunch, celebration) do <strong>not</strong> need sub-events.</>}
               </WizardHint>
-
-              {/* v22.36: Opt-in-Frage — Default nein; erst bei „ja" erscheint
-                  die gesamte Sub-Event-Konfiguration. Abschalten mit
-                  vorhandenen Sub-Events fragt nach und verwirft sie dann. */}
-              <div style={{ background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: '12px 16px', marginBottom: 12, border: '1px solid var(--dex-gray-200)' }}>
-                <div className="toggle-wrapper" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <label className="toggle">
-                    <input
-                      type="checkbox"
-                      checked={subEventsOptIn}
-                      onChange={e => {
-                        const on = e.target.checked;
-                        if (!on && subEvents.length > 0) {
-                          (async () => {
-                            // v28.2 SOFT-DISABLE: Der Toggle löscht NICHTS mehr.
-                            // Die Sub-Events (inkl. Teilnehmerlisten und
-                            // Anmeldungen) bleiben gespeichert und werden beim
-                            // Speichern nur per _subEventsDisabled-Flag von der
-                            // Anmeldeseite genommen. Wieder-Einschalten stellt
-                            // alles unverändert wieder her — auch über ein
-                            // Speichern hinweg. Endgültig löschen geht weiterhin
-                            // über das X an der einzelnen Sub-Event-Karte.
-                            const ok = await confirmDialog(
-                              isDe
-                                ? `Sub-Events deaktivieren? Deine ${subEvents.length} Sub-Event(s) bleiben mit allen Eingaben und Anmeldungen gespeichert, werden Teilnehmern nach dem Speichern aber nicht mehr angeboten. Beim Wieder-Einschalten ist alles unverändert da.`
-                                : `Deactivate sub-events? Your ${subEvents.length} sub-event(s) remain stored with all input and registrations, but after saving they are no longer offered to attendees. Re-enabling restores everything unchanged.`,
-                              { confirmLabel: isDe ? 'Deaktivieren' : 'Deactivate' }
-                            );
-                            if (ok) {
-                              setSubEventsOptIn(false);
-                              // Modi zurücksetzen, die ohne sichtbare Sub-Events
-                              // keinen Sinn ergeben (sonst wäre das Event für
-                              // Teilnehmer unbuchbar).
-                              if (subEventsOnlyMode) setSubEventsOnlyMode(false);
-                              if (requireSubEventSelection) setRequireSubEventSelection(false);
-                            }
-                          })().catch(() => { /* */ });
-                          return;
-                        }
-                        setSubEventsOptIn(on);
-                      }}
-                    />
-                    <span className="toggle-slider" />
-                  </label>
-                  <span style={{ fontSize: '0.9rem' }}>
-                    <strong>{isDe ? 'Sub-Events nutzen?' : 'Use sub-events?'}</strong>{' '}
-                    {subEventsOptIn
-                      ? (isDe ? '— ja, Konfiguration unten.' : '— yes, configuration below.')
-                      : (subEvents.length > 0
-                        ? (isDe
-                          ? `— deaktiviert. ${subEvents.length} Sub-Event(s) bleiben mit allen Anmeldungen gespeichert, sind für Teilnehmer aber unsichtbar. Einschalten stellt alles wieder her.`
-                          : `— deactivated. ${subEvents.length} sub-event(s) remain stored with all registrations but are hidden from attendees. Re-enable to restore.`)
-                        : (isDe ? '— nein (Standard). Zum Aktivieren Schalter umlegen.' : '— no (default). Flip the toggle to enable.'))}
-                  </span>
-                </div>
-              </div>
 
               {subEventsOptIn && (<>
               {/* Bezeichnungs-Dropdown */}
