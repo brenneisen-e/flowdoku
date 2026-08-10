@@ -1462,6 +1462,10 @@ export default function AdminPage(): React.ReactElement {
   // v18.70: Manueller Nachrück-Button (freien Platz mit erstem Wartelistler füllen)
   const [isPromoting, setIsPromoting] = React.useState(false);
   const [promoteResult, setPromoteResult] = React.useState<string | null>(null);
+  // v28.70: Wartelisten-Platz einer Person manuell setzen (z.B. auf 1).
+  const [wlPosModal, setWlPosModal] = React.useState<{ reg: SPRegistration; currentPos: number; total: number } | null>(null);
+  const [wlPosValue, setWlPosValue] = React.useState<string>('1');
+  const [wlPosBusy, setWlPosBusy] = React.useState(false);
   const [isResettingCounter, setIsResettingCounter] = React.useState(false);
   const [resetCounterResult, setResetCounterResult] = React.useState<string | null>(null);
   const [isFixingColumns, setIsFixingColumns] = React.useState(false);
@@ -11733,7 +11737,21 @@ export default function AdminPage(): React.ReactElement {
                             </td>
                           )}
                           <td style={{ padding: 8, color: 'var(--dex-gray-500)' }}>{formatDate(reg.RegistrationDate)}</td>
-                          <td style={{ padding: 8 }}>
+                          <td style={{ padding: 8, whiteSpace: 'nowrap' }}>
+                            {/* v28.70: Wartelisten-Platz manuell setzen. Die
+                                Position ist der Rang nach TeilnehmerID — genau
+                                danach sortieren App-Nachrücken UND der Flow. */}
+                            <button
+                              className="btn btn-secondary"
+                              style={{ fontSize: '0.75rem', padding: '4px 10px', marginRight: 6 }}
+                              disabled={wlPosBusy}
+                              onClick={() => {
+                                setWlPosModal({ reg, currentPos: truePos != null ? truePos : (i + 1), total: regs.length });
+                                setWlPosValue('1');
+                              }}
+                            >
+                              {isDe ? 'Platz ändern' : 'Change position'}
+                            </button>
                             <button
                               className="btn btn-secondary"
                               style={{ fontSize: '0.75rem', padding: '4px 10px', color: 'var(--dex-red, #c00)' }}
@@ -15121,6 +15139,85 @@ export default function AdminPage(): React.ReactElement {
             </div>
         </Modal>
       )}
+
+      {/* v28.70: Wartelisten-Platz manuell setzen. */}
+      {wlPosModal && selectedEvent && (() => {
+        const reg = wlPosModal.reg;
+        const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || reg.ParticipantEmail || '');
+        const parsed = parseInt(wlPosValue, 10);
+        const valid = !isNaN(parsed) && parsed >= 1 && parsed <= wlPosModal.total;
+        const close = (): void => { setWlPosModal(null); setWlPosBusy(false); };
+        const apply = async (): Promise<void> => {
+          if (!eventServiceRef || !selectedEvent.subsiteUrl || !valid) return;
+          setWlPosBusy(true);
+          try {
+            const res = await eventServiceRef.setWaitlistPosition(selectedEvent.subsiteUrl, reg.Id, parsed);
+            if (!res.ok) {
+              showAlert(res.error || (isDe ? 'Der Platz konnte nicht geändert werden.' : 'The position could not be changed.'), { variant: 'error' });
+              return;
+            }
+            const allRegs = await getAllRegistrations(selectedEvent.id);
+            setRegistrations(allRegs);
+            showAlert(res.changed === 0
+              ? (isDe ? `${name} steht bereits auf Platz ${res.to}.` : `${name} is already at position ${res.to}.`)
+              : (isDe ? `${name} steht jetzt auf Platz ${res.to} (vorher ${res.from}).` : `${name} is now at position ${res.to} (previously ${res.from}).`),
+              { variant: 'success' });
+            close();
+          } finally {
+            setWlPosBusy(false);
+          }
+        };
+        return (
+          <Modal
+            open={true}
+            onClose={() => { if (!wlPosBusy) close(); }}
+            dismissable={!wlPosBusy}
+            maxWidth={520}
+            padding={24}
+            ariaLabel={isDe ? 'Wartelisten-Platz ändern' : 'Change waitlist position'}
+          >
+            <div>
+              <h3 style={{ marginTop: 0 }}>{isDe ? 'Wartelisten-Platz ändern' : 'Change waitlist position'}</h3>
+              <p style={{ fontSize: '0.88rem', lineHeight: 1.55, color: 'var(--dex-gray-700)' }}>
+                {isDe
+                  ? <><strong>{name}</strong> steht aktuell auf <strong>Platz {wlPosModal.currentPos}</strong> von {wlPosModal.total}. Auf welchen Platz soll die Person?</>
+                  : <><strong>{name}</strong> is currently at <strong>position {wlPosModal.currentPos}</strong> of {wlPosModal.total}. Which position should they get?</>}
+              </p>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', margin: '12px 0' }}>
+                <input
+                  className="form-input"
+                  type="number"
+                  min={1}
+                  max={wlPosModal.total}
+                  value={wlPosValue}
+                  onChange={e => setWlPosValue(e.target.value)}
+                  disabled={wlPosBusy}
+                  style={{ width: 110 }}
+                />
+                <button type="button" className="btn btn-secondary" style={{ fontSize: '0.8rem', padding: '6px 12px' }} disabled={wlPosBusy} onClick={() => setWlPosValue('1')}>
+                  {isDe ? 'Ganz nach oben' : 'To the top'}
+                </button>
+              </div>
+              <div style={{
+                padding: '8px 10px', borderRadius: 6, fontSize: '0.78rem', lineHeight: 1.5,
+                background: 'var(--dex-gray-50, #f8f9fa)', border: '1px solid var(--dex-gray-200)', color: 'var(--dex-gray-700)',
+              }}>
+                {isDe
+                  ? <>Die anderen Wartenden rücken entsprechend auf oder nach. Angemeldete Teilnehmer sind nicht betroffen, es geht <strong>keine Mail</strong> raus und niemand wird dadurch angemeldet — die Person rückt nur früher nach, sobald ein Platz frei wird. Die Teilnehmer-Nummern <strong>innerhalb der Warteliste</strong> werden dabei neu vergeben.</>
+                  : <>The other waitlisted people shift accordingly. Registered attendees are unaffected, <strong>no email</strong> is sent and nobody gets registered by this — the person is simply promoted earlier once a seat frees up. Attendee numbers <strong>within the waitlist</strong> are reassigned.</>}
+              </div>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 18 }}>
+                <button type="button" className="btn btn-secondary" onClick={close} disabled={wlPosBusy}>
+                  {isDe ? 'Abbrechen' : 'Cancel'}
+                </button>
+                <button type="button" className="btn btn-primary" onClick={() => { void apply(); }} disabled={!valid || wlPosBusy}>
+                  {wlPosBusy ? (isDe ? 'Wird gesetzt…' : 'Applying…') : (isDe ? 'Platz setzen' : 'Set position')}
+                </button>
+              </div>
+            </div>
+          </Modal>
+        );
+      })()}
 
       {adminAddMemberDialog && selectedEvent && (() => {
         // v17.2: Quick-Pick aus bereits registrierten Personen ohne Team —

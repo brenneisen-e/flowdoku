@@ -8109,6 +8109,87 @@ export class EventService {
    * Damit stehen im Teilnehmerlisten-Grid die Angemeldeten sauber oben, die
    * Warteliste sauber unten — kein Durchmischen mehr.
    */
+  /**
+   * v28.70: Eine Person auf der Warteliste an eine bestimmte Position setzen
+   * (z.B. „ganz nach vorn"), ohne die Reihenfolge der Angemeldeten anzufassen.
+   *
+   * Warum ueber die TeilnehmerID? Die Warteliste hat KEINE eigene
+   * Positionsspalte — die Position ist der Rang innerhalb von
+   * Status='Warteliste', sortiert nach `TeilnehmerID asc` (Gleichstand: Item-Id).
+   * Genau so sortieren beide Stellen, die nachruecken: `promoteFirstWaitlistItem`
+   * in der App UND der Flow `DEX_IDReorder_TeilnehmerIDs` (Order By
+   * `TeilnehmerID asc`, s. docs/flow-jsons.md). Eine zusaetzliche Prioritaets-
+   * spalte wuerde der Flow ignorieren und weiter den Falschen nachruecken
+   * lassen — deshalb wird hier die TeilnehmerID selbst umsortiert. Damit zieht
+   * die neue Reihenfolge in beiden Pfaden.
+   *
+   * Die Angemeldeten behalten ihre IDs (ihre relative Reihenfolge aendert sich
+   * nicht, sie werden auf dieselben 1..N abgebildet); es verschieben sich nur
+   * die IDs innerhalb der Warteliste.
+   *
+   * @param targetPosition 1-basiert. Wird auf 1..(Anzahl Wartende) geklemmt.
+   */
+  public async setWaitlistPosition(
+    subsiteUrl: string,
+    itemId: number,
+    targetPosition: number
+  ): Promise<{ ok: boolean; from: number; to: number; changed: number; error?: string }> {
+    const fail = (error: string): { ok: boolean; from: number; to: number; changed: number; error: string } =>
+      ({ ok: false, from: 0, to: 0, changed: 0, error });
+    try {
+      const allItems: Array<{ Id: number; Status: string; TeilnehmerID: number | null }> = [];
+      let url: string | null = `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items?$select=Id,Status,TeilnehmerID&$orderby=Id asc&$top=5000`;
+      while (url) {
+        const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+        if (!response.ok) return fail(`Teilnehmerliste konnte nicht gelesen werden (HTTP ${response.status}).`);
+        const data = await response.json();
+        allItems.push(...(data.value || data.d?.results || []));
+        url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
+      }
+      const NO_TID = Number.MAX_SAFE_INTEGER;
+      const byTidThenId = (a: { Id: number; TeilnehmerID: number | null }, b: { Id: number; TeilnehmerID: number | null }): number =>
+        ((a.TeilnehmerID ?? NO_TID) - (b.TeilnehmerID ?? NO_TID)) || (a.Id - b.Id);
+      const activeItems = allItems
+        .filter(i => i.Status === 'Angemeldet' || i.Status === 'QR versendet' || i.Status === 'Eingecheckt')
+        .sort(byTidThenId);
+      const waitlist = allItems.filter(i => i.Status === 'Warteliste').sort(byTidThenId);
+
+      const fromIdx = waitlist.findIndex(i => i.Id === itemId);
+      if (fromIdx < 0) return fail('Diese Person steht nicht (mehr) auf der Warteliste — bitte die Liste neu laden.');
+      if (waitlist.length < 2) return fail('Auf der Warteliste steht nur diese eine Person — es gibt nichts umzusortieren.');
+      const toIdx = Math.max(0, Math.min(waitlist.length - 1, Math.round(targetPosition) - 1));
+      if (toIdx === fromIdx) {
+        return { ok: true, from: fromIdx + 1, to: toIdx + 1, changed: 0 };
+      }
+      const moved = waitlist.splice(fromIdx, 1)[0];
+      waitlist.splice(toIdx, 0, moved);
+
+      // Ziel-IDs: Angemeldete 1..N (unveraendert), danach die neue
+      // Warteliste-Reihenfolge, Abgemeldete null.
+      const targetIds = new Map<number, number | null>();
+      let nextId = 1;
+      for (const item of activeItems) targetIds.set(item.Id, nextId++);
+      for (const item of waitlist) targetIds.set(item.Id, nextId++);
+      for (const item of allItems) if (!targetIds.has(item.Id)) targetIds.set(item.Id, null);
+
+      let changed = 0;
+      for (const item of allItems) {
+        const newId = targetIds.get(item.Id) ?? null;
+        if (newId === item.TeilnehmerID) continue;
+        const resp = await this._merge(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${item.Id})`,
+          { 'TeilnehmerID': newId }
+        );
+        if (resp.ok || resp.status === 406) { changed++; }
+        else { return fail(`Position konnte nicht vollständig gesetzt werden (HTTP ${resp.status}). Bitte „Teilnehmer-IDs neu vergeben" ausführen und erneut versuchen.`); }
+      }
+      try { await this.syncCounterToMax(subsiteUrl); } catch { /* best-effort */ }
+      return { ok: true, from: fromIdx + 1, to: toIdx + 1, changed };
+    } catch (err) {
+      return fail(`Unerwarteter Fehler: ${err instanceof Error ? err.message.slice(0, 160) : 'unbekannt'}`);
+    }
+  }
+
   public async reorderParticipantIDs(
     subsiteUrl: string,
     onProgress?: (pct: number) => void
