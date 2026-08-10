@@ -479,9 +479,16 @@ function StickyTabStrip(props: {
   mainDisabled?: boolean;
   /** Optionaler Hinweis-Text neben dem deaktivierten Klammer-Tab. */
   mainDisabledNote?: string;
+  /** v28.73: Wort in Klammern hinter dem Eventnamen, z.B. „Klammerevent". */
+  klammerWord?: string;
+  /** v28.73: Info-Icon (Tooltip) rechts im Klammer-Reiter — erklaert, dass die
+   *  Anmeldung ueber die Sub-Events laeuft, mit Quicklink zur Umstellung. */
+  klammerInfo?: React.ReactNode;
 }): React.ReactElement {
   const phRef = React.useRef<HTMLDivElement | null>(null);
   const [pin, setPin] = React.useState<null | { top: number; left: number; width: number; height: number }>(null);
+  // v28.72: Hover-/Fokus-Index für die Reiter (Inline-Styles können kein :hover).
+  const [hoverIdx, setHoverIdx] = React.useState<number | null>(null);
   React.useEffect(() => {
     const update = (): void => {
       const ph = phRef.current;
@@ -523,6 +530,11 @@ function StickyTabStrip(props: {
         {(() => {
           const renderTabBtn = (tab: { label: string; isMain: boolean }, tabIdx: number): React.ReactElement => {
             const active = tabIdx === props.activeIdx;
+            // v28.72: Hover-Effekt. Die Reiter waren statische graue Chips —
+            // ohne Reaktion auf die Maus las sich das wie eine Beschriftung
+            // statt wie etwas Anklickbares. Jetzt heben sie sich beim
+            // Darüberfahren an (grüner Rand + Tönung + 1px nach oben).
+            const hovered = hoverIdx === tabIdx && !active;
             return (
               <button
                 key={tabIdx}
@@ -530,14 +542,22 @@ function StickyTabStrip(props: {
                 role="tab"
                 aria-selected={active}
                 onClick={() => props.onChange(tabIdx)}
+                onMouseEnter={() => setHoverIdx(tabIdx)}
+                onMouseLeave={() => setHoverIdx(prev => (prev === tabIdx ? null : prev))}
+                onFocus={() => setHoverIdx(tabIdx)}
+                onBlur={() => setHoverIdx(prev => (prev === tabIdx ? null : prev))}
                 style={{
                   display: 'inline-flex', alignItems: 'center', gap: 8,
                   padding: '8px 14px',
-                  border: active ? '1px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-200)',
+                  border: active
+                    ? '1px solid var(--dex-green, #86bc25)'
+                    : `1px solid ${hovered ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
                   borderRadius: '8px 8px 0 0',
-                  background: active ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-50, #fafafa)',
-                  color: active ? '#fff' : 'var(--dex-gray-700)',
-                  fontWeight: active ? 700 : 500,
+                  background: active
+                    ? 'var(--dex-green, #86bc25)'
+                    : (hovered ? 'rgba(134,188,37,0.14)' : 'var(--dex-gray-50, #fafafa)'),
+                  color: active ? '#fff' : (hovered ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)'),
+                  fontWeight: active ? 700 : (hovered ? 600 : 500),
                   fontSize: '0.85rem',
                   cursor: 'pointer',
                   marginBottom: -1,
@@ -545,7 +565,9 @@ function StickyTabStrip(props: {
                   maxWidth: 280,
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
-                  transition: 'background 0.15s, color 0.15s, border-color 0.15s',
+                  transform: hovered ? 'translateY(-1px)' : 'none',
+                  boxShadow: hovered ? '0 -2px 6px rgba(134,188,37,0.20)' : 'none',
+                  transition: 'background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s, box-shadow 0.15s',
                 }}
                 title={tab.label}
               >
@@ -564,7 +586,16 @@ function StickyTabStrip(props: {
             const pActive = !dis && props.activeIdx === 0;
             return (
               <div role="tablist" aria-label={props.ariaLabel} style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: 0 }}>
-                {/* Klammer-Ebene oben — volle Breite. */}
+                {/* Klammer-Ebene oben — volle Breite.
+                    v28.73: Vorne steht jetzt der EVENTNAME, dahinter der
+                    dezente Zusatz „(Klammerevent)" und ein Info-Icon mit der
+                    Erklärung. Vorher stand „⟦ KLAMMER ⟧" als Praefix davor —
+                    ein Fachbegriff an der auffaelligsten Stelle, der weder
+                    sagt, was er bedeutet, noch dass er eine Entscheidung war.
+                    Das Icon liegt bewusst NEBEN dem Reiter-Button (nicht
+                    darin), damit der Quicklink im Tooltip nicht in einem
+                    Button verschachtelt ist. */}
+                <div style={{ display: 'flex', alignItems: 'stretch', width: '100%' }}>
                 <button
                   type="button"
                   role="tab"
@@ -573,24 +604,37 @@ function StickyTabStrip(props: {
                   onClick={() => { if (!dis) props.onChange(0); }}
                   title={dis ? (props.mainDisabledNote || props.tabs[0].label) : props.tabs[0].label}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                    display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0,
                     padding: '10px 16px', cursor: dis ? 'not-allowed' : 'pointer', textAlign: 'left',
                     border: `1.5px solid ${pActive ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
-                    borderRadius: '10px 10px 0 0',
+                    borderRight: 'none',
+                    borderRadius: '10px 0 0 0',
                     background: pActive ? 'var(--dex-green, #86bc25)' : 'rgba(134,188,37,0.10)',
                     color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
                     fontWeight: 700, fontSize: '0.9rem',
                     opacity: dis ? 0.55 : 1,
                   }}
                 >
-                  <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: 0.6, opacity: 0.9, color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }}>⟦ {props.mainBadge} ⟧</span>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }}>{props.tabs[0].label}</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }}>{props.tabs[0].label}</span>
+                  <span style={{ fontSize: '0.76rem', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, opacity: 0.85, color: pActive ? 'rgba(255,255,255,0.9)' : 'var(--dex-green-dark, #4a7c1f)' }}>
+                    ({props.klammerWord || 'Klammerevent'})
+                  </span>
+                  <span style={{ flex: 1 }} />
                   {dis && props.mainDisabledNote && (
                     <span style={{ fontSize: '0.65rem', fontWeight: 600, padding: '2px 6px', borderRadius: 8, background: 'var(--dex-gray-200, #e0e0e0)', color: 'var(--dex-gray-600)', flexShrink: 0 }}>
                       {props.mainDisabledNote}
                     </span>
                   )}
                 </button>
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', padding: '0 12px 0 4px',
+                  border: `1.5px solid ${pActive ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                  borderLeft: 'none', borderRadius: '0 10px 0 0',
+                  background: pActive ? 'var(--dex-green, #86bc25)' : 'rgba(134,188,37,0.10)',
+                }}>
+                  {props.klammerInfo}
+                </span>
+                </div>
                 {/* Sub-Events darunter — eingerückt unter einer Klammer-Linie. */}
                 <div style={{
                   display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'flex-end',
@@ -6868,6 +6912,26 @@ export default function EventCreationPage(): React.ReactElement {
   // mit dem Komm-Tab-Pattern in Schritt 7 (grüne Unterstreichung des
   // aktiven Tabs, leichte Hover/Active-Styles). Tab 0 ist immer das
   // Haupt-Event, Tabs 1..N entsprechen `subEvents[0..N-1]`.
+  /**
+   * v28.73: Quicklink aus dem Klammer-Info-Tooltip. Springt in Schritt 3
+   * (Sub-Events) zur Auswahl „Anmeldung zum Hauptevent oder nur zu den
+   * Sub-Events" und hebt sie kurz hervor, damit der Organizer die Stelle
+   * findet statt sie zu suchen.
+   */
+  const goToSubEventsMode = (): void => {
+    setCurrentStep(2);
+    setTriedNext(false);
+    window.setTimeout(() => {
+      const el = document.getElementById('dex-subevents-mode');
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.style.transition = 'box-shadow 0.3s';
+      el.style.boxShadow = '0 0 0 3px rgba(134,188,37,0.55)';
+      el.style.borderRadius = '10px';
+      window.setTimeout(() => { el.style.boxShadow = 'none'; }, 2200);
+    }, 120);
+  };
+
   const renderPerEventTabStrip = (
     activeIdx: number,
     onChange: (idx: number) => void,
@@ -6887,17 +6951,123 @@ export default function EventCreationPage(): React.ReactElement {
         isMain: false,
       })),
     ];
+    // v28.72: Geltungsbereich benennen. Die Reiter standen bisher ohne
+    // Erklärung da — sie sehen aus wie eine Beschriftung („dieses Event hat
+    // 5 Teile"), nicht wie eine Umschaltung. Organizer stellten deshalb alles
+    // am ersten Reiter ein und wunderten sich, dass es für die anderen nicht
+    // galt; manche merkten gar nicht, dass ihr Event eine Klammer ist. Zwei
+    // Ergänzungen, beide am Blick des Nutzers ausgerichtet:
+    //  - eine Frage ÜBER den Reitern, die die Bedienung benennt,
+    //  - ein Hinweis UNTER den Reitern, direkt über den Feldern: für wen die
+    //    Einstellungen gerade gelten und wo die anderen zu finden sind. Der
+    //    steht bewusst bei den Feldern, weil dort hingeschaut wird — nicht
+    //    oben in der Leiste.
+    const subCount = subEvents.length;
+    const activeIsMain = activeIdx === 0;
+    const activeLabel = (tabs[activeIdx] || tabs[0]).label;
+    const mainWord = subEventsOnlyMode ? (isDe ? 'Klammer' : 'bracket') : (isDe ? 'Haupt-Event' : 'main event');
+    const otherSubs = activeIsMain ? subCount : subCount - 1;
+    const scopeText = ((): React.ReactNode => {
+      if (activeIsMain) {
+        if (isDe) {
+          return (
+            <>Du bearbeitest gerade {subEventsOnlyMode ? <>die <strong>Klammer</strong></> : <>das <strong>Haupt-Event</strong></>} „{activeLabel}“.{' '}
+              {subEventsOnlyMode
+                ? <>Zur Klammer meldet sich niemand direkt an — Teilnehmer wählen eines der Sub-Events. </>
+                : null}
+              Die Einstellungen hier gelten <strong>nur dafür</strong>. {otherSubs === 1 ? 'Das andere Sub-Event stellst du' : `Die ${otherSubs} Sub-Events stellst du`} oben über {otherSubs === 1 ? 'seinen Reiter' : 'ihre Reiter'} <strong>separat</strong> ein.</>
+          );
+        }
+        return (
+          <>You are editing the <strong>{subEventsOnlyMode ? 'bracket' : 'main event'}</strong> „{activeLabel}“.{' '}
+            {subEventsOnlyMode ? <>Nobody registers for the bracket itself — attendees pick one of the sub-events. </> : null}
+            These settings apply <strong>only to it</strong>. The {otherSubs === 1 ? 'other sub-event' : `${otherSubs} sub-events`} are configured <strong>separately</strong> via {otherSubs === 1 ? 'its tab' : 'their tabs'} above.</>
+        );
+      }
+      if (isDe) {
+        return (
+          <>Du bearbeitest gerade das <strong>Sub-Event</strong> „{activeLabel}“. Die Einstellungen hier gelten <strong>nur dafür</strong>
+            {otherSubs > 0
+              ? <> — {mainWord === 'Klammer' ? 'die Klammer' : 'das Haupt-Event'} und {otherSubs === 1 ? 'das weitere Sub-Event' : `die ${otherSubs} weiteren Sub-Events`} stellst du oben über die Reiter separat ein.</>
+              : <> — {mainWord === 'Klammer' ? 'die Klammer' : 'das Haupt-Event'} stellst du oben über den Reiter separat ein.</>}</>
+        );
+      }
+      return (
+        <>You are editing the <strong>sub-event</strong> „{activeLabel}“. These settings apply <strong>only to it</strong>
+          {otherSubs > 0
+            ? <> — the {subEventsOnlyMode ? 'bracket' : 'main event'} and the {otherSubs === 1 ? 'other sub-event' : `${otherSubs} other sub-events`} are configured separately via the tabs above.</>
+            : <> — the {subEventsOnlyMode ? 'bracket' : 'main event'} is configured separately via its tab above.</>}</>
+      );
+    })();
     // v22.30: Rendering + Sticky-Pin + gefüllter Aktiv-Tab leben in der
     // Modul-Komponente StickyTabStrip (Hooks pro Instanz).
     return (
-      <StickyTabStrip
-        tabs={tabs}
-        activeIdx={activeIdx}
-        onChange={onChange}
-        ariaLabel={ariaLabel}
-        mainBadge={subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt' : 'Main')}
-        klammer={subEventsOnlyMode}
-      />
+      <>
+        <div style={{
+          fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.03em',
+          textTransform: 'uppercase', color: 'var(--dex-gray-500)', marginBottom: 6,
+        }}>
+          {isDe ? 'Wofür stellst du gerade ein?' : 'What are you configuring right now?'}
+        </div>
+        <StickyTabStrip
+          tabs={tabs}
+          activeIdx={activeIdx}
+          onChange={onChange}
+          ariaLabel={ariaLabel}
+          mainBadge={subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt' : 'Main')}
+          klammer={subEventsOnlyMode}
+          klammerWord={isDe ? 'Klammerevent' : 'bracket event'}
+          klammerInfo={
+            <InfoTooltip
+              placement="bottom"
+              text={isDe ? (
+                <>
+                  <strong>Klammerevent</strong> — zu diesem Event selbst meldet sich <strong>niemand</strong> an. Teilnehmer sehen nur die {childTermPlural || 'Sub-Events'} darunter und melden sich <strong>dort</strong> an. Der Eventname ist die Klammer darüber: Er erscheint in der Übersicht und fasst die {childTermPlural || 'Sub-Events'} zusammen.<br /><br />
+                  Deshalb gibt es hier keine eigene Teilnehmerzahl und keine eigene Warteliste — beides pflegst du je {childTermSingular || 'Sub-Event'}.<br /><br />
+                  <strong>Du willst, dass man sich auch zum Hauptevent anmelden kann?</strong> Dann stell die Anmeldung in Schritt 3 (&bdquo;{t('create.step.subevents')}&ldquo;) um —{' '}
+                  <button
+                    type="button"
+                    onClick={() => goToSubEventsMode()}
+                    style={{
+                      background: 'none', border: 'none', padding: 0, font: 'inherit',
+                      color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline',
+                      cursor: 'pointer', fontWeight: 700,
+                    }}
+                  >
+                    hier direkt hinspringen
+                  </button>.
+                </>
+              ) : (
+                <>
+                  <strong>Bracket event</strong> — <strong>nobody</strong> registers for this event itself. Attendees only see the sub-events below and register <strong>there</strong>. The event name is the bracket around them: it appears in the overview and groups the sub-events.<br /><br />
+                  That is why there is no capacity and no waitlist at this level — you set both per sub-event.<br /><br />
+                  <strong>Want people to be able to register for the main event too?</strong> Then change the registration mode in step 3 —{' '}
+                  <button
+                    type="button"
+                    onClick={() => goToSubEventsMode()}
+                    style={{
+                      background: 'none', border: 'none', padding: 0, font: 'inherit',
+                      color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline',
+                      cursor: 'pointer', fontWeight: 700,
+                    }}
+                  >
+                    jump there directly
+                  </button>.
+                </>
+              )}
+            />
+          }
+        />
+        <div style={{
+          margin: '-6px 0 16px', padding: '10px 12px', borderRadius: 8,
+          background: 'var(--dex-gray-50, #f8f9fa)',
+          border: '1px solid var(--dex-gray-200)',
+          borderLeft: '4px solid var(--dex-green, #86bc25)',
+          fontSize: '0.82rem', lineHeight: 1.55, color: 'var(--dex-gray-700)',
+        }}>
+          {scopeText}
+        </div>
+      </>
     );
   };
 
@@ -10008,7 +10178,8 @@ export default function EventCreationPage(): React.ReactElement {
                     Input visually-hidden + eigener grüner Outer-Border-Kreis
                     mit grünem Inner-Dot wenn ausgewählt. Funktioniert 1:1 in
                     allen Browsern + matched die Optik der Registration-Page. */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+                {/* v28.73: Anker für den Quicklink aus dem Klammer-Info-Tooltip. */}
+                <div id="dex-subevents-mode" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
                   {[false, true].map(modeVal => {
                     const selected = !!subEventsOnlyMode === modeVal;
                     return (
@@ -11234,6 +11405,59 @@ export default function EventCreationPage(): React.ReactElement {
                   angezeigt. Die Mehrheit der Events nutzt nur eine
                   Gesamtkapazität; der B2Run-Sonderfall ist Opt-in. */}
 
+              {/* v28.72: Bei einer Klammer war „Teilnehmerzahl & Warteliste"
+                  nur ausgegraut — ohne Begründung und ohne Weg. Organizer
+                  klickten ins Leere und hielten es für kaputt. Jetzt liegt eine
+                  Erklär-Box darüber, die sagt WARUM es hier nicht gilt und mit
+                  einem Klick ins erste Sub-Event führt, wo die Plätze
+                  tatsächlich gepflegt werden. */}
+              <div style={{ position: 'relative' }}>
+              {subEventsOnlyMode && subEvents.length > 0 && (
+                <div style={{
+                  position: 'absolute', inset: 0, zIndex: 5,
+                  display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+                  padding: 14, borderRadius: 8,
+                  background: 'rgba(255,255,255,0.86)',
+                  pointerEvents: 'auto',
+                }}>
+                  <div style={{
+                    maxWidth: 560, padding: '16px 18px', borderRadius: 10,
+                    background: '#fff', border: '1px solid var(--dex-gray-300)',
+                    borderLeft: '4px solid var(--dex-green, #86bc25)',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
+                  }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: 6 }}>
+                      {isDe
+                        ? `Plätze werden pro ${childTermSingular || 'Sub-Event'} vergeben`
+                        : `Seats are assigned per ${childTermSingular || 'sub-event'}`}
+                    </div>
+                    <p style={{ margin: '0 0 12px', fontSize: '0.84rem', lineHeight: 1.55, color: 'var(--dex-gray-700)' }}>
+                      {isDe
+                        ? <>Dieses Event ist eine <strong>Klammer</strong> — zur Klammer selbst meldet sich niemand an, Teilnehmer wählen {subEvents.length === 1 ? 'das' : 'eines der'} {subEvents.length === 1 ? '' : `${subEvents.length} `}{subEvents.length === 1 ? (childTermSingular || 'Sub-Event') : (childTermPlural || 'Sub-Events')}. Eine Teilnehmerzahl auf dieser Ebene hätte deshalb keine Wirkung. Trag die Plätze und die Warteliste stattdessen <strong>im jeweiligen {childTermSingular || 'Sub-Event'}</strong> ein.</>
+                        : <>This event is a <strong>bracket</strong> — nobody registers for the bracket itself, attendees pick one of the {subEvents.length} sub-events. A capacity at this level would have no effect. Set seats and waitlist <strong>in each sub-event</strong> instead.</>}
+                    </p>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        style={{ fontSize: '0.83rem', padding: '7px 14px' }}
+                        onClick={() => setActiveCapacityTabIdx(1)}
+                      >
+                        {isDe
+                          ? `Zu „${shortSubEventTitle(subEvents[0].title, title) || (childTermSingular || 'Sub-Event')}“`
+                          : `Go to „${shortSubEventTitle(subEvents[0].title, title) || 'sub-event'}“`}
+                      </button>
+                      {subEvents.length > 1 && (
+                        <span style={{ alignSelf: 'center', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
+                          {isDe
+                            ? `— die übrigen ${subEvents.length - 1} über die Reiter oben`
+                            : `— the other ${subEvents.length - 1} via the tabs above`}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
               <div style={hauptGreyoutWrapperStyle()}>
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                 {visHeader('vis_capacity', <StepBadge n={(locationFilter && audience) ? 18 : 17} />, isDe ? 'Teilnehmerzahl & Warteliste' : 'Capacity & waitlist')}
@@ -11713,6 +11937,7 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
 
               </div>{/* v15.6: close hauptGreyoutWrapperStyle div (Step 4) */}
+              </div>{/* v28.72: close relative wrapper für die Klammer-Erklär-Box */}
               </div>{/* v15.0: close activeCapacityTabIdx===0 wrapper (Top-Level Sichtbarkeit/Deadlines/Max/Split) */}
 
               </div>{/* close Step 4 (Kapazität & Sichtbarkeit) */}
