@@ -882,7 +882,7 @@ const DESCRIPTION_TEMPLATES: Array<{ key: string; labelDe: string; labelEn: stri
 ];
 
 export default function EventCreationPage(): React.ReactElement {
-  const { goBack, selectedEventId, currentPage, setNavigationGuard } = useNavigation();
+  const { goBack, selectedEventId, currentPage, setNavigationGuard, navigate } = useNavigation();
   const { events, childEventsOf, createEvent, updateEvent, getLastEventUpdateError, deleteEvent, deleteEventItemOnly, refreshEvents, requestCoOrganizerApprovals, notifyNewCoOrganizers, notifyAdminsExternalAudienceAccess } = useEvents();
   const { currentUser } = useCurrentUser();
   // searchGroups + searchUsersByLocation werden seit v19.x ausschließlich im
@@ -4444,7 +4444,7 @@ export default function EventCreationPage(): React.ReactElement {
     };
   }, [organizer, organizerEmails]);
 
-  const handleSubmit = async (): Promise<void> => {
+  const handleSubmitInner = async (): Promise<void> => {
     // v9.14: Beschreibung ist jetzt optional. Nur Title bleibt Pflicht.
     if (!title) return;
 
@@ -5707,7 +5707,17 @@ export default function EventCreationPage(): React.ReactElement {
             // Name das erste Token als Vorname nehmen. Paarweise zu den
             // organizerEmails - bei Längen-Mismatch fällt wir auf den
             // ersten Namen zurück.
-            const allOrgEmails = organizerEmails.length > 0 ? organizerEmails : [currentUser.email];
+            const allOrgEmailsRaw = organizerEmails.length > 0 ? organizerEmails : [currentUser.email];
+            // v28.71: pro Adresse nur EINE Mail. Steht dieselbe Person zweimal
+            // in der Organizer-Liste (z.B. durch einen Doppel-Eintrag), kam die
+            // „Event angelegt"-Mail bisher entsprechend oft an.
+            const seenOrgMails = new Set<string>();
+            const allOrgEmails = allOrgEmailsRaw.filter(e => {
+              const lc = (e || '').trim().toLowerCase();
+              if (!lc || seenOrgMails.has(lc)) return false;
+              seenOrgMails.add(lc);
+              return true;
+            });
             const orgNames = organizer.split(';').map(s => s.trim()).filter(Boolean);
             for (let i = 0; i < allOrgEmails.length; i++) {
               const orgEmail = allOrgEmails[i];
@@ -5743,6 +5753,10 @@ export default function EventCreationPage(): React.ReactElement {
           initialFormSnapshotRef.current = computeFormSnapshot();
           setNavigationGuard(null);
           // v17.21: Summary-Export-Modal vor dem Submit-Success-Dispatch.
+          // v28.71: merken, dass dieser Wizard-Durchlauf sein Event bereits
+          // angelegt hat — jeder weitere „Speichern"-Klick darf kein zweites
+          // Event mehr erzeugen (s. handleSubmit).
+          createdEventIdRef.current = String(eventId);
           pendingSuccessDispatchRef.current = { title, eventId: String(eventId), type: 'create' };
           setPendingSuccessDispatch({ title, eventId: String(eventId), type: 'create' });
           setShowSummaryModal(true);
@@ -5763,6 +5777,53 @@ export default function EventCreationPage(): React.ReactElement {
         setProgress(0);
         setError(err instanceof Error ? err.message : 'Event konnte nicht erstellt werden.');
       }
+    }
+  };
+
+  /**
+   * v28.71 BUG-FIX: Zwei Riegel gegen versehentlich doppelt angelegte Events.
+   *
+   * Gemeldet wurde: „bei jedem Speichern wird das Event neu gespeichert" — im
+   * Postfach landeten mehrere „Event angelegt"-Mails zum selben Titel. Ursache
+   * sind zwei Luecken im Anlege-Pfad:
+   *
+   * 1. KEIN Re-Entry-Schutz. `handleSubmit` hatte weder eine
+   *    `isSubmitting`-Abfrage noch einen Latch, und der Speichern-Knopf wird
+   *    nicht deaktiviert. `setIsSubmitting(true)` wirkt erst mit dem naechsten
+   *    Render — zwei schnelle Klicks liefen also beide komplett durch und
+   *    legten zwei Events an. Ein Ref greift dagegen synchron.
+   * 2. NACH dem Anlegen blieb der Wizard im Anlege-Modus. `isEditMode` haengt
+   *    an `currentPage === 'edit-event'`; der Wizard verlaesst die Seite aber
+   *    erst, wenn das Zusammenfassungs-Fenster geschlossen wird. In diesem
+   *    Fenster war `setIsSubmitting(false)` bereits gesetzt — ein weiterer
+   *    Klick auf „Speichern" lief erneut in den CREATE-Zweig und legte ein
+   *    zweites Event an, statt das eben erstellte zu aktualisieren.
+   *
+   * Der zweite Klick ist jetzt kein stiller Doppel-Anlegevorgang mehr, sondern
+   * bietet an, das bereits angelegte Event zum Bearbeiten zu oeffnen.
+   */
+  const submitInFlightRef = React.useRef<boolean>(false);
+  const createdEventIdRef = React.useRef<string>('');
+  const handleSubmit = async (): Promise<void> => {
+    if (submitInFlightRef.current) return;
+    if (!isEditMode && createdEventIdRef.current) {
+      const openIt = await confirmDialog(
+        isDe
+          ? `„${title}" wurde in diesem Durchlauf bereits angelegt. Erneutes Speichern würde ein ZWEITES Event mit denselben Daten erzeugen.\n\nMöchtest du stattdessen das bereits angelegte Event zum Bearbeiten öffnen?`
+          : `„${title}" has already been created in this session. Saving again would create a SECOND event with the same data.\n\nDo you want to open the existing event for editing instead?`,
+        { confirmLabel: isDe ? 'Event öffnen' : 'Open event' },
+      );
+      if (openIt) {
+        setNavigationGuard(null);
+        navigate('edit-event', createdEventIdRef.current);
+      }
+      return;
+    }
+    submitInFlightRef.current = true;
+    try {
+      await handleSubmitInner();
+    } finally {
+      submitInFlightRef.current = false;
     }
   };
 
