@@ -6312,17 +6312,31 @@ export default function EventCreationPage(): React.ReactElement {
   ): React.ReactElement => {
     const locs = (locList || []).filter(Boolean);
     const auds = (audienceStr || '').split(',').map(s => s.trim()).filter(Boolean);
+    // v28.76: Klartext statt Stichworten. Vorher stand hier „Sichtbar für
+    // 1 Verteiler/Personen." — grammatisch schief und inhaltlich unklar
+    // (1 Verteiler? 1 Person? beides?). Jetzt ein ganzer Satz, der sagt, WER
+    // das Event sieht.
     let text: string;
     if (locs.length === 0 && auds.length === 0) {
-      text = isDe ? 'alle Mitarbeiter von Deloitte Deutschland' : 'all Deloitte Germany employees';
+      text = isDe
+        ? 'Das Event sehen alle Mitarbeiter von Deloitte Deutschland.'
+        : 'Everyone at Deloitte Germany can see this event.';
     } else {
       const parts: string[] = [];
-      if (locs.length) parts.push((isDe ? (locs.length === 1 ? 'Standort: ' : 'Standorte: ') : (locs.length === 1 ? 'Location: ' : 'Locations: ')) + locs.join(', '));
-      if (auds.length) parts.push(isDe ? `${auds.length} Verteiler/Personen` : `${auds.length} distribution lists/people`);
+      if (locs.length) {
+        parts.push(isDe
+          ? (locs.length === 1 ? `Mitarbeiter am Standort ${locs[0]}` : `Mitarbeiter an den Standorten ${locs.join(', ')}`)
+          : (locs.length === 1 ? `employees at location ${locs[0]}` : `employees at the locations ${locs.join(', ')}`));
+      }
+      if (auds.length) {
+        parts.push(isDe
+          ? (auds.length === 1 ? 'die Mitglieder des hinterlegten Verteilers bzw. die hinterlegte Person' : `die Mitglieder der ${auds.length} hinterlegten Verteiler bzw. Personen`)
+          : (auds.length === 1 ? 'the members of the selected distribution list or the selected person' : `the members of the ${auds.length} selected distribution lists / people`));
+      }
       const joiner = parts.length > 1
-        ? (mode === 'AND' ? (isDe ? ' UND ' : ' AND ') : (isDe ? ' ODER ' : ' OR '))
+        ? (mode === 'AND' ? (isDe ? ' und gleichzeitig ' : ' and at the same time ') : (isDe ? ' oder ' : ' or '))
         : '';
-      text = parts.join(joiner);
+      text = (isDe ? 'Das Event sehen nur ' : 'Only ') + parts.join(joiner) + (isDe ? '.' : ' can see this event.');
     }
     return (
       <div style={{
@@ -6333,7 +6347,7 @@ export default function EventCreationPage(): React.ReactElement {
         <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>
           {isDe ? 'Aktuell eingestellt: ' : 'Currently configured: '}
         </strong>
-        {isDe ? 'Sichtbar für ' : 'Visible to '}{text}.
+        {text}
         {excludedCount > 0 && (
           <> {isDe
             ? `${excludedCount} Person${excludedCount === 1 ? ' ist' : 'en sind'} ausgeschlossen.`
@@ -6341,6 +6355,97 @@ export default function EventCreationPage(): React.ReactElement {
         )}
       </div>
     );
+  };
+
+  /**
+   * v28.76: Widerspruch zwischen Klammer und Sub-Events benennen.
+   *
+   * Der Zugang läuft IMMER über die Klammer: Wer sie nicht sieht, kommt an
+   * kein Sub-Event — und die Sub-Events schränken danach weiter ein. Daraus
+   * folgen zwei Zustände, die in der Maske bisher unsichtbar waren:
+   *
+   *  a) Klammer offen, alle Sub-Events auf denselben Standort → jeder sieht
+   *     das Event, findet darin aber nichts zum Anmelden. Sieht nach einem
+   *     Fehler aus, ist aber die logische Folge der Einstellungen.
+   *  b) Ein Sub-Event lässt mehr zu als die Klammer → der Überschuss kommt
+   *     nie an, weil die Klammer vorher filtert. Die Einstellung im
+   *     Sub-Event wirkt dann schlicht nicht.
+   *
+   * Beides wird hier gemeldet, mit dem passenden Ein-Klick-Ausweg.
+   */
+  const renderKlammerVisibilityMismatch = (): React.ReactElement | null => {
+    if (!subEventsOnlyMode || subEvents.length === 0) return null;
+    const split = (s: string): string[] => (s || '').split(',').map(x => x.trim()).filter(Boolean);
+    const parentLocs = split(locationFilter);
+    const parentAuds = split(audience);
+    const parentOpen = parentLocs.length === 0 && parentAuds.length === 0;
+    const childLocSets = subEvents.map(s => split(s.locationFilter || ''));
+
+    // (a) Klammer offen, aber JEDES Sub-Event schränkt ein.
+    if (parentOpen && childLocSets.every(l => l.length > 0)) {
+      const union = Array.from(new Set(childLocSets.reduce((a, b) => a.concat(b), [])));
+      return (
+        <div style={{
+          marginTop: 10, padding: '10px 12px', borderRadius: 8,
+          background: '#fff8e6', border: '1px solid #e0b34d', color: '#7a5a12',
+          fontSize: '0.78rem', lineHeight: 1.55,
+        }}>
+          <strong>{isDe ? 'Die Klammer lässt mehr zu als ihre Sub-Events' : 'The bracket is broader than its sub-events'}</strong>
+          <div style={{ marginTop: 4 }}>
+            {isDe
+              ? <>Hier ist <strong>kein Standort</strong> gesetzt, das Event ist also für alle sichtbar — aber <strong>alle {subEvents.length} Sub-Events</strong> sind auf {union.length === 1 ? <>den Standort <strong>{union[0]}</strong></> : <>die Standorte <strong>{union.join(', ')}</strong></>} beschränkt. Wer nicht dazugehört, sieht das Event in der Übersicht, findet darin aber <strong>nichts, wofür er sich anmelden kann</strong>.</>
+              : <>No location is set here, so the event is visible to everyone — but <strong>all {subEvents.length} sub-events</strong> are restricted to {union.join(', ')}. People outside see the event but find nothing they can register for.</>}
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary"
+            style={{ fontSize: '0.78rem', padding: '5px 12px', marginTop: 8 }}
+            onClick={() => setLocationFilter(union.join(', '))}
+          >
+            {isDe
+              ? `Klammer ebenfalls auf ${union.join(', ')} setzen`
+              : `Restrict the bracket to ${union.join(', ')} as well`}
+          </button>
+        </div>
+      );
+    }
+
+    // (b) Ein Sub-Event lässt mehr zu, als die Klammer durchlässt.
+    if (!parentOpen && parentLocs.length > 0) {
+      const lc = (s: string): string => s.toLowerCase();
+      const parentLc = parentLocs.map(lc);
+      const offenders = subEvents
+        .map((s, i) => ({ s, extra: childLocSets[i].filter(l => parentLc.indexOf(lc(l)) < 0) }))
+        .filter(x => x.extra.length > 0);
+      if (offenders.length > 0) {
+        const extras = Array.from(new Set(offenders.reduce<string[]>((a, b) => a.concat(b.extra), [])));
+        return (
+          <div style={{
+            marginTop: 10, padding: '10px 12px', borderRadius: 8,
+            background: '#fff8e6', border: '1px solid #e0b34d', color: '#7a5a12',
+            fontSize: '0.78rem', lineHeight: 1.55,
+          }}>
+            <strong>{isDe ? 'Einstellungen in Sub-Events, die nicht greifen können' : 'Sub-event settings that cannot take effect'}</strong>
+            <div style={{ marginTop: 4 }}>
+              {isDe
+                ? <>{offenders.length === 1 ? 'Ein Sub-Event lässt' : `${offenders.length} Sub-Events lassen`} {extras.length === 1 ? <>den Standort <strong>{extras[0]}</strong></> : <>die Standorte <strong>{extras.join(', ')}</strong></>} zu — die Klammer aber nicht. Der Zugang läuft immer über die Klammer, deshalb bleiben diese Personen <strong>trotzdem draußen</strong>. Entweder hier ergänzen oder im Sub-Event entfernen.</>
+                : <>{offenders.length} sub-event(s) allow {extras.join(', ')}, but the bracket does not. Access always goes through the bracket, so those people stay out anyway.</>}
+            </div>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ fontSize: '0.78rem', padding: '5px 12px', marginTop: 8 }}
+              onClick={() => setLocationFilter(Array.from(new Set(parentLocs.concat(extras))).join(', '))}
+            >
+              {isDe
+                ? `${extras.join(', ')} hier ergänzen`
+                : `Add ${extras.join(', ')} here`}
+            </button>
+          </div>
+        );
+      }
+    }
+    return null;
   };
 
   // v15.6: Style-Helfer für den ausgegrauten Hauptevent-Tab-Inhalt. Bei
@@ -7054,7 +7159,7 @@ export default function EventCreationPage(): React.ReactElement {
               {subEventsOnlyMode
                 ? <>Zur Klammer meldet sich niemand direkt an — Teilnehmer wählen eines der Sub-Events. </>
                 : null}
-              Die Einstellungen hier gelten <strong>nur dafür</strong>. {otherSubs === 1 ? 'Das andere Sub-Event stellst du' : `Die ${otherSubs} Sub-Events stellst du`} oben über {otherSubs === 1 ? 'seinen Reiter' : 'ihre Reiter'} <strong>separat</strong> ein.</>
+              Die Einstellungen auf dieser Seite gelten <strong>ausschließlich für {subEventsOnlyMode ? 'die Klammer' : 'das Haupt-Event'}</strong>. {otherSubs === 1 ? 'Das andere Sub-Event stellst du' : `Die ${otherSubs} Sub-Events stellst du`} oben über {otherSubs === 1 ? 'seinen Reiter' : 'ihre Reiter'} <strong>separat</strong> ein.</>
           );
         }
         return (
@@ -7065,7 +7170,7 @@ export default function EventCreationPage(): React.ReactElement {
       }
       if (isDe) {
         return (
-          <>Du bearbeitest gerade das <strong>Sub-Event</strong> „{activeLabel}“. Die Einstellungen hier gelten <strong>nur dafür</strong>
+          <>Du bearbeitest gerade das <strong>Sub-Event</strong> „{activeLabel}“. Die Einstellungen auf dieser Seite gelten <strong>ausschließlich für dieses Sub-Event</strong>
             {otherSubs > 0
               ? <> — {mainWord === 'Klammer' ? 'die Klammer' : 'das Haupt-Event'} und {otherSubs === 1 ? 'das weitere Sub-Event' : `die ${otherSubs} weiteren Sub-Events`} stellst du oben über die Reiter separat ein.</>
               : <> — {mainWord === 'Klammer' ? 'die Klammer' : 'das Haupt-Event'} stellst du oben über den Reiter separat ein.</>}</>
@@ -10697,11 +10802,45 @@ export default function EventCreationPage(): React.ReactElement {
                             <strong>{isDe ? 'Pflichtanmeldung für dieses Sub-Event' : 'Mandatory registration for this sub-event'}</strong>
                             <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2, fontWeight: 400 }}>
                               {isDe
-                                ? 'Wenn aktiv, muss jeder Teilnehmer dieses Sub-Event mitbuchen — eine Anmeldung ohne dieses Sub-Event ist dann nicht möglich.'
-                                : 'If active, every attendee must include this sub-event — registering without it is then not possible.'}
+                                ? <>Wenn aktiv, muss jeder Teilnehmer dieses Sub-Event mitbuchen — eine Anmeldung ohne dieses Sub-Event ist dann nicht möglich. <strong>Nur setzen, wenn dieser Termin für wirklich alle verpflichtend ist</strong> (z.B. eine Auftaktveranstaltung). Für „darf gebucht werden“ ist der Haken nicht nötig — ohne ihn kann jeder frei wählen.</>
+                                : <>If active, every attendee must include this sub-event — registering without it is then not possible. <strong>Only set this if the date is truly compulsory for everyone</strong> (e.g. a kick-off). For „may be booked“ the checkbox is not needed — without it everyone can choose freely.</>}
                             </span>
                           </span>
                         </label>
+                        {/* v28.77: Der Haken wurde als „dieses Sub-Event ist
+                            buchbar" missverstanden und darum bei ALLEN gesetzt.
+                            Das Ergebnis ist das Gegenteil einer Auswahl: Wer
+                            teilnehmen will, muss dann jeden einzelnen Termin
+                            mitbuchen. Diesen Zustand benennen, sobald er
+                            eintritt — mit einem Klick zum Zurücknehmen. */}
+                        {(() => {
+                          const named = subEvents.filter(s => (s.title || '').trim());
+                          const mandatoryCount = named.filter(s => s.mandatory).length;
+                          if (named.length < 2 || mandatoryCount !== named.length || !se.mandatory) return null;
+                          if (idx !== subEvents.findIndex(s => (s.title || '').trim())) return null;
+                          return (
+                            <div style={{
+                              margin: '0 0 8px', padding: '9px 11px', borderRadius: 8,
+                              background: '#fff8e6', border: '1px solid #e0b34d', color: '#7a5a12',
+                              fontSize: '0.78rem', lineHeight: 1.55,
+                            }}>
+                              <strong>{isDe ? `Alle ${named.length} Sub-Events sind als Pflicht markiert` : `All ${named.length} sub-events are marked mandatory`}</strong>
+                              <div style={{ marginTop: 3 }}>
+                                {isDe
+                                  ? <>Damit gibt es faktisch <strong>keine Auswahl mehr</strong> — wer teilnehmen möchte, muss <strong>alle {named.length}</strong> mitbuchen; wer auch nur einen Termin nicht kann, kann sich gar nicht anmelden.{subEventsOnlyMode ? <> Bei diesem Klammerevent läuft die Anmeldung ohnehin ausschließlich über die Sub-Events — der Haken ist dafür <strong>nicht nötig</strong>.</> : null} Gemeint war vermutlich, dass die Sub-Events buchbar sind — dafür lässt du den Haken einfach weg.</>
+                                  : <>That leaves <strong>no choice at all</strong> — attendees must book <strong>all {named.length}</strong>; anyone unavailable for a single date cannot register.{subEventsOnlyMode ? <> For this bracket event registration runs via the sub-events anyway — the checkbox is <strong>not needed</strong> for that.</> : null}</>}
+                              </div>
+                              <button
+                                type="button"
+                                className="btn btn-primary"
+                                style={{ fontSize: '0.78rem', padding: '5px 12px', marginTop: 8 }}
+                                onClick={() => setSubEvents(prev => prev.map(s => ({ ...s, mandatory: false })))}
+                              >
+                                {isDe ? 'Pflicht bei allen entfernen' : 'Remove mandatory from all'}
+                              </button>
+                            </div>
+                          );
+                        })()}
 
                         {/* v15: Mail- und Outlook-Toggles raus aus der Sub-Event-
                             Card — sie leben jetzt ausschliesslich in Schritt 6
@@ -11226,6 +11365,8 @@ export default function EventCreationPage(): React.ReactElement {
                 filterMode,
                 (excludedUsers || []).length
               )}
+              {/* v28.76: Widerspruch Klammer ↔ Sub-Events benennen (s.o.). */}
+              {renderKlammerVisibilityMismatch()}
 
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                 {visHeader('vis_locfilter', <StepBadge n={13} />, isDe ? 'Standortfilter' : 'Location filter')}
@@ -11561,53 +11702,37 @@ export default function EventCreationPage(): React.ReactElement {
                   Erklär-Box darüber, die sagt WARUM es hier nicht gilt und mit
                   einem Klick ins erste Sub-Event führt, wo die Plätze
                   tatsächlich gepflegt werden. */}
-              <div style={{ position: 'relative' }}>
-              {subEventsOnlyMode && subEvents.length > 0 && (
+              {subEventsOnlyMode && subEvents.length > 0 ? (
+                /* v28.76: Vorher lag die Erklärung als Overlay über dem
+                   ausgegrauten Abschnitt. Der ist eingeklappt aber nur rund
+                   50 px hoch — die Box ragte unten aus der Karte heraus und
+                   überdeckte die Weiter-Knöpfe. Jetzt steht sie schlank AN
+                   der Stelle des Abschnitts, statt darüber zu schweben. */
                 <div style={{
-                  position: 'absolute', inset: 0, zIndex: 5,
-                  display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-                  padding: 14, borderRadius: 8,
-                  background: 'rgba(255,255,255,0.86)',
-                  pointerEvents: 'auto',
+                  display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+                  padding: '10px 14px', marginBottom: 12, borderRadius: 8,
+                  background: 'var(--dex-gray-50, #fafafa)',
+                  border: '1px solid var(--dex-gray-200)',
+                  borderLeft: '4px solid var(--dex-green, #86bc25)',
                 }}>
-                  <div style={{
-                    maxWidth: 560, padding: '16px 18px', borderRadius: 10,
-                    background: '#fff', border: '1px solid var(--dex-gray-300)',
-                    borderLeft: '4px solid var(--dex-green, #86bc25)',
-                    boxShadow: '0 8px 24px rgba(0,0,0,0.10)',
-                  }}>
-                    <div style={{ fontWeight: 700, fontSize: '0.92rem', marginBottom: 6 }}>
-                      {isDe
-                        ? `Plätze werden pro ${childTermSingular || 'Sub-Event'} vergeben`
-                        : `Seats are assigned per ${childTermSingular || 'sub-event'}`}
-                    </div>
-                    <p style={{ margin: '0 0 12px', fontSize: '0.84rem', lineHeight: 1.55, color: 'var(--dex-gray-700)' }}>
-                      {isDe
-                        ? <>Dieses Event ist eine <strong>Klammer</strong> — zur Klammer selbst meldet sich niemand an, Teilnehmer wählen {subEvents.length === 1 ? 'das' : 'eines der'} {subEvents.length === 1 ? '' : `${subEvents.length} `}{subEvents.length === 1 ? (childTermSingular || 'Sub-Event') : (childTermPlural || 'Sub-Events')}. Eine Teilnehmerzahl auf dieser Ebene hätte deshalb keine Wirkung. Trag die Plätze und die Warteliste stattdessen <strong>im jeweiligen {childTermSingular || 'Sub-Event'}</strong> ein.</>
-                        : <>This event is a <strong>bracket</strong> — nobody registers for the bracket itself, attendees pick one of the {subEvents.length} sub-events. A capacity at this level would have no effect. Set seats and waitlist <strong>in each sub-event</strong> instead.</>}
-                    </p>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button
-                        type="button"
-                        className="btn btn-primary"
-                        style={{ fontSize: '0.83rem', padding: '7px 14px' }}
-                        onClick={() => setActiveCapacityTabIdx(1)}
-                      >
-                        {isDe
-                          ? `Zu „${shortSubEventTitle(subEvents[0].title, title) || (childTermSingular || 'Sub-Event')}“`
-                          : `Go to „${shortSubEventTitle(subEvents[0].title, title) || 'sub-event'}“`}
-                      </button>
-                      {subEvents.length > 1 && (
-                        <span style={{ alignSelf: 'center', fontSize: '0.78rem', color: 'var(--dex-gray-500)' }}>
-                          {isDe
-                            ? `— die übrigen ${subEvents.length - 1} über die Reiter oben`
-                            : `— the other ${subEvents.length - 1} via the tabs above`}
-                        </span>
-                      )}
-                    </div>
-                  </div>
+                  <span style={{ fontSize: '0.82rem', lineHeight: 1.5, color: 'var(--dex-gray-700)', flex: 1, minWidth: 260 }}>
+                    {isDe
+                      ? <><strong>Plätze &amp; Warteliste</strong> werden pro {childTermSingular || 'Sub-Event'} vergeben — bei einer Klammer hätte eine Teilnehmerzahl hier keine Wirkung.</>
+                      : <><strong>Seats &amp; waitlist</strong> are set per sub-event — for a bracket a capacity here would have no effect.</>}
+                  </span>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ fontSize: '0.8rem', padding: '6px 12px', flexShrink: 0 }}
+                    onClick={() => setActiveCapacityTabIdx(1)}
+                  >
+                    {isDe
+                      ? `Zu „${shortSubEventTitle(subEvents[0].title, title) || (childTermSingular || 'Sub-Event')}“`
+                      : `Go to „${shortSubEventTitle(subEvents[0].title, title) || 'sub-event'}“`}
+                  </button>
                 </div>
-              )}
+              ) : (
+                <>
               <div style={hauptGreyoutWrapperStyle()}>
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                 {visHeader('vis_capacity', <StepBadge n={(locationFilter && audience) ? 18 : 17} />, isDe ? 'Teilnehmerzahl & Warteliste' : 'Capacity & waitlist')}
@@ -12087,7 +12212,8 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
 
               </div>{/* v15.6: close hauptGreyoutWrapperStyle div (Step 4) */}
-              </div>{/* v28.72: close relative wrapper für die Klammer-Erklär-Box */}
+                </>
+              )}{/* v28.76: Ende Klammer-Fall / Normalfall */}
               </div>{/* v15.0: close activeCapacityTabIdx===0 wrapper (Top-Level Sichtbarkeit/Deadlines/Max/Split) */}
 
               </div>{/* close Step 4 (Kapazität & Sichtbarkeit) */}

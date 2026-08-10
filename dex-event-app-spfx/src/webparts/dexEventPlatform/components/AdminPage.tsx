@@ -7058,9 +7058,15 @@ export default function AdminPage(): React.ReactElement {
                     if (lc.length === 0 && au.length === 0) {
                       return isDe ? 'alle Mitarbeiter von Deloitte Deutschland' : 'all Deloitte Germany employees';
                     }
+                    // v28.76: „1 Verteiler/Personen" war grammatisch schief —
+                    // Singular und Plural in einem Wort. Jetzt sauber gebeugt.
                     const parts: string[] = [];
-                    if (lc.length) parts.push((isDe ? (lc.length === 1 ? 'Standort: ' : 'Standorte: ') : (lc.length === 1 ? 'Location: ' : 'Locations: ')) + lc.join(', '));
-                    if (au.length) parts.push(isDe ? `${au.length} Verteiler/Personen` : `${au.length} distributions/people`);
+                    if (lc.length) parts.push((isDe ? (lc.length === 1 ? 'Standort ' : 'Standorte ') : (lc.length === 1 ? 'location ' : 'locations ')) + lc.join(', '));
+                    if (au.length) {
+                      parts.push(isDe
+                        ? (au.length === 1 ? '1 Verteiler bzw. Person' : `${au.length} Verteiler bzw. Personen`)
+                        : (au.length === 1 ? '1 distribution list or person' : `${au.length} distribution lists / people`));
+                    }
                     return parts.join(isDe ? ' und ' : ' and ');
                   };
                   const locs = (selectedEvent.locationAudience || []).filter(Boolean);
