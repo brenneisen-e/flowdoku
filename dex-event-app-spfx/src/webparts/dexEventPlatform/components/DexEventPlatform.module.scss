@@ -863,6 +863,19 @@
       font-weight: 700 !important;
       color: var(--dex-green-dark, #6b9a1e) !important;
     }
+    /* v28.91: Angelegte Termin-Tage im Assistenten. Gefüllt statt nur getönt —
+       der Kalender ist dort eine Auswahl, kein Datumsfeld, und man muss auf
+       einen Blick sehen, welche Tage schon stehen. */
+    .dex-day-picked,
+    .react-datepicker__day.dex-day-picked {
+      background: var(--dex-green, #86bc25) !important;
+      color: #fff !important;
+      font-weight: 700 !important;
+    }
+    .react-datepicker__day.dex-day-picked:hover {
+      background: var(--dex-green-dark, #6b9a1e) !important;
+      color: #fff !important;
+    }
     /* Heute UND ausgewählt/keyboard-selected (grüner Kreis): Schrift weiß,
        sonst überschreibt die --today-Regel die weiße Schrift und „heute" wäre
        grün auf grün = unsichtbar. */

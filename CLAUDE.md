@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v28.90.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v28.91.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -186,16 +186,18 @@ Die vier Punkte aus v28.87 sind mit v28.88/v28.89 abgearbeitet (Feld-Ebene,
 Reiter-Darstellung, Outlook-Dialog, Legacy-Rollen), v28.90 hat die Nachlese
 dazu erledigt. Offen und **noch nicht begonnen**:
 
-1. **Termin-Slots statt einzeln angelegter Sub-Events.** Der Wunsch: im
-   Assistenten einen Zeitraum im Kalender markieren und daraus je Tag (oder je
-   Stunde) ein Sub-Event erzeugen lassen, statt neun Karten von Hand
-   anzulegen; auf der Anmeldeseite dann ein Kalender zur Auswahl statt einer
-   Liste aus neun Funkbuttons. Vor dem Bauen zu klären, ob ein Slot ein
-   **eigenes Sub-Event** bleibt (dann ist es reine Erzeugungs- und
-   Darstellungs-Hilfe — Teilnehmerliste, Kapazität, Outlook-Termin und
-   `ParentEventId` bleiben wie sie sind) oder ein **neuer Datentyp** unterhalb
-   des Sub-Events wird (dann hängen Teilnehmerliste, Flows und Warteliste mit
-   daran). Ersteres ist deutlich billiger und deckt den geschilderten Fall.
+1. **Stunden-Slots.** v28.91 kann Tage (`_subEventCalendar`): Im Assistenten
+   Tage anklicken → je Tag ein normales Sub-Event; auf der Anmeldeseite ein
+   Monatsraster statt der Liste. Ein Raster **innerhalb** eines Tages (09–11,
+   11–13 …) ist bewusst nicht gebaut. Wenn es kommt, auf demselben Weg: ein
+   Slot bleibt ein Sub-Event, der Kalender erzeugt nur mehrere pro Tag. Ein
+   eigener Datentyp unterhalb des Sub-Events würde Teilnehmerliste, Flows und
+   Warteliste mitziehen — das ist die teure Variante.
+
+   **Wichtig bei erzeugten Terminen:** Start/Ende werden explizit auf
+   00:00/23:59 gesetzt. Leer lassen wäre falsch — ein Sub-Event ohne Zeiten
+   erbt seit v28.66 die Zeiten des Hauptevents, bei einer Reihe also den
+   gesamten Zeitraum statt des einen Tages.
 
 Bewusst **nicht** gebaut: ein Dropdown zum Springen zwischen Sub-Event-Reitern.
 Es wäre eine zweite Bedienung für dieselbe Auswahl; die gescrollte Leiste hat

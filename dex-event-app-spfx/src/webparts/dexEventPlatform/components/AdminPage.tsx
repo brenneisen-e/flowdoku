@@ -48,8 +48,8 @@ import ImageCropModal from './ImageCropModal';
 import { InfoTooltip } from './InfoTooltip';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 import Modal from './Modal';
-// v28.90: Platzhalter, wenn ein Event kein eigenes Foto hat.
-import DexLogo from './DexLogo';
+// v28.91: Platzhalter-Bild, wenn ein Event kein eigenes Foto hat.
+import { DEX_ORB_PNG } from '../data/brandLogos';
 import { Icon } from '@fluentui/react/lib/Icon';
 import TicketEventBox from './tickets/TicketEventBox';
 import InternationalSearchToggle from './InternationalSearchToggle';
@@ -6735,20 +6735,33 @@ export default function AdminPage(): React.ReactElement {
                       />
                     </div>
                   ) : (
-                    <div
-                      title={isDe
-                        ? 'Für dieses Event ist kein Foto hinterlegt — hier steht ersatzweise das DEX-Logo. Ein Foto lädst du über „Event bearbeiten" in Schritt 1 hoch.'
-                        : 'No photo is set for this event — the DEX logo stands in. Upload one via „Edit event", step 1.'}
-                      style={{
-                        background: '#fff',
-                        borderRadius: 'var(--dex-radius, 12px)',
-                        overflow: 'hidden',
-                        border: '1px solid var(--dex-gray-200, #e5e7eb)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        padding: 18,
-                      }}
-                    >
-                      <DexLogo title="DEX" motion="oscillate" style={{ width: '100%' }} />
+                    // v28.91: Das BILD, nicht die animierte Canvas-Version.
+                    // Ein sich drehendes Logo an der Stelle eines Event-Fotos
+                    // zieht den Blick auf sich, obwohl es nur sagt „hier ist
+                    // kein Bild". Darunter der Hinweis, dass es der Platzhalter
+                    // ist und wo man ein eigenes Foto hinterlegt.
+                    <div>
+                      <div
+                        style={{
+                          background: '#fff',
+                          borderRadius: 'var(--dex-radius, 12px)',
+                          overflow: 'hidden',
+                          border: '1px solid var(--dex-gray-200, #e5e7eb)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          padding: 18,
+                        }}
+                      >
+                        <img
+                          src={DEX_ORB_PNG}
+                          alt=""
+                          style={{ display: 'block', width: '100%', height: 'auto', maxHeight: 200, objectFit: 'contain' }}
+                        />
+                      </div>
+                      <p style={{ margin: '6px 2px 0', fontSize: '0.72rem', color: 'var(--dex-gray-500)', lineHeight: 1.4 }}>
+                        {isDe
+                          ? <>Standardfoto — ein eigenes Bild hinterlegst du über <strong>&bdquo;Event bearbeiten&ldquo;</strong>.</>
+                          : <>Default image — set your own via <strong>&bdquo;Edit event&ldquo;</strong>.</>}
+                      </p>
                     </div>
                   )}
                   {showSciTile && (

@@ -1489,6 +1489,10 @@ export default function EventCreationPage(): React.ReactElement {
   // v28.5: Bild als Banner über den Event-Infos (statt kompakt links) —
   // Organizer-Wahl, sinnvoll für breite Querformat-Fotos. Piggyback _imageBanner.
   const [imageBanner, setImageBanner] = React.useState<boolean>(!!(editEvent && editEvent.imageBanner));
+  // v28.91: Sub-Events sind Termine (ein Tag je Sub-Event). Der Organizer legt
+  // sie über einen Kalender an, die Anmeldeseite zeigt sie als Kalender.
+  // Piggyback _subEventCalendar.
+  const [subEventCalendar, setSubEventCalendar] = React.useState<boolean>(!!(editEvent && editEvent.subEventCalendar));
   // v28.10: Seitenverhältnis des Wizard-Bilds — die Banner-Option ist nur für
   // Querformat-Fotos sinnvoll und wird nur dann angeboten (Ratio >= 1.2).
   const [wizardImgAspect, setWizardImgAspect] = React.useState<number | null>(null);
@@ -1750,6 +1754,8 @@ export default function EventCreationPage(): React.ReactElement {
           _hotels, _hotelStays, _hotelVisible, _hotelRules,
           // v28.79: „Keine Beschreibung nutzen"-Flag (s. noDescriptionConfig).
           _noDescription,
+          // v28.91: Kalender-Modus der Sub-Events (s. subEventCalendarConfig).
+          _subEventCalendar,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -1762,6 +1768,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee; void _previewBeforeActive; void _imageDisplay;
         void _organizerDisplayLarge; void _hiddenOrganizers; void _hideOrgIndividual; void _mainEventLabel;
         void _imageOrigUrl; void _klammerDeadline; void _noDescription;
+        void _subEventCalendar;
         void _hotels; void _hotelStays; void _hotelVisible; void _hotelRules;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
@@ -4978,6 +4985,9 @@ export default function EventCreationPage(): React.ReactElement {
       // Beschreibung wollte oder sie schlicht vergessen hat; die Box
       // „Nächste Schritte" meldete sie deshalb ewig als fehlend.
       const noDescriptionConfig = (noDescription && !description.trim()) ? { _noDescription: true } : {};
+      // v28.91: Kalender-Modus nur setzen, wenn er aktiv ist — ein
+      // abgewaehlter Schalter darf keinen Rest im Blob hinterlassen.
+      const subEventCalendarConfig = (subEventCalendar && subEventsOptIn) ? { _subEventCalendar: true } : {};
       // v28.11: Bestehende Original-Bild-URL beim Edit-Save WEITERTRAGEN —
       // sonst würde der frisch zusammengebaute Overrides-Blob sie wegwerfen.
       // v28.12: auch bei neuem Bild erstmal mitschreiben; der Post-Save-Code
@@ -5039,6 +5049,7 @@ export default function EventCreationPage(): React.ReactElement {
         organizerDisplayLargeConfig, previewBeforeActiveConfig,
         imageDisplayConfig, hideOrganizerConfig, hiddenOrganizersConfig,
         hideOrgIndividualConfig, headerImageLayoutConfig, noDescriptionConfig,
+        subEventCalendarConfig,
       ];
       updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || !!effEmailLogo || !!effOutlookLogo || topPiggybackConfigs.some(o => Object.keys(o).length > 0))
         // v28.2: Object.assign statt Spread-Kette — die Literal-Spreads
@@ -5737,6 +5748,8 @@ export default function EventCreationPage(): React.ReactElement {
             hideOrgIndividualExtra, headerImageLayoutConfig,
             // v28.79: „Keine Beschreibung nutzen" auch beim Anlegen merken.
             ((noDescription && !description.trim()) ? { _noDescription: true } : {}),
+            // v28.91: Kalender-Modus der Sub-Events.
+            ((subEventCalendar && subEventsOptIn) ? { _subEventCalendar: true } : {}),
           ];
           const hasAny = Object.keys(emailTemplateOverrides).length > 0 || !!effEmailLogo || !!effOutlookLogo || createPiggybackConfigs.some(o => Object.keys(o).length > 0);
           return hasAny
@@ -6461,11 +6474,14 @@ export default function EventCreationPage(): React.ReactElement {
     // Reiter-Reihe schob sich bei vielen Sub-Events über den rechten Kartenrand
     // hinaus — Flex-Kinder haben `min-width: auto`, die Scroll-Fläche konnte
     // ihren Container also aufblähen.
+    // v28.91: …und ganz ohne eigene Fläche. Die weiße Karte auf grauem Grund
+    // war immer noch ein Kasten, der um Aufmerksamkeit konkurriert; die Reiter
+    // selbst tragen ihre Form bereits. Transparent, nur Abstand.
     return (
       <div style={{
-        margin: '18px 0 0', padding: '12px 16px 14px', borderRadius: 14,
-        background: '#fff',
-        border: '1px solid var(--dex-gray-200, #e6e6e6)',
+        margin: '18px 0 0', padding: '12px 0 14px', borderRadius: 0,
+        background: 'transparent',
+        border: 'none',
         overflow: 'hidden',
       }}>
         {applies ? (
@@ -7443,6 +7459,88 @@ export default function EventCreationPage(): React.ReactElement {
   const scDescription = scopeSub ? (scopeSub.description || '') : description;
   const setScDescription = (v: string): void => { if (scopeSub) patchScopeSub({ description: v }); else setDescription(v); };
   const scImagePreview = scopeSub ? (scopeSub.imagePreview || '') : imagePreview;
+
+  /**
+   * v28.91: Termine als Sub-Events.
+   *
+   * Ein Termin ist KEIN neuer Datentyp — er ist ein ganz normales Sub-Event
+   * mit eigener Teilnehmerliste, Kapazität, Frist und Outlook-Termin. Der
+   * Kalender ist nur eine schnellere Art, sie anzulegen (neun Tage anklicken
+   * statt neun Karten ausfüllen) und auf der Anmeldeseite anzuzeigen. Damit
+   * bleiben Flows, `ParentEventId` und die Warteliste unangetastet.
+   */
+  const dayKeyOfDate = (d: Date): string =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const dayKeyOfSub = (se: SubEventDraft): string => {
+    if (!se.startDate) return '';
+    const local = isoToLocal(se.startDate);
+    return local ? local.slice(0, 10) : '';
+  };
+  const dayLabel = (d: Date): string =>
+    d.toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+  /** Leerer Draft mit den Vorgaben, die auch der „Hinzufügen"-Knopf setzt. */
+  const makeSubEventDraft = (patch: Partial<SubEventDraft>): SubEventDraft => ({
+    id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `se_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    title: '',
+    description: '',
+    location: '',
+    startDate: '',
+    endDate: '',
+    maxParticipants: 0,
+    disableEmails: false,
+    disableOutlook: false,
+    locationAddress: { street: '', houseNo: '', zip: '', city: '' },
+    agenda: [],
+    transferTimes: [],
+    // v28.20: Hat die Klammer eine explizite Frist, starten neue Sub-Events
+    // mit demselben Anmeldeschluss.
+    ...(subEventsOnlyMode && klammerDeadline
+      ? { registrationDeadline: berlinLocalToUtcIso(klammerDeadline) || '' }
+      : {}),
+    lastDeregisterDate: '',
+    locationFilter: locationFilter,
+    audience: audience,
+    filterMode: filterMode,
+    excludedUsers: [],
+    waitlistEnabled: true,
+    askSalutation: false,
+    ...patch,
+  });
+  /**
+   * Tag im Kalender umschalten. Anlegen ist harmlos; Entfernen kann eine
+   * gespeicherte Teilnehmerliste betreffen (`dbId`) und fragt deshalb nach —
+   * dieselbe Rückfrage wie das X an der Karte.
+   */
+  const toggleDaySubEvent = (d: Date | null): void => {
+    if (!d) return;
+    const key = dayKeyOfDate(d);
+    const existingIdx = subEvents.findIndex(se => dayKeyOfSub(se) === key);
+    if (existingIdx < 0) {
+      // Der Termin bekommt den ganzen Tag: Ein Sub-Event ohne Zeiten würde die
+      // Zeiten des Hauptevents erben (v28.66) — das ist bei einer Reihe über
+      // mehrere Wochen der gesamte Zeitraum und damit falsch.
+      const start = berlinLocalToUtcIso(`${key}T00:00`);
+      const end = berlinLocalToUtcIso(`${key}T23:59`);
+      setSubEvents(prev => prev.concat([makeSubEventDraft({ title: dayLabel(d), startDate: start, endDate: end })]));
+      return;
+    }
+    const se = subEvents[existingIdx];
+    (async () => {
+      const ok = await confirmDialog(
+        se.dbId
+          ? (isDe
+            ? `Termin „${se.title || dayLabel(d)}" entfernen? Beim nächsten SPEICHERN wird er endgültig gelöscht — inklusive Teilnehmerliste und aller Anmeldungen (93 Tage im Papierkorb).`
+            : `Remove date "${se.title || dayLabel(d)}"? On the next SAVE it is permanently deleted — including its attendee list and all registrations (recycled for 93 days).`)
+          : (isDe
+            ? `Termin „${se.title || dayLabel(d)}" wieder entfernen?`
+            : `Remove date "${se.title || dayLabel(d)}" again?`),
+        { danger: !!se.dbId, confirmLabel: isDe ? 'Entfernen' : 'Remove' }
+      );
+      if (!ok) return;
+      setScope(0);
+      setSubEvents(prev => prev.filter(x => x.id !== se.id));
+    })().catch(() => { /* */ });
+  };
 
   const renderPerEventTabStrip = (
     activeIdx: number,
@@ -9103,7 +9201,7 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={6} />
+                  <StepBadge n={11} />
                   <span className="required">*</span> {t('create.organizer')}
                   <InfoTooltip text={isDe ? (
                     <>
@@ -9659,7 +9757,7 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={7} />
+                  <StepBadge n={12} />
                   Test-Team
                   <InfoTooltip text={isDe ? (
                     <>
@@ -9810,7 +9908,7 @@ export default function EventCreationPage(): React.ReactElement {
                   bekommen KEINE Organizer-Mails. */}
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={8} />
+                  <StepBadge n={13} />
                   {t('create.qrscanners') || 'QR-Code-Scanner'}
                   <InfoTooltip text={isDe ? (
                     <>
@@ -10198,7 +10296,7 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                     <div className="form-group">
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <StepBadge n={9} />
+                        <StepBadge n={14} />
                         {t('create.location')}
                       </label>
                       <input
@@ -10210,7 +10308,7 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                     <div className="form-group">
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <StepBadge n={10} />
+                        <StepBadge n={15} />
                         {isDe ? 'Adresse' : 'Address'}
                       </label>
                       <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: 8, marginBottom: 8 }}>
@@ -10241,7 +10339,7 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                     <div className="form-group" style={{ marginTop: 24 }}>
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
-                        <StepBadge n={11} />
+                        <StepBadge n={16} />
                         {t('create.agenda')}
                       </label>
                       {seAgenda
@@ -10300,7 +10398,7 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                     <div className="form-group" style={{ marginTop: 24 }}>
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
-                        <StepBadge n={12} />
+                        <StepBadge n={17} />
                         {t('create.transfers')}
                       </label>
                       {seTransfers.map(tt => (
@@ -10376,7 +10474,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div>
               <div className="form-group">
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={9} />
+                  <StepBadge n={14} />
                   {t('create.location')}
                   <InfoTooltip text={isDe ? (
                     <>
@@ -10398,7 +10496,7 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
               <div className="form-group">
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={10} />
+                  <StepBadge n={15} />
                   Adresse
                   <InfoTooltip text={isDe ? (
                     <>
@@ -10460,7 +10558,7 @@ export default function EventCreationPage(): React.ReactElement {
               {/* ===== Agenda Editor ===== */}
               <div className="form-group" style={{ marginTop: 24 }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
-                  <StepBadge n={11} />
+                  <StepBadge n={16} />
                   {t('create.agenda')}
                   <InfoTooltip text={isDe ? (
                     <>
@@ -10547,7 +10645,7 @@ export default function EventCreationPage(): React.ReactElement {
               {/* ===== Transferzeiten Editor ===== */}
               <div className="form-group" style={{ marginTop: 24 }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
-                  <StepBadge n={12} />
+                  <StepBadge n={17} />
                   {t('create.transfers')}
                   <InfoTooltip text={isDe ? (
                     <>
@@ -10656,6 +10754,27 @@ export default function EventCreationPage(): React.ReactElement {
               {/* v22.36: Opt-in-Frage — Default nein; erst bei „ja" erscheint
                   die gesamte Sub-Event-Konfiguration. Abschalten mit
                   vorhandenen Sub-Events fragt nach und verwirft sie dann. */}
+              {/* v28.91: Sichtbarer Schnitt zwischen den Grundlagen (1-5) und
+                  dem Aufbau des Events. Ohne ihn schloss die Sub-Event-Frage
+                  direkt an das Bild-Feld an und las sich wie noch ein
+                  Grundlagen-Feld — dabei beginnt hier ein anderes Thema:
+                  nicht mehr WAS das Event ist, sondern WORAUS es besteht. */}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                margin: '28px 0 14px',
+              }}>
+                <span style={{
+                  fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.04em',
+                  textTransform: 'uppercase', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap',
+                }}>
+                  {isDe ? 'Aufbau des Events' : 'How the event is structured'}
+                </span>
+                <span style={{ flex: 1, height: 1, background: 'var(--dex-gray-200, #e6e6e6)' }} />
+              </div>
+
+              {/* v28.91: Schalter und Erklaerung gehoeren zusammen — die Frage
+                  und die Antwort darauf, was ein Sub-Event ueberhaupt ist.
+                  Zwei Kaesten uebereinander lasen sich wie zwei Themen. */}
               <div style={{ background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: '12px 16px', marginBottom: 12, border: '1px solid var(--dex-gray-200)' }}>
                 <div className="toggle-wrapper" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <label className="toggle">
@@ -10704,6 +10823,9 @@ export default function EventCreationPage(): React.ReactElement {
                       erscheint nur, wenn es etwas zu sagen gibt: dass die
                       Sub-Events unten angelegt werden, bzw. dass deaktivierte
                       erhalten bleiben. */}
+                  {/* v28.91: Die Sub-Event-Angaben sind Teil von Schritt 1 und
+                      zaehlen deshalb in dessen Nummerierung weiter (1-5 oben). */}
+                  <StepBadge n={6} />
                   <span style={{ fontSize: '0.9rem' }}>
                     <strong>{isDe ? 'Sub-Events aktivieren' : 'Enable sub-events'}</strong>
                     {subEventsOptIn
@@ -10719,9 +10841,8 @@ export default function EventCreationPage(): React.ReactElement {
                         : '')}
                   </span>
                 </div>
-              </div>
 
-              {/* v22.36: Erklärung, was ein Sub-Event ist (graue Beschreibungs-Box). */}
+                {/* v22.36: Erklärung, was ein Sub-Event ist (graue Beschreibungs-Box). */}
               <WizardHint
                 isDe={isDe}
                 variant="description"
@@ -10732,6 +10853,7 @@ export default function EventCreationPage(): React.ReactElement {
                   ? <>Ein Sub-Event ist ein <strong>eigenständiger Programmbaustein</strong> innerhalb deines Events — z.&nbsp;B. ein Workshop, eine Session, ein Networking-Dinner oder eine Lauf-Distanz. Jedes Sub-Event hat <strong>eigene Plätze, einen eigenen Termin und eine eigene Teilnehmerliste</strong>, auf Wunsch auch eigene Abfrage-Felder; Teilnehmer wählen ihre Sub-Events direkt im Anmeldeformular. Typische Beispiele: eine Konferenz mit wählbaren Workshops oder ein Sommerfest mit optionalem Abendprogramm. Einfache Events (Meeting, Lunch, Feier) brauchen <strong>keine</strong> Sub-Events.</>
                   : <>A sub-event is a <strong>separate programme building block</strong> inside your event — e.g. a workshop, a session, a networking dinner or a run distance. Each sub-event has <strong>its own seats, its own schedule and its own attendee list</strong>, optionally its own custom fields; attendees pick their sub-events directly in the registration form. Typical examples: a conference with selectable workshops or a summer party with an optional evening programme. Simple events (meeting, lunch, celebration) do <strong>not</strong> need sub-events.</>}
               </WizardHint>
+              </div>{/* Ende Kachel: Schalter + Erklaerung */}
 
               {/* v28.84: Bezeichnung und Anmelde-Modus gehoeren zur
                   Grundsatzfrage aus dem Schalter darueber — nicht in einen
@@ -10741,10 +10863,11 @@ export default function EventCreationPage(): React.ReactElement {
               {/* Bezeichnungs-Dropdown */}
               <div style={{
                 background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
-                padding: '14px 16px', marginBottom: 12,
+                padding: '14px 16px', marginBottom: 16,
                 border: '1px solid var(--dex-gray-200)',
               }}>
                 <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={7} />
                   {isDe ? 'Bezeichnung der Sub-Events' : 'Sub-event naming'}
                   <InfoTooltip text={isDe ? (
                     <>
@@ -10838,15 +10961,13 @@ export default function EventCreationPage(): React.ReactElement {
                     </>
                   );
                 })()}
-              </div>
 
-              {/* Anmelde-Modus */}
-              <div style={{
-                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
-                padding: '14px 16px', marginBottom: 16,
-                border: '1px solid var(--dex-gray-200)',
-              }}>
+              {/* v28.91: Anmelde-Modus in derselben Kachel wie die
+                  Bezeichnung — beides beschreibt, WIE die Sub-Events
+                  auftreten. */}
+              <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--dex-gray-200)' }}>
                 <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={8} />
                   {isDe ? 'Anmelde-Modus' : 'Registration mode'}
                   <InfoTooltip text={isDe ? (
                     <>
@@ -10932,6 +11053,7 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               </div>
 
+              </div>{/* Ende Kachel: Bezeichnung + Anmelde-Modus */}
               </>)}
 
               {subEventsOptIn && (<>
@@ -11024,10 +11146,75 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               )}
 
+                {/* v28.91: Termine per Kalender. Bei einer Reihe über neun
+                    Tage bedeutete das bisher: neunmal „Hinzufügen", neunmal
+                    Titel tippen, neunmal zwei Datumsfelder. Hier klickt man
+                    die Tage an. Erzeugt werden ganz normale Sub-Events — nur
+                    schneller, und die Anmeldeseite zeigt sie dann als
+                    Kalender statt als Liste aus neun Funkbuttons. */}
+                <div style={{
+                  background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                  padding: '14px 16px', marginBottom: 16,
+                  border: '1px solid var(--dex-gray-200)',
+                }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={subEventCalendar}
+                      onChange={e => setSubEventCalendar(e.target.checked)}
+                      style={{ width: 18, height: 18, marginTop: 1, flexShrink: 0, cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '0.9rem' }}>
+                      <StepBadge n={9} /> <strong>{isDe ? 'Die Sub-Events sind Termine (ein Tag je Sub-Event)' : 'The sub-events are dates (one day each)'}</strong>
+
+                      <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2, fontWeight: 400 }}>
+                        {isDe
+                          ? 'Dann legst du sie unten im Kalender an — Tag anklicken, fertig — und Teilnehmer wählen ihre Tage auf der Anmeldeseite ebenfalls im Kalender statt aus einer langen Liste. Jeder Tag bleibt ein vollwertiges Sub-Event mit eigenen Plätzen, eigener Frist und eigenem Outlook-Termin.'
+                          : 'You then create them in the calendar below — click a day, done — and attendees pick their days in a calendar instead of a long list. Each day stays a full sub-event with its own seats, deadline and Outlook entry.'}
+                      </span>
+                    </span>
+                  </label>
+                  {subEventCalendar && (() => {
+                    const marked = subEvents
+                      .map(se => dayKeyOfSub(se))
+                      .filter(Boolean)
+                      .map(k => {
+                        const [y, m, d] = k.split('-').map(n => parseInt(n, 10));
+                        return new Date(y, m - 1, d);
+                      });
+                    const openTo = startDate ? new Date(startDate) : undefined;
+                    return (
+                      <div style={{ marginTop: 12 }}>
+                        <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', margin: '0 0 8px' }}>
+                          {isDe
+                            ? <>Klick auf einen Tag legt ihn als Termin an, ein erneuter Klick nimmt ihn zurück. Angelegte Tage sind <strong>grün</strong> markiert. Titel und Zeiten (ganztägig) werden gesetzt — Plätze, Frist und alles Weitere stellst du danach je Termin über die Reiter oben ein.</>
+                            : <>Clicking a day creates it as a date, clicking again removes it. Created days are marked <strong>green</strong>. Title and times (all-day) are filled in — seats, deadline and everything else you set per date via the tabs above.</>}
+                        </p>
+                        <DatePicker
+                          inline
+                          selected={null}
+                          onChange={toggleDaySubEvent}
+                          highlightDates={[{ 'dex-day-picked': marked }]}
+                          openToDate={openTo}
+                          locale="de"
+                          calendarClassName="dex-datepicker-calendar"
+                        />
+                        <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', margin: '10px 0 0' }}>
+                          {marked.length === 0
+                            ? (isDe ? 'Noch kein Termin angelegt.' : 'No date created yet.')
+                            : (isDe
+                              ? `${marked.length} ${marked.length === 1 ? 'Termin' : 'Termine'} angelegt.`
+                              : `${marked.length} ${marked.length === 1 ? 'date' : 'dates'} created.`)}
+                        </p>
+                      </div>
+                    );
+                  })()}
+                </div>
+
                 {/* ===== Sub-Events (z.B. Workshop-Tage, Networking-Dinner, Kick-off-Sessions) ===== */}
                 <div className="form-group" style={{ marginTop: 0 }}>
                   <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <StepBadge n={13} />
+                    <StepBadge n={10} />
                     {/* v15.5: dynamische Bezeichnung — verwendet den oben
                         gewählten Plural-Term statt fix „Sub-Events". */}
                     {(childTermPlural || (isDe ? 'Sub-Events' : 'Sub-events'))} {isDe ? '(optional)' : '(optional)'}
@@ -11408,7 +11595,7 @@ export default function EventCreationPage(): React.ReactElement {
 
                     <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <StepBadge n={13} />
+                        <StepBadge n={18} />
                         {isDe ? 'Standortfilter' : 'Location filter'}
                       </label>
                       <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
@@ -11443,7 +11630,7 @@ export default function EventCreationPage(): React.ReactElement {
                       // den aktuellen Stand des Sub-Events anwenden.
                       excludedUsers={se.excludedUsers || []}
                       onExcludedUsersChange={updater => setSubEvents(prev => prev.map((x, i) => i === seIdx ? { ...x, excludedUsers: updater(x.excludedUsers || []) } : x))}
-                      stepBadge={<StepBadge n={14} />}
+                      stepBadge={<StepBadge n={19} />}
                       cardBgPrimary={zebraS3Bg()}
                       summarySlot={renderVisibilitySummaryBox(
                         seLocationFilterList,
@@ -11454,7 +11641,7 @@ export default function EventCreationPage(): React.ReactElement {
                       middleSlot={(seLocationFilterList.length > 0 && (se.audience || '').trim().length > 0) ? (
                         <div className="form-group" style={{ padding: '16px 20px 16px 30px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                           <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <StepBadge n={15} />
+                            <StepBadge n={20} />
                             {isDe ? 'Filterverknüpfung' : 'Filter combination'}
                           </label>
                           <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginTop: -4, marginBottom: 12, lineHeight: 1.55 }}>
@@ -11493,7 +11680,7 @@ export default function EventCreationPage(): React.ReactElement {
                         wie im Hauptevent. */}
                     <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <StepBadge n={(seLocationFilterList.length > 0 && (se.audience || '').trim().length > 0) ? 16 : 15} />
+                        <StepBadge n={(seLocationFilterList.length > 0 && (se.audience || '').trim().length > 0) ? 21 : 20} />
                         {isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}
                       </label>
                       <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
@@ -11572,7 +11759,7 @@ export default function EventCreationPage(): React.ReactElement {
                         (Scope-Eingrenzung, siehe v15.6 Refactor-Plan). */}
                     <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <StepBadge n={(seLocationFilterList.length > 0 && (se.audience || '').trim().length > 0) ? 17 : 16} />
+                        <StepBadge n={(seLocationFilterList.length > 0 && (se.audience || '').trim().length > 0) ? 22 : 21} />
                         {isDe ? 'Teilnehmerzahl & Warteliste' : 'Capacity & waitlist'}
                       </label>
                       <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -11701,7 +11888,7 @@ export default function EventCreationPage(): React.ReactElement {
               {renderKlammerVisibilityMismatch()}
 
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-                {visHeader('vis_locfilter', <StepBadge n={13} />, isDe ? 'Standortfilter' : 'Location filter')}
+                {visHeader('vis_locfilter', <StepBadge n={18} />, isDe ? 'Standortfilter' : 'Location filter')}
                 {isVisOpen('vis_locfilter') && (<>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
                   {isDe ? (
@@ -11752,7 +11939,7 @@ export default function EventCreationPage(): React.ReactElement {
                 isDe={isDe}
                 excludedUsers={excludedUsers}
                 onExcludedUsersChange={setExcludedUsers}
-                headerSlot={visHeader('vis_audience', <StepBadge n={14} />, isDe ? 'Mailverteiler / einzelne User' : 'Mailing lists / individual users')}
+                headerSlot={visHeader('vis_audience', <StepBadge n={19} />, isDe ? 'Mailverteiler / einzelne User' : 'Mailing lists / individual users')}
                 bodyOpen={isVisOpen('vis_audience')}
                 cardBgPrimary={zebraS3Bg()}
                 visibilityTabs={subEvents.length > 0 ? [
@@ -11765,7 +11952,7 @@ export default function EventCreationPage(): React.ReactElement {
                      es nichts zu kombinieren. */
                   <div className="form-group" style={{ padding: '16px 20px 16px 30px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                     <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <StepBadge n={15} />
+                      <StepBadge n={20} />
                       {isDe ? 'Filterverknüpfung' : 'Filter combination'}
                     </label>
                     <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginTop: -4, marginBottom: 12, lineHeight: 1.6 }}>
@@ -11831,7 +12018,7 @@ export default function EventCreationPage(): React.ReactElement {
                   AUSSERHALB des Greyout-Wrappers (laufzeit-/sichtbarkeitsrelevant,
                   wie der AudiencePicker oben — auch im Klammer-Modus editierbar). */}
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-                {visHeader('vis_assist', <StepBadge n={(locationFilter && audience) ? 16 : 15} />, isDe ? 'Sichtbarkeit für Assistenzen' : 'Visibility for assistants')}
+                {visHeader('vis_assist', <StepBadge n={(locationFilter && audience) ? 21 : 20} />, isDe ? 'Sichtbarkeit für Assistenzen' : 'Visibility for assistants')}
                 {isVisOpen('vis_assist') && (<>
                 <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginTop: -4, marginBottom: 12, lineHeight: 1.55 }}>
                   {isDe
@@ -11852,7 +12039,7 @@ export default function EventCreationPage(): React.ReactElement {
                   wirksame Anmeldefrist haben kann. Die Teilnehmerzahl bleibt
                   ausgegraut (die Klammer hat keine eigenen Plaetze). */}
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-                {visHeader('vis_fristen', <StepBadge n={(locationFilter && audience) ? 17 : 16} />, <>{isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}<InfoTooltip text={isDe
+                {visHeader('vis_fristen', <StepBadge n={(locationFilter && audience) ? 22 : 21} />, <>{isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}<InfoTooltip text={isDe
                     ? 'Bis wann können sich Teilnehmer anmelden bzw. fristgerecht abmelden? Die Abmeldefrist ist die kommunizierte Deadline — abmelden geht danach weiterhin bis zum Event-Ende, die Organizer werden dann aber automatisch informiert. Beide Werte werden anhand des Event-Datums automatisch vorgeschlagen, du kannst sie jederzeit überschreiben.'
                     : 'Until when can attendees register or cancel within the deadline? The cancellation deadline is the communicated cutoff — cancelling remains possible until the event ends, but organizers are then notified automatically. Both values are auto-suggested from the event date and can be overridden at any time.'} /></>)}
                 {isVisOpen('vis_fristen') && (<>
@@ -12067,7 +12254,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <>
               <div style={hauptGreyoutWrapperStyle()}>
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-                {visHeader('vis_capacity', <StepBadge n={(locationFilter && audience) ? 18 : 17} />, isDe ? 'Teilnehmerzahl & Warteliste' : 'Capacity & waitlist')}
+                {visHeader('vis_capacity', <StepBadge n={(locationFilter && audience) ? 23 : 22} />, isDe ? 'Teilnehmerzahl & Warteliste' : 'Capacity & waitlist')}
                 {isVisOpen('vis_capacity') && (<>
               {/* v10.20: Geteilte Kapazität — generisch für beliebige Events.
                   Labels werden vom Organizer frei gewählt (z.B. "Vormittag /
@@ -13566,7 +13753,7 @@ export default function EventCreationPage(): React.ReactElement {
                     der Feld-Liste (vorher standen die Einstellungs-Karten
                     dazwischen). */}
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, marginTop: 6 }}>
-                  <StepBadge n={19} />
+                  <StepBadge n={24} />
                   {isDe ? 'Eigene Abfragen / Felder' : 'Custom fields'}
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -15163,7 +15350,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <>
                 <div className="form-group">
                   <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <StepBadge n={20} />
+                    <StepBadge n={25} />
                     {t('create.emaillanguage')}
                   </label>
                   <div style={{ display: 'flex', gap: 8 }}>
@@ -15194,7 +15381,7 @@ export default function EventCreationPage(): React.ReactElement {
                   style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}
                 >
                   <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
-                    <StepBadge n={21} />
+                    <StepBadge n={26} />
                     {t('create.notifications')}
                     <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
                       {(disableEmails || disableOutlook)
@@ -15371,7 +15558,7 @@ export default function EventCreationPage(): React.ReactElement {
                     für An- und Abmeldungen getrennt einstellbar. v9.39: collapsed by default. */}
                 <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
                   <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
-                    <StepBadge n={22} />
+                    <StepBadge n={27} />
                     {isDe ? 'Sollen die Organizer bei An- und Abmeldungen mitlesen?' : 'Should organizers be looped in on registrations / cancellations?'}
                     <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
                       {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
@@ -15469,7 +15656,7 @@ export default function EventCreationPage(): React.ReactElement {
                 {/* Custom-Logo für E-Mails — v9.39: collapsed by default. v9.40: gleiche graue Box wie 21/22. */}
                 <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
                   <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
-                    <StepBadge n={23} />
+                    <StepBadge n={28} />
                     {t('create.eventlogo.mail')}
                     <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
                       {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
@@ -15549,7 +15736,7 @@ export default function EventCreationPage(): React.ReactElement {
                 {/* Custom-Logo für Outlook-Termin — v9.39: collapsed by default. v9.40: gleiche graue Box. */}
                 <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
                   <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
-                    <StepBadge n={24} />
+                    <StepBadge n={29} />
                     {t('create.outlooklogo')}
                     <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
                       {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
@@ -15625,7 +15812,7 @@ export default function EventCreationPage(): React.ReactElement {
                 {/* v9.39: collapsed by default. v9.40: gleiche graue Box. */}
                 <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
                   <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
-                    <StepBadge n={25} />
+                    <StepBadge n={30} />
                     {t('create.outlookdesc')}
                     <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
                       {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
@@ -15654,7 +15841,7 @@ export default function EventCreationPage(): React.ReactElement {
                 {/* v9.39: E-Mail-Texte-Block collapsed by default. v9.40: gleiche graue Box, gleiche Schriftgröße wie 21-25. */}
                 <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
                   <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
-                    <StepBadge n={26} />
+                    <StepBadge n={31} />
                     {t('create.templates.title')} ({emailLanguage})
                     <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
                       {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
@@ -15778,7 +15965,7 @@ export default function EventCreationPage(): React.ReactElement {
                   ]
                 )}
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <StepBadge n={28} />
+                  <StepBadge n={33} />
                   {isDe ? 'Dokumente hochladen' : 'Upload documents'}
                 </label>
                 {/* v9.28: Schlagwörter fett rendern für bessere Lesbarkeit. */}
@@ -15853,7 +16040,7 @@ export default function EventCreationPage(): React.ReactElement {
                     Hinweistext sind frei konfigurierbar. */}
                 <div style={{ marginTop: 32, paddingTop: 20, borderTop: '2px solid var(--dex-gray-100)' }}>
                   <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <StepBadge n={29} />
+                    <StepBadge n={34} />
                     {isDe ? 'Teilnehmer-Upload erlauben' : 'Allow attendee upload'}
                     <InfoTooltip text={isDe ? (
                       <>
@@ -15958,7 +16145,7 @@ export default function EventCreationPage(): React.ReactElement {
                 </p>
 
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <StepBadge n={29} />
+                  <StepBadge n={34} />
                   {isDe ? 'Quiz-Bereiche' : 'Quiz sections'}
                 </label>
                 {/* Bereiche: Header + "+ Bereich"-Button. Fragen können per Drag&Drop
