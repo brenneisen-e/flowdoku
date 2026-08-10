@@ -600,43 +600,58 @@ function StickyTabStrip(props: {
                     und das Info-Icon sitzt direkt hinter „(Klammerevent)"
                     statt am rechten Rand, ohne dass die grüne Leiste ihre
                     volle Breite verliert. */}
-                <div style={{
-                  display: 'flex', alignItems: 'center', width: '100%', minWidth: 0,
-                  border: `1.5px solid ${pActive ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
-                  borderRadius: '10px 10px 0 0',
-                  background: pActive ? 'var(--dex-green, #86bc25)' : 'rgba(134,188,37,0.10)',
-                  paddingRight: 12,
-                  opacity: dis ? 0.55 : 1,
-                }}>
-                <button
-                  type="button"
+                {/* v28.75: Die ganze Zeile ist der Reiter — nicht nur der Text.
+                    Vorher war der Bereich rechts vom Info-Icon tot: Der Button
+                    schrumpfte auf Textbreite, der Rest der grünen Leiste nahm
+                    keine Klicks an. Jetzt trägt die Zeile selbst role/onClick
+                    (inkl. Tastatur) und den Hover — ein <button> geht hier
+                    nicht, weil das Info-Icon mit seinem Link darin läge. */}
+                <div
                   role="tab"
                   aria-selected={pActive}
                   aria-disabled={dis}
+                  tabIndex={dis ? -1 : 0}
                   onClick={() => { if (!dis) props.onChange(0); }}
+                  onKeyDown={e => {
+                    if (dis) return;
+                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); props.onChange(0); }
+                  }}
+                  onMouseEnter={() => setHoverIdx(0)}
+                  onMouseLeave={() => setHoverIdx(prev => (prev === 0 ? null : prev))}
+                  onFocus={() => setHoverIdx(0)}
+                  onBlur={() => setHoverIdx(prev => (prev === 0 ? null : prev))}
                   title={dis ? (props.mainDisabledNote || props.tabs[0].label) : props.tabs[0].label}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 8, minWidth: 0,
-                    padding: '10px 4px 10px 16px', cursor: dis ? 'not-allowed' : 'pointer', textAlign: 'left',
-                    border: 'none', background: 'transparent',
+                    display: 'flex', alignItems: 'center', gap: 8, width: '100%', minWidth: 0,
+                    padding: '10px 12px 10px 16px', cursor: dis ? 'not-allowed' : 'pointer',
+                    border: `1.5px solid ${(pActive || (hoverIdx === 0 && !dis)) ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                    borderRadius: '10px 10px 0 0',
+                    background: pActive
+                      ? 'var(--dex-green, #86bc25)'
+                      : ((hoverIdx === 0 && !dis) ? 'rgba(134,188,37,0.22)' : 'rgba(134,188,37,0.10)'),
                     color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
                     fontWeight: 700, fontSize: '0.9rem',
+                    opacity: dis ? 0.55 : 1,
+                    boxShadow: (hoverIdx === 0 && !pActive && !dis) ? 'inset 0 0 0 1px rgba(134,188,37,0.35)' : 'none',
+                    transition: 'background 0.15s, border-color 0.15s, box-shadow 0.15s',
                   }}
                 >
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }}>{props.tabs[0].label}</span>
                   <span style={{ fontSize: '0.76rem', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, opacity: 0.85, color: pActive ? 'rgba(255,255,255,0.9)' : 'var(--dex-green-dark, #4a7c1f)' }}>
                     ({props.klammerWord || 'Klammerevent'})
                   </span>
-                </button>
-                <span style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
-                  {props.klammerInfo}
-                </span>
-                <span style={{ flex: 1 }} />
-                {dis && props.mainDisabledNote && (
-                  <span style={{ fontSize: '0.65rem', fontWeight: 600, padding: '2px 6px', borderRadius: 8, background: 'var(--dex-gray-200, #e0e0e0)', color: 'var(--dex-gray-600)', flexShrink: 0 }}>
-                    {props.mainDisabledNote}
+                  <span
+                    style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}
+                    onClick={e => e.stopPropagation()}
+                  >
+                    {props.klammerInfo}
                   </span>
-                )}
+                  <span style={{ flex: 1 }} />
+                  {dis && props.mainDisabledNote && (
+                    <span style={{ fontSize: '0.65rem', fontWeight: 600, padding: '2px 6px', borderRadius: 8, background: 'var(--dex-gray-200, #e0e0e0)', color: 'var(--dex-gray-600)', flexShrink: 0 }}>
+                      {props.mainDisabledNote}
+                    </span>
+                  )}
                 </div>
                 {/* Sub-Events darunter — eingerückt unter einer Klammer-Linie. */}
                 <div style={{

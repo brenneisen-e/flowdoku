@@ -6880,20 +6880,30 @@ export default function AdminPage(): React.ReactElement {
                     return (
                       <div role="tablist" aria-label={isDe ? 'Event wechseln' : 'Switch event'} style={{ marginBottom: 16 }}>
                         {/* Klammer-Ebene oben — volle Breite, gefüllter Kopf. */}
+                        {/* v28.75: Hover/Fokus auch auf dem Klammer-Balken —
+                            der reagierte als einziger Reiter nicht auf die Maus. */}
                         <button
                           type="button"
                           role="tab"
                           aria-selected={pActive}
                           onClick={() => handleSelectEvent(parentTab.ev).catch(() => { /* */ })}
+                          onMouseEnter={() => setEvTabHover(parentTab.id)}
+                          onMouseLeave={() => setEvTabHover(prev => (prev === parentTab.id ? null : prev))}
+                          onFocus={() => setEvTabHover(parentTab.id)}
+                          onBlur={() => setEvTabHover(prev => (prev === parentTab.id ? null : prev))}
                           title={parentTab.label}
                           style={{
                             display: 'flex', alignItems: 'center', gap: 10, width: '100%',
                             padding: '10px 16px', cursor: 'pointer', textAlign: 'left',
-                            border: `1.5px solid ${pActive ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                            border: `1.5px solid ${(pActive || evTabHover === parentTab.id) ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
                             borderRadius: '10px 10px 0 0',
-                            background: pActive ? 'var(--dex-green, #86bc25)' : 'rgba(134,188,37,0.10)',
+                            background: pActive
+                              ? 'var(--dex-green, #86bc25)'
+                              : (evTabHover === parentTab.id ? 'rgba(134,188,37,0.22)' : 'rgba(134,188,37,0.10)'),
                             color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
                             fontWeight: 700, fontSize: '0.9rem',
+                            boxShadow: (evTabHover === parentTab.id && !pActive) ? 'inset 0 0 0 1px rgba(134,188,37,0.35)' : 'none',
+                            transition: 'background 0.15s, border-color 0.15s, box-shadow 0.15s',
                           }}
                         >
                           {/* v22.73: Zahl LINKS, dann Event-Name, dann „(Klammer)"
@@ -7145,6 +7155,42 @@ export default function AdminPage(): React.ReactElement {
                                       {childVis.map((c, ci) => (
                                         <span key={ci} style={{ display: 'block', paddingLeft: 8 }}>• <strong>{c.title}:</strong> {c.text}</span>
                                       ))}
+                                      {/* v28.75: Die Liste ZEIGTE die Abweichung bisher nur —
+                                          benannt wurde sie nicht. Wer neun Zeilen
+                                          untereinander liest, übersieht, dass vier davon einen
+                                          Standortfilter tragen und fünf nicht. Also die
+                                          Varianten zählen und beim Namen nennen. */}
+                                      {(() => {
+                                        const groups = new Map<string, string[]>();
+                                        childVis.forEach(c => {
+                                          const arr = groups.get(c.text) || [];
+                                          arr.push(c.title);
+                                          groups.set(c.text, arr);
+                                        });
+                                        if (groups.size < 2) return null;
+                                        const sorted = Array.from(groups.entries()).sort((a, b) => b[1].length - a[1].length);
+                                        const minority = sorted.slice(1);
+                                        const minCount = minority.reduce((s, e) => s + e[1].length, 0);
+                                        return (
+                                          <span style={{
+                                            display: 'block', marginTop: 8, padding: '7px 9px', borderRadius: 6,
+                                            background: '#fff8e6', border: '1px solid #e0b34d', color: '#7a5a12',
+                                            fontSize: '0.74rem', lineHeight: 1.5,
+                                          }}>
+                                            {isDe
+                                              ? <>
+                                                  <strong>Achtung — die Sub-Sections sind unterschiedlich sichtbar</strong> ({groups.size} Varianten).{' '}
+                                                  {sorted[0][1].length} {sorted[0][1].length === 1 ? 'Sub-Section hat' : 'Sub-Sections haben'} „{sorted[0][0]}“, {minCount} {minCount === 1 ? 'weicht ab' : 'weichen ab'}: {minority.map(e => e[1].join(', ')).join('; ')}.{' '}
+                                                  Wenn das nicht gewollt ist: in &bdquo;Event bearbeiten&ldquo; den Schritt <strong>Kapazität &amp; Sichtbarkeit</strong> öffnen, die passende Sub-Section wählen und dort auf <strong>&bdquo;Einstellungen auf andere übertragen&ldquo;</strong> klicken.
+                                                </>
+                                              : <>
+                                                  <strong>Careful — the sub-sections have different visibility</strong> ({groups.size} variants).{' '}
+                                                  {sorted[0][1].length} of them use „{sorted[0][0]}“, {minCount} differ: {minority.map(e => e[1].join(', ')).join('; ')}.{' '}
+                                                  If that is not intended: open „Edit event“ → step <strong>Capacity &amp; visibility</strong>, pick the right sub-section and use <strong>„Transfer settings to others“</strong>.
+                                                </>}
+                                          </span>
+                                        );
+                                      })()}
                                     </>
                                   )}
                                 </span>
