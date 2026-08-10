@@ -11205,8 +11205,8 @@ export default function EventCreationPage(): React.ReactElement {
                       <div style={{ marginTop: 12 }}>
                         <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', margin: '0 0 8px' }}>
                           {isDe
-                            ? <>Klick auf einen Tag legt ihn als Termin an, ein erneuter Klick nimmt ihn zurück. Angelegte Tage sind <strong>grün</strong> markiert. Titel und Zeiten werden gesetzt — jeder Tag übernimmt die <strong>Uhrzeit des Hauptevents</strong> (ohne Uhrzeit dort: ganztägig). Plätze, Frist und alles Weitere stellst du danach je Termin über die Reiter oben ein.</>
-                            : <>Clicking a day creates it as a date, clicking again removes it. Created days are marked <strong>green</strong>. Title and times are filled in — each day takes the <strong>main event&rsquo;s time of day</strong> (all-day if none is set there). Seats, deadline and everything else you set per date via the tabs above.</>}
+                            ? <>Klick auf einen Tag legt ihn als Termin an, ein erneuter Klick nimmt ihn zurück. Angelegte Tage sind <strong>grün</strong> markiert. Titel und Zeiten werden gesetzt — jeder Tag übernimmt die <strong>Uhrzeit des Hauptevents</strong> (ohne Uhrzeit dort: ganztägig). Das ist nur die Vorbelegung: Über die Reiter oben wählst du einen Termin aus und änderst <strong>Start und Ende genau dort</strong> — ebenso Titel, Beschreibung, Plätze und Frist.</>
+                            : <>Clicking a day creates it as a date, clicking again removes it. Created days are marked <strong>green</strong>. Title and times are filled in — each day takes the <strong>main event&rsquo;s time of day</strong> (all-day if none is set there). That is only the starting point: pick a date via the tabs above and change <strong>its start and end right there</strong> — as well as title, description, seats and deadline.</>}
                         </p>
                         <DatePicker
                           inline
