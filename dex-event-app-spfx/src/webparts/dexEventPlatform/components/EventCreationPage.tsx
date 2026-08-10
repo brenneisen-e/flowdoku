@@ -6659,7 +6659,7 @@ export default function EventCreationPage(): React.ReactElement {
   React.useEffect(() => {
     const onTourStep = (e: Event): void => {
       const detail = (e as CustomEvent).detail;
-      if (typeof detail === 'number' && detail >= 0 && detail <= 8) {
+      if (typeof detail === 'number' && detail >= 0 && detail <= 7) {
         setCurrentStep(detail);
         setTriedNext(false);
       }
@@ -6875,13 +6875,6 @@ export default function EventCreationPage(): React.ReactElement {
       'Check-in-Team: bedient am Event-Tag nur das Check-in-Tool',
     ],
     [
-      // v15 Schritt 3: Sub-Events
-      'Optional Sub-Events (Workshops, Sessions, Programmpunkte) anlegen — jeder bekommt im Anmeldeformular eine eigene Anmelde-Checkbox',
-      'Bezeichnung wählen: Sub-Events / Workshops / Sessions / Programmpunkte / Event-Sections / eigene Bezeichnung',
-      'Anmelde-Modus: zusätzlich zum Hauptevent ODER nur für Sub-Events (Hauptevent-Anmeldung dann ausgeblendet)',
-      'Ort, Kapazität, Anmeldefrist und Felder pro Sub-Event werden in den jeweiligen Folge-Schritten (3, 4, 5) per Tab gepflegt',
-    ],
-    [
       // v15 Step 3: Ort & Programm (mit Tabs pro Sub-Event)
       'Veranstaltungsort und Adresse erfassen — pro Sub-Event optional eigener Ort (per Tab)',
       'Start- und End-Datum (mit Uhrzeit) festlegen',
@@ -6952,13 +6945,6 @@ export default function EventCreationPage(): React.ReactElement {
       'Location, capacity, deadline and fields per sub-event are configured in the following steps (3, 4, 5) via tabs',
     ],
     [
-      // v15 Step 3: Location & Programme (with tabs per sub-event)
-      'Set event location and address — per sub-event an own location is possible (via tab)',
-      'Set start and end date (incl. time)',
-      'Maintain the event programme / agenda (multi-day supported, drag-reorder per day)',
-      'Transfer times — bus / shuttle / train to and from the venue',
-    ],
-    [
       // v15 Step 4: Capacity & Visibility (with tabs per sub-event)
       'Set the maximum number of attendees (or Unlimited) — per sub-event own capacity via tab (default: inherit from main event)',
       'Set the registration deadline — per sub-event own deadline possible (empty = main-event deadline applies)',
@@ -7015,18 +7001,17 @@ export default function EventCreationPage(): React.ReactElement {
     // damit der Organizer pro Sub-Event eigenes Ort / eigene Kapazität /
     // eigene Felder pflegen kann — dafür müssen die Sub-Events schon
     // angelegt sein, deshalb ist Schritt 3 der Sub-Events-Step.
-    { label: t('create.step.subevents'), icon: '3' },
-    { label: t('create.step.datetime'), icon: '4' },
-    { label: t('create.step.capacity'), icon: '5' },
-    { label: t('create.step.fields'), icon: '6' },
-    { label: t('create.step.communication'), icon: '7' },
+    { label: t('create.step.datetime'), icon: '3' },
+    { label: t('create.step.capacity'), icon: '4' },
+    { label: t('create.step.fields'), icon: '5' },
+    { label: t('create.step.communication'), icon: '6' },
     // v15.0: Team-Anmeldung kommt jetzt nach Kommunikation (vorher nach
     // Kapazität). Reihenfolge spiegelt den realen Setup-Workflow besser
     // wider: erst die Komm-Texte stehen, dann entscheidet der Organizer
     // ob Team-Anmeldung relevant ist.
-    { label: t('create.step.team'), icon: '8' },
-    { label: t('create.step.documents'), icon: '9' },
-    { label: t('create.step.funzone'), icon: '10' },
+    { label: t('create.step.team'), icon: '7' },
+    { label: t('create.step.documents'), icon: '8' },
+    { label: t('create.step.funzone'), icon: '9' },
   ];
 
   // Tooltip-State: welcher Step zeigt gerade seinen Hint-Tooltip an?
@@ -7043,26 +7028,23 @@ export default function EventCreationPage(): React.ReactElement {
         if (!endDate) errors.push('endDate');
         if (startDate && endDate && new Date(endDate) <= new Date(startDate)) errors.push('endBeforeStart');
         // v9.14: description ist optional — kein Pflichtfeld mehr
+        // v28.87: Die Sub-Events stehen seit dem Wegfall von Schritt 3 in
+        // Grundlagen — also wird ihre Datumsprüfung hier mitgeführt (v18.36:
+        // Ende vor Start laesst den Outlook-Create-Flow mit HTTP 400 scheitern).
+        if (subEvents.some(se => se.title && se.title.trim() && se.startDate && se.endDate && new Date(se.endDate) <= new Date(se.startDate))) {
+          errors.push('subEventEndBeforeStart');
+        }
         break;
       case 1:
         // v24.12: Schritt 2 (Organizer & Team) — mindestens ein Organizer ist Pflicht.
         if (!organizer) errors.push('organizer');
         break;
       case 2:
-        // Schritt 3 (Sub-Events) ist ohne Pflicht-Validierung — der
-        // Organizer kann den Schritt auch komplett leer lassen.
-        // v18.36: Aber WENN ein Sub-Event Datum hat, darf das Ende nicht vor
-        // dem Start liegen — sonst failt der Outlook-Create-Flow mit HTTP 400.
-        if (subEvents.some(s => s.title && s.title.trim() && s.startDate && s.endDate && new Date(s.endDate) <= new Date(s.startDate))) {
-          errors.push('subEventEndBeforeStart');
-        }
-        break;
-      case 3:
-        // Schritt 4 (Ort & Programm) ist ohne Pflicht-Validierung —
+        // Schritt 3 (Ort & Programm) ist ohne Pflicht-Validierung —
         // Adresse / Agenda / Transferzeiten sind alle optional.
         break;
-      case 4:
-        // Schritt 5 (Kapazität & Sichtbarkeit).
+      case 3:
+        // Schritt 4 (Kapazität & Sichtbarkeit).
         if (registrationDeadline && startDate && new Date(registrationDeadline) > new Date(startDate)) errors.push('deadlineAfterStart');
         if (lastDeregisterDate && startDate && new Date(lastDeregisterDate) > new Date(startDate)) errors.push('deregAfterStart');
         if (!unlimitedParticipants && (maxParticipants === '' || isNaN(Number(maxParticipants)) || Number(maxParticipants) < 0)) errors.push('maxParticipants');
@@ -7260,7 +7242,7 @@ export default function EventCreationPage(): React.ReactElement {
   // v28.82: Schritt 1 ist NOCH NICHT scope-faehig — dafuer muessen die
   // vorhandenen Felder (Titel, Datum, Beschreibung, Bild) an den gewaehlten
   // Draft gebunden werden, statt daneben eine zweite Box zu stellen.
-  const SCOPE_AWARE_STEPS = [3, 4, 5, 6]; // Ort & Programm, Kapazität, Felder, Kommunikation
+  const SCOPE_AWARE_STEPS = [2, 3, 4, 5]; // Ort & Programm, Kapazität, Felder, Kommunikation
   const [activeScopeIdx, setActiveScopeIdx] = React.useState<number>(0);
   const setScope = (idx: number): void => {
     setActiveScopeIdx(idx);
@@ -10068,9 +10050,9 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
 
               {/* ===== Step 3 (v15.0: vormals Step 2): Ort & Programm ===== */}
-              <div style={{ display: currentStep === 3 ? 'block' : 'none' }}>
+              <div style={{ display: currentStep === 2 ? 'block' : 'none' }}>
               <h2 className="dex-step-head-title">
-                {isDe ? 'Schritt 4 — Ort & Programm' : 'Step 4 — Location & Programme'}
+                {isDe ? 'Schritt 3 — Ort & Programm' : 'Step 3 — Location & Programme'}
               </h2>
               <p className="dex-step-head-lead">
                 {isDe
@@ -10575,16 +10557,11 @@ export default function EventCreationPage(): React.ReactElement {
                   Sub-Events vs. nur Sub-Events).
                   v15.0: vorgezogen vor „Ort & Programm", damit die folgenden
                   Steps pro-Sub-Event-Tabs anbieten können. */}
-              <div style={{ display: currentStep === 2 ? 'block' : 'none' }}>
-              <h2 className="dex-step-head-title">
-                {isDe ? 'Schritt 3 — Sub-Events' : 'Step 3 — Sub-events'}
-              </h2>
-              <p className="dex-step-head-lead">
-                {isDe
-                  ? <><strong>Optional</strong> — gliedere dein Event in einzeln buchbare Programmbausteine (z. B. Workshops, Sessions oder ein Networking-Dinner), jeweils mit eigener Teilnehmerzahl, eigenem Termin und eigener Teilnehmerliste. Ist eine solche Untergliederung nicht erforderlich, fahre mit „Weiter“ fort.</>
-                  : <><strong>Optional</strong> — divide your event into individually bookable building blocks (e.g. workshops, sessions or a networking dinner), each with its own capacity, schedule and attendee list. If no such breakdown is required, continue with “Next”.</>}
-              </p>
-
+              {/* v28.87: Frueher Schritt 3 („Sub-Events"). Der Schritt ist
+                  entfallen; sein Inhalt haengt jetzt unten an Schritt 1
+                  (Grundlagen). Der Block bleibt als Ganzes bestehen — nur
+                  seine Anzeige-Bedingung zeigt auf Schritt 1. */}
+              <div style={{ display: currentStep === 0 ? 'block' : 'none' }}>
               {/* v22.36: Erklärung, was ein Sub-Event ist (graue Beschreibungs-Box). */}
               <WizardHint
                 isDe={isDe}
@@ -11082,9 +11059,9 @@ export default function EventCreationPage(): React.ReactElement {
               </div>{/* close Step 2 (Sub-Events) */}
 
               {/* ===== Step 4 (v14.8: vormals Step 3): Kapazität, Fristen & Sichtbarkeit ===== */}
-              <div style={{ display: currentStep === 4 ? 'block' : 'none' }}>
+              <div style={{ display: currentStep === 3 ? 'block' : 'none' }}>
               <h2 className="dex-step-head-title">
-                {isDe ? 'Schritt 5 — Kapazität & Sichtbarkeit' : 'Step 5 — Capacity & Visibility'}
+                {isDe ? 'Schritt 4 — Kapazität & Sichtbarkeit' : 'Step 4 — Capacity & Visibility'}
               </h2>
               <p className="dex-step-head-lead">
                 {isDe
@@ -12390,9 +12367,9 @@ export default function EventCreationPage(): React.ReactElement {
                   Konfiguriert Team-Anmeldung-Toggle + Teamgröße +
                   Team-Name-Frage. v15: Index 4 → 6 (Team kommt jetzt nach
                   Kommunikation). */}
-              <div style={{ display: currentStep === 7 ? 'block' : 'none' }}>
+              <div style={{ display: currentStep === 6 ? 'block' : 'none' }}>
               <h2 className="dex-step-head-title">
-                {isDe ? 'Schritt 8 — Team-Anmeldung' : 'Step 8 — Team Registration'}
+                {isDe ? 'Schritt 7 — Team-Anmeldung' : 'Step 7 — Team Registration'}
               </h2>
               <p className="dex-step-head-lead">
                 {isDe
@@ -12697,9 +12674,9 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
 
               {/* ===== Step 5 (v15: vormals Step 6): Registrierungsfelder ===== */}
-              <div style={{ display: currentStep === 5 ? 'block' : 'none' }}>
+              <div style={{ display: currentStep === 4 ? 'block' : 'none' }}>
               <h2 className="dex-step-head-title">
-                {isDe ? 'Schritt 6 — Felder' : 'Step 6 — Fields'}
+                {isDe ? 'Schritt 5 — Felder' : 'Step 5 — Fields'}
               </h2>
               <p className="dex-step-head-lead">
                 {isDe
@@ -14775,9 +14752,9 @@ export default function EventCreationPage(): React.ReactElement {
               </div>{/* close Step 5 (Felder) — v15 index 4 */}
 
               {/* ===== Step 6 (v15: vormals Step 7): Kommunikation ===== */}
-              <div style={{ display: currentStep === 6 ? 'block' : 'none' }}>
+              <div style={{ display: currentStep === 5 ? 'block' : 'none' }}>
                 <h2 className="dex-step-head-title">
-                  {isDe ? 'Schritt 7 — Kommunikation' : 'Step 7 — Communication'}
+                  {isDe ? 'Schritt 6 — Kommunikation' : 'Step 6 — Communication'}
                 </h2>
                 <p className="dex-step-head-lead">
                   {isDe
@@ -15594,9 +15571,9 @@ export default function EventCreationPage(): React.ReactElement {
               </div>{/* close Step 7 (Kommunikation) */}
 
               {/* ===== Step 8 (v14.8: vormals Step 7): Dokumente ===== */}
-              <div style={{ display: currentStep === 8 ? 'block' : 'none' }}>
+              <div style={{ display: currentStep === 7 ? 'block' : 'none' }}>
                 <h2 className="dex-step-head-title">
-                  {isDe ? 'Schritt 9 — Dokumente' : 'Step 9 — Documents'}
+                  {isDe ? 'Schritt 8 — Dokumente' : 'Step 8 — Documents'}
                 </h2>
                 <p className="dex-step-head-lead">
                   {isDe
@@ -15765,9 +15742,9 @@ export default function EventCreationPage(): React.ReactElement {
               </div>{/* close Step 8 (Dokumente) */}
 
               {/* ===== Step 9 (v14.8: vormals Step 8): Fun-Zone ===== */}
-              <div style={{ display: currentStep === 9 ? 'block' : 'none' }}>
+              <div style={{ display: currentStep === 8 ? 'block' : 'none' }}>
                 <h2 className="dex-step-head-title">
-                  {isDe ? 'Schritt 10 — Fun-Zone' : 'Step 10 — Fun Zone'}
+                  {isDe ? 'Schritt 9 — Fun-Zone' : 'Step 9 — Fun Zone'}
                 </h2>
                 <p className="dex-step-head-lead">
                   {isDe
@@ -16783,7 +16760,7 @@ export default function EventCreationPage(): React.ReactElement {
               ],
         });
         sections.push({
-          title: isDe ? 'Schritt 4 — Ort & Programm' : 'Step 4 — Location & programme',
+          title: isDe ? 'Schritt 3 — Ort & Programm' : 'Step 3 — Location & programme',
           rows: [
             { label: isDe ? 'Veranstaltungsort' : 'Venue', value: location || '—', status: location ? 'ok' : 'empty' },
             { label: isDe ? 'Adresse' : 'Address', value: (addrStreet || addrCity) ? [addrStreet, addrHouseNo, addrZip, addrCity].filter(Boolean).join(' ') : '—', status: (addrStreet || addrCity) ? 'ok' : 'empty' },
@@ -16792,7 +16769,7 @@ export default function EventCreationPage(): React.ReactElement {
           ],
         });
         sections.push({
-          title: isDe ? 'Schritt 5 — Kapazität & Sichtbarkeit' : 'Step 5 — Capacity & visibility',
+          title: isDe ? 'Schritt 4 — Kapazität & Sichtbarkeit' : 'Step 4 — Capacity & visibility',
           rows: [
             useSplitCapacities
               ? { label: isDe ? 'Plätze (geteilte Kapazität)' : 'Seats (split capacity)', value: `${splitLabelA || 'Gruppe A'}: ${durchstarterCapacity || 0} · ${splitLabelB || 'Gruppe B'}: ${funstarterCapacity || 0}${splitSharedWaitlist ? (isDe ? ' · gemeinsame Warteliste' : ' · shared waitlist') : ''}`, status: 'ok' }
@@ -16805,7 +16782,7 @@ export default function EventCreationPage(): React.ReactElement {
           ],
         });
         sections.push({
-          title: isDe ? 'Schritt 6 — Felder' : 'Step 6 — Fields',
+          title: isDe ? 'Schritt 5 — Felder' : 'Step 5 — Fields',
           rows: [
             { label: isDe ? 'Eigene Abfrage-Felder' : 'Custom fields', value: customFields.length ? `${customFields.length}` : (isDe ? 'keine' : 'none'), status: customFields.length ? 'ok' : 'default' },
             { label: isDe ? 'Anrede abfragen' : 'Ask salutation', value: askSalutation ? (isDe ? 'an' : 'on') : (isDe ? 'aus' : 'off'), status: askSalutation ? 'ok' : 'default' },
@@ -16814,7 +16791,7 @@ export default function EventCreationPage(): React.ReactElement {
           ],
         });
         sections.push({
-          title: isDe ? 'Schritt 7 — Kommunikation' : 'Step 7 — Communication',
+          title: isDe ? 'Schritt 6 — Kommunikation' : 'Step 6 — Communication',
           rows: [
             { label: isDe ? 'Mail-Sprache' : 'Email language', value: (emailLanguage || 'EN').toUpperCase() === 'DE' ? 'Deutsch' : 'English', status: 'ok' },
             { label: isDe ? 'Bestätigungs-Mails' : 'Confirmation emails', value: disableEmails ? (isDe ? 'deaktiviert' : 'disabled') : (isDe ? 'aktiv' : 'on'), status: disableEmails ? 'ok' : 'default' },
@@ -16825,15 +16802,15 @@ export default function EventCreationPage(): React.ReactElement {
           ],
         });
         sections.push({
-          title: isDe ? 'Schritt 8 — Team-Anmeldung' : 'Step 7 — Team registration',
+          title: isDe ? 'Schritt 7 — Team-Anmeldung' : 'Step 6 — Team registration',
           rows: [{ label: isDe ? 'Team-Anmeldung' : 'Team registration', value: teamRegistrationEnabled ? (isDe ? `aktiv — Teams à ${teamSize}` : `on — teams of ${teamSize}`) : (isDe ? 'aus' : 'off'), status: teamRegistrationEnabled ? 'ok' : 'default' }],
         });
         sections.push({
-          title: isDe ? 'Schritt 9 — Dokumente' : 'Step 9 — Documents',
+          title: isDe ? 'Schritt 8 — Dokumente' : 'Step 8 — Documents',
           rows: [{ label: isDe ? 'Dokumente' : 'Documents', value: documents.length ? `${documents.length}` : '—', status: documents.length ? 'ok' : 'empty' }],
         });
         sections.push({
-          title: isDe ? 'Schritt 10 — Fun-Zone' : 'Step 9 — Fun zone',
+          title: isDe ? 'Schritt 9 — Fun-Zone' : 'Step 8 — Fun zone',
           rows: [{ label: 'Quiz', value: quiz.length ? `${quiz.length} ${isDe ? 'Fragen' : 'questions'}` : '—', status: quiz.length ? 'ok' : 'empty' }],
         });
         const allRows = sections.reduce((acc, s) => acc + s.rows.length, 0);
