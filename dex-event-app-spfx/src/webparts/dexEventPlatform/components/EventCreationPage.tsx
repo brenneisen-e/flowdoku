@@ -6264,6 +6264,66 @@ export default function EventCreationPage(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editEvent, subEvents.length, locationFilter, audience, filterMode]);
 
+  /**
+   * v28.78: Die globale Scope-Karte unter der Schritt-Leiste.
+   *
+   * Zwei Zustände, damit die Leiste nicht bei jedem Schritt verschwindet und
+   * wieder auftaucht (das Springen war schlimmer als der Nutzen):
+   *  - AUSWAHL: in den Schritten, die pro Sub-Event konfiguriert werden.
+   *  - GILT-FÜR-ALLE: in allen anderen. Gleiche Position, gleicher Rahmen,
+   *    aber ohne Auswahl und mit dem Satz, dass dieser Schritt für das
+   *    gesamte Event gilt. Das erklärt das Modell nebenbei mit.
+   * Ohne Sub-Events wird gar nichts gezeigt — dann gibt es nichts zu wählen.
+   */
+  const renderGlobalScopeBar = (): React.ReactElement | null => {
+    if (subEvents.length === 0) return null;
+    const named = subEvents.filter(s => (s.title || '').trim());
+    if (named.length === 0) return null;
+    const applies = SCOPE_AWARE_STEPS.indexOf(currentStep) >= 0;
+    const scopeIdx = Math.min(activeScopeIdx, subEvents.length);
+    const mainLabel = `${subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt-Event' : 'Main event')}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`;
+    return (
+      <div style={{
+        margin: '18px 0 0', padding: '12px 16px 14px', borderRadius: 14,
+        background: 'linear-gradient(180deg, rgba(134,188,37,0.09) 0%, rgba(134,188,37,0.04) 100%)',
+        border: '1px solid rgba(134,188,37,0.35)',
+      }}>
+        {applies ? (
+          renderPerEventTabStrip(
+            scopeIdx,
+            setScope,
+            mainLabel,
+            isDe ? 'Event-Ebene wechseln' : 'Switch event level',
+          )
+        ) : (
+          <>
+            <div style={{
+              fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.03em',
+              textTransform: 'uppercase', color: 'var(--dex-gray-500)', marginBottom: 6,
+            }}>
+              {isDe ? 'Welches (Sub-)Event bearbeitest du gerade?' : 'Which (sub-)event are you editing?'}
+            </div>
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+              padding: '9px 14px', borderRadius: 10,
+              background: '#fff', border: '1px dashed var(--dex-gray-300)',
+              fontSize: '0.84rem', color: 'var(--dex-gray-700)',
+            }}>
+              <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                {isDe ? 'Dieser Schritt gilt für das gesamte Event' : 'This step applies to the entire event'}
+              </strong>
+              <span style={{ color: 'var(--dex-gray-600)' }}>
+                {isDe
+                  ? `— ${subEventsOnlyMode ? 'Klammer' : 'Haupt-Event'} und alle ${named.length} ${named.length === 1 ? (childTermSingular || 'Sub-Event') : (childTermPlural || 'Sub-Events')} gemeinsam. Eine Auswahl gibt es hier nicht.`
+                  : `— ${subEventsOnlyMode ? 'bracket' : 'main event'} and all ${named.length} sub-events together. There is nothing to pick here.`}
+              </span>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
+
   // v15.6: Hinweis-Banner für den Hauptevent-Tab in den Steps 3/4/5, wenn
   // subEventsOnlyMode aktiv ist. Der Hauptevent ist dann nicht buchbar — die
   // Einstellungen aus diesem Tab werden zur Laufzeit ignoriert. Der Tab bleibt
@@ -7116,6 +7176,36 @@ export default function EventCreationPage(): React.ReactElement {
       { variant: 'success' });
   };
 
+  /**
+   * v28.78: Der Scope-Umschalter (Klammer / Sub-Events) lebt nicht mehr in
+   * jedem Schritt, sondern EINMAL global unter der Schritt-Leiste.
+   *
+   * Vorher hatte jeder Schritt seinen eigenen Reiter-Index — man landete beim
+   * Schrittwechsel wieder auf der Klammer und musste sein Sub-Event neu
+   * suchen. Und weil der Umschalter im weissen Inhaltsbereich stand, las er
+   * sich als Teil des Schritts statt als das, was er ist: die Ebene, auf der
+   * gerade gearbeitet wird — sie traegt durch den ganzen Assistenten.
+   *
+   * Ein gemeinsamer Index bedeutet: Wer auf „Di. 08.09." steht, bleibt auf
+   * „Di. 08.09.", auch wenn er von Kapazität zu Feldern wechselt.
+   *
+   * Gestalterisch bewusst ANDERS als die Schritt-Leiste: Die Schritte sind
+   * eine Fortschritts-Spur (Kreise + Linie, ohne Rahmen), der Scope ist eine
+   * abgesetzte Kontext-Karte mit eigener Tönung. Zwei Achsen, zwei
+   * Formsprachen — sonst liest man sie als zwei Navigationen.
+   */
+  const SCOPE_AWARE_STEPS = [3, 4, 5, 6]; // Ort & Programm, Kapazität, Felder, Kommunikation
+  const [activeScopeIdx, setActiveScopeIdx] = React.useState<number>(0);
+  const setScope = (idx: number): void => {
+    setActiveScopeIdx(idx);
+    setActiveLocationTabIdx(idx);
+    setActiveCapacityTabIdx(idx);
+    setActiveFieldsTabIdx(idx);
+    // Schritt 7 lagert die Kommunikationsfelder pro Reiter ein und aus —
+    // deshalb NICHT den State direkt setzen, sondern den Umschalter rufen.
+    switchCommTab(idx);
+  };
+
   const renderPerEventTabStrip = (
     activeIdx: number,
     onChange: (idx: number) => void,
@@ -7773,6 +7863,10 @@ export default function EventCreationPage(): React.ReactElement {
             );
           })()}
         </div>
+
+        {/* v28.78: Scope-Karte zwischen Schritt-Leiste und Formular — eine
+            Ebene für „für wen gilt das hier?", die durch alle Schritte trägt. */}
+        {renderGlobalScopeBar()}
 
         {/* ===== Formular ===== */}
         <div>
@@ -9674,12 +9768,8 @@ export default function EventCreationPage(): React.ReactElement {
                   mehr, jedes Sub-Event hat eigene Werte. Per
                   „Vom Hauptevent kopieren"-Button kann der Organizer die
                   Hauptevent-Werte als Startpunkt übernehmen. */}
-              {renderPerEventTabStrip(
-                activeLocationTabIdx,
-                setActiveLocationTabIdx,
-                `${subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt-Event' : 'Main event')}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`,
-                isDe ? 'Event-Tab wechseln (Ort & Programm)' : 'Switch event tab (location & programme)'
-              )}
+              {/* v28.78: Der Scope-Umschalter steht jetzt global unter der
+                  Schritt-Leiste (renderGlobalScopeBar) — nicht mehr je Schritt. */}
 
               {activeLocationTabIdx > 0 && (() => {
                 const seIdx = activeLocationTabIdx - 1;
@@ -10943,12 +11033,8 @@ export default function EventCreationPage(): React.ReactElement {
                   Sub-Event mit Inheritance-Toggle. Sichtbarkeit, Filter,
                   Deadlines, Split-Capacity bleiben Top-Level — pro Sub-Event
                   ist nur die Platzzahl relevant. */}
-              {renderPerEventTabStrip(
-                activeCapacityTabIdx,
-                setActiveCapacityTabIdx,
-                `${subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt-Event' : 'Main event')}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`,
-                isDe ? 'Event-Tab wechseln (Kapazität)' : 'Switch event tab (capacity)'
-              )}
+              {/* v28.78: Der Scope-Umschalter steht jetzt global unter der
+                  Schritt-Leiste (renderGlobalScopeBar) — nicht mehr je Schritt. */}
 
               {activeCapacityTabIdx > 0 && (() => {
                 const seIdx = activeCapacityTabIdx - 1;
@@ -12785,14 +12871,8 @@ export default function EventCreationPage(): React.ReactElement {
                   Toggle. Im subEventsOnlyMode wird Tab 0 zu „Übergreifende
                   Felder" / „Cross-cutting fields" — die wirken dann auf alle
                   Sub-Event-Anmeldungen. */}
-              {renderPerEventTabStrip(
-                activeFieldsTabIdx,
-                setActiveFieldsTabIdx,
-                subEventsOnlyMode
-                  ? (isDe ? 'Übergreifende Felder' : 'Cross-cutting fields')
-                  : `${subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt-Event' : 'Main event')}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`,
-                isDe ? 'Event-Tab wechseln (Felder)' : 'Switch event tab (fields)'
-              )}
+              {/* v28.78: Der Scope-Umschalter steht jetzt global unter der
+                  Schritt-Leiste (renderGlobalScopeBar) — nicht mehr je Schritt. */}
 
               {activeFieldsTabIdx > 0 && (() => {
                 const seIdx = activeFieldsTabIdx - 1;
