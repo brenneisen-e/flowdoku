@@ -4805,7 +4805,13 @@ export class EventService {
         'AudienceResolvedEmails': event.audienceResolvedEmails || '',
         'FilterMode': event.filterMode || 'OR',
         'StartDate': event.startDate || null,
-        'EndDate': event.endDate || null,
+        // v22.17/v28.66: EndDate darf NIE leer in DEX_Events landen — der
+        // DEX_CreateOutlookEvent-Flow rechnet convertFromUtc(coalesce(
+        // OutlookEnd, EndDate)); bei null stürzt „Create event (V4)" ab und es
+        // entsteht kein Outlook-Termin. Die Aufrufer setzen den Fallback zwar
+        // schon, hier wird er zentral erzwungen (letzte Instanz vor dem
+        // Schreiben — s. auch updateEvent).
+        'EndDate': event.endDate || event.startDate || null,
         'RegistrationDeadline': event.registrationDeadline || null,
         'LastDeregisterDate': event.lastDeregisterDate || null,
         'MaxParticipants': event.maxParticipants,
@@ -5005,9 +5011,24 @@ export class EventService {
   public async updateEvent(eventId: number, updates: Record<string, unknown>, retried?: boolean): Promise<boolean> {
     this.lastUpdateEventError = '';
     try {
+      // v28.66: zentraler Schutz für EndDate — analog zu createEvent. Ein
+      // leeres EndDate in DEX_Events lässt den DEX_CreateOutlookEvent-Flow in
+      // „Create event (V4)" mit convertFromUtc(null) abstürzen. Deshalb hier,
+      // am gemeinsamen Nadelöhr aller Update-Pfade, aufräumen:
+      //  - leeres EndDate + StartDate im selben Update -> Start als Ende,
+      //  - sonst das Feld weglassen, statt einen gespeicherten Wert mit null
+      //    zu überschreiben (leer war ohnehin nie ein gültiger Zustand).
+      const safeUpdates: Record<string, unknown> = { ...updates };
+      if ('EndDate' in safeUpdates && !safeUpdates.EndDate) {
+        if (safeUpdates.StartDate) {
+          safeUpdates.EndDate = safeUpdates.StartDate;
+        } else {
+          delete safeUpdates.EndDate;
+        }
+      }
       const payload = {
         '__metadata': { 'type': 'SP.Data.DEX_x005f_EventsListItem' },
-        ...updates,
+        ...safeUpdates,
       };
 
       // v28.10: SharePoint lehnt REST-Bodies > 2 MB mit einem kryptischen
@@ -5026,8 +5047,8 @@ export class EventService {
         // Save hier still ab: In der Konsole stand nur eine Warnung, im Wizard
         // passierte auf „Speichern" schlicht nichts.
         const FIELD_OVERHEAD = 160; // __metadata + Klammern/Kommas
-        const entries = Object.keys(updates)
-          .map(k => ({ k, size: JSON.stringify({ [k]: updates[k] }).length }))
+        const entries = Object.keys(safeUpdates)
+          .map(k => ({ k, size: JSON.stringify({ [k]: safeUpdates[k] }).length }))
           .sort((a, b) => b.size - a.size);
         // Ein EINZELNES Feld über dem Limit lässt sich nicht aufteilen — hier
         // hilft nur ein kleineres Bild. Feldname mitgeben, damit der Organizer
@@ -5045,7 +5066,7 @@ export class EventService {
           if (curSize + e.size > LIMIT && Object.keys(cur).length > 0) {
             groups.push(cur); cur = {}; curSize = FIELD_OVERHEAD;
           }
-          cur[e.k] = updates[e.k];
+          cur[e.k] = safeUpdates[e.k];
           curSize += e.size;
         }
         if (Object.keys(cur).length > 0) groups.push(cur);
@@ -5102,7 +5123,7 @@ export class EventService {
         // sofort migriert und der Save EINMAL automatisch wiederholt. Alle
         // anderen Treffer werden in der Fehlermeldung beim Namen genannt.
         if (/invalid text value|text field contains invalid data/i.test(spMsg)) {
-          const offenders = await this.findInvalidTextFields('DEX_Events', updates);
+          const offenders = await this.findInvalidTextFields('DEX_Events', safeUpdates);
           if (offenders.length > 0) {
             console.warn('[DEX] updateEvent: Werte passen nicht in einzeilige Text-Spalten:',
               offenders.map((o) => `${o.internalName} (${o.length} Zeichen${o.intendedNote ? ', sollte Note sein' : ''})`).join(', '));
@@ -5111,7 +5132,7 @@ export class EventService {
               for (const o of healable) {
                 await this._upgradeTextFieldToNote('DEX_Events', o.title);
               }
-              return this.updateEvent(eventId, updates, true);
+              return this.updateEvent(eventId, safeUpdates, true);
             }
             this.lastUpdateEventError += ` | ${offenders
               .map((o) => `Betroffenes Feld: „${o.title}" — ${o.length} Zeichen, die Spalte ist einzeiliger Text (max. 255 Zeichen)`)
