@@ -7157,6 +7157,7 @@ export default function EventCreationPage(): React.ReactElement {
     { key: 'deregDeadline', de: 'Abmeldefrist', en: 'Cancellation deadline', fields: ['lastDeregisterDate'] },
     { key: 'place', de: 'Ort & Adresse', en: 'Location & address', fields: ['location', 'locationAddress'] },
     { key: 'mandatory', de: 'Pflichtanmeldung', en: 'Mandatory registration', fields: ['mandatory'] },
+    { key: 'communication', de: 'Kommunikation (Logo, Outlook-Text, Überschriften, Betreff, Mail-Sprache, Mail-Schalter)', en: 'Communication (logo, Outlook text, headings, subject, mail language, mail toggles)', fields: ['emailLanguage', 'emailLogoBase64', 'outlookLogoBase64', 'outlookBody', 'outlookHeading', 'outlookSubheading', 'outlookSubject', 'disableEmails', 'disableRegistrationEmail', 'disableCancellationEmail', 'autoDeregisterOnDecline', 'inactiveHandling', 'disableOutlook', 'emailTemplateOverrides'] },
     { key: 'times', de: 'Zeiten (Start & Ende) — überschreibt die Termine!', en: 'Times (start & end) — overwrites the dates!', fields: ['startDate', 'endDate'] },
   ]), []);
   const asRec = (d: SubEventDraft | undefined): Record<string, unknown> =>
@@ -7176,7 +7177,13 @@ export default function EventCreationPage(): React.ReactElement {
   const [subTransfer, setSubTransfer] = React.useState<null | { fromIdx: number; groups: string[]; targets: number[] }>(null);
   const applySubTransfer = (): void => {
     if (!subTransfer) return;
-    const src = asRec(subEvents[subTransfer.fromIdx]);
+    // v28.80: Die Kommunikationsfelder (Logo, Outlook-Text, Betreff …) stehen
+    // NICHT laufend im Draft — sie leben im UI-State und werden erst beim
+    // Reiterwechsel in den Slot geschrieben. Ohne diesen Flush wuerde man den
+    // Stand VOR der letzten Bearbeitung kopieren. Der Flush schreibt synchron
+    // in subEventsRef, deshalb wird von dort gelesen.
+    flushActiveCommTabToState();
+    const src = asRec(subEventsRef.current[subTransfer.fromIdx] || subEvents[subTransfer.fromIdx]);
     const fields: string[] = [];
     for (const g of SUB_TRANSFER_GROUPS) {
       if (subTransfer.groups.indexOf(g.key) >= 0) fields.push(...g.fields);
@@ -7185,7 +7192,13 @@ export default function EventCreationPage(): React.ReactElement {
     setSubEvents(prev => prev.map((s, i) => {
       if (subTransfer.targets.indexOf(i) < 0) return s;
       const patch: Record<string, unknown> = {};
-      for (const f of fields) patch[f] = src[f];
+      for (const f of fields) {
+        const v = src[f];
+        // v28.80: Objekte (z.B. emailTemplateOverrides) klonen — sonst teilen
+        // sich alle Ziel-Sub-Events dieselbe Referenz und eine spaetere
+        // Aenderung an einem wuerde die anderen mitziehen.
+        patch[f] = (v && typeof v === 'object') ? JSON.parse(JSON.stringify(v)) : v;
+      }
       return { ...s, ...(patch as unknown as Partial<SubEventDraft>) };
     }));
     const n = subTransfer.targets.length;
@@ -14723,6 +14736,30 @@ export default function EventCreationPage(): React.ReactElement {
                     ? 'Hier konfigurierst du alle automatischen E-Mails und Outlook-Einladungen — Sprache, Logos, Vorlagen und Versandregeln pro Aktion.'
                     : 'Here you configure all automated emails and Outlook invites — language, logos, templates and per-action send rules.'}
                 </p>
+                {/* v28.80: Kommunikation eines Sub-Events auf die anderen
+                    uebertragen — sonst muss der Organizer Logo, Outlook-Text,
+                    Betreff und Mail-Schalter bei jedem Sub-Event einzeln
+                    einstellen. Nur sichtbar, wenn ein Sub-Event ausgewaehlt
+                    ist; die Klammer-Kommunikation ist eine andere Ebene. */}
+                {activeCommTabIdx > 0 && subEvents.length > 1 && (
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+                      onClick={() => setSubTransfer({
+                        fromIdx: activeCommTabIdx - 1,
+                        groups: ['communication'],
+                        targets: subEvents.map((_, i) => i).filter(i => i !== activeCommTabIdx - 1),
+                      })}
+                      title={isDe
+                        ? 'Überträgt Logo, Outlook-Text, Überschriften, Betreff, Mail-Sprache und Mail-Schalter dieses Sub-Events auf andere Sub-Events'
+                        : 'Transfers logo, Outlook text, headings, subject, mail language and mail toggles of this sub-event to other sub-events'}
+                    >
+                      {isDe ? 'Kommunikation auf andere Sub-Events übertragen' : 'Transfer communication to other sub-events'}
+                    </button>
+                  </div>
+                )}
                 {renderStepIntro(
                   [
                     'Sprache der automatischen E-Mails wählen (Deutsch oder Englisch)',
