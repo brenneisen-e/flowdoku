@@ -125,10 +125,10 @@ const coreStay = (event: DeloitteEvent): { from: string; to: string } => {
  * Formular-Erkennung
  * ---------------------------------------------------------------------- */
 
-const HOTEL_RE = /hotel|unterkunft|übernacht|uebernacht|accommodation|lodging|zimmer/i;
-const EXTRA_RE = /additional|extra|zusätzlich|zusaetzlich|weitere|vorab|beforehand|früher|frueher|verlänger|verlaenger|longer/i;
+const HOTEL_RE = /hotel|unterkunft|übernacht|übernacht|accommodation|lodging|zimmer/i;
+const EXTRA_RE = /additional|extra|zusätzlich|zusätzlich|weitere|vorab|beforehand|früher|frueher|verlänger|verlänger|longer/i;
 const NO_RE = /^\s*(nein|no|kein|none|nicht)\b|^\s*-\s*$/i;
-const AFTER_RE = /after|danach|länger|laenger|abreis|departure|extend|following/i;
+const AFTER_RE = /after|danach|länger|länger|abreis|departure|extend|following/i;
 const BEFORE_RE = /before|beforehand|vorab|vorher|früher|frueher|anreis|prior/i;
 const WORD_NUMS: Record<string, number> = {
   one: 1, two: 2, three: 3, four: 4, five: 5,
@@ -186,7 +186,7 @@ const parseExtraAnswer = (ansIn: string): { nights: number; after: boolean } | n
   let n = 0;
   // „2 additional nights" / „2 Nächte" — nur Zahlen direkt vor dem Nacht-Wort,
   // damit Datumsangaben wie „from 23 - 24 Sept." nicht mitgezählt werden.
-  const digit = s.match(/(\d+)\s*(additional\s+|extra\s+|weitere\s+|zusätzliche\s+|zusaetzliche\s+)?(night|nacht|nächte|naechte)/);
+  const digit = s.match(/(\d+)\s*(additional\s+|extra\s+|weitere\s+|zusätzliche\s+|zusätzliche\s+)?(night|nacht|nächte|naechte)/);
   if (digit) n = parseInt(digit[1], 10);
   else {
     const keys = Object.keys(WORD_NUMS);
@@ -510,7 +510,7 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
     const byName: Record<string, IPlanRow> = {};
     for (const r of rows) byName[r.hotel.name] = r;
 
-    // Wer faellt raus — und warum? Ohne diese Zahlen wirkt eine Verteilung,
+    // Wer fällt raus — und warum? Ohne diese Zahlen wirkt eine Verteilung,
     // die nur eine von zwei Personen anfasst, wie ein Fehler.
     let excludedAssigned = 0; let excludedNoWish = 0;
     const candidates = people.filter(p => {
@@ -968,7 +968,7 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
                 ? <>Eure Teilnehmer haben unter „<strong>{fields.extra.label}</strong>" selbst angegeben, ob sie länger brauchen. Der Assistent hat die Antworten gezählt und den passenden Zeitraum vorgeschlagen — prüf die Zuordnung und korrigiere sie, wo sie nicht stimmt.</>
                 : <>Your attendees stated under „<strong>{fields.extra.label}</strong>" whether they need longer. The wizard counted the answers and proposed a matching period — check and correct it where needed.</>}
             </p>
-            {/* v28.62: Ob jemand ueberhaupt ein Zimmer bekommt, entscheidet die
+            {/* v28.62: Ob jemand überhaupt ein Zimmer bekommt, entscheidet die
                 Bedarfsfrage — nicht diese Tabelle. Ohne den Hinweis las sich die
                 Zeile „(keine Angabe)" so, als bekaeme JEDER den Standard. */}
             {fields.main && (
@@ -1380,7 +1380,7 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
             : <>This is how the distribution would look. <strong>Extra nights</strong> fall outside each hotel’s capacity period — your contingent does not cover them, they have to be booked on top.</>}
         </p>
 
-        {/* Wer wird ueberhaupt angefasst? */}
+        {/* Wer wird überhaupt angefasst? */}
         <div style={{ ...box, marginTop: 0, marginBottom: 12, background: 'var(--dex-gray-50, #f7f7f5)' }}>
           <div style={{ fontSize: '0.82rem', lineHeight: 1.6 }}>
             {isDe
@@ -1497,7 +1497,7 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
     // v28.61: `dismissable={false}` — ein Klick neben den Dialog (oder Escape)
     // schliesst ihn nicht mehr. Im Assistenten stecken vier Schritte Eingabe,
     // die beim versehentlichen Schliessen komplett weg waren. Raus geht es nur
-    // noch bewusst ueber „Abbrechen".
+    // noch bewusst über „Abbrechen".
     <Modal open={open} onClose={onClose} maxWidth={900} dismissable={false}
       ariaLabel={isDe ? 'Hotel-Planung einrichten' : 'Set up hotel planning'}>
       <h2 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--dex-gray-800)' }}>

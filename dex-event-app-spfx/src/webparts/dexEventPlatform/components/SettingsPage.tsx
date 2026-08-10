@@ -259,9 +259,9 @@ export default function SettingsPage(): React.ReactElement {
       setNewLocation('');
       setShowAddForm(false);
       // v28.44: Die Onboarding-Mail geht jetzt AUTOMATISCH raus — vorher war sie
-      // ein Angebot per Rueckfrage, das man wegklicken konnte, und dann startete
+      // ein Angebot per Rückfrage, das man wegklicken konnte, und dann startete
       // der neue Organizer ohne Links, Handbuch und Einsatzbereich-Hinweis.
-      // Die User-Rolle bleibt aussen vor: Die Mail erklaert Organizer-/Admin-
+      // Die User-Rolle bleibt aussen vor: Die Mail erklärt Organizer-/Admin-
       // Funktionen, die Standard-User gar nicht haben.
       if (assignedRole === 'Organizer' || assignedRole === 'Admin') {
         void sendOrganizerOnboarding(assignedEmail, assignedName, assignedRole)
@@ -496,7 +496,7 @@ export default function SettingsPage(): React.ReactElement {
             {r.role === 'User' ? <span style={{ color: 'var(--dex-gray-300)' }}>—</span> : <CoordinatedEventsCell titles={evts} isDe={isDe} />}
           </td>
           <td style={{ ...tdS, textAlign: 'right', whiteSpace: 'nowrap' }}>
-            {/* v28.44: Onboarding-Mail nachtraeglich verschicken — fuer alle,
+            {/* v28.44: Onboarding-Mail nachträglich verschicken — für alle,
                 die vor dieser Version Organizer wurden (und damals keine
                 bekommen haben) oder die sie nicht mehr finden. */}
             {(r.role === 'Organizer' || r.role === 'Admin') && (

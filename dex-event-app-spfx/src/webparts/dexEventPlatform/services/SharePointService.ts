@@ -1052,7 +1052,7 @@ export class SharePointService {
         const hay = (u.displayName + ' ' + u.email).toLowerCase();
         return queryTokens.every(tok => hay.indexOf(tok) >= 0);
       });
-      // Nur uebernehmen wenn ueberhaupt etwas matched — sonst sind die
+      // Nur übernehmen wenn überhaupt etwas matched — sonst sind die
       // unscharfen Single-Token-Treffer immer noch besser als gar nichts.
       if (filtered.length > 0) {
         all.length = 0;
@@ -1104,7 +1104,7 @@ export class SharePointService {
    * v8.9: Alle User eines Standorts via Microsoft Graph laden. Genutzt vom
    * Exclude-Modal, damit der Organizer auch bei nur-Standortfilter-Events
    * eine Personenliste zum Aushaken bekommt (statt alle Personen einzeln
-   * ueber die Suche finden zu müssen).
+   * über die Suche finden zu müssen).
    *
    * Pagination: Graph $top=999 ist Maximum pro Page. Folgt @odata.nextLink
    * um alle Personen einzusammeln. Hard-Cap bei 5000 damit die UI nicht
@@ -1133,7 +1133,7 @@ export class SharePointService {
     // (z.B. 'DE - Köln' -> DEKOELN@deloitte.com, 'DE - Düsseldorf' ->
     // DEDUESSELDORF@deloitte.com). Wir extrahieren die Stadt aus dem
     // Standort-String, normalisieren Umlaute zu ASCII-Substitutionen und
-    // versuchen den Verteiler ueber getGroupMembers aufzulösen. Damit
+    // versuchen den Verteiler über getGroupMembers aufzulösen. Damit
     // sparen wir uns Graph-Permission-Overhead vollständig für den
     // typischen DE-Office-Fall. Andere Fälle (kein 'DE'-Prefix oder
     // unbekannte Stadt) fallen weiter unten auf Graph + SP-Search zurück.
@@ -1168,9 +1168,9 @@ export class SharePointService {
       }
     } catch (e) { console.warn('[DEX] searchUsersByLocation City-Extract failed:', e); }
 
-    // Schritt 1: Versuch ueber Microsoft Graph mit ConsistencyLevel:eventual
+    // Schritt 1: Versuch über Microsoft Graph mit ConsistencyLevel:eventual
     // (Advanced Query). Funktioniert nur wenn die App User.Read.All oder
-    // Directory.Read.All Permission hat. Ueberspringen wenn der Verteiler-
+    // Directory.Read.All Permission hat. Überspringen wenn der Verteiler-
     // Pfad schon Treffer hatte.
     if (collected.length === 0) try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1206,7 +1206,7 @@ export class SharePointService {
       console.warn('[DEX] searchUsersByLocation Graph block failed:', err);
     }
 
-    // Schritt 2: Fallback ueber SharePoint Search People Index. Greift wenn
+    // Schritt 2: Fallback über SharePoint Search People Index. Greift wenn
     // Graph keine Treffer hatte (z.B. wegen fehlender User.Read.All-Permission).
     // SourceId b09a7990-05ea-4af9-81ef-edfab16c4e31 = People-Search-Result-Source.
     if (collected.length === 0) {
@@ -1328,7 +1328,7 @@ export class SharePointService {
       if (groups.length === 0) return { groupName: groupEmail, members: [] };
       const group = groups[0];
       // 2. Transitive Members (inkl. verschachtelte Gruppen) holen — v8.8:
-      // mit zusätzlichen Profil-Feldern. v8.12: PAGINATION ueber
+      // mit zusätzlichen Profil-Feldern. v8.12: PAGINATION über
       // @odata.nextLink, sonst stoppt Graph nach 999 Einträgen (oder
       // 200 wie vor v8.12) — bei Standort-Verteilern wie DEKOELN sind
       // das schnell 1000+ Personen.

@@ -52,7 +52,7 @@ export function AppPreview(props: AppPreviewProps): React.ReactElement {
   const mobileWidth = props.mobileWidth || 412;
   // v7.7: Default-Mode aus der Width-Prop ableiten — <=768 ist Handy-Default
   // (z.B. Check-In-Scanner, Landing-Bubble), >768 ist Laptop-Default
-  // (Event-Wizard, Admin-Center, etc.). Ueberschreibbar durch props.device.
+  // (Event-Wizard, Admin-Center, etc.). Überschreibbar durch props.device.
   const initialMode: 'phone' | 'laptop' = props.device === 'phone'
     ? 'phone'
     : props.device === 'laptop'

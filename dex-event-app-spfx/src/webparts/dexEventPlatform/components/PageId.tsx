@@ -3,7 +3,7 @@
  * aktuellen Seiten-ID.
  *
  * Zweck: User kann mir bei UI-Anfragen präzise sagen, welche Seite er meint
- * ("PAGE-ID: events → Card ABC aendern").
+ * ("PAGE-ID: events → Card ABC ändern").
  *
  * v9.20-Fix: position:fixed funktioniert in SPFx-Webparts nicht zuverlässig
  * (transformierter Parent macht aus fixed effektiv absolute → relativ zum

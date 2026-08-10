@@ -198,7 +198,7 @@ function looksEnglishText(text: string): boolean {
 // Status-Werte sind in SP als deutsche Strings gespeichert ('Angemeldet',
 // 'QR versendet', 'Warteliste', 'Eingecheckt', 'Abgemeldet'). Die App
 // rendert sie hier in der UI-Sprache des Users, ohne den Datenbankwert
-// zu aendern.
+// zu ändern.
 function translateStatus(status: string, isDe: boolean): string {
   if (isDe || !status) return status;
   switch (status) {
@@ -214,7 +214,7 @@ function translateStatus(status: string, isDe: boolean): string {
 
 // v7.6: Wiederverwendbare Action-Kachel für den Aktionen-Bereich.
 // Default in Grau, beim Hover/Focus kippt Border + Icon + Hintergrund auf
-// Deloitte-Grün. Unterstützt Button (onClick), Link (href, oeffnet in neuem
+// Deloitte-Grün. Unterstützt Button (onClick), Link (href, öffnet in neuem
 // Tab) und passive Wrapper (children-Mode für Spezialfälle wie das
 // Excel-Dropdown). Badge zeigt zwingend "Organizer" (grüner Tint) oder
 // "Nur Admin" (oranger Tint), damit auf einen Blick klar ist, für welche
@@ -875,7 +875,7 @@ export default function AdminPage(): React.ReactElement {
       .forEach(sel => { try { document.querySelectorAll(sel).forEach(toTop); } catch { /* */ } });
   }, [selectedEvent?.id]);
   const [registrations, setRegistrations] = React.useState<SPRegistration[]>([]);
-  // v28.39: Hotel-Planung eingeklappt starten — Events ohne Uebernachtung
+  // v28.39: Hotel-Planung eingeklappt starten — Events ohne Übernachtung
   // sollen von dem Abschnitt nichts merken.
   const [hotelPanelOpen, setHotelPanelOpen] = React.useState(false);
   // v24.75: Echtzeit-Push auf die Teilnehmerliste des gewählten Events. Meldet
@@ -918,10 +918,10 @@ export default function AdminPage(): React.ReactElement {
     Object.keys(counts).forEach(em => { if (counts[em] > 1) dup.add(em); });
     return dup;
   }, [registrations]);
-  // v23.3: Aktive Zeilen OHNE gueltige E-Mail. Solche Anmeldungen belegen einen
+  // v23.3: Aktive Zeilen OHNE gültige E-Mail. Solche Anmeldungen belegen einen
   // Platz, zaehlen aber in den entdoppelten Zahlen (Kachel/Klammer/KPI) frueher
-  // nicht mit (E-Mail = Dedup-Schluessel) → „188 statt 190". Ausserdem bekommen
-  // sie KEINE Bestaetigung/QR/Outlook. Oben als Hinweis-Box surfacen.
+  // nicht mit (E-Mail = Dedup-Schlüssel) → „188 statt 190". Ausserdem bekommen
+  // sie KEINE Bestätigung/QR/Outlook. Oben als Hinweis-Box surfacen.
   const missingEmailRegs = React.useMemo<SPRegistration[]>(() => {
     return registrations.filter(r => {
       if ((r.Status || '') === 'Abgemeldet') return false;
@@ -1384,7 +1384,7 @@ export default function AdminPage(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [confirmDeleteEvent, isAdmin]);
   // v9.0: ChangeLog-Modal — Admin/Organizer sehen den Audit-Log aller
-  // Event- und Teilnehmer-Aenderungen (DEX_ChangeLog).
+  // Event- und Teilnehmer-Änderungen (DEX_ChangeLog).
   const [showChangeLogModal, setShowChangeLogModal] = React.useState(false);
   const [changeLogEntries, setChangeLogEntries] = React.useState<Array<{
     Id: number; Created: string; Action: string; TargetType: string;
@@ -1463,6 +1463,9 @@ export default function AdminPage(): React.ReactElement {
   const [isPromoting, setIsPromoting] = React.useState(false);
   const [promoteResult, setPromoteResult] = React.useState<string | null>(null);
   // v28.70: Wartelisten-Platz einer Person manuell setzen (z.B. auf 1).
+  // v28.74: Hover-/Fokus-Reiter im Event-Details-Tabstrip (Inline-Styles
+  // können kein :hover).
+  const [evTabHover, setEvTabHover] = React.useState<string | null>(null);
   const [wlPosModal, setWlPosModal] = React.useState<{ reg: SPRegistration; currentPos: number; total: number } | null>(null);
   const [wlPosValue, setWlPosValue] = React.useState<string>('1');
   const [wlPosBusy, setWlPosBusy] = React.useState(false);
@@ -1501,7 +1504,7 @@ export default function AdminPage(): React.ReactElement {
     freeSlots: number;
     /** v17.1: true wenn dieser Dialog im „Neues Team anlegen"-Flow geöffnet
      *  wurde — dann zeigen wir ein optionales Team-Name-Eingabefeld
-     *  und uebernehmen den eingegebenen Namen beim Insert. */
+     *  und übernehmen den eingegebenen Namen beim Insert. */
     isNewTeam?: boolean;
   } | null>(null);
   const [adminAddMemberPick, setAdminAddMemberPick] = React.useState<{ email: string; displayName: string } | null>(null);
@@ -1587,7 +1590,7 @@ export default function AdminPage(): React.ReactElement {
   // Email Compose Modal
   const [showEmailModal, setShowEmailModal] = React.useState(false);
   // v17.10: Massmail-Target-Picker. Erst Zielgruppe wählen, dann den
-  // RichText-Editor oeffnen. Mode = 'closed' | 'pick' | 'paste' | 'editor'.
+  // RichText-Editor öffnen. Mode = 'closed' | 'pick' | 'paste' | 'editor'.
   const [massmailMode, setMassmailMode] = React.useState<'closed' | 'pick' | 'paste' | 'editor'>('closed');
   type MassmailAudience = 'active' | 'activePlusWait' | 'waitOnly' | 'nachruecker' | 'custom';
   const [massmailAudience, setMassmailAudience] = React.useState<MassmailAudience>('active');
@@ -1634,13 +1637,13 @@ export default function AdminPage(): React.ReactElement {
   // stand die komplette Liste als Fliesstext und schob alles andere nach unten.
   // Jetzt eingeklappt mit Aufklapp-Knopf.
   const [inviteAudienceOpen, setInviteAudienceOpen] = React.useState(false);
-  // v28.37: Adressen, die fuer dieses Event schon eine Einladungsmail bekommen
-  // haben (aus DEX_Emails, Typ „Einladung"). Wird beim Oeffnen des Dialogs
+  // v28.37: Adressen, die für dieses Event schon eine Einladungsmail bekommen
+  // haben (aus DEX_Emails, Typ „Einladung"). Wird beim Öffnen des Dialogs
   // geladen; null = noch nicht geladen bzw. nicht ermittelbar.
   const [invitedLc, setInvitedLc] = React.useState<Set<string> | null>(null);
   // v28.37: Vom Organizer von Hand angepasste Empfaengerliste. null = keine
-  // Anpassung, es gilt die per Radio gewaehlte Liste. Sobald etwas entfernt
-  // oder ergaenzt wird, uebernimmt diese Liste.
+  // Anpassung, es gilt die per Radio gewählte Liste. Sobald etwas entfernt
+  // oder ergaenzt wird, übernimmt diese Liste.
   const [inviteCustomEmails, setInviteCustomEmails] = React.useState<string[] | null>(null);
   const [inviteAddInput, setInviteAddInput] = React.useState('');
   const [inviteSending, setInviteSending] = React.useState(false);
@@ -1867,7 +1870,7 @@ export default function AdminPage(): React.ReactElement {
               : `No person found in the Deloitte tenant for "${newEmail}". Please check the address (typo?).`);
             return;
           }
-          // Profil-Daten gleich mit-uebernehmen, damit der Eintrag konsistent
+          // Profil-Daten gleich mit-übernehmen, damit der Eintrag konsistent
           // bleibt (Department / Location / JobTitle passen zum neuen User).
           profileFields.Department = ''; // searchUser liefert displayName/location/jobTitle
           profileFields.Location = profile.location || '';
@@ -1888,7 +1891,7 @@ export default function AdminPage(): React.ReactElement {
         }
         if (newEmail !== oldEmail) {
           oldValues.ParticipantEmail = oldEmail; patch.ParticipantEmail = newEmail; fieldLabelMap.ParticipantEmail = 'E-Mail';
-          // Profil-Daten mit aktualisieren (nur wenn ueberhaupt was zurückkam)
+          // Profil-Daten mit aktualisieren (nur wenn überhaupt was zurückkam)
           if (profileFields.Location) {
             oldValues.Location = String(r.Location || ''); patch.Location = profileFields.Location;
             fieldLabelMap.Location = isDe ? 'Standort' : 'Location';
@@ -1942,7 +1945,7 @@ export default function AdminPage(): React.ReactElement {
         }
       }
       if (Object.keys(patch).length === 0) {
-        // Keine Aenderung — nichts zu tun.
+        // Keine Änderung — nichts zu tun.
         closeEditModal();
         return;
       }
@@ -2883,7 +2886,7 @@ export default function AdminPage(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedEvent?.id, registrations, reloadRegistrationsForIdCheck]);
 
-  // v11.70: kein Modal mehr beim Event-Oeffnen — der Hinweis steht ab
+  // v11.70: kein Modal mehr beim Event-Öffnen — der Hinweis steht ab
   // jetzt direkt als Box oben in der Teilnehmerliste, solange die
   // Bedingung erfüllt ist (siehe Render-Block unten). Der Ref bleibt
   // erhalten, um in Zukunft ein erneutes „Mount-Trigger"-Verhalten
@@ -2910,7 +2913,7 @@ export default function AdminPage(): React.ReactElement {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const spfxContext = (window as any).__dexSpfxContext;
   const eventServiceRef = React.useMemo(() => spfxContext ? new EventService(spfxContext) : null, []);
-  // v28.65: Fuer die Rollenliste (Namens-Reparatur).
+  // v28.65: Für die Rollenliste (Namens-Reparatur).
   const spServiceRef = React.useMemo(() => spfxContext ? new SharePointService(spfxContext) : null, []);
 
   // v22.7: Hintergrund-Check beim Öffnen eines Events — sind die E-Mail-Adressen
@@ -3158,7 +3161,7 @@ export default function AdminPage(): React.ReactElement {
     cols.push({ id: 'status', label: 'Status' });
     cols.push({ id: 'date', label: 'Registriert am' });
     // v17.15/v17.17.1: Nachrück-Audit-Spalten — nur sichtbar wenn das
-    // Event ueberhaupt eine Warteliste haben KANN (waitlistEnabled UND
+    // Event überhaupt eine Warteliste haben KANN (waitlistEnabled UND
     // maxParticipants > 0). Bei „Unbegrenzt"-Events kommt nie jemand auf
     // die Warteliste, deshalb sind die drei Audit-Spalten ohne Inhalt.
     // v19.11: Zusätzlich `hasWaitlistActivity` — Events OHNE echte Warteliste
@@ -4075,7 +4078,7 @@ export default function AdminPage(): React.ReactElement {
     if (!selectedEvent) return;
     applyInviteDraftOrDefaults(selectedEvent);
     // v28.37: Anpassungen der letzten Runde nicht mitschleppen und die
-    // bereits verschickten Einladungen im Hintergrund nachladen (fuer den
+    // bereits verschickten Einladungen im Hintergrund nachladen (für den
     // Modus „Nur an noch nicht Eingeladene").
     setInviteCustomEmails(null);
     setInviteAddInput('');
@@ -4974,7 +4977,7 @@ export default function AdminPage(): React.ReactElement {
             };
             return (
               <>
-                {/* v18.2: Sortier- + Entwurf-Filter-Leiste ueber der Event-Liste. */}
+                {/* v18.2: Sortier- + Entwurf-Filter-Leiste über der Event-Liste. */}
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap',
                   marginBottom: 16, padding: '10px 14px',
@@ -5339,7 +5342,7 @@ export default function AdminPage(): React.ReactElement {
           if (!row.company && anyR.Company) row.company = anyR.Company;
           if (!row.vorname && r.Vorname) row.vorname = r.Vorname;
           if (!row.nachname && r.Nachname) row.nachname = r.Nachname;
-          // Früheste RegistrationDate uebernehmen (min).
+          // Früheste RegistrationDate übernehmen (min).
           const ts = r.RegistrationDate ? new Date(r.RegistrationDate).getTime() : Number.POSITIVE_INFINITY;
           if (ts < row.earliestRegistrationTs) row.earliestRegistrationTs = ts;
         }
@@ -5564,9 +5567,9 @@ export default function AdminPage(): React.ReactElement {
       if (em && typeof rr.TeilnehmerID === 'number' && !(em in bracketTidByEmail)) bracketTidByEmail[em] = rr.TeilnehmerID;
     }
     return (
-      // v28.53: Eigener Scroll-Container mit Hoehenbegrenzung — analog zur
+      // v28.53: Eigener Scroll-Container mit Höhenbegrenzung — analog zur
       // Sub-Event-Teilnehmerliste (renderTable, maxHeight 70vh). Vorher hatte
-      // der Klammer-View nur overflowX, lief also ueber die volle Zeilenhoehe
+      // der Klammer-View nur overflowX, lief also über die volle Zeilenhöhe
       // inline mit: Bei 400+ Teilnehmern musste man an der ganzen Tabelle
       // vorbeiscrollen, und der sticky-thead haette keinen Bezugsrahmen.
       <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
@@ -5957,7 +5960,7 @@ export default function AdminPage(): React.ReactElement {
                     {/* v15.20: Im konsolidierten View einfach fortlaufend
                         durchnummerieren (idx+1). Die Sub-Event-TeilnehmerID
                         macht hier keinen Sinn, weil jede Person eine eigene
-                        TID pro Sub-Event hat — sortbar bleibt es ueber
+                        TID pro Sub-Event hat — sortbar bleibt es über
                         Vorname/Nachname/Email-Spalten. */}
                     <td style={{ padding: 8, color: 'var(--dex-gray-400)' }}>{idx + 1}</td>
                     {/* v26.68: echte Teilnehmer-ID (Klammer-Liste) — nur bei Suche. */}
@@ -6816,15 +6819,22 @@ export default function AdminPage(): React.ReactElement {
                         role="tab"
                         aria-selected={active}
                         onClick={() => handleSelectEvent(t.ev).catch(() => { /* */ })}
+                        onMouseEnter={() => setEvTabHover(t.id)}
+                        onMouseLeave={() => setEvTabHover(prev => (prev === t.id ? null : prev))}
+                        onFocus={() => setEvTabHover(t.id)}
+                        onBlur={() => setEvTabHover(prev => (prev === t.id ? null : prev))}
                         style={{
                           display: 'inline-flex', alignItems: 'center', gap: 8,
                           padding: '8px 14px',
-                          border: '1px solid var(--dex-gray-200)',
-                          borderBottom: active ? '2px solid var(--dex-green, #86bc25)' : '1px solid var(--dex-gray-200)',
+                          // v28.74: Hover-/Fokus-Effekt wie im Wizard — ohne
+                          // Reaktion auf die Maus lasen sich die Reiter wie eine
+                          // Beschriftung statt wie etwas Anklickbares.
+                          border: `1px solid ${(evTabHover === t.id && !active) ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+                          borderBottom: active ? '2px solid var(--dex-green, #86bc25)' : `1px solid ${(evTabHover === t.id) ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
                           borderRadius: '8px 8px 0 0',
-                          background: active ? '#fff' : 'var(--dex-gray-50, #fafafa)',
-                          color: active ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)',
-                          fontWeight: active ? 700 : 500,
+                          background: active ? '#fff' : ((evTabHover === t.id) ? 'rgba(134,188,37,0.14)' : 'var(--dex-gray-50, #fafafa)'),
+                          color: active ? 'var(--dex-green-dark, #4a7c1f)' : ((evTabHover === t.id) ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)'),
+                          fontWeight: active ? 700 : ((evTabHover === t.id) ? 600 : 500),
                           fontSize: '0.85rem',
                           cursor: 'pointer',
                           marginBottom: -1,
@@ -6832,7 +6842,9 @@ export default function AdminPage(): React.ReactElement {
                           maxWidth: 280,
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
-                          transition: 'background 0.15s, color 0.15s, border-color 0.15s',
+                          transform: (evTabHover === t.id && !active) ? 'translateY(-1px)' : 'none',
+                          boxShadow: (evTabHover === t.id && !active) ? '0 -2px 6px rgba(134,188,37,0.20)' : 'none',
+                          transition: 'background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s, box-shadow 0.15s',
                         }}
                         title={t.label}
                       >
@@ -7016,8 +7028,8 @@ export default function AdminPage(): React.ReactElement {
             Einladungsmail verschicken, Anmeldungen verfolgen.
             v28.47: flex-grow statt 0 — auf breiten Laptop-Screens schob die
             Detail-Card (flex 1 1 420px + gemessene minWidth) die Box in die
-            naechste Zeile, wo sie mit 460px als schmale Saeule links stand und
-            rechts daneben alles leer blieb. Mit grow fuellt sie die Zeile. */}
+            nächste Zeile, wo sie mit 460px als schmale Saeule links stand und
+            rechts daneben alles leer blieb. Mit grow füllt sie die Zeile. */}
         {(isAdmin || isOrganizerFor(selectedEvent)) && !!selectedEvent.isFictive && !selectedEvent.isDemoShowcase && (
           <aside style={{ flex: '1 1 360px', minWidth: 320 }}>
             <div className="card" style={{ padding: 20, background: 'rgba(134,188,37,0.05)', border: '1px solid var(--dex-green, #86bc25)' }}>
@@ -8646,7 +8658,7 @@ export default function AdminPage(): React.ReactElement {
           Check-In-Tile, da das Aktionen-Grid für sie unten gefiltert ist. */}
       {!isQRScannerOnlyForSelected && (<>
 
-      {/* v28.47: Hinweis-Box fuer Events, die im Anmeldeformular nach einer
+      {/* v28.47: Hinweis-Box für Events, die im Anmeldeformular nach einer
           Unterkunft fragen, aber noch keine Hotels hinterlegt haben. Genau die
           Organizer pflegen die Zuordnung sonst weiter in Excel, weil sie nicht
           wissen, dass es das Tool gibt. Sobald das erste Hotel angelegt ist,
@@ -8654,7 +8666,7 @@ export default function AdminPage(): React.ReactElement {
       {selectedEvent && selectedEvent.subsiteUrl && (isAdmin || isOrganizerFor(selectedEvent))
         && (selectedEvent.hotels || []).length === 0
         && (selectedEvent.eventSpecificFields || []).some(f =>
-          /hotel|unterkunft|übernacht|uebernacht|accommodation|lodging/i.test(`${f.label || ''} ${(f.options || []).join(' ')}`))
+          /hotel|unterkunft|übernacht|übernacht|accommodation|lodging/i.test(`${f.label || ''} ${(f.options || []).join(' ')}`))
         && !hotelPanelOpen && (
         <div className="card" style={{ marginBottom: 16, borderLeft: '4px solid var(--dex-green, #86bc25)', background: 'rgba(134,188,37,0.06)' }}>
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -8677,13 +8689,13 @@ export default function AdminPage(): React.ReactElement {
       )}
 
       {/* ===== HOTEL-PLANUNG (v28.39, collapsible) =====
-          Nur fuer Organizer/Admin und nur, wenn das Event eine eigene
+          Nur für Organizer/Admin und nur, wenn das Event eine eigene
           Teilnehmerliste hat. Standardmaessig eingeklappt — Events ohne
-          Uebernachtung sollen davon nichts merken. */}
-      {/* v28.47: auch im Klammer-Modus. Die Uebernachtung haengt an der PERSON,
+          Übernachtung sollen davon nichts merken. */}
+      {/* v28.47: auch im Klammer-Modus. Die Übernachtung hängt an der PERSON,
           nicht am einzelnen Sub-Event — und genau eine Zeile je Person hat die
           Teilnehmerliste der Klammer (die Schattenzeilen aus v15.25). Das ist die
-          richtige Ebene fuer die Hotel-Zuordnung; vorher war der Abschnitt bei
+          richtige Ebene für die Hotel-Zuordnung; vorher war der Abschnitt bei
           Klammer-Events komplett ausgeblendet. */}
       {selectedEvent && selectedEvent.subsiteUrl && (isAdmin || isOrganizerFor(selectedEvent)) && (
         <div className="card" style={{ marginBottom: 16 }}>
@@ -9387,7 +9399,7 @@ export default function AdminPage(): React.ReactElement {
       <div ref={participantListRef} className="card" style={{ padding: 24 }}>
         {/* v11.28: Suchfeld direkt neben dem „Teilnehmer (N)"-Header
             statt rechtsbündig — flüssiger Lese-Flow von links nach
-            rechts, kein Sprung ueber die ganze Card-Breite mehr. */}
+            rechts, kein Sprung über die ganze Card-Breite mehr. */}
         <div className="mb-16" style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
           <h3 style={{ margin: 0, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <Users size={18} /> Teilnehmer ({isConsolidatedMode ? consolidatedFiltered.length : activeRegs.length})
@@ -9937,7 +9949,7 @@ export default function AdminPage(): React.ReactElement {
           // Sichtbar nur für Events mit aktivierter Team-Anmeldung. Listet
           // alle Teams (gruppiert per TeamId, abgemeldete Mitglieder
           // ausgeblendet), mit Lead-Badge und Buttons für „+ Person
-          // hinzufügen" und „Lead-Rolle uebergeben". Reagiert live auf
+          // hinzufügen" und „Lead-Rolle übergeben". Reagiert live auf
           // `registrations` — kein zusätzlicher Roundtrip.
           if (!selectedEvent || !selectedEvent.teamRegistrationEnabled) return null;
           if (isLoadingRegs) return null;
@@ -10070,7 +10082,7 @@ export default function AdminPage(): React.ReactElement {
                         style={{ fontSize: '0.85rem', padding: '6px 14px', display: 'inline-flex', alignItems: 'center', gap: 6 }}
                         onClick={() => {
                           // Neue lokale TeamID generieren und Add-Member-Dialog
-                          // direkt damit oeffnen. Sobald die erste Person hinzu-
+                          // direkt damit öffnen. Sobald die erste Person hinzu-
                           // gefügt wird, wird die TeamId im SP-Item gespeichert.
                           const newTid = (typeof crypto !== 'undefined' && crypto.randomUUID)
                             ? crypto.randomUUID()
@@ -10583,7 +10595,7 @@ export default function AdminPage(): React.ReactElement {
           /* v17.13: overflowX: 'auto' entfernt — der scrollbare Wrapper
              hat die sticky-thead-Berechnung gebrochen (sticky relative zum
              Scroll-Container statt zum Window). Tabelle lässt die Karte
-             jetzt horizontal ueberlaufen, was bei vielen Spalten zu einer
+             jetzt horizontal überlaufen, was bei vielen Spalten zu einer
              Scrollbar AM AUSSEREN Container (SP-Page) führt — Sticky-
              thead funktioniert dort einwandfrei. */
           <div style={{ overflowX: 'visible' }}>
@@ -10956,7 +10968,7 @@ export default function AdminPage(): React.ReactElement {
                 }
                 if (id === 'replacedBy') {
                   // v17.15: „Ersetzt durch" — die Person die nach Cancel
-                  // dieses Eintrags den Platz uebernommen hat. Spiegelbild
+                  // dieses Eintrags den Platz übernommen hat. Spiegelbild
                   // von „Ersetzt".
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   const email = ((reg as any).ReplacedByParticipantEmail as string | undefined) || '';
@@ -12811,8 +12823,8 @@ export default function AdminPage(): React.ReactElement {
               // Vorname / Nachname / E-Mail sind seit v9.7 editierbar (mit
               // Deloitte-Domain- und Tenant-Existenz-Check beim Speichern).
               // Die uebrigen Profil-Felder bleiben read-only — sie kommen
-              // aus dem M365-Profil und werden bei einer Mail-Aenderung
-              // mit den Profil-Daten der neuen Person ueberschrieben.
+              // aus dem M365-Profil und werden bei einer Mail-Änderung
+              // mit den Profil-Daten der neuen Person überschrieben.
               const editableStammFields: Array<{ key: string; label: string; type?: string }> = [
                 { key: 'Vorname', label: isDe ? 'Vorname' : 'First name' },
                 { key: 'Nachname', label: isDe ? 'Nachname' : 'Last name' },
@@ -14076,7 +14088,7 @@ export default function AdminPage(): React.ReactElement {
         // v28.37: „Nur an noch nicht Angemeldete" — der Verteiler abzueglich
         // aller, die im Event schon eine Zeile haben (angemeldet, Warteliste,
         // eingecheckt ODER abgemeldet). Genau der Nachfass-Fall: erinnern, ohne
-        // die anzuschreiben, die sich laengst entschieden haben. Verteiler-
+        // die anzuschreiben, die sich längst entschieden haben. Verteiler-
         // Adressen ohne '@' (Gruppen) bleiben drin — sie werden beim Senden
         // ohnehin in Mitglieder aufgeloest, und wer darin schon angemeldet ist,
         // laesst sich vorher nicht herausrechnen.
@@ -14092,7 +14104,7 @@ export default function AdminPage(): React.ReactElement {
         });
         const alreadyDecidedCount = audienceEmails.length - pendingEmails.length;
         // v28.37: Zweiter Abgleich — gegen die bereits verschickten
-        // Einladungsmails. Trifft den Fall „Verteiler wurde nachtraeglich
+        // Einladungsmails. Trifft den Fall „Verteiler wurde nachträglich
         // erweitert, jetzt nur die Neuen anschreiben".
         const uninvitedEmails = audienceEmails.filter(e => {
           const lc = e.toLowerCase();
@@ -14126,7 +14138,7 @@ export default function AdminPage(): React.ReactElement {
         const blockedInAudience = getBlockedInviteRecipients(audienceEmails);
         // v28.38 BUG-FIX: Auch die Beschriftung des Senden-Knopfs muss die
         // WIRKLICH adressierte Liste nennen — sie zeigte bisher stur die
-        // Verteilergroesse, selbst nachdem Adressen entfernt wurden.
+        // Verteilergröße, selbst nachdem Adressen entfernt wurden.
         const nRecipients = targetEmails.length;
         const recipientLabel = inviteTarget === 'organizer'
           ? (isDe ? `An mich (${myEmail})` : `To me (${myEmail})`)
@@ -14401,7 +14413,7 @@ export default function AdminPage(): React.ReactElement {
                 Adressen haben und schob den Dialog vorher auseinander) und vor
                 dem Senden anpassbar: einzelne rausnehmen oder ergaenzen. Eine
                 ergaenzte Adresse kann auf Wunsch direkt in den Event-Verteiler
-                uebernommen werden, damit sie beim naechsten Mal automatisch
+                übernommen werden, damit sie beim nächsten Mal automatisch
                 dabei ist. */}
             {inviteTarget !== 'organizer' && audienceEmails.length > 0 && (
               <div style={{ marginTop: 10, border: '1px solid var(--dex-gray-200)', borderRadius: 8, overflow: 'hidden' }}>
@@ -14467,8 +14479,8 @@ export default function AdminPage(): React.ReactElement {
                             setInviteCustomEmails(effectiveEmails.concat([addr]));
                             setInviteAddInput('');
                             // Noch nicht im Event-Verteiler? Dann anbieten, sie
-                            // dauerhaft aufzunehmen — sonst faellt sie beim
-                            // naechsten Versand wieder raus.
+                            // dauerhaft aufzunehmen — sonst fällt sie beim
+                            // nächsten Versand wieder raus.
                             if (!audienceEmails.some(x => x.toLowerCase() === lc)) {
                               const ok = await confirmDialog(
                                 isDe
@@ -14600,7 +14612,7 @@ export default function AdminPage(): React.ReactElement {
           </div>
         );
         // v28.38 BUG-FIX: Die „An:"-Zeile der Vorschau zeigte immer die volle
-        // Verteilergroesse — auch in den Nachfass-Modi und nach dem Entfernen
+        // Verteilergröße — auch in den Nachfass-Modi und nach dem Entfernen
         // einzelner Adressen. Sie muss die WIRKLICH adressierte Liste nennen,
         // sonst widerspricht sie dem Senden-Knopf direkt daneben.
         const previewToLine = inviteTarget === 'organizer'
@@ -14937,7 +14949,7 @@ export default function AdminPage(): React.ReactElement {
         </Modal>
       )}
 
-      {/* v11.70: kein Modal mehr — der Hinweis wird inline ueber der
+      {/* v11.70: kein Modal mehr — der Hinweis wird inline über der
           Teilnehmerliste angezeigt (siehe Render-Block oberhalb der
           Teilnehmer-Tabelle). */}
 
@@ -15332,7 +15344,7 @@ export default function AdminPage(): React.ReactElement {
             setTeamsToast(toastMsg);
             // TODO v17.5: Wenn adminAddSendMail=true UND assignTeamlessToTeam-
             // Pfad genutzt wurde, hier explizit eine „Du bist jetzt im Team
-            // <Name>"-Mail queuen. Aktuell läuft die Mail nur ueber den
+            // <Name>"-Mail queuen. Aktuell läuft die Mail nur über den
             // addTeamMember-Pfad (Graph-Pick) automatisch.
             window.setTimeout(() => setTeamsToast(''), 4500);
             const regs = await getAllRegistrations(selectedEvent.id);
@@ -15857,7 +15869,7 @@ function JumpButtons(props: { hasWaitlist: boolean }): React.ReactElement {
   return (
     <div style={{
       position: 'fixed',
-      // v18: Buttons horizontal ZENTRIERT ueber dem Content (vorher links am
+      // v18: Buttons horizontal ZENTRIERT über dem Content (vorher links am
       // Rand „im Raum hängend"). Als Zeile nebeneinander, mittig unten —
       // liegt damit in der horizontalen Mitte der Teilnehmer-Tabelle /
       // Spaltenüberschriften statt am Seitenrand.

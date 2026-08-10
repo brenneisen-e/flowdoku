@@ -56,13 +56,13 @@ registerLocale('de', de);
  */
 /**
  * v28.31: `flattenToJpeg` erzwingt JPEG auf WEISSEM Grund. Hintergrund: Der
- * Zuschnitt-Dialog liefert PNG (fuer die transparenten Ecken des Kreis-
+ * Zuschnitt-Dialog liefert PNG (für die transparenten Ecken des Kreis-
  * Zuschnitts), und ein 600px-Foto als PNG wiegt schnell ~800 KB. Als Mail-/
  * Outlook-Kopfbild steckt dieser Base64-String DREIMAL im selben Save-Payload
  * (OutlookBody, _eventLogo, _outlookLogo) — damit riss ein einziges Event die
  * SharePoint-Grenze von 2 MB, und „Speichern" tat nichts mehr. Der Mail-Kopf
  * steht ohnehin auf Weiss, transparente Ecken werden also korrekt weiss
- * gefuellt (ohne den weissen Grund wuerden sie bei JPEG schwarz).
+ * gefüllt (ohne den weissen Grund wuerden sie bei JPEG schwarz).
  */
 async function compressImage(file: File, maxWidth: number = 1200, quality: number = 0.8, flattenToJpeg: boolean = false): Promise<File> {
   return new Promise((resolve, reject) => {
@@ -126,7 +126,7 @@ const outlookLogoPiggyback = (emailLogo: string, outlookLogo: string): Record<st
   if (emailLogo && outlookLogo === emailLogo) return { _outlookLogoSameAsMail: true };
   return { _outlookLogo: outlookLogo };
 };
-/** Gegenstueck zu `outlookLogoPiggyback` beim Laden. */
+/** Gegenstück zu `outlookLogoPiggyback` beim Laden. */
 const readOutlookLogo = (ov: Record<string, unknown> | null | undefined): string => {
   if (!ov) return '';
   if (ov._outlookLogoSameAsMail) return (ov._eventLogo as string) || '';
@@ -481,8 +481,8 @@ function StickyTabStrip(props: {
   mainDisabledNote?: string;
   /** v28.73: Wort in Klammern hinter dem Eventnamen, z.B. „Klammerevent". */
   klammerWord?: string;
-  /** v28.73: Info-Icon (Tooltip) rechts im Klammer-Reiter — erklaert, dass die
-   *  Anmeldung ueber die Sub-Events laeuft, mit Quicklink zur Umstellung. */
+  /** v28.73: Info-Icon (Tooltip) rechts im Klammer-Reiter — erklärt, dass die
+   *  Anmeldung über die Sub-Events läuft, mit Quicklink zur Umstellung. */
   klammerInfo?: React.ReactNode;
 }): React.ReactElement {
   const phRef = React.useRef<HTMLDivElement | null>(null);
@@ -590,12 +590,24 @@ function StickyTabStrip(props: {
                     v28.73: Vorne steht jetzt der EVENTNAME, dahinter der
                     dezente Zusatz „(Klammerevent)" und ein Info-Icon mit der
                     Erklärung. Vorher stand „⟦ KLAMMER ⟧" als Praefix davor —
-                    ein Fachbegriff an der auffaelligsten Stelle, der weder
+                    ein Fachbegriff an der auffälligsten Stelle, der weder
                     sagt, was er bedeutet, noch dass er eine Entscheidung war.
                     Das Icon liegt bewusst NEBEN dem Reiter-Button (nicht
                     darin), damit der Quicklink im Tooltip nicht in einem
                     Button verschachtelt ist. */}
-                <div style={{ display: 'flex', alignItems: 'stretch', width: '100%' }}>
+                {/* v28.74: Rahmen/Fläche liegen auf der ZEILE, nicht auf dem
+                    Button — dadurch kann der Button auf Textbreite schrumpfen
+                    und das Info-Icon sitzt direkt hinter „(Klammerevent)"
+                    statt am rechten Rand, ohne dass die grüne Leiste ihre
+                    volle Breite verliert. */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', width: '100%', minWidth: 0,
+                  border: `1.5px solid ${pActive ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                  borderRadius: '10px 10px 0 0',
+                  background: pActive ? 'var(--dex-green, #86bc25)' : 'rgba(134,188,37,0.10)',
+                  paddingRight: 12,
+                  opacity: dis ? 0.55 : 1,
+                }}>
                 <button
                   type="button"
                   role="tab"
@@ -604,36 +616,27 @@ function StickyTabStrip(props: {
                   onClick={() => { if (!dis) props.onChange(0); }}
                   title={dis ? (props.mainDisabledNote || props.tabs[0].label) : props.tabs[0].label}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0,
-                    padding: '10px 16px', cursor: dis ? 'not-allowed' : 'pointer', textAlign: 'left',
-                    border: `1.5px solid ${pActive ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
-                    borderRight: 'none',
-                    borderRadius: '10px 0 0 0',
-                    background: pActive ? 'var(--dex-green, #86bc25)' : 'rgba(134,188,37,0.10)',
+                    display: 'flex', alignItems: 'center', gap: 8, minWidth: 0,
+                    padding: '10px 4px 10px 16px', cursor: dis ? 'not-allowed' : 'pointer', textAlign: 'left',
+                    border: 'none', background: 'transparent',
                     color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
                     fontWeight: 700, fontSize: '0.9rem',
-                    opacity: dis ? 0.55 : 1,
                   }}
                 >
                   <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }}>{props.tabs[0].label}</span>
                   <span style={{ fontSize: '0.76rem', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, opacity: 0.85, color: pActive ? 'rgba(255,255,255,0.9)' : 'var(--dex-green-dark, #4a7c1f)' }}>
                     ({props.klammerWord || 'Klammerevent'})
                   </span>
-                  <span style={{ flex: 1 }} />
-                  {dis && props.mainDisabledNote && (
-                    <span style={{ fontSize: '0.65rem', fontWeight: 600, padding: '2px 6px', borderRadius: 8, background: 'var(--dex-gray-200, #e0e0e0)', color: 'var(--dex-gray-600)', flexShrink: 0 }}>
-                      {props.mainDisabledNote}
-                    </span>
-                  )}
                 </button>
-                <span style={{
-                  display: 'inline-flex', alignItems: 'center', padding: '0 12px 0 4px',
-                  border: `1.5px solid ${pActive ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
-                  borderLeft: 'none', borderRadius: '0 10px 0 0',
-                  background: pActive ? 'var(--dex-green, #86bc25)' : 'rgba(134,188,37,0.10)',
-                }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
                   {props.klammerInfo}
                 </span>
+                <span style={{ flex: 1 }} />
+                {dis && props.mainDisabledNote && (
+                  <span style={{ fontSize: '0.65rem', fontWeight: 600, padding: '2px 6px', borderRadius: 8, background: 'var(--dex-gray-200, #e0e0e0)', color: 'var(--dex-gray-600)', flexShrink: 0 }}>
+                    {props.mainDisabledNote}
+                  </span>
+                )}
                 </div>
                 {/* Sub-Events darunter — eingerückt unter einer Klammer-Linie. */}
                 <div style={{
@@ -849,7 +852,7 @@ function LocationMultiSelect({
  * v16.4: Audience-Liste (kommasepariert) in eine flache, ';'-separierte
  * Liste von Member-E-Mails auflösen. Jede '@'-Eintrag wird via
  * getGroupMembers (Graph) probiert — wenn die Auflösung eine
- * Mitglieder-Liste liefert, werden alle deren E-Mails uebernommen, sonst
+ * Mitglieder-Liste liefert, werden alle deren E-Mails übernommen, sonst
  * wird der Eintrag als direkte User-E-Mail behandelt. Lowercase + dedupliziert.
  *
  * Wird beim Event-Save aufgerufen und in die SP-Spalte
@@ -950,8 +953,8 @@ export default function EventCreationPage(): React.ReactElement {
   // bedingungen akzeptieren. Nicht relevant beim Bearbeiten bestehender Events.
   const [tcAccepted, setTcAccepted] = React.useState(false);
   const [tcCheckbox, setTcCheckbox] = React.useState(false);
-  // v28.41: Zweite, bewusst getrennte Bestaetigung — der Organizer muss aktiv
-  // erklaeren, dass es ein internes Event ist bzw. die Deloitte-Teilnahme an
+  // v28.41: Zweite, bewusst getrennte Bestätigung — der Organizer muss aktiv
+  // erklären, dass es ein internes Event ist bzw. die Deloitte-Teilnahme an
   // einer externen Veranstaltung koordiniert. Absichtlich NICHT mit der
   // Nutzungsbedingungs-Zustimmung zusammengelegt: Wer beides in einem Haken
   // abnickt, hat den Einsatzbereich nicht gelesen.
@@ -1060,8 +1063,8 @@ export default function EventCreationPage(): React.ReactElement {
   });
   const [organizerResults, setOrganizerResults] = React.useState<Array<{ email: string; displayName: string; location: string }>>([]);
   const [organizerSearch, setOrganizerSearch] = React.useState('');
-  // Beim Edit: organizerEmails aus dem gespeicherten Event uebernehmen, nicht auf currentUser
-  // zurücksetzen. Sonst ueberschreibt ein Edit+Save die gesamte Organizer-Email-Liste mit
+  // Beim Edit: organizerEmails aus dem gespeicherten Event übernehmen, nicht auf currentUser
+  // zurücksetzen. Sonst überschreibt ein Edit+Save die gesamte Organizer-Email-Liste mit
   // nur der Mail des aktuellen Editors — alle anderen Organizer würden stumm aus der
   // Late-Cancel- / Organizer-Mail-Verteilung rausfallen.
   //
@@ -1218,7 +1221,7 @@ export default function EventCreationPage(): React.ReactElement {
   // Deadlines noch leer sind. Default-Logik:
   //   - RegistrationDeadline: 7 Tage vor Event-Start
   //   - LastDeregisterDate: 3 Tage vor Event-Start
-  // Der Organizer kann beides ueberschreiben — wir aktualisieren NICHT,
+  // Der Organizer kann beides überschreiben — wir aktualisieren NICHT,
   // wenn der User schon einen Wert gesetzt hat.
   const autoFillRanRef = React.useRef(false);
   React.useEffect(() => {
@@ -1292,8 +1295,8 @@ export default function EventCreationPage(): React.ReactElement {
   // wird ('email' oder 'outlook').
   const [logoCropTarget, setLogoCropTarget] = React.useState<'email' | 'outlook' | null>(null);
   // v28.30: Merker, ob das aktuell gesetzte Kopfbild per „Event-Foto
-  // uebernehmen" entstanden ist. Nur fuer die Optik des Knopfs (gruen + Haken =
-  // „ist uebernommen"). Bewusst NICHT persistiert: nach dem Neuladen zeigt die
+  // übernehmen" entstanden ist. Nur für die Optik des Knopfs (gruen + Haken =
+  // „ist übernommen"). Bewusst NICHT persistiert: nach dem Neuladen zeigt die
   // Vorschau darunter ohnehin das echte Bild, und ein zweiter Klick auf den
   // Knopf ist folgenlos (er setzt dasselbe Bild noch einmal).
   const [emailLogoFromPhoto, setEmailLogoFromPhoto] = React.useState(false);
@@ -1327,7 +1330,7 @@ export default function EventCreationPage(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wizardImgAspect]);
   // v11.20: Re-sync useEffect aus v11.19 wieder rausgenommen — der hat
-  // den Wizard-State mit stale-editEvent-Daten ueberschrieben (re-sync 2
+  // den Wizard-State mit stale-editEvent-Daten überschrieben (re-sync 2
   // mit helpText="" wurde im Maintainer-DevTools beobachtet, obwohl SP
   // nachweislich helpText="Test123" hatte). Das Aufrufen von
   // setCustomFields aus dem Effect heraus war zu fragil. Stattdessen
@@ -1360,7 +1363,7 @@ export default function EventCreationPage(): React.ReactElement {
     })) : []
   );
   const [outlookBody, setOutlookBody] = React.useState(editEvent ? reinsertOrganizerPlaceholder(stripOutlookWrapper(editEvent.outlookBody || ''), editEvent.organizers || []) : '');
-  // Outlook-Termin-Header: beide Ueberschriften sind pro Event editierbar.
+  // Outlook-Termin-Header: beide Überschriften sind pro Event editierbar.
   // Default: eventTitle + formatiertes Startdatum. Parsed aus bestehendem
   // OutlookBody, falls der User sie schon angepasst hat.
   const [outlookHeading, setOutlookHeading] = React.useState(() => {
@@ -1457,12 +1460,12 @@ export default function EventCreationPage(): React.ReactElement {
     // Organizer-Posteingang. User-Wunsch.
     editEvent ? (editEvent.notifyOrgCancelMode || 'never') : 'afterDeadline'
   );
-  // v8.6: Exclude-Liste — explizit ausgeschlossene User (ueberschreiben den
+  // v8.6: Exclude-Liste — explizit ausgeschlossene User (überschreiben den
   // Sichtbarkeits-Filter). UI: Modal "Sichtbare Personen anzeigen".
   const [excludedUsers, setExcludedUsers] = React.useState<string[]>(
     editEvent ? (editEvent.excludedUsers || []) : []
   );
-  // v11.88: Demo-Auswahl-Modal — der „Demo"-Button oeffnet einen Dialog
+  // v11.88: Demo-Auswahl-Modal — der „Demo"-Button öffnet einen Dialog
   // mit vier Vorlagen-Karten (Standard, Mit Gruppen, Mit Sub-Event,
   // Mit Sub-Event + Team). Klick auf eine Karte füllt das Formular
   // mit der jeweiligen Variante und schliesst das Modal.
@@ -1533,7 +1536,7 @@ export default function EventCreationPage(): React.ReactElement {
     setHiddenOrganizerEmails(prev => prev.indexOf(lc) >= 0 ? prev.filter(x => x !== lc) : [...prev, lc]);
   };
   // Nur im Edit-Modus: standardmäßig wird der Outlook-Termin NICHT angefasst,
-  // damit bei kleinen Aenderungen (z.B. Description) nicht unnötig eine
+  // damit bei kleinen Änderungen (z.B. Description) nicht unnötig eine
   // "Updated meeting"-Benachrichtigung an alle Teilnehmer geht. Der Organizer
   // muss die Checkbox aktiv setzen wenn er möchte dass Titel/Start/Ende im
   // Outlook-Termin aktualisiert werden.
@@ -1566,7 +1569,7 @@ export default function EventCreationPage(): React.ReactElement {
           _imageOrigUrl, _klammerDeadline,
           // v28.39: Hotel-Planung wird ausschliesslich im Organizer Center gepflegt.
           // Stripping verhindert, dass ein parallel offener Wizard beim Speichern
-          // einen veralteten Stand zurueckschreibt.
+          // einen veralteten Stand zurückschreibt.
           _hotels, _hotelStays, _hotelVisible, _hotelRules,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
@@ -1663,7 +1666,7 @@ export default function EventCreationPage(): React.ReactElement {
     // (OutlookBody, _eventLogo, _outlookLogo) — bei 800 KB je Vorkommen reisst
     // ein einziges Event das SharePoint-Limit von 2 MB. Ausgabe immer als JPEG
     // auf weissem Grund (siehe compressImage): PNG-Fotos sind der Hauptgrund
-    // fuer die Ausreisser.
+    // für die Ausreisser.
     const TARGET = 250_000;
     if (!b64 || b64.indexOf('data:') !== 0 || b64.length <= 200_000) return b64;
     let best = b64;
@@ -1976,7 +1979,7 @@ export default function EventCreationPage(): React.ReactElement {
       // v15.0: Inheritance-Heuristik für Bestands-Events: wenn das
       // Piggyback-Flag fehlt UND das jeweilige Datenfeld nicht-leer ist,
       // gilt es als „eigener Wert" (nicht vom Hauptevent geerbt). Wenn
-      // das Feld leer ist, default = uebernehmen.
+      // das Feld leer ist, default = übernehmen.
       const inheritCap = inheritFlagsRaw && typeof inheritFlagsRaw.capacity === 'boolean'
         ? inheritFlagsRaw.capacity
         : !(k.maxParticipants && k.maxParticipants > 0);
@@ -2135,30 +2138,30 @@ export default function EventCreationPage(): React.ReactElement {
     return out;
   };
   /**
-   * v28.67: Gegenstueck zu outlookUpdateTargets() — Events, fuer die ein
+   * v28.67: Gegenstück zu outlookUpdateTargets() — Events, für die ein
    * Outlook-Termin vorgesehen ist, aber KEINER existiert (weder OutlookEventId
    * noch CalendarLink). Bisher fielen die einfach aus der Zaehlung: Bei einem
    * Event mit Hauptevent + vier Sub-Events stand dann „Alle 2 Termine
-   * aktualisieren", ohne zu sagen, dass drei Kalendereintraege schlicht
+   * aktualisieren", ohne zu sagen, dass drei Kalendereinträge schlicht
    * fehlen — das las sich wie ein Zaehlfehler der App statt wie der Befund,
-   * der es ist. Haeufigste Ursache war der v28.66-Bug (Sub-Event ohne Zeiten
+   * der es ist. Häufigste Ursache war der v28.66-Bug (Sub-Event ohne Zeiten
    * -> „Create event (V4)" bricht ab). Hier wird der Befund benannt.
    */
   /**
    * v28.66/v28.69: Start-/Endzeit des Hauptevents als UTC-ISO. Fallback-Quelle
-   * fuer Sub-Events ohne eigene Zeiten — sowohl beim Speichern als auch beim
-   * nachtraeglichen Anlegen fehlender Termine.
+   * für Sub-Events ohne eigene Zeiten — sowohl beim Speichern als auch beim
+   * nachträglichen Anlegen fehlender Termine.
    */
   const parentTimesIso = (): { start: string; end: string } => ({
     start: startDate ? berlinLocalToUtcIso(startDate) : '',
     end: endDate ? berlinLocalToUtcIso(endDate) : '',
   });
   /**
-   * v28.69: dbIds von Sub-Events, deren Outlook-Termin beim naechsten Speichern
+   * v28.69: dbIds von Sub-Events, deren Outlook-Termin beim nächsten Speichern
    * ERZWUNGEN neu angelegt werden soll. Der Flow DEX_CreateOutlookEvent
    * triggert nur auf NEUE DEX_Events-Zeilen — ein reines Update stoesst ihn
-   * nie an. persistSubEventsForParent nimmt die IDs auf und laeuft dafuer in
-   * den nicht-destruktiven Recreate-Pfad aus v11.69 (Zeile loeschen, mit
+   * nie an. persistSubEventsForParent nimmt die IDs auf und läuft dafür in
+   * den nicht-destruktiven Recreate-Pfad aus v11.69 (Zeile löschen, mit
    * existingSubsiteUrl neu anlegen; Anmeldungen, TeilnehmerIDs und Subsite
    * bleiben unberuehrt). Wird nach dem Durchlauf geleert.
    */
@@ -2180,7 +2183,7 @@ export default function EventCreationPage(): React.ReactElement {
    * nur die Anleitung „Haken aus- und wieder einschalten und erneut speichern"
    * — das ist der v11.69-Recreate-Pfad, den der Organizer von Hand ausloesen
    * musste. Jetzt macht der Knopf genau das: fehlende Zeiten aus dem
-   * Hauptevent uebernehmen (v28.66), Recreate erzwingen, speichern.
+   * Hauptevent übernehmen (v28.66), Recreate erzwingen, speichern.
    * Das Hauptevent selbst wird bewusst NICHT neu angelegt — seine Item-Id
    * steht in ParentEventId aller Sub-Events, ein Recreate wuerde die Kinder
    * zu Waisen machen.
@@ -2438,10 +2441,10 @@ export default function EventCreationPage(): React.ReactElement {
   // zurückschreibt, sieht das direkt danach laufende
   // detectOutlookRelevantChanges() (und auch persistSubEventsForParent
   // unter handleSubmit) noch die alte Array aus dem Closure. Ergebnis:
-  // Modal kommt nicht, und die Sub-Event-Aenderung wird beim Schreiben
-  // wieder mit dem Original ueberschrieben. Der Ref hält die jeweils
+  // Modal kommt nicht, und die Sub-Event-Änderung wird beim Schreiben
+  // wieder mit dem Original überschrieben. Der Ref hält die jeweils
   // aktuellste Array synchron — alle Code-Pfade, die nach einem Flush
-  // lesen, gehen ueber `subEventsRef.current`.
+  // lesen, gehen über `subEventsRef.current`.
   const subEventsRef = React.useRef<typeof subEvents>(subEvents);
   React.useEffect(() => { subEventsRef.current = subEvents; }, [subEvents]);
   // v22.54: Im Klammer-Modus ist die Anmeldefrist der Klammer nicht buchbar/
@@ -2490,7 +2493,7 @@ export default function EventCreationPage(): React.ReactElement {
   });
   // v11.57: Snapshot der initialen Outlook-relevanten Felder des Top-Level-
   // Events (Title, Start, End, OutlookBody). Wird beim Save mit den aktuellen
-  // Werten verglichen — Aenderung löst das Update-Confirm-Modal aus.
+  // Werten verglichen — Änderung löst das Update-Confirm-Modal aus.
   // Im Ref, weil wir das einmal beim Mount fixieren und nicht bei Re-Renders
   // neu setzen wollen.
   const initialOutlookSnapshot = React.useRef<{ title: string; startDate: string; endDate: string; outlookBody: string; outlookLocation: string; outlookSubject: string; outlookStart: string; outlookEnd: string; organizers: string; outlookLogo: string }>({
@@ -2514,21 +2517,21 @@ export default function EventCreationPage(): React.ReactElement {
     outlookStart: editEvent?.outlookStart || '',
     outlookEnd: editEvent?.outlookEnd || '',
     // v18.34/v18.40: effektiver Ort in den Snapshot (gespeicherte Override ODER
-    // Auto). Eine reine Ort-Aenderung soll das Outlook-Update-Modal oeffnen.
+    // Auto). Eine reine Ort-Änderung soll das Outlook-Update-Modal öffnen.
     outlookLocation: editEvent?.outlookLocation || buildOutlookLocation(editEvent?.location, editEvent?.locationAddress),
-    // v18.42: Betreff in den Snapshot — eine reine Betreff-Aenderung soll das
-    // Outlook-Update-Modal ebenfalls oeffnen.
+    // v18.42: Betreff in den Snapshot — eine reine Betreff-Änderung soll das
+    // Outlook-Update-Modal ebenfalls öffnen.
     outlookSubject: editEvent?.outlookSubject || '',
   });
   // v11.57: Update-Confirm-Modal-State. Beim Save mit Outlook-relevanten
-  // Aenderungen oeffnen wir das Modal und warten auf die Entscheidung des
+  // Änderungen öffnen wir das Modal und warten auf die Entscheidung des
   // Organizers. v11.63: Statt einem globalen "Outlook-Update senden ja/nein"
   // listet das Modal jetzt jedes geänderte Event einzeln (Hauptevent +
   // betroffene Sub-Events) und der Organizer setzt pro Event einen Haken.
   const [outlookConfirmOpen, setOutlookConfirmOpen] = React.useState(false);
   // v11.63: Snapshot der Detect-Items zum Modal-Open-Zeitpunkt. Jeder Eintrag
   // beschreibt ein Event (Hauptevent oder Sub-Event) mit Outlook-relevanten
-  // Aenderungen — Title, Start, End oder OutlookBody — und listet, welche
+  // Änderungen — Title, Start, End oder OutlookBody — und listet, welche
   // Felder sich geändert haben (für die Anzeige als Sub-Text pro Item).
   type OutlookConfirmItem = {
     kind: 'top' | 'sub';
@@ -2637,7 +2640,7 @@ export default function EventCreationPage(): React.ReactElement {
   );
   // v10.20: Warteliste-Modus bei aktiver Split-Capacity. Default false =
   // getrennte Wartelisten pro Gruppe (alter B2Run-Stil). true = eine
-  // gemeinsame Warteliste, FIFO ueber beide Gruppen hinweg.
+  // gemeinsame Warteliste, FIFO über beide Gruppen hinweg.
   const [splitSharedWaitlist, setSplitSharedWaitlist] = React.useState<boolean>(
     !!editEvent?.splitSharedWaitlist
   );
@@ -2797,7 +2800,7 @@ export default function EventCreationPage(): React.ReactElement {
   };
 
   /**
-   * Deloitte-Standard-Vorschläge als Katalog. Der Organizer wählt ueber ein
+   * Deloitte-Standard-Vorschläge als Katalog. Der Organizer wählt über ein
    * Modal mit Checkboxen aus, welche dieser Felder hinzugefügt werden sollen.
    * Ausgewählte Felder werden ans Ende der aktuellen customFields angehängt.
    */
@@ -3022,13 +3025,13 @@ export default function EventCreationPage(): React.ReactElement {
   const [showSuggestedModal, setShowSuggestedModal] = React.useState(false);
   const [suggestedSelection, setSuggestedSelection] = React.useState<Record<string, boolean>>({});
   // v10.21: B2Run-Sektion im Suggested-Modal default eingeklappt — die meisten
-  // Organizer brauchen sie nicht; soll nicht visuell uebernehmen.
+  // Organizer brauchen sie nicht; soll nicht visuell übernehmen.
   const [showB2runSuggested, setShowB2runSuggested] = React.useState(false);
 
   const openSuggestedModal = (): void => {
     // v9.17: Standard ist KEINS ausgewählt — User wählt aktiv aus, was er
     // wirklich braucht. Vorher waren alle vorgewählt, was zu unbeabsichtigt
-    // viele uebernommenen Feldern führte.
+    // viele übernommenen Feldern führte.
     setSuggestedSelection({});
     setShowSuggestedModal(true);
   };
@@ -3047,7 +3050,7 @@ export default function EventCreationPage(): React.ReactElement {
     // v10.21: B2Run-Felder haben deterministische IDs (b2run_startblock etc.).
     // Wenn ein Feld mit gleicher ID schon im customFields-Array steht, skippen
     // wir es — sonst entstehen Duplikate, wenn der User das Modal mehrfach
-    // oeffnet. Allgemeine Felder (cf-<timestamp>) bekommen eindeutige IDs und
+    // öffnet. Allgemeine Felder (cf-<timestamp>) bekommen eindeutige IDs und
     // werden immer angehängt.
     const existingIds = new Set(customFields.map(f => f.id));
     const dedupedNewFields = newFields.filter(f => !existingIds.has(f.id));
@@ -3279,7 +3282,7 @@ export default function EventCreationPage(): React.ReactElement {
    * B2Run: legt alle Pflichtfelder für die Anmeldung bei b2run.com an
    * (laut Excel "Deloitte_Teilnehmer_innen_B2Run_Koeln_2025_v4.xlsx").
    *
-   * v10.21: Template-Dropdown im Wizard entfällt; B2Run-Felder werden ueber
+   * v10.21: Template-Dropdown im Wizard entfällt; B2Run-Felder werden über
    * das Suggested-Felder-Modal einzeln gewählt. Diese Funktion bleibt für
    * eventuelle programmatische Aufrufer (Edit-Modus, Migrations-Skripte)
    * erhalten — sie wird im aktuellen UI nicht mehr aufgerufen.
@@ -3343,7 +3346,7 @@ export default function EventCreationPage(): React.ReactElement {
         },
       ];
       // v7.20-Fix: bestehende NON-b2run-Felder erhalten und die B2Run-Felder
-      // anhängen (vorher: setCustomFields(fields) hat alles ueberschrieben).
+      // anhängen (vorher: setCustomFields(fields) hat alles überschrieben).
       setCustomFields(prev => {
         const nonB2run = prev.filter(f => !f.id.startsWith('b2run_'));
         return [...nonB2run, ...fields];
@@ -3351,7 +3354,7 @@ export default function EventCreationPage(): React.ReactElement {
     }
   };
 
-  // Startblöcke-Aenderung direkt in das Custom Field uebernehmen
+  // Startblöcke-Änderung direkt in das Custom Field übernehmen
   React.useEffect(() => {
     if (selectedTemplate !== 'b2run' && !(isEditMode && customFields.some(f => f.id === 'b2run_startblock'))) return;
     setCustomFields(prev => prev.map(f =>
@@ -4287,7 +4290,7 @@ export default function EventCreationPage(): React.ReactElement {
   } | null>(null);
   // v11.57: Bevor wir submitten, müssen die Werte des aktuell sichtbaren
   // Tabs ins zugehörige Slot zurückgeschrieben werden — sonst gehen die
-  // letzten Aenderungen verloren.
+  // letzten Änderungen verloren.
   const flushActiveCommTabToState = (): void => {
     if (activeCommTabIdx > 0) {
       const fromIdx = activeCommTabIdx - 1;
@@ -4882,11 +4885,11 @@ export default function EventCreationPage(): React.ReactElement {
       updates['AutoDeregisterOnDecline'] = effAutoDeregisterOnDecline;
       updates['InactiveHandling'] = effInactiveHandling;
       updates['DisableOutlook'] = effDisableOutlook;
-      // v11.57: OutlookDirty schreiben. Wenn Outlook-relevante Aenderungen
+      // v11.57: OutlookDirty schreiben. Wenn Outlook-relevante Änderungen
       // anstehen und der Organizer im Update-Confirm-Modal die Checkbox
       // *nicht* gesetzt hat, bleibt der Flag dirty=true; bei Checkbox=true
       // (= UpdateEvent wird gequeued) wird dirty wieder auf false gesetzt.
-      // Wenn keine Outlook-relevante Aenderung vorlag (z.B. nur Beschreibung
+      // Wenn keine Outlook-relevante Änderung vorlag (z.B. nur Beschreibung
       // angepasst), wird dirty NICHT angefasst — der Wert bleibt wie er war.
       // Den eigentlichen Wert setzen wir aus dem Modal-State unten (siehe
       // pendingOutlookDirtyWrite).
@@ -5104,8 +5107,8 @@ export default function EventCreationPage(): React.ReactElement {
                   ? { externalLinks: f.externalLinks.map(x => ({ label: x.label, url: x.url })) }
                   : {}),
                 // v11.21 KRITISCHER BUG-FIX: helpText UND showIf wurden hier
-                // beim cfForFix-Mapping nicht mit-uebernommen — der zweite
-                // updateEvent-Call (siehe `merged`-JSON unten, ueberschreibt
+                // beim cfForFix-Mapping nicht mit-übernommen — der zweite
+                // updateEvent-Call (siehe `merged`-JSON unten, überschreibt
                 // CustomFields nochmal mit der spInternalName-Anreicherung)
                 // hat die helpText- und showIf-Properties wieder vom SP-
                 // Item entfernt. Folge: jede gespeicherte Beschreibung war
@@ -5113,7 +5116,7 @@ export default function EventCreationPage(): React.ReactElement {
                 // updateEvent sie korrekt geschrieben hatte.
                 ...(f.helpText && f.helpText.trim() ? { helpText: f.helpText.trim() } : {}),
                 // v18.20 BUG-FIX (gleiches Muster wie v11.21): helpTextStyle
-                // wurde hier nicht mit-uebernommen — der zweite updateEvent-Call
+                // wurde hier nicht mit-übernommen — der zweite updateEvent-Call
                 // (merged-JSON unten) hat die Property wieder vom SP-Item
                 // entfernt. Folge: „Text unter dem Feld-Titel" war direkt nach
                 // dem Speichern wieder weg und das Feld zeigte die „i"-Box.
@@ -5257,7 +5260,7 @@ export default function EventCreationPage(): React.ReactElement {
         // v11.63: Sub-Events, die im Modal waren aber NICHT angehakt wurden,
         // bekommen OutlookDirty=true, damit beim nächsten Wizard-Lauf der
         // Hinweis erscheint. Aus pendingOutlookDirtyWriteRefs lesen — Top-
-        // Level haben wir oben bereits ueber pendingOutlookDirtyWriteRef
+        // Level haben wir oben bereits über pendingOutlookDirtyWriteRef
         // erledigt, hier nur Sub-Events.
         try {
           const dirtyMap = pendingOutlookDirtyWriteRefs.current || {};
@@ -5285,7 +5288,7 @@ export default function EventCreationPage(): React.ReactElement {
           // obwohl alles persistiert ist.
           initialFormSnapshotRef.current = computeFormSnapshot();
           setNavigationGuard(null);
-          // v17.21: Statt sofort den Wizard zu verlassen, oeffnet sich erst
+          // v17.21: Statt sofort den Wizard zu verlassen, öffnet sich erst
           // das Summary-Export-Modal. Der eigentliche Success-Dispatch läuft
           // erst, wenn der User dort eine Auswahl getroffen hat (PDF / Word /
           // Nein, danke).
@@ -5308,7 +5311,7 @@ export default function EventCreationPage(): React.ReactElement {
         setError(msg);
         // v28.31: Die Fehlerzeile steht ganz oben im Wizard — beim Speichern aus
         // Schritt 6/7 war sie ausserhalb des Sichtfelds, der Klick sah aus, als
-        // wuerde schlicht nichts passieren. Zusaetzlich als Dialog zeigen.
+        // wuerde schlicht nichts passieren. Zusätzlich als Dialog zeigen.
         showAlert(msg, { variant: 'error' });
       }
     } else {
@@ -5833,10 +5836,10 @@ export default function EventCreationPage(): React.ReactElement {
    *
    * 1. KEIN Re-Entry-Schutz. `handleSubmit` hatte weder eine
    *    `isSubmitting`-Abfrage noch einen Latch, und der Speichern-Knopf wird
-   *    nicht deaktiviert. `setIsSubmitting(true)` wirkt erst mit dem naechsten
+   *    nicht deaktiviert. `setIsSubmitting(true)` wirkt erst mit dem nächsten
    *    Render — zwei schnelle Klicks liefen also beide komplett durch und
    *    legten zwei Events an. Ein Ref greift dagegen synchron.
-   * 2. NACH dem Anlegen blieb der Wizard im Anlege-Modus. `isEditMode` haengt
+   * 2. NACH dem Anlegen blieb der Wizard im Anlege-Modus. `isEditMode` hängt
    *    an `currentPage === 'edit-event'`; der Wizard verlaesst die Seite aber
    *    erst, wenn das Zusammenfassungs-Fenster geschlossen wird. In diesem
    *    Fenster war `setIsSubmitting(false)` bereits gesetzt — ein weiterer
@@ -5844,7 +5847,7 @@ export default function EventCreationPage(): React.ReactElement {
    *    zweites Event an, statt das eben erstellte zu aktualisieren.
    *
    * Der zweite Klick ist jetzt kein stiller Doppel-Anlegevorgang mehr, sondern
-   * bietet an, das bereits angelegte Event zum Bearbeiten zu oeffnen.
+   * bietet an, das bereits angelegte Event zum Bearbeiten zu öffnen.
    */
   const submitInFlightRef = React.useRef<boolean>(false);
   const createdEventIdRef = React.useRef<string>('');
@@ -5871,7 +5874,7 @@ export default function EventCreationPage(): React.ReactElement {
     }
   };
 
-  // v11.57: detect ob beim aktuellen Edit-State Outlook-relevante Aenderungen
+  // v11.57: detect ob beim aktuellen Edit-State Outlook-relevante Änderungen
   // anstehen (Title, Start, End oder OutlookBody). Vergleich gegen den
   // Mount-Snapshot.
   // v11.63: liefert pro betroffenem Event (Hauptevent + Sub-Events) eine
@@ -5881,7 +5884,7 @@ export default function EventCreationPage(): React.ReactElement {
     const items: OutlookConfirmItem[] = [];
     if (!editEvent) return { items };
     const snap = initialOutlookSnapshot.current;
-    // v11.64: Datetime-Vergleich ueber Date.getTime(), nicht String. Sonst
+    // v11.64: Datetime-Vergleich über Date.getTime(), nicht String. Sonst
     // kippt der Vergleich an Format-Unterschieden (snap kommt roh aus SP
     // mit „2026-09-24T16:00:00Z", currentStart geht durch
     // berlinLocalToUtcIso() und wird „2026-09-24T16:00:00.000Z" — gleicher
@@ -5900,7 +5903,7 @@ export default function EventCreationPage(): React.ReactElement {
     const currentStart = startDate ? berlinLocalToUtcIso(startDate) : '';
     const currentEnd = endDate ? berlinLocalToUtcIso(endDate) : '';
     // Outlook-Body vergleich anhand des „rohen" Body (ohne Wrapper), da der
-    // Wrapper bei jedem Save neu gebaut wird und dadurch immer „aenderbar"
+    // Wrapper bei jedem Save neu gebaut wird und dadurch immer „änderbar"
     // aussehen würde. Vergleich gegen den initial gestrippten Wert.
     const initialStripped = stripOutlookWrapper(snap.outlookBody || '');
     const currentStripped = activeCommTabIdx === 0 ? (outlookBody || '') : stripOutlookWrapper(snap.outlookBody || '');
@@ -5937,11 +5940,11 @@ export default function EventCreationPage(): React.ReactElement {
     const currentOrganizers = organizer.split(';').map(s => s.trim()).filter(Boolean).join(';');
     const bodyIsDefault = !currentStripped.trim() && !initialStripped.trim();
     if (bodyIsDefault && currentOrganizers !== (snap.organizers || '')) topChangedFields.push('organizer');
-    // v18.34: reine Ort-Aenderung gilt ebenfalls als Outlook-relevant.
+    // v18.34: reine Ort-Änderung gilt ebenfalls als Outlook-relevant.
     if (currentTopLocation !== (snap.outlookLocation || '')) topChangedFields.push('location');
-    // v18.42: reine Betreff-Aenderung gilt ebenfalls als Outlook-relevant.
+    // v18.42: reine Betreff-Änderung gilt ebenfalls als Outlook-relevant.
     if (currentTopSubject !== (snap.outlookSubject || '').trim()) topChangedFields.push('subject');
-    // v18.44: abweichendes Outlook-Datum (Override) gilt als Termin-Aenderung.
+    // v18.44: abweichendes Outlook-Datum (Override) gilt als Termin-Änderung.
     if ((outlookStartOverride || '') !== (snap.outlookStart || '') && topChangedFields.indexOf('startDate') < 0) topChangedFields.push('startDate');
     if ((outlookEndOverride || '') !== (snap.outlookEnd || '') && topChangedFields.indexOf('endDate') < 0) topChangedFields.push('endDate');
     // v11.61: Beide Pointer prüfen — DEX_CreateOutlookEvent setzt nur
@@ -6092,7 +6095,7 @@ export default function EventCreationPage(): React.ReactElement {
   };
 
   // v11.57: Wrapper-Funktion für den Save-Button. Im Edit-Modus mit
-  // Outlook-relevanter Aenderung wird das Confirm-Modal gezeigt. Sonst
+  // Outlook-relevanter Änderung wird das Confirm-Modal gezeigt. Sonst
   // direkt handleSubmit.
   const attemptSubmit = (): void => {
     // Aktuelle Tab-Werte zurück ins jeweilige Slot schreiben, damit
@@ -6116,11 +6119,11 @@ export default function EventCreationPage(): React.ReactElement {
       setOutlookConfirmOpen(true);
       return;
     }
-    // Keine Outlook-relevante Aenderung — dirty-Flag nicht anfassen.
+    // Keine Outlook-relevante Änderung — dirty-Flag nicht anfassen.
     pendingOutlookDirtyWriteRef.current = null;
     pendingOutlookDirtyWriteRefs.current = {};
     // Wenn der User den expliziten Step-5-Schalter „Outlook-Termin
-    // aktualisieren" angehakt hat, ueberschreibt das die Modal-Logik
+    // aktualisieren" angehakt hat, überschreibt das die Modal-Logik
     // und triggert ein manuelles UpdateEvent für das Top-Level — auch
     // wenn die Detect-Heuristik nichts Outlook-relevantes gefunden hat.
     pendingOutlookUpdateForTopRef.current = !!triggerOutlookUpdate;
@@ -6173,7 +6176,7 @@ export default function EventCreationPage(): React.ReactElement {
       pendingOutlookDirtyWriteRef.current = null;
     }
     // setTriggerOutlookUpdate steuert in handleSubmit, ob der Top-Level-
-    // Outlook-Branch ueberhaupt betreten wird. v11.63: nur true wenn das
+    // Outlook-Branch überhaupt betreten wird. v11.63: nur true wenn das
     // Top-Event angehakt wurde ODER mindestens ein Sub-Event angehakt
     // wurde (damit der Sub-Event-Branch im handleSubmit getroffen wird).
     setTriggerOutlookUpdate(topChecked || normalUpdateSubIds.length > 0 || recreateSubIds.length > 0);
@@ -6186,7 +6189,7 @@ export default function EventCreationPage(): React.ReactElement {
     // Nichts speichern — User bleibt im Wizard.
   };
 
-  // v11.57: bei Sub-Event-Anzahl-Aenderung Tab sicher in Range halten.
+  // v11.57: bei Sub-Event-Anzahl-Änderung Tab sicher in Range halten.
   // v27.11 BUG-FIX: NICHT direkt setActiveCommTabIdx(0) — das ließ die
   // Step-6-State-Variablen (Mail-Sprache, Outlook-Body, Logos, disableEmails
   // etc.) auf den SUB-EVENT-Werten stehen, die dann als Tab 0 = Top-Level
@@ -6355,7 +6358,7 @@ export default function EventCreationPage(): React.ReactElement {
       teamOpenSlotsVisible, teamJoinRequiresApproval,
       askSalutation, requireSubEventSelection,
       // Custom-Fields nur via Anzahl + Labels — JSON.stringify auf das
-      // gesamte Array wäre instabil bei id-Aenderungen.
+      // gesamte Array wäre instabil bei id-Änderungen.
       customFieldsHash: (customFields || []).map(f => `${f.id}:${f.label}:${f.type}:${f.required}`).join('|'),
       agendaLen: (agenda || []).length,
       docsLen: (documents || []).length,
@@ -6623,7 +6626,7 @@ export default function EventCreationPage(): React.ReactElement {
   };
 
 
-  // Hint-Bullets pro Step. Werden ueber das i-Icon in der Progress-Bar
+  // Hint-Bullets pro Step. Werden über das i-Icon in der Progress-Bar
   // (Mouseover) als Tooltip eingeblendet — vorher wurden sie als
   // dauerhafte grüne Hinweis-Box am Anfang jedes Steps angezeigt
   // (renderStepIntro), das war für geübte Organizer zu viel Rauschen.
@@ -6902,7 +6905,7 @@ export default function EventCreationPage(): React.ReactElement {
   // damit die Box nicht extrem lang wird wenn viele Items drin sind.
   // No-Op seit v7.36: die Hint-Box wird nicht mehr inline am Step-Anfang
   // gerendert. Stattdessen liegen die Hints in STEP_HINTS_DE/EN und werden
-  // ueber das i-Icon in der Progress-Bar (Mouseover) angezeigt. Funktion
+  // über das i-Icon in der Progress-Bar (Mouseover) angezeigt. Funktion
   // bleibt aus Kompatibilitätsgründen mit den 7 bestehenden Call-Sites.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const renderStepIntro = (_bulletsDe: string[], _bulletsEn: string[]): React.ReactElement | null => null;
@@ -6930,6 +6933,67 @@ export default function EventCreationPage(): React.ReactElement {
       el.style.borderRadius = '10px';
       window.setTimeout(() => { el.style.boxShadow = 'none'; }, 2200);
     }, 120);
+  };
+
+  /**
+   * v28.74: Einstellungen eines Sub-Events auf andere übertragen.
+   *
+   * Hintergrund: Bei Events mit vielen Sub-Events (z.B. neun Tagen) pflegt der
+   * Organizer Sichtbarkeit, Kapazität und Fristen bisher NEUN MAL von Hand.
+   * Dabei entstehen unbemerkt Abweichungen — im gemeldeten Fall stand der
+   * Standortfilter „Berlin" auf einigen Tagen und auf anderen nicht, was erst
+   * in der Zusammenfassung auffiel (und dort auch nur, wenn man genau liest).
+   * „Vom Hauptevent kopieren" half nicht, weil die Werte ja gerade NICHT vom
+   * Hauptevent kommen sollen, sondern vom Geschwister-Sub-Event.
+   *
+   * Deshalb zwei Dinge: ein Hinweis, der Abweichungen von sich aus meldet,
+   * und ein Dialog, in dem der Organizer auswählt, WAS er auf WELCHE
+   * Sub-Events überträgt.
+   */
+  const SUB_TRANSFER_GROUPS: Array<{ key: string; de: string; en: string; fields: string[] }> = React.useMemo(() => ([
+    { key: 'visibility', de: 'Sichtbarkeit (Standortfilter, Mailverteiler, Verknüpfung, Ausschlüsse)', en: 'Visibility (location filter, mailing lists, link mode, exclusions)', fields: ['locationFilter', 'audience', 'filterMode', 'excludedUsers'] },
+    { key: 'capacity', de: 'Teilnehmerzahl & Warteliste', en: 'Capacity & waitlist', fields: ['maxParticipants', 'waitlistEnabled'] },
+    { key: 'regDeadline', de: 'Anmeldefrist', en: 'Registration deadline', fields: ['registrationDeadline'] },
+    { key: 'deregDeadline', de: 'Abmeldefrist', en: 'Cancellation deadline', fields: ['lastDeregisterDate'] },
+    { key: 'place', de: 'Ort & Adresse', en: 'Location & address', fields: ['location', 'locationAddress'] },
+    { key: 'mandatory', de: 'Pflichtanmeldung', en: 'Mandatory registration', fields: ['mandatory'] },
+    { key: 'times', de: 'Zeiten (Start & Ende) — überschreibt die Termine!', en: 'Times (start & end) — overwrites the dates!', fields: ['startDate', 'endDate'] },
+  ]), []);
+  const asRec = (d: SubEventDraft | undefined): Record<string, unknown> =>
+    (d || {}) as unknown as Record<string, unknown>;
+  /** Anzahl der ANDEREN Sub-Events, bei denen diese Gruppe abweicht. */
+  const subGroupDiffCount = (srcIdx: number, fields: string[]): number => {
+    const src = asRec(subEvents[srcIdx]);
+    let n = 0;
+    for (let i = 0; i < subEvents.length; i++) {
+      if (i === srcIdx) continue;
+      const other = asRec(subEvents[i]);
+      const differs = fields.some(f => JSON.stringify(src[f] ?? '') !== JSON.stringify(other[f] ?? ''));
+      if (differs) n++;
+    }
+    return n;
+  };
+  const [subTransfer, setSubTransfer] = React.useState<null | { fromIdx: number; groups: string[]; targets: number[] }>(null);
+  const applySubTransfer = (): void => {
+    if (!subTransfer) return;
+    const src = asRec(subEvents[subTransfer.fromIdx]);
+    const fields: string[] = [];
+    for (const g of SUB_TRANSFER_GROUPS) {
+      if (subTransfer.groups.indexOf(g.key) >= 0) fields.push(...g.fields);
+    }
+    if (fields.length === 0 || subTransfer.targets.length === 0) { setSubTransfer(null); return; }
+    setSubEvents(prev => prev.map((s, i) => {
+      if (subTransfer.targets.indexOf(i) < 0) return s;
+      const patch: Record<string, unknown> = {};
+      for (const f of fields) patch[f] = src[f];
+      return { ...s, ...(patch as unknown as Partial<SubEventDraft>) };
+    }));
+    const n = subTransfer.targets.length;
+    setSubTransfer(null);
+    showAlert(isDe
+      ? `Einstellungen auf ${n} ${n === 1 ? (childTermSingular || 'Sub-Event') : (childTermPlural || 'Sub-Events')} übertragen. Nicht vergessen zu speichern.`
+      : `Settings transferred to ${n} sub-event(s). Don't forget to save.`,
+      { variant: 'success' });
   };
 
   const renderPerEventTabStrip = (
@@ -7007,7 +7071,7 @@ export default function EventCreationPage(): React.ReactElement {
           fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.03em',
           textTransform: 'uppercase', color: 'var(--dex-gray-500)', marginBottom: 6,
         }}>
-          {isDe ? 'Wofür stellst du gerade ein?' : 'What are you configuring right now?'}
+          {isDe ? 'Welches (Sub-)Event bearbeitest du gerade?' : 'Which (sub-)event are you editing?'}
         </div>
         <StickyTabStrip
           tabs={tabs}
@@ -7020,6 +7084,7 @@ export default function EventCreationPage(): React.ReactElement {
           klammerInfo={
             <InfoTooltip
               placement="bottom"
+              interactive
               text={isDe ? (
                 <>
                   <strong>Klammerevent</strong> — zu diesem Event selbst meldet sich <strong>niemand</strong> an. Teilnehmer sehen nur die {childTermPlural || 'Sub-Events'} darunter und melden sich <strong>dort</strong> an. Der Eventname ist die Klammer darüber: Er erscheint in der Übersicht und fasst die {childTermPlural || 'Sub-Events'} zusammen.<br /><br />
@@ -7118,7 +7183,7 @@ export default function EventCreationPage(): React.ReactElement {
             </p>
 
             {/* Eingeklappte Kurzfassung — die volle Fassung kann der Nutzer
-                ueber den Toggle ausklappen. Die Checkbox-Bestätigung ist
+                über den Toggle ausklappen. Die Checkbox-Bestätigung ist
                 trotzdem Pflicht (siehe weiter unten). */}
             <div
               style={{
@@ -8233,15 +8298,15 @@ export default function EventCreationPage(): React.ReactElement {
                     setImagePreview(dataUrl);
                     setImageFile(file);
                     setImageEditOpen(false);
-                    // v28.32: Der Kreis-Zuschnitt gilt nur noch fuer die
+                    // v28.32: Der Kreis-Zuschnitt gilt nur noch für die
                     // Anmeldeseite und die Event-Karte. Mail-Kopf und
                     // Outlook-Termin sind RECHTECKIG — dort steht ab jetzt
                     // automatisch das UNBESCHNITTENE Original (v26.95 fragte
                     // stattdessen nach und nahm dann den Kreis, der im
                     // rechteckigen Kopf sichtbar angeschnitten ankam).
                     // Ein bereits bewusst gesetztes eigenes Kopfbild wird nicht
-                    // ueberschrieben; wer den Kreis doch im Kopf haben will,
-                    // nimmt „Bild auswaehlen".
+                    // überschrieben; wer den Kreis doch im Kopf haben will,
+                    // nimmt „Bild auswählen".
                     try {
                       let srcFile: File | null = imageOrigFile;
                       if (!srcFile && editEvent && editEvent.imageOrigUrl) {
@@ -9488,7 +9553,7 @@ export default function EventCreationPage(): React.ReactElement {
                   Transferzeiten-UI pro Sub-Event — kein Inheritance-Toggle
                   mehr, jedes Sub-Event hat eigene Werte. Per
                   „Vom Hauptevent kopieren"-Button kann der Organizer die
-                  Hauptevent-Werte als Startpunkt uebernehmen. */}
+                  Hauptevent-Werte als Startpunkt übernehmen. */}
               {renderPerEventTabStrip(
                 activeLocationTabIdx,
                 setActiveLocationTabIdx,
@@ -9511,7 +9576,7 @@ export default function EventCreationPage(): React.ReactElement {
                 };
                 return (
                   <div>
-                    {/* v15.3: „Vom Hauptevent kopieren"-Button. Uebernimmt
+                    {/* v15.3: „Vom Hauptevent kopieren"-Button. Übernimmt
                         Ort, Adresse, Agenda und Transferzeiten vom Hauptevent
                         als Startwerte für dieses Sub-Event. */}
                     <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
@@ -9526,7 +9591,7 @@ export default function EventCreationPage(): React.ReactElement {
                           transferTimes: transferTimes.map(tt => ({ ...tt, id: `tr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` })),
                         })}
                         title={isDe
-                          ? 'Uebernimmt Ort, Adresse, Agenda und Transferzeiten vom Hauptevent als Startwerte'
+                          ? 'Übernimmt Ort, Adresse, Agenda und Transferzeiten vom Hauptevent als Startwerte'
                           : 'Copies location, address, agenda and transfer times from the main event as starting values'}
                       >
                         {isDe ? 'Vom Hauptevent kopieren' : 'Copy from main event'}
@@ -10741,10 +10806,10 @@ export default function EventCreationPage(): React.ReactElement {
                 const seLocationFilterList = (se.locationFilter || '').split(',').map(s => s.trim()).filter(Boolean);
                 return (
                   <div>
-                    {/* v15.3: „Vom Hauptevent kopieren"-Button. Uebernimmt
+                    {/* v15.3: „Vom Hauptevent kopieren"-Button. Übernimmt
                         Kapazitäts-/Sichtbarkeits-/Deadline-/Filter-Werte
                         vom Hauptevent als Startwerte für dieses Sub-Event. */}
-                    <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
                       <button
                         type="button"
                         className="btn btn-secondary"
@@ -10759,12 +10824,82 @@ export default function EventCreationPage(): React.ReactElement {
                           waitlistEnabled: waitlistEnabled,
                         })}
                         title={isDe
-                          ? 'Uebernimmt Teilnehmerzahl, Deadlines, Sichtbarkeit und Warteliste vom Hauptevent als Startwerte'
+                          ? 'Übernimmt Teilnehmerzahl, Deadlines, Sichtbarkeit und Warteliste vom Hauptevent als Startwerte'
                           : 'Copies capacity, deadlines, visibility and waitlist from the main event as starting values'}
                       >
                         {isDe ? 'Vom Hauptevent kopieren' : 'Copy from main event'}
                       </button>
+                      {/* v28.74: Gegenstück — Werte dieses Sub-Events auf die
+                          anderen übertragen (was und wohin wählt der Organizer). */}
+                      {subEvents.length > 1 && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+                          onClick={() => setSubTransfer({
+                            fromIdx: seIdx,
+                            groups: SUB_TRANSFER_GROUPS.filter(g => g.key !== 'times' && subGroupDiffCount(seIdx, g.fields) > 0).map(g => g.key),
+                            targets: subEvents.map((_, i) => i).filter(i => i !== seIdx),
+                          })}
+                          title={isDe
+                            ? 'Überträgt ausgewählte Einstellungen dieses Sub-Events auf andere Sub-Events'
+                            : 'Transfers selected settings of this sub-event to other sub-events'}
+                        >
+                          {isDe ? 'Einstellungen auf andere übertragen' : 'Transfer settings to others'}
+                        </button>
+                      )}
                     </div>
+
+                    {/* v28.74: Abweichungs-Hinweis. Meldet von sich aus, welche
+                        Einstellungen bei anderen Sub-Events anders stehen —
+                        genau der Fall „Standortfilter auf einigen Tagen Berlin,
+                        auf anderen leer", der sonst erst in der Zusammenfassung
+                        (oder gar nicht) auffällt. */}
+                    {subEvents.length > 1 && (() => {
+                      const diffs = SUB_TRANSFER_GROUPS
+                        .filter(g => g.key !== 'times')
+                        .map(g => ({ g, n: subGroupDiffCount(seIdx, g.fields) }))
+                        .filter(x => x.n > 0);
+                      if (diffs.length === 0) return null;
+                      const others = subEvents.length - 1;
+                      return (
+                        <div style={{
+                          margin: '0 0 14px', padding: '10px 12px', borderRadius: 8,
+                          background: '#fff8e6', border: '1px solid #e0b34d', color: '#7a5a12',
+                          fontSize: '0.8rem', lineHeight: 1.55,
+                        }}>
+                          <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                            {isDe ? 'Diese Einstellungen weichen von den anderen ab' : 'These settings differ from the others'}
+                          </div>
+                          <ul style={{ margin: '0 0 8px', paddingLeft: 18 }}>
+                            {diffs.map(x => (
+                              <li key={x.g.key}>
+                                {isDe ? x.g.de.replace(/ —.*$/, '') : x.g.en.replace(/ —.*$/, '')}: {isDe
+                                  ? <>bei <strong>{x.n} von {others}</strong> anderen {others === 1 ? 'Sub-Event' : 'Sub-Events'} anders</>
+                                  : <>differs in <strong>{x.n} of {others}</strong> other sub-event{others === 1 ? '' : 's'}</>}
+                              </li>
+                            ))}
+                          </ul>
+                          <div style={{ marginBottom: 8 }}>
+                            {isDe
+                              ? 'Das kann so gewollt sein. Wenn nicht, übernimm die Werte dieses Sub-Events für die anderen:'
+                              : 'That may be intentional. If not, apply this sub-event’s values to the others:'}
+                          </div>
+                          <button
+                            type="button"
+                            className="btn btn-primary"
+                            style={{ fontSize: '0.8rem', padding: '6px 14px' }}
+                            onClick={() => setSubTransfer({
+                              fromIdx: seIdx,
+                              groups: diffs.map(x => x.g.key),
+                              targets: subEvents.map((_, i) => i).filter(i => i !== seIdx),
+                            })}
+                          >
+                            {isDe ? 'Auf die anderen übertragen…' : 'Transfer to the others…'}
+                          </button>
+                        </div>
+                      );
+                    })()}
 
                     {/* v15.6: Sichtbarkeits-Sektion analog Hauptevent —
                         Header mit Auge-Icon plus erklärender Lead-Text. */}
@@ -11038,7 +11173,7 @@ export default function EventCreationPage(): React.ReactElement {
               {/* Zwischenüberschrift: alle Sichtbarkeits-Steuerungen
                   (Standortfilter + Mailverteiler/einzelne User) gruppieren,
                   damit der Organizer auf einen Blick versteht, dass es hier
-                  um die Frage geht: wer darf das Event ueberhaupt sehen. */}
+                  um die Frage geht: wer darf das Event überhaupt sehen. */}
               <div style={{
                 paddingBottom: 12, marginBottom: 16,
                 borderBottom: '2px solid var(--dex-gray-100)',
@@ -11346,7 +11481,7 @@ export default function EventCreationPage(): React.ReactElement {
                   )}
                 </div>
                 {/* v28.31: Die Abmeldefrist gehoert bei einer Klammer zu den
-                    Sub-Events — hier waere sie wirkungslos. Nur dieses eine Feld
+                    Sub-Events — hier wäre sie wirkungslos. Nur dieses eine Feld
                     ausgrauen, die Klammer-Anmeldefrist links bleibt bedienbar. */}
                 <div className="form-group" style={{ marginBottom: 0, ...(subEventsOnlyMode ? { opacity: 0.55, pointerEvents: 'none' as const, userSelect: 'none' as const } : {}) }}>
                   <label className="form-label">
@@ -11386,7 +11521,7 @@ export default function EventCreationPage(): React.ReactElement {
                   />
                 </div>
               </div>
-              {/* v28.31: erklaert das ausgegraute Feld, statt es kommentarlos tot
+              {/* v28.31: erklärt das ausgegraute Feld, statt es kommentarlos tot
                   aussehen zu lassen. */}
               {subEventsOnlyMode && (
                 <p style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 8, marginBottom: 0, lineHeight: 1.5 }}>
@@ -11627,7 +11762,7 @@ export default function EventCreationPage(): React.ReactElement {
                       'separate' (zwei Wartelisten) — entspricht dem alten
                       B2Run-Verhalten und ist die typ-bewusste Variante.
                       Alternative 'shared' = eine gemeinsame Warteliste, FIFO
-                      ueber beide Gruppen. Sinnvoll wenn die Gruppen
+                      über beide Gruppen. Sinnvoll wenn die Gruppen
                       organisatorisch fluide sind (z.B. Vormittag/Nachmittag
                       bei einem Workshop, wo der nächste freie Slot egal ist
                       welche Gruppe). Nur sichtbar wenn Warteliste aktiviert
@@ -11765,7 +11900,7 @@ export default function EventCreationPage(): React.ReactElement {
 
                   {/* v10.24: Leistungsnachweis-Pflicht-Toggle wurde entfernt.
                       Stattdessen kann der Organizer in Schritt 6 (Felder) ein
-                      eigenes Pflichtfeld vom Typ Checkbox anlegen und es ueber
+                      eigenes Pflichtfeld vom Typ Checkbox anlegen und es über
                       'Sichtbar für Teilnehmergruppe → Nur Gruppe A' gezielt
                       auf eine Split-Gruppe einschränken. Das ersetzt den
                       hartkodierten B2Run-Leistungsnachweis-Sonderfall durch
@@ -12322,7 +12457,7 @@ export default function EventCreationPage(): React.ReactElement {
                 ]
               )}
 
-              {/* Datenschutz-Hinweis ueber der Template-Auswahl — links
+              {/* Datenschutz-Hinweis über der Template-Auswahl — links
                   angeordnet, orangener Akzent damit der Organizer beim Anlegen
                   neuer Felder bewusst entscheidet, was wirklich abgefragt
                   werden muss. Seit v7.35 deckungsgleich mit dem Hinweis aus
@@ -12417,14 +12552,14 @@ export default function EventCreationPage(): React.ReactElement {
               {/* v10.21: Template-Dropdown ist entfallen — der Organizer
                   pickt B2Run-Felder einzeln per Suggested-Felder-Modal
                   (eingeklappte Sektion "B2Run-spezifische Felder"). Damit
-                  führt kein Weg mehr ueber ein hartes B2Run-Template, das
+                  führt kein Weg mehr über ein hartes B2Run-Template, das
                   zusätzlich Logik (Auto-Split-Capacity etc.) auslöste —
                   saubere Trennung zwischen Feld-Konfiguration und
                   Kapazitäts-Modell. */}
 
               {/* B2Run Startblöcke - moderne Liste mit + Button. Wird
                   unverändert angezeigt, sobald das b2run_startblock-Feld in
-                  customFields steht (ueber das Suggested-Felder-Modal
+                  customFields steht (über das Suggested-Felder-Modal
                   ausgewählt oder beim Edit eines Legacy-Events vorhanden). */}
               {customFields.some(f => f.id === 'b2run_startblock') && (
                 <div className="form-group" style={{ marginBottom: 24, padding: 16, background: 'rgba(134,188,37,0.08)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-green)' }}>
@@ -12506,7 +12641,7 @@ export default function EventCreationPage(): React.ReactElement {
               {/* v15.0: pro-Sub-Event-Tabs für Felder. Tab 0 = Haupt-Event
                   (komplette Custom-Fields-Liste, B2Run-Startblöcke etc.).
                   Tabs N>0 = schlanke per-Sub-Event-Felder-UI mit Inheritance-
-                  Toggle. Im subEventsOnlyMode wird Tab 0 zu „Uebergreifende
+                  Toggle. Im subEventsOnlyMode wird Tab 0 zu „Übergreifende
                   Felder" / „Cross-cutting fields" — die wirken dann auf alle
                   Sub-Event-Anmeldungen. */}
               {renderPerEventTabStrip(
@@ -12564,7 +12699,7 @@ export default function EventCreationPage(): React.ReactElement {
                         style={{ fontSize: '0.8rem', padding: '6px 14px' }}
                         onClick={() => updateSub({ askSalutation: askSalutation })}
                         title={isDe
-                          ? 'Uebernimmt die Anrede-Abfrage-Einstellung vom Hauptevent'
+                          ? 'Übernimmt die Anrede-Abfrage-Einstellung vom Hauptevent'
                           : 'Copies the salutation toggle from the main event'}
                       >
                         {isDe ? 'Vom Hauptevent kopieren' : 'Copy from main event'}
@@ -12840,14 +12975,14 @@ export default function EventCreationPage(): React.ReactElement {
                 );
               })()}
 
-              {/* Tab 0 (Haupt-Event bzw. Uebergreifende Felder): die
+              {/* Tab 0 (Haupt-Event bzw. Übergreifende Felder): die
                   bestehende Hauptevent-Felder-UI bleibt unverändert; nur
                   die Sektion „Felder pro Sub-Event" weiter unten wird in
                   v15.0 ausgeblendet, weil pro Sub-Event jetzt einen
                   eigenen Tab. */}
               <div style={{ display: activeFieldsTabIdx === 0 ? 'block' : 'none' }}>
               {/* v16.5: In Step 5 (Felder) ist im subEventsOnlyMode KEIN
-                  Greyout — die Felder im ersten Tab sind „uebergreifend"
+                  Greyout — die Felder im ersten Tab sind „übergreifend"
                   und werden bei JEDER Sub-Event-Anmeldung abgefragt, also
                   in dem Modus besonders relevant. Stattdessen ein info-
                   blauer Hinweis-Banner mit der korrekten Erklärung. */}
@@ -12859,8 +12994,8 @@ export default function EventCreationPage(): React.ReactElement {
               <div>
                 {/* Bereich-Header: trennt Hauptevent-Felder visuell vom
                     Sub-Event-Block weiter unten (v10.11+).
-                    v15.0: im subEventsOnlyMode lautet die Ueberschrift
-                    „Uebergreifend für alle <childTermPlural>". */}
+                    v15.0: im subEventsOnlyMode lautet die Überschrift
+                    „Übergreifend für alle <childTermPlural>". */}
                 <h3 style={{ margin: '0 0 6px', color: 'var(--dex-green-dark, #4a7c1f)', fontSize: '1.05rem', fontWeight: 700 }}>
                   {subEventsOnlyMode
                     ? (isDe
@@ -14882,9 +15017,9 @@ export default function EventCreationPage(): React.ReactElement {
                   </label>
                   {/* v26.95: Event-Foto (falls hinterlegt) mit einem Klick als
                       Mail-Kopfbild übernehmen — kein Extra-Upload nötig. */}
-                  {/* v28.29: neutral statt gruen gefuellt. Der gruene Rahmen plus
-                      die gruene Fuellung lasen sich wie ein AKTIVER Zustand
-                      („Event-Foto ist schon uebernommen") — war es aber nicht,
+                  {/* v28.29: neutral statt gruen gefüllt. Der gruene Rahmen plus
+                      die gruene Füllung lasen sich wie ein AKTIVER Zustand
+                      („Event-Foto ist schon übernommen") — war es aber nicht,
                       und genau deshalb blieb der Kopf beim Standardlogo. */}
                   {(imagePreview || imageFile) && (
                     <button
@@ -14905,7 +15040,7 @@ export default function EventCreationPage(): React.ReactElement {
                   )}
                   {/* v28.30: Zuschneiden/Entfernen sitzen jetzt hier statt in einer
                       eigenen Zeile mit zweitem Vorschaubild — das Bild stand dadurch
-                      doppelt auf dem Schirm (Thumbnail oben, Groessen-Vorschau unten). */}
+                      doppelt auf dem Schirm (Thumbnail oben, Größen-Vorschau unten). */}
                   {emailLogoPreview && (
                     <>
                       <button type="button" className="btn btn-secondary" style={{ marginLeft: 8, fontSize: '0.78rem', padding: '7px 12px' }}
@@ -14957,9 +15092,9 @@ export default function EventCreationPage(): React.ReactElement {
                     }} />
                   </label>
                   {/* v26.95: Event-Foto mit einem Klick als Outlook-Kopfbild. */}
-                  {/* v28.29: neutral statt gruen gefuellt. Der gruene Rahmen plus
-                      die gruene Fuellung lasen sich wie ein AKTIVER Zustand
-                      („Event-Foto ist schon uebernommen") — war es aber nicht,
+                  {/* v28.29: neutral statt gruen gefüllt. Der gruene Rahmen plus
+                      die gruene Füllung lasen sich wie ein AKTIVER Zustand
+                      („Event-Foto ist schon übernommen") — war es aber nicht,
                       und genau deshalb blieb der Kopf beim Standardlogo. */}
                   {(imagePreview || imageFile) && (
                     <button
@@ -14980,7 +15115,7 @@ export default function EventCreationPage(): React.ReactElement {
                   )}
                   {/* v28.30: Zuschneiden/Entfernen sitzen jetzt hier statt in einer
                       eigenen Zeile mit zweitem Vorschaubild — das Bild stand dadurch
-                      doppelt auf dem Schirm (Thumbnail oben, Groessen-Vorschau unten). */}
+                      doppelt auf dem Schirm (Thumbnail oben, Größen-Vorschau unten). */}
                   {outlookLogoPreview && (
                     <>
                       <button type="button" className="btn btn-secondary" style={{ marginLeft: 8, fontSize: '0.78rem', padding: '7px 12px' }}
@@ -15102,7 +15237,7 @@ export default function EventCreationPage(): React.ReactElement {
                       <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
                         {t('create.templates.subject')}: {currentSubject.replace(/\{\{EventTitle\}\}/g, title || '...')}
                       </div>
-                      {/* Inline-Editor entfällt — Edit oeffnet jetzt das HtmlEditorModal mit Live-Preview */}
+                      {/* Inline-Editor entfällt — Edit öffnet jetzt das HtmlEditorModal mit Live-Preview */}
                       {false && (
                         <div style={{ marginTop: 8 }}>
                           <div style={{ border: '1px solid var(--dex-gray-300)', borderRadius: 6, minHeight: 150, padding: '0 4px' }}>
@@ -16560,6 +16695,110 @@ export default function EventCreationPage(): React.ReactElement {
           Klick auf eine Option läuft der Export sofort, danach feuert der
           eigentliche „Wizard verlassen"-Dispatch (`dex-event-submit-success`).
           „Nein, danke" springt direkt zum Dispatch. */}
+      {/* v28.74: „Einstellungen auf andere übertragen" — Auswahl WAS und WOHIN. */}
+      {subTransfer && (() => {
+        const srcName = shortSubEventTitle(subEvents[subTransfer.fromIdx]?.title || '', title) || (childTermSingular || 'Sub-Event');
+        const toggleGroup = (key: string): void => setSubTransfer(prev => prev && ({
+          ...prev,
+          groups: prev.groups.indexOf(key) >= 0 ? prev.groups.filter(k => k !== key) : [...prev.groups, key],
+        }));
+        const toggleTarget = (i: number): void => setSubTransfer(prev => prev && ({
+          ...prev,
+          targets: prev.targets.indexOf(i) >= 0 ? prev.targets.filter(x => x !== i) : [...prev.targets, i],
+        }));
+        const canApply = subTransfer.groups.length > 0 && subTransfer.targets.length > 0;
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+            <div className="card" style={{ width: '100%', maxWidth: 680, maxHeight: '88vh', overflow: 'auto', padding: 24, borderRadius: 14, background: '#fff' }}>
+              <h3 style={{ margin: '0 0 4px', fontSize: '1.1rem' }}>
+                {isDe ? 'Einstellungen übertragen' : 'Transfer settings'}
+              </h3>
+              <p style={{ margin: '0 0 16px', fontSize: '0.84rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+                {isDe
+                  ? <>Die ausgewählten Einstellungen von <strong>„{srcName}“</strong> werden auf die ausgewählten {childTermPlural || 'Sub-Events'} übertragen und <strong>überschreiben</strong> die dortigen Werte. Gespeichert wird erst, wenn du den Assistenten speicherst.</>
+                  : <>The selected settings of <strong>„{srcName}“</strong> are applied to the selected sub-events and <strong>overwrite</strong> their values. Nothing is stored until you save the wizard.</>}
+              </p>
+
+              <div style={{ fontWeight: 700, fontSize: '0.85rem', marginBottom: 8 }}>
+                {isDe ? '1. Was soll übertragen werden?' : '1. What should be transferred?'}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 18 }}>
+                {SUB_TRANSFER_GROUPS.map(g => {
+                  const on = subTransfer.groups.indexOf(g.key) >= 0;
+                  const n = subGroupDiffCount(subTransfer.fromIdx, g.fields);
+                  return (
+                    <label key={g.key} style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 12px', borderRadius: 8,
+                      border: `1px solid ${on ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+                      background: on ? 'rgba(134,188,37,0.06)' : '#fff', cursor: 'pointer', fontSize: '0.84rem',
+                    }}>
+                      <input type="checkbox" checked={on} onChange={() => toggleGroup(g.key)} style={{ marginTop: 3 }} />
+                      <span>
+                        {isDe ? g.de : g.en}
+                        {n > 0 && (
+                          <span style={{ marginLeft: 8, fontSize: '0.72rem', fontWeight: 700, padding: '1px 7px', borderRadius: 10, background: '#fff3d6', color: '#7a5a12', border: '1px solid #e0b34d' }}>
+                            {isDe ? `${n}× abweichend` : `${n}× differing`}
+                          </span>
+                        )}
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <div style={{ fontWeight: 700, fontSize: '0.85rem' }}>
+                  {isDe ? '2. Auf welche übertragen?' : '2. Transfer to which ones?'}
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                  onClick={() => setSubTransfer(prev => prev && ({
+                    ...prev,
+                    targets: prev.targets.length === subEvents.length - 1
+                      ? []
+                      : subEvents.map((_, i) => i).filter(i => i !== prev.fromIdx),
+                  }))}
+                >
+                  {subTransfer.targets.length === subEvents.length - 1
+                    ? (isDe ? 'Keine' : 'None')
+                    : (isDe ? 'Alle' : 'All')}
+                </button>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 20 }}>
+                {subEvents.map((s, i) => {
+                  if (i === subTransfer.fromIdx) return null;
+                  const on = subTransfer.targets.indexOf(i) >= 0;
+                  const nm = shortSubEventTitle(s.title, title) || (isDe ? 'Ohne Titel' : 'Untitled');
+                  return (
+                    <label key={s.id || i} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8,
+                      border: `1px solid ${on ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+                      background: on ? 'rgba(134,188,37,0.10)' : '#fff', cursor: 'pointer', fontSize: '0.8rem',
+                    }}>
+                      <input type="checkbox" checked={on} onChange={() => toggleTarget(i)} />
+                      {nm}
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <button type="button" className="btn btn-secondary" onClick={() => setSubTransfer(null)}>
+                  {isDe ? 'Abbrechen' : 'Cancel'}
+                </button>
+                <button type="button" className="btn btn-primary" disabled={!canApply} onClick={applySubTransfer}>
+                  {isDe
+                    ? `Auf ${subTransfer.targets.length} übertragen`
+                    : `Transfer to ${subTransfer.targets.length}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {showSummaryModal && pendingSuccessDispatch && (() => {
         const closeAndDispatch = (): void => {
           // v17.22: Ref VOR dem Dispatch leeren, damit der Unmount-Cleanup
@@ -17196,7 +17435,7 @@ export default function EventCreationPage(): React.ReactElement {
 
       {/* v17.3: Unsaved-Changes-Confirm-Modal. Erscheint, wenn der User
           auf „Zurück" klickt und das Formular gegenüber dem Initial-
-          Snapshot Aenderungen hat. */}
+          Snapshot Änderungen hat. */}
       {unsavedConfirmOpen && (
         <Modal
           open={true}

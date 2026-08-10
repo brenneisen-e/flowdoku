@@ -12,7 +12,7 @@ export function ticketsSection(locale: 'de' | 'en'): ManualSection {
       ? 'Stelle direkt aus der App eine Frage — mit optionalem Screenshot. Organisator:innen und das Support-Team beantworten sie ohne Umweg über die Mail.'
       : 'Ask a question right from the app — with an optional screenshot. Organizers and the support team answer it without detouring through email.',
     visibleFor: ['User', 'Organizer', 'Admin'],
-    keywords: 'frage fragen hilfe support ticket tickets question questions help screenshot bildschirmfoto handbuch problem feedback kontakt antwort answer hast du fragen power-user power user inbox postfach übernehmen claim race kollision gleichzeitig conflict zugewiesen assign erinnerung reminder überfällig überfaellig unbeantwortet werktage escalation eskalation benachrichtigung notification link teams outlook deep-link deeplink',
+    keywords: 'frage fragen hilfe support ticket tickets question questions help screenshot bildschirmfoto handbuch problem feedback kontakt antwort answer hast du fragen power-user power user inbox postfach übernehmen claim race kollision gleichzeitig conflict zugewiesen assign erinnerung reminder überfällig überfällig unbeantwortet werktage escalation eskalation benachrichtigung notification link teams outlook deep-link deeplink',
     perspectives: [
       {
         perspective: 'user',

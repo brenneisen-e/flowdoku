@@ -47,8 +47,8 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
   // v23.37: im Organizer-Modus reicht der Name (Nachricht optional, kein
   // Event-Name) — die allgemeine Anfrage braucht Event-Name + Nachricht.
   // v28.41: Ohne Angabe der Event-Art laesst sich nichts absenden, und bei
-  // „extern" bleibt der Knopf gesperrt — DEX ist dafuer schlicht das falsche
-  // Werkzeug, eine Anfrage waere fuer beide Seiten verlorene Zeit.
+  // „extern" bleibt der Knopf gesperrt — DEX ist dafür schlicht das falsche
+  // Werkzeug, eine Anfrage wäre für beide Seiten verlorene Zeit.
   const canSubmit = organizerMode
     ? true
     : (!!eventName.trim() && !!message.trim() && eventScope === 'internal');
@@ -167,7 +167,7 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
           </div>
         </div>
         {/* v28.40: Einsatzbereich klarstellen. Bis hierhin stand in der
-            Anfrage-Strecke nirgends, fuer welche Art von Events DEX gedacht
+            Anfrage-Strecke nirgends, für welche Art von Events DEX gedacht
             ist — die einzige Erwaehnung von „extern" war die technische
             Aussage „keine externen APIs" in der Info-Box, die man sogar
             falsch herum lesen kann. */}

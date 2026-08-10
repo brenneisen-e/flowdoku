@@ -35,8 +35,8 @@ interface ProfileData {
   properties: Array<{ key: string; label: string; value: string }>;
 }
 
-// Context wird ueber eine separate Provider-Komponente bereitgestellt
-// Hier nutzen wir einen kleinen Trick: wir holen den Context ueber das Window-Objekt
+// Context wird über eine separate Provider-Komponente bereitgestellt
+// Hier nutzen wir einen kleinen Trick: wir holen den Context über das Window-Objekt
 // (wurde im DexEventPlatform gesetzt)
 
 export interface ProfilePageProps {

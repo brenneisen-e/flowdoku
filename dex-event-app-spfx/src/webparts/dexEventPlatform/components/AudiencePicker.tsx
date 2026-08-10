@@ -399,7 +399,7 @@ export default function AudiencePicker({
         </p>
         {/* v16.4: Hinweis für den Organizer, dass Mitglieder zum
             Save-Zeitpunkt eingefroren werden und das Event bei DL-
-            Mitglieder-Aenderungen einmal neu gespeichert werden muss,
+            Mitglieder-Änderungen einmal neu gespeichert werden muss,
             damit die neuen Mitglieder die Sichtbarkeit bekommen.
             v26.83: Nur anzeigen, wenn wirklich ein Verteiler/eine Gruppe in der
             Zielgruppe steckt — ein Eintrag, der als GRUPPE hinzugefügt wurde
@@ -876,7 +876,7 @@ export default function AudiencePicker({
                 : 'Here you can explicitly exclude individuals — they will NOT see the event, even if they would otherwise have visibility via location filter or mailing list. Members of the mailing lists chosen above are listed automatically (via Microsoft Graph). Users matched only by location filter cannot be listed directly — use the search below to find and exclude them.'}
             </p>
 
-            {/* Suchfeld — filtert die Tabelle global ueber Email/Vor-/
+            {/* Suchfeld — filtert die Tabelle global über Email/Vor-/
                 Nachname/Position, und ergänzt bei Bedarf neue User via
                 Directory-Suche (z.B. wenn der Gesuchte nicht im Verteiler
                 ist, aber explizit ausgeschlossen werden soll). */}
@@ -1005,7 +1005,7 @@ export default function AudiencePicker({
             {(() => {
               const f = excludeFilters;
               // v8.12: Globaler Such-Filter (excludeSearch) wirkt
-              // zusätzlich zur Spalten-Filter-Logik. Match ueber Email,
+              // zusätzlich zur Spalten-Filter-Logik. Match über Email,
               // Vor-/Nachname und Position. Damit landet ein Such-Treffer
               // (z.B. 'brenneisen') sofort als einziger sichtbarer Eintrag
               // in der Tabelle.
@@ -1177,8 +1177,8 @@ export default function AudiencePicker({
             })()}
 
             {/* Bereits ausgeschlossene User die NICHT in der resolved-Liste sind
-                (z.B. weil sie nur ueber Standortfilter sichtbar wären und
-                ueber die Suche manuell ausgeschlossen wurden in einer
+                (z.B. weil sie nur über Standortfilter sichtbar wären und
+                über die Suche manuell ausgeschlossen wurden in einer
                 früheren Session) — separat darstellen. */}
             {excludedUsers.filter(e => !excludeResolvedUsers.some(u => u.email.toLowerCase() === e.toLowerCase())).length > 0 && (
               <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>

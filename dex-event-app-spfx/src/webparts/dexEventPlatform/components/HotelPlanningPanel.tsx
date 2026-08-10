@@ -44,9 +44,9 @@ export interface IHotelPlanningPanelProps {
   onReloadRegistrations: () => void | Promise<void>;
   /** Events neu laden (nach dem Ändern der Stammdaten). */
   onReloadEvents: () => void | Promise<void>;
-  /** v28.51: Sub-Events der Klammer — fuer „alle aus <Sub-Event> in ein Hotel". */
+  /** v28.51: Sub-Events der Klammer — für „alle aus <Sub-Event> in ein Hotel". */
   childEvents?: DeloitteEvent[];
-  /** v28.54: Die Teilnehmerlisten der Sub-Events, die das Organizer Center fuer
+  /** v28.54: Die Teilnehmerlisten der Sub-Events, die das Organizer Center für
    *  die konsolidierte Ansicht ohnehin schon geladen hat. Durchreichen statt
    *  hier ein zweites Mal abzufragen — dieselben Daten, ein Roundtrip. */
   subEventRegsByEventId?: Record<string, SPRegistration[]>;
@@ -86,9 +86,9 @@ const addDays = (day: string, n: number): string => {
 };
 
 /** „DE - Berlin" → „Berlin" (identisch zur Teilnehmerliste). */
-/** Date → 'YYYY-MM-DD' in lokaler Zeit. `toISOString()` waere hier falsch: In
+/** Date → 'YYYY-MM-DD' in lokaler Zeit. `toISOString()` wäre hier falsch: In
  *  MEZ/MESZ liegt Mitternacht lokal vor Mitternacht UTC, das Datum spraenge
- *  einen Tag zurueck. */
+ *  einen Tag zurück. */
 const toLocalDay = (d: Date): string =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
@@ -116,8 +116,8 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   /**
    * v28.57: Stammdaten lokal spiegeln. Vorher hing jedes Anlegen eines Hotels
    * oder Zeitraums am `await onReloadEvents()` — und das laedt im Organizer
-   * Center ALLE Events samt Custom-Fields, Teilnehmerzahlen und Anhaengen neu
-   * (mehrere Sekunden). Fuer eine Handvoll Bytes im Piggyback war das absurd.
+   * Center ALLE Events samt Custom-Fields, Teilnehmerzahlen und Anhängen neu
+   * (mehrere Sekunden). Für eine Handvoll Bytes im Piggyback war das absurd.
    * Jetzt: sofort lokal anzeigen, im Hintergrund nachladen. Der Effekt unten
    * zieht nach, sobald der frische Event-Stand da ist.
    */
@@ -159,7 +159,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   const [selected, setSelected] = React.useState<Set<number>>(new Set());
   const [showRoster, setShowRoster] = React.useState(true);
   const [filterHotel, setFilterHotel] = React.useState<string>('__all');
-  // v28.48: Suche, Sortierung und Hotel-Wunsch-Filter fuer die Personenliste.
+  // v28.48: Suche, Sortierung und Hotel-Wunsch-Filter für die Personenliste.
   const [search, setSearch] = React.useState('');
   const [sortKey, setSortKey] = React.useState<'name' | 'first' | 'job' | 'loc' | 'comp' | 'wish' | 'hotel' | 'subs'>('name');
   const [sortAsc, setSortAsc] = React.useState(true);
@@ -167,7 +167,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   // v28.55: Personen-Spalten aufklappen — analog zur Teilnehmerliste. Kompakt
   // (Foto + Name + Unterzeile) ist der Normalfall; aufgeklappt stehen Nachname,
   // Vorname, Position, Standort und Unternehmen als eigene Spalten, z.B. zum
-  // Vergleichen oder fuer einen Screenshot.
+  // Vergleichen oder für einen Screenshot.
   const [personColsExpanded, setPersonColsExpanded] = React.useState(false);
   // v28.48: Fortschritt der Massenzuordnung — jede Person ist ein eigener
   // Schreibvorgang, bei 300 Zeilen dauert das spuerbar.
@@ -177,10 +177,10 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   // Hotel-Zuordnung auf den Schattenzeilen der Klammer (eine Zeile je Person) —
   // wer zu welchem Sub-Event gehoert, steht aber in der Teilnehmerliste des
   // Sub-Events. Die Mail-Adressen holen wir deshalb bei Bedarf dort und cachen
-  // sie, statt beim Oeffnen des Panels alle Sub-Listen zu laden.
+  // sie, statt beim Öffnen des Panels alle Sub-Listen zu laden.
   const [subPick, setSubPick] = React.useState('');
   const [subHotelPick, setSubHotelPick] = React.useState('');
-  /** Nur fuer den Ausnahmefall, dass eine Sub-Liste nicht durchgereicht wurde. */
+  /** Nur für den Ausnahmefall, dass eine Sub-Liste nicht durchgereicht wurde. */
   const [subEmailsFallback, setSubEmailsFallback] = React.useState<Record<string, SPRegistration[]>>({});
   const [subLoading, setSubLoading] = React.useState(false);
 
@@ -246,7 +246,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   };
 
   // v28.54: Die Zugehoerigkeit je Sub-Event kommt aus den Listen, die das
-  // Organizer Center fuer die konsolidierte Ansicht schon geladen hat. Nur wenn
+  // Organizer Center für die konsolidierte Ansicht schon geladen hat. Nur wenn
   // die (noch) fehlen, holt der Panel sie selbst nach — so gibt es im Normalfall
   // keinen zweiten Roundtrip.
   const subEmails = React.useMemo<Record<string, string[]>>(() => {
@@ -264,7 +264,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
 
   const subsLoaded = (childEvents || []).every(c => !!subEmails[c.id]);
 
-  /** Sub-Events, fuer die diese Person angemeldet ist (Kurztitel). */
+  /** Sub-Events, für die diese Person angemeldet ist (Kurztitel). */
   const subsOf = React.useCallback((p: SPRegistration): string[] => {
     const em = (p.ParticipantEmail || '').trim().toLowerCase();
     if (!em) return [];
@@ -281,13 +281,13 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
    * vorhersagbar bleibt:
    *  1. Angefasst werden NUR Personen ohne Hotel. Bestehende Zuordnungen sind
    *     meist bewusst gesetzt und bleiben unberuehrt.
-   *  2. Wer im Anmeldeformular ausdruecklich KEINE Unterkunft wollte, wird
-   *     uebersprungen.
+   *  2. Wer im Anmeldeformular ausdrücklich KEINE Unterkunft wollte, wird
+   *     übersprungen.
    *  3. Gruppen bleiben zusammen: Personen mit derselben Sub-Event-Kombination
-   *     werden als Block behandelt und moeglichst gemeinsam untergebracht —
+   *     werden als Block behandelt und möglichst gemeinsam untergebracht —
    *     genau der Fall „alle vom Her-Space-Event in ein Hotel". Grosse Bloecke
    *     zuerst, weil die schwerer unterzubringen sind.
-   *  4. Gefuellt wird bis zum Kontingent. Hotels ohne Kontingent gelten als
+   *  4. Gefüllt wird bis zum Kontingent. Hotels ohne Kontingent gelten als
    *     unbegrenzt und kommen zuletzt dran — sonst saugen sie alles auf.
    */
   const autoDistribute = async (): Promise<void> => {
@@ -535,7 +535,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
 
   /** v28.48: Hat die Person im Anmeldeformular eine Unterkunft angefragt?
    *  Die Hotel-Frage heisst pro Event anders („Hotel room", „Hotel (24-25 Sept)",
-   *  „Room required …"), deshalb eine Heuristik ueber die Antwortwerte statt
+   *  „Room required …"), deshalb eine Heuristik über die Antwortwerte statt
    *  einer festen Feld-ID. Ergebnis: true = ja, false = nein, null = keine
    *  Hotel-Frage im Formular. */
   const wishOf = React.useCallback((p: SPRegistration): boolean | null => {
@@ -547,11 +547,11 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     const fields = (event.eventSpecificFields || []) as Array<{ id: string; label?: string }>;
     let found: boolean | null = null;
     for (const f of fields) {
-      if (!/hotel|unterkunft|übernacht|uebernacht|accommodation|lodging/i.test(f.label || '')) continue;
+      if (!/hotel|unterkunft|übernacht|übernacht|accommodation|lodging/i.test(f.label || '')) continue;
       // v28.59: Die Zusatznächte-Frage („Hotel (additional nights)") ist NICHT
       // die Bedarfsfrage. Ein „Yes, I need ONE additional night" dort hat den
       // Wunsch sonst auf true gezogen, obwohl die Hauptfrage „Nein" war.
-      if (/additional|extra|zusätzlich|zusaetzlich|weitere|vorab|beforehand|früher|frueher|longer/i.test(f.label || '')) continue;
+      if (/additional|extra|zusätzlich|zusätzlich|weitere|vorab|beforehand|früher|frueher|longer/i.test(f.label || '')) continue;
       const v = (cd[f.id] || '').toLowerCase();
       if (!v) { if (found === null) found = false; continue; }
       if (/^(ja|yes)\b|^ja,|^yes,/.test(v) || /\bja\b|\byes\b/.test(v)) return true;
@@ -587,7 +587,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     const prev = staysLocal;
     setStaysLocal(next);
     setBusy('stays');
-    // v28.60: Ein leeres Array wuerde den Schluessel loeschen — genau das ist
+    // v28.60: Ein leeres Array wuerde den Schlüssel löschen — genau das ist
     // beim Entfernen des letzten Zeitraums gewollt, deshalb explizit `[]`
     // durchreichen und den Sonderfall nicht als Fehler werten.
     const res = await svc.patchEventOverridesValueEx(Number(event.id), '_hotelStays', next);
@@ -911,8 +911,8 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
 
   /* ---------------- Hotel-Info-Mail (v28.39) ----------------
    * Nutzt denselben Editor + Versandweg wie die QR-Mail: HtmlEditorModal mit
-   * Live-Vorschau und einsetzbaren Variablen, Versand ueber queueEmail. Die
-   * Assistenz kommt automatisch ins CC — ueber dieselben People-Picker-Felder,
+   * Live-Vorschau und einsetzbaren Variablen, Versand über queueEmail. Die
+   * Assistenz kommt automatisch ins CC — über dieselben People-Picker-Felder,
    * die der Organizer in Schritt 5 als „CC bei Mails" markiert hat. */
   const [mailOpen, setMailOpen] = React.useState(false);
   const [mailSubject, setMailSubject] = React.useState('');
@@ -920,7 +920,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   const [mailSubheading, setMailSubheading] = React.useState('');
   const [mailBody, setMailBody] = React.useState('');
   const [mailSending, setMailSending] = React.useState(false);
-  /** Testmodus: EIN Empfaenger, frei gewaehltes Hotel, Beispielwerte. */
+  /** Testmodus: EIN Empfaenger, frei gewähltes Hotel, Beispielwerte. */
   const [testMode, setTestMode] = React.useState(true);
   const [testTo, setTestTo] = React.useState('');
   const [testHotelId, setTestHotelId] = React.useState('');
@@ -1068,7 +1068,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                 : <>Create the hotels, define stay templates and assign attendees. The assignment then lives in the participant list and is part of every export.</>}
             </p>
             {/* v28.58: Der Assistent ist der empfohlene Einstieg — bei einem
-                leeren Event als grosse Karte, danach als unauffaelliger Link. */}
+                leeren Event als grosse Karte, danach als unauffälliger Link. */}
             {hotels.length > 0 && (
               <button type="button" onClick={() => setWizardOpen(true)}
                 style={{ marginTop: 8, border: 'none', background: 'none', padding: 0, cursor: 'pointer', fontSize: '0.8rem', color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline' }}>
@@ -1280,9 +1280,9 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                   {isDe ? 'Standard' : 'Default'}
                 </button>
               )}
-              {/* v28.60: Waehrend ein Schreibvorgang laeuft gesperrt — zwei
-                  parallele Loeschungen sind ein Read-Modify-Write auf denselben
-                  Datensatz und haetten sich gegenseitig ueberschrieben. */}
+              {/* v28.60: Während ein Schreibvorgang läuft gesperrt — zwei
+                  parallele Löschungen sind ein Read-Modify-Write auf denselben
+                  Datensatz und haetten sich gegenseitig überschrieben. */}
               <button type="button" title={isDe ? 'Zeitraum löschen' : 'Delete template'}
                 disabled={busy !== ''}
                 onClick={() => { void saveStays(stays.filter(x => x.id !== st.id)); }}
@@ -1544,7 +1544,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
             )}
             {/* v28.55: eigener Scroll-Container wie bei der Teilnehmerliste
                 (renderTable, maxHeight 70vh). Vorher lief die Zuordnungstabelle
-                bei mehreren hundert Personen inline ueber die volle Hoehe — man
+                bei mehreren hundert Personen inline über die volle Höhe — man
                 musste an der ganzen Tabelle vorbeiscrollen, um an die Abschnitte
                 darunter zu kommen. */}
             <div style={{ maxHeight: '70vh', overflow: 'auto' }}>
@@ -1676,10 +1676,10 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                               gedacht, in der Praxis nur Doppelung: Die Suche findet
                               E-Mails ohnehin. Jetzt nur noch als Tooltip auf der Zelle. */}
                           {/* v28.54: Darstellung wie in der Teilnehmerliste — Foto mit
-                              Kontaktkarte beim Darueberfahren, darunter
+                              Kontaktkarte beim Darüberfahren, darunter
                               Position • Standort • Unternehmen. Alle drei Werte
                               stehen bereits auf der Teilnehmerzeile, es braucht
-                              also keine zusaetzliche Abfrage. */}
+                              also keine zusätzliche Abfrage. */}
                           {((): React.ReactNode => {
                             const vn0 = p.Vorname || ((p.ParticipantName || '').split(' ')[0] || '');
                             let nn0 = p.Nachname || '';
@@ -1760,7 +1760,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                           </td>
                           <td style={{ padding: '4px 6px' }}>
                             {/* v28.48: Statt zweier Datumsfelder je Person nur noch
-                                die Auswahl aus den oben angelegten Zeitraeumen —
+                                die Auswahl aus den oben angelegten Zeiträumen —
                                 das war der eigentliche Zweck der Vorlagen. Passt
                                 ein bestehender Eintrag zu keiner Vorlage, steht er
                                 als eigener Eintrag drin und geht nicht verloren. */}

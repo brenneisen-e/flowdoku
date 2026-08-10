@@ -457,7 +457,7 @@ export const DemoWizardProgress: React.FC<{ activeStep?: number }> = ({ activeSt
 };
 
 // ============================================================================
-// DemoAdminCenter — Admin Center Ueberblick mit Kacheln + Metriken
+// DemoAdminCenter — Admin Center Überblick mit Kacheln + Metriken
 // ============================================================================
 
 export const DemoAdminCenter: React.FC = () => (
@@ -521,7 +521,7 @@ export const DemoCheckInScanner: React.FC<{ scanned?: boolean }> = ({ scanned = 
 );
 
 // ============================================================================
-// DemoRolesTable — Rollen-Uebersicht
+// DemoRolesTable — Rollen-Übersicht
 // ============================================================================
 
 export const DemoRolesTable: React.FC = () => {
@@ -751,7 +751,7 @@ export const DemoQuizResult: React.FC<{ score?: number; total?: number }> = ({ s
 };
 
 // ============================================================================
-// DemoQuizScoreboard — Admin-Uebersicht der Quiz-Ergebnisse
+// DemoQuizScoreboard — Admin-Übersicht der Quiz-Ergebnisse
 // ============================================================================
 
 export const DemoQuizScoreboard: React.FC = () => {

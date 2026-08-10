@@ -21,7 +21,7 @@ export function isDemoShowcaseId(id: string | undefined | null): boolean {
 
 // Relative Datumshilfen, damit das Demo-Event immer „in der Zukunft" liegt
 // und die Deadlines plausibel sind — egal wann der Admin den Demo-Modus
-// oeffnet.
+// öffnet.
 function isoInDays(days: number, hour = 9, minute = 0): string {
   const d = new Date();
   d.setDate(d.getDate() + days);

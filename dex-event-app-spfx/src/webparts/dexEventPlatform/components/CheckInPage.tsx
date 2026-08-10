@@ -178,7 +178,7 @@ export default function CheckInPage(): React.ReactElement {
     return { registered, checkedIn, noShow };
   }, [nameSearchEventId, searchRegsCache]);
 
-  // v7.14: Live-Filter ueber die ganze Liste — leerer Query zeigt alle
+  // v7.14: Live-Filter über die ganze Liste — leerer Query zeigt alle
   // Teilnehmer. Sortiert nach Status (Aktive zuerst), dann Nachname.
   const searchHits = React.useMemo(() => {
     if (!nameSearchEventId) return [];
@@ -302,7 +302,7 @@ export default function CheckInPage(): React.ReactElement {
     return window.location.href;
   };
 
-  // Scanner in neuem Fenster oeffnen (aspx-Seite in SiteAssets, für zukünftige Nutzung)
+  // Scanner in neuem Fenster öffnen (aspx-Seite in SiteAssets, für zukünftige Nutzung)
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const openExternalScanner = (): void => {
     const checkinUrl = `${siteUrl}/SiteAssets/checkin.aspx`;

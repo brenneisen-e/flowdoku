@@ -1019,7 +1019,7 @@ export default function MyEventsPage(): React.ReactElement {
     }
     // v11.79: Stale-while-revalidate. Wenn vor < 60 s schon mal MyEvents
     // geladen wurden, sofort den letzten Stand aus dem sessionStorage
-    // rendern (Skeleton-Spinner uebersprungen) und im Hintergrund frisch
+    // rendern (Skeleton-Spinner übersprungen) und im Hintergrund frisch
     // nachladen. Beim erneuten Klick auf "Meine Events" fühlt sich die
     // Seite damit instantan an, ohne Stale-Daten zu riskieren.
     try {
@@ -1609,7 +1609,7 @@ export default function MyEventsPage(): React.ReactElement {
             // bei der Anmeldung die EN-Labels angesehen hatte.
             const useEnDisplay = locale === 'en' && !!event.bilingualFields;
             const fieldLabelMap: Record<string, string> = {};
-            // v17.22: Wert-Uebersetzung für Select-Optionen (DE-Wert →
+            // v17.22: Wert-Übersetzung für Select-Optionen (DE-Wert →
             // EN-Anzeige) pro Feld, damit auch die Antwort selbst zweisprachig
             // erscheint. Map: fieldId → (DE-Option → EN-Option).
             const fieldOptionEnMap: Record<string, Record<string, string>> = {};
@@ -1650,7 +1650,7 @@ export default function MyEventsPage(): React.ReactElement {
                 if (raw === 'true') value = yesLabel;
                 else if (raw === 'false') value = noLabel;
                 else if (fieldOptionEnMap[key]) {
-                  // v17.22: Select-Antworten im EN-Modus uebersetzen. Multi-
+                  // v17.22: Select-Antworten im EN-Modus übersetzen. Multi-
                   // Select-Werte sind " | "-getrennt — jeden Teil einzeln mappen.
                   value = raw.split(' | ').map(part => {
                     const trimmed = part.trim();
@@ -1748,9 +1748,9 @@ export default function MyEventsPage(): React.ReactElement {
                       </div>
                     )}
                     {/* v28.39: Hotel-Zuordnung — nur wenn der Organizer die
-                        Anzeige im Hotel-Bereich freigegeben hat UND fuer diese
-                        Person ein Hotel hinterlegt ist. Rein lesend; Aenderungen
-                        laufen ueber die Organizer. */}
+                        Anzeige im Hotel-Bereich freigegeben hat UND für diese
+                        Person ein Hotel hinterlegt ist. Rein lesend; Änderungen
+                        laufen über die Organizer. */}
                     {event.hotelVisibleToAttendees && (registration.Hotel || '').trim() && (() => {
                       const hotelName = (registration.Hotel || '').trim();
                       const h = (event.hotels || []).filter(x => x.name === hotelName)[0];
@@ -1823,7 +1823,7 @@ export default function MyEventsPage(): React.ReactElement {
                       const cacheKey = `${event.id}|${registration.TeamId}`;
                       const cached = teamMembersCache[cacheKey];
                       if (!cached) {
-                        // Async laden (nur einmal pro Karte, idempotent ueber ref-Set).
+                        // Async laden (nur einmal pro Karte, idempotent über ref-Set).
                         enqueueTeamFetch(event.id, registration.TeamId);
                         return null;
                       }
@@ -2194,7 +2194,7 @@ export default function MyEventsPage(): React.ReactElement {
                     User sofort sieht: das ist „was ich angegeben habe", nicht
                     „wer organisiert das". */}
                 {!editingId || editingId !== event.id ? (
-                  // v18.38: Edit-Bereich anzeigen, sobald das Event ueberhaupt
+                  // v18.38: Edit-Bereich anzeigen, sobald das Event überhaupt
                   // bearbeitbare Felder hat — NICHT mehr nur wenn schon Werte
                   // ausgefüllt sind. Sonst kann ein Teilnehmer, der ein
                   // optionales Feld leer gelassen hat (z.B. „zusätzliche
@@ -2466,14 +2466,14 @@ export default function MyEventsPage(): React.ReactElement {
                       // Nach jedem Cluster-Wechsel in die Subsite-Teilnehmerliste schreiben.
                       // isComplete=true setzt zusätzlich QuizCompletedAt (für Statistik-Filter).
                       if (!event.subsiteUrl) {
-                        console.warn('[DEX] saveQuizProgress: event.subsiteUrl leer - Save uebersprungen', { eventId: event.id });
+                        console.warn('[DEX] saveQuizProgress: event.subsiteUrl leer - Save übersprungen', { eventId: event.id });
                         return;
                       }
                       try {
                         // eslint-disable-next-line @typescript-eslint/no-explicit-any
                         const ctx = (window as any).__dexSpfxContext;
                         if (!ctx) {
-                          console.warn('[DEX] saveQuizProgress: __dexSpfxContext fehlt - Save uebersprungen');
+                          console.warn('[DEX] saveQuizProgress: __dexSpfxContext fehlt - Save übersprungen');
                           return;
                         }
                         const { EventService } = await import('../services/EventService');
@@ -3029,7 +3029,7 @@ export default function MyEventsPage(): React.ReactElement {
       )}
       {/* v11.86: Manage-Team-Modal — Lead bearbeitet sein Team
           (Mitglieder abmelden). Pflicht-Confirm vor dem eigentlichen
-          Cancel; der Cancel selbst läuft ueber cancelTeamMember im
+          Cancel; der Cancel selbst läuft über cancelTeamMember im
           EventContext. */}
       {manageTeamDialog && (() => {
         const activeMembers = manageTeamMembers.filter(m => m.Status !== 'Abgemeldet');
@@ -3775,7 +3775,7 @@ function MyEventSubEvents(props: {
   // myReg.CustomData. Wird nur für aktive Registrierungen befüllt.
   const [seData, setSeData] = React.useState<Record<string, Record<string, string>>>({});
   // v10.27: aktuell ge-editiertes Sub-Event + Draft der Werte. Beim Save
-  // gehen die Werte ueber updateMyRegistration in die Subsite zurück.
+  // gehen die Werte über updateMyRegistration in die Subsite zurück.
   const [editingId, setEditingId] = React.useState<string | null>(null);
   const [editDraft, setEditDraft] = React.useState<Record<string, string>>({});
   const [savingEdit, setSavingEdit] = React.useState(false);
@@ -4069,7 +4069,7 @@ function MyEventSubEvents(props: {
       </div>
 
       {/* v10.27: Sub-Event-Edit-Modal — analog zum Hauptevent-Inline-Edit
-          (siehe weiter oben), aber als Modal damit es uebersichtlich
+          (siehe weiter oben), aber als Modal damit es übersichtlich
           bleibt. Beim Speichern geht der Draft per
           updateMyRegistration(subEventId, ...) in die Subsite zurück. */}
       {editingId && (() => {

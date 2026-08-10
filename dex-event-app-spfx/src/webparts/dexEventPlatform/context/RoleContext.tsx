@@ -1,5 +1,5 @@
 /**
- * Role Context - Rollenverwaltung ueber SharePoint-Liste
+ * Role Context - Rollenverwaltung über SharePoint-Liste
  *
  * Erstellt beim ersten Start automatisch die DEX_Roles-Liste
  * auf dem SharePoint. Admins können andere User berechtigen.
