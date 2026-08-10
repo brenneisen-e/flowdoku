@@ -479,6 +479,11 @@ function StickyTabStrip(props: {
   mainDisabled?: boolean;
   /** Optionaler Hinweis-Text neben dem deaktivierten Klammer-Tab. */
   mainDisabledNote?: string;
+  /** v28.73: Wort in Klammern hinter dem Eventnamen, z.B. „Klammerevent". */
+  klammerWord?: string;
+  /** v28.73: Info-Icon (Tooltip) rechts im Klammer-Reiter — erklaert, dass die
+   *  Anmeldung ueber die Sub-Events laeuft, mit Quicklink zur Umstellung. */
+  klammerInfo?: React.ReactNode;
 }): React.ReactElement {
   const phRef = React.useRef<HTMLDivElement | null>(null);
   const [pin, setPin] = React.useState<null | { top: number; left: number; width: number; height: number }>(null);
@@ -581,7 +586,16 @@ function StickyTabStrip(props: {
             const pActive = !dis && props.activeIdx === 0;
             return (
               <div role="tablist" aria-label={props.ariaLabel} style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: 0 }}>
-                {/* Klammer-Ebene oben — volle Breite. */}
+                {/* Klammer-Ebene oben — volle Breite.
+                    v28.73: Vorne steht jetzt der EVENTNAME, dahinter der
+                    dezente Zusatz „(Klammerevent)" und ein Info-Icon mit der
+                    Erklärung. Vorher stand „⟦ KLAMMER ⟧" als Praefix davor —
+                    ein Fachbegriff an der auffaelligsten Stelle, der weder
+                    sagt, was er bedeutet, noch dass er eine Entscheidung war.
+                    Das Icon liegt bewusst NEBEN dem Reiter-Button (nicht
+                    darin), damit der Quicklink im Tooltip nicht in einem
+                    Button verschachtelt ist. */}
+                <div style={{ display: 'flex', alignItems: 'stretch', width: '100%' }}>
                 <button
                   type="button"
                   role="tab"
@@ -590,24 +604,37 @@ function StickyTabStrip(props: {
                   onClick={() => { if (!dis) props.onChange(0); }}
                   title={dis ? (props.mainDisabledNote || props.tabs[0].label) : props.tabs[0].label}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 10, width: '100%',
+                    display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0,
                     padding: '10px 16px', cursor: dis ? 'not-allowed' : 'pointer', textAlign: 'left',
                     border: `1.5px solid ${pActive ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
-                    borderRadius: '10px 10px 0 0',
+                    borderRight: 'none',
+                    borderRadius: '10px 0 0 0',
                     background: pActive ? 'var(--dex-green, #86bc25)' : 'rgba(134,188,37,0.10)',
                     color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
                     fontWeight: 700, fontSize: '0.9rem',
                     opacity: dis ? 0.55 : 1,
                   }}
                 >
-                  <span style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: 0.6, opacity: 0.9, color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }}>⟦ {props.mainBadge} ⟧</span>
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }}>{props.tabs[0].label}</span>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }}>{props.tabs[0].label}</span>
+                  <span style={{ fontSize: '0.76rem', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, opacity: 0.85, color: pActive ? 'rgba(255,255,255,0.9)' : 'var(--dex-green-dark, #4a7c1f)' }}>
+                    ({props.klammerWord || 'Klammerevent'})
+                  </span>
+                  <span style={{ flex: 1 }} />
                   {dis && props.mainDisabledNote && (
                     <span style={{ fontSize: '0.65rem', fontWeight: 600, padding: '2px 6px', borderRadius: 8, background: 'var(--dex-gray-200, #e0e0e0)', color: 'var(--dex-gray-600)', flexShrink: 0 }}>
                       {props.mainDisabledNote}
                     </span>
                   )}
                 </button>
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', padding: '0 12px 0 4px',
+                  border: `1.5px solid ${pActive ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                  borderLeft: 'none', borderRadius: '0 10px 0 0',
+                  background: pActive ? 'var(--dex-green, #86bc25)' : 'rgba(134,188,37,0.10)',
+                }}>
+                  {props.klammerInfo}
+                </span>
+                </div>
                 {/* Sub-Events darunter — eingerückt unter einer Klammer-Linie. */}
                 <div style={{
                   display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'flex-end',
@@ -6885,6 +6912,26 @@ export default function EventCreationPage(): React.ReactElement {
   // mit dem Komm-Tab-Pattern in Schritt 7 (grüne Unterstreichung des
   // aktiven Tabs, leichte Hover/Active-Styles). Tab 0 ist immer das
   // Haupt-Event, Tabs 1..N entsprechen `subEvents[0..N-1]`.
+  /**
+   * v28.73: Quicklink aus dem Klammer-Info-Tooltip. Springt in Schritt 3
+   * (Sub-Events) zur Auswahl „Anmeldung zum Hauptevent oder nur zu den
+   * Sub-Events" und hebt sie kurz hervor, damit der Organizer die Stelle
+   * findet statt sie zu suchen.
+   */
+  const goToSubEventsMode = (): void => {
+    setCurrentStep(2);
+    setTriedNext(false);
+    window.setTimeout(() => {
+      const el = document.getElementById('dex-subevents-mode');
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.style.transition = 'box-shadow 0.3s';
+      el.style.boxShadow = '0 0 0 3px rgba(134,188,37,0.55)';
+      el.style.borderRadius = '10px';
+      window.setTimeout(() => { el.style.boxShadow = 'none'; }, 2200);
+    }, 120);
+  };
+
   const renderPerEventTabStrip = (
     activeIdx: number,
     onChange: (idx: number) => void,
@@ -6969,6 +7016,47 @@ export default function EventCreationPage(): React.ReactElement {
           ariaLabel={ariaLabel}
           mainBadge={subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt' : 'Main')}
           klammer={subEventsOnlyMode}
+          klammerWord={isDe ? 'Klammerevent' : 'bracket event'}
+          klammerInfo={
+            <InfoTooltip
+              placement="bottom"
+              text={isDe ? (
+                <>
+                  <strong>Klammerevent</strong> — zu diesem Event selbst meldet sich <strong>niemand</strong> an. Teilnehmer sehen nur die {childTermPlural || 'Sub-Events'} darunter und melden sich <strong>dort</strong> an. Der Eventname ist die Klammer darüber: Er erscheint in der Übersicht und fasst die {childTermPlural || 'Sub-Events'} zusammen.<br /><br />
+                  Deshalb gibt es hier keine eigene Teilnehmerzahl und keine eigene Warteliste — beides pflegst du je {childTermSingular || 'Sub-Event'}.<br /><br />
+                  <strong>Du willst, dass man sich auch zum Hauptevent anmelden kann?</strong> Dann stell die Anmeldung in Schritt 3 (&bdquo;{t('create.step.subevents')}&ldquo;) um —{' '}
+                  <button
+                    type="button"
+                    onClick={() => goToSubEventsMode()}
+                    style={{
+                      background: 'none', border: 'none', padding: 0, font: 'inherit',
+                      color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline',
+                      cursor: 'pointer', fontWeight: 700,
+                    }}
+                  >
+                    hier direkt hinspringen
+                  </button>.
+                </>
+              ) : (
+                <>
+                  <strong>Bracket event</strong> — <strong>nobody</strong> registers for this event itself. Attendees only see the sub-events below and register <strong>there</strong>. The event name is the bracket around them: it appears in the overview and groups the sub-events.<br /><br />
+                  That is why there is no capacity and no waitlist at this level — you set both per sub-event.<br /><br />
+                  <strong>Want people to be able to register for the main event too?</strong> Then change the registration mode in step 3 —{' '}
+                  <button
+                    type="button"
+                    onClick={() => goToSubEventsMode()}
+                    style={{
+                      background: 'none', border: 'none', padding: 0, font: 'inherit',
+                      color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline',
+                      cursor: 'pointer', fontWeight: 700,
+                    }}
+                  >
+                    jump there directly
+                  </button>.
+                </>
+              )}
+            />
+          }
         />
         <div style={{
           margin: '-6px 0 16px', padding: '10px 12px', borderRadius: 8,
@@ -10090,7 +10178,8 @@ export default function EventCreationPage(): React.ReactElement {
                     Input visually-hidden + eigener grüner Outer-Border-Kreis
                     mit grünem Inner-Dot wenn ausgewählt. Funktioniert 1:1 in
                     allen Browsern + matched die Optik der Registration-Page. */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+                {/* v28.73: Anker für den Quicklink aus dem Klammer-Info-Tooltip. */}
+                <div id="dex-subevents-mode" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
                   {[false, true].map(modeVal => {
                     const selected = !!subEventsOnlyMode === modeVal;
                     return (
