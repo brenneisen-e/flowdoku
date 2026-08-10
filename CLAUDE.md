@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v28.93.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v28.94.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -179,6 +179,41 @@ Titel, Start, Ende, Beschreibung und Bild sind **dieselben** Eingaben und hänge
 
 Die Sub-Event-Karten sind seither reine **Liste**: anlegen, „Bearbeiten"
 (`setScope(idx+1)`), entfernen, Pflichtanmeldung. Keine Editor-Felder mehr.
+
+## Modularisierung
+
+Stand: **106k Zeilen in 132 Dateien**, davon die Hälfte in vier Dateien
+(`EventCreationPage` 17,4k · `AdminPage` 15,3k · `EventService` 13,2k ·
+`RegistrationPage` 6,3k). **Es gibt keine Tests.** Das einzige Netz sind
+`tsc`, ESLint und der Build — was der Compiler nicht sieht, sieht niemand.
+
+Deshalb in dieser Reihenfolge, nicht anders:
+
+**Stufe 1 — Modul-Ebene (v28.94 erledigt).** Alles, was VOR der Komponente
+steht, kennt den State nicht und lässt sich als Ganzes verschieben. Ergebnis:
+`components/wizard/*` (StickyTabStrip, StepBadge, LocationMultiSelect,
+FieldDescEditor, FieldTypeSuggestion, customFieldInput),
+`components/admin/ActionsMenu.tsx` (ActionTile + Registry + Dropdown gehören
+zusammen — eine Datei, nicht drei), `utils/{subEventTitle, eventStatus,
+inviteGuards, fieldHeuristics}`, `data/{actionCategories,
+descriptionTemplates}`. Rezept: Block ausschneiden, `export` davor, Import
+zurück, `tsc`. **Danach immer `gulp bundle`** — ESLint findet die zu breit
+gefassten Importe, die `tsc` durchgehen lässt.
+
+**Stufe 2 — `EventService` (offen).** 13,2k Zeilen in einer Klasse, deren
+Methoden über `this.context`/`this.siteUrl` laufen. Aufteilbar nach Thema
+(Events, Teilnehmer, Hotels, Wartung), indem die Klasse die Methoden an
+Modul-Funktionen delegiert, die den Kontext als Parameter bekommen. Mechanisch
+und compiler-geprüft, aber viele Aufrufstellen — in einem Rutsch pro Thema,
+nicht querbeet.
+
+**Stufe 3 — die Render-Bäume (offen, teuer).** In `EventCreationPage` stecken
+~16k Zeilen in EINER Funktion; die neun Schritte lesen aus rund 200
+State-Variablen. Ein Schritt als eigene Komponente braucht einen echten
+Props-Vertrag (oder einen Wizard-Context) — sonst schiebt man 200 Props durch.
+Das ist genau der Umbau, der laut „Fallen" schon einmal die Tag-Balance
+zerriss. **Nicht ohne Browser-Verifikation anfangen**, und immer nur EINEN
+Schritt pro Release.
 
 ## Offene Arbeit
 
