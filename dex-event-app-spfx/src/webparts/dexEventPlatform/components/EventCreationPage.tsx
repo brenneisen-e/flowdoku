@@ -14805,26 +14805,23 @@ export default function EventCreationPage(): React.ReactElement {
                 )}
                 <h3 className="mb-16">{t('create.step.communication')}</h3>
 
-                {/* v11.57: Tab-Leiste für Haupt-Event vs. Sub-Events. Jeder Sub-
-                    Event kann eigene Mail-/Outlook-Einstellungen haben. Wenn keine
-                    Sub-Events existieren, blenden wir die Tabs komplett aus. */}
+                {/* v28.88: Die Reiter-Leiste stand hier ein ZWEITES Mal. Seit
+                    v28.78 trägt die Scope-Karte über dem Formular
+                    (renderGlobalScopeBar) den Umschalter für alle
+                    scope-fähigen Schritte — Kommunikation eingeschlossen, sie
+                    hängt über setScope am selben Index. Zwei identische
+                    Reiter-Reihen auf einer Seite lesen sich als zwei
+                    Navigationen: der Organizer sucht, welche die gültige ist.
+                    Die Steps „Ort & Programm", „Kapazität" und „Felder" sind
+                    schon in v28.78 entkoppelt worden, Kommunikation blieb
+                    übrig. Der Erklär-Tooltip bleibt — er sagt, was pro
+                    Sub-Event überhaupt getrennt einstellbar ist. */}
                 {subEvents.length > 0 && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                    {/* v22.71: Schritt 6 nutzt jetzt ebenfalls StickyTabStrip
-                        (Sticky-Verhalten + Klammer-Bracket-Layout). Im
-                        „Nur Sub-Events"-Modus ist der Klammer-Tab deaktiviert
-                        (Klammer-Kommunikation nicht relevant). */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <StickyTabStrip
-                        tabs={[{ label: `${subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt-Event' : 'Main event')}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`, isMain: true }, ...subEvents.map(s => ({ label: (shortSubEventTitle(s.title, title) || (isDe ? 'Sub-Event ohne Titel' : 'Untitled sub-event')).trim(), isMain: false }))]}
-                        activeIdx={activeCommTabIdx}
-                        onChange={switchCommTab}
-                        ariaLabel={isDe ? 'Event-Tab wechseln (Kommunikations-Einstellungen)' : 'Switch event tab (communication settings)'}
-                        mainBadge={subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt' : 'Main')}
-                        klammer={subEventsOnlyMode}
-                        mainDisabled={subEventsOnlyMode}
-                        mainDisabledNote={isDe ? 'nicht relevant — nur Sub-Events' : 'not relevant — sub-events only'}
-                      />
+                    <div style={{ flex: 1, minWidth: 0, fontSize: '0.84rem', color: 'var(--dex-gray-600)' }}>
+                      {isDe
+                        ? 'Die Einstellungen unten gelten für den oben gewählten Reiter.'
+                        : 'The settings below apply to the tab selected above.'}
                     </div>
                     <InfoTooltip text={isDe ? (
                       <>

@@ -17,8 +17,23 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 (~17k Zeilen, Wizard), `components/AdminPage.tsx` (~15k, Organizer Center),
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
-**Branch:** `claude/spfx-app-bugfixes-4kui16` — Stand **v28.87.0**.
-Nur auf diesen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
+**Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v28.88.0**. Nur auf den
+vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
+
+## Erst einrichten, dann bauen
+
+Eine frische Sitzung hat **kein `node_modules`**. Ohne Install schlägt jeder
+Befehl auf eine Art fehl, die nach einem Code-Fehler aussieht:
+
+```bash
+cd dex-event-app-spfx && npm install --no-audit --no-fund   # ~1 min, ~2300 Pakete
+```
+
+`npx tsc` zieht ohne lokale Installation ein **globales, neueres** TypeScript und
+meldet Dinge, die es im Projekt nicht gibt (`webpack-env` nicht gefunden,
+`target=ES5` deprecated). Deshalb immer den Projekt-Compiler nehmen:
+`./node_modules/.bin/tsc --noEmit -p tsconfig.json`. Dasselbe gilt für `gulp`.
 
 ## Release-Ablauf — Reihenfolge einhalten
 
@@ -33,11 +48,12 @@ cd dex-event-app-spfx
 # 2) Release Notes an ZWEI Stellen
 #    src/webparts/dexEventPlatform/data/releaseNotes.ts   (neuester Eintrag OBEN, nutzerverständlich)
 #    docs/release-notes.md                                (neueste Zeile OBEN, technisch)
-# 3) tsc
-npx tsc --noEmit -p tsconfig.json
+# 3) tsc (Projekt-Compiler, nicht npx — siehe oben)
+./node_modules/.bin/tsc --noEmit -p tsconfig.json
 # 4) Sauber bauen (stale Bundles blähen das .sppkg auf)
 rm -rf dist release temp sharepoint/solution/debug
-npx gulp bundle --ship && npx gulp package-solution --ship
+./node_modules/.bin/gulp bundle --ship; ./node_modules/.bin/gulp package-solution --ship
+#    kein && — bundle endet wegen Lint-Warnungen mit Exit 1 (s.u.)
 # 5) Paket an DREI Stellen
 cp sharepoint/solution/dex-event-platform.sppkg ../dist/dex-event-platform.sppkg
 #    ../docs/downloads/dex-event-platform-v<VERSION>.sppkg  (alte Datei per git mv umbenennen)
@@ -112,7 +128,25 @@ sonst überschreibt der alte Wert beim Speichern den frisch berechneten.
 **Inline-Styles können kein `:hover`.** Interaktive Elemente brauchen einen
 Hover-State (`hoverIdx`, `evTabHover`), sonst lesen sie sich als Beschriftung.
 
-## Der Wizard, Stand v28.87
+**Der Scope-Umschalter gehört genau einmal auf die Seite.** Seit v28.78 rendert
+`renderGlobalScopeBar` die Reiter global über dem Formular; die alten
+`StickyTabStrip`-Instanzen je Schritt sind Altlast. In Schritt Kommunikation
+stand sie bis v28.88 noch da — zwei identische Reiter-Reihen, die dasselbe
+umschalten, liest der Organizer als zwei Navigationen und sucht die gültige.
+Wer einen Schritt scope-fähig macht (`SCOPE_AWARE_STEPS`), hängt ihn an
+`setScope` und baut **keine** eigene Leiste dazu.
+
+**Guard-Meldungen müssen den tatsächlichen Grund nennen.** Die Anmeldeseite
+sperrte mit „Bitte wähle mindestens das Haupt-Event oder ein Sub-Event aus" —
+auch dort, wo es gar nichts zu wählen gibt: `willRegisterParent` ist bei
+bestehender Anmeldung immer false, und ohne Sub-Events rendert die Auswahl-UI
+gar nicht (sie hängt an `childEvents.length > 0`). Vor einer Sammel-Meldung
+prüfen, welche der Bedingungen den Fall wirklich erzeugt hat
+(`parentAlreadyRegistered`, `subEventsOnlyMode`, `parentRegBlocked`).
+Und: leere Auswahl heißt nicht „nichts zu tun" — wer alle gebuchten Sub-Events
+abwählt, meldet sie ab (`sessionsChanged` in `RegistrationPage`).
+
+## Der Wizard, Stand v28.88
 
 Neun Schritte. Über dem Formular steht die **Scope-Karte**
 (`renderGlobalScopeBar`): Klammer/Haupt-Event und die Sub-Events als Reiter, ein
@@ -124,6 +158,11 @@ Bezeichnung, Anmelde-Modus und die Sub-Event-Karten.
 
 **`setScope` ruft für die Kommunikation bewusst `switchCommTab(idx)`** statt
 `setActiveCommTabIdx` — sonst gehen Sub-Event-Mailtexte verloren.
+
+Seit v28.88 hat kein Schritt mehr eine eigene Reiter-Leiste; im
+Kommunikations-Schritt steht an ihrer Stelle nur noch der Satz „Die
+Einstellungen unten gelten für den oben gewählten Reiter" plus der bisherige
+`InfoTooltip`.
 
 ## Offene Arbeit, in dieser Reihenfolge
 
@@ -156,6 +195,11 @@ Bezeichnung, Anmelde-Modus und die Sub-Event-Karten.
 
 Nach dem Deploy den Wizard einmal von Schritt 1 bis 9 durchklicken — die
 Umnummerierung aus v28.87 ist im Browser nicht verifiziert.
+
+**Bildschirmfotos zeigen den installierten Stand, nicht den Repo-Stand.** Ein
+Screenshot mit zehn Wizard-Schritten kam aus einem Build vor v28.87; wer daraus
+auf den Code schließt, sucht Fehler an Stellen, die es nicht mehr gibt. Erst die
+Version im Bild (bzw. „Was ist neu?") mit `version.ts` abgleichen.
 
 Bei Bildschirmfotos mit Fehlern: erst die Ursache im Code belegen, dann fixen.
 Vermutungen als solche kennzeichnen. Wenn etwas nicht sauber fertig wird, lieber

@@ -1159,6 +1159,24 @@ export default function RegistrationPage(): React.ReactElement {
   // keine Session-Auswahl (siehe Render).
   const isSessionsOnlyMode = !willRegisterParent && !registerForOther && !parentAlreadyRegistered;
 
+  // v28.88: Gibt es überhaupt etwas abzuschicken?
+  //
+  // Bisher hing die Sperre allein an `selectedSessions.size === 0`. Das ist zu
+  // grob: Wer bereits gebuchte Sub-Events ALLE abwählt, will sie abmelden —
+  // die Auswahl ist dann leer, es gibt aber sehr wohl etwas zu tun (der
+  // Abmelde-Pfad im Sub-Event-Loop weiter unten). Deshalb zählt hier jede
+  // Abweichung zwischen Vorbelegung (sessionMeta.wasRegistered) und aktueller
+  // Auswahl als Änderung.
+  const sessionsChanged = childEvents.some(ce => {
+    const wasReg = !!sessionMeta[ce.id]?.wasRegistered;
+    const isSel = selectedSessions.has(ce.id);
+    return (isSel && !wasReg) || (!isSel && wasReg && !registerForOther);
+  });
+  // Nichts anzumelden, nichts zu ändern, kein Team-Vorgang → der
+  // „Registrieren"-Klick hätte keine Wirkung.
+  const nothingToSubmit = !willRegisterParent && !registerForOther && !isTeamMode
+    && !pendingJoinTeam && selectedSessions.size === 0 && !sessionsChanged;
+
   // v9.22: Warning-Modal für externe Email-Anmeldung (durch Organizer für
   // Drittpersonen die noch kein Deloitte-Postfach haben). Default: nicht
   // erlaubt; Organizer kann nach Bestätigung trotzdem fortfahren — die
@@ -1206,7 +1224,49 @@ export default function RegistrationPage(): React.ReactElement {
 
     // Wenn der Haupt-Event-Checkbox aus ist und keine Session ausgewählt ist,
     // gibt es nichts zu tun.
-    if (!willRegisterParent && !registerForOther && selectedSessions.size === 0 && !pendingJoinTeam) {
+    //
+    // v28.88: …aber der GRUND muss zum Fall passen. „Bitte wähle mindestens das
+    // Haupt-Event oder ein Sub-Event aus" setzt voraus, dass es etwas zu wählen
+    // gibt. Bei einer bestehenden Anmeldung ist `willRegisterParent` immer
+    // false (parentAlreadyRegistered, s.o.), und hat das Event keine
+    // Sub-Events, steht auf der Seite überhaupt keine Auswahl. Wer bereits
+    // angemeldet war und auf „Registrieren" klickte, bekam deshalb eine
+    // Aufforderung, die ins Leere zeigt. Dasselbe im „Nur Sub-Events"-Modus und
+    // bei gesperrtem Hauptevent (Frist abgelaufen / voll ohne Warteliste): Das
+    // Haupt-Event ist dort gar nicht wählbar, die Meldung nannte es trotzdem.
+    if (nothingToSubmit) {
+      const oneSub = childTermSingular || (locale === 'de' ? 'Sub-Event' : 'sub-event');
+      const hasSubs = childEvents.length > 0;
+      if (parentAlreadyRegistered) {
+        setError(locale === 'de'
+          ? (hasSubs
+            ? `Du bist für dieses Event bereits angemeldet. Möchtest du zusätzlich ${oneSub === 'Sub-Event' ? 'ein Sub-Event' : `eine ${oneSub}`} buchen, wähle es oben aus — abmelden kannst du dich über „Meine Events".`
+            : 'Du bist für dieses Event bereits angemeldet — es gibt nichts weiter abzuschicken. Abmelden kannst du dich über „Meine Events".')
+          : (hasSubs
+            ? `You are already registered for this event. To additionally book a ${oneSub}, pick it above — you can cancel via „My events".`
+            : 'You are already registered for this event — there is nothing further to submit. You can cancel via „My events".'));
+        return;
+      }
+      if ((event && event.subEventsOnlyMode) || parentRegBlocked) {
+        if (hasSubs) {
+          setError(locale === 'de'
+            ? `Bitte wähle mindestens ${oneSub === 'Sub-Event' ? 'ein Sub-Event' : `eine ${oneSub}`} aus, um dich anzumelden — das Haupt-Event ist hier nicht buchbar.`
+            : `Please select at least one ${oneSub} to register — the main event cannot be booked here.`);
+          return;
+        }
+        setError(locale === 'de'
+          ? (parentFullNoWaitlist
+            ? 'Alle Plätze sind belegt und die Warteliste ist für dieses Event deaktiviert — eine Anmeldung ist nicht mehr möglich.'
+            : (isDeadlinePassed
+              ? 'Die Anmeldefrist dieses Events ist abgelaufen — eine Anmeldung ist nicht mehr möglich.'
+              : 'Für dieses Event läuft die Anmeldung ausschließlich über Sub-Events — aktuell ist keines angelegt. Bitte wende dich an die Organizer.'))
+          : (parentFullNoWaitlist
+            ? 'All seats are taken and the waitlist is disabled for this event — registration is no longer possible.'
+            : (isDeadlinePassed
+              ? 'The registration deadline for this event has passed — registration is no longer possible.'
+              : 'Registration for this event runs exclusively via sub-events — none exists yet. Please contact the organizers.')));
+        return;
+      }
       setError(t('reg.nothing.selected') || 'Bitte wähle mindestens Haupt-Event oder eine Session aus.');
       return;
     }
@@ -4943,9 +5003,17 @@ export default function RegistrationPage(): React.ReactElement {
           // v18: Demo-Event — Register-Button ist bewusst NICHT auswählbar
           // (keine echte Anmeldung; reine Showcase-Ansicht).
           const isDemo = !!(event && event.isDemoShowcase);
-          const isDisabled = isDemo || isSubmitting || (isTeamMode && !teamValidation.ok) || nothingPicked || needsOtherConsent || targetAlreadyRegistered;
+          // v28.88: Bereits angemeldet und nichts (mehr) auszuwählen → der
+          // Klick konnte ohnehin nichts bewirken und endete in einer
+          // Fehlermeldung. Jetzt sagt der Button selbst, dass die Anmeldung
+          // schon steht. (nothingToSubmit deckt auch Abwahl-Änderungen ab —
+          // wer Sub-Events abmeldet, kommt weiterhin durch.)
+          const alreadyDone = parentAlreadyRegistered && nothingToSubmit;
+          const isDisabled = isDemo || isSubmitting || (isTeamMode && !teamValidation.ok) || nothingPicked || needsOtherConsent || targetAlreadyRegistered || alreadyDone;
           const titleAttr = isDemo
             ? (locale === 'de' ? 'Demo-Event — eine echte Anmeldung ist nicht möglich.' : 'Demo event — real registration is not possible.')
+            : (alreadyDone
+            ? (locale === 'de' ? 'Du bist für dieses Event bereits angemeldet. Abmelden kannst du dich über „Meine Events".' : 'You are already registered for this event. You can cancel via „My events".')
             : (targetAlreadyRegistered
             ? (locale === 'de' ? 'Diese Person ist bereits für das Event angemeldet.' : 'This person is already registered for this event.')
             : (isTeamMode && !teamValidation.ok
@@ -4958,7 +5026,7 @@ export default function RegistrationPage(): React.ReactElement {
                     ? (locale === 'de'
                         ? 'Bitte bestätige die Zustimmung der Person.'
                         : 'Please confirm the person\'s consent.')
-                    : ''))));
+                    : '')))));
           return (
             <button
               className="btn btn-primary"
@@ -4972,6 +5040,10 @@ export default function RegistrationPage(): React.ReactElement {
                   das Leerzeichen ergaben einen doppelten Abstand. */}
               <Send size={16} /> <span>{(() => {
                 if (isSubmitting) return t('reg.submitting');
+                // v28.88: Bestehende Anmeldung, nichts zu ändern — der Button
+                // sagt das jetzt selbst, statt „Registrieren" anzubieten und
+                // beim Klick zu meckern.
+                if (alreadyDone) return locale === 'de' ? 'Bereits angemeldet' : 'Already registered';
                 // v24.62: Wenn das Hauptevent voll ist und eine Warteliste hat,
                 // landet die Anmeldung auf der Warteliste — im Button steht das als
                 // kurzer, NICHT fetter Zusatz „(Warteliste)" (die aktuelle Anzahl
