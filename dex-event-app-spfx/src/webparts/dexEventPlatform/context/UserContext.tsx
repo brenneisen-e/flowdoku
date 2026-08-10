@@ -12,6 +12,7 @@ import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { SPHttpClient } from '@microsoft/sp-http';
 import { User } from '../types';
+import { looksLikeClaimName, safeDisplayName } from '../utils/displayName';
 
 interface UserContextType {
   currentUser: User;
@@ -46,8 +47,19 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
     // User-Daten aus dem SPFx-Context laden
     const spUser = props.context.pageContext.user;
 
-    // DisplayName aufteilen (z.B. "Brenneisen, Eike" oder "Eike Brenneisen")
-    const displayName = spUser.displayName || '';
+    // v28.68 BUG-FIX: `displayName` kann statt des Namens das Claims-Login-
+    // Token tragen („0#.f|membership|user@deloitte.de", s. utils/displayName).
+    // v28.64 hat das in EventContext und RoleContext abgefangen — dieser
+    // Context, aus dem die Anmeldeseite Vor- und Nachname zieht, blieb aussen
+    // vor. Folge: Das Token enthaelt kein Leerzeichen und kein Komma, also
+    // landete ALLES in `firstName` und `surname` blieb LEER. Auf der
+    // Anmeldeseite sind beide Felder fuer interne Personen fest deaktiviert
+    // (sie kommen aus M365), die Pflichtpruefung verlangt aber einen
+    // Nachnamen — die Person sah „Bitte alle Pflichtfelder ausfuellen",
+    // ohne ein einziges ausfuellbares Feld. Anmeldung damit unmoeglich.
+    // Deshalb hier dieselbe Absicherung: nie ein Token als Name verwenden,
+    // und den echten Namen unten aus dem Benutzerprofil nachziehen.
+    const displayName = safeDisplayName(spUser.displayName || '', spUser.email || '');
     let firstName = '';
     let surname = '';
 
@@ -89,6 +101,31 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
     // JobTitle brauchen wir für die Assistant-Ausnahme in der Registration
     // ("Assistant" darf für "Director"/"Partner" registrieren).
     loadUserProfile(props.context).then(profile => {
+      // v28.68: Namen aus dem Benutzerprofil nachziehen, wenn aus dem
+      // pageContext nichts Brauchbares kam — also wenn dort ein Claims-Token
+      // stand (dann steht in `displayName` jetzt die E-Mail) oder wenn die
+      // Aufteilung keinen Nachnamen ergeben hat. Das Profil ist die Quelle,
+      // die stimmt; die versteckte „User Information List" der Site, aus der
+      // pageContext liest, wird nachträglich nicht mehr korrigiert.
+      const nameWasUnusable = looksLikeClaimName(spUser.displayName || '') || !surname.trim();
+      const profFirst = profile.firstName.trim();
+      const profLast = profile.lastName.trim();
+      const fromPreferred = ((): { firstName: string; lastName: string } => {
+        const pn = profile.preferredName.trim();
+        if (!pn || looksLikeClaimName(pn)) return { firstName: '', lastName: '' };
+        if (pn.indexOf(',') > -1) {
+          const p = pn.split(',');
+          return { firstName: (p[1] || '').trim(), lastName: (p[0] || '').trim() };
+        }
+        const p = pn.split(/\s+/).filter(Boolean);
+        if (p.length < 2) return { firstName: '', lastName: '' };
+        return { firstName: p[0], lastName: p.slice(1).join(' ') };
+      })();
+      const resolvedFirst = profFirst || fromPreferred.firstName;
+      const resolvedLast = profLast || fromPreferred.lastName;
+      if (nameWasUnusable && resolvedFirst && resolvedLast) {
+        setCurrentUser(prev => ({ ...prev, firstName: resolvedFirst, surname: resolvedLast }));
+      }
       if (profile.location || profile.jobTitle || profile.department || profile.mobilePhone || profile.company) {
         setCurrentUser(prev => ({
           ...prev,
@@ -149,7 +186,7 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
  * Office-Standort + JobTitle aus dem SP User Profile lesen.
  * JobTitle liegt im Property "Title" (bzw. "SPS-JobTitle" im Fallback).
  */
-async function loadUserProfile(context: WebPartContext): Promise<{ location: string; jobTitle: string; department: string; mobilePhone: string; company: string }> {
+async function loadUserProfile(context: WebPartContext): Promise<{ location: string; jobTitle: string; department: string; mobilePhone: string; company: string; firstName: string; lastName: string; preferredName: string }> {
   try {
     const profileUrl = `${context.pageContext.web.absoluteUrl}/_api/SP.UserProfiles.PeopleManager/GetMyProperties`;
     const response = await context.spHttpClient.get(profileUrl, SPHttpClient.configurations.v1);
@@ -175,11 +212,16 @@ async function loadUserProfile(context: WebPartContext): Promise<{ location: str
           // v24.29: Unternehmenszugehörigkeit / Rechtsträger („Company name"
           // im M365-Profil, z.B. „Deloitte Consulting").
           company: getProp(['Company', 'SPS-Company', 'CompanyName', 'msOnline-CompanyName']),
+          // v28.68: Namensquellen fuer den Fall, dass pageContext nur das
+          // Claims-Login-Token liefert (s. oben im Provider).
+          firstName: getProp(['FirstName', 'SPS-FirstName', 'GivenName']),
+          lastName: getProp(['LastName', 'SPS-LastName', 'SN', 'Surname']),
+          preferredName: getProp(['PreferredName']),
         };
       }
     }
   } catch { /* Profil nicht verfügbar */ }
-  return { location: '', jobTitle: '', department: '', mobilePhone: '', company: '' };
+  return { location: '', jobTitle: '', department: '', mobilePhone: '', company: '', firstName: '', lastName: '', preferredName: '' };
 }
 
 /**

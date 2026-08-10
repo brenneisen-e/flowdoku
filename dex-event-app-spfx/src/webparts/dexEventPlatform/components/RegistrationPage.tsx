@@ -4049,16 +4049,36 @@ export default function RegistrationPage(): React.ReactElement {
                 );
               }
               // Klassische Felder: nur noch für EXTERNE Personen.
+              // v28.68: Sicherheitsnetz. Konnte der Name nicht aus M365
+              // aufgelöst werden (z.B. weil in der versteckten Benutzerliste
+              // der Site das Claims-Login-Token statt des Namens steht und
+              // auch das Benutzerprofil nichts hergibt), waren diese Felder
+              // fest deaktiviert, die Pflichtprüfung verlangte aber Vor- UND
+              // Nachnamen: „Bitte alle Pflichtfelder ausfüllen" ohne ein
+              // einziges ausfüllbares Feld — die Anmeldung war unmöglich.
+              // Fehlt einer der beiden Namen, sind sie jetzt editierbar.
+              const nameUnresolved = !firstName.trim() || !surname.trim();
               return (
                 <>
                   <div className="form-group">
                     <label className="form-label">{t('reg.firstname')}</label>
-                    <input className="form-input" value={firstName} onChange={e => { if (externalPerson) setFirstName(e.target.value); }} placeholder={t('reg.firstname')} disabled style={{ background: 'var(--dex-gray-100)', ...(showErrors && !firstName.trim() ? errorBorder : {}) }} />
+                    <input className="form-input" value={firstName} onChange={e => { if (externalPerson || nameUnresolved) setFirstName(e.target.value); }} placeholder={t('reg.firstname')} disabled={!externalPerson && !nameUnresolved} style={{ background: nameUnresolved ? 'var(--dex-white, #fff)' : 'var(--dex-gray-100)', ...(showErrors && !firstName.trim() ? errorBorder : {}) }} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">{t('reg.surname')}</label>
-                    <input className="form-input" value={surname} onChange={e => { if (externalPerson) setSurname(e.target.value); }} placeholder={t('reg.surname')} disabled style={{ background: 'var(--dex-gray-100)', ...(showErrors && !surname.trim() ? errorBorder : {}) }} />
+                    <input className="form-input" value={surname} onChange={e => { if (externalPerson || nameUnresolved) setSurname(e.target.value); }} placeholder={t('reg.surname')} disabled={!externalPerson && !nameUnresolved} style={{ background: nameUnresolved ? 'var(--dex-white, #fff)' : 'var(--dex-gray-100)', ...(showErrors && !surname.trim() ? errorBorder : {}) }} />
                   </div>
+                  {nameUnresolved && !externalPerson && (
+                    <div style={{
+                      marginTop: -4, marginBottom: 12, padding: '8px 10px', borderRadius: 6,
+                      fontSize: '0.78rem', lineHeight: 1.5,
+                      background: '#fff8e6', border: '1px solid #e0b34d', color: '#7a5a12',
+                    }}>
+                      {locale === 'de'
+                        ? 'Dein Name konnte nicht aus deinem M365-Profil gelesen werden. Bitte trage Vor- und Nachnamen einmal von Hand ein — danach kannst du dich ganz normal anmelden.'
+                        : 'We could not read your name from your M365 profile. Please enter your first and last name once — after that you can register as usual.'}
+                    </div>
+                  )}
                   <div className="form-group">
                     <label className="form-label">{t('reg.email')}</label>
                     <input className="form-input" type="email" value={email} onChange={e => { if (externalPerson) { setEmail(e.target.value); externalEmailConfirmedRef.current = false; /* v18.74: Tippfehler-Check bei Änderung erneut erzwingen */ } }} placeholder={externalPerson ? 'name@firma.de' : 'email@deloitte.de'} disabled style={{ background: 'var(--dex-gray-100)', ...(showErrors && !email.trim() ? errorBorder : {}) }} />
