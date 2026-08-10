@@ -6899,9 +6899,10 @@ export default function AdminPage(): React.ReactElement {
                             padding: '10px 16px', cursor: 'pointer', textAlign: 'left',
                             border: `1.5px solid ${(pActive || evTabHover === parentTab.id) ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
                             borderRadius: '10px 10px 0 0',
+                            // v28.86: Ruhezustand weiss (s. Wizard).
                             background: pActive
                               ? 'var(--dex-green, #86bc25)'
-                              : (evTabHover === parentTab.id ? 'rgba(134,188,37,0.22)' : 'rgba(134,188,37,0.10)'),
+                              : (evTabHover === parentTab.id ? 'rgba(134,188,37,0.14)' : '#fff'),
                             color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
                             fontWeight: 700, fontSize: '0.9rem',
                             boxShadow: (evTabHover === parentTab.id && !pActive) ? 'inset 0 0 0 1px rgba(134,188,37,0.35)' : 'none',

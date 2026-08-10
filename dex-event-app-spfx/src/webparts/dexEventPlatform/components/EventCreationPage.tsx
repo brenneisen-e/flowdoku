@@ -644,9 +644,13 @@ function StickyTabStrip(props: {
                     padding: '10px 12px 10px 16px', cursor: dis ? 'not-allowed' : 'pointer',
                     border: `1.5px solid ${(pActive || (hoverIdx === 0 && !dis)) ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
                     borderRadius: '10px 10px 0 0',
+                    // v28.86: Nicht ausgewaehlt = WEISS, wie die Sub-Event-Reiter
+                    // auch. Die gruene Toenung im Ruhezustand liess die Klammer
+                    // wie dauerhaft aktiv aussehen — neben einem wirklich
+                    // aktiven Sub-Event-Reiter waren dann zwei Elemente gruen.
                     background: pActive
                       ? 'var(--dex-green, #86bc25)'
-                      : ((hoverIdx === 0 && !dis) ? 'rgba(134,188,37,0.22)' : 'rgba(134,188,37,0.10)'),
+                      : ((hoverIdx === 0 && !dis) ? 'rgba(134,188,37,0.14)' : '#fff'),
                     color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
                     fontWeight: 700, fontSize: '0.9rem',
                     opacity: dis ? 0.55 : 1,
