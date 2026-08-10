@@ -609,7 +609,7 @@ export function cancellationEmail(recipientName: string, eventTitle: string): { 
   // v17.20: Visuell deutlicher Stornierungs-Banner direkt unter der Begrüßung
   // \u2014 Event-Titel ausgegraut + durchgestrichen, damit auf den ersten Blick
   // erkennbar ist, dass die Anmeldung storniert wurde (vorher: Stornierung
-  // ging nur ueber den Subject-Zusatz hervor).
+  // ging nur über den Subject-Zusatz hervor).
   const cancelBanner = `
     <div style="margin: 16px 0 20px; padding: 14px 18px; border: 2px solid #da291c;
                 background: rgba(218, 41, 28, 0.06); border-radius: 8px;
@@ -860,7 +860,7 @@ export function qrCodeEmail(
   fullName?: string,
   override?: QrEmailOverride
 ): { subject: string; body: string } {
-  // Fallback: wenn kein fullName uebergeben, nutze nur firstName
+  // Fallback: wenn kein fullName übergeben, nutze nur firstName
   const fullDisplayName = (fullName || firstName || '').trim();
   const qrBlock = buildQrBlockHtml(qrImageHtml, fullDisplayName, eventTitle);
   const defaults = qrEmailDefaults(lang);

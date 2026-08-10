@@ -2,7 +2,7 @@
  * Language Context - Mehrsprachigkeit (DE/EN)
  *
  * Speichert die gewählte Sprache im localStorage.
- * Stellt eine t()-Funktion bereit die Uebersetzungen liefert.
+ * Stellt eine t()-Funktion bereit die Übersetzungen liefert.
  */
 
 import * as React from 'react';

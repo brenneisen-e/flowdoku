@@ -50,10 +50,10 @@ export interface IDexLogoProps {
   /** Seed für die Form – gleicher Seed erzeugt immer dasselbe Muster */
   seed?: number;
   /**
-   * v28.34: Maus-Antrieb. Faehrt der Zeiger ueber die Kugel, dreht sie sich in
+   * v28.34: Maus-Antrieb. Faehrt der Zeiger über die Kugel, dreht sie sich in
    * die Bewegungsrichtung — je schneller die Maus, desto kraeftiger der
-   * Anschub. Danach laeuft sie mit Reibung aus und driftet langsam in die
-   * Ruhelage zurueck, damit das Linienzentrum sichtbar bleibt. Standard: an.
+   * Anschub. Danach läuft sie mit Reibung aus und driftet langsam in die
+   * Ruhelage zurück, damit das Linienzentrum sichtbar bleibt. Standard: an.
    */
   pointerSpin?: boolean;
   className?: string;
@@ -171,12 +171,12 @@ function buildGeometry(contourCount: number, particleCount: number, seed: number
   const contours: Float32Array[] = [];
 
   // v28.35: Die gemessene Staffelung endet bei maxAlpha (2.62 von pi). Der Rest
-  // der Kugel — eine Kappe von rund 0.5 rad um den Gegenpol — traegt keine
-  // Linien. In Ruhelage liegt sie auf der Rueckseite und faellt nicht auf; seit
+  // der Kugel — eine Kappe von rund 0.5 rad um den Gegenpol — trägt keine
+  // Linien. In Ruhelage liegt sie auf der Rückseite und fällt nicht auf; seit
   // die Kugel per Maus frei drehbar ist, wandert sie aber nach vorn und sieht
   // dort wie ein Loch aus. Deshalb wird sie mit Linien im Abstand der
-  // aeussersten gemessenen Staffel aufgefuellt. Die Vorderseite in Ruhelage
-  // bleibt dabei unveraendert, weil ausschliesslich JENSEITS von maxAlpha
+  // aeussersten gemessenen Staffel aufgefüllt. Die Vorderseite in Ruhelage
+  // bleibt dabei unverändert, weil ausschliesslich JENSEITS von maxAlpha
   // ergaenzt wird.
   const lastGap = spread * (Math.pow(1, falloff) - Math.pow((steps - 1) / steps, falloff));
   const capStep = lastGap > 0.005 ? lastGap : 0.05;
@@ -264,7 +264,7 @@ function drawFrame(
     : elapsed * 0.00052 * speed) + extraRotY;
   const cosR = Math.cos(rot);
   const sinR = Math.sin(rot);
-  // v28.35: zweite Achse — Kippen um X. Erst um Y drehen (Laengengrad), dann
+  // v28.35: zweite Achse — Kippen um X. Erst um Y drehen (Längengrad), dann
   // um X (Breitengrad). Beides unbegrenzt, volle Umdrehungen inklusive.
   const cosT = Math.cos(extraRotX);
   const sinT = Math.sin(extraRotX);
@@ -496,11 +496,11 @@ export const DexLogo: React.FC<IDexLogoProps> = (props: IDexLogoProps) => {
       elapsedRef.current += delta;
 
       // v28.35: Maus-Schwung ausrollen lassen — jetzt auf beiden Achsen und
-      // mit soviel Nachlauf, dass ein kraeftiger Schwung ueber eine ganze
-      // Umdrehung traegt (Reibung 0.985/Frame statt 0.93). Die Rueckstellung
-      // ist bewusst sehr weich: waehrend des Auslaufens praktisch wirkungslos,
-      // holt die Kugel aber ueber die naechsten Sekunden in die Ruhelage
-      // zurueck, damit das Linienzentrum nicht dauerhaft hinten stehenbleibt.
+      // mit soviel Nachlauf, dass ein kraeftiger Schwung über eine ganze
+      // Umdrehung trägt (Reibung 0.985/Frame statt 0.93). Die Rückstellung
+      // ist bewusst sehr weich: während des Auslaufens praktisch wirkungslos,
+      // holt die Kugel aber über die nächsten Sekunden in die Ruhelage
+      // zurück, damit das Linienzentrum nicht dauerhaft hinten stehenbleibt.
       const frames = delta / 16.67;
       const FRICTION = Math.pow(0.985, frames);
       const HOMING = Math.pow(0.9992, frames);
@@ -538,9 +538,9 @@ export const DexLogo: React.FC<IDexLogoProps> = (props: IDexLogoProps) => {
 
   /**
    * v28.34: Jede Zeigerbewegung gibt einen Impuls in Bewegungsrichtung. Die
-   * Staerke haengt an der zurueckgelegten Strecke pro Event — also an der
+   * Staerke hängt an der zurückgelegten Strecke pro Event — also an der
    * Maus-Geschwindigkeit. Normiert auf die Kugelbreite, damit sich das Logo
-   * in jeder Groesse gleich anfuehlt; gedeckelt, damit ein Ruck nicht
+   * in jeder Größe gleich anfuehlt; gedeckelt, damit ein Ruck nicht
    * mehrere Umdrehungen ausloest.
    */
   const lastPointerRef = React.useRef<{ x: number; y: number } | null>(null);
@@ -564,9 +564,9 @@ export const DexLogo: React.FC<IDexLogoProps> = (props: IDexLogoProps) => {
     const dx = e.clientX - last.x;
     const dy = e.clientY - last.y;
     // Waagerecht dreht um die Y-Achse, senkrecht kippt um die X-Achse. Die
-    // Staerke haengt an der Strecke pro Event, also an der Maus-Geschwindigkeit;
-    // normiert auf die Kugelbreite, damit es sich in jeder Groesse gleich
-    // anfuehlt. Beide Achsen sind unbegrenzt — volle Umdrehungen moeglich.
+    // Staerke hängt an der Strecke pro Event, also an der Maus-Geschwindigkeit;
+    // normiert auf die Kugelbreite, damit es sich in jeder Größe gleich
+    // anfuehlt. Beide Achsen sind unbegrenzt — volle Umdrehungen möglich.
     if (dx !== 0) { addSpin(userVelRef, (dx / measured) * 0.006); }
     if (dy !== 0) { addSpin(userTiltVelRef, (dy / measured) * 0.006); }
   };

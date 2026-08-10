@@ -21,15 +21,15 @@ export interface DexHotel {
   notes?: string;
   /** v28.58: Auf welchen Zeitraum sich das Kontingent bezieht (Id einer
    *  `DexHotelStay`). Leer = Standard-Zeitraum. Alles, was eine Person
-   *  darueber hinaus bleibt, ist eine **Extranacht** und muss zusaetzlich
+   *  darüber hinaus bleibt, ist eine **Extranacht** und muss zusätzlich
    *  gebucht werden — genau die zeigt der Einrichtungs-Assistent aus. */
   capacityStayId?: string;
-  /** v28.58: Fuell-Reihenfolge bei der automatischen Verteilung
+  /** v28.58: Füll-Reihenfolge bei der automatischen Verteilung
    *  (kleiner = zuerst). Ohne Wert zaehlt die Listenreihenfolge. */
   priority?: number;
 }
 
-/** v28.58: Regeln fuer die automatische Verteilung (Piggyback `_hotelRules`).
+/** v28.58: Regeln für die automatische Verteilung (Piggyback `_hotelRules`).
  *  Bewusst klein gehalten — sie merken sich die Entscheidungen aus dem
  *  Einrichtungs-Assistenten, damit ein zweiter Durchlauf nicht bei null
  *  anfaengt. */
@@ -39,15 +39,15 @@ export interface DexHotelRules {
   /** v28.58: Zuordnung „Antwort im Anmeldeformular → Zeitraum". Deckt den
    *  Normalfall ab, dass das Formular die Zusatznaechte selbst abfragt
    *  („Hotel (additional nights)"): Wer dort etwas angegeben hat, bekommt
-   *  automatisch den laengeren Zeitraum. */
+   *  automatisch den längeren Zeitraum. */
   byAnswer?: { fieldId: string; map: Record<string, string> };
   /** Personen mit derselben Sub-Event-Kombination zusammen unterbringen. */
   keepGroups?: boolean;
-  /** Wer im Anmeldeformular „keine Unterkunft" gewaehlt hat, wird uebersprungen. */
+  /** Wer im Anmeldeformular „keine Unterkunft" gewählt hat, wird übersprungen. */
   skipNoWish?: boolean;
 }
 
-/** v28.38: Vorlage fuer einen Aufenthalts-Zeitraum („Standard 24.-25.09."). */
+/** v28.38: Vorlage für einen Aufenthalts-Zeitraum („Standard 24.-25.09."). */
 export interface DexHotelStay {
   id: string;
   label: string;
@@ -114,7 +114,7 @@ export interface DeloitteEvent {
    *  beim Event-Save via Graph auf transitive Members aufgelöst. matchesAudience
    *  in EventListPage checkt zusätzlich gegen diese Liste — damit funktioniert
    *  die Sichtbarkeit auch für verschachtelte DLs, die /me/memberOf nicht
-   *  zurückliefert. Bei DL-Member-Aenderungen muss der Organizer das Event
+   *  zurückliefert. Bei DL-Member-Änderungen muss der Organizer das Event
    *  einmal neu speichern, damit der Cache aktualisiert wird. */
   audienceResolvedEmails?: string[];
   filterMode: 'AND' | 'OR';
@@ -218,7 +218,7 @@ export interface DeloitteEvent {
   /** v28.38: Hotel-Stammdaten des Events (Piggyback `_hotels`). Klein gehalten —
    *  die Zuordnung pro Person steht in der Teilnehmerliste, nicht hier. */
   hotels?: DexHotel[];
-  /** v28.38: Zeitraum-Vorlagen fuer die Zuordnung (Piggyback `_hotelStays`). */
+  /** v28.38: Zeitraum-Vorlagen für die Zuordnung (Piggyback `_hotelStays`). */
   hotelStays?: DexHotelStay[];
   /** v28.38: Sehen Teilnehmer ihr Hotel unter „Meine Events"? (`_hotelVisible`)
    *  Default false — der Organizer gibt bewusst frei. */
@@ -243,7 +243,7 @@ export interface DeloitteEvent {
    *  (Organizer entscheidet). 'autoderegister' = beim Öffnen der App durch einen
    *  Organizer automatisch abmelden (mit Modal-Hinweis). */
   inactiveHandling?: 'notify' | 'autoderegister';
-  disableOutlook?: boolean;  // Wenn true: keine Outlook-Kalendereintraege
+  disableOutlook?: boolean;  // Wenn true: keine Outlook-Kalendereinträge
   /** v14.5: Wenn true UND es existieren Sub-Events, muss der Teilnehmer
    *  beim Anmelden mindestens ein Sub-Event auswählen. Typischer Use-Case:
    *  Hauptevent-Kommunikation ist abgestellt (disableEmails/disableOutlook),
@@ -295,7 +295,7 @@ export interface DeloitteEvent {
    *  - 'never': Organizer bekommt keine Storno-Bestätigungs-Mails
    *  - 'always': BCC bei jedem Storno
    *  - 'afterDeadline': BCC erst wenn die Abmeldefrist (lastDeregisterDate)
-   *    bereits ueberschritten ist — also nur bei "späten" Stornos, die
+   *    bereits überschritten ist — also nur bei "späten" Stornos, die
    *    für den Organizer planungsrelevant sind. */
   notifyOrgCancelMode?: 'never' | 'always' | 'afterDeadline';
 
@@ -341,20 +341,20 @@ export interface DeloitteEvent {
   /** v11.25: Reine Display-Reihenfolge der zwei Gruppen-Karten in der
    *  Registrierungs-UI umkehren. Default false — Karte A links / zuerst,
    *  Karte B rechts / zweitens. Mit true wird Karte B zuerst gezeigt
-   *  (Group 2 prominent). Aenderung beeinflusst NUR die Anzeige-Reihen-
-   *  folge in RegistrationPage und der Kapazitäts-Uebersicht im
+   *  (Group 2 prominent). Änderung beeinflusst NUR die Anzeige-Reihen-
+   *  folge in RegistrationPage und der Kapazitäts-Übersicht im
    *  AdminCenter — keinerlei Daten-Migration, splitLabelA/B,
    *  durchstarter-/funstarterCapacity und die internen StarterType-
    *  IDs auf den Anmeldungen bleiben unangetastet. */
   splitDisplayOrderReversed?: boolean;
-  /** v11.0: Wenn true, können sich Teilnehmer ueber „Meine Events" eine
+  /** v11.0: Wenn true, können sich Teilnehmer über „Meine Events" eine
    *  PDF-Datei pro Anmeldung hochladen (z.B. Reisekostenbeleg, Foto-
    *  Einverständnis, Zertifikat). Die Datei wird als Item-Attachment an
    *  die Teilnehmerlisten-Zeile in der Subsite gehängt und ist im Admin-
    *  Center sichtbar / herunterladbar. Default: false. */
   allowAttendeeUpload?: boolean;
   /** v11.0: Optionaler Hinweistext, der dem Teilnehmer im Upload-Bereich
-   *  ueber dem File-Input angezeigt wird — z.B. „Bitte lade hier deinen
+   *  über dem File-Input angezeigt wird — z.B. „Bitte lade hier deinen
    *  unterschriebenen Datenschutzbogen hoch". Wenn leer, erscheint nur
    *  ein generischer Default-Text. */
   attendeeUploadHint?: string;
@@ -497,7 +497,7 @@ export interface EventSpecificField {
   // v19.0: 'document' = PDF/Bild-Upload, der als Attachment an die Teilnehmer-
   // Zeile gehängt wird (kein Spaltenwert).
   // v24.25: 'date' = Datums-/Kalender-Auswahl (optional mit Uhrzeit via withTime).
-  // v28.63: 'daterange' = Uebernachtungs-Zeitraum (Anreise + Abreise in einem
+  // v28.63: 'daterange' = Übernachtungs-Zeitraum (Anreise + Abreise in einem
   // Feld, Naechte werden berechnet). Antwort-Format: '' | '-' | 'YYYY-MM-DD – YYYY-MM-DD'.
   type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'document' | 'date' | 'daterange';
   required: boolean;
@@ -505,11 +505,11 @@ export interface EventSpecificField {
   /** v24.25: Nur für `type === 'date'` — zusätzlich die Uhrzeit abfragen
    *  (datetime-local statt date). */
   withTime?: boolean;
-  /** v28.63: Nur fuer `type === 'daterange'` — fruehester waehlbarer Tag (ISO). */
+  /** v28.63: Nur für `type === 'daterange'` — fruehester wählbarer Tag (ISO). */
   rangeStart?: string;
-  /** v28.63: Nur fuer `type === 'daterange'` — spaetester waehlbarer Tag (ISO). */
+  /** v28.63: Nur für `type === 'daterange'` — spaetester wählbarer Tag (ISO). */
   rangeEnd?: string;
-  /** v28.63: Nur fuer `type === 'daterange'` — Obergrenze fuer die Naechte. */
+  /** v28.63: Nur für `type === 'daterange'` — Obergrenze für die Naechte. */
   maxNights?: number;
   helpText?: string;
   /** v18.18: Darstellung der Beschreibung (`helpText`). `'tooltip'` (Default,

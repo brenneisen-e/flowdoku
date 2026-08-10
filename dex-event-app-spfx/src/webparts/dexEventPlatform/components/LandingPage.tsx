@@ -1157,7 +1157,7 @@ export default function LandingPage(): React.ReactElement {
   );
 }
 
-// v11.47: KPI-Box-Reihe ueber dem "Entwickelt von ..."-Block. Drei Boxen
+// v11.47: KPI-Box-Reihe über dem "Entwickelt von ..."-Block. Drei Boxen
 // nebeneinander: gehostete Events, Teilnehmer, App-Aufrufe. Jede Box mit
 // einer AnimatedCounter-Komponente, die beim ersten Verfügbarwerden des
 // Werts von 0 zum Zielwert ease-out hochzählt (~1.6s). Solange Daten noch
@@ -1231,8 +1231,8 @@ function SkeletonDots(): React.ReactElement {
 }
 
 /** Ease-out-Cubic-Animation von 0 (bzw. dem letzten geanimierten Wert) auf
- *  `value`. Wenn `value` sich aendert, startet eine neue Animation; bei
- *  schnellen Aenderungen wird die laufende Animation sauber durch eine neue
+ *  `value`. Wenn `value` sich ändert, startet eine neue Animation; bei
+ *  schnellen Änderungen wird die laufende Animation sauber durch eine neue
  *  ersetzt (requestAnimationFrame + AbortFlag). */
 function AnimatedCounter(props: { value: number; durationMs?: number }): React.ReactElement {
   const target = Math.max(0, Math.floor(props.value || 0));

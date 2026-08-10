@@ -3,7 +3,7 @@
  *
  * Liest den eingeloggten User aus dem SPFx WebPartContext
  * und stellt Name, E-Mail und Login-Name bereit.
- * Rolle wird ueber den RoleContext gesteuert.
+ * Rolle wird über den RoleContext gesteuert.
  *
  * - Eike, Maerz 2026
  */
@@ -53,10 +53,10 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
     // Context, aus dem die Anmeldeseite Vor- und Nachname zieht, blieb aussen
     // vor. Folge: Das Token enthaelt kein Leerzeichen und kein Komma, also
     // landete ALLES in `firstName` und `surname` blieb LEER. Auf der
-    // Anmeldeseite sind beide Felder fuer interne Personen fest deaktiviert
-    // (sie kommen aus M365), die Pflichtpruefung verlangt aber einen
-    // Nachnamen — die Person sah „Bitte alle Pflichtfelder ausfuellen",
-    // ohne ein einziges ausfuellbares Feld. Anmeldung damit unmoeglich.
+    // Anmeldeseite sind beide Felder für interne Personen fest deaktiviert
+    // (sie kommen aus M365), die Pflichtprüfung verlangt aber einen
+    // Nachnamen — die Person sah „Bitte alle Pflichtfelder ausfüllen",
+    // ohne ein einziges ausfüllbares Feld. Anmeldung damit unmöglich.
     // Deshalb hier dieselbe Absicherung: nie ein Token als Name verwenden,
     // und den echten Namen unten aus dem Benutzerprofil nachziehen.
     const displayName = safeDisplayName(spUser.displayName || '', spUser.email || '');
@@ -97,7 +97,7 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
     });
     setIsLoading(false);
 
-    // Standort + JobTitle ueber SP-Profil nachladen.
+    // Standort + JobTitle über SP-Profil nachladen.
     // JobTitle brauchen wir für die Assistant-Ausnahme in der Registration
     // ("Assistant" darf für "Director"/"Partner" registrieren).
     loadUserProfile(props.context).then(profile => {
@@ -138,7 +138,7 @@ export function UserProvider(props: { context: WebPartContext; children: React.R
       }
     }).catch(() => { /* Profil konnte nicht geladen werden */ });
 
-    // Profilbild ueber Microsoft Graph laden
+    // Profilbild über Microsoft Graph laden
     loadUserPhoto(props.context).then(url => {
       if (url) setPhotoUrl(url);
     }).catch(() => { /* Foto nicht verfügbar */ });
@@ -212,7 +212,7 @@ async function loadUserProfile(context: WebPartContext): Promise<{ location: str
           // v24.29: Unternehmenszugehörigkeit / Rechtsträger („Company name"
           // im M365-Profil, z.B. „Deloitte Consulting").
           company: getProp(['Company', 'SPS-Company', 'CompanyName', 'msOnline-CompanyName']),
-          // v28.68: Namensquellen fuer den Fall, dass pageContext nur das
+          // v28.68: Namensquellen für den Fall, dass pageContext nur das
           // Claims-Login-Token liefert (s. oben im Provider).
           firstName: getProp(['FirstName', 'SPS-FirstName', 'GivenName']),
           lastName: getProp(['LastName', 'SPS-LastName', 'SN', 'Surname']),
@@ -267,7 +267,7 @@ async function loadUserGroupEmails(context: WebPartContext): Promise<string[]> {
 }
 
 /**
- * Profilbild ueber Microsoft Graph laden
+ * Profilbild über Microsoft Graph laden
  */
 // v24.33: Unternehmenszugehörigkeit via Graph `/me?$select=companyName` — die
 // SP-UserProfile-Property „Company" ist im Tenant nicht zuverlässig gefüllt.

@@ -1,5 +1,5 @@
 /**
- * Event-Karte für die Uebersichtsseite
+ * Event-Karte für die Übersichtsseite
  *
  * Zeigt Gradient-Hintergrund, Event-Infos und freie Plätze.
  * Die Gradient-Farben rotieren basierend auf dem Index.
@@ -138,7 +138,7 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
     <div className="event-card" style={{ position: 'relative', cursor: blockClick ? 'not-allowed' : 'pointer', ...(event.isDemoShowcase ? { outline: '2px dashed var(--dex-blue, #0076a8)', outlineOffset: 2 } : {}) }} onClick={() => (!alreadySignedUp && !blockClick) ? navigate('registration', event.id) : undefined}>
       {/* v17.25: Demo-Showcase-Event deutlich markieren (blaues DEMO-Badge
           oben rechts, gestrichelter Rahmen). Nur im Demo-Impersonation-Modus
-          ueberhaupt in der Liste. */}
+          überhaupt in der Liste. */}
       {event.isDemoShowcase && (
         <div style={{
           position: 'absolute', top: 10, right: 10, zIndex: 6,

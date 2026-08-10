@@ -94,7 +94,7 @@ export interface RegisterPreviewModalProps {
 }
 
 // Synthetischen DeloitteEvent aus dem Wizard-Form-State bauen, sodass
-// RegistrationPage ihn ueber den EventContext finden kann.
+// RegistrationPage ihn über den EventContext finden kann.
 const SYNTH_PARENT_ID = '__preview_synth_event__';
 
 function buildSynthEvent(data: RegisterPreviewData): DeloitteEvent {

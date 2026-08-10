@@ -1,5 +1,5 @@
 /**
- * Event-Uebersicht
+ * Event-Übersicht
  *
  * Zeigt Events als Karten an.
  * Standort + Zielgruppen-Filter: User sehen nur passende Events.
@@ -118,7 +118,7 @@ export function isEventVisibleForUser(
   userJobTitle: string = '',
 ): boolean {
   // v8.6: Exclude-Liste hat Vorrang. Wer hier drin ist, sieht das Event NIE
-  // — egal ob er ueber Standortfilter oder Verteiler-Mitgliedschaft sonst
+  // — egal ob er über Standortfilter oder Verteiler-Mitgliedschaft sonst
   // sichtbar wäre.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const excluded = ((event as any).excludedUsers || []) as string[];

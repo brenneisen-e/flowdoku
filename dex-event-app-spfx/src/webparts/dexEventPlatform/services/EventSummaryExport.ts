@@ -192,7 +192,7 @@ const formatBytes = (b?: number): string => {
 const tt = (de: string, en: string, locale: 'de' | 'en'): string =>
   locale === 'de' ? de : en;
 
-// Eine semantische Sektion mit Ueberschrift + Inhalt.
+// Eine semantische Sektion mit Überschrift + Inhalt.
 const section = (heading: string, content: string): string => `
   <section class="dex-section">
     <h2>${escapeHtml(heading)}</h2>
@@ -606,7 +606,7 @@ export function buildSummaryHtml(d: SummaryData): string {
 }
 
 /**
- * Oeffnet die A4-Zusammenfassung in einem neuen Fenster und triggert sofort
+ * Öffnet die A4-Zusammenfassung in einem neuen Fenster und triggert sofort
  * den Druckdialog. Im Browser-Druckdialog kann der User „Als PDF speichern"
  * wählen und das Dokument als PDF ablegen.
  *
@@ -621,7 +621,7 @@ export function exportSummaryAsPdf(data: SummaryData): void {
   const html = buildSummaryHtml(data);
   const w = window.open('', '_blank', 'width=900,height=1100,scrollbars=yes');
   if (!w) {
-    // Pop-up blockiert — Fallback ueber Data-URL als Download.
+    // Pop-up blockiert — Fallback über Data-URL als Download.
     const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -635,7 +635,7 @@ export function exportSummaryAsPdf(data: SummaryData): void {
   }
   // v17.22: opener-Referenz kappen — das neue Fenster teilt die SharePoint-
   // Origin; ohne diese Zeile könnte darin laufendes Script (falls der
-  // Sanitizer je umgangen würde) ueber window.opener auf die Host-Seite
+  // Sanitizer je umgangen würde) über window.opener auf die Host-Seite
   // zugreifen (Reverse-Tabnabbing / SP-REST im User-Kontext).
   try { w.opener = null; } catch { /* */ }
   w.document.open();
@@ -687,7 +687,7 @@ export function exportSummaryAsDoc(data: SummaryData): void {
   // v17.22: Robust statt String-Slice. Vorher wurde bei `<head>` geschnitten
   // (`substring(indexOf('<head>'))`) — fällt indexOf auf -1 (z.B. nach
   // einem Refactor ohne <head>), liefert substring(-1) den ganzen String
-  // inkl. doppeltem <html>. Jetzt ersetzen wir das oeffnende <html …>-Tag
+  // inkl. doppeltem <html>. Jetzt ersetzen wir das öffnende <html …>-Tag
   // gezielt durch das Word-Prelude; fehlt es, wird das Prelude vorangestellt.
   const wordPrelude = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">`;
   let wordHtml: string;

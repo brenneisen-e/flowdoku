@@ -121,7 +121,7 @@ function AppContent(): React.ReactElement {
   const { isAdmin, isRolesLoading } = useRoles();
   const { markExpiredEventsAsCompleted, autoRepairProxyAccess, maybeSendWeeklyReport, maybeSendPostEventOrganizerMails, reconcileCounters, isEventsLoading, events, getKpiCache, recomputeEventKpiOnly } = useEvents();
 
-  // v11.52: KPI-Boxen im Boot-Loader. Live-Zählung ueber alle Event-
+  // v11.52: KPI-Boxen im Boot-Loader. Live-Zählung über alle Event-
   // Subsites war zu langsam (Counts kommen erst nach mehreren Sekunden) —
   // jetzt lesen wir einen gecachten Wert aus der _Config-Zeile von
   // DEX_EmailTemplates: EIN schneller REST-Call, sofort verfügbar.
@@ -307,7 +307,7 @@ function AppContent(): React.ReactElement {
       // zurück (AdminPage mit dem soeben gespeicherten Event vorselektiert)
       // statt in die Event-Liste — weiterarbeiten ohne Such-Klick.
       // Beim Create bleibt der bisherige Pfad: Event-Liste, damit der neue
-      // Event direkt in der Uebersicht auftaucht.
+      // Event direkt in der Übersicht auftaucht.
       if (detail.type === 'update' && detail.eventId) {
         navigate('admin', detail.eventId);
       } else {
@@ -622,8 +622,8 @@ function AppContent(): React.ReactElement {
               {/* v28.34: Der Boot-Loader nutzte dieselbe .landing__orb-Huelle wie
                   die Landing Page — seit v28.33 zeichnet dort aber das DexLogo-
                   Canvas statt des Farbverlaufs, die Huelle allein blieb also leer
-                  (grosse weisse Flaeche ueber „Welcome to DEX"). Jetzt rendert der
-                  Boot-Loader dasselbe Logo, der Uebergang bleibt fluessig. */}
+                  (grosse weisse Flaeche über „Welcome to DEX"). Jetzt rendert der
+                  Boot-Loader dasselbe Logo, der Übergang bleibt fluessig. */}
               <div className="landing__orb">
                 <DexLogo title="DEX" motion="oscillate" style={{ width: '100%' }} />
               </div>
@@ -821,8 +821,8 @@ function AppContent(): React.ReactElement {
       {/* v23.37: Admin-Hinweis auf offene „Organizer werden"-Anträge (+ Deep-Link).
           v24.19: kein eigener Padding-Wrapper mehr — der erzeugte sonst einen
           weißen 12px-Streifen unter dem Header, auch wenn der Banner nichts
-          anzeigt (er gibt null zurueck, wenn keine Antraege offen sind). Den
-          Abstand traegt jetzt der Banner selbst, nur wenn er wirklich rendert. */}
+          anzeigt (er gibt null zurück, wenn keine Anträge offen sind). Den
+          Abstand trägt jetzt der Banner selbst, nur wenn er wirklich rendert. */}
       {!isBootLoading && <OrganizerRequestsBanner />}
       {/* v26.59: grantaccess-Deep-Link aus der „SharePoint-Zugriff benötigt"-Mail
           — vergibt als Admin direkt Leserechte und zeigt das Ergebnis als Modal. */}

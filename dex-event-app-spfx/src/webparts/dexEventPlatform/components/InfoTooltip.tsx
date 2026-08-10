@@ -6,11 +6,11 @@
  * Tooltips an (vor allem nicht auf Touch und in Edge bei kleinen Hover-Targets).
  *
  * Diese Komponente rendert das gleiche `i`-Icon, blendet beim Hover/Focus aber
- * sofort ein gestyltes Tooltip-Pop unter/ueber dem Icon ein. Funktioniert auch
+ * sofort ein gestyltes Tooltip-Pop unter/über dem Icon ein. Funktioniert auch
  * bei Tastatur-Navigation (focus) und Touch (click).
  *
  * v11.56: Das Tooltip-Popup wird via React.createPortal direkt an document.body
- * gehängt, damit es nicht von uebergeordneten `overflow:hidden`-Containern
+ * gehängt, damit es nicht von übergeordneten `overflow:hidden`-Containern
  * (z.B. Karten auf der Registrierungs-Seite) abgeschnitten wird. Die Position
  * wird aus dem getBoundingClientRect() des Trigger-Icons berechnet (fixed).
  */
@@ -23,11 +23,30 @@ export interface InfoTooltipProps {
   text: React.ReactNode;
   /** Optional: rechts/links/oben statt default unten */
   placement?: 'top' | 'bottom' | 'right' | 'left';
+  /** v28.74: Inhalt bedienbar machen (z.B. Link im Tooltip). Das Tooltip
+   *  schliesst dann verzoegert und faengt die Maus selbst ab, statt beim
+   *  Verlassen des Icons sofort zu verschwinden. Nur setzen, wenn im Text
+   *  wirklich etwas anklickbar ist — sonst bleibt es unnoetig lange stehen. */
+  interactive?: boolean;
 }
 
-export const InfoTooltip: React.FC<InfoTooltipProps> = ({ text, placement = 'top' }) => {
+export const InfoTooltip: React.FC<InfoTooltipProps> = ({ text, placement = 'top', interactive = false }) => {
   const [open, setOpen] = React.useState(false);
   const triggerRef = React.useRef<HTMLSpanElement | null>(null);
+  // v28.74: Bei `interactive` schliesst das Tooltip verzoegert, damit die Maus
+  // vom Icon auf die Box wandern kann, ohne dass sie unterwegs verschwindet.
+  const closeTimerRef = React.useRef<number | null>(null);
+  const cancelClose = React.useCallback((): void => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }, []);
+  const scheduleClose = React.useCallback((): void => {
+    cancelClose();
+    closeTimerRef.current = window.setTimeout(() => { setOpen(false); }, 220);
+  }, [cancelClose]);
+  React.useEffect(() => cancelClose, [cancelClose]);
   const [coords, setCoords] = React.useState<{ top: number; left: number; transform: string } | null>(null);
 
   const computePosition = React.useCallback((): void => {
@@ -132,8 +151,14 @@ export const InfoTooltip: React.FC<InfoTooltipProps> = ({ text, placement = 'top
         minWidth: 'min(280px, calc(100vw - 24px))',
         whiteSpace: 'normal',
         textAlign: 'left',
-        pointerEvents: 'none',
+        // v28.74: Bei `interactive` bleibt das Tooltip bedienbar — sonst
+        // konnte man einen Link darin nie erreichen: Sobald die Maus den
+        // Trigger verliess, schloss es sich, und mit pointerEvents:'none'
+        // wäre ein Klick ohnehin ins Leere gegangen.
+        pointerEvents: interactive ? 'auto' : 'none',
       }}
+      onMouseEnter={interactive ? cancelClose : undefined}
+      onMouseLeave={interactive ? scheduleClose : undefined}
     >
       {text}
     </span>,
@@ -144,10 +169,10 @@ export const InfoTooltip: React.FC<InfoTooltipProps> = ({ text, placement = 'top
     <span
       ref={triggerRef}
       style={{ position: 'relative', display: 'inline-flex', marginLeft: 8 }}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-      onFocus={() => setOpen(true)}
-      onBlur={() => setOpen(false)}
+      onMouseEnter={() => { cancelClose(); setOpen(true); }}
+      onMouseLeave={() => { if (interactive) scheduleClose(); else setOpen(false); }}
+      onFocus={() => { cancelClose(); setOpen(true); }}
+      onBlur={() => { if (interactive) scheduleClose(); else setOpen(false); }}
     >
       <span
         className="info-icon"

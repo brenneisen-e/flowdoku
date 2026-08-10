@@ -2,7 +2,7 @@
  * Navigation Context - ersetzt react-router für SPFx
  *
  * SPFx WebParts können kein Browser-Routing verwenden,
- * deshalb wird hier alles ueber State gesteuert.
+ * deshalb wird hier alles über State gesteuert.
  * Der History-Stack ermöglicht die Zurück-Navigation.
  */
 
@@ -39,7 +39,7 @@ function storeNav(page: Page, eventId: string | null): void {
   } catch { /* best-effort */ }
 }
 
-// Optionale Absicht beim Navigieren (z.B. Registration-Seite direkt im "Für andere"-Modus oeffnen)
+// Optionale Absicht beim Navigieren (z.B. Registration-Seite direkt im "Für andere"-Modus öffnen)
 export type NavIntent = 'register-other' | 'auto-cancel' | undefined;
 
 interface NavigationContextType {
@@ -50,8 +50,8 @@ interface NavigationContextType {
   goBack: () => void;
   clearIntent: () => void;
   /** v17.3: Page registriert einen Confirm-Hook für ungespeicherte
-   *  Aenderungen. Wird VOR jeder Navigation aufgerufen — wenn er false
-   *  zurückliefert, blockiert das Navigation. Null = keine Aenderungen,
+   *  Änderungen. Wird VOR jeder Navigation aufgerufen — wenn er false
+   *  zurückliefert, blockiert das Navigation. Null = keine Änderungen,
    *  durchnavigieren. */
   setNavigationGuard: (guard: (() => Promise<boolean>) | null) => void;
 }

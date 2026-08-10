@@ -81,7 +81,7 @@ export function flowsSection(locale: 'de' | 'en'): ManualSection {
                 <ul style={{ paddingLeft: 18, margin: '0 0 6px 0', lineHeight: 1.7 }}>
                   <li><strong>Einladen</strong> — {isDe ? 'fügt einen einzelnen Teilnehmer zum Outlook-Termin hinzu (PATCH attendees-Array).' : 'adds a single attendee to the Outlook event (PATCH attendees array).'}</li>
                   <li><strong>Ausladen</strong> — {isDe ? 'entfernt einen einzelnen Teilnehmer (PATCH gefiltertes attendees-Array).' : 'removes a single attendee (PATCH filtered attendees array).'}</li>
-                  <li><strong>UpdateEvent</strong> — {isDe ? 'patcht Titel, Start, Ende UND Body (seit 2026-04-17). Der Body kommt aus DEX_Events.OutlookBody mit aufgelöstem {{ORB_URL}}. Vorher wurde der Body NICHT mitgeschickt → Aenderungen waren unsichtbar.' : 'patches subject, start, end AND body (since 2026-04-17). Body comes from DEX_Events.OutlookBody with {{ORB_URL}} resolved. Previously body was NOT sent → changes were invisible.'}</li>
+                  <li><strong>UpdateEvent</strong> — {isDe ? 'patcht Titel, Start, Ende UND Body (seit 2026-04-17). Der Body kommt aus DEX_Events.OutlookBody mit aufgelöstem {{ORB_URL}}. Vorher wurde der Body NICHT mitgeschickt → Änderungen waren unsichtbar.' : 'patches subject, start, end AND body (since 2026-04-17). Body comes from DEX_Events.OutlookBody with {{ORB_URL}} resolved. Previously body was NOT sent → changes were invisible.'}</li>
                   <li><strong>DeleteEvent</strong> — {isDe ? 'löscht den Outlook-Termin per Graph DELETE. Item-CalendarLink wird direkt im Queue-Item mitgegeben (weil das DEX_Events-Item bei Lauf bereits weg ist).' : 'deletes the Outlook event via Graph DELETE. CalendarLink is included in the queue item (because the DEX_Events item is already gone when the flow runs).'}</li>
                 </ul>
                 <p style={{ margin: 0 }}>
@@ -101,7 +101,7 @@ export function flowsSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Erkennt, wenn ein Teilnehmer die Outlook-Einladung ablehnt (auch ueber weitergeleitete Decline-Mails wie FW:/WG:). Statt automatisch in der App abzumelden, wird eine Reminder-Mail gequeued ("war das Absicht? Wenn ja, klicke hier zum Abmelden") — Nutzer bleibt in der App angemeldet bis er aktiv bestätigt.'
+                  ? 'Erkennt, wenn ein Teilnehmer die Outlook-Einladung ablehnt (auch über weitergeleitete Decline-Mails wie FW:/WG:). Statt automatisch in der App abzumelden, wird eine Reminder-Mail gequeued ("war das Absicht? Wenn ja, klicke hier zum Abmelden") — Nutzer bleibt in der App angemeldet bis er aktiv bestätigt.'
                   : 'Detects when an attendee declines the Outlook invite (including forwarded decline notifications like FW:/Re:). Instead of auto-cancelling in the app, queues a reminder email ("did you mean it? click here to confirm cancellation") — user stays registered until they actively confirm.'}
               </>
             ),
@@ -163,7 +163,7 @@ export function flowsSection(locale: 'de' | 'en'): ManualSection {
             mockup: (
               <Callout variant="warning">
                 {isDe
-                  ? 'Bei Aenderungen an einem Flow: IMMER das aktuelle JSON in docs/flow-jsons.md pflegen. Das ist die einzige Quelle der Wahrheit für den aktuellen Stand. Power Automate selbst hat keine Versionierung im Sinne von Git.'
+                  ? 'Bei Änderungen an einem Flow: IMMER das aktuelle JSON in docs/flow-jsons.md pflegen. Das ist die einzige Quelle der Wahrheit für den aktuellen Stand. Power Automate selbst hat keine Versionierung im Sinne von Git.'
                   : 'When modifying a flow: ALWAYS update the current JSON in docs/flow-jsons.md. That file is the single source of truth — Power Automate has no Git-style versioning.'}
               </Callout>
             ),

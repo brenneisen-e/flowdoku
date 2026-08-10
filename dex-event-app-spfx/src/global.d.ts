@@ -1,5 +1,5 @@
 /**
- * Globale Typdeklarationen fuer Nicht-TS-Module.
+ * Globale Typdeklarationen für Nicht-TS-Module.
  *
  * SCSS-Module: SPFx bundelt SCSS-Dateien zur Build-Zeit in JS-Module, die ein
  * Record von Klassen-Namen exportieren. TypeScript kennt diesen Mechanismus

@@ -3,7 +3,7 @@
  *
  * Lädt Events aus der SharePoint-Liste DEX_Events.
  * Erstellt die Liste automatisch beim ersten Start.
- * Verwaltet Registrierungen ueber Event-Subsites mit Teilnehmerlisten.
+ * Verwaltet Registrierungen über Event-Subsites mit Teilnehmerlisten.
  *
  * - Eike, Maerz 2026
  */
@@ -38,7 +38,7 @@ import { looksLikeClaimName, resolveMyDisplayName, safeDisplayName } from '../ut
  *
  * - Override-JSON-Format: { "Anmeldung": { subject, heading, bodyHtml }, ... }
  * - Pro Feld gilt: Override > globale SP-Vorlage. headingColor bleibt immer
- *   die globale (Overrides aendern keine Brand-Farben).
+ *   die globale (Overrides ändern keine Brand-Farben).
  * - Wenn weder Override noch SP-Template existieren, gibt die Funktion null
  *   zurück und der Caller fällt auf das Code-Default zurück.
  */
@@ -402,7 +402,7 @@ interface EventContextType {
    *  Verhalten wie `addTeamMember`, aber läuft mit dem eingeloggten User
    *  selbst als neuem Member. */
   joinTeam: (eventId: string, teamId: string, teamName: string | undefined, customData?: Record<string, string>) => Promise<{ ok: boolean; status?: 'Angemeldet' | 'Warteliste'; reason?: string }>;
-  /** v11.84: Team-Lead-Rolle innerhalb eines Teams uebergeben — nur im
+  /** v11.84: Team-Lead-Rolle innerhalb eines Teams übergeben — nur im
    *  Admin Center für Admin/Organizer eigener Events sichtbar. Setzt die
    *  alte Lead-Zeile auf TeamLead=false und die neue auf TeamLead=true,
    *  schickt anschliessend eine Info-Mail an alle aktiven Mitglieder. */
@@ -426,7 +426,7 @@ interface EventContextType {
   /** v18.11: Proaktive Absage durch einen (noch nicht angemeldeten) Teilnehmer
    *  — „Ich nehme nicht teil". Landet als Abgemeldet-Eintrag im Admin-Center. */
   declineEvent: (eventId: string) => Promise<boolean>;
-  /** v11.86: Ein Team-Lead meldet ueber „Team verwalten" stellvertretend
+  /** v11.86: Ein Team-Lead meldet über „Team verwalten" stellvertretend
    *  ein Team-Mitglied vom Event ab. Audit-Felder (CancelledBy*) werden
    *  mit dem eingeloggten Lead gefüllt, danach läuft derselbe
    *  Team-Post-Step wie beim Self-Cancel (Info-Mails an die uebrigen
@@ -1565,7 +1565,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         withTime: !!(cf as any).withTime,
         // externalLinks ebenfalls durchreichen, damit AGB-Links für B2Run-Datenschutz
-        // korrekt unter dem Feld angezeigt werden (war bisher nur ueber den Fallback in
+        // korrekt unter dem Feld angezeigt werden (war bisher nur über den Fallback in
         // RegistrationPage abgesichert).
         externalLinks: cf.externalLinks,
         // v18.41: CC-bei-Mail-Flag durchreichen — collectCcEmailsFromFields liest es.
@@ -1677,7 +1677,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl) return { ok: false, status: 'Warteliste' };
 
-    // Vorname/Nachname aus displayName extrahieren falls nicht uebergeben.
+    // Vorname/Nachname aus displayName extrahieren falls nicht übergeben.
     // Deloitte-Profile liefern den Namen typischerweise als "Nachname, Vorname"
     // (Komma-Format aus dem Active Directory). Früher haben wir mit Space
     // gesplittet — das tauschte Vor- und Nachname und führte u.a. dazu, dass
@@ -1806,7 +1806,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // Audit-Trail: wer klickt gerade "Register"? = der eingeloggte User.
     // Bei Self-Registration ist das = der Teilnehmer selbst, bei "Für andere
     // Person registrieren" ist das der Organizer/Admin (Teilnehmer-Daten
-    // wurden ueber participantFirstName/participantEmail uebergeben).
+    // wurden über participantFirstName/participantEmail übergeben).
     const actorName = currentUserName;
     const actorEmail = currentUserEmail;
 
@@ -2883,11 +2883,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   }
 
   /**
-   * v11.84: Lead-Rolle innerhalb eines Teams uebergeben. Nur für Admin
+   * v11.84: Lead-Rolle innerhalb eines Teams übergeben. Nur für Admin
    * Center gedacht — die UI versteckt den Button für alle anderen Rollen.
    * Wirft kein Mail zur "alten" Person, sondern eine Info-Mail an alle
    * aktiven Team-Mitglieder mit dem Hinweis "Die Team-Lead-Rolle wurde
-   * an <Name> uebergeben". Audit-Eintrag im ChangeLog.
+   * an <Name> übergeben". Audit-Eintrag im ChangeLog.
    */
   async function transferTeamLead(
     eventId: string,
@@ -3205,7 +3205,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
 
     // Audit: wer klickt gerade 'Abmelden'? = der eingeloggte User. Bei Self-Cancel
     // ist das = der Teilnehmer selbst. Aus der App heraus gibt's aktuell keinen
-    // "Abmeldung für andere"-Pfad (das macht der Organizer/Admin ueber AdminPage,
+    // "Abmeldung für andere"-Pfad (das macht der Organizer/Admin über AdminPage,
     // dort wird eventService.cancelRegistration direkt aufgerufen).
     // v11.53: vorherigen Status merken, damit wir den KPI-Counter nur dann
     // dekrementieren, wenn der User tatsächlich 'Angemeldet' war (Wartelist-
@@ -3274,7 +3274,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
               emailData = cancellationEmail(currentUserFirstName, event.title);
             }
             // v8.5: Organizer-Mitlesen bei Abmeldung auswerten. 'always' = immer,
-            // 'afterDeadline' = nur wenn lastDeregisterDate ueberschritten ist.
+            // 'afterDeadline' = nur wenn lastDeregisterDate überschritten ist.
             // v28.28: als CC statt BCC (siehe Anmelde-Pfad).
             let orgCopyCc = '';
             const mode = event.notifyOrgCancelMode || 'never';
@@ -3387,7 +3387,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       // addTeamMember). Die App entscheidet hier bewusst NICHT, ob der
       // Slot für das Team reserviert bleibt — das passt zur Beschreibung
       // im Spec, weil der frei werdende Sitz neutral ist: der Team-Lead
-      // kann ihn ueber "Mitglied hinzufügen" wieder füllen, ansonsten
+      // kann ihn über "Mitglied hinzufügen" wieder füllen, ansonsten
       // landet er in der normalen Sitzplatz-Verwaltung.
       if (wasTeamCancel && event) {
         await handleTeamCancelPostStep(event, eventId, subsiteUrl, teamId, teamName, wasTeamLead, myReg).catch(err => {
@@ -3406,8 +3406,8 @@ export function EventProvider(props: { context: WebPartContext; children: React.
    * danach läuft derselbe Team-Post-Step wie beim Self-Cancel:
    * Sitzplatz-Reconcile, IDReorder-Queue, Outlook-Ausladung,
    * Abmelde-Bestätigung an die abgemeldete Person und Info-Mails an die
-   * uebrigen Team-Mitglieder. Der Lead darf sich ueber diesen Pfad
-   * NICHT selbst löschen — das uebernimmt der normale Self-Cancel ueber
+   * uebrigen Team-Mitglieder. Der Lead darf sich über diesen Pfad
+   * NICHT selbst löschen — das übernimmt der normale Self-Cancel über
    * `cancelRegistration` (inkl. Auto-Promote des frühesten Members).
    */
   async function cancelTeamMember(
@@ -3417,7 +3417,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const subsiteUrl = subsiteMap.current[eventId];
     if (!subsiteUrl || !memberRegistration?.Id) return false;
     if (!memberRegistration.TeamId) return false;
-    // Self-Schutz: der Lead löscht sich nicht ueber diesen Pfad — sein
+    // Self-Schutz: der Lead löscht sich nicht über diesen Pfad — sein
     // eigener Cancel läuft via cancelRegistration mit Auto-Promote.
     if ((memberRegistration.ParticipantEmail || '').toLowerCase() === (currentUserEmail || '').toLowerCase()) {
       console.warn('[DEX] cancelTeamMember: Lead cannot cancel itself via this path');
@@ -5620,10 +5620,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const appBase = `${eventService.siteUrl}/SitePages/DEX.aspx?env=WebView`;
         if (status === 'Approved') {
-          // v28.44 BUG-FIX: Hier ging bisher nur eine kurze Bestaetigung raus —
+          // v28.44 BUG-FIX: Hier ging bisher nur eine kurze Bestätigung raus —
           // die richtige Onboarding-Mail (Links, erstes Test-Event, Handbuch,
           // Ticketsystem, Einsatzbereich) gab es ausschliesslich beim MANUELLEN
-          // Zuweisen einer Rolle. Wer ueber den Antragsweg Organizer wurde, hat
+          // Zuweisen einer Rolle. Wer über den Antragsweg Organizer wurde, hat
           // sie also nie bekommen. Jetzt bekommen beide Wege dieselbe Mail.
           const onboarding = organizerOnboardingEmail(name || email, 'Organizer');
           await eventService.queueEmail(onboarding.subject, email, name || email, onboarding.body, 'OrganizerApproved', '', '0');

@@ -64,10 +64,10 @@ export interface HtmlEditorModalProps {
   onImageWidthChange?: (px: number) => void;
   onImagePaddingVChange?: (px: number) => void;
   onImagePaddingHChange?: (px: number) => void;
-  /** Outlook-Termin: editierbare Ueberschrift (<h1>) */
+  /** Outlook-Termin: editierbare Überschrift (<h1>) */
   outlookHeading?: string;
   onOutlookHeadingChange?: (s: string) => void;
-  /** Outlook-Termin: editierbare Unter-Ueberschrift (<h2>) */
+  /** Outlook-Termin: editierbare Unter-Überschrift (<h2>) */
   outlookSubheading?: string;
   onOutlookSubheadingChange?: (s: string) => void;
   /** v18.42: Betreff (Titel des Outlook-Termins) — bearbeitbar. Leer = Event-Titel. */
@@ -108,7 +108,7 @@ export interface HtmlEditorModalProps {
     disabled?: boolean;
     icon?: React.ReactNode;
   };
-  /** v11.40: Optionaler React-Knoten oberhalb von Subject/Ueberschrift im
+  /** v11.40: Optionaler React-Knoten oberhalb von Subject/Überschrift im
    *  Editor — z.B. für eine Ziel-Auswahl im Einladungsmail-Modal. */
   headerExtra?: React.ReactNode;
   /** v28.7: Vorlagen-Chips über dem Body-Editor (z.B. Beschreibungs-
@@ -242,7 +242,7 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
   // v18.22: freier Hex-Code für die Body-Textfarbe (Picker/Eingabe).
   const [bodyHexDraft, setBodyHexDraft] = React.useState('#000000');
 
-  // External value beim Oeffnen in den Editor laden (Re-Open mit anderem Template)
+  // External value beim Öffnen in den Editor laden (Re-Open mit anderem Template)
   React.useEffect(() => {
     if (open && editorRef.current) {
       const cur = editorRef.current.innerHTML;

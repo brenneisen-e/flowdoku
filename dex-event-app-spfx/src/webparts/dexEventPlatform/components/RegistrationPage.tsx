@@ -897,7 +897,7 @@ export default function RegistrationPage(): React.ReactElement {
   const splitLabelA = (event?.splitLabelA && event.splitLabelA.trim()) || 'Durchstarter';
   const splitLabelB = (event?.splitLabelB && event.splitLabelB.trim()) || 'Funstarter';
   const singleStarterType: string = (!event || (durchCap <= 0 && funCap <= 0))
-    ? '' // kein B2Run-Event ueberhaupt
+    ? '' // kein B2Run-Event überhaupt
     : (durchCap > 0 && funCap <= 0) ? 'Durchstarter'
     : (funCap > 0 && durchCap <= 0) ? 'Funstarter'
     : ''; // beide > 0 -> User muss wählen (Split-UI)
@@ -1336,7 +1336,7 @@ export default function RegistrationPage(): React.ReactElement {
       // Pflicht-Custom-Fields validieren. Checkbox-Pflichtfelder müssen 'true' sein,
       // alle anderen dürfen nach trim nicht leer sein.
       // B2Run: Mobilnummer ist nur Pflicht wenn Infoservice aktiviert; ansonsten
-      // gilt das Feld als versteckt und wird uebersprungen.
+      // gilt das Feld als versteckt und wird übersprungen.
       const missingRequired = event.eventSpecificFields
         .filter(f => {
           if (f.id === 'b2run_mobilnummer') {
