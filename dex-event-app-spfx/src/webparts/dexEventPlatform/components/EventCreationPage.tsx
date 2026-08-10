@@ -7516,11 +7516,29 @@ export default function EventCreationPage(): React.ReactElement {
     const key = dayKeyOfDate(d);
     const existingIdx = subEvents.findIndex(se => dayKeyOfSub(se) === key);
     if (existingIdx < 0) {
-      // Der Termin bekommt den ganzen Tag: Ein Sub-Event ohne Zeiten würde die
-      // Zeiten des Hauptevents erben (v28.66) — das ist bei einer Reihe über
-      // mehrere Wochen der gesamte Zeitraum und damit falsch.
-      const start = berlinLocalToUtcIso(`${key}T00:00`);
-      const end = berlinLocalToUtcIso(`${key}T23:59`);
+      // v28.92: Der Termin bekommt die UHRZEIT des Hauptevents, gelegt auf
+      // diesen Tag — läuft das Event von 9 bis 17 Uhr, gilt das auch für den
+      // einzelnen Tag. Ein Ganztags-Block (00:00–23:59) würde den Teilnehmern
+      // den kompletten Kalendertag zustellen.
+      //
+      // Die Zeitfelder bleiben bewusst NICHT leer: Ein Sub-Event ohne Zeiten
+      // erbt seit v28.66 die TERMINE des Hauptevents — bei einer Reihe also
+      // 01.09.–01.10. für jeden einzelnen Tag statt des Tages selbst.
+      //
+      // Zwei Fälle, in denen die Uhrzeit nichts hergibt, fallen auf den ganzen
+      // Tag zurück: gar keine Zeiten am Hauptevent, und ein mehrtägiges Event,
+      // dessen Endzeit nicht nach der Startzeit liegt (z.B. 01.09. 00:00 bis
+      // 01.10. 00:00 — daraus liesse sich für einen Tag keine gültige Spanne
+      // bauen).
+      const timeOf = (v: string): string => {
+        const t = (v || '').slice(11, 16);
+        return /^\d{2}:\d{2}$/.test(t) ? t : '';
+      };
+      const startTime = timeOf(startDate);
+      const endTime = timeOf(endDate);
+      const usable = !!startTime && !!endTime && endTime > startTime;
+      const start = berlinLocalToUtcIso(`${key}T${usable ? startTime : '00:00'}`);
+      const end = berlinLocalToUtcIso(`${key}T${usable ? endTime : '23:59'}`);
       setSubEvents(prev => prev.concat([makeSubEventDraft({ title: dayLabel(d), startDate: start, endDate: end })]));
       return;
     }
@@ -11187,8 +11205,8 @@ export default function EventCreationPage(): React.ReactElement {
                       <div style={{ marginTop: 12 }}>
                         <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', margin: '0 0 8px' }}>
                           {isDe
-                            ? <>Klick auf einen Tag legt ihn als Termin an, ein erneuter Klick nimmt ihn zurück. Angelegte Tage sind <strong>grün</strong> markiert. Titel und Zeiten (ganztägig) werden gesetzt — Plätze, Frist und alles Weitere stellst du danach je Termin über die Reiter oben ein.</>
-                            : <>Clicking a day creates it as a date, clicking again removes it. Created days are marked <strong>green</strong>. Title and times (all-day) are filled in — seats, deadline and everything else you set per date via the tabs above.</>}
+                            ? <>Klick auf einen Tag legt ihn als Termin an, ein erneuter Klick nimmt ihn zurück. Angelegte Tage sind <strong>grün</strong> markiert. Titel und Zeiten werden gesetzt — jeder Tag übernimmt die <strong>Uhrzeit des Hauptevents</strong> (ohne Uhrzeit dort: ganztägig). Plätze, Frist und alles Weitere stellst du danach je Termin über die Reiter oben ein.</>
+                            : <>Clicking a day creates it as a date, clicking again removes it. Created days are marked <strong>green</strong>. Title and times are filled in — each day takes the <strong>main event&rsquo;s time of day</strong> (all-day if none is set there). Seats, deadline and everything else you set per date via the tabs above.</>}
                         </p>
                         <DatePicker
                           inline
