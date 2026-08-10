@@ -21,6 +21,7 @@ import { buildUnsentEmlDraft } from '../utils/emlDraft';
 import { APP_VERSION } from '../version';
 import { RELEASE_NOTES } from '../data/releaseNotes';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
+import { looksLikeClaimName, resolveMyDisplayName, safeDisplayName } from '../utils/displayName';
 
 /**
  * Organizer-Namen für Mail-Anreden sauber formatieren:
@@ -810,7 +811,24 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   // v9.16/v9.21: Test-Team war kurz global (TestTeamEmails in _Config),
   // ist jetzt per-Event (event.testTeamEmails). Globaler State raus.
   const currentUserEmail = props.context.pageContext.user.email;
-  const currentUserName = props.context.pageContext.user.displayName;
+  /**
+   * v28.64: `pageContext.user.displayName` liefert bei einzelnen Personen das
+   * Claims-Login-Token statt des Namens („0#.f|membership|user@deloitte.de").
+   * Der Wert kommt aus der versteckten „User Information List" der Site, in
+   * die SharePoint den Namen beim ersten Kontakt stempelt — stand dort damals
+   * kein Anzeigename, bleibt das Token dauerhaft stehen, auch wenn das Profil
+   * längst stimmt. Deshalb: erkennen, aus dem Benutzerprofil nachladen und bis
+   * dahin die E-Mail zeigen statt des Tokens. Details in utils/displayName.ts.
+   */
+  const rawUserName = props.context.pageContext.user.displayName;
+  const [profileUserName, setProfileUserName] = React.useState('');
+  React.useEffect(() => {
+    if (!looksLikeClaimName(rawUserName)) return;
+    resolveMyDisplayName(props.context)
+      .then(n => { if (n) setProfileUserName(n); })
+      .catch(() => { /* Fallback bleibt die E-Mail */ });
+  }, [rawUserName]);
+  const currentUserName = profileUserName || safeDisplayName(rawUserName, currentUserEmail);
   // Vorname für E-Mail-Anreden ({{Name}} im Template).
   // Deloitte-displayName ist "Nachname, Vorname" (mit Komma) -> Teil nach Komma.
   // Fallback: displayName ohne Komma -> erstes Wort (vereinzelt "Vorname Nachname").
