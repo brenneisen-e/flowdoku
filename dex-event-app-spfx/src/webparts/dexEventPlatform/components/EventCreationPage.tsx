@@ -3627,6 +3627,20 @@ export default function EventCreationPage(): React.ReactElement {
     // Sub-Events erben Organizer + OrganizerEmail vom Parent. Einmal sanitisieren
     // statt pro Iteration, identisch für alle Children.
     const sanitizedOrgPair = sanitizeOrganizerPairs();
+    // v28.66 BUG-FIX: Zeiten des Hauptevents als Fallback für Sub-Events ohne
+    // eigene Zeiten. Die Start-/End-Felder eines Sub-Events sind optional (neue
+    // Drafts starten auf '' und der DatePicker ist löschbar) und werden — anders
+    // als beim Hauptevent — von der Wizard-Prüfung nicht eingefordert. Bisher
+    // landeten StartDate UND EndDate dann leer in DEX_Events; der
+    // DEX_CreateOutlookEvent-Flow rechnet convertFromUtc(coalesce(OutlookEnd,
+    // EndDate)) = convertFromUtc(null) und „Create event (V4)" bricht ab — für
+    // dieses Sub-Event entsteht gar kein Outlook-Termin (und der Flow-Lauf
+    // scheitert komplett). Ein Sub-Event findet immer innerhalb seines
+    // Hauptevents statt, also sind dessen Zeiten der richtige Default. Nach dem
+    // Speichern stehen sie sichtbar in den Sub-Event-Feldern und können dort
+    // präzisiert werden.
+    const parentStartIso = startDate ? berlinLocalToUtcIso(startDate) : '';
+    const parentEndIso = endDate ? berlinLocalToUtcIso(endDate) : '';
     // v28.29 BUG-FIX: Kopfbild-Vererbung vom Hauptevent auf die Sub-Events.
     // Sub-Events haben EIGENE Outlook-Termine und eigene Mails, aber praktisch
     // nie ein eigenes Kopfbild — Schritt 23/24 wird pro Tab gepflegt, und die
@@ -3733,12 +3747,15 @@ export default function EventCreationPage(): React.ReactElement {
         // v22.10: Ausschluss-Liste pro Sub-Event mitpersistieren (createEvent
         // schreibt sie in die Spalte ExcludedUsers).
         excludedUsers: draft.excludedUsers || [],
-        startDate: draft.startDate || '',
+        // v28.66: ohne eigene Zeit die Zeit des Hauptevents erben (s.o.).
+        startDate: draft.startDate || parentStartIso || '',
         // v22.17: NIE ein leeres EndDate persistieren — sonst rechnet der
         // DEX_CreateOutlookEvent-Flow convertFromUtc(coalesce(OutlookEnd,
         // EndDate)) = convertFromUtc(null) und „Create event (V4)" stürzt ab
         // (kein Outlook-Termin). Fallback auf das Start-Datum.
-        endDate: draft.endDate || draft.startDate || '',
+        // v28.66: greift auch, wenn das Sub-Event gar keine eigene Zeit hat —
+        // dann kommt das Ende (ersatzweise der Start) des Hauptevents.
+        endDate: draft.endDate || draft.startDate || parentEndIso || parentStartIso || '',
         registrationDeadline: draft.registrationDeadline || '',
         lastDeregisterDate: draft.lastDeregisterDate || '',
         maxParticipants: draft.maxParticipants || 0,
@@ -3908,7 +3925,11 @@ export default function EventCreationPage(): React.ReactElement {
           'Description': childPayload.description,
           'Location': childPayload.location,
           'StartDate': childPayload.startDate || null,
-          'EndDate': childPayload.endDate || null,
+          // v28.66 BUG-FIX: hier fehlte der v22.17-Schutz — beim Speichern
+          // eines BESTEHENDEN Sub-Events ohne End-Zeit wurde EndDate mit null
+          // überschrieben (Outlook-Flow-Crash, s.o.). childPayload trägt den
+          // Fallback bereits; die zweite Stufe bleibt als Absicherung stehen.
+          'EndDate': childPayload.endDate || childPayload.startDate || null,
           'RegistrationDeadline': childPayload.registrationDeadline || null,
           'MaxParticipants': childPayload.maxParticipants,
           // v20.0 BUG-FIX (Audit): diese Felder wurden beim UPDATE bestehender
@@ -10087,7 +10108,8 @@ export default function EventCreationPage(): React.ReactElement {
                               timeCaption="Uhrzeit"
                               dateFormat="dd.MM.yyyy, HH:mm"
                               locale="de"
-                              placeholderText="Datum und Uhrzeit"
+                              // v28.66: leer = Zeit des Hauptevents wird übernommen.
+                              placeholderText={t('create.subevents.time.placeholder')}
                               className="form-input"
                               wrapperClassName="dex-datepicker-wrapper"
                               calendarClassName="dex-datepicker-calendar"
@@ -10111,7 +10133,8 @@ export default function EventCreationPage(): React.ReactElement {
                               timeCaption="Uhrzeit"
                               dateFormat="dd.MM.yyyy, HH:mm"
                               locale="de"
-                              placeholderText="Datum und Uhrzeit"
+                              // v28.66: leer = Zeit des Hauptevents wird übernommen.
+                              placeholderText={t('create.subevents.time.placeholder')}
                               className="form-input"
                               wrapperClassName="dex-datepicker-wrapper"
                               calendarClassName="dex-datepicker-calendar"
