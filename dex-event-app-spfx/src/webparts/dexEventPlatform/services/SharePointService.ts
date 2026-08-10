@@ -565,6 +565,55 @@ export class SharePointService {
   }
 
   /**
+   * v28.65: Claims-Login-Tokens in der Rollenliste reparieren.
+   *
+   * Betroffen ist `UserName` — die Namen sind beim Zuweisen der Rolle aus dem
+   * Anzeigenamen des Zuweisenden bzw. der Personensuche entstanden und können
+   * dasselbe Token enthalten wie die Teilnehmerzeilen (Hintergrund in
+   * `utils/displayName.ts`). Die E-Mail steht im Feld `Title`.
+   */
+  public async repairClaimNamesInRoles(): Promise<{ scanned: number; hits: number; fixed: number; failed: number }> {
+    const out = { scanned: 0, hits: 0, fixed: 0, failed: 0 };
+    const looksLikeClaim = (s: string): boolean => /\|membership\b|^i:0[#|]|^c:0|0#\.[a-z]\||^\d+#\./i.test((s || '').trim());
+    const rows = await this.getRoles();
+    if (!rows) return out;
+    out.scanned = rows.length;
+    const affected = rows.filter(r => looksLikeClaim(r.UserName || '') || looksLikeClaim(r.AssignedBy || ''));
+    out.hits = affected.length;
+    for (const r of affected) {
+      const email = (r.Title || '').trim();
+      let name = '';
+      try {
+        const prof = await this.searchUserByEmail(email);
+        name = (prof && prof.displayName && !looksLikeClaim(prof.displayName)) ? prof.displayName.trim() : '';
+      } catch { /* nicht auflösbar */ }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const patch: Record<string, any> = {};
+      if (looksLikeClaim(r.UserName || '')) patch['UserName'] = name || email;
+      if (looksLikeClaim(r.AssignedBy || '')) patch['AssignedBy'] = '';
+      if (Object.keys(patch).length === 0) continue;
+      try {
+        const resp = await this.context.spHttpClient.post(
+          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Roles')/items(${r.Id})`,
+          SPHttpClient.configurations.v1,
+          {
+            headers: {
+              'Accept': 'application/json;odata=nometadata',
+              'Content-Type': 'application/json;odata=nometadata',
+              'odata-version': '',
+              'IF-MATCH': '*',
+              'X-HTTP-Method': 'MERGE',
+            },
+            body: JSON.stringify(patch),
+          },
+        );
+        if (resp.ok || resp.status === 204 || resp.status === 406) out.fixed++; else out.failed++;
+      } catch { out.failed++; }
+    }
+    return out;
+  }
+
+  /**
    * v18.5: Power-User-Flag eines Rollen-Eintrags setzen/entfernen.
    */
   public async setPowerUser(itemId: number, isPowerUser: boolean): Promise<boolean> {

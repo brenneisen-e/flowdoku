@@ -35,6 +35,7 @@ import { useIsMobile } from '../utils/useIsMobile';
 // erst beim tatsächlichen Gebrauch (Export-Klick / QR-Vorschau) als eigener
 // Chunk nachgeladen — spart ~1 MB im Haupt-Bundle.
 import { EventService, EventCommRow } from '../services/EventService';
+import { SharePointService } from '../services/SharePointService';
 import { qrCodeEmail, qrEmailDefaults, buildQrBlockHtml, QrEmailOverride, cancellationEmail, promotionEmail, wrapTemplate, replacePlaceholders, buildEmailFromTemplate, getCachedLogoBase64, getCachedOrbBase64, injectIntoEmailContent, externalInvitationEmail } from '../services/EmailTemplates';
 // v26.47: Externe Anmeldung — Einladung als .eml-Entwurf (X-Unsent) zum
 // Selbst-Versenden durch die anmeldende Person (App kann keine externen
@@ -1559,6 +1560,13 @@ export default function AdminPage(): React.ReactElement {
   // Globale Reparatur: Organizer-Email-Mismatch über alle Events fixen
   const [isRepairingOrganizers, setIsRepairingOrganizers] = React.useState(false);
   const [repairOrganizersResult, setRepairOrganizersResult] = React.useState<string | null>(null);
+  // v28.65: Reparatur der Claims-Login-Tokens („0#.f|membership|…") in Namen —
+  // Teilnehmerzeilen, Organizer-Namen der Events und die Rollenliste.
+  const [isRepairingNames, setIsRepairingNames] = React.useState(false);
+  const [repairNamesResult, setRepairNamesResult] = React.useState<string | null>(null);
+  const [nameFixModal, setNameFixModal] = React.useState<{
+    running: boolean; step: string; evIdx: number; evTotal: number; summary: string[] | null;
+  } | null>(null);
   // v20.6: Reparatur "Fremd-Anmeldungen: Zugriff" über alle aktiven Events —
   // prüft pro Teilnehmerliste die "nur eigene Elemente"-Sicherheit und setzt
   // bei Anmeldungen durch Dritte den Zeilen-Autor auf den Teilnehmer.
@@ -2898,6 +2906,8 @@ export default function AdminPage(): React.ReactElement {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const spfxContext = (window as any).__dexSpfxContext;
   const eventServiceRef = React.useMemo(() => spfxContext ? new EventService(spfxContext) : null, []);
+  // v28.65: Fuer die Rollenliste (Namens-Reparatur).
+  const spServiceRef = React.useMemo(() => spfxContext ? new SharePointService(spfxContext) : null, []);
 
   // v22.7: Hintergrund-Check beim Öffnen eines Events — sind die E-Mail-Adressen
   // der Teilnehmer noch zu einem aktiven Deloitte-Konto? Ergebnis wird pro Event
@@ -8107,6 +8117,108 @@ export default function AdminPage(): React.ReactElement {
               />
             )}
 
+            {/* v28.65: Login-Tokens in Namen reparieren.
+                SharePoint stempelt in seine versteckte „User Information List"
+                bei manchen Personen das Claims-Login („0#.f|membership|
+                user@deloitte.de") statt des Anzeigenamens — und korrigiert das
+                nie rückwirkend. Bis v28.64 landete dieser Wert in
+                Teilnehmerzeilen, Organizer-Feldern und der Rollenliste. Diese
+                Aktion sucht die betroffenen Einträge und zieht die Namen aus
+                dem Benutzerprofil nach. Neue Einträge sind seit v28.64 sauber;
+                das hier räumt den Bestand auf. */}
+            {isAdmin && (
+              <ActionTile
+                icon={<Wrench size={18} />}
+                category="maintenance"
+                title={isRepairingNames
+                  ? (isDe ? 'Namen werden repariert…' : 'Repairing names…')
+                  : (isDe ? 'Login-Tokens in Namen reparieren (alle Events)' : 'Repair login tokens in names (all events)')}
+                desc={isDe
+                  ? 'Sucht Einträge, bei denen statt des Namens ein technisches SharePoint-Login steht („0#.f|membership|user@deloitte.de") — in den Teilnehmerlisten aller Events, in den Organizer-Namen der Events und in der Rollenverwaltung. Die Namen werden aus dem Benutzerprofil nachgezogen; ist eine Person dort nicht auflösbar, steht statt des Tokens wenigstens die E-Mail. Seit v28.64 entstehen keine neuen Fälle mehr — das hier räumt den Bestand auf.'
+                  : 'Finds entries where a technical SharePoint login („0#.f|membership|user@deloitte.de") is stored instead of the name — in the participant lists of all events, in the organizer names and in role management. Names are pulled from the user profile; if a person cannot be resolved, the email is used instead of the token. Since v28.64 no new cases occur — this cleans up the existing data.'}
+                badge="admin"
+                busy={isRepairingNames}
+                result={repairNamesResult}
+                resultIsError={!!repairNamesResult && (repairNamesResult.indexOf('Fehler') >= 0 || repairNamesResult.indexOf('Error') >= 0)}
+                onClick={async () => {
+                  if (!eventServiceRef) return;
+                  if (!(await confirmDialog(isDe
+                    ? `Namen über ALLE ${adminEvents.length} Events, die Organizer-Felder und die Rollenverwaltung prüfen und reparieren?\n\nGeändert werden ausschließlich Einträge, in denen ein Login-Token statt eines Namens steht. Je nach Anzahl der Teilnehmer dauert das einige Minuten.`
+                    : `Check and repair names across ALL ${adminEvents.length} events, the organizer fields and role management?\n\nOnly entries containing a login token instead of a name are changed. Depending on the number of attendees this takes a few minutes.`,
+                    { confirmLabel: isDe ? 'Reparieren' : 'Repair' }))) return;
+                  setIsRepairingNames(true);
+                  setRepairNamesResult(null);
+                  setNameFixModal({ running: true, step: isDe ? 'Teilnehmerlisten' : 'Participant lists', evIdx: 0, evTotal: adminEvents.length, summary: null });
+                  let regHits = 0; let regFixed = 0; let regFailed = 0;
+                  let orgFixed = 0; let orgEvents = 0;
+                  let roleFixed = 0; let roleHits = 0;
+                  try {
+                    // 1. Teilnehmerlisten aller Events (Sub-Events haben eigene Listen
+                    //    und stehen selbst in adminEvents — daher genügt ein Durchlauf).
+                    for (let i = 0; i < adminEvents.length; i++) {
+                      const ev = adminEvents[i];
+                      setNameFixModal({ running: true, step: `${isDe ? 'Teilnehmerliste' : 'Participant list'}: ${ev.title}`, evIdx: i + 1, evTotal: adminEvents.length, summary: null });
+                      if (!ev.subsiteUrl) continue;
+                      try {
+                        const r = await eventServiceRef.repairClaimNamesInRegistrations(ev.subsiteUrl);
+                        regHits += r.hits; regFixed += r.fixed; regFailed += r.failed;
+                      } catch { /* Liste nicht lesbar — weiter */ }
+                    }
+                    // 2. Organizer-Namen der Events.
+                    setNameFixModal({ running: true, step: isDe ? 'Organizer-Namen' : 'Organizer names', evIdx: adminEvents.length, evTotal: adminEvents.length, summary: null });
+                    const looksLikeClaim = (x: string): boolean => /\|membership\b|^i:0[#|]|^c:0|0#\.[a-z]\||^\d+#\./i.test((x || '').trim());
+                    const mailFromClaim = (x: string): string => {
+                      const m = (x || '').match(/\|([^|]+@[^|\s]+)\s*$/);
+                      return m ? m[1].trim().toLowerCase() : '';
+                    };
+                    for (const ev of adminEvents) {
+                      const names = (ev.organizers || []).slice();
+                      const emails = (ev.organizerEmails || []).slice();
+                      if (!names.some(n => looksLikeClaim(n))) continue;
+                      let changed = 0;
+                      for (let i = 0; i < names.length; i++) {
+                        if (!looksLikeClaim(names[i])) continue;
+                        const mail = (emails[i] || '').trim() || mailFromClaim(names[i]);
+                        const resolved = mail ? await eventServiceRef.displayNameForEmail(mail) : '';
+                        names[i] = resolved || mail || names[i];
+                        if (!emails[i] && mail) emails[i] = mail;
+                        changed++; orgFixed++;
+                      }
+                      if (changed === 0) continue;
+                      try {
+                        const ok = await updateEvent(ev.id, { 'Organizer': names.join('; '), 'OrganizerEmail': emails.join(';') });
+                        if (ok) orgEvents++;
+                      } catch { /* Event überspringen */ }
+                    }
+                    // 3. Rollenverwaltung.
+                    setNameFixModal({ running: true, step: isDe ? 'Rollenverwaltung' : 'Role management', evIdx: adminEvents.length, evTotal: adminEvents.length, summary: null });
+                    try {
+                      const rr = spServiceRef ? await spServiceRef.repairClaimNamesInRoles() : { scanned: 0, hits: 0, fixed: 0, failed: 0 };
+                      roleHits = rr.hits; roleFixed = rr.fixed;
+                    } catch { /* Rollenliste nicht schreibbar */ }
+
+                    const lines = isDe
+                      ? [
+                        `Teilnehmerzeilen: ${regHits} betroffen, ${regFixed} repariert${regFailed > 0 ? `, ${regFailed} fehlgeschlagen` : ''}`,
+                        `Organizer-Namen: ${orgFixed} in ${orgEvents} Event(s)`,
+                        `Rollenverwaltung: ${roleHits} betroffen, ${roleFixed} repariert`,
+                      ]
+                      : [
+                        `Attendee rows: ${regHits} affected, ${regFixed} repaired${regFailed > 0 ? `, ${regFailed} failed` : ''}`,
+                        `Organizer names: ${orgFixed} in ${orgEvents} event(s)`,
+                        `Role management: ${roleHits} affected, ${roleFixed} repaired`,
+                      ];
+                    setRepairNamesResult(lines.join(' · '));
+                    setNameFixModal({ running: false, step: '', evIdx: 0, evTotal: 0, summary: lines });
+                  } catch (err) {
+                    setRepairNamesResult(isDe ? `Fehler: ${err instanceof Error ? err.message : String(err)}` : `Error: ${err instanceof Error ? err.message : String(err)}`);
+                    setNameFixModal(null);
+                  }
+                  setIsRepairingNames(false);
+                }}
+              />
+            )}
+
             {/* v11.11: Custom-Fields aus Versionsverlauf zurückholen.
                 Hilft den Admins, denen die v11.9-Migration die b2run_*-
                 Felder (Altersgruppe, T-Shirt-Größe etc.) versehentlich
@@ -12094,6 +12206,51 @@ export default function AdminPage(): React.ReactElement {
       {/* v20.7: Fortschritts-Modal der Zugriffs-Reparatur („Fremd-Anmeldungen:
           Zugriff reparieren") — Event i/N, Eintrag x/y, Balken, Abschluss-
           Summary. Während des Laufs nicht wegklickbar. */}
+      {/* v28.65: Fortschritt der Namens-Reparatur. */}
+      {nameFixModal && (
+        <Modal
+          open={true}
+          onClose={() => { if (!nameFixModal.running) setNameFixModal(null); }}
+          dismissable={!nameFixModal.running}
+          maxWidth={520}
+          padding={24}
+          ariaLabel={isDe ? 'Namen reparieren' : 'Repair names'}
+        >
+          <h3 style={{ margin: '0 0 10px', fontSize: '1.05rem' }}>
+            {isDe ? 'Login-Tokens in Namen reparieren' : 'Repair login tokens in names'}
+          </h3>
+          {nameFixModal.running ? (
+            <>
+              <p style={{ margin: '0 0 6px', fontSize: '0.9rem', color: 'var(--dex-gray-700)' }}>
+                <strong>{nameFixModal.step || '…'}</strong>
+              </p>
+              <p style={{ margin: '0 0 12px', fontSize: '0.82rem', color: 'var(--dex-gray-500)' }}>
+                {nameFixModal.evTotal > 0
+                  ? (isDe ? `Event ${nameFixModal.evIdx}/${nameFixModal.evTotal}` : `Event ${nameFixModal.evIdx}/${nameFixModal.evTotal}`)
+                  : (isDe ? 'Wird geprüft…' : 'Checking…')}
+              </p>
+              <div style={{ background: 'var(--dex-gray-100, #f0f0f0)', borderRadius: 999, height: 10, overflow: 'hidden' }}>
+                <div style={{
+                  width: `${Math.min(100, Math.round((nameFixModal.evIdx / Math.max(1, nameFixModal.evTotal)) * 100))}%`,
+                  height: '100%', background: 'var(--dex-green, #86bc25)', borderRadius: 999, transition: 'width 0.2s ease',
+                }} />
+              </div>
+            </>
+          ) : (
+            <>
+              <ul style={{ margin: '0 0 14px', paddingLeft: 18, fontSize: '0.88rem', lineHeight: 1.7 }}>
+                {(nameFixModal.summary || []).map(l => <li key={l}>{l}</li>)}
+              </ul>
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button type="button" className="btn btn-primary" onClick={() => setNameFixModal(null)}>
+                  {isDe ? 'Schließen' : 'Close'}
+                </button>
+              </div>
+            </>
+          )}
+        </Modal>
+      )}
+
       {accessFixModal && (
         <Modal
           open={true}
