@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v28.89.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v28.90.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -183,8 +183,19 @@ Die Sub-Event-Karten sind seither reine **Liste**: anlegen, „Bearbeiten"
 ## Offene Arbeit
 
 Die vier Punkte aus v28.87 sind mit v28.88/v28.89 abgearbeitet (Feld-Ebene,
-Reiter-Darstellung, Outlook-Dialog, Legacy-Rollen). Was als Nächstes ansteht,
-ergibt sich aus dem Browser-Test — siehe „Umgang".
+Reiter-Darstellung, Outlook-Dialog, Legacy-Rollen), v28.90 hat die Nachlese
+dazu erledigt. Offen und **noch nicht begonnen**:
+
+1. **Termin-Slots statt einzeln angelegter Sub-Events.** Der Wunsch: im
+   Assistenten einen Zeitraum im Kalender markieren und daraus je Tag (oder je
+   Stunde) ein Sub-Event erzeugen lassen, statt neun Karten von Hand
+   anzulegen; auf der Anmeldeseite dann ein Kalender zur Auswahl statt einer
+   Liste aus neun Funkbuttons. Vor dem Bauen zu klären, ob ein Slot ein
+   **eigenes Sub-Event** bleibt (dann ist es reine Erzeugungs- und
+   Darstellungs-Hilfe — Teilnehmerliste, Kapazität, Outlook-Termin und
+   `ParentEventId` bleiben wie sie sind) oder ein **neuer Datentyp** unterhalb
+   des Sub-Events wird (dann hängen Teilnehmerliste, Flows und Warteliste mit
+   daran). Ersteres ist deutlich billiger und deckt den geschilderten Fall.
 
 Bewusst **nicht** gebaut: ein Dropdown zum Springen zwischen Sub-Event-Reitern.
 Es wäre eine zweite Bedienung für dieselbe Auswahl; die gescrollte Leiste hat

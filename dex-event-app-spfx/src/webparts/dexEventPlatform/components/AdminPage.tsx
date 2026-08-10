@@ -48,6 +48,8 @@ import ImageCropModal from './ImageCropModal';
 import { InfoTooltip } from './InfoTooltip';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 import Modal from './Modal';
+// v28.90: Platzhalter, wenn ein Event kein eigenes Foto hat.
+import DexLogo from './DexLogo';
 import { Icon } from '@fluentui/react/lib/Icon';
 import TicketEventBox from './tickets/TicketEventBox';
 import InternationalSearchToggle from './InternationalSearchToggle';
@@ -6650,16 +6652,32 @@ export default function AdminPage(): React.ReactElement {
                       {isDe ? 'Event bearbeiten' : 'Edit event'}
                     </button>
                   )}
-                  <button
-                    type="button"
-                    className="btn btn-primary"
-                    onClick={() => navigate('check-in', selectedEvent.id)}
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', padding: '6px 12px' }}
-                    title={t('admin.checkin') || (isDe ? 'Check-In starten' : 'Start check-in')}
-                  >
-                    <Hash size={14} />
-                    {isDe ? 'Check-In starten' : 'Start check-in'}
-                  </button>
+                  {/* v28.90: „Check-In starten" erst, wenn das Event wirklich
+                      live ist. Bei einem Entwurf (isFictive) sieht ihn niemand
+                      ausser Admins/Organizern, es kann sich also gar niemand
+                      angemeldet haben — der Knopf führte auf eine leere
+                      Check-in-Seite und suggerierte, es ginge schon los.
+                      Dasselbe vor einem gesetzten Aktivierungszeitpunkt
+                      (activeFrom in der Zukunft). */}
+                  {(() => {
+                    if (selectedEvent.isFictive) return null;
+                    if (selectedEvent.activeFrom) {
+                      const from = new Date(selectedEvent.activeFrom);
+                      if (!isNaN(from.getTime()) && from.getTime() > Date.now()) return null;
+                    }
+                    return (
+                      <button
+                        type="button"
+                        className="btn btn-primary"
+                        onClick={() => navigate('check-in', selectedEvent.id)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', padding: '6px 12px' }}
+                        title={t('admin.checkin') || (isDe ? 'Check-In starten' : 'Start check-in')}
+                      >
+                        <Hash size={14} />
+                        {isDe ? 'Check-In starten' : 'Start check-in'}
+                      </button>
+                    );
+                  })()}
                 </>
               )}
             </div>
@@ -6685,10 +6703,16 @@ export default function AdminPage(): React.ReactElement {
               const within5Days = startTs > 0 && nowTs >= startTs - 5 * dayMs;
               const notLongPast = (endTs || startTs) === 0 || nowTs <= (endTs || startTs) + dayMs;
               const showSciTile = canManageSci && notLongPast && (qrPhase || within5Days);
-              if (!selectedEvent.imageUrl && !showSciTile) return null;
+              // v28.90: Ohne Event-Foto blieb die rechte Spalte leer und die
+              // Detail-Zeilen liefen über die volle Breite — die Ansicht sah je
+              // Event unterschiedlich aus, je nachdem ob jemand ein Bild
+              // hochgeladen hatte. Statt Leerraum steht dort jetzt das
+              // DEX-Logo als Platzhalter. Es ist bewusst NICHT das
+              // gespeicherte Bild: Nichts wird geschrieben, Mails und
+              // Anmeldeseite bleiben unverändert bildlos.
               return (
                 <div style={{ flex: '0 0 auto', width: 260, maxWidth: '38%', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  {selectedEvent.imageUrl && (
+                  {selectedEvent.imageUrl ? (
                     <div
                       style={{
                         background: '#fff',
@@ -6709,6 +6733,22 @@ export default function AdminPage(): React.ReactElement {
                           objectFit: 'contain',
                         }}
                       />
+                    </div>
+                  ) : (
+                    <div
+                      title={isDe
+                        ? 'Für dieses Event ist kein Foto hinterlegt — hier steht ersatzweise das DEX-Logo. Ein Foto lädst du über „Event bearbeiten" in Schritt 1 hoch.'
+                        : 'No photo is set for this event — the DEX logo stands in. Upload one via „Edit event", step 1.'}
+                      style={{
+                        background: '#fff',
+                        borderRadius: 'var(--dex-radius, 12px)',
+                        overflow: 'hidden',
+                        border: '1px solid var(--dex-gray-200, #e5e7eb)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        padding: 18,
+                      }}
+                    >
+                      <DexLogo title="DEX" motion="oscillate" style={{ width: '100%' }} />
                     </div>
                   )}
                   {showSciTile && (
@@ -8791,7 +8831,25 @@ export default function AdminPage(): React.ReactElement {
           Teilnehmerliste der Klammer (die Schattenzeilen aus v15.25). Das ist die
           richtige Ebene für die Hotel-Zuordnung; vorher war der Abschnitt bei
           Klammer-Events komplett ausgeblendet. */}
-      {selectedEvent && selectedEvent.subsiteUrl && (isAdmin || isOrganizerFor(selectedEvent)) && (
+      {/* v28.90: …und nur, wenn es überhaupt eine Hotelfrage GIBT. Der
+          eingeklappte Balken stand bisher unter jedem Event — auch unter einem
+          zweistündigen Lunch, wo niemand übernachtet. Erkannt wird die Frage am
+          Feldtyp „daterange" (Übernachtungs-Zeitraum, v28.63) oder an der
+          Beschriftung eines Abfragefelds; geprüft wird das Event selbst UND
+          seine Sub-Events, weil die Frage bei einer Klammer auf beiden Ebenen
+          stehen kann. Ist die Planung schon im Gange (Hotels angelegt oder
+          Personen zugeordnet), bleibt der Abschnitt in jedem Fall sichtbar —
+          sonst verschwände eine bestehende Planung mitsamt ihrer Bedienung,
+          wenn jemand das Abfragefeld nachträglich entfernt. */}
+      {selectedEvent && selectedEvent.subsiteUrl && (isAdmin || isOrganizerFor(selectedEvent)) && (() => {
+        const HOTEL_LABEL = /hotel|unterkunft|übernacht|uebernacht|accommodation|lodging/i;
+        const asksForHotel = (ev: { eventSpecificFields?: Array<{ type?: string; label?: string; labelEn?: string }> }): boolean =>
+          (ev.eventSpecificFields || []).some(f =>
+            f.type === 'daterange' || HOTEL_LABEL.test(`${f.label || ''} ${f.labelEn || ''}`));
+        const planningStarted = (selectedEvent.hotels || []).length > 0
+          || registrations.some(r => (r.Hotel || '').trim());
+        if (!planningStarted && !asksForHotel(selectedEvent) && !childEventsOf(selectedEvent.id).some(asksForHotel)) return null;
+        return (
         <div className="card" style={{ marginBottom: 16 }}>
           <button
             type="button"
@@ -8833,7 +8891,8 @@ export default function AdminPage(): React.ReactElement {
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
 
       {/* ===== QUIZ-STATISTIK (collapsible, oberhalb Teilnehmerliste) ===== */}
       {selectedEvent && selectedEvent.quiz && selectedEvent.quiz.length > 0 && (() => {
