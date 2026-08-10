@@ -8025,6 +8025,207 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               </div>
 
+              {/* v28.84: Bezeichnung und Anmelde-Modus gehoeren zur
+                  Grundsatzfrage aus dem Schalter darueber — nicht in einen
+                  spaeteren Schritt. Beide standen bisher in Schritt 3.
+                  Sichtbar nur, wenn Sub-Events aktiv sind. */}
+              {subEventsOptIn && (<>
+              {/* Bezeichnungs-Dropdown */}
+              <div style={{
+                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                padding: '14px 16px', marginBottom: 12,
+                border: '1px solid var(--dex-gray-200)',
+              }}>
+                <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {isDe ? 'Bezeichnung der Sub-Events' : 'Sub-event naming'}
+                  <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> wie die untergeordneten Bausteine in der App genannt werden. Die <strong>Standardbezeichnung</strong> ist &bdquo;Sub-Event&ldquo;. Du kannst aber z.B. &bdquo;Workshop&ldquo;, &bdquo;Session&ldquo;, &bdquo;Programmpunkt&ldquo; oder &bdquo;Event-Section&ldquo; auswählen — oder eine eigene Bezeichnung (Singular + Plural) eintippen.<br /><br />
+                      <strong>Anzeige in der App:</strong> der gewählte Begriff erscheint überall dort, wo bisher &bdquo;Sub-Event(s)&ldquo; stand — z.B. im Anmeldeformular der Teilnehmer (&bdquo;Verfügbare Workshops&ldquo;), in &bdquo;Meine Events&ldquo; und im Admin Center.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> how the child building blocks are named throughout the app. The <strong>default</strong> is &bdquo;Sub-event&ldquo;. You can pick e.g. &bdquo;Workshop&ldquo;, &bdquo;Session&ldquo;, &bdquo;Programmpunkt&ldquo; or &bdquo;Event section&ldquo; — or type your own singular + plural.<br /><br />
+                      <strong>Shown in the app:</strong> the chosen term replaces &bdquo;Sub-event(s)&ldquo; everywhere — e.g. in the attendee registration form (&bdquo;Available workshops&ldquo;), in &bdquo;My events&ldquo; and in the admin center.
+                    </>
+                  )} />
+                </label>
+                {(() => {
+                  const presets = [
+                    { key: 'subevent',     singular: isDe ? 'Sub-Event' : 'Sub-event',         plural: isDe ? 'Sub-Events' : 'Sub-events' },
+                    { key: 'workshop',     singular: 'Workshop',                                plural: 'Workshops' },
+                    { key: 'session',      singular: 'Session',                                 plural: 'Sessions' },
+                    { key: 'programmpunkt', singular: isDe ? 'Programmpunkt' : 'Program item', plural: isDe ? 'Programmpunkte' : 'Program items' },
+                    { key: 'section',      singular: isDe ? 'Event-Section' : 'Event section', plural: isDe ? 'Event-Sections' : 'Event sections' },
+                  ];
+                  const matchKey = (() => {
+                    // v15.9: customTermMode hat Priorität — wer in den
+                    // Custom-Modus geklickt hat bleibt dort, auch wenn
+                    // beide Inputs noch leer sind.
+                    if (customTermMode) return 'custom';
+                    const s = (childTermSingular || '').trim();
+                    const p = (childTermPlural || '').trim();
+                    if (!s && !p) return 'subevent';
+                    const hit = presets.find(x => x.singular === s && x.plural === p);
+                    return hit ? hit.key : 'custom';
+                  })();
+                  return (
+                    <>
+                      <select
+                        className="form-input"
+                        value={matchKey}
+                        onChange={e => {
+                          const k = e.target.value;
+                          if (k === 'custom') {
+                            // v15.9: Custom-Modus sticky machen, auch ohne
+                            // initiale Werte — sonst kippt der Dropdown
+                            // sofort zurück auf 'subevent'.
+                            setCustomTermMode(true);
+                            return;
+                          }
+                          // Preset gewählt → Custom-Modus aufheben + Werte
+                          // aus dem Preset übernehmen.
+                          setCustomTermMode(false);
+                          const preset = presets.find(x => x.key === k);
+                          if (preset) {
+                            setChildTermSingular(preset.singular);
+                            setChildTermPlural(preset.plural);
+                          }
+                        }}
+                        style={{ marginTop: 6, maxWidth: 360 }}
+                      >
+                        {presets.map(p => (
+                          <option key={p.key} value={p.key}>
+                            {p.plural}
+                          </option>
+                        ))}
+                        <option value="custom">{isDe ? 'Eigene Bezeichnung…' : 'Custom term…'}</option>
+                      </select>
+                      {matchKey === 'custom' && (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10, maxWidth: 480 }}>
+                          <div>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'Singular' : 'Singular'}</label>
+                            <input
+                              type="text"
+                              className="form-input"
+                              value={childTermSingular}
+                              onChange={e => setChildTermSingular(e.target.value)}
+                              placeholder={isDe ? 'z.B. Modul' : 'e.g. Module'}
+                              style={{ padding: '6px 10px', fontSize: '0.9rem' }}
+                            />
+                          </div>
+                          <div>
+                            <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'Plural' : 'Plural'}</label>
+                            <input
+                              type="text"
+                              className="form-input"
+                              value={childTermPlural}
+                              onChange={e => setChildTermPlural(e.target.value)}
+                              placeholder={isDe ? 'z.B. Module' : 'e.g. Modules'}
+                              style={{ padding: '6px 10px', fontSize: '0.9rem' }}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Anmelde-Modus */}
+              <div style={{
+                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                padding: '14px 16px', marginBottom: 16,
+                border: '1px solid var(--dex-gray-200)',
+              }}>
+                <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {isDe ? 'Anmelde-Modus' : 'Registration mode'}
+                  <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> ob sich Teilnehmer zusätzlich zum Hauptevent für Sub-Events anmelden können (Standard) oder ob es <strong>überhaupt kein Hauptevent-Anmelden</strong> mehr gibt und die Anmeldung ausschließlich über einzelne Sub-Events läuft.<br /><br />
+                      <strong>Anzeige in der App:</strong> im Modus &bdquo;Nur Sub-Events&ldquo; ist die Anmelde-Checkbox für das Hauptevent im Teilnehmerformular ausgeblendet — der Teilnehmer muss zwingend mindestens einen Sub-Event auswählen. Im Schritt 7 (Kommunikation) wird der Haupt-Event-Tab ausgegraut, weil die Hauptevent-Kommunikation in diesem Modus nicht greift.<br /><br />
+                      <strong>Empfehlung:</strong> nutze &bdquo;Nur Sub-Events&ldquo; für Mehrtages-Programme, in denen jeder Teilnehmer aus einem Pool von Slots wählt und ein Hauptevent-Slot keinen Sinn ergibt.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> whether attendees can additionally register for sub-events alongside the main event (default) or whether there is <strong>no main-event registration at all</strong> and registration runs exclusively via individual sub-events.<br /><br />
+                      <strong>Shown in the app:</strong> in &bdquo;Sub-events only&ldquo; mode the main-event registration checkbox in the attendee form is hidden — the attendee must pick at least one sub-event. In step 7 (Communication) the main-event tab is greyed out, because main-event communication does not apply in this mode.<br /><br />
+                      <strong>Tip:</strong> use &bdquo;Sub-events only&ldquo; for multi-day programmes where every attendee picks from a pool of slots and a main-event slot makes no sense.
+                    </>
+                  )} />
+                </label>
+                {/* v15.3.1: Custom-styled Radio-Cards in echtem Deloitte-Grün —
+                    weil Edge mit accentColor uneinheitlich rendert (mal solid,
+                    mal hollow), hier explizite Visual-Komposition: nativer
+                    Input visually-hidden + eigener grüner Outer-Border-Kreis
+                    mit grünem Inner-Dot wenn ausgewählt. Funktioniert 1:1 in
+                    allen Browsern + matched die Optik der Registration-Page. */}
+                {/* v28.73: Anker für den Quicklink aus dem Klammer-Info-Tooltip. */}
+                <div id="dex-subevents-mode" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+                  {[false, true].map(modeVal => {
+                    const selected = !!subEventsOnlyMode === modeVal;
+                    return (
+                      <label
+                        key={String(modeVal)}
+                        style={{
+                          display: 'flex', alignItems: 'flex-start', gap: 10,
+                          padding: '10px 14px', borderRadius: 8,
+                          border: `1px solid ${selected ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+                          background: selected ? 'rgba(134,188,37,0.06)' : '#fff',
+                          cursor: 'pointer',
+                          transition: 'border-color 0.15s, background 0.15s',
+                        }}
+                      >
+                        {/* Hidden native radio for accessibility + form-state */}
+                        <input
+                          type="radio"
+                          name="subEventsMode"
+                          checked={selected}
+                          onChange={() => setSubEventsOnlyMode(modeVal)}
+                          style={{
+                            position: 'absolute', opacity: 0, pointerEvents: 'none',
+                            width: 1, height: 1, margin: -1, padding: 0,
+                            border: 0, overflow: 'hidden', clip: 'rect(0 0 0 0)',
+                          }}
+                        />
+                        {/* Visual custom radio */}
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            display: 'inline-block',
+                            width: 18, height: 18, borderRadius: '50%',
+                            border: `2px solid ${selected ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-400, #9aa0a6)'}`,
+                            background: '#fff',
+                            position: 'relative', flexShrink: 0,
+                            marginTop: 2,
+                            transition: 'border-color 0.15s',
+                          }}
+                        >
+                          {selected && (
+                            <span style={{
+                              position: 'absolute', inset: 3,
+                              borderRadius: '50%',
+                              background: 'var(--dex-green, #86bc25)',
+                            }} />
+                          )}
+                        </span>
+                        <span style={{ fontSize: '0.88rem', flex: 1 }}>
+                          {modeVal === false
+                            ? (isDe
+                                ? <>Anmeldung für <strong>Hauptevent + {(childTermPlural || 'Sub-Events').trim() || 'Sub-Events'}</strong> (Standard)</>
+                                : <>Registration for <strong>main event + {(childTermPlural || 'sub-events').trim() || 'sub-events'}</strong> (default)</>)
+                            : (isDe
+                                ? <>Nur für <strong>{(childTermPlural || 'Sub-Events').trim() || 'Sub-Events'}</strong> (kein Hauptevent-Anmelden)</>
+                                : <>Only for <strong>{(childTermPlural || 'sub-events').trim() || 'sub-events'}</strong> (no main-event registration)</>)}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              </>)}
+
 
 
 
@@ -10385,200 +10586,6 @@ export default function EventCreationPage(): React.ReactElement {
               </WizardHint>
 
               {subEventsOptIn && (<>
-              {/* Bezeichnungs-Dropdown */}
-              <div style={{
-                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
-                padding: '14px 16px', marginBottom: 12,
-                border: '1px solid var(--dex-gray-200)',
-              }}>
-                <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {isDe ? 'Bezeichnung der Sub-Events' : 'Sub-event naming'}
-                  <InfoTooltip text={isDe ? (
-                    <>
-                      <strong>Was du hier einstellst:</strong> wie die untergeordneten Bausteine in der App genannt werden. Die <strong>Standardbezeichnung</strong> ist &bdquo;Sub-Event&ldquo;. Du kannst aber z.B. &bdquo;Workshop&ldquo;, &bdquo;Session&ldquo;, &bdquo;Programmpunkt&ldquo; oder &bdquo;Event-Section&ldquo; auswählen — oder eine eigene Bezeichnung (Singular + Plural) eintippen.<br /><br />
-                      <strong>Anzeige in der App:</strong> der gewählte Begriff erscheint überall dort, wo bisher &bdquo;Sub-Event(s)&ldquo; stand — z.B. im Anmeldeformular der Teilnehmer (&bdquo;Verfügbare Workshops&ldquo;), in &bdquo;Meine Events&ldquo; und im Admin Center.
-                    </>
-                  ) : (
-                    <>
-                      <strong>What you set here:</strong> how the child building blocks are named throughout the app. The <strong>default</strong> is &bdquo;Sub-event&ldquo;. You can pick e.g. &bdquo;Workshop&ldquo;, &bdquo;Session&ldquo;, &bdquo;Programmpunkt&ldquo; or &bdquo;Event section&ldquo; — or type your own singular + plural.<br /><br />
-                      <strong>Shown in the app:</strong> the chosen term replaces &bdquo;Sub-event(s)&ldquo; everywhere — e.g. in the attendee registration form (&bdquo;Available workshops&ldquo;), in &bdquo;My events&ldquo; and in the admin center.
-                    </>
-                  )} />
-                </label>
-                {(() => {
-                  const presets = [
-                    { key: 'subevent',     singular: isDe ? 'Sub-Event' : 'Sub-event',         plural: isDe ? 'Sub-Events' : 'Sub-events' },
-                    { key: 'workshop',     singular: 'Workshop',                                plural: 'Workshops' },
-                    { key: 'session',      singular: 'Session',                                 plural: 'Sessions' },
-                    { key: 'programmpunkt', singular: isDe ? 'Programmpunkt' : 'Program item', plural: isDe ? 'Programmpunkte' : 'Program items' },
-                    { key: 'section',      singular: isDe ? 'Event-Section' : 'Event section', plural: isDe ? 'Event-Sections' : 'Event sections' },
-                  ];
-                  const matchKey = (() => {
-                    // v15.9: customTermMode hat Priorität — wer in den
-                    // Custom-Modus geklickt hat bleibt dort, auch wenn
-                    // beide Inputs noch leer sind.
-                    if (customTermMode) return 'custom';
-                    const s = (childTermSingular || '').trim();
-                    const p = (childTermPlural || '').trim();
-                    if (!s && !p) return 'subevent';
-                    const hit = presets.find(x => x.singular === s && x.plural === p);
-                    return hit ? hit.key : 'custom';
-                  })();
-                  return (
-                    <>
-                      <select
-                        className="form-input"
-                        value={matchKey}
-                        onChange={e => {
-                          const k = e.target.value;
-                          if (k === 'custom') {
-                            // v15.9: Custom-Modus sticky machen, auch ohne
-                            // initiale Werte — sonst kippt der Dropdown
-                            // sofort zurück auf 'subevent'.
-                            setCustomTermMode(true);
-                            return;
-                          }
-                          // Preset gewählt → Custom-Modus aufheben + Werte
-                          // aus dem Preset übernehmen.
-                          setCustomTermMode(false);
-                          const preset = presets.find(x => x.key === k);
-                          if (preset) {
-                            setChildTermSingular(preset.singular);
-                            setChildTermPlural(preset.plural);
-                          }
-                        }}
-                        style={{ marginTop: 6, maxWidth: 360 }}
-                      >
-                        {presets.map(p => (
-                          <option key={p.key} value={p.key}>
-                            {p.plural}
-                          </option>
-                        ))}
-                        <option value="custom">{isDe ? 'Eigene Bezeichnung…' : 'Custom term…'}</option>
-                      </select>
-                      {matchKey === 'custom' && (
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10, maxWidth: 480 }}>
-                          <div>
-                            <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'Singular' : 'Singular'}</label>
-                            <input
-                              type="text"
-                              className="form-input"
-                              value={childTermSingular}
-                              onChange={e => setChildTermSingular(e.target.value)}
-                              placeholder={isDe ? 'z.B. Modul' : 'e.g. Module'}
-                              style={{ padding: '6px 10px', fontSize: '0.9rem' }}
-                            />
-                          </div>
-                          <div>
-                            <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{isDe ? 'Plural' : 'Plural'}</label>
-                            <input
-                              type="text"
-                              className="form-input"
-                              value={childTermPlural}
-                              onChange={e => setChildTermPlural(e.target.value)}
-                              placeholder={isDe ? 'z.B. Module' : 'e.g. Modules'}
-                              style={{ padding: '6px 10px', fontSize: '0.9rem' }}
-                            />
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
-
-              {/* Anmelde-Modus */}
-              <div style={{
-                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
-                padding: '14px 16px', marginBottom: 16,
-                border: '1px solid var(--dex-gray-200)',
-              }}>
-                <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  {isDe ? 'Anmelde-Modus' : 'Registration mode'}
-                  <InfoTooltip text={isDe ? (
-                    <>
-                      <strong>Was du hier einstellst:</strong> ob sich Teilnehmer zusätzlich zum Hauptevent für Sub-Events anmelden können (Standard) oder ob es <strong>überhaupt kein Hauptevent-Anmelden</strong> mehr gibt und die Anmeldung ausschließlich über einzelne Sub-Events läuft.<br /><br />
-                      <strong>Anzeige in der App:</strong> im Modus &bdquo;Nur Sub-Events&ldquo; ist die Anmelde-Checkbox für das Hauptevent im Teilnehmerformular ausgeblendet — der Teilnehmer muss zwingend mindestens einen Sub-Event auswählen. Im Schritt 7 (Kommunikation) wird der Haupt-Event-Tab ausgegraut, weil die Hauptevent-Kommunikation in diesem Modus nicht greift.<br /><br />
-                      <strong>Empfehlung:</strong> nutze &bdquo;Nur Sub-Events&ldquo; für Mehrtages-Programme, in denen jeder Teilnehmer aus einem Pool von Slots wählt und ein Hauptevent-Slot keinen Sinn ergibt.
-                    </>
-                  ) : (
-                    <>
-                      <strong>What you set here:</strong> whether attendees can additionally register for sub-events alongside the main event (default) or whether there is <strong>no main-event registration at all</strong> and registration runs exclusively via individual sub-events.<br /><br />
-                      <strong>Shown in the app:</strong> in &bdquo;Sub-events only&ldquo; mode the main-event registration checkbox in the attendee form is hidden — the attendee must pick at least one sub-event. In step 7 (Communication) the main-event tab is greyed out, because main-event communication does not apply in this mode.<br /><br />
-                      <strong>Tip:</strong> use &bdquo;Sub-events only&ldquo; for multi-day programmes where every attendee picks from a pool of slots and a main-event slot makes no sense.
-                    </>
-                  )} />
-                </label>
-                {/* v15.3.1: Custom-styled Radio-Cards in echtem Deloitte-Grün —
-                    weil Edge mit accentColor uneinheitlich rendert (mal solid,
-                    mal hollow), hier explizite Visual-Komposition: nativer
-                    Input visually-hidden + eigener grüner Outer-Border-Kreis
-                    mit grünem Inner-Dot wenn ausgewählt. Funktioniert 1:1 in
-                    allen Browsern + matched die Optik der Registration-Page. */}
-                {/* v28.73: Anker für den Quicklink aus dem Klammer-Info-Tooltip. */}
-                <div id="dex-subevents-mode" style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
-                  {[false, true].map(modeVal => {
-                    const selected = !!subEventsOnlyMode === modeVal;
-                    return (
-                      <label
-                        key={String(modeVal)}
-                        style={{
-                          display: 'flex', alignItems: 'flex-start', gap: 10,
-                          padding: '10px 14px', borderRadius: 8,
-                          border: `1px solid ${selected ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-                          background: selected ? 'rgba(134,188,37,0.06)' : '#fff',
-                          cursor: 'pointer',
-                          transition: 'border-color 0.15s, background 0.15s',
-                        }}
-                      >
-                        {/* Hidden native radio for accessibility + form-state */}
-                        <input
-                          type="radio"
-                          name="subEventsMode"
-                          checked={selected}
-                          onChange={() => setSubEventsOnlyMode(modeVal)}
-                          style={{
-                            position: 'absolute', opacity: 0, pointerEvents: 'none',
-                            width: 1, height: 1, margin: -1, padding: 0,
-                            border: 0, overflow: 'hidden', clip: 'rect(0 0 0 0)',
-                          }}
-                        />
-                        {/* Visual custom radio */}
-                        <span
-                          aria-hidden="true"
-                          style={{
-                            display: 'inline-block',
-                            width: 18, height: 18, borderRadius: '50%',
-                            border: `2px solid ${selected ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-400, #9aa0a6)'}`,
-                            background: '#fff',
-                            position: 'relative', flexShrink: 0,
-                            marginTop: 2,
-                            transition: 'border-color 0.15s',
-                          }}
-                        >
-                          {selected && (
-                            <span style={{
-                              position: 'absolute', inset: 3,
-                              borderRadius: '50%',
-                              background: 'var(--dex-green, #86bc25)',
-                            }} />
-                          )}
-                        </span>
-                        <span style={{ fontSize: '0.88rem', flex: 1 }}>
-                          {modeVal === false
-                            ? (isDe
-                                ? <>Anmeldung für <strong>Hauptevent + {(childTermPlural || 'Sub-Events').trim() || 'Sub-Events'}</strong> (Standard)</>
-                                : <>Registration for <strong>main event + {(childTermPlural || 'sub-events').trim() || 'sub-events'}</strong> (default)</>)
-                            : (isDe
-                                ? <>Nur für <strong>{(childTermPlural || 'Sub-Events').trim() || 'Sub-Events'}</strong> (kein Hauptevent-Anmelden)</>
-                                : <>Only for <strong>{(childTermPlural || 'sub-events').trim() || 'sub-events'}</strong> (no main-event registration)</>)}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
               {/* v24.58: Anzeige-Name des Haupt-Events in der Sub-Event-Auswahl.
                   Nur relevant, wenn das Hauptevent mit-buchbar ist (also NICHT
                   im „Nur Sub-Events"-Modus, wo es keine Hauptevent-Zeile gibt). */}
