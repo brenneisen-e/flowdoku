@@ -497,12 +497,20 @@ export interface EventSpecificField {
   // v19.0: 'document' = PDF/Bild-Upload, der als Attachment an die Teilnehmer-
   // Zeile gehängt wird (kein Spaltenwert).
   // v24.25: 'date' = Datums-/Kalender-Auswahl (optional mit Uhrzeit via withTime).
-  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'document' | 'date';
+  // v28.63: 'daterange' = Uebernachtungs-Zeitraum (Anreise + Abreise in einem
+  // Feld, Naechte werden berechnet). Antwort-Format: '' | '-' | 'YYYY-MM-DD – YYYY-MM-DD'.
+  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'document' | 'date' | 'daterange';
   required: boolean;
   options?: string[];
   /** v24.25: Nur für `type === 'date'` — zusätzlich die Uhrzeit abfragen
    *  (datetime-local statt date). */
   withTime?: boolean;
+  /** v28.63: Nur fuer `type === 'daterange'` — fruehester waehlbarer Tag (ISO). */
+  rangeStart?: string;
+  /** v28.63: Nur fuer `type === 'daterange'` — spaetester waehlbarer Tag (ISO). */
+  rangeEnd?: string;
+  /** v28.63: Nur fuer `type === 'daterange'` — Obergrenze fuer die Naechte. */
+  maxNights?: number;
   helpText?: string;
   /** v18.18: Darstellung der Beschreibung (`helpText`). `'tooltip'` (Default,
    *  Backward-Compat): erscheint als „i"-Hover-Box neben dem Label.

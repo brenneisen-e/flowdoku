@@ -29,6 +29,7 @@ import OrganizerList from './OrganizerList';
 import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
 import { UserFieldPicker } from './UserFieldPicker';
+import StayRangePicker from './StayRangePicker';
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -2702,6 +2703,20 @@ export default function RegistrationPage(): React.ReactElement {
           </div>
         );
       })()
+    ) : field.type === 'daterange' ? (
+      // v28.63: Übernachtungs-Zeitraum — Anreise + Abreise in einem Feld, die
+      // Nächte ergeben sich daraus. Ersetzt die frühere Kombination aus
+      // „Hotel: ja/nein" plus „Zusatznächte"-Auswahlliste; die Hotel-Planung
+      // im Organizer Center liest den Zeitraum direkt aus.
+      <StayRangePicker
+        value={vals[field.id] || ''}
+        onChange={(next: string) => setVals({ ...vals, [field.id]: next })}
+        isDe={locale === 'de'}
+        rangeStart={field.rangeStart}
+        rangeEnd={field.rangeEnd}
+        maxNights={field.maxNights}
+        required={field.required}
+      />
     ) : field.type === 'date' ? (
       // v24.25: Datums-Feld — Kalender-Auswahl. Mit withTime zusätzlich Uhrzeit
       // (datetime-local). Der Wert wird als String gespeichert (wie alle

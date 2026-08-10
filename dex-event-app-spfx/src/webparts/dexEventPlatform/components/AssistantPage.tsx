@@ -18,6 +18,7 @@ import { isEventOver } from '../utils/eventFormat';
 import { CachedImg } from './CachedImage';
 import Modal from './Modal';
 import { Icon } from '@fluentui/react/lib/Icon';
+import StayRangePicker from './StayRangePicker';
 
 interface ProxyItem { event: DeloitteEvent; registration: SPRegistration; }
 
@@ -390,6 +391,19 @@ export default function AssistantPage(): React.ReactElement {
           </select>
         );
       }
+    } else if (f.type === 'daterange') {
+      control = (
+        <StayRangePicker
+          value={val}
+          onChange={(next: string) => setVal(next)}
+          isDe={isDe}
+          rangeStart={f.rangeStart}
+          rangeEnd={f.rangeEnd}
+          maxNights={f.maxNights}
+          required={f.required}
+          compact
+        />
+      );
     } else if (f.type === 'date') {
       control = <input type={f.withTime ? 'datetime-local' : 'date'} value={val} onChange={e => setVal(e.target.value)} style={baseInput} />;
     } else if (f.type === 'number') {

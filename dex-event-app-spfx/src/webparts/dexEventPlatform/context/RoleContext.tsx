@@ -13,6 +13,7 @@ import * as React from 'react';
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { SharePointService } from '../services/SharePointService';
 import { RoleAssignment, UserRole } from '../types';
+import { looksLikeClaimName, resolveMyDisplayName, safeDisplayName } from '../utils/displayName';
 
 interface RoleContextType {
   roles: RoleAssignment[];
@@ -62,7 +63,17 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   const spService = React.useMemo(() => new SharePointService(props.context), []);
 
   const currentUserEmail = props.context.pageContext.user.email;
-  const currentUserName = props.context.pageContext.user.displayName;
+  // v28.64: Siehe utils/displayName.ts — der Anzeigename aus dem pageContext
+  // kann das Claims-Login-Token sein. Gleiche Absicherung wie im EventContext.
+  const rawUserName = props.context.pageContext.user.displayName;
+  const [profileUserName, setProfileUserName] = React.useState('');
+  React.useEffect(() => {
+    if (!looksLikeClaimName(rawUserName)) return;
+    resolveMyDisplayName(props.context)
+      .then(n => { if (n) setProfileUserName(n); })
+      .catch(() => { /* Fallback bleibt die E-Mail */ });
+  }, [rawUserName]);
+  const currentUserName = profileUserName || safeDisplayName(rawUserName, currentUserEmail);
 
   React.useEffect(() => {
     initRoles().catch(() => setIsRolesLoading(false));

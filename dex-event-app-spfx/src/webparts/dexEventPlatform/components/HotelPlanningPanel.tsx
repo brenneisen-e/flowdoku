@@ -8,6 +8,7 @@ import { collectCcEmailsFromFields } from '../context/EventContext';
 import HotelImportModal, { IHotelImportResultRow } from './HotelImportModal';
 import HotelSetupWizard from './HotelSetupWizard';
 import PersonContactHover from './PersonContactHover';
+import { parseStayValue } from './StayRangePicker';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { de } from 'date-fns/locale';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -131,6 +132,29 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   const stays: DexHotelStay[] = staysLocal;
   const visible = visibleLocal;
 
+  /**
+   * v28.63: Der im Anmeldeformular angegebene Zeitraum (Feldtyp `daterange`).
+   * Gibt es das Feld, ist es die genaueste Quelle: Die Person hat An- und
+   * Abreise selbst gewählt, es muss nichts mehr gedeutet werden.
+   */
+  const rangeFieldId = React.useMemo(() => {
+    const f = ((event.eventSpecificFields || []) as Array<{ id: string; type?: string }>)
+      .filter(x => x.type === 'daterange')[0];
+    return f ? f.id : '';
+  }, [event.eventSpecificFields]);
+
+  const formStayOf = React.useCallback((p: SPRegistration): { none: boolean; from: string; to: string } | null => {
+    if (!rangeFieldId) return null;
+    let cd: Record<string, string> = {};
+    try { cd = JSON.parse(p.CustomData || '{}'); } catch { return null; }
+    const raw = (cd[rangeFieldId] || '').trim();
+    if (!raw) return null;
+    const parsed = parseStayValue(raw);
+    if (parsed.none) return { none: true, from: '', to: '' };
+    if (!parsed.from || !parsed.to) return null;
+    return parsed;
+  }, [rangeFieldId]);
+
   const [busy, setBusy] = React.useState('');
   const [selected, setSelected] = React.useState<Set<number>>(new Set());
   const [showRoster, setShowRoster] = React.useState(true);
@@ -211,8 +235,9 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     setBulkProgress({ done: 0, total: rows.length });
     for (let i = 0; i < rows.length; i++) {
       const r = rows[i];
-      const from = toDay(r.HotelFrom) || (defaultStay ? defaultStay.from : '');
-      const to = toDay(r.HotelTo) || (defaultStay ? defaultStay.to : '');
+      const fs = formStayOf(r);
+      const from = toDay(r.HotelFrom) || (fs && !fs.none ? fs.from : '') || (defaultStay ? defaultStay.from : '');
+      const to = toDay(r.HotelTo) || (fs && !fs.none ? fs.to : '') || (defaultStay ? defaultStay.to : '');
       // eslint-disable-next-line no-await-in-loop
       await writeAssignment([r], subHotelPick, from, to);
       setBulkProgress({ done: i + 1, total: rows.length });
@@ -332,8 +357,10 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     let done = 0;
     for (const f of planned) {
       for (const r of f.take) {
-        const from = toDay(r.HotelFrom) || (defaultStay ? defaultStay.from : '');
-        const to = toDay(r.HotelTo) || (defaultStay ? defaultStay.to : '');
+        // v28.63: Der selbst gewählte Zeitraum schlägt die Standard-Vorlage.
+        const fs = formStayOf(r);
+        const from = toDay(r.HotelFrom) || (fs && !fs.none ? fs.from : '') || (defaultStay ? defaultStay.from : '');
+        const to = toDay(r.HotelTo) || (fs && !fs.none ? fs.to : '') || (defaultStay ? defaultStay.to : '');
         // eslint-disable-next-line no-await-in-loop
         await writeAssignment([r], f.hotel.name, from, to);
         done++;
@@ -512,6 +539,9 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
    *  einer festen Feld-ID. Ergebnis: true = ja, false = nein, null = keine
    *  Hotel-Frage im Formular. */
   const wishOf = React.useCallback((p: SPRegistration): boolean | null => {
+    // v28.63: Das Zeitraum-Feld beantwortet die Frage eindeutig.
+    const fs = formStayOf(p);
+    if (fs) return !fs.none;
     let cd: Record<string, string> = {};
     try { cd = JSON.parse(p.CustomData || '{}'); } catch { return null; }
     const fields = (event.eventSpecificFields || []) as Array<{ id: string; label?: string }>;
@@ -528,7 +558,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
       found = false;
     }
     return found;
-  }, [event.eventSpecificFields]);
+  }, [event.eventSpecificFields, formStayOf]);
 
   const assignedCount = people.filter(p => (p.Hotel || '').trim()).length;
   const openCount = people.length - assignedCount;
@@ -600,6 +630,93 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
         ? (isDe ? 'Freigegeben — die Teilnehmer sehen ihr Hotel unter „Meine Events".' : 'Released — attendees now see their hotel under „My events".')
         : (isDe ? 'Anzeige zurückgenommen — die Teilnehmer sehen ihr Hotel nicht mehr.' : 'Hidden again — attendees no longer see their hotel.'),
       { variant: 'success' },
+    );
+  };
+
+  /* ---------------- Zurücksetzen ---------------- */
+
+  /** Alle Zeilen, an denen überhaupt eine Zuordnung hängt. */
+  const assignedRows = React.useMemo(
+    () => people.filter(p => (p.Hotel || '').trim() || toDay(p.HotelFrom) || toDay(p.HotelTo)),
+    [people],
+  );
+
+  /** Zuordnungen bei den übergebenen Zeilen leeren (ohne Rückfrage — die
+   *  stellen die Aufrufer, weil sie den Umfang kennen). */
+  const clearRows = async (rows: SPRegistration[]): Promise<number> => {
+    if (!svc || !event.subsiteUrl || rows.length === 0) return 0;
+    const optimistic: Record<number, { Hotel: string; HotelFrom: string; HotelTo: string }> = {};
+    for (const r of rows) optimistic[r.Id] = { Hotel: '', HotelFrom: '', HotelTo: '' };
+    setRowOv(prev => ({ ...prev, ...optimistic }));
+    try { await svc.ensureHotelColumns(event.subsiteUrl); } catch { /* best effort */ }
+    setBulkProgress({ done: 0, total: rows.length });
+    let failed = 0;
+    for (let i = 0; i < rows.length; i++) {
+      // eslint-disable-next-line no-await-in-loop
+      const ok = await svc.setHotelAssignment(event.subsiteUrl, rows[i].Id, '', '', '');
+      if (!ok) { failed++; setRowOv(prev => { const n = { ...prev }; delete n[rows[i].Id]; return n; }); }
+      setBulkProgress({ done: i + 1, total: rows.length });
+    }
+    setBulkProgress(null);
+    return failed;
+  };
+
+  /** Nur die Zuordnungen löschen — Hotels und Zeiträume bleiben stehen. */
+  const resetAssignments = async (): Promise<void> => {
+    if (assignedRows.length === 0) {
+      showAlert(isDe ? 'Es gibt aktuell keine Zuordnungen.' : 'There are no assignments right now.', { variant: 'info' });
+      return;
+    }
+    const ok = await confirmDialog(
+      isDe
+        ? `Bei ${assignedRows.length} Person(en) Hotel, An- und Abreise löschen?\n\nDie Hotels und Zeiträume bleiben erhalten — du kannst also direkt neu verteilen.${visible ? '\n\nDie Hotel-Anzeige ist freigegeben: Die Betroffenen sehen sofort kein Hotel mehr.' : ''}\n\nDas lässt sich nicht rückgängig machen.`
+        : `Clear hotel, arrival and departure for ${assignedRows.length} person(s)?\n\nHotels and periods remain — you can redistribute right away.${visible ? '\n\nHotel display is released: they will immediately see no hotel.' : ''}\n\nThis cannot be undone.`,
+      { confirmLabel: isDe ? 'Zuordnungen löschen' : 'Clear assignments', danger: true },
+    );
+    if (!ok) return;
+    setBusy('assign');
+    const failed = await clearRows(assignedRows);
+    setBusy('');
+    setSelected(new Set());
+    void Promise.resolve(onReloadRegistrations()).catch(() => { /* Hintergrund */ });
+    showAlert(
+      isDe ? `${assignedRows.length - failed} Zuordnung(en) gelöscht${failed > 0 ? `, ${failed} fehlgeschlagen` : ''}.`
+        : `${assignedRows.length - failed} assignment(s) cleared${failed > 0 ? `, ${failed} failed` : ''}.`,
+      { variant: failed > 0 ? 'error' : 'success' },
+    );
+  };
+
+  /** Kompletter Neustart: Zuordnungen, Hotels, Zeiträume, Regeln, Freigabe. */
+  const resetAll = async (): Promise<void> => {
+    if (!svc) return;
+    const ok = await confirmDialog(
+      isDe
+        ? `Hotel-Planung komplett zurücksetzen?\n\nGelöscht werden:\n• ${assignedRows.length} Zuordnung(en)\n• ${hotels.length} Hotel(s)\n• ${stays.length} Zeitraum/Zeiträume\n• die Verteil-Regeln aus dem Assistenten\n\nDie Anzeige für Teilnehmer wird ausgeschaltet. Danach startest du bei null.\n\nDas lässt sich nicht rückgängig machen.`
+        : `Reset hotel planning completely?\n\nThis deletes:\n• ${assignedRows.length} assignment(s)\n• ${hotels.length} hotel(s)\n• ${stays.length} period(s)\n• the distribution rules from the wizard\n\nAttendee display is switched off. You start from scratch.\n\nThis cannot be undone.`,
+      { confirmLabel: isDe ? 'Alles zurücksetzen' : 'Reset everything', danger: true },
+    );
+    if (!ok) return;
+    setBusy('assign');
+    const failed = await clearRows(assignedRows);
+    const id = Number(event.id);
+    // Leere Werte löschen den jeweiligen Schlüssel (siehe EventService).
+    const r1 = await svc.patchEventOverridesValueEx(id, '_hotels', []);
+    const r2 = await svc.patchEventOverridesValueEx(id, '_hotelStays', []);
+    const r3 = await svc.patchEventOverridesValueEx(id, '_hotelRules', null);
+    const r4 = await svc.patchEventOverridesValueEx(id, '_hotelVisible', false);
+    setHotelsLocal([]); setStaysLocal([]); setVisibleLocal(false);
+    setBusy('');
+    setSelected(new Set());
+    setFilterHotel('__all');
+    void Promise.resolve(onReloadRegistrations()).catch(() => { /* Hintergrund */ });
+    void Promise.resolve(onReloadEvents()).catch(() => { /* Hintergrund */ });
+    const bad = [r1, r2, r3, r4].filter(r => !r.ok);
+    showAlert(
+      bad.length > 0
+        ? (isDe ? `Zurückgesetzt, aber nicht vollständig: ${bad[0].detail}` : `Reset, but not completely: ${bad[0].detail}`)
+        : (isDe ? `Zurückgesetzt — ${assignedRows.length - failed} Zuordnung(en), Hotels, Zeiträume und Regeln gelöscht.${failed > 0 ? ` ${failed} Zuordnung(en) konnten nicht gelöscht werden.` : ''}`
+          : `Reset — ${assignedRows.length - failed} assignment(s), hotels, periods and rules deleted.${failed > 0 ? ` ${failed} assignment(s) could not be cleared.` : ''}`),
+      { variant: bad.length > 0 || failed > 0 ? 'error' : 'success' },
     );
   };
 
@@ -997,6 +1114,24 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
             </span>
           </span>
         </label>
+
+        {/* v28.62: Neu anfangen. Bewusst unauffällig und zweistufig — nur die
+            Zuordnungen (Hotels und Zeiträume bleiben, man verteilt direkt neu)
+            oder alles. Beides mit Rückfrage, die den Umfang benennt. */}
+        {(assignedRows.length > 0 || hotels.length > 0 || stays.length > 0) && (
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginTop: 10, fontSize: '0.76rem' }}>
+            <button type="button" disabled={busy !== ''}
+              onClick={() => { void resetAssignments(); }}
+              style={{ border: 'none', background: 'none', padding: 0, cursor: busy !== '' ? 'wait' : 'pointer', color: 'var(--dex-gray-600)', textDecoration: 'underline' }}>
+              {isDe ? `Alle Zuordnungen löschen${assignedRows.length > 0 ? ` (${assignedRows.length})` : ''}` : `Clear all assignments${assignedRows.length > 0 ? ` (${assignedRows.length})` : ''}`}
+            </button>
+            <button type="button" disabled={busy !== ''}
+              onClick={() => { void resetAll(); }}
+              style={{ border: 'none', background: 'none', padding: 0, cursor: busy !== '' ? 'wait' : 'pointer', color: 'var(--dex-red, #c00)', textDecoration: 'underline' }}>
+              {isDe ? 'Hotel-Planung komplett zurücksetzen' : 'Reset hotel planning completely'}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* ---- v28.58: Einstieg für ein noch leeres Event ---- */}

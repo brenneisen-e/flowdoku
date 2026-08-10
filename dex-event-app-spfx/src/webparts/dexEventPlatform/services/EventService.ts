@@ -605,11 +605,17 @@ export interface SPEvent {
 export interface CustomField {
   id: string;
   label: string;
-  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'document' | 'date'; // v19.0: document = Datei-Upload (Attachment); v24.25: date = Kalender-Auswahl
+  // v19.0: document = Datei-Upload (Attachment); v24.25: date = Kalender-Auswahl;
+  // v28.63: daterange = Übernachtungs-Zeitraum (Anreise + Abreise, Nächte berechnet)
+  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'document' | 'date' | 'daterange';
   required: boolean;
   options?: string[]; // für select-Felder
   /** v24.25: Nur für `type === 'date'` — zusätzlich die Uhrzeit abfragen. */
   withTime?: boolean;
+  /** v28.63: Nur für `type === 'daterange'` — buchbares Fenster + Nächte-Limit. */
+  rangeStart?: string;
+  rangeEnd?: string;
+  maxNights?: number;
   visible: boolean;
   /** v7.20: Optionaler Hilfe-/Beschreibungstext, der im Registrierungs-
    *  Formular als "i"-Tooltip neben dem Feld-Label sichtbar ist. */
@@ -10899,6 +10905,122 @@ export class EventService {
     } catch {
       return empty;
     }
+  }
+
+  /**
+   * v28.65: Claims-Login-Tokens in einer Teilnehmerliste reparieren.
+   *
+   * Hintergrund siehe `utils/displayName.ts`: Bei Personen, deren Eintrag in
+   * der versteckten „User Information List" ohne Anzeigename gestempelt wurde,
+   * lieferte `pageContext.user.displayName` das Login-Token
+   * („0#.f|membership|user@deloitte.de"). Bis v28.64 landete das 1:1 in der
+   * Teilnehmerzeile. Diese Methode zieht die betroffenen Namen aus dem
+   * Benutzerprofil nach.
+   *
+   * Geprüft werden `ParticipantName`, `Vorname`, `Nachname` (Quelle:
+   * `ParticipantEmail`) sowie die Audit-Felder `RegisteredByName` und
+   * `CancelledByName` (Quelle: die jeweilige Audit-E-Mail). Zeilen ohne Token
+   * bleiben unangetastet; ist die Person im Profil nicht auflösbar, wird
+   * wenigstens die E-Mail statt des Tokens gesetzt — lesbar und eindeutig.
+   */
+  public async repairClaimNamesInRegistrations(
+    subsiteUrl: string,
+    onProgress?: (done: number, total: number) => void,
+  ): Promise<{ scanned: number; hits: number; fixed: number; failed: number }> {
+    const out = { scanned: 0, hits: 0, fixed: 0, failed: 0 };
+    if (!subsiteUrl) return out;
+    const looksLikeClaim = (s: string): boolean => /\|membership\b|^i:0[#|]|^c:0|0#\.[a-z]\||^\d+#\./i.test((s || '').trim());
+    const mailFromClaim = (s: string): string => {
+      const m = (s || '').match(/\|([^|]+@[^|\s]+)\s*$/);
+      return m ? m[1].trim().toLowerCase() : '';
+    };
+    let rows: SPRegistration[] = [];
+    try { rows = await this.getAllRegistrations(subsiteUrl); } catch { return out; }
+    out.scanned = rows.length;
+
+    const affected = rows.filter(r =>
+      looksLikeClaim(r.ParticipantName || '') || looksLikeClaim(r.Vorname || '') || looksLikeClaim(r.Nachname || '')
+      || looksLikeClaim(r.RegisteredByName || '') || looksLikeClaim(r.CancelledByName || ''));
+    out.hits = affected.length;
+    if (affected.length === 0) return out;
+
+    // Profile je E-Mail nur einmal holen — dieselbe Person taucht oft mehrfach
+    // auf (Klammer-Schattenzeile plus Sub-Events).
+    const cache: Record<string, { firstName: string; lastName: string; displayName: string }> = {};
+    const nameFor = async (email: string): Promise<{ firstName: string; lastName: string; displayName: string }> => {
+      const key = (email || '').toLowerCase();
+      if (!key) return { firstName: '', lastName: '', displayName: '' };
+      if (cache[key]) return cache[key];
+      let p = { firstName: '', lastName: '', displayName: '' };
+      try {
+        const prof = await this.getUserProfileByEmail(key);
+        p = {
+          firstName: looksLikeClaim(prof.firstName) ? '' : (prof.firstName || '').trim(),
+          lastName: looksLikeClaim(prof.lastName) ? '' : (prof.lastName || '').trim(),
+          displayName: looksLikeClaim(prof.displayName) ? '' : (prof.displayName || '').trim(),
+        };
+      } catch { /* nicht auflösbar — E-Mail als Fallback */ }
+      cache[key] = p;
+      return p;
+    };
+
+    for (let i = 0; i < affected.length; i++) {
+      const r = affected[i];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const patch: Record<string, any> = {};
+      const ownEmail = (r.ParticipantEmail || r.Title || '').trim();
+      if (looksLikeClaim(r.ParticipantName || '') || looksLikeClaim(r.Vorname || '') || looksLikeClaim(r.Nachname || '')) {
+        const mail = ownEmail || mailFromClaim(r.ParticipantName || '');
+        // eslint-disable-next-line no-await-in-loop
+        const p = await nameFor(mail);
+        const first = looksLikeClaim(r.Vorname || '') ? p.firstName : ((r.Vorname || '').trim() || p.firstName);
+        const last = looksLikeClaim(r.Nachname || '') ? p.lastName : ((r.Nachname || '').trim() || p.lastName);
+        const display = p.displayName || `${first} ${last}`.trim() || mail;
+        if (looksLikeClaim(r.ParticipantName || '')) patch['ParticipantName'] = display;
+        if (looksLikeClaim(r.Vorname || '')) patch['Vorname'] = first;
+        if (looksLikeClaim(r.Nachname || '')) patch['Nachname'] = last;
+      }
+      if (looksLikeClaim(r.RegisteredByName || '')) {
+        const mail = (r.RegisteredByEmail || '').trim() || mailFromClaim(r.RegisteredByName || '');
+        // eslint-disable-next-line no-await-in-loop
+        const p = await nameFor(mail);
+        patch['RegisteredByName'] = p.displayName || `${p.firstName} ${p.lastName}`.trim() || mail;
+      }
+      if (looksLikeClaim(r.CancelledByName || '')) {
+        const mail = (r.CancelledByEmail || '').trim() || mailFromClaim(r.CancelledByName || '');
+        // eslint-disable-next-line no-await-in-loop
+        const p = await nameFor(mail);
+        patch['CancelledByName'] = p.displayName || `${p.firstName} ${p.lastName}`.trim() || mail;
+      }
+      if (Object.keys(patch).length === 0) { if (onProgress) onProgress(i + 1, affected.length); continue; }
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const resp = await this._merge(
+          `${subsiteUrl}/_api/web/lists/getbytitle('${REG_LIST_NAME}')/items(${r.Id})`, patch,
+        );
+        if (resp.ok || resp.status === 406) out.fixed++; else out.failed++;
+      } catch { out.failed++; }
+      if (onProgress) onProgress(i + 1, affected.length);
+    }
+    return out;
+  }
+
+  /**
+   * v28.65: Anzeigenamen zu einer E-Mail auflösen (für die Organizer-Reparatur
+   * im Admin Center). Leer, wenn das Profil nichts hergibt.
+   */
+  public async displayNameForEmail(email: string): Promise<string> {
+    if (!email) return '';
+    const looksLikeClaim = (s: string): boolean => /\|membership\b|^i:0[#|]|^c:0|0#\.[a-z]\|/i.test((s || '').trim());
+    try {
+      const p = await this.getUserProfileByEmail(email);
+      const cand = [p.displayName, [p.lastName, p.firstName].filter(Boolean).join(', ')];
+      for (const c of cand) {
+        const v = (c || '').trim();
+        if (v && !looksLikeClaim(v)) return v;
+      }
+    } catch { /* nicht auflösbar */ }
+    return '';
   }
 
   // ==================== Hilfsmethoden ====================
