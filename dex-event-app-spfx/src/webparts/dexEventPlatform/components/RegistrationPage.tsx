@@ -30,8 +30,8 @@ import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
 import { UserFieldPicker } from './UserFieldPicker';
 import StayRangePicker from './StayRangePicker';
-// v28.90: Platzhalter, wenn ein Event kein eigenes Foto hat.
-import DexLogo from './DexLogo';
+// v28.91: Platzhalter-Bild, wenn ein Event kein eigenes Foto hat.
+import { DEX_ORB_PNG } from '../data/brandLogos';
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -884,6 +884,10 @@ export default function RegistrationPage(): React.ReactElement {
   // hat weiter Vorrang; Quer-/Hochformat behält den Seiten-Slot.
   const imgCircleNotch = !!event?.imageUrl && !event?.imageBanner && imgAspect != null && imgAspect >= 0.8 && imgAspect < 1.2;
   const circleSize = isMobile ? 140 : 170;
+  // v28.91: Kein Event-Foto → das DEX-Bild steht als KREIS oben mittig,
+  // genau dort, wo auch ein rundes Event-Logo sitzt (imgCircleNotch). Im
+  // Seiten-Slot rechts wirkte es wie ein Foto des Events, das es nicht ist.
+  const showOrbPlaceholder = !event?.imageUrl;
 
   // B2Run Split-Capacity: aktuelle Auslastung pro Typ laden
   // Split-UI nur wenn BEIDE Starter-Typen verfügbar sind (>0). Wenn der Admin eine
@@ -2952,9 +2956,9 @@ export default function RegistrationPage(): React.ReactElement {
               // v28.6: Infos LINKS, Bild RECHTS (row-reverse — das Bild steht
               // im DOM zuerst, wird aber rechts gerendert). Banner/Mobil: Bild oben.
               // v28.7: Kreis-Bilder → Spalte, der Kreis sitzt oben mittig.
-              flexDirection: (isMobile || event.imageBanner || imgCircleNotch) ? 'column' : 'row-reverse',
+              flexDirection: (isMobile || event.imageBanner || imgCircleNotch || showOrbPlaceholder) ? 'column' : 'row-reverse',
               gap: 16,
-              alignItems: (isMobile || event.imageBanner || imgCircleNotch) ? 'stretch' : 'flex-start',
+              alignItems: (isMobile || event.imageBanner || imgCircleNotch || showOrbPlaceholder) ? 'stretch' : 'flex-start',
             }}
           >
             {/* v28.3: Bild-Slot nur rendern, wenn das Event ein Bild hat —
@@ -2970,21 +2974,28 @@ export default function RegistrationPage(): React.ReactElement {
                 Desktop: Auf dem Handy liegt das Bild ÜBER den Infos und würde
                 Titel und Datum nach unten drücken. Kein Zoom-Knopf — es gibt
                 nichts zu vergrößern. */}
-            {!event.imageUrl && !isMobile && (
+            {showOrbPlaceholder && (
               <div
                 className="registration-event__image"
                 title={locale === 'de' ? 'Für dieses Event ist kein Bild hinterlegt.' : 'No image is set for this event.'}
                 style={{
                   background: '#fff',
-                  borderRadius: 'var(--dex-radius)',
-                  flex: `0 0 ${imgSlotW}px`,
-                  maxWidth: imgSlotW,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: circleSize, height: circleSize, flex: '0 0 auto',
+                  borderRadius: '50%',
+                  border: '1px solid var(--dex-gray-200)',
+                  boxShadow: '0 2px 12px rgba(0,0,0,0.10)',
                   alignSelf: 'center',
-                  padding: 12,
+                  marginTop: -(circleSize / 2 + 16),
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  padding: 14,
+                  boxSizing: 'border-box',
                 }}
               >
-                <DexLogo title="DEX" motion="oscillate" style={{ width: '100%' }} />
+                <img
+                  src={DEX_ORB_PNG}
+                  alt=""
+                  style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }}
+                />
               </div>
             )}
             {event.imageUrl && (event.imageBanner || imgAspectReady) && (
@@ -4765,7 +4776,160 @@ export default function RegistrationPage(): React.ReactElement {
                 </label>
                 )}
 
+                {/* v28.91: Termin-Kalender statt Liste — nur, wenn der
+                    Organizer die Sub-Events ausdrücklich als Termine angelegt
+                    hat (subEventCalendar). Bei neun Tagen ist eine Liste aus
+                    neun Funkbuttons kaum zu erfassen; im Kalender sieht man
+                    Wochenstruktur, Lücken und freie Plätze auf einen Blick.
+                    Es sind dieselben Sub-Events und dasselbe selectedSessions —
+                    nur eine andere Darstellung derselben Auswahl. */}
+                {!!event.subEventCalendar && (() => {
+                  type DayEntry = { ce: typeof childEvents[0]; key: string };
+                  const dayOf = (iso?: string): string => {
+                    if (!iso) return '';
+                    const d = new Date(iso);
+                    if (isNaN(d.getTime())) return '';
+                    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                  };
+                  const entries: DayEntry[] = childEvents
+                    .map(ce => ({ ce, key: dayOf(ce.startDate) }))
+                    .filter(e => !!e.key);
+                  if (entries.length === 0) return null;
+                  const byDay: Record<string, DayEntry> = {};
+                  entries.forEach(e => { byDay[e.key] = e; });
+                  // Monate, in denen Termine liegen — jeder als eigenes Raster.
+                  const monthKeys: string[] = [];
+                  entries.forEach(e => {
+                    const mk = e.key.slice(0, 7);
+                    if (monthKeys.indexOf(mk) < 0) monthKeys.push(mk);
+                  });
+                  monthKeys.sort();
+                  const weekdays = locale === 'de'
+                    ? ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
+                    : ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                  const pickDay = (ce: typeof childEvents[0], isSel: boolean, disabled: boolean): void => {
+                    if (disabled) return;
+                    if (!isSel) {
+                      // Hat der Termin eigene Abfragefelder, läuft die Auswahl
+                      // über denselben Modal-Flow wie in der Listen-Ansicht.
+                      if ((ce.eventSpecificFields || []).length > 0) {
+                        setPendingSubEventModal({ subEventId: ce.id, draftValues: { ...(sessionFieldValues[ce.id] || {}) } });
+                        return;
+                      }
+                      const next = new Set(selectedSessions);
+                      next.add(ce.id);
+                      setSelectedSessions(next);
+                      return;
+                    }
+                    const next = new Set(selectedSessions);
+                    next.delete(ce.id);
+                    setSelectedSessions(next);
+                    setSessionFieldValues(prev => { const c = { ...prev }; delete c[ce.id]; return c; });
+                  };
+                  return (
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', fontWeight: 600, marginBottom: 8 }}>
+                        {locale === 'de'
+                          ? 'Termine auswählen — angebotene Tage sind hervorgehoben.'
+                          : 'Pick your dates — offered days are highlighted.'}
+                      </div>
+                      {monthKeys.map(mk => {
+                        const [my, mm] = mk.split('-').map(n => parseInt(n, 10));
+                        const first = new Date(my, mm - 1, 1);
+                        const daysInMonth = new Date(my, mm, 0).getDate();
+                        // Montag als erster Wochentag (getDay: So=0).
+                        const lead = (first.getDay() + 6) % 7;
+                        const cells: Array<string | null> = [];
+                        for (let i = 0; i < lead; i++) cells.push(null);
+                        for (let d = 1; d <= daysInMonth; d++) {
+                          cells.push(`${my}-${String(mm).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+                        }
+                        return (
+                          <div key={mk} style={{ marginBottom: 14 }}>
+                            <div style={{ fontWeight: 700, fontSize: '0.9rem', marginBottom: 6, color: 'var(--dex-gray-700, #444)' }}>
+                              {first.toLocaleDateString(locale === 'de' ? 'de-DE' : 'en-GB', { month: 'long', year: 'numeric' })}
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+                              {weekdays.map(w => (
+                                <div key={w} style={{ fontSize: '0.68rem', fontWeight: 700, color: 'var(--dex-gray-400)', textAlign: 'center', padding: '2px 0' }}>{w}</div>
+                              ))}
+                              {cells.map((key, i) => {
+                                if (!key) return <div key={`e${i}`} />;
+                                const entry = byDay[key];
+                                const dayNum = parseInt(key.slice(8), 10);
+                                if (!entry) {
+                                  return (
+                                    <div key={key} style={{
+                                      textAlign: 'center', padding: '8px 0', borderRadius: 8,
+                                      fontSize: '0.8rem', color: 'var(--dex-gray-300, #ccc)',
+                                    }}>{dayNum}</div>
+                                  );
+                                }
+                                const ce = entry.ce;
+                                const meta = sessionMeta[ce.id] || { count: 0, wasRegistered: false };
+                                const isSel = selectedSessions.has(ce.id);
+                                const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
+                                const isFull = hasCap && meta.count >= (ce.maxParticipants || 0);
+                                const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date());
+                                const disabled = (isFull && !isSel) || (deadlinePassed && !isSel);
+                                const free = hasCap ? Math.max(0, (ce.maxParticipants || 0) - meta.count) : -1;
+                                const title = [
+                                  ce.title || '',
+                                  hasCap
+                                    ? (locale === 'de' ? `${free} von ${ce.maxParticipants} Plätzen frei` : `${free} of ${ce.maxParticipants} seats free`)
+                                    : (locale === 'de' ? 'Unbegrenzte Plätze' : 'Unlimited seats'),
+                                  deadlinePassed ? (locale === 'de' ? 'Anmeldefrist abgelaufen' : 'Registration deadline passed') : '',
+                                  ce.mandatoryRegistration ? (locale === 'de' ? 'Pflichttermin' : 'Mandatory date') : '',
+                                ].filter(Boolean).join(' · ');
+                                return (
+                                  <button
+                                    key={key}
+                                    type="button"
+                                    onClick={() => pickDay(ce, isSel, disabled)}
+                                    disabled={disabled}
+                                    title={title}
+                                    aria-pressed={isSel}
+                                    style={{
+                                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                                      gap: 1, padding: '6px 0 5px', borderRadius: 8, minHeight: 46,
+                                      border: `1px solid ${isSel ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                                      background: isSel ? 'var(--dex-green, #86bc25)' : '#fff',
+                                      color: isSel ? '#fff' : (disabled ? 'var(--dex-gray-400)' : 'var(--dex-gray-800, #333)'),
+                                      cursor: disabled ? 'not-allowed' : 'pointer',
+                                      opacity: disabled ? 0.55 : 1,
+                                      fontWeight: 700, fontSize: '0.82rem',
+                                    }}
+                                  >
+                                    <span>{dayNum}</span>
+                                    <span style={{ fontSize: '0.6rem', fontWeight: 600, opacity: 0.85 }}>
+                                      {deadlinePassed
+                                        ? (locale === 'de' ? 'zu' : 'closed')
+                                        : isFull
+                                        ? (locale === 'de' ? 'voll' : 'full')
+                                        : hasCap
+                                        ? (locale === 'de' ? `${free} frei` : `${free} free`)
+                                        : '—'}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                        {selectedSessions.size === 0
+                          ? (locale === 'de' ? 'Noch kein Termin gewählt.' : 'No date picked yet.')
+                          : (locale === 'de'
+                            ? `${selectedSessions.size} ${selectedSessions.size === 1 ? 'Termin' : 'Termine'} gewählt.`
+                            : `${selectedSessions.size} ${selectedSessions.size === 1 ? 'date' : 'dates'} picked.`)}
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 {/* Sessions */}
+                {!event.subEventCalendar && (
                 <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
                   <div style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', fontWeight: 600 }}>{childTermPlural || tEvent('reg.selection.sessions') || 'Sessions'}</div>
                   {childEvents.map(ce => {
@@ -4883,6 +5047,7 @@ export default function RegistrationPage(): React.ReactElement {
                     );
                   })}
                 </div>
+                )}
 
                 {isSessionsOnlyMode && selectedSessions.size > 0 && !event.subEventsOnlyMode && (
                   <div style={{

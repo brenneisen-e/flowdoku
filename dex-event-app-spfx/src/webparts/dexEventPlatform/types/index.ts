@@ -210,6 +210,13 @@ export interface DeloitteEvent {
    *  Querformat-Fotos), false/undefined = kompakter Slot links neben den
    *  Infos (Standard). Piggyback `_imageBanner` in EmailTemplateOverrides. */
   imageBanner?: boolean;
+  /** v28.91: Die Sub-Events dieses Events sind TERMINE (ein Tag je Sub-Event).
+   *  Der Organizer legt sie im Assistenten über einen Kalender an, und die
+   *  Anmeldeseite zeigt sie als Kalender statt als Liste. Rein eine Frage der
+   *  Erzeugung und Darstellung — ein Termin ist ein ganz normales Sub-Event
+   *  mit eigener Teilnehmerliste, Kapazität und Outlook-Termin.
+   *  Piggyback `_subEventCalendar` in EmailTemplateOverrides. */
+  subEventCalendar?: boolean;
   /** v28.11: URL des unbeschnittenen Querformat-ORIGINALS (Attachment
    *  `__eventimgorig__…`, Piggyback `_imageOrigUrl`). Nur gesetzt, wenn ein
    *  Querformat-Foto per App-Zuschnitt rund/quadratisch wurde. Die

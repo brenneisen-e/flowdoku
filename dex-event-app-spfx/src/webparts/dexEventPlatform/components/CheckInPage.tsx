@@ -24,19 +24,8 @@ import { ChevronDown, ChevronUp } from './Icons';
 // v20.0 (Audit): qr-scanner nur noch als Typ statisch importieren — die
 // eigentliche Bibliothek wird erst beim Kamera-Start dynamisch nachgeladen.
 import type QrScanner from 'qr-scanner';
+import { shortSubEventTitle } from '../utils/subEventTitle';
 
-// v23.45: zeigt nur den reinen Sub-Namen (Teil nach dem letzten „|") —
-// gleiche Logik wie im Organizer Center.
-function shortSubEventTitle(title: string | undefined): string {
-  const t = (title || '').trim();
-  if (!t) return t;
-  const pipe = t.lastIndexOf('|');
-  if (pipe >= 0) {
-    const after = t.substring(pipe + 1).trim();
-    if (after) return after;
-  }
-  return t;
-}
 
 export default function CheckInPage(): React.ReactElement {
   const { events, getAllRegistrations, updateEvent } = useEvents();

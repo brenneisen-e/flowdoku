@@ -38,6 +38,17 @@ import OrganizerList from './OrganizerList';
 // Kachel-Modal des Admin Centers.
 import { buildOutlookLocation } from '../utils/eventFormat';
 import { setActiveWizardStep } from '../utils/wizardStepContext';
+import { shortSubEventTitle } from '../utils/subEventTitle';
+import { DESCRIPTION_TEMPLATES } from '../data/descriptionTemplates';
+import { CustomFieldInput } from './wizard/customFieldInput';
+// v28.94: Unterkomponenten des Assistenten liegen jetzt in ./wizard —
+// sie kennen den Wizard-State nicht und liessen sich deshalb ohne
+// Verhaltensaenderung herausloesen.
+import { StickyTabStrip } from './wizard/StickyTabStrip';
+import { StepBadge } from './wizard/StepBadge';
+import { LocationMultiSelect } from './wizard/LocationMultiSelect';
+import { FieldDescEditor } from './wizard/FieldDescEditor';
+import { FieldTypeSuggestion } from './wizard/FieldTypeSuggestion';
 import { useIsMobile } from '../utils/useIsMobile';
 import { Icon } from '@fluentui/react/lib/Icon';
 import DatePicker, { registerLocale } from 'react-datepicker';
@@ -133,63 +144,6 @@ const readOutlookLogo = (ov: Record<string, unknown> | null | undefined): string
   return (ov._outlookLogo as string) || '';
 };
 
-interface CustomFieldInput {
-  id: string;
-  label: string;
-  // v19.0: document = Datei-Upload; v24.25: date = Kalender-Auswahl;
-  // v28.63: daterange = Übernachtungs-Zeitraum (Anreise + Abreise, Nächte berechnet)
-  type: 'text' | 'select' | 'number' | 'checkbox' | 'user' | 'roommate' | 'document' | 'date' | 'daterange';
-  required: boolean;
-  /** v24.25: Nur für `type === 'date'` — zusätzlich die Uhrzeit abfragen. */
-  withTime?: boolean;
-  /** v28.63: Nur für `type === 'daterange'` — buchbares Fenster und Nächte-Limit. */
-  rangeStart?: string;
-  rangeEnd?: string;
-  maxNights?: number;
-  // Optionen als Array (incl. leerer Slots für "frisch hinzugefügte" Einträge)
-  options: string[];
-  visible: boolean;
-  externalLinks?: Array<{ label: string; url: string }>;
-  /** v18.41: Nur People-Picker (user/roommate): ausgewählte Person bei
-   *  An-/Abmelde-Mail auf CC setzen (nicht im Outlook-Termin). */
-  ccOnEmails?: boolean;
-  /** v26.60: Nur roommate — false schaltet die separate
-   *  „Zimmerpartner-Anfrage"-Mail ab (undefined = an). */
-  notifyRoommate?: boolean;
-  /** v7.11: Bei type=select erlaubt true Mehrfachauswahl (Checkbox-Liste statt
-   *  Single-Dropdown). Wert wird " | "-getrennt gespeichert. */
-  multi?: boolean;
-  /** v26.74: Vorauswahl bei Single-Select — eine der `options` ist im
-   *  Anmeldeformular vorausgewählt (leer = keine Vorauswahl). */
-  defaultValue?: string;
-  /** v26.75: Vorfilter — Kategorie pro Option (positional zu `options`). */
-  optionCategories?: string[];
-  /** v26.75: Beschriftung des Vorfilter-Dropdowns. */
-  prefilterLabel?: string;
-  /** v7.20: Optionale Beschreibung — landet als "i"-Tooltip neben dem
-   *  Feld-Label im Registrierungsformular. */
-  helpText?: string;
-  /** v18.18: 'tooltip' (Default) = "i"-Hover-Box neben dem Label;
-   *  'inline' = nicht-fetter Erklär-Text direkt unter dem Label. */
-  helpTextStyle?: 'tooltip' | 'inline';
-  /** v7.21: Sichtbarkeitsbedingung — Feld nur anzeigen wenn das Quell-Feld
-   *  einen der `values` als Antwort hat. */
-  showIf?: { fieldId: string; values: string[] };
-  /** v10.24: Bei aktiver Split-Capacity Feld nur für eine der zwei
-   *  Gruppen sichtbar machen ('A' = Durchstarter / Gruppe A, 'B' =
-   *  Funstarter / Gruppe B). 'all' / undefined = beide Gruppen. */
-  onlyForGroup?: 'all' | 'A' | 'B';
-  /** v11.94: Nur für type='checkbox' — Text neben der Checkbox im
-   *  Registrierungsformular (Default „Ja, bestätigen" / „Yes, confirm"). */
-  confirmLabel?: string;
-  /** v17.20: Englische Varianten — nur relevant wenn der Organizer im
-   *  selben Schritt 5 den Toggle „Deutsch und Englisch ermöglichen"
-   *  gesetzt hat. */
-  labelEn?: string;
-  helpTextEn?: string;
-  confirmLabelEn?: string;
-  optionsEn?: string[];
-}
 
 // v18.22: Pro-Event-Override eines Mail-Templates (Subject/Headings/Body +
 // Formatierung). Vorher als gleiche Inline-Form an ~7 Stellen wiederholt —
@@ -298,28 +252,6 @@ function serializeCustomFields(
     });
 }
 
-// v24.25: Heuristiken für die Feldart-Empfehlung im Feld-Editor — wenn das
-// Feld-Label nach einem Datum bzw. nach einer Person/einem Namen klingt,
-// schlägt der Wizard die passende Feldart vor (Kalender bzw. People-Picker).
-function labelLooksLikeDate(label: string): boolean {
-  // v26.91: „date" nur als eigenes Wort (\b) — sonst matchte es „Date"n in
-  // „Datenschutz(hinweise)" und schlug fälschlich eine Datums-Umstellung vor.
-  // „datum" bleibt ohne Grenze (deutsche Komposita wie „Geburtsdatum").
-  return /(datum|\bdate\b|check[\s-]?in|check[\s-]?out|anreise|abreise|geburtstag|birthday|deadline|frist|termin|ankunft|abfahrt|arrival|departure)/i.test(label || '');
-}
-function labelLooksLikeName(label: string): boolean {
-  return /(\bname\b|vorname|nachname|ansprechpartner|counselor|kolleg|mitarbeiter|\bmentor\b|\bpate\b|\bbuddy\b|begleitung|\bgast\b)/i.test(label || '');
-}
-// v24.28: Felder, die i.d.R. schon automatisch aus dem Deloitte-Profil kommen
-// (Standort, Abteilung, Unternehmenszugehörigkeit/Rechtsträger, Telefon, Name,
-// E-Mail) — die muss der Organizer nicht extra abfragen. „name" allein bewusst
-// NICHT (zu mehrdeutig, z.B. „Name of counselor").
-function labelLooksLikeProfile(label: string): boolean {
-  // v26.91: Telefon/Mobil/Handy bewusst NICHT mehr — eine (private) Mobilnummer
-  // z.B. für den B2Run-Infoservice steht i.d.R. NICHT im Deloitte-Profil und ist
-  // eine legitime Abfrage; der „schon automatisch erfasst"-Hinweis passte da nicht.
-  return /(vorname|nachname|first ?name|last ?name|e-?mail|abteilung|department|standort|location|\boffice\b|\bbüro\b|firma|company|unternehmen|arbeitgeber|gesellschaft|\bgmbh\b|legal ?entity|\bentity\b|rechtsträger|member ?firm|adresse|address|job ?title)/i.test(label || '');
-}
 // v27.3: Der Outlook-Body wird beim Speichern mit fest aufgelöstem {{Organizer}}
 // gespeichert. Kommen später Organizer dazu, blieb der alte Name eingebacken.
 // Beim Edit-Laden mappen wir den eingebackenen Organizer-Namen wieder auf
@@ -339,681 +271,11 @@ function reinsertOrganizerPlaceholder(body: string, organizers: string[]): strin
   return body;
 }
 
-// v27.4: Kompakter Beschreibungs-Editor mit DAUERHAFT sichtbarer Mini-Leiste
-// (Fett + Link). Die Buttons formatieren die Markierung (kein Markdown-Tippen);
-// gespeichert wird ein kleines Markdown-Subset, das die Anmeldeseite rendert.
-function FieldDescEditor({ value, onChange, isDe }: { value: string; onChange: (v: string) => void; isDe: boolean }): React.ReactElement {
-  const ref = React.useRef<HTMLTextAreaElement>(null);
-  const applyWrap = (before: string, after: string, ph: string): void => {
-    const ta = ref.current; if (!ta) return;
-    const s = ta.selectionStart; const e = ta.selectionEnd;
-    const sel = value.substring(s, e) || ph;
-    const next = value.substring(0, s) + before + sel + after + value.substring(e);
-    onChange(next);
-    window.setTimeout(() => { try { ta.focus(); ta.setSelectionRange(s + before.length, s + before.length + sel.length); } catch { /* */ } }, 0);
-  };
-  const insertLink = (): void => {
-    const ta = ref.current; if (!ta) return;
-    const s = ta.selectionStart; const e = ta.selectionEnd;
-    const url = (window.prompt(isDe ? 'Link-Adresse (https://…):' : 'Link URL (https://…):', 'https://') || '').trim();
-    if (!url) return;
-    const sel = value.substring(s, e) || (isDe ? 'Link-Text' : 'link text');
-    const next = value.substring(0, s) + `[${sel}](${url})` + value.substring(e);
-    onChange(next);
-    window.setTimeout(() => { try { ta.focus(); } catch { /* */ } }, 0);
-  };
-  const btn: React.CSSProperties = { height: 26, minWidth: 30, padding: '0 8px', fontSize: '0.8rem', cursor: 'pointer', background: '#fff', border: '1px solid var(--dex-gray-300)', borderRadius: 4, color: 'var(--dex-gray-700)' };
-  return (
-    <div style={{ border: '1px solid var(--dex-gray-300)', borderRadius: 6, background: '#fff' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', borderBottom: '1px solid var(--dex-gray-200)' }}>
-        <button type="button" title={isDe ? 'Fett' : 'Bold'} onMouseDown={e => e.preventDefault()} onClick={() => applyWrap('**', '**', isDe ? 'fetter Text' : 'bold text')} style={{ ...btn, fontWeight: 800 }}>F</button>
-        <button type="button" title={isDe ? 'Link einfügen' : 'Insert link'} onMouseDown={e => e.preventDefault()} onClick={insertLink} style={{ ...btn, display: 'inline-flex', alignItems: 'center', gap: 5 }}>🔗 {isDe ? 'Link' : 'Link'}</button>
-        <span style={{ marginLeft: 'auto', fontSize: '0.66rem', color: 'var(--dex-gray-400)' }}>{isDe ? 'Text markieren, dann Button' : 'Select text, then button'}</span>
-      </div>
-      <textarea
-        ref={ref}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        placeholder={isDe ? 'Beschreibung (optional)' : 'Description (optional)'}
-        rows={2}
-        style={{ width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', resize: 'vertical', fontSize: '0.85rem', lineHeight: 1.45, padding: '8px 10px', fontFamily: 'inherit', background: 'transparent', color: 'var(--dex-gray-800)' }}
-      />
-    </div>
-  );
-}
 
-/** v24.25/v24.28: Kleiner Hinweis im Feld-Editor. Drei Fälle, in dieser
- *  Priorität: (1) `profile` — das Feld wird ohnehin schon automatisch erfasst
- *  (kein Umstell-Button, nur Hinweis); (2) `date` — besser Kalender-Feld;
- *  (3) `person` — besser People-Picker (nur Haupt-Felder, `allowPerson`). */
-function FieldTypeSuggestion(props: {
-  field: CustomFieldInput;
-  isDe: boolean;
-  allowPerson: boolean;
-  disabled?: boolean;
-  onApply: (type: CustomFieldInput['type']) => void;
-}): React.ReactElement | null {
-  const { field, isDe, allowPerson, disabled, onApply } = props;
-  const label = (field.label || '').trim();
-  if (!label) return null;
-  let kind: 'profile' | 'date' | 'person' | null = null;
-  if (labelLooksLikeProfile(label)) kind = 'profile';
-  else if (labelLooksLikeDate(label) && field.type !== 'date') kind = 'date';
-  else if (allowPerson && labelLooksLikeName(label) && field.type !== 'user' && field.type !== 'roommate') kind = 'person';
-  if (!kind) return null;
-  const body = kind === 'profile'
-    ? (isDe
-        ? <>Das wird vermutlich <strong>schon automatisch erfasst</strong> — Angaben wie Standort, Abteilung oder Unternehmenszugehörigkeit (z.B. Deloitte GmbH / Consulting GmbH) kommen aus dem Profil. Du musst sie meist nicht extra abfragen.</>
-        : <>This is probably <strong>already collected automatically</strong> — details like location, department or company affiliation come from the profile. You usually don’t need to ask for them.</>)
-    : kind === 'date'
-    ? (isDe
-        ? <>Das klingt nach einem <strong>Datum</strong>. Mit der Feldart <strong>„Datum“</strong> bekommen Teilnehmer einen Kalender-Auswähler (optional mit Uhrzeit) statt eines Freitextfelds.</>
-        : <>This looks like a <strong>date</strong>. With the <strong>„Date“</strong> field type attendees get a calendar picker (optionally with time) instead of a free-text field.</>)
-    : (isDe
-        ? <>Das klingt nach einer <strong>Person</strong>. Mit der Feldart <strong>„Person“</strong> suchen Teilnehmer die Person direkt (mit Foto &amp; Standort), statt den Namen abzutippen.</>
-        : <>This looks like a <strong>person</strong>. With the <strong>„Person“</strong> field type attendees search the person directly (with photo &amp; location) instead of typing the name.</>);
-  const applyType: CustomFieldInput['type'] | null = kind === 'date' ? 'date' : kind === 'person' ? 'user' : null;
-  const applyLabel = kind === 'date'
-    ? (isDe ? 'Auf „Datum" umstellen' : 'Switch to „Date"')
-    : (isDe ? 'Auf „Person" umstellen' : 'Switch to „Person"');
-  return (
-    <div style={{ marginTop: 8, marginLeft: 32, padding: '8px 12px', background: 'rgba(237,139,0,0.08)', border: '1px solid var(--dex-orange, #ed8b00)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-      <span style={{ flex: 1, minWidth: 200, fontSize: '0.78rem', color: 'var(--dex-gray-700)', lineHeight: 1.4 }}>
-        <strong>{isDe ? 'Tipp' : 'Tip'}</strong> — „{label}“: {body}
-      </span>
-      {applyType && (
-        <button
-          type="button"
-          disabled={disabled}
-          onClick={() => onApply(applyType)}
-          style={{ flexShrink: 0, background: 'var(--dex-green, #86bc25)', color: '#fff', border: 'none', borderRadius: 999, padding: '5px 12px', fontSize: '0.75rem', fontWeight: 700, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.6 : 1 }}
-        >
-          {applyLabel}
-        </button>
-      )}
-    </div>
-  );
-}
 
-// v19.22: Sub-Event-Titel auf den reinen Sub-Namen kürzen (Parent-Präfix
-// entfernen) — gleiche Logik wie im Admin Center. Sub-Event-Titel werden oft
-// als „<Hauptevent> | <Sub-Name>" gespeichert; in den Tabs/Listen reicht der
-// Sub-Name (z.B. „HER SPACE").
-function shortSubEventTitle(title: string | undefined, parentTitle?: string): string {
-  const t = (title || '').trim();
-  if (!t) return t;
-  const pipe = t.lastIndexOf('|');
-  if (pipe >= 0) {
-    const after = t.substring(pipe + 1).trim();
-    if (after) return after;
-  }
-  const p = (parentTitle || '').trim();
-  if (p && t.toLowerCase().startsWith(p.toLowerCase())) {
-    const rest = t.substring(p.length).replace(/^[\s|:\-–—·•]+/, '').trim();
-    if (rest) return rest;
-  }
-  return t;
-}
 
-/**
- * v22.30: Tab-Leiste der pro-Sub-Event-Schritte (Klammer/Haupt + Sub-Events).
- * - Sitzt ganz OBEN in der weißen Schritt-Karte (über der Überschrift).
- * - Bleibt beim Scrollen sichtbar: JS-Pin unter dem (ebenfalls gepinnten)
- *   Header — CSS-sticky wird im SP-Canvas durch Overflow-Vorfahren
- *   ausgehebelt (gleiche Falle wie beim Header, siehe Header.tsx v22.28).
- *   Ein Platzhalter hält die Höhe, die Leiste wechselt auf position:fixed.
- * - Der AKTIVE Tab ist gefüllt grün mit weißer Schrift.
- * Versteckte Schritte (display:none) pinnen nicht (offsetParent-Check).
- */
-function StickyTabStrip(props: {
-  tabs: Array<{ label: string; isMain: boolean }>;
-  activeIdx: number;
-  onChange: (idx: number) => void;
-  ariaLabel: string;
-  mainBadge: string;
-  /** v22.71: Klammer-Modus — der Haupt-Tab wird als echte Klammer ÜBER den
-   *  Sub-Event-Tabs dargestellt (oben volle Breite, darunter eingerückt). */
-  klammer?: boolean;
-  /** v22.71: Haupt-/Klammer-Tab nicht anklickbar (z.B. Schritt 6: im
-   *  „Nur Sub-Events"-Modus ist die Klammer-Kommunikation nicht relevant). */
-  mainDisabled?: boolean;
-  /** Optionaler Hinweis-Text neben dem deaktivierten Klammer-Tab. */
-  mainDisabledNote?: string;
-  /** v28.73: Wort in Klammern hinter dem Eventnamen, z.B. „Klammerevent". */
-  klammerWord?: string;
-  /** v28.73: Info-Icon (Tooltip) rechts im Klammer-Reiter — erklärt, dass die
-   *  Anmeldung über die Sub-Events läuft, mit Quicklink zur Umstellung. */
-  klammerInfo?: React.ReactNode;
-}): React.ReactElement {
-  const phRef = React.useRef<HTMLDivElement | null>(null);
-  const [pin, setPin] = React.useState<null | { top: number; left: number; width: number; height: number }>(null);
-  // v28.72: Hover-/Fokus-Index für die Reiter (Inline-Styles können kein :hover).
-  const [hoverIdx, setHoverIdx] = React.useState<number | null>(null);
 
-  /**
-   * v28.89: Die Reiter-Reihe bei vielen Sub-Events bedienbar machen.
-   *
-   * Seit v28.85 bricht die Reihe nicht mehr um, sondern scrollt — damit war
-   * das Umbruch-Problem weg, aber ein neues da: Bei neun Terminen liegt die
-   * Hälfte außerhalb des Sichtfelds, ohne dass man es sieht. Wer per Schritt
-   * oder Validierung auf einen Reiter geschickt wird, findet ihn nicht wieder;
-   * und ein waagerechter Scrollbalken ist auf dem Trackpad ein Zufallsfund.
-   *
-   * Drei Ergänzungen, bewusst am etablierten Tab-Muster orientiert (Pfeile
-   * links/rechts, aktiver Reiter wird sichtbar gehalten, Pfeiltasten):
-   *  - `ovf` sagt, ob links/rechts noch etwas liegt → nur dann ein Pfeil,
-   *  - der aktive Reiter wird nach jedem Wechsel in den sichtbaren Bereich
-   *    gescrollt (auch wenn der Wechsel von außen kommt, z.B. aus setScope),
-   *  - Pfeil links/rechts blättert von Reiter zu Reiter (Rolle „tablist"
-   *    verspricht das ohnehin — bisher tat es nichts).
-   */
-  const scrollRef = React.useRef<HTMLDivElement | null>(null);
-  const [ovf, setOvf] = React.useState<{ left: boolean; right: boolean }>({ left: false, right: false });
-  const updateOvf = React.useCallback((): void => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const max = el.scrollWidth - el.clientWidth;
-    setOvf(prev => {
-      const next = { left: el.scrollLeft > 2, right: el.scrollLeft < max - 2 };
-      return (prev.left === next.left && prev.right === next.right) ? prev : next;
-    });
-  }, []);
-  React.useEffect(() => {
-    updateOvf();
-    const el = scrollRef.current;
-    if (!el) return undefined;
-    el.addEventListener('scroll', updateOvf, { passive: true });
-    window.addEventListener('resize', updateOvf);
-    return () => {
-      el.removeEventListener('scroll', updateOvf);
-      window.removeEventListener('resize', updateOvf);
-    };
-  }, [updateOvf, props.tabs.length]);
-  React.useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const btn = el.querySelector(`[data-tabidx="${props.activeIdx}"]`) as HTMLElement | null;
-    if (btn) {
-      const left = btn.offsetLeft;
-      const right = left + btn.offsetWidth;
-      if (left < el.scrollLeft) el.scrollLeft = Math.max(0, left - 24);
-      else if (right > el.scrollLeft + el.clientWidth) el.scrollLeft = right - el.clientWidth + 24;
-    }
-    updateOvf();
-  }, [props.activeIdx, props.tabs.length, updateOvf]);
-  const nudge = (dir: -1 | 1): void => {
-    const el = scrollRef.current;
-    if (!el) return;
-    el.scrollLeft += dir * Math.max(160, Math.round(el.clientWidth * 0.7));
-  };
-  /** Pfeiltasten blättern durch die Sub-Event-Reiter (Index 1..n). */
-  const onTabKeyDown = (e: React.KeyboardEvent): void => {
-    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-    const last = props.tabs.length - 1;
-    const cur = props.activeIdx;
-    const next = e.key === 'ArrowLeft' ? cur - 1 : cur + 1;
-    if (next < 0 || next > last) return;
-    if (next === 0 && props.mainDisabled) return;
-    e.preventDefault();
-    props.onChange(next);
-  };
-  /** Kleiner runder Blätter-Knopf — nur sichtbar, wenn es dort etwas gibt. */
-  const arrowBtn = (dir: -1 | 1): React.ReactElement => (
-    <button
-      type="button"
-      onClick={() => nudge(dir)}
-      aria-label={dir === -1
-        ? (props.ariaLabel ? 'Reiter nach links' : 'Scroll tabs left')
-        : (props.ariaLabel ? 'Reiter nach rechts' : 'Scroll tabs right')}
-      tabIndex={-1}
-      style={{
-        flexShrink: 0, width: 26, height: 26, borderRadius: '50%',
-        border: '1px solid var(--dex-gray-300)', background: '#fff',
-        color: 'var(--dex-green-dark, #4a7c1f)', cursor: 'pointer',
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        fontSize: '0.9rem', lineHeight: 1, padding: 0, alignSelf: 'center',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.10)',
-      }}
-    >
-      {dir === -1 ? '‹' : '›'}
-    </button>
-  );
-  React.useEffect(() => {
-    const update = (): void => {
-      // v28.82: Fixieren beim Scrollen abgeschaltet. Seit v28.78 sitzt der
-      // Umschalter in einer getoenten Scope-Karte, deren Beschriftung und
-      // Erklaerung AUSSERHALB dieser Komponente liegen — beim Fixieren riss
-      // der Reiter-Block als eigener Kasten heraus, die Karte blieb zurueck
-      // und der gruene Schritt-Kopf wurde angeschnitten. Die Karte steht
-      // ohnehin ganz oben, direkt unter der Schritt-Leiste, und nach jedem
-      // Schrittwechsel ist man wieder dort. Der Nutzen des Mitscrollens wiegt
-      // die zerrissene Darstellung nicht auf.
-      setPin(null);
-      return;
-      // eslint-disable-next-line no-unreachable
-      const ph = phRef.current;
-      if (!ph || ph.offsetParent === null) { setPin(null); return; }
-      const headerEl = document.querySelector('.header');
-      const topEdge = headerEl ? Math.max(0, headerEl.getBoundingClientRect().bottom) : 0;
-      const r = ph.getBoundingClientRect();
-      if (r.top < topEdge) {
-        const height = ph.offsetHeight || 48;
-        setPin(prev => {
-          const next = { top: topEdge, left: r.left, width: r.width, height: prev ? prev.height : height };
-          if (prev && prev.top === next.top && prev.left === next.left && prev.width === next.width) return prev;
-          return next;
-        });
-      } else {
-        setPin(null);
-      }
-    };
-    update();
-    window.addEventListener('scroll', update, true);
-    window.addEventListener('resize', update);
-    return () => {
-      window.removeEventListener('scroll', update, true);
-      window.removeEventListener('resize', update);
-    };
-  }, []);
-  return (
-    <div ref={phRef} style={pin ? { height: pin.height } : undefined}>
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, minWidth: 0,
-        // v28.82: Im fixierten Zustand loeste sich der Reiter-Block bisher als
-        // WEISSER Kasten aus der getoenten Scope-Karte — die Karte blieb
-        // zurueck, der Block schwebte darueber und schnitt den gruenen
-        // Schritt-Kopf an. Jetzt traegt der fixierte Zustand dieselbe Flaeche
-        // wie die Karte (deckend, damit nichts durchscheint), sitzt buendig
-        // ueber die volle Breite und schliesst mit einem klaren Rand ab.
-        ...(pin ? {
-          position: 'fixed', top: pin.top, left: pin.left, width: pin.width,
-          zIndex: 800, background: '#f2f7e8', boxSizing: 'border-box',
-          padding: '10px 16px 10px', marginBottom: 0,
-          borderRadius: '0 0 12px 12px',
-          boxShadow: '0 8px 18px rgba(0,0,0,0.10)',
-          borderBottom: '1px solid rgba(134,188,37,0.45)',
-        } : {}),
-      }}>
-        {(() => {
-          const renderTabBtn = (tab: { label: string; isMain: boolean }, tabIdx: number): React.ReactElement => {
-            const active = tabIdx === props.activeIdx;
-            // v28.72: Hover-Effekt. Die Reiter waren statische graue Chips —
-            // ohne Reaktion auf die Maus las sich das wie eine Beschriftung
-            // statt wie etwas Anklickbares. Jetzt heben sie sich beim
-            // Darüberfahren an (grüner Rand + Tönung + 1px nach oben).
-            const hovered = hoverIdx === tabIdx && !active;
-            return (
-              <button
-                key={tabIdx}
-                type="button"
-                role="tab"
-                data-tabidx={tabIdx}
-                aria-selected={active}
-                onClick={() => props.onChange(tabIdx)}
-                onMouseEnter={() => setHoverIdx(tabIdx)}
-                onMouseLeave={() => setHoverIdx(prev => (prev === tabIdx ? null : prev))}
-                onFocus={() => setHoverIdx(tabIdx)}
-                onBlur={() => setHoverIdx(prev => (prev === tabIdx ? null : prev))}
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 8,
-                  padding: '8px 14px',
-                  border: active
-                    ? '1px solid var(--dex-green, #86bc25)'
-                    : `1px solid ${hovered ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
-                  borderRadius: '8px 8px 0 0',
-                  background: active
-                    ? 'var(--dex-green, #86bc25)'
-                    : (hovered ? 'rgba(134,188,37,0.14)' : 'var(--dex-gray-50, #fafafa)'),
-                  color: active ? '#fff' : (hovered ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-700)'),
-                  fontWeight: active ? 700 : (hovered ? 600 : 500),
-                  fontSize: '0.85rem',
-                  cursor: 'pointer',
-                  marginBottom: -1,
-                  whiteSpace: 'nowrap',
-                  maxWidth: 280,
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  transform: hovered ? 'translateY(-1px)' : 'none',
-                  boxShadow: hovered ? '0 -2px 6px rgba(134,188,37,0.20)' : 'none',
-                  transition: 'background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s, box-shadow 0.15s',
-                }}
-                title={tab.label}
-              >
-                {tab.isMain && (
-                  <span style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: 0.4, color: active ? 'rgba(255,255,255,0.85)' : 'var(--dex-gray-400)' }}>
-                    {props.mainBadge}
-                  </span>
-                )}
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{tab.label}</span>
-              </button>
-            );
-          };
-          const klammerLayout = !!props.klammer && props.tabs.length > 1 && !!props.tabs[0] && props.tabs[0].isMain;
-          if (klammerLayout) {
-            const dis = !!props.mainDisabled;
-            const pActive = !dis && props.activeIdx === 0;
-            return (
-              <div role="tablist" aria-label={props.ariaLabel} style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, gap: 0 }}>
-                {/* Klammer-Ebene oben — volle Breite.
-                    v28.73: Vorne steht jetzt der EVENTNAME, dahinter der
-                    dezente Zusatz „(Klammerevent)" und ein Info-Icon mit der
-                    Erklärung. Vorher stand „⟦ KLAMMER ⟧" als Praefix davor —
-                    ein Fachbegriff an der auffälligsten Stelle, der weder
-                    sagt, was er bedeutet, noch dass er eine Entscheidung war.
-                    Das Icon liegt bewusst NEBEN dem Reiter-Button (nicht
-                    darin), damit der Quicklink im Tooltip nicht in einem
-                    Button verschachtelt ist. */}
-                {/* v28.74: Rahmen/Fläche liegen auf der ZEILE, nicht auf dem
-                    Button — dadurch kann der Button auf Textbreite schrumpfen
-                    und das Info-Icon sitzt direkt hinter „(Klammerevent)"
-                    statt am rechten Rand, ohne dass die grüne Leiste ihre
-                    volle Breite verliert. */}
-                {/* v28.75: Die ganze Zeile ist der Reiter — nicht nur der Text.
-                    Vorher war der Bereich rechts vom Info-Icon tot: Der Button
-                    schrumpfte auf Textbreite, der Rest der grünen Leiste nahm
-                    keine Klicks an. Jetzt trägt die Zeile selbst role/onClick
-                    (inkl. Tastatur) und den Hover — ein <button> geht hier
-                    nicht, weil das Info-Icon mit seinem Link darin läge. */}
-                <div
-                  role="tab"
-                  aria-selected={pActive}
-                  aria-disabled={dis}
-                  tabIndex={dis ? -1 : 0}
-                  onClick={() => { if (!dis) props.onChange(0); }}
-                  onKeyDown={e => {
-                    if (dis) return;
-                    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); props.onChange(0); }
-                  }}
-                  onMouseEnter={() => setHoverIdx(0)}
-                  onMouseLeave={() => setHoverIdx(prev => (prev === 0 ? null : prev))}
-                  onFocus={() => setHoverIdx(0)}
-                  onBlur={() => setHoverIdx(prev => (prev === 0 ? null : prev))}
-                  title={dis ? (props.mainDisabledNote || props.tabs[0].label) : props.tabs[0].label}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 8, width: '100%', minWidth: 0,
-                    padding: '10px 12px 10px 16px', cursor: dis ? 'not-allowed' : 'pointer',
-                    border: `1.5px solid ${(pActive || (hoverIdx === 0 && !dis)) ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
-                    borderRadius: '10px 10px 0 0',
-                    // v28.86: Nicht ausgewaehlt = WEISS, wie die Sub-Event-Reiter
-                    // auch. Die gruene Toenung im Ruhezustand liess die Klammer
-                    // wie dauerhaft aktiv aussehen — neben einem wirklich
-                    // aktiven Sub-Event-Reiter waren dann zwei Elemente gruen.
-                    background: pActive
-                      ? 'var(--dex-green, #86bc25)'
-                      : ((hoverIdx === 0 && !dis) ? 'rgba(134,188,37,0.14)' : '#fff'),
-                    color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
-                    fontWeight: 700, fontSize: '0.9rem',
-                    opacity: dis ? 0.55 : 1,
-                    boxShadow: (hoverIdx === 0 && !pActive && !dis) ? 'inset 0 0 0 1px rgba(134,188,37,0.35)' : 'none',
-                    transition: 'background 0.15s, border-color 0.15s, box-shadow 0.15s',
-                  }}
-                >
-                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)' }}>{props.tabs[0].label}</span>
-                  <span style={{ fontSize: '0.76rem', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0, opacity: 0.85, color: pActive ? 'rgba(255,255,255,0.9)' : 'var(--dex-green-dark, #4a7c1f)' }}>
-                    ({props.klammerWord || 'Klammerevent'})
-                  </span>
-                  <span
-                    style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}
-                    onClick={e => e.stopPropagation()}
-                  >
-                    {props.klammerInfo}
-                  </span>
-                  <span style={{ flex: 1 }} />
-                  {dis && props.mainDisabledNote && (
-                    <span style={{ fontSize: '0.65rem', fontWeight: 600, padding: '2px 6px', borderRadius: 8, background: 'var(--dex-gray-200, #e0e0e0)', color: 'var(--dex-gray-600)', flexShrink: 0 }}>
-                      {props.mainDisabledNote}
-                    </span>
-                  )}
-                </div>
-                {/* Sub-Events darunter — eingerückt unter einer Klammer-Linie. */}
-                {/* v28.85: Eine Zeile statt Umbruch. Bei vielen Sub-Events
-                    brachen die Reiter in eine zweite Reihe um — die Klammer-
-                    Linie links lief dann ins Leere und die Leiste wirkte
-                    unruhig. Jetzt bleibt es eine Zeile, die bei Bedarf
-                    horizontal scrollt; die scrollbar-gutter-Reserve verhindert,
-                    dass der Inhalt beim Erscheinen der Leiste springt. */}
-                {/* v28.89: Pfeile links/rechts liegen NEBEN der Scroll-Fläche,
-                    nicht darüber — ein überlagerter Pfeil verdeckt sonst genau
-                    den Reiter, den man anklicken will. Sie erscheinen nur,
-                    wenn es in die Richtung überhaupt weitergeht. */}
-                <div style={{
-                  display: 'flex', alignItems: 'stretch', gap: 6, minWidth: 0,
-                  marginLeft: 18, paddingLeft: 16, paddingTop: 10, paddingRight: 2,
-                  borderLeft: '2px solid var(--dex-green, #86bc25)',
-                  borderBottom: pin ? 'none' : '1px solid var(--dex-gray-200)',
-                }}>
-                  {ovf.left && arrowBtn(-1)}
-                  <div
-                    ref={scrollRef}
-                    onKeyDown={onTabKeyDown}
-                    style={{
-                      display: 'flex', flexWrap: 'nowrap', gap: 6, alignItems: 'flex-end',
-                      flex: 1, minWidth: 0,
-                      overflowX: 'auto', overflowY: 'hidden',
-                      scrollbarWidth: 'thin', paddingBottom: 2,
-                      // Andeutung, dass rechts/links noch etwas liegt — die
-                      // Pfeile allein übersieht man beim Überfliegen.
-                      maskImage: `linear-gradient(to right, ${ovf.left ? 'transparent 0, #000 18px' : '#000 0'}, ${ovf.right ? '#000 calc(100% - 18px), transparent 100%' : '#000 100%'})`,
-                      WebkitMaskImage: `linear-gradient(to right, ${ovf.left ? 'transparent 0, #000 18px' : '#000 0'}, ${ovf.right ? '#000 calc(100% - 18px), transparent 100%' : '#000 100%'})`,
-                    }}
-                  >
-                    {props.tabs.slice(1).map((tab, i) => renderTabBtn(tab, i + 1))}
-                  </div>
-                  {ovf.right && arrowBtn(1)}
-                  {/* v28.89: Standortanzeige. Bei neun Terminen ist „der
-                      wievielte von wie vielen" die Frage, die die gescrollte
-                      Reihe allein nicht beantwortet — ein Dropdown daneben
-                      wäre eine zweite Bedienung für dieselbe Auswahl, diese
-                      Anzeige ist nur Orientierung. */}
-                  {props.tabs.length - 1 >= 5 && (
-                    <span style={{
-                      alignSelf: 'center', flexShrink: 0, fontSize: '0.72rem', fontWeight: 700,
-                      color: 'var(--dex-gray-500)', whiteSpace: 'nowrap', paddingLeft: 2,
-                    }}>
-                      {props.activeIdx > 0 ? `${props.activeIdx} / ${props.tabs.length - 1}` : `${props.tabs.length - 1}`}
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          }
-          return (
-            <div
-              role="tablist"
-              aria-label={props.ariaLabel}
-              style={{
-                display: 'flex', flexWrap: 'wrap', gap: 6, flex: 1,
-                borderBottom: pin ? 'none' : '1px solid var(--dex-gray-200)',
-                paddingBottom: 0,
-              }}
-            >
-              {props.tabs.map((tab, tabIdx) => renderTabBtn(tab, tabIdx))}
-            </div>
-          );
-        })()}
-      </div>
-    </div>
-  );
-}
 
-function StepBadge({ n }: { n: number }): React.ReactElement {
-  // v22.29: Aufräum-Pass — dezenter Outline-Badge statt gefüllter grüner
-  // Kreis. Die durchlaufenden Nummern bleiben (Tooltips/Support referenzieren
-  // sie), treten optisch aber hinter die eigentlichen Labels zurück.
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-      width: 20, height: 20, borderRadius: '50%',
-      background: '#fff', color: 'var(--dex-green-dark, #4a7c1f)',
-      border: '1.5px solid var(--dex-green, #86bc25)',
-      // v22.31: lineHeight 1 — die geerbte line-height (1.5) schob die
-      // Ziffer aus der vertikalen Mitte des Kreises.
-      fontSize: '0.66rem', fontWeight: 700, flexShrink: 0, lineHeight: 1,
-      boxSizing: 'border-box',
-    }}>{n}</span>
-  );
-}
-
-// v8.0: Multi-Select-Dropdown für den Standortfilter (löst die alten
-// Pillen-Buttons ab — kompakter und mit Suche bei vielen Optionen).
-function LocationMultiSelect({
-  options, selected, onChange, isDe,
-}: {
-  options: string[];
-  selected: string[];
-  onChange: (next: string[]) => void;
-  isDe: boolean;
-}): React.ReactElement {
-  const [open, setOpen] = React.useState(false);
-  const [query, setQuery] = React.useState('');
-  const ref = React.useRef<HTMLDivElement>(null);
-
-  // Click-Outside zum Schliessen
-  React.useEffect(() => {
-    if (!open) return undefined;
-    const handler = (e: MouseEvent): void => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-        setQuery('');
-      }
-    };
-    window.addEventListener('mousedown', handler);
-    return () => window.removeEventListener('mousedown', handler);
-  }, [open]);
-
-  const toggle = (loc: string): void => {
-    if (selected.indexOf(loc) >= 0) onChange(selected.filter(l => l !== loc));
-    else onChange([...selected, loc]);
-  };
-
-  const filtered = query.trim()
-    ? options.filter(o => o.toLowerCase().indexOf(query.trim().toLowerCase()) >= 0)
-    : options;
-
-  return (
-    <div ref={ref} style={{ position: 'relative', maxWidth: 520 }}>
-      <button
-        type="button"
-        onClick={() => setOpen(v => !v)}
-        style={{
-          width: '100%', minHeight: 42, padding: '6px 12px',
-          background: '#fff',
-          border: `1.5px solid ${open ? 'var(--dex-green)' : 'var(--dex-gray-300)'}`,
-          borderRadius: 8, cursor: 'pointer', textAlign: 'left',
-          display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 6,
-          fontSize: '0.88rem', color: 'var(--dex-gray-800)',
-          transition: 'border-color 0.15s ease',
-        }}
-      >
-        {selected.length === 0 ? (
-          <span style={{ color: 'var(--dex-gray-400)' }}>
-            {isDe ? 'Standorte auswählen…' : 'Select locations…'}
-          </span>
-        ) : (
-          selected.map(loc => (
-            <span
-              key={loc}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-                padding: '3px 4px 3px 10px',
-                background: 'var(--dex-green)', color: '#fff',
-                borderRadius: 999, fontSize: '0.78rem',
-              }}
-            >
-              {loc}
-              <span
-                role="button"
-                aria-label={`${loc} entfernen`}
-                onClick={e => { e.stopPropagation(); toggle(loc); }}
-                style={{
-                  width: 18, height: 18, borderRadius: '50%',
-                  background: 'rgba(255,255,255,0.25)',
-                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '0.85rem', lineHeight: 1, cursor: 'pointer',
-                }}
-              >×</span>
-            </span>
-          ))
-        )}
-        <span style={{ marginLeft: 'auto', color: 'var(--dex-gray-500)', fontSize: '0.7rem' }}>
-          {open ? '▲' : '▼'}
-        </span>
-      </button>
-      {open && (
-        <div style={{
-          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
-          background: '#fff', border: '1px solid var(--dex-gray-200)',
-          borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
-          maxHeight: 320, overflowY: 'auto', zIndex: 50,
-        }}>
-          {options.length > 6 && (
-            <div style={{ padding: 8, borderBottom: '1px solid var(--dex-gray-100)', position: 'sticky', top: 0, background: '#fff' }}>
-              <input
-                autoFocus
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                placeholder={isDe ? 'Suchen…' : 'Search…'}
-                style={{
-                  width: '100%', padding: '6px 10px',
-                  border: '1px solid var(--dex-gray-200)',
-                  borderRadius: 6, fontSize: '0.85rem',
-                }}
-              />
-            </div>
-          )}
-          {filtered.length === 0 ? (
-            <div style={{ padding: 12, fontSize: '0.82rem', color: 'var(--dex-gray-400)' }}>
-              {isDe ? 'Keine Treffer.' : 'No matches.'}
-            </div>
-          ) : (
-            filtered.map(loc => {
-              const isChecked = selected.indexOf(loc) >= 0;
-              return (
-                <label
-                  key={loc}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '8px 12px', cursor: 'pointer', fontSize: '0.88rem',
-                    background: isChecked ? 'rgba(134,188,37,0.08)' : 'transparent',
-                  }}
-                  onMouseEnter={e => { if (!isChecked) (e.currentTarget as HTMLLabelElement).style.background = 'var(--dex-gray-50)'; }}
-                  onMouseLeave={e => { if (!isChecked) (e.currentTarget as HTMLLabelElement).style.background = 'transparent'; }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    onChange={() => toggle(loc)}
-                    style={{ width: 16, height: 16, accentColor: 'var(--dex-green)', cursor: 'pointer' }}
-                  />
-                  <span style={{ color: 'var(--dex-gray-800)' }}>{loc}</span>
-                </label>
-              );
-            })
-          )}
-          {selected.length > 0 && (
-            <div style={{
-              padding: 8, borderTop: '1px solid var(--dex-gray-100)',
-              position: 'sticky', bottom: 0, background: '#fff',
-              display: 'flex', justifyContent: 'flex-end',
-            }}>
-              <button
-                type="button"
-                onClick={() => onChange([])}
-                style={{
-                  background: 'none', border: 'none', cursor: 'pointer',
-                  fontSize: '0.78rem', color: 'var(--dex-gray-500)',
-                  textDecoration: 'underline', padding: '4px 8px',
-                }}
-              >
-                {isDe ? 'Auswahl leeren' : 'Clear selection'}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 
 /**
  * v16.4: Audience-Liste (kommasepariert) in eine flache, ';'-separierte
@@ -1053,47 +315,6 @@ async function resolveAudienceMembersToCsv(
   return Array.from(out).join(';');
 }
 
-// v26.77: Fünf einladende Beschreibungs-Vorlagen als Starthilfe für Organizer.
-// Bewusst OHNE Zeit, Ort, Organizer oder Kontaktperson — diese stehen bereits
-// als eigene Felder auf der Anmeldemaske. Der Organizer kann eine Vorlage per
-// Klick übernehmen und dann anpassen. Jede Vorlage in DE + EN.
-const DESCRIPTION_TEMPLATES: Array<{ key: string; labelDe: string; labelEn: string; de: string; en: string }> = [
-  {
-    key: 'sport',
-    labelDe: 'Sport & Lauf',
-    labelEn: 'Sports & running',
-    de: '<p>Lauf mit uns! Sei Teil des Deloitte-Teams und erlebe einen sportlichen Tag mit Kolleginnen und Kollegen. Egal ob du für die Bestzeit gehst oder einfach die Stimmung genießen möchtest – gemeinsam sind wir am Start. Wir freuen uns riesig auf dich!</p>',
-    en: '<p>Run with us! Be part of the Deloitte team and enjoy a sporty day with your colleagues. Whether you are chasing a personal best or simply soaking up the atmosphere – we are at the start line together. We can&rsquo;t wait to see you!</p>',
-  },
-  {
-    key: 'workshop',
-    labelDe: 'Workshop & Weiterbildung',
-    labelEn: 'Workshop & training',
-    de: '<p>In diesem Workshop dreht sich alles um praxisnahe Impulse für deinen Arbeitsalltag. Du bekommst konkrete Einblicke, tauschst dich mit anderen aus und nimmst neue Ideen mit nach Hause. Bring gerne deine Fragen und Erfahrungen mit – wir gestalten den Tag gemeinsam.</p>',
-    en: '<p>This workshop is all about hands-on impulses for your daily work. You will gain concrete insights, exchange ideas with others and take fresh inspiration home with you. Bring your questions and experiences along – we will shape the day together.</p>',
-  },
-  {
-    key: 'network',
-    labelDe: 'Netzwerken & After Work',
-    labelEn: 'Networking & after work',
-    de: '<p>Zeit zum Netzwerken! In entspannter Atmosphäre kommen wir zusammen, tauschen uns aus und lernen neue Gesichter kennen. Freu dich auf gute Gespräche, den ein oder anderen Snack und einen lockeren Ausklang. Komm einfach vorbei – wir freuen uns auf dich!</p>',
-    en: '<p>Time to connect! In a relaxed setting we come together, share ideas and meet new faces. Look forward to good conversations, a few snacks and an easy-going get-together. Just drop by – we would love to see you!</p>',
-  },
-  {
-    key: 'conference',
-    labelDe: 'Konferenz & Fachevent',
-    labelEn: 'Conference & expert event',
-    de: '<p>Freu dich auf einen Tag voller spannender Vorträge, praxisnaher Sessions und wertvoller Begegnungen. Expertinnen und Experten teilen ihr Wissen, und du hast reichlich Gelegenheit, dich zu vernetzen und neue Perspektiven mitzunehmen.</p>',
-    en: '<p>Look forward to a day full of inspiring talks, hands-on sessions and valuable encounters. Experts share their knowledge, and you will have plenty of opportunity to network and gain fresh perspectives.</p>',
-  },
-  {
-    key: 'celebration',
-    labelDe: 'Team-Event & Feier',
-    labelEn: 'Team event & celebration',
-    de: '<p>Wir haben etwas zu feiern – und du bist herzlich eingeladen! Freu dich auf einen geselligen Abend mit gutem Essen, netten Menschen und bester Stimmung. Lass uns gemeinsam eine richtig schöne Zeit verbringen. Wir freuen uns auf dich!</p>',
-    en: '<p>We&rsquo;ve got something to celebrate – and you are warmly invited! Look forward to a sociable evening with good food, great people and a wonderful atmosphere. Let&rsquo;s enjoy some quality time together. We can&rsquo;t wait to see you!</p>',
-  },
-];
 
 export default function EventCreationPage(): React.ReactElement {
   const { goBack, selectedEventId, currentPage, setNavigationGuard, navigate } = useNavigation();
@@ -1489,6 +710,10 @@ export default function EventCreationPage(): React.ReactElement {
   // v28.5: Bild als Banner über den Event-Infos (statt kompakt links) —
   // Organizer-Wahl, sinnvoll für breite Querformat-Fotos. Piggyback _imageBanner.
   const [imageBanner, setImageBanner] = React.useState<boolean>(!!(editEvent && editEvent.imageBanner));
+  // v28.91: Sub-Events sind Termine (ein Tag je Sub-Event). Der Organizer legt
+  // sie über einen Kalender an, die Anmeldeseite zeigt sie als Kalender.
+  // Piggyback _subEventCalendar.
+  const [subEventCalendar, setSubEventCalendar] = React.useState<boolean>(!!(editEvent && editEvent.subEventCalendar));
   // v28.10: Seitenverhältnis des Wizard-Bilds — die Banner-Option ist nur für
   // Querformat-Fotos sinnvoll und wird nur dann angeboten (Ratio >= 1.2).
   const [wizardImgAspect, setWizardImgAspect] = React.useState<number | null>(null);
@@ -1750,6 +975,8 @@ export default function EventCreationPage(): React.ReactElement {
           _hotels, _hotelStays, _hotelVisible, _hotelRules,
           // v28.79: „Keine Beschreibung nutzen"-Flag (s. noDescriptionConfig).
           _noDescription,
+          // v28.91: Kalender-Modus der Sub-Events (s. subEventCalendarConfig).
+          _subEventCalendar,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -1762,6 +989,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee; void _previewBeforeActive; void _imageDisplay;
         void _organizerDisplayLarge; void _hiddenOrganizers; void _hideOrgIndividual; void _mainEventLabel;
         void _imageOrigUrl; void _klammerDeadline; void _noDescription;
+        void _subEventCalendar;
         void _hotels; void _hotelStays; void _hotelVisible; void _hotelRules;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
@@ -4978,6 +4206,9 @@ export default function EventCreationPage(): React.ReactElement {
       // Beschreibung wollte oder sie schlicht vergessen hat; die Box
       // „Nächste Schritte" meldete sie deshalb ewig als fehlend.
       const noDescriptionConfig = (noDescription && !description.trim()) ? { _noDescription: true } : {};
+      // v28.91: Kalender-Modus nur setzen, wenn er aktiv ist — ein
+      // abgewaehlter Schalter darf keinen Rest im Blob hinterlassen.
+      const subEventCalendarConfig = (subEventCalendar && subEventsOptIn) ? { _subEventCalendar: true } : {};
       // v28.11: Bestehende Original-Bild-URL beim Edit-Save WEITERTRAGEN —
       // sonst würde der frisch zusammengebaute Overrides-Blob sie wegwerfen.
       // v28.12: auch bei neuem Bild erstmal mitschreiben; der Post-Save-Code
@@ -5039,6 +4270,7 @@ export default function EventCreationPage(): React.ReactElement {
         organizerDisplayLargeConfig, previewBeforeActiveConfig,
         imageDisplayConfig, hideOrganizerConfig, hiddenOrganizersConfig,
         hideOrgIndividualConfig, headerImageLayoutConfig, noDescriptionConfig,
+        subEventCalendarConfig,
       ];
       updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || !!effEmailLogo || !!effOutlookLogo || topPiggybackConfigs.some(o => Object.keys(o).length > 0))
         // v28.2: Object.assign statt Spread-Kette — die Literal-Spreads
@@ -5737,6 +4969,8 @@ export default function EventCreationPage(): React.ReactElement {
             hideOrgIndividualExtra, headerImageLayoutConfig,
             // v28.79: „Keine Beschreibung nutzen" auch beim Anlegen merken.
             ((noDescription && !description.trim()) ? { _noDescription: true } : {}),
+            // v28.91: Kalender-Modus der Sub-Events.
+            ((subEventCalendar && subEventsOptIn) ? { _subEventCalendar: true } : {}),
           ];
           const hasAny = Object.keys(emailTemplateOverrides).length > 0 || !!effEmailLogo || !!effOutlookLogo || createPiggybackConfigs.some(o => Object.keys(o).length > 0);
           return hasAny
@@ -6461,11 +5695,14 @@ export default function EventCreationPage(): React.ReactElement {
     // Reiter-Reihe schob sich bei vielen Sub-Events über den rechten Kartenrand
     // hinaus — Flex-Kinder haben `min-width: auto`, die Scroll-Fläche konnte
     // ihren Container also aufblähen.
+    // v28.91: …und ganz ohne eigene Fläche. Die weiße Karte auf grauem Grund
+    // war immer noch ein Kasten, der um Aufmerksamkeit konkurriert; die Reiter
+    // selbst tragen ihre Form bereits. Transparent, nur Abstand.
     return (
       <div style={{
-        margin: '18px 0 0', padding: '12px 16px 14px', borderRadius: 14,
-        background: '#fff',
-        border: '1px solid var(--dex-gray-200, #e6e6e6)',
+        margin: '18px 0 0', padding: '12px 0 14px', borderRadius: 0,
+        background: 'transparent',
+        border: 'none',
         overflow: 'hidden',
       }}>
         {applies ? (
@@ -7443,6 +6680,106 @@ export default function EventCreationPage(): React.ReactElement {
   const scDescription = scopeSub ? (scopeSub.description || '') : description;
   const setScDescription = (v: string): void => { if (scopeSub) patchScopeSub({ description: v }); else setDescription(v); };
   const scImagePreview = scopeSub ? (scopeSub.imagePreview || '') : imagePreview;
+
+  /**
+   * v28.91: Termine als Sub-Events.
+   *
+   * Ein Termin ist KEIN neuer Datentyp — er ist ein ganz normales Sub-Event
+   * mit eigener Teilnehmerliste, Kapazität, Frist und Outlook-Termin. Der
+   * Kalender ist nur eine schnellere Art, sie anzulegen (neun Tage anklicken
+   * statt neun Karten ausfüllen) und auf der Anmeldeseite anzuzeigen. Damit
+   * bleiben Flows, `ParentEventId` und die Warteliste unangetastet.
+   */
+  const dayKeyOfDate = (d: Date): string =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const dayKeyOfSub = (se: SubEventDraft): string => {
+    if (!se.startDate) return '';
+    const local = isoToLocal(se.startDate);
+    return local ? local.slice(0, 10) : '';
+  };
+  const dayLabel = (d: Date): string =>
+    d.toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+  /** Leerer Draft mit den Vorgaben, die auch der „Hinzufügen"-Knopf setzt. */
+  const makeSubEventDraft = (patch: Partial<SubEventDraft>): SubEventDraft => ({
+    id: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `se_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    title: '',
+    description: '',
+    location: '',
+    startDate: '',
+    endDate: '',
+    maxParticipants: 0,
+    disableEmails: false,
+    disableOutlook: false,
+    locationAddress: { street: '', houseNo: '', zip: '', city: '' },
+    agenda: [],
+    transferTimes: [],
+    // v28.20: Hat die Klammer eine explizite Frist, starten neue Sub-Events
+    // mit demselben Anmeldeschluss.
+    ...(subEventsOnlyMode && klammerDeadline
+      ? { registrationDeadline: berlinLocalToUtcIso(klammerDeadline) || '' }
+      : {}),
+    lastDeregisterDate: '',
+    locationFilter: locationFilter,
+    audience: audience,
+    filterMode: filterMode,
+    excludedUsers: [],
+    waitlistEnabled: true,
+    askSalutation: false,
+    ...patch,
+  });
+  /**
+   * Tag im Kalender umschalten. Anlegen ist harmlos; Entfernen kann eine
+   * gespeicherte Teilnehmerliste betreffen (`dbId`) und fragt deshalb nach —
+   * dieselbe Rückfrage wie das X an der Karte.
+   */
+  const toggleDaySubEvent = (d: Date | null): void => {
+    if (!d) return;
+    const key = dayKeyOfDate(d);
+    const existingIdx = subEvents.findIndex(se => dayKeyOfSub(se) === key);
+    if (existingIdx < 0) {
+      // v28.92: Der Termin bekommt die UHRZEIT des Hauptevents, gelegt auf
+      // diesen Tag — läuft das Event von 9 bis 17 Uhr, gilt das auch für den
+      // einzelnen Tag. Ein Ganztags-Block (00:00–23:59) würde den Teilnehmern
+      // den kompletten Kalendertag zustellen.
+      //
+      // Die Zeitfelder bleiben bewusst NICHT leer: Ein Sub-Event ohne Zeiten
+      // erbt seit v28.66 die TERMINE des Hauptevents — bei einer Reihe also
+      // 01.09.–01.10. für jeden einzelnen Tag statt des Tages selbst.
+      //
+      // Zwei Fälle, in denen die Uhrzeit nichts hergibt, fallen auf den ganzen
+      // Tag zurück: gar keine Zeiten am Hauptevent, und ein mehrtägiges Event,
+      // dessen Endzeit nicht nach der Startzeit liegt (z.B. 01.09. 00:00 bis
+      // 01.10. 00:00 — daraus liesse sich für einen Tag keine gültige Spanne
+      // bauen).
+      const timeOf = (v: string): string => {
+        const t = (v || '').slice(11, 16);
+        return /^\d{2}:\d{2}$/.test(t) ? t : '';
+      };
+      const startTime = timeOf(startDate);
+      const endTime = timeOf(endDate);
+      const usable = !!startTime && !!endTime && endTime > startTime;
+      const start = berlinLocalToUtcIso(`${key}T${usable ? startTime : '00:00'}`);
+      const end = berlinLocalToUtcIso(`${key}T${usable ? endTime : '23:59'}`);
+      setSubEvents(prev => prev.concat([makeSubEventDraft({ title: dayLabel(d), startDate: start, endDate: end })]));
+      return;
+    }
+    const se = subEvents[existingIdx];
+    (async () => {
+      const ok = await confirmDialog(
+        se.dbId
+          ? (isDe
+            ? `Termin „${se.title || dayLabel(d)}" entfernen? Beim nächsten SPEICHERN wird er endgültig gelöscht — inklusive Teilnehmerliste und aller Anmeldungen (93 Tage im Papierkorb).`
+            : `Remove date "${se.title || dayLabel(d)}"? On the next SAVE it is permanently deleted — including its attendee list and all registrations (recycled for 93 days).`)
+          : (isDe
+            ? `Termin „${se.title || dayLabel(d)}" wieder entfernen?`
+            : `Remove date "${se.title || dayLabel(d)}" again?`),
+        { danger: !!se.dbId, confirmLabel: isDe ? 'Entfernen' : 'Remove' }
+      );
+      if (!ok) return;
+      setScope(0);
+      setSubEvents(prev => prev.filter(x => x.id !== se.id));
+    })().catch(() => { /* */ });
+  };
 
   const renderPerEventTabStrip = (
     activeIdx: number,
@@ -9103,7 +8440,7 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={6} />
+                  <StepBadge n={11} />
                   <span className="required">*</span> {t('create.organizer')}
                   <InfoTooltip text={isDe ? (
                     <>
@@ -9659,7 +8996,7 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={7} />
+                  <StepBadge n={12} />
                   Test-Team
                   <InfoTooltip text={isDe ? (
                     <>
@@ -9810,7 +9147,7 @@ export default function EventCreationPage(): React.ReactElement {
                   bekommen KEINE Organizer-Mails. */}
               <div className="form-group" style={{ position: 'relative', paddingBottom: 20, marginBottom: 20, borderBottom: '1px solid var(--dex-gray-100)' }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={8} />
+                  <StepBadge n={13} />
                   {t('create.qrscanners') || 'QR-Code-Scanner'}
                   <InfoTooltip text={isDe ? (
                     <>
@@ -10198,7 +9535,7 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                     <div className="form-group">
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <StepBadge n={9} />
+                        <StepBadge n={14} />
                         {t('create.location')}
                       </label>
                       <input
@@ -10210,7 +9547,7 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                     <div className="form-group">
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <StepBadge n={10} />
+                        <StepBadge n={15} />
                         {isDe ? 'Adresse' : 'Address'}
                       </label>
                       <div style={{ display: 'grid', gridTemplateColumns: '3fr 1fr', gap: 8, marginBottom: 8 }}>
@@ -10241,7 +9578,7 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                     <div className="form-group" style={{ marginTop: 24 }}>
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
-                        <StepBadge n={11} />
+                        <StepBadge n={16} />
                         {t('create.agenda')}
                       </label>
                       {seAgenda
@@ -10300,7 +9637,7 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                     <div className="form-group" style={{ marginTop: 24 }}>
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
-                        <StepBadge n={12} />
+                        <StepBadge n={17} />
                         {t('create.transfers')}
                       </label>
                       {seTransfers.map(tt => (
@@ -10376,7 +9713,7 @@ export default function EventCreationPage(): React.ReactElement {
               <div>
               <div className="form-group">
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={9} />
+                  <StepBadge n={14} />
                   {t('create.location')}
                   <InfoTooltip text={isDe ? (
                     <>
@@ -10398,7 +9735,7 @@ export default function EventCreationPage(): React.ReactElement {
               </div>
               <div className="form-group">
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <StepBadge n={10} />
+                  <StepBadge n={15} />
                   Adresse
                   <InfoTooltip text={isDe ? (
                     <>
@@ -10460,7 +9797,7 @@ export default function EventCreationPage(): React.ReactElement {
               {/* ===== Agenda Editor ===== */}
               <div className="form-group" style={{ marginTop: 24 }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
-                  <StepBadge n={11} />
+                  <StepBadge n={16} />
                   {t('create.agenda')}
                   <InfoTooltip text={isDe ? (
                     <>
@@ -10547,7 +9884,7 @@ export default function EventCreationPage(): React.ReactElement {
               {/* ===== Transferzeiten Editor ===== */}
               <div className="form-group" style={{ marginTop: 24 }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
-                  <StepBadge n={12} />
+                  <StepBadge n={17} />
                   {t('create.transfers')}
                   <InfoTooltip text={isDe ? (
                     <>
@@ -10656,6 +9993,27 @@ export default function EventCreationPage(): React.ReactElement {
               {/* v22.36: Opt-in-Frage — Default nein; erst bei „ja" erscheint
                   die gesamte Sub-Event-Konfiguration. Abschalten mit
                   vorhandenen Sub-Events fragt nach und verwirft sie dann. */}
+              {/* v28.91: Sichtbarer Schnitt zwischen den Grundlagen (1-5) und
+                  dem Aufbau des Events. Ohne ihn schloss die Sub-Event-Frage
+                  direkt an das Bild-Feld an und las sich wie noch ein
+                  Grundlagen-Feld — dabei beginnt hier ein anderes Thema:
+                  nicht mehr WAS das Event ist, sondern WORAUS es besteht. */}
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 12,
+                margin: '28px 0 14px',
+              }}>
+                <span style={{
+                  fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.04em',
+                  textTransform: 'uppercase', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap',
+                }}>
+                  {isDe ? 'Aufbau des Events' : 'How the event is structured'}
+                </span>
+                <span style={{ flex: 1, height: 1, background: 'var(--dex-gray-200, #e6e6e6)' }} />
+              </div>
+
+              {/* v28.91: Schalter und Erklaerung gehoeren zusammen — die Frage
+                  und die Antwort darauf, was ein Sub-Event ueberhaupt ist.
+                  Zwei Kaesten uebereinander lasen sich wie zwei Themen. */}
               <div style={{ background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12, padding: '12px 16px', marginBottom: 12, border: '1px solid var(--dex-gray-200)' }}>
                 <div className="toggle-wrapper" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <label className="toggle">
@@ -10704,6 +10062,9 @@ export default function EventCreationPage(): React.ReactElement {
                       erscheint nur, wenn es etwas zu sagen gibt: dass die
                       Sub-Events unten angelegt werden, bzw. dass deaktivierte
                       erhalten bleiben. */}
+                  {/* v28.91: Die Sub-Event-Angaben sind Teil von Schritt 1 und
+                      zaehlen deshalb in dessen Nummerierung weiter (1-5 oben). */}
+                  <StepBadge n={6} />
                   <span style={{ fontSize: '0.9rem' }}>
                     <strong>{isDe ? 'Sub-Events aktivieren' : 'Enable sub-events'}</strong>
                     {subEventsOptIn
@@ -10719,9 +10080,8 @@ export default function EventCreationPage(): React.ReactElement {
                         : '')}
                   </span>
                 </div>
-              </div>
 
-              {/* v22.36: Erklärung, was ein Sub-Event ist (graue Beschreibungs-Box). */}
+                {/* v22.36: Erklärung, was ein Sub-Event ist (graue Beschreibungs-Box). */}
               <WizardHint
                 isDe={isDe}
                 variant="description"
@@ -10732,6 +10092,7 @@ export default function EventCreationPage(): React.ReactElement {
                   ? <>Ein Sub-Event ist ein <strong>eigenständiger Programmbaustein</strong> innerhalb deines Events — z.&nbsp;B. ein Workshop, eine Session, ein Networking-Dinner oder eine Lauf-Distanz. Jedes Sub-Event hat <strong>eigene Plätze, einen eigenen Termin und eine eigene Teilnehmerliste</strong>, auf Wunsch auch eigene Abfrage-Felder; Teilnehmer wählen ihre Sub-Events direkt im Anmeldeformular. Typische Beispiele: eine Konferenz mit wählbaren Workshops oder ein Sommerfest mit optionalem Abendprogramm. Einfache Events (Meeting, Lunch, Feier) brauchen <strong>keine</strong> Sub-Events.</>
                   : <>A sub-event is a <strong>separate programme building block</strong> inside your event — e.g. a workshop, a session, a networking dinner or a run distance. Each sub-event has <strong>its own seats, its own schedule and its own attendee list</strong>, optionally its own custom fields; attendees pick their sub-events directly in the registration form. Typical examples: a conference with selectable workshops or a summer party with an optional evening programme. Simple events (meeting, lunch, celebration) do <strong>not</strong> need sub-events.</>}
               </WizardHint>
+              </div>{/* Ende Kachel: Schalter + Erklaerung */}
 
               {/* v28.84: Bezeichnung und Anmelde-Modus gehoeren zur
                   Grundsatzfrage aus dem Schalter darueber — nicht in einen
@@ -10741,10 +10102,11 @@ export default function EventCreationPage(): React.ReactElement {
               {/* Bezeichnungs-Dropdown */}
               <div style={{
                 background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
-                padding: '14px 16px', marginBottom: 12,
+                padding: '14px 16px', marginBottom: 16,
                 border: '1px solid var(--dex-gray-200)',
               }}>
                 <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={7} />
                   {isDe ? 'Bezeichnung der Sub-Events' : 'Sub-event naming'}
                   <InfoTooltip text={isDe ? (
                     <>
@@ -10838,15 +10200,13 @@ export default function EventCreationPage(): React.ReactElement {
                     </>
                   );
                 })()}
-              </div>
 
-              {/* Anmelde-Modus */}
-              <div style={{
-                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
-                padding: '14px 16px', marginBottom: 16,
-                border: '1px solid var(--dex-gray-200)',
-              }}>
+              {/* v28.91: Anmelde-Modus in derselben Kachel wie die
+                  Bezeichnung — beides beschreibt, WIE die Sub-Events
+                  auftreten. */}
+              <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--dex-gray-200)' }}>
                 <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <StepBadge n={8} />
                   {isDe ? 'Anmelde-Modus' : 'Registration mode'}
                   <InfoTooltip text={isDe ? (
                     <>
@@ -10932,6 +10292,7 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               </div>
 
+              </div>{/* Ende Kachel: Bezeichnung + Anmelde-Modus */}
               </>)}
 
               {subEventsOptIn && (<>
@@ -11024,10 +10385,75 @@ export default function EventCreationPage(): React.ReactElement {
                 </div>
               )}
 
+                {/* v28.91: Termine per Kalender. Bei einer Reihe über neun
+                    Tage bedeutete das bisher: neunmal „Hinzufügen", neunmal
+                    Titel tippen, neunmal zwei Datumsfelder. Hier klickt man
+                    die Tage an. Erzeugt werden ganz normale Sub-Events — nur
+                    schneller, und die Anmeldeseite zeigt sie dann als
+                    Kalender statt als Liste aus neun Funkbuttons. */}
+                <div style={{
+                  background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                  padding: '14px 16px', marginBottom: 16,
+                  border: '1px solid var(--dex-gray-200)',
+                }}>
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={subEventCalendar}
+                      onChange={e => setSubEventCalendar(e.target.checked)}
+                      style={{ width: 18, height: 18, marginTop: 1, flexShrink: 0, cursor: 'pointer' }}
+                    />
+                    <span style={{ fontSize: '0.9rem' }}>
+                      <StepBadge n={9} /> <strong>{isDe ? 'Die Sub-Events sind Termine (ein Tag je Sub-Event)' : 'The sub-events are dates (one day each)'}</strong>
+
+                      <span style={{ display: 'block', color: 'var(--dex-gray-600)', marginTop: 2, fontWeight: 400 }}>
+                        {isDe
+                          ? 'Dann legst du sie unten im Kalender an — Tag anklicken, fertig — und Teilnehmer wählen ihre Tage auf der Anmeldeseite ebenfalls im Kalender statt aus einer langen Liste. Jeder Tag bleibt ein vollwertiges Sub-Event mit eigenen Plätzen, eigener Frist und eigenem Outlook-Termin.'
+                          : 'You then create them in the calendar below — click a day, done — and attendees pick their days in a calendar instead of a long list. Each day stays a full sub-event with its own seats, deadline and Outlook entry.'}
+                      </span>
+                    </span>
+                  </label>
+                  {subEventCalendar && (() => {
+                    const marked = subEvents
+                      .map(se => dayKeyOfSub(se))
+                      .filter(Boolean)
+                      .map(k => {
+                        const [y, m, d] = k.split('-').map(n => parseInt(n, 10));
+                        return new Date(y, m - 1, d);
+                      });
+                    const openTo = startDate ? new Date(startDate) : undefined;
+                    return (
+                      <div style={{ marginTop: 12 }}>
+                        <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', margin: '0 0 8px' }}>
+                          {isDe
+                            ? <>Klick auf einen Tag legt ihn als Termin an, ein erneuter Klick nimmt ihn zurück. Angelegte Tage sind <strong>grün</strong> markiert. Titel und Zeiten werden gesetzt — jeder Tag übernimmt die <strong>Uhrzeit des Hauptevents</strong> (ohne Uhrzeit dort: ganztägig). Das ist nur die Vorbelegung: Über die Reiter oben wählst du einen Termin aus und änderst <strong>Start und Ende genau dort</strong> — ebenso Titel, Beschreibung, Plätze und Frist.</>
+                            : <>Clicking a day creates it as a date, clicking again removes it. Created days are marked <strong>green</strong>. Title and times are filled in — each day takes the <strong>main event&rsquo;s time of day</strong> (all-day if none is set there). That is only the starting point: pick a date via the tabs above and change <strong>its start and end right there</strong> — as well as title, description, seats and deadline.</>}
+                        </p>
+                        <DatePicker
+                          inline
+                          selected={null}
+                          onChange={toggleDaySubEvent}
+                          highlightDates={[{ 'dex-day-picked': marked }]}
+                          openToDate={openTo}
+                          locale="de"
+                          calendarClassName="dex-datepicker-calendar"
+                        />
+                        <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', margin: '10px 0 0' }}>
+                          {marked.length === 0
+                            ? (isDe ? 'Noch kein Termin angelegt.' : 'No date created yet.')
+                            : (isDe
+                              ? `${marked.length} ${marked.length === 1 ? 'Termin' : 'Termine'} angelegt.`
+                              : `${marked.length} ${marked.length === 1 ? 'date' : 'dates'} created.`)}
+                        </p>
+                      </div>
+                    );
+                  })()}
+                </div>
+
                 {/* ===== Sub-Events (z.B. Workshop-Tage, Networking-Dinner, Kick-off-Sessions) ===== */}
                 <div className="form-group" style={{ marginTop: 0 }}>
                   <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <StepBadge n={13} />
+                    <StepBadge n={10} />
                     {/* v15.5: dynamische Bezeichnung — verwendet den oben
                         gewählten Plural-Term statt fix „Sub-Events". */}
                     {(childTermPlural || (isDe ? 'Sub-Events' : 'Sub-events'))} {isDe ? '(optional)' : '(optional)'}
@@ -11408,7 +10834,7 @@ export default function EventCreationPage(): React.ReactElement {
 
                     <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <StepBadge n={13} />
+                        <StepBadge n={18} />
                         {isDe ? 'Standortfilter' : 'Location filter'}
                       </label>
                       <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
@@ -11443,7 +10869,7 @@ export default function EventCreationPage(): React.ReactElement {
                       // den aktuellen Stand des Sub-Events anwenden.
                       excludedUsers={se.excludedUsers || []}
                       onExcludedUsersChange={updater => setSubEvents(prev => prev.map((x, i) => i === seIdx ? { ...x, excludedUsers: updater(x.excludedUsers || []) } : x))}
-                      stepBadge={<StepBadge n={14} />}
+                      stepBadge={<StepBadge n={19} />}
                       cardBgPrimary={zebraS3Bg()}
                       summarySlot={renderVisibilitySummaryBox(
                         seLocationFilterList,
@@ -11454,7 +10880,7 @@ export default function EventCreationPage(): React.ReactElement {
                       middleSlot={(seLocationFilterList.length > 0 && (se.audience || '').trim().length > 0) ? (
                         <div className="form-group" style={{ padding: '16px 20px 16px 30px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                           <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <StepBadge n={15} />
+                            <StepBadge n={20} />
                             {isDe ? 'Filterverknüpfung' : 'Filter combination'}
                           </label>
                           <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginTop: -4, marginBottom: 12, lineHeight: 1.55 }}>
@@ -11493,7 +10919,7 @@ export default function EventCreationPage(): React.ReactElement {
                         wie im Hauptevent. */}
                     <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <StepBadge n={(seLocationFilterList.length > 0 && (se.audience || '').trim().length > 0) ? 16 : 15} />
+                        <StepBadge n={(seLocationFilterList.length > 0 && (se.audience || '').trim().length > 0) ? 21 : 20} />
                         {isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}
                       </label>
                       <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
@@ -11572,7 +10998,7 @@ export default function EventCreationPage(): React.ReactElement {
                         (Scope-Eingrenzung, siehe v15.6 Refactor-Plan). */}
                     <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                       <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        <StepBadge n={(seLocationFilterList.length > 0 && (se.audience || '').trim().length > 0) ? 17 : 16} />
+                        <StepBadge n={(seLocationFilterList.length > 0 && (se.audience || '').trim().length > 0) ? 22 : 21} />
                         {isDe ? 'Teilnehmerzahl & Warteliste' : 'Capacity & waitlist'}
                       </label>
                       <div className="form-grid-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -11701,7 +11127,7 @@ export default function EventCreationPage(): React.ReactElement {
               {renderKlammerVisibilityMismatch()}
 
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-                {visHeader('vis_locfilter', <StepBadge n={13} />, isDe ? 'Standortfilter' : 'Location filter')}
+                {visHeader('vis_locfilter', <StepBadge n={18} />, isDe ? 'Standortfilter' : 'Location filter')}
                 {isVisOpen('vis_locfilter') && (<>
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: -4, marginBottom: 12, lineHeight: 1.5 }}>
                   {isDe ? (
@@ -11752,7 +11178,7 @@ export default function EventCreationPage(): React.ReactElement {
                 isDe={isDe}
                 excludedUsers={excludedUsers}
                 onExcludedUsersChange={setExcludedUsers}
-                headerSlot={visHeader('vis_audience', <StepBadge n={14} />, isDe ? 'Mailverteiler / einzelne User' : 'Mailing lists / individual users')}
+                headerSlot={visHeader('vis_audience', <StepBadge n={19} />, isDe ? 'Mailverteiler / einzelne User' : 'Mailing lists / individual users')}
                 bodyOpen={isVisOpen('vis_audience')}
                 cardBgPrimary={zebraS3Bg()}
                 visibilityTabs={subEvents.length > 0 ? [
@@ -11765,7 +11191,7 @@ export default function EventCreationPage(): React.ReactElement {
                      es nichts zu kombinieren. */
                   <div className="form-group" style={{ padding: '16px 20px 16px 30px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                     <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <StepBadge n={15} />
+                      <StepBadge n={20} />
                       {isDe ? 'Filterverknüpfung' : 'Filter combination'}
                     </label>
                     <div style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginTop: -4, marginBottom: 12, lineHeight: 1.6 }}>
@@ -11831,7 +11257,7 @@ export default function EventCreationPage(): React.ReactElement {
                   AUSSERHALB des Greyout-Wrappers (laufzeit-/sichtbarkeitsrelevant,
                   wie der AudiencePicker oben — auch im Klammer-Modus editierbar). */}
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-                {visHeader('vis_assist', <StepBadge n={(locationFilter && audience) ? 16 : 15} />, isDe ? 'Sichtbarkeit für Assistenzen' : 'Visibility for assistants')}
+                {visHeader('vis_assist', <StepBadge n={(locationFilter && audience) ? 21 : 20} />, isDe ? 'Sichtbarkeit für Assistenzen' : 'Visibility for assistants')}
                 {isVisOpen('vis_assist') && (<>
                 <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', marginTop: -4, marginBottom: 12, lineHeight: 1.55 }}>
                   {isDe
@@ -11852,7 +11278,7 @@ export default function EventCreationPage(): React.ReactElement {
                   wirksame Anmeldefrist haben kann. Die Teilnehmerzahl bleibt
                   ausgegraut (die Klammer hat keine eigenen Plaetze). */}
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-                {visHeader('vis_fristen', <StepBadge n={(locationFilter && audience) ? 17 : 16} />, <>{isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}<InfoTooltip text={isDe
+                {visHeader('vis_fristen', <StepBadge n={(locationFilter && audience) ? 22 : 21} />, <>{isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}<InfoTooltip text={isDe
                     ? 'Bis wann können sich Teilnehmer anmelden bzw. fristgerecht abmelden? Die Abmeldefrist ist die kommunizierte Deadline — abmelden geht danach weiterhin bis zum Event-Ende, die Organizer werden dann aber automatisch informiert. Beide Werte werden anhand des Event-Datums automatisch vorgeschlagen, du kannst sie jederzeit überschreiben.'
                     : 'Until when can attendees register or cancel within the deadline? The cancellation deadline is the communicated cutoff — cancelling remains possible until the event ends, but organizers are then notified automatically. Both values are auto-suggested from the event date and can be overridden at any time.'} /></>)}
                 {isVisOpen('vis_fristen') && (<>
@@ -12067,7 +11493,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <>
               <div style={hauptGreyoutWrapperStyle()}>
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
-                {visHeader('vis_capacity', <StepBadge n={(locationFilter && audience) ? 18 : 17} />, isDe ? 'Teilnehmerzahl & Warteliste' : 'Capacity & waitlist')}
+                {visHeader('vis_capacity', <StepBadge n={(locationFilter && audience) ? 23 : 22} />, isDe ? 'Teilnehmerzahl & Warteliste' : 'Capacity & waitlist')}
                 {isVisOpen('vis_capacity') && (<>
               {/* v10.20: Geteilte Kapazität — generisch für beliebige Events.
                   Labels werden vom Organizer frei gewählt (z.B. "Vormittag /
@@ -13566,7 +12992,7 @@ export default function EventCreationPage(): React.ReactElement {
                     der Feld-Liste (vorher standen die Einstellungs-Karten
                     dazwischen). */}
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, marginTop: 6 }}>
-                  <StepBadge n={19} />
+                  <StepBadge n={24} />
                   {isDe ? 'Eigene Abfragen / Felder' : 'Custom fields'}
                 </label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -15163,7 +14589,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <>
                 <div className="form-group">
                   <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <StepBadge n={20} />
+                    <StepBadge n={25} />
                     {t('create.emaillanguage')}
                   </label>
                   <div style={{ display: 'flex', gap: 8 }}>
@@ -15194,7 +14620,7 @@ export default function EventCreationPage(): React.ReactElement {
                   style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}
                 >
                   <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
-                    <StepBadge n={21} />
+                    <StepBadge n={26} />
                     {t('create.notifications')}
                     <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
                       {(disableEmails || disableOutlook)
@@ -15371,7 +14797,7 @@ export default function EventCreationPage(): React.ReactElement {
                     für An- und Abmeldungen getrennt einstellbar. v9.39: collapsed by default. */}
                 <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
                   <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
-                    <StepBadge n={22} />
+                    <StepBadge n={27} />
                     {isDe ? 'Sollen die Organizer bei An- und Abmeldungen mitlesen?' : 'Should organizers be looped in on registrations / cancellations?'}
                     <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
                       {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
@@ -15469,7 +14895,7 @@ export default function EventCreationPage(): React.ReactElement {
                 {/* Custom-Logo für E-Mails — v9.39: collapsed by default. v9.40: gleiche graue Box wie 21/22. */}
                 <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
                   <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
-                    <StepBadge n={23} />
+                    <StepBadge n={28} />
                     {t('create.eventlogo.mail')}
                     <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
                       {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
@@ -15549,7 +14975,7 @@ export default function EventCreationPage(): React.ReactElement {
                 {/* Custom-Logo für Outlook-Termin — v9.39: collapsed by default. v9.40: gleiche graue Box. */}
                 <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
                   <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
-                    <StepBadge n={24} />
+                    <StepBadge n={29} />
                     {t('create.outlooklogo')}
                     <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
                       {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
@@ -15625,7 +15051,7 @@ export default function EventCreationPage(): React.ReactElement {
                 {/* v9.39: collapsed by default. v9.40: gleiche graue Box. */}
                 <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
                   <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
-                    <StepBadge n={25} />
+                    <StepBadge n={30} />
                     {t('create.outlookdesc')}
                     <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
                       {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
@@ -15654,7 +15080,7 @@ export default function EventCreationPage(): React.ReactElement {
                 {/* v9.39: E-Mail-Texte-Block collapsed by default. v9.40: gleiche graue Box, gleiche Schriftgröße wie 21-25. */}
                 <details className="form-group" style={{ marginTop: 24, padding: 16, background: 'var(--dex-gray-50, #f8f9fa)', borderRadius: 'var(--dex-radius, 12px)', border: '1px solid var(--dex-gray-200)' }}>
                   <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0', fontWeight: 600 }}>
-                    <StepBadge n={26} />
+                    <StepBadge n={31} />
                     {t('create.templates.title')} ({emailLanguage})
                     <span style={{ marginLeft: 'auto', fontSize: '0.72rem', color: 'var(--dex-gray-500)', fontWeight: 400 }}>
                       {isDe ? 'Standard – empfohlen, klick zum Anpassen' : 'Default – recommended, click to adjust'}
@@ -15778,7 +15204,7 @@ export default function EventCreationPage(): React.ReactElement {
                   ]
                 )}
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <StepBadge n={28} />
+                  <StepBadge n={33} />
                   {isDe ? 'Dokumente hochladen' : 'Upload documents'}
                 </label>
                 {/* v9.28: Schlagwörter fett rendern für bessere Lesbarkeit. */}
@@ -15853,7 +15279,7 @@ export default function EventCreationPage(): React.ReactElement {
                     Hinweistext sind frei konfigurierbar. */}
                 <div style={{ marginTop: 32, paddingTop: 20, borderTop: '2px solid var(--dex-gray-100)' }}>
                   <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <StepBadge n={29} />
+                    <StepBadge n={34} />
                     {isDe ? 'Teilnehmer-Upload erlauben' : 'Allow attendee upload'}
                     <InfoTooltip text={isDe ? (
                       <>
@@ -15958,7 +15384,7 @@ export default function EventCreationPage(): React.ReactElement {
                 </p>
 
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                  <StepBadge n={29} />
+                  <StepBadge n={34} />
                   {isDe ? 'Quiz-Bereiche' : 'Quiz sections'}
                 </label>
                 {/* Bereiche: Header + "+ Bereich"-Button. Fragen können per Drag&Drop
