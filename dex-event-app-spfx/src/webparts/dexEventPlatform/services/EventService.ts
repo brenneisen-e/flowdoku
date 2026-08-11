@@ -3111,6 +3111,111 @@ export class EventService {
   /**
    * EventNumber aus den Feldern eines Teilnehmers entfernen (bei Abmeldung).
    */
+  /**
+   * v29.0: Register GEGEN die Teilnehmerlisten prüfen.
+   *
+   * `analyzeParticipantRegistry` findet nur zwei Dinge: mehrere Einträge zur
+   * selben E-Mail und Verweise auf GELÖSCHTE Events. Ob eine Event-Nummer, die
+   * auf ein existierendes Event zeigt, dort auch eine Zeile hat, prüft sie
+   * nicht — genau daraus entsteht der Fall „Meine Events sagt angemeldet, die
+   * Teilnehmerliste kennt die Person nicht" (v28.99).
+   *
+   * Vorgehen: einmal das Register lesen, daraus je Event-Nummer die Menge der
+   * E-Mails bilden, und dann JE EVENT dessen Teilnehmerliste EINMAL laden.
+   * Verglichen wird gegen aktive Zeilen — „Abgemeldet" zählt nicht, denn eine
+   * abgemeldete Person gehört nicht mehr ins Register.
+   *
+   * WICHTIG: Schlägt das Lesen einer Liste fehl, wird das Event ÜBERSPRUNGEN
+   * und als solches gezählt. Aus einem Netzwerkfehler „keine Zeile gefunden"
+   * abzuleiten, würde gültige Anmeldungen aus dem Register werfen.
+   */
+  public async analyzeRegistryAgainstLists(
+    events: Array<{ eventNumber?: number; title: string; subsiteUrl?: string }>,
+    onProgress?: (_done: number, _total: number, _title: string) => void,
+    onRead?: (_loaded: number) => void,
+  ): Promise<{
+    checkedEvents: number; skippedEvents: number;
+    stale: Array<{ email: string; eventNumber: number; title: string }>;
+  }> {
+    const all = await this.fetchAllParticipantsOrThrow(onRead);
+    // Event-Nummer → E-Mails, die laut Register dort angemeldet sind.
+    const byNumber: Record<number, Set<string>> = {};
+    for (const p of all) {
+      const em = (p.Email || '').trim().toLowerCase();
+      if (!em) continue;
+      `${p.EventRegistered || ''},${p.EventOnWaitlist || ''}`
+        .split(',').map(x => parseInt(x.trim(), 10)).filter(n => !isNaN(n) && n > 0)
+        .forEach(n => { (byNumber[n] = byNumber[n] || new Set<string>()).add(em); });
+    }
+    const relevant = events.filter(e =>
+      typeof e.eventNumber === 'number' && e.eventNumber > 0
+      && !!e.subsiteUrl && !!byNumber[e.eventNumber]);
+    const stale: Array<{ email: string; eventNumber: number; title: string }> = [];
+    let checkedEvents = 0;
+    let skippedEvents = 0;
+    for (let i = 0; i < relevant.length; i++) {
+      const ev = relevant[i];
+      const num = ev.eventNumber as number;
+      if (onProgress) onProgress(i + 1, relevant.length, ev.title || '');
+      let rows: SPRegistration[] | null = null;
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        rows = await this.getAllRegistrations(ev.subsiteUrl as string);
+      } catch { rows = null; }
+      if (!rows) { skippedEvents += 1; continue; }
+      checkedEvents += 1;
+      const active = new Set<string>();
+      for (const r of rows) {
+        const st = (r.Status || '').trim();
+        if (st === 'Abgemeldet') continue;
+        const em = (r.ParticipantEmail || '').trim().toLowerCase();
+        if (em) active.add(em);
+      }
+      byNumber[num].forEach(em => {
+        if (!active.has(em)) stale.push({ email: em, eventNumber: num, title: ev.title || '' });
+      });
+    }
+    return { checkedEvents, skippedEvents, stale };
+  }
+
+  /**
+   * v29.0: Die von `analyzeRegistryAgainstLists` gefundenen Verweise aus dem
+   * Register nehmen. Je E-Mail EIN Schreibvorgang, auch wenn mehrere Nummern
+   * betroffen sind. Der Eintrag selbst bleibt stehen — er kann weitere,
+   * gültige Events tragen.
+   */
+  public async pruneStaleRegistryNumbers(
+    stale: Array<{ email: string; eventNumber: number }>,
+    onProgress?: (_done: number, _total: number) => void,
+  ): Promise<{ updated: number; removed: number; failed: number }> {
+    const byEmail: Record<string, number[]> = {};
+    stale.forEach(s => { (byEmail[s.email] = byEmail[s.email] || []).push(s.eventNumber); });
+    const emails = Object.keys(byEmail);
+    let updated = 0; let removed = 0; let failed = 0;
+    for (let i = 0; i < emails.length; i++) {
+      const em = emails[i];
+      if (onProgress) onProgress(i + 1, emails.length);
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const rec = await this.getParticipantByEmail(em);
+        if (!rec) { failed += 1; continue; }
+        const drop = new Set(byEmail[em].map(n => String(n)));
+        const keep = (v?: string): string => (v || '').split(',').map(x => x.trim())
+          .filter(x => x && !drop.has(x)).join(',');
+        const nextReg = keep(rec.EventRegistered);
+        const nextWait = keep(rec.EventOnWaitlist);
+        // eslint-disable-next-line no-await-in-loop
+        const resp = await this._merge(
+          `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Participants')/items(${rec.Id})`,
+          { 'EventRegistered': nextReg, 'EventOnWaitlist': nextWait },
+        );
+        if (resp.ok) { updated += 1; removed += byEmail[em].length; }
+        else failed += 1;
+      } catch { failed += 1; }
+    }
+    return { updated, removed, failed };
+  }
+
   public async removeParticipantEvent(email: string, eventNumber: number): Promise<boolean> {
     try {
       const existing = await this.getParticipantByEmail(email);

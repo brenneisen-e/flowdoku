@@ -747,7 +747,7 @@ export default function AdminHubPage(): React.ReactElement {
           </div>
           <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)', margin: '0 0 10px', lineHeight: 1.45 }}>
             {isDe
-              ? 'Sucht in der zentralen Teilnehmer-Übersicht (DEX_Participants) nach Dubletten — mehrere Einträge zur selben E-Mail — und führt sie zusammen: Der älteste Eintrag bleibt und bekommt ALLE Event-Nummern, die überzähligen Zeilen werden gelöscht. Es geht nichts verloren; wessen Anmeldungen auf zwei Einträge verteilt waren, sieht danach wieder alle Events unter „Meine Events". Prüft zuerst und fragt vor dem Zusammenführen nach.'
+              ? 'Sucht in der zentralen Teilnehmer-Übersicht (DEX_Participants) nach Dubletten — mehrere Einträge zur selben E-Mail — und führt sie zusammen: Der älteste Eintrag bleibt und bekommt ALLE Event-Nummern, die überzähligen Zeilen werden gelöscht. Es geht nichts verloren; wessen Anmeldungen auf zwei Einträge verteilt waren, sieht danach wieder alle Events unter „Meine Events". Prüft zuerst und fragt vor dem Zusammenführen nach. Danach gleicht die Aktion das Register gegen die TEILNEHMERLISTEN ab: Zeigt ein Verweis auf ein Event, in dessen Liste die Person gar nicht steht — typischerweise eine Abmeldung, bei der das Nachziehen scheiterte —, wird er auf Rückfrage entfernt. Genau solche Verweise lassen „Meine Events" eine Anmeldung anzeigen, die es nicht gibt.'
               : 'Searches the central participant registry (DEX_Participants) for duplicates — several records for the same email — and merges them: the oldest record is kept and receives ALL event numbers, the surplus rows are deleted. Nothing is lost; anyone whose registrations were split across two records sees all their events in „My events" again. Checks first and asks before merging.'}
           </p>
           {regCleanBusy && regCleanProgress && (
@@ -804,17 +804,63 @@ export default function AdminHubPage(): React.ReactElement {
                       ? ` ${info.orphanNumbers} Verweis(e) zeigen auf gelöschte Events — wirkungslos, aber harmlos.`
                       : ` ${info.orphanNumbers} reference(s) point to deleted events — ineffective but harmless.`)
                     : '';
-                  if (info.duplicateGroups === 0) {
+                  // v29.0: Zweite Stufe — das Register gegen die
+                  // TEILNEHMERLISTEN abgleichen. Die Dubletten-Prüfung oben
+                  // sieht nur mehrfache Einträge und Verweise auf gelöschte
+                  // Events; ein Verweis auf ein EXISTIERENDES Event ohne Zeile
+                  // in dessen Liste fiel bisher durch. Genau der lässt „Meine
+                  // Events" eine Anmeldung zeigen, die es nicht gibt (v28.99).
+                  const cmp = await eventServiceRef.analyzeRegistryAgainstLists(
+                    allEvents.map(e => ({ eventNumber: e.eventNumber, title: e.title, subsiteUrl: e.subsiteUrl })),
+                    (done, total, title) => setRegCleanProgress({
+                      done, total,
+                      label: isDe
+                        ? `Teilnehmerlisten werden verglichen… ${done}/${total}${title ? ` — ${title}` : ''}`
+                        : `Comparing attendee lists… ${done}/${total}${title ? ` — ${title}` : ''}`,
+                    }),
+                  );
+                  setRegCleanProgress(null);
+                  const staleNote = cmp.stale.length > 0
+                    ? (isDe
+                      ? ` ${cmp.stale.length} Verweis(e) zeigen auf ein Event, in dessen Teilnehmerliste die Person NICHT steht.`
+                      : ` ${cmp.stale.length} reference(s) point to an event whose attendee list does not contain the person.`)
+                    : '';
+                  const skipNote = cmp.skippedEvents > 0
+                    ? (isDe
+                      ? ` ${cmp.skippedEvents} Event(s) konnten nicht gelesen werden und wurden übersprungen.`
+                      : ` ${cmp.skippedEvents} event(s) could not be read and were skipped.`)
+                    : '';
+                  if (info.duplicateGroups === 0 && cmp.stale.length === 0) {
                     setRegCleanResult(isDe
-                      ? `Keine Dubletten gefunden (${info.total} Einträge geprüft).${orphanNote}${info.noEmail > 0 ? ` ${info.noEmail} Eintrag/Einträge ohne E-Mail-Adresse.` : ''}`
-                      : `No duplicates found (${info.total} records checked).${orphanNote}${info.noEmail > 0 ? ` ${info.noEmail} record(s) without an email address.` : ''}`);
+                      ? `Alles sauber: keine Dubletten, und alle Verweise haben eine Zeile in der Teilnehmerliste (${info.total} Einträge, ${cmp.checkedEvents} Event(s) verglichen).${orphanNote}${skipNote}${info.noEmail > 0 ? ` ${info.noEmail} Eintrag/Einträge ohne E-Mail-Adresse.` : ''}`
+                      : `All clean: no duplicates, and every reference has a row in the attendee list (${info.total} records, ${cmp.checkedEvents} event(s) compared).${orphanNote}${skipNote}${info.noEmail > 0 ? ` ${info.noEmail} record(s) without an email address.` : ''}`);
+                    setRegCleanProgress(null);
+                    setRegCleanBusy(false);
+                    return;
+                  }
+                  if (info.duplicateGroups === 0) {
+                    // Nur verwaiste Verweise — einzeln nachfragen und entfernen.
+                    const examples = cmp.stale.slice(0, 5)
+                      .map(x => `• ${x.email} → ${x.title || x.eventNumber}`).join('\n');
+                    const okStale = await confirmDialog(isDe
+                      ? `${cmp.stale.length} Verweis(e) im Register zeigen auf ein Event, in dessen Teilnehmerliste die Person nicht steht — typischerweise eine Abmeldung, bei der das Nachziehen scheiterte, oder eine von Hand gelöschte Zeile.\n\n${examples}${cmp.stale.length > 5 ? `\n… und ${cmp.stale.length - 5} weitere` : ''}\n\nDiese Verweise jetzt entfernen? Die Einträge selbst bleiben mit ihren übrigen Events bestehen. An den Teilnehmerlisten wird nichts geändert.${skipNote ? `\n\nHinweis:${skipNote}` : ''}`
+                      : `${cmp.stale.length} reference(s) point to an event whose attendee list does not contain the person — typically a cancellation whose registry update failed, or a manually deleted row.\n\n${examples}${cmp.stale.length > 5 ? `\n… and ${cmp.stale.length - 5} more` : ''}\n\nRemove these references now? The records themselves stay with their remaining events. Attendee lists are not touched.${skipNote ? `\n\nNote:${skipNote}` : ''}`,
+                      { confirmLabel: isDe ? 'Verweise entfernen' : 'Remove references' });
+                    if (!okStale) { setRegCleanProgress(null); setRegCleanBusy(false); return; }
+                    setRegCleanProgress({ done: 0, total: 0, label: isDe ? 'Verweise werden entfernt…' : 'Removing references…' });
+                    const pr = await eventServiceRef.pruneStaleRegistryNumbers(cmp.stale, (done, total) =>
+                      setRegCleanProgress({ done, total, label: isDe ? 'Verweise werden entfernt…' : 'Removing references…' }));
+                    setRegCleanIsError(pr.failed > 0);
+                    setRegCleanResult(isDe
+                      ? `${pr.removed} Verweis(e) bei ${pr.updated} Person(en) entfernt${pr.failed > 0 ? `, ${pr.failed} fehlgeschlagen` : ''}.${orphanNote}`
+                      : `${pr.removed} reference(s) removed for ${pr.updated} person(s)${pr.failed > 0 ? `, ${pr.failed} failed` : ''}.${orphanNote}`);
                     setRegCleanProgress(null);
                     setRegCleanBusy(false);
                     return;
                   }
                   setRegCleanProgress(null);
                   const ok = await confirmDialog(isDe
-                    ? `${info.duplicateGroups} Person(en) haben mehrere Einträge im Teilnehmer-Register (${info.surplusRecords} überzählige Zeile(n) von ${info.total} insgesamt).\n\nJetzt zusammenführen? Je Person bleibt der älteste Eintrag und erhält ALLE Event-Nummern der Dubletten; die überzähligen Zeilen werden gelöscht. Anmeldungen gehen dabei nicht verloren.${orphanNote ? `\n\nHinweis:${orphanNote}` : ''}`
+                    ? `${info.duplicateGroups} Person(en) haben mehrere Einträge im Teilnehmer-Register (${info.surplusRecords} überzählige Zeile(n) von ${info.total} insgesamt).\n\nJetzt zusammenführen? Je Person bleibt der älteste Eintrag und erhält ALLE Event-Nummern der Dubletten; die überzähligen Zeilen werden gelöscht. Anmeldungen gehen dabei nicht verloren.${orphanNote || staleNote ? `\n\nHinweis:${orphanNote}${staleNote} Die Verweise räumst du auf, indem du die Aktion nach dem Zusammenführen noch einmal startest.` : ''}`
                     : `${info.duplicateGroups} person(s) have multiple records in the participant registry (${info.surplusRecords} surplus row(s) out of ${info.total} total).\n\nMerge now? Per person the oldest record is kept and receives ALL event numbers; the surplus rows are deleted. No registrations are lost.${orphanNote ? `\n\nNote:${orphanNote}` : ''}`,
                     { confirmLabel: isDe ? 'Zusammenführen' : 'Merge' });
                   if (!ok) { setRegCleanProgress(null); setRegCleanBusy(false); return; }
@@ -828,7 +874,7 @@ export default function AdminHubPage(): React.ReactElement {
                   );
                   setRegCleanIsError(r.failed > 0);
                   setRegCleanResult(isDe
-                    ? `${r.groups} Person(en) zusammengeführt, ${r.deleted} überzählige Zeile(n) entfernt${r.failed > 0 ? `, ${r.failed} fehlgeschlagen` : ''}.`
+                    ? `${r.groups} Person(en) zusammengeführt, ${r.deleted} überzählige Zeile(n) entfernt${r.failed > 0 ? `, ${r.failed} fehlgeschlagen` : ''}.${staleNote ? `${staleNote} Starte die Aktion noch einmal, um sie zu entfernen.` : ''}`
                     : `${r.groups} person(s) merged, ${r.deleted} surplus row(s) removed${r.failed > 0 ? `, ${r.failed} failed` : ''}.`);
                 } catch (err) {
                   setRegCleanIsError(true);
