@@ -489,7 +489,7 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
 
   const plan = React.useMemo<{
     rows: IPlanRow[]; unplaced: number; candidates: number;
-    excludedAssigned: number; excludedNoWish: number;
+    excludedAssigned: number; excludedNoWish: number; forced: number;
     assignments: Array<{ reg: SPRegistration; hotel: string; from: string; to: string }>;
   }>(() => {
     // Priorität bestimmt die Reihenfolge — Hotels OHNE Kontingent kommen aber
@@ -512,9 +512,19 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
 
     // Wer fällt raus — und warum? Ohne diese Zahlen wirkt eine Verteilung,
     // die nur eine von zwei Personen anfasst, wie ein Fehler.
-    let excludedAssigned = 0; let excludedNoWish = 0;
+    let excludedAssigned = 0; let excludedNoWish = 0; let forcedCount = 0;
     const candidates = people.filter(p => {
       if (!overwrite && (p.Hotel || '').trim()) { excludedAssigned++; return false; }
+      /**
+       * v29.5: Eine feste Sub-Event-Regel schlägt „ohne Hotel-Wunsch
+       * überspringen". Unten steht seit v28.58 „sie sind eine Zusage, kein
+       * Wunsch" — nur kam die Person dort nie an: Der Wunsch-Filter lief
+       * VORHER und hatte sie schon aussortiert. Wer sagt „alle vom
+       * Vorabend-Dinner ins Hotel A", meint alle vom Vorabend-Dinner — sonst
+       * ordnet die Regel je nach Formularantwort einen Teil der Gruppe zu und
+       * den Rest nicht, ohne dass irgendwo steht, warum.
+       */
+      if (forcedHotel(p)) { forcedCount++; return true; }
       if (wRules.skipNoWish && needsRoom(p) === false) { excludedNoWish++; return false; }
       return true;
     });
@@ -589,7 +599,7 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
         r.extraAfter += nightsBetween(r.base.to, s.to);
       }
     }
-    return { rows, unplaced, candidates: candidates.length, excludedAssigned, excludedNoWish, assignments };
+    return { rows, unplaced, candidates: candidates.length, excludedAssigned, excludedNoWish, forced: forcedCount, assignments };
   }, [wHotels, allStays, mainStay, wRules, people, overwrite, forcedHotel, subsOf, stayFor, needsRoom]);
 
   const needBeds = React.useMemo(
@@ -1255,12 +1265,12 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
       {childEvents.length > 0 && (
         <div style={box}>
           <div style={{ fontSize: '0.84rem', fontWeight: 700, marginBottom: 2 }}>
-            {isDe ? 'Feste Zuordnung je Sub-Event' : 'Fixed assignment per sub-event'}
+            {isDe ? 'Alle Teilnehmer eines Sub-Events in dasselbe Hotel' : 'All attendees of a sub-event into the same hotel'}
           </div>
           <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', marginBottom: 8, lineHeight: 1.45 }}>
             {isDe
-              ? 'Z.B. „alle vom Vorabend-Dinner ins Hotel A, mit 2 Nächten". Wer in mehreren Sub-Events ist, bekommt die Hülle aus allen Zeiträumen — früheste Anreise, späteste Abreise.'
-              : 'E.g. „everyone from the prior-evening dinner into hotel A, 2 nights". People in several sub-events get the envelope of all periods — earliest arrival, latest departure.'}
+              ? <>Hotel neben dem Sub-Event wählen — dann kommen <strong>alle</strong> Teilnehmer dieses Sub-Events dorthin, z.B. &bdquo;alle vom Vorabend-Dinner ins Hotel A, mit 2 Nächten&ldquo;. Das gilt auch für Personen ohne Hotel-Wunsch im Formular und unabhängig von der Füll-Reihenfolge; die Zusage ist stärker als die Automatik. Wer in mehreren Sub-Events ist, bekommt die Hülle aus allen Zeiträumen — früheste Anreise, späteste Abreise.</>
+              : <>Pick a hotel next to a sub-event and <strong>all</strong> of its attendees go there, e.g. &bdquo;everyone from the prior-evening dinner into hotel A, 2 nights&ldquo;. This also covers people without a hotel request in the form and overrides the fill order — the commitment beats the automatic distribution. People in several sub-events get the envelope of all periods — earliest arrival, latest departure.</>}
           </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520 }}>
@@ -1276,12 +1286,27 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
                 {childEvents.map(c => {
                   const r = (wRules.bySub || {})[c.id] || {};
                   const n = (subEmails[c.id] || []).length;
+                  // v29.5: Wie viele davon die Regel tatsächlich bewegt. Ohne
+                  // „Bestehende überschreiben" bleiben schon zugeordnete
+                  // Personen stehen — sonst wirkt eine Regel, die 30 von 40
+                  // anfasst, wie ein Fehler.
+                  const emails = new Set(subEmails[c.id] || []);
+                  const willMove = people.filter(p =>
+                    emails.has((p.ParticipantEmail || '').trim().toLowerCase())
+                    && (overwrite || !(p.Hotel || '').trim())).length;
                   const set = (patch: { hotel?: string; stayId?: string }): void =>
                     setWRules({ ...wRules, bySub: { ...(wRules.bySub || {}), [c.id]: { ...r, ...patch } } });
                   return (
                     <tr key={c.id}>
                       <td style={td}>{shortTitle(c.title || '')}</td>
-                      <td style={{ ...td, color: 'var(--dex-gray-600)' }}>{n || '—'}</td>
+                      <td style={{ ...td, color: 'var(--dex-gray-600)' }}>
+                        {n || '—'}
+                        {!!r.hotel && n > 0 && (
+                          <span style={{ display: 'block', fontSize: '0.72rem', color: willMove > 0 ? 'var(--dex-green-dark, #4a7c1f)' : 'var(--dex-gray-500)' }}>
+                            {isDe ? `${willMove} werden zugeordnet` : `${willMove} will be assigned`}
+                          </span>
+                        )}
+                      </td>
                       <td style={td}>
                         <select style={{ ...smallInp, width: '100%' }} value={r.hotel || ''} onChange={e => set({ hotel: e.target.value })}>
                           <option value="">{isDe ? '— automatisch —' : '— automatic —'}</option>
@@ -1387,8 +1412,13 @@ export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotel
               ? <><strong>{people.length}</strong> aktive Teilnehmer · davon werden <strong>{plan.candidates}</strong> jetzt verteilt.</>
               : <><strong>{people.length}</strong> active attendees · <strong>{plan.candidates}</strong> will be distributed now.</>}
           </div>
-          {(plan.excludedAssigned > 0 || plan.excludedNoWish > 0) && (
+          {(plan.excludedAssigned > 0 || plan.excludedNoWish > 0 || plan.forced > 0) && (
             <ul style={{ margin: '4px 0 0', paddingLeft: 18, fontSize: '0.79rem', color: 'var(--dex-gray-600)', lineHeight: 1.55 }}>
+              {plan.forced > 0 && (
+                <li>{isDe
+                  ? <><strong>{plan.forced}</strong> davon kommen über eine feste Sub-Event-Zuordnung ins Haus — unabhängig von Hotel-Wunsch und Füll-Reihenfolge.</>
+                  : <><strong>{plan.forced}</strong> of them come from a fixed sub-event assignment — regardless of hotel request and fill order.</>}</li>
+              )}
               {plan.excludedAssigned > 0 && (
                 <li>{isDe
                   ? <><strong>{plan.excludedAssigned}</strong> haben bereits ein Hotel und bleiben unberührt — setz oben in Schritt 3 „Bestehende Zuordnungen überschreiben", wenn sie mit verteilt werden sollen.</>
