@@ -9,6 +9,7 @@ import HotelImportModal, { IHotelImportResultRow } from './HotelImportModal';
 import HotelSetupWizard from './HotelSetupWizard';
 import PersonContactHover from './PersonContactHover';
 import { parseStayValue } from './StayRangePicker';
+import { HOTEL_RE, EXTRA_RE, parseExtraAnswer } from '../utils/hotelAnswers';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { de } from 'date-fns/locale';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -210,7 +211,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   const [filterHotel, setFilterHotel] = React.useState<string>('__all');
   // v28.48: Suche, Sortierung und Hotel-Wunsch-Filter für die Personenliste.
   const [search, setSearch] = React.useState('');
-  const [sortKey, setSortKey] = React.useState<'name' | 'first' | 'job' | 'loc' | 'comp' | 'wish' | 'hotel' | 'subs'>('name');
+  const [sortKey, setSortKey] = React.useState<'name' | 'first' | 'job' | 'loc' | 'comp' | 'wish' | 'wishn' | 'match' | 'hotel' | 'subs'>('name');
   const [sortAsc, setSortAsc] = React.useState(true);
   const [hideNoWish, setHideNoWish] = React.useState(false);
   // v28.55: Personen-Spalten aufklappen — analog zur Teilnehmerliste. Kompakt
@@ -846,6 +847,59 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
 
   const defaultStay = stays.filter(s => s.isDefault)[0] || stays[0];
 
+  /**
+   * v29.6: Wie viele Nächte hat die Person laut Anmeldeformular angefragt?
+   *
+   * `null` = keine Aussage möglich (keine Hotel-Frage im Formular, oder die
+   * Antwort ist nicht deutbar). `0` = ausdrücklich kein Zimmer. Sonst die
+   * Anzahl Nächte.
+   *
+   * Zwei Quellen, in dieser Reihenfolge:
+   *  1. Das Zeitraum-Feld (`daterange`) — dort hat die Person An- und Abreise
+   *     selbst gewählt, das ist exakt (`exact: true`).
+   *  2. Bedarfsfrage + Zusatznächte-Frage: Standard-Zeitraum als Basis, dazu
+   *     die gedeuteten Zusatznächte. Das ist eine Ableitung (`exact: false`)
+   *     und wird deshalb in der Tabelle als solche gekennzeichnet.
+   *
+   * Die Deutung der Antworten liegt in `utils/hotelAnswers` — dieselbe Quelle,
+   * aus der auch der Assistent rechnet. Zwei Kopien würden auseinanderlaufen.
+   */
+  const wishNightsOf = React.useCallback((p: SPRegistration): { nights: number; exact: boolean } | null => {
+    const fs = formStayOf(p);
+    if (fs) {
+      if (fs.none) return { nights: 0, exact: true };
+      return { nights: nightsBetween(fs.from, fs.to), exact: true };
+    }
+    const w = wishOf(p);
+    if (w === false) return { nights: 0, exact: true };
+    if (w !== true) return null;
+    if (!defaultStay) return null;
+    const base = nightsBetween(defaultStay.from, defaultStay.to);
+    if (base <= 0) return null;
+    // Zusatznächte-Frage über ALLE Antwort-Zeilen der Person suchen (Klammer
+    // + Sub-Events, siehe answerRowsOf) und über Parent- wie Child-Felder.
+    const cd: Record<string, string> = {};
+    for (const row of answerRowsOf(p).slice().reverse()) {
+      try {
+        const one = JSON.parse(row.CustomData || '{}') as Record<string, string>;
+        Object.keys(one).forEach(k => { const v = one[k]; if (v !== undefined && v !== null && String(v) !== '') cd[k] = String(v); });
+      } catch { /* Zeile ohne lesbares CustomData überspringen */ }
+    }
+    const fields: Array<{ id: string; label?: string; helpText?: string }> = [
+      ...((event.eventSpecificFields || []) as Array<{ id: string; label?: string; helpText?: string }>),
+      ...(childEvents || []).reduce<Array<{ id: string; label?: string; helpText?: string }>>(
+        (acc, c) => acc.concat((c.eventSpecificFields || []) as Array<{ id: string; label?: string; helpText?: string }>), []),
+    ];
+    let extra = 0;
+    for (const f of fields) {
+      const hay = `${f.label || ''} ${f.helpText || ''}`;
+      if (!HOTEL_RE.test(hay) || !EXTRA_RE.test(hay)) continue;
+      const parsed = parseExtraAnswer(cd[f.id] || '');
+      if (parsed && parsed.nights > 0) { extra = parsed.nights; break; }
+    }
+    return { nights: base + extra, exact: false };
+  }, [formStayOf, wishOf, defaultStay, answerRowsOf, event.eventSpecificFields, childEvents]);
+
   const assignSelectedTo = async (hotelName: string): Promise<void> => {
     const rows = people.filter(p => selected.has(p.Id));
     if (rows.length === 0) return;
@@ -1427,6 +1481,37 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
         </div>
       )}
 
+      {/* v29.6: Zugeordnet, aber die Nächtezahl passt nicht zum Bedarf.
+          Das fällt sonst erst im Hotel auf — wenn die Nacht schon fehlt. */}
+      {((): React.ReactNode => {
+        const off = people.filter(p => {
+          const wn = wishNightsOf(p);
+          if (!wn || wn.nights <= 0 || !(p.Hotel || '').trim()) return false;
+          return nightsBetween(toDay(p.HotelFrom), toDay(p.HotelTo)) !== wn.nights;
+        });
+        if (off.length === 0) return null;
+        return (
+          <div style={{ ...card, borderColor: 'var(--dex-red, #c00)', background: '#fef3f2' }}>
+            <h3 style={{ ...h3, color: 'var(--dex-red, #c00)' }}>
+              {isDe ? `${off.length} Person(en) mit abweichender Nächtezahl` : `${off.length} person(s) with a mismatching number of nights`}
+            </h3>
+            <p style={{ ...hint, marginBottom: 8 }}>
+              {isDe
+                ? 'Diese Personen sind einem Hotel zugeordnet, der gebuchte Zeitraum deckt aber nicht die im Formular angefragten Nächte ab. In der Tabelle unten steht das in der Spalte „Bedarf = Zuordnung" mit der Abweichung.'
+                : 'These people are assigned to a hotel, but the booked period does not match the nights requested in the form. The table below shows the difference in the „Request = assignment" column.'}
+            </p>
+            <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-700)' }}>
+              {off.slice(0, 15).map(p => {
+                const wn = wishNightsOf(p);
+                const have = nightsBetween(toDay(p.HotelFrom), toDay(p.HotelTo));
+                return `${p.ParticipantName || p.ParticipantEmail} (${wn ? wn.nights : '?'}\u2009\u2192\u2009${have})`;
+              }).join(', ')}
+              {off.length > 15 ? ` … (+${off.length - 15})` : ''}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ---- Belegung je Nacht ---- */}
       {perNight.length > 0 && (
         <div style={card}>
@@ -1479,6 +1564,8 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
               <option value="loc">{isDe ? 'Sortieren: Standort' : 'Sort: location'}</option>
               <option value="comp">{isDe ? 'Sortieren: Unternehmen' : 'Sort: company'}</option>
               <option value="wish">{isDe ? 'Sortieren: Hotel-Wunsch' : 'Sort: hotel request'}</option>
+              <option value="wishn">{isDe ? 'Sortieren: Nächte gewünscht' : 'Sort: nights requested'}</option>
+              <option value="match">{isDe ? 'Sortieren: Abweichungen zuerst' : 'Sort: mismatches first'}</option>
               <option value="hotel">{isDe ? 'Sortieren: Hotel' : 'Sort: hotel'}</option>
               {(childEvents || []).length > 0 && <option value="subs">{isDe ? 'Sortieren: Sub-Events' : 'Sort: sub-events'}</option>}
             </select>
@@ -1657,6 +1744,8 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                     )}
                     {([
                       { k: 'wish' as const, l: isDe ? 'Hotel-Wunsch' : 'Hotel request' },
+                      { k: 'wishn' as const, l: isDe ? 'Nächte gewünscht' : 'Nights requested' },
+                      { k: 'match' as const, l: isDe ? 'Bedarf = Zuordnung' : 'Request = assignment' },
                     ]).map(col => (
                       <th key={col.k} style={{ ...thSticky, padding: '4px 6px' }}>
                         <button type="button"
@@ -1711,6 +1800,15 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                         if (sortKey === 'comp') return x.Company || '';
                         if (sortKey === 'hotel') return (x.Hotel || '').trim();
                         if (sortKey === 'wish') { const w = wishOf(x); return w === true ? '1' : w === false ? '2' : '3'; }
+                        // v29.6: Nächte numerisch, aber als Text mit führenden
+                        // Nullen — sonst sortiert '10' vor '2'.
+                        if (sortKey === 'wishn') { const wn = wishNightsOf(x); return wn ? String(wn.nights).padStart(3, '0') : 'zzz'; }
+                        if (sortKey === 'match') {
+                          const wn = wishNightsOf(x);
+                          const as = (x.Hotel || '').trim();
+                          if (!wn || wn.nights <= 0 || !as) return '3';
+                          return nightsBetween(toDay(x.HotelFrom), toDay(x.HotelTo)) === wn.nights ? '2' : '1';
+                        }
                         if (sortKey === 'subs') return subsOf(x).join(', ');
                         return x.Nachname || x.ParticipantName || '';
                       };
@@ -1802,6 +1900,57 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                               return w
                                 ? <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Ja' : 'Yes'}</strong>
                                 : <span style={{ color: 'var(--dex-gray-500)' }}>{isDe ? 'Nein' : 'No'}</span>;
+                            })()}
+                          </td>
+                          {/* v29.6: Wie viele Nächte wurden angefragt — und
+                              deckt die Zuordnung das ab? Ohne diese beiden
+                              Spalten sieht man erst beim Hotel, dass jemand
+                              eine Nacht mehr braucht als gebucht ist. */}
+                          <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
+                            {((): React.ReactNode => {
+                              const wn = wishNightsOf(p);
+                              if (!wn) return <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
+                              if (wn.nights <= 0) return <span style={{ color: 'var(--dex-gray-500)' }}>0</span>;
+                              return (
+                                <span
+                                  style={{ fontWeight: 600, color: 'var(--dex-gray-800)' }}
+                                  title={wn.exact
+                                    ? (isDe ? 'Aus dem im Formular gewählten Zeitraum.' : 'From the period picked in the form.')
+                                    : (isDe ? 'Abgeleitet: Standard-Zeitraum plus die im Formular angegebenen Zusatznächte.' : 'Derived: standard period plus the extra nights stated in the form.')}
+                                >
+                                  {wn.nights}
+                                  {!wn.exact && <span style={{ color: 'var(--dex-gray-400)', fontWeight: 400 }}> ~</span>}
+                                </span>
+                              );
+                            })()}
+                          </td>
+                          <td style={{ padding: '4px 6px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            {((): React.ReactNode => {
+                              const wn = wishNightsOf(p);
+                              const assigned = (p.Hotel || '').trim();
+                              // Ohne Bedarfs-Aussage oder ohne Zuordnung gibt
+                              // es nichts zu vergleichen — dann lieber nichts
+                              // behaupten als ein rotes Kreuz zeigen.
+                              if (!wn || wn.nights <= 0 || !assigned) {
+                                return <span style={{ color: 'var(--dex-gray-300)' }} title={
+                                  !assigned
+                                    ? (isDe ? 'Noch keinem Hotel zugeordnet.' : 'Not assigned to a hotel yet.')
+                                    : (isDe ? 'Kein Bedarf aus dem Formular ableitbar.' : 'No requirement derivable from the form.')
+                                }>—</span>;
+                              }
+                              if (n === wn.nights) {
+                                return <span style={{ color: 'var(--dex-green, #86bc25)', fontWeight: 700 }}
+                                  title={isDe ? `${n} Nächte gewünscht, ${n} zugeordnet.` : `${n} nights requested, ${n} assigned.`}>✓</span>;
+                              }
+                              const diff = n - wn.nights;
+                              return (
+                                <span style={{ color: 'var(--dex-red, #c00)', fontWeight: 700 }}
+                                  title={isDe
+                                    ? `${wn.nights} Nächte gewünscht, ${n} zugeordnet (${diff > 0 ? '+' : ''}${diff}). Zeitraum rechts anpassen.`
+                                    : `${wn.nights} nights requested, ${n} assigned (${diff > 0 ? '+' : ''}${diff}). Adjust the period on the right.`}>
+                                  ✕ <span style={{ fontWeight: 400, fontSize: '0.76rem' }}>{diff > 0 ? '+' : ''}{diff}</span>
+                                </span>
+                              );
                             })()}
                           </td>
                           {(childEvents || []).map(c => {
