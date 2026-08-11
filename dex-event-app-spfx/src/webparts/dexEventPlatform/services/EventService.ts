@@ -20,434 +20,48 @@
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions } from '@microsoft/sp-http';
 import { wrapTemplateForStorage, buildEmailFromTemplate } from './EmailTemplates';
+// v28.95: Die Mail-Koerper liegen jetzt in ./mailBodies — die Datei begann
+// sonst mit 400 Zeilen HTML, bevor die erste Methode kam.
+import {
+  OUTLOOK_DECLINE_BODY_EN,
+  OUTLOOK_DECLINE_BODY_DE,
+  OUTLOOK_DECLINE_BODY_ONBEHALF_EN,
+  OUTLOOK_DECLINE_BODY_ONBEHALF_DE,
+  OUTLOOK_FORWARD_BODY_EN,
+  OUTLOOK_FORWARD_BODY_DE,
+  OUTLOOK_DECLINE_DIGEST_BODY_EN,
+  OUTLOOK_DECLINE_DIGEST_BODY_DE,
+  NACHRUECKEN_BODY_EN,
+  NACHRUECKEN_BODY_DE,
+  ORG_NACHRUECKER_BODY_EN,
+  ORG_NACHRUECKER_BODY_DE,
+  CANCEL_BANNER_HTML,
+  ABMELDUNG_AUTO_BODY_EN,
+  ABMELDUNG_AUTO_BODY_DE,
+  TEAM_MEMBER_JOINED_BODY_EN,
+  TEAM_MEMBER_JOINED_BODY_DE,
+  TEAM_JOIN_REQUEST_BODY_EN,
+  TEAM_JOIN_REQUEST_BODY_DE,
+  TEAM_JOIN_REJECTED_BODY_EN,
+  TEAM_JOIN_REJECTED_BODY_DE,
+  TEAM_LEAD_TRANSFERRED_BODY_EN,
+  TEAM_LEAD_TRANSFERRED_BODY_DE,
+  TEAM_MEMBER_CANCELLED_BODY_EN,
+  TEAM_MEMBER_CANCELLED_BODY_DE,
+  ROOMMATE_REQUEST_BODY_EN,
+  ROOMMATE_REQUEST_BODY_DE,
+  GROUP_SWITCH_CONFIRMED_BODY_EN,
+  GROUP_SWITCH_CONFIRMED_BODY_DE,
+  GROUP_SWITCH_WAITLIST_BODY_EN,
+  GROUP_SWITCH_WAITLIST_BODY_DE,
+  OVERBOOK_APOLOGY_BODY_EN,
+  OVERBOOK_APOLOGY_BODY_DE,
+} from './mailBodies';
 import { buildOutlookLocation } from '../utils/eventFormat';
 import { subscribeListChanges } from '../utils/spListRealtime';
-import { DexTicket, TicketAttachment, TicketFollowUp } from '../types';
-
-/**
- * HTML-Body für die OutlookDeclineReminder-Mail (EN) - komplett im
- * Deloitte-Design gewrappt, damit er vom DEX_SEND_MAIL-Flow direkt versendet
- * werden kann (der Flow ersetzt nur {{LOGO_URL}} und {{ORB_URL}}, wickelt aber
- * keinen Template-Wrapper mehr drumherum).
- *
- * Der Hinweis auf die Warteliste wurde bewusst durch eine neutrale Formulierung
- * ("your spot can be offered to someone else") ersetzt, damit die Mail auch
- * dann korrekt wirkt, wenn das konkrete Event keine Warteliste hat.
- */
-// Standard-Decline-Reminder: Person hat selbst direkt abgelehnt (kein OnBehalfOf).
-// Cancel-Button funktioniert direkt — die eingeloggte Person ist auch der Teilnehmer.
-const OUTLOOK_DECLINE_BODY_EN = wrapTemplateForStorage(
-  '#ed8b00',
-  'You declined the Outlook invite',
-  'Event {{EventTitle}}',
-  `<p>Dear {{Name}},</p>
-<p>we noticed that you declined the Outlook calendar invitation for <strong>{{EventTitle}}</strong>, but you are still listed as a confirmed participant.</p>
-<p>If you no longer want to attend, please also cancel your registration.</p>
-<p style="margin:24px 0;text-align:center;"><a href="{{CancelUrl}}" style="display:inline-block;padding:12px 28px;background:#da291c;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Cancel my registration</a></p>
-<p>If you clicked decline by accident, you can simply ignore this message.</p>
-<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
-);
-
-const OUTLOOK_DECLINE_BODY_DE = wrapTemplateForStorage(
-  '#ed8b00',
-  'Du hast den Outlook-Termin abgelehnt',
-  'Event {{EventTitle}}',
-  `<p>Hallo {{Name}},</p>
-<p>wir haben gesehen, dass du die Outlook-Kalendereinladung f\u00FCr <strong>{{EventTitle}}</strong> abgelehnt hast \u2013 du bist aber noch als offiziell angemeldet gelistet.</p>
-<p>Falls du nicht mehr teilnehmen m\u00F6chtest, melde dich bitte auch offiziell ab.</p>
-<p style="margin:24px 0;text-align:center;"><a href="{{CancelUrl}}" style="display:inline-block;padding:12px 28px;background:#da291c;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Anmeldung stornieren</a></p>
-<p>Falls du versehentlich abgesagt hast, kannst du diese Mail einfach ignorieren.</p>
-<p style="margin-top:24px;"><strong>Viele Gr\u00FC\u00DFe</strong><br><br><strong>Dein Event-Team</strong></p>`
-);
-
-// OnBehalfOf-Decline-Reminder: Outlook-Decline kam von einer Assistenz, die den
-// Termin im Namen einer anderen Person (Partner/Director) abgelehnt hat. Die Mail
-// geht an die Mailbox der Assistenz/des Partners. Der Cancel-Button funktioniert
-// nur für den registrierten Partner selbst (SP-Item-Level-Security). Für die
-// Assistenz gibt's einen zweiten Button, der via mailto: eine Bitte um Abmeldung
-// an die Event-Organizer schickt — die haben Full Control auf der Teilnehmerliste
-// und können den Eintrag direkt im Admin Center löschen.
-const OUTLOOK_DECLINE_BODY_ONBEHALF_EN = wrapTemplateForStorage(
-  '#ed8b00',
-  'You declined the Outlook invite',
-  'Event {{EventTitle}}',
-  `<p>Dear {{Name}},</p>
-<p>we noticed that the Outlook calendar invitation for <strong>{{EventTitle}}</strong> was declined on your behalf, but you are still listed as a confirmed participant.</p>
-<p>If you no longer want to attend, please also cancel your registration.</p>
-<p style="margin:24px 0;text-align:center;"><a href="{{CancelUrl}}" style="display:inline-block;padding:12px 28px;background:#da291c;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Cancel my registration</a></p>
-<p style="font-size:12px;color:#666;text-align:center;margin:0 0 24px;">This button only works when clicked by the registered participant themselves (Partner/Director).</p>
-<p style="margin:8px 0 12px;"><strong>Are you the assistant handling this for the participant?</strong> Use the button below to forward this request to the event organizer(s) — they will cancel the registration on the participant's behalf:</p>
-<p style="margin:0 0 24px;text-align:center;"><a href="{{AssistantForwardUrl}}" style="display:inline-block;padding:10px 24px;background:#0d6efd;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;font-size:0.95rem;">Forward to organizer (as assistant)</a></p>
-<p>If the decline was sent by accident, you can simply ignore this message.</p>
-<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
-);
-
-const OUTLOOK_DECLINE_BODY_ONBEHALF_DE = wrapTemplateForStorage(
-  '#ed8b00',
-  'Outlook-Termin abgelehnt',
-  'Event {{EventTitle}}',
-  `<p>Hallo {{Name}},</p>
-<p>die Outlook-Kalendereinladung f\u00FCr <strong>{{EventTitle}}</strong> wurde in deinem Namen abgelehnt — du bist aber noch als offiziell angemeldet gelistet.</p>
-<p>Falls du nicht mehr teilnehmen m\u00F6chtest, melde dich bitte auch offiziell ab.</p>
-<p style="margin:24px 0;text-align:center;"><a href="{{CancelUrl}}" style="display:inline-block;padding:12px 28px;background:#da291c;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Anmeldung stornieren</a></p>
-<p style="font-size:12px;color:#666;text-align:center;margin:0 0 24px;">Dieser Button funktioniert nur, wenn der/die registrierte Teilnehmer/in selbst (Partner/Director) klickt.</p>
-<p style="margin:8px 0 12px;"><strong>Bist du die Assistenz der angemeldeten Person?</strong> Bitte nutze den folgenden Button, um diese Anfrage an die Event-Organisator:innen weiterzuleiten — sie melden den/die Teilnehmer/in dann ab:</p>
-<p style="margin:0 0 24px;text-align:center;"><a href="{{AssistantForwardUrl}}" style="display:inline-block;padding:10px 24px;background:#0d6efd;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;font-size:0.95rem;">An Organizer weiterleiten (als Assistenz)</a></p>
-<p>Falls die Absage versehentlich verschickt wurde, kannst du diese Mail einfach ignorieren.</p>
-<p style="margin-top:24px;"><strong>Viele Gr\u00FC\u00DFe</strong><br><br><strong>Dein Event-Team</strong></p>`
-);
-
-// Meeting-Forward-Notification-FYI: Ein Teilnehmer hat den Outlook-Termin an eine
-// dritte Person weitergeleitet, die NICHT in der SharePoint-Teilnehmerliste steht.
-// Die Mail geht an den Organizer. Platzhalter:
-//   {{OrganizerFirstName}} — Vorname des Organizers (Anrede)
-//   {{Forwarder}}          — Person, die den Termin weitergeleitet hat
-//   {{Recipient}}          — Name der hinzugefügten Person
-//   {{RecipientEmail}}     — Email der hinzugefügten Person ('nicht aufgelöst' bei Externen)
-//   {{EventTitle}}         — Event-Titel
-//   {{AppUrl}}             — DEX-App-URL (Organizer kann dort manuell registrieren)
-const OUTLOOK_FORWARD_BODY_EN = wrapTemplateForStorage(
-  '#0d6efd',
-  'Meeting was forwarded',
-  'Event {{EventTitle}}',
-  `<p>Hi,</p>
-<p>FYI: <strong>{{Forwarder}}</strong> forwarded the Outlook invitation for <strong>{{EventTitle}}</strong> to <strong>{{Recipient}}</strong> ({{RecipientEmail}}).</p>
-<p><strong>{{Recipient}} is currently NOT registered in the DEX participant list.</strong> This person still needs to register via the app in order to get a ParticipantID and QR code and to appear in the official participant list.</p>
-<p style="margin:24px 0;text-align:center;"><a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView" style="display:inline-block;padding:12px 28px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">Open DEX App</a></p>
-<p style="font-size:13px;color:#555;margin-top:24px;">Possible next steps:</p>
-<ul style="font-size:13px;color:#555;margin:0 0 24px 16px;padding:0;">
-<li>Ask {{Recipient}} to register themselves via the app.</li>
-<li>Or: register {{Recipient}} manually as organizer via "Register for another person".</li>
-<li>Or: remove {{Recipient}} from the Outlook meeting if they should not attend.</li>
-</ul>
-<p style="font-size:12px;color:#999;">This message was generated automatically (Microsoft Outlook Meeting Forward Notification).</p>
-<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
-);
-
-const OUTLOOK_FORWARD_BODY_DE = wrapTemplateForStorage(
-  '#0d6efd',
-  'Termin wurde weitergeleitet',
-  'Event {{EventTitle}}',
-  `<p>Hallo,</p>
-<p>zur Info: <strong>{{Forwarder}}</strong> hat die Outlook-Einladung f\u00FCr <strong>{{EventTitle}}</strong> an <strong>{{Recipient}}</strong> ({{RecipientEmail}}) weitergeleitet.</p>
-<p><strong>{{Recipient}} ist aktuell NICHT in der DEX-Teilnehmerliste registriert.</strong> Die Person muss sich ggf. noch selbst \u00FCber die App anmelden, damit sie eine TeilnehmerID und einen QR-Code bekommt und in der offiziellen Teilnehmerliste erscheint.</p>
-<p style="margin:24px 0;text-align:center;"><a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView" style="display:inline-block;padding:12px 28px;background:#86bc25;color:#fff;text-decoration:none;border-radius:6px;font-weight:700;">DEX-App \u00F6ffnen</a></p>
-<p style="font-size:13px;color:#555;margin-top:24px;">M\u00F6gliche Handlungsoptionen:</p>
-<ul style="font-size:13px;color:#555;margin:0 0 24px 16px;padding:0;">
-<li>{{Recipient}} bitten, sich selbst \u00FCber die App zu registrieren.</li>
-<li>Oder: {{Recipient}} als Organizer manuell \u00FCber "F\u00FCr andere Person registrieren" eintragen.</li>
-<li>Oder: {{Recipient}} aus dem Outlook-Termin entfernen, falls nicht gew\u00FCnscht.</li>
-</ul>
-<p style="font-size:12px;color:#999;">Diese Mail wurde automatisch erzeugt (Microsoft Outlook Meeting Forward Notification).</p>
-<p style="margin-top:24px;"><strong>Viele Gr\u00FC\u00DFe</strong><br><br><strong>Dein Event-Team</strong></p>`
-);
-
-// v9.38: OutlookDeclineDigest — Info-Mail an Organizer, sobald jemand den
-// Outlook-Termin abgelehnt hat. Listet alle Teilnehmer, die noch angemeldet
-// sind, aber den Outlook-Termin abgelehnt haben. Wird nach jedem neuen
-// Decline gequeued (Power-Automate-Flow DEX_OutlookDeclineHandler).
-//   {{EventTitle}}    — Event-Titel
-//   {{DeclineCount}}  — Anzahl der noch-angemeldeten Decliner
-//   {{DeclineList}}   — HTML-Tabelle mit Vorname/Nachname/Mail/RegDate/Department
-const OUTLOOK_DECLINE_DIGEST_BODY_EN = wrapTemplateForStorage(
-  '#ed8b00',
-  'FYI: attendees declined the Outlook invite',
-  'Event {{EventTitle}}',
-  `<p>Hi,</p>
-<p>The following <strong>{{DeclineCount}}</strong> attendees are still registered for <strong>{{EventTitle}}</strong> but have declined the Outlook calendar invite. They received a reminder mail asking them to also cancel their registration if they cannot attend — until then, they still count towards the capacity.</p>
-{{DeclineList}}
-<p>You may want to reach out to them directly if their attendance is critical for the event.</p>
-<p style="font-size:12px;color:#999;margin-top:24px;">This summary is sent automatically every time someone declines the Outlook invite. The list always reflects the current state of registered-but-declined attendees.</p>
-<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
-);
-
-const OUTLOOK_DECLINE_DIGEST_BODY_DE = wrapTemplateForStorage(
-  '#ed8b00',
-  'FYI: Teilnehmer haben den Outlook-Termin abgelehnt',
-  'Event {{EventTitle}}',
-  `<p>Hallo,</p>
-<p>folgende <strong>{{DeclineCount}}</strong> Teilnehmer sind noch für <strong>{{EventTitle}}</strong> angemeldet, haben aber den Outlook-Termin <strong>abgelehnt</strong>. Sie haben bereits eine Erinnerungs-Mail bekommen mit der Bitte, sich auch offiziell abzumelden — bis dahin zählen sie aber zur Kapazität.</p>
-{{DeclineList}}
-<p>Falls die Teilnahme dieser Personen für das Event wichtig ist, sprich sie ggf. direkt an.</p>
-<p style="font-size:12px;color:#999;margin-top:24px;">Diese Übersicht geht automatisch raus, sobald jemand den Outlook-Termin ablehnt. Die Liste zeigt immer den aktuellen Stand der noch-angemeldeten Decliner.</p>
-<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
-);
-
-// Nachrücken-Mail (PA-Flow DEX_IDReorder queued sie) — muss pre-wrapped sein,
-// weil die Flow-seite den BodyHtml raw verwendet (ohne wrapTemplate). Client-Code
-// erkennt die Pre-Wrap in buildEmailFromTemplate() und skippt den Wrap dann.
-// v12.11/v12.12: Nachr\u00FCcken-Mail-Text pr\u00E4zisiert \u2014 der alte \u201ESpot available"-
-// Subject war missverst\u00E4ndlich (klang wie ein Angebot). Outlook-Verweis
-// entfernt, weil nicht jedes Event Outlook-Termine versendet.
-const NACHRUECKEN_BODY_EN = wrapTemplateForStorage(
-  '#86bc25',
-  'You\u2019ve got a spot!',
-  'Event {{EventTitle}}',
-  `<p>Dear {{Name}},</p>
-<p>Great news! A spot has become available \u2014 you have <strong>moved up from the waitlist</strong> for the event <strong>{{EventTitle}}</strong> and are now a <strong>confirmed participant</strong>.</p>
-<p>You are now on the official participant list.</p>
-<p style="padding:10px 14px;background:#eef4fb;border:1px solid #0076a8;border-radius:8px;"><strong>Catch up on earlier updates:</strong> Any information already sent out for this event (e.g. an invitation or announcement) is available in the DEX App under <strong>\u201CMy Events\u201D</strong> on this event \u2014 so you\u2019re fully up to date.</p>
-<p>You can review your participation any time in the <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView">DEX App</a> under <strong>\u201CMy Events\u201D</strong>.</p>
-<p>If you are unable to attend after all, please cancel your registration as soon as possible via the App so that the next person on the waitlist can move up.</p>
-<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
-);
-
-const NACHRUECKEN_BODY_DE = wrapTemplateForStorage(
-  '#86bc25',
-  'Du hast einen Platz!',
-  'Event {{EventTitle}}',
-  `<p>Hallo {{Name}},</p>
-<p>gute Nachrichten! Ein Platz ist frei geworden \u2014 du bist von der <strong>Warteliste nachger\u00FCckt</strong> f\u00FCr das Event <strong>{{EventTitle}}</strong> und bist jetzt <strong>fester Teilnehmer</strong>.</p>
-<p>Du stehst nun auf der offiziellen Teilnehmerliste.</p>
-<p style="padding:10px 14px;background:#eef4fb;border:1px solid #0076a8;border-radius:8px;"><strong>Bisherige Infos nachlesen:</strong> Alle bereits zu diesem Event versendeten Informationen (z.\u00A0B. Einladung oder Ank\u00FCndigung) findest du in der DEX App unter <strong>\u201EMeine Events\u201C</strong> beim Event \u2014 so bist du auf dem gleichen Stand.</p>
-<p>Deine Teilnahme kannst du jederzeit in der <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView">DEX App</a> unter <strong>\u201EMeine Events\u201C</strong> einsehen.</p>
-<p>Falls du doch nicht teilnehmen kannst, melde dich bitte zeitnah \u00FCber die App ab, damit die n\u00E4chste Person von der Warteliste nachr\u00FCcken kann.</p>
-<p style="margin-top:24px;"><strong>Viele Gr\u00FC\u00DFe</strong><br><br><strong>Dein Event-Team</strong></p>`
-);
-
-// v18.63: Organizer-Benachrichtigung bei Abmeldung MIT Nachrücker. Wird vom
-// DEX_IDReorder-Flow nach einem erfolgreichen Promote an die Organizer
-// gequeued (nicht von der App). Pre-wrapped gespeichert wie Nachrücken; der
-// Flow ersetzt nur {{EventTitle}} und {{PromotedName}} per replace(). Daher
-// KEIN {{AppUrl}} (würde der Flow nicht auflösen) — feste App-URL eingebaut.
-// Platzhalter: {{EventTitle}}, {{CancelledName}} (abgemeldete Person),
-// {{PromotedName}} (voller Name des Nachrückers).
-const ORG_NACHRUECKER_BODY_EN = wrapTemplateForStorage(
-  '#86bc25', 'Cancellation — waitlist move-up', 'Event {{EventTitle}}',
-  `<p>Hello,</p>
-<p>There was a change for the event <strong>{{EventTitle}}</strong>:</p>
-<ul style="margin:12px 0 16px; padding-left:20px; line-height:1.7;">
-<li><strong>Cancellation:</strong> {{CancelledName}}</li>
-<li><strong>Moved up from the waitlist:</strong> {{PromotedName}}</li>
-</ul>
-<p>You don't need to do anything — the participant list and participant IDs have already been updated automatically. You can review the current status in the <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView">DEX Admin Center</a>.</p>
-<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your DEX Team</strong></p>`
-);
-const ORG_NACHRUECKER_BODY_DE = wrapTemplateForStorage(
-  '#86bc25', 'Abmeldung — Nachrücker', 'Event {{EventTitle}}',
-  `<p>Hallo,</p>
-<p>beim Event <strong>{{EventTitle}}</strong> gab es eine Änderung:</p>
-<ul style="margin:12px 0 16px; padding-left:20px; line-height:1.7;">
-<li><strong>Abmeldung:</strong> {{CancelledName}}</li>
-<li><strong>Nachrücker:</strong> {{PromotedName}}</li>
-</ul>
-<p>Du musst nichts weiter tun — die Teilnehmerliste und die TeilnehmerIDs wurden bereits automatisch aktualisiert. Den aktuellen Stand siehst du im <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView">DEX Admin Center</a>.</p>
-<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein DEX-Team</strong></p>`
-);
-
-// v19.25: Pre-wrapped Abmelde-Bestätigung für die FLOW-getriebene Auto-Abmeldung
-// bei Outlook-Absage (DEX_OutlookDeclineHandler queued sie). Muss pre-wrapped
-// sein, weil der Flow den BodyHtml roh verwendet (kein wrapTemplate). Eigener
-// TemplateType `AbmeldungAuto`, damit die App-eigene `Abmeldung` (unwrapped, mit
-// Per-Event-Customizing) unangetastet bleibt. Flow ersetzt nur {{Name}} +
-// {{EventTitle}}; KEIN {{AppUrl}} (würde der Flow nicht auflösen) — feste
-// App-URL eingebaut. {{LOGO_URL}}/{{ORB_URL}} ersetzt DEX_SEND_MAIL beim Versand.
-// v22.39: Roter Storno-Banner für die Standard-Abmelde-Templates — Event-Titel
-// ausgegraut + durchgestrichen, identisch zum Inline-Fallback
-// `cancellationEmail()` in EmailTemplates.ts (v17.20). Per Reseed kommt das
-// Design in die Tenant-Templates; Event-Overrides bleiben unberührt.
-const CANCEL_BANNER_HTML = '<div style="margin:16px 0 20px;padding:14px 18px;border:2px solid #da291c;background:rgba(218,41,28,0.06);border-radius:8px;text-align:center;"><div style="font-size:0.78rem;font-weight:700;color:#da291c;text-transform:uppercase;letter-spacing:1.5px;">Stornierung &middot; Cancellation</div><div style="margin-top:6px;font-size:1.15rem;font-weight:700;color:#888;text-decoration:line-through;">{{EventTitle}}</div></div>';
-
-const ABMELDUNG_AUTO_BODY_EN = wrapTemplateForStorage(
-  '#da291c', 'Cancellation confirmed', 'Event {{EventTitle}}',
-  `<p>Dear {{Name}},</p>
-${CANCEL_BANNER_HTML}
-<p>your registration for the event above has been <strong>cancelled</strong> because you declined the Outlook invitation.</p>
-<p>If you change your mind, you can register again any time via the <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView">DEX App</a>.</p>
-<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
-);
-const ABMELDUNG_AUTO_BODY_DE = wrapTemplateForStorage(
-  '#da291c', 'Abmeldung bestätigt', 'Event {{EventTitle}}',
-  `<p>Hallo {{Name}},</p>
-${CANCEL_BANNER_HTML}
-<p>deine Anmeldung für das oben genannte Event wurde <strong>storniert</strong>, weil du den Outlook-Termin abgelehnt hast.</p>
-<p>Du kannst dich jederzeit erneut über die <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView">DEX App</a> anmelden.</p>
-<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
-);
-
-// v12.13: Team-bezogene Mail-Vorlagen — vorher inline in EventContext.tsx
-// als ad-hoc-HTML zusammengebaut, jetzt zentral in DEX_EmailTemplates
-// hinterlegt damit Admins sie genauso wie Anmeldung/Abmeldung/Nachrücken
-// anpassen können. Platzhalter pro Template siehe Inline-Kommentare.
-
-// {{Name}} (Empfänger-Vorname), {{NewMemberName}} (voller Name des
-// neuen Mitglieds), {{TeamName}} (kann leer sein), {{EventTitle}}.
-const TEAM_MEMBER_JOINED_BODY_EN = wrapTemplateForStorage(
-  '#86bc25', 'Team update', 'Event {{EventTitle}}',
-  `<p>Hello {{Name}},</p>
-<p><strong>{{NewMemberName}}</strong> joined your team {{TeamName}} for the event <strong>{{EventTitle}}</strong>.</p>
-<p>You can see the current team status in the <a href="{{AppUrl}}">DEX App</a> under <strong>“My Events”</strong>.</p>
-<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
-);
-const TEAM_MEMBER_JOINED_BODY_DE = wrapTemplateForStorage(
-  '#86bc25', 'Team-Update', 'Event {{EventTitle}}',
-  `<p>Hallo {{Name}},</p>
-<p><strong>{{NewMemberName}}</strong> ist deinem Team {{TeamName}} beim Event <strong>{{EventTitle}}</strong> beigetreten.</p>
-<p>Den aktuellen Team-Stand siehst du jederzeit in der <a href="{{AppUrl}}">DEX App</a> unter <strong>„Meine Events"</strong>.</p>
-<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
-);
-
-// {{Name}} (Lead-Vorname), {{RequesterName}} (voll), {{TeamName}},
-// {{EventTitle}}, {{ApproveUrl}}, {{RejectUrl}}.
-const TEAM_JOIN_REQUEST_BODY_EN = wrapTemplateForStorage(
-  '#86bc25', 'Team join request', 'Event {{EventTitle}}',
-  `<p>Hello {{Name}},</p>
-<p><strong>{{RequesterName}}</strong> would like to join your team {{TeamName}} for the event <strong>{{EventTitle}}</strong>. Please decide:</p>
-<p style="text-align:center;margin:18px 0;"><a href="{{ApproveUrl}}" style="display:inline-block;padding:10px 18px;background:#86bc25;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;margin-right:8px;">Approve</a> <a href="{{RejectUrl}}" style="display:inline-block;padding:10px 18px;background:#999;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;">Reject</a></p>
-<p style="font-size:0.85rem;color:#666;">Note: the buttons lead you to the app; the request block lives under <strong>“My Events”</strong>.</p>
-<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
-);
-const TEAM_JOIN_REQUEST_BODY_DE = wrapTemplateForStorage(
-  '#86bc25', 'Team-Beitritts-Anfrage', 'Event {{EventTitle}}',
-  `<p>Hallo {{Name}},</p>
-<p><strong>{{RequesterName}}</strong> möchte deinem Team {{TeamName}} beim Event <strong>{{EventTitle}}</strong> beitreten. Bitte entscheide:</p>
-<p style="text-align:center;margin:18px 0;"><a href="{{ApproveUrl}}" style="display:inline-block;padding:10px 18px;background:#86bc25;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;margin-right:8px;">Bestätigen</a> <a href="{{RejectUrl}}" style="display:inline-block;padding:10px 18px;background:#999;color:#fff;font-weight:600;text-decoration:none;border-radius:6px;">Ablehnen</a></p>
-<p style="font-size:0.85rem;color:#666;">Hinweis: die Buttons führen dich in die App; den Beitritts-Anfragen-Block findest du unter <strong>„Meine Events"</strong>.</p>
-<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
-);
-
-// {{Name}} (Anfrager-Vorname), {{EventTitle}}.
-const TEAM_JOIN_REJECTED_BODY_EN = wrapTemplateForStorage(
-  '#ed8b00', 'Team join request declined', 'Event {{EventTitle}}',
-  `<p>Hello {{Name}},</p>
-<p>your join request for the team at the event <strong>{{EventTitle}}</strong> was declined by the team lead.</p>
-<p>You can still register individually if capacity allows — or join another open team via the registration page.</p>
-<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
-);
-const TEAM_JOIN_REJECTED_BODY_DE = wrapTemplateForStorage(
-  '#ed8b00', 'Team-Beitritts-Anfrage abgelehnt', 'Event {{EventTitle}}',
-  `<p>Hallo {{Name}},</p>
-<p>deine Beitritts-Anfrage zum Team beim Event <strong>{{EventTitle}}</strong> wurde vom Team-Lead abgelehnt.</p>
-<p>Du kannst dich gerne einzeln anmelden, falls die Kapazität noch reicht — oder einem anderen offenen Team über die Anmeldeseite beitreten.</p>
-<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
-);
-
-// {{Name}} (Empfänger-Vorname), {{NewLeadName}}, {{TeamName}},
-// {{EventTitle}}, {{NewLeadBlock}} (HTML-Block — leer falls Empfänger
-// nicht der neue Lead ist, sonst der zusätzliche Hinweis-Absatz).
-const TEAM_LEAD_TRANSFERRED_BODY_EN = wrapTemplateForStorage(
-  '#86bc25', 'Team lead change', 'Event {{EventTitle}}',
-  `<p>Hello {{Name}},</p>
-<p>The team lead role in your team {{TeamName}} has been transferred to <strong>{{NewLeadName}}</strong>.</p>
-{{NewLeadBlock}}
-<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
-);
-const TEAM_LEAD_TRANSFERRED_BODY_DE = wrapTemplateForStorage(
-  '#86bc25', 'Team-Lead-Wechsel', 'Event {{EventTitle}}',
-  `<p>Hallo {{Name}},</p>
-<p>Die Team-Lead-Rolle in deinem Team {{TeamName}} wurde an <strong>{{NewLeadName}}</strong> übergeben.</p>
-{{NewLeadBlock}}
-<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
-);
-
-// {{Name}} (Empfänger-Vorname), {{CancelledName}}, {{TeamName}},
-// {{EventTitle}}, {{ActiveCount}}, {{TeamSize}}, {{NewLeadBlock}}
-// (leer, falls Empfänger nicht zum neuen Lead ernannt wurde).
-const TEAM_MEMBER_CANCELLED_BODY_EN = wrapTemplateForStorage(
-  '#ed8b00', 'Team update', 'Event {{EventTitle}}',
-  `<p>Hello {{Name}},</p>
-<p>a member of your team {{TeamName}} has cancelled their registration for the event <strong>{{EventTitle}}</strong>:</p>
-<p style="padding:8px 12px;background:#f7f7f7;border-left:3px solid #86bc25;font-weight:600;">{{CancelledName}}</p>
-<p>Current team occupancy: <strong>{{ActiveCount}}/{{TeamSize}}</strong></p>
-{{NewLeadBlock}}
-<p>What you can do now:</p>
-<ul>
-<li>Do nothing — your seat stays reserved for the team for now.</li>
-<li>As team lead: add a replacement person via <strong>“My Events”</strong>.</li>
-<li>Other participants can join the open slot via the registration page (if the organizer enabled “Public open slots”).</li>
-</ul>
-<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
-);
-const TEAM_MEMBER_CANCELLED_BODY_DE = wrapTemplateForStorage(
-  '#ed8b00', 'Team-Update', 'Event {{EventTitle}}',
-  `<p>Hallo {{Name}},</p>
-<p>ein Mitglied deines Teams {{TeamName}} hat sich vom Event <strong>{{EventTitle}}</strong> abgemeldet:</p>
-<p style="padding:8px 12px;background:#f7f7f7;border-left:3px solid #86bc25;font-weight:600;">{{CancelledName}}</p>
-<p>Aktuelle Team-Belegung: <strong>{{ActiveCount}}/{{TeamSize}}</strong></p>
-{{NewLeadBlock}}
-<p>Was du jetzt machen kannst:</p>
-<ul>
-<li>Nichts tun — euer Platz bleibt erstmal für das Team reserviert.</li>
-<li>Als Team-Lead: über <strong>„Meine Events"</strong> eine andere Person nachträglich hinzufügen.</li>
-<li>Andere Teilnehmer können ggf. den freien Slot über die Event-Anmeldeseite belegen (sofern der Organizer „Unvollständige Teams öffentlich sichtbar" aktiviert hat).</li>
-</ul>
-<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
-);
-
-// v13.0: Vier weitere Templates aus dem Inline-Code geholt — analog zur
-// Team-Migration in v12.13/v12.14.
-
-// {{Name}} (Empfänger-Vorname), {{RegistrantName}} (voller Name dessen,
-// der sie als Zimmerpartner ausgewählt hat), {{EventTitle}}, {{AppUrl}}.
-const ROOMMATE_REQUEST_BODY_EN = wrapTemplateForStorage(
-  '#86bc25', 'Roommate request', '{{EventTitle}}',
-  `<p>Hello {{Name}},</p>
-<p><strong>{{RegistrantName}}</strong> has selected you as their <strong>roommate</strong> for the event <strong>{{EventTitle}}</strong>.</p>
-<p>To confirm the match, please pick <strong>{{RegistrantName}}</strong> as your roommate when registering. The organizers will then see a mutual match in the admin center.</p>
-<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
-);
-const ROOMMATE_REQUEST_BODY_DE = wrapTemplateForStorage(
-  '#86bc25', 'Zimmerpartner-Anfrage', '{{EventTitle}}',
-  `<p>Hallo {{Name}},</p>
-<p><strong>{{RegistrantName}}</strong> hat dich als <strong>Zimmerpartner</strong> für das Event <strong>{{EventTitle}}</strong> angegeben.</p>
-<p>Wenn du das Match bestätigen möchtest, gib bei deiner Registrierung <strong>{{RegistrantName}}</strong> ebenfalls als Zimmerpartner an. Das Orga-Team sieht dann im Admin Center, dass ihr euch gegenseitig ausgewählt habt.</p>
-<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
-);
-
-// {{Name}} (Empfänger-Vorname), {{GroupLabel}} (neue Gruppe), {{EventTitle}}, {{AppUrl}}.
-const GROUP_SWITCH_CONFIRMED_BODY_EN = wrapTemplateForStorage(
-  '#86bc25', 'Group switch', '{{EventTitle}}',
-  `<p>Hello {{Name}},</p>
-<p>Your group switch to <strong>{{GroupLabel}}</strong> for <strong>{{EventTitle}}</strong> is confirmed. You are now regularly registered in this group.</p>
-<p>You can review your participation any time in the <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView">DEX App</a> under <strong>“My Events”</strong>.</p>
-<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
-);
-const GROUP_SWITCH_CONFIRMED_BODY_DE = wrapTemplateForStorage(
-  '#86bc25', 'Gruppen-Wechsel', '{{EventTitle}}',
-  `<p>Hallo {{Name}},</p>
-<p>Dein Gruppen-Wechsel zu <strong>{{GroupLabel}}</strong> für <strong>{{EventTitle}}</strong> ist bestätigt. Du bist jetzt regulär in dieser Gruppe angemeldet.</p>
-<p>Deine Teilnahme kannst du jederzeit in der <a href="{{AppUrl}}">DEX App</a> unter <strong>„Meine Events"</strong> einsehen.</p>
-<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
-);
-
-const GROUP_SWITCH_WAITLIST_BODY_EN = wrapTemplateForStorage(
-  '#ed8b00', 'Group switch — on waitlist', '{{EventTitle}}',
-  `<p>Hello {{Name}},</p>
-<p>You requested to switch to the <strong>{{GroupLabel}}</strong> group for <strong>{{EventTitle}}</strong>. The group is currently full, so your registration is on the <strong>{{GroupLabel}} waitlist</strong>.</p>
-<p>You will be promoted automatically as soon as a spot frees up. You don't need to do anything else.</p>
-<p style="margin-top:24px;"><strong>Best</strong><br><br><strong>Your Event-Team</strong></p>`
-);
-const GROUP_SWITCH_WAITLIST_BODY_DE = wrapTemplateForStorage(
-  '#ed8b00', 'Gruppen-Wechsel — auf Warteliste', '{{EventTitle}}',
-  `<p>Hallo {{Name}},</p>
-<p>Du hast den Wechsel in die Gruppe <strong>{{GroupLabel}}</strong> für <strong>{{EventTitle}}</strong> angefragt. Diese Gruppe ist aktuell voll, daher steht deine Anmeldung auf der <strong>Warteliste der Gruppe {{GroupLabel}}</strong>.</p>
-<p>Sobald jemand absagt, rückst du automatisch nach. Du musst nichts weiter tun.</p>
-<p style="margin-top:24px;"><strong>Viele Grüße</strong><br><br><strong>Dein Event-Team</strong></p>`
-);
-
-// {{Name}} (Empfänger-Vorname), {{EventTitle}}, {{WaitlistPositionBlock}}
-// (optionaler HTML-Block mit „Du stehst jetzt auf Warteliste-Platz X" —
-// leer wenn keine Position bekannt).
-const OVERBOOK_APOLOGY_BODY_EN = wrapTemplateForStorage(
-  '#ed8b00', 'Registration corrected', '{{EventTitle}}',
-  `<p>Hi {{Name}},</p>
-<p>We sincerely apologize for a technical problem: due to a large number of simultaneous registrations, you were mistakenly confirmed a spot for <strong>{{EventTitle}}</strong> although capacity was already full.</p>
-<p>We therefore had to move your registration to the <strong>waitlist</strong>. We're truly sorry — this was not your fault but caused by a registration rush.</p>
-{{WaitlistPositionBlock}}
-<p>As soon as a spot opens up you will be promoted automatically and notified right away. Nothing else is needed from your side.</p>
-<p style="margin-top:24px;"><strong>Thank you for your understanding</strong><br><br><strong>Your Event Team</strong></p>`
-);
-const OVERBOOK_APOLOGY_BODY_DE = wrapTemplateForStorage(
-  '#ed8b00', 'Anmeldung korrigiert', '{{EventTitle}}',
-  `<p>Hallo {{Name}},</p>
-<p>leider müssen wir uns für ein technisches Problem entschuldigen: durch sehr viele zeitgleiche Anmeldungen wurde dir für <strong>{{EventTitle}}</strong> versehentlich ein Platz bestätigt, obwohl die Kapazität bereits erschöpft war.</p>
-<p>Wir mussten deine Anmeldung daher auf die <strong>Warteliste</strong> korrigieren. Das tut uns aufrichtig leid — es lag nicht an dir, sondern an einem Ansturm auf die Anmeldung.</p>
-{{WaitlistPositionBlock}}
-<p>Sobald ein Platz frei wird, rückst du automatisch nach und bekommst sofort eine Bestätigung. Du musst nichts weiter tun.</p>
-<p style="margin-top:24px;"><strong>Vielen Dank für dein Verständnis</strong><br><br><strong>Dein Event-Team</strong></p>`
-);
-
-// Fester Listenname auf jeder Subsite
+import { DexTicket, TicketFollowUp } from '../types';
+// v28.95: Erstes nach Thema herausgeloestes Fach-Modul (siehe CLAUDE.md).
+import * as tickets from './tickets';
 const REG_LIST_NAME = 'Teilnehmer';
 
 /** v28.61: Je Teilnehmerliste nur einmal pro Sitzung die Hotel-Spalten
@@ -802,7 +416,7 @@ export interface OrphanScanResult {
 }
 
 export class EventService {
-  private context: WebPartContext;
+  public context: WebPartContext;
   public siteUrl: string;
   // v26.81: Pro-Web-Request-Digest-Cache. SPFx spHttpClient injiziert den
   // Digest nur für das AKTUELLE Web — Schreib-Requests (MERGE/DELETE) an ANDERE
@@ -1117,7 +731,7 @@ export class EventService {
    * Berechtigungen für Queue-Listen (DEX_Outlook, DEX_IDReorder):
    * Owners Full Control, Members Contribute, Item-Level Security
    */
-  private async setQueueListPermissions(listName: string): Promise<void> {
+  public async setQueueListPermissions(listName: string): Promise<void> {
     try {
       await this._post(
         `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/breakroleinheritance(copyRoleAssignments=false, clearSubscopes=true)`,
@@ -4346,7 +3960,7 @@ export class EventService {
   /**
    * Default View einer Liste konfigurieren
    */
-  private async configureDefaultView(listName: string, fieldNames: string[], baseUrl?: string, opts?: { rebuild?: boolean }): Promise<void> {
+  public async configureDefaultView(listName: string, fieldNames: string[], baseUrl?: string, opts?: { rebuild?: boolean }): Promise<void> {
     const url = baseUrl || this.siteUrl;
     try {
       let existingFields: string[] = [];
@@ -11127,7 +10741,7 @@ export class EventService {
 
   // ==================== Hilfsmethoden ====================
 
-  private async listExists(listName: string): Promise<boolean> {
+  public async listExists(listName: string): Promise<boolean> {
     try {
       const response = await this.context.spHttpClient.get(
         `${this.siteUrl}/_api/web/lists/getbytitle('${encodeURIComponent(listName)}')`,
@@ -11160,7 +10774,7 @@ export class EventService {
     return null;
   }
 
-  private async _post(url: string, body: object): Promise<SPHttpClientResponse> {
+  public async _post(url: string, body: object): Promise<SPHttpClientResponse> {
     const options: ISPHttpClientOptions = {
       headers: {
         'Accept': 'application/json;odata=verbose',
@@ -11178,7 +10792,7 @@ export class EventService {
    * Subsite-Listen mit 406 (Accept-Format nicht unterstützt). Da bei MERGE
    * kein Response-Body benötigt wird, behandeln wir 406 als Erfolg.
    */
-  private async _merge(url: string, body: object): Promise<SPHttpClientResponse> {
+  public async _merge(url: string, body: object): Promise<SPHttpClientResponse> {
     const options: ISPHttpClientOptions = {
       headers: {
         'Accept': 'application/json;odata=nometadata',
@@ -11203,7 +10817,7 @@ export class EventService {
   // Stand des Items und antwortet mit HTTP 412 (Precondition Failed), wenn
   // ein anderer Client zwischenzeitlich geschrieben hat. So können wir
   // optimistic-concurrency-Pattern für den TeilnehmerID-Counter umsetzen.
-  private async _mergeIfMatch(url: string, body: object, etag: string): Promise<SPHttpClientResponse> {
+  public async _mergeIfMatch(url: string, body: object, etag: string): Promise<SPHttpClientResponse> {
     const options: ISPHttpClientOptions = {
       headers: {
         'Accept': 'application/json;odata=nometadata',
@@ -12185,128 +11799,16 @@ export class EventService {
   }
 
   // ==================== Ticketsystem (v26.0.0) ====================
-  // Globale Liste DEX_Tickets (Site-Collection-Root). Nutzer stellen über den
-  // grünen „Hast du Fragen?"-Header-Button Fragen; Power-User/Admins bzw. die
-  // Organizer des betroffenen Events beantworten sie. Queue-Schreibrechte wie
-  // DEX_Emails — bewusst KEINE Item-Level-Security (analog DEX_TeamJoinRequests:
-  // die Beantwortenden müssen fremde Tickets lesen können). Screenshots als
-  // Item-Attachments mit Namens-Präfix ask_ (Fragesteller) bzw. ans_ (Antwort).
+  // v28.95: Der Inhalt liegt in services/tickets.ts. Die Klasse behaelt ihre
+  // Methoden — so aendert sich an keiner der Aufrufstellen etwas, und der
+  // Compiler prueft den Weg von hier bis in das Modul.
 
-  private static readonly TICKETS_LIST = 'DEX_Tickets';
-  private static readonly TICKETS_ITEM_TYPE = 'SP.Data.DEX_x005f_TicketsListItem';
-
-  /** Ticket-Liste anlegen (idempotent), Felder + Queue-Schreibrechte. */
+  /** v28.95: delegiert an services/tickets.ts (siehe dort). */
   public async ensureTicketsList(): Promise<void> {
-    const listName = EventService.TICKETS_LIST;
-    const exists = await this.listExists(listName);
-    if (exists) { await this.ensureTicketExtraFields(); return; }
-    const createResp = await this._post(`${this.siteUrl}/_api/web/lists`, {
-      '__metadata': { 'type': 'SP.List' },
-      'Title': listName,
-      'Description': 'Ticketsystem (v26): Fragen der Nutzer + Antworten der Power-User/Organizer.',
-      'BaseTemplate': 100,
-      'AllowContentTypes': false,
-    });
-    if (!createResp.ok) {
-      console.warn('[DEX] DEX_Tickets konnte nicht angelegt werden — vermutlich fehlen Owner-Rechte.');
-      return;
-    }
-    const fields: Array<{ title: string; type: number; choices?: string[]; metaType?: string; note?: boolean }> = [
-      { title: 'Questions', type: 3, note: true },
-      { title: 'Status', type: 6, choices: ['Open', 'InProgress', 'Closed'], metaType: 'SP.FieldChoice' },
-      { title: 'AskerEmail', type: 2 },
-      { title: 'AskerName', type: 2 },
-      { title: 'AskerRole', type: 2 },
-      { title: 'Audience', type: 2 },
-      { title: 'TicketEventId', type: 2 },
-      { title: 'TicketEventTitle', type: 2 },
-      { title: 'AssignedOrganizers', type: 3, note: true },
-      { title: 'PageContext', type: 2 },
-      { title: 'AskWizardStep', type: 9 },
-      { title: 'Category', type: 2 }, // v26.60: 'Question' | 'Bug'
-      { title: 'AnswerWizardMarker', type: 2 }, // v26.52: Markierungsbox (JSON {x,y,w,h} in %) auf der Wizard-Vorschau
-      { title: 'AnswerText', type: 3, note: true },
-      { title: 'AnswerArticleIds', type: 3, note: true },
-      { title: 'AnswerWizardStep', type: 9 },
-      { title: 'AnsweredByEmail', type: 2 },
-      { title: 'AnsweredByName', type: 2 },
-      { title: 'AnsweredAt', type: 4 },
-      { title: 'ClaimedByEmail', type: 2 },
-      { title: 'ClaimedByName', type: 2 },
-      { title: 'ClaimedAt', type: 4 },
-      // v26.8: Standort/Position für die Foto-Kontaktkarte + Rückfragen-Verlauf.
-      { title: 'AskerLocation', type: 2 },
-      { title: 'AskerJobTitle', type: 2 },
-      { title: 'AnsweredByLocation', type: 2 },
-      { title: 'AnsweredByJobTitle', type: 2 },
-      { title: 'FollowUps', type: 3, note: true },
-    ];
-    for (const f of fields) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const payload: Record<string, any> = {
-          '__metadata': { 'type': f.metaType || (f.note ? 'SP.FieldMultiLineText' : 'SP.Field') },
-          'Title': f.title, 'FieldTypeKind': f.type, 'Required': false,
-        };
-        if (f.choices) payload['Choices'] = { 'results': f.choices };
-        if (f.note) { payload['RichText'] = false; payload['NumberOfLines'] = 8; }
-        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
-      } catch { /* einzelne Feld-Fehler ignorieren */ }
-    }
-    try {
-      await this.configureDefaultView(listName, [
-        'Status', 'AskerName', 'AskerRole', 'Audience', 'TicketEventTitle', 'Created', 'AnsweredAt',
-      ]);
-    } catch { /* View optional */ }
-    try { await this.setQueueListPermissions(listName); } catch { /* best-effort */ }
+    return tickets.ensureTicketsList(this);
   }
 
-  /** v26.8: fehlende Felder auf einer bereits existierenden DEX_Tickets-Liste
-   *  nachziehen.
-   *  v26.61 BUG-FIX: Vorher diente AskWizardStep als Sentinel („vorhanden →
-   *  nichts zu tun") — dadurch wurden JÜNGERE Spalten (AnswerWizardMarker
-   *  v26.52, Category v26.60) auf Bestandslisten NIE angelegt; der Ticket-
-   *  Select lief in HTTP 400 und die Tickets-Seite blieb komplett leer.
-   *  Jetzt: echter Feld-Diff — vorhandene InternalNames laden und nur
-   *  Fehlendes anlegen (Sentinel-Muster ist für wachsende Listen tabu). */
-  private async ensureTicketExtraFields(): Promise<void> {
-    const listName = EventService.TICKETS_LIST;
-    const extra: Array<{ title: string; type: number; note?: boolean }> = [
-      { title: 'AskerLocation', type: 2 },
-      { title: 'AskerJobTitle', type: 2 },
-      { title: 'AnsweredByLocation', type: 2 },
-      { title: 'AnsweredByJobTitle', type: 2 },
-      { title: 'FollowUps', type: 3, note: true },
-      { title: 'AskWizardStep', type: 9 },
-      { title: 'Category', type: 2 }, // v26.60: 'Question' | 'Bug'
-      { title: 'AnswerWizardMarker', type: 2 }, // v26.52: Markierungsbox (JSON {x,y,w,h} in %) auf der Wizard-Vorschau
-    ];
-    let existing: Set<string> | null = null;
-    try {
-      const resp = await this.context.spHttpClient.get(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields?$select=InternalName&$filter=Hidden eq false&$top=200`,
-        SPHttpClient.configurations.v1);
-      if (resp.ok) {
-        const d = await resp.json();
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        existing = new Set(((d.value || d.d?.results || []) as any[]).map(f => String(f.InternalName)));
-      }
-    } catch { /* Diff nicht lesbar → alle versuchen (Duplikate schlagen einzeln fehl) */ }
-    for (const f of extra) {
-      if (existing && existing.has(f.title)) continue;
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const payload: Record<string, any> = {
-          '__metadata': { 'type': f.note ? 'SP.FieldMultiLineText' : 'SP.Field' },
-          'Title': f.title, 'FieldTypeKind': f.type, 'Required': false,
-        };
-        if (f.note) { payload['RichText'] = false; payload['NumberOfLines'] = 8; }
-        await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${listName}')/fields`, payload);
-      } catch { /* einzelne Feld-Fehler ignorieren */ }
-    }
-  }
-
-  /** Neues Ticket anlegen. Liefert die Item-Id zurück (für Attachment-Upload). */
+  /** v28.95: delegiert an services/tickets.ts (siehe dort). */
   public async createTicket(t: {
     questions: string[];
     askerEmail: string; askerName: string; askerRole: string;
@@ -12318,335 +11820,57 @@ export class EventService {
      *  statt an alle Power-User); sonst inhaltliche Frage. */
     category?: 'question' | 'bug';
   }): Promise<number | null> {
-    try {
-      const first = (t.questions[0] || 'Frage').replace(/\s+/g, ' ').trim().slice(0, 240) || 'Frage';
-      const resp = await this._post(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items`,
-        {
-          '__metadata': { 'type': EventService.TICKETS_ITEM_TYPE },
-          'Title': first,
-          'Questions': JSON.stringify(t.questions || []),
-          'Status': 'Open',
-          'AskerEmail': t.askerEmail, 'AskerName': t.askerName, 'AskerRole': t.askerRole,
-          'AskerLocation': t.askerLocation || '', 'AskerJobTitle': t.askerJobTitle || '',
-          'Audience': t.audience,
-          'TicketEventId': t.eventId || '', 'TicketEventTitle': t.eventTitle || '',
-          'AssignedOrganizers': JSON.stringify(t.assignedOrganizers || []),
-          'PageContext': t.pageContext || '',
-          'AskWizardStep': (t.askWizardStep == null) ? null : t.askWizardStep,
-          'Category': t.category === 'bug' ? 'Bug' : 'Question',
-        }
-      );
-      if (!resp.ok) return null;
-      const data = await resp.json();
-      const id = data?.d?.Id ?? data?.Id;
-      return typeof id === 'number' ? id : (id != null ? Number(id) : null);
-    } catch (err) {
-      console.warn('[DEX] createTicket failed:', err);
-      return null;
-    }
+    return tickets.createTicket(this, t);
   }
 
-  /** Screenshot als Item-Attachment anhängen (kind = ask_ / ans_). */
+  /** v28.95: delegiert an services/tickets.ts (siehe dort). */
   public async addTicketAttachment(itemId: number, file: File, kind: 'ask' | 'ans'): Promise<boolean> {
-    try {
-      const buf = await file.arrayBuffer();
-      const safeName = (file.name || 'screenshot.png').replace(/[^a-zA-Z0-9._-]+/g, '_');
-      const ts = new Date().toISOString().replace(/[:.]/g, '-').replace(/T/, '_').slice(0, 19);
-      const finalName = `${kind}_${ts}_${safeName}`;
-      const url = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items(${itemId})/AttachmentFiles/add(FileName='${encodeURIComponent(finalName)}')`;
-      const resp = await this.context.spHttpClient.post(url, SPHttpClient.configurations.v1, {
-        headers: { 'Accept': 'application/json;odata=nometadata' },
-        body: buf,
-      });
-      return resp.ok;
-    } catch (err) {
-      console.warn('[DEX] addTicketAttachment failed:', err);
-      return false;
-    }
+    return tickets.addTicketAttachment(this, itemId, file, kind);
   }
 
-  /** Voller Ticket-Select (inkl. neuerer Spalten Category/AnswerWizardMarker). */
-  private static readonly TICKETS_SEL_FULL = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AskWizardStep,Category,AnswerText,AnswerArticleIds,AnswerWizardStep,AnswerWizardMarker,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
-  /** Legacy-Select ohne die jüngeren Spalten — Fallback, wenn die Live-Liste
-   *  sie (noch) nicht hat und auch nicht angelegt werden können. */
-  private static readonly TICKETS_SEL_LEGACY = 'Id,Title,Questions,Status,AskerEmail,AskerName,AskerRole,AskerLocation,AskerJobTitle,Audience,TicketEventId,TicketEventTitle,AssignedOrganizers,PageContext,AskWizardStep,AnswerText,AnswerArticleIds,AnswerWizardStep,AnsweredByEmail,AnsweredByName,AnsweredByLocation,AnsweredByJobTitle,AnsweredAt,ClaimedByEmail,ClaimedByName,ClaimedAt,FollowUps,Created';
-
-  /** v26.61: Ticket-Items robust laden. HTTP 400 heißt fast immer: eine neu
-   *  eingeführte Spalte fehlt auf der Live-Liste (der alte Sentinel-Bug in
-   *  ensureTicketExtraFields hat Category/AnswerWizardMarker nie angelegt).
-   *  Selbstheilung: Spalten nachziehen → EIN Retry mit vollem Select →
-   *  andernfalls Legacy-Select ohne die neuen Spalten, damit die Tickets-Seite
-   *  NIE leer bleibt (fehlende Werte fallen auf Defaults zurück).
-   */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private async _getTicketItems(suffix: string): Promise<any[] | null> {
-    const base = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items?$select=`;
-    let resp = await this.context.spHttpClient.get(`${base}${EventService.TICKETS_SEL_FULL}${suffix}`, SPHttpClient.configurations.v1);
-    if (resp.status === 400) {
-      try { await this.ensureTicketExtraFields(); } catch { /* */ }
-      resp = await this.context.spHttpClient.get(`${base}${EventService.TICKETS_SEL_FULL}${suffix}`, SPHttpClient.configurations.v1);
-      if (resp.status === 400) {
-        console.warn('[DEX] Ticket-Select weiterhin 400 — Fallback auf Legacy-Spalten (ohne Category/AnswerWizardMarker).');
-        resp = await this.context.spHttpClient.get(`${base}${EventService.TICKETS_SEL_LEGACY}${suffix}`, SPHttpClient.configurations.v1);
-      }
-    }
-    if (!resp.ok) return null;
-    const data = await resp.json();
-    return data.value || data.d?.results || [];
-  }
-
-  /** Alle Tickets laden (inkl. Anhänge per $expand). Neueste zuerst. */
+  /** v28.95: delegiert an services/tickets.ts (siehe dort). */
   public async getTickets(): Promise<DexTicket[]> {
-    try {
-      const items = await this._getTicketItems('&$expand=AttachmentFiles&$orderby=Created desc&$top=500');
-      if (!items) return [];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (items as any[]).map((it) => this._mapTicket(it));
-    } catch (err) {
-      console.warn('[DEX] getTickets failed:', err);
-      return [];
-    }
+    return tickets.getTickets(this);
   }
 
-  /** Eigene Tickets eines Fragestellers (für die „Deine Fragen"-Ansicht im
-   *  Ask-Modal — der Fragesteller sieht Status + Antwort in der App). */
+  /** v28.95: delegiert an services/tickets.ts (siehe dort). */
   public async getMyTickets(email: string): Promise<DexTicket[]> {
-    try {
-      const safe = (email || '').replace(/'/g, "''");
-      const items = await this._getTicketItems(`&$expand=AttachmentFiles&$filter=AskerEmail eq '${safe}'&$orderby=Created desc&$top=100`);
-      if (!items) return [];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (items as any[]).map((it) => this._mapTicket(it));
-    } catch (err) {
-      console.warn('[DEX] getMyTickets failed:', err);
-      return [];
-    }
+    return tickets.getMyTickets(this, email);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private _mapTicket(it: any): DexTicket {
-    const parseArr = (s: unknown): string[] => {
-      try { const a = JSON.parse((s as string) || '[]'); return Array.isArray(a) ? a.map((x) => String(x)) : []; } catch { return []; }
-    };
-    const attsRaw = (it.AttachmentFiles && (it.AttachmentFiles.results || it.AttachmentFiles)) || [];
-    const attachments: TicketAttachment[] = (Array.isArray(attsRaw) ? attsRaw : []).map((a: { FileName?: string; ServerRelativeUrl?: string }) => {
-      const fn = a.FileName || '';
-      const kind: TicketAttachment['kind'] = fn.indexOf('ask_') === 0 ? 'ask' : fn.indexOf('ans_') === 0 ? 'ans' : 'other';
-      return { fileName: fn, url: a.ServerRelativeUrl || '', kind };
-    });
-    const stepRaw = it.AnswerWizardStep;
-    const askStepRaw = it.AskWizardStep;
-    const parseFollowUps = (s: unknown): TicketFollowUp[] => {
-      try {
-        const a = JSON.parse((s as string) || '[]');
-        if (!Array.isArray(a)) return [];
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return a.map((x: any) => ({
-          byEmail: String(x.byEmail || ''),
-          byName: String(x.byName || ''),
-          byRole: (x.byRole === 'answerer' ? 'answerer' : 'asker') as TicketFollowUp['byRole'],
-          text: String(x.text || ''),
-          at: String(x.at || ''),
-        }));
-      } catch { return []; }
-    };
-    return {
-      id: it.Id,
-      title: it.Title || '',
-      questions: parseArr(it.Questions),
-      status: (it.Status || 'Open') as DexTicket['status'],
-      askerEmail: it.AskerEmail || '',
-      askerName: it.AskerName || '',
-      askerRole: (it.AskerRole || 'User') as DexTicket['askerRole'],
-      askerLocation: it.AskerLocation || '',
-      askerJobTitle: it.AskerJobTitle || '',
-      audience: (it.Audience || 'PowerUser') as DexTicket['audience'],
-      eventId: it.TicketEventId || '',
-      eventTitle: it.TicketEventTitle || '',
-      assignedOrganizers: parseArr(it.AssignedOrganizers),
-      pageContext: it.PageContext || '',
-      // v26.60: Bug-Report vs. inhaltliche Frage (Bestand ohne Category = Frage).
-      category: (it.Category === 'Bug' ? 'bug' : 'question') as DexTicket['category'],
-      askWizardStep: (askStepRaw === 0 || (askStepRaw != null && askStepRaw !== '')) ? Number(askStepRaw) : null,
-      answerText: it.AnswerText || '',
-      answerArticleIds: parseArr(it.AnswerArticleIds),
-      answerWizardStep: (stepRaw === 0 || (stepRaw != null && stepRaw !== '')) ? Number(stepRaw) : null,
-      // v26.52: Markierungsbox (JSON {x,y,w,h} in Prozent) — defensiv parsen.
-      answerWizardMarker: (() => {
-        try {
-          const m = JSON.parse(it.AnswerWizardMarker || 'null');
-          if (m && typeof m.x === 'number' && typeof m.y === 'number' && typeof m.w === 'number' && typeof m.h === 'number') return m;
-        } catch { /* */ }
-        return null;
-      })(),
-      answeredByEmail: it.AnsweredByEmail || '',
-      answeredByName: it.AnsweredByName || '',
-      answeredByLocation: it.AnsweredByLocation || '',
-      answeredByJobTitle: it.AnsweredByJobTitle || '',
-      answeredAt: it.AnsweredAt || '',
-      claimedByEmail: it.ClaimedByEmail || '',
-      claimedByName: it.ClaimedByName || '',
-      claimedAt: it.ClaimedAt || '',
-      created: it.Created || '',
-      attachments,
-      followUps: parseFollowUps(it.FollowUps),
-    };
-  }
-
-  /** Ticket „in Bearbeitung" nehmen (Claim). */
-  /**
-   * v26.32: Ticket übernehmen mit OPTIMISTIC CONCURRENCY, damit nicht zwei
-   * Power-User gleichzeitig dasselbe Ticket übernehmen. Ablauf:
-   *   1. Aktuellen Stand (Status/Claim) + ETag lesen.
-   *   2. `onlyIfOpen` (Standard beim Klick auf ein OFFENES Ticket): ist es
-   *      inzwischen von jemand anderem übernommen/geschlossen → conflict.
-   *   3. Bedingter MERGE mit IF-MATCH=<ETag>. Hat zwischen Schritt 1 und 3
-   *      jemand geschrieben → HTTP 412 → wir lesen den aktuellen Claimer nach
-   *      und melden conflict (kein stilles Überschreiben mehr).
-   * Rückgabe: { ok, conflict?, claimedByName?, status? }.
-   */
+  /** v28.95: delegiert an services/tickets.ts (siehe dort). */
   public async claimTicket(
     itemId: number, email: string, name: string, opts?: { onlyIfOpen?: boolean }
   ): Promise<{ ok: boolean; conflict?: boolean; claimedByName?: string; status?: string }> {
-    const itemUrl = `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items(${itemId})`;
-    const readCurrent = async (): Promise<{ status: string; claimEmail: string; claimName: string; etag: string } | null> => {
-      try {
-        const getResp = await this.context.spHttpClient.get(
-          `${itemUrl}?$select=Status,ClaimedByEmail,ClaimedByName`,
-          SPHttpClient.configurations.v1,
-          { headers: { 'Accept': 'application/json;odata=nometadata' } }
-        );
-        if (!getResp.ok) return null;
-        const etag = getResp.headers.get('ETag') || getResp.headers.get('etag') || '';
-        const data = await getResp.json();
-        return {
-          status: String(data.Status || 'Open'),
-          claimEmail: String(data.ClaimedByEmail || ''),
-          claimName: String(data.ClaimedByName || ''),
-          etag,
-        };
-      } catch { return null; }
-    };
-    try {
-      const cur = await readCurrent();
-      if (!cur || !cur.etag) return { ok: false };
-      const meLc = (email || '').toLowerCase();
-      const takenByOther = cur.claimEmail && cur.claimEmail.toLowerCase() !== meLc;
-      // Beim Klick auf ein OFFENES Ticket: schon vergeben/geschlossen? → Konflikt.
-      if (opts?.onlyIfOpen && (cur.status !== 'Open') && takenByOther) {
-        return { ok: false, conflict: true, claimedByName: cur.claimName || cur.claimEmail, status: cur.status };
-      }
-      // Bereits beantwortet/geschlossen → nie überschreiben.
-      if (cur.status === 'Closed') {
-        return { ok: false, conflict: true, claimedByName: cur.claimName || cur.claimEmail, status: cur.status };
-      }
-      const resp = await this._mergeIfMatch(
-        itemUrl,
-        { 'Status': 'InProgress', 'ClaimedByEmail': email, 'ClaimedByName': name, 'ClaimedAt': new Date().toISOString() },
-        cur.etag
-      );
-      if (resp.status === 412) {
-        // Race verloren (jemand war zwischen Lesen und Schreiben schneller).
-        const after = await readCurrent();
-        return { ok: false, conflict: true, claimedByName: after ? (after.claimName || after.claimEmail) : undefined, status: after?.status };
-      }
-      return { ok: resp.ok };
-    } catch (err) {
-      console.warn('[DEX] claimTicket failed:', err);
-      return { ok: false };
-    }
+    return tickets.claimTicket(this, itemId, email, name, opts);
   }
 
-  /** Ticket wieder freigeben (zurück auf „Open"), damit ein anderer übernimmt. */
+  /** v28.95: delegiert an services/tickets.ts (siehe dort). */
   public async releaseTicket(itemId: number): Promise<boolean> {
-    try {
-      const resp = await this._merge(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items(${itemId})`,
-        { 'Status': 'Open', 'ClaimedByEmail': '', 'ClaimedByName': '', 'ClaimedAt': null }
-      );
-      return resp.ok;
-    } catch (err) {
-      console.warn('[DEX] releaseTicket failed:', err);
-      return false;
-    }
+    return tickets.releaseTicket(this, itemId);
   }
 
-  /** Ticket beantworten + schließen. */
+  /** v28.95: delegiert an services/tickets.ts (siehe dort). */
   public async answerTicket(itemId: number, a: {
     answerText: string; articleIds: string[]; wizardStep: number | null;
     wizardMarker?: { x: number; y: number; w: number; h: number } | null;
     answeredByEmail: string; answeredByName: string;
     answeredByLocation?: string; answeredByJobTitle?: string;
   }): Promise<boolean> {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const body: Record<string, any> = {
-        'Status': 'Closed',
-        'AnswerText': a.answerText || '',
-        'AnswerArticleIds': JSON.stringify(a.articleIds || []),
-        'AnswerWizardStep': (a.wizardStep == null) ? null : a.wizardStep,
-        'AnswerWizardMarker': a.wizardMarker ? JSON.stringify(a.wizardMarker) : '',
-        'AnsweredByEmail': a.answeredByEmail,
-        'AnsweredByName': a.answeredByName,
-        'AnsweredByLocation': a.answeredByLocation || '',
-        'AnsweredByJobTitle': a.answeredByJobTitle || '',
-        'AnsweredAt': new Date().toISOString(),
-      };
-      const resp = await this._merge(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items(${itemId})`,
-        body
-      );
-      return resp.ok;
-    } catch (err) {
-      console.warn('[DEX] answerTicket failed:', err);
-      return false;
-    }
+    return tickets.answerTicket(this, itemId, a);
   }
 
-  /** v26.8: Rückfragen-Verlauf schreiben + Status setzen. Vom Fragesteller
-   *  (Status zurück auf InProgress, der/dem Beantwortenden zugewiesen) ODER von
-   *  der/dem Beantwortenden als Folge-Antwort (Status Closed). */
+  /** v28.95: delegiert an services/tickets.ts (siehe dort). */
   public async setTicketFollowUps(itemId: number, followUps: TicketFollowUp[], extra: {
     status?: string; claimedByEmail?: string; claimedByName?: string; claimedAt?: string | null;
   }): Promise<boolean> {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const body: Record<string, any> = { 'FollowUps': JSON.stringify(followUps || []) };
-      if (extra.status !== undefined) body['Status'] = extra.status;
-      if (extra.claimedByEmail !== undefined) body['ClaimedByEmail'] = extra.claimedByEmail;
-      if (extra.claimedByName !== undefined) body['ClaimedByName'] = extra.claimedByName;
-      if (extra.claimedAt !== undefined) body['ClaimedAt'] = extra.claimedAt;
-      const resp = await this._merge(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items(${itemId})`,
-        body
-      );
-      return resp.ok;
-    } catch (err) {
-      console.warn('[DEX] setTicketFollowUps failed:', err);
-      return false;
-    }
+    return tickets.setTicketFollowUps(this, itemId, followUps, extra);
   }
 
-  /** v26.8: Ticket schließen, ohne eine Antwort zu senden („keine Antwort nötig",
-   *  z.B. wenn die Rückfrage nur ein Dankeschön war). */
+  /** v28.95: delegiert an services/tickets.ts (siehe dort). */
   public async closeTicketNoAnswer(itemId: number): Promise<boolean> {
-    try {
-      const resp = await this._merge(
-        `${this.siteUrl}/_api/web/lists/getbytitle('${EventService.TICKETS_LIST}')/items(${itemId})`,
-        { 'Status': 'Closed' }
-      );
-      return resp.ok;
-    } catch (err) {
-      console.warn('[DEX] closeTicketNoAnswer failed:', err);
-      return false;
-    }
+    return tickets.closeTicketNoAnswer(this, itemId);
   }
-
-  // ==================== DEX_OrganizerRequests (v23.37) ====================
-  // Anträge „Organizer werden". Jeder authentifizierte User darf einen Antrag
-  // anlegen (setQueueListPermissions); Admins sehen offene Anträge in der App
-  // und bestätigen sie (→ Organizer-Rolle wird vergeben).
 
   public async ensureOrganizerRequestsList(): Promise<void> {
     const listName = 'DEX_OrganizerRequests';

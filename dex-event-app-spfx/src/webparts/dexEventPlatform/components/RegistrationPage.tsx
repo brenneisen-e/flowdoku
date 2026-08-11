@@ -30,8 +30,14 @@ import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
 import { UserFieldPicker } from './UserFieldPicker';
 import StayRangePicker from './StayRangePicker';
-// v28.91: Platzhalter-Bild, wenn ein Event kein eigenes Foto hat.
+// v28.95: Platzhalter fuer Events ohne eigenes Foto. Zuerst das im Admin
+// Center unter „Logo & Branding" hinterlegte DEX-Orb (DefaultImageBase64 im
+// _Config-Eintrag von DEX_EmailTemplates) — das ist die Stelle, an der es
+// ausgetauscht wird, und dann soll der Tausch ueberall greifen. Das
+// gebuendelte PNG ist nur der Rueckfall, solange der Cache noch nicht
+// geladen ist (frischer Tab, erster Render).
 import { DEX_ORB_PNG } from '../data/brandLogos';
+import { getCachedOrbBase64 } from '../services/EmailTemplates';
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -2985,14 +2991,19 @@ export default function RegistrationPage(): React.ReactElement {
                   border: '1px solid var(--dex-gray-200)',
                   boxShadow: '0 2px 12px rgba(0,0,0,0.10)',
                   alignSelf: 'center',
-                  marginTop: -(circleSize / 2 + 16),
+                  // v28.95: KEIN negativer marginTop. Der halb ueber die
+                  // Kartenkante ragende Kreis ist das Notch-Layout fuer ein
+                  // rundes EVENT-Logo (imgCircleNotch) — im „Gefuehrte
+                  // Schritte"-Layout schneidet der Bereich darueber ihn ab.
+                  // Ein Platzhalter hat keinen Grund, den Rahmen zu brechen.
+                  marginTop: 4,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   padding: 14,
                   boxSizing: 'border-box',
                 }}
               >
                 <img
-                  src={DEX_ORB_PNG}
+                  src={getCachedOrbBase64() || DEX_ORB_PNG}
                   alt=""
                   style={{ display: 'block', width: '100%', height: '100%', objectFit: 'contain' }}
                 />

@@ -48,7 +48,12 @@ import ImageCropModal from './ImageCropModal';
 import { InfoTooltip } from './InfoTooltip';
 import { MultiSelectDropdown } from './MultiSelectDropdown';
 import Modal from './Modal';
-// v28.91: Platzhalter-Bild, wenn ein Event kein eigenes Foto hat.
+// v28.95: Platzhalter fuer Events ohne eigenes Foto. Zuerst das im Admin
+// Center unter „Logo & Branding" hinterlegte DEX-Orb (DefaultImageBase64 im
+// _Config-Eintrag von DEX_EmailTemplates) — das ist die Stelle, an der es
+// ausgetauscht wird, und dann soll der Tausch ueberall greifen. Das
+// gebuendelte PNG ist nur der Rueckfall, solange der Cache noch nicht
+// geladen ist (frischer Tab, erster Render).
 import { DEX_ORB_PNG } from '../data/brandLogos';
 import { Icon } from '@fluentui/react/lib/Icon';
 import TicketEventBox from './tickets/TicketEventBox';
@@ -6024,7 +6029,7 @@ export default function AdminPage(): React.ReactElement {
                         }}
                       >
                         <img
-                          src={DEX_ORB_PNG}
+                          src={getCachedOrbBase64() || DEX_ORB_PNG}
                           alt=""
                           style={{ display: 'block', width: '100%', height: 'auto', maxHeight: 200, objectFit: 'contain' }}
                         />
