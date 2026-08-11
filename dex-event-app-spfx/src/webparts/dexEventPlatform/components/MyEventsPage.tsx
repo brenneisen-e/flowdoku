@@ -761,7 +761,7 @@ export default function MyEventsPage(): React.ReactElement {
   // v11.83: Add-Member-Modal + Join-Requests-Cache + Helpers.
   // searchUsers wird für den Add-Member-Picker gebraucht (gleiche API wie
   // im Registrierungs-Formular).
-  const { searchUsers, searchUser, isImpersonating } = useRoles();
+  const { searchUsers, searchUser, isImpersonating, isAdmin } = useRoles();
   const [addMemberDialog, setAddMemberDialog] = React.useState<{
     eventId: string;
     teamId: string;
@@ -1097,6 +1097,19 @@ export default function MyEventsPage(): React.ReactElement {
           // Eintrag verschwand komplett, die Person hielt sich für nicht
           // angemeldet und meldete sich ein zweites Mal an. Jetzt: Karte mit
           // Platzhalter-Registrierung anzeigen, ohne Detaildaten/Selbst-Aktionen.
+          //
+          // v28.99: …aber nur, wenn „nicht lesbar" überhaupt die Erklärung sein
+          // KANN. Wer Admin oder Organizer dieses Events ist, sieht die
+          // Teilnehmerliste vollständig — findet er dort keine Zeile, gibt es
+          // keine. Dann ist der Eintrag im Register ein Überbleibsel (z.B. eine
+          // Abmeldung, bei der das Nachziehen scheiterte, oder eine von Hand in
+          // SharePoint gelöschte Zeile), und die Karte behauptet eine Anmeldung,
+          // die es nicht gibt. In dem Fall lieber nichts anzeigen — das Register
+          // räumt die Admin-Aktion „Teilnehmer-Register bereinigen" auf.
+          const myMailLc = (currentUser?.email || '').trim().toLowerCase();
+          const isOrganizerOfEvent = (event.organizerEmails || [])
+            .some(e => (e || '').trim().toLowerCase() === myMailLc);
+          if (isAdmin || isOrganizerOfEvent) continue;
           const onWaitlist = !!(event.eventNumber && myNumbers.waitlisted.indexOf(event.eventNumber) >= 0);
           entries.push({
             event,
