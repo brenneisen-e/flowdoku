@@ -5699,7 +5699,7 @@ export default function EventCreationPage(): React.ReactElement {
     // war immer noch ein Kasten, der um Aufmerksamkeit konkurriert; die Reiter
     // selbst tragen ihre Form bereits. Transparent, nur Abstand.
     return (
-      <div style={{
+      <div id="dex-scope-bar" style={{
         margin: '18px 0 0', padding: '12px 0 14px', borderRadius: 0,
         background: 'transparent',
         border: 'none',
@@ -6518,6 +6518,25 @@ export default function EventCreationPage(): React.ReactElement {
    * Sub-Events" und hebt sie kurz hervor, damit der Organizer die Stelle
    * findet statt sie zu suchen.
    */
+  /**
+   * v28.96: „Sub-Events bearbeiten" neben dem Kalender. Der Kalender legt die
+   * Termine an — bearbeitet werden sie über die Reiter ganz oben, und die
+   * stehen nach neun angelegten Tagen weit außerhalb des Sichtfelds. Der Knopf
+   * scrollt dorthin und hebt die Leiste kurz hervor, damit klar ist, WO die
+   * Bearbeitung stattfindet. Gleiches Muster wie goToSubEventsMode (v28.73).
+   */
+  const goToScopeBar = (): void => {
+    window.setTimeout(() => {
+      const el = document.getElementById('dex-scope-bar');
+      if (!el) return;
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      el.style.transition = 'box-shadow 0.3s';
+      el.style.boxShadow = '0 0 0 3px rgba(134,188,37,0.55)';
+      el.style.borderRadius = '12px';
+      window.setTimeout(() => { el.style.boxShadow = 'none'; }, 2200);
+    }, 60);
+  };
+
   const goToSubEventsMode = (): void => {
     setCurrentStep(2);
     setTriedNext(false);
@@ -6763,22 +6782,15 @@ export default function EventCreationPage(): React.ReactElement {
       setSubEvents(prev => prev.concat([makeSubEventDraft({ title: dayLabel(d), startDate: start, endDate: end })]));
       return;
     }
+    // v28.96: KEINE Rückfrage je Klick. Im Kalender wird aus- und abgewählt,
+    // oft mehrfach hintereinander — ein Modal bei jedem Klick macht genau das
+    // unbenutzbar. Der Datenverlust-Hinweis steht ohnehin schon an der
+    // richtigen Stelle: beim SPEICHERN listet handleSubmitInner alle
+    // Sub-Events auf, die dabei endgültig gelöscht würden (toDelete), und
+    // fragt einmal nach. Bis dahin ist nichts passiert.
     const se = subEvents[existingIdx];
-    (async () => {
-      const ok = await confirmDialog(
-        se.dbId
-          ? (isDe
-            ? `Termin „${se.title || dayLabel(d)}" entfernen? Beim nächsten SPEICHERN wird er endgültig gelöscht — inklusive Teilnehmerliste und aller Anmeldungen (93 Tage im Papierkorb).`
-            : `Remove date "${se.title || dayLabel(d)}"? On the next SAVE it is permanently deleted — including its attendee list and all registrations (recycled for 93 days).`)
-          : (isDe
-            ? `Termin „${se.title || dayLabel(d)}" wieder entfernen?`
-            : `Remove date "${se.title || dayLabel(d)}" again?`),
-        { danger: !!se.dbId, confirmLabel: isDe ? 'Entfernen' : 'Remove' }
-      );
-      if (!ok) return;
-      setScope(0);
-      setSubEvents(prev => prev.filter(x => x.id !== se.id));
-    })().catch(() => { /* */ });
+    if (activeScopeIdx === existingIdx + 1) setScope(0);
+    setSubEvents(prev => prev.filter(x => x.id !== se.id));
   };
 
   const renderPerEventTabStrip = (
@@ -10081,13 +10093,15 @@ export default function EventCreationPage(): React.ReactElement {
                   </span>
                 </div>
 
-                {/* v22.36: Erklärung, was ein Sub-Event ist (graue Beschreibungs-Box). */}
-              <WizardHint
-                isDe={isDe}
-                variant="description"
-                title={isDe ? 'Was ist ein Sub-Event?' : 'What is a sub-event?'}
-                style={{ marginBottom: 12 }}
-              >
+                {/* v22.36: Erklärung, was ein Sub-Event ist (graue Beschreibungs-Box).
+                    v28.96: Abstand zum Schalter darüber — die Box klebte direkt
+                    daran und die Kachel wirkte gequetscht. */}
+                <WizardHint
+                  isDe={isDe}
+                  variant="description"
+                  title={isDe ? 'Was ist ein Sub-Event?' : 'What is a sub-event?'}
+                  style={{ marginTop: 14, marginBottom: 0 }}
+                >
                 {isDe
                   ? <>Ein Sub-Event ist ein <strong>eigenständiger Programmbaustein</strong> innerhalb deines Events — z.&nbsp;B. ein Workshop, eine Session, ein Networking-Dinner oder eine Lauf-Distanz. Jedes Sub-Event hat <strong>eigene Plätze, einen eigenen Termin und eine eigene Teilnehmerliste</strong>, auf Wunsch auch eigene Abfrage-Felder; Teilnehmer wählen ihre Sub-Events direkt im Anmeldeformular. Typische Beispiele: eine Konferenz mit wählbaren Workshops oder ein Sommerfest mit optionalem Abendprogramm. Einfache Events (Meeting, Lunch, Feier) brauchen <strong>keine</strong> Sub-Events.</>
                   : <>A sub-event is a <strong>separate programme building block</strong> inside your event — e.g. a workshop, a session, a networking dinner or a run distance. Each sub-event has <strong>its own seats, its own schedule and its own attendee list</strong>, optionally its own custom fields; attendees pick their sub-events directly in the registration form. Typical examples: a conference with selectable workshops or a summer party with an optional evening programme. Simple events (meeting, lunch, celebration) do <strong>not</strong> need sub-events.</>}
@@ -10438,25 +10452,52 @@ export default function EventCreationPage(): React.ReactElement {
                           locale="de"
                           calendarClassName="dex-datepicker-calendar"
                         />
-                        <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', margin: '10px 0 0' }}>
-                          {marked.length === 0
-                            ? (isDe ? 'Noch kein Termin angelegt.' : 'No date created yet.')
-                            : (isDe
-                              ? `${marked.length} ${marked.length === 1 ? 'Termin' : 'Termine'} angelegt.`
-                              : `${marked.length} ${marked.length === 1 ? 'date' : 'dates'} created.`)}
-                        </p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginTop: 10 }}>
+                          <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', margin: 0 }}>
+                            {marked.length === 0
+                              ? (isDe ? 'Noch kein Termin angelegt.' : 'No date created yet.')
+                              : (isDe
+                                ? `${marked.length} ${marked.length === 1 ? 'Termin' : 'Termine'} angelegt.`
+                                : `${marked.length} ${marked.length === 1 ? 'date' : 'dates'} created.`)}
+                          </p>
+                          {marked.length > 0 && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              style={{ fontSize: '0.82rem', padding: '6px 14px' }}
+                              onClick={goToScopeBar}
+                              title={isDe
+                                ? 'Springt nach oben zur Reiter-Leiste — dort wählst du einen Termin aus und bearbeitest Titel, Zeiten, Plätze und Frist.'
+                                : 'Jumps up to the tab bar — pick a date there and edit title, times, seats and deadline.'}
+                            >
+                              {isDe ? 'Sub-Events bearbeiten' : 'Edit sub-events'}
+                            </button>
+                          )}
+                        </div>
                       </div>
                     );
                   })()}
                 </div>
 
                 {/* ===== Sub-Events (z.B. Workshop-Tage, Networking-Dinner, Kick-off-Sessions) ===== */}
+                {/* v28.96: Im Termin-Modus ist diese Liste redundant und
+                    verwirrend — sie zeigt dieselben Tage noch einmal, die
+                    direkt darüber im Kalender stehen. Entfernen geht dort per
+                    Klick, Bearbeiten über die Reiter oben. */}
+                {!subEventCalendar && (
                 <div className="form-group" style={{ marginTop: 0 }}>
                   <label className="form-label" style={{ fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
                     <StepBadge n={10} />
                     {/* v15.5: dynamische Bezeichnung — verwendet den oben
-                        gewählten Plural-Term statt fix „Sub-Events". */}
-                    {(childTermPlural || (isDe ? 'Sub-Events' : 'Sub-events'))} {isDe ? '(optional)' : '(optional)'}
+                        gewählten Plural-Term statt fix „Sub-Events".
+                        v28.96: Im Termin-Modus ist die Liste NICHT optional und
+                        auch nichts Zusätzliches — sie zeigt genau die Tage, die
+                        oben im Kalender angeklickt wurden. „Sub-Events
+                        (optional)" darüber liest sich, als käme hier noch eine
+                        zweite, freiwillige Sorte. */}
+                    {subEventCalendar
+                      ? (isDe ? 'Angelegte Termine' : 'Created dates')
+                      : <>{(childTermPlural || (isDe ? 'Sub-Events' : 'Sub-events'))} {isDe ? '(optional)' : '(optional)'}</>}
                     <InfoTooltip text={isDe ? (
                       <>
                         <strong>Was du hier einstellst:</strong> <strong>zusätzliche Sessions</strong> zum Hauptevent — z.B. eine Trainingsreihe, optionale Workshops, Side-Events am Vortag. Pro Session ein eigener Eintrag mit Titel, Ort, Start/Ende, Anmeldeschluss und Kapazität.<br /><br />
@@ -10613,19 +10654,6 @@ export default function EventCreationPage(): React.ReactElement {
                   })}
                   {/* v27.11: Zuschnitt-Modal für Sub-Event-Bilder — ein
                       gemeinsames Modal für alle Karten, Ziel via subImageCropIdx. */}
-                  {subImageCropIdx !== null && subEvents[subImageCropIdx] && (
-                    <ImageCropModal
-                      open
-                      src={subEvents[subImageCropIdx].imagePreview || ''}
-                      isDe={isDe}
-                      onClose={() => setSubImageCropIdx(null)}
-                      onApply={(dataUrl, file) => {
-                        const i = subImageCropIdx;
-                        setSubEvents(prev => prev.map((x, xi) => xi === i ? { ...x, imagePreview: dataUrl, imageFile: file, imageRemoved: false } : x));
-                        setSubImageCropIdx(null);
-                      }}
-                    />
-                  )}
                   <button
                     type="button"
                     className="btn btn-outline"
@@ -10669,7 +10697,26 @@ export default function EventCreationPage(): React.ReactElement {
                     <Plus size={14} /> {t('create.subevents.add')}
                   </button>
                 </div>
+                )}
               </>)}{/* close subEventsOptIn */}
+              {/* v28.96: Das Zuschnitt-Modal fuer Sub-Event-Bilder lag IM
+                  Listen-Block. Der wird auf einem Sub-Event-Reiter gar nicht
+                  gerendert (activeScopeIdx === 0) — „Bild editieren" dort
+                  setzte also den Index, ohne dass je ein Dialog aufging.
+                  Jetzt haengt es am Wrapper und ist von beiden Wegen aus da. */}
+                {subImageCropIdx !== null && subEvents[subImageCropIdx] && (
+                  <ImageCropModal
+                    open
+                    src={subEvents[subImageCropIdx].imagePreview || ''}
+                    isDe={isDe}
+                    onClose={() => setSubImageCropIdx(null)}
+                    onApply={(dataUrl, file) => {
+                      const i = subImageCropIdx;
+                      setSubEvents(prev => prev.map((x, xi) => xi === i ? { ...x, imagePreview: dataUrl, imageFile: file, imageRemoved: false } : x));
+                      setSubImageCropIdx(null);
+                    }}
+                  />
+                )}
               </div>{/* close Step 2 (Sub-Events) */}
 
               {/* ===== Step 4 (v14.8: vormals Step 3): Kapazität, Fristen & Sichtbarkeit ===== */}
