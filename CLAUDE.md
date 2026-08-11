@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v29.2.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v29.3.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -140,6 +140,36 @@ Status-Liste der Matrix (`+ Warteliste`) ist eine Obermenge von `ACTIVE_STATI`
 im Panel. Bei gleicher E-Mail und gleichem Event **kann** es keine Abweichung
 geben; bleibt nur: zwei Adressen oder zwei Klammer-Events. v29.2 weist das
 über der Tabelle aus.
+
+**Antworten stehen dort, wo angemeldet wurde — nicht auf der Klammer.** Bei
+einem Klammer-Event ist die Zeile auf der Klammer eine Schattenzeile (v15.25):
+kein Platz, keine Mail, oft **kein CustomData**. Die Formularantworten liegen
+auf der Sub-Event-Zeile. Die konsolidierte Matrix löst Hauptevent-Felder
+deshalb seit v15.3.1 zweistufig auf (Parent-Zeile zuerst, dann
+Sub-Event-`CustomData`). Wer eine neue Auswertung über Antworten baut, muss
+denselben Fallback nehmen — sonst widerspricht sie der Teilnehmerliste.
+`HotelPlanningPanel.wishOf`/`formStayOf` waren bis v29.2 genau diese Ausnahme:
+„Yes, I need accommodation" in der Matrix, „—" im Panel, und `autoDistribute`
+übersprang die Person als `skippedNoWish`. Seit v29.3 gibt es dafür
+`answerRowsOf(p)` = `[Klammer-Zeile, …Sub-Zeilen]`; die Feldsuche geht über
+Parent- **und** Child-`eventSpecificFields`.
+
+**`getAllRegistrations` wirft nicht.** Bei HTTP-Fehler bricht die Schleife ab
+und liefert die bis dahin gelesenen Zeilen — bei 404 also `[]`. „Subsite
+recycelt" und „Liste leer" sind damit ununterscheidbar, und genau darauf ist
+`analyzeRegistryAgainstLists` in v29.0/29.1 hereingefallen (1045 „verwaiste"
+Verweise = Rückstand des 3-Monats-Löschkonzepts). Seit v29.3 gibt es den
+`onHttpError`-Rückruf; 404/410 heißt „Liste gelöscht" (eindeutig, Verweise
+dürfen weg), alles andere heißt „übersprungen". Wer aus einem leeren Ergebnis
+auf „nicht vorhanden" schließt, muss diesen Rückruf nutzen.
+
+**Löschungen zuerst im Register, dann unwiderruflich.** `deleteParticipantData`
+recycelte bis v29.2 erst die Subsite und räumte danach `DEX_Participants` auf —
+mit nicht-striktem Lesen, einem `Promise.all` über alle Personen und
+`.catch(() => null)`. Ein Throttling-429 hinterließ unbemerkt genau die
+Verweise, die die Register-Prüfung später meldet, und nachrechnen ging nicht
+mehr. Reihenfolge deshalb immer: prüfbare Nebenbuchhaltung zuerst, sequentiell,
+mit Fehlerzähler — und bei Fehlern **abbrechen, bevor** etwas gelöscht wird.
 
 **Inline-Styles können kein `:hover`.** Interaktive Elemente brauchen einen
 Hover-State (`hoverIdx`, `evTabHover`), sonst lesen sie sich als Beschriftung.

@@ -838,10 +838,27 @@ export default function AdminHubPage(): React.ReactElement {
                         + cmp.suspiciousEvents.slice(0, 8).map(e => `• ${e.title || e.eventNumber}: ${e.missing} of ${e.referenced} references without a row, list has ${e.rows} active row(s)`).join('\n')
                         + (cmp.suspiciousEvents.length > 8 ? `\n… and ${cmp.suspiciousEvents.length - 8} more` : ''))
                     : '';
+                  // v29.3: Events, deren Teilnehmerliste NICHT MEHR EXISTIERT
+                  // (HTTP 404). Das ist der Regelfall hinter den meisten
+                  // verwaisten Verweisen: Das 3-Monats-Löschkonzept recycelt
+                  // die Subsite und lässt das Event-Item stehen — die
+                  // Register-Verweise darauf sind genau der Rückstand, den
+                  // diese Löschung hätte mitnehmen sollen. Sie werden bereinigt
+                  // (das ist kein Datenverlust, sondern der fehlende Rest der
+                  // Löschung), aber vorher benannt.
+                  const goneNote = cmp.deletedListEvents.length > 0
+                    ? (isDe
+                      ? `\n\nDavon entfallen ${cmp.deletedListEvents.reduce((n, e) => n + e.referenced, 0)} Verweis(e) auf ${cmp.deletedListEvents.length} Event(s), deren Teilnehmerliste es NICHT MEHR GIBT — typischerweise nach dem 3-Monats-Löschkonzept (Liste gelöscht, Event bleibt bestehen). Hier ist das Entfernen der Rest der Löschung, kein Datenverlust:\n`
+                        + cmp.deletedListEvents.slice(0, 8).map(e => `• ${e.title || e.eventNumber}: ${e.referenced} Verweis(e)`).join('\n')
+                        + (cmp.deletedListEvents.length > 8 ? `\n… und ${cmp.deletedListEvents.length - 8} weitere` : '')
+                      : `\n\nOf these, ${cmp.deletedListEvents.reduce((n, e) => n + e.referenced, 0)} reference(s) belong to ${cmp.deletedListEvents.length} event(s) whose attendee list NO LONGER EXISTS — typically after the 3-month retention deletion (list deleted, event kept). Removing them completes that deletion, it does not lose data:\n`
+                        + cmp.deletedListEvents.slice(0, 8).map(e => `• ${e.title || e.eventNumber}: ${e.referenced} reference(s)`).join('\n')
+                        + (cmp.deletedListEvents.length > 8 ? `\n… and ${cmp.deletedListEvents.length - 8} more` : ''))
+                    : '';
                   const skipNote = cmp.skippedEvents > 0
                     ? (isDe
-                      ? ` ${cmp.skippedEvents} Event(s) konnten nicht gelesen werden und wurden übersprungen.`
-                      : ` ${cmp.skippedEvents} event(s) could not be read and were skipped.`)
+                      ? ` ${cmp.skippedEvents} Event(s) konnten nicht gelesen werden (z.B. fehlende Rechte oder Drosselung) und wurden übersprungen — ihre Verweise bleiben unangetastet.`
+                      : ` ${cmp.skippedEvents} event(s) could not be read (e.g. missing permissions or throttling) and were skipped — their references stay untouched.`)
                     : '';
                   if (info.duplicateGroups === 0 && cmp.stale.length === 0 && cmp.suspiciousEvents.length > 0) {
                     setRegCleanIsError(true);
@@ -865,8 +882,8 @@ export default function AdminHubPage(): React.ReactElement {
                     const examples = cmp.stale.slice(0, 5)
                       .map(x => `• ${x.email} → ${x.title || x.eventNumber}`).join('\n');
                     const okStale = await confirmDialog(isDe
-                      ? `${cmp.stale.length} Verweis(e) im Register zeigen auf ein Event, in dessen Teilnehmerliste die Person nicht steht — typischerweise eine Abmeldung, bei der das Nachziehen scheiterte, oder eine von Hand gelöschte Zeile.\n\n${examples}${cmp.stale.length > 5 ? `\n… und ${cmp.stale.length - 5} weitere` : ''}\n\nDiese Verweise jetzt entfernen? Die Einträge selbst bleiben mit ihren übrigen Events bestehen. An den Teilnehmerlisten wird nichts geändert.${suspNote}${skipNote ? `\n\nHinweis:${skipNote}` : ''}`
-                      : `${cmp.stale.length} reference(s) point to an event whose attendee list does not contain the person — typically a cancellation whose registry update failed, or a manually deleted row.\n\n${examples}${cmp.stale.length > 5 ? `\n… and ${cmp.stale.length - 5} more` : ''}\n\nRemove these references now? The records themselves stay with their remaining events. Attendee lists are not touched.${suspNote}${skipNote ? `\n\nNote:${skipNote}` : ''}`,
+                      ? `${cmp.stale.length} Verweis(e) im Register zeigen auf ein Event, in dessen Teilnehmerliste die Person nicht steht — typischerweise eine Abmeldung, bei der das Nachziehen scheiterte, oder eine von Hand gelöschte Zeile.\n\n${examples}${cmp.stale.length > 5 ? `\n… und ${cmp.stale.length - 5} weitere` : ''}\n\nDiese Verweise jetzt entfernen? Die Einträge selbst bleiben mit ihren übrigen Events bestehen. An den Teilnehmerlisten wird nichts geändert.${goneNote}${suspNote}${skipNote ? `\n\nHinweis:${skipNote}` : ''}`
+                      : `${cmp.stale.length} reference(s) point to an event whose attendee list does not contain the person — typically a cancellation whose registry update failed, or a manually deleted row.\n\n${examples}${cmp.stale.length > 5 ? `\n… and ${cmp.stale.length - 5} more` : ''}\n\nRemove these references now? The records themselves stay with their remaining events. Attendee lists are not touched.${goneNote}${suspNote}${skipNote ? `\n\nNote:${skipNote}` : ''}`,
                       { confirmLabel: isDe ? 'Verweise entfernen' : 'Remove references' });
                     if (!okStale) { setRegCleanProgress(null); setRegCleanBusy(false); return; }
                     setRegCleanProgress({ done: 0, total: 0, label: isDe ? 'Verweise werden entfernt…' : 'Removing references…' });
