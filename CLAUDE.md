@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v29.0.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v29.2.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -124,6 +124,22 @@ Flow ignorieren — deshalb sortiert `setWaitlistPosition` die TeilnehmerIDs um.
 `_subEventsOnlyMode`, `_noDescription`, `_imageBanner` liegen im JSON dieser
 Spalte. Wer ein neues Flag ergänzt, muss es **auch beim Laden strippen** —
 sonst überschreibt der alte Wert beim Speichern den frisch berechneten.
+
+**Die E-Mail-Adresse ist der einzige Schlüssel — und sie ist nicht eindeutig.**
+`DEX_Participants`, die konsolidierte Matrix (`consolidatedRows`), die
+Hotelplanung und die Doppel-Anmelde-Prüfung schlüsseln alle über
+`ParticipantEmail.toLowerCase().trim()`. Dieselbe Person kann aber unter zwei
+Schreibweisen in den Listen stehen (SMTP-Adresse vs. UPN/Alias) — der Code weiß
+das an einer Stelle bereits: `canRegisterForOthers` sucht bewusst über
+`pageContext.user.email` **und** die E-Mail aus dem `loginName`. Folge: zwei
+Zeilen für eine Person, jede mit „—" beim Sub-Event der anderen. Wenn zwei
+Ansichten sich über „angemeldet ja/nein" widersprechen, ist das der erste
+Verdacht — **nicht** ein Anzeigefehler. Zum Nachrechnen: Matrix und
+`HotelPlanningPanel` lesen dasselbe `subEventRegsByEventId`, und die
+Status-Liste der Matrix (`+ Warteliste`) ist eine Obermenge von `ACTIVE_STATI`
+im Panel. Bei gleicher E-Mail und gleichem Event **kann** es keine Abweichung
+geben; bleibt nur: zwei Adressen oder zwei Klammer-Events. v29.2 weist das
+über der Tabelle aus.
 
 **Inline-Styles können kein `:hover`.** Interaktive Elemente brauchen einen
 Hover-State (`hoverIdx`, `evTabHover`), sonst lesen sie sich als Beschriftung.

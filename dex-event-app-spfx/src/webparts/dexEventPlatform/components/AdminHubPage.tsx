@@ -825,11 +825,33 @@ export default function AdminHubPage(): React.ReactElement {
                       ? ` ${cmp.stale.length} Verweis(e) zeigen auf ein Event, in dessen Teilnehmerliste die Person NICHT steht.`
                       : ` ${cmp.stale.length} reference(s) point to an event whose attendee list does not contain the person.`)
                     : '';
+                  // v29.1: Events, bei denen (fast) ALLE Verweise ins Leere zeigen,
+                  // sind kein Aufräum-Fall, sondern ein Hinweis darauf, dass
+                  // Register und Liste dort nicht vergleichbar sind. Sie werden
+                  // benannt statt stillschweigend bereinigt.
+                  const suspNote = cmp.suspiciousEvents.length > 0
+                    ? (isDe
+                      ? `\n\nNICHT bereinigt werden ${cmp.suspiciousEvents.length} Event(s), bei denen nahezu ALLE Verweise ins Leere zeigen — dort stimmt eher die Zuordnung nicht als hunderte Abmeldungen:\n`
+                        + cmp.suspiciousEvents.slice(0, 8).map(e => `• ${e.title || e.eventNumber}: ${e.missing} von ${e.referenced} Verweisen ohne Zeile, Liste hat ${e.rows} aktive Zeile(n)`).join('\n')
+                        + (cmp.suspiciousEvents.length > 8 ? `\n… und ${cmp.suspiciousEvents.length - 8} weitere` : '')
+                      : `\n\nNOT cleaned: ${cmp.suspiciousEvents.length} event(s) where nearly ALL references point nowhere — there the mapping is more likely wrong than hundreds of cancellations:\n`
+                        + cmp.suspiciousEvents.slice(0, 8).map(e => `• ${e.title || e.eventNumber}: ${e.missing} of ${e.referenced} references without a row, list has ${e.rows} active row(s)`).join('\n')
+                        + (cmp.suspiciousEvents.length > 8 ? `\n… and ${cmp.suspiciousEvents.length - 8} more` : ''))
+                    : '';
                   const skipNote = cmp.skippedEvents > 0
                     ? (isDe
                       ? ` ${cmp.skippedEvents} Event(s) konnten nicht gelesen werden und wurden übersprungen.`
                       : ` ${cmp.skippedEvents} event(s) could not be read and were skipped.`)
                     : '';
+                  if (info.duplicateGroups === 0 && cmp.stale.length === 0 && cmp.suspiciousEvents.length > 0) {
+                    setRegCleanIsError(true);
+                    setRegCleanResult(isDe
+                      ? `Keine Dubletten und keine einzeln verwaisten Verweise — ABER bei ${cmp.suspiciousEvents.length} Event(s) zeigen nahezu alle Verweise ins Leere. Das sieht nach einem Zuordnungsproblem aus und wurde deshalb NICHT bereinigt: ${cmp.suspiciousEvents.slice(0, 5).map(e => `${e.title || e.eventNumber} (${e.missing}/${e.referenced}, Liste ${e.rows})`).join('; ')}.${skipNote}`
+                      : `No duplicates and no individually orphaned references — BUT for ${cmp.suspiciousEvents.length} event(s) nearly all references point nowhere. That looks like a mapping problem and was NOT cleaned: ${cmp.suspiciousEvents.slice(0, 5).map(e => `${e.title || e.eventNumber} (${e.missing}/${e.referenced}, list ${e.rows})`).join('; ')}.${skipNote}`);
+                    setRegCleanProgress(null);
+                    setRegCleanBusy(false);
+                    return;
+                  }
                   if (info.duplicateGroups === 0 && cmp.stale.length === 0) {
                     setRegCleanResult(isDe
                       ? `Alles sauber: keine Dubletten, und alle Verweise haben eine Zeile in der Teilnehmerliste (${info.total} Einträge, ${cmp.checkedEvents} Event(s) verglichen).${orphanNote}${skipNote}${info.noEmail > 0 ? ` ${info.noEmail} Eintrag/Einträge ohne E-Mail-Adresse.` : ''}`
@@ -843,8 +865,8 @@ export default function AdminHubPage(): React.ReactElement {
                     const examples = cmp.stale.slice(0, 5)
                       .map(x => `• ${x.email} → ${x.title || x.eventNumber}`).join('\n');
                     const okStale = await confirmDialog(isDe
-                      ? `${cmp.stale.length} Verweis(e) im Register zeigen auf ein Event, in dessen Teilnehmerliste die Person nicht steht — typischerweise eine Abmeldung, bei der das Nachziehen scheiterte, oder eine von Hand gelöschte Zeile.\n\n${examples}${cmp.stale.length > 5 ? `\n… und ${cmp.stale.length - 5} weitere` : ''}\n\nDiese Verweise jetzt entfernen? Die Einträge selbst bleiben mit ihren übrigen Events bestehen. An den Teilnehmerlisten wird nichts geändert.${skipNote ? `\n\nHinweis:${skipNote}` : ''}`
-                      : `${cmp.stale.length} reference(s) point to an event whose attendee list does not contain the person — typically a cancellation whose registry update failed, or a manually deleted row.\n\n${examples}${cmp.stale.length > 5 ? `\n… and ${cmp.stale.length - 5} more` : ''}\n\nRemove these references now? The records themselves stay with their remaining events. Attendee lists are not touched.${skipNote ? `\n\nNote:${skipNote}` : ''}`,
+                      ? `${cmp.stale.length} Verweis(e) im Register zeigen auf ein Event, in dessen Teilnehmerliste die Person nicht steht — typischerweise eine Abmeldung, bei der das Nachziehen scheiterte, oder eine von Hand gelöschte Zeile.\n\n${examples}${cmp.stale.length > 5 ? `\n… und ${cmp.stale.length - 5} weitere` : ''}\n\nDiese Verweise jetzt entfernen? Die Einträge selbst bleiben mit ihren übrigen Events bestehen. An den Teilnehmerlisten wird nichts geändert.${suspNote}${skipNote ? `\n\nHinweis:${skipNote}` : ''}`
+                      : `${cmp.stale.length} reference(s) point to an event whose attendee list does not contain the person — typically a cancellation whose registry update failed, or a manually deleted row.\n\n${examples}${cmp.stale.length > 5 ? `\n… and ${cmp.stale.length - 5} more` : ''}\n\nRemove these references now? The records themselves stay with their remaining events. Attendee lists are not touched.${suspNote}${skipNote ? `\n\nNote:${skipNote}` : ''}`,
                       { confirmLabel: isDe ? 'Verweise entfernen' : 'Remove references' });
                     if (!okStale) { setRegCleanProgress(null); setRegCleanBusy(false); return; }
                     setRegCleanProgress({ done: 0, total: 0, label: isDe ? 'Verweise werden entfernt…' : 'Removing references…' });

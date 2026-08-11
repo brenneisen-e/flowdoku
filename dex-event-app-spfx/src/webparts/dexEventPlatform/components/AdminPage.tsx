@@ -5132,6 +5132,66 @@ export default function AdminPage(): React.ReactElement {
             </div>
           );
         })()}
+        {/* v29.2: Dieselbe Person unter ZWEI E-Mail-Adressen.
+            Die Matrix aggregiert strikt nach ParticipantEmail (lowercase).
+            Steht jemand in einem Sub-Event unter der SMTP-Adresse und im
+            anderen unter der UPN-/Alias-Adresse, entstehen ZWEI Zeilen — und
+            jede zeigt beim jeweils anderen Sub-Event „—". Von außen sieht das
+            aus, als sei die Person „nicht angemeldet", obwohl die Anmeldung
+            existiert; andere Ansichten (z.B. die Hotelplanung, die über die
+            Klammer-Zeile matcht) zeigen dann den Haken. Dass die beiden
+            Schreibweisen auseinanderlaufen können, ist in dieser Codebasis
+            belegt — siehe canRegisterForOthers in EventService, das dieselbe
+            Person bewusst über pageContext.user.email UND die E-Mail aus dem
+            loginName sucht. */}
+        {canManage && (() => {
+          const normName = (s: string): string => s.toLowerCase().replace(/\s+/g, ' ').trim();
+          const byName: Record<string, ConsolidatedRow[]> = {};
+          for (const r of consolidatedRows) {
+            const key = normName(`${r.vorname || ''} ${r.nachname || ''}`);
+            if (!key) continue;
+            (byName[key] = byName[key] || []).push(r);
+          }
+          // consolidatedRows ist bereits pro E-Mail eindeutig — mehr als eine
+          // Zeile zum selben Namen heißt also: verschiedene Adressen.
+          const groups = Object.keys(byName).map(k => byName[k]).filter(rows => rows.length > 1);
+          if (groups.length === 0) return null;
+          const subsOfRow = (r: ConsolidatedRow): string =>
+            consolidatedChildren
+              .filter(ch => { const cr = r.perChild[ch.id]; return !!cr && ACTIVE.indexOf(cr.Status) >= 0; })
+              .map(ch => shortSubEventTitle(ch.title, selectedEvent?.title))
+              .join(', ') || (isDe ? 'keine' : 'none');
+          return (
+            <div style={{ marginBottom: 16, padding: 14, borderRadius: 10, border: '1px solid var(--dex-orange, #ed8b00)', background: 'rgba(237,139,0,0.07)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <Icon iconName="Warning" style={{ fontSize: 16, color: 'var(--dex-orange-dark, #b35a00)' }} />
+                <strong style={{ color: 'var(--dex-orange-dark, #b35a00)', fontSize: '0.9rem' }}>
+                  {isDe ? `Gleiche Person, mehrere E-Mail-Adressen (${groups.length})` : `Same person, several email addresses (${groups.length})`}
+                </strong>
+              </div>
+              <p style={{ margin: '0 0 10px', fontSize: '0.82rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                {isDe
+                  ? 'Diese Namen kommen in der Tabelle mehrfach vor — jeweils mit einer anderen E-Mail-Adresse. Die Teilnehmerliste fasst pro E-Mail zusammen, deshalb wird die Person auf zwei Zeilen aufgeteilt und jede Zeile zeigt beim Sub-Event der anderen Zeile ein „—“. Die Anmeldungen selbst sind vorhanden. Typische Ursache: Die eine Anmeldung lief über die Anmeldeseite (SMTP-Adresse), die andere stellvertretend über die Personenauswahl (UPN-/Alias-Adresse). Prüfe unten, welche Adresse die richtige ist, und melde die Person über die falsche Adresse ab und über die richtige neu an.'
+                  : 'These names appear more than once in the table — each with a different email address. The participant list aggregates per email, so the person is split across two rows and each row shows a „—“ for the other row’s sub-event. The registrations themselves exist. Typical cause: one registration came from the registration page (SMTP address), the other on-behalf via the people picker (UPN/alias address). Check below which address is the correct one, then cancel the registration on the wrong address and re-register on the correct one.'}
+              </p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {groups.map(rows => (
+                  <div key={rows.map(r => r.emailKey).join('|')} style={{ fontSize: '0.84rem' }}>
+                    <strong>{`${rows[0].vorname || ''} ${rows[0].nachname || ''}`.trim()}</strong>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
+                      {rows.map(r => (
+                        <div key={r.emailKey} style={{ display: 'flex', gap: 10, flexWrap: 'wrap', fontSize: '0.8rem' }}>
+                          <span style={{ color: 'var(--dex-gray-600)', minWidth: 260 }}>{r.email}</span>
+                          <span style={{ color: 'var(--dex-gray-500)' }}>{isDe ? 'angemeldet für: ' : 'registered for: '}{subsOfRow(r)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
         {/* v15.3.1: Legende für die Pastell-Spalten — sonst rät der Organizer,
             was die zwei Hintergrundfarben bedeuten. */}
         {(parentCustomFields.length > 0 || childCustomFieldsByChild.some(x => x.fields.length > 0)) && (

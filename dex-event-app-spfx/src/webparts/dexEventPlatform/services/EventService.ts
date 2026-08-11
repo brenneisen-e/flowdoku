@@ -3136,6 +3136,14 @@ export class EventService {
   ): Promise<{
     checkedEvents: number; skippedEvents: number;
     stale: Array<{ email: string; eventNumber: number; title: string }>;
+    /** Je geprüftem Event: wie viele Verweise, wie viele davon ohne Zeile,
+     *  wie viele aktive Zeilen die Liste überhaupt hat. Das ist die Grundlage
+     *  für die Plausibilitäts-Prüfung unten — und für die Frage, WARUM etwas
+     *  auseinanderläuft. */
+    perEvent: Array<{ title: string; eventNumber: number; referenced: number; missing: number; rows: number; suspicious: boolean }>;
+    /** Events, bei denen (fast) ALLE Verweise ins Leere zeigen. Ihre Verweise
+     *  stehen NICHT in `stale` — siehe Begründung unten. */
+    suspiciousEvents: Array<{ title: string; eventNumber: number; referenced: number; missing: number; rows: number }>;
   }> {
     const all = await this.fetchAllParticipantsOrThrow(onRead);
     // Event-Nummer → E-Mails, die laut Register dort angemeldet sind.
@@ -3151,6 +3159,8 @@ export class EventService {
       typeof e.eventNumber === 'number' && e.eventNumber > 0
       && !!e.subsiteUrl && !!byNumber[e.eventNumber]);
     const stale: Array<{ email: string; eventNumber: number; title: string }> = [];
+    const perEvent: Array<{ title: string; eventNumber: number; referenced: number; missing: number; rows: number; suspicious: boolean }> = [];
+    const suspiciousEvents: Array<{ title: string; eventNumber: number; referenced: number; missing: number; rows: number }> = [];
     let checkedEvents = 0;
     let skippedEvents = 0;
     for (let i = 0; i < relevant.length; i++) {
@@ -3171,11 +3181,32 @@ export class EventService {
         const em = (r.ParticipantEmail || '').trim().toLowerCase();
         if (em) active.add(em);
       }
-      byNumber[num].forEach(em => {
-        if (!active.has(em)) stale.push({ email: em, eventNumber: num, title: ev.title || '' });
-      });
+      const refs = Array.from(byNumber[num]);
+      const missing = refs.filter(em => !active.has(em));
+      /**
+       * Plausibilitäts-Riegel. Wenn bei EINEM Event praktisch alle Verweise
+       * ins Leere zeigen, ist die naheliegende Erklärung nicht, dass dort
+       * hunderte Abmeldungen einzeln schiefgingen — sondern dass Register und
+       * Liste bei diesem Event gar nicht vergleichbar sind. Denkbare Gründe:
+       * eine andere Teilnehmerliste als die Standard-Liste, eine neu
+       * angelegte/geleerte Liste bei erhaltenem Register, oder ein Event, das
+       * seine Anmeldungen woanders führt.
+       *
+       * In dem Fall wäre ein Entfernen der Verweise ein Datenverlust, kein
+       * Aufräumen. Solche Events werden deshalb ausgewiesen, aber NICHT
+       * bereinigt — die Entscheidung darüber braucht einen Blick in die
+       * betroffene Liste, nicht einen Knopfdruck.
+       */
+      const suspicious = refs.length >= 5 && missing.length >= Math.ceil(refs.length * 0.9);
+      perEvent.push({ title: ev.title || '', eventNumber: num, referenced: refs.length, missing: missing.length, rows: active.size, suspicious });
+      if (suspicious) {
+        suspiciousEvents.push({ title: ev.title || '', eventNumber: num, referenced: refs.length, missing: missing.length, rows: active.size });
+        continue;
+      }
+      missing.forEach(em => { stale.push({ email: em, eventNumber: num, title: ev.title || '' }); });
     }
-    return { checkedEvents, skippedEvents, stale };
+    perEvent.sort((a, b) => b.missing - a.missing);
+    return { checkedEvents, skippedEvents, stale, perEvent, suspiciousEvents };
   }
 
   /**
