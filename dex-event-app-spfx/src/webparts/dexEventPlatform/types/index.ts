@@ -217,6 +217,12 @@ export interface DeloitteEvent {
    *  mit eigener Teilnehmerliste, Kapazität und Outlook-Termin.
    *  Piggyback `_subEventCalendar` in EmailTemplateOverrides. */
   subEventCalendar?: boolean;
+  /** v28.97: Teilnehmer duerfen sich fuer GENAU EIN Sub-Event anmelden statt
+   *  fuer beliebig viele. Aendert nur die Auswahl auf der Anmeldeseite (Liste
+   *  wie Kalender verhalten sich dann wie Radio-Buttons) — an den Sub-Events
+   *  selbst, ihren Teilnehmerlisten und Kapazitaeten aendert sich nichts.
+   *  Piggyback `_subEventSingleChoice` in EmailTemplateOverrides. */
+  subEventSingleChoice?: boolean;
   /** v28.11: URL des unbeschnittenen Querformat-ORIGINALS (Attachment
    *  `__eventimgorig__…`, Piggyback `_imageOrigUrl`). Nur gesetzt, wenn ein
    *  Querformat-Foto per App-Zuschnitt rund/quadratisch wurde. Die
