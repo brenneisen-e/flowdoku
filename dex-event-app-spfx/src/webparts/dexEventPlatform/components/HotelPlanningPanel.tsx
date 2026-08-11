@@ -1784,6 +1784,26 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                             })()}
                           </td>
                           )}
+                          {/* v29.4: Diese Zelle stand bis v29.3 NACH den
+                              Sub-Event-Spalten, im Kopf steht „Hotel-Wunsch"
+                              aber DAVOR (v28.53 hat die Sub-Spalten zwischen
+                              Wunsch und Hotel eingezogen und nur den Kopf
+                              angepasst). Jede Zeile war damit um eine Spalte
+                              verschoben: Unter „Hotel-Wunsch" stand der Haken
+                              des ERSTEN Sub-Events, und der Wunsch selbst
+                              landete unter dem letzten Sub-Event. Das las sich
+                              als „braucht kein Hotel" bei Leuten, die eines
+                              angefragt hatten — und widersprach der
+                              Teilnehmerliste. */}
+                          <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
+                            {((): React.ReactNode => {
+                              const w = wishOf(p);
+                              if (w === null) return <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
+                              return w
+                                ? <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Ja' : 'Yes'}</strong>
+                                : <span style={{ color: 'var(--dex-gray-500)' }}>{isDe ? 'Nein' : 'No'}</span>;
+                            })()}
+                          </td>
                           {(childEvents || []).map(c => {
                             const em = (p.ParticipantEmail || '').trim().toLowerCase();
                             const inSub = !!em && (subEmails[c.id] || []).indexOf(em) >= 0;
@@ -1797,15 +1817,6 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
                               </td>
                             );
                           })}
-                          <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
-                            {((): React.ReactNode => {
-                              const w = wishOf(p);
-                              if (w === null) return <span style={{ color: 'var(--dex-gray-300)' }}>—</span>;
-                              return w
-                                ? <strong style={{ color: 'var(--dex-green-dark, #4a7c1f)' }}>{isDe ? 'Ja' : 'Yes'}</strong>
-                                : <span style={{ color: 'var(--dex-gray-500)' }}>{isDe ? 'Nein' : 'No'}</span>;
-                            })()}
-                          </td>
                           <td style={{ padding: '4px 6px' }}>
                             <select style={{ ...inp, height: 26 }} value={(p.Hotel || '').trim()} disabled={busy !== ''}
                               onChange={e => {

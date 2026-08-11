@@ -3244,6 +3244,74 @@ export class EventService {
   }
 
   /**
+   * v29.4: Alle vergebenen `EventNumber` direkt aus `DEX_Events` lesen —
+   * strikt, also mit Fehler statt stiller Teilliste.
+   *
+   * Bewusst NICHT die im Client geladene Event-Liste: `loadEvents` lässt
+   * einzelne Events aus, wenn ihr Mapping scheitert (v9.41, damit ein kaputtes
+   * Event nicht die ganze Liste kippt). Für eine Anzeige ist das richtig — für
+   * die Frage „gibt es dieses Event noch?" wäre es fatal, weil ein
+   * ausgelassenes Event wie ein gelöschtes aussähe und seine Verweise entfernt
+   * würden.
+   *
+   * Fensterung nach `Id` wie in `readAllParticipants`: schwellenfest und
+   * unabhängig vom nextLink-Format.
+   */
+  private async readAllEventNumbersOrThrow(): Promise<Set<number>> {
+    const out = new Set<number>();
+    const PAGE = 2000;
+    const MAX_PAGES = 100;
+    let lastId = 0;
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const url = `${this.siteUrl}/_api/web/lists/getbytitle('DEX_Events')/items`
+        + `?$select=Id,EventNumber&$filter=Id gt ${lastId}&$orderby=Id asc&$top=${PAGE}`;
+      // eslint-disable-next-line no-await-in-loop
+      const resp = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
+      if (!resp.ok) throw new Error(`DEX_Events nicht vollständig lesbar (HTTP ${resp.status}).`);
+      // eslint-disable-next-line no-await-in-loop
+      const data = await resp.json();
+      const items = (data.value || data.d?.results || []) as Array<{ Id: number; EventNumber?: number }>;
+      if (items.length === 0) break;
+      items.forEach(it => {
+        if (typeof it.EventNumber === 'number' && it.EventNumber > 0) out.add(it.EventNumber);
+        if (typeof it.Id === 'number' && it.Id > lastId) lastId = it.Id;
+      });
+      if (items.length < PAGE) break;
+    }
+    return out;
+  }
+
+  /**
+   * v29.4: Verweise im Register auf Event-Nummern, die es in `DEX_Events`
+   * NICHT MEHR GIBT. Bis v29.3 wurden die nur gezählt („wirkungslos, aber
+   * harmlos") — sie sind aber personenbezogener Rückstand gelöschter Events
+   * und gehören weg.
+   *
+   * Zwei Riegel, weil ein Fehlurteil hier das ganze Register leeren würde:
+   *  - Event-Nummern und Register werden BEIDE strikt gelesen; ein Lesefehler
+   *    wirft, statt eine Teilmenge als „alles" zu behandeln.
+   *  - Eine leere Nummern-Menge wird als Fehler gewertet, nicht als „es gibt
+   *    keine Events mehr".
+   */
+  public async collectOrphanRegistryNumbers(
+    onRead?: (_loaded: number) => void,
+  ): Promise<Array<{ email: string; eventNumber: number }>> {
+    const valid = await this.readAllEventNumbersOrThrow();
+    if (valid.size === 0) throw new Error('Keine Event-Nummern gefunden — Abbruch, statt alle Verweise als verwaist zu werten.');
+    const all = await this.fetchAllParticipantsOrThrow(onRead);
+    const out: Array<{ email: string; eventNumber: number }> = [];
+    for (const p of all) {
+      const em = (p.Email || '').trim().toLowerCase();
+      if (!em) continue;
+      const nums = `${p.EventRegistered || ''},${p.EventOnWaitlist || ''}`
+        .split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
+      const seen = new Set<number>();
+      nums.forEach(n => { if (!valid.has(n) && !seen.has(n)) { seen.add(n); out.push({ email: em, eventNumber: n }); } });
+    }
+    return out;
+  }
+
+  /**
    * v29.0: Die von `analyzeRegistryAgainstLists` gefundenen Verweise aus dem
    * Register nehmen. Je E-Mail EIN Schreibvorgang, auch wenn mehrere Nummern
    * betroffen sind. Der Eintrag selbst bleibt stehen — er kann weitere,

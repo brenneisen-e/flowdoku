@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v29.3.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v29.4.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -170,6 +170,17 @@ mit nicht-striktem Lesen, einem `Promise.all` über alle Personen und
 Verweise, die die Register-Prüfung später meldet, und nachrechnen ging nicht
 mehr. Reihenfolge deshalb immer: prüfbare Nebenbuchhaltung zuerst, sequentiell,
 mit Fehlerzähler — und bei Fehlern **abbrechen, bevor** etwas gelöscht wird.
+
+**Bevor du zwei Ansichten „widersprüchlich" nennst: zähl die Spalten.** Der
+Fall, der v29.2 und v29.3 ausgelöst hat („Hotel-Wunsch —" im Panel, „Yes, I
+need accommodation" in der Matrix), war weder ein Datenproblem noch ein
+Auflösungsproblem: In `HotelPlanningPanel` rendert der `<thead>`
+`[wish, …childEvents, …]`, der `<tbody>` rendete `[…childEvents, wish, …]` —
+v28.53 hat die Haken-Spalten nur im Kopf an der richtigen Stelle eingezogen.
+Jede Zeile war um eine Spalte verschoben. Zwei Releases lang habe ich die
+Daten untersucht, obwohl die Daten stimmten. Bei einer Tabelle mit
+`.map`-erzeugten Spalten deshalb **zuerst** Kopf- und Zeilen-Reihenfolge
+nebeneinanderlegen, dann erst die Werte.
 
 **Inline-Styles können kein `:hover`.** Interaktive Elemente brauchen einen
 Hover-State (`hoverIdx`, `evTabHover`), sonst lesen sie sich als Beschriftung.
