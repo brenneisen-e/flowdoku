@@ -801,8 +801,8 @@ export default function AdminHubPage(): React.ReactElement {
                   });
                   const orphanNote = info.orphanNumbers > 0
                     ? (isDe
-                      ? ` ${info.orphanNumbers} Verweis(e) zeigen auf gelöschte Events — wirkungslos, aber harmlos.`
-                      : ` ${info.orphanNumbers} reference(s) point to deleted events — ineffective but harmless.`)
+                      ? ` ${info.orphanNumbers} Verweis(e) zeigen auf gelöschte Events.`
+                      : ` ${info.orphanNumbers} reference(s) point to deleted events.`)
                     : '';
                   // v29.0: Zweite Stufe — das Register gegen die
                   // TEILNEHMERLISTEN abgleichen. Die Dubletten-Prüfung oben
@@ -820,10 +820,48 @@ export default function AdminHubPage(): React.ReactElement {
                     }),
                   );
                   setRegCleanProgress(null);
+                  /**
+                   * v29.4: Verweise auf GELÖSCHTE Events mitnehmen. Bis v29.3
+                   * wurden sie nur gezählt („wirkungslos, aber harmlos") — das
+                   * stimmt technisch, aber es sind personenbezogene Reste
+                   * gelöschter Events, und genau die soll das Register nicht
+                   * behalten. Die Event-Nummern kommen dafür STRIKT aus
+                   * DEX_Events (nicht aus der geladenen Event-Liste, die bei
+                   * einem Mapping-Fehler still Events auslässt) — sonst würde
+                   * ein Lesefehler gültige Verweise als verwaist ausweisen.
+                   */
+                  let orphanPairs: Array<{ email: string; eventNumber: number }> = [];
+                  let orphanReadError = '';
+                  try {
+                    orphanPairs = await eventServiceRef.collectOrphanRegistryNumbers(loaded =>
+                      setRegCleanProgress({
+                        done: loaded, total: 0,
+                        label: isDe ? `Verweise auf gelöschte Events werden gesucht… ${loaded}` : `Looking for references to deleted events… ${loaded}`,
+                      }));
+                  } catch (e) {
+                    orphanReadError = (e instanceof Error ? e.message : String(e || '')).slice(0, 200);
+                  }
+                  const orphanErrNote = orphanReadError
+                    ? (isDe
+                      ? `\n\nVerweise auf gelöschte Events konnten NICHT geprüft werden (${orphanReadError}) — sie bleiben unangetastet.`
+                      : `\n\nReferences to deleted events could NOT be checked (${orphanReadError}) — they stay untouched.`)
+                    : '';
+                  const staleAll: Array<{ email: string; eventNumber: number; title: string }> = [
+                    ...cmp.stale,
+                    ...orphanPairs.map(o => ({
+                      email: o.email, eventNumber: o.eventNumber,
+                      title: isDe ? `gelöschtes Event #${o.eventNumber}` : `deleted event #${o.eventNumber}`,
+                    })),
+                  ];
+                  const orphanFoundNote = orphanPairs.length > 0
+                    ? (isDe
+                      ? `\n\nEnthalten sind ${orphanPairs.length} Verweis(e) auf Events, die es in der Event-Liste NICHT MEHR GIBT (gelöschte Events). Sie laufen ins Leere und werden mit entfernt.`
+                      : `\n\nIncluded are ${orphanPairs.length} reference(s) to events that NO LONGER EXIST in the event list (deleted events). They point nowhere and are removed as well.`)
+                    : '';
                   const staleNote = cmp.stale.length > 0
                     ? (isDe
                       ? ` ${cmp.stale.length} Verweis(e) zeigen auf ein Event, in dessen Teilnehmerliste die Person NICHT steht.`
-                      : ` ${cmp.stale.length} reference(s) point to an event whose attendee list does not contain the person.`)
+                      : ` ${staleAll.length} reference(s) point to an event whose attendee list does not contain the person.`)
                     : '';
                   // v29.1: Events, bei denen (fast) ALLE Verweise ins Leere zeigen,
                   // sind kein Aufräum-Fall, sondern ein Hinweis darauf, dass
@@ -860,7 +898,7 @@ export default function AdminHubPage(): React.ReactElement {
                       ? ` ${cmp.skippedEvents} Event(s) konnten nicht gelesen werden (z.B. fehlende Rechte oder Drosselung) und wurden übersprungen — ihre Verweise bleiben unangetastet.`
                       : ` ${cmp.skippedEvents} event(s) could not be read (e.g. missing permissions or throttling) and were skipped — their references stay untouched.`)
                     : '';
-                  if (info.duplicateGroups === 0 && cmp.stale.length === 0 && cmp.suspiciousEvents.length > 0) {
+                  if (info.duplicateGroups === 0 && staleAll.length === 0 && cmp.suspiciousEvents.length > 0) {
                     setRegCleanIsError(true);
                     setRegCleanResult(isDe
                       ? `Keine Dubletten und keine einzeln verwaisten Verweise — ABER bei ${cmp.suspiciousEvents.length} Event(s) zeigen nahezu alle Verweise ins Leere. Das sieht nach einem Zuordnungsproblem aus und wurde deshalb NICHT bereinigt: ${cmp.suspiciousEvents.slice(0, 5).map(e => `${e.title || e.eventNumber} (${e.missing}/${e.referenced}, Liste ${e.rows})`).join('; ')}.${skipNote}`
@@ -869,7 +907,7 @@ export default function AdminHubPage(): React.ReactElement {
                     setRegCleanBusy(false);
                     return;
                   }
-                  if (info.duplicateGroups === 0 && cmp.stale.length === 0) {
+                  if (info.duplicateGroups === 0 && staleAll.length === 0) {
                     setRegCleanResult(isDe
                       ? `Alles sauber: keine Dubletten, und alle Verweise haben eine Zeile in der Teilnehmerliste (${info.total} Einträge, ${cmp.checkedEvents} Event(s) verglichen).${orphanNote}${skipNote}${info.noEmail > 0 ? ` ${info.noEmail} Eintrag/Einträge ohne E-Mail-Adresse.` : ''}`
                       : `All clean: no duplicates, and every reference has a row in the attendee list (${info.total} records, ${cmp.checkedEvents} event(s) compared).${orphanNote}${skipNote}${info.noEmail > 0 ? ` ${info.noEmail} record(s) without an email address.` : ''}`);
@@ -879,15 +917,15 @@ export default function AdminHubPage(): React.ReactElement {
                   }
                   if (info.duplicateGroups === 0) {
                     // Nur verwaiste Verweise — einzeln nachfragen und entfernen.
-                    const examples = cmp.stale.slice(0, 5)
+                    const examples = staleAll.slice(0, 5)
                       .map(x => `• ${x.email} → ${x.title || x.eventNumber}`).join('\n');
                     const okStale = await confirmDialog(isDe
-                      ? `${cmp.stale.length} Verweis(e) im Register zeigen auf ein Event, in dessen Teilnehmerliste die Person nicht steht — typischerweise eine Abmeldung, bei der das Nachziehen scheiterte, oder eine von Hand gelöschte Zeile.\n\n${examples}${cmp.stale.length > 5 ? `\n… und ${cmp.stale.length - 5} weitere` : ''}\n\nDiese Verweise jetzt entfernen? Die Einträge selbst bleiben mit ihren übrigen Events bestehen. An den Teilnehmerlisten wird nichts geändert.${goneNote}${suspNote}${skipNote ? `\n\nHinweis:${skipNote}` : ''}`
-                      : `${cmp.stale.length} reference(s) point to an event whose attendee list does not contain the person — typically a cancellation whose registry update failed, or a manually deleted row.\n\n${examples}${cmp.stale.length > 5 ? `\n… and ${cmp.stale.length - 5} more` : ''}\n\nRemove these references now? The records themselves stay with their remaining events. Attendee lists are not touched.${goneNote}${suspNote}${skipNote ? `\n\nNote:${skipNote}` : ''}`,
+                      ? `${staleAll.length} Verweis(e) im Register zeigen auf ein Event, in dessen Teilnehmerliste die Person nicht steht — typischerweise eine Abmeldung, bei der das Nachziehen scheiterte, oder eine von Hand gelöschte Zeile.\n\n${examples}${staleAll.length > 5 ? `\n… und ${staleAll.length - 5} weitere` : ''}\n\nDiese Verweise jetzt entfernen? Die Einträge selbst bleiben mit ihren übrigen Events bestehen. An den Teilnehmerlisten wird nichts geändert.${orphanFoundNote}${goneNote}${suspNote}${orphanErrNote}${skipNote ? `\n\nHinweis:${skipNote}` : ''}`
+                      : `${staleAll.length} reference(s) point to an event whose attendee list does not contain the person — typically a cancellation whose registry update failed, or a manually deleted row.\n\n${examples}${staleAll.length > 5 ? `\n… and ${staleAll.length - 5} more` : ''}\n\nRemove these references now? The records themselves stay with their remaining events. Attendee lists are not touched.${orphanFoundNote}${goneNote}${suspNote}${orphanErrNote}${skipNote ? `\n\nNote:${skipNote}` : ''}`,
                       { confirmLabel: isDe ? 'Verweise entfernen' : 'Remove references' });
                     if (!okStale) { setRegCleanProgress(null); setRegCleanBusy(false); return; }
                     setRegCleanProgress({ done: 0, total: 0, label: isDe ? 'Verweise werden entfernt…' : 'Removing references…' });
-                    const pr = await eventServiceRef.pruneStaleRegistryNumbers(cmp.stale, (done, total) =>
+                    const pr = await eventServiceRef.pruneStaleRegistryNumbers(staleAll, (done, total) =>
                       setRegCleanProgress({ done, total, label: isDe ? 'Verweise werden entfernt…' : 'Removing references…' }));
                     setRegCleanIsError(pr.failed > 0);
                     setRegCleanResult(isDe
