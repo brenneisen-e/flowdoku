@@ -22,8 +22,14 @@ import GlobalSearch from './GlobalSearch';
 import QuestionButton from './QuestionButton';
 import { useTutorial } from './tutorial/TutorialGuide';
 import { useIsMobile } from '../utils/useIsMobile';
+// v28.98: „Zurück" waehrend eines laufenden Speichervorgangs sperren.
+import { isSaveInProgress, subscribeSaveInProgress } from '../utils/saveGuard';
 
 export default function Header(): React.ReactElement {
+  // v28.98: Laeuft gerade ein Speichervorgang? Dann ist „Zurück" gesperrt —
+  // ein Abbruch mittendrin hinterlaesst ein halb angelegtes Event.
+  const [saveBusy, setSaveBusy] = React.useState<boolean>(isSaveInProgress());
+  React.useEffect(() => subscribeSaveInProgress(setSaveBusy), []);
   const { currentPage, navigate, selectedEventId } = useNavigation();
   const { currentUser, photoUrl } = useCurrentUser();
   const { currentUserRole, originalIsAdmin } = useRoles();
@@ -266,9 +272,18 @@ export default function Header(): React.ReactElement {
                 Icon-Box allein war als Zurück-Navigation nicht klar genug. */}
             <button
               className="back-btn"
-              onClick={() => navigate(isStart ? 'landing' : 'start')}
+              onClick={() => { if (!saveBusy) navigate(isStart ? 'landing' : 'start'); }}
+              disabled={saveBusy}
               aria-label={locale === 'de' ? 'Zurück' : 'Back'}
-              style={{ width: 'auto', borderRadius: 999, padding: '0 16px 0 10px', fontSize: '0.85rem', fontWeight: 600 }}
+              title={saveBusy
+                ? (locale === 'de'
+                  ? 'Es wird gerade gespeichert — bitte warte, bis der Vorgang durch ist. Ein Abbruch mittendrin hinterlässt ein halb angelegtes Event.'
+                  : 'Saving is in progress — please wait. Leaving now would leave the event half-created.')
+                : undefined}
+              style={{
+                width: 'auto', borderRadius: 999, padding: '0 16px 0 10px', fontSize: '0.85rem', fontWeight: 600,
+                ...(saveBusy ? { opacity: 0.5, cursor: 'not-allowed' } : {}),
+              }}
             >
               <ChevronLeft size={20} /> {locale === 'de' ? 'Zurück' : 'Back'}
             </button>
