@@ -3140,10 +3140,16 @@ export class EventService {
      *  wie viele aktive Zeilen die Liste überhaupt hat. Das ist die Grundlage
      *  für die Plausibilitäts-Prüfung unten — und für die Frage, WARUM etwas
      *  auseinanderläuft. */
-    perEvent: Array<{ title: string; eventNumber: number; referenced: number; missing: number; rows: number; suspicious: boolean }>;
-    /** Events, bei denen (fast) ALLE Verweise ins Leere zeigen. Ihre Verweise
-     *  stehen NICHT in `stale` — siehe Begründung unten. */
+    perEvent: Array<{ title: string; eventNumber: number; referenced: number; missing: number; rows: number; suspicious: boolean; listGone: boolean }>;
+    /** Events, bei denen (fast) ALLE Verweise ins Leere zeigen, OBWOHL ihre
+     *  Teilnehmerliste lesbar ist. Ihre Verweise stehen NICHT in `stale` —
+     *  siehe Begründung unten. */
     suspiciousEvents: Array<{ title: string; eventNumber: number; referenced: number; missing: number; rows: number }>;
+    /** v29.3: Events, deren Teilnehmerliste NICHT MEHR EXISTIERT (HTTP 404 —
+     *  in aller Regel das 3-Monats-Löschkonzept, das die Subsite recycelt und
+     *  das Event-Item stehen lässt). Ihre Verweise sind eindeutig Rückstand
+     *  und stehen in `stale`. */
+    deletedListEvents: Array<{ title: string; eventNumber: number; referenced: number }>;
   }> {
     const all = await this.fetchAllParticipantsOrThrow(onRead);
     // Event-Nummer → E-Mails, die laut Register dort angemeldet sind.
@@ -3159,8 +3165,9 @@ export class EventService {
       typeof e.eventNumber === 'number' && e.eventNumber > 0
       && !!e.subsiteUrl && !!byNumber[e.eventNumber]);
     const stale: Array<{ email: string; eventNumber: number; title: string }> = [];
-    const perEvent: Array<{ title: string; eventNumber: number; referenced: number; missing: number; rows: number; suspicious: boolean }> = [];
+    const perEvent: Array<{ title: string; eventNumber: number; referenced: number; missing: number; rows: number; suspicious: boolean; listGone: boolean }> = [];
     const suspiciousEvents: Array<{ title: string; eventNumber: number; referenced: number; missing: number; rows: number }> = [];
+    const deletedListEvents: Array<{ title: string; eventNumber: number; referenced: number }> = [];
     let checkedEvents = 0;
     let skippedEvents = 0;
     for (let i = 0; i < relevant.length; i++) {
@@ -3168,12 +3175,37 @@ export class EventService {
       const num = ev.eventNumber as number;
       if (onProgress) onProgress(i + 1, relevant.length, ev.title || '');
       let rows: SPRegistration[] | null = null;
+      /**
+       * v29.3: Der Lesefehler wird jetzt AUSGEWERTET statt verschluckt.
+       * `getAllRegistrations` bricht bei einem HTTP-Fehler ab und liefert eine
+       * leere Liste — bis v29.2 war deshalb „Subsite existiert nicht mehr"
+       * (404) von „niemand ist angemeldet" nicht zu unterscheiden. Genau das
+       * ist hier der Regelfall und nicht die Ausnahme: Das 3-Monats-
+       * Löschkonzept (`deleteParticipantData`) recycelt die Subsite und LÄSST
+       * das Event-Item stehen. Das Event ist danach weiter in der Liste, seine
+       * Teilnehmerliste aber weg — und alle Register-Verweise darauf sind
+       * Rückstand, den genau dieses Löschkonzept hinterlassen hat.
+       */
+      let httpStatus = 0;
+      let hadHttpError = false;
       try {
         // eslint-disable-next-line no-await-in-loop
-        rows = await this.getAllRegistrations(ev.subsiteUrl as string);
+        rows = await this.getAllRegistrations(ev.subsiteUrl as string, s => { hadHttpError = true; httpStatus = s; });
       } catch { rows = null; }
-      if (!rows) { skippedEvents += 1; continue; }
+      // 404/410 = Liste/Subsite gibt es nicht mehr → eindeutige Aussage.
+      const listGone = hadHttpError && (httpStatus === 404 || httpStatus === 410);
+      // Jeder ANDERE Fehler (403 fehlende Rechte, 429 Drosselung, 500, Netz)
+      // sagt nichts über den Inhalt aus — solche Events werden übersprungen,
+      // nicht geraten.
+      if (!rows || (hadHttpError && !listGone)) { skippedEvents += 1; continue; }
       checkedEvents += 1;
+      if (listGone) {
+        const refsGone = Array.from(byNumber[num]);
+        perEvent.push({ title: ev.title || '', eventNumber: num, referenced: refsGone.length, missing: refsGone.length, rows: 0, suspicious: false, listGone: true });
+        deletedListEvents.push({ title: ev.title || '', eventNumber: num, referenced: refsGone.length });
+        refsGone.forEach(em => { stale.push({ email: em, eventNumber: num, title: ev.title || '' }); });
+        continue;
+      }
       const active = new Set<string>();
       for (const r of rows) {
         const st = (r.Status || '').trim();
@@ -3184,13 +3216,14 @@ export class EventService {
       const refs = Array.from(byNumber[num]);
       const missing = refs.filter(em => !active.has(em));
       /**
-       * Plausibilitäts-Riegel. Wenn bei EINEM Event praktisch alle Verweise
-       * ins Leere zeigen, ist die naheliegende Erklärung nicht, dass dort
-       * hunderte Abmeldungen einzeln schiefgingen — sondern dass Register und
-       * Liste bei diesem Event gar nicht vergleichbar sind. Denkbare Gründe:
-       * eine andere Teilnehmerliste als die Standard-Liste, eine neu
-       * angelegte/geleerte Liste bei erhaltenem Register, oder ein Event, das
-       * seine Anmeldungen woanders führt.
+       * Plausibilitäts-Riegel — gilt seit v29.3 nur noch für Events mit
+       * LESBARER Teilnehmerliste. Wenn dort praktisch alle Verweise ins Leere
+       * zeigen, ist die naheliegende Erklärung nicht, dass hunderte
+       * Abmeldungen einzeln schiefgingen — sondern dass Register und Liste bei
+       * diesem Event gar nicht vergleichbar sind. Denkbare Gründe: eine andere
+       * Teilnehmerliste als die Standard-Liste, eine neu angelegte/geleerte
+       * Liste bei erhaltenem Register, oder ein Event, das seine Anmeldungen
+       * woanders führt.
        *
        * In dem Fall wäre ein Entfernen der Verweise ein Datenverlust, kein
        * Aufräumen. Solche Events werden deshalb ausgewiesen, aber NICHT
@@ -3198,7 +3231,7 @@ export class EventService {
        * betroffene Liste, nicht einen Knopfdruck.
        */
       const suspicious = refs.length >= 5 && missing.length >= Math.ceil(refs.length * 0.9);
-      perEvent.push({ title: ev.title || '', eventNumber: num, referenced: refs.length, missing: missing.length, rows: active.size, suspicious });
+      perEvent.push({ title: ev.title || '', eventNumber: num, referenced: refs.length, missing: missing.length, rows: active.size, suspicious, listGone: false });
       if (suspicious) {
         suspiciousEvents.push({ title: ev.title || '', eventNumber: num, referenced: refs.length, missing: missing.length, rows: active.size });
         continue;
@@ -3206,7 +3239,8 @@ export class EventService {
       missing.forEach(em => { stale.push({ email: em, eventNumber: num, title: ev.title || '' }); });
     }
     perEvent.sort((a, b) => b.missing - a.missing);
-    return { checkedEvents, skippedEvents, stale, perEvent, suspiciousEvents };
+    deletedListEvents.sort((a, b) => b.referenced - a.referenced);
+    return { checkedEvents, skippedEvents, stale, perEvent, suspiciousEvents, deletedListEvents };
   }
 
   /**
@@ -5270,6 +5304,49 @@ export class EventService {
     try {
       const event = await this.getEvent(eventId);
       if (!event) return false;
+      /**
+       * v29.3: Reihenfolge umgedreht — erst das Register, dann die
+       * unwiderrufliche Löschung.
+       *
+       * Bisher wurde zuerst die Subsite recycelt und danach das Register
+       * aufgeräumt, und zwar so, dass ein Scheitern nicht auffiel:
+       * `getAllParticipants()` liest NICHT strikt (eine unvollständige Seite
+       * kam still als vollständige Liste zurück), alle Schreibvorgänge liefen
+       * als EIN `Promise.all` gleichzeitig los (bei hunderten Teilnehmern die
+       * Einladung zur SharePoint-Drosselung), und jeder Fehler wurde per
+       * `.catch(() => null)` weggeworfen. Was danach im Register stand, wusste
+       * niemand — die Teilnehmerliste war aber schon weg, also ließ sich der
+       * Rest auch nicht mehr nachrechnen.
+       *
+       * Genau das ist der Rückstand, den die Register-Prüfung heute als
+       * „Verweis ohne Zeile" meldet. Jetzt gilt: strikt lesen, sequentiell
+       * schreiben, jeden Fehlschlag zählen — und bei Fehlern GAR NICHT
+       * löschen. Der Aufrufer wertet `false` bereits als „später erneut
+       * versuchen" und rollt die Statistik-Zeile zurück; nichts geht verloren,
+       * weil die Subsite dann noch steht.
+       */
+      if (event.EventNumber) {
+        let registryFailed = 0;
+        try {
+          const allParticipants = await this.fetchAllParticipantsOrThrow();
+          const en = String(event.EventNumber);
+          const affected = allParticipants.filter(p =>
+            (p.EventRegistered?.split(',').map(s => s.trim()).includes(en))
+            || (p.EventOnWaitlist?.split(',').map(s => s.trim()).includes(en)));
+          for (const p of affected) {
+            // eslint-disable-next-line no-await-in-loop
+            const ok = await this.removeParticipantEvent(p.Email, event.EventNumber).catch(() => false);
+            if (!ok) registryFailed += 1;
+          }
+        } catch (err) {
+          console.warn('[DEX] deleteParticipantData: Register nicht vollständig lesbar — Löschung abgebrochen:', err);
+          return false;
+        }
+        if (registryFailed > 0) {
+          console.warn(`[DEX] deleteParticipantData: ${registryFailed} Register-Einträge nicht aktualisiert — Löschung abgebrochen (Event ${event.EventNumber}).`);
+          return false;
+        }
+      }
       if (event.SubsiteUrl) {
         try { await this._post(`${event.SubsiteUrl}/_api/web/recycle`, {}); }
         catch { console.warn('[DEX] Teilnehmer-Subsite konnte nicht recycelt werden:', event.SubsiteUrl); }
@@ -5277,16 +5354,6 @@ export class EventService {
       if (event.RegistrationListName && event.RegistrationListName !== 'Teilnehmer') {
         try { await this._post(`${this.siteUrl}/_api/web/lists/getbytitle('${event.RegistrationListName.replace(/'/g, "''")}')/recycle`, {}); }
         catch { /* */ }
-      }
-      if (event.EventNumber) {
-        try {
-          const allParticipants = await this.getAllParticipants();
-          const en = String(event.EventNumber);
-          const promises = allParticipants
-            .filter(p => (p.EventRegistered?.split(',').map(s => s.trim()).includes(en)) || (p.EventOnWaitlist?.split(',').map(s => s.trim()).includes(en)))
-            .map(p => this.removeParticipantEvent(p.Email, event.EventNumber).catch(() => null));
-          await Promise.all(promises);
-        } catch { /* */ }
       }
       try {
         await this.writeChangeLog({
@@ -7813,7 +7880,15 @@ export class EventService {
   /**
    * Alle Registrierungen für ein Event laden (nur für Organizer/Admin)
    */
-  public async getAllRegistrations(subsiteUrl: string): Promise<SPRegistration[]> {
+  /**
+   * @param onHttpError v29.3: Meldet, dass der Lesevorgang abgebrochen wurde,
+   *   statt ihn — wie bisher — still zu verschlucken. Ohne diesen Rückruf ist
+   *   „Liste existiert nicht" (404, z.B. nach dem 3-Monats-Löschkonzept) von
+   *   „Liste ist leer" nicht zu unterscheiden: Beides kam als `[]` zurück.
+   *   Genau daran hat sich `analyzeRegistryAgainstLists` verschluckt.
+   *   `status` ist der HTTP-Status, `0` bei einem Netz-/Parse-Fehler.
+   */
+  public async getAllRegistrations(subsiteUrl: string, onHttpError?: (_status: number) => void): Promise<SPRegistration[]> {
     const allItems: SPRegistration[] = [];
     // $top=5000 ist das SP-REST-Maximum pro Page. Damit fallen Events bis zu
     // 5000 Teilnehmern in einen einzigen Response — keine Pagination-Edgecases
@@ -7831,7 +7906,7 @@ export class EventService {
     while (url) {
       try {
         const response = await this.context.spHttpClient.get(url, SPHttpClient.configurations.v1);
-        if (!response.ok) break;
+        if (!response.ok) { if (onHttpError) onHttpError(response.status); break; }
         const data = await response.json();
         // Beide OData-Formate abdecken: nometadata (data.value) UND verbose
         // (data.d.results). Vorher nur data.value — bei verbose-Response
@@ -7840,6 +7915,7 @@ export class EventService {
         allItems.push(...page);
         url = data['odata.nextLink'] || (data.d && data.d.__next) || null;
       } catch {
+        if (onHttpError) onHttpError(0);
         break;
       }
     }

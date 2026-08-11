@@ -132,28 +132,77 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   const stays: DexHotelStay[] = staysLocal;
   const visible = visibleLocal;
 
+  /** Nur für den Ausnahmefall, dass eine Sub-Liste nicht durchgereicht wurde. */
+  const [subEmailsFallback, setSubEmailsFallback] = React.useState<Record<string, SPRegistration[]>>({});
+
+  /**
+   * v29.3: Alle Antwort-Zeilen einer Person — die Klammer-Zeile PLUS ihre
+   * Zeilen aus den Sub-Events.
+   *
+   * Die Hotelplanung las bis v29.2 ausschliesslich die Klammer-Zeile. Damit
+   * war sie die einzige Stelle ohne den Fallback, den die konsolidierte
+   * Teilnehmerliste seit v15.3.1 hat (Parent-Zeile zuerst, dann
+   * Sub-Event-CustomData). Folge: In der Teilnehmerliste stand „Yes, I need
+   * accommodation …", in der Hotelplanung bei derselben Person „—" — und die
+   * automatische Verteilung übersprang sie als „ohne Hotel-Wunsch". Die
+   * Antwort steht nämlich dort, wo sie beantwortet wurde: Wer sich über ein
+   * Sub-Event angemeldet hat, hat auch die Hotel-Frage in dessen Formular
+   * beantwortet, und die Klammer-Zeile ist bei einer Klammer nur eine
+   * Schattenzeile ohne Antworten.
+   */
+  const answerRowsByEmail = React.useMemo<Record<string, SPRegistration[]>>(() => {
+    const out: Record<string, SPRegistration[]> = {};
+    for (const c of (childEvents || [])) {
+      const regs = (subEventRegsByEventId || {})[c.id] || subEmailsFallback[c.id];
+      for (const r of (Array.isArray(regs) ? regs : [])) {
+        if (ACTIVE_STATI.indexOf(r.Status || '') < 0) continue;
+        const em = (r.ParticipantEmail || '').trim().toLowerCase();
+        if (!em) continue;
+        (out[em] = out[em] || []).push(r);
+      }
+    }
+    return out;
+  }, [childEvents, subEventRegsByEventId, subEmailsFallback]);
+
+  /** Klammer-Zeile zuerst — sie gewinnt, wenn sie eine Antwort trägt. */
+  const answerRowsOf = React.useCallback((p: SPRegistration): SPRegistration[] => {
+    const em = (p.ParticipantEmail || '').trim().toLowerCase();
+    return em ? [p, ...(answerRowsByEmail[em] || [])] : [p];
+  }, [answerRowsByEmail]);
+
   /**
    * v28.63: Der im Anmeldeformular angegebene Zeitraum (Feldtyp `daterange`).
    * Gibt es das Feld, ist es die genaueste Quelle: Die Person hat An- und
    * Abreise selbst gewählt, es muss nichts mehr gedeutet werden.
+   *
+   * v29.3: auch Felder der Sub-Events — bei einer Klammer steht das Formular
+   * oft am Sub-Event, nicht an der Klammer.
    */
-  const rangeFieldId = React.useMemo(() => {
-    const f = ((event.eventSpecificFields || []) as Array<{ id: string; type?: string }>)
-      .filter(x => x.type === 'daterange')[0];
-    return f ? f.id : '';
-  }, [event.eventSpecificFields]);
+  const rangeFieldIds = React.useMemo(() => {
+    const ids: string[] = [];
+    const collect = (fields?: Array<{ id: string; type?: string }>): void => {
+      (fields || []).forEach(x => { if (x.type === 'daterange' && ids.indexOf(x.id) < 0) ids.push(x.id); });
+    };
+    collect((event.eventSpecificFields || []) as Array<{ id: string; type?: string }>);
+    (childEvents || []).forEach(c => collect((c.eventSpecificFields || []) as Array<{ id: string; type?: string }>));
+    return ids;
+  }, [event.eventSpecificFields, childEvents]);
 
   const formStayOf = React.useCallback((p: SPRegistration): { none: boolean; from: string; to: string } | null => {
-    if (!rangeFieldId) return null;
-    let cd: Record<string, string> = {};
-    try { cd = JSON.parse(p.CustomData || '{}'); } catch { return null; }
-    const raw = (cd[rangeFieldId] || '').trim();
-    if (!raw) return null;
-    const parsed = parseStayValue(raw);
-    if (parsed.none) return { none: true, from: '', to: '' };
-    if (!parsed.from || !parsed.to) return null;
-    return parsed;
-  }, [rangeFieldId]);
+    if (rangeFieldIds.length === 0) return null;
+    for (const row of answerRowsOf(p)) {
+      let cd: Record<string, string> = {};
+      try { cd = JSON.parse(row.CustomData || '{}'); } catch { continue; }
+      for (const fid of rangeFieldIds) {
+        const raw = (cd[fid] || '').trim();
+        if (!raw) continue;
+        const parsed = parseStayValue(raw);
+        if (parsed.none) return { none: true, from: '', to: '' };
+        if (parsed.from && parsed.to) return parsed;
+      }
+    }
+    return null;
+  }, [rangeFieldIds, answerRowsOf]);
 
   const [busy, setBusy] = React.useState('');
   const [selected, setSelected] = React.useState<Set<number>>(new Set());
@@ -180,8 +229,6 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
   // sie, statt beim Öffnen des Panels alle Sub-Listen zu laden.
   const [subPick, setSubPick] = React.useState('');
   const [subHotelPick, setSubHotelPick] = React.useState('');
-  /** Nur für den Ausnahmefall, dass eine Sub-Liste nicht durchgereicht wurde. */
-  const [subEmailsFallback, setSubEmailsFallback] = React.useState<Record<string, SPRegistration[]>>({});
   const [subLoading, setSubLoading] = React.useState(false);
 
   /** Kurzform des Sub-Event-Titels („Klammer | Dinner" → „Dinner"). */
@@ -542,9 +589,22 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
     // v28.63: Das Zeitraum-Feld beantwortet die Frage eindeutig.
     const fs = formStayOf(p);
     if (fs) return !fs.none;
-    let cd: Record<string, string> = {};
-    try { cd = JSON.parse(p.CustomData || '{}'); } catch { return null; }
-    const fields = (event.eventSpecificFields || []) as Array<{ id: string; label?: string }>;
+    // v29.3: Antworten aus ALLEN Zeilen der Person zusammenlegen (Klammer +
+    // Sub-Events) und die Hotel-Frage auch in den Feldern der Sub-Events
+    // suchen — siehe answerRowsByEmail. Die Klammer-Zeile steht vorn und
+    // gewinnt bei gleicher Feld-ID.
+    const cd: Record<string, string> = {};
+    for (const row of answerRowsOf(p).slice().reverse()) {
+      try {
+        const one = JSON.parse(row.CustomData || '{}') as Record<string, string>;
+        Object.keys(one).forEach(k => { const v = one[k]; if (v !== undefined && v !== null && String(v) !== '') cd[k] = String(v); });
+      } catch { /* Zeile ohne lesbares CustomData überspringen */ }
+    }
+    const fields: Array<{ id: string; label?: string }> = [
+      ...((event.eventSpecificFields || []) as Array<{ id: string; label?: string }>),
+      ...(childEvents || []).reduce<Array<{ id: string; label?: string }>>(
+        (acc, c) => acc.concat((c.eventSpecificFields || []) as Array<{ id: string; label?: string }>), []),
+    ];
     let found: boolean | null = null;
     for (const f of fields) {
       if (!/hotel|unterkunft|übernacht|übernacht|accommodation|lodging/i.test(f.label || '')) continue;
@@ -558,7 +618,7 @@ export const HotelPlanningPanel: React.FC<IHotelPlanningPanelProps> = (props: IH
       found = false;
     }
     return found;
-  }, [event.eventSpecificFields, formStayOf]);
+  }, [event.eventSpecificFields, childEvents, formStayOf, answerRowsOf]);
 
   const assignedCount = people.filter(p => (p.Hotel || '').trim()).length;
   const openCount = people.length - assignedCount;
