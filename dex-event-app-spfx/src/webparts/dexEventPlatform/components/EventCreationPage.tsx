@@ -714,6 +714,8 @@ export default function EventCreationPage(): React.ReactElement {
   // sie über einen Kalender an, die Anmeldeseite zeigt sie als Kalender.
   // Piggyback _subEventCalendar.
   const [subEventCalendar, setSubEventCalendar] = React.useState<boolean>(!!(editEvent && editEvent.subEventCalendar));
+  // v28.97: Genau EIN Sub-Event waehlbar statt beliebig vieler.
+  const [subEventSingleChoice, setSubEventSingleChoice] = React.useState<boolean>(!!(editEvent && editEvent.subEventSingleChoice));
   // v28.10: Seitenverhältnis des Wizard-Bilds — die Banner-Option ist nur für
   // Querformat-Fotos sinnvoll und wird nur dann angeboten (Ratio >= 1.2).
   const [wizardImgAspect, setWizardImgAspect] = React.useState<number | null>(null);
@@ -976,7 +978,7 @@ export default function EventCreationPage(): React.ReactElement {
           // v28.79: „Keine Beschreibung nutzen"-Flag (s. noDescriptionConfig).
           _noDescription,
           // v28.91: Kalender-Modus der Sub-Events (s. subEventCalendarConfig).
-          _subEventCalendar,
+          _subEventCalendar, _subEventSingleChoice,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -989,7 +991,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _teamTerm; void _teamMembersCannotCreate; void _assistantsCanSee; void _previewBeforeActive; void _imageDisplay;
         void _organizerDisplayLarge; void _hiddenOrganizers; void _hideOrgIndividual; void _mainEventLabel;
         void _imageOrigUrl; void _klammerDeadline; void _noDescription;
-        void _subEventCalendar;
+        void _subEventCalendar; void _subEventSingleChoice;
         void _hotels; void _hotelStays; void _hotelVisible; void _hotelRules;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
@@ -4209,6 +4211,7 @@ export default function EventCreationPage(): React.ReactElement {
       // v28.91: Kalender-Modus nur setzen, wenn er aktiv ist — ein
       // abgewaehlter Schalter darf keinen Rest im Blob hinterlassen.
       const subEventCalendarConfig = (subEventCalendar && subEventsOptIn) ? { _subEventCalendar: true } : {};
+      const subEventSingleChoiceConfig = (subEventSingleChoice && subEventsOptIn) ? { _subEventSingleChoice: true } : {};
       // v28.11: Bestehende Original-Bild-URL beim Edit-Save WEITERTRAGEN —
       // sonst würde der frisch zusammengebaute Overrides-Blob sie wegwerfen.
       // v28.12: auch bei neuem Bild erstmal mitschreiben; der Post-Save-Code
@@ -4270,7 +4273,7 @@ export default function EventCreationPage(): React.ReactElement {
         organizerDisplayLargeConfig, previewBeforeActiveConfig,
         imageDisplayConfig, hideOrganizerConfig, hiddenOrganizersConfig,
         hideOrgIndividualConfig, headerImageLayoutConfig, noDescriptionConfig,
-        subEventCalendarConfig,
+        subEventCalendarConfig, subEventSingleChoiceConfig,
       ];
       updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || !!effEmailLogo || !!effOutlookLogo || topPiggybackConfigs.some(o => Object.keys(o).length > 0))
         // v28.2: Object.assign statt Spread-Kette — die Literal-Spreads
@@ -4971,6 +4974,7 @@ export default function EventCreationPage(): React.ReactElement {
             ((noDescription && !description.trim()) ? { _noDescription: true } : {}),
             // v28.91: Kalender-Modus der Sub-Events.
             ((subEventCalendar && subEventsOptIn) ? { _subEventCalendar: true } : {}),
+            ((subEventSingleChoice && subEventsOptIn) ? { _subEventSingleChoice: true } : {}),
           ];
           const hasAny = Object.keys(emailTemplateOverrides).length > 0 || !!effEmailLogo || !!effOutlookLogo || createPiggybackConfigs.some(o => Object.keys(o).length > 0);
           return hasAny
@@ -10310,6 +10314,93 @@ export default function EventCreationPage(): React.ReactElement {
               </>)}
 
               {subEventsOptIn && (<>
+              {/* v28.97: Wie VIELE Sub-Events darf jemand waehlen? Das ist eine
+                  eigene Frage neben „welche Ebenen sind buchbar" (Anmelde-Modus
+                  darueber): Bei einer Workshop-Reihe soll man sich oft fuer
+                  genau einen Termin entscheiden, bei einem Programm mit
+                  Abendessen fuer beliebig viele. Aendert ausschliesslich die
+                  Auswahl auf der Anmeldeseite — Teilnehmerlisten, Kapazitaeten
+                  und Fristen der Sub-Events bleiben, wie sie sind. */}
+              <div style={{
+                background: 'var(--dex-gray-50, #fafafa)', borderRadius: 12,
+                padding: '14px 16px', marginBottom: 16,
+                border: '1px solid var(--dex-gray-200)',
+              }}>
+                <label className="form-label" style={{ fontSize: '0.95rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {isDe ? 'Wie viele darf man auswählen?' : 'How many may be picked?'}
+                  <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> ob ein Teilnehmer <strong>mehrere</strong> {(childTermPlural || 'Sub-Events')} gleichzeitig buchen darf oder sich für <strong>genau eines</strong> entscheiden muss.<br /><br />
+                      <strong>Anzeige in der App:</strong> Bei &bdquo;mehrere&ldquo; sind es Kästchen zum Ankreuzen, bei &bdquo;genau eines&ldquo; verhält sich die Auswahl wie ein Radio-Knopf — ein neuer Klick ersetzt die bisherige Wahl. Im Kalender genauso.<br /><br />
+                      <strong>Wichtig:</strong> An den {(childTermPlural || 'Sub-Events')} selbst ändert sich nichts — jedes behält seine eigene Teilnehmerliste, Kapazität und Frist. Es geht nur um die Auswahl.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> whether an attendee may book <strong>several</strong> sub-events at once or has to pick <strong>exactly one</strong>.<br /><br />
+                      <strong>Shown in the app:</strong> &bdquo;several&ldquo; renders checkboxes, &bdquo;exactly one&ldquo; behaves like a radio button — a new click replaces the previous choice. Same in the calendar.<br /><br />
+                      <strong>Note:</strong> nothing changes on the sub-events themselves — each keeps its own attendee list, capacity and deadline.
+                    </>
+                  )} />
+                </label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+                  {([
+                    { val: false, label: isDe
+                      ? <>Mehrere <strong>{(childTermPlural || 'Sub-Events')}</strong> gleichzeitig <span style={{ color: 'var(--dex-gray-500)' }}>(Standard)</span></>
+                      : <>Several <strong>sub-events</strong> at once <span style={{ color: 'var(--dex-gray-500)' }}>(default)</span></> },
+                    { val: true, label: isDe
+                      ? <>Genau <strong>eines</strong> — die Auswahl ersetzt die vorherige</>
+                      : <>Exactly <strong>one</strong> — a new pick replaces the previous</> },
+                  ]).map(opt => {
+                    const selected = subEventSingleChoice === opt.val;
+                    return (
+                      <label
+                        key={String(opt.val)}
+                        style={{
+                          display: 'flex', alignItems: 'flex-start', gap: 10,
+                          padding: '10px 14px', borderRadius: 8,
+                          border: `1px solid ${selected ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+                          background: selected ? 'rgba(134,188,37,0.06)' : '#fff',
+                          cursor: 'pointer', transition: 'border-color 0.15s, background 0.15s',
+                        }}
+                      >
+                        <input
+                          type="radio"
+                          name="subEventSingleChoice"
+                          checked={selected}
+                          onChange={() => setSubEventSingleChoice(opt.val)}
+                          style={{
+                            position: 'absolute', opacity: 0, pointerEvents: 'none',
+                            width: 1, height: 1, margin: -1, padding: 0,
+                            border: 0, overflow: 'hidden', clip: 'rect(0 0 0 0)',
+                          }}
+                        />
+                        <span aria-hidden="true" style={{
+                          display: 'inline-block', width: 18, height: 18, borderRadius: '50%',
+                          border: `2px solid ${selected ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-400, #9aa0a6)'}`,
+                          background: '#fff', position: 'relative', flexShrink: 0, marginTop: 2,
+                        }}>
+                          {selected && <span style={{ position: 'absolute', inset: 3, borderRadius: '50%', background: 'var(--dex-green, #86bc25)' }} />}
+                        </span>
+                        <span style={{ fontSize: '0.88rem', flex: 1 }}>{opt.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                {/* Pflichttermine und „genau eines" widersprechen sich, sobald es
+                    mehr als einen Pflichttermin gibt — dann kaeme niemand durch. */}
+                {subEventSingleChoice && subEvents.filter(x => x.mandatory).length > 1 && (
+                  <div style={{
+                    margin: '12px 0 0', padding: '9px 11px', borderRadius: 8,
+                    background: '#fff8e6', border: '1px solid #e0b34d', color: '#7a5a12',
+                    fontSize: '0.78rem', lineHeight: 1.55,
+                  }}>
+                    {isDe
+                      ? <>Es sind <strong>{subEvents.filter(x => x.mandatory).length} Pflichttermine</strong> markiert, obwohl nur eines gewählt werden darf — damit kann sich niemand anmelden. Nimm die Pflicht bei allen bis auf höchstens einem heraus (je Termin über die Reiter oben).</>
+                      : <>There are <strong>{subEvents.filter(x => x.mandatory).length} mandatory dates</strong> although only one may be picked — nobody could register. Remove the mandatory flag from all but at most one (per date via the tabs above).</>}
+                  </div>
+                )}
+              </div>
+
               {/* v24.58: Anzeige-Name des Haupt-Events in der Sub-Event-Auswahl.
                   Nur relevant, wenn das Hauptevent mit-buchbar ist (also NICHT
                   im „Nur Sub-Events"-Modus, wo es keine Hauptevent-Zeile gibt). */}

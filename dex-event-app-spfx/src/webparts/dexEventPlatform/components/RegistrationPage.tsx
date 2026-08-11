@@ -2986,17 +2986,29 @@ export default function RegistrationPage(): React.ReactElement {
                 title={locale === 'de' ? 'Für dieses Event ist kein Bild hinterlegt.' : 'No image is set for this event.'}
                 style={{
                   background: '#fff',
+                  // v28.97: Eigene Stapel-Ebene. Der Kreis ragt zur Haelfte
+                  // ueber die Kartenkante — steht darueber etwas Undurchsichtiges
+                  // (z.B. der orange Vorschau-Hinweis „Du wuerdest dieses Event
+                  // nicht sehen"), wurde er davon ueberdeckt und sah abgeschnitten
+                  // aus. Das echte Kreis-Bild hat `position: relative` und faellt
+                  // deshalb nicht auf; hier fehlte beides.
+                  position: 'relative', zIndex: 2,
                   width: circleSize, height: circleSize, flex: '0 0 auto',
                   borderRadius: '50%',
                   border: '1px solid var(--dex-gray-200)',
                   boxShadow: '0 2px 12px rgba(0,0,0,0.10)',
                   alignSelf: 'center',
-                  // v28.95: KEIN negativer marginTop. Der halb ueber die
-                  // Kartenkante ragende Kreis ist das Notch-Layout fuer ein
-                  // rundes EVENT-Logo (imgCircleNotch) — im „Gefuehrte
-                  // Schritte"-Layout schneidet der Bereich darueber ihn ab.
-                  // Ein Platzhalter hat keinen Grund, den Rahmen zu brechen.
-                  marginTop: 4,
+                  // v28.97: Exakt dasselbe Layout wie ein rundes EVENT-Bild
+                  // (imgCircleNotch): der Kreis haengt zur Haelfte in der
+                  // Kartenkante. In v28.95 hatte ich den negativen Rand
+                  // herausgenommen, weil der Kreis oben abgeschnitten wirkte —
+                  // damit sah der Platzhalter aber als EINZIGER anders aus als
+                  // alle anderen Kreis-Bilder, mit einer Luecke darunter. Zwei
+                  // Darstellungen fuer dieselbe Stelle sind schlechter als
+                  // eine; deshalb zurueck auf das gemeinsame Layout. Sollte
+                  // der Zuschnitt wieder auftreten, liegt die Ursache im
+                  // Container darueber und gehoert dort behoben, nicht hier.
+                  marginTop: -(circleSize / 2 + 16),
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   padding: 14,
                   boxSizing: 'border-box',
@@ -4724,6 +4736,15 @@ export default function RegistrationPage(): React.ReactElement {
                         : (locale === 'de' ? 'Sub-Events auswählen' : 'Select sub-events'))
                     : (tEvent('reg.selection.title') || 'Wofür möchtest du dich anmelden?')}
                 </h4>
+                {/* v28.97: Sagen, dass nur eines geht — sonst wundert man sich,
+                    warum die vorherige Auswahl verschwindet. */}
+                {event.subEventSingleChoice && (
+                  <p style={{ fontSize: '0.82rem', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600, marginTop: 0, marginBottom: 8 }}>
+                    {locale === 'de'
+                      ? `Du kannst genau ${childTermSingular ? `eine ${childTermSingular}` : 'ein Sub-Event'} auswählen — ein neuer Klick ersetzt die bisherige Wahl.`
+                      : 'You can pick exactly one — a new click replaces your previous choice.'}
+                  </p>
+                )}
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
                   {event.subEventsOnlyMode
                     ? (childTermPlural
@@ -4827,9 +4848,19 @@ export default function RegistrationPage(): React.ReactElement {
                         setPendingSubEventModal({ subEventId: ce.id, draftValues: { ...(sessionFieldValues[ce.id] || {}) } });
                         return;
                       }
-                      const next = new Set(selectedSessions);
+                      // v28.97: „Genau eines" — die neue Wahl ERSETZT die alte,
+                      // statt sich danebenzulegen. Sonst müsste der Teilnehmer
+                      // erst abwählen und würde bei jedem Wechsel scheitern.
+                      const next = event.subEventSingleChoice ? new Set<string>() : new Set(selectedSessions);
                       next.add(ce.id);
                       setSelectedSessions(next);
+                      if (event.subEventSingleChoice) {
+                        setSessionFieldValues(prev => {
+                          const keep: typeof prev = {};
+                          if (prev[ce.id]) keep[ce.id] = prev[ce.id];
+                          return keep;
+                        });
+                      }
                       return;
                     }
                     const next = new Set(selectedSessions);
@@ -4971,7 +5002,9 @@ export default function RegistrationPage(): React.ReactElement {
                                     draftValues: { ...(sessionFieldValues[ce.id] || {}) },
                                   });
                                 } else {
-                                  const next = new Set(selectedSessions);
+                                  // v28.97: siehe Kalender — bei „genau eines"
+                                  // ersetzt die neue Wahl die bisherige.
+                                  const next = event.subEventSingleChoice ? new Set<string>() : new Set(selectedSessions);
                                   next.add(ce.id);
                                   setSelectedSessions(next);
                                 }

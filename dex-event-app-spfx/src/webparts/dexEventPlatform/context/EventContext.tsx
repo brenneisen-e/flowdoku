@@ -1257,6 +1257,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           return !!(ov && ov._subEventsOnlyMode);
         } catch { return false; }
       })(),
+      // v28.97: Nur EIN Sub-Event waehlbar (Piggyback _subEventSingleChoice).
+      subEventSingleChoice: ((): boolean => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          return !!(ov && ov._subEventSingleChoice);
+        } catch { return false; }
+      })(),
       // v28.91: Sub-Events sind Termine → Kalender-Auswahl (Piggyback
       // _subEventCalendar). Ohne Flag bleibt die Anmeldeseite bei der Liste.
       subEventCalendar: ((): boolean => {
