@@ -38,6 +38,8 @@ import OrganizerList from './OrganizerList';
 // Kachel-Modal des Admin Centers.
 import { buildOutlookLocation } from '../utils/eventFormat';
 import { setActiveWizardStep } from '../utils/wizardStepContext';
+// v28.98: Sperrt „Zurück" im Header, solange gespeichert wird.
+import { setSaveInProgress } from '../utils/saveGuard';
 import { shortSubEventTitle } from '../utils/subEventTitle';
 import { DESCRIPTION_TEMPLATES } from '../data/descriptionTemplates';
 import { CustomFieldInput } from './wizard/customFieldInput';
@@ -3190,8 +3192,19 @@ export default function EventCreationPage(): React.ReactElement {
     }
   };
 
-  const persistSubEventsForParent = async (parentEventId: string): Promise<void> => {
+  /**
+   * v28.98: `onStep` meldet nach JEDEM Sub-Event, wie viele von wie vielen
+   * fertig sind. Vorher setzte der Aufrufer einmal 75 % und wartete dann auf
+   * den ganzen Durchlauf — bei neun Terminen steht der Balken minutenlang
+   * still und sieht aus, als haenge das Speichern.
+   */
+  const persistSubEventsForParent = async (
+    parentEventId: string,
+    onStep?: (done: number, total: number, title: string) => void,
+  ): Promise<void> => {
     const keptDbIds = new Set<string>();
+    const stepTotal = subEventsRef.current.filter(d => !!(d.title || '').trim()).length;
+    let stepDone = 0;
     // v11.87: Sub-Event-Progress-Callback aus dem aufrufenden handleSubmit
     // einspeisen. Der Caller setzt window.__dexSubEventProgress vor dem
     // Aufruf und entfernt es danach. Wenn nicht gesetzt: no-op.
@@ -3570,6 +3583,8 @@ export default function EventCreationPage(): React.ReactElement {
         // neue DEX_Events-Item-Id aus createEvent).
         await persistSubEventImage(newSubId, draft);
       }
+      stepDone++;
+      if (onStep) onStep(stepDone, stepTotal, shortSubEventTitle(draft.title, title) || draft.title);
     }
     // Entfernte Sub-Events aufräumen: deleteEvent löscht kaskadierend auch
     // die Subsite (Teilnehmerliste) und queued einen Outlook-DeleteEvent.
@@ -4017,6 +4032,9 @@ export default function EventCreationPage(): React.ReactElement {
 
     setIsSubmitting(true);
     setError('');
+    // v28.98: Ab hier laeuft der Speichervorgang — „Zurück" im Header ist
+    // gesperrt, bis er (auch im Fehlerfall) beendet ist.
+    setSaveInProgress(true);
     setProgress(0);
 
     // Schritt 1: Bild wird später (nach Event-Erstellung) als Item-Attachment hochgeladen.
@@ -4498,7 +4516,17 @@ export default function EventCreationPage(): React.ReactElement {
         setProgress(75);
         setProgressLabel(isDe ? 'Sub-Events werden gespeichert...' : 'Saving sub-events...');
         // Sub-Events persistieren (create/update/delete pro Draft). Seit v6.4.
-        try { await persistSubEventsForParent(selectedEventId); }
+        // v28.98: Der Abschnitt 75–82 % gehört den Sub-Events. Jeder gespeicherte
+        // Termin schiebt den Balken ein Stück und sagt, welcher gerade dran war
+        // („3 von 9 …") — sonst steht er bei neun Terminen minutenlang auf 75 %.
+        try {
+          await persistSubEventsForParent(selectedEventId, (done, total, subTitle) => {
+            setProgress(75 + Math.round((done / Math.max(total, 1)) * 7));
+            setProgressLabel(isDe
+              ? `Sub-Events werden gespeichert… ${done} von ${total}${subTitle ? ` — ${subTitle}` : ''}`
+              : `Saving sub-events… ${done} of ${total}${subTitle ? ` — ${subTitle}` : ''}`);
+          });
+        }
         catch (err) { console.warn('[DEX] Sub-Events persistieren fehlgeschlagen:', err); }
 
         setProgress(82);
@@ -5296,6 +5324,10 @@ export default function EventCreationPage(): React.ReactElement {
       await handleSubmitInner();
     } finally {
       submitInFlightRef.current = false;
+      // v28.98: In JEDEM Fall zuruecknehmen — auch wenn handleSubmitInner
+      // früh aussteigt (Validierung, Fehler) oder wirft. Sonst bliebe
+      // „Zurück" dauerhaft gesperrt.
+      setSaveInProgress(false);
     }
   };
 

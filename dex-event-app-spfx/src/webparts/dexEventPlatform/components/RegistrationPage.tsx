@@ -2948,7 +2948,13 @@ export default function RegistrationPage(): React.ReactElement {
           // v28.7: Kreis-Notch — der Kreis ragt über die Oberkante der Karte
           // hinaus. Dafür muss das overflow:hidden der Karte weichen und
           // oben Platz für den überstehenden Halbkreis geschaffen werden.
-          style={imgCircleNotch ? { overflow: 'visible', marginTop: circleSize / 2 } : undefined}
+          // v28.98: DAS hier war der Grund, warum der Foto-Platzhalter oben
+          // abgeschnitten wurde — er nutzt seit v28.91 dasselbe Notch-Layout,
+          // stand aber nicht in dieser Bedingung. Ohne den zusätzlichen
+          // Platz und mit dem overflow:hidden der Karte wird der überstehende
+          // Halbkreis schlicht weggeschnitten. (Meine früheren Erklärungen —
+          // negativer Rand, Vorschau-Banner — waren beide falsch.)
+          style={(imgCircleNotch || showOrbPlaceholder) ? { overflow: 'visible', marginTop: circleSize / 2 } : undefined}
         >
           <div
             className="registration-event__card"
@@ -2986,13 +2992,7 @@ export default function RegistrationPage(): React.ReactElement {
                 title={locale === 'de' ? 'Für dieses Event ist kein Bild hinterlegt.' : 'No image is set for this event.'}
                 style={{
                   background: '#fff',
-                  // v28.97: Eigene Stapel-Ebene. Der Kreis ragt zur Haelfte
-                  // ueber die Kartenkante — steht darueber etwas Undurchsichtiges
-                  // (z.B. der orange Vorschau-Hinweis „Du wuerdest dieses Event
-                  // nicht sehen"), wurde er davon ueberdeckt und sah abgeschnitten
-                  // aus. Das echte Kreis-Bild hat `position: relative` und faellt
-                  // deshalb nicht auf; hier fehlte beides.
-                  position: 'relative', zIndex: 2,
+                  position: 'relative',
                   width: circleSize, height: circleSize, flex: '0 0 auto',
                   borderRadius: '50%',
                   border: '1px solid var(--dex-gray-200)',
