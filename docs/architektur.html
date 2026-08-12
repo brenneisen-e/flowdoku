@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Architektur der DEX Event Experience Platform: SPFx-Webpart, SharePoint-Listen und Power-Automate-Flows.">
+<meta name="description" content="Architektur der DEX Event Experience Platform: SPFx-Webpart, SharePoint-Listen und Power-Automate-Flows, mit Verweis auf die Security Requirements.">
 <title>DEX Systemarchitektur</title>
 <style>
   :root {
@@ -303,6 +303,39 @@
   .note.good { border-left-color: var(--accent); }
   .note.good .note-h { color: var(--accent-ink); }
 
+  .reqs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 6px;
+    margin: 0 0 18px;
+    padding: 8px 12px;
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 3px;
+    background: var(--surface);
+    font-size: .8rem;
+  }
+  .reqs .reqs-lbl {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-right: 4px;
+  }
+  .reqs a, .reqs span.rq {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 1px 6px;
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+    color: var(--ink-2);
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .reqs a:hover, .reqs a:focus-visible { border-color: var(--accent); color: var(--accent-ink); }
+
   footer.end {
     border-top: 1px solid var(--line);
     margin-top: 60px;
@@ -328,7 +361,7 @@
       dazwischen.
     </p>
     <dl class="facts">
-      <div><dt>Stand</dt><dd>v29.9.0</dd></div>
+      <div><dt>Stand</dt><dd>v29.11.0</dd></div>
       <div><dt>Laufzeit</dt><dd>SPFx · React · TypeScript</dd></div>
       <div><dt>Datenhaltung</dt><dd>SharePoint Online</dd></div>
       <div><dt>Automatisierung</dt><dd>7 Power-Automate-Flows</dd></div>
@@ -353,6 +386,10 @@
         <li><a href="#k11">Ablauf: Absage aus Outlook</a></li>
         <li><a href="#k12">Wo die Wahrheit liegt</a></li>
         <li><a href="#k13">Schutz und Aufbewahrung</a></li>
+        <li><a href="#k15">Deployment und Rollback</a></li>
+        <li><a href="#k16">Sicherung und Wiederherstellung</a></li>
+        <li><a href="#k17">Sicherheitsbetrachtung</a></li>
+        <li><a href="#reqs">Security Requirements</a></li>
         <li><a href="#k14">Anhang: Konventionen</a></li>
       </ol>
     </nav>
@@ -363,6 +400,7 @@
       <section class="chapter" id="k1">
         <span class="chapno">Kapitel 01</span>
         <h2>Das Systembild</h2>
+        <div class="reqs"><span class="reqs-lbl">Security Requirements</span><a href="security-requirements.html#GAT-01">GAT-01</a><a href="security-requirements.html#GCM-18">GCM-18</a></div>
         <p class="lead">
           Drei Schichten, zwei Arten von Verbindung. Der Browser spricht synchron mit SharePoint
           und mit Microsoft Graph. Alles Weitere passiert asynchron: Die App legt einen Auftrag in
@@ -512,6 +550,7 @@
       <section class="chapter" id="k2">
         <span class="chapno">Kapitel 02</span>
         <h2>Wo der Code läuft</h2>
+        <div class="reqs"><span class="reqs-lbl">Security Requirements</span><a href="security-requirements.html#GAC-03">GAC-03</a><a href="security-requirements.html#GAC-09">GAC-09</a><a href="security-requirements.html#GAC-10">GAC-10</a><a href="security-requirements.html#GAC-11">GAC-11</a><a href="security-requirements.html#GAU-07">GAU-07</a><a href="security-requirements.html#GAU-08">GAU-08</a><a href="security-requirements.html#GCM-22">GCM-22</a><a href="security-requirements.html#GIA-02">GIA-02</a><a href="security-requirements.html#GIA-03">GIA-03</a><a href="security-requirements.html#GIA-04">GIA-04</a><a href="security-requirements.html#GSC-01">GSC-01</a><a href="security-requirements.html#GWAF-01">GWAF-01</a></div>
         <p class="lead">
           Die gesamte Anwendung ist ein einziges SharePoint-Framework-Webpart. Es wird auf einer
           normalen SharePoint-Seite ausgeführt und existiert nur im Browser des Nutzers.
@@ -796,6 +835,7 @@
       <section class="chapter" id="k7">
         <span class="chapno">Kapitel 07</span>
         <h2>Die sieben Flows</h2>
+        <div class="reqs"><span class="reqs-lbl">Security Requirements</span><a href="security-requirements.html#GAC-01">GAC-01</a><a href="security-requirements.html#GAC-02">GAC-02</a><a href="security-requirements.html#GAC-15">GAC-15</a></div>
         <p class="lead">
           Fünf Flows arbeiten Warteschlangen ab, zwei reagieren auf eingehende Mails im
           Funktionspostfach. Alle laufen mit einer Dienst-Identität, die auf den Event-Subsites
@@ -1053,6 +1093,7 @@
       <section class="chapter" id="k12">
         <span class="chapno">Kapitel 12</span>
         <h2>Wo die Wahrheit liegt</h2>
+        <div class="reqs"><span class="reqs-lbl">Security Requirements</span><a href="security-requirements.html#GSD-01">GSD-01</a></div>
         <p class="lead">
           Dieselbe Information steht an drei Stellen. Wenn sie auseinanderlaufen, entscheidet die
           Rangfolge — und die ist eindeutig.
@@ -1105,6 +1146,7 @@
       <section class="chapter" id="k13">
         <span class="chapno">Kapitel 13</span>
         <h2>Schutz und Aufbewahrung</h2>
+        <div class="reqs"><span class="reqs-lbl">Security Requirements</span><a href="security-requirements.html#GAC-04">GAC-04</a><a href="security-requirements.html#GAC-05">GAC-05</a><a href="security-requirements.html#GAC-13">GAC-13</a><a href="security-requirements.html#GAC-14">GAC-14</a><a href="security-requirements.html#GAU-01">GAU-01</a><a href="security-requirements.html#GAU-02">GAU-02</a><a href="security-requirements.html#GAU-03">GAU-03</a><a href="security-requirements.html#GAU-04">GAU-04</a><a href="security-requirements.html#GAU-05">GAU-05</a></div>
         <p class="lead">
           Personenbezogene Daten liegen ausschließlich in den Teilnehmerlisten der Event-Subsites
           und im zentralen Register. Beides ist zeitlich begrenzt.
@@ -1123,6 +1165,172 @@
           <li><strong>Nachweis.</strong> Fachliche Aktionen werden im Änderungsprotokoll
             festgehalten — wer wann was ausgelöst hat, ohne Inhalte der Antworten.</li>
         </ul>
+      </section>
+
+
+      <!-- ============ 15 ============ -->
+      <section class="chapter" id="k15">
+        <span class="chapno">Kapitel 15</span>
+        <h2>Deployment und Rollback</h2>
+        <div class="reqs"><span class="reqs-lbl">Security Requirements</span><a href="security-requirements.html#GCM-01">GCM-01</a><a href="security-requirements.html#GCM-04">GCM-04</a><a href="security-requirements.html#GCM-07">GCM-07</a><a href="security-requirements.html#GCM-08">GCM-08</a><a href="security-requirements.html#GCM-09">GCM-09</a><a href="security-requirements.html#GCM-10">GCM-10</a><a href="security-requirements.html#GCM-11">GCM-11</a></div>
+        <p class="lead">
+          Ein Release ist ein Dateiaustausch. Das macht die Auslieferung einfach — und den Rückweg
+          genauso.
+        </p>
+        <h3>Der Weg in die Produktion</h3>
+        <ol>
+          <li><strong>Version setzen</strong> an drei Stellen im Projekt, damit Paket, Anwendung und
+            Anzeige „Was ist neu?“ dieselbe Nummer tragen.</li>
+          <li><strong>Release Notes schreiben</strong> — fachlich für die Anwendung, technisch für die
+            Projektdokumentation. Beides muss vor dem Build stehen, weil die Notes im Paket landen.</li>
+          <li><strong>Typprüfung und Build</strong> mit dem Projekt-Compiler. Der Build läuft im
+            Ship-Modus, also ohne Debug-Artefakte.</li>
+          <li><strong>Paket ablegen</strong>: eine Datei, rund 2,3 MB. Sie wird unter ihrer Version in
+            der Dokumentation archiviert.</li>
+          <li><strong>Bereitstellen</strong> über den App-Katalog des Tenants. Der Katalog ist zugleich
+            die Freigabeliste: Was dort nicht liegt, läuft nicht.</li>
+        </ol>
+        <h3>Der Rückweg</h3>
+        <p>
+          Jede ausgelieferte Version bleibt als Paket erhalten; die jeweils vorherige ist auf der
+          Downloadseite ausdrücklich als Rollback-Paket ausgewiesen. Ein Rückfall besteht darin, das
+          ältere Paket erneut hochzuladen. <strong>Die Daten sind davon nicht betroffen</strong> — ein
+          Deployment fasst keine Liste an, es tauscht nur den Code.
+        </p>
+        <div class="note">
+          <p class="note-h">Was ein Rückfall nicht rückgängig macht</p>
+          <p>
+            Führt eine Version neue Spalten oder neue Konfigurationsschalter ein, bleiben diese nach
+            einem Rückfall in den Listen stehen. Das ist verträglich, weil die Anwendung Felder
+            ignoriert, die sie nicht kennt — aber es ist eine bewusste Auslegung und keine
+            Selbstverständlichkeit. Wer eine Version zurücknimmt, prüft, ob sie strukturelle
+            Änderungen gebracht hat.
+          </p>
+        </div>
+        <h3>Umgebungen</h3>
+        <p>
+          Betrieben wird heute <strong>eine</strong> Umgebung: die Produktiv-Site der Plattform.
+          Innerhalb der Anwendung gibt es einen Demo-Modus mit erfundenen Daten und Entwurfs-Events,
+          die für Teilnehmer unsichtbar bleiben. Beides sind fachliche Zustände, keine getrennten
+          Umgebungen — eine dedizierte Nicht-Produktivumgebung mit eigener Site, eigenem App-Katalog
+          und eigenen Flows existiert nicht.
+        </p>
+      </section>
+
+      <!-- ============ 16 ============ -->
+      <section class="chapter" id="k16">
+        <span class="chapno">Kapitel 16</span>
+        <h2>Sicherung und Wiederherstellung</h2>
+        <div class="reqs"><span class="reqs-lbl">Security Requirements</span><a href="security-requirements.html#GCP-01">GCP-01</a></div>
+        <p class="lead">
+          DEX sichert nichts selbst. Es sorgt aber dafür, dass wenig zu sichern ist — weil fachliche
+          Löschungen weich sind und der Anwendungsstand jederzeit zurückstellbar bleibt.
+        </p>
+        <ul>
+          <li><strong>Papierkorb.</strong> Gelöschte Listenelemente und ganze Subsites landen im
+            zweistufigen Papierkorb von SharePoint und sind dort für die vom Tenant vorgegebene Frist
+            wiederherstellbar.</li>
+          <li><strong>Versionsverlauf.</strong> Die Listen führen Versionen; eine überschriebene Zeile
+            lässt sich auf einen früheren Stand zurücksetzen.</li>
+          <li><strong>Weiche Löschung im Fachlichen.</strong> Eine Abmeldung löscht keine Zeile,
+            sondern setzt den Status. Die Historie bleibt lesbar, ohne dass jemand ein Backup
+            einspielen muss.</li>
+          <li><strong>Anwendungsstand.</strong> Jede Paketversion ist archiviert; der Code lässt sich
+            unabhängig von den Daten zurückstellen (Kapitel 15).</li>
+        </ul>
+        <div class="note">
+          <p class="note-h">Was das Projekt nicht leisten kann</p>
+          <p>
+            Aufbewahrungsfristen des Papierkorbs und die Wiederherstellungszusagen von Microsoft 365
+            sind Vorgaben des Tenants, keine Projektentscheidung. Ein dokumentierter
+            Wiederherstellungstest und die jährliche Überprüfung dieser Strategie sind organisatorisch
+            festzulegen.
+          </p>
+        </div>
+      </section>
+
+      <!-- ============ 17 ============ -->
+      <section class="chapter" id="k17">
+        <span class="chapno">Kapitel 17</span>
+        <h2>Sicherheitsbetrachtung</h2>
+        <div class="reqs"><span class="reqs-lbl">Security Requirements</span><a href="security-requirements.html#GCM-06">GCM-06</a><a href="security-requirements.html#GCM-16">GCM-16</a><a href="security-requirements.html#GIA-01">GIA-01</a><a href="security-requirements.html#GIA-05">GIA-05</a><a href="security-requirements.html#GSC-03">GSC-03</a><a href="security-requirements.html#GSC-04">GSC-04</a><a href="security-requirements.html#GSC-05">GSC-05</a><a href="security-requirements.html#GSC-06">GSC-06</a><a href="security-requirements.html#GSC-09">GSC-09</a><a href="security-requirements.html#GSI-01">GSI-01</a><a href="security-requirements.html#GSI-06">GSI-06</a><a href="security-requirements.html#GSI-09">GSI-09</a><a href="security-requirements.html#GSA-04">GSA-04</a><a href="security-requirements.html#GSD-02">GSD-02</a></div>
+        <p class="lead">
+          Was die Anwendung selbst verantwortet — und wo sie bewusst von einer Vorgabe abweicht. Die
+          Abweichungen stehen hier, nicht im Kleingedruckten.
+        </p>
+
+        <h3>Was gebaut ist</h3>
+        <ul>
+          <li><strong>Keine Zugangsdaten im Code.</strong> Die Anwendung kennt kein Passwort, keinen
+            Schlüssel, kein Token. Sie authentifiziert ausschliesslich über die bestehende Sitzung des
+            Nutzers.</li>
+          <li><strong>Rechte werden nicht im Browser entschieden.</strong> Sichtbarkeit und Zugriff
+            setzt SharePoint durch. Ein manipulierter Client sieht dadurch nicht mehr — er bekommt die
+            Daten schlicht nicht geliefert.</li>
+          <li><strong>Abfragen sind maskiert.</strong> Werte, die in Filterausdrücke gegen SharePoint
+            eingehen, werden durchgängig escapet.</li>
+          <li><strong>Sicheres Scheitern.</strong> Ein fehlgeschlagener Lesezugriff gilt als
+            „unbekannt“, nicht als „nicht vorhanden“; vor unwiderruflichen Löschungen wird erst die
+            prüfbare Nebenbuchhaltung aufgeräumt, und scheitert sie, unterbleibt die Löschung.</li>
+          <li><strong>Meldungen nennen den fachlichen Grund</strong>, keine Systeminterna — keine
+            Pfade, keine Listen-Kennungen, keine Statuscodes in der Oberfläche.</li>
+          <li><strong>Keine Produktionsdaten im Test.</strong> Der Demo-Modus erzeugt seine
+            Teilnehmer zur Laufzeit; es gibt keinen Export in eine Testumgebung.</li>
+        </ul>
+
+        <h3>Offengelegte Abweichungen</h3>
+        <div class="note">
+          <p class="note-h">Gespeichertes HTML wird unmaskiert angezeigt</p>
+          <p>
+            Event-Beschreibungen, Feldbeschreibungen und Mailvorlagen erfassen Organizer in einem
+            Rich-Text-Editor; die Anwendung gibt dieses HTML an fünf Stellen unmaskiert aus. Vorher
+            entfernt sie Skript- und Stilblöcke, Ereignis-Attribute und <code>javascript:</code>-Verweise.
+            Das ist eine <strong>Ausschlussliste</strong>, keine Freigabeliste — und damit prinzipiell
+            umgehbar. Mildernd: Erfassen kann das nur ein angemeldeter, namentlich bekannter Organizer
+            desselben Tenants, jede Änderung ist protokolliert, und gelesen wird ausschliesslich
+            innerhalb des Tenants. <strong>Empfehlung:</strong> Umstellung auf einen Bereiniger mit
+            Freigabeliste.
+          </p>
+        </div>
+        <div class="note">
+          <p class="note-h">Ein Geheimnis ausserhalb der zentralen Schlüsselverwaltung</p>
+          <p>
+            Der Selbst-Check-in nutzt je Event einen Zufallswert, aus dem ein alle paar Sekunden
+            wechselnder Code für den Aushang berechnet wird. Der Wert liegt als Feld an der
+            Event-Zeile, nicht in der zentralen Schlüsselverwaltung. Er verschlüsselt keine Daten;
+            wer ihn kennt, könnte sich bei genau diesem Event einchecken. Er ist je Event verschieden
+            und durch Neuerzeugen wechselbar.
+          </p>
+        </div>
+        <div class="note">
+          <p class="note-h">E-Mail-Adressen in Adressen von Microsoft-Endpunkten</p>
+          <p>
+            Eigene Adressen der Anwendung tragen keine personenbezogenen Daten. An zwei Stellen
+            erscheint eine E-Mail-Adresse jedoch als Parameter in Adressen von Microsoft selbst: beim
+            Profilbild-Endpunkt von SharePoint und beim Teams-Chat-Link, den der Client lokal
+            verarbeitet. Beides sind die vorgesehenen Wege der Plattform, bleiben im Tenant und laufen
+            über TLS.
+          </p>
+        </div>
+        <div class="note">
+          <p class="note-h">Abhängigkeiten sind nicht bewertet</p>
+          <p>
+            Die Anwendung bringt Fremdbibliotheken mit. Eine Abhängigkeitsprüfung meldet Funde mit
+            hoher und kritischer Einstufung; ein Teil davon betrifft Build-Werkzeuge, die nicht
+            ausgeliefert werden. Eine Bewertung, welche Funde tatsächlich im ausgelieferten Bundle
+            landen, steht aus — ebenso die Aufnahme in den Schwachstellen-Management-Dienst und ein
+            Sicherheitstest der Anwendung.
+          </p>
+        </div>
+
+        <h3>Was die Plattform trägt</h3>
+        <p>
+          Anmeldung, Mehrfaktor, Sitzungsdauer, Kontosperrung, Verschlüsselung im Ruhezustand und im
+          Transport, Schadcode-Prüfung hochgeladener Dateien und das Überwachungsprotokoll kommen von
+          Microsoft 365 im Deloitte-Tenant. DEX erbt sie und kann sie weder abschwächen noch umgehen —
+          die vollständige Zuordnung steht in der
+          <a href="security-requirements.html">Requirements-Matrix</a>.
+        </p>
       </section>
 
       <!-- ============ 14 ============ -->
@@ -1155,8 +1363,27 @@
         </ul>
       </section>
 
+      <section class="chapter" id="reqs">
+        <span class="chapno">Nachweis</span>
+        <h2>Security Requirements</h2>
+        <p class="lead">
+          Jedes Kapitel dieses Dokuments trägt oben die Anforderungen, die es belegt. Die Gegenrichtung
+          — Anforderung für Anforderung, mit Einordnung, Begründung und offenen Punkten — steht in der
+          Requirements-Matrix.
+        </p>
+        <p>
+          <a href="security-requirements.html"><strong>Zur Requirements-Matrix</strong></a> ·
+          <a href="downloads/DEX-Requirements-kommentiert.xlsx">dieselbe Bewertung als Excel</a>
+        </p>
+        <p>
+          Von 49 Anforderungen erfüllt die Anwendung 16 selbst, 11 erbt sie von der Plattform, 6
+          treffen auf diese Bauart nicht zu, 9 brauchen eine Bestätigung aus dem Betrieb und 7 sind
+          als Abweichung oder Restrisiko offengelegt.
+        </p>
+      </section>
+
       <footer class="end">
-        Diese Beschreibung gibt den Stand v29.9.0 wieder. Sie beschreibt das System so, wie es
+        Diese Beschreibung gibt den Stand v29.11.0 wieder. Sie beschreibt das System so, wie es
         gebaut ist, nicht wie es gemeint war — bei Abweichungen gilt der Code.
       </footer>
     </main>
