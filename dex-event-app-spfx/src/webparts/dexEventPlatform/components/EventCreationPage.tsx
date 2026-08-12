@@ -7360,6 +7360,26 @@ export default function EventCreationPage(): React.ReactElement {
               .dex-step-head-title { margin: -20px -16px 0; padding: 14px 16px 4px; }
               .dex-step-head-lead { margin: 0 -16px 16px; padding: 0 16px 12px; }
             }
+            /* v29.7: Zwischen-Trenner INNERHALB eines Schritts — gleicher
+               grüner Balken wie der Schritt-Kopf, nur ohne die runden Ecken
+               oben (die gehören dem Kartenanfang) und eine Spur kleiner, damit
+               der Schritt-Kopf die Überschrift bleibt. Der frühere Trenner war
+               eine graue Haarlinie mit Kleinschrift; die trennt zu leise für
+               den Themenwechsel „was ist das Event" → „woraus besteht es". */
+            .dex-step-sub-head {
+              margin: 32px -32px 0; padding: 13px 24px 3px;
+              background: var(--dex-green, #86bc25); color: #fff;
+              font-size: 1.1rem; font-weight: 700;
+            }
+            .dex-step-sub-lead {
+              margin: 0 -32px 20px; padding: 0 24px 13px;
+              background: var(--dex-green, #86bc25); color: rgba(255,255,255,0.95);
+              font-size: 0.85rem; line-height: 1.55;
+            }
+            @media (max-width: 768px) {
+              .dex-step-sub-head { margin: 24px -16px 0; padding: 12px 16px 3px; }
+              .dex-step-sub-lead { margin: 0 -16px 16px; padding: 0 16px 11px; }
+            }
             /* v22.36: Ausgefüllte Eingaben — pastellgrün wie auf der
                Anmeldeseite (Klasse wird per Sweep/Listener getoggelt). */
             .dex-filled:not(:focus) {
@@ -10046,18 +10066,22 @@ export default function EventCreationPage(): React.ReactElement {
                   direkt an das Bild-Feld an und las sich wie noch ein
                   Grundlagen-Feld — dabei beginnt hier ein anderes Thema:
                   nicht mehr WAS das Event ist, sondern WORAUS es besteht. */}
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 12,
-                margin: '28px 0 14px',
-              }}>
-                <span style={{
-                  fontSize: '0.78rem', fontWeight: 700, letterSpacing: '0.04em',
-                  textTransform: 'uppercase', color: 'var(--dex-gray-500)', whiteSpace: 'nowrap',
-                }}>
-                  {isDe ? 'Aufbau des Events' : 'How the event is structured'}
-                </span>
-                <span style={{ flex: 1, height: 1, background: 'var(--dex-gray-200, #e6e6e6)' }} />
-              </div>
+              {/* v29.7: …und dieser Schnitt ist jetzt derselbe grüne Balken wie
+                  der Schritt-Kopf. Als graue Haarlinie mit Kleinschrift war er
+                  optisch schwächer als die Feld-Beschriftungen darüber und
+                  darunter — das Auge nahm ihn als Beschriftung wahr, nicht als
+                  Themenwechsel. */}
+              <h3 className="dex-step-sub-head">
+                {isDe ? 'Aufbau des Events' : 'How the event is structured'}
+              </h3>
+              {/* Bewusst EIN Satz: Was ein Sub-Event ist, steht in der
+                  Erklär-Box unter dem Schalter — der Balken sagt nur, dass hier
+                  ein anderes Thema anfängt. */}
+              <p className="dex-step-sub-lead">
+                {isDe
+                  ? 'Oben steht, was dein Event ist — hier legst du fest, woraus es besteht.'
+                  : 'Above you described what your event is — here you define what it consists of.'}
+              </p>
 
               {/* v28.91: Schalter und Erklaerung gehoeren zusammen — die Frage
                   und die Antwort darauf, was ein Sub-Event ueberhaupt ist.
