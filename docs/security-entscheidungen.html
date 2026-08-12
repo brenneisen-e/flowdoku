@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Entscheidungsvorlage zu den sieben offengelegten Security-Punkten der DEX-Plattform.">
+<title>Sieben offene Sicherheitsfragen</title>
+<style>
+  :root {
+    --bg:#f6f7f3; --surface:#fff; --surface-2:#edefe7; --ink:#191d16; --ink-2:#454e40;
+    --muted:#6f7869; --line:#d8dccf; --line-strong:#b9c0ac;
+    --accent:#5b8a12; --accent-ink:#3f6108; --accent-soft:rgba(134,188,37,.14);
+    --warn:#9c5a06; --warn-soft:rgba(200,130,30,.12);
+    --stop:#a3312a; --stop-soft:rgba(163,49,42,.10);
+    --font-text:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+    --font-mono:"Cascadia Mono",Consolas,"SF Mono",ui-monospace,Menlo,monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#12140f; --surface:#1a1d16; --surface-2:#232820; --ink:#e9ece3; --ink-2:#bcc4b2;
+      --muted:#8d9584; --line:#2f3529; --line-strong:#454d3c;
+      --accent:#9fd23e; --accent-ink:#b6e05e; --accent-soft:rgba(159,210,62,.13);
+      --warn:#e2a253; --warn-soft:rgba(226,162,83,.12);
+      --stop:#e8837a; --stop-soft:rgba(232,131,122,.12);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#12140f; --surface:#1a1d16; --surface-2:#232820; --ink:#e9ece3; --ink-2:#bcc4b2;
+    --muted:#8d9584; --line:#2f3529; --line-strong:#454d3c;
+    --accent:#9fd23e; --accent-ink:#b6e05e; --accent-soft:rgba(159,210,62,.13);
+    --warn:#e2a253; --warn-soft:rgba(226,162,83,.12);
+    --stop:#e8837a; --stop-soft:rgba(232,131,122,.12);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-text);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 28px 96px}
+  header.mast{border-bottom:1px solid var(--line);padding:56px 0 30px;margin-bottom:34px}
+  .eyebrow{font-family:var(--font-mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 14px}
+  h1{font-size:clamp(1.9rem,4vw,2.7rem);line-height:1.07;letter-spacing:-.025em;margin:0 0 16px;text-wrap:balance}
+  .standfirst{font-size:1.06rem;color:var(--ink-2);max-width:64ch;margin:0 0 8px}
+  p{max-width:76ch;margin:0 0 12px}
+
+  .overview{border:1px solid var(--line);border-radius:4px;background:var(--surface);overflow-x:auto;margin:26px 0 40px}
+  table{border-collapse:collapse;width:100%;min-width:640px;font-size:.9rem}
+  th,td{text-align:left;padding:9px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  thead th{font-family:var(--font-mono);font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);font-weight:600;background:var(--surface-2);white-space:nowrap}
+  tbody tr:last-child td{border-bottom:0}
+  td.mono{font-family:var(--font-mono);font-size:.82rem;white-space:nowrap}
+  td a{color:var(--accent-ink);text-decoration:none;border-bottom:1px solid transparent}
+  td a:hover{border-bottom-color:currentColor}
+
+  .item{border:1px solid var(--line);border-radius:4px;background:var(--surface);margin-bottom:34px;overflow:hidden;scroll-margin-top:20px}
+  .item-head{padding:16px 20px 14px;border-bottom:1px solid var(--line);background:var(--surface-2)}
+  .item-no{font-family:var(--font-mono);font-size:11px;letter-spacing:.12em;color:var(--accent-ink);display:block;margin-bottom:5px}
+  .item h2{font-size:1.24rem;letter-spacing:-.015em;line-height:1.25;margin:0 0 8px;text-wrap:balance}
+  .ids{display:inline-flex;flex-wrap:wrap;gap:5px}
+  .ids span{font-family:var(--font-mono);font-size:10px;padding:1px 6px;border:1px solid var(--line-strong);border-radius:3px;color:var(--ink-2)}
+  .item-body{padding:18px 20px 20px}
+
+  .q{font-size:1.02rem;font-weight:650;color:var(--ink);border-left:3px solid var(--accent);padding-left:14px;margin:0 0 18px;max-width:70ch}
+  h3{font-size:.82rem;font-family:var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:22px 0 8px;font-weight:600}
+  h3:first-of-type{margin-top:0}
+  .opts{border:1px solid var(--line);border-radius:3px;overflow-x:auto}
+  .opts table{min-width:560px;font-size:.87rem}
+  .opts td:first-child{font-weight:650;white-space:nowrap;width:1%}
+  .rec{background:var(--accent-soft)}
+  .rec td:first-child::after{content:" ✓";color:var(--accent-ink)}
+  ul{max-width:76ch;padding-left:20px;margin:0 0 12px}
+  li{margin-bottom:6px}
+  .meta{display:flex;flex-wrap:wrap;gap:0;margin-top:20px;border:1px solid var(--line);border-radius:3px;overflow:hidden}
+  .meta div{flex:1 1 auto;min-width:160px;padding:10px 14px;border-right:1px solid var(--line)}
+  .meta div:last-child{border-right:0}
+  .meta dt{font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0 0 3px}
+  .meta dd{margin:0;font-size:.88rem;font-weight:600}
+  .box{border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:3px;padding:12px 16px;margin:16px 0 0;background:var(--surface);max-width:76ch}
+  .box .bh{font-family:var(--font-mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--warn);margin:0 0 5px}
+  .box p{margin:0;font-size:.9rem}
+  .box.stop{border-left-color:var(--stop)} .box.stop .bh{color:var(--stop)}
+  footer.end{border-top:1px solid var(--line);margin-top:44px;padding-top:20px;font-size:.85rem;color:var(--muted);max-width:76ch}
+  a{color:var(--accent-ink)}
+  @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+<header class="mast">
+  <p class="eyebrow">DEX · Security Requirements · Entscheidungsvorlage</p>
+  <h1>Sieben Punkte, zu denen wir uns entscheiden müssen</h1>
+  <p class="standfirst">
+    Von 49 Anforderungen sind sieben als Abweichung oder Restrisiko offengelegt. Sechs davon sind
+    echte Entscheidungen, eine ist eine Rückfrage an GTS. Zu jedem Punkt: die Frage, die Optionen
+    mit ihren Folgen, eine Empfehlung — und was wir vor der Entscheidung noch wissen müssen.
+  </p>
+</header>
+
+<div class="overview">
+  <table>
+    <thead>
+      <tr><th>Nr.</th><th>Thema</th><th class="mono">Req.</th><th>Zu entscheiden</th><th>Aufwand, wenn wir handeln</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>1</td><td><a href="#p1">HTML von Organizern</a></td><td class="mono"><a href="security-requirements.html#GSD-02">GSD-02</a></td><td>Freigabeliste bauen, Funktion beschneiden oder Risiko annehmen</td><td>2–4 Tage</td></tr>
+      <tr><td>2</td><td><a href="#p2">Abhängigkeiten</a></td><td class="mono"><a href="security-requirements.html#GSI-06">GSI-06</a></td><td>Wer bewertet, und aktualisieren wir</td><td>1 Tag Analyse, Rest offen</td></tr>
+      <tr><td>3</td><td><a href="#p3">Selbst-Check-in</a></td><td class="mono"><a href="security-requirements.html#GSC-03">GSC-03</a> · <a href="security-requirements.html#GSC-06">GSC-06</a></td><td>Verfahren behalten, härten oder Funktion abschalten</td><td>0 bis 2 Tage</td></tr>
+      <tr><td>4</td><td><a href="#p4">Änderungsprotokoll</a></td><td class="mono"><a href="security-requirements.html#GAU-05">GAU-05</a></td><td>Reicht die Versionshistorie als Nachweis</td><td>0 oder 3–4 Tage</td></tr>
+      <tr><td>5</td><td><a href="#p5">Zeitformat</a></td><td class="mono"><a href="security-requirements.html#GAU-03">GAU-03</a></td><td>Rückfrage an GTS — keine Entscheidung von uns</td><td>0 oder 0,5 Tage</td></tr>
+      <tr><td>6</td><td><a href="#p6">Sicherheitshinweis</a></td><td class="mono"><a href="security-requirements.html#GAC-14">GAC-14</a></td><td>Reicht der Tenant-Hinweis</td><td>0,5 bis 1,5 Tage</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ============================================================= 1 -->
+<article class="item" id="p1">
+  <div class="item-head">
+    <span class="item-no">Punkt 1 · höchste Priorität</span>
+    <h2>HTML, das Organizer erfassen, wird unmaskiert angezeigt</h2>
+    <div class="ids"><a href="security-requirements.html#GSD-02">GSD-02</a><a href="security-requirements.html#GSA-04">GSA-04</a></div>
+  </div>
+  <div class="item-body">
+    <p class="q">
+      Bauen wir eine Freigabeliste, beschneiden wir die Formatierung — oder nehmen wir das Risiko
+      begründet an?
+    </p>
+
+    <h3>Worum es geht</h3>
+    <p>
+      Beschreibungen, Feldtexte und Mailvorlagen erfassen Organizer in einem Rich-Text-Editor. Die
+      Anwendung gibt dieses HTML an fünf Stellen unmaskiert aus und entfernt vorher Skriptblöcke,
+      Ereignis-Attribute und <code>javascript:</code>-Verweise. Das ist eine <strong>Ausschlussliste</strong>:
+      Sie kennt die bekannten Angriffsformen und lässt alles übrige durch. Eine Freigabeliste macht es
+      umgekehrt — sie erlaubt eine feste Menge Tags und wirft den Rest weg.
+    </p>
+    <p>
+      Wer Schaden anrichten will, muss angemeldeter Organizer sein, wird namentlich protokolliert, und
+      erreicht nur Kolleginnen und Kollegen im selben Tenant. Das ist kein Angriff aus dem Internet —
+      aber es ist der Punkt, den ein Sicherheitstest zuerst findet.
+    </p>
+
+    <h3>Optionen</h3>
+    <div class="opts"><table><tbody>
+      <tr class="rec">
+        <td>A — Freigabeliste, selbst gebaut</td>
+        <td>Eine feste Tag-Liste, alles andere wird entfernt. Kein zusätzliches Paket, damit kein
+          Konflikt mit Punkt 2. Muss an den fünf Ausgabestellen <em>und</em> im Mailweg greifen.
+          Bestandsinhalte einmal gegenprüfen, damit keine Formatierung verloren geht.</td>
+      </tr>
+      <tr>
+        <td>B — Fertiges Paket</td>
+        <td>Ausgereifter und gepflegt, aber eine weitere Abhängigkeit im Bundle — und die stehen
+          gerade selbst zur Diskussion.</td>
+      </tr>
+      <tr>
+        <td>C — Rich-Text zurückbauen</td>
+        <td>Nur noch das Markdown-Subset, das für Alt-Beschreibungen ohnehin existiert (fett, Links,
+          Zeilenumbrüche). Sicherste und billigste Variante — kostet Organizer aber Formatierung, die
+          sie heute haben.</td>
+      </tr>
+      <tr>
+        <td>D — Risiko annehmen</td>
+        <td>Begründung: nur Organizer, protokolliert, tenant-intern. Kostet nichts, bleibt aber als
+          Befund im Sicherheitstest stehen.</td>
+      </tr>
+    </tbody></table></div>
+
+    <h3>Was wir vorher wissen müssen</h3>
+    <ul>
+      <li><strong>Welche Formatierung brauchen Organizer wirklich?</strong> Das ist die eine Frage, die
+        die Freigabeliste definiert. Kandidaten: fett, kursiv, Absatz, Zeilenumbruch, Aufzählung,
+        Link, Überschrift. Strittig: Bilder, Tabellen, eigene Farben und Schriftgrößen.</li>
+      <li>Gilt dieselbe Liste für Mailvorlagen? Dort ist der Bedarf erfahrungsgemäß größer.</li>
+    </ul>
+
+    <div class="meta">
+      <div><dt>Empfehlung</dt><dd>A, mit knapper Tag-Liste</dd></div>
+      <div><dt>Wer entscheidet</dt><dd>Projekt (Tag-Liste), GTS (Verfahren)</dd></div>
+      <div><dt>Aufwand</dt><dd>2–4 Tage</dd></div>
+    </div>
+  </div>
+</article>
+
+<!-- ============================================================= 2 -->
+<article class="item" id="p2">
+  <div class="item-head">
+    <span class="item-no">Punkt 2 · derzeit nicht erfüllt</span>
+    <h2>Die mitgelieferten Bibliotheken sind nicht bewertet</h2>
+    <div class="ids"><a href="security-requirements.html#GSI-06">GSI-06</a><a href="security-requirements.html#GCM-01">GCM-01</a></div>
+  </div>
+  <div class="item-body">
+    <p class="q">
+      Wer bewertet die Funde — und aktualisieren wir, obwohl die Werkzeugkette daran hängt?
+    </p>
+
+    <h3>Worum es geht</h3>
+    <p>
+      Die Abhängigkeitsprüfung meldet 62 Funde im Produktionsbaum, davon 2 kritisch und 22 hoch. Ein
+      erheblicher Teil betrifft Werkzeuge, die nur beim Bauen laufen und nie im Browser landen —
+      das mindert die Wirkung, ersetzt aber keine Bewertung.
+    </p>
+    <p>
+      Der Haken: Die SPFx-Werkzeugkette schreibt Versionen von TypeScript, React und Build-Werkzeugen
+      fest. Ein pauschales Aktualisieren zerlegt den Build. Aktualisieren heißt hier deshalb fast
+      immer: die SPFx-Version anheben — ein eigenes Vorhaben mit Regressionstest der ganzen Anwendung.
+    </p>
+
+    <h3>Optionen</h3>
+    <div class="opts"><table><tbody>
+      <tr class="rec">
+        <td>A — Erst trennen, dann bewerten</td>
+        <td>Ermitteln, welche der gemeldeten Pakete tatsächlich im ausgelieferten Bundle landen. Diese
+          Liste ist meist deutlich kürzer und lässt sich einzeln behandeln. Danach Aufnahme in den
+          Schwachstellen-Management-Dienst mit belastbarer Grundlage.</td>
+      </tr>
+      <tr>
+        <td>B — Sofort anmelden, dann sehen</td>
+        <td>Schneller formal erfüllt, erzeugt aber eine lange Fundliste, die zum großen Teil
+          Build-Werkzeuge betrifft — viel Abstimmungsaufwand für wenig Wirkung.</td>
+      </tr>
+      <tr>
+        <td>C — SPFx-Version anheben</td>
+        <td>Löst einen großen Teil auf einen Schlag. Eigenes Vorhaben, mehrere Wochen, mit
+          vollständigem Durchtesten. Kein Kandidat für nebenbei.</td>
+      </tr>
+    </tbody></table></div>
+
+    <h3>Was wir vorher wissen müssen</h3>
+    <ul>
+      <li>Welche Pakete sind wirklich im Bundle? <strong>Das kann ich ermitteln</strong> — Analyse des
+        ausgelieferten Bündels gegen die Fundliste, etwa ein Tag.</li>
+      <li>Verlangt der Dienst die Anmeldung des Repositories oder des laufenden Systems? Bei einer
+        Anwendung ohne Server ist das nicht selbsterklärend.</li>
+    </ul>
+
+    <div class="box stop">
+      <p class="bh">Ehrlich zum Status</p>
+      <p>
+        Solange dieser Punkt offen ist, ist die Anforderung <strong>nicht erfüllt</strong> — anders
+        als die übrigen sechs, die Abweichungen mit Begründung sind. Er gehört als erster in die
+        Planung, auch wenn Punkt 1 sichtbarer ist.
+      </p>
+    </div>
+
+    <div class="meta">
+      <div><dt>Empfehlung</dt><dd>A, danach entscheiden</dd></div>
+      <div><dt>Wer entscheidet</dt><dd>Projekt + GTS gemeinsam</dd></div>
+      <div><dt>Aufwand</dt><dd>1 Tag Analyse, Rest danach</dd></div>
+    </div>
+  </div>
+</article>
+
+<!-- ============================================================= 3 -->
+<article class="item" id="p3">
+  <div class="item-head">
+    <span class="item-no">Punkt 3</span>
+    <h2>Das Geheimnis des Selbst-Check-ins liegt nicht in der zentralen Schlüsselverwaltung</h2>
+    <div class="ids"><a href="security-requirements.html#GSC-03">GSC-03</a><a href="security-requirements.html#GSC-06">GSC-06</a></div>
+  </div>
+  <div class="item-body">
+    <p class="q">
+      Behalten wir das Verfahren, härten wir es — oder schalten wir die Funktion ab, falls sie kaum
+      genutzt wird?
+    </p>
+
+    <h3>Worum es geht</h3>
+    <p>
+      Je Event liegt ein Zufallswert an der Event-Zeile. Daraus berechnet die Anwendung einen alle
+      paar Sekunden wechselnden Code für den Aushang am Eingang; wer ihn scannt, checkt sich selbst
+      ein. Es ist kein Schlüssel für Daten — wer ihn kennt, kann sich bei genau diesem einen Event
+      einchecken, sonst nichts. Er ist je Event verschieden und durch Neuerzeugen wechselbar.
+    </p>
+
+    <h3>Optionen</h3>
+    <div class="opts"><table><tbody>
+      <tr class="rec">
+        <td>A — Behalten, Wirkung dokumentieren</td>
+        <td>Nichts zu bauen. Die Begründung steht bereits in der Sicherheitsbetrachtung: begrenzte
+          Wirkung, je Event getrennt, wechselbar.</td>
+      </tr>
+      <tr>
+        <td>B — Bei jeder Aktivierung neu erzeugen</td>
+        <td>Verkürzt die Lebensdauer des Geheimnisses auf die Dauer eines Events. Kleiner Eingriff,
+          nimmt der Diskussion die Spitze.</td>
+      </tr>
+      <tr>
+        <td>C — Funktion abschalten</td>
+        <td>Nur sinnvoll, wenn kaum ein Event sie nutzt. Dann verschwindet das Thema ersatzlos.</td>
+      </tr>
+    </tbody></table></div>
+
+    <h3>Was wir vorher wissen müssen</h3>
+    <ul>
+      <li><strong>Wie viele Events nutzen den Selbst-Check-in überhaupt?</strong> Diese eine Zahl
+        entscheidet zwischen A/B und C. Sie steht in den Event-Einstellungen und lässt sich im
+        Organizer Center auszählen.</li>
+      <li>Gibt es eine Vorgabe, dass jedes geteilte Geheimnis in KCM gehört — auch eines, das keine
+        Daten schützt? Das ist eine Frage an GTS.</li>
+    </ul>
+
+    <div class="meta">
+      <div><dt>Empfehlung</dt><dd>Erst zählen. Dann A oder C</dd></div>
+      <div><dt>Wer entscheidet</dt><dd>Projekt, Rückfrage an GTS</dd></div>
+      <div><dt>Aufwand</dt><dd>0 · B: 0,5 Tage · C: 1 Tag</dd></div>
+    </div>
+  </div>
+</article>
+
+<!-- ============================================================= 4 -->
+<article class="item" id="p4">
+  <div class="item-head">
+    <span class="item-no">Punkt 4</span>
+    <h2>Das Änderungsprotokoll ist nicht technisch schreibgeschützt</h2>
+    <div class="ids"><a href="security-requirements.html#GAU-05">GAU-05</a></div>
+  </div>
+  <div class="item-body">
+    <p class="q">
+      Reichen Versionshistorie und Tenant-Überwachung als Nachweis — oder muss das Protokoll
+      manipulationssicher sein?
+    </p>
+
+    <h3>Worum es geht</h3>
+    <p>
+      Fachliche Vorgänge schreibt die Anwendung in eine SharePoint-Liste. Lesen und Löschen sind auf
+      Admins beschränkt, aber die Liste ist nicht technisch nur-anfügend: Ein Admin könnte einen
+      Eintrag ändern. Nachweisbar bliebe das über die Versionshistorie der Liste und das
+      Überwachungsprotokoll des Tenants — beides außerhalb der Reichweite der Anwendung.
+    </p>
+
+    <h3>Optionen</h3>
+    <div class="opts"><table><tbody>
+      <tr class="rec">
+        <td>A — Reicht so</td>
+        <td>Begründung: Das Protokoll ist eine fachliche Nachvollziehbarkeit, keine
+          Sicherheitsprotokollierung im engeren Sinn. Sicherheitsereignisse liegen ohnehin im
+          Überwachungsprotokoll von Microsoft 365, und dort greift niemand aus dem Projekt hin.</td>
+      </tr>
+      <tr>
+        <td>B — Schreibrecht entziehen</td>
+        <td>Die Anwendung schreibt nicht mehr direkt, sondern über eine Warteschlange; nur die
+          Flow-Identität darf in die Protokollliste schreiben. Das Muster gibt es schon — aber jeder
+          Protokollaufruf müsste umgestellt werden, und Einträge kämen dann verzögert an.</td>
+      </tr>
+      <tr>
+        <td>C — Nach GEMS spiegeln</td>
+        <td>Erfüllt die Anforderung am deutlichsten, verlangt aber einen Weg aus SharePoint in die
+          zentrale Protokollverarbeitung. Nur sinnvoll, wenn GTS das ausdrücklich verlangt.</td>
+      </tr>
+    </tbody></table></div>
+
+    <h3>Was wir vorher wissen müssen</h3>
+    <ul>
+      <li>Zählt dieses Protokoll für GTS als Sicherheitsprotokoll oder als Fachprotokoll? Davon hängt
+        die Antwort vollständig ab.</li>
+    </ul>
+
+    <div class="meta">
+      <div><dt>Empfehlung</dt><dd>A, mit B als Rückfallebene</dd></div>
+      <div><dt>Wer entscheidet</dt><dd>GTS</dd></div>
+      <div><dt>Aufwand</dt><dd>0 · B: 3–4 Tage</dd></div>
+    </div>
+  </div>
+</article>
+
+<!-- ============================================================= 5 -->
+<article class="item" id="p5">
+  <div class="item-head">
+    <span class="item-no">Punkt 5 · keine Entscheidung von uns</span>
+    <h2>Zeitstempel stehen im ISO-Format statt im geforderten</h2>
+    <div class="ids"><a href="security-requirements.html#GAU-03">GAU-03</a></div>
+  </div>
+  <div class="item-body">
+    <p class="q">
+      Akzeptiert GTS ISO 8601 in UTC — oder brauchen wir das vorgegebene Format zusätzlich?
+    </p>
+
+    <h3>Worum es geht</h3>
+    <p>
+      Gefordert ist <code>yyyymmdd-hhmmss</code>. Gespeichert wird <code>2026-08-12T09:14:22Z</code> —
+      das native Datumsformat von SharePoint. Es enthält dieselbe Information, ist sortierbar,
+      eindeutig und trägt die Zeitzone ausdrücklich mit. Umformatieren ließe sich nur in einer
+      Auswertung, nicht in der Speicherung: Eine SharePoint-Datumsspalte bestimmt ihr Format selbst.
+    </p>
+
+    <h3>Optionen</h3>
+    <div class="opts"><table><tbody>
+      <tr class="rec">
+        <td>A — Nachfragen und akzeptieren lassen</td>
+        <td>Kostet ein Gespräch. Die Abweichung ist inhaltlich keine.</td>
+      </tr>
+      <tr>
+        <td>B — Zusätzliche Textspalte</td>
+        <td>Beim Schreiben eines Protokolleintrags zusätzlich das geforderte Format ablegen. Klein,
+          aber es entstehen zwei Zeitangaben je Zeile, die auseinanderlaufen können — genau die Sorte
+          Doppelung, die anderswo Fehler erzeugt.</td>
+      </tr>
+    </tbody></table></div>
+
+    <div class="box">
+      <p class="bh">Reihenfolge</p>
+      <p>
+        Dieser Punkt ist der billigste von allen und braucht nur eine Antwort. Ihn zuerst zu klären
+        kostet nichts und nimmt einen Eintrag aus der Liste.
+      </p>
+    </div>
+
+    <div class="meta">
+      <div><dt>Empfehlung</dt><dd>A</dd></div>
+      <div><dt>Wer entscheidet</dt><dd>GTS</dd></div>
+      <div><dt>Aufwand</dt><dd>0 · B: 0,5 Tage</dd></div>
+    </div>
+  </div>
+</article>
+
+<!-- ============================================================= 6 -->
+<article class="item" id="p6">
+  <div class="item-head">
+    <span class="item-no">Punkt 6</span>
+    <h2>Vor dem Zugang steht kein Sicherheitshinweis in der Anwendung</h2>
+    <div class="ids"><a href="security-requirements.html#GAC-14">GAC-14</a></div>
+  </div>
+  <div class="item-body">
+    <p class="q">
+      Reicht der Hinweis beim Tenant-Login, oder soll DEX ihn wiederholen?
+    </p>
+
+    <h3>Worum es geht</h3>
+    <p>
+      Gefordert sind drei Aussagen vor dem Zugang: Nutzung kann überwacht werden, Nutzung gilt als
+      Einwilligung, unbefugte Nutzung ist untersagt und strafbewehrt. DEX hat keinen eigenen Zugang —
+      wer die Seite öffnet, ist bereits am Tenant angemeldet und hat dessen Hinweis gesehen. Es gibt
+      Nutzungsbedingungen als Seite in der Anwendung, aber keinen Hinweis vor der Nutzung.
+    </p>
+
+    <h3>Optionen</h3>
+    <div class="opts"><table><tbody>
+      <tr>
+        <td>A — Tenant-Hinweis genügt</td>
+        <td>Begründung: kein eigener Zugang, kein zweiter Anmeldevorgang. Kostet nichts, kann aber im
+          Review wieder aufkommen.</td>
+      </tr>
+      <tr class="rec">
+        <td>B — Hinweis in den Nutzungsbedingungen und in der Fußzeile</td>
+        <td>Die drei Aussagen dort ergänzen, wo sie hingehören, und dauerhaft sichtbar verlinken.
+          Sehr kleiner Eingriff, nimmt die Diskussion vorweg.</td>
+      </tr>
+      <tr>
+        <td>C — Einblendung beim ersten Öffnen</td>
+        <td>Erfüllt den Wortlaut am deutlichsten („vor dem Zugang“), muss je Person einmal bestätigt
+          und gespeichert werden. Aufwendiger und für die Nutzer eine zusätzliche Hürde bei einer
+          Anwendung, die nur intern erreichbar ist.</td>
+      </tr>
+    </tbody></table></div>
+
+    <h3>Was wir vorher wissen müssen</h3>
+    <ul>
+      <li>Legt GTS „vor dem Zugang“ wörtlich aus — also je Anwendung — oder genügt der Hinweis bei der
+        Anmeldung am Tenant?</li>
+    </ul>
+
+    <div class="meta">
+      <div><dt>Empfehlung</dt><dd>B</dd></div>
+      <div><dt>Wer entscheidet</dt><dd>GTS, Umsetzung Projekt</dd></div>
+      <div><dt>Aufwand</dt><dd>B: 0,5 Tage · C: 1,5 Tage</dd></div>
+    </div>
+  </div>
+</article>
+
+<!-- ============================================================= Vorschlag -->
+<article class="item" id="vorgehen">
+  <div class="item-head">
+    <span class="item-no">Vorschlag</span>
+    <h2>In welcher Reihenfolge</h2>
+  </div>
+  <div class="item-body">
+    <p>
+      Drei der sechs Punkte kosten uns nichts außer einer Antwort von GTS. Die zuerst zu stellen räumt
+      die Liste zur Hälfte, bevor wir Aufwand einplanen.
+    </p>
+    <ul>
+      <li><strong>Sofort fragen, nichts bauen:</strong> Zeitformat (Punkt 5), Änderungsprotokoll
+        (Punkt 4), Auslegung des Sicherheitshinweises (Punkt 6).</li>
+      <li><strong>Selbst klären, eine Zahl genügt:</strong> Wie viele Events nutzen den
+        Selbst-Check-in (Punkt 3).</li>
+      <li><strong>Analyse beauftragen:</strong> Welche Pakete landen wirklich im Bundle (Punkt 2) —
+        das ist die Voraussetzung für jede sinnvolle Aussage zu den Abhängigkeiten.</li>
+      <li><strong>Fachlich entscheiden:</strong> Welche Formatierung Organizer brauchen (Punkt 1).
+        Ohne diese Antwort lässt sich die Freigabeliste nicht schreiben.</li>
+    </ul>
+    <div class="box">
+      <p class="bh">Was nicht wartet</p>
+      <p>
+        Punkt 2 ist der einzige, bei dem die Anforderung heute <strong>nicht erfüllt</strong> ist.
+        Punkt 1 ist der, den ein Sicherheitstest zuerst findet. Alles andere sind Abweichungen mit
+        Begründung — unangenehm im Review, aber verhandelbar.
+      </p>
+    </div>
+  </div>
+</article>
+
+<footer class="end">
+  Grundlage: Bewertung der 49 System Security Requirements gegen Stand v29.11.0. Aufwände sind
+  Schätzungen für Umsetzung samt Test, ohne Abstimmungszeit.
+</footer>
+</div>
+
+</body>
+</html>
