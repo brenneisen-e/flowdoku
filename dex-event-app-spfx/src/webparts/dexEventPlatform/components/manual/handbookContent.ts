@@ -29,6 +29,7 @@ import { rolesSection } from './sections/roles';
 import { templatesSection } from './sections/templates';
 import { idReorderSection } from './sections/idReorder';
 import { waitlistSection } from './sections/waitlist';
+import { architectureSection } from './sections/architecture';
 import { flowsSection } from './sections/flows';
 import { faqSection } from './sections/faq';
 import { ticketsSection } from './sections/tickets';
@@ -72,6 +73,7 @@ export function getManualSections(locale: Locale): ManualSection[] {
     templatesReseedSection(locale),
     idReorderSection(locale),
     waitlistSection(locale),
+    architectureSection(locale),
     flowsSection(locale),
     ticketsSection(locale),
     faqSection(locale),
