@@ -1,0 +1,1167 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Architektur der DEX Event Experience Platform: SPFx-Webpart, SharePoint-Listen und Power-Automate-Flows.">
+<title>DEX Systemarchitektur</title>
+<style>
+  :root {
+    --bg: #f6f7f3;
+    --surface: #ffffff;
+    --surface-2: #edefe7;
+    --ink: #191d16;
+    --ink-2: #454e40;
+    --muted: #6f7869;
+    --line: #d8dccf;
+    --line-strong: #b9c0ac;
+    --accent: #5b8a12;
+    --accent-ink: #3f6108;
+    --accent-soft: rgba(134, 188, 37, 0.15);
+    --async: #9c5a06;
+    --async-soft: rgba(200, 130, 30, 0.13);
+    --ext: #2c637f;
+    --ext-soft: rgba(44, 99, 127, 0.11);
+    --shadow: 0 1px 2px rgba(25, 29, 22, .05), 0 8px 24px -16px rgba(25, 29, 22, .35);
+    --font-text: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --font-mono: "Cascadia Mono", Consolas, "SF Mono", ui-monospace, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12140f;
+      --surface: #1a1d16;
+      --surface-2: #232820;
+      --ink: #e9ece3;
+      --ink-2: #bcc4b2;
+      --muted: #8d9584;
+      --line: #2f3529;
+      --line-strong: #454d3c;
+      --accent: #9fd23e;
+      --accent-ink: #b6e05e;
+      --accent-soft: rgba(159, 210, 62, 0.14);
+      --async: #e2a253;
+      --async-soft: rgba(226, 162, 83, 0.13);
+      --ext: #7fb8da;
+      --ext-soft: rgba(127, 184, 218, 0.12);
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 28px -18px rgba(0, 0, 0, .9);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12140f;
+    --surface: #1a1d16;
+    --surface-2: #232820;
+    --ink: #e9ece3;
+    --ink-2: #bcc4b2;
+    --muted: #8d9584;
+    --line: #2f3529;
+    --line-strong: #454d3c;
+    --accent: #9fd23e;
+    --accent-ink: #b6e05e;
+    --accent-soft: rgba(159, 210, 62, 0.14);
+    --async: #e2a253;
+    --async-soft: rgba(226, 162, 83, 0.13);
+    --ext: #7fb8da;
+    --ext-soft: rgba(127, 184, 218, 0.12);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 28px -18px rgba(0, 0, 0, .9);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-text);
+    font-size: 16px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 0 28px 96px; }
+
+  /* ---------- Kopf ---------- */
+  header.masthead {
+    border-bottom: 1px solid var(--line);
+    padding: 56px 0 32px;
+    margin-bottom: 40px;
+  }
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 14px;
+  }
+  h1 {
+    font-size: clamp(2rem, 4.4vw, 3.1rem);
+    line-height: 1.06;
+    letter-spacing: -.025em;
+    font-weight: 700;
+    margin: 0 0 18px;
+    text-wrap: balance;
+  }
+  .standfirst {
+    font-size: 1.12rem;
+    color: var(--ink-2);
+    max-width: 62ch;
+    margin: 0 0 26px;
+  }
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    overflow: hidden;
+    background: var(--surface);
+  }
+  .facts div {
+    padding: 12px 18px;
+    border-right: 1px solid var(--line);
+    flex: 1 1 auto;
+    min-width: 150px;
+  }
+  .facts div:last-child { border-right: 0; }
+  .facts dt {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 3px;
+  }
+  .facts dd { margin: 0; font-size: .93rem; font-weight: 600; }
+
+  /* ---------- Layout ---------- */
+  .cols { display: block; }
+  @media (min-width: 1040px) {
+    .cols { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: 56px; align-items: start; }
+    nav.toc { position: sticky; top: 28px; max-height: calc(100vh - 56px); overflow-y: auto; }
+  }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; counter-reset: ch; }
+  nav.toc li { counter-increment: ch; }
+  nav.toc a {
+    display: grid;
+    grid-template-columns: 26px 1fr;
+    gap: 6px;
+    padding: 5px 0;
+    color: var(--ink-2);
+    text-decoration: none;
+    font-size: .875rem;
+    line-height: 1.35;
+    border-bottom: 1px solid transparent;
+  }
+  nav.toc a::before {
+    content: counter(ch, decimal-leading-zero);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+    padding-top: 2px;
+  }
+  nav.toc a:hover, nav.toc a:focus-visible { color: var(--accent-ink); }
+  nav.toc a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  nav.toc .toc-head {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  /* ---------- Kapitel ---------- */
+  section.chapter { padding-top: 12px; margin-bottom: 60px; scroll-margin-top: 24px; }
+  section.chapter > h2 {
+    font-size: 1.62rem;
+    letter-spacing: -.018em;
+    line-height: 1.2;
+    margin: 0 0 6px;
+    text-wrap: balance;
+  }
+  .chapno {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: .12em;
+    color: var(--accent-ink);
+    display: block;
+    margin-bottom: 8px;
+  }
+  section.chapter > h3 {
+    font-size: 1.03rem;
+    margin: 30px 0 8px;
+    letter-spacing: -.008em;
+  }
+  p { max-width: 74ch; margin: 0 0 14px; }
+  ul, ol { max-width: 74ch; padding-left: 20px; }
+  li { margin-bottom: 7px; }
+  code {
+    font-family: var(--font-mono);
+    font-size: .86em;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: .08em .34em;
+    white-space: nowrap;
+  }
+  strong { font-weight: 650; }
+  a { color: var(--accent-ink); }
+
+  .lead {
+    font-size: 1.02rem;
+    color: var(--ink-2);
+    border-left: 2px solid var(--accent);
+    padding-left: 16px;
+    margin: 0 0 24px;
+    max-width: 70ch;
+  }
+
+  /* ---------- Tabellen ---------- */
+  .tablewrap { overflow-x: auto; margin: 18px 0 22px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 620px; font-size: .9rem; }
+  th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+    background: var(--surface-2);
+    white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.mono, th.mono { font-family: var(--font-mono); font-size: .82rem; white-space: nowrap; }
+  .tag {
+    display: inline-block;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+  .t-sync { color: var(--accent-ink); border-color: var(--accent); background: var(--accent-soft); }
+  .t-queue { color: var(--async); border-color: var(--async); background: var(--async-soft); }
+  .t-ext { color: var(--ext); border-color: var(--ext); background: var(--ext-soft); }
+
+  /* ---------- Figuren ---------- */
+  figure { margin: 26px 0 30px; }
+  .figframe {
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--surface);
+    padding: 20px 18px 14px;
+    overflow-x: auto;
+    box-shadow: var(--shadow);
+  }
+  .figframe svg { display: block; min-width: 760px; width: 100%; height: auto; }
+  figcaption {
+    font-size: .86rem;
+    color: var(--muted);
+    margin-top: 12px;
+    max-width: 78ch;
+  }
+  figcaption b { color: var(--ink-2); font-weight: 650; }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+    font-size: .8rem;
+    color: var(--ink-2);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; }
+  .legend svg { min-width: 0; width: 34px; height: 10px; flex: none; }
+
+  .svg-text { font-family: var(--font-text); }
+  .svg-mono { font-family: var(--font-mono); }
+
+  /* ---------- Merkkästen ---------- */
+  .note {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--async);
+    background: var(--surface);
+    border-radius: 3px;
+    padding: 14px 18px;
+    margin: 20px 0;
+    max-width: 74ch;
+  }
+  .note p:last-child { margin-bottom: 0; }
+  .note .note-h {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--async);
+    margin: 0 0 6px;
+  }
+  .note.good { border-left-color: var(--accent); }
+  .note.good .note-h { color: var(--accent-ink); }
+
+  footer.end {
+    border-top: 1px solid var(--line);
+    margin-top: 60px;
+    padding-top: 22px;
+    font-size: .85rem;
+    color: var(--muted);
+    max-width: 74ch;
+  }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+</head>
+<body>
+<div class="wrap">
+  <header class="masthead">
+    <p class="eyebrow">DEX Event Experience Platform · Architekturdokumentation</p>
+    <h1>Wie die App, die SharePoint-Listen und die Flows zusammenhängen</h1>
+    <p class="standfirst">
+      DEX hat keinen eigenen Server. Die gesamte Anwendung läuft als SPFx-Webpart im Browser
+      des Nutzers, hält ihre Daten in SharePoint-Listen und lässt alles, was der Browser nicht
+      selbst darf — Mails, Kalendereinträge, Rechte —, von Power-Automate-Flows über
+      Warteschlangen erledigen. Dieses Dokument beschreibt diese drei Schichten und die Wege
+      dazwischen.
+    </p>
+    <dl class="facts">
+      <div><dt>Stand</dt><dd>v29.9.0</dd></div>
+      <div><dt>Laufzeit</dt><dd>SPFx · React · TypeScript</dd></div>
+      <div><dt>Datenhaltung</dt><dd>SharePoint Online</dd></div>
+      <div><dt>Automatisierung</dt><dd>7 Power-Automate-Flows</dd></div>
+      <div><dt>Server-Komponente</dt><dd>keine</dd></div>
+    </dl>
+  </header>
+
+  <div class="cols">
+    <nav class="toc" aria-label="Kapitel">
+      <p class="toc-head">Kapitel</p>
+      <ol>
+        <li><a href="#k1">Das Systembild</a></li>
+        <li><a href="#k2">Wo der Code läuft</a></li>
+        <li><a href="#k3">Die Datenhaltung</a></li>
+        <li><a href="#k4">Eine Subsite je Event</a></li>
+        <li><a href="#k5">Die Zugriffsschicht im Code</a></li>
+        <li><a href="#k6">Warteschlangen statt Aufrufe</a></li>
+        <li><a href="#k7">Die sieben Flows</a></li>
+        <li><a href="#k8">Ablauf: Anmeldung</a></li>
+        <li><a href="#k9">Ablauf: Event anlegen</a></li>
+        <li><a href="#k10">Ablauf: Abmelden &amp; Nachrücken</a></li>
+        <li><a href="#k11">Ablauf: Absage aus Outlook</a></li>
+        <li><a href="#k12">Wo die Wahrheit liegt</a></li>
+        <li><a href="#k13">Schutz und Aufbewahrung</a></li>
+        <li><a href="#k14">Anhang: Konventionen</a></li>
+      </ol>
+    </nav>
+
+    <main>
+
+      <!-- ============ 1 ============ -->
+      <section class="chapter" id="k1">
+        <span class="chapno">Kapitel 01</span>
+        <h2>Das Systembild</h2>
+        <p class="lead">
+          Drei Schichten, zwei Arten von Verbindung. Der Browser spricht synchron mit SharePoint
+          und mit Microsoft Graph. Alles Weitere passiert asynchron: Die App legt einen Auftrag in
+          eine Warteschlangen-Liste, ein Flow findet ihn dort und arbeitet ihn ab.
+        </p>
+
+        <figure>
+          <div class="figframe">
+            <svg viewBox="0 0 1120 800" role="img" aria-label="Systembild: SPFx-Webpart im Browser greift per REST auf SharePoint-Listen zu; Warteschlangen-Listen lösen Power-Automate-Flows aus, die Mails und Kalendereinträge über Exchange Online erzeugen.">
+              <defs>
+                <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-2)"/>
+                </marker>
+                <marker id="ah-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M0,0 L10,5 L0,10 z" fill="var(--async)"/>
+                </marker>
+              </defs>
+
+              <!-- Reihe A: Browser + Graph -->
+              <rect x="24" y="24" width="430" height="96" rx="4" fill="var(--surface-2)" stroke="var(--line-strong)"/>
+              <text class="svg-mono" x="42" y="46" font-size="11" fill="var(--muted)" letter-spacing="1.4">BROWSER DES NUTZERS</text>
+              <text class="svg-text" x="42" y="72" font-size="16" font-weight="650" fill="var(--ink)">SPFx-Webpart · React + TypeScript</text>
+              <text class="svg-mono" x="42" y="96" font-size="12" fill="var(--ink-2)">/SitePages/DEX.aspx</text>
+
+              <rect x="820" y="24" width="276" height="96" rx="4" fill="var(--ext-soft)" stroke="var(--ext)"/>
+              <text class="svg-mono" x="838" y="46" font-size="11" fill="var(--ext)" letter-spacing="1.4">MICROSOFT GRAPH</text>
+              <text class="svg-text" x="838" y="72" font-size="13" fill="var(--ink)">Profilfotos, Job Title, Standort</text>
+              <text class="svg-text" x="838" y="92" font-size="13" fill="var(--ink)">Verteiler auflösen</text>
+
+              <line x1="454" y1="72" x2="812" y2="72" stroke="var(--ink-2)" stroke-width="1.6" marker-end="url(#ah)"/>
+              <text class="svg-text" x="633" y="62" font-size="12" fill="var(--ink-2)" text-anchor="middle">liest Profile</text>
+
+              <!-- Reihe B: SharePoint -->
+              <rect x="24" y="176" width="1072" height="316" rx="4" fill="none" stroke="var(--line-strong)"/>
+              <rect x="24" y="176" width="1072" height="30" rx="4" fill="var(--surface-2)"/>
+              <text class="svg-mono" x="42" y="196" font-size="11" fill="var(--muted)" letter-spacing="1.4">SHAREPOINT ONLINE · SITE COLLECTION</text>
+
+              <line x1="239" y1="120" x2="239" y2="168" stroke="var(--ink-2)" stroke-width="1.6" marker-end="url(#ah)"/>
+              <text class="svg-text" x="255" y="140" font-size="12" fill="var(--ink-2)">REST · mit den Rechten des angemeldeten Nutzers</text>
+
+              <!-- Gruppe: Stammdaten -->
+              <rect x="48" y="228" width="486" height="156" rx="3" fill="var(--surface)" stroke="var(--line)"/>
+              <text class="svg-mono" x="64" y="250" font-size="11" fill="var(--accent-ink)" letter-spacing="1.2">STAMM- UND KONFIGURATIONSDATEN</text>
+              <g class="svg-mono" font-size="12" fill="var(--ink)">
+                <text x="64" y="276">DEX_Events</text>
+                <text x="64" y="298">DEX_Participants</text>
+                <text x="64" y="320">DEX_Roles</text>
+                <text x="64" y="342">DEX_EmailTemplates</text>
+                <text x="64" y="364">DEX_EventComms</text>
+                <text x="300" y="276">DEX_EventStats</text>
+                <text x="300" y="298">DEX_ChangeLog</text>
+                <text x="300" y="320">DEX_AssistantAccess</text>
+                <text x="300" y="342">DEX_OrganizerRequests</text>
+                <text x="300" y="364">DEX_Archive · …</text>
+              </g>
+
+              <!-- Gruppe: Queues -->
+              <rect x="582" y="228" width="490" height="156" rx="3" fill="var(--async-soft)" stroke="var(--async)"/>
+              <text class="svg-mono" x="598" y="250" font-size="11" fill="var(--async)" letter-spacing="1.2">WARTESCHLANGEN — AUFTRÄGE FÜR DIE FLOWS</text>
+              <g class="svg-mono" font-size="12" fill="var(--ink)">
+                <text x="598" y="276">DEX_Emails</text>
+                <text x="598" y="298">DEX_Outlook</text>
+                <text x="598" y="320">DEX_IDReorder</text>
+                <text x="598" y="342">DEX_AccessFix</text>
+                <text x="598" y="364">DEX_PostEventMails</text>
+                <text x="836" y="276" fill="var(--muted)">Titel, Empfänger, Body</text>
+                <text x="836" y="298" fill="var(--muted)">Einladen / Ausladen</text>
+                <text x="836" y="320" fill="var(--muted)">IDs + Nachrücken</text>
+                <text x="836" y="342" fill="var(--muted)">Zeilen-Autor setzen</text>
+                <text x="836" y="364" fill="var(--muted)">Nachbereitung</text>
+              </g>
+
+              <!-- Gruppe: Subsites -->
+              <rect x="48" y="404" width="1024" height="70" rx="3" fill="var(--surface)" stroke="var(--line)"/>
+              <text class="svg-mono" x="64" y="426" font-size="11" fill="var(--accent-ink)" letter-spacing="1.2">EVENT-SUBSITE — EINE JE EVENT</text>
+              <g class="svg-mono" font-size="12" fill="var(--ink)">
+                <text x="64" y="452">Teilnehmer</text>
+                <text x="300" y="452">DEX_TeilnehmerCounter</text>
+              </g>
+              <text class="svg-text" x="598" y="452" font-size="12" fill="var(--muted)">Anmeldungen mit Zeilen-Sicherheit · Platzzähler für alle lesbar</text>
+
+              <!-- Reihe C: Flows + Exchange -->
+              <rect x="24" y="548" width="686" height="228" rx="4" fill="none" stroke="var(--line-strong)"/>
+              <rect x="24" y="548" width="686" height="30" rx="4" fill="var(--async-soft)"/>
+              <text class="svg-mono" x="42" y="568" font-size="11" fill="var(--async)" letter-spacing="1.4">POWER AUTOMATE</text>
+              <g class="svg-mono" font-size="12" fill="var(--ink)">
+                <text x="46" y="606">DEX_SEND_MAIL</text>
+                <text x="46" y="632">DEX_Outlook_Einladungen</text>
+                <text x="46" y="658">DEX_CreateOutlookEvent</text>
+                <text x="46" y="684">DEX_IDReorder_TeilnehmerIDs</text>
+                <text x="46" y="710">DEX_AccessFix_Autor</text>
+                <text x="46" y="736">DEX_OutlookDeclineHandler</text>
+                <text x="46" y="762">DEX_OutlookForwardHandler</text>
+              </g>
+              <g class="svg-text" font-size="11" fill="var(--muted)">
+                <text x="440" y="606">aus DEX_Emails</text>
+                <text x="440" y="632">aus DEX_Outlook</text>
+                <text x="440" y="658">aus DEX_Events</text>
+                <text x="440" y="684">aus DEX_IDReorder</text>
+                <text x="440" y="710">aus DEX_AccessFix</text>
+                <text x="440" y="736">aus dem Postfach</text>
+                <text x="440" y="762">aus dem Postfach</text>
+              </g>
+
+              <rect x="746" y="548" width="350" height="228" rx="4" fill="var(--ext-soft)" stroke="var(--ext)"/>
+              <text class="svg-mono" x="764" y="568" font-size="11" fill="var(--ext)" letter-spacing="1.4">EXCHANGE ONLINE</text>
+              <text class="svg-text" x="764" y="600" font-size="13" font-weight="650" fill="var(--ink)">Shared Mailbox</text>
+              <text class="svg-mono" x="764" y="620" font-size="11.5" fill="var(--ink-2)">no_reply.events@…</text>
+              <text class="svg-text" x="764" y="656" font-size="13" font-weight="650" fill="var(--ink)">Outlook-Kalender</text>
+              <text class="svg-text" x="764" y="676" font-size="12" fill="var(--ink-2)">Termin je Event, Teilnehmerliste</text>
+              <text class="svg-text" x="764" y="716" font-size="12" fill="var(--ink-2)">Absagen und Weiterleitungen</text>
+              <text class="svg-text" x="764" y="734" font-size="12" fill="var(--ink-2)">laufen als Mail zurück</text>
+
+              <!-- Queue -> Flow (asynchron) -->
+              <polyline points="827,384 827,516 380,516 380,540" fill="none" stroke="var(--async)" stroke-width="1.6" stroke-dasharray="6 5" marker-end="url(#ah-a)"/>
+              <text class="svg-text" x="817" y="508" font-size="12" fill="var(--async)" text-anchor="end">neuer Eintrag startet den Flow · Abfrage ~1×/Minute</text>
+
+              <!-- Flow -> SharePoint (zurückschreiben) -->
+              <polyline points="150,540 150,516 118,516 118,492" fill="none" stroke="var(--async)" stroke-width="1.6" stroke-dasharray="6 5" marker-end="url(#ah-a)"/>
+              <text class="svg-text" x="166" y="534" font-size="12" fill="var(--async)">schreibt zurück</text>
+
+              <!-- Flow -> Exchange -->
+              <line x1="718" y1="620" x2="738" y2="620" stroke="var(--ink-2)" stroke-width="1.6" marker-end="url(#ah)"/>
+              <line x1="738" y1="700" x2="718" y2="700" stroke="var(--async)" stroke-width="1.6" stroke-dasharray="6 5" marker-end="url(#ah-a)"/>
+            </svg>
+          </div>
+          <div class="legend">
+            <span>
+              <svg viewBox="0 0 34 10" aria-hidden="true"><line x1="1" y1="5" x2="33" y2="5" stroke="var(--ink-2)" stroke-width="1.6"/></svg>
+              Synchroner Aufruf — die App wartet auf die Antwort
+            </span>
+            <span>
+              <svg viewBox="0 0 34 10" aria-hidden="true"><line x1="1" y1="5" x2="33" y2="5" stroke="var(--async)" stroke-width="1.6" stroke-dasharray="6 5"/></svg>
+              Asynchron über eine Warteschlange — Verzögerung bis zu einer Minute
+            </span>
+          </div>
+          <figcaption>
+            <b>Abbildung 1 — Systembild.</b> Es gibt keine Verbindung vom Browser zu Power Automate
+            und keine von Power Automate zum Browser. Beide Seiten treffen sich ausschließlich in den
+            Warteschlangen-Listen. Das ist die wichtigste Eigenschaft dieser Architektur — und der
+            Grund für fast jede Verzögerung, die Nutzer bemerken.
+          </figcaption>
+        </figure>
+      </section>
+
+      <!-- ============ 2 ============ -->
+      <section class="chapter" id="k2">
+        <span class="chapno">Kapitel 02</span>
+        <h2>Wo der Code läuft</h2>
+        <p class="lead">
+          Die gesamte Anwendung ist ein einziges SharePoint-Framework-Webpart. Es wird auf einer
+          normalen SharePoint-Seite ausgeführt und existiert nur im Browser des Nutzers.
+        </p>
+        <p>
+          Das Paket <code>dex-event-platform.sppkg</code> wird in den App-Katalog des Tenants
+          hochgeladen und auf der Site bereitgestellt. Die Anwendung selbst liegt auf einer
+          Seite der Site Collection: <code>/SitePages/DEX.aspx</code>. Wer diese Seite öffnet,
+          lädt das JavaScript-Bundle und führt es lokal aus. Es gibt keinen Anwendungsserver,
+          keine Datenbank und keinen Dienst, der zwischen Nutzer und SharePoint sitzt.
+        </p>
+        <p>
+          Daraus folgt der wichtigste Satz dieses Dokuments: <strong>Die App handelt immer im
+          Namen der Person, die sie bedient.</strong> Jeder Lese- und Schreibvorgang läuft über
+          das SharePoint-REST-API mit deren Berechtigungen. Wenn ein Teilnehmer die Teilnehmerliste
+          eines Events nicht sehen darf, sieht die App sie ebenfalls nicht — sie kann sich keine
+          höheren Rechte verschaffen. Genau deshalb gibt es die Flows: Sie laufen mit einer
+          Dienst-Identität und erledigen das, wofür der Nutzer keine Rechte hat.
+        </p>
+        <h3>Was das im Betrieb bedeutet</h3>
+        <ul>
+          <li><strong>Kein Deployment-Fenster für Daten.</strong> Ein neues Release tauscht nur das
+            Bundle aus. Listen und Inhalte bleiben unberührt.</li>
+          <li><strong>Der Browser ist die Laufzeitgrenze.</strong> Schließt jemand den Tab mitten in
+            einem mehrstufigen Vorgang — etwa beim Speichern eines Events mit neun Sub-Events —,
+            bricht der Vorgang an dieser Stelle ab. Deshalb sperrt die App während solcher
+            Vorgänge die Navigation und zeigt den Fortschritt je Teilschritt.</li>
+          <li><strong>Drosselung ist real.</strong> SharePoint begrenzt die Zahl der Anfragen pro
+            Nutzer. Massenvorgänge laufen deshalb sequentiell und mit Fortschrittsanzeige statt
+            als gleichzeitige Aufrufe.</li>
+        </ul>
+      </section>
+
+      <!-- ============ 3 ============ -->
+      <section class="chapter" id="k3">
+        <span class="chapno">Kapitel 03</span>
+        <h2>Die Datenhaltung</h2>
+        <p class="lead">
+          Alle Daten liegen in SharePoint-Listen derselben Site Collection. Die Listen zerfallen in
+          drei Gruppen mit sehr unterschiedlichem Charakter: Stammdaten, Warteschlangen und
+          Protokolle.
+        </p>
+
+        <h3>Stammdaten und Konfiguration</h3>
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr><th class="mono">Liste</th><th>Inhalt</th><th>Besonderheit</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono">DEX_Events</td>
+                <td>Eine Zeile je Event <em>und</em> je Sub-Event. Titel, Zeiten, Ort, Kapazität, Fristen, Zielgruppe, Formularfelder.</td>
+                <td>Sub-Events zeigen über <code>ParentEventId</code> auf ihr Hauptevent. <code>SubsiteUrl</code> verweist auf die eigene Teilnehmerliste.</td>
+              </tr>
+              <tr>
+                <td class="mono">DEX_Participants</td>
+                <td>Zentrales Register: je Person eine Zeile mit den Event-Nummern, für die sie angemeldet oder auf der Warteliste ist.</td>
+                <td>Nebenbuchhaltung, keine Wahrheit — siehe Kapitel 12.</td>
+              </tr>
+              <tr>
+                <td class="mono">DEX_Roles</td>
+                <td>Rollenzuweisung: Admin, Organizer.</td>
+                <td>Entscheidet, wer Events anlegen und das Organizer Center öffnen darf.</td>
+              </tr>
+              <tr>
+                <td class="mono">DEX_EmailTemplates</td>
+                <td>Mailvorlagen mit Platzhaltern, Logo und Standardbild.</td>
+                <td>Wird sowohl von der App als auch von den Flows gelesen.</td>
+              </tr>
+              <tr>
+                <td class="mono">DEX_EventComms</td>
+                <td>Versendete Einladungen und Nachrichten je Event.</td>
+                <td>Grundlage für „nur an noch nicht Eingeladene“.</td>
+              </tr>
+              <tr>
+                <td class="mono">DEX_AssistantAccess</td>
+                <td>Verknüpfung Assistenz ↔ betreute Person.</td>
+                <td>Basis für stellvertretende Anmeldungen.</td>
+              </tr>
+              <tr>
+                <td class="mono">DEX_OrganizerRequests</td>
+                <td>Anträge auf die Organizer-Rolle.</td>
+                <td>Freigabe durch Admins.</td>
+              </tr>
+              <tr>
+                <td class="mono">DEX_EventStats</td>
+                <td>Kennzahlen von Events, deren Teilnehmerliste gelöscht wurde.</td>
+                <td>Enthält bewusst keine personenbezogenen Daten.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Warteschlangen</h3>
+        <p>
+          Diese Listen sind keine Datenhaltung, sondern Postfächer für die Flows. Jede Zeile ist ein
+          Auftrag mit einem Status, der von <code>Pending</code> über <code>Processing</code> nach
+          <code>Sent</code> beziehungsweise <code>Done</code> wandert. Details in Kapitel 6.
+        </p>
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr><th class="mono">Liste</th><th>Auftrag</th><th>Wird abgearbeitet von</th></tr>
+            </thead>
+            <tbody>
+              <tr><td class="mono">DEX_Emails</td><td>Eine zu versendende Mail: Empfänger, Betreff, Body, Cc, Bcc, Priorität.</td><td class="mono">DEX_SEND_MAIL</td></tr>
+              <tr><td class="mono">DEX_Outlook</td><td>Kalenderaktion: <code>Einladen</code>, <code>Ausladen</code>, <code>UpdateEvent</code>, <code>DeleteEvent</code>.</td><td class="mono">DEX_Outlook_Einladungen</td></tr>
+              <tr><td class="mono">DEX_IDReorder</td><td>Teilnehmernummern eines Events neu vergeben und Warteliste nachrücken lassen.</td><td class="mono">DEX_IDReorder_TeilnehmerIDs</td></tr>
+              <tr><td class="mono">DEX_AccessFix</td><td>Den SharePoint-Autor einer Anmeldezeile auf den Teilnehmer setzen.</td><td class="mono">DEX_AccessFix_Autor</td></tr>
+              <tr><td class="mono">DEX_PostEventMails</td><td>Nachbereitungsmails an Organizer.</td><td class="mono">DEX_SEND_MAIL</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Protokolle</h3>
+        <p>
+          <code>DEX_ChangeLog</code> hält fest, wer wann welche fachliche Aktion ausgelöst hat —
+          Anmeldung, Abmeldung, Löschung einer Teilnehmerliste, Rollenänderung. Das Protokoll ist
+          Nachweis, nicht Zustand: Die App liest es nur zur Anzeige und rechnet nichts daraus ab.
+        </p>
+      </section>
+
+      <!-- ============ 4 ============ -->
+      <section class="chapter" id="k4">
+        <span class="chapno">Kapitel 04</span>
+        <h2>Eine Subsite je Event</h2>
+        <p class="lead">
+          Die Anmeldungen eines Events liegen nicht in einer gemeinsamen Liste, sondern in einer
+          eigenen Subsite mit einer eigenen Liste <code>Teilnehmer</code>. Das ist eine bewusste
+          Entscheidung mit weitreichenden Folgen.
+        </p>
+
+        <figure>
+          <div class="figframe">
+            <svg viewBox="0 0 1000 380" role="img" aria-label="DEX_Events verweist über SubsiteUrl auf eine Event-Subsite mit der Liste Teilnehmer und dem Platzzähler; Teilnehmer sehen nur ihre eigene Zeile, Organizer alle, der Zähler ist für alle lesbar.">
+              <defs>
+                <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-2)"/>
+                </marker>
+              </defs>
+
+              <rect x="20" y="60" width="280" height="120" rx="4" fill="var(--surface-2)" stroke="var(--line-strong)"/>
+              <text class="svg-mono" x="38" y="84" font-size="11" fill="var(--muted)" letter-spacing="1.3">SITE COLLECTION</text>
+              <text class="svg-mono" x="38" y="112" font-size="13" font-weight="600" fill="var(--ink)">DEX_Events</text>
+              <text class="svg-text" x="38" y="136" font-size="12" fill="var(--ink-2)">Zeile: „P/D Meeting T&amp;T+“</text>
+              <text class="svg-mono" x="38" y="158" font-size="11.5" fill="var(--accent-ink)">SubsiteUrl → …/events/e-42</text>
+
+              <line x1="300" y1="120" x2="392" y2="120" stroke="var(--ink-2)" stroke-width="1.6" marker-end="url(#ah2)"/>
+              <text class="svg-text" x="346" y="110" font-size="11.5" fill="var(--ink-2)" text-anchor="middle">verweist auf</text>
+
+              <rect x="400" y="30" width="580" height="180" rx="4" fill="none" stroke="var(--line-strong)"/>
+              <rect x="400" y="30" width="580" height="28" rx="4" fill="var(--surface-2)"/>
+              <text class="svg-mono" x="418" y="49" font-size="11" fill="var(--muted)" letter-spacing="1.3">EVENT-SUBSITE</text>
+
+              <rect x="422" y="78" width="252" height="112" rx="3" fill="var(--surface)" stroke="var(--line)"/>
+              <text class="svg-mono" x="438" y="100" font-size="13" font-weight="600" fill="var(--ink)">Teilnehmer</text>
+              <text class="svg-text" x="438" y="124" font-size="12" fill="var(--ink-2)">eine Zeile je Anmeldung</text>
+              <text class="svg-text" x="438" y="146" font-size="12" fill="var(--ink-2)">Status, TeilnehmerID, Antworten</text>
+              <text class="svg-mono" x="438" y="172" font-size="11" fill="var(--accent-ink)">nur eigene Elemente</text>
+
+              <rect x="700" y="78" width="258" height="112" rx="3" fill="var(--surface)" stroke="var(--line)"/>
+              <text class="svg-mono" x="716" y="100" font-size="13" font-weight="600" fill="var(--ink)">DEX_TeilnehmerCounter</text>
+              <text class="svg-text" x="716" y="124" font-size="12" fill="var(--ink-2)">belegte Plätze, Warteliste</text>
+              <text class="svg-text" x="716" y="146" font-size="12" fill="var(--ink-2)">eine Zahl, kein Personenbezug</text>
+              <text class="svg-mono" x="716" y="172" font-size="11" fill="var(--accent-ink)">für alle lesbar</text>
+
+              <!-- Leser -->
+              <rect x="20" y="248" width="200" height="88" rx="3" fill="var(--surface)" stroke="var(--line)"/>
+              <text class="svg-text" x="36" y="272" font-size="13" font-weight="650" fill="var(--ink)">Teilnehmer</text>
+              <text class="svg-text" x="36" y="294" font-size="12" fill="var(--ink-2)">sieht die eigene Zeile</text>
+              <text class="svg-text" x="36" y="314" font-size="12" fill="var(--ink-2)">und den Platzzähler</text>
+
+              <rect x="252" y="248" width="200" height="88" rx="3" fill="var(--surface)" stroke="var(--line)"/>
+              <text class="svg-text" x="268" y="272" font-size="13" font-weight="650" fill="var(--ink)">Organizer</text>
+              <text class="svg-text" x="268" y="294" font-size="12" fill="var(--ink-2)">sieht alle Zeilen</text>
+              <text class="svg-text" x="268" y="314" font-size="12" fill="var(--ink-2)">dieses einen Events</text>
+
+              <rect x="484" y="248" width="200" height="88" rx="3" fill="var(--async-soft)" stroke="var(--async)"/>
+              <text class="svg-text" x="500" y="272" font-size="13" font-weight="650" fill="var(--ink)">Flow</text>
+              <text class="svg-text" x="500" y="294" font-size="12" fill="var(--ink-2)">schreibt mit</text>
+              <text class="svg-text" x="500" y="314" font-size="12" fill="var(--ink-2)">Dienst-Identität</text>
+
+              <line x1="120" y1="244" x2="120" y2="200" stroke="var(--ink-2)" stroke-width="1.4" marker-end="url(#ah2)" stroke-opacity=".8"/>
+              <line x1="352" y1="244" x2="500" y2="200" stroke="var(--ink-2)" stroke-width="1.4" marker-end="url(#ah2)" stroke-opacity=".8"/>
+              <line x1="584" y1="244" x2="560" y2="200" stroke="var(--async)" stroke-width="1.4" stroke-dasharray="6 5" marker-end="url(#ah2)"/>
+            </svg>
+          </div>
+          <figcaption>
+            <b>Abbildung 2 — Anmeldungen und ihre Sichtbarkeit.</b> Die Liste <code>Teilnehmer</code>
+            läuft mit Zeilen-Sicherheit („nur eigene Elemente“), geprüft am SharePoint-Autor der
+            Zeile. Weil ein Teilnehmer damit nie die Gesamtzahl der Anmeldungen zählen kann, gibt es
+            den separaten Platzzähler — eine Liste ohne Personenbezug, die jeder lesen darf.
+          </figcaption>
+        </figure>
+
+        <h3>Warum eine eigene Subsite</h3>
+        <ul>
+          <li><strong>Rechte pro Event.</strong> Organizer bekommen Zugriff auf genau ihr Event,
+            nicht auf alle Anmeldungen der Plattform.</li>
+          <li><strong>Größe.</strong> Eine gemeinsame Liste über alle Events hinweg liefe in die
+            Listenschwelle. Getrennte Listen bleiben klein und schnell.</li>
+          <li><strong>Löschbarkeit.</strong> Das Aufbewahrungskonzept löscht die Teilnehmerdaten
+            eines Events, indem es die Subsite entfernt. Das Event selbst bleibt bestehen.</li>
+        </ul>
+        <div class="note">
+          <p class="note-h">Preis dieser Entscheidung</p>
+          <p>
+            Es gibt keine Abfrage über alle Anmeldungen hinweg. Wer wissen will, wo eine Person
+            überall angemeldet ist, muss entweder jede Subsite einzeln lesen oder das Register
+            <code>DEX_Participants</code> befragen — mit den Einschränkungen aus Kapitel 12.
+          </p>
+        </div>
+      </section>
+
+      <!-- ============ 5 ============ -->
+      <section class="chapter" id="k5">
+        <span class="chapno">Kapitel 05</span>
+        <h2>Die Zugriffsschicht im Code</h2>
+        <p class="lead">
+          Zwischen Oberfläche und SharePoint liegen genau zwei Bausteine. Wer verstehen will, wo
+          eine Zahl herkommt, findet sie in einem von beiden.
+        </p>
+        <p>
+          <code>EventService</code> ist die einzige Stelle, die SharePoint direkt anspricht. Alle
+          REST-Aufrufe, das Anlegen von Subsites und Listen, das Schreiben in die Warteschlangen und
+          der Zugriff auf Microsoft Graph laufen hier zusammen. Die Klasse kennt keine React-Zustände
+          und keine Oberfläche.
+        </p>
+        <p>
+          <code>EventContext</code> liegt darüber und hält den Anwendungszustand: die geladenen
+          Events, die Zuordnung von Event-Id zu Subsite-Adresse, die Rolle des angemeldeten Nutzers.
+          Die Seiten der Anwendung — Event-Übersicht, Anmeldeseite, Organizer Center, Event-Assistent —
+          lesen ausschließlich aus diesem Kontext.
+        </p>
+        <p>
+          Für Live-Zahlen ohne ständiges Nachfragen abonniert die Anmeldeseite Änderungen an der
+          Zähler-Liste. Meldet SharePoint eine Änderung, lädt die App genau diese eine Zahl neu.
+          Es gibt kein Polling im Sekundentakt.
+        </p>
+      </section>
+
+      <!-- ============ 6 ============ -->
+      <section class="chapter" id="k6">
+        <span class="chapno">Kapitel 06</span>
+        <h2>Warteschlangen statt Aufrufe</h2>
+        <p class="lead">
+          Die App kann keine Mail versenden und keinen Kalendereintrag erzeugen. Beides erfordert
+          Rechte, die ein normaler Nutzer nicht hat. Statt einen Dienst aufzurufen, schreibt die App
+          einen Auftrag in eine Liste — und ein Flow findet ihn dort.
+        </p>
+        <p>
+          Jeder Auftrag ist eine Listenzeile mit einem Statusfeld. Die App legt sie mit
+          <code>Status = Pending</code> an und ist damit fertig; sie wartet nicht auf das Ergebnis.
+          Der zuständige Flow wird durch den neuen Eintrag ausgelöst, setzt den Status zunächst auf
+          <code>Processing</code>, erledigt die Arbeit und schreibt am Ende <code>Sent</code>
+          beziehungsweise <code>Done</code> zurück. Bleibt eine Zeile auf <code>Processing</code>
+          stehen, ist genau dieser Auftrag gescheitert — nachvollziehbar in der Liste selbst und im
+          Ausführungsverlauf des Flows.
+        </p>
+
+        <div class="note">
+          <p class="note-h">Die Regel, die man kennen muss</p>
+          <p>
+            Die Flows reagieren auf <strong>neue</strong> Listeneinträge. Das Ändern eines
+            bestehenden Eintrags löst nichts aus. Wer einen fehlenden Kalendertermin nachziehen
+            will, muss deshalb einen neuen Eintrag erzeugen — es genügt nicht, das bestehende
+            Event zu aktualisieren.
+          </p>
+        </div>
+
+        <p>
+          Der Abruf erfolgt im Minutentakt und je Flow mit einem einzigen gleichzeitigen Lauf.
+          Damit ist die Reihenfolge garantiert: Eine Nummernvergabe kann nicht mit der nächsten
+          kollidieren. Der Preis ist eine spürbare Verzögerung — zwischen Klick und Bestätigungsmail
+          liegt typischerweise unter einer Minute, in Spitzen länger. Für Nutzer heißt das: Die
+          Anmeldung ist sofort gültig, die Mail kommt gleich.
+        </p>
+      </section>
+
+      <!-- ============ 7 ============ -->
+      <section class="chapter" id="k7">
+        <span class="chapno">Kapitel 07</span>
+        <h2>Die sieben Flows</h2>
+        <p class="lead">
+          Fünf Flows arbeiten Warteschlangen ab, zwei reagieren auf eingehende Mails im
+          Funktionspostfach. Alle laufen mit einer Dienst-Identität, die auf den Event-Subsites
+          Vollzugriff hat.
+        </p>
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr><th class="mono">Flow</th><th>Ausgelöst durch</th><th>Wirkung</th><th>Art</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="mono">DEX_SEND_MAIL</td>
+                <td>Neuer Eintrag in <code>DEX_Emails</code></td>
+                <td>Lädt Vorlage, Logo und Eventbild, ersetzt die Platzhalter und versendet über die Shared Mailbox. Setzt <code>Status = Sent</code>.</td>
+                <td><span class="tag t-queue">Queue</span></td>
+              </tr>
+              <tr>
+                <td class="mono">DEX_CreateOutlookEvent</td>
+                <td>Neuer Eintrag in <code>DEX_Events</code></td>
+                <td>Legt den Outlook-Termin an und schreibt dessen Kennung zurück ins Event, damit spätere Einladungen ihn wiederfinden.</td>
+                <td><span class="tag t-queue">Queue</span></td>
+              </tr>
+              <tr>
+                <td class="mono">DEX_Outlook_Einladungen</td>
+                <td>Neuer Eintrag in <code>DEX_Outlook</code></td>
+                <td>Fügt Teilnehmer zum Termin hinzu, entfernt sie, aktualisiert oder löscht den Termin.</td>
+                <td><span class="tag t-queue">Queue</span></td>
+              </tr>
+              <tr>
+                <td class="mono">DEX_IDReorder_TeilnehmerIDs</td>
+                <td>Neuer Eintrag in <code>DEX_IDReorder</code></td>
+                <td>Vergibt die Teilnehmernummern eines Events lückenlos neu und lässt die Warteliste nachrücken.</td>
+                <td><span class="tag t-queue">Queue</span></td>
+              </tr>
+              <tr>
+                <td class="mono">DEX_AccessFix_Autor</td>
+                <td>Neuer Eintrag in <code>DEX_AccessFix</code></td>
+                <td>Setzt den Autor einer Anmeldezeile auf den Teilnehmer, damit dieser sie sieht und selbst absagen kann.</td>
+                <td><span class="tag t-queue">Queue</span></td>
+              </tr>
+              <tr>
+                <td class="mono">DEX_OutlookDeclineHandler</td>
+                <td>Absage-Mail im Funktionspostfach</td>
+                <td>Erkennt die Absage eines Kalendertermins, ordnet sie dem Event zu und meldet die Person in der App ab.</td>
+                <td><span class="tag t-ext">Postfach</span></td>
+              </tr>
+              <tr>
+                <td class="mono">DEX_OutlookForwardHandler</td>
+                <td>Weiterleitungs-Benachrichtigung im Funktionspostfach</td>
+                <td>Prüft, ob die Person, an die weitergeleitet wurde, angemeldet ist. Wenn nicht, informiert er den Organizer.</td>
+                <td><span class="tag t-ext">Postfach</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="note">
+          <p class="note-h">Abweichung zu älteren Unterlagen</p>
+          <p>
+            Die Flow-Übersicht in der Projektdokumentation nennt 23 Flows und beschreibt unter
+            anderem, dass ein Flow die Event-Subsite anlegt. Das war ein früherer Entwurf. Im
+            heutigen Code legt die App die Subsite selbst an; tragend sind die sieben Flows aus
+            dieser Tabelle. Maßgeblich sind der Code und <code>docs/flow-jsons.md</code>.
+          </p>
+        </div>
+        <div class="note">
+          <p class="note-h">Abhängigkeit nach außen</p>
+          <p>
+            Die Mail-Regeln des Tenants sind Teil der Architektur. Anhänge an Mails, die über Power
+            Automate versendet werden, werden blockiert — der entsprechende Weg wurde deshalb
+            zurückgebaut. Wer eine neue Mailfunktion plant, prüft diese Regeln vorher.
+          </p>
+        </div>
+      </section>
+
+      <!-- ============ 8 ============ -->
+      <section class="chapter" id="k8">
+        <span class="chapno">Kapitel 08</span>
+        <h2>Ablauf: Anmeldung</h2>
+        <p class="lead">
+          Der häufigste Vorgang der Plattform. Er zeigt beide Verbindungsarten in einem Bild: Was
+          der Nutzer sofort sieht, und was danach im Hintergrund passiert.
+        </p>
+
+        <figure>
+          <div class="figframe">
+            <svg viewBox="0 0 1080 560" role="img" aria-label="Ablauf einer Anmeldung in sechs Schritten: Zeile in der Teilnehmerliste anlegen, Platzzähler erhöhen, Aufträge in die Warteschlangen schreiben, Flows starten, Mail und Kalendereinladung versenden.">
+              <defs>
+                <marker id="ah3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M0,0 L10,5 L0,10 z" fill="var(--ink-2)"/>
+                </marker>
+                <marker id="ah3a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                  <path d="M0,0 L10,5 L0,10 z" fill="var(--async)"/>
+                </marker>
+              </defs>
+
+              <!-- Lane-Köpfe -->
+              <g>
+                <rect x="20" y="20" width="180" height="46" rx="3" fill="var(--surface-2)" stroke="var(--line-strong)"/>
+                <text class="svg-text" x="110" y="48" font-size="12.5" font-weight="650" fill="var(--ink)" text-anchor="middle">Anmeldeseite</text>
+                <rect x="230" y="20" width="180" height="46" rx="3" fill="var(--surface-2)" stroke="var(--line-strong)"/>
+                <text class="svg-mono" x="320" y="48" font-size="12" font-weight="600" fill="var(--ink)" text-anchor="middle">Teilnehmer</text>
+                <rect x="440" y="20" width="180" height="46" rx="3" fill="var(--async-soft)" stroke="var(--async)"/>
+                <text class="svg-text" x="530" y="48" font-size="12.5" font-weight="650" fill="var(--ink)" text-anchor="middle">Warteschlangen</text>
+                <rect x="650" y="20" width="180" height="46" rx="3" fill="var(--async-soft)" stroke="var(--async)"/>
+                <text class="svg-text" x="740" y="48" font-size="12.5" font-weight="650" fill="var(--ink)" text-anchor="middle">Power Automate</text>
+                <rect x="860" y="20" width="200" height="46" rx="3" fill="var(--ext-soft)" stroke="var(--ext)"/>
+                <text class="svg-text" x="960" y="48" font-size="12.5" font-weight="650" fill="var(--ink)" text-anchor="middle">Mail &amp; Kalender</text>
+              </g>
+
+              <!-- Lifelines -->
+              <g stroke="var(--line-strong)" stroke-width="1" stroke-dasharray="3 5">
+                <line x1="110" y1="74" x2="110" y2="520"/>
+                <line x1="320" y1="74" x2="320" y2="520"/>
+                <line x1="530" y1="74" x2="530" y2="520"/>
+                <line x1="740" y1="74" x2="740" y2="520"/>
+                <line x1="960" y1="74" x2="960" y2="520"/>
+              </g>
+
+              <!-- Schritte -->
+              <g class="svg-text" font-size="12" fill="var(--ink-2)">
+                <line x1="110" y1="118" x2="312" y2="118" stroke="var(--ink-2)" stroke-width="1.6" marker-end="url(#ah3)"/>
+                <text x="118" y="110" fill="var(--ink)">1 · Zeile anlegen — Angemeldet oder Warteliste</text>
+
+                <line x1="110" y1="176" x2="312" y2="176" stroke="var(--ink-2)" stroke-width="1.6" marker-end="url(#ah3)"/>
+                <text x="118" y="168" fill="var(--ink)">2 · Platzzähler erhöhen</text>
+
+                <line x1="110" y1="234" x2="522" y2="234" stroke="var(--ink-2)" stroke-width="1.6" marker-end="url(#ah3)"/>
+                <text x="118" y="226" fill="var(--ink)">3 · Auftrag Bestätigungsmail + Auftrag Kalendereinladung</text>
+
+                <text x="118" y="282" fill="var(--accent-ink)" font-weight="650">Ab hier ist die Anmeldung gültig — die Seite bestätigt sie sofort.</text>
+
+                <line x1="530" y1="340" x2="732" y2="340" stroke="var(--async)" stroke-width="1.6" stroke-dasharray="6 5" marker-end="url(#ah3a)"/>
+                <text x="538" y="332" fill="var(--async)">4 · Flow startet, Status auf Processing</text>
+
+                <line x1="740" y1="398" x2="952" y2="398" stroke="var(--ink-2)" stroke-width="1.6" marker-end="url(#ah3)"/>
+                <text x="748" y="390" fill="var(--ink)">5 · Mail versenden, Termin einladen</text>
+
+                <line x1="732" y1="456" x2="330" y2="456" stroke="var(--async)" stroke-width="1.6" stroke-dasharray="6 5" marker-end="url(#ah3a)"/>
+                <text x="724" y="448" fill="var(--async)" text-anchor="end">6 · Teilnehmernummer setzen, Status auf Sent</text>
+              </g>
+
+              <line x1="20" y1="304" x2="1060" y2="304" stroke="var(--accent)" stroke-width="1" stroke-dasharray="2 6"/>
+            </svg>
+          </div>
+          <figcaption>
+            <b>Abbildung 3 — Anmeldung.</b> Die Trennlinie markiert den Punkt, an dem die App den
+            Vorgang abschließt. Alles darunter passiert ohne den Nutzer. Scheitert Schritt 5,
+            ist die Person trotzdem angemeldet — sie hat nur keine Mail bekommen. Das ist gewollt:
+            Der Platz zählt, nicht die Benachrichtigung.
+          </figcaption>
+        </figure>
+
+        <h3>Sonderfall: stellvertretende Anmeldung</h3>
+        <p>
+          Meldet eine Assistenz jemanden an, gehört die neue Zeile zunächst der Assistenz — und die
+          angemeldete Person sähe sie wegen der Zeilen-Sicherheit nicht. Die App setzt den Autor
+          deshalb um. Fehlen ihr dafür die Rechte, schreibt sie stattdessen einen Auftrag in
+          <code>DEX_AccessFix</code>, den der zugehörige Flow mit Dienst-Identität erledigt.
+        </p>
+      </section>
+
+      <!-- ============ 9 ============ -->
+      <section class="chapter" id="k9">
+        <span class="chapno">Kapitel 09</span>
+        <h2>Ablauf: Event anlegen</h2>
+        <p class="lead">
+          Das Anlegen eines Events erzeugt nicht nur eine Zeile, sondern eine kleine Infrastruktur.
+        </p>
+        <ol>
+          <li>Der Assistent sammelt die Angaben über neun Schritte. Gespeichert wird erst am Ende.</li>
+          <li>Die App legt eine <strong>Subsite</strong> an und darin die Liste
+            <code>Teilnehmer</code> mit allen benötigten Spalten sowie den Platzzähler. Die
+            Zeilen-Sicherheit wird gesetzt.</li>
+          <li>Sie schreibt die Zeile in <code>DEX_Events</code> — inklusive
+            <code>SubsiteUrl</code>, damit die App die Teilnehmerliste später wiederfindet.</li>
+          <li>Dieser neue Eintrag löst <code>DEX_CreateOutlookEvent</code> aus. Der Flow legt den
+            Kalendertermin an und schreibt dessen Kennung zurück.</li>
+          <li>Sub-Events sind eigene Zeilen in <code>DEX_Events</code> mit eigener Subsite,
+            eigener Teilnehmerliste und eigenem Kalendertermin. Sie werden nacheinander gespeichert;
+            der Fortschritt wird je Sub-Event angezeigt.</li>
+        </ol>
+        <div class="note">
+          <p class="note-h">Warum ein Enddatum Pflicht ist</p>
+          <p>
+            Der Kalender-Flow rechnet mit dem Enddatum. Fehlt es, bricht die Terminerstellung ab —
+            ohne Rückmeldung in der App. Die App setzt deshalb bei fehlendem Enddatum immer das
+            Startdatum ein, zentral beim Anlegen und beim Ändern.
+          </p>
+        </div>
+      </section>
+
+      <!-- ============ 10 ============ -->
+      <section class="chapter" id="k10">
+        <span class="chapno">Kapitel 10</span>
+        <h2>Ablauf: Abmelden und Nachrücken</h2>
+        <p class="lead">
+          Eine Abmeldung ist der einzige Vorgang, bei dem ein Flow fachlich entscheidet — er
+          bestimmt, wer nachrückt.
+        </p>
+        <ol>
+          <li>Die App setzt die Anmeldezeile auf <code>Abgemeldet</code>. Sie wird nicht gelöscht:
+            Die Historie bleibt nachvollziehbar.</li>
+          <li>Sie verringert den Platzzähler und entfernt die Event-Nummer aus
+            <code>DEX_Participants</code>.</li>
+          <li>Sie schreibt einen Auftrag in <code>DEX_Outlook</code> (<code>Ausladen</code>) und
+            einen in <code>DEX_IDReorder</code>.</li>
+          <li><code>DEX_IDReorder_TeilnehmerIDs</code> vergibt die Teilnehmernummern des Events
+            neu: erst alle Angemeldeten in der Reihenfolge ihrer Anmeldung, dann die Warteliste
+            lückenlos dahinter. Ist ein Platz frei geworden und die Warteliste aktiv, rückt die
+            erste wartende Person nach und bekommt ihre Bestätigung über die Mail-Warteschlange.</li>
+        </ol>
+        <div class="note">
+          <p class="note-h">Die Wartelistenposition ist keine Spalte</p>
+          <p>
+            Es gibt kein Feld „Position“. Die Position <em>ist</em> der Rang nach Teilnehmernummer.
+            App und Flow sortieren beide danach. Wer die Reihenfolge ändern will, ändert die
+            Nummern — eine zusätzliche Prioritätsspalte würde der Flow ignorieren.
+          </p>
+        </div>
+      </section>
+
+      <!-- ============ 11 ============ -->
+      <section class="chapter" id="k11">
+        <span class="chapno">Kapitel 11</span>
+        <h2>Ablauf: Absage aus Outlook</h2>
+        <p class="lead">
+          Der einzige Weg, der von außen zurück in die App führt — und der einzige, der nicht über
+          eine Warteschlange läuft.
+        </p>
+        <p>
+          Sagt jemand den Kalendertermin in Outlook ab, geht die Absage als Mail an das
+          Funktionspostfach. <code>DEX_OutlookDeclineHandler</code> liest sie dort, ordnet Absender
+          und Terminbetreff einem Event zu und meldet die Person in der Teilnehmerliste ab. Danach
+          läuft der übliche Weg: Nummern neu vergeben, Warteliste nachrücken, Bestätigung versenden.
+        </p>
+        <p>
+          Analog dazu erkennt <code>DEX_OutlookForwardHandler</code> Weiterleitungen. Leitet ein
+          Teilnehmer die Einladung an Dritte weiter, prüft der Flow, ob diese Person angemeldet ist.
+          Ist sie es nicht, bekommt der Organizer eine Information — sonst stünde am Veranstaltungstag
+          jemand vor der Tür, der in keiner Liste steht.
+        </p>
+        <div class="note">
+          <p class="note-h">Bewusste Grenze</p>
+          <p>
+            Diese beiden Wege hängen an Betreffzeilen und Absenderadressen. Sie sind eine
+            Hilfestellung, keine Garantie: Ändert Microsoft den Wortlaut der
+            Benachrichtigungsmails, greifen sie nicht mehr. Die Teilnehmerliste in der App bleibt
+            die maßgebliche Quelle.
+          </p>
+        </div>
+      </section>
+
+      <!-- ============ 12 ============ -->
+      <section class="chapter" id="k12">
+        <span class="chapno">Kapitel 12</span>
+        <h2>Wo die Wahrheit liegt</h2>
+        <p class="lead">
+          Dieselbe Information steht an drei Stellen. Wenn sie auseinanderlaufen, entscheidet die
+          Rangfolge — und die ist eindeutig.
+        </p>
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr><th>Rang</th><th class="mono">Quelle</th><th>Rolle</th><th>Wenn sie widerspricht</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>1</strong></td>
+                <td class="mono">Teilnehmer <span style="color:var(--muted)">(Subsite)</span></td>
+                <td>Die Anmeldung selbst. Alles andere leitet sich hiervon ab.</td>
+                <td>Hat recht.</td>
+              </tr>
+              <tr>
+                <td><strong>2</strong></td>
+                <td class="mono">DEX_TeilnehmerCounter</td>
+                <td>Belegte Plätze als Zahl, damit Teilnehmer die Auslastung sehen, ohne die Liste lesen zu dürfen.</td>
+                <td>Wird aus der Teilnehmerliste neu berechnet.</td>
+              </tr>
+              <tr>
+                <td><strong>3</strong></td>
+                <td class="mono">DEX_Participants</td>
+                <td>Register „wer ist wo angemeldet“, damit „Meine Events“ ohne Scan aller Subsites auskommt.</td>
+                <td>Wird über die Wartungsaktion im Admin Center bereinigt.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Zwei bekannte Bruchstellen</h3>
+        <p>
+          <strong>Die E-Mail-Adresse ist der einzige Schlüssel — und sie ist nicht eindeutig.</strong>
+          Register, konsolidierte Teilnehmerliste, Hotelplanung und die Doppelanmelde-Prüfung
+          schlüsseln alle über die Mailadresse. Dieselbe Person kann in zwei Schreibweisen in den
+          Listen stehen. Wenn zwei Ansichten sich über „angemeldet ja/nein“ widersprechen, ist das
+          der erste Verdacht.
+        </p>
+        <p>
+          <strong>Ein leeres Ergebnis ist keine Aussage.</strong> Wird eine Teilnehmerliste
+          gelöscht — etwa durch das Aufbewahrungskonzept —, liefert der Lesezugriff darauf eine
+          leere Antwort, die von „niemand ist angemeldet“ nicht zu unterscheiden wäre. Auswertungen
+          müssen deshalb den Fehlerfall auswerten, statt aus Leere auf Abwesenheit zu schließen.
+        </p>
+      </section>
+
+      <!-- ============ 13 ============ -->
+      <section class="chapter" id="k13">
+        <span class="chapno">Kapitel 13</span>
+        <h2>Schutz und Aufbewahrung</h2>
+        <p class="lead">
+          Personenbezogene Daten liegen ausschließlich in den Teilnehmerlisten der Event-Subsites
+          und im zentralen Register. Beides ist zeitlich begrenzt.
+        </p>
+        <ul>
+          <li><strong>Zeilen-Sicherheit.</strong> In den Teilnehmerlisten sieht jeder nur seine
+            eigenen Einträge. Vollzugriff haben Organizer des jeweiligen Events, Admins und die
+            Dienst-Identität der Flows.</li>
+          <li><strong>Zielgruppen.</strong> Ein Event ist nur für die Personen sichtbar, die über
+            Standortfilter oder Verteiler dazugehören. Sub-Events können einen engeren Kreis haben
+            als das übergeordnete Event — dann sieht man die Seite, aber nicht diesen Programmpunkt.</li>
+          <li><strong>Aufbewahrung.</strong> Drei Monate nach Ende eines Events werden die
+            Teilnehmerdaten gelöscht. Vorher wandern die Kennzahlen ohne Personenbezug ins
+            Statistik-Archiv; das Event selbst bleibt bestehen. Das Register wird dabei
+            mitbereinigt.</li>
+          <li><strong>Nachweis.</strong> Fachliche Aktionen werden im Änderungsprotokoll
+            festgehalten — wer wann was ausgelöst hat, ohne Inhalte der Antworten.</li>
+        </ul>
+      </section>
+
+      <!-- ============ 14 ============ -->
+      <section class="chapter" id="k14">
+        <span class="chapno">Anhang</span>
+        <h2>Konventionen dieses Bildes</h2>
+        <p class="lead">
+          Damit spätere Ergänzungen konsistent bleiben — und damit klar ist, warum die Bilder so
+          aussehen, wie sie aussehen.
+        </p>
+        <ul>
+          <li><strong>Eine Ebene je Bild.</strong> Abbildung 1 zeigt Bausteine und ihre
+            Verbindungen, nicht deren Innenleben. Abläufe bekommen ein eigenes Bild. Das folgt der
+            Aufteilung des C4-Modells in Kontext, Container und Komponente — man mischt die Ebenen
+            nicht in einem Bild.</li>
+          <li><strong>Die Linie trägt die Aussage.</strong> Durchgezogen heißt synchron, gestrichelt
+            heißt asynchron. Jede Linie ist beschriftet: Wer ruft wen, und wozu. Eine unbeschriftete
+            Linie sagt nur „hängt irgendwie zusammen“.</li>
+          <li><strong>Form und Farbe kodieren Bedeutung, nicht Geschmack.</strong> Warteschlangen
+            sind durchgehend bernsteinfarben, externe Dienste blau, eigene Bausteine neutral. Farbe
+            ist dabei nie das einzige Unterscheidungsmerkmal — Beschriftung und Position tragen die
+            Information mit.</li>
+          <li><strong>Am Raster ausrichten.</strong> Gemeinsame Grundlinien und gleiche Abstände
+            sind das meiste, was ein Bild aufgeräumt wirken lässt.</li>
+          <li><strong>Produktlogos.</strong> Die Bilder hier arbeiten bewusst mit Beschriftung statt
+            mit Herstellerlogos. Wer offizielle Symbole einsetzen möchte, findet sie bei Microsoft
+            als SVG-Paket mit einer Lizenz, die genau diesen Einsatz erlaubt — Architekturbilder,
+            Schulungsunterlagen, Dokumentation. Empfehlenswert ist, sie sparsam einzusetzen: ein
+            Logo je externem System, nicht eines je Kasten.</li>
+        </ul>
+      </section>
+
+      <footer class="end">
+        Diese Beschreibung gibt den Stand v29.9.0 wieder. Sie beschreibt das System so, wie es
+        gebaut ist, nicht wie es gemeint war — bei Abweichungen gilt der Code.
+      </footer>
+    </main>
+  </div>
+</div>
+
+</body>
+</html>
