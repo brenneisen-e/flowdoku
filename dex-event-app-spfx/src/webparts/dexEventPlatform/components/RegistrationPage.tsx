@@ -502,6 +502,24 @@ export default function RegistrationPage(): React.ReactElement {
     return all.filter(ce => !ce.isFictive && isEventVisibleForUser(ce, currentUser.email, currentUser.location, groupEmails, currentUser.jobTitle));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [event?.id, canCreateEvents, registerForOther, currentUser.email, currentUser.location, groupEmails]);
+  /**
+   * v29.9: Wie viele buchbare Sub-Events hat das Event, die dieser Person der
+   * Zielgruppen-Filter oben WEGGENOMMEN hat?
+   *
+   * Das ist der Unterschied zwischen „es gibt keine" und „für dich ist keines
+   * freigegeben" — und der ist wichtig: Ist die Klammer weiter gefasst als ihre
+   * Sub-Events, kann jemand die Anmeldeseite öffnen und findet nichts zum
+   * Anklicken. Die Meldung dazu behauptete bis v29.8, es sei „aktuell keines
+   * angelegt". Das ist für die betroffene Person nachweislich falsch und
+   * schickt sie mit der falschen Frage zu den Organizern.
+   */
+  const hiddenChildCount = React.useMemo(() => {
+    if (!event || event.subEventsDisabled) return 0;
+    if (canCreateEvents || registerForOther) return 0;
+    const bookable = childEventsOf(event.id).filter(ce => !ce.isFictive);
+    return Math.max(0, bookable.length - childEvents.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [event?.id, event?.subEventsDisabled, canCreateEvents, registerForOther, childEvents.length]);
   // v15.10: vom Organizer konfigurierbare Bezeichnung (z.B. „Event-Sections",
   // „Workshops"). Wenn gesetzt überschreibt das die Default-Übersetzung
   // („Sessions" / „Sub-Events") überall im RegistrationPage-UI.
@@ -1266,17 +1284,25 @@ export default function RegistrationPage(): React.ReactElement {
             : `Please select at least one ${oneSub} to register — the main event cannot be booked here.`);
           return;
         }
+        // v29.9: „keines angelegt" nur sagen, wenn wirklich keines existiert.
+        // Sind welche da, aber keines für diese Person freigegeben, ist das der
+        // Grund — und die Person soll wissen, dass sie nach einer Freigabe
+        // fragen muss und nicht nach einem fehlenden Termin.
         setError(locale === 'de'
           ? (parentFullNoWaitlist
             ? 'Alle Plätze sind belegt und die Warteliste ist für dieses Event deaktiviert — eine Anmeldung ist nicht mehr möglich.'
             : (isDeadlinePassed
               ? 'Die Anmeldefrist dieses Events ist abgelaufen — eine Anmeldung ist nicht mehr möglich.'
-              : 'Für dieses Event läuft die Anmeldung ausschließlich über Sub-Events — aktuell ist keines angelegt. Bitte wende dich an die Organizer.'))
+              : (hiddenChildCount > 0
+                ? 'Die Anmeldung läuft hier ausschließlich über die einzelnen Programmpunkte — für dich ist aktuell keiner davon freigegeben. Wenn du teilnehmen möchtest, wende dich bitte an die Organizer.'
+                : 'Für dieses Event läuft die Anmeldung ausschließlich über Sub-Events — aktuell ist keines angelegt. Bitte wende dich an die Organizer.')))
           : (parentFullNoWaitlist
             ? 'All seats are taken and the waitlist is disabled for this event — registration is no longer possible.'
             : (isDeadlinePassed
               ? 'The registration deadline for this event has passed — registration is no longer possible.'
-              : 'Registration for this event runs exclusively via sub-events — none exists yet. Please contact the organizers.')));
+              : (hiddenChildCount > 0
+                ? 'Registration here runs exclusively via the individual programme items — none of them is currently released for you. If you would like to attend, please contact the organizers.'
+                : 'Registration for this event runs exclusively via sub-events — none exists yet. Please contact the organizers.'))));
         return;
       }
       setError(t('reg.nothing.selected') || 'Bitte wähle mindestens Haupt-Event oder eine Session aus.');
@@ -4484,7 +4510,11 @@ export default function RegistrationPage(): React.ReactElement {
           <span className="reg-step-num">3</span>
           <span className="reg-step-label">{locale === 'de' ? 'Anmeldung abschließen' : 'Complete your registration'}</span>
         </div>
-        {(event.eventSpecificFields.length > 0 || isSplitGroup || childEvents.length > 0) && (
+        {/* v29.9: …und die Karte muss auch dann erscheinen, wenn für diese
+            Person KEIN Programmpunkt sichtbar ist — sonst fehlt der Hinweis
+            darunter genau in dem Fall, für den er gedacht ist. */}
+        {(event.eventSpecificFields.length > 0 || isSplitGroup || childEvents.length > 0
+          || (hiddenChildCount > 0 && event.subEventsOnlyMode)) && (
         <div className="registration-specific">
           {/* v11.97: Section-Header + „* = Required field"-Legende in
               einer Zeile. Legende mit ROTEM Stern (vorher war der Stern
@@ -4709,6 +4739,26 @@ export default function RegistrationPage(): React.ReactElement {
                     </div>
                   );
                 })()}
+              </div>
+            )}
+
+            {/* v29.9: Sackgasse sichtbar machen — die Klammer ist nicht
+                buchbar, und von ihren Programmpunkten ist für diese Person
+                keiner freigegeben. Ohne diesen Hinweis steht da eine
+                Anmeldeseite ohne irgendetwas zum Anklicken, und der Grund
+                zeigt sich erst beim Klick auf „Registrieren".
+                Bewusst NUR in diesem Fall: Ist die Klammer selbst buchbar,
+                ist ein enger gefasstes Sub-Event Absicht des Organizers und
+                geht die Person nichts an. */}
+            {childEvents.length === 0 && hiddenChildCount > 0 && event.subEventsOnlyMode && (
+              <div style={{
+                marginTop: 12, padding: '10px 14px', borderRadius: 8,
+                background: 'rgba(237,139,0,0.10)', border: '1px solid var(--dex-orange, #ed8b00)',
+                fontSize: '0.82rem', color: 'var(--dex-orange-dark, #b35a00)', lineHeight: 1.5,
+              }}>
+                {locale === 'de'
+                  ? 'Die Anmeldung läuft hier ausschließlich über die einzelnen Programmpunkte. Für dich ist aktuell keiner davon freigegeben — wenn du teilnehmen möchtest, wende dich bitte an die Organizer.'
+                  : 'Registration here runs exclusively via the individual programme items. None of them is currently released for you — if you would like to attend, please contact the organizers.'}
               </div>
             )}
 
