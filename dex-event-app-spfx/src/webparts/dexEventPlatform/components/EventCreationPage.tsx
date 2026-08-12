@@ -10072,15 +10072,18 @@ export default function EventCreationPage(): React.ReactElement {
                   darunter — das Auge nahm ihn als Beschriftung wahr, nicht als
                   Themenwechsel. */}
               <h3 className="dex-step-sub-head">
-                {isDe ? 'Aufbau des Events' : 'How the event is structured'}
+                {isDe ? 'Nutzung von Sub-Events' : 'Using sub-events'}
               </h3>
-              {/* Bewusst EIN Satz: Was ein Sub-Event ist, steht in der
-                  Erklär-Box unter dem Schalter — der Balken sagt nur, dass hier
-                  ein anderes Thema anfängt. */}
+              {/* v29.8: Als Frage formuliert, die der Organizer beantworten
+                  kann, statt als Beschreibung dessen, was er hier „festlegt".
+                  Ein Beispiel dazu — abstrakte Begriffe wie „Aufbau" oder
+                  „woraus es besteht" sagen niemandem, ob das den eigenen Fall
+                  betrifft. Die Definition bleibt in der Erklär-Box unter dem
+                  Schalter; hier steht nur die Frage. */}
               <p className="dex-step-sub-lead">
                 {isDe
-                  ? 'Oben steht, was dein Event ist — hier legst du fest, woraus es besteht.'
-                  : 'Above you described what your event is — here you define what it consists of.'}
+                  ? 'Besteht dein Event aus mehreren Teilen — zum Beispiel Workshops, einem Abend-Dinner oder mehreren Terminen?'
+                  : 'Does your event consist of several parts — for example workshops, an evening dinner or several dates?'}
               </p>
 
               {/* v28.91: Schalter und Erklaerung gehoeren zusammen — die Frage
