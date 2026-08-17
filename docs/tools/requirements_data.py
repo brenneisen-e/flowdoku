@@ -238,60 +238,42 @@ REQS = [
         evidence='Architektur, Kapitel 17 „Sicherheitsbetrachtung“; Prüfung des Quelltextes auf '
                  'Zugangsdaten am 2026-08-12 ohne Befund.'),
     dict(
-        id='GCM-07', chapter='k15', cls='dex',
-        met='Für die Automatisierung gibt es zwei kategorisierte Umgebungen: Die Flows werden in einer '
-            'DEV-Umgebung entwickelt und laufen produktiv in einer PROD-Umgebung von Power Platform. '
-            'Die Anwendung selbst — das SPFx-Paket — liegt auf der Produktiv-Site; innerhalb der '
-            'Anwendung sind Demo-Modus und Entwurfs-Events fachliche Zustände, keine Umgebungen.',
-        evidence='Architektur, Kapitel 15 „Deployment und Rollback“; Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung); Screenshot vom 2026-08-17.',
-        open='Für die Anwendungsseite gibt es keine getrennte Nicht-Produktivumgebung (eigene Site '
-             'Collection, eigener App-Katalog). Zu entscheiden, ob das gefordert ist; der Aufwand ist '
-             'überschaubar, weil die Anwendung ihre Listen selbst anlegt.'),
+        id='GCM-07', chapter='k15', cls='flagged',
+        met='Es gibt zwei benannte Umgebungen für die Automatisierung, DEV und PROD. Die Kategorisierung beschreibt den Betrieb aber nicht: Die sieben Flows liegen vollständig in der DEV-Umgebung und laufen von dort produktiv gegen die Produktiv-Site. Sie sind fertig und werden nicht mehr weiterentwickelt — die DEV-Umgebung ist damit faktisch die Produktionsumgebung. Für die SPFx-Anwendung existiert gar keine zweite Umgebung; sie liegt allein auf der Produktiv-Site.',
+        evidence='Architektur, Kapitel 15 „Deployment und Rollback“ (Ist-Stand und Zielmodell); Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung).',
+        open='Abweichung, offen benannt: Kategorien sind vergeben, die produktive Last liegt aber in der als Entwicklung kategorisierten Umgebung. Damit ist die Anforderung nicht erfüllt. Zielmodell (vom Betrieb benannt): Flows in die PROD-Umgebung überführen, dort unter einem Service Principal betreiben, der DEV-Umgebung den Zugriff auf Produktivdaten entziehen und eine DEV-Umgebung für die SPFx-Anwendung aufbauen. Damit lösen sich GCM-07 bis GCM-11 und GCM-16 gemeinsam, ebenso GAC-01, GAC-02 und GAC-15. Bitte Zieltermin festhalten.'),
     dict(
-        id='GCM-08', chapter='k15', cls='dex',
-        met='Die Trennung ist für die Flows logisch umgesetzt: DEV und PROD sind eigene Power-Platform-'
-            'Umgebungen mit eigenen Verbindungen und eigenen Zugriffsrechten. Eine physische Trennung '
-            'ist bei einem Cloud-Dienst nicht darstellbar und auch nicht gefordert.',
-        evidence='Architektur, Kapitel 15; Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung); Screenshot vom 2026-08-17.',
-        open='Zu bestätigen: Greifen die DEV-Flows auf eine eigene SharePoint-Site zu oder auf die '
-             'Produktiv-Site? Zeigen sie auf die Produktivdaten, ist die Trennung nur nominell — '
-             'siehe GCM-10.'),
+        id='GCM-08', chapter='k15', cls='flagged',
+        met='Die beiden Power-Platform-Umgebungen sind logisch getrennt und haben eigene Verbindungen und Zugriffsrechte.',
+        evidence='Architektur, Kapitel 15 „Deployment und Rollback“ (Ist-Stand und Zielmodell); Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung).',
+        open='Abweichung: Die Trennung ist nominell, weil die Verbindungen der DEV-Umgebung auf die Produktiv-SharePoint-Site zeigen. Eine Trennung, die auf dieselben Daten greift, trennt nichts, was diese Anforderung schützen soll. Zielmodell (vom Betrieb benannt): Flows in die PROD-Umgebung überführen, dort unter einem Service Principal betreiben, der DEV-Umgebung den Zugriff auf Produktivdaten entziehen und eine DEV-Umgebung für die SPFx-Anwendung aufbauen. Damit lösen sich GCM-07 bis GCM-11 und GCM-16 gemeinsam, ebenso GAC-01, GAC-02 und GAC-15. Bitte Zieltermin festhalten.'),
     dict(
-        id='GCM-09', chapter='k15', cls='open',
-        met='Die DEV-Umgebung der Flows ist keine Umgebung für Endnutzer — sie enthält keine '
-            'Anwendungsoberfläche, sondern nur Flow-Entwürfe. Endnutzer erreichen sie nicht, weil es '
-            'dort nichts zu erreichen gibt.',
-        evidence='Architektur, Kapitel 15; Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung); Screenshot vom 2026-08-17.',
-        open='Zu bestätigen: Wer hat Zugriff auf die DEV-Umgebung? Für die Anforderung genügt die '
-             'Aussage, dass es der Entwicklungskreis ist und keine Endnutzer.'),
+        id='GCM-09', chapter='k15', cls='flagged',
+        met='Die DEV-Umgebung hat keine Anwendungsoberfläche — Endnutzer melden sich dort nicht an, es gibt nichts zu bedienen. Zugriff hat der Entwicklungskreis.',
+        evidence='Architektur, Kapitel 15 „Deployment und Rollback“ (Ist-Stand und Zielmodell); Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung).',
+        open='Abweichung im Sinn der Anforderung: Endnutzer greifen zwar nicht selbst zu, werden aber aus dieser Umgebung bedient — jede Bestätigungsmail und jeder Kalendereintrag entsteht dort. Der Schutzzweck (keine produktive Nutzung aus einer Nicht-Produktivumgebung) ist damit nicht erfüllt. Zielmodell (vom Betrieb benannt): Flows in die PROD-Umgebung überführen, dort unter einem Service Principal betreiben, der DEV-Umgebung den Zugriff auf Produktivdaten entziehen und eine DEV-Umgebung für die SPFx-Anwendung aufbauen. Damit lösen sich GCM-07 bis GCM-11 und GCM-16 gemeinsam, ebenso GAC-01, GAC-02 und GAC-15. Bitte Zieltermin festhalten.'),
     dict(
-        id='GCM-10', chapter='k15', cls='open',
-        met='Auf Anwendungsseite gilt: Der Demo-Modus liest keine Produktionsdaten, sondern erzeugt '
-            'seine Datensätze zur Laufzeit.',
-        evidence='Architektur, Kapitel 15 und 17; Auskunft des Betriebs vom 2026-08-17.',
-        open='Die entscheidende offene Frage dieses Blocks: Verbinden sich die Flows der DEV-Umgebung '
-             'mit der Produktiv-SharePoint-Site? Wenn ja, greifen Nicht-Produktivkonten auf '
-             'Produktionsdaten zu — und dann sind GCM-08, GCM-10 und GCM-16 betroffen, unabhängig '
-             'davon, dass die Umgebungen getrennt sind. Wenn nein, ist der Block sauber. Diese eine '
-             'Antwort entscheidet über drei Anforderungen.'),
+        id='GCM-10', chapter='k15', cls='flagged',
+        met='Auf Anwendungsseite gilt: Der Demo-Modus liest keine Produktionsdaten, sondern erzeugt seine Datensätze zur Laufzeit.',
+        evidence='Architektur, Kapitel 15 „Deployment und Rollback“ (Ist-Stand und Zielmodell); Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung).',
+        open='Abweichung, klar benannt: Die Verbindungen der als Nicht-Produktion kategorisierten DEV-Umgebung greifen auf die Produktiv-Site zu und damit auf personenbezogene Teilnehmerdaten. Die Anforderung ist nicht erfüllt. Der Entzug dieses Zugriffs ist ausdrücklich Teil des Zielmodells. Zielmodell (vom Betrieb benannt): Flows in die PROD-Umgebung überführen, dort unter einem Service Principal betreiben, der DEV-Umgebung den Zugriff auf Produktivdaten entziehen und eine DEV-Umgebung für die SPFx-Anwendung aufbauen. Damit lösen sich GCM-07 bis GCM-11 und GCM-16 gemeinsam, ebenso GAC-01, GAC-02 und GAC-15. Bitte Zieltermin festhalten.'),
     dict(
-        id='GCM-11', chapter='k15', cls='dex',
-        met='Es gibt zwei getrennte Wege, beide festgelegt. Anwendung: Versionsnummer setzen, Release '
-            'Notes schreiben, Typprüfung, sauberer Build, Paket ablegen, Bereitstellung über den '
-            'App-Katalog — jeder Schritt im Repository beschrieben und im Versionsverlauf '
-            'nachvollziehbar. Flows: Entwicklung in der DEV-Umgebung, produktiver Betrieb in der '
-            'PROD-Umgebung von Power Platform.',
-        evidence='Architektur, Kapitel 15; Release-Ablauf in den Arbeitsanweisungen des Repositories; '
-                 'Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung); Screenshot vom 2026-08-17.',
-        open='Zu ergänzen: Wie kommt ein Flow von DEV nach PROD — als Solution-Export und -Import '
-             'oder von Hand nachgebaut? Der Unterschied ist für GCM-04 wesentlich, weil nur der erste '
-             'Weg einen nachvollziehbaren Rückfall erlaubt.'),
+        id='GCM-11', chapter='k15', cls='flagged',
+        met='Für die Anwendung ist der Weg in die Produktion festgelegt und dokumentiert: Version setzen, Release Notes, Typprüfung, sauberer Build, Paket ablegen, Bereitstellung über den App-Katalog — nachvollziehbar im Versionsverlauf.',
+        evidence='Architektur, Kapitel 15 „Deployment und Rollback“ (Ist-Stand und Zielmodell); Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung).',
+        open='Für die Flows gibt es heute keinen solchen Weg, weil sie die DEV-Umgebung nie verlassen haben. Die Anforderung greift erst mit dem Zielmodell; dann ist festzulegen, ob die Überführung als Solution-Export und -Import erfolgt. Nur dieser Weg erlaubt einen nachvollziehbaren Rückfall (siehe GCM-04). Zielmodell (vom Betrieb benannt): Flows in die PROD-Umgebung überführen, dort unter einem Service Principal betreiben, der DEV-Umgebung den Zugriff auf Produktivdaten entziehen und eine DEV-Umgebung für die SPFx-Anwendung aufbauen. Damit lösen sich GCM-07 bis GCM-11 und GCM-16 gemeinsam, ebenso GAC-01, GAC-02 und GAC-15. Bitte Zieltermin festhalten.'),
     dict(
-        id='GCM-16', chapter='k17', cls='dex',
-        met='Produktionsdaten werden nicht für Tests verwendet. Der Demo-Modus erzeugt seine '
-            'Teilnehmerdaten synthetisch im Browser; es gibt keinen Export von Teilnehmerlisten in eine '
-            'Testumgebung. Personenbezogene Daten verlassen die Produktiv-Site nicht.',
-        evidence='Architektur, Kapitel 17; Funktion buildDemoRegistrations im EventContext.'),
+        id='GCM-16', chapter='k15', cls='flagged',
+        met='Für die Anwendung erfüllt: Produktionsdaten werden nicht für Tests verwendet, der '
+            'Demo-Modus erzeugt seine Teilnehmerdaten synthetisch im Browser, und es gibt keinen '
+            'Export von Teilnehmerlisten in eine Testumgebung.',
+        evidence='Architektur, Kapitel 15 und 17; Funktion buildDemoRegistrations im EventContext; '
+                 'Auskunft des Betriebs vom 2026-08-17.',
+        open='Abweichung auf der Flow-Seite, die die Anwendungs-Seite nicht aufwiegt: Die Flows liegen '
+             'in der DEV-Umgebung und verarbeiten von dort personenbezogene Produktivdaten — Namen und '
+             'E-Mail-Adressen der Teilnehmer stehen in jeder Bestätigungsmail, die dort erzeugt wird. '
+             'Damit werden Produktivdaten in einer als Nicht-Produktion kategorisierten Umgebung '
+             'verarbeitet. Nicht erfüllt, bis das Zielmodell greift (siehe GCM-07 bis GCM-11).'),
     dict(
         id='GCM-18', chapter='k1', cls='na',
         met='Nicht anwendbar im Sinne eigener Netzarchitektur: DEX hat kein Netz, keine Datenbank und '

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Architektur der DEX Event Experience Platform: SPFx-Webpart, SharePoint-Listen und Power-Automate-Flows, mit Verweis auf die Security Requirements.">
+<meta name="description" content="Architektur der DEX Event Experience Platform: SPFx-Webpart, SharePoint-Listen und Power-Automate-Flows, mit Ist-Stand, Zielmodell und Security Requirements.">
 <title>DEX Systemarchitektur</title>
 <style>
   :root {
@@ -1172,7 +1172,7 @@
       <section class="chapter" id="k15">
         <span class="chapno">Kapitel 15</span>
         <h2>Deployment und Rollback</h2>
-        <div class="reqs"><span class="reqs-lbl">Security Requirements</span><a href="security-requirements.html#GCM-01">GCM-01</a><a href="security-requirements.html#GCM-04">GCM-04</a><a href="security-requirements.html#GCM-07">GCM-07</a><a href="security-requirements.html#GCM-08">GCM-08</a><a href="security-requirements.html#GCM-09">GCM-09</a><a href="security-requirements.html#GCM-10">GCM-10</a><a href="security-requirements.html#GCM-11">GCM-11</a></div>
+        <div class="reqs"><span class="reqs-lbl">Security Requirements</span><a href="security-requirements.html#GCM-01">GCM-01</a><a href="security-requirements.html#GCM-04">GCM-04</a><a href="security-requirements.html#GCM-07">GCM-07</a><a href="security-requirements.html#GCM-08">GCM-08</a><a href="security-requirements.html#GCM-09">GCM-09</a><a href="security-requirements.html#GCM-10">GCM-10</a><a href="security-requirements.html#GCM-11">GCM-11</a><a href="security-requirements.html#GCM-16">GCM-16</a></div>
         <p class="lead">
           Ein Release ist ein Dateiaustausch. Das macht die Auslieferung einfach — und den Rückweg
           genauso.
@@ -1207,24 +1207,50 @@
             Änderungen gebracht hat.
           </p>
         </div>
-        <h3>Umgebungen</h3>
+        <h3>Umgebungen — Ist-Stand</h3>
         <p>
-          Die beiden Hälften des Systems sind unterschiedlich aufgestellt. Die <strong>Flows</strong>
-          haben zwei kategorisierte Umgebungen: Sie werden in einer DEV-Umgebung von Power Platform
-          entwickelt und laufen produktiv in einer PROD-Umgebung, jede mit eigenen Verbindungen und
-          eigenen Zugriffsrechten. Die <strong>Anwendung</strong> dagegen liegt auf einer Site — der
-          Produktiv-Site. Demo-Modus und Entwurfs-Events sind darin fachliche Zustände, keine
-          getrennten Umgebungen; eine eigene Nicht-Produktiv-Site mit eigenem App-Katalog existiert
-          nicht.
+          Der Ist-Stand weicht von der Benennung ab, und das ist wichtiger als die Benennung. In Power
+          Platform gibt es zwei Umgebungen, eine als Entwicklung und eine als Produktion kategorisiert.
+          <strong>Die sieben Flows liegen vollständig in der Entwicklungsumgebung</strong> — sie sind
+          fertig, werden nicht weiterentwickelt und laufen von dort produktiv gegen die Produktiv-Site.
+          Faktisch ist die Entwicklungsumgebung damit die Produktionsumgebung. Für die Anwendung selbst
+          existiert überhaupt nur eine Umgebung: die Produktiv-Site.
         </p>
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr><th>Baustein</th><th>Heute</th><th>Zielmodell</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Flows</strong></td>
+                <td>liegen in der DEV-Umgebung, laufen produktiv gegen die Produktiv-Site</td>
+                <td>liegen in der PROD-Umgebung; die DEV-Umgebung erreicht Produktivdaten nicht mehr</td>
+              </tr>
+              <tr>
+                <td><strong>Identität der Flows</strong></td>
+                <td>persönliches Benutzerkonto</td>
+                <td>Service Principal</td>
+              </tr>
+              <tr>
+                <td><strong>Anwendung (SPFx)</strong></td>
+                <td>nur die Produktiv-Site</td>
+                <td>zusätzlich eine DEV-Umgebung zum Erproben neuer Funktionen</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
         <div class="note">
-          <p class="note-h">Was an der Trennung noch zu klären ist</p>
+          <p class="note-h">Was das für die Anforderungen heißt</p>
           <p>
-            Getrennte Umgebungen sind nur die halbe Aussage. Entscheidend ist, worauf die DEV-Flows
-            zeigen: Verbinden sie sich mit einer eigenen SharePoint-Site oder mit der Produktiv-Site?
-            Im zweiten Fall arbeiten Entwicklungsstände auf Produktionsdaten, und die Trennung ist
-            nominell. Ebenso offen: ob ein Flow als Solution von DEV nach PROD wandert oder dort von
-            Hand nachgebaut wird — nur der erste Weg erlaubt einen nachvollziehbaren Rückfall.
+            Getrennte Umgebungen zu haben ist nur die halbe Aussage; entscheidend ist, wo die
+            produktive Last läuft und worauf sie zugreift. Weil die als Entwicklung kategorisierte
+            Umgebung auf Produktivdaten zugreift und die produktive Verarbeitung dort stattfindet,
+            sind sechs Anforderungen betroffen — von der Kategorisierung der Umgebungen bis zum Verbot,
+            Produktivdaten außerhalb der Produktion zu verarbeiten. Das Zielmodell räumt alle
+            gemeinsam auf, zusammen mit der Umstellung auf einen Service Principal. Es ist deshalb
+            hier beschrieben und nicht nur in der Requirements-Matrix: Es ist die eine Maßnahme, an
+            der die Hälfte der offenen Punkte hängt.
           </p>
         </div>
       </section>
@@ -1265,7 +1291,7 @@
       <section class="chapter" id="k17">
         <span class="chapno">Kapitel 17</span>
         <h2>Sicherheitsbetrachtung</h2>
-        <div class="reqs"><span class="reqs-lbl">Security Requirements</span><a href="security-requirements.html#GCM-06">GCM-06</a><a href="security-requirements.html#GCM-16">GCM-16</a><a href="security-requirements.html#GIA-01">GIA-01</a><a href="security-requirements.html#GIA-05">GIA-05</a><a href="security-requirements.html#GSC-03">GSC-03</a><a href="security-requirements.html#GSC-04">GSC-04</a><a href="security-requirements.html#GSC-05">GSC-05</a><a href="security-requirements.html#GSC-06">GSC-06</a><a href="security-requirements.html#GSC-09">GSC-09</a><a href="security-requirements.html#GSI-01">GSI-01</a><a href="security-requirements.html#GSI-06">GSI-06</a><a href="security-requirements.html#GSI-09">GSI-09</a><a href="security-requirements.html#GSA-04">GSA-04</a><a href="security-requirements.html#GSD-02">GSD-02</a></div>
+        <div class="reqs"><span class="reqs-lbl">Security Requirements</span><a href="security-requirements.html#GCM-06">GCM-06</a><a href="security-requirements.html#GIA-01">GIA-01</a><a href="security-requirements.html#GIA-05">GIA-05</a><a href="security-requirements.html#GSC-03">GSC-03</a><a href="security-requirements.html#GSC-04">GSC-04</a><a href="security-requirements.html#GSC-05">GSC-05</a><a href="security-requirements.html#GSC-06">GSC-06</a><a href="security-requirements.html#GSC-09">GSC-09</a><a href="security-requirements.html#GSI-01">GSI-01</a><a href="security-requirements.html#GSI-06">GSI-06</a><a href="security-requirements.html#GSI-09">GSI-09</a><a href="security-requirements.html#GSA-04">GSA-04</a><a href="security-requirements.html#GSD-02">GSD-02</a></div>
         <p class="lead">
           Was die Anwendung selbst verantwortet — und wo sie bewusst von einer Vorgabe abweicht. Die
           Abweichungen stehen hier, nicht im Kleingedruckten.
@@ -1333,7 +1359,9 @@
             der zentralen Verwaltung privilegierter Konten hinterlegen — und der Betrieb der Plattform
             hängt an einer Person. Scheidet sie aus, brechen Mails, Kalendereinträge und die
             Nummernvergabe ab, ohne dass die Anwendung davon etwas merkt. Geplant ist die Umstellung
-            auf einen Service Principal; damit erledigen sich drei Anforderungen auf einmal.
+            auf einen Service Principal — als Teil desselben Zielmodells, mit dem die Flows in die
+            Produktionsumgebung wandern (Kapitel 15). Damit erledigen sich drei Anforderungen auf
+            einmal.
           </p>
         </div>
         <div class="note">
@@ -1400,9 +1428,10 @@
           <a href="downloads/DEX-Requirements-kommentiert.xlsx">dieselbe Bewertung als Excel</a>
         </p>
         <p>
-          Von 49 Anforderungen erfüllt die Anwendung 18 selbst, 11 erbt sie von der Plattform, 6
-          treffen auf diese Bauart nicht zu, 4 brauchen eine Bestätigung aus dem Betrieb und 10 sind
-          als Abweichung oder Restrisiko offengelegt.
+          Von 49 Anforderungen erfüllt die Anwendung 14 selbst, 11 erbt sie von der Plattform, 6
+          treffen auf diese Bauart nicht zu, 2 warten auf eine Beauftragung und 16 sind als
+          Abweichung oder Restrisiko offengelegt — die meisten davon hängen am Zielmodell aus
+          Kapitel 15.
         </p>
       </section>
 
