@@ -59,23 +59,29 @@ REQS = [
             'Verbindungs-Identität der sieben Power-Automate-Flows, die auf den Event-Subsites '
             'Vollzugriff braucht.',
         evidence='Architektur, Kapitel 7 „Die sieben Flows“; Auskunft des Betriebs vom 2026-08-17.',
-        open='Befund mit bekanntem Abhilfeplan: Die Flow-Verbindungen laufen derzeit unter einem '
-             'PERSÖNLICHEN Benutzerkonto, nicht unter einem Dienstkonto. Damit ist kein Vaulting im '
-             'PAMS möglich — ein persönliches Konto gehört dort nicht hinein. Zwei Wirkungen: Die '
-             'Anforderung ist nicht erfüllt, und der Betrieb der Plattform hängt an einer Person; '
-             'scheidet sie aus, brechen alle Mails und Kalendereinträge ab. Geplant ist die Umstellung '
-             'auf einen Service Principal. Damit wäre die Anforderung erfüllbar und GAC-02 sowie '
-             'GAC-15 gleich mit. Bitte Zieltermin festhalten.'),
+        open='Befund mit bekanntem Abhilfeplan: Die Flow-Verbindungen laufen über ein Konto, das nach '
+             'Auskunft des Betriebs als Dienstkonto geführt wird — dessen Adresse folgt aber dem '
+             'Namensmuster für Personenkonten des Tenants (Initial und Nachname). Ein Assessor wird es '
+             'deshalb als personalisiertes Konto einordnen, unabhängig von der internen Zweckbestimmung. '
+             'Damit ist die Anforderung heute nicht belegbar: Ein auf eine Person lautendes Konto lässt '
+             'sich nicht als Dienstkonto im PAMS führen, und es bringt die Mechanismen mit, die für '
+             'Menschen gedacht sind — Postfach, interaktive Anmeldung, Mehrfaktor. Hinzu kommt das '
+             'Betriebsrisiko: Verlässt die Person die Organisation, brechen Mails, Kalendereinträge und '
+             'Nummernvergabe ab, ohne dass die Anwendung es merkt. Vorgesehen ist die Umstellung auf '
+             'einen Service Principal als Teil des Zielmodells; damit lösen sich GAC-01, GAC-02 und '
+             'GAC-15 gemeinsam. Der konkrete Kontoname liegt dem Review als Nachweis vor, steht aber '
+             'bewusst nicht in der veröffentlichten Dokumentation. Bitte Zieltermin festhalten.'),
     dict(
         id='GAC-02', chapter='k7', cls='flagged',
         met='Die Flow-Verbindungen gehören der Identität, unter der sie angelegt wurden; die Freigabe '
             'an weitere Personen steuert Power Platform.',
         evidence='Architektur, Kapitel 7; Auskunft des Betriebs vom 2026-08-17.',
-        open='Derzeit ist die Verbindungs-Identität ein persönliches Konto (siehe GAC-01). Formal ist '
-             'die Anforderung damit erfüllt — die Zugangsdaten liegen ausschliesslich bei ihrem '
-             'Eigentümer —, aber aus dem falschen Grund: Es gibt keinen autorisierten Vertreter, weil '
-             'es keine Delegation gibt. Mit dem geplanten Service Principal wird daraus eine bewusst '
-             'verwaltete Berechtigung mit benennbaren Verantwortlichen.'),
+        open='Die Verbindungs-Identität ist ein personalisiert benanntes Konto (siehe GAC-01). Formal '
+             'ist die Anforderung damit erfüllt — die Zugangsdaten liegen bei ihrem Eigentümer —, aber '
+             'aus dem falschen Grund: Es gibt keinen autorisierten Vertreter, weil es keine Delegation '
+             'gibt. Fällt der Eigentümer aus, gibt es niemanden, der eintreten darf. Mit dem geplanten '
+             'Service Principal wird daraus eine verwaltete Berechtigung mit benennbaren '
+             'Verantwortlichen und einer Freigabeliste, die man vorzeigen kann.'),
     dict(
         id='GAC-03', chapter='k2', cls='platform',
         met='DEX hat keine eigene Authentifizierung. Anmeldung, Sperrung nach Fehlversuchen und '
@@ -138,11 +144,11 @@ REQS = [
         id='GAC-15', chapter='k7', cls='flagged',
         met='Die Anforderung greift erst, wenn es ein nicht-menschliches Konto gibt.',
         evidence='Architektur, Kapitel 7; Auskunft des Betriebs vom 2026-08-17.',
-        open='Heute nicht anwendbar, weil die Flows unter einem persönlichen Konto laufen (GAC-01) — '
-             'und dem kann die interaktive Anmeldung nicht entzogen werden, es ist ja ein Mensch. Mit '
-             'der Umstellung auf einen Service Principal löst sich die Anforderung von selbst: Ein '
-             'Service Principal hat gar keine interaktive Anmeldung. Der Punkt ist also nicht separat '
-             'zu bearbeiten, sondern erledigt sich mit GAC-01.'),
+        open='Heute nicht erfüllbar: Das Konto der Flow-Verbindungen ist ein Benutzerkonto mit '
+             'Postfach (siehe GAC-01), und einem solchen lässt sich die interaktive Anmeldung nicht '
+             'entziehen, ohne es funktionsunfähig zu machen. Mit der Umstellung auf einen Service '
+             'Principal löst sich die Anforderung von selbst — ein Service Principal hat gar keine '
+             'interaktive Anmeldung. Der Punkt ist also nicht separat zu bearbeiten.'),
     # ------------------------------------------------------------------ GAT
     dict(
         id='GAT-01', chapter='k1', cls='dex',

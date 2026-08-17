@@ -1351,17 +1351,19 @@
           </p>
         </div>
         <div class="note">
-          <p class="note-h">Die Flows laufen unter einem persönlichen Konto</p>
+          <p class="note-h">Die Flows laufen über ein Benutzerkonto, nicht über einen Service Principal</p>
           <p>
-            Die Verbindungen der sieben Flows nutzen derzeit die Berechtigungen eines
-            <strong>persönlichen Benutzerkontos</strong>, nicht die eines Dienstkontos. Das hat zwei
-            Folgen, und die zweite ist die unangenehmere: Ein persönliches Konto lässt sich nicht in
-            der zentralen Verwaltung privilegierter Konten hinterlegen — und der Betrieb der Plattform
-            hängt an einer Person. Scheidet sie aus, brechen Mails, Kalendereinträge und die
-            Nummernvergabe ab, ohne dass die Anwendung davon etwas merkt. Geplant ist die Umstellung
-            auf einen Service Principal — als Teil desselben Zielmodells, mit dem die Flows in die
-            Produktionsumgebung wandern (Kapitel 15). Damit erledigen sich drei Anforderungen auf
-            einmal.
+            Die Verbindungen der sieben Flows nutzen ein Konto, das intern als Dienstkonto geführt wird
+            — seine Adresse folgt aber dem Namensmuster für <strong>Personenkonten</strong> des Tenants,
+            und ein Prüfer wird es entsprechend einordnen. Ein Service Principal ist es nicht. Daraus
+            folgen zwei Dinge, und das zweite ist das gewichtigere: Ein auf eine Person lautendes Konto
+            lässt sich nicht als Dienstkonto zentral verwalten und bringt die Mechanismen für Menschen
+            mit — Postfach, interaktive Anmeldung, Mehrfaktor. Und der Betrieb hängt an dieser einen
+            Identität: Verlässt sie die Organisation, brechen Mails, Kalendereinträge und die
+            Nummernvergabe ab, ohne dass die Anwendung davon etwas merkt. Die Umstellung auf einen
+            Service Principal ist Teil des Zielmodells (Kapitel 15) und erledigt drei Anforderungen auf
+            einmal. Den Kontonamen führt die Nachweis-Sammlung des Reviews; hier steht er nicht, weil
+            diese Dokumentation veröffentlicht wird.
           </p>
         </div>
         <div class="note">
