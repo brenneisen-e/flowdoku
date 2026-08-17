@@ -2,19 +2,24 @@ import * as React from 'react';
 import { ManualSection } from '../types';
 
 /**
- * v29.10: Systemarchitektur im Handbuch.
+ * v29.10: Systemarchitektur im Handbuch — seit v29.12 bewusst KURZ.
  *
- * Es gab bisher nur den Flow-Artikel — der beschreibt die sieben Flows im
- * Detail, beantwortet aber nicht die Frage davor: Wo läuft die App überhaupt,
- * welche Listen trägt sie, und warum liegt zwischen Klick und Bestätigungsmail
- * eine Minute? Diese Sektion liefert das Gesamtbild und übergibt für die
- * Details an den Flow-Artikel.
+ * Warum kurz: Es gibt in der App längst eine Architekturseite (ArchitecturePage,
+ * v26.28, Kachel im Admin Hub) mit PDF-Export. Dieser Artikel ist v29.10 dazu
+ * entstanden, ohne das zu prüfen — zwei Darstellungen derselben Sache, die
+ * auseinanderlaufen. Genau davor warnt CLAUDE.md bei zwei Bedienwegen für
+ * dieselbe Auswahl.
  *
- * Das Schaubild ist bewusst Inline-SVG mit den App-Variablen (--dex-*): Es
- * folgt damit dem Theme, skaliert mit der Spaltenbreite und braucht keine
- * Bilddatei, die beim nächsten Umbau veraltet im Bundle liegen bleibt.
- * Konventionen wie im ausführlichen Dokument (docs/architektur.html):
- * durchgezogen = synchron, gestrichelt = asynchron über eine Warteschlange.
+ * Aufgeteilt statt gedoppelt: Der Artikel liefert das SCHAUBILD (das der
+ * Architekturseite fehlt) und die drei Sätze, die man zum Verstehen braucht.
+ * Alles Aufzählende — Listen, Flows, Umgebungen, Sicherung, offene
+ * Sicherheitspunkte — steht auf der Architekturseite und wächst dort ins PDF
+ * mit. Wer hier etwas ergänzen will, prüft zuerst, ob es dorthin gehört.
+ *
+ * Das Schaubild ist Inline-SVG mit den App-Variablen (--dex-*): folgt dem
+ * Theme, skaliert mit der Spalte und veraltet nicht still als Bilddatei im
+ * Bundle. Konventionen wie im Langdokument: durchgezogen = synchron,
+ * gestrichelt = asynchron über eine Warteschlange.
  */
 
 const SystemDiagram = (props: { isDe: boolean }): React.ReactElement => {
@@ -168,8 +173,8 @@ export function architectureSection(locale: 'de' | 'en'): ManualSection {
     title: isDe ? 'Systemarchitektur' : 'System architecture',
     category: 'architecture',
     description: isDe
-      ? 'Wo die App läuft, welche Listen sie trägt, wie deployed und gesichert wird — und welche Sicherheitspunkte offen sind.'
-      : 'Where the app runs, which lists carry it, how it is deployed and backed up — and which security items are open.',
+      ? 'Das Systembild in einem Schaubild, plus die drei Sätze, die man zum Verstehen braucht. Einzelheiten und PDF: Admin Center → Architektur.'
+      : 'The system overview as one diagram, plus the three sentences you need. Details and PDF: Admin Center → Architecture.',
     visibleFor: ['Admin'],
     keywords: isDe
       ? 'Architektur Systemarchitektur Aufbau Schaubild Diagramm SPFx Webpart SharePoint Listen Subsite Teilnehmerliste Queue Warteschlange Power Automate Item-Level-Security Zeilen-Sicherheit Counter Platzzähler DEX_Events DEX_Participants Datenmodell Technik Überblick Deployment Rollback Umgebungen DEV PROD Service Principal Sicherung Backup Security Requirements Abweichungen Zielmodell'
@@ -206,181 +211,43 @@ export function architectureSection(locale: 'de' | 'en'): ManualSection {
           },
           {
             number: 2,
-            title: isDe ? 'Die App handelt im Namen des Nutzers' : 'The app acts as the user',
+            title: isDe ? 'Die drei Sätze, auf die es ankommt' : 'The three sentences that matter',
             description: (
-              <p style={{ margin: 0 }}>
-                {isDe
-                  ? 'Jeder Lese- und Schreibvorgang läuft mit den Berechtigungen der Person, die gerade davorsitzt. Die App kann sich keine höheren Rechte verschaffen. Wer eine Teilnehmerliste nicht sehen darf, sieht sie auch in der App nicht — und genau deshalb gibt es die Flows: Sie laufen mit einer Dienst-Identität und erledigen, wofür der Nutzer keine Rechte hat.'
-                  : 'Every read and write runs with the permissions of whoever is using the app. It cannot grant itself more. Anyone who may not see an attendee list will not see it in the app either — and that is exactly why the flows exist: they run with a service identity and do what the user is not allowed to do.'}
-              </p>
+              <>
+                <ul style={{ paddingLeft: 18, margin: 0, lineHeight: 1.7 }}>
+                  <li>{isDe
+                    ? 'Die App handelt immer im Namen der Person, die sie bedient — sie kann sich keine höheren Rechte verschaffen. Deshalb gibt es die Flows: Sie laufen mit einer eigenen Identität und erledigen, wofür der Nutzer keine Rechte hat.'
+                    : 'The app always acts as the person using it — it cannot grant itself more rights. That is why the flows exist: they run under their own identity and do what the user is not allowed to do.'}</li>
+                  <li>{isDe
+                    ? 'Jedes Event hat eine eigene Subsite mit eigener Teilnehmerliste („nur eigene Elemente"). Weil ein Teilnehmer damit die Belegung nicht zählen kann, gibt es daneben den Platzzähler — eine Liste ohne Personenbezug, die jeder lesen darf.'
+                    : 'Every event has its own subsite with its own attendee list (“own items only”). Since an attendee cannot count occupancy that way, the seat counter sits next to it — a list without personal data that everyone may read.'}</li>
+                  <li>{isDe
+                    ? 'Zwischen Klick und Bestätigungsmail liegt bis zu eine Minute, weil kein Aufruf stattfindet: Die App legt einen Auftrag in eine Warteschlange, ein Flow findet ihn dort. Flows reagieren nur auf NEUE Einträge — ein fehlender Outlook-Termin lässt sich deshalb nicht durch erneutes Speichern nachziehen.'
+                    : 'Up to a minute passes between click and confirmation mail because there is no call: the app drops a job into a queue and a flow picks it up. Flows only react to NEW items — a missing Outlook appointment cannot be fixed by saving again.'}</li>
+                </ul>
+              </>
             ),
           },
           {
             number: 3,
-            title: isDe ? 'Eine Subsite je Event' : 'One subsite per event',
+            title: isDe ? 'Wo die Einzelheiten stehen' : 'Where the details live',
             description: (
               <>
                 <p style={{ margin: '0 0 6px 0' }}>
                   {isDe
-                    ? 'Die Anmeldungen liegen nicht in einer gemeinsamen Liste, sondern je Event in einer eigenen Subsite mit der Liste „Teilnehmer". Das hält die Listen klein, erlaubt Rechte pro Event und macht das Löschen nach der Aufbewahrungsfrist möglich, ohne das Event zu verlieren.'
-                    : 'Registrations do not live in one shared list but in a subsite per event with its own „Teilnehmer" list. That keeps lists small, allows per-event permissions and makes deletion after the retention period possible without losing the event.'}
+                    ? 'Alles Aufzählende steht im Admin Center unter „Architektur“ — jede Liste mit ihrer Funktion, alle acht Flows mit Auslöser und Wirkung, die Umgebungen mit Ist-Stand und Zielmodell, Sicherung und Wiederherstellung sowie die offengelegten Sicherheitspunkte. Dort gibt es auch den Knopf „Als PDF herunterladen“.'
+                    : 'Everything enumerable is in the Admin Center under “Architecture” — every list with its function, all eight flows with trigger and effect, the environments with current and target state, backup and recovery, and the disclosed security items. That page also has the “Download as PDF” button.'}
                 </p>
                 <p style={{ margin: 0 }}>
                   {isDe
-                    ? 'Die Liste läuft mit Zeilen-Sicherheit („nur eigene Elemente"). Weil ein Teilnehmer damit die Belegung nicht zählen kann, gibt es daneben DEX_TeilnehmerCounter — eine Liste ohne Personenbezug, die jeder lesen darf.'
-                    : 'The list uses item-level security („only their own items"). Since an attendee cannot count occupancy that way, DEX_TeilnehmerCounter sits next to it — a list without personal data that everyone may read.'}
+                    ? 'Die Flows im Detail beschreibt der Artikel „Power Automate Flows“. Die ausführliche Fassung mit allen Abläufen liegt in der Projektdokumentation (docs/architektur.html), die Bewertung der 49 Security Requirements unter docs/security-requirements.html.'
+                    : 'The flows in detail are covered by the „Power Automate Flows“ article. The long form with all workflows is in the project documentation (docs/architektur.html), the assessment of the 49 security requirements at docs/security-requirements.html.'}
                 </p>
               </>
             ),
             tip: isDe
-              ? 'Folge daraus: Es gibt keine Abfrage über alle Anmeldungen hinweg. Wer wissen will, wo eine Person überall angemeldet ist, liest das Register DEX_Participants — oder jede Subsite einzeln.'
-              : 'Consequence: there is no query across all registrations. To find every event a person is registered for, read the DEX_Participants registry — or each subsite one by one.',
-          },
-          {
-            number: 4,
-            title: isDe ? 'Warteschlangen statt Aufrufe' : 'Queues instead of calls',
-            description: (
-              <>
-                <p style={{ margin: '0 0 6px 0' }}>
-                  {isDe
-                    ? 'Jeder Auftrag ist eine Listenzeile mit Statusfeld. Die App legt sie mit Status „Pending" an und ist fertig — sie wartet nicht. Der Flow setzt auf „Processing", erledigt die Arbeit und schreibt „Sent" bzw. „Done" zurück. Bleibt eine Zeile auf „Processing" stehen, ist genau dieser Auftrag gescheitert — sichtbar in der Liste und im Ausführungsverlauf des Flows.'
-                    : 'Every job is a list item with a status field. The app creates it with status „Pending" and is done — it does not wait. The flow sets „Processing", does the work and writes back „Sent" or „Done". An item stuck on „Processing" is exactly that one failed job — visible in the list and in the flow run history.'}
-                </p>
-                <p style={{ margin: 0 }}>
-                  {isDe
-                    ? 'Für Nutzer heisst das: Die Anmeldung ist sofort gültig, die Mail kommt gleich. Scheitert der Versand, bleibt die Anmeldung trotzdem bestehen — der Platz zählt, nicht die Benachrichtigung.'
-                    : 'For users: the registration is valid immediately, the mail follows. If sending fails the registration still stands — the seat counts, not the notification.'}
-                </p>
-              </>
-            ),
-            warning: isDe
-              ? 'Die Flows reagieren nur auf NEUE Listeneinträge. Das Ändern eines bestehenden Eintrags löst nichts aus — ein fehlender Outlook-Termin lässt sich deshalb nicht durch erneutes Speichern des Events nachziehen.'
-              : 'The flows only react to NEW list items. Updating an existing item triggers nothing — a missing Outlook appointment cannot be fixed by simply saving the event again.',
-          },
-          {
-            number: 5,
-            title: isDe ? 'Wo die Wahrheit liegt' : 'Where the truth lives',
-            description: (
-              <>
-                <p style={{ margin: '0 0 6px 0' }}>
-                  {isDe
-                    ? 'Dieselbe Information steht an drei Stellen, mit klarer Rangfolge:'
-                    : 'The same information exists in three places, with a clear order of precedence:'}
-                </p>
-                <ol style={{ paddingLeft: 18, margin: '0 0 6px 0', lineHeight: 1.7 }}>
-                  <li>
-                    <strong>Teilnehmer</strong> {isDe ? '(Subsite) — die Anmeldung selbst. Hat immer recht.' : '(subsite) — the registration itself. Always right.'}
-                  </li>
-                  <li>
-                    <strong>DEX_TeilnehmerCounter</strong> {isDe ? '— die Zahl für die Anzeige. Wird aus der Teilnehmerliste neu berechnet.' : '— the number shown in the UI. Recomputed from the attendee list.'}
-                  </li>
-                  <li>
-                    <strong>DEX_Participants</strong> {isDe ? '— das Register für „Meine Events". Wird über die Wartungsaktion im Admin Center bereinigt.' : '— the registry behind „My events". Cleaned via the maintenance action in the Admin Center.'}
-                  </li>
-                </ol>
-                <p style={{ margin: 0 }}>
-                  {isDe
-                    ? 'Widersprechen sich zwei Ansichten über „angemeldet ja/nein", ist der erste Verdacht: dieselbe Person steht unter zwei E-Mail-Adressen in den Listen. Die Adresse ist der einzige Schlüssel — und sie ist nicht eindeutig.'
-                    : 'If two views disagree about „registered yes/no", the first suspicion is: the same person appears under two email addresses. The address is the only key — and it is not unique.'}
-                </p>
-              </>
-            ),
-          },
-          {
-            number: 6,
-            title: isDe ? 'Deployment und Rollback' : 'Deployment and rollback',
-            description: (
-              <>
-                <p style={{ margin: '0 0 6px 0' }}>
-                  {isDe
-                    ? 'Ein Release ist ein Dateiaustausch: Version setzen, Release Notes schreiben, sauber bauen, Paket über den App-Katalog bereitstellen. Der Katalog ist zugleich die Freigabeliste — was dort nicht liegt, läuft nicht.'
-                    : 'A release is a file swap: set the version, write the release notes, build cleanly, deploy the package via the app catalog. The catalog doubles as the allowlist — what is not in it does not run.'}
-                </p>
-                <p style={{ margin: 0 }}>
-                  {isDe
-                    ? 'Jede Version bleibt archiviert, die vorherige ist als Rollback-Paket ausgewiesen. Ein Rückfall ist das Hochladen der älteren Datei — die Daten sind davon nicht betroffen, ein Deployment fasst keine Liste an.'
-                    : 'Every version stays archived, the previous one is marked as the rollback package. Rolling back means uploading the older file — data is untouched, a deployment does not modify any list.'}
-                </p>
-              </>
-            ),
-            tip: isDe
-              ? 'Führt eine Version neue Spalten oder Schalter ein, bleiben die nach einem Rückfall stehen. Das ist verträglich, weil die App unbekannte Felder ignoriert — aber prüfen, ob die Version strukturelle Änderungen gebracht hat.'
-              : 'If a version introduced new columns or flags, they remain after a rollback. That is tolerable because the app ignores fields it does not know — but check whether the version brought structural changes.',
-          },
-          {
-            number: 7,
-            title: isDe ? 'Umgebungen — Ist-Stand und Zielmodell' : 'Environments — current and target state',
-            description: (
-              <>
-                <p style={{ margin: '0 0 6px 0' }}>
-                  {isDe
-                    ? 'Der Ist-Stand weicht von der Benennung ab, und das ist wichtiger als die Benennung: Die sieben Flows liegen in der DEV-Umgebung von Power Platform, sind fertig und laufen von dort produktiv gegen die Produktiv-Site. Für die Anwendung selbst gibt es nur eine Umgebung.'
-                    : 'The current state differs from the labels, and that matters more than the labels: all seven flows sit in the Power Platform DEV environment, are finished, and run productively from there against the production site. For the app itself there is only one environment.'}
-                </p>
-                <ul style={{ paddingLeft: 18, margin: '0 0 6px 0', lineHeight: 1.7 }}>
-                  <li>
-                    <strong>{isDe ? 'Flows' : 'Flows'}</strong>{' '}
-                    {isDe ? '— heute in DEV, produktiv gegen Prod · Ziel: in PROD, ohne Produktivzugriff aus DEV' : '— today in DEV, productive against prod · target: in PROD, no prod access from DEV'}
-                  </li>
-                  <li>
-                    <strong>{isDe ? 'Identität der Flows' : 'Flow identity'}</strong>{' '}
-                    {isDe ? '— heute ein Benutzerkonto · Ziel: Service Principal' : '— today a user account · target: service principal'}
-                  </li>
-                  <li>
-                    <strong>{isDe ? 'Anwendung' : 'App'}</strong>{' '}
-                    {isDe ? '— heute nur die Produktiv-Site · Ziel: zusätzlich eine DEV-Umgebung' : '— today only the production site · target: an additional DEV environment'}
-                  </li>
-                </ul>
-                <p style={{ margin: 0 }}>
-                  {isDe
-                    ? 'An diesem einen Umbau hängen neun Security Requirements. Getrennte Umgebungen zu haben ist nur die halbe Aussage — entscheidend ist, wo die produktive Last läuft und worauf sie zugreift.'
-                    : 'Nine security requirements hang on this single change. Having separate environments is only half the statement — what counts is where the productive load runs and what it can reach.'}
-                </p>
-              </>
-            ),
-          },
-          {
-            number: 8,
-            title: isDe ? 'Sicherung und Wiederherstellung' : 'Backup and recovery',
-            description: (
-              <p style={{ margin: 0 }}>
-                {isDe
-                  ? 'DEX sichert nichts selbst, sorgt aber dafür, dass wenig zu sichern ist: Papierkorb und Versionsverlauf von SharePoint, fachlich weiche Löschungen (eine Abmeldung setzt den Status, sie löscht die Zeile nicht) und archivierte Paketversionen für den Anwendungsstand. Aufbewahrungsfristen sind Tenant-Vorgabe, keine Projektentscheidung.'
-                  : 'DEX backs up nothing itself but keeps little to back up: SharePoint recycle bin and version history, soft deletions in the domain (a cancellation sets the status, it does not delete the row) and archived package versions for the application state. Retention periods are tenant policy, not a project decision.'}
-              </p>
-            ),
-          },
-          {
-            number: 9,
-            title: isDe ? 'Offene Sicherheitspunkte' : 'Open security items',
-            description: (
-              <>
-                <p style={{ margin: '0 0 6px 0' }}>
-                  {isDe
-                    ? 'Vier Punkte sind bewusst offengelegt, statt in einer Erfüllt-Meldung zu verschwinden — mit Wirkung und geplanter Abhilfe:'
-                    : 'Four items are deliberately disclosed rather than hidden in a compliance tick — with impact and planned remediation:'}
-                </p>
-                <ul style={{ paddingLeft: 18, margin: '0 0 6px 0', lineHeight: 1.7 }}>
-                  <li>{isDe
-                    ? 'Von Organizern erfasstes HTML (Beschreibungen, Mailvorlagen) wird bereinigt, aber über eine Ausschluss- statt eine Freigabeliste. Erfassen kann das nur ein angemeldeter Organizer, jede Änderung ist protokolliert.'
-                    : 'HTML authored by organizers (descriptions, mail templates) is sanitized via a denylist rather than an allowlist. Only signed-in organizers can author it, and every change is logged.'}</li>
-                  <li>{isDe
-                    ? 'Die Flows laufen über ein Benutzerkonto, nicht über einen Service Principal — siehe Schritt 7. Neben der Compliance ist das ein Betriebsrisiko: Die Automatisierung hängt an einer Identität.'
-                    : 'The flows run under a user account, not a service principal — see step 7. Beyond compliance this is an operational risk: the automation depends on one identity.'}</li>
-                  <li>{isDe
-                    ? 'Der Selbst-Check-in nutzt je Event ein Geheimnis ausserhalb der zentralen Schlüsselverwaltung. Es entsteht heute automatisch beim ersten Öffnen der QR-Kachel — auch bei Events, die die Funktion nie nutzen.'
-                    : 'Self check-in uses a per-event secret outside central key management. Today it is created automatically the first time the QR tile is opened — even for events that never use the feature.'}</li>
-                  <li>{isDe
-                    ? 'Die mitgelieferten Fremdbibliotheken sind noch nicht bewertet; die Abhängigkeitsprüfung meldet hohe und kritische Funde, teils in Build-Werkzeugen, die nicht ausgeliefert werden.'
-                    : 'The bundled third-party libraries are not assessed yet; the dependency check reports high and critical findings, partly in build tooling that is never shipped.'}</li>
-                </ul>
-                <p style={{ margin: 0 }}>
-                  {isDe
-                    ? 'Die vollständige Bewertung aller 49 Anforderungen mit Einordnung, Begründung und offenen Punkten steht in der Projektdokumentation (docs/security-requirements.html), die Entscheidungsvorlage dazu in docs/security-entscheidungen.html.'
-                    : 'The full assessment of all 49 requirements with classification, rationale and open items is in the project documentation (docs/security-requirements.html), the decision paper in docs/security-entscheidungen.html.'}
-                </p>
-              </>
-            ),
+              ? 'Neue Einzelheiten gehören auf die Architekturseite, nicht in diesen Artikel — dort wachsen sie automatisch ins PDF mit.'
+              : 'New details belong on the architecture page, not in this article — there they automatically flow into the PDF.',
           },
         ],
       },

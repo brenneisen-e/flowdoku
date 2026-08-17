@@ -64,7 +64,7 @@
 <body>
 <div class="wrap">
   <header class="mast">
-    <p class="eyebrow">DEX Event Experience Platform · Stand v29.11.0</p>
+    <p class="eyebrow">DEX Event Experience Platform · Stand v29.12.0</p>
     <h1>System Security Requirements — Antwort je Anforderung</h1>
     <p class="standfirst">
       49 Anforderungen, jede einzeln beantwortet und mit dem Kapitel der Architekturdokumentation
@@ -99,17 +99,17 @@
         <div class="req-head">
           <span class="req-id">GAC-01</span>
           <span class="cls cls-flagged">Zur Bewertung</span>
-          <a class="req-chapter" href="architektur.html#k7">Kapitel &bdquo;Die sieben Flows&ldquo;</a>
+          <a class="req-chapter" href="architektur.html#k7">Kapitel &bdquo;Die acht Flows&ldquo;</a>
         </div>
-        <p class="req-met">DEX bringt keine eigenen privilegierten Konten mit. Im Umfang liegen zwei: die Websitesammlungs-Administratoren der SharePoint-Site (tenantverwaltet) und die Verbindungs-Identität der sieben Power-Automate-Flows, die auf den Event-Subsites Vollzugriff braucht.</p>
-        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 7 „Die sieben Flows“; Auskunft des Betriebs vom 2026-08-17.</p>
+        <p class="req-met">DEX bringt keine eigenen privilegierten Konten mit. Im Umfang liegen zwei: die Websitesammlungs-Administratoren der SharePoint-Site (tenantverwaltet) und die Verbindungs-Identität der acht Power-Automate-Flows, die auf den Event-Subsites Vollzugriff braucht.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 7 „Die acht Flows“; Auskunft des Betriebs vom 2026-08-17.</p>
         <p class="req-open"><span class="lbl">Offen</span>Befund mit bekanntem Abhilfeplan: Die Flow-Verbindungen laufen über ein Konto, das nach Auskunft des Betriebs als Dienstkonto geführt wird — dessen Adresse folgt aber dem Namensmuster für Personenkonten des Tenants (Initial und Nachname). Ein Assessor wird es deshalb als personalisiertes Konto einordnen, unabhängig von der internen Zweckbestimmung. Damit ist die Anforderung heute nicht belegbar: Ein auf eine Person lautendes Konto lässt sich nicht als Dienstkonto im PAMS führen, und es bringt die Mechanismen mit, die für Menschen gedacht sind — Postfach, interaktive Anmeldung, Mehrfaktor. Hinzu kommt das Betriebsrisiko: Verlässt die Person die Organisation, brechen Mails, Kalendereinträge und Nummernvergabe ab, ohne dass die Anwendung es merkt. Vorgesehen ist die Umstellung auf einen Service Principal als Teil des Zielmodells; damit lösen sich GAC-01, GAC-02 und GAC-15 gemeinsam. Der konkrete Kontoname liegt dem Review als Nachweis vor, steht aber bewusst nicht in der veröffentlichten Dokumentation. Bitte Zieltermin festhalten.</p>
       </article>
       <article class="req" id="GAC-02">
         <div class="req-head">
           <span class="req-id">GAC-02</span>
           <span class="cls cls-flagged">Zur Bewertung</span>
-          <a class="req-chapter" href="architektur.html#k7">Kapitel &bdquo;Die sieben Flows&ldquo;</a>
+          <a class="req-chapter" href="architektur.html#k7">Kapitel &bdquo;Die acht Flows&ldquo;</a>
         </div>
         <p class="req-met">Die Flow-Verbindungen gehören der Identität, unter der sie angelegt wurden; die Freigabe an weitere Personen steuert Power Platform.</p>
         <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 7; Auskunft des Betriebs vom 2026-08-17.</p>
@@ -199,7 +199,7 @@
         <div class="req-head">
           <span class="req-id">GAC-15</span>
           <span class="cls cls-flagged">Zur Bewertung</span>
-          <a class="req-chapter" href="architektur.html#k7">Kapitel &bdquo;Die sieben Flows&ldquo;</a>
+          <a class="req-chapter" href="architektur.html#k7">Kapitel &bdquo;Die acht Flows&ldquo;</a>
         </div>
         <p class="req-met">Die Anforderung greift erst, wenn es ein nicht-menschliches Konto gibt.</p>
         <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 7; Auskunft des Betriebs vom 2026-08-17.</p>
@@ -321,7 +321,7 @@
           <span class="cls cls-flagged">Zur Bewertung</span>
           <a class="req-chapter" href="architektur.html#k15">Kapitel &bdquo;Deployment und Rollback&ldquo;</a>
         </div>
-        <p class="req-met">Es gibt zwei benannte Umgebungen für die Automatisierung, DEV und PROD. Die Kategorisierung beschreibt den Betrieb aber nicht: Die sieben Flows liegen vollständig in der DEV-Umgebung und laufen von dort produktiv gegen die Produktiv-Site. Sie sind fertig und werden nicht mehr weiterentwickelt — die DEV-Umgebung ist damit faktisch die Produktionsumgebung. Für die SPFx-Anwendung existiert gar keine zweite Umgebung; sie liegt allein auf der Produktiv-Site.</p>
+        <p class="req-met">Es gibt zwei benannte Umgebungen für die Automatisierung, DEV und PROD. Die Kategorisierung beschreibt den Betrieb aber nicht: Die acht Flows liegen vollständig in der DEV-Umgebung und laufen von dort produktiv gegen die Produktiv-Site. Sie sind fertig und werden nicht mehr weiterentwickelt — die DEV-Umgebung ist damit faktisch die Produktionsumgebung. Für die SPFx-Anwendung existiert gar keine zweite Umgebung; sie liegt allein auf der Produktiv-Site.</p>
         <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 15 „Deployment und Rollback“ (Ist-Stand und Zielmodell); Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung).</p>
         <p class="req-open"><span class="lbl">Offen</span>Abweichung, offen benannt: Kategorien sind vergeben, die produktive Last liegt aber in der als Entwicklung kategorisierten Umgebung. Damit ist die Anforderung nicht erfüllt. Zielmodell (vom Betrieb benannt): Flows in die PROD-Umgebung überführen, dort unter einem Service Principal betreiben, der DEV-Umgebung den Zugriff auf Produktivdaten entziehen und eine DEV-Umgebung für die SPFx-Anwendung aufbauen. Damit lösen sich GCM-07 bis GCM-11 und GCM-16 gemeinsam, ebenso GAC-01, GAC-02 und GAC-15. Bitte Zieltermin festhalten.</p>
       </article>
@@ -587,7 +587,7 @@
       </article>
 
   <footer class="end">
-    Bewertet am 2026-08-12 gegen den Stand v29.11.0. Aussagen zur Plattform beschreiben,
+    Bewertet am 2026-08-12 gegen den Stand v29.12.0. Aussagen zur Plattform beschreiben,
     was Microsoft 365 im Deloitte-Tenant leistet; ihren Nachweis führt der Plattformbetrieb, nicht
     dieses Projekt.
   </footer>

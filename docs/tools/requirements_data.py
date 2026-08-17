@@ -31,7 +31,7 @@ CHAPTERS = {
     'k4': 'Eine Subsite je Event',
     'k5': 'Die Zugriffsschicht im Code',
     'k6': 'Warteschlangen statt Aufrufe',
-    'k7': 'Die sieben Flows',
+    'k7': 'Die acht Flows',
     'k8': 'Ablauf: Anmeldung',
     'k9': 'Ablauf: Event anlegen',
     'k10': 'Ablauf: Abmelden und Nachrücken',
@@ -44,7 +44,7 @@ CHAPTERS = {
 }
 
 # Stand der Auswertung — wird in beide Ergebnisse geschrieben.
-APP_VERSION = '29.11.0'
+APP_VERSION = '29.12.0'
 ASSESSED_ON = '2026-08-12'
 AUDIT_NOTE = ('npm audit vom 2026-08-12: 62 Befunde im Produktions-Abhängigkeitsbaum '
               '(2 kritisch, 22 hoch, 38 mittel) bei 2331 Paketen gesamt. Ein Teil davon '
@@ -56,9 +56,9 @@ REQS = [
         id='GAC-01', chapter='k7', cls='flagged',
         met='DEX bringt keine eigenen privilegierten Konten mit. Im Umfang liegen zwei: die '
             'Websitesammlungs-Administratoren der SharePoint-Site (tenantverwaltet) und die '
-            'Verbindungs-Identität der sieben Power-Automate-Flows, die auf den Event-Subsites '
+            'Verbindungs-Identität der acht Power-Automate-Flows, die auf den Event-Subsites '
             'Vollzugriff braucht.',
-        evidence='Architektur, Kapitel 7 „Die sieben Flows“; Auskunft des Betriebs vom 2026-08-17.',
+        evidence='Architektur, Kapitel 7 „Die acht Flows“; Auskunft des Betriebs vom 2026-08-17.',
         open='Befund mit bekanntem Abhilfeplan: Die Flow-Verbindungen laufen über ein Konto, das nach '
              'Auskunft des Betriebs als Dienstkonto geführt wird — dessen Adresse folgt aber dem '
              'Namensmuster für Personenkonten des Tenants (Initial und Nachname). Ein Assessor wird es '
@@ -245,7 +245,7 @@ REQS = [
                  'Zugangsdaten am 2026-08-12 ohne Befund.'),
     dict(
         id='GCM-07', chapter='k15', cls='flagged',
-        met='Es gibt zwei benannte Umgebungen für die Automatisierung, DEV und PROD. Die Kategorisierung beschreibt den Betrieb aber nicht: Die sieben Flows liegen vollständig in der DEV-Umgebung und laufen von dort produktiv gegen die Produktiv-Site. Sie sind fertig und werden nicht mehr weiterentwickelt — die DEV-Umgebung ist damit faktisch die Produktionsumgebung. Für die SPFx-Anwendung existiert gar keine zweite Umgebung; sie liegt allein auf der Produktiv-Site.',
+        met='Es gibt zwei benannte Umgebungen für die Automatisierung, DEV und PROD. Die Kategorisierung beschreibt den Betrieb aber nicht: Die acht Flows liegen vollständig in der DEV-Umgebung und laufen von dort produktiv gegen die Produktiv-Site. Sie sind fertig und werden nicht mehr weiterentwickelt — die DEV-Umgebung ist damit faktisch die Produktionsumgebung. Für die SPFx-Anwendung existiert gar keine zweite Umgebung; sie liegt allein auf der Produktiv-Site.',
         evidence='Architektur, Kapitel 15 „Deployment und Rollback“ (Ist-Stand und Zielmodell); Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung).',
         open='Abweichung, offen benannt: Kategorien sind vergeben, die produktive Last liegt aber in der als Entwicklung kategorisierten Umgebung. Damit ist die Anforderung nicht erfüllt. Zielmodell (vom Betrieb benannt): Flows in die PROD-Umgebung überführen, dort unter einem Service Principal betreiben, der DEV-Umgebung den Zugriff auf Produktivdaten entziehen und eine DEV-Umgebung für die SPFx-Anwendung aufbauen. Damit lösen sich GCM-07 bis GCM-11 und GCM-16 gemeinsam, ebenso GAC-01, GAC-02 und GAC-15. Bitte Zieltermin festhalten.'),
     dict(

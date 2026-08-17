@@ -364,7 +364,7 @@
       <div><dt>Stand</dt><dd>v29.11.0</dd></div>
       <div><dt>Laufzeit</dt><dd>SPFx · React · TypeScript</dd></div>
       <div><dt>Datenhaltung</dt><dd>SharePoint Online</dd></div>
-      <div><dt>Automatisierung</dt><dd>7 Power-Automate-Flows</dd></div>
+      <div><dt>Automatisierung</dt><dd>8 Power-Automate-Flows</dd></div>
       <div><dt>Server-Komponente</dt><dd>keine</dd></div>
     </dl>
   </header>
@@ -379,7 +379,7 @@
         <li><a href="#k4">Eine Subsite je Event</a></li>
         <li><a href="#k5">Die Zugriffsschicht im Code</a></li>
         <li><a href="#k6">Warteschlangen statt Aufrufe</a></li>
-        <li><a href="#k7">Die sieben Flows</a></li>
+        <li><a href="#k7">Die acht Flows</a></li>
         <li><a href="#k8">Ablauf: Anmeldung</a></li>
         <li><a href="#k9">Ablauf: Event anlegen</a></li>
         <li><a href="#k10">Ablauf: Abmelden &amp; Nachrücken</a></li>
@@ -465,12 +465,12 @@
                 <text x="598" y="298">DEX_Outlook</text>
                 <text x="598" y="320">DEX_IDReorder</text>
                 <text x="598" y="342">DEX_AccessFix</text>
-                <text x="598" y="364">DEX_PostEventMails</text>
+                <text x="598" y="364">DEX_AssistantAccess</text>
                 <text x="836" y="276" fill="var(--muted)">Titel, Empfänger, Body</text>
                 <text x="836" y="298" fill="var(--muted)">Einladen / Ausladen</text>
                 <text x="836" y="320" fill="var(--muted)">IDs + Nachrücken</text>
                 <text x="836" y="342" fill="var(--muted)">Zeilen-Autor setzen</text>
-                <text x="836" y="364" fill="var(--muted)">Nachbereitung</text>
+                <text x="836" y="364" fill="var(--muted)">Assistenz-Zugriff</text>
               </g>
 
               <!-- Gruppe: Subsites -->
@@ -492,8 +492,8 @@
                 <text x="46" y="658">DEX_CreateOutlookEvent</text>
                 <text x="46" y="684">DEX_IDReorder_TeilnehmerIDs</text>
                 <text x="46" y="710">DEX_AccessFix_Autor</text>
-                <text x="46" y="736">DEX_OutlookDeclineHandler</text>
-                <text x="46" y="762">DEX_OutlookForwardHandler</text>
+                <text x="46" y="736">DEX_AssistantAccess_Grant</text>
+                <text x="46" y="762">DEX_OutlookDeclineHandler + …Forward</text>
               </g>
               <g class="svg-text" font-size="11" fill="var(--muted)">
                 <text x="440" y="606">aus DEX_Emails</text>
@@ -501,7 +501,7 @@
                 <text x="440" y="658">aus DEX_Events</text>
                 <text x="440" y="684">aus DEX_IDReorder</text>
                 <text x="440" y="710">aus DEX_AccessFix</text>
-                <text x="440" y="736">aus dem Postfach</text>
+                <text x="440" y="736">aus DEX_AssistantAccess</text>
                 <text x="440" y="762">aus dem Postfach</text>
               </g>
 
@@ -661,6 +661,7 @@
               <tr><td class="mono">DEX_Outlook</td><td>Kalenderaktion: <code>Einladen</code>, <code>Ausladen</code>, <code>UpdateEvent</code>, <code>DeleteEvent</code>.</td><td class="mono">DEX_Outlook_Einladungen</td></tr>
               <tr><td class="mono">DEX_IDReorder</td><td>Teilnehmernummern eines Events neu vergeben und Warteliste nachrücken lassen.</td><td class="mono">DEX_IDReorder_TeilnehmerIDs</td></tr>
               <tr><td class="mono">DEX_AccessFix</td><td>Den SharePoint-Autor einer Anmeldezeile auf den Teilnehmer setzen.</td><td class="mono">DEX_AccessFix_Autor</td></tr>
+              <tr><td class="mono">DEX_AssistantAccess</td><td>Anmeldung an eine Assistenz delegieren: Zeilen-Autor auf die Assistenz setzen.</td><td class="mono">DEX_AssistantAccess_Grant</td></tr>
               <tr><td class="mono">DEX_PostEventMails</td><td>Nachbereitungsmails an Organizer.</td><td class="mono">DEX_SEND_MAIL</td></tr>
             </tbody>
           </table>
@@ -834,10 +835,10 @@
       <!-- ============ 7 ============ -->
       <section class="chapter" id="k7">
         <span class="chapno">Kapitel 07</span>
-        <h2>Die sieben Flows</h2>
+        <h2>Die acht Flows</h2>
         <div class="reqs"><span class="reqs-lbl">Security Requirements</span><a href="security-requirements.html#GAC-01">GAC-01</a><a href="security-requirements.html#GAC-02">GAC-02</a><a href="security-requirements.html#GAC-15">GAC-15</a></div>
         <p class="lead">
-          Fünf Flows arbeiten Warteschlangen ab, zwei reagieren auf eingehende Mails im
+          Sechs Flows arbeiten Warteschlangen ab, zwei reagieren auf eingehende Mails im
           Funktionspostfach. Alle laufen mit einer Dienst-Identität, die auf den Event-Subsites
           Vollzugriff hat.
         </p>
@@ -878,6 +879,12 @@
                 <td><span class="tag t-queue">Queue</span></td>
               </tr>
               <tr>
+                <td class="mono">DEX_AssistantAccess_Grant</td>
+                <td>Neuer Eintrag in <code>DEX_AssistantAccess</code></td>
+                <td>Setzt den Autor einer Anmeldezeile auf die Assistenz, damit diese die Anmeldung der betreuten Person sehen und bearbeiten kann.</td>
+                <td><span class="tag t-queue">Queue</span></td>
+              </tr>
+              <tr>
                 <td class="mono">DEX_OutlookDeclineHandler</td>
                 <td>Absage-Mail im Funktionspostfach</td>
                 <td>Erkennt die Absage eines Kalendertermins, ordnet sie dem Event zu und meldet die Person in der App ab.</td>
@@ -897,7 +904,7 @@
           <p>
             Die Flow-Übersicht in der Projektdokumentation nennt 23 Flows und beschreibt unter
             anderem, dass ein Flow die Event-Subsite anlegt. Das war ein früherer Entwurf. Im
-            heutigen Code legt die App die Subsite selbst an; tragend sind die sieben Flows aus
+            heutigen Code legt die App die Subsite selbst an; tragend sind die acht Flows aus
             dieser Tabelle. Maßgeblich sind der Code und <code>docs/flow-jsons.md</code>.
           </p>
         </div>
@@ -1211,7 +1218,7 @@
         <p>
           Der Ist-Stand weicht von der Benennung ab, und das ist wichtiger als die Benennung. In Power
           Platform gibt es zwei Umgebungen, eine als Entwicklung und eine als Produktion kategorisiert.
-          <strong>Die sieben Flows liegen vollständig in der Entwicklungsumgebung</strong> — sie sind
+          <strong>Die acht Flows liegen vollständig in der Entwicklungsumgebung</strong> — sie sind
           fertig, werden nicht weiterentwickelt und laufen von dort produktiv gegen die Produktiv-Site.
           Faktisch ist die Entwicklungsumgebung damit die Produktionsumgebung. Für die Anwendung selbst
           existiert überhaupt nur eine Umgebung: die Produktiv-Site.
@@ -1353,7 +1360,7 @@
         <div class="note">
           <p class="note-h">Die Flows laufen über ein Benutzerkonto, nicht über einen Service Principal</p>
           <p>
-            Die Verbindungen der sieben Flows nutzen ein Konto, das intern als Dienstkonto geführt wird
+            Die Verbindungen der acht Flows nutzen ein Konto, das intern als Dienstkonto geführt wird
             — seine Adresse folgt aber dem Namensmuster für <strong>Personenkonten</strong> des Tenants,
             und ein Prüfer wird es entsprechend einordnen. Ein Service Principal ist es nicht. Daraus
             folgen zwei Dinge, und das zweite ist das gewichtigere: Ein auf eine Person lautendes Konto
