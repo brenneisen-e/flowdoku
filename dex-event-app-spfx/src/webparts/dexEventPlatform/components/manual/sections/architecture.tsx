@@ -168,11 +168,11 @@ export function architectureSection(locale: 'de' | 'en'): ManualSection {
     title: isDe ? 'Systemarchitektur' : 'System architecture',
     category: 'architecture',
     description: isDe
-      ? 'Wo die App läuft, welche Listen sie trägt und warum zwischen Klick und Bestätigungsmail eine Minute liegt.'
-      : 'Where the app runs, which lists carry it, and why a minute passes between click and confirmation mail.',
+      ? 'Wo die App läuft, welche Listen sie trägt, wie deployed und gesichert wird — und welche Sicherheitspunkte offen sind.'
+      : 'Where the app runs, which lists carry it, how it is deployed and backed up — and which security items are open.',
     visibleFor: ['Admin'],
     keywords: isDe
-      ? 'Architektur Systemarchitektur Aufbau Schaubild Diagramm SPFx Webpart SharePoint Listen Subsite Teilnehmerliste Queue Warteschlange Power Automate Item-Level-Security Zeilen-Sicherheit Counter Platzzähler DEX_Events DEX_Participants Datenmodell Technik Überblick'
+      ? 'Architektur Systemarchitektur Aufbau Schaubild Diagramm SPFx Webpart SharePoint Listen Subsite Teilnehmerliste Queue Warteschlange Power Automate Item-Level-Security Zeilen-Sicherheit Counter Platzzähler DEX_Events DEX_Participants Datenmodell Technik Überblick Deployment Rollback Umgebungen DEV PROD Service Principal Sicherung Backup Security Requirements Abweichungen Zielmodell'
       : 'architecture system architecture diagram overview SPFx web part SharePoint lists subsite participant list queue Power Automate item level security counter DEX_Events DEX_Participants data model technical overview',
     perspectives: [
       {
@@ -282,6 +282,102 @@ export function architectureSection(locale: 'de' | 'en'): ManualSection {
                   {isDe
                     ? 'Widersprechen sich zwei Ansichten über „angemeldet ja/nein", ist der erste Verdacht: dieselbe Person steht unter zwei E-Mail-Adressen in den Listen. Die Adresse ist der einzige Schlüssel — und sie ist nicht eindeutig.'
                     : 'If two views disagree about „registered yes/no", the first suspicion is: the same person appears under two email addresses. The address is the only key — and it is not unique.'}
+                </p>
+              </>
+            ),
+          },
+          {
+            number: 6,
+            title: isDe ? 'Deployment und Rollback' : 'Deployment and rollback',
+            description: (
+              <>
+                <p style={{ margin: '0 0 6px 0' }}>
+                  {isDe
+                    ? 'Ein Release ist ein Dateiaustausch: Version setzen, Release Notes schreiben, sauber bauen, Paket über den App-Katalog bereitstellen. Der Katalog ist zugleich die Freigabeliste — was dort nicht liegt, läuft nicht.'
+                    : 'A release is a file swap: set the version, write the release notes, build cleanly, deploy the package via the app catalog. The catalog doubles as the allowlist — what is not in it does not run.'}
+                </p>
+                <p style={{ margin: 0 }}>
+                  {isDe
+                    ? 'Jede Version bleibt archiviert, die vorherige ist als Rollback-Paket ausgewiesen. Ein Rückfall ist das Hochladen der älteren Datei — die Daten sind davon nicht betroffen, ein Deployment fasst keine Liste an.'
+                    : 'Every version stays archived, the previous one is marked as the rollback package. Rolling back means uploading the older file — data is untouched, a deployment does not modify any list.'}
+                </p>
+              </>
+            ),
+            tip: isDe
+              ? 'Führt eine Version neue Spalten oder Schalter ein, bleiben die nach einem Rückfall stehen. Das ist verträglich, weil die App unbekannte Felder ignoriert — aber prüfen, ob die Version strukturelle Änderungen gebracht hat.'
+              : 'If a version introduced new columns or flags, they remain after a rollback. That is tolerable because the app ignores fields it does not know — but check whether the version brought structural changes.',
+          },
+          {
+            number: 7,
+            title: isDe ? 'Umgebungen — Ist-Stand und Zielmodell' : 'Environments — current and target state',
+            description: (
+              <>
+                <p style={{ margin: '0 0 6px 0' }}>
+                  {isDe
+                    ? 'Der Ist-Stand weicht von der Benennung ab, und das ist wichtiger als die Benennung: Die sieben Flows liegen in der DEV-Umgebung von Power Platform, sind fertig und laufen von dort produktiv gegen die Produktiv-Site. Für die Anwendung selbst gibt es nur eine Umgebung.'
+                    : 'The current state differs from the labels, and that matters more than the labels: all seven flows sit in the Power Platform DEV environment, are finished, and run productively from there against the production site. For the app itself there is only one environment.'}
+                </p>
+                <ul style={{ paddingLeft: 18, margin: '0 0 6px 0', lineHeight: 1.7 }}>
+                  <li>
+                    <strong>{isDe ? 'Flows' : 'Flows'}</strong>{' '}
+                    {isDe ? '— heute in DEV, produktiv gegen Prod · Ziel: in PROD, ohne Produktivzugriff aus DEV' : '— today in DEV, productive against prod · target: in PROD, no prod access from DEV'}
+                  </li>
+                  <li>
+                    <strong>{isDe ? 'Identität der Flows' : 'Flow identity'}</strong>{' '}
+                    {isDe ? '— heute ein Benutzerkonto · Ziel: Service Principal' : '— today a user account · target: service principal'}
+                  </li>
+                  <li>
+                    <strong>{isDe ? 'Anwendung' : 'App'}</strong>{' '}
+                    {isDe ? '— heute nur die Produktiv-Site · Ziel: zusätzlich eine DEV-Umgebung' : '— today only the production site · target: an additional DEV environment'}
+                  </li>
+                </ul>
+                <p style={{ margin: 0 }}>
+                  {isDe
+                    ? 'An diesem einen Umbau hängen neun Security Requirements. Getrennte Umgebungen zu haben ist nur die halbe Aussage — entscheidend ist, wo die produktive Last läuft und worauf sie zugreift.'
+                    : 'Nine security requirements hang on this single change. Having separate environments is only half the statement — what counts is where the productive load runs and what it can reach.'}
+                </p>
+              </>
+            ),
+          },
+          {
+            number: 8,
+            title: isDe ? 'Sicherung und Wiederherstellung' : 'Backup and recovery',
+            description: (
+              <p style={{ margin: 0 }}>
+                {isDe
+                  ? 'DEX sichert nichts selbst, sorgt aber dafür, dass wenig zu sichern ist: Papierkorb und Versionsverlauf von SharePoint, fachlich weiche Löschungen (eine Abmeldung setzt den Status, sie löscht die Zeile nicht) und archivierte Paketversionen für den Anwendungsstand. Aufbewahrungsfristen sind Tenant-Vorgabe, keine Projektentscheidung.'
+                  : 'DEX backs up nothing itself but keeps little to back up: SharePoint recycle bin and version history, soft deletions in the domain (a cancellation sets the status, it does not delete the row) and archived package versions for the application state. Retention periods are tenant policy, not a project decision.'}
+              </p>
+            ),
+          },
+          {
+            number: 9,
+            title: isDe ? 'Offene Sicherheitspunkte' : 'Open security items',
+            description: (
+              <>
+                <p style={{ margin: '0 0 6px 0' }}>
+                  {isDe
+                    ? 'Vier Punkte sind bewusst offengelegt, statt in einer Erfüllt-Meldung zu verschwinden — mit Wirkung und geplanter Abhilfe:'
+                    : 'Four items are deliberately disclosed rather than hidden in a compliance tick — with impact and planned remediation:'}
+                </p>
+                <ul style={{ paddingLeft: 18, margin: '0 0 6px 0', lineHeight: 1.7 }}>
+                  <li>{isDe
+                    ? 'Von Organizern erfasstes HTML (Beschreibungen, Mailvorlagen) wird bereinigt, aber über eine Ausschluss- statt eine Freigabeliste. Erfassen kann das nur ein angemeldeter Organizer, jede Änderung ist protokolliert.'
+                    : 'HTML authored by organizers (descriptions, mail templates) is sanitized via a denylist rather than an allowlist. Only signed-in organizers can author it, and every change is logged.'}</li>
+                  <li>{isDe
+                    ? 'Die Flows laufen über ein Benutzerkonto, nicht über einen Service Principal — siehe Schritt 7. Neben der Compliance ist das ein Betriebsrisiko: Die Automatisierung hängt an einer Identität.'
+                    : 'The flows run under a user account, not a service principal — see step 7. Beyond compliance this is an operational risk: the automation depends on one identity.'}</li>
+                  <li>{isDe
+                    ? 'Der Selbst-Check-in nutzt je Event ein Geheimnis ausserhalb der zentralen Schlüsselverwaltung. Es entsteht heute automatisch beim ersten Öffnen der QR-Kachel — auch bei Events, die die Funktion nie nutzen.'
+                    : 'Self check-in uses a per-event secret outside central key management. Today it is created automatically the first time the QR tile is opened — even for events that never use the feature.'}</li>
+                  <li>{isDe
+                    ? 'Die mitgelieferten Fremdbibliotheken sind noch nicht bewertet; die Abhängigkeitsprüfung meldet hohe und kritische Funde, teils in Build-Werkzeugen, die nicht ausgeliefert werden.'
+                    : 'The bundled third-party libraries are not assessed yet; the dependency check reports high and critical findings, partly in build tooling that is never shipped.'}</li>
+                </ul>
+                <p style={{ margin: 0 }}>
+                  {isDe
+                    ? 'Die vollständige Bewertung aller 49 Anforderungen mit Einordnung, Begründung und offenen Punkten steht in der Projektdokumentation (docs/security-requirements.html), die Entscheidungsvorlage dazu in docs/security-entscheidungen.html.'
+                    : 'The full assessment of all 49 requirements with classification, rationale and open items is in the project documentation (docs/security-requirements.html), the decision paper in docs/security-entscheidungen.html.'}
                 </p>
               </>
             ),
