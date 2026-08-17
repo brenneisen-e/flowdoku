@@ -331,7 +331,15 @@ REQS = [
              'Sekunden wechselnder Code für den Aushang berechnet wird (HMAC-SHA-256). Es ist kein '
              'Schlüssel für Daten, sondern ein geteiltes Geheimnis für einen kurzlebigen Anzeigecode. '
              'Wirkung bei Kompromittierung: Ein Unbefugter könnte sich bei genau diesem Event einchecken. '
-             'Er ist je Event verschieden und durch Neuerzeugen wechselbar. Bitte um Bewertung.'),
+             'Er ist je Event verschieden und durch Neuerzeugen wechselbar. '
+             'WICHTIG zur Verbreitung: Die Funktion ist nicht opt-in. Seit v20.1 erzeugt der erste Klick '
+             'auf die QR-Kachel den Wert und schaltet den Selbst-Check-in am Event scharf — die Kachel '
+             'erscheint ab fünf Tagen vor Beginn beziehungsweise sobald QR-Codes versendet wurden. Die '
+             'Zahl der Events mit einem solchen Geheimnis entspricht deshalb NICHT der Zahl der Events, '
+             'die den Selbst-Check-in nutzen (laut Fachbereich in der Regel keines), sondern der Zahl '
+             'der Events, bei denen jemand die Kachel einmal geöffnet hat. Empfehlung: Auto-Aktivierung '
+             'entfernen (nur noch bewusstes Einschalten) und den Wert nach dem Event löschen. Danach '
+             'ist die Abweichung auf die tatsächlich genutzten Events begrenzt und abzählbar.'),
     dict(
         id='GSC-04', chapter='k17', cls='platform',
         met='Alle Daten liegen in SharePoint Online und sind dort im Ruhezustand verschlüsselt; der '
@@ -350,7 +358,9 @@ REQS = [
         met='Schlüsselverwaltung für Transport und Ruhezustand liegt bei Microsoft 365.',
         evidence='Architektur, Kapitel 17.',
         open='Siehe GSC-03: Das Geheimnis für den Selbst-Check-in liegt als Feld in der Event-Liste und '
-             'ist damit für Organizer dieses Events lesbar. Bewertung erbeten.'),
+             'ist damit für Organizer dieses Events lesbar. Zusätzlich relevant: Es entsteht heute '
+             'automatisch beim ersten Öffnen der QR-Kachel, nicht durch eine bewusste Aktivierung. '
+             'Bewertung erbeten; Empfehlung siehe GSC-03.'),
     dict(
         id='GSC-09', chapter='k17', cls='dex',
         met='Eigene Adressen der Anwendung tragen keine personenbezogenen Daten: Sie enthalten die '

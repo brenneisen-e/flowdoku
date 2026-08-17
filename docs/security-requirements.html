@@ -89,11 +89,6 @@
       Erfüllt-Meldung zu verschwinden.
     </p>
     <p>
-      Zu den sieben offengelegten Punkten gibt es eine
-      <a href="security-entscheidungen.html">Entscheidungsvorlage</a> mit Optionen, Empfehlung und
-      den Vorfragen, die vorher zu klären sind.
-    </p>
-    <p>
       Dieselbe Bewertung liegt als Excel bei
       (<a href="downloads/DEX-Requirements-kommentiert.xlsx">DEX-Requirements-kommentiert.xlsx</a>);
       beide entstehen aus derselben Quelle und können nicht auseinanderlaufen.
@@ -478,7 +473,7 @@
         </div>
         <p class="req-met">Zertifikate für den Transport stellt Microsoft für SharePoint Online; DEX verwaltet keine eigenen Zertifikate und keine Verschlüsselungsschlüssel.</p>
         <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 17.</p>
-        <p class="req-open"><span class="lbl">Offen</span>Offenlegung: Eine Funktion nutzt ein Geheimnis, das nicht über KCM verwaltet wird — der Selbst-Check-in. Je Event liegt ein Zufallswert in der Event-Zeile, aus dem ein alle paar Sekunden wechselnder Code für den Aushang berechnet wird (HMAC-SHA-256). Es ist kein Schlüssel für Daten, sondern ein geteiltes Geheimnis für einen kurzlebigen Anzeigecode. Wirkung bei Kompromittierung: Ein Unbefugter könnte sich bei genau diesem Event einchecken. Er ist je Event verschieden und durch Neuerzeugen wechselbar. Bitte um Bewertung.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Offenlegung: Eine Funktion nutzt ein Geheimnis, das nicht über KCM verwaltet wird — der Selbst-Check-in. Je Event liegt ein Zufallswert in der Event-Zeile, aus dem ein alle paar Sekunden wechselnder Code für den Aushang berechnet wird (HMAC-SHA-256). Es ist kein Schlüssel für Daten, sondern ein geteiltes Geheimnis für einen kurzlebigen Anzeigecode. Wirkung bei Kompromittierung: Ein Unbefugter könnte sich bei genau diesem Event einchecken. Er ist je Event verschieden und durch Neuerzeugen wechselbar. WICHTIG zur Verbreitung: Die Funktion ist nicht opt-in. Seit v20.1 erzeugt der erste Klick auf die QR-Kachel den Wert und schaltet den Selbst-Check-in am Event scharf — die Kachel erscheint ab fünf Tagen vor Beginn beziehungsweise sobald QR-Codes versendet wurden. Die Zahl der Events mit einem solchen Geheimnis entspricht deshalb NICHT der Zahl der Events, die den Selbst-Check-in nutzen (laut Fachbereich in der Regel keines), sondern der Zahl der Events, bei denen jemand die Kachel einmal geöffnet hat. Empfehlung: Auto-Aktivierung entfernen (nur noch bewusstes Einschalten) und den Wert nach dem Event löschen. Danach ist die Abweichung auf die tatsächlich genutzten Events begrenzt und abzählbar.</p>
       </article>
       <article class="req" id="GSC-04">
         <div class="req-head">
@@ -508,7 +503,7 @@
         </div>
         <p class="req-met">Schlüsselverwaltung für Transport und Ruhezustand liegt bei Microsoft 365.</p>
         <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 17.</p>
-        <p class="req-open"><span class="lbl">Offen</span>Siehe GSC-03: Das Geheimnis für den Selbst-Check-in liegt als Feld in der Event-Liste und ist damit für Organizer dieses Events lesbar. Bewertung erbeten.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Siehe GSC-03: Das Geheimnis für den Selbst-Check-in liegt als Feld in der Event-Liste und ist damit für Organizer dieses Events lesbar. Zusätzlich relevant: Es entsteht heute automatisch beim ersten Öffnen der QR-Kachel, nicht durch eine bewusste Aktivierung. Bewertung erbeten; Empfehlung siehe GSC-03.</p>
       </article>
       <article class="req" id="GSC-09">
         <div class="req-head">

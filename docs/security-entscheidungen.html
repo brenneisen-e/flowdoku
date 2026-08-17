@@ -102,7 +102,7 @@
     <tbody>
       <tr><td>1</td><td><a href="#p1">HTML von Organizern</a></td><td class="mono"><a href="security-requirements.html#GSD-02">GSD-02</a></td><td>Freigabeliste bauen, Funktion beschneiden oder Risiko annehmen</td><td>2–4 Tage</td></tr>
       <tr><td>2</td><td><a href="#p2">Abhängigkeiten</a></td><td class="mono"><a href="security-requirements.html#GSI-06">GSI-06</a></td><td>Wer bewertet, und aktualisieren wir</td><td>1 Tag Analyse, Rest offen</td></tr>
-      <tr><td>3</td><td><a href="#p3">Selbst-Check-in</a></td><td class="mono"><a href="security-requirements.html#GSC-03">GSC-03</a> · <a href="security-requirements.html#GSC-06">GSC-06</a></td><td>Verfahren behalten, härten oder Funktion abschalten</td><td>0 bis 2 Tage</td></tr>
+      <tr><td>3</td><td><a href="#p3">Selbst-Check-in</a></td><td class="mono"><a href="security-requirements.html#GSC-03">GSC-03</a> · <a href="security-requirements.html#GSC-06">GSC-06</a></td><td>Bewusst einschalten statt automatisch — oder Funktion abschalten</td><td>1 Tag</td></tr>
       <tr><td>4</td><td><a href="#p4">Änderungsprotokoll</a></td><td class="mono"><a href="security-requirements.html#GAU-05">GAU-05</a></td><td>Reicht die Versionshistorie als Nachweis</td><td>0 oder 3–4 Tage</td></tr>
       <tr><td>5</td><td><a href="#p5">Zeitformat</a></td><td class="mono"><a href="security-requirements.html#GAU-03">GAU-03</a></td><td>Rückfrage an GTS — keine Entscheidung von uns</td><td>0 oder 0,5 Tage</td></tr>
       <tr><td>6</td><td><a href="#p6">Sicherheitshinweis</a></td><td class="mono"><a href="security-requirements.html#GAC-14">GAC-14</a></td><td>Reicht der Tenant-Hinweis</td><td>0,5 bis 1,5 Tage</td></tr>
@@ -251,7 +251,7 @@
 <!-- ============================================================= 3 -->
 <article class="item" id="p3">
   <div class="item-head">
-    <span class="item-no">Punkt 3</span>
+    <span class="item-no">Punkt 3 · neu bewertet</span>
     <h2>Das Geheimnis des Selbst-Check-ins liegt nicht in der zentralen Schlüsselverwaltung</h2>
     <div class="ids"><a href="security-requirements.html#GSC-03">GSC-03</a><a href="security-requirements.html#GSC-06">GSC-06</a></div>
   </div>
@@ -268,38 +268,52 @@
       ein. Es ist kein Schlüssel für Daten — wer ihn kennt, kann sich bei genau diesem einen Event
       einchecken, sonst nichts. Er ist je Event verschieden und durch Neuerzeugen wechselbar.
     </p>
-
+    <div class="box stop">
+      <p class="bh">Nachtrag aus dem Code — das ändert die Lage</p>
+      <p>
+        Die Funktion ist <strong>nicht opt-in</strong>. Der erste Klick auf die QR-Kachel erzeugt
+        den Wert und schaltet den Selbst-Check-in am Event scharf; die Kachel erscheint ab fünf Tagen
+        vor Beginn beziehungsweise sobald QR-Codes versendet wurden. Die Zahl der Events mit einem
+        solchen Geheimnis entspricht damit <strong>nicht</strong> der Zahl der Events, die den
+        Selbst-Check-in nutzen — sondern der Zahl der Events, bei denen jemand die Kachel einmal
+        geöffnet hat, sei es aus Neugier. Genutzt wird die Funktion laut Fachbereich in der Regel
+        nicht; Geheimnisse dürfte es trotzdem an vielen Events geben.
+      </p>
+    </div>
     <h3>Optionen</h3>
     <div class="opts"><table><tbody>
       <tr class="rec">
-        <td>A — Behalten, Wirkung dokumentieren</td>
-        <td>Nichts zu bauen. Die Begründung steht bereits in der Sicherheitsbetrachtung: begrenzte
-          Wirkung, je Event getrennt, wechselbar.</td>
+        <td>A — Bewusst einschalten statt nebenbei</td>
+        <td>Die Auto-Aktivierung entfernen: Ein Geheimnis entsteht nur noch, wenn jemand den
+          Selbst-Check-in für ein Event ausdrücklich einschaltet. Dazu den Wert nach dem Event
+          entfernen. Danach ist die Abweichung auf die tatsächlich genutzten Events begrenzt und
+          abzählbar — das ist der Punkt, der sie verhandelbar macht.</td>
       </tr>
       <tr>
-        <td>B — Bei jeder Aktivierung neu erzeugen</td>
-        <td>Verkürzt die Lebensdauer des Geheimnisses auf die Dauer eines Events. Kleiner Eingriff,
-          nimmt der Diskussion die Spitze.</td>
+        <td>B — Funktion abschalten</td>
+        <td>Wenn sie in der Regel nicht genutzt wird, verschwindet das Thema ersatzlos. Kostet die
+          Möglichkeit, sie bei Bedarf zu nutzen — und der bereits gebaute Weg (QR-Aushang,
+          Live-Anzeige, PDF) läge still.</td>
       </tr>
       <tr>
-        <td>C — Funktion abschalten</td>
-        <td>Nur sinnvoll, wenn kaum ein Event sie nutzt. Dann verschwindet das Thema ersatzlos.</td>
+        <td>C — Alles lassen, Wirkung dokumentieren</td>
+        <td>Nichts zu bauen. Bleibt aber die Aussage „an vielen Events liegt ein Geheimnis, das
+          niemand bewusst angelegt hat“ — die im Review schwer zu vertreten ist.</td>
       </tr>
     </tbody></table></div>
 
     <h3>Was wir vorher wissen müssen</h3>
     <ul>
-      <li><strong>Wie viele Events nutzen den Selbst-Check-in überhaupt?</strong> Diese eine Zahl
-        entscheidet zwischen A/B und C. Sie steht in den Event-Einstellungen und lässt sich im
-        Organizer Center auszählen.</li>
-      <li>Gibt es eine Vorgabe, dass jedes geteilte Geheimnis in KCM gehört — auch eines, das keine
-        Daten schützt? Das ist eine Frage an GTS.</li>
+      <li><strong>Bei wie vielen Events steht der Schalter heute auf aktiv?</strong> Das ist nicht
+        dasselbe wie „wie viele nutzen es“ — und die Zahl zeigt, wie viel die Auto-Aktivierung
+        angerichtet hat. Ablesbar in der Event-Liste über die Spalte des Selbst-Check-ins.</li>
+      <li>Soll die Funktion für Bedarfsfälle erhalten bleiben, oder ist sie verzichtbar? Das
+        entscheidet zwischen A und B.</li>
     </ul>
-
     <div class="meta">
-      <div><dt>Empfehlung</dt><dd>Erst zählen. Dann A oder C</dd></div>
-      <div><dt>Wer entscheidet</dt><dd>Projekt, Rückfrage an GTS</dd></div>
-      <div><dt>Aufwand</dt><dd>0 · B: 0,5 Tage · C: 1 Tag</dd></div>
+      <div><dt>Empfehlung</dt><dd>A — und Altbestand aufräumen</dd></div>
+      <div><dt>Wer entscheidet</dt><dd>Projekt (A oder B), GTS bewertet</dd></div>
+      <div><dt>Aufwand</dt><dd>A: 1 Tag · B: 1 Tag</dd></div>
     </div>
   </div>
 </article>
