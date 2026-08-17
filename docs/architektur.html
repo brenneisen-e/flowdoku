@@ -344,6 +344,24 @@
     color: var(--muted);
     max-width: 74ch;
   }
+  /* v29.12: Druck- und PDF-Ausgabe. Ohne das schneidet der Scroll-Container
+     der Schaubilder sie am Papierrand ab (min-width 760px passt nicht auf A4),
+     und die Navigationsspalte klebt oben fest. */
+  @media print {
+    body { background: #fff; }
+    .wrap { padding: 0 0 24px; max-width: none; }
+    nav.toc { position: static; max-height: none; overflow: visible; margin-bottom: 28px; break-after: page; }
+    .figframe { overflow: visible; box-shadow: none; }
+    .figframe svg { min-width: 0; }
+    .tablewrap { overflow: visible; }
+    table { min-width: 0; font-size: .82rem; }
+    figure, .note, .tablewrap { break-inside: avoid; }
+    section.chapter { break-before: page; padding-top: 0; }
+    section.chapter:first-of-type { break-before: auto; }
+    section.chapter > h2, section.chapter > h3 { break-after: avoid; }
+    a { text-decoration: none; }
+    .reqs { break-inside: avoid; }
+  }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
 </style>
 
@@ -361,7 +379,7 @@
       dazwischen.
     </p>
     <dl class="facts">
-      <div><dt>Stand</dt><dd>v29.11.0</dd></div>
+      <div><dt>Stand</dt><dd>v29.12.0</dd></div>
       <div><dt>Laufzeit</dt><dd>SPFx · React · TypeScript</dd></div>
       <div><dt>Datenhaltung</dt><dd>SharePoint Online</dd></div>
       <div><dt>Automatisierung</dt><dd>8 Power-Automate-Flows</dd></div>
@@ -1445,7 +1463,7 @@
       </section>
 
       <footer class="end">
-        Diese Beschreibung gibt den Stand v29.11.0 wieder. Sie beschreibt das System so, wie es
+        Diese Beschreibung gibt den Stand v29.12.0 wieder. Sie beschreibt das System so, wie es
         gebaut ist, nicht wie es gemeint war — bei Abweichungen gilt der Code.
       </footer>
     </main>
