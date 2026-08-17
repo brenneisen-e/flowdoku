@@ -1209,12 +1209,24 @@
         </div>
         <h3>Umgebungen</h3>
         <p>
-          Betrieben wird heute <strong>eine</strong> Umgebung: die Produktiv-Site der Plattform.
-          Innerhalb der Anwendung gibt es einen Demo-Modus mit erfundenen Daten und Entwurfs-Events,
-          die für Teilnehmer unsichtbar bleiben. Beides sind fachliche Zustände, keine getrennten
-          Umgebungen — eine dedizierte Nicht-Produktivumgebung mit eigener Site, eigenem App-Katalog
-          und eigenen Flows existiert nicht.
+          Die beiden Hälften des Systems sind unterschiedlich aufgestellt. Die <strong>Flows</strong>
+          haben zwei kategorisierte Umgebungen: Sie werden in einer DEV-Umgebung von Power Platform
+          entwickelt und laufen produktiv in einer PROD-Umgebung, jede mit eigenen Verbindungen und
+          eigenen Zugriffsrechten. Die <strong>Anwendung</strong> dagegen liegt auf einer Site — der
+          Produktiv-Site. Demo-Modus und Entwurfs-Events sind darin fachliche Zustände, keine
+          getrennten Umgebungen; eine eigene Nicht-Produktiv-Site mit eigenem App-Katalog existiert
+          nicht.
         </p>
+        <div class="note">
+          <p class="note-h">Was an der Trennung noch zu klären ist</p>
+          <p>
+            Getrennte Umgebungen sind nur die halbe Aussage. Entscheidend ist, worauf die DEV-Flows
+            zeigen: Verbinden sie sich mit einer eigenen SharePoint-Site oder mit der Produktiv-Site?
+            Im zweiten Fall arbeiten Entwicklungsstände auf Produktionsdaten, und die Trennung ist
+            nominell. Ebenso offen: ob ein Flow als Solution von DEV nach PROD wandert oder dort von
+            Hand nachgebaut wird — nur der erste Weg erlaubt einen nachvollziehbaren Rückfall.
+          </p>
+        </div>
       </section>
 
       <!-- ============ 16 ============ -->
@@ -1313,6 +1325,18 @@
           </p>
         </div>
         <div class="note">
+          <p class="note-h">Die Flows laufen unter einem persönlichen Konto</p>
+          <p>
+            Die Verbindungen der sieben Flows nutzen derzeit die Berechtigungen eines
+            <strong>persönlichen Benutzerkontos</strong>, nicht die eines Dienstkontos. Das hat zwei
+            Folgen, und die zweite ist die unangenehmere: Ein persönliches Konto lässt sich nicht in
+            der zentralen Verwaltung privilegierter Konten hinterlegen — und der Betrieb der Plattform
+            hängt an einer Person. Scheidet sie aus, brechen Mails, Kalendereinträge und die
+            Nummernvergabe ab, ohne dass die Anwendung davon etwas merkt. Geplant ist die Umstellung
+            auf einen Service Principal; damit erledigen sich drei Anforderungen auf einmal.
+          </p>
+        </div>
+        <div class="note">
           <p class="note-h">Abhängigkeiten sind nicht bewertet</p>
           <p>
             Die Anwendung bringt Fremdbibliotheken mit. Eine Abhängigkeitsprüfung meldet Funde mit
@@ -1376,8 +1400,8 @@
           <a href="downloads/DEX-Requirements-kommentiert.xlsx">dieselbe Bewertung als Excel</a>
         </p>
         <p>
-          Von 49 Anforderungen erfüllt die Anwendung 16 selbst, 11 erbt sie von der Plattform, 6
-          treffen auf diese Bauart nicht zu, 9 brauchen eine Bestätigung aus dem Betrieb und 7 sind
+          Von 49 Anforderungen erfüllt die Anwendung 18 selbst, 11 erbt sie von der Plattform, 6
+          treffen auf diese Bauart nicht zu, 4 brauchen eine Bestätigung aus dem Betrieb und 10 sind
           als Abweichung oder Restrisiko offengelegt.
         </p>
       </section>

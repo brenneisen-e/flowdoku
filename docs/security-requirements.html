@@ -71,7 +71,7 @@
       verknüpft, das sie belegt. Was nicht zutrifft, ist begründet; was offen ist, steht als offen
       da — nicht als erfüllt.
     </p>
-    <div class="legend"><div class="lg lg-dex"><b>16</b><span>Erfüllt durch die Anwendung</span></div><div class="lg lg-platform"><b>11</b><span>Erfüllt durch Microsoft 365 / Deloitte-Tenant</span></div><div class="lg lg-na"><b>6</b><span>Trifft auf diese Bauart nicht zu</span></div><div class="lg lg-open"><b>9</b><span>Bestätigung durch Betrieb oder GTS nötig</span></div><div class="lg lg-flagged"><b>7</b><span>Abweichung oder Restrisiko, offengelegt</span></div></div>
+    <div class="legend"><div class="lg lg-dex"><b>18</b><span>Erfüllt durch die Anwendung</span></div><div class="lg lg-platform"><b>11</b><span>Erfüllt durch Microsoft 365 / Deloitte-Tenant</span></div><div class="lg lg-na"><b>6</b><span>Trifft auf diese Bauart nicht zu</span></div><div class="lg lg-open"><b>4</b><span>Bestätigung durch Betrieb oder GTS nötig</span></div><div class="lg lg-flagged"><b>10</b><span>Abweichung oder Restrisiko, offengelegt</span></div></div>
   </header>
 
   <div class="intro">
@@ -98,22 +98,22 @@
       <article class="req" id="GAC-01">
         <div class="req-head">
           <span class="req-id">GAC-01</span>
-          <span class="cls cls-open">Offen</span>
+          <span class="cls cls-flagged">Zur Bewertung</span>
           <a class="req-chapter" href="architektur.html#k7">Kapitel &bdquo;Die sieben Flows&ldquo;</a>
         </div>
-        <p class="req-met">DEX bringt keine eigenen privilegierten Konten mit. Im Umfang liegen genau zwei: die Websitesammlungs-Administratoren der SharePoint-Site (tenantverwaltet) und die Verbindungs-Identität der sieben Power-Automate-Flows, die auf den Event-Subsites Vollzugriff braucht.</p>
-        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 7 „Die sieben Flows“ — Auflistung der Flows und ihrer Identität.</p>
-        <p class="req-open"><span class="lbl">Offen</span>Zu bestätigen: Läuft die Verbindungs-Identität der Flows unter einem Dienstkonto, das im PAMS hinterlegt ist? Diese Bestätigung kann nur der Betreiber der Flows geben.</p>
+        <p class="req-met">DEX bringt keine eigenen privilegierten Konten mit. Im Umfang liegen zwei: die Websitesammlungs-Administratoren der SharePoint-Site (tenantverwaltet) und die Verbindungs-Identität der sieben Power-Automate-Flows, die auf den Event-Subsites Vollzugriff braucht.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 7 „Die sieben Flows“; Auskunft des Betriebs vom 2026-08-17.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Befund mit bekanntem Abhilfeplan: Die Flow-Verbindungen laufen derzeit unter einem PERSÖNLICHEN Benutzerkonto, nicht unter einem Dienstkonto. Damit ist kein Vaulting im PAMS möglich — ein persönliches Konto gehört dort nicht hinein. Zwei Wirkungen: Die Anforderung ist nicht erfüllt, und der Betrieb der Plattform hängt an einer Person; scheidet sie aus, brechen alle Mails und Kalendereinträge ab. Geplant ist die Umstellung auf einen Service Principal. Damit wäre die Anforderung erfüllbar und GAC-02 sowie GAC-15 gleich mit. Bitte Zieltermin festhalten.</p>
       </article>
       <article class="req" id="GAC-02">
         <div class="req-head">
           <span class="req-id">GAC-02</span>
-          <span class="cls cls-open">Offen</span>
+          <span class="cls cls-flagged">Zur Bewertung</span>
           <a class="req-chapter" href="architektur.html#k7">Kapitel &bdquo;Die sieben Flows&ldquo;</a>
         </div>
         <p class="req-met">Die Flow-Verbindungen gehören der Identität, unter der sie angelegt wurden; die Freigabe an weitere Personen steuert Power Platform.</p>
-        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 7.</p>
-        <p class="req-open"><span class="lbl">Offen</span>Zu bestätigen: aktuelle Eigentümer- und Freigabeliste der sieben Flow-Verbindungen.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 7; Auskunft des Betriebs vom 2026-08-17.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Derzeit ist die Verbindungs-Identität ein persönliches Konto (siehe GAC-01). Formal ist die Anforderung damit erfüllt — die Zugangsdaten liegen ausschliesslich bei ihrem Eigentümer —, aber aus dem falschen Grund: Es gibt keinen autorisierten Vertreter, weil es keine Delegation gibt. Mit dem geplanten Service Principal wird daraus eine bewusst verwaltete Berechtigung mit benennbaren Verantwortlichen.</p>
       </article>
       <article class="req" id="GAC-03">
         <div class="req-head">
@@ -198,12 +198,12 @@
       <article class="req" id="GAC-15">
         <div class="req-head">
           <span class="req-id">GAC-15</span>
-          <span class="cls cls-open">Offen</span>
+          <span class="cls cls-flagged">Zur Bewertung</span>
           <a class="req-chapter" href="architektur.html#k7">Kapitel &bdquo;Die sieben Flows&ldquo;</a>
         </div>
-        <p class="req-met">Die Verbindungs-Identität der Flows ist ein nicht-menschliches Konto.</p>
-        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 7.</p>
-        <p class="req-open"><span class="lbl">Offen</span>Zu bestätigen durch den Betrieb: Interaktive Anmeldung für dieses Konto ist per Conditional Access unterbunden.</p>
+        <p class="req-met">Die Anforderung greift erst, wenn es ein nicht-menschliches Konto gibt.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 7; Auskunft des Betriebs vom 2026-08-17.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Heute nicht anwendbar, weil die Flows unter einem persönlichen Konto laufen (GAC-01) — und dem kann die interaktive Anmeldung nicht entzogen werden, es ist ja ein Mensch. Mit der Umstellung auf einen Service Principal löst sich die Anforderung von selbst: Ein Service Principal hat gar keine interaktive Anmeldung. Der Punkt ist also nicht separat zu bearbeiten, sondern erledigt sich mit GAC-01.</p>
       </article>
       <article class="req" id="GAT-01">
         <div class="req-head">
@@ -318,22 +318,22 @@
       <article class="req" id="GCM-07">
         <div class="req-head">
           <span class="req-id">GCM-07</span>
-          <span class="cls cls-open">Offen</span>
+          <span class="cls cls-dex">DEX</span>
           <a class="req-chapter" href="architektur.html#k15">Kapitel &bdquo;Deployment und Rollback&ldquo;</a>
         </div>
-        <p class="req-met">DEX wird heute in einer Umgebung betrieben: der Produktiv-Site der Plattform. Innerhalb der Anwendung gibt es einen Demo-Modus mit synthetischen Daten und Entwurfs-Events, die für Teilnehmer unsichtbar sind — beides sind fachliche Zustände, keine getrennten Umgebungen.</p>
-        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 15.</p>
-        <p class="req-open"><span class="lbl">Offen</span>Offen: Eine dedizierte Nicht-Produktivumgebung (eigene Site Collection, eigener App-Katalog, eigene Flows) existiert derzeit nicht. Ob sie gefordert ist, ist zu entscheiden; der Aufwand ist überschaubar, weil die Anwendung ihre Listen selbst anlegt.</p>
+        <p class="req-met">Für die Automatisierung gibt es zwei kategorisierte Umgebungen: Die Flows werden in einer DEV-Umgebung entwickelt und laufen produktiv in einer PROD-Umgebung von Power Platform. Die Anwendung selbst — das SPFx-Paket — liegt auf der Produktiv-Site; innerhalb der Anwendung sind Demo-Modus und Entwurfs-Events fachliche Zustände, keine Umgebungen.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 15 „Deployment und Rollback“; Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung); Screenshot vom 2026-08-17.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Für die Anwendungsseite gibt es keine getrennte Nicht-Produktivumgebung (eigene Site Collection, eigener App-Katalog). Zu entscheiden, ob das gefordert ist; der Aufwand ist überschaubar, weil die Anwendung ihre Listen selbst anlegt.</p>
       </article>
       <article class="req" id="GCM-08">
         <div class="req-head">
           <span class="req-id">GCM-08</span>
-          <span class="cls cls-open">Offen</span>
+          <span class="cls cls-dex">DEX</span>
           <a class="req-chapter" href="architektur.html#k15">Kapitel &bdquo;Deployment und Rollback&ldquo;</a>
         </div>
-        <p class="req-met">Siehe GCM-07 — ohne zweite Umgebung ist eine Trennung nicht darstellbar.</p>
-        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 15.</p>
-        <p class="req-open"><span class="lbl">Offen</span>Entscheidung zu GCM-07 abwarten.</p>
+        <p class="req-met">Die Trennung ist für die Flows logisch umgesetzt: DEV und PROD sind eigene Power-Platform-Umgebungen mit eigenen Verbindungen und eigenen Zugriffsrechten. Eine physische Trennung ist bei einem Cloud-Dienst nicht darstellbar und auch nicht gefordert.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 15; Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung); Screenshot vom 2026-08-17.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Zu bestätigen: Greifen die DEV-Flows auf eine eigene SharePoint-Site zu oder auf die Produktiv-Site? Zeigen sie auf die Produktivdaten, ist die Trennung nur nominell — siehe GCM-10.</p>
       </article>
       <article class="req" id="GCM-09">
         <div class="req-head">
@@ -341,9 +341,9 @@
           <span class="cls cls-open">Offen</span>
           <a class="req-chapter" href="architektur.html#k15">Kapitel &bdquo;Deployment und Rollback&ldquo;</a>
         </div>
-        <p class="req-met">Siehe GCM-07.</p>
-        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 15.</p>
-        <p class="req-open"><span class="lbl">Offen</span>Entscheidung zu GCM-07 abwarten.</p>
+        <p class="req-met">Die DEV-Umgebung der Flows ist keine Umgebung für Endnutzer — sie enthält keine Anwendungsoberfläche, sondern nur Flow-Entwürfe. Endnutzer erreichen sie nicht, weil es dort nichts zu erreichen gibt.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 15; Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung); Screenshot vom 2026-08-17.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Zu bestätigen: Wer hat Zugriff auf die DEV-Umgebung? Für die Anforderung genügt die Aussage, dass es der Entwicklungskreis ist und keine Endnutzer.</p>
       </article>
       <article class="req" id="GCM-10">
         <div class="req-head">
@@ -351,9 +351,9 @@
           <span class="cls cls-open">Offen</span>
           <a class="req-chapter" href="architektur.html#k15">Kapitel &bdquo;Deployment und Rollback&ldquo;</a>
         </div>
-        <p class="req-met">Siehe GCM-07. Innerhalb der Produktivumgebung gilt: Der Demo-Modus liest keine Produktionsdaten, sondern erzeugt seine Datensätze zur Laufzeit.</p>
-        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 15 und 17.</p>
-        <p class="req-open"><span class="lbl">Offen</span>Entscheidung zu GCM-07 abwarten.</p>
+        <p class="req-met">Auf Anwendungsseite gilt: Der Demo-Modus liest keine Produktionsdaten, sondern erzeugt seine Datensätze zur Laufzeit.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 15 und 17; Auskunft des Betriebs vom 2026-08-17.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Die entscheidende offene Frage dieses Blocks: Verbinden sich die Flows der DEV-Umgebung mit der Produktiv-SharePoint-Site? Wenn ja, greifen Nicht-Produktivkonten auf Produktionsdaten zu — und dann sind GCM-08, GCM-10 und GCM-16 betroffen, unabhängig davon, dass die Umgebungen getrennt sind. Wenn nein, ist der Block sauber. Diese eine Antwort entscheidet über drei Anforderungen.</p>
       </article>
       <article class="req" id="GCM-11">
         <div class="req-head">
@@ -361,9 +361,9 @@
           <span class="cls cls-dex">DEX</span>
           <a class="req-chapter" href="architektur.html#k15">Kapitel &bdquo;Deployment und Rollback&ldquo;</a>
         </div>
-        <p class="req-met">Der Weg in die Produktion ist festgelegt und dokumentiert: Versionsnummer an drei Stellen setzen, Release Notes schreiben, Typprüfung, sauberer Build, Paket ablegen, Bereitstellung über den App-Katalog. Jeder Schritt ist im Repository beschrieben und im Versionsverlauf nachvollziehbar.</p>
-        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 15; Release-Ablauf in den Arbeitsanweisungen des Repositories.</p>
-        
+        <p class="req-met">Es gibt zwei getrennte Wege, beide festgelegt. Anwendung: Versionsnummer setzen, Release Notes schreiben, Typprüfung, sauberer Build, Paket ablegen, Bereitstellung über den App-Katalog — jeder Schritt im Repository beschrieben und im Versionsverlauf nachvollziehbar. Flows: Entwicklung in der DEV-Umgebung, produktiver Betrieb in der PROD-Umgebung von Power Platform.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 15; Release-Ablauf in den Arbeitsanweisungen des Repositories; Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung); Screenshot vom 2026-08-17.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Zu ergänzen: Wie kommt ein Flow von DEV nach PROD — als Solution-Export und -Import oder von Hand nachgebaut? Der Unterschied ist für GCM-04 wesentlich, weil nur der erste Weg einen nachvollziehbaren Rückfall erlaubt.</p>
       </article>
       <article class="req" id="GCM-16">
         <div class="req-head">

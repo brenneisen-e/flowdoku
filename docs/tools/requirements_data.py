@@ -53,20 +53,29 @@ AUDIT_NOTE = ('npm audit vom 2026-08-12: 62 Befunde im Produktions-Abhängigkeit
 REQS = [
     # ------------------------------------------------------------------ GAC
     dict(
-        id='GAC-01', chapter='k7', cls='open',
-        met='DEX bringt keine eigenen privilegierten Konten mit. Im Umfang liegen genau zwei: '
-            'die Websitesammlungs-Administratoren der SharePoint-Site (tenantverwaltet) und die '
+        id='GAC-01', chapter='k7', cls='flagged',
+        met='DEX bringt keine eigenen privilegierten Konten mit. Im Umfang liegen zwei: die '
+            'Websitesammlungs-Administratoren der SharePoint-Site (tenantverwaltet) und die '
             'Verbindungs-Identität der sieben Power-Automate-Flows, die auf den Event-Subsites '
             'Vollzugriff braucht.',
-        evidence='Architektur, Kapitel 7 „Die sieben Flows“ — Auflistung der Flows und ihrer Identität.',
-        open='Zu bestätigen: Läuft die Verbindungs-Identität der Flows unter einem Dienstkonto, '
-             'das im PAMS hinterlegt ist? Diese Bestätigung kann nur der Betreiber der Flows geben.'),
+        evidence='Architektur, Kapitel 7 „Die sieben Flows“; Auskunft des Betriebs vom 2026-08-17.',
+        open='Befund mit bekanntem Abhilfeplan: Die Flow-Verbindungen laufen derzeit unter einem '
+             'PERSÖNLICHEN Benutzerkonto, nicht unter einem Dienstkonto. Damit ist kein Vaulting im '
+             'PAMS möglich — ein persönliches Konto gehört dort nicht hinein. Zwei Wirkungen: Die '
+             'Anforderung ist nicht erfüllt, und der Betrieb der Plattform hängt an einer Person; '
+             'scheidet sie aus, brechen alle Mails und Kalendereinträge ab. Geplant ist die Umstellung '
+             'auf einen Service Principal. Damit wäre die Anforderung erfüllbar und GAC-02 sowie '
+             'GAC-15 gleich mit. Bitte Zieltermin festhalten.'),
     dict(
-        id='GAC-02', chapter='k7', cls='open',
+        id='GAC-02', chapter='k7', cls='flagged',
         met='Die Flow-Verbindungen gehören der Identität, unter der sie angelegt wurden; die Freigabe '
             'an weitere Personen steuert Power Platform.',
-        evidence='Architektur, Kapitel 7.',
-        open='Zu bestätigen: aktuelle Eigentümer- und Freigabeliste der sieben Flow-Verbindungen.'),
+        evidence='Architektur, Kapitel 7; Auskunft des Betriebs vom 2026-08-17.',
+        open='Derzeit ist die Verbindungs-Identität ein persönliches Konto (siehe GAC-01). Formal ist '
+             'die Anforderung damit erfüllt — die Zugangsdaten liegen ausschliesslich bei ihrem '
+             'Eigentümer —, aber aus dem falschen Grund: Es gibt keinen autorisierten Vertreter, weil '
+             'es keine Delegation gibt. Mit dem geplanten Service Principal wird daraus eine bewusst '
+             'verwaltete Berechtigung mit benennbaren Verantwortlichen.'),
     dict(
         id='GAC-03', chapter='k2', cls='platform',
         met='DEX hat keine eigene Authentifizierung. Anmeldung, Sperrung nach Fehlversuchen und '
@@ -126,11 +135,14 @@ REQS = [
              'Entscheidung nötig: Reicht der Tenant-Hinweis, oder soll DEX ihn wiederholen? '
              'Aufwand gering — ein Einblendtext vor dem ersten Öffnen.'),
     dict(
-        id='GAC-15', chapter='k7', cls='open',
-        met='Die Verbindungs-Identität der Flows ist ein nicht-menschliches Konto.',
-        evidence='Architektur, Kapitel 7.',
-        open='Zu bestätigen durch den Betrieb: Interaktive Anmeldung für dieses Konto ist per '
-             'Conditional Access unterbunden.'),
+        id='GAC-15', chapter='k7', cls='flagged',
+        met='Die Anforderung greift erst, wenn es ein nicht-menschliches Konto gibt.',
+        evidence='Architektur, Kapitel 7; Auskunft des Betriebs vom 2026-08-17.',
+        open='Heute nicht anwendbar, weil die Flows unter einem persönlichen Konto laufen (GAC-01) — '
+             'und dem kann die interaktive Anmeldung nicht entzogen werden, es ist ja ein Mensch. Mit '
+             'der Umstellung auf einen Service Principal löst sich die Anforderung von selbst: Ein '
+             'Service Principal hat gar keine interaktive Anmeldung. Der Punkt ist also nicht separat '
+             'zu bearbeiten, sondern erledigt sich mit GAC-01.'),
     # ------------------------------------------------------------------ GAT
     dict(
         id='GAT-01', chapter='k1', cls='dex',
@@ -226,37 +238,54 @@ REQS = [
         evidence='Architektur, Kapitel 17 „Sicherheitsbetrachtung“; Prüfung des Quelltextes auf '
                  'Zugangsdaten am 2026-08-12 ohne Befund.'),
     dict(
-        id='GCM-07', chapter='k15', cls='open',
-        met='DEX wird heute in einer Umgebung betrieben: der Produktiv-Site der Plattform. Innerhalb der '
-            'Anwendung gibt es einen Demo-Modus mit synthetischen Daten und Entwurfs-Events, die für '
-            'Teilnehmer unsichtbar sind — beides sind fachliche Zustände, keine getrennten Umgebungen.',
-        evidence='Architektur, Kapitel 15.',
-        open='Offen: Eine dedizierte Nicht-Produktivumgebung (eigene Site Collection, eigener '
-             'App-Katalog, eigene Flows) existiert derzeit nicht. Ob sie gefordert ist, ist zu '
-             'entscheiden; der Aufwand ist überschaubar, weil die Anwendung ihre Listen selbst anlegt.'),
+        id='GCM-07', chapter='k15', cls='dex',
+        met='Für die Automatisierung gibt es zwei kategorisierte Umgebungen: Die Flows werden in einer '
+            'DEV-Umgebung entwickelt und laufen produktiv in einer PROD-Umgebung von Power Platform. '
+            'Die Anwendung selbst — das SPFx-Paket — liegt auf der Produktiv-Site; innerhalb der '
+            'Anwendung sind Demo-Modus und Entwurfs-Events fachliche Zustände, keine Umgebungen.',
+        evidence='Architektur, Kapitel 15 „Deployment und Rollback“; Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung); Screenshot vom 2026-08-17.',
+        open='Für die Anwendungsseite gibt es keine getrennte Nicht-Produktivumgebung (eigene Site '
+             'Collection, eigener App-Katalog). Zu entscheiden, ob das gefordert ist; der Aufwand ist '
+             'überschaubar, weil die Anwendung ihre Listen selbst anlegt.'),
     dict(
-        id='GCM-08', chapter='k15', cls='open',
-        met='Siehe GCM-07 — ohne zweite Umgebung ist eine Trennung nicht darstellbar.',
-        evidence='Architektur, Kapitel 15.',
-        open='Entscheidung zu GCM-07 abwarten.'),
+        id='GCM-08', chapter='k15', cls='dex',
+        met='Die Trennung ist für die Flows logisch umgesetzt: DEV und PROD sind eigene Power-Platform-'
+            'Umgebungen mit eigenen Verbindungen und eigenen Zugriffsrechten. Eine physische Trennung '
+            'ist bei einem Cloud-Dienst nicht darstellbar und auch nicht gefordert.',
+        evidence='Architektur, Kapitel 15; Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung); Screenshot vom 2026-08-17.',
+        open='Zu bestätigen: Greifen die DEV-Flows auf eine eigene SharePoint-Site zu oder auf die '
+             'Produktiv-Site? Zeigen sie auf die Produktivdaten, ist die Trennung nur nominell — '
+             'siehe GCM-10.'),
     dict(
         id='GCM-09', chapter='k15', cls='open',
-        met='Siehe GCM-07.',
-        evidence='Architektur, Kapitel 15.',
-        open='Entscheidung zu GCM-07 abwarten.'),
+        met='Die DEV-Umgebung der Flows ist keine Umgebung für Endnutzer — sie enthält keine '
+            'Anwendungsoberfläche, sondern nur Flow-Entwürfe. Endnutzer erreichen sie nicht, weil es '
+            'dort nichts zu erreichen gibt.',
+        evidence='Architektur, Kapitel 15; Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung); Screenshot vom 2026-08-17.',
+        open='Zu bestätigen: Wer hat Zugriff auf die DEV-Umgebung? Für die Anforderung genügt die '
+             'Aussage, dass es der Entwicklungskreis ist und keine Endnutzer.'),
     dict(
         id='GCM-10', chapter='k15', cls='open',
-        met='Siehe GCM-07. Innerhalb der Produktivumgebung gilt: Der Demo-Modus liest keine '
-            'Produktionsdaten, sondern erzeugt seine Datensätze zur Laufzeit.',
-        evidence='Architektur, Kapitel 15 und 17.',
-        open='Entscheidung zu GCM-07 abwarten.'),
+        met='Auf Anwendungsseite gilt: Der Demo-Modus liest keine Produktionsdaten, sondern erzeugt '
+            'seine Datensätze zur Laufzeit.',
+        evidence='Architektur, Kapitel 15 und 17; Auskunft des Betriebs vom 2026-08-17.',
+        open='Die entscheidende offene Frage dieses Blocks: Verbinden sich die Flows der DEV-Umgebung '
+             'mit der Produktiv-SharePoint-Site? Wenn ja, greifen Nicht-Produktivkonten auf '
+             'Produktionsdaten zu — und dann sind GCM-08, GCM-10 und GCM-16 betroffen, unabhängig '
+             'davon, dass die Umgebungen getrennt sind. Wenn nein, ist der Block sauber. Diese eine '
+             'Antwort entscheidet über drei Anforderungen.'),
     dict(
         id='GCM-11', chapter='k15', cls='dex',
-        met='Der Weg in die Produktion ist festgelegt und dokumentiert: Versionsnummer an drei Stellen '
-            'setzen, Release Notes schreiben, Typprüfung, sauberer Build, Paket ablegen, Bereitstellung '
-            'über den App-Katalog. Jeder Schritt ist im Repository beschrieben und im Versionsverlauf '
-            'nachvollziehbar.',
-        evidence='Architektur, Kapitel 15; Release-Ablauf in den Arbeitsanweisungen des Repositories.'),
+        met='Es gibt zwei getrennte Wege, beide festgelegt. Anwendung: Versionsnummer setzen, Release '
+            'Notes schreiben, Typprüfung, sauberer Build, Paket ablegen, Bereitstellung über den '
+            'App-Katalog — jeder Schritt im Repository beschrieben und im Versionsverlauf '
+            'nachvollziehbar. Flows: Entwicklung in der DEV-Umgebung, produktiver Betrieb in der '
+            'PROD-Umgebung von Power Platform.',
+        evidence='Architektur, Kapitel 15; Release-Ablauf in den Arbeitsanweisungen des Repositories; '
+                 'Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung); Screenshot vom 2026-08-17.',
+        open='Zu ergänzen: Wie kommt ein Flow von DEV nach PROD — als Solution-Export und -Import '
+             'oder von Hand nachgebaut? Der Unterschied ist für GCM-04 wesentlich, weil nur der erste '
+             'Weg einen nachvollziehbaren Rückfall erlaubt.'),
     dict(
         id='GCM-16', chapter='k17', cls='dex',
         met='Produktionsdaten werden nicht für Tests verwendet. Der Demo-Modus erzeugt seine '
