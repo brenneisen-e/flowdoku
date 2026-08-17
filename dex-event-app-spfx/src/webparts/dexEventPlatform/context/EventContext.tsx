@@ -2068,7 +2068,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // bisherige Kommunikation in der App unter „Meine Events" nachlesen können.
         if (status === 'Angemeldet' && !isExternalInvite && !isExternalRecipient) {
           let priorComms = false;
-          try { priorComms = await eventService.hasEventComms(eventId); } catch { priorComms = false; }
+          // v29.11: Die Einladung zählt nicht mit. Sie ist der Weg, über den die
+          // meisten überhaupt hier gelandet sind — auf sie zu verweisen sagt
+          // nichts. Der Hinweis erscheint erst, wenn es darüber hinaus eine
+          // Rundmail gab (Ankündigung, Update, Massenmail).
+          try { priorComms = await eventService.hasEventComms(eventId, ['Einladung']); } catch { priorComms = false; }
           if (priorComms) {
             const isDeComm = (lang || 'EN').toUpperCase() === 'DE';
             const commsBox = `<div style="margin:0 0 16px;padding:12px 16px;background:#eef4fb;border:1px solid #0076a8;border-radius:8px;font-size:13px;line-height:1.55;color:#0b4a6f;">`

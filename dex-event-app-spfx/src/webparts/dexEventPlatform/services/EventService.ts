@@ -7215,15 +7215,37 @@ export class EventService {
   }
 
   /** Gibt es überhaupt Rundmails zu diesem Event? (für den Anmeldemail-Hinweis) */
-  public async hasEventComms(eventId: string | number): Promise<boolean> {
+  /**
+   * @param excludeTypes v29.11: Rundmail-Arten, die NICHT zählen sollen.
+   *
+   * Hintergrund: Der Hinweis „Bereits versendete Infos zu diesem Event“ in der
+   * Anmeldebestätigung soll die Person auf Kommunikation aufmerksam machen, die
+   * sie verpasst haben könnte. Die Einladung ist genau das nicht — über sie ist
+   * die Person meist überhaupt erst gekommen, und wer sich ohne Einladung
+   * anmeldet, kann sie in der App ohnehin nachlesen. Stand nur eine Einladung
+   * im Log, verwies der Hinweis also auf die Mail, die man gerade in der Hand
+   * hatte. Lohnend ist er erst, wenn es DARÜBER HINAUS etwas gab.
+   *
+   * Die Auswertung läuft bewusst im Code und nicht als OData-Filter: `ne` würde
+   * Zeilen mit leerem EmailType je nach Auslegung verschlucken. Alt-Zeilen ohne
+   * Art zählen hier als „weitere Mail“ — im Zweifel lieber hinweisen als eine
+   * echte Ankündigung verschweigen.
+   */
+  public async hasEventComms(
+    eventId: string | number,
+    excludeTypes?: string[],
+  ): Promise<boolean> {
     try {
       if (!(await this.listExists('DEX_EventComms'))) return false;
       const esc = String(eventId).replace(/'/g, "''");
-      const resp = await this.context.spHttpClient.get(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_EventComms')/items?$select=Id&$filter=EventId eq '${esc}'&$top=1`, SPHttpClient.configurations.v1);
+      const resp = await this.context.spHttpClient.get(`${this.siteUrl}/_api/web/lists/getbytitle('DEX_EventComms')/items?$select=Id,EmailType&$filter=EventId eq '${esc}'&$top=200`, SPHttpClient.configurations.v1);
       if (!resp.ok) return false;
       const data = await resp.json();
-      const items = data.value || data.d?.results || [];
-      return Array.isArray(items) && items.length > 0;
+      const items = (data.value || data.d?.results || []) as Array<{ EmailType?: string }>;
+      if (!Array.isArray(items) || items.length === 0) return false;
+      if (!excludeTypes || excludeTypes.length === 0) return true;
+      const skip = excludeTypes.map(t => (t || '').trim().toLowerCase());
+      return items.some(it => skip.indexOf((it.EmailType || '').trim().toLowerCase()) < 0);
     } catch { return false; }
   }
 
