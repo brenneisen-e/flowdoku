@@ -1890,71 +1890,184 @@ export default function AdminPage(): React.ReactElement {
     setIsReorderingIDs(false);
   };
 
-  // v18.70: Manuelles Nachrücken — füllt einen freien Platz mit dem ersten
-  // Wartelistler (nach TeilnehmerID). Nutzt dieselbe promoteFirstWaitlistItem-
-  // Logik + Mail/Outlook wie der Admin-Cancel-Pfad, nur ohne Cancel.
+  /**
+   * v29.16: Nachrück-Mail + Outlook-Einladung für EINE nachgerückte Person.
+   * Aus `runManualPromote` herausgezogen, weil das Füllen mehrerer freier
+   * Plätze dieselbe Benachrichtigung je Person braucht — zwei Kopien dieses
+   * Mail-Aufbaus wären beim nächsten Template-Wechsel auseinandergelaufen.
+   */
+  const notifyPromoted = async (promoted: { email: string; name?: string }): Promise<void> => {
+    if (!eventServiceRef || !selectedEvent) return;
+    if (!selectedEvent.disableEmails) {
+      try {
+        const lang = selectedEvent.emailLanguage || 'EN';
+        const promotedFirstName = (promoted.name || '').trim().split(/\s+/)[0] || '';
+        const promoteVars = {
+          Name: promotedFirstName,
+          EventTitle: selectedEvent.title,
+          Organizer: formatOrganizerList(selectedEvent.organizers, lang),
+          AppUrl: `${eventServiceRef.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+          WaitlistPosition: '',
+        };
+        let emailData: { subject: string; body: string };
+        const spTplRaw = await eventServiceRef.getEmailTemplate('Nachruecken', lang).catch(() => null);
+        const spTpl = applyEventTemplateOverride(spTplRaw, selectedEvent.emailTemplateOverrides, 'Nachruecken');
+        if (spTpl) {
+          emailData = buildEmailFromTemplate(spTpl, promoteVars);
+        } else {
+          emailData = promotionEmail(promotedFirstName, selectedEvent.title);
+        }
+        await eventServiceRef.queueEmail(
+          emailData.subject, promoted.email, promoted.name || '', emailData.body,
+          'Nachruecken', selectedEvent.title, selectedEvent.id
+        );
+      } catch (err) { console.warn('[DEX] promote-email failed:', err); }
+    }
+    if (!selectedEvent.disableOutlook) {
+      try {
+        await eventServiceRef.queueOutlookEvent(
+          promoted.email, selectedEvent.id, selectedEvent.title, 'Einladen'
+        );
+      } catch (err) { console.warn('[DEX] promote-outlook failed:', err); }
+    }
+  };
+
+  /**
+   * v18.70 / v29.16: Freie Plätze mit der Warteliste füllen.
+   *
+   * v18.70 rückte GENAU EINE Person nach und übergab weder Gruppe noch die
+   * Gruppen-Kapazität. Auf einem Event mit zwei Gruppen ging das doppelt
+   * daneben: Als Obergrenze stand `maxParticipants` drin — das ist bei
+   * geteilten Kapazitäten 0, also fand gar keine Prüfung statt — und ohne
+   * Typfilter nahm die Abfrage den ersten Wartelistler nach TeilnehmerID,
+   * egal aus welcher Gruppe. Eine noch volle Gruppe konnte damit überbucht
+   * werden, während die Gruppe mit freien Plätzen leer ausging.
+   *
+   * Zweiter Punkt, der den Fall überhaupt erst sichtbar macht: Nachgerückt
+   * wird sonst NUR beim Abmelden. Erhöht der Organizer eine Gruppengröße,
+   * passiert von allein nichts — es gibt kein Ereignis, an dem etwas hinge.
+   * Genau dafür ist diese Aktion da, und sie füllt deshalb ALLE freien
+   * Plätze auf einmal statt einen pro Klick.
+   *
+   * Gezählt wird je Gruppe (bzw. einmal gesamt ohne geteilte Kapazität) mit
+   * derselben Zuordnung wie überall sonst: StarterType, ersatzweise
+   * PreferredStarterType. Bei `splitSharedWaitlist` gibt es nur eine
+   * Warteliste — dann entscheidet die Reihenfolge, nicht die Gruppe.
+   */
   const runManualPromote = async (): Promise<void> => {
     if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
     setIsPromoting(true);
     setPromoteResult(null);
     try {
-      // Bei getrennten Split-Wartelisten ist ohne konkreten Cancel nicht
-      // bekannt, welche Gruppe frei ist → ohne Typfilter den ersten
-      // Wartelistler nehmen. promoteFirstWaitlistItem prüft die Kapazität
-      // (maxParticipants) und rückt nur nach, wenn wirklich ein Platz frei ist.
-      const promoted = await eventServiceRef.promoteFirstWaitlistItem(
-        selectedEvent.subsiteUrl,
-        undefined,
-        selectedEvent.maxParticipants,
-        undefined,
+      // Frisch lesen: `registrations` kann Minuten alt sein, und wir leiten
+      // daraus ab, wie oft nachgerückt wird. Auf einem veralteten Stand
+      // würde die Schleife über die Kapazität hinauslaufen.
+      const fresh = await getAllRegistrations(selectedEvent.id);
+      const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt'];
+      const lblA = (selectedEvent.splitLabelA && selectedEvent.splitLabelA.trim()) || 'Durchstarter';
+      const lblB = (selectedEvent.splitLabelB && selectedEvent.splitLabelB.trim()) || 'Funstarter';
+      // Geteilte Kapazität MIT getrennten Wartelisten → je Gruppe rechnen.
+      // Gemeinsame Warteliste (splitSharedWaitlist) verhält sich wie ein
+      // einzelner Topf: Wer zuerst wartet, rückt nach.
+      const perGroup = isSplitCapacity && !selectedEvent.splitSharedWaitlist;
+      const groups: Array<{ key?: string; label: string; cap: number }> = perGroup
+        ? [
+          { key: 'Durchstarter', label: lblA, cap: selectedEvent.durchstarterCapacity || 0 },
+          { key: 'Funstarter', label: lblB, cap: selectedEvent.funstarterCapacity || 0 },
+        ]
+        : [{
+          key: undefined,
+          label: isDe ? 'Plätze' : 'Seats',
+          cap: isSplitCapacity
+            // Gemeinsame Warteliste: Die Obergrenze ist die Summe beider
+            // Gruppen — `maxParticipants` ist bei geteilten Kapazitäten 0.
+            ? (selectedEvent.durchstarterCapacity || 0) + (selectedEvent.funstarterCapacity || 0)
+            : (selectedEvent.maxParticipants || 0),
+        }];
+      const groupOf = (r: SPRegistration): string => r.StarterType || r.PreferredStarterType || '';
+      const plan = groups.map(g => {
+        const inGroup = (r: SPRegistration): boolean => !g.key || groupOf(r) === g.key;
+        const active = fresh.filter(r => ACTIVE.indexOf(r.Status) >= 0 && inGroup(r)).length;
+        const waiting = fresh.filter(r => r.Status === 'Warteliste' && inGroup(r)).length;
+        // Kapazität 0 heißt „unbegrenzt" — dann rückt die ganze Warteliste nach.
+        const free = g.cap > 0 ? Math.max(0, g.cap - active) : waiting;
+        return { ...g, active, waiting, count: Math.min(free, waiting), free };
+      });
+      const total = plan.reduce((n, g) => n + g.count, 0);
+
+      if (total === 0) {
+        // Den tatsächlichen Grund nennen, nicht den erstbesten: „voll" und
+        // „niemand wartet" führen zu ganz verschiedenen nächsten Schritten.
+        const anyWaiting = plan.some(g => g.waiting > 0);
+        setPromoteResult(!anyWaiting
+          ? (isDe ? 'Niemand auf der Warteliste.' : 'Nobody on the waitlist.')
+          : perGroup
+            ? (isDe
+              ? `Kein freier Platz in den Gruppen, in denen jemand wartet (${plan.filter(g => g.waiting > 0).map(g => `${g.label}: ${g.active}/${g.cap}`).join(', ')}).`
+              : `No free seat in the groups where people are waiting (${plan.filter(g => g.waiting > 0).map(g => `${g.label}: ${g.active}/${g.cap}`).join(', ')}).`)
+            : (isDe ? 'Kein freier Platz — Event ist voll.' : 'No free seat — event is full.'));
+        setIsPromoting(false);
+        return;
+      }
+
+      const lines = plan
+        .filter(g => g.waiting > 0 || g.free > 0)
+        .map(g => perGroup
+          ? `• ${g.label}: ${g.active}/${g.cap || '∞'} belegt · ${g.waiting} auf der Warteliste → ${g.count} rücken nach`
+          : `• ${g.active}/${g.cap || '∞'} belegt · ${g.waiting} auf der Warteliste → ${g.count} rücken nach`)
+        .join('\n');
+      const ok = await confirmDialog(
+        isDe
+          ? `${total} ${total === 1 ? 'Person' : 'Personen'} von der Warteliste nachrücken lassen?\n\n${lines}\n\nJede nachgerückte Person bekommt den Status „Angemeldet", eine Nachrück-Mail und eine Outlook-Einladung. Danach werden die TeilnehmerIDs neu vergeben.`
+          : `Move ${total} ${total === 1 ? 'person' : 'people'} up from the waitlist?\n\n${lines}\n\nEach of them gets status “Registered”, a promotion email and an Outlook invite. Participant IDs are reassigned afterwards.`,
+        { confirmLabel: isDe ? 'Nachrücken' : 'Promote' },
       );
-      if (promoted && promoted.success && promoted.email) {
-        setAdminToast({ kind: 'promoted', name: promoted.name || promoted.email, email: promoted.email });
-        if (!selectedEvent.disableEmails) {
-          try {
-            const lang = selectedEvent.emailLanguage || 'EN';
-            const promotedFirstName = (promoted.name || '').trim().split(/\s+/)[0] || '';
-            const promoteVars = {
-              Name: promotedFirstName,
-              EventTitle: selectedEvent.title,
-              Organizer: formatOrganizerList(selectedEvent.organizers, lang),
-              AppUrl: `${eventServiceRef.siteUrl}/SitePages/DEX.aspx?env=WebView`,
-              WaitlistPosition: '',
-            };
-            let emailData: { subject: string; body: string };
-            const spTplRaw = await eventServiceRef.getEmailTemplate('Nachruecken', lang).catch(() => null);
-            const spTpl = applyEventTemplateOverride(spTplRaw, selectedEvent.emailTemplateOverrides, 'Nachruecken');
-            if (spTpl) {
-              emailData = buildEmailFromTemplate(spTpl, promoteVars);
-            } else {
-              emailData = promotionEmail(promotedFirstName, selectedEvent.title);
-            }
-            await eventServiceRef.queueEmail(
-              emailData.subject, promoted.email, promoted.name || '', emailData.body,
-              'Nachruecken', selectedEvent.title, selectedEvent.id
-            );
-          } catch (err) { console.warn('[DEX] manual promote-email failed:', err); }
+      if (!ok) { setIsPromoting(false); return; }
+
+      const promotedNames: string[] = [];
+      let failed = 0;
+      for (const g of plan) {
+        for (let i = 0; i < g.count; i++) {
+          // maxParticipants bewusst NICHT mitgeben: Die Überbuchungs-Sperre
+          // im Service zählt über die GANZE Liste und kann eine Gruppe nicht
+          // getrennt prüfen. Die Anzahl steht oben schon fest, frisch
+          // gerechnet — hier wird nur genau so oft nachgerückt.
+          const promoted = await eventServiceRef.promoteFirstWaitlistItem(
+            selectedEvent.subsiteUrl,
+            undefined,
+            undefined,
+            g.key,
+          );
+          if (promoted && promoted.success && promoted.email) {
+            promotedNames.push(promoted.name || promoted.email);
+            setAdminToast({ kind: 'promoted', name: promoted.name || promoted.email, email: promoted.email });
+            await notifyPromoted({ email: promoted.email, name: promoted.name });
+          } else {
+            // Warteliste unerwartet leer (jemand hat sich zwischendurch
+            // abgemeldet) — kein Fehler, nur nichts mehr zu tun.
+            failed++;
+            break;
+          }
         }
-        if (!selectedEvent.disableOutlook) {
-          try {
-            await eventServiceRef.queueOutlookEvent(
-              promoted.email, selectedEvent.id, selectedEvent.title, 'Einladen'
-            );
-          } catch (err) { console.warn('[DEX] manual promote-outlook failed:', err); }
-        }
-        // IDs neu vergeben + Counter/Seat-Sync + Liste neu laden
-        await runIdReorder();
-        try {
-          const isSplit = typeof selectedEvent.durchstarterCapacity === 'number'
-            && typeof selectedEvent.funstarterCapacity === 'number'
-            && (selectedEvent.durchstarterCapacity > 0 || selectedEvent.funstarterCapacity > 0);
-          await eventServiceRef.syncSeatsToActiveCount(selectedEvent.subsiteUrl, { isSplit });
-        } catch { /* */ }
-        setPromoteResult(isDe ? `${promoted.name || promoted.email} ist nachgerückt.` : `${promoted.name || promoted.email} moved up.`);
-      } else if (promoted && promoted.skippedOverbooked) {
-        setPromoteResult(isDe ? 'Kein freier Platz — Event ist voll.' : 'No free seat — event is full.');
-      } else {
-        setPromoteResult(isDe ? 'Niemand auf der Warteliste.' : 'Nobody on the waitlist.');
+      }
+
+      // IDs neu vergeben + Counter/Seat-Sync + Liste neu laden — einmal am
+      // Ende, nicht je Person: Der Reorder schreibt jede Zeile an.
+      await runIdReorder();
+      try {
+        await eventServiceRef.syncSeatsToActiveCount(selectedEvent.subsiteUrl, { isSplit: isSplitCapacity });
+      } catch { /* */ }
+
+      const n = promotedNames.length;
+      setPromoteResult(n === 0
+        ? (isDe ? 'Es konnte niemand nachrücken.' : 'Nobody could be promoted.')
+        : n === 1
+          ? (isDe ? `${promotedNames[0]} ist nachgerückt.` : `${promotedNames[0]} moved up.`)
+          : (isDe
+            ? `${n} Personen sind nachgerückt: ${promotedNames.join(', ')}.`
+            : `${n} people moved up: ${promotedNames.join(', ')}.`));
+      if (failed > 0 && n > 0) {
+        console.warn('[DEX] runManualPromote: Warteliste war früher leer als erwartet.');
       }
     } catch (err) {
       console.warn('[DEX] runManualPromote failed:', err);
@@ -7073,17 +7186,18 @@ export default function AdminPage(): React.ReactElement {
             )}
 
             {/* 7a2. Nachrücken — Admin ODER Organizer des Events (v18.70).
-                Füllt einen freien Platz mit dem ersten Wartelistler (nach
-                TeilnehmerID), inkl. Nachrück-Mail + Outlook-Einladung, danach
-                IDs neu vergeben + Seat-Sync. */}
+                v29.16: Füllt ALLE freien Plätze, bei geteilten Kapazitäten je
+                Gruppe getrennt gerechnet. Die Rückfrage mit der Aufstellung
+                steht in runManualPromote — dort sind die Zahlen bekannt; eine
+                zweite Rückfrage davor wäre nur eine Frage ohne Inhalt. */}
             {(isAdmin || (!!selectedEvent && isOrganizerFor(selectedEvent))) && (
               <ActionTile
                 icon={<Users size={18} />}
                 category="participants"
-                title={isPromoting ? (isDe ? 'Rückt nach…' : 'Promoting…') : (isDe ? 'Von Warteliste nachrücken' : 'Promote from waitlist')}
+                title={isPromoting ? (isDe ? 'Rückt nach…' : 'Promoting…') : (isDe ? 'Freie Plätze mit Warteliste füllen' : 'Fill free seats from waitlist')}
                 desc={isDe
-                  ? 'Rückt den ersten Teilnehmer von der Warteliste (nach TeilnehmerID) auf einen freien Platz nach. Die Person bekommt Status „Angemeldet", eine Nachrück-Mail und eine Outlook-Einladung; danach werden die IDs neu vergeben. Promotet nur, wenn tatsächlich ein Platz frei ist.'
-                  : 'Promotes the first person on the waitlist (by participant ID) into a free seat. The person gets status “Registered”, a promotion email and an Outlook invite; IDs are then reassigned. Only promotes if a seat is actually free.'}
+                  ? 'Rückt so viele Personen von der Warteliste nach, wie Plätze frei sind — in der Reihenfolge der TeilnehmerIDs. Bei zwei Gruppen wird je Gruppe getrennt gerechnet, es rückt also niemand in eine noch volle Gruppe. Vor dem Ausführen siehst du die Aufstellung. Jede nachgerückte Person bekommt Status „Angemeldet", eine Nachrück-Mail und eine Outlook-Einladung; danach werden die IDs neu vergeben. Nötig vor allem, wenn du eine Kapazität erhöht hast — von allein rückt nur bei einer Abmeldung jemand nach.'
+                  : 'Moves as many people up from the waitlist as there are free seats, in participant-ID order. With two groups each group is calculated separately, so nobody moves into a group that is still full. You see the breakdown before it runs. Everyone promoted gets status “Registered”, a promotion email and an Outlook invite; IDs are reassigned afterwards. Mainly needed after you raised a capacity — on its own, promotion only happens on a cancellation.'}
                 badge="organizer"
                 busy={isPromoting}
                 disabled={!selectedEvent?.subsiteUrl || isPromoting || isReorderingIDs}
@@ -7091,9 +7205,6 @@ export default function AdminPage(): React.ReactElement {
                 resultIsError={!!promoteResult && (promoteResult.indexOf('Fehler') >= 0 || promoteResult.indexOf('Error') >= 0)}
                 onClick={async () => {
                   if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
-                  if (!(await confirmDialog(isDe
-                    ? 'Den ersten Teilnehmer von der Warteliste auf einen freien Platz nachrücken?'
-                    : 'Promote the first waitlist participant into a free seat?', { confirmLabel: isDe ? 'Nachrücken' : 'Promote' }))) return;
                   await runManualPromote();
                 }}
               />
