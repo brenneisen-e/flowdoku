@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v29.15.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v29.16.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -220,6 +220,22 @@ für Teilnehmer nicht „Sub-Events", sondern „Events" — der Default von
 beiden Konstanten und **nie** ein fest verdrahtetes „Sub-Event"; für den
 unbestimmten Artikel gibt es `childOneDe` (es heißt „ein Event", aber „eine
 Session" — das war vorher überall falsch).
+
+**Nachgerückt wird nur beim Abmelden — nicht bei einer Kapazitätsänderung.**
+`promoteFirstWaitlistItem` hängt am Cancel-Pfad. Erhöht der Organizer eine
+Kapazität, gibt es kein Ereignis, an dem etwas hinge; die Warteliste bleibt
+stehen. Dafür ist die Aktion „Freie Plätze mit Warteliste füllen" da
+(`runManualPromote`, seit v29.16 gruppen-bewusst und für alle freien Plätze).
+
+**Bei geteilten Kapazitäten ist `maxParticipants` 0.** Die Kapazität steht in
+`durchstarterCapacity`/`funstarterCapacity` (Beschriftungen `splitLabelA/B`).
+Wer `maxParticipants` als Obergrenze prüft, prüft dort **gar nichts** — genau
+daran ist das Nachrücken bis v29.16 vorbeigelaufen. Die Überbuchungs-Sperre in
+`promoteFirstWaitlistItem` zählt über die GANZE Liste und kann eine Gruppe
+nicht trennen; wer je Gruppe nachrückt, muss die Anzahl selbst ausrechnen
+(`StarterType || PreferredStarterType`) und `onlyWithPreferredType` setzen.
+Ausnahme: `splitSharedWaitlist` — dann ist es ein Topf mit der Summe beider
+Kapazitäten.
 
 **Inline-Styles können kein `:hover`.** Interaktive Elemente brauchen einen
 Hover-State (`hoverIdx`, `evTabHover`), sonst lesen sie sich als Beschriftung.
