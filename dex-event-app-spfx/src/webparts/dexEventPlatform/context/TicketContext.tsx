@@ -108,6 +108,12 @@ interface TicketContextType {
   openCountForEvent: (eventId: string) => number;
   /** Power-User-Warteschlange (Fragen von Organizern/Admins). */
   powerUserQueue: DexTicket[];
+  /** v29.14: Erinnerung an die Power-User schicken (alle unbeantworteten
+   *  Tickets in EINER Mail). Ohne Tages-Sperre — hier entscheidet ein Mensch. */
+  remindPowerUsers: () => Promise<{ ok: boolean; count: number; recipients: string[]; reason?: 'no-tickets' | 'no-recipients' | 'error' }>;
+  /** v29.14: Namen der Personen, die die Erinnerung erreichen würde (ohne
+   *  den aktuellen User) — für die Rückfrage vor dem Senden. */
+  reminderTargets: () => string[];
 }
 
 export const TicketContext = React.createContext<TicketContextType | undefined>(undefined);
@@ -212,6 +218,68 @@ export function TicketProvider(props: { context: WebPartContext; children: React
   function ctaButton(href: string, label: string): string {
     return `<p style="margin:22px 0 0;"><a href="${href}" style="display:inline-block;background:${GREEN};color:#ffffff;text-decoration:none;padding:11px 24px;border-radius:6px;font-weight:600;font-size:14px;">${esc(label)}</a></p>`;
   }
+
+  // ---- Ticket-Erinnerung (Automatik v26.33 + Knopf v29.14) ----------------
+  /**
+   * v29.14: Empfänger einer Ticket-Erinnerung — die Power-User, ersatzweise die
+   * Admins. IT-Admins sind bewusst NICHT dabei. `exclude` nimmt eine Adresse
+   * heraus (beim Knopf die Person, die ihn drückt: Wer selbst erinnert, braucht
+   * die Erinnerung nicht).
+   */
+  const reminderRecipients = React.useCallback((exclude?: string): { emails: string[]; names: string[] } => {
+    const ex = (exclude || '').toLowerCase().trim();
+    const pu = roles.filter(r => r.isPowerUser && r.userEmail);
+    let list = pu.length > 0 ? pu : roles.filter(r => r.role === 'Admin' && r.userEmail);
+    if (ex) list = list.filter(r => (r.userEmail || '').toLowerCase() !== ex);
+    return { emails: list.map(r => r.userEmail), names: list.map(r => r.userName || r.userEmail) };
+  }, [roles]);
+
+  /**
+   * v29.14: Baut und stellt die Sammel-Erinnerung ein. Automatik und Knopf
+   * teilen sich diese eine Stelle — der Text der Erinnerung stand sonst
+   * zweimal im Code und wäre beim nächsten Anfassen auseinandergelaufen.
+   *
+   * `manual` unterscheidet nur die Anrede: Bei der Automatik gibt es keinen
+   * Absender, beim Knopf schon — und eine Erinnerung, hinter der ein Name
+   * steht, liest sich anders als ein Systemhinweis.
+   */
+  const queueTicketReminder = React.useCallback(async (
+    list: DexTicket[],
+    to: { emails: string[]; names: string[] },
+    manual: { byName: string } | null,
+  ): Promise<boolean> => {
+    if (list.length === 0 || to.emails.length === 0) return false;
+    const now = new Date();
+    const link = buildHashDeepLink(appBase, { action: 'tickets' });
+    const rows = list.slice(0, 30).map(t => {
+      const q = (t.questions && t.questions[0]) ? t.questions[0] : '(ohne Text)';
+      const created = t.created ? new Date(t.created) : now;
+      const days = businessDaysBetween(created, now);
+      const age = days > 0
+        ? `seit ${days} Werktag${days > 1 ? 'en' : ''} offen`
+        : 'heute eingegangen';
+      return `<li style="margin-bottom:8px;"><strong>${esc(q.slice(0, 140))}</strong><br><span style="color:#777;font-size:12px;">von ${esc(t.askerName || t.askerEmail || 'unbekannt')} · ${age}${t.eventTitle ? ` · Event: ${esc(t.eventTitle)}` : ''}</span></li>`;
+    }).join('');
+    const n = list.length;
+    const intro = manual
+      ? `<p style="margin:0 0 14px;"><strong>${esc(manual.byName)}</strong> bittet um Bearbeitung: Im DEX-Ticketsystem warten <strong>${n} Frage${n > 1 ? 'n' : ''}</strong> auf eine Antwort.</p>`
+      : `<p style="margin:0 0 14px;">im DEX-Ticketsystem warten <strong>${n} Frage${n > 1 ? 'n' : ''}</strong> seit mindestens zwei Werktagen auf eine Antwort:</p>`;
+    const inner = `
+      <p style="margin:0 0 6px;">Hallo,</p>
+      ${intro}
+      <ul style="margin:0 0 4px 18px;padding:0;">${rows}</ul>
+      ${n > 30 ? `<p style="margin:6px 0 0;color:#777;font-size:12px;">… und weitere.</p>` : ''}
+      ${ctaButton(link, 'Offene Tickets ansehen')}
+      ${noReplyHintHtml}
+    `;
+    const subject = manual
+      ? `Erinnerung von ${manual.byName}: ${n} offene Ticket${n > 1 ? 's' : ''} im DEX-Ticketsystem`
+      : `Erinnerung: ${n} offene Ticket${n > 1 ? 's' : ''} im DEX-Ticketsystem`;
+    const body = wrapTemplate(GREEN, 'Offene Tickets warten auf Antwort', 'DEX-Support', inner);
+    await eventService.queueEmail(subject, to.emails.join('; '), to.names.join('; '), body, 'TicketReminder', 'DEX-Ticket', '0');
+    return true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [eventService, appBase]);
 
   // ---- Aktionen -----------------------------------------------------------
   const createTicket = React.useCallback(async (input: AskInput): Promise<boolean> => {
@@ -570,46 +638,58 @@ export function TicketProvider(props: { context: WebPartContext; children: React
         // Queue-Tages-Dedup (falls mehrere Power-User heute schon geöffnet haben).
         const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0).toISOString();
         try { if (await eventService.hasQueuedEmailSince('TicketReminder', startOfToday)) { try { window.localStorage.setItem(dayKey, '1'); } catch { /* */ } return; } } catch { /* */ }
-        // Empfänger: Power-User (Fallback Admins). IT-Admins sind hier NICHT dabei.
-        const pu = roles.filter(r => r.isPowerUser && r.userEmail);
-        let toEmails = pu.map(r => r.userEmail);
-        let toNames = pu.map(r => r.userName || r.userEmail);
-        if (toEmails.length === 0) {
-          const admins = roles.filter(r => r.role === 'Admin' && r.userEmail);
-          toEmails = admins.map(r => r.userEmail); toNames = admins.map(r => r.userName || r.userEmail);
-        }
-        if (toEmails.length === 0) return;
-        const link = buildHashDeepLink(appBase, { action: 'tickets' });
-        const rows = overdue.slice(0, 30).map(t => {
-          const q = (t.questions && t.questions[0]) ? t.questions[0] : '(ohne Text)';
-          const created = t.created ? new Date(t.created) : now;
-          const days = businessDaysBetween(created, now);
-          return `<li style="margin-bottom:8px;"><strong>${esc(q.slice(0, 140))}</strong><br><span style="color:#777;font-size:12px;">von ${esc(t.askerName || t.askerEmail || 'unbekannt')} · seit ${days} Werktagen offen${t.eventTitle ? ` · Event: ${esc(t.eventTitle)}` : ''}</span></li>`;
-        }).join('');
-        const inner = `
-          <p style="margin:0 0 6px;">Hallo,</p>
-          <p style="margin:0 0 14px;">im DEX-Ticketsystem warten <strong>${overdue.length} Frage${overdue.length > 1 ? 'n' : ''}</strong> seit mindestens zwei Werktagen auf eine Antwort:</p>
-          <ul style="margin:0 0 4px 18px;padding:0;">${rows}</ul>
-          ${overdue.length > 30 ? `<p style="margin:6px 0 0;color:#777;font-size:12px;">… und weitere.</p>` : ''}
-          ${ctaButton(link, 'Offene Tickets ansehen')}
-          ${noReplyHintHtml}
-        `;
-        const subject = `Erinnerung: ${overdue.length} offene Ticket${overdue.length > 1 ? 's' : ''} im DEX-Ticketsystem`;
-        const body = wrapTemplate(GREEN, 'Offene Tickets warten auf Antwort', 'DEX-Support', inner);
-        await eventService.queueEmail(subject, toEmails.join('; '), toNames.join('; '), body, 'TicketReminder', 'DEX-Ticket', '0');
+        // v29.14: Empfänger und Mailtext kommen aus derselben Stelle wie beim
+        // Erinnerungs-Knopf auf der Tickets-Seite. Die Automatik erinnert das
+        // ganze Team, also OHNE Ausschluss.
+        const to = reminderRecipients();
+        if (to.emails.length === 0) return;
+        await queueTicketReminder(overdue, to, null);
         try { window.localStorage.setItem(dayKey, '1'); } catch { /* */ }
       } catch (e) { console.warn('[DEX] ticket reminder failed:', e); }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canAnswerTickets, ticketsLoadedOnce]);
 
+  /**
+   * v29.14: Erinnerung auf Knopfdruck. Die Automatik greift erst nach zwei
+   * Werktagen und nur, wenn ein Beantworter die App öffnet — wer als Admin
+   * sieht, dass ein Ticket liegen bleibt, konnte bisher nur privat nachfassen.
+   *
+   * Bewusst ohne Tages-Sperre: Ein Mensch entscheidet hier, nicht ein Timer.
+   * Der Tagesschlüssel wird aber GESETZT, damit die Automatik nicht noch eine
+   * zweite Erinnerung hinterherschickt.
+   */
+  const remindPowerUsers = React.useCallback(async (): Promise<{ ok: boolean; count: number; recipients: string[]; reason?: 'no-tickets' | 'no-recipients' | 'error' }> => {
+    const openList = powerUserQueue.filter(t => t.status !== 'Closed' && !t.answeredAt);
+    if (openList.length === 0) return { ok: false, count: 0, recipients: [], reason: 'no-tickets' };
+    const to = reminderRecipients(currentUser.email);
+    if (to.emails.length === 0) return { ok: false, count: openList.length, recipients: [], reason: 'no-recipients' };
+    const byName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || (currentUser.email || 'DEX');
+    try {
+      await queueTicketReminder(openList, to, { byName });
+      const now = new Date();
+      const dayKey = `dex_ticketreminder_${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
+      try { window.localStorage.setItem(dayKey, '1'); } catch { /* */ }
+      return { ok: true, count: openList.length, recipients: to.names };
+    } catch (e) {
+      console.warn('[DEX] manuelle Ticket-Erinnerung fehlgeschlagen:', e);
+      return { ok: false, count: openList.length, recipients: to.names, reason: 'error' };
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [powerUserQueue, reminderRecipients, queueTicketReminder, currentUser]);
+
+  /** v29.14: Wen würde der Erinnerungs-Knopf erreichen? Für die Rückfrage. */
+  const reminderTargets = React.useCallback((): string[] => reminderRecipients(currentUser.email).names,
+    [reminderRecipients, currentUser.email]);
+
   const value = React.useMemo<TicketContextType>(() => ({
     tickets, myTickets, isTicketsLoading, canAnswerTickets,
     reloadTickets, reloadMyTickets, createTicket, claimTicket, releaseTicket, answerTicket,
     replyToTicket, closeTicketNoAnswer,
     ticketsForEvent, openCountForEvent, powerUserQueue,
+    remindPowerUsers, reminderTargets,
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [tickets, myTickets, isTicketsLoading, canAnswerTickets, powerUserQueue, ticketsForEvent, openCountForEvent, createTicket, answerTicket, replyToTicket, closeTicketNoAnswer, reloadTickets, reloadMyTickets, claimTicket, releaseTicket]);
+  }), [tickets, myTickets, isTicketsLoading, canAnswerTickets, powerUserQueue, ticketsForEvent, openCountForEvent, createTicket, answerTicket, replyToTicket, closeTicketNoAnswer, reloadTickets, reloadMyTickets, claimTicket, releaseTicket, remindPowerUsers, reminderTargets]);
 
   return React.createElement(TicketContext.Provider, { value }, props.children);
 }
