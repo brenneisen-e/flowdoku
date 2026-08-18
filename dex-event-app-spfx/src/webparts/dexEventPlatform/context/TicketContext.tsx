@@ -239,14 +239,17 @@ export function TicketProvider(props: { context: WebPartContext; children: React
    * teilen sich diese eine Stelle — der Text der Erinnerung stand sonst
    * zweimal im Code und wäre beim nächsten Anfassen auseinandergelaufen.
    *
-   * `manual` unterscheidet nur die Anrede: Bei der Automatik gibt es keinen
-   * Absender, beim Knopf schon — und eine Erinnerung, hinter der ein Name
-   * steht, liest sich anders als ein Systemhinweis.
+   * v29.15: OHNE Absender-Namen. Ich hatte den Namen dessen, der den Knopf
+   * drückt, in Betreff und Anrede gesetzt — das macht aus einem sachlichen
+   * Systemhinweis eine persönliche Mahnung an Kolleginnen und Kollegen und
+   * war so nicht gewünscht. Die Erinnerung sagt jetzt nur, dass ein Ticket
+   * offen ist. `overdueOnly` steuert allein den Zusatz „seit mindestens zwei
+   * Werktagen", der nur für die Automatik zutrifft.
    */
   const queueTicketReminder = React.useCallback(async (
     list: DexTicket[],
     to: { emails: string[]; names: string[] },
-    manual: { byName: string } | null,
+    overdueOnly: boolean,
   ): Promise<boolean> => {
     if (list.length === 0 || to.emails.length === 0) return false;
     const now = new Date();
@@ -261,9 +264,12 @@ export function TicketProvider(props: { context: WebPartContext; children: React
       return `<li style="margin-bottom:8px;"><strong>${esc(q.slice(0, 140))}</strong><br><span style="color:#777;font-size:12px;">von ${esc(t.askerName || t.askerEmail || 'unbekannt')} · ${age}${t.eventTitle ? ` · Event: ${esc(t.eventTitle)}` : ''}</span></li>`;
     }).join('');
     const n = list.length;
-    const intro = manual
-      ? `<p style="margin:0 0 14px;"><strong>${esc(manual.byName)}</strong> bittet um Bearbeitung: Im DEX-Ticketsystem warten <strong>${n} Frage${n > 1 ? 'n' : ''}</strong> auf eine Antwort.</p>`
-      : `<p style="margin:0 0 14px;">im DEX-Ticketsystem warten <strong>${n} Frage${n > 1 ? 'n' : ''}</strong> seit mindestens zwei Werktagen auf eine Antwort:</p>`;
+    // v29.15: Ein/Mehrzahl sauber — vorher stand da „1 offene Ticket" im
+    // Betreff und „warten 1 Frage" im Text.
+    const one = n === 1;
+    const intro = one
+      ? `<p style="margin:0 0 14px;">im DEX-Ticketsystem wartet <strong>eine Frage</strong>${overdueOnly ? ' seit mindestens zwei Werktagen' : ''} auf eine Antwort:</p>`
+      : `<p style="margin:0 0 14px;">im DEX-Ticketsystem warten <strong>${n} Fragen</strong>${overdueOnly ? ' seit mindestens zwei Werktagen' : ''} auf eine Antwort:</p>`;
     const inner = `
       <p style="margin:0 0 6px;">Hallo,</p>
       ${intro}
@@ -272,9 +278,9 @@ export function TicketProvider(props: { context: WebPartContext; children: React
       ${ctaButton(link, 'Offene Tickets ansehen')}
       ${noReplyHintHtml}
     `;
-    const subject = manual
-      ? `Erinnerung von ${manual.byName}: ${n} offene Ticket${n > 1 ? 's' : ''} im DEX-Ticketsystem`
-      : `Erinnerung: ${n} offene Ticket${n > 1 ? 's' : ''} im DEX-Ticketsystem`;
+    const subject = one
+      ? 'Erinnerung: ein offenes Ticket im DEX-Ticketsystem'
+      : `Erinnerung: ${n} offene Tickets im DEX-Ticketsystem`;
     const body = wrapTemplate(GREEN, 'Offene Tickets warten auf Antwort', 'DEX-Support', inner);
     await eventService.queueEmail(subject, to.emails.join('; '), to.names.join('; '), body, 'TicketReminder', 'DEX-Ticket', '0');
     return true;
@@ -643,7 +649,7 @@ export function TicketProvider(props: { context: WebPartContext; children: React
         // ganze Team, also OHNE Ausschluss.
         const to = reminderRecipients();
         if (to.emails.length === 0) return;
-        await queueTicketReminder(overdue, to, null);
+        await queueTicketReminder(overdue, to, true);
         try { window.localStorage.setItem(dayKey, '1'); } catch { /* */ }
       } catch (e) { console.warn('[DEX] ticket reminder failed:', e); }
     })();
@@ -664,9 +670,8 @@ export function TicketProvider(props: { context: WebPartContext; children: React
     if (openList.length === 0) return { ok: false, count: 0, recipients: [], reason: 'no-tickets' };
     const to = reminderRecipients(currentUser.email);
     if (to.emails.length === 0) return { ok: false, count: openList.length, recipients: [], reason: 'no-recipients' };
-    const byName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || (currentUser.email || 'DEX');
     try {
-      await queueTicketReminder(openList, to, { byName });
+      await queueTicketReminder(openList, to, false);
       const now = new Date();
       const dayKey = `dex_ticketreminder_${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`;
       try { window.localStorage.setItem(dayKey, '1'); } catch { /* */ }
