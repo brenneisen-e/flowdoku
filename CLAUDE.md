@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v29.12.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v29.13.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -197,6 +197,29 @@ Wer die Zahl aus dieser Datei nimmt, dokumentiert sie falsch — mir passiert in
 v29.10 bis v29.11, korrigiert in v29.12. Die vollständige Liste steht in
 `ArchitecturePage` und ergibt sich aus den Queue-Listen im `EventService`
 (`ensure*List`-Methoden nennen den zugehörigen Flow im Description-Feld).
+
+**Es gibt ZWEI Bilder je Event, und sie haben nichts miteinander zu tun.**
+Das Event-Bild (Schritt 1 → `EventImageUrl`, Item-Attachment) trägt Kachel und
+Anmeldeseite; das Mail-Logo (Schritt Kommunikation → `EmailTemplateOverrides.
+_eventLogo`, gespiegelt nach `EmailImageBase64`) trägt Mails und
+Outlook-Termin — der Flow ersetzt damit `{{ORB_URL}}`. „Das Bild kommt in der
+Mail an, aber nicht auf der Seite" ist deshalb kein Anzeigefehler, sondern
+zwei Uploads, von denen einer leer blieb. Seit v29.13 fällt der Hero-Slot der
+Anmeldeseite auf das Mail-Logo zurück (`heroImgUrl`, `usesMailImage`); die
+Cover-Hintergründe bleiben bewusst am Event-Bild, weil ein Logo im Beschnitt
+zerfällt.
+
+**`subEventsOnlyMode` heißt: das Hauptevent ist keine Anmeldeeinheit.** Alles,
+was die Kachel/Übersicht über die Klammer aussagt, ist dann eine Aussage über
+etwas, das niemand buchen kann: `MaxParticipants` bleibt 0 und wurde als
+„Unbegrenzt" gelesen, `RegistrationDeadline` ist ein Alt-Wert. Seit v29.13
+entfallen beide auf `EventCard` und in `EventListView`. Und die Kinder heißen
+für Teilnehmer nicht „Sub-Events", sondern „Events" — der Default von
+`childTermSingular`/`childTermPlural` kippt in diesem Modus (`RegistrationPage`,
+`MyEventSubEvents`). Wer neue teilnehmersichtbare Texte baut, nimmt diese
+beiden Konstanten und **nie** ein fest verdrahtetes „Sub-Event"; für den
+unbestimmten Artikel gibt es `childOneDe` (es heißt „ein Event", aber „eine
+Session" — das war vorher überall falsch).
 
 **Inline-Styles können kein `:hover`.** Interaktive Elemente brauchen einen
 Hover-State (`hoverIdx`, `evTabHover`), sonst lesen sie sich als Beschriftung.

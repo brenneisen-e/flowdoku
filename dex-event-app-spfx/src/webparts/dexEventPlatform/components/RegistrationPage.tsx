@@ -280,11 +280,23 @@ export default function RegistrationPage(): React.ReactElement {
   // steuert davon unberührt weiter die EN-Varianten der Custom-Field-Labels
   // (siehe `useEnVariants` unten).
   const eventLocale: Locale = locale;
+  // v29.13: Die Anmeldeseite zeigt das Event-Bild aus Schritt 1. Es ist NICHT
+  // dasselbe Bild wie das Mail-Logo aus dem Kommunikations-Schritt — Mails und
+  // Outlook-Termin nehmen das, die Seite hier nicht. Wer nur eines von beiden
+  // pflegt, pflegt meist das Mail-Logo (man sieht es sofort im Postfach) und
+  // wundert sich, warum die Anmeldeseite den generischen DEX-Kreis zeigt.
+  // Deshalb: kein Event-Bild → das Mail-Logo des Events übernehmen. Es bleibt
+  // ein Rückfall; ist ein Event-Bild da, hat es immer Vorrang.
+  const heroImgUrl = (event?.imageUrl || '') || (event?.mailImageBase64 || '');
+  const usesMailImage = !event?.imageUrl && !!event?.mailImageBase64;
   // v19.22: Event-Bild über den IndexedDB-Cache (sofort beim zweiten Aufruf).
-  const cachedImage = useCachedImage(event?.imageUrl);
+  // Base64 gehört nicht in den Cache — es liegt bereits vollständig vor.
+  const cachedImage0 = useCachedImage(event?.imageUrl);
+  const cachedImage = usesMailImage ? heroImgUrl : cachedImage0;
   // v28.11: Vergrößerte Hover-Ansicht des Event-Bilds — zeigt bevorzugt das
   // unbeschnittene Querformat-Original (falls vorhanden), sonst das Event-Bild.
-  const cachedZoomImage = useCachedImage(event?.imageOrigUrl || event?.imageUrl);
+  const cachedZoomImage0 = useCachedImage(event?.imageOrigUrl || event?.imageUrl);
+  const cachedZoomImage = usesMailImage ? heroImgUrl : cachedZoomImage0;
   // v28.12: Kein Auto-Zoom mehr beim Hover — der Hover zeigt nur ein
   // Lupen-Icon, erst der KLICK darauf öffnet die Großansicht (Lightbox).
   const [imgHovered, setImgHovered] = React.useState(false);
@@ -523,8 +535,31 @@ export default function RegistrationPage(): React.ReactElement {
   // v15.10: vom Organizer konfigurierbare Bezeichnung (z.B. „Event-Sections",
   // „Workshops"). Wenn gesetzt überschreibt das die Default-Übersetzung
   // („Sessions" / „Sub-Events") überall im RegistrationPage-UI.
-  const childTermSingular = (event && event.childEventTermSingular) || '';
-  const childTermPlural = (event && event.childEventTermPlural) || '';
+  // v29.13: Besteht das Event ausschließlich aus Sub-Events, ist „Sub-Event"
+  // die falsche Bezeichnung — es gibt kein Haupt-Event, unter dem sie hingen.
+  // Für den Teilnehmer sind das schlicht DIE Events. Ohne eigenen Begriff des
+  // Organizers wird deshalb hier der Default umgestellt; ein gesetzter eigener
+  // Begriff hat weiterhin Vorrang. Weil damit alle Texte über diese beiden
+  // Konstanten laufen, verschwindet „Sub-Event" in diesem Fall überall auf der
+  // Anmeldeseite auf einmal — statt an einem Dutzend Einzelstellen.
+  const subOnlyTerms = !!(event && event.subEventsOnlyMode);
+  const childTermSingular = (event && event.childEventTermSingular)
+    || (subOnlyTerms ? (locale === 'de' ? 'Event' : 'event') : '');
+  const childTermPlural = (event && event.childEventTermPlural)
+    || (subOnlyTerms ? (locale === 'de' ? 'Events' : 'events') : '');
+  /**
+   * v29.13: „ein Event" — aber „eine Session". Der unbestimmte Artikel hing
+   * bisher fest an „eine …", was schon mit dem Default „Sub-Event" falsch war
+   * („eine Sub-Event") und mit dem neuen Default „Event" auffällt. Wir raten
+   * das Geschlecht nicht, sondern führen die wenigen femininen Begriffe, die
+   * als Bezeichnung realistisch vorkommen; alles andere ist maskulin/neutral.
+   */
+  const childOneDe = React.useMemo(() => {
+    const term = childTermSingular || 'Sub-Event';
+    return /(session|veranstaltung|einheit|runde|reihe|tour|führung|schicht|woche|gruppe|stunde|session)$/i.test(term)
+      ? `eine ${term}`
+      : `ein ${term}`;
+  }, [childTermSingular]);
   // v24.58: Anzeige-Präfix des Haupt-Events in der Sub-Event-Auswahl.
   // 'none' → kein Präfix (null), 'custom' → freier Text, sonst der mitgegebene
   // Default („Haupt-Event"/„Main event").
@@ -820,17 +855,17 @@ export default function RegistrationPage(): React.ReactElement {
   //     die Form feststeht (oder die Analyse fehlschlug) — das Bild erscheint
   //     dann direkt an der richtigen Stelle statt kurz rechts zu starten.
   const [imgProbe, setImgProbe] = React.useState<{ url: string; ratio: number | null } | null>(null);
-  const imgAspectCached = event?.imageUrl ? IMG_ASPECT_CACHE[event.imageUrl] : undefined;
+  const imgAspectCached = heroImgUrl ? IMG_ASPECT_CACHE[heroImgUrl] : undefined;
   const imgAspect: number | null = imgAspectCached !== undefined
     ? imgAspectCached
-    : (imgProbe && imgProbe.url === event?.imageUrl ? imgProbe.ratio : null);
+    : (imgProbe && imgProbe.url === heroImgUrl ? imgProbe.ratio : null);
   const imgAspectReady = imgAspectCached !== undefined
-    || (!!imgProbe && imgProbe.url === event?.imageUrl);
+    || (!!imgProbe && imgProbe.url === heroImgUrl);
   React.useEffect(() => {
-    if (!event?.imageUrl) return undefined;
-    if (IMG_ASPECT_CACHE[event.imageUrl] !== undefined) return undefined;
+    if (!heroImgUrl) return undefined;
+    if (IMG_ASPECT_CACHE[heroImgUrl] !== undefined) return undefined;
     let cancelled = false;
-    const probeUrl = event.imageUrl;
+    const probeUrl = heroImgUrl;
     const img = new Image();
     img.onload = () => {
       if (cancelled || img.naturalHeight <= 0) return;
@@ -895,7 +930,7 @@ export default function RegistrationPage(): React.ReactElement {
     img.onerror = () => { if (!cancelled) setImgProbe({ url: probeUrl, ratio: null }); };
     img.src = probeUrl;
     return () => { cancelled = true; };
-  }, [event?.imageUrl]);
+  }, [heroImgUrl]);
   // v28.6: Slot-Größe hängt von der BILDFORM ab — Kreis-/Quadrat-Bilder
   // (Ratio ~1, z.B. aus dem Zuschnitt-Tool) brauchen keinen 300er-Block,
   // Querformat bekommt Breite, Hochkant Höhe.
@@ -906,12 +941,12 @@ export default function RegistrationPage(): React.ReactElement {
   // Infos, sondern als eigener Kreis OBEN MITTIG, der die Oberkante der
   // Event-Karte überlappt („eingebautes" Profilbild-Muster). Banner-Modus
   // hat weiter Vorrang; Quer-/Hochformat behält den Seiten-Slot.
-  const imgCircleNotch = !!event?.imageUrl && !event?.imageBanner && imgAspect != null && imgAspect >= 0.8 && imgAspect < 1.2;
+  const imgCircleNotch = !!heroImgUrl && !event?.imageBanner && imgAspect != null && imgAspect >= 0.8 && imgAspect < 1.2;
   const circleSize = isMobile ? 140 : 170;
   // v28.91: Kein Event-Foto → das DEX-Bild steht als KREIS oben mittig,
   // genau dort, wo auch ein rundes Event-Logo sitzt (imgCircleNotch). Im
   // Seiten-Slot rechts wirkte es wie ein Foto des Events, das es nicht ist.
-  const showOrbPlaceholder = !event?.imageUrl;
+  const showOrbPlaceholder = !heroImgUrl;
 
   // B2Run Split-Capacity: aktuelle Auslastung pro Typ laden
   // Split-UI nur wenn BEIDE Starter-Typen verfügbar sind (>0). Wenn der Admin eine
@@ -1270,7 +1305,7 @@ export default function RegistrationPage(): React.ReactElement {
       if (parentAlreadyRegistered) {
         setError(locale === 'de'
           ? (hasSubs
-            ? `Du bist für dieses Event bereits angemeldet. Möchtest du zusätzlich ${oneSub === 'Sub-Event' ? 'ein Sub-Event' : `eine ${oneSub}`} buchen, wähle es oben aus — abmelden kannst du dich über „Meine Events".`
+            ? `Du bist für dieses Event bereits angemeldet. Möchtest du zusätzlich ${childOneDe} buchen, wähle es oben aus — abmelden kannst du dich über „Meine Events".`
             : 'Du bist für dieses Event bereits angemeldet — es gibt nichts weiter abzuschicken. Abmelden kannst du dich über „Meine Events".')
           : (hasSubs
             ? `You are already registered for this event. To additionally book a ${oneSub}, pick it above — you can cancel via „My events".`
@@ -1279,9 +1314,18 @@ export default function RegistrationPage(): React.ReactElement {
       }
       if ((event && event.subEventsOnlyMode) || parentRegBlocked) {
         if (hasSubs) {
+          // v29.13: Der Zusatz „das Haupt-Event ist hier nicht buchbar" hilft
+          // nur, wenn es für den Teilnehmer sichtbar EIN Haupt-Event gibt. Im
+          // reinen Sub-Event-Modus gibt es das nicht — dort ist die Auswahl
+          // oben schlicht die Liste der Events, und der Nachsatz erfände eine
+          // zweite Ebene, die nirgends auftaucht.
           setError(locale === 'de'
-            ? `Bitte wähle mindestens ${oneSub === 'Sub-Event' ? 'ein Sub-Event' : `eine ${oneSub}`} aus, um dich anzumelden — das Haupt-Event ist hier nicht buchbar.`
-            : `Please select at least one ${oneSub} to register — the main event cannot be booked here.`);
+            ? (subOnlyTerms
+              ? `Bitte wähle mindestens ${childOneDe} aus, um dich anzumelden.`
+              : `Bitte wähle mindestens ${childOneDe} aus, um dich anzumelden — das Haupt-Event ist hier nicht buchbar.`)
+            : (subOnlyTerms
+              ? `Please select at least one ${oneSub} to register.`
+              : `Please select at least one ${oneSub} to register — the main event cannot be booked here.`));
           return;
         }
         // v29.9: „keines angelegt" nur sagen, wenn wirklich keines existiert.
@@ -1331,7 +1375,7 @@ export default function RegistrationPage(): React.ReactElement {
     // dann muss mindestens ein Sub-Event gewählt sein.
     if (event && event.subEventsOnlyMode && childEvents.length > 0 && selectedSessions.size === 0) {
       setError(locale === 'de'
-        ? `Bitte wähle mindestens ein ${childTermSingular || 'Sub-Event'} aus, um dich anzumelden.`
+        ? `Bitte wähle mindestens ${childOneDe} aus, um dich anzumelden.`
         : `Please select at least one ${childTermSingular || 'sub-event'} to register.`);
       return;
     }
@@ -3047,7 +3091,7 @@ export default function RegistrationPage(): React.ReactElement {
                 />
               </div>
             )}
-            {event.imageUrl && (event.imageBanner || imgAspectReady) && (
+            {heroImgUrl && (event.imageBanner || imgAspectReady) && (
             <div
               className="registration-event__image"
               // v28.12: Hover zeigt das Lupen-Icon; die Großansicht öffnet
@@ -3095,7 +3139,7 @@ export default function RegistrationPage(): React.ReactElement {
                   }),
               }}
             >
-              {event.imageUrl && (
+              {heroImgUrl && (
                 <img
                   src={cachedImage}
                   alt={event.title}
@@ -3111,8 +3155,13 @@ export default function RegistrationPage(): React.ReactElement {
                   // v28.7: Im Kreis-Notch füllt das Bild den Kreis komplett
                   // (cover) — beim typischen Kreis-Zuschnitt (Quadrat mit
                   // transparenten Ecken) liegt die Bildkante exakt am Rand.
+                  // v29.13: Ein als Rückfall gezeigtes MAIL-LOGO wird im Kreis
+                  // nicht beschnitten (contain + Innenabstand) — Logos haben
+                  // Ränder und Schrift, die ein cover-Zuschnitt anschneidet.
                   style={imgCircleNotch
-                    ? { width: '100%', height: '100%', objectFit: 'cover', display: 'block' }
+                    ? (usesMailImage
+                      ? { width: '100%', height: '100%', objectFit: 'contain', display: 'block', padding: 14, boxSizing: 'border-box' }
+                      : { width: '100%', height: '100%', objectFit: 'cover', display: 'block' })
                     : isMobile
                     ? { width: '100%', maxHeight: 200, height: 'auto', objectFit: 'cover', display: 'block', borderRadius: 'var(--dex-radius)' }
                     : event.imageBanner
@@ -3422,7 +3471,7 @@ export default function RegistrationPage(): React.ReactElement {
                       fontSize: '0.82rem', color: 'var(--dex-orange-dark, #b35a00)', fontWeight: 600,
                     }}>
                       {locale === 'de'
-                        ? `Pflicht: bitte mindestens ein ${childTermSingular || 'Sub-Event'} auswählen.`
+                        ? `Pflicht: bitte mindestens ${childOneDe} auswählen.`
                         : `Required: please pick at least one ${childTermSingular || 'sub-event'}.`}
                     </div>
                   )}
@@ -4791,19 +4840,15 @@ export default function RegistrationPage(): React.ReactElement {
                 {event.subEventSingleChoice && (
                   <p style={{ fontSize: '0.82rem', color: 'var(--dex-green-dark, #4a7c1f)', fontWeight: 600, marginTop: 0, marginBottom: 8 }}>
                     {locale === 'de'
-                      ? `Du kannst genau ${childTermSingular ? `eine ${childTermSingular}` : 'ein Sub-Event'} auswählen — ein neuer Klick ersetzt die bisherige Wahl.`
+                      ? `Du kannst genau ${childOneDe} auswählen — ein neuer Klick ersetzt die bisherige Wahl.`
                       : 'You can pick exactly one — a new click replaces your previous choice.'}
                   </p>
                 )}
                 <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-500)', marginTop: 0, marginBottom: 12 }}>
                   {event.subEventsOnlyMode
-                    ? (childTermPlural
-                        ? (locale === 'de'
-                            ? `Bitte wähle mindestens eine ${childTermSingular || 'Sub-Event'}, für die du dich anmelden möchtest.`
-                            : `Please pick at least one ${childTermSingular || 'sub-event'} you want to register for.`)
-                        : (locale === 'de'
-                            ? 'Bitte wähle mindestens ein Sub-Event, für das du dich anmelden möchtest.'
-                            : 'Please pick at least one sub-event you want to register for.'))
+                    ? (locale === 'de'
+                        ? `Bitte wähle mindestens ${childOneDe} aus, um dich anzumelden.`
+                        : `Please pick at least one ${childTermSingular || 'sub-event'} you want to register for.`)
                     : registerForOther
                       ? (locale === 'de'
                           ? `Die Person wird für das Haupt-Event angemeldet. Wähle zusätzlich die gewünschten ${childTermPlural || 'Sub-Events'} aus.`
@@ -5305,7 +5350,7 @@ export default function RegistrationPage(): React.ReactElement {
             ? (teamValidation.reason || '')
             : (nothingPicked
                 ? (locale === 'de'
-                    ? `Bitte mindestens ${childTermSingular ? `eine ${childTermSingular}` : 'ein Sub-Event'} auswählen.`
+                    ? `Bitte mindestens ${childOneDe} auswählen.`
                     : `Please pick at least one ${childTermSingular || 'sub-event'}.`)
                 : (needsOtherConsent
                     ? (locale === 'de'
@@ -5356,7 +5401,7 @@ export default function RegistrationPage(): React.ReactElement {
                 }
                 if (nothingPicked) {
                   return locale === 'de'
-                    ? `Bitte mindestens ${childTermSingular ? `eine ${childTermSingular}` : 'ein Sub-Event'} auswählen`
+                    ? `Bitte mindestens ${childOneDe} auswählen`
                     : `Please pick at least one ${childTermSingular || 'sub-event'}`;
                 }
                 if (registerForOther) return <>{t('reg.register')}{waitlistSuffixNode}</>;

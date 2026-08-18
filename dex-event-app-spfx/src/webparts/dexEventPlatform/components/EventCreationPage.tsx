@@ -6829,6 +6829,33 @@ export default function EventCreationPage(): React.ReactElement {
     setSubEvents(prev => prev.filter(x => x.id !== se.id));
   };
 
+  /**
+   * v29.13: Ein Sub-Event aus der Liste nehmen — mit derselben Rückfrage,
+   * egal von wo. Das hing bisher als anonyme Funktion in der Sub-Event-Karte;
+   * die Kalender-Liste braucht genau dieselbe Rückfrage, und zwei Kopien
+   * derselben Warnung laufen erfahrungsgemäß auseinander.
+   */
+  const removeSubEventDraft = (se: SubEventDraft): void => {
+    (async () => {
+      const seTitle = se.title || (isDe ? 'Ohne Titel' : 'Untitled');
+      const msg = se.dbId
+        ? (isDe
+          ? `Sub-Event „${seTitle}" wirklich entfernen? Beim nächsten SPEICHERN wird es endgültig gelöscht — inklusive Teilnehmerliste und aller Anmeldungen (93 Tage im Papierkorb).`
+          : `Really remove sub-event "${seTitle}"? On the next SAVE it will be permanently deleted — including its attendee list and all registrations (recycled for 93 days).`)
+        : (isDe
+          ? `Sub-Event „${seTitle}" entfernen? Die eingetragenen Angaben gehen verloren.`
+          : `Remove sub-event "${seTitle}"? The entered details will be lost.`);
+      const ok = await confirmDialog(msg, { danger: true, confirmLabel: isDe ? 'Entfernen' : 'Remove' });
+      if (ok) {
+        // v28.89: Steht der Scope auf einem Reiter hinter dem gelöschten,
+        // zeigt er danach auf ein anderes Sub-Event — zurück auf die Klammer,
+        // das ist die einzige Ebene, die es sicher noch gibt.
+        setScope(0);
+        setSubEvents(prev => prev.filter(x => x.id !== se.id));
+      }
+    })().catch(() => { /* */ });
+  };
+
   const renderPerEventTabStrip = (
     activeIdx: number,
     onChange: (idx: number) => void,
@@ -8094,14 +8121,16 @@ export default function EventCreationPage(): React.ReactElement {
                       <strong>Was du hier einstellst:</strong> ein <strong>Hauptbild fürs Event</strong> (Foto vom Veranstaltungsort, Eventlogo, Stimmungsbild). Wird zentral als Item-Attachment am Event gespeichert.<br /><br />
                       <strong>Anzeige in der App:</strong> erscheint <strong>oben auf der Anmelde-Seite</strong>, <strong>als Kachel-Hintergrund</strong> in der Eventliste und <strong>in Meine Events</strong>. Macht Events visuell unterscheidbar in einer langen Liste.<br /><br />
                       <strong>Empfehlung:</strong> Querformat (z.B. 16:9), gute Auflösung (mind. 1200px breit). Hochformat funktioniert auch — die App erkennt das automatisch und legt das Bild dann links neben den Detail-Rows ab statt als Banner.<br /><br />
-                      <strong>Auswirkung für Teilnehmer:</strong> visueller Wiedererkennungswert in ihrer Eventliste und auf der Anmelde-Seite — beeinflusst nicht die Mails (dort gibt es ein separates Logo).
+                      <strong>Auswirkung für Teilnehmer:</strong> visueller Wiedererkennungswert in ihrer Eventliste und auf der Anmelde-Seite.<br /><br />
+                      <strong>Nicht dasselbe wie das Mail-Logo:</strong> Mails und Outlook-Termin zeigen das Logo aus dem Schritt <strong>Kommunikation</strong>, nicht dieses Bild. Lässt du hier leer, greift die Anmelde-Seite seit v29.13 auf das Mail-Logo zurück — damit dort nicht der generische DEX-Kreis steht.
                     </>
                   ) : (
                     <>
                       <strong>What you set here:</strong> the <strong>main event image</strong> (venue photo, event logo, mood shot). Stored centrally as an item attachment.<br /><br />
                       <strong>Shown in the app:</strong> shown <strong>at the top of the registration page</strong>, <strong>as the tile background</strong> in the event list and <strong>under My Events</strong>. Makes events visually distinguishable in a long list.<br /><br />
                       <strong>Tip:</strong> landscape (e.g. 16:9), high resolution (at least 1200px wide). Portrait works too — the app detects orientation and places the image to the left of the detail rows instead of as a banner.<br /><br />
-                      <strong>Effect for attendees:</strong> visual recognition in their list and on the registration page — does not affect emails (there is a separate logo for those).
+                      <strong>Effect for attendees:</strong> visual recognition in their list and on the registration page.<br /><br />
+                      <strong>Not the same as the mail logo:</strong> emails and the Outlook invite use the logo from the <strong>Communication</strong> step, not this image. If you leave this empty, the registration page falls back to the mail logo (since v29.13) instead of showing the generic DEX circle.
                     </>
                   )} />
                 </label>
@@ -10590,8 +10619,8 @@ export default function EventCreationPage(): React.ReactElement {
                       <div style={{ marginTop: 12 }}>
                         <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', margin: '0 0 8px' }}>
                           {isDe
-                            ? <>Klick auf einen Tag legt ihn als Termin an, ein erneuter Klick nimmt ihn zurück. Angelegte Tage sind <strong>grün</strong> markiert. Titel und Zeiten werden gesetzt — jeder Tag übernimmt die <strong>Uhrzeit des Hauptevents</strong> (ohne Uhrzeit dort: ganztägig). Das ist nur die Vorbelegung: Über die Reiter oben wählst du einen Termin aus und änderst <strong>Start und Ende genau dort</strong> — ebenso Titel, Beschreibung, Plätze und Frist.</>
-                            : <>Clicking a day creates it as a date, clicking again removes it. Created days are marked <strong>green</strong>. Title and times are filled in — each day takes the <strong>main event&rsquo;s time of day</strong> (all-day if none is set there). That is only the starting point: pick a date via the tabs above and change <strong>its start and end right there</strong> — as well as title, description, seats and deadline.</>}
+                            ? <>Klick auf einen Tag legt ihn als Termin an, ein erneuter Klick nimmt ihn zurück. Angelegte Tage sind <strong>grün</strong> markiert. Titel und Zeiten werden gesetzt — jeder Tag übernimmt die <strong>Uhrzeit des Hauptevents</strong> (ohne Uhrzeit dort: ganztägig). Das ist nur die Vorbelegung: In der <strong>Liste unter dem Kalender</strong> öffnest du einen Termin mit &bdquo;Bearbeiten&ldquo; und änderst <strong>Start und Ende genau dort</strong> — ebenso Titel, Beschreibung und Bild; Plätze und Frist in Schritt 4.</>
+                            : <>Clicking a day creates it as a date, clicking again removes it. Created days are marked <strong>green</strong>. Title and times are filled in — each day takes the <strong>main event&rsquo;s time of day</strong> (all-day if none is set there). That is only the starting point: in the <strong>list below the calendar</strong> open a date via &ldquo;Edit&rdquo; and change <strong>its start and end right there</strong> — as well as title, description and image; seats and deadline in step 4.</>}
                         </p>
                         <DatePicker
                           inline
@@ -10602,28 +10631,93 @@ export default function EventCreationPage(): React.ReactElement {
                           locale="de"
                           calendarClassName="dex-datepicker-calendar"
                         />
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', marginTop: 10 }}>
-                          <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', margin: 0 }}>
-                            {marked.length === 0
-                              ? (isDe ? 'Noch kein Termin angelegt.' : 'No date created yet.')
-                              : (isDe
-                                ? `${marked.length} ${marked.length === 1 ? 'Termin' : 'Termine'} angelegt.`
-                                : `${marked.length} ${marked.length === 1 ? 'date' : 'dates'} created.`)}
-                          </p>
-                          {marked.length > 0 && (
-                            <button
-                              type="button"
-                              className="btn btn-secondary"
-                              style={{ fontSize: '0.82rem', padding: '6px 14px' }}
-                              onClick={goToScopeBar}
-                              title={isDe
-                                ? 'Springt nach oben zur Reiter-Leiste — dort wählst du einen Termin aus und bearbeitest Titel, Zeiten, Plätze und Frist.'
-                                : 'Jumps up to the tab bar — pick a date there and edit title, times, seats and deadline.'}
-                            >
-                              {isDe ? 'Sub-Events bearbeiten' : 'Edit sub-events'}
-                            </button>
-                          )}
-                        </div>
+                        <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', margin: '10px 0 0' }}>
+                          {marked.length === 0
+                            ? (isDe ? 'Noch kein Termin angelegt.' : 'No date created yet.')
+                            : (isDe
+                              ? `${marked.length} ${marked.length === 1 ? 'Termin' : 'Termine'} angelegt.`
+                              : `${marked.length} ${marked.length === 1 ? 'date' : 'dates'} created.`)}
+                        </p>
+                        {/* v29.13: Die angelegten Termine stehen hier als Liste.
+                            v28.96 hatte sie entfernt, weil sie „dieselben Tage
+                            noch einmal" zeigt — das stimmt für das ANLEGEN, aber
+                            der Kalender kann nur anlegen und wegnehmen. Zum
+                            Bearbeiten musste man wissen, dass die Reiter GANZ
+                            OBEN dafür da sind; ein Knopf „Sub-Events bearbeiten"
+                            allein sagt nicht, welcher Tag welcher ist. Jetzt
+                            führt jede Zeile direkt auf ihren Termin — Titel,
+                            Zeiten, Beschreibung und Bild stehen dann oben in den
+                            Feldern, Plätze und Frist in Schritt 4. */}
+                        {(() => {
+                          const rows = subEvents
+                            .map((se, idx) => ({ se, idx, key: dayKeyOfSub(se) }))
+                            .filter(r => !!r.key)
+                            .sort((a, b) => a.key.localeCompare(b.key));
+                          if (rows.length === 0) return null;
+                          const timeOfIso = (v: string): string => {
+                            const local = isoToLocal(v || '');
+                            const tt = (local || '').slice(11, 16);
+                            return /^\d{2}:\d{2}$/.test(tt) ? tt : '';
+                          };
+                          return (
+                            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                              {rows.map(({ se, idx }) => {
+                                const active = activeScopeIdx === idx + 1;
+                                const st = timeOfIso(se.startDate);
+                                const en = timeOfIso(se.endDate);
+                                const span = (st && en) ? `${st}–${en}` : (isDe ? 'ganztägig' : 'all day');
+                                const cap = (se.maxParticipants || 0) > 0
+                                  ? `${se.maxParticipants} ${isDe ? 'Plätze' : 'seats'}`
+                                  : (isDe ? 'unbegrenzt' : 'unlimited');
+                                return (
+                                  <div
+                                    key={se.id}
+                                    style={{
+                                      display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                                      padding: '8px 10px', borderRadius: 8, background: '#fff',
+                                      border: `1px solid ${active ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-200)'}`,
+                                      borderLeft: `3px solid ${active ? 'var(--dex-green, #86bc25)' : 'var(--dex-gray-300)'}`,
+                                    }}
+                                  >
+                                    <div style={{ flex: 1, minWidth: 160 }}>
+                                      <div style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--dex-gray-800, #333)' }}>
+                                        {shortSubEventTitle(se.title, title) || (isDe ? 'Ohne Titel' : 'Untitled')}
+                                      </div>
+                                      <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 2 }}>
+                                        {span} · {cap}
+                                        {se.registrationDeadline
+                                          ? ` · ${isDe ? 'Frist' : 'deadline'} ${(isoToLocal(se.registrationDeadline) || '').slice(0, 10).split('-').reverse().join('.')}`
+                                          : ''}
+                                      </div>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      className="btn btn-secondary"
+                                      style={{ fontSize: '0.78rem', padding: '5px 12px' }}
+                                      onClick={() => { setScope(idx + 1); goToScopeBar(); }}
+                                      title={isDe
+                                        ? 'Öffnet diesen Termin oben im Reiter — Titel, Zeiten, Beschreibung und Bild stehen dann in den Feldern darüber, Plätze und Frist in Schritt 4.'
+                                        : 'Opens this date in the tab above — title, times, description and image then live in the fields above, seats and deadline in step 4.'}
+                                    >
+                                      {isDe ? 'Bearbeiten' : 'Edit'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeSubEventDraft(se)}
+                                      style={{
+                                        background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)',
+                                        padding: 4, lineHeight: 1,
+                                      }}
+                                      title={t('create.subevents.remove')}
+                                    >
+                                      <X size={16} />
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })()}
@@ -10741,33 +10835,12 @@ export default function EventCreationPage(): React.ReactElement {
                           </button>
                           <button
                             type="button"
-                            onClick={() => {
-                              // v27.11: Entfernen bestätigen lassen — vorher
-                              // löschte EIN Klick den Draft sofort; bei bereits
-                              // gespeicherten Sub-Events wurden beim nächsten
-                              // Speichern still Teilnehmerliste + Anmeldungen
-                              // mitgelöscht.
-                              (async () => {
-                                const seTitle = se.title || (isDe ? 'Ohne Titel' : 'Untitled');
-                                const msg = se.dbId
-                                  ? (isDe
-                                    ? `Sub-Event „${seTitle}" wirklich entfernen? Beim nächsten SPEICHERN wird es endgültig gelöscht — inklusive Teilnehmerliste und aller Anmeldungen (93 Tage im Papierkorb).`
-                                    : `Really remove sub-event "${seTitle}"? On the next SAVE it will be permanently deleted — including its attendee list and all registrations (recycled for 93 days).`)
-                                  : (isDe
-                                    ? `Sub-Event „${seTitle}" entfernen? Die eingetragenen Angaben gehen verloren.`
-                                    : `Remove sub-event "${seTitle}"? The entered details will be lost.`);
-                                const ok = await confirmDialog(msg, { danger: true, confirmLabel: isDe ? 'Entfernen' : 'Remove' });
-                                if (ok) {
-                                  // v28.89: Steht der Scope auf einem Reiter
-                                  // hinter dem gelöschten, zeigt er danach auf
-                                  // ein anderes Sub-Event — zurück auf die
-                                  // Klammer, das ist die einzige Ebene, die es
-                                  // sicher noch gibt.
-                                  setScope(0);
-                                  setSubEvents(prev => prev.filter(x => x.id !== se.id));
-                                }
-                              })().catch(() => { /* */ });
-                            }}
+                            // v27.11: Entfernen bestätigen lassen — vorher
+                            // löschte EIN Klick den Draft sofort; bei bereits
+                            // gespeicherten Sub-Events wurden beim nächsten
+                            // Speichern still Teilnehmerliste + Anmeldungen
+                            // mitgelöscht. v29.13: gemeinsamer Handler.
+                            onClick={() => removeSubEventDraft(se)}
                             style={{
                               background: 'none', border: 'none', cursor: 'pointer', color: 'var(--dex-red, #c00)',
                               fontSize: '1.1rem', padding: '4px', lineHeight: 1,

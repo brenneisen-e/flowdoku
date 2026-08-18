@@ -1289,6 +1289,20 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           return (ov && typeof ov._imageOrigUrl === 'string') ? ov._imageOrigUrl : '';
         } catch { return ''; }
       })(),
+      // v29.13: Das Mail-Logo (Piggyback `_eventLogo`, identisch mit der Spalte
+      // EmailImageBase64) als Base64. Es ist ein ANDERES Bild als das
+      // Event-Bild aus Schritt 1: Mails und Outlook-Termin zeigen dieses,
+      // Anmeldeseite und Kachel das Event-Bild. Wer nur eines von beiden
+      // pflegt — meist das Mail-Logo, weil man es im Postfach sofort sieht —
+      // bekam auf der Anmeldeseite den generischen DEX-Kreis. Deshalb steht
+      // es hier zur Verfügung und dient dort als Rückfall.
+      mailImageBase64: ((): string => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          const v = (ov && typeof ov._eventLogo === 'string') ? ov._eventLogo : '';
+          return v.indexOf('data:') === 0 ? v : '';
+        } catch { return ''; }
+      })(),
       // v28.38: Hotel-Planung (Piggybacks _hotels / _hotelStays / _hotelVisible).
       // Nur Stammdaten und Vorlagen — die Zuordnung pro Person steht in der
       // Teilnehmerliste (Spalten Hotel/HotelFrom/HotelTo).
