@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="System Security Requirements für DEX — Bewertung je Anforderung mit Verweis in die Architekturdokumentation.">
+<title>DEX Security Requirements</title>
+<style>
+  :root {
+    --bg:#f6f7f3; --surface:#fff; --surface-2:#edefe7; --ink:#191d16; --ink-2:#454e40;
+    --muted:#6f7869; --line:#d8dccf; --accent:#5b8a12; --accent-ink:#3f6108;
+    --font-text:"Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;
+    --font-mono:"Cascadia Mono",Consolas,"SF Mono",ui-monospace,Menlo,monospace;
+    --c-dex:#5b8a12; --c-platform:#2c637f; --c-na:#6f7869; --c-open:#9c5a06; --c-flagged:#a3312a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg:#12140f; --surface:#1a1d16; --surface-2:#232820; --ink:#e9ece3; --ink-2:#bcc4b2;
+      --muted:#8d9584; --line:#2f3529; --accent:#9fd23e; --accent-ink:#b6e05e;
+      --c-dex:#9fd23e; --c-platform:#7fb8da; --c-na:#8d9584; --c-open:#e2a253; --c-flagged:#e8837a;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg:#12140f; --surface:#1a1d16; --surface-2:#232820; --ink:#e9ece3; --ink-2:#bcc4b2;
+    --muted:#8d9584; --line:#2f3529; --accent:#9fd23e; --accent-ink:#b6e05e;
+    --c-dex:#9fd23e; --c-platform:#7fb8da; --c-na:#8d9584; --c-open:#e2a253; --c-flagged:#e8837a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font-text);font-size:16px;line-height:1.6;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 28px 96px}
+  header.mast{border-bottom:1px solid var(--line);padding:56px 0 30px;margin-bottom:32px}
+  .eyebrow{font-family:var(--font-mono);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:0 0 14px}
+  h1{font-size:clamp(1.9rem,4vw,2.8rem);line-height:1.07;letter-spacing:-.025em;margin:0 0 16px;text-wrap:balance}
+  .standfirst{font-size:1.08rem;color:var(--ink-2);max-width:64ch;margin:0 0 24px}
+  .legend{display:flex;flex-wrap:wrap;gap:0;border:1px solid var(--line);border-radius:4px;overflow:hidden;background:var(--surface)}
+  .lg{flex:1 1 auto;min-width:150px;padding:12px 16px;border-right:1px solid var(--line);border-top:3px solid}
+  .lg:last-child{border-right:0}
+  .lg b{display:block;font-size:1.5rem;line-height:1.1;font-variant-numeric:tabular-nums}
+  .lg span{font-size:.8rem;color:var(--ink-2)}
+  .lg-dex{border-top-color:var(--c-dex)} .lg-platform{border-top-color:var(--c-platform)}
+  .lg-na{border-top-color:var(--c-na)} .lg-open{border-top-color:var(--c-open)}
+  .lg-flagged{border-top-color:var(--c-flagged)}
+  .intro{max-width:74ch;margin:0 0 34px}
+  .intro p{margin:0 0 12px}
+  .req{border:1px solid var(--line);border-radius:4px;background:var(--surface);padding:16px 18px;margin-bottom:14px;scroll-margin-top:20px}
+  .req-head{display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:10px}
+  .req-id{font-family:var(--font-mono);font-weight:700;font-size:.95rem}
+  .cls{font-family:var(--font-mono);font-size:10px;letter-spacing:.07em;text-transform:uppercase;padding:2px 7px;border-radius:3px;border:1px solid;white-space:nowrap}
+  .cls-dex{color:var(--c-dex);border-color:var(--c-dex)} .cls-platform{color:var(--c-platform);border-color:var(--c-platform)}
+  .cls-na{color:var(--c-na);border-color:var(--c-na)} .cls-open{color:var(--c-open);border-color:var(--c-open)}
+  .cls-flagged{color:var(--c-flagged);border-color:var(--c-flagged)}
+  .req-chapter{margin-left:auto;font-size:.82rem;color:var(--accent-ink);text-decoration:none;border-bottom:1px solid transparent}
+  .req-chapter:hover,.req-chapter:focus-visible{border-bottom-color:currentColor}
+  .req-met{margin:0 0 10px;max-width:80ch}
+  .req-ev,.req-open{margin:0 0 6px;font-size:.88rem;color:var(--ink-2);max-width:80ch}
+  .req-open{color:var(--c-open)}
+  .lbl{display:inline-block;font-family:var(--font-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-right:8px}
+  .req-open .lbl{color:var(--c-open)}
+  a{color:var(--accent-ink)}
+  footer.end{border-top:1px solid var(--line);margin-top:44px;padding-top:20px;font-size:.85rem;color:var(--muted);max-width:74ch}
+  @media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="mast">
+    <p class="eyebrow">DEX Event Experience Platform · Stand v29.12.0</p>
+    <h1>System Security Requirements — Antwort je Anforderung</h1>
+    <p class="standfirst">
+      49 Anforderungen, jede einzeln beantwortet und mit dem Kapitel der Architekturdokumentation
+      verknüpft, das sie belegt. Was nicht zutrifft, ist begründet; was offen ist, steht als offen
+      da — nicht als erfüllt.
+    </p>
+    <div class="legend"><div class="lg lg-dex"><b>14</b><span>Erfüllt durch die Anwendung</span></div><div class="lg lg-platform"><b>11</b><span>Erfüllt durch Microsoft 365 / Deloitte-Tenant</span></div><div class="lg lg-na"><b>6</b><span>Trifft auf diese Bauart nicht zu</span></div><div class="lg lg-open"><b>2</b><span>Bestätigung durch Betrieb oder GTS nötig</span></div><div class="lg lg-flagged"><b>16</b><span>Abweichung oder Restrisiko, offengelegt</span></div></div>
+  </header>
+
+  <div class="intro">
+    <p>
+      Der Zuschnitt dieser Anwendung bestimmt die meisten Antworten: DEX ist ein SharePoint-Webpart,
+      das im Browser läuft. Es gibt keinen Server, keine Datenbank, kein eigenes Netz, keine eigene
+      Anmeldung und keine eigene Sitzung. Anforderungen an Serverhärtung, Netztopologie oder
+      Web-Application-Firewall gehen deshalb ins Leere; Anforderungen an Anmeldung, Verschlüsselung
+      und Protokollierung erfüllt die Plattform, in der die Anwendung lebt.
+    </p>
+    <p>
+      Bleibt das, was DEX selbst verantwortet: Rollen und Sichtbarkeiten, der Umgang mit
+      personenbezogenen Daten, das Verhalten im Fehlerfall — und die Stellen, an denen wir bewusst
+      abweichen. Die sind hier ausdrücklich benannt, mit Wirkung und Empfehlung, statt in einer
+      Erfüllt-Meldung zu verschwinden.
+    </p>
+    <p>
+      Dieselbe Bewertung liegt als Excel bei
+      (<a href="downloads/DEX-Requirements-kommentiert.xlsx">DEX-Requirements-kommentiert.xlsx</a>);
+      beide entstehen aus derselben Quelle und können nicht auseinanderlaufen.
+    </p>
+  </div>
+
+      <article class="req" id="GAC-01">
+        <div class="req-head">
+          <span class="req-id">GAC-01</span>
+          <span class="cls cls-flagged">Zur Bewertung</span>
+          <a class="req-chapter" href="architektur.html#k7">Kapitel &bdquo;Die acht Flows&ldquo;</a>
+        </div>
+        <p class="req-met">DEX bringt keine eigenen privilegierten Konten mit. Im Umfang liegen zwei: die Websitesammlungs-Administratoren der SharePoint-Site (tenantverwaltet) und die Verbindungs-Identität der acht Power-Automate-Flows, die auf den Event-Subsites Vollzugriff braucht.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 7 „Die acht Flows“; Auskunft des Betriebs vom 2026-08-17.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Befund mit bekanntem Abhilfeplan: Die Flow-Verbindungen laufen über ein Konto, das nach Auskunft des Betriebs als Dienstkonto geführt wird — dessen Adresse folgt aber dem Namensmuster für Personenkonten des Tenants (Initial und Nachname). Ein Assessor wird es deshalb als personalisiertes Konto einordnen, unabhängig von der internen Zweckbestimmung. Damit ist die Anforderung heute nicht belegbar: Ein auf eine Person lautendes Konto lässt sich nicht als Dienstkonto im PAMS führen, und es bringt die Mechanismen mit, die für Menschen gedacht sind — Postfach, interaktive Anmeldung, Mehrfaktor. Hinzu kommt das Betriebsrisiko: Verlässt die Person die Organisation, brechen Mails, Kalendereinträge und Nummernvergabe ab, ohne dass die Anwendung es merkt. Vorgesehen ist die Umstellung auf einen Service Principal als Teil des Zielmodells; damit lösen sich GAC-01, GAC-02 und GAC-15 gemeinsam. Der konkrete Kontoname liegt dem Review als Nachweis vor, steht aber bewusst nicht in der veröffentlichten Dokumentation. Bitte Zieltermin festhalten.</p>
+      </article>
+      <article class="req" id="GAC-02">
+        <div class="req-head">
+          <span class="req-id">GAC-02</span>
+          <span class="cls cls-flagged">Zur Bewertung</span>
+          <a class="req-chapter" href="architektur.html#k7">Kapitel &bdquo;Die acht Flows&ldquo;</a>
+        </div>
+        <p class="req-met">Die Flow-Verbindungen gehören der Identität, unter der sie angelegt wurden; die Freigabe an weitere Personen steuert Power Platform.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 7; Auskunft des Betriebs vom 2026-08-17.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Die Verbindungs-Identität ist ein personalisiert benanntes Konto (siehe GAC-01). Formal ist die Anforderung damit erfüllt — die Zugangsdaten liegen bei ihrem Eigentümer —, aber aus dem falschen Grund: Es gibt keinen autorisierten Vertreter, weil es keine Delegation gibt. Fällt der Eigentümer aus, gibt es niemanden, der eintreten darf. Mit dem geplanten Service Principal wird daraus eine verwaltete Berechtigung mit benennbaren Verantwortlichen und einer Freigabeliste, die man vorzeigen kann.</p>
+      </article>
+      <article class="req" id="GAC-03">
+        <div class="req-head">
+          <span class="req-id">GAC-03</span>
+          <span class="cls cls-platform">Plattform</span>
+          <a class="req-chapter" href="architektur.html#k2">Kapitel &bdquo;Wo der Code läuft&ldquo;</a>
+        </div>
+        <p class="req-met">DEX hat keine eigene Authentifizierung. Anmeldung, Sperrung nach Fehlversuchen und Benachrichtigung liegen vollständig bei Entra ID des Tenants.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 2 „Wo der Code läuft“ — die App handelt ausschliesslich mit der bestehenden SharePoint-Sitzung des Nutzers.</p>
+        
+      </article>
+      <article class="req" id="GAC-04">
+        <div class="req-head">
+          <span class="req-id">GAC-04</span>
+          <span class="cls cls-dex">DEX</span>
+          <a class="req-chapter" href="architektur.html#k13">Kapitel &bdquo;Schutz und Aufbewahrung&ldquo;</a>
+        </div>
+        <p class="req-met">Auf Tenant-Ebene greift der reguläre Austrittsprozess. Auf Anwendungsebene führt DEX zusätzlich einen eigenen Abgleich: Ein Lauf prüft die hinterlegten Konten gegen Entra ID, meldet deaktivierte Konten an die Organizer und kann sie automatisch abmelden. Rollen in DEX_Roles werden dabei sichtbar.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 13 „Schutz und Aufbewahrung“; Funktionen scanInactiveAccounts, notifyOrganizerOfInactive und autoDeregisterInactive im EventService.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Kadenz des Laufs ist manuell ausgelöst, nicht terminiert.</p>
+      </article>
+      <article class="req" id="GAC-05">
+        <div class="req-head">
+          <span class="req-id">GAC-05</span>
+          <span class="cls cls-dex">DEX</span>
+          <a class="req-chapter" href="architektur.html#k13">Kapitel &bdquo;Schutz und Aufbewahrung&ldquo;</a>
+        </div>
+        <p class="req-met">Konten sind in DEX in drei Stufen kategorisiert: Teilnehmer (nur eigene Zeilen), Organizer je Event (Vollzugriff auf die eigene Event-Subsite) und Admin (Plattformweit). Dazu kommen Sonderrollen mit engem Umfang: Co-Organizer, Check-in-/QR-Team, Assistenz. Die Zuordnung steht in DEX_Roles beziehungsweise je Event am Event selbst.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 13; Handbuch-Artikel „Rollen und Rechte“ in der App.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Turnus der Rechteprüfung (zweimal jährlich laut Vorgabe) ist organisatorisch festzulegen — die App liefert die Liste, prüft aber nicht selbst.</p>
+      </article>
+      <article class="req" id="GAC-09">
+        <div class="req-head">
+          <span class="req-id">GAC-09</span>
+          <span class="cls cls-platform">Plattform</span>
+          <a class="req-chapter" href="architektur.html#k2">Kapitel &bdquo;Wo der Code läuft&ldquo;</a>
+        </div>
+        <p class="req-met">Kein eigener Anmeldevorgang in DEX. Sperrung und Entsperrung von Benutzerkonten regelt Entra ID.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 2.</p>
+        
+      </article>
+      <article class="req" id="GAC-10">
+        <div class="req-head">
+          <span class="req-id">GAC-10</span>
+          <span class="cls cls-platform">Plattform</span>
+          <a class="req-chapter" href="architektur.html#k2">Kapitel &bdquo;Wo der Code läuft&ldquo;</a>
+        </div>
+        <p class="req-met">DEX unterhält keine eigene Sitzung, kein eigenes Token und kein eigenes Cookie. Die Seite lebt in der SharePoint-Sitzung; deren Gültigkeit und Leerlauf-Abbruch gelten unverändert.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 2 und 5 — jeder Aufruf läuft über den SPHttpClient der Seite.</p>
+        
+      </article>
+      <article class="req" id="GAC-11">
+        <div class="req-head">
+          <span class="req-id">GAC-11</span>
+          <span class="cls cls-platform">Plattform</span>
+          <a class="req-chapter" href="architektur.html#k2">Kapitel &bdquo;Wo der Code läuft&ldquo;</a>
+        </div>
+        <p class="req-met">Abmelden erfolgt über die Microsoft-365-Kopfzeile der Seite; die Bestätigung zeigt Microsoft. Ein eigener Logout in DEX gäbe es nicht abzumelden.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 2.</p>
+        
+      </article>
+      <article class="req" id="GAC-13">
+        <div class="req-head">
+          <span class="req-id">GAC-13</span>
+          <span class="cls cls-dex">DEX</span>
+          <a class="req-chapter" href="architektur.html#k13">Kapitel &bdquo;Schutz und Aufbewahrung&ldquo;</a>
+        </div>
+        <p class="req-met">Rollenbasierte Zugriffssteuerung ist tragendes Element und wirkt auf zwei Ebenen. Fachlich: DEX_Roles (Admin, Organizer) entscheidet, wer Events anlegen und das Organizer Center öffnen darf; je Event kommen Organizer, Co-Organizer, Check-in-Team und Assistenz dazu. Technisch durchgesetzt: Die Teilnehmerlisten laufen mit Zeilen-Sicherheit („nur eigene Elemente“), geprüft von SharePoint am Zeilen-Autor — nicht im Browser. Wer in der Oberfläche etwas nicht sehen darf, bekommt es auch bei manipuliertem Client nicht.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 4 „Eine Subsite je Event“ und Kapitel 13; Handbuch „Rollen und Rechte“.</p>
+        
+      </article>
+      <article class="req" id="GAC-14">
+        <div class="req-head">
+          <span class="req-id">GAC-14</span>
+          <span class="cls cls-flagged">Zur Bewertung</span>
+          <a class="req-chapter" href="architektur.html#k13">Kapitel &bdquo;Schutz und Aufbewahrung&ldquo;</a>
+        </div>
+        <p class="req-met">Der Zugang zur Anwendung erfolgt über die angemeldete Microsoft-365-Sitzung; der Hinweis auf Überwachung und zulässige Nutzung wird beim Tenant-Login gezeigt. DEX selbst blendet vor der Nutzung keinen eigenen Sicherheitshinweis ein; es gibt Nutzungsbedingungen als eigene Seite in der Anwendung.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 13.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Abweichung: Die drei geforderten Aussagen (Überwachung, Einwilligung durch Nutzung, Strafbarkeit unbefugter Nutzung) stehen nicht als Hinweis vor dem Zugang in DEX. Entscheidung nötig: Reicht der Tenant-Hinweis, oder soll DEX ihn wiederholen? Aufwand gering — ein Einblendtext vor dem ersten Öffnen.</p>
+      </article>
+      <article class="req" id="GAC-15">
+        <div class="req-head">
+          <span class="req-id">GAC-15</span>
+          <span class="cls cls-flagged">Zur Bewertung</span>
+          <a class="req-chapter" href="architektur.html#k7">Kapitel &bdquo;Die acht Flows&ldquo;</a>
+        </div>
+        <p class="req-met">Die Anforderung greift erst, wenn es ein nicht-menschliches Konto gibt.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 7; Auskunft des Betriebs vom 2026-08-17.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Heute nicht erfüllbar: Das Konto der Flow-Verbindungen ist ein Benutzerkonto mit Postfach (siehe GAC-01), und einem solchen lässt sich die interaktive Anmeldung nicht entziehen, ohne es funktionsunfähig zu machen. Mit der Umstellung auf einen Service Principal löst sich die Anforderung von selbst — ein Service Principal hat gar keine interaktive Anmeldung. Der Punkt ist also nicht separat zu bearbeiten.</p>
+      </article>
+      <article class="req" id="GAT-01">
+        <div class="req-head">
+          <span class="req-id">GAT-01</span>
+          <span class="cls cls-dex">DEX</span>
+          <a class="req-chapter" href="architektur.html#k1">Kapitel &bdquo;Das Systembild&ldquo;</a>
+        </div>
+        <p class="req-met">Dokumentation liegt in drei Ebenen vor und deckt die genannten Zielgruppen ab. Endnutzer und Organizer: Handbuch in der Anwendung, nach Perspektiven getrennt (Teilnehmer, Organizer, Admin), mit geführter Tour und durchsuchbaren Artikeln. Administratoren und Betrieb: Systemarchitektur, Flow-Übersicht, Flow-Definitionen. Entwicklung: Build- und Release-Ablauf, Arbeitsanweisungen im Repository, lückenlose Release Notes fachlich und technisch. Neue Organizer erhalten automatisch eine Einführungsmail.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Dokumentationsseite (Management Summary, Anwendungsbeschreibung, Flow-Übersicht, Systemarchitektur, Release Notes) und Handbuch in der Anwendung.</p>
+        
+      </article>
+      <article class="req" id="GAU-01">
+        <div class="req-head">
+          <span class="req-id">GAU-01</span>
+          <span class="cls cls-dex">DEX</span>
+          <a class="req-chapter" href="architektur.html#k13">Kapitel &bdquo;Schutz und Aufbewahrung&ldquo;</a>
+        </div>
+        <p class="req-met">Die Protokollierung teilt sich auf. Anmeldevorgänge, Fehlversuche, Sperrungen, Passwortänderungen, Abmeldungen sowie Quelle und Ziel des Zugriffs (Punkte 2 bis 7 und 10) protokolliert Microsoft 365 im einheitlichen Überwachungsprotokoll des Tenants — DEX erzeugt diese Ereignisse nicht selbst. Fachliche Vorgänge protokolliert DEX in DEX_ChangeLog: wer wann welche Aktion auf welchem Event ausgelöst hat, mit Ergebnis (Punkte 1, 8, 9, 11 bis 14). Erfasst werden unter anderem Anmeldung, Abmeldung, Rollenänderung, Löschung einer Teilnehmerliste und stellvertretende Anmeldungen.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 3 „Die Datenhaltung“ (Abschnitt Protokolle) und Kapitel 13.</p>
+        <p class="req-open"><span class="lbl">Offen</span>IP-Adresse, Port und Protokoll erfasst DEX bewusst nicht selbst; sie stehen im Überwachungsprotokoll des Tenants.</p>
+      </article>
+      <article class="req" id="GAU-02">
+        <div class="req-head">
+          <span class="req-id">GAU-02</span>
+          <span class="cls cls-platform">Plattform</span>
+          <a class="req-chapter" href="architektur.html#k13">Kapitel &bdquo;Schutz und Aufbewahrung&ldquo;</a>
+        </div>
+        <p class="req-met">DEX betreibt keine eigene Protokollinfrastruktur. Fachliche Einträge liegen in einer SharePoint-Liste derselben Site, Plattformereignisse im Überwachungsprotokoll von Microsoft 365.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 3.</p>
+        
+      </article>
+      <article class="req" id="GAU-03">
+        <div class="req-head">
+          <span class="req-id">GAU-03</span>
+          <span class="cls cls-flagged">Zur Bewertung</span>
+          <a class="req-chapter" href="architektur.html#k13">Kapitel &bdquo;Schutz und Aufbewahrung&ldquo;</a>
+        </div>
+        <p class="req-met">Zeitstempel werden als ISO-8601 in UTC gespeichert (Beispiel 2026-08-12T09:14:22Z) — das native Format der SharePoint-Datumsspalte.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 3.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Abweichung vom geforderten Format yyyymmdd-hhmmss. Begründung: Das Format ist durch SharePoint vorgegeben; ISO 8601 ist eindeutig, sortierbar und enthält dieselbe Information inklusive Zeitzone. Eine Umformatierung wäre nur in einer Auswertung möglich, nicht in der Speicherung. Bitte um Bewertung, ob das akzeptiert wird.</p>
+      </article>
+      <article class="req" id="GAU-04">
+        <div class="req-head">
+          <span class="req-id">GAU-04</span>
+          <span class="cls cls-platform">Plattform</span>
+          <a class="req-chapter" href="architektur.html#k13">Kapitel &bdquo;Schutz und Aufbewahrung&ldquo;</a>
+        </div>
+        <p class="req-met">Alle Zeitstempel entstehen serverseitig in SharePoint Online beziehungsweise in Power Automate und sind UTC. Die App rechnet nur für die Anzeige in Berliner Zeit um.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 3.</p>
+        
+      </article>
+      <article class="req" id="GAU-05">
+        <div class="req-head">
+          <span class="req-id">GAU-05</span>
+          <span class="cls cls-flagged">Zur Bewertung</span>
+          <a class="req-chapter" href="architektur.html#k13">Kapitel &bdquo;Schutz und Aufbewahrung&ldquo;</a>
+        </div>
+        <p class="req-met">DEX_ChangeLog ist eine SharePoint-Liste; Lesen ist auf Admins beschränkt, Löschen ebenfalls. Änderungen an Listenelementen zeichnet SharePoint in der Versionshistorie und im Überwachungsprotokoll auf.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 3 und 13.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Restrisiko: Die Liste ist nicht technisch schreibgeschützt (append-only). Ein Admin könnte Einträge ändern; nachweisbar bliebe das über Versionshistorie und Tenant-Überwachung. Entscheidung nötig, ob das genügt oder ob die Einträge zusätzlich nach GEMS gespiegelt werden sollen.</p>
+      </article>
+      <article class="req" id="GAU-07">
+        <div class="req-head">
+          <span class="req-id">GAU-07</span>
+          <span class="cls cls-na">Nicht anwendbar</span>
+          <a class="req-chapter" href="architektur.html#k2">Kapitel &bdquo;Wo der Code läuft&ldquo;</a>
+        </div>
+        <p class="req-met">Nicht anwendbar: Zu DEX gehören keine Server. Die Anwendung ist ein Webpart, das im Browser läuft; es gibt keine Instanz, auf der ein Agent installiert werden könnte.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 2 „Wo der Code läuft“ — keine Server-Komponente.</p>
+        
+      </article>
+      <article class="req" id="GAU-08">
+        <div class="req-head">
+          <span class="req-id">GAU-08</span>
+          <span class="cls cls-platform">Plattform</span>
+          <a class="req-chapter" href="architektur.html#k2">Kapitel &bdquo;Wo der Code läuft&ldquo;</a>
+        </div>
+        <p class="req-met">Die zugrunde liegende SaaS-Plattform ist Microsoft 365 im Deloitte-Tenant. Deren Protokollierung ist bereits Teil des Tenants; DEX führt keinen zusätzlichen SaaS-Dienst ein und legt keine Daten ausserhalb des Tenants ab.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 1 und 3 — alle Daten liegen in SharePoint Online derselben Site Collection.</p>
+        
+      </article>
+      <article class="req" id="GCM-01">
+        <div class="req-head">
+          <span class="req-id">GCM-01</span>
+          <span class="cls cls-dex">DEX</span>
+          <a class="req-chapter" href="architektur.html#k15">Kapitel &bdquo;Deployment und Rollback&ldquo;</a>
+        </div>
+        <p class="req-met">Ausführbarer Code besteht aus genau einem Paket: dex-event-platform.sppkg. Es wird über den App-Katalog des Tenants bereitgestellt — der Katalog ist die Freigabeliste. Die Fremdbibliotheken im Paket sind in package.json und package-lock.json festgeschrieben und damit vollständig auflistbar.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 15 „Deployment und Rollback“; package-lock.json im Repository.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Jährliche Überprüfung der Bibliotheksliste ist festzulegen; siehe auch GSI-06.</p>
+      </article>
+      <article class="req" id="GCM-04">
+        <div class="req-head">
+          <span class="req-id">GCM-04</span>
+          <span class="cls cls-dex">DEX</span>
+          <a class="req-chapter" href="architektur.html#k15">Kapitel &bdquo;Deployment und Rollback&ldquo;</a>
+        </div>
+        <p class="req-met">Rückfall ist Teil des Ablaufs: Jede Version wird als eigenes Paket abgelegt und bleibt abrufbar, die Vorgängerversion ist auf der Downloadseite ausdrücklich als Rollback-Paket benannt. Ein Rückfall ist das Hochladen des älteren Pakets in den App-Katalog. Die Daten in den SharePoint-Listen sind davon nicht betroffen — sie werden beim Deployment nicht angefasst.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 15; Downloadseite der Dokumentation mit Versions- und Rollback-Paket.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Gegenläufiger Fall: Führt eine Version neue Spalten oder Flags ein, ist der Rückfall zwar möglich, die neuen Felder bleiben aber in den Listen stehen. Das ist verträglich, weil die App unbekannte Felder ignoriert — bitte als bewusste Auslegung zur Kenntnis.</p>
+      </article>
+      <article class="req" id="GCM-06">
+        <div class="req-head">
+          <span class="req-id">GCM-06</span>
+          <span class="cls cls-dex">DEX</span>
+          <a class="req-chapter" href="architektur.html#k17">Kapitel &bdquo;Sicherheitsbetrachtung&ldquo;</a>
+        </div>
+        <p class="req-met">Im Quelltext stehen keine Zugangsdaten. Es gibt keine Passwörter, keine API-Schlüssel und keine Zugriffstoken im Code — die Anwendung authentifiziert ausschliesslich über die bestehende Sitzung des Nutzers. Der Auslieferungsbuild läuft im Ship-Modus, also ohne Debug-Artefakte. Testdaten entstehen nur im Demo-Modus und werden zur Laufzeit synthetisch erzeugt; es werden keine Produktionsdaten kopiert.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 17 „Sicherheitsbetrachtung“; Prüfung des Quelltextes auf Zugangsdaten am 2026-08-12 ohne Befund.</p>
+        
+      </article>
+      <article class="req" id="GCM-07">
+        <div class="req-head">
+          <span class="req-id">GCM-07</span>
+          <span class="cls cls-flagged">Zur Bewertung</span>
+          <a class="req-chapter" href="architektur.html#k15">Kapitel &bdquo;Deployment und Rollback&ldquo;</a>
+        </div>
+        <p class="req-met">Es gibt zwei benannte Umgebungen für die Automatisierung, DEV und PROD. Die Kategorisierung beschreibt den Betrieb aber nicht: Die acht Flows liegen vollständig in der DEV-Umgebung und laufen von dort produktiv gegen die Produktiv-Site. Sie sind fertig und werden nicht mehr weiterentwickelt — die DEV-Umgebung ist damit faktisch die Produktionsumgebung. Für die SPFx-Anwendung existiert gar keine zweite Umgebung; sie liegt allein auf der Produktiv-Site.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 15 „Deployment und Rollback“ (Ist-Stand und Zielmodell); Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung).</p>
+        <p class="req-open"><span class="lbl">Offen</span>Abweichung, offen benannt: Kategorien sind vergeben, die produktive Last liegt aber in der als Entwicklung kategorisierten Umgebung. Damit ist die Anforderung nicht erfüllt. Zielmodell (vom Betrieb benannt): Flows in die PROD-Umgebung überführen, dort unter einem Service Principal betreiben, der DEV-Umgebung den Zugriff auf Produktivdaten entziehen und eine DEV-Umgebung für die SPFx-Anwendung aufbauen. Damit lösen sich GCM-07 bis GCM-11 und GCM-16 gemeinsam, ebenso GAC-01, GAC-02 und GAC-15. Bitte Zieltermin festhalten.</p>
+      </article>
+      <article class="req" id="GCM-08">
+        <div class="req-head">
+          <span class="req-id">GCM-08</span>
+          <span class="cls cls-flagged">Zur Bewertung</span>
+          <a class="req-chapter" href="architektur.html#k15">Kapitel &bdquo;Deployment und Rollback&ldquo;</a>
+        </div>
+        <p class="req-met">Die beiden Power-Platform-Umgebungen sind logisch getrennt und haben eigene Verbindungen und Zugriffsrechte.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 15 „Deployment und Rollback“ (Ist-Stand und Zielmodell); Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung).</p>
+        <p class="req-open"><span class="lbl">Offen</span>Abweichung: Die Trennung ist nominell, weil die Verbindungen der DEV-Umgebung auf die Produktiv-SharePoint-Site zeigen. Eine Trennung, die auf dieselben Daten greift, trennt nichts, was diese Anforderung schützen soll. Zielmodell (vom Betrieb benannt): Flows in die PROD-Umgebung überführen, dort unter einem Service Principal betreiben, der DEV-Umgebung den Zugriff auf Produktivdaten entziehen und eine DEV-Umgebung für die SPFx-Anwendung aufbauen. Damit lösen sich GCM-07 bis GCM-11 und GCM-16 gemeinsam, ebenso GAC-01, GAC-02 und GAC-15. Bitte Zieltermin festhalten.</p>
+      </article>
+      <article class="req" id="GCM-09">
+        <div class="req-head">
+          <span class="req-id">GCM-09</span>
+          <span class="cls cls-flagged">Zur Bewertung</span>
+          <a class="req-chapter" href="architektur.html#k15">Kapitel &bdquo;Deployment und Rollback&ldquo;</a>
+        </div>
+        <p class="req-met">Die DEV-Umgebung hat keine Anwendungsoberfläche — Endnutzer melden sich dort nicht an, es gibt nichts zu bedienen. Zugriff hat der Entwicklungskreis.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 15 „Deployment und Rollback“ (Ist-Stand und Zielmodell); Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung).</p>
+        <p class="req-open"><span class="lbl">Offen</span>Abweichung im Sinn der Anforderung: Endnutzer greifen zwar nicht selbst zu, werden aber aus dieser Umgebung bedient — jede Bestätigungsmail und jeder Kalendereintrag entsteht dort. Der Schutzzweck (keine produktive Nutzung aus einer Nicht-Produktivumgebung) ist damit nicht erfüllt. Zielmodell (vom Betrieb benannt): Flows in die PROD-Umgebung überführen, dort unter einem Service Principal betreiben, der DEV-Umgebung den Zugriff auf Produktivdaten entziehen und eine DEV-Umgebung für die SPFx-Anwendung aufbauen. Damit lösen sich GCM-07 bis GCM-11 und GCM-16 gemeinsam, ebenso GAC-01, GAC-02 und GAC-15. Bitte Zieltermin festhalten.</p>
+      </article>
+      <article class="req" id="GCM-10">
+        <div class="req-head">
+          <span class="req-id">GCM-10</span>
+          <span class="cls cls-flagged">Zur Bewertung</span>
+          <a class="req-chapter" href="architektur.html#k15">Kapitel &bdquo;Deployment und Rollback&ldquo;</a>
+        </div>
+        <p class="req-met">Auf Anwendungsseite gilt: Der Demo-Modus liest keine Produktionsdaten, sondern erzeugt seine Datensätze zur Laufzeit.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 15 „Deployment und Rollback“ (Ist-Stand und Zielmodell); Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung).</p>
+        <p class="req-open"><span class="lbl">Offen</span>Abweichung, klar benannt: Die Verbindungen der als Nicht-Produktion kategorisierten DEV-Umgebung greifen auf die Produktiv-Site zu und damit auf personenbezogene Teilnehmerdaten. Die Anforderung ist nicht erfüllt. Der Entzug dieses Zugriffs ist ausdrücklich Teil des Zielmodells. Zielmodell (vom Betrieb benannt): Flows in die PROD-Umgebung überführen, dort unter einem Service Principal betreiben, der DEV-Umgebung den Zugriff auf Produktivdaten entziehen und eine DEV-Umgebung für die SPFx-Anwendung aufbauen. Damit lösen sich GCM-07 bis GCM-11 und GCM-16 gemeinsam, ebenso GAC-01, GAC-02 und GAC-15. Bitte Zieltermin festhalten.</p>
+      </article>
+      <article class="req" id="GCM-11">
+        <div class="req-head">
+          <span class="req-id">GCM-11</span>
+          <span class="cls cls-flagged">Zur Bewertung</span>
+          <a class="req-chapter" href="architektur.html#k15">Kapitel &bdquo;Deployment und Rollback&ldquo;</a>
+        </div>
+        <p class="req-met">Für die Anwendung ist der Weg in die Produktion festgelegt und dokumentiert: Version setzen, Release Notes, Typprüfung, sauberer Build, Paket ablegen, Bereitstellung über den App-Katalog — nachvollziehbar im Versionsverlauf.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 15 „Deployment und Rollback“ (Ist-Stand und Zielmodell); Auskunft des Betriebs vom 2026-08-17. Nachweis: Power Platform zeigt zwei Umgebungen — GER-DTech-CDE-PowerTeam (produktiv) und GER-DTech-CDE-PowerTeam-DEV (Entwicklung).</p>
+        <p class="req-open"><span class="lbl">Offen</span>Für die Flows gibt es heute keinen solchen Weg, weil sie die DEV-Umgebung nie verlassen haben. Die Anforderung greift erst mit dem Zielmodell; dann ist festzulegen, ob die Überführung als Solution-Export und -Import erfolgt. Nur dieser Weg erlaubt einen nachvollziehbaren Rückfall (siehe GCM-04). Zielmodell (vom Betrieb benannt): Flows in die PROD-Umgebung überführen, dort unter einem Service Principal betreiben, der DEV-Umgebung den Zugriff auf Produktivdaten entziehen und eine DEV-Umgebung für die SPFx-Anwendung aufbauen. Damit lösen sich GCM-07 bis GCM-11 und GCM-16 gemeinsam, ebenso GAC-01, GAC-02 und GAC-15. Bitte Zieltermin festhalten.</p>
+      </article>
+      <article class="req" id="GCM-16">
+        <div class="req-head">
+          <span class="req-id">GCM-16</span>
+          <span class="cls cls-flagged">Zur Bewertung</span>
+          <a class="req-chapter" href="architektur.html#k15">Kapitel &bdquo;Deployment und Rollback&ldquo;</a>
+        </div>
+        <p class="req-met">Für die Anwendung erfüllt: Produktionsdaten werden nicht für Tests verwendet, der Demo-Modus erzeugt seine Teilnehmerdaten synthetisch im Browser, und es gibt keinen Export von Teilnehmerlisten in eine Testumgebung.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 15 und 17; Funktion buildDemoRegistrations im EventContext; Auskunft des Betriebs vom 2026-08-17.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Abweichung auf der Flow-Seite, die die Anwendungs-Seite nicht aufwiegt: Die Flows liegen in der DEV-Umgebung und verarbeiten von dort personenbezogene Produktivdaten — Namen und E-Mail-Adressen der Teilnehmer stehen in jeder Bestätigungsmail, die dort erzeugt wird. Damit werden Produktivdaten in einer als Nicht-Produktion kategorisierten Umgebung verarbeitet. Nicht erfüllt, bis das Zielmodell greift (siehe GCM-07 bis GCM-11).</p>
+      </article>
+      <article class="req" id="GCM-18">
+        <div class="req-head">
+          <span class="req-id">GCM-18</span>
+          <span class="cls cls-na">Nicht anwendbar</span>
+          <a class="req-chapter" href="architektur.html#k1">Kapitel &bdquo;Das Systembild&ldquo;</a>
+        </div>
+        <p class="req-met">Nicht anwendbar im Sinne eigener Netzarchitektur: DEX hat kein Netz, keine Datenbank und keine Container. Die relevante Architektur ist die Anwendungsarchitektur, und die ist dokumentiert und bebildert.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 1 „Das Systembild“ — Bausteine, Datenflüsse und Grenzen.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Jährliche Überprüfung des Architekturdokuments ist festzulegen.</p>
+      </article>
+      <article class="req" id="GCM-22">
+        <div class="req-head">
+          <span class="req-id">GCM-22</span>
+          <span class="cls cls-na">Nicht anwendbar</span>
+          <a class="req-chapter" href="architektur.html#k2">Kapitel &bdquo;Wo der Code läuft&ldquo;</a>
+        </div>
+        <p class="req-met">Nicht anwendbar: keine Server, keine Images, kein Betriebssystem im Umfang von DEX.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 2.</p>
+        
+      </article>
+      <article class="req" id="GCP-01">
+        <div class="req-head">
+          <span class="req-id">GCP-01</span>
+          <span class="cls cls-dex">DEX</span>
+          <a class="req-chapter" href="architektur.html#k16">Kapitel &bdquo;Sicherung und Wiederherstellung&ldquo;</a>
+        </div>
+        <p class="req-met">Die Sicherung liegt vollständig bei SharePoint Online: zweistufiger Papierkorb, Versionsverlauf auf allen Listen und die Wiederherstellungszusagen von Microsoft 365. Auf Anwendungsseite kommt hinzu, dass Löschvorgänge fachlich weich sind — eine Abmeldung setzt den Status, sie löscht die Zeile nicht — und dass jede ausgelieferte Paketversion aufbewahrt wird, sodass der Anwendungsstand jederzeit zurückgestellt werden kann.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 16 „Sicherung und Wiederherstellung“.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Jährliche Überprüfung und ein dokumentierter Wiederherstellungstest sind festzulegen. Die Aufbewahrungsfristen des Papierkorbs sind Tenant-Vorgabe, keine Projektentscheidung.</p>
+      </article>
+      <article class="req" id="GIA-01">
+        <div class="req-head">
+          <span class="req-id">GIA-01</span>
+          <span class="cls cls-dex">DEX</span>
+          <a class="req-chapter" href="architektur.html#k17">Kapitel &bdquo;Sicherheitsbetrachtung&ldquo;</a>
+        </div>
+        <p class="req-met">Meldungen der Anwendung nennen den fachlichen Grund, nicht die Technik: „Alle Plätze sind belegt“, „Für dich ist aktuell kein Programmpunkt freigegeben“. Systeminterna wie Listen-Kennungen, Pfade oder Statuscodes erscheinen nicht in der Oberfläche. Technische Details gehen ausschliesslich in die Browser-Konsole der handelnden Person.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 17.</p>
+        
+      </article>
+      <article class="req" id="GIA-02">
+        <div class="req-head">
+          <span class="req-id">GIA-02</span>
+          <span class="cls cls-na">Nicht anwendbar</span>
+          <a class="req-chapter" href="architektur.html#k2">Kapitel &bdquo;Wo der Code läuft&ldquo;</a>
+        </div>
+        <p class="req-met">Nicht anwendbar: DEX hat keinen Anmeldevorgang und kein Eingabefeld für Zugangsdaten. Die Anmeldung erfolgt vor dem Öffnen der Seite durch Entra ID.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 2.</p>
+        
+      </article>
+      <article class="req" id="GIA-03">
+        <div class="req-head">
+          <span class="req-id">GIA-03</span>
+          <span class="cls cls-platform">Plattform</span>
+          <a class="req-chapter" href="architektur.html#k2">Kapitel &bdquo;Wo der Code läuft&ldquo;</a>
+        </div>
+        <p class="req-met">Erfüllt durch die Bauart: Ein SPFx-Webpart ist Teil einer SharePoint-Seite. Ohne angemeldete Entra-ID-Sitzung wird die Seite nicht ausgeliefert und der Code nicht ausgeführt. Einmalanmeldung ist damit nicht optional, sondern Voraussetzung.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 2.</p>
+        
+      </article>
+      <article class="req" id="GIA-04">
+        <div class="req-head">
+          <span class="req-id">GIA-04</span>
+          <span class="cls cls-platform">Plattform</span>
+          <a class="req-chapter" href="architektur.html#k2">Kapitel &bdquo;Wo der Code läuft&ldquo;</a>
+        </div>
+        <p class="req-met">Mehrfaktor-Authentifizierung greift über die Richtlinien für bedingten Zugriff des Tenants, bevor die Seite geladen wird. DEX kann sie weder umgehen noch abschwächen.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 2.</p>
+        
+      </article>
+      <article class="req" id="GIA-05">
+        <div class="req-head">
+          <span class="req-id">GIA-05</span>
+          <span class="cls cls-dex">DEX</span>
+          <a class="req-chapter" href="architektur.html#k17">Kapitel &bdquo;Sicherheitsbetrachtung&ldquo;</a>
+        </div>
+        <p class="req-met">Es gibt in der gesamten Anwendung kein Feld für Benutzername oder Passwort, folglich auch nichts vorauszufüllen. Angezeigte Namen und Adressen stammen aus dem Profil der bereits angemeldeten Person beziehungsweise aus der Personenauswahl.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 17; Prüfung des Quelltextes ohne Befund.</p>
+        
+      </article>
+      <article class="req" id="GSC-01">
+        <div class="req-head">
+          <span class="req-id">GSC-01</span>
+          <span class="cls cls-na">Nicht anwendbar</span>
+          <a class="req-chapter" href="architektur.html#k2">Kapitel &bdquo;Wo der Code läuft&ldquo;</a>
+        </div>
+        <p class="req-met">Nicht anwendbar: DEX hat keine eigenen Geräte, Namen oder Topologien. Nach aussen sichtbar sind ausschliesslich Adressen von SharePoint Online.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 2.</p>
+        
+      </article>
+      <article class="req" id="GSC-03">
+        <div class="req-head">
+          <span class="req-id">GSC-03</span>
+          <span class="cls cls-flagged">Zur Bewertung</span>
+          <a class="req-chapter" href="architektur.html#k17">Kapitel &bdquo;Sicherheitsbetrachtung&ldquo;</a>
+        </div>
+        <p class="req-met">Zertifikate für den Transport stellt Microsoft für SharePoint Online; DEX verwaltet keine eigenen Zertifikate und keine Verschlüsselungsschlüssel.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 17.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Offenlegung: Eine Funktion nutzt ein Geheimnis, das nicht über KCM verwaltet wird — der Selbst-Check-in. Je Event liegt ein Zufallswert in der Event-Zeile, aus dem ein alle paar Sekunden wechselnder Code für den Aushang berechnet wird (HMAC-SHA-256). Es ist kein Schlüssel für Daten, sondern ein geteiltes Geheimnis für einen kurzlebigen Anzeigecode. Wirkung bei Kompromittierung: Ein Unbefugter könnte sich bei genau diesem Event einchecken. Er ist je Event verschieden und durch Neuerzeugen wechselbar. WICHTIG zur Verbreitung: Die Funktion ist nicht opt-in. Seit v20.1 erzeugt der erste Klick auf die QR-Kachel den Wert und schaltet den Selbst-Check-in am Event scharf — die Kachel erscheint ab fünf Tagen vor Beginn beziehungsweise sobald QR-Codes versendet wurden. Die Zahl der Events mit einem solchen Geheimnis entspricht deshalb NICHT der Zahl der Events, die den Selbst-Check-in nutzen (laut Fachbereich in der Regel keines), sondern der Zahl der Events, bei denen jemand die Kachel einmal geöffnet hat. Empfehlung: Auto-Aktivierung entfernen (nur noch bewusstes Einschalten) und den Wert nach dem Event löschen. Danach ist die Abweichung auf die tatsächlich genutzten Events begrenzt und abzählbar.</p>
+      </article>
+      <article class="req" id="GSC-04">
+        <div class="req-head">
+          <span class="req-id">GSC-04</span>
+          <span class="cls cls-platform">Plattform</span>
+          <a class="req-chapter" href="architektur.html#k17">Kapitel &bdquo;Sicherheitsbetrachtung&ldquo;</a>
+        </div>
+        <p class="req-met">Alle Daten liegen in SharePoint Online und sind dort im Ruhezustand verschlüsselt; der Transport läuft über TLS. DEX legt keine Daten ausserhalb ab — kein lokaler Speicher für personenbezogene Daten, keine Datei, kein Dienst Dritter. Auch Bilder liegen als Inhalt in SharePoint-Spalten.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 3 und 17.</p>
+        
+      </article>
+      <article class="req" id="GSC-05">
+        <div class="req-head">
+          <span class="req-id">GSC-05</span>
+          <span class="cls cls-dex">DEX</span>
+          <a class="req-chapter" href="architektur.html#k17">Kapitel &bdquo;Sicherheitsbetrachtung&ldquo;</a>
+        </div>
+        <p class="req-met">Die eingesetzte Verschlüsselung ist im Architekturdokument beschrieben: TLS im Transport, Verschlüsselung im Ruhezustand durch SharePoint Online, keine eigene Kryptografie ausser dem unter GSC-03 offengelegten HMAC für den Selbst-Check-in.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 17 „Sicherheitsbetrachtung“.</p>
+        
+      </article>
+      <article class="req" id="GSC-06">
+        <div class="req-head">
+          <span class="req-id">GSC-06</span>
+          <span class="cls cls-flagged">Zur Bewertung</span>
+          <a class="req-chapter" href="architektur.html#k17">Kapitel &bdquo;Sicherheitsbetrachtung&ldquo;</a>
+        </div>
+        <p class="req-met">Schlüsselverwaltung für Transport und Ruhezustand liegt bei Microsoft 365.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 17.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Siehe GSC-03: Das Geheimnis für den Selbst-Check-in liegt als Feld in der Event-Liste und ist damit für Organizer dieses Events lesbar. Zusätzlich relevant: Es entsteht heute automatisch beim ersten Öffnen der QR-Kachel, nicht durch eine bewusste Aktivierung. Bewertung erbeten; Empfehlung siehe GSC-03.</p>
+      </article>
+      <article class="req" id="GSC-09">
+        <div class="req-head">
+          <span class="req-id">GSC-09</span>
+          <span class="cls cls-dex">DEX</span>
+          <a class="req-chapter" href="architektur.html#k17">Kapitel &bdquo;Sicherheitsbetrachtung&ldquo;</a>
+        </div>
+        <p class="req-met">Eigene Adressen der Anwendung tragen keine personenbezogenen Daten: Sie enthalten die Event-Nummer und, beim Selbst-Check-in, einen wechselnden Code. Offenlegung der Vollständigkeit halber: An zwei Stellen erscheint eine E-Mail-Adresse als Parameter, und zwar in Adressen von Microsoft selbst — beim Profilbild von SharePoint und beim Teams-Chat-Link, der lokal vom Client verarbeitet wird. Beides sind die vorgesehenen Wege der Plattform, bleiben innerhalb des Tenants und laufen über TLS.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 17; geprüfte Stellen: Profilbild-Endpunkt und Teams-Protokolllink.</p>
+        
+      </article>
+      <article class="req" id="GSI-01">
+        <div class="req-head">
+          <span class="req-id">GSI-01</span>
+          <span class="cls cls-platform">Plattform</span>
+          <a class="req-chapter" href="architektur.html#k17">Kapitel &bdquo;Sicherheitsbetrachtung&ldquo;</a>
+        </div>
+        <p class="req-met">DEX betreibt keine Endpunkte, auf denen Schadcode-Erkennung installiert werden könnte. Relevant ist der eine Weg, auf dem Dateien ins System gelangen: Anhänge, die Teilnehmer oder Organizer hochladen. Diese landen unmittelbar in SharePoint Online und werden von den Schutzmechanismen des Tenants geprüft.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 17.</p>
+        
+      </article>
+      <article class="req" id="GSI-06">
+        <div class="req-head">
+          <span class="req-id">GSI-06</span>
+          <span class="cls cls-flagged">Zur Bewertung</span>
+          <a class="req-chapter" href="architektur.html#k17">Kapitel &bdquo;Sicherheitsbetrachtung&ldquo;</a>
+        </div>
+        <p class="req-met">Der Anwendungscode selbst enthält keine Server-Komponente; die Angriffsfläche sind die mitgelieferten Bibliotheken. Ihre Versionen sind festgeschrieben und vollständig auflistbar.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 17; package-lock.json im Repository. npm audit vom 2026-08-12: 62 Befunde im Produktions-Abhängigkeitsbaum (2 kritisch, 22 hoch, 38 mittel) bei 2331 Paketen gesamt. Ein Teil davon sind Build-Werkzeuge, die im Bundle nicht ausgeliefert werden.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Befund: Die Abhängigkeitsprüfung meldet kritische und hohe Funde. Ein erheblicher Teil betrifft Build-Werkzeuge, die nicht ausgeliefert werden — das entbindet nicht von der Bewertung. Nächster Schritt: Aufnahme in den Vulnerability-Management-Service, Abgleich welche Funde tatsächlich im Bundle landen, dann Aktualisierung oder begründete Annahme. Ohne diesen Schritt ist die Anforderung nicht erfüllt.</p>
+      </article>
+      <article class="req" id="GSI-09">
+        <div class="req-head">
+          <span class="req-id">GSI-09</span>
+          <span class="cls cls-open">Offen</span>
+          <a class="req-chapter" href="architektur.html#k17">Kapitel &bdquo;Sicherheitsbetrachtung&ldquo;</a>
+        </div>
+        <p class="req-met">Automatisierte Anwendungstests sind bisher nicht durchgeführt worden.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 17.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Offen: Anmeldung beim Automated-Application-Testing-Dienst und Durchführung der Scans. Das kann nur das Projekt beauftragen; die Anwendung ist ein statisches Bundle auf einer SharePoint-Seite und damit ein üblicher Prüfgegenstand.</p>
+      </article>
+      <article class="req" id="GSA-04">
+        <div class="req-head">
+          <span class="req-id">GSA-04</span>
+          <span class="cls cls-open">Offen</span>
+          <a class="req-chapter" href="architektur.html#k17">Kapitel &bdquo;Sicherheitsbetrachtung&ldquo;</a>
+        </div>
+        <p class="req-met">Es gibt keine automatisierten Tests im Projekt; geprüft wird über Typprüfung, statische Codeanalyse im Build und manuelle Abnahme. Eine Sicherheitsprüfung im Sinne dieser Anforderung hat nicht stattgefunden.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 17.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Offen: Sicherheitstest beauftragen und Befunde beheben. Bekannte Ausgangspunkte für den Test sind in Kapitel 17 benannt — insbesondere die Wiedergabe von organizer-erstelltem HTML (siehe GSD-02) und die Abhängigkeiten (siehe GSI-06).</p>
+      </article>
+      <article class="req" id="GSD-01">
+        <div class="req-head">
+          <span class="req-id">GSD-01</span>
+          <span class="cls cls-dex">DEX</span>
+          <a class="req-chapter" href="architektur.html#k12">Kapitel &bdquo;Wo die Wahrheit liegt&ldquo;</a>
+        </div>
+        <p class="req-met">Sicheres Scheitern ist an mehreren Stellen bewusst gebaut. Ein fehlgeschlagener Lesezugriff wird als „unbekannt“ behandelt und nicht als „nicht vorhanden“ — ein Auswertungslauf überspringt betroffene Events, statt aus Leere auf Abwesenheit zu schliessen. Vor unwiderruflichen Löschungen wird zuerst die prüfbare Nebenbuchhaltung aufgeräumt; scheitert dabei ein Schritt, unterbleibt die Löschung. Rechte werden nie im Browser entschieden, sondern von SharePoint durchgesetzt — ein manipulierter Client sieht dadurch nicht mehr. Fehlermeldungen nennen den fachlichen Grund ohne Systeminterna.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 12 „Wo die Wahrheit liegt“ und Kapitel 17.</p>
+        
+      </article>
+      <article class="req" id="GSD-02">
+        <div class="req-head">
+          <span class="req-id">GSD-02</span>
+          <span class="cls cls-flagged">Zur Bewertung</span>
+          <a class="req-chapter" href="architektur.html#k17">Kapitel &bdquo;Sicherheitsbetrachtung&ldquo;</a>
+        </div>
+        <p class="req-met">Die üblichen Fehlerklassen sind adressiert. Abfragen an SharePoint maskieren Anführungszeichen in Filterausdrücken (an über vierzig Stellen konsequent), React maskiert eingesetzte Werte standardmässig, Berechtigungen werden serverseitig durchgesetzt, und es gibt weder eigene Authentifizierung noch Sitzungsverwaltung, die man umgehen könnte.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 17.</p>
+        <p class="req-open"><span class="lbl">Offen</span>Offenlegung eines Restrisikos: An fünf Stellen wird gespeichertes HTML unmaskiert angezeigt — Event-Beschreibungen, Feldbeschreibungen und Mailvorlagen, die Organizer in einem Rich-Text-Editor erfassen. Vor der Ausgabe werden Skript- und Stilblöcke, Ereignis-Attribute und javascript:-Verweise entfernt. Das ist eine Ausschlussliste, keine Freigabeliste, und damit prinzipiell umgehbar. Mildernd: Erfassen können solche Inhalte nur angemeldete, namentlich bekannte Organizer desselben Tenants; jede Änderung ist protokolliert; die Wiedergabe erfolgt nur gegenüber Nutzern desselben Tenants. Empfehlung: Umstellung auf einen Bereiniger mit Freigabeliste. Als Befund im Sicherheitstest (GSA-04) einplanen.</p>
+      </article>
+      <article class="req" id="GWAF-01">
+        <div class="req-head">
+          <span class="req-id">GWAF-01</span>
+          <span class="cls cls-na">Nicht anwendbar</span>
+          <a class="req-chapter" href="architektur.html#k2">Kapitel &bdquo;Wo der Code läuft&ldquo;</a>
+        </div>
+        <p class="req-met">Nicht anwendbar: DEX stellt keinen eigenen Webdienst bereit, der vorgelagert geschützt werden könnte. Ausgeliefert wird eine JavaScript-Datei über SharePoint Online; sämtlicher Verkehr läuft gegen Microsoft-Endpunkte, die hinter deren eigenem Schutz stehen. Ein WAF im Verantwortungsbereich des Projekts gäbe es nicht vorzuschalten.</p>
+        <p class="req-ev"><span class="lbl">Nachweis</span>Architektur, Kapitel 1 und 2.</p>
+        
+      </article>
+
+  <footer class="end">
+    Bewertet am 2026-08-12 gegen den Stand v29.12.0. Aussagen zur Plattform beschreiben,
+    was Microsoft 365 im Deloitte-Tenant leistet; ihren Nachweis führt der Plattformbetrieb, nicht
+    dieses Projekt.
+  </footer>
+</div>
+</body>
+</html>

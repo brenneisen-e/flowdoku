@@ -13061,7 +13061,7 @@ export default function AdminPage(): React.ReactElement {
                         <button
                           type="button"
                           onClick={async () => {
-                            if (!(await confirmDialog(isDe ? `Diesen Log-Eintrag „${row.subject || '(ohne Betreff)'}" wirklich löschen? Der Eintrag verschwindet aus den event-bezogenen Nachrichten der Teilnehmer, und der „Bereits versendete Infos"-Hinweis entfällt, falls dies der letzte Eintrag war.` : `Really delete this log entry „${row.subject || '(no subject)'}"? It disappears from participants’ event messages, and the „earlier updates" hint is removed if this was the last entry.`, { danger: true, confirmLabel: isDe ? 'Löschen' : 'Delete' }))) return;
+                            if (!(await confirmDialog(isDe ? `Diesen Log-Eintrag „${row.subject || '(ohne Betreff)'}" wirklich löschen? Der Eintrag verschwindet aus den event-bezogenen Nachrichten der Teilnehmer, und der „Bereits versendete Infos"-Hinweis entfällt, falls dies der letzte Eintrag war, der keine Einladung ist.` : `Really delete this log entry „${row.subject || '(no subject)'}"? It disappears from participants’ event messages, and the „earlier updates" hint is removed if this was the last entry that is not an invitation.`, { danger: true, confirmLabel: isDe ? 'Löschen' : 'Delete' }))) return;
                             void deleteCommRow(row);
                           }}
                           disabled={commsDeletingId === row.id}

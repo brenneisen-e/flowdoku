@@ -4,6 +4,7 @@ import Modal from './Modal';
 import { SPRegistration } from '../services/EventService';
 import { DeloitteEvent, DexHotel, DexHotelStay, DexHotelRules } from '../types';
 import { parseStayValue } from './StayRangePicker';
+import { HOTEL_RE, EXTRA_RE, NO_RE, parseExtraAnswer } from '../utils/hotelAnswers';
 import DatePicker, { registerLocale } from 'react-datepicker';
 import { de } from 'date-fns/locale';
 import 'react-datepicker/dist/react-datepicker.css';
@@ -125,16 +126,6 @@ const coreStay = (event: DeloitteEvent): { from: string; to: string } => {
  * Formular-Erkennung
  * ---------------------------------------------------------------------- */
 
-const HOTEL_RE = /hotel|unterkunft|übernacht|übernacht|accommodation|lodging|zimmer/i;
-const EXTRA_RE = /additional|extra|zusätzlich|zusätzlich|weitere|vorab|beforehand|früher|frueher|verlänger|verlänger|longer/i;
-const NO_RE = /^\s*(nein|no|kein|none|nicht)\b|^\s*-\s*$/i;
-const AFTER_RE = /after|danach|länger|länger|abreis|departure|extend|following/i;
-const BEFORE_RE = /before|beforehand|vorab|vorher|früher|frueher|anreis|prior/i;
-const WORD_NUMS: Record<string, number> = {
-  one: 1, two: 2, three: 3, four: 4, five: 5,
-  ein: 1, eine: 1, zwei: 2, drei: 3, vier: 4, fünf: 5, fuenf: 5,
-};
-
 const MONTHS: Record<string, number> = {
   jan: 1, feb: 2, mar: 3, 'mär': 3, mrz: 3, apr: 4, may: 5, mai: 5, jun: 6, jul: 7,
   aug: 8, sep: 9, okt: 10, oct: 10, nov: 11, dez: 12, dec: 12,
@@ -172,31 +163,6 @@ const parseLabelRange = (label: string, yearHint: number): { from: string; to: s
     if (r) return r;
   }
   return null;
-};
-
-/**
- * Antwort auf die Zusatznächte-Frage deuten.
- * `null` = nicht deutbar (der Organizer wählt dann selbst).
- */
-const parseExtraAnswer = (ansIn: string): { nights: number; after: boolean } | null => {
-  const ans = (ansIn || '').trim();
-  if (!ans) return { nights: 0, after: false };
-  if (NO_RE.test(ans)) return { nights: 0, after: false };
-  const s = ans.toLowerCase();
-  let n = 0;
-  // „2 additional nights" / „2 Nächte" — nur Zahlen direkt vor dem Nacht-Wort,
-  // damit Datumsangaben wie „from 23 - 24 Sept." nicht mitgezählt werden.
-  const digit = s.match(/(\d+)\s*(additional\s+|extra\s+|weitere\s+|zusätzliche\s+|zusätzliche\s+)?(night|nacht|nächte|naechte)/);
-  if (digit) n = parseInt(digit[1], 10);
-  else {
-    const keys = Object.keys(WORD_NUMS);
-    for (const w of keys) {
-      if (new RegExp(`\\b${w}\\b`, 'i').test(s)) { n = WORD_NUMS[w]; break; }
-    }
-  }
-  if (!n) return null;
-  const after = AFTER_RE.test(s) && !BEFORE_RE.test(s);
-  return { nights: n, after };
 };
 
 export const HotelSetupWizard: React.FC<IHotelSetupWizardProps> = (props: IHotelSetupWizardProps) => {

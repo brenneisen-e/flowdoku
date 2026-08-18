@@ -3974,12 +3974,21 @@ function MyEventSubEvents(props: {
 
   // v15.13: Bezeichnung kommt jetzt direkt aus event.childEventTermPlural /
   // childEventTermSingular (Wizard-Setting). Fallback: „Sub-Events"-Begriff.
-  const termPlural = props.parentEvent.childEventTermPlural || '';
-  const termSingular = props.parentEvent.childEventTermSingular || '';
+  // v29.13: Besteht das Event ausschließlich aus Sub-Events, heißen sie hier
+  // wie auf der Anmeldeseite „Events" — es gibt kein Haupt-Event, unter dem
+  // sie stehen könnten, und der Teilnehmer hat sich genau für diese Einträge
+  // angemeldet. Ein eigener Begriff des Organizers geht weiterhin vor.
+  const subOnly = !!props.parentEvent.subEventsOnlyMode;
+  const termPlural = props.parentEvent.childEventTermPlural
+    || (subOnly ? (isDe ? 'Events' : 'events') : '');
+  const termSingular = props.parentEvent.childEventTermSingular
+    || (subOnly ? (isDe ? 'Event' : 'event') : '');
   const headerLabel = termPlural || (isDe ? 'Sub-Events' : 'Sub-events');
+  // v29.13: „Eine Session", aber „Ein Event" — der Artikel war fest verdrahtet.
+  const termArticleDe = /(session|veranstaltung|einheit|runde|reihe|tour|führung|schicht|woche|gruppe|stunde)$/i.test(termSingular) ? 'Eine' : 'Ein';
   const hintLabel = termSingular
     ? (isDe
-        ? `Eine ${termSingular} kannst du jederzeit nachträglich an- oder abmelden. Bei jeder Aktion bekommst du eine Bestätigungs-Mail und der Termin wird in Outlook angelegt bzw. zurückgezogen.`
+        ? `${termArticleDe} ${termSingular} kannst du jederzeit nachträglich an- oder abmelden. Bei jeder Aktion bekommst du eine Bestätigungs-Mail und der Termin wird in Outlook angelegt bzw. zurückgezogen.`
         : `You can register or cancel a ${termSingular} at any time. Every action triggers a confirmation mail and creates or removes the Outlook calendar entry.`)
     : (isDe
         ? 'Sub-Events kannst du jederzeit nachträglich an- oder abmelden. Bei jeder Aktion bekommst du eine Bestätigungs-Mail und der Termin wird in Outlook angelegt bzw. zurückgezogen.'

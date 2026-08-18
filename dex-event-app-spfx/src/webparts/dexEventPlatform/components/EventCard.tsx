@@ -88,6 +88,16 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
     ? event.maxParticipants
     : splitCapacity;
   const isUnlimited = !effectiveMax || effectiveMax === 0;
+  // v29.13: Besteht ein Event ausschließlich aus Sub-Events, ist das Hauptevent
+  // gar nicht buchbar — die Plätze liegen einzeln bei den Sub-Events. Die
+  // Kachel zeigte trotzdem den Zähler des Hauptevents, und weil dort keine
+  // Kapazität gepflegt wird, stand da „Unbegrenzt". Das ist nicht nur
+  // nichtssagend, es ist das Gegenteil der Wahrheit: jedes Sub-Event hat seine
+  // eigene Obergrenze. Dasselbe gilt für die Anmeldefrist — bei
+  // unterschiedlichen Sub-Event-Fristen gibt es keine gültige Frist für die
+  // Klammer. Beides bleibt deshalb weg; die Zahlen stehen auf der Anmeldeseite
+  // pro Sub-Event.
+  const subOnly = !!event.subEventsOnlyMode;
   // v24.72: Wartelisten-Anzahl abziehen — ein frei gewordener Platz geht IMMER
   // zuerst an die Warteliste und ist daher nicht „frei" für neue Anmeldungen.
   // Verhindert auch das kurze, falsche „1 frei" während des Nachrückens.
@@ -338,15 +348,17 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
             <br />
             {formatDate(event.endDate)}
           </div>
-          <span style={{
-            padding: '3px 10px', borderRadius: 12, fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0,
-            background: isFull ? 'rgba(218,41,28,0.12)' : 'rgba(134,188,37,0.12)',
-            color: isFull ? 'var(--dex-red)' : 'var(--dex-green-dark)',
-          }}>
-            {isFull ? t('status.waitlist') : (isUnlimited ? t('reg.unlimited') : `${freePlaces} ${t('reg.free')}`)}
-          </span>
+          {!subOnly && (
+            <span style={{
+              padding: '3px 10px', borderRadius: 12, fontSize: '0.78rem', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0,
+              background: isFull ? 'rgba(218,41,28,0.12)' : 'rgba(134,188,37,0.12)',
+              color: isFull ? 'var(--dex-red)' : 'var(--dex-green-dark)',
+            }}>
+              {isFull ? t('status.waitlist') : (isUnlimited ? t('reg.unlimited') : `${freePlaces} ${t('reg.free')}`)}
+            </span>
+          )}
         </div>
-        {event.registrationDeadline && formatDateOnly(event.registrationDeadline) && (
+        {!subOnly && event.registrationDeadline && formatDateOnly(event.registrationDeadline) && (
           <div className="event-card__deadline">
             {t('events.regopen')} {formatDateOnly(event.registrationDeadline)}
           </div>

@@ -228,6 +228,11 @@ export interface DeloitteEvent {
    *  Querformat-Foto per App-Zuschnitt rund/quadratisch wurde. Die
    *  Event-Liste zeigt dann das Original als Kachel-Hintergrund. */
   imageOrigUrl?: string;
+  /** v29.13: Das Mail-Logo als Base64 (Piggyback `_eventLogo`, dieselbe Grafik
+   *  wie in der Spalte EmailImageBase64). Getrennt vom Event-Bild: Mails und
+   *  Outlook-Termin zeigen dieses, Anmeldeseite und Kachel das Event-Bild.
+   *  Die Anmeldeseite fällt darauf zurück, wenn kein Event-Bild gepflegt ist. */
+  mailImageBase64?: string;
   /** v28.38: Hotel-Stammdaten des Events (Piggyback `_hotels`). Klein gehalten —
    *  die Zuordnung pro Person steht in der Teilnehmerliste, nicht hier. */
   hotels?: DexHotel[];

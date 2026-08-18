@@ -1289,6 +1289,20 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           return (ov && typeof ov._imageOrigUrl === 'string') ? ov._imageOrigUrl : '';
         } catch { return ''; }
       })(),
+      // v29.13: Das Mail-Logo (Piggyback `_eventLogo`, identisch mit der Spalte
+      // EmailImageBase64) als Base64. Es ist ein ANDERES Bild als das
+      // Event-Bild aus Schritt 1: Mails und Outlook-Termin zeigen dieses,
+      // Anmeldeseite und Kachel das Event-Bild. Wer nur eines von beiden
+      // pflegt — meist das Mail-Logo, weil man es im Postfach sofort sieht —
+      // bekam auf der Anmeldeseite den generischen DEX-Kreis. Deshalb steht
+      // es hier zur Verfügung und dient dort als Rückfall.
+      mailImageBase64: ((): string => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          const v = (ov && typeof ov._eventLogo === 'string') ? ov._eventLogo : '';
+          return v.indexOf('data:') === 0 ? v : '';
+        } catch { return ''; }
+      })(),
       // v28.38: Hotel-Planung (Piggybacks _hotels / _hotelStays / _hotelVisible).
       // Nur Stammdaten und Vorlagen — die Zuordnung pro Person steht in der
       // Teilnehmerliste (Spalten Hotel/HotelFrom/HotelTo).
@@ -2068,7 +2082,11 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // bisherige Kommunikation in der App unter „Meine Events" nachlesen können.
         if (status === 'Angemeldet' && !isExternalInvite && !isExternalRecipient) {
           let priorComms = false;
-          try { priorComms = await eventService.hasEventComms(eventId); } catch { priorComms = false; }
+          // v29.11: Die Einladung zählt nicht mit. Sie ist der Weg, über den die
+          // meisten überhaupt hier gelandet sind — auf sie zu verweisen sagt
+          // nichts. Der Hinweis erscheint erst, wenn es darüber hinaus eine
+          // Rundmail gab (Ankündigung, Update, Massenmail).
+          try { priorComms = await eventService.hasEventComms(eventId, ['Einladung']); } catch { priorComms = false; }
           if (priorComms) {
             const isDeComm = (lang || 'EN').toUpperCase() === 'DE';
             const commsBox = `<div style="margin:0 0 16px;padding:12px 16px;background:#eef4fb;border:1px solid #0076a8;border-radius:8px;font-size:13px;line-height:1.55;color:#0b4a6f;">`

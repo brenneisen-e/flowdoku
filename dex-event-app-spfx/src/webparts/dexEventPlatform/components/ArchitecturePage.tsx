@@ -40,7 +40,9 @@ export default function ArchitecturePage(): React.ReactElement {
   const coreLists: Item[] = [
     { name: 'DEX_Events', de: 'Ein Eintrag pro Event/Sub-Event (Titel, Datum, Ort, Sichtbarkeit, Kapazität, Kommunikation).', en: 'One entry per event/sub-event (title, date, location, visibility, capacity, communication).', link: true },
     { name: 'DEX_Roles', de: 'Rollen: User, Organizer, Admin.', en: 'Roles: user, organizer, admin.', link: true },
-    { name: 'DEX_Participants', de: 'Übergreifendes Personen-Register (Statistik/KPI).', en: 'Cross-event person register (stats/KPI).', link: true },
+    { name: 'DEX_Participants', de: 'Register „wer ist wo angemeldet“ — Grundlage für „Meine Events“, damit dafür nicht alle Subsites gelesen werden müssen. Nebenbuchhaltung, nicht die Wahrheit: maßgeblich ist die Teilnehmerliste des Events.', en: 'Registry of “who is registered where” — the basis for “My events” so it need not read every subsite. Secondary bookkeeping, not the source of truth: the event’s attendee list decides.', link: true },
+    { name: 'DEX_EventComms', de: 'Protokoll der versendeten Rundmails je Event (Einladung, Ankündigung) — Teilnehmer lesen es unter „Meine Events“ nach.', en: 'Log of broadcast mails sent per event (invitation, announcement) — attendees can read it under “My events”.', link: true },
+    { name: 'DEX_EventStats', de: 'Kennzahlen von Events, deren Teilnehmerliste nach der Aufbewahrungsfrist gelöscht wurde — ohne Personenbezug.', en: 'KPIs of events whose attendee list was deleted after the retention period — without personal data.', link: true },
     { name: 'DEX_EmailTemplates', de: 'Anpassbare Mail-Vorlagen + zentrale Konfiguration (Logo, Standardbild, KPI-Zähler).', en: 'Customizable mail templates + central config (logo, default image, KPI counter).', link: true },
     { name: 'DEX_Logos', de: 'Hinterlegte Logos/Bilder für Mails und Outlook.', en: 'Stored logos/images for mails and Outlook.', link: true },
   ];
@@ -54,7 +56,8 @@ export default function ArchitecturePage(): React.ReactElement {
     { name: 'DEX_OutlookLocks', de: 'Sperre, damit zwei Kalender-Läufe desselben Events sich nicht überschneiden.', en: 'Lock so two calendar runs for the same event do not collide.', link: true },
     { name: 'DEX_IDReorder', de: 'Aufträge zum Neu-Nummerieren der Teilnehmer-IDs + Nachrücken von der Warteliste.', en: 'Jobs to renumber attendee IDs + promote from the waitlist.', link: true },
     { name: 'DEX_AccessFix', de: 'Setzt bei stellvertretenden Anmeldungen den richtigen Zeilen-Autor.', en: 'Sets the correct row author for proxy registrations.', link: true },
-    { name: 'DEX_AssistantAccess', de: 'Delegation/Zugriff für die „Meine Assistenz"-Funktion.', en: 'Delegation/access for the “my assistant” feature.', link: true },
+    { name: 'DEX_AssistantAccess', de: 'Delegation an eine Assistenz — Auftrag für den Flow, den Zeilen-Autor umzusetzen, plus Info-Zeile für die betreute Person.', en: 'Delegation to an assistant — job for the flow to move the row author, plus an info row for the delegating person.', link: true },
+    { name: 'DEX_PostEventMails', de: 'Warteschlange der Nachbereitungsmails an Organizer.', en: 'Queue for follow-up mails to organizers.', link: true },
     { name: 'DEX_TeamJoinRequests', de: 'Beitritts-Anfragen für Team-Anmeldungen (Kapitän bestätigt).', en: 'Join requests for team registrations (captain approves).', link: true },
     { name: 'DEX_OrganizerRequests', de: 'Anträge „Organizer werden" zur Admin-Freigabe.', en: '“Become organizer” requests for admin approval.', link: true },
     { name: 'DEX_Tickets', de: 'Fragen & Antworten (Support-Tickets) zu Events und zur App.', en: 'Questions & answers (support tickets) for events and the app.', link: true },
@@ -86,6 +89,35 @@ export default function ArchitecturePage(): React.ReactElement {
     { name: 'Microsoft Graph', de: 'Profil-, Gruppen-, Standort- und Kalender-Abfragen (Sichtbarkeit, People-Picker, Konto-Aktiv-Check).', en: 'Profile, group, location and calendar lookups (visibility, people picker, account-active check).' },
   ];
 
+  // ---- v29.12: Umgebungen, Deployment, Sicherung und offene Sicherheitspunkte.
+  //      Diese vier Gruppen kamen mit der Auswertung der System Security
+  //      Requirements dazu. Sie stehen hier und nicht in einem zweiten
+  //      Dokument, weil sie in dieselbe Ansicht gehören — und weil das PDF
+  //      dadurch mitwächst, ohne dass jemand daran denken muss.
+  const envItems: Item[] = [
+    { name: isDe ? 'Flows — heute' : 'Flows — today', de: 'Alle acht Flows liegen in der DEV-Umgebung von Power Platform, sind fertig und laufen von dort produktiv gegen die Produktiv-Site. Die als Entwicklung kategorisierte Umgebung ist damit faktisch die Produktionsumgebung.', en: 'All eight flows sit in the Power Platform DEV environment, are finished and run productively from there against the production site. The environment labelled development is therefore the de-facto production environment.' },
+    { name: isDe ? 'Flows — Ziel' : 'Flows — target', de: 'Überführung in die PROD-Umgebung, Betrieb unter einem Service Principal, und der DEV-Umgebung wird der Zugriff auf Produktivdaten entzogen.', en: 'Move to the PROD environment, operate under a service principal, and remove the DEV environment’s access to production data.' },
+    { name: isDe ? 'Identität der Flows' : 'Flow identity', de: 'Heute ein Benutzerkonto, kein Service Principal. Neben der Compliance ist das ein Betriebsrisiko: Die gesamte Automatisierung hängt an einer Identität.', en: 'Today a user account, not a service principal. Beyond compliance this is an operational risk: the entire automation depends on one identity.' },
+    { name: isDe ? 'Anwendung' : 'Application', de: 'Nur eine Umgebung: die Produktiv-Site. Demo-Modus und Entwurfs-Events sind fachliche Zustände, keine Umgebungen. Eine DEV-Umgebung zum Erproben neuer Funktionen ist Teil des Zielmodells.', en: 'Only one environment: the production site. Demo mode and draft events are states in the domain, not environments. A DEV environment for trying out new features is part of the target model.' },
+    { name: isDe ? 'Deployment' : 'Deployment', de: 'Ein Release ist ein Dateiaustausch: Version setzen, Release Notes schreiben, sauber bauen, Paket über den App-Katalog bereitstellen. Der Katalog ist zugleich die Freigabeliste.', en: 'A release is a file swap: set the version, write release notes, build cleanly, deploy the package via the app catalog. The catalog doubles as the allowlist.' },
+    { name: isDe ? 'Rollback' : 'Rollback', de: 'Jede Version bleibt archiviert, die vorherige ist als Rollback-Paket ausgewiesen. Ein Rückfall ist das Hochladen der älteren Datei — die Daten sind davon nicht betroffen. Neue Spalten einer zurückgenommenen Version bleiben stehen; die App ignoriert Felder, die sie nicht kennt.', en: 'Every version stays archived, the previous one is marked as the rollback package. Rolling back means uploading the older file — data is untouched. New columns from a withdrawn version remain; the app ignores fields it does not know.' },
+  ];
+
+  const backupItems: Item[] = [
+    { name: isDe ? 'Papierkorb & Versionen' : 'Recycle bin & versions', de: 'Gelöschte Elemente und ganze Subsites liegen im zweistufigen Papierkorb von SharePoint; die Listen führen Versionen. Fristen sind Tenant-Vorgabe, keine Projektentscheidung.', en: 'Deleted items and entire subsites sit in SharePoint’s two-stage recycle bin; the lists keep versions. Retention periods are tenant policy, not a project decision.' },
+    { name: isDe ? 'Weiche Löschung' : 'Soft deletion', de: 'Eine Abmeldung setzt den Status, sie löscht die Zeile nicht. Die Historie bleibt lesbar, ohne dass jemand eine Sicherung einspielen muss.', en: 'A cancellation sets the status, it does not delete the row. History stays readable without restoring a backup.' },
+    { name: isDe ? 'Anwendungsstand' : 'Application state', de: 'Jede Paketversion ist archiviert; der Code lässt sich unabhängig von den Daten zurückstellen.', en: 'Every package version is archived; the code can be rolled back independently of the data.' },
+    { name: isDe ? 'Aufbewahrung' : 'Retention', de: 'Drei Monate nach Eventende werden die Teilnehmerdaten gelöscht; die Kennzahlen wandern vorher ohne Personenbezug ins Statistik-Archiv, das Event selbst bleibt bestehen.', en: 'Three months after the event ends the attendee data is deleted; the KPIs move to the statistics archive beforehand without personal data, and the event itself remains.' },
+  ];
+
+  const openSecurityItems: Item[] = [
+    { name: isDe ? 'HTML von Organizern' : 'HTML authored by organizers', de: 'Beschreibungen und Mailvorlagen werden vor der Ausgabe bereinigt, aber über eine Ausschluss- statt eine Freigabeliste. Erfassen kann das nur ein angemeldeter Organizer, jede Änderung ist protokolliert. Empfehlung: Umstellung auf eine Freigabeliste.', en: 'Descriptions and mail templates are sanitized before output, but via a denylist rather than an allowlist. Only signed-in organizers can author them and every change is logged. Recommendation: switch to an allowlist.' },
+    { name: isDe ? 'Flow-Identität' : 'Flow identity', de: 'Benutzerkonto statt Service Principal — siehe Umgebungen. An dieser einen Umstellung hängen neun Security Requirements.', en: 'User account instead of a service principal — see environments. Nine security requirements hang on this single change.' },
+    { name: isDe ? 'Selbst-Check-in' : 'Self check-in', de: 'Nutzt je Event ein Geheimnis ausserhalb der zentralen Schlüsselverwaltung. Es entsteht heute automatisch beim ersten Öffnen der QR-Kachel — auch bei Events, die die Funktion nie nutzen.', en: 'Uses a per-event secret outside central key management. Today it is created automatically the first time the QR tile is opened — even for events that never use the feature.' },
+    { name: isDe ? 'Fremdbibliotheken' : 'Third-party libraries', de: 'Noch nicht bewertet; die Abhängigkeitsprüfung meldet hohe und kritische Funde, teils in Build-Werkzeugen, die nicht ausgeliefert werden. Diese Anforderung ist derzeit nicht erfüllt.', en: 'Not assessed yet; the dependency check reports high and critical findings, partly in build tooling that is never shipped. This requirement is currently not met.' },
+    { name: isDe ? 'Änderungsprotokoll' : 'Change log', de: 'DEX_ChangeLog ist nicht technisch nur-anfügend; Manipulation wäre über Versionshistorie und Tenant-Überwachung nachweisbar. Bewertung durch GTS ausstehend.', en: 'DEX_ChangeLog is not technically append-only; tampering would be traceable via version history and tenant auditing. Assessment by GTS pending.' },
+  ];
+
   // ---- Typische Datenflüsse (auch im PDF) ----
   const dataFlows: Item[] = [
     { name: isDe ? 'Anmeldung' : 'Registration', de: 'App reserviert atomar einen Platz (DEX_TeilnehmerCounter), schreibt das Teilnehmer-Item in die Event-Subsite, legt die Bestätigungs-Mail (DEX_Emails) und die Kalendereinladung (DEX_Outlook) an → DEX_SEND_MAIL versendet, DEX_Outlook_Einladungen lädt ein.', en: 'The app atomically reserves a seat (DEX_TeilnehmerCounter), writes the attendee item into the event subsite, queues the confirmation mail (DEX_Emails) and the calendar invite (DEX_Outlook) → DEX_SEND_MAIL sends, DEX_Outlook_Einladungen invites.' },
@@ -110,6 +142,9 @@ export default function ArchitecturePage(): React.ReactElement {
         { heading: isDe ? '3 · Automatisierung — Power-Automate-Flows' : '3 · Automation — Power Automate flows', note: isDe ? 'Jeder Flow wird durch ein neues Element in seiner Auslöser-Liste gestartet (Trigger → Aktion).' : 'Each flow is started by a new item in its trigger list (trigger → action).', items: toPdf(flows) },
         { heading: isDe ? '4 · Microsoft-365-Dienste (im Tenant)' : '4 · Microsoft 365 services (in tenant)', items: toPdf(services) },
         { heading: isDe ? 'Typische Datenflüsse' : 'Typical data flows', items: toPdf(dataFlows) },
+        { heading: isDe ? '5 · Umgebungen, Deployment und Rollback' : '5 · Environments, deployment and rollback', note: isDe ? 'Ist-Stand und Zielmodell. An der Überführung der Flows in die PROD-Umgebung samt Service Principal hängen neun Security Requirements.' : 'Current and target state. Nine security requirements depend on moving the flows into the PROD environment together with a service principal.', items: toPdf(envItems) },
+        { heading: isDe ? '6 · Sicherung und Wiederherstellung' : '6 · Backup and recovery', items: toPdf(backupItems) },
+        { heading: isDe ? '7 · Offene Sicherheitspunkte' : '7 · Open security items', note: isDe ? 'Bewusst offengelegt statt in einer Erfüllt-Meldung verschwunden. Vollständige Bewertung aller 49 Anforderungen: docs/security-requirements.html.' : 'Deliberately disclosed rather than hidden in a compliance tick. Full assessment of all 49 requirements: docs/security-requirements.html.', items: toPdf(openSecurityItems) },
       ];
       await downloadArchitecturePdf({
         isDe,
@@ -245,6 +280,39 @@ export default function ArchitecturePage(): React.ReactElement {
             <span style={{ fontSize: '0.83rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>{isDe ? f.de : f.en}</span>
           </div>
         ))}
+      </div>
+
+      {/* v29.12: Layer 5-7 — Umgebungen, Sicherung, offene Sicherheitspunkte */}
+      <div style={band}>
+        <div style={bandHead}>
+          <span style={{ color: GREEN, display: 'inline-flex' }}><Columns size={20} /></span>
+          <span style={bandTitle}>{isDe ? '5 · Umgebungen, Deployment und Rollback' : '5 · Environments, deployment and rollback'}</span>
+          <span style={bandSub}>{isDe ? 'Ist-Stand und Zielmodell' : 'current and target state'}</span>
+        </div>
+        <div style={grid}>{envItems.map(renderBox)}</div>
+      </div>
+
+      <div style={band}>
+        <div style={bandHead}>
+          <span style={{ color: GREEN, display: 'inline-flex' }}><FileText size={20} /></span>
+          <span style={bandTitle}>{isDe ? '6 · Sicherung und Wiederherstellung' : '6 · Backup and recovery'}</span>
+          <span style={bandSub}>{isDe ? 'liegt bei SharePoint Online' : 'provided by SharePoint Online'}</span>
+        </div>
+        <div style={grid}>{backupItems.map(renderBox)}</div>
+      </div>
+
+      <div style={{ ...band, borderColor: 'var(--dex-orange, #ed8b00)' }}>
+        <div style={{ ...bandHead, background: 'rgba(237,139,0,0.08)', borderBottomColor: 'var(--dex-orange, #ed8b00)' }}>
+          <span style={{ color: 'var(--dex-orange-dark, #b35a00)', display: 'inline-flex' }}><Settings size={20} /></span>
+          <span style={{ ...bandTitle, color: 'var(--dex-orange-dark, #b35a00)' }}>{isDe ? '7 · Offene Sicherheitspunkte' : '7 · Open security items'}</span>
+          <span style={bandSub}>{isDe ? 'offengelegt, mit Wirkung und Abhilfe' : 'disclosed, with impact and remediation'}</span>
+        </div>
+        <div style={grid}>{openSecurityItems.map(renderBox)}</div>
+        <div style={{ padding: '0 14px 14px', fontSize: '0.8rem', color: 'var(--dex-gray-600)', lineHeight: 1.5 }}>
+          {isDe
+            ? 'Die vollständige Bewertung aller 49 System Security Requirements — mit Einordnung, Begründung für nicht Zutreffendes und den offenen Punkten — liegt in der Projektdokumentation unter docs/security-requirements.html, die Entscheidungsvorlage dazu unter docs/security-entscheidungen.html.'
+            : 'The full assessment of all 49 system security requirements — with classification, rationale for what does not apply and the open items — is in the project documentation at docs/security-requirements.html, the decision paper at docs/security-entscheidungen.html.'}
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>

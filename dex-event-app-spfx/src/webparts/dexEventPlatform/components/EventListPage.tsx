@@ -580,9 +580,16 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
                 </div>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', width: isMobile ? '100%' : undefined }}>
-                <span style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
-                  {event.currentParticipants}/{event.maxParticipants || '∞'} Teilnehmer
-                </span>
+                {/* v29.13: Bei Events, die ausschließlich aus Sub-Events
+                    bestehen, ist das Hauptevent nicht buchbar — „0/∞
+                    Teilnehmer" beschreibt dann nichts, was es gibt. Die
+                    Kapazität liegt je Sub-Event und steht auf der
+                    Anmeldeseite. Gleiche Regel wie auf der Kachel. */}
+                {!event.subEventsOnlyMode && (
+                  <span style={{ fontSize: '0.85rem', color: 'var(--dex-gray-600)' }}>
+                    {event.currentParticipants}/{event.maxParticipants || '∞'} Teilnehmer
+                  </span>
+                )}
                 {isReg && (
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px', borderRadius: 12, fontSize: '0.75rem', fontWeight: 700, background: 'rgba(134,188,37,0.22)', color: 'var(--dex-green-dark)' }}>
                     <Icon iconName="CompletedSolid" style={{ fontSize: 13 }} /> Angemeldet
