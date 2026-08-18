@@ -184,12 +184,16 @@ export function ticketsSection(locale: 'de' | 'en'): ManualSection {
           },
           {
             number: 6,
-            title: isDe ? 'Tägliche Erinnerung an offene Tickets' : 'Daily reminder for open tickets',
+            title: isDe ? 'Erinnerung an offene Tickets — automatisch und auf Knopfdruck' : 'Reminder for open tickets — automatic and on demand',
             description: (
               <>
                 {isDe
                   ? 'Bleiben Fragen an das Support-Team („Power-User“) zu lange liegen, meldet sich das System von selbst: Sobald eine Frage seit mindestens zwei Werktagen unbeantwortet ist, geht einmal pro Tag eine Sammel-Erinnerung an alle Power-User (bzw. ersatzweise an die Admins). Die Mail listet die überfälligen Tickets mit Frage, Absender:in und Alter auf und enthält einen Direkt-Link in die Ticket-Übersicht. Die Erinnerung wird pro Tag nur einmal verschickt, egal wie viele Power-User die App öffnen.'
                   : 'If questions to the support team (the „power users“) sit too long, the system speaks up on its own: as soon as a question has been unanswered for at least two working days, a single collected reminder goes out once per day to all power users (or to the admins as a fallback). The email lists the overdue tickets with their question, sender and age, and includes a direct link into the ticket overview. The reminder is sent only once per day, no matter how many power users open the app.'}
+                <br /><br />
+                {isDe
+                  ? 'Warten willst du darauf nicht immer. Über der Ticket-Liste steht deshalb der Knopf „Erinnerung an die Power-User“ — er schickt dieselbe Mail sofort, mit allen noch unbeantworteten Tickets, unabhängig davon, wie alt sie sind. Vor dem Senden zeigt eine Rückfrage, wer sie bekommt; du selbst bist nicht dabei, denn du bist ja gerade derjenige, der erinnert. Für den restlichen Tag übernimmt der Knopf die Rolle der Automatik — es kommt also keine zweite Erinnerung hinterher.'
+                  : 'You will not always want to wait for that. Above the ticket list there is a button „Remind the power users“ — it sends the same email straight away, listing every still unanswered ticket regardless of its age. A confirmation shows who will receive it before it goes out; you are not on that list, since you are the one doing the reminding. For the rest of the day the button takes over from the automatic reminder, so no second one follows.'}
               </>
             ),
             tip: isDe
