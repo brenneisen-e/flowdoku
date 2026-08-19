@@ -887,6 +887,41 @@
       visibility: hidden;
       pointer-events: none;
     }
+    /* v29.22: Drei Zustände im Termin-Kalender. Blau = neuer Termin (wird
+       beim Speichern angelegt), Orange = abgewählter GESPEICHERTER Termin
+       (wird beim Speichern gelöscht, Klick holt ihn zurück). Grün bleibt
+       „gespeichert" (dex-day-picked oben). */
+    .dex-termin-calendar .react-datepicker__day.dex-day-new {
+      background: var(--dex-blue, #0076a8) !important;
+      color: #fff !important;
+      font-weight: 700 !important;
+    }
+    .dex-termin-calendar .react-datepicker__day.dex-day-new:hover {
+      background: #005b82 !important;
+      color: #fff !important;
+    }
+    .dex-termin-calendar .react-datepicker__day.dex-day-removed {
+      background: var(--dex-orange, #ed8b00) !important;
+      color: #fff !important;
+      font-weight: 700 !important;
+      text-decoration: line-through;
+    }
+    .dex-termin-calendar .react-datepicker__day.dex-day-removed:hover {
+      background: #c97600 !important;
+      color: #fff !important;
+    }
+    /* v29.22: Der DatePicker markiert den zuletzt geklickten Tag als
+       „keyboard-selected", und die globale Regel oben färbt genau diesen
+       Zustand DUNKELGRÜN — ein eben abgewählter Tag sah dadurch aus, als
+       wäre er noch an („ist das ein anderes Grün?"). Im Termin-Kalender ist
+       ein Klick eine Aktion, keine Auswahl: Markierung neutralisieren; die
+       Zustandsfarben oben (picked/new/removed) gewinnen. */
+    .dex-termin-calendar .react-datepicker__day--keyboard-selected:not(.dex-day-picked):not(.dex-day-new):not(.dex-day-removed),
+    .dex-termin-calendar .react-datepicker__day--selected:not(.dex-day-picked):not(.dex-day-new):not(.dex-day-removed) {
+      background: transparent !important;
+      color: var(--dex-gray-800, #333) !important;
+      font-weight: 400 !important;
+    }
     /* Heute UND ausgewählt/keyboard-selected (grüner Kreis): Schrift weiß,
        sonst überschreibt die --today-Regel die weiße Schrift und „heute" wäre
        grün auf grün = unsichtbar. */

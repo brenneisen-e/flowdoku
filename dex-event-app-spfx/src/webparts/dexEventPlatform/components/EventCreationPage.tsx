@@ -732,6 +732,21 @@ export default function EventCreationPage(): React.ReactElement {
   // sie über einen Kalender an, die Anmeldeseite zeigt sie als Kalender.
   // Piggyback _subEventCalendar.
   const [subEventCalendar, setSubEventCalendar] = React.useState<boolean>(!!(editEvent && editEvent.subEventCalendar));
+  // v29.22: Zum Löschen vorgemerkte, GESPEICHERTE Termine (Drafts mit dbId,
+  // per Kalender-Klick oder X abgewählt). Sie bleiben hier geparkt statt
+  // einfach zu verschwinden: Der Kalender zeigt sie ORANGE („wird beim
+  // Speichern gelöscht"), ein erneuter Klick holt den Draft mitsamt allen
+  // Einstellungen zurück. Vorher war ein abgewählter gespeicherter Tag
+  // optisch nicht von „nie dagewesen" zu unterscheiden — und durch die
+  // keyboard-selected-Färbung des DatePickers sah er sogar weiter grün aus,
+  // als hätte das Abwählen nicht funktioniert. Die Speicher-Mechanik ändert
+  // sich nicht: Nicht in subEvents = nicht in keptDbIds = wird beim Save
+  // (nach der bestehenden Rückfrage) gelöscht.
+  const [removedSavedSubs, setRemovedSavedSubs] = React.useState<SubEventDraft[]>([]);
+  // v29.22: Die Terminliste unter dem Kalender ist standardmäßig EINGEKLAPPT
+  // — bei 20 Terminen war sie eine Bildschirmseite Wiederholung dessen, was
+  // der Kalender schon zeigt. Aufklappen nur bei Bedarf (Bearbeiten/Details).
+  const [terminListOpen, setTerminListOpen] = React.useState(false);
   // v28.97: Genau EIN Sub-Event waehlbar statt beliebig vieler.
   const [subEventSingleChoice, setSubEventSingleChoice] = React.useState<boolean>(!!(editEvent && editEvent.subEventSingleChoice));
   // v28.10: Seitenverhältnis des Wizard-Bilds — die Banner-Option ist nur für
@@ -2928,6 +2943,7 @@ export default function EventCreationPage(): React.ReactElement {
     setConfirmDialogMode('summary');
     setConfirmDialogText('');
     setSubEvents([]);
+    setRemovedSavedSubs([]);
     setCustomFields([]);
     setAgenda([]);
     setTransferTimes([]);
@@ -4781,6 +4797,10 @@ export default function EventCreationPage(): React.ReactElement {
           });
         }
         catch (err) { console.warn('[DEX] Sub-Events persistieren fehlgeschlagen:', err); }
+        // v29.22: Die orange Vormerkliste ist nach dem Save Geschichte — die
+        // Termine wurden (nach Rückfrage) gelöscht; stehen gebliebene Marker
+        // würden beim nächsten Öffnen Geister anzeigen.
+        setRemovedSavedSubs([]);
 
         setProgress(82);
         setProgressLabel(isDe ? 'Teilnehmerlisten-Spalten werden geprüft...' : 'Verifying participant list columns...');
@@ -7105,6 +7125,26 @@ export default function EventCreationPage(): React.ReactElement {
     // unterbleibt nur die Korrektur — scopeSub sichert den Index ohnehin ab.
     const closureIdx = subEvents.findIndex(se => dayKeyOfSub(se) === key);
     if (closureIdx >= 0 && activeScopeIdx === closureIdx + 1) setScope(0);
+    // v29.22: Abwahl eines GESPEICHERTEN Termins → in removedSavedSubs parken
+    // (Orange im Kalender, per Klick rückholbar). Ein ORANGE-Tag → Draft aus
+    // dem Park zurückholen statt einen neuen anzulegen. Beide Übergänge sind
+    // über die Guards in den Updatern idempotent — schnelle Doppelklicks auf
+    // veraltetem Render-Stand (v29.17-Falle) können weder doppelt parken noch
+    // doppelt anlegen.
+    const closureExisting = closureIdx >= 0 ? subEvents[closureIdx] : undefined;
+    if (closureExisting) {
+      if (closureExisting.dbId) {
+        setRemovedSavedSubs(prev => prev.some(x => x.id === closureExisting.id) ? prev : [...prev, closureExisting]);
+      }
+      setSubEvents(prev => prev.filter(x => x.id !== closureExisting.id));
+      return;
+    }
+    const stashed = removedSavedSubs.find(x => dayKeyOfSub(x) === key);
+    if (stashed) {
+      setRemovedSavedSubs(prev => prev.filter(x => x.id !== stashed.id));
+      setSubEvents(prev => prev.some(x => x.id === stashed.id) ? prev : [...prev, stashed]);
+      return;
+    }
     setSubEvents(prev => {
       const existingIdx = prev.findIndex(se => dayKeyOfSub(se) === key);
       if (existingIdx >= 0) {
@@ -7114,8 +7154,8 @@ export default function EventCreationPage(): React.ReactElement {
         // schon an der richtigen Stelle: beim SPEICHERN listet
         // handleSubmitInner alle Sub-Events auf, die dabei endgültig gelöscht
         // würden (toDelete), und fragt einmal nach. Bis dahin ist nichts
-        // passiert.
-        return prev.filter((_, k) => k !== existingIdx);
+        // passiert. (Stale-Doppelklick: der Tag wurde eben schon behandelt.)
+        return prev;
       }
       // v28.92: Der Termin bekommt die UHRZEIT des Hauptevents, gelegt auf
       // diesen Tag — läuft das Event von 9 bis 17 Uhr, gilt das auch für den
@@ -7166,6 +7206,11 @@ export default function EventCreationPage(): React.ReactElement {
         // zeigt er danach auf ein anderes Sub-Event — zurück auf die Klammer,
         // das ist die einzige Ebene, die es sicher noch gibt.
         setScope(0);
+        // v29.22: Gespeicherte Termine parken — der Kalender zeigt sie orange
+        // als „wird beim Speichern gelöscht" und macht sie rückholbar.
+        if (se.dbId) {
+          setRemovedSavedSubs(prev => prev.some(x => x.id === se.id) ? prev : [...prev, se]);
+        }
         setSubEvents(prev => prev.filter(x => x.id !== se.id));
       }
     })().catch(() => { /* */ });
@@ -10944,26 +10989,52 @@ export default function EventCreationPage(): React.ReactElement {
                     </span>
                   </label>
                   {subEventCalendar && (() => {
-                    const marked = subEvents
-                      .map(se => dayKeyOfSub(se))
-                      .filter(Boolean)
-                      .map(k => {
-                        const [y, m, d] = k.split('-').map(n => parseInt(n, 10));
-                        return new Date(y, m - 1, d);
-                      });
+                    // v29.22: DREI Zustände, drei Farben. Vorher war alles
+                    // ein Grün — und ein abgewählter Tag bekam obendrein die
+                    // keyboard-selected-Färbung des DatePickers (dunkelgrün),
+                    // sah also aus, als wäre er noch an.
+                    const keyToDate = (k: string): Date => {
+                      const [y, m, d] = k.split('-').map(n => parseInt(n, 10));
+                      return new Date(y, m - 1, d);
+                    };
+                    const savedDays = subEvents.filter(se => se.dbId).map(se => dayKeyOfSub(se)).filter(Boolean).map(keyToDate);
+                    const newDays = subEvents.filter(se => !se.dbId).map(se => dayKeyOfSub(se)).filter(Boolean).map(keyToDate);
+                    const removedDays = removedSavedSubs.map(se => dayKeyOfSub(se)).filter(Boolean).map(keyToDate);
+                    const marked = [...savedDays, ...newDays];
                     const openTo = startDate ? new Date(startDate) : undefined;
                     return (
                       <div style={{ marginTop: 12 }}>
                         <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', margin: '0 0 8px' }}>
                           {isDe
-                            ? <>Klick auf einen Tag legt ihn als Termin an, ein erneuter Klick nimmt ihn zurück. Angelegte Tage sind <strong>grün</strong> markiert. Titel und Zeiten werden gesetzt — jeder Tag übernimmt die <strong>Uhrzeit des Hauptevents</strong> (ohne Uhrzeit dort: ganztägig). Das ist nur die Vorbelegung: In der <strong>Liste unter dem Kalender</strong> öffnest du einen Termin mit &bdquo;Bearbeiten&ldquo; und änderst <strong>Start und Ende genau dort</strong> — ebenso Titel, Beschreibung und Bild; Plätze und Frist in Schritt 4.</>
-                            : <>Clicking a day creates it as a date, clicking again removes it. Created days are marked <strong>green</strong>. Title and times are filled in — each day takes the <strong>main event&rsquo;s time of day</strong> (all-day if none is set there). That is only the starting point: in the <strong>list below the calendar</strong> open a date via &ldquo;Edit&rdquo; and change <strong>its start and end right there</strong> — as well as title, description and image; seats and deadline in step 4.</>}
+                            ? <>Klick auf einen Tag legt ihn als Termin an, ein erneuter Klick nimmt ihn zurück. Titel und Zeiten werden gesetzt — jeder Tag übernimmt die <strong>Uhrzeit des Hauptevents</strong> (ohne Uhrzeit dort: ganztägig). Das ist nur die Vorbelegung: In der <strong>Liste unter dem Kalender</strong> öffnest du einen Termin mit &bdquo;Bearbeiten&ldquo; und änderst <strong>Start und Ende genau dort</strong> — ebenso Titel, Beschreibung und Bild; Plätze und Frist in Schritt 4.</>
+                            : <>Clicking a day creates it as a date, clicking again removes it. Title and times are filled in — each day takes the <strong>main event&rsquo;s time of day</strong> (all-day if none is set there). That is only the starting point: in the <strong>list below the calendar</strong> open a date via &ldquo;Edit&rdquo; and change <strong>its start and end right there</strong> — as well as title, description and image; seats and deadline in step 4.</>}
                         </p>
+                        {/* v29.22: Legende — drei Farben, drei Zustände. Der
+                            Organizer muss VOR dem Speichern sehen, was das
+                            Speichern tun wird. */}
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 16px', margin: '0 0 8px', fontSize: '0.78rem', color: 'var(--dex-gray-700)' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--dex-green, #86bc25)', flexShrink: 0 }} />
+                            {isDe ? 'gespeicherter Termin' : 'saved date'}
+                          </span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--dex-blue, #0076a8)', flexShrink: 0 }} />
+                            {isDe ? 'neu — wird beim Speichern angelegt' : 'new — created on save'}
+                          </span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ width: 12, height: 12, borderRadius: '50%', background: 'var(--dex-orange, #ed8b00)', flexShrink: 0 }} />
+                            {isDe ? 'abgewählt — wird beim Speichern endgültig gelöscht (samt Teilnehmerliste); erneut anklicken stellt ihn wieder her' : 'deselected — permanently deleted on save (incl. attendee list); click again to restore'}
+                          </span>
+                        </div>
                         <DatePicker
                           inline
                           selected={null}
                           onChange={toggleDaySubEvent}
-                          highlightDates={[{ 'dex-day-picked': marked }]}
+                          highlightDates={[
+                            { 'dex-day-picked': savedDays },
+                            { 'dex-day-new': newDays },
+                            { 'dex-day-removed': removedDays },
+                          ]}
                           openToDate={openTo}
                           locale="de"
                           // v29.17: dex-termin-calendar blendet die Nachbarmonats-
@@ -10974,13 +11045,31 @@ export default function EventCreationPage(): React.ReactElement {
                           // einen Oktober-Tag will, blättert mit dem Pfeil.
                           calendarClassName="dex-datepicker-calendar dex-termin-calendar"
                         />
-                        <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', margin: '10px 0 0' }}>
-                          {marked.length === 0
-                            ? (isDe ? 'Noch kein Termin angelegt.' : 'No date created yet.')
-                            : (isDe
-                              ? `${marked.length} ${marked.length === 1 ? 'Termin' : 'Termine'} angelegt.`
-                              : `${marked.length} ${marked.length === 1 ? 'date' : 'dates'} created.`)}
-                        </p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', margin: '10px 0 0' }}>
+                          <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', margin: 0 }}>
+                            {marked.length === 0 && removedDays.length === 0
+                              ? (isDe ? 'Noch kein Termin angelegt.' : 'No date created yet.')
+                              : (isDe
+                                ? `${marked.length} ${marked.length === 1 ? 'Termin' : 'Termine'} angelegt${removedDays.length > 0 ? ` · ${removedDays.length} zum Löschen vorgemerkt` : ''}.`
+                                : `${marked.length} ${marked.length === 1 ? 'date' : 'dates'} created${removedDays.length > 0 ? ` · ${removedDays.length} marked for deletion` : ''}.`)}
+                          </p>
+                          {(marked.length > 0 || removedDays.length > 0) && (
+                            <button
+                              type="button"
+                              onClick={() => setTerminListOpen(v => !v)}
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 5,
+                                background: 'transparent', border: 'none', cursor: 'pointer',
+                                fontFamily: 'inherit', color: 'var(--dex-green-dark, #4a7c1f)',
+                                fontWeight: 700, fontSize: '0.8rem', padding: 0,
+                              }}
+                            >
+                              {terminListOpen
+                                ? (isDe ? '▾ Liste einklappen' : '▾ Collapse list')
+                                : (isDe ? '▸ Liste anzeigen' : '▸ Show list')}
+                            </button>
+                          )}
+                        </div>
                         {/* v29.13: Die angelegten Termine stehen hier als Liste.
                             v28.96 hatte sie entfernt, weil sie „dieselben Tage
                             noch einmal" zeigt — das stimmt für das ANLEGEN, aber
@@ -10991,12 +11080,16 @@ export default function EventCreationPage(): React.ReactElement {
                             führt jede Zeile direkt auf ihren Termin — Titel,
                             Zeiten, Beschreibung und Bild stehen dann oben in den
                             Feldern, Plätze und Frist in Schritt 4. */}
-                        {(() => {
+                        {terminListOpen && (() => {
                           const rows = subEvents
                             .map((se, idx) => ({ se, idx, key: dayKeyOfSub(se) }))
                             .filter(r => !!r.key)
                             .sort((a, b) => a.key.localeCompare(b.key));
-                          if (rows.length === 0) return null;
+                          const removedRows = removedSavedSubs
+                            .map(se => ({ se, key: dayKeyOfSub(se) }))
+                            .filter(r => !!r.key)
+                            .sort((a, b) => a.key.localeCompare(b.key));
+                          if (rows.length === 0 && removedRows.length === 0) return null;
                           const timeOfIso = (v: string): string => {
                             const local = isoToLocal(v || '');
                             const tt = (local || '').slice(11, 16);
@@ -11058,6 +11151,42 @@ export default function EventCreationPage(): React.ReactElement {
                                   </div>
                                 );
                               })}
+                              {/* v29.22: zum Löschen vorgemerkte Termine —
+                                  orange, mit Rückholknopf. */}
+                              {removedRows.map(({ se }) => (
+                                <div
+                                  key={se.id}
+                                  style={{
+                                    display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                                    padding: '8px 10px', borderRadius: 8,
+                                    background: 'rgba(237,139,0,0.07)',
+                                    border: '1px solid var(--dex-orange, #ed8b00)',
+                                    borderLeft: '3px solid var(--dex-orange, #ed8b00)',
+                                  }}
+                                >
+                                  <div style={{ flex: 1, minWidth: 160 }}>
+                                    <div style={{ fontSize: '0.86rem', fontWeight: 700, color: 'var(--dex-gray-800, #333)', textDecoration: 'line-through' }}>
+                                      {shortSubEventTitle(se.title, title) || (isDe ? 'Ohne Titel' : 'Untitled')}
+                                    </div>
+                                    <div style={{ fontSize: '0.74rem', color: 'var(--dex-orange, #b35a00)', marginTop: 2, fontWeight: 600 }}>
+                                      {isDe
+                                        ? 'Wird beim Speichern endgültig gelöscht — samt Teilnehmerliste und Anmeldungen.'
+                                        : 'Will be permanently deleted on save — including its attendee list and registrations.'}
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    className="btn btn-secondary"
+                                    style={{ fontSize: '0.78rem', padding: '5px 12px' }}
+                                    onClick={() => {
+                                      setRemovedSavedSubs(prev => prev.filter(x => x.id !== se.id));
+                                      setSubEvents(prev => prev.some(x => x.id === se.id) ? prev : [...prev, se]);
+                                    }}
+                                  >
+                                    {isDe ? 'Wiederherstellen' : 'Restore'}
+                                  </button>
+                                </div>
+                              ))}
                             </div>
                           );
                         })()}
