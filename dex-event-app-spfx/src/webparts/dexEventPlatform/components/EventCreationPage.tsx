@@ -4041,7 +4041,14 @@ export default function EventCreationPage(): React.ReactElement {
     // Bestehende URL beibehalten (z.B. bei Edit ohne neues Bild).
     setProgress(5);
     setProgressLabel('Event wird vorbereitet...');
-    const imageUrl = eventImageUrl;
+    // v29.18: Den Anzeige-Cache-Buster (`?v=<timestamp>`, seit v26.17 in
+    // EventContext.buildDisplayImageUrl angehängt) VOR dem Zurückschreiben
+    // strippen. `eventImageUrl` kommt aus `editEvent.imageUrl` und trägt ihn
+    // mit; ohne Strip schrieb jeder Edit-Save die Anzeige-URL in die Spalte,
+    // und der nächste Load hängte ein weiteres `&v=` an — die gespeicherte
+    // URL wuchs mit jedem Speichern. Attachment-URLs haben nie einen eigenen
+    // Query-Teil, das Kappen an `?` ist deshalb verlustfrei.
+    const imageUrl = (eventImageUrl || '').split('?')[0];
     setProgress(15);
 
     if (isEditMode && selectedEventId) {
@@ -4464,6 +4471,75 @@ export default function EventCreationPage(): React.ReactElement {
             void notifyAdminsExternalAudienceAccess(title, addedNonDe, `${currentUser.firstName} ${currentUser.surname}`.trim()).catch(() => { /* */ });
           }
         } catch { /* darf den Save nie stören */ }
+
+        // v29.18: Bild-Upload VOR den Sub-Events — wie im Create-Pfad (v29.17).
+        // Der Block stand bei Fortschritt 90, HINTER persistSubEventsForParent:
+        // Wer im Bearbeiten den Kalender aktiviert und 20+ Tage anklickt, löst
+        // dort ebenso viele Subsite-Anlagen aus; der Upload lief danach in die
+        // gedrosselte SharePoint-Instanz und scheiterte — die Meldung dazu war
+        // eine kleine rote Zeile in Schritt 1, verdeckt vom Fortschritts-
+        // Fenster bei 95 %. „Der Edit-Pfad war abgesichert" stimmte nur
+        // strukturell (eigener try/catch), nicht praktisch: Er hing an
+        // derselben Drossel und scheiterte genauso still.
+        if (imageFile) {
+          try {
+            setProgressLabel(isDe ? 'Bild wird hochgeladen...' : 'Uploading image...');
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const ctx = (window as any).__dexSpfxContext;
+            if (ctx) {
+              const svc = new EventService(ctx);
+              const compressed = await compressImage(imageFile);
+              const uploadedUrl = await svc.uploadEventImageAsAttachment(Number(selectedEventId), compressed);
+              if (uploadedUrl) {
+                await svc.updateEventImageUrl(Number(selectedEventId), uploadedUrl);
+                // v28.11: Querformat-Original als zweites Attachment sichern,
+                // wenn der Zuschnitt es rund/quadratisch gemacht hat — die
+                // Event-Liste zeigt dann das Original. Sonst evtl. vorhandenes
+                // Alt-Original aufräumen. (patchEventOverridesKey liest den
+                // frisch von updateEvent geschriebenen Overrides-Stand und
+                // patcht nur den einen Schlüssel — Reihenfolge passt.)
+                try {
+                  if (imageOrigFile && (imageOrigAspect || 0) >= 1.2 && wizardImgAspect != null && wizardImgAspect < 1.2) {
+                    const origCompressed = await compressImage(imageOrigFile, 1600, 0.85);
+                    const origUrl = await svc.uploadEventOrigImageAsAttachment(Number(selectedEventId), origCompressed);
+                    if (origUrl) await svc.patchEventOverridesKey(Number(selectedEventId), '_imageOrigUrl', origUrl);
+                  } else if (imageOrigFile) {
+                    // v28.12: Nur aufräumen, wenn wir die QUELLE des neuen
+                    // Bilds kennen (frischer Upload/Capture) und sie kein
+                    // Original braucht. Ohne imageOrigFile (Re-Crop eines
+                    // bereits runden Bestands) bleibt ein gespeichertes
+                    // Original unangetastet.
+                    await svc.deleteEventOrigImageAttachment(Number(selectedEventId));
+                    await svc.patchEventOverridesKey(Number(selectedEventId), '_imageOrigUrl', '');
+                  }
+                } catch (origErr) { console.warn('[DEX] Original-Bild speichern fehlgeschlagen:', origErr); }
+                // Events neu laden, damit die UI das frische Bild ohne Hard-Refresh
+                // anzeigt (updateEvent oben hat schon geladen, aber da war
+                // EventImageUrl noch der alte Wert). v29.18: In einem EIGENEN
+                // try — ein Refresh-Fehler ist kein Upload-Fehler; vorher
+                // meldete er „Bild-Upload fehlgeschlagen", obwohl das Bild
+                // längst gespeichert war.
+                try { await refreshEvents(); }
+                catch (rErr) { console.warn('[DEX] Refresh nach Bild-Upload fehlgeschlagen (Bild ist gespeichert):', rErr); }
+              } else {
+                setImageUploadError('Bild-Upload fehlgeschlagen.');
+                showAlert(isDe
+                  ? 'Das Event-Bild konnte nicht hochgeladen werden. Alle übrigen Änderungen werden gespeichert — bitte lade das Bild danach in Schritt 1 erneut hoch.'
+                  : 'The event image could not be uploaded. All other changes are being saved — please upload the image again in step 1 afterwards.', { variant: 'error' });
+              }
+            }
+          } catch (err) {
+            console.warn('[DEX] Bild-Upload fehlgeschlagen', err);
+            setImageUploadError('Bild-Upload fehlgeschlagen.');
+            // v29.18: Sichtbar melden statt nur der roten Zeile in Schritt 1 —
+            // die verdeckt das Fortschritts-Fenster, und der Save endet mit
+            // „Änderungen gespeichert!", obwohl das Bild fehlt.
+            showAlert(isDe
+              ? 'Das Event-Bild konnte nicht hochgeladen werden. Alle übrigen Änderungen werden gespeichert — bitte lade das Bild danach in Schritt 1 erneut hoch.'
+              : 'The event image could not be uploaded. All other changes are being saved — please upload the image again in step 1 afterwards.', { variant: 'error' });
+          }
+        }
+
         setProgress(65);
         setProgressLabel(isDe ? 'Berechtigungen werden gesetzt...' : 'Setting permissions...');
         // v9.35: Berechtigungs-Sync — beim Edit können neue Co-Organizer hinzugekommen
@@ -4624,51 +4700,6 @@ export default function EventCreationPage(): React.ReactElement {
           }
         } catch (err) { console.warn('[DEX] Auto-fix Teilnehmer-Columns fehlgeschlagen:', err); }
 
-        setProgress(90);
-        // Bild als Attachment hochladen (falls neues Bild gewählt wurde)
-        if (imageFile) {
-          try {
-            setProgressLabel(isDe ? 'Bild wird hochgeladen...' : 'Uploading image...');
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const ctx = (window as any).__dexSpfxContext;
-            if (ctx) {
-              const svc = new EventService(ctx);
-              const compressed = await compressImage(imageFile);
-              const uploadedUrl = await svc.uploadEventImageAsAttachment(Number(selectedEventId), compressed);
-              if (uploadedUrl) {
-                await svc.updateEventImageUrl(Number(selectedEventId), uploadedUrl);
-                // v28.11: Querformat-Original als zweites Attachment sichern,
-                // wenn der Zuschnitt es rund/quadratisch gemacht hat — die
-                // Event-Liste zeigt dann das Original. Sonst evtl. vorhandenes
-                // Alt-Original aufräumen.
-                try {
-                  if (imageOrigFile && (imageOrigAspect || 0) >= 1.2 && wizardImgAspect != null && wizardImgAspect < 1.2) {
-                    const origCompressed = await compressImage(imageOrigFile, 1600, 0.85);
-                    const origUrl = await svc.uploadEventOrigImageAsAttachment(Number(selectedEventId), origCompressed);
-                    if (origUrl) await svc.patchEventOverridesKey(Number(selectedEventId), '_imageOrigUrl', origUrl);
-                  } else if (imageOrigFile) {
-                    // v28.12: Nur aufräumen, wenn wir die QUELLE des neuen
-                    // Bilds kennen (frischer Upload/Capture) und sie kein
-                    // Original braucht. Ohne imageOrigFile (Re-Crop eines
-                    // bereits runden Bestands) bleibt ein gespeichertes
-                    // Original unangetastet.
-                    await svc.deleteEventOrigImageAttachment(Number(selectedEventId));
-                    await svc.patchEventOverridesKey(Number(selectedEventId), '_imageOrigUrl', '');
-                  }
-                } catch (origErr) { console.warn('[DEX] Original-Bild speichern fehlgeschlagen:', origErr); }
-                // Events neu laden, damit die UI das frische Bild ohne Hard-Refresh anzeigt
-                // (updateEvent oben hat schon einmal geladen, aber zu dem Zeitpunkt war
-                // EventImageUrl noch der alte Wert)
-                await refreshEvents();
-              } else {
-                setImageUploadError('Bild-Upload fehlgeschlagen.');
-              }
-            }
-          } catch (err) {
-            console.warn('[DEX] Bild-Upload fehlgeschlagen', err);
-            setImageUploadError('Bild-Upload fehlgeschlagen.');
-          }
-        }
         setProgress(95);
         setProgressLabel(isDe ? 'Outlook wird aktualisiert...' : 'Updating Outlook...');
         // v11.63: Outlook-Updates pro Event entscheiden — der Organizer hat
