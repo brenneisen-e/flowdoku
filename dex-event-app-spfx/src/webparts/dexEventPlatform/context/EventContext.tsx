@@ -671,6 +671,9 @@ export interface CreateEventInput {
   endDate: string;
   registrationDeadline: string;
   lastDeregisterDate: string;
+  /** v29.19: Auto-Aktivierung (UTC-ISO) — wurde beim Anlegen bisher nicht
+   *  persistiert, obwohl der Wizard das Feld anbietet. */
+  activeFrom?: string;
   maxParticipants: number;
   waitlistEnabled: boolean;
   mandatoryRegistration?: boolean; // v24.64: Pflicht-Sub-Event

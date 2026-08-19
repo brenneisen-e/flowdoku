@@ -857,8 +857,13 @@ export default function EventCreationPage(): React.ReactElement {
   const [notifyOrgRegisterMode, setNotifyOrgRegisterMode] = React.useState<'never' | 'always' | 'fromDate'>(
     editEvent ? (editEvent.notifyOrgRegisterMode || 'never') : 'never'
   );
+  // v29.19: Wie alle anderen Datumsfelder über isoToLocal laden — der rohe
+  // SP-Wert ist UTC-ISO mit „Z", und berlinLocalToUtcIso beim Save hängt ein
+  // weiteres „Z" an → ungültig → es wurde '' in die Spalte geschrieben. Wer
+  // das Feld beim Edit nicht neu anfasste, verlor sein „BCC ab"-Datum still;
+  // der Modus blieb auf FromDate stehen und die Organizer-Kopie feuerte nie.
   const [notifyOrgRegisterFromDate, setNotifyOrgRegisterFromDate] = React.useState<string>(
-    editEvent ? (editEvent.notifyOrgRegisterFromDate || '') : ''
+    editEvent && editEvent.notifyOrgRegisterFromDate ? isoToLocal(editEvent.notifyOrgRegisterFromDate) : ''
   );
   const [notifyOrgCancelMode, setNotifyOrgCancelMode] = React.useState<'never' | 'always' | 'afterDeadline'>(
     // v10.17+: Default für neue Events ist 'afterDeadline' (Erst nach der
@@ -3246,7 +3251,19 @@ export default function EventCreationPage(): React.ReactElement {
     // noch nicht propagiert, weil flushActiveCommTabToState() per setState
     // erst async wirkt. Der Ref hält synchron die letzten Tab-Werte.
     for (const draft of subEventsRef.current) {
-      if (!draft.title || !draft.title.trim()) continue; // leere Drafts ignorieren
+      if (!draft.title || !draft.title.trim()) {
+        // v29.19: Leere Drafts werden nicht gespeichert — aber ein BESTEHENDES
+        // Sub-Event (dbId), dessen Titel gerade nur geleert ist, gilt trotzdem
+        // als „behalten". Vorher fiel es in die Lücke zwischen zwei
+        // „behalten"-Definitionen: Der Warn-Dialog in handleSubmitInner zählt
+        // über dbIds (Draft existiert → kein Dialog), die Aufräum-Schleife
+        // unten über keptDbIds (nicht drin → deleteEvent) — das Sub-Event
+        // wurde samt Subsite und Anmeldungen OHNE Rückfrage gelöscht, nur
+        // weil jemand den Titel zum Neutippen geleert und dann gespeichert
+        // hat. Löschen geht weiterhin — über das X an der Karte, mit Dialog.
+        if (draft.dbId) keptDbIds.add(draft.dbId);
+        continue;
+      }
       // v11.57: Pro-Sub-Event Kommunikations-Felder. Wenn der Organizer für
       // den Sub-Event eigene Werte in Step 5 gesetzt hat, verwenden wir die;
       // sonst fallback auf die Top-Level-Werte (Backward-Compat für
@@ -4290,6 +4307,24 @@ export default function EventCreationPage(): React.ReactElement {
       // v28.2: Die frühere ||-Monsterkette überschritt mit dem neuen
       // _subEventsDisabled-Config TypeScripts Union-Komplexitätslimit
       // (TS2590) — jetzt als typisiertes Array + .some().
+      // v29.19: Die Hotel-Planung WEITERTRAGEN — sie wird beim Laden bewusst
+      // aus dem Wizard-State gestrippt (v28.39: „wird nur im Organizer Center
+      // gepflegt"), der Blob hier wird aber komplett FRISCH zusammengebaut.
+      // Ohne diesen Carry-Forward löschte JEDER Wizard-Save eines Events die
+      // gesamte Hotel-Konfiguration (_hotels/_hotelStays/_hotelVisible/
+      // _hotelRules) — Hotels, Zeiträume, Verteil-Regeln, Sichtbarkeit.
+      // Gleiche Mechanik wie imageOrigUrlConfig (v28.11), nur aus dem rohen
+      // Overrides-JSON des editEvent, weil die Werte im State nicht existieren.
+      const hotelCarryConfig = ((): Record<string, unknown> => {
+        try {
+          const raw = JSON.parse(editEvent?.emailTemplateOverrides || '{}') as Record<string, unknown>;
+          const out: Record<string, unknown> = {};
+          for (const k of ['_hotels', '_hotelStays', '_hotelVisible', '_hotelRules']) {
+            if (raw && raw[k] !== undefined) out[k] = raw[k];
+          }
+          return out;
+        } catch { return {}; }
+      })();
       const topPiggybackConfigs: Array<Record<string, unknown>> = [
         b2runExtraConfig, qrScannerConfig, coOrganizerConfig, testTeamConfig,
         splitDispRevConfig, requireSubEventConfig, subEventsOnlyConfig,
@@ -4298,7 +4333,7 @@ export default function EventCreationPage(): React.ReactElement {
         organizerDisplayLargeConfig, previewBeforeActiveConfig,
         imageDisplayConfig, hideOrganizerConfig, hiddenOrganizersConfig,
         hideOrgIndividualConfig, headerImageLayoutConfig, noDescriptionConfig,
-        subEventCalendarConfig, subEventSingleChoiceConfig,
+        subEventCalendarConfig, subEventSingleChoiceConfig, hotelCarryConfig,
       ];
       updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || !!effEmailLogo || !!effOutlookLogo || topPiggybackConfigs.some(o => Object.keys(o).length > 0))
         // v28.2: Object.assign statt Spread-Kette — die Literal-Spreads
@@ -4882,6 +4917,10 @@ export default function EventCreationPage(): React.ReactElement {
         endDate: endDate ? berlinLocalToUtcIso(endDate) : (startDate ? berlinLocalToUtcIso(startDate) : ''),
         registrationDeadline: deadlineToEndOfDayIso(registrationDeadline) || '',
         lastDeregisterDate: deadlineToEndOfDayIso(lastDeregisterDate) || '',
+        // v29.19: „Aktiv ab" auch beim ANLEGEN persistieren — gleiche
+        // Konvertierung wie der Edit-Pfad. Vorher wurde nur das abhängige
+        // _previewBeforeActive-Flag geschrieben, das Datum selbst nicht.
+        activeFrom: activeFrom ? new Date(activeFrom).toISOString() : undefined,
         maxParticipants: unlimitedParticipants ? 0 : (Number(maxParticipants) || 0),
         waitlistEnabled,
         eventImageUrl: imageUrl,
@@ -5035,16 +5074,23 @@ export default function EventCreationPage(): React.ReactElement {
             ((subEventCalendar && subEventsOptIn) ? { _subEventCalendar: true } : {}),
             ((subEventSingleChoice && subEventsOptIn) ? { _subEventSingleChoice: true } : {}),
           ];
-          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || !!effEmailLogo || !!effOutlookLogo || createPiggybackConfigs.some(o => Object.keys(o).length > 0);
+          // v29.19: Overrides aus dem Top-Level-Resolver — wie im Edit-Pfad
+          // (v14.4). Der rohe State hält beim Speichern von einem Sub-Reiter
+          // aus die SUB-Werte (switchCommTab-Spiegelung); die landeten hier
+          // als letzter Merge auf dem Hauptevent, während die zuvor gesetzten
+          // Hauptevent-Overrides im Snapshot verloren gingen. Alle übrigen
+          // Kommunikationsfelder gingen längst über topComm — nur diese nicht.
+          const topOverridesCreate = topComm.emailTemplateOverrides || {};
+          const hasAny = Object.keys(topOverridesCreate).length > 0 || !!effEmailLogo || !!effOutlookLogo || createPiggybackConfigs.some(o => Object.keys(o).length > 0);
           return hasAny
             // v28.2: Object.assign statt Spread-Kette (TS2590, s. Edit-Pfad).
-            // Keys disjunkt; emailTemplateOverrides bleibt LETZTER Merge.
+            // Keys disjunkt; topOverridesCreate bleibt LETZTER Merge.
             ? JSON.stringify(Object.assign(
                 {},
                 (effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
                 outlookLogoPiggyback(effEmailLogo, effOutlookLogo),
                 ...createPiggybackConfigs,
-                emailTemplateOverrides,
+                topOverridesCreate,
               ))
             : '';
         })(),
@@ -5151,10 +5197,21 @@ export default function EventCreationPage(): React.ReactElement {
                     } catch (origErr) { console.warn('[DEX] Original-Bild speichern fehlgeschlagen:', origErr); }
                   } else {
                     setImageUploadError('Bild-Upload fehlgeschlagen.');
+                    // v29.19: Sichtbar melden — die rote Zeile in Schritt 1
+                    // ist vom Fortschritts-Fenster verdeckt, und nach dem
+                    // Success-Dispatch verlaesst der Wizard die Seite. Ohne
+                    // Alert ging das Event still ohne Bild live (Paritaet zum
+                    // Edit-Pfad, v29.18).
+                    showAlert(isDe
+                      ? 'Das Event-Bild konnte nicht hochgeladen werden. Das Event wird trotzdem angelegt — bitte lade das Bild danach über Bearbeiten in Schritt 1 erneut hoch.'
+                      : 'The event image could not be uploaded. The event is still being created — please upload the image again via Edit in step 1 afterwards.', { variant: 'error' });
                   }
                 } catch (err) {
                   console.warn('[DEX] Bild-Upload fehlgeschlagen', err);
                   setImageUploadError('Bild-Upload fehlgeschlagen.');
+                  showAlert(isDe
+                    ? 'Das Event-Bild konnte nicht hochgeladen werden. Das Event wird trotzdem angelegt — bitte lade das Bild danach über Bearbeiten in Schritt 1 erneut hoch.'
+                    : 'The event image could not be uploaded. The event is still being created — please upload the image again via Edit in step 1 afterwards.', { variant: 'error' });
                 }
               }
               // Dokumente einzeln best-effort — ein defektes Dokument darf

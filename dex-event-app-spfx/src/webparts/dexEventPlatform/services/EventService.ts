@@ -4440,6 +4440,11 @@ export class EventService {
     endDate: string;
     registrationDeadline: string;
     lastDeregisterDate: string;
+    /** v29.19: Auto-Aktivierungszeitpunkt (UTC-ISO). Der Wizard bot das Feld
+     *  auch beim ANLEGEN an, persistiert wurde es aber nur im Edit-Pfad —
+     *  ein als Entwurf angelegtes Event mit „Aktiv ab" ging nie von allein
+     *  live. */
+    activeFrom?: string;
     maxParticipants: number;
     waitlistEnabled: boolean;
     mandatoryRegistration?: boolean; // v24.64: Pflicht-Sub-Event
@@ -4665,6 +4670,8 @@ export class EventService {
         // Schreiben — s. auch updateEvent).
         'EndDate': event.endDate || event.startDate || null,
         'RegistrationDeadline': event.registrationDeadline || null,
+        // v29.19: s. Interface — vorher nur im Edit-Pfad geschrieben.
+        'ActiveFrom': event.activeFrom || null,
         'LastDeregisterDate': event.lastDeregisterDate || null,
         'MaxParticipants': event.maxParticipants,
         'WaitlistEnabled': event.waitlistEnabled,
