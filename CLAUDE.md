@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v29.16.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v29.17.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -62,6 +62,16 @@ cp sharepoint/solution/dex-event-platform.sppkg ../dist/dex-event-platform.sppkg
 
 Erwartete Größe: ca. **2,2–2,3 MB**. Deutlich größer heißt: stale Bundles, Schritt 4
 wiederholen. In `release/assets/` darf es nur **eine** `dex-event-platform-web-part_*.js` geben.
+
+**Release-Notes nie mit „…"-Literalen in Python-Heredocs schreiben.** Die
+Notes brauchen deutsche Anführungszeichen, aber das schließende Zeichen der
+Konvention hier ist das GERADE `"` — in einem Python-String beendet es den
+String und das Skript stirbt mit `SyntaxError` (zweimal passiert: v29.16 und
+v29.17; beim ersten Mal war die Version schon gebumpt, die Notes aber nicht
+geschrieben — genau der halbe Zustand, den der Release-Ablauf verbietet).
+Deshalb: typografische Paare über einen Helfer bauen (`q = lambda t: '„'+t+'“'`
+mit U+201E/U+201C) oder gleich Write/Edit statt eines Skripts nehmen. Nach
+jedem Skriptlauf `grep -c <version>` auf BEIDE Dateien — erst dann bauen.
 
 `gulp bundle` endet mit Exit-Code 1, sobald Lint-Warnungen auf stderr gehen —
 das ist **kein** Fehlschlag. Es gibt Alt-Warnungen in `HotelSetupWizard.tsx`,
