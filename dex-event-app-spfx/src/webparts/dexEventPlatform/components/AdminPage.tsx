@@ -25,6 +25,8 @@ import OrganizerList from './OrganizerList';
 import { PersonContactHover } from './PersonContactHover';
 import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
 import { isEventOver } from '../utils/eventFormat';
+import { selfCancelLocked } from '../utils/cancelPolicy';
+import AddParticipantsModal from './admin/AddParticipantsModal';
 import { isDeloitteInternalEmail, isExternalEmail } from '../utils/deloitteDomain';
 // v20.1: Self-Check-in jederzeit aktivierbar (Token-Erzeugung beim Klick).
 // v20.2: + statische Check-in-URL für die QR-Kachel im Event-Detail.
@@ -709,6 +711,10 @@ export default function AdminPage(): React.ReactElement {
   // v22.18: QR-Mail-Text pro Event anpassbar (HtmlEditorModal mit Live-
   // Vorschau, gespeichert im Event → gilt auch für den Auto-Versand).
   const [qrEditOpen, setQrEditOpen] = React.useState(false);
+  // v29.26: Ziel des QR-Mail-Editors. null = das geöffnete Event selbst;
+  // gesetzt = ein Sub-Event, dessen QR-Mail vom Hauptevent aus gestaltet
+  // wird (der Override liegt IMMER auf der Zeile des Ziel-Events).
+  const [qrEditTarget, setQrEditTarget] = React.useState<DeloitteEvent | null>(null);
   const [qrEditSubject, setQrEditSubject] = React.useState('');
   const [qrEditHeading, setQrEditHeading] = React.useState('');
   const [qrEditSubheading, setQrEditSubheading] = React.useState('');
@@ -716,6 +722,8 @@ export default function AdminPage(): React.ReactElement {
   const [qrEditSaving, setQrEditSaving] = React.useState(false);
   const [qrEditSampleBlock, setQrEditSampleBlock] = React.useState('');
   const [searchQuery, setSearchQuery] = React.useState('');
+  // v29.26: „Teilnehmer hinzufügen"-Dialog (Organizer-Ausnahme-Weg).
+  const [addParticipantsOpen, setAddParticipantsOpen] = React.useState(false);
   // v26.11: Sprung zur Person in der Teilnehmerliste (aus der „Konto inaktiv"-
   // Hinweisbox) — filtert die Liste auf die Adresse und scrollt sie in den Blick.
   const participantListRef = React.useRef<HTMLDivElement>(null);
@@ -3678,19 +3686,24 @@ export default function AdminPage(): React.ReactElement {
   };
   // Editor öffnen: Felder aus Override (falls vorhanden) oder den Standard-
   // Texten vorbelegen + Beispiel-QR-Block für die Live-Vorschau erzeugen.
-  const openQrMailEditor = async (): Promise<void> => {
-    if (!selectedEvent) return;
-    const ov = getQrMailOverride(selectedEvent);
-    const def = qrEmailDefaults(selectedEvent.emailLanguage || 'EN');
+  // v29.26: optionales target — vom Hauptevent aus lassen sich die QR-Mails
+  // der Sub-Events einzeln gestalten (je Sub-Event ein eigener Override auf
+  // dessen Zeile; Versand und Auto-Versand des Sub-Events lesen genau den).
+  const openQrMailEditor = async (target?: DeloitteEvent): Promise<void> => {
+    const tgt = target || selectedEvent;
+    if (!tgt) return;
+    setQrEditTarget(target || null);
+    const ov = getQrMailOverride(tgt);
+    const def = qrEmailDefaults(tgt.emailLanguage || 'EN');
     setQrEditSubject((ov && ov.subject) || def.subject);
     setQrEditHeading((ov && ov.heading) || def.heading);
     setQrEditSubheading((ov && ov.subheading) || def.subheading);
     setQrEditBody((ov && ov.bodyHtml) || def.body);
     // Beispiel-QR (eigene Daten) für die Vorschau — gleicher Aufbau wie im Versand.
     const myName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email;
-    const qrData = `DEX|${selectedEvent.eventNumber}|${currentUser.email}`;
+    const qrData = `DEX|${tgt.eventNumber}|${currentUser.email}`;
     const qrImageHtml = await buildQrImageHtml(qrData);
-    setQrEditSampleBlock(buildQrBlockHtml(qrImageHtml, myName, selectedEvent.title));
+    setQrEditSampleBlock(buildQrBlockHtml(qrImageHtml, myName, tgt.title));
     // v22.19: Versand-Modal schließen — der Editor zeigt die Versand-Aktionen
     // in einer eigenen linken Spalte (nebeneinander statt übereinander).
     // Beim Schließen des Editors öffnet das Versand-Modal wieder.
@@ -3699,31 +3712,40 @@ export default function AdminPage(): React.ReactElement {
   };
   const closeQrMailEditor = (): void => {
     setQrEditOpen(false);
+    setQrEditTarget(null);
     setQrSendModalOpen(true);
   };
   // Speichern: Override in das EmailTemplateOverrides-JSON des Events mergen
   // (andere Keys + Piggybacks bleiben erhalten). Entspricht alles den
   // Standard-Texten, wird der Key entfernt (= zurück auf Standard).
   const saveQrMailOverride = async (): Promise<void> => {
-    if (!selectedEvent || qrEditSaving) return;
+    // v29.26: schreibt auf das EDITOR-ZIEL — das kann ein vom Hauptevent aus
+    // geöffnetes Sub-Event sein (qrEditTarget), sonst das Event selbst.
+    const tgt = qrEditTarget || selectedEvent;
+    if (!tgt || qrEditSaving) return;
     setQrEditSaving(true);
     try {
-      const def = qrEmailDefaults(selectedEvent.emailLanguage || 'EN');
+      const def = qrEmailDefaults(tgt.emailLanguage || 'EN');
       const isDefault = qrEditSubject.trim() === def.subject.trim()
         && qrEditHeading.trim() === def.heading.trim()
         && qrEditSubheading.trim() === def.subheading.trim()
         && qrEditBody.trim() === def.body.trim();
       let all: Record<string, unknown> = {};
-      try { all = JSON.parse(selectedEvent.emailTemplateOverrides || '{}') || {}; } catch { all = {}; }
+      try { all = JSON.parse(tgt.emailTemplateOverrides || '{}') || {}; } catch { all = {}; }
       if (isDefault) {
         delete all['QRCode'];
       } else {
         all['QRCode'] = { subject: qrEditSubject, heading: qrEditHeading, subheading: qrEditSubheading, bodyHtml: qrEditBody };
       }
       const json = JSON.stringify(all);
-      const ok = await updateEvent(selectedEvent.id, { 'EmailTemplateOverrides': json });
+      const ok = await updateEvent(tgt.id, { 'EmailTemplateOverrides': json });
       if (ok) {
-        setSelectedEvent(prev => prev ? { ...prev, emailTemplateOverrides: json } : prev);
+        if (!qrEditTarget || (selectedEvent && qrEditTarget.id === selectedEvent.id)) {
+          setSelectedEvent(prev => prev ? { ...prev, emailTemplateOverrides: json } : prev);
+        }
+        // Lokale Kopie des Ziels nachziehen — sonst vergleicht der Editor
+        // gegen den alten Stand und meldet weiter „ungespeichert".
+        setQrEditTarget(prev => (prev && prev.id === tgt.id) ? { ...prev, emailTemplateOverrides: json } : prev);
         await refreshEvents();
         showAlert(isDe
           ? (isDefault
@@ -3767,15 +3789,18 @@ export default function AdminPage(): React.ReactElement {
   };
   // v22.19: optionaler liveOverride — der Test-Versand aus dem Mail-Editor
   // nutzt den AKTUELLEN (ggf. ungespeicherten) Editor-Text, damit Test = Vorschau.
-  const qrTestSendAction = async (liveOverride?: QrEmailOverride): Promise<void> => {
-    if (!eventServiceRef || !selectedEvent) return;
+  // v29.26: optionales target — Test aus dem Editor eines Sub-Events nutzt
+  // dessen Titel/Sprache/Event-Nummer statt der des geöffneten Events.
+  const qrTestSendAction = async (liveOverride?: QrEmailOverride, target?: DeloitteEvent): Promise<void> => {
+    const ev = target || selectedEvent;
+    if (!eventServiceRef || !ev) return;
     setIsSendingQR(true); setQrSendResult(null); setQrSentCount(0);
     try {
       // v24.99: Test-Mail geht an ALLE Organisatoren des Events (vorher nur an
       // den eingeloggten User). Fallback: wenn keine Organisatoren hinterlegt
       // sind, an mich selbst. Jeder bekommt einen QR mit der EIGENEN Adresse.
-      const orgEmails = (selectedEvent.organizerEmails || []).map(e => (e || '').trim()).filter(Boolean);
-      const orgNames = selectedEvent.organizers || [];
+      const orgEmails = (ev.organizerEmails || []).map(e => (e || '').trim()).filter(Boolean);
+      const orgNames = ev.organizers || [];
       const recipients = orgEmails.length > 0
         ? orgEmails.map((em, i) => ({ email: em, rawName: orgNames[i] || em }))
         : [{ email: currentUser.email, rawName: `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email }];
@@ -3785,10 +3810,10 @@ export default function AdminPage(): React.ReactElement {
         // Deloitte-Displayname „Nachname, Vorname" → „Vorname Nachname" + Vorname.
         const fullName = raw.indexOf(',') >= 0 ? raw.split(',').reverse().map(s => s.trim()).join(' ') : (raw || r.email);
         const firstName = raw.indexOf(',') >= 0 ? (raw.substring(raw.indexOf(',') + 1).trim().split(/\s+/)[0] || fullName) : (fullName.split(/\s+/)[0] || fullName);
-        const qrData = `DEX|${selectedEvent.eventNumber}|${r.email}`;
+        const qrData = `DEX|${ev.eventNumber}|${r.email}`;
         const qrImageHtml = await buildQrImageHtml(qrData);
-        const emailData = qrCodeEmail(firstName, selectedEvent.title, qrImageHtml, selectedEvent.emailLanguage || 'EN', fullName, liveOverride || getQrMailOverride(selectedEvent));
-        await eventServiceRef.queueEmail(emailData.subject, r.email, fullName, emailData.body, 'QRCode', selectedEvent.title, selectedEvent.id);
+        const emailData = qrCodeEmail(firstName, ev.title, qrImageHtml, ev.emailLanguage || 'EN', fullName, liveOverride || getQrMailOverride(ev));
+        await eventServiceRef.queueEmail(emailData.subject, r.email, fullName, emailData.body, 'QRCode', ev.title, ev.id);
         sent++; setQrSentCount(sent);
       }
       setQrSendResult(isDe
@@ -9034,6 +9059,20 @@ export default function AdminPage(): React.ReactElement {
             onChange={e => setSearchQuery(e.target.value)}
             style={{ maxWidth: 280, padding: '6px 12px', fontSize: '0.85rem' }}
           />
+          {/* v29.26: Teilnehmer manuell anmelden — Ausnahme-Weg für
+              Organizer. Der Hinweis auf die Selbst-Registrierung steht im
+              Tooltip UND prominent im Dialog selbst. */}
+          <button
+            type="button"
+            className="btn btn-secondary"
+            style={{ fontSize: '0.8rem', padding: '6px 12px' }}
+            onClick={() => setAddParticipantsOpen(true)}
+            title={isDe
+              ? 'Teilnehmer registrieren sich normalerweise selbst über die Anmeldeseite — dieser Weg ist für Ausnahmen (nachträgliche Zusagen, übernommene Listen).'
+              : 'Attendees normally register themselves via the registration page — this path is for exceptions (late confirmations, imported lists).'}
+          >
+            + {isDe ? 'Teilnehmer hinzufügen' : 'Add attendees'}
+          </button>
           {/* v26.44: „Matches anzeigen" — nur bei Events mit Roommate-Spalte.
               Gruppiert die Tabelle in gegenseitige Paare (Match 1, 2, …) +
               Rest-Cluster; wirkt auf die aktuell gefilterte Trefferliste. */}
@@ -9053,6 +9092,28 @@ export default function AdminPage(): React.ReactElement {
             </button>
           )}
         </div>
+        {/* v29.26: Manuelles Anmelden — Ziel-Auswahl, Massenimport-Match,
+            Mail/Outlook-Optionen, Feld-Abfrage pro Person. */}
+        {selectedEvent && (
+          <AddParticipantsModal
+            open={addParticipantsOpen}
+            onClose={() => setAddParticipantsOpen(false)}
+            onDone={() => {
+              void (async () => {
+                try {
+                  const regs = await getAllRegistrations(selectedEvent.id);
+                  setRegistrations(regs);
+                } catch { /* Anzeige aktualisiert sich beim nächsten Öffnen */ }
+              })();
+            }}
+            mainEvent={parentEventForSelected || selectedEvent}
+            childEvents={childEventsOf((parentEventForSelected || selectedEvent).id)}
+            preselectedId={selectedEvent.id}
+            searchUsers={searchUsers}
+            registerForEvent={registerForEvent}
+            isDe={isDe}
+          />
+        )}
         {/* v15.14: Legende für die Pastel-Hintergründe — sowohl in der
             Sub-Event-Detail-Ansicht (Parent-CFs + eigene CFs) als auch im
             konsolidierten Hauptevent-View. Vorher war die Legende NUR im
@@ -10809,6 +10870,12 @@ export default function AdminPage(): React.ReactElement {
                   // Anwesenheits-Nachpflege — KEIN „Bearbeiten" mehr, sondern
                   // No-Show / Einchecken / stille Abmeldung (ohne E-Mail).
                   const eventOver = !!selectedEvent && isEventOver(selectedEvent);
+                  // v29.25: Selbst-Abmeldung nach der Frist gesperrt (Organizer-
+                  // Option) — ab da pflegt der Organizer die Anwesenheit, deshalb
+                  // steht neben angemeldeten Teilnehmern zusätzlich „No-Show".
+                  // Flag liegt bei Sub-Events auf dem Parent.
+                  const cancelLockActive = !eventOver && !!selectedEvent
+                    && selfCancelLocked(selectedEvent, selectedEvent.parentEventId ? allEvents.find(pe => pe.id === selectedEvent.parentEventId) : undefined);
                   const doCheckIn = async (): Promise<void> => {
                     if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
                     await eventServiceRef.checkInParticipant(selectedEvent.subsiteUrl, reg.Id);
@@ -10818,6 +10885,23 @@ export default function AdminPage(): React.ReactElement {
                   const doCheckOut = async (): Promise<void> => {
                     if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
                     await eventServiceRef.checkOutParticipant(selectedEvent.subsiteUrl, reg.Id);
+                    const regs = await getAllRegistrations(selectedEvent.id);
+                    setRegistrations(regs);
+                  };
+                  // v29.25: Echter No-Show-Status (wie auf der Check-in-Seite,
+                  // v23.28) — nicht zu verwechseln mit dem „No-Show"-Knopf der
+                  // Nach-Event-Pflege, der nur den Check-in zurücknimmt.
+                  // Ältere Teilnehmerlisten kennen die Choice nicht (HTTP 400).
+                  const doMarkNoShow = async (): Promise<void> => {
+                    if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                    const ok = await eventServiceRef.markNoShowParticipant(selectedEvent.subsiteUrl, reg.Id);
+                    if (!ok) {
+                      showAlert(isDe
+                        ? 'No-Show konnte nicht gesetzt werden. Bei Events, die vor v23.28 angelegt wurden, kennt die Teilnehmerliste den Status „No-Show" noch nicht.'
+                        : 'Could not set no-show. For events created before v23.28 the attendee list does not know the “No-Show” status yet.',
+                        { variant: 'error' });
+                      return;
+                    }
                     const regs = await getAllRegistrations(selectedEvent.id);
                     setRegistrations(regs);
                   };
@@ -10869,6 +10953,43 @@ export default function AdminPage(): React.ReactElement {
                           >
                             No-Show
                           </button>
+                        </>
+                      ) : cancelLockActive ? (
+                        <>
+                          {/* v29.25: Abmelde-Sperre aktiv — ab jetzt pflegt der
+                              Organizer die Anwesenheit: Einchecken/Auschecken wie
+                              bisher, daneben der echte No-Show-Status (v23.28,
+                              wie auf der Check-in-Seite). */}
+                          {reg.Status === 'Eingecheckt' ? (
+                            <button className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '4px 10px' }} onClick={doCheckOut}>
+                              {isDe ? 'Auschecken' : 'Check out'}
+                            </button>
+                          ) : (
+                            <button className="btn btn-primary" style={{ fontSize: '0.75rem', padding: '4px 10px' }} onClick={doCheckIn}>
+                              {isDe ? 'Einchecken' : 'Check in'}
+                            </button>
+                          )}
+                          <button
+                            className="btn btn-secondary"
+                            style={{ fontSize: '0.75rem', padding: '4px 10px', color: 'var(--dex-gray-700, #444)' }}
+                            disabled={reg.Status === 'No-Show' || reg.Status === 'Abgemeldet'}
+                            title={isDe
+                              ? 'Als nicht erschienen markieren. Die Selbst-Abmeldung ist für Teilnehmer aktuell deaktiviert — wer absagt, wird hier abgemeldet oder als No-Show markiert.'
+                              : 'Mark as a no-show. Self-cancellation is currently disabled for attendees — cancel people here or mark them as no-shows.'}
+                            onClick={() => { void doMarkNoShow(); }}
+                          >
+                            No-Show
+                          </button>
+                          {reg.Status === 'No-Show' && (
+                            <button
+                              className="btn btn-secondary"
+                              style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                              title={isDe ? 'No-Show zurücknehmen (Status zurück auf „Angemeldet")' : 'Undo no-show (status back to “registered”)'}
+                              onClick={doCheckOut}
+                            >
+                              {isDe ? 'Zurücksetzen' : 'Reset'}
+                            </button>
+                          )}
                         </>
                       ) : (
                         reg.Status === 'Eingecheckt' ? (
@@ -12167,6 +12288,48 @@ export default function AdminPage(): React.ReactElement {
                       ? `Mail-Text anpassen${getQrMailOverride(selectedEvent) ? ' (angepasst)' : ''}`
                       : `Customize email text${getQrMailOverride(selectedEvent) ? ' (customized)' : ''}`}
                   </button>
+                  {/* v29.26: QR-Mails der Sub-Events einzeln gestaltbar — der
+                      Override liegt auf der jeweiligen Sub-Event-Zeile und
+                      gilt für dessen manuellen UND automatischen Versand. */}
+                  {(() => {
+                    const kids = selectedEvent ? childEventsOf(selectedEvent.id) : [];
+                    if (kids.length === 0) return null;
+                    const term = (selectedEvent && selectedEvent.childEventTermPlural) || (isDe ? 'Sub-Events' : 'sub-events');
+                    return (
+                      <div style={{ border: '1px dashed var(--dex-gray-300)', borderRadius: 8, padding: '8px 10px' }}>
+                        <div style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--dex-gray-600)', marginBottom: 6 }}>
+                          {isDe ? `QR-Mails der ${term} einzeln gestalten` : `Customize the ${term} QR emails individually`}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--dex-gray-500)', marginBottom: 8, lineHeight: 1.45 }}>
+                          {isDe
+                            ? 'Jeder Termin kann eine eigene QR-Mail haben. Der Text gilt für den Versand aus dem jeweiligen Sub-Event und für dessen automatischen QR-Versand bei neuen Anmeldungen.'
+                            : 'Each date can have its own QR email. The text applies to sending from that sub-event and to its automatic QR send for new registrations.'}
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          {kids.map(ce => (
+                            <button
+                              key={ce.id}
+                              type="button"
+                              className="btn btn-outline"
+                              disabled={isSendingQR}
+                              onClick={() => { openQrMailEditor(ce).catch(() => { /* */ }); }}
+                              style={{ fontSize: '0.76rem', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'flex-start', textAlign: 'left' }}
+                            >
+                              <Pencil size={12} />
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {ce.title || (isDe ? 'Ohne Titel' : 'Untitled')}
+                              </span>
+                              {getQrMailOverride(ce) && (
+                                <span style={{ flexShrink: 0, fontSize: '0.66rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                                  {isDe ? '(angepasst)' : '(customized)'}
+                                </span>
+                              )}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {/* Hinweis, falls Organizer selbst nicht angemeldet ist (nur fürs Testen relevant). */}
                   {(() => {
                     const orgEmail = (currentUser.email || '').toLowerCase();
@@ -12253,27 +12416,34 @@ export default function AdminPage(): React.ReactElement {
       {/* ===== v22.18: QR-MAIL-TEXT ANPASSEN (HtmlEditorModal mit Live-Vorschau,
           gespeichert im Event — gilt auch für den Auto-Versand) ===== */}
       {qrEditOpen && selectedEvent && (() => {
+        // v29.26: Editor-Ziel — das Event selbst ODER ein vom Hauptevent aus
+        // geöffnetes Sub-Event (qrEditTarget). Alle Texte/Vergleiche laufen
+        // gegen das Ziel; die Versand-Spalte links gehört dagegen zum
+        // GEÖFFNETEN Event und wird bei einem Sub-Ziel durch einen Hinweis
+        // ersetzt (dessen Teilnehmerliste ist hier nicht geladen).
+        const qrTgt = qrEditTarget || selectedEvent;
+        const isSubTarget = qrTgt.id !== selectedEvent.id;
         const myName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email;
         const previewVars: Record<string, string> = {
-          EventTitle: selectedEvent.title,
+          EventTitle: qrTgt.title,
           Vorname: currentUser.firstName || myName,
           Name: myName,
         };
         const customLogo = (() => {
           try {
-            const o = JSON.parse(selectedEvent.emailTemplateOverrides || '{}');
+            const o = JSON.parse(qrTgt.emailTemplateOverrides || '{}');
             return (o && typeof o._eventLogo === 'string') ? o._eventLogo : '';
           } catch { return ''; }
         })();
         const resolvePlain = (s: string): string => s
-          .replace(/\{\{EventTitle\}\}/g, selectedEvent.title)
+          .replace(/\{\{EventTitle\}\}/g, qrTgt.title)
           .replace(/\{\{Vorname\}\}/g, previewVars.Vorname)
           .replace(/\{\{Name\}\}/g, myName);
-        const def = qrEmailDefaults(selectedEvent.emailLanguage || 'EN');
+        const def = qrEmailDefaults(qrTgt.emailLanguage || 'EN');
         // Versand-Spalte links: ungespeicherte Änderungen sperren den
         // Massen-Versand (der nutzt den GESPEICHERTEN Text) — der Test an
         // mich nutzt bewusst den aktuellen Editor-Text (Test = Vorschau).
-        const savedOv = getQrMailOverride(selectedEvent);
+        const savedOv = getQrMailOverride(qrTgt);
         const savedSubject = (savedOv && savedOv.subject) || def.subject;
         const savedHeading = (savedOv && savedOv.heading) || def.heading;
         const savedSubheading = (savedOv && savedOv.subheading) || def.subheading;
@@ -12287,6 +12457,18 @@ export default function AdminPage(): React.ReactElement {
         const leftPanel = (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ fontWeight: 700, fontSize: '0.92rem' }}>{isDe ? 'QR-Code-Versand' : 'QR code sending'}</div>
+            {/* v29.26: Bei einem Sub-Event-Ziel gehören die Zähler und der
+                Massen-Versand zum FALSCHEN Event (hier ist die Liste des
+                geöffneten Events geladen) — stattdessen sagt ein Hinweis,
+                wo der Versand mit diesem Text stattfindet. */}
+            {isSubTarget && (
+              <div style={{ background: 'rgba(134,188,37,0.10)', border: '1px solid var(--dex-green, #86bc25)', borderRadius: 'var(--dex-radius)', padding: '8px 10px', fontSize: '0.74rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                {isDe
+                  ? <>Du gestaltest die QR-Mail des Sub-Events <strong>{qrTgt.title}</strong>. Der gespeicherte Text gilt für dessen manuellen Versand (Sub-Event im Organizer Center öffnen → &bdquo;QR-Codes versenden&ldquo;) und den automatischen Versand bei neuen Anmeldungen.</>
+                  : <>You are customizing the QR email of the sub-event <strong>{qrTgt.title}</strong>. The saved text applies to its manual sending (open the sub-event in the Organizer Center → “Send QR codes”) and the automatic send for new registrations.</>}
+              </div>
+            )}
+            {!isSubTarget && (
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
               <span style={{ background: '#eef6e3', color: 'var(--dex-green-dark, #4a7c1f)', borderRadius: 12, padding: '3px 10px', fontSize: '0.74rem', fontWeight: 600 }}>
                 <strong>{noCodeCount}</strong> {isDe ? 'ohne Code' : 'without code'}
@@ -12295,6 +12477,7 @@ export default function AdminPage(): React.ReactElement {
                 <strong>{withCodeCount}</strong> {isDe ? 'mit Code' : 'with code'}
               </span>
             </div>
+            )}
             <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', lineHeight: 1.5 }}>
               {isDe
                 ? 'Die Live-Vorschau rechts zeigt deinen aktuellen Text. Der Test an dich nutzt ebenfalls den aktuellen Text — der Versand an die Teilnehmer immer den gespeicherten.'
@@ -12304,11 +12487,12 @@ export default function AdminPage(): React.ReactElement {
               type="button"
               className="btn btn-outline"
               disabled={isSendingQR}
-              onClick={() => { qrTestSendAction({ subject: qrEditSubject, heading: qrEditHeading, subheading: qrEditSubheading, bodyHtml: qrEditBody }).catch(() => { /* */ }); }}
+              onClick={() => { qrTestSendAction({ subject: qrEditSubject, heading: qrEditHeading, subheading: qrEditSubheading, bodyHtml: qrEditBody }, isSubTarget ? qrTgt : undefined).catch(() => { /* */ }); }}
               style={{ fontSize: '0.82rem', width: '100%' }}
             >
               {isDe ? 'Test an Organisatoren (aktueller Text)' : 'Test to organizers (current text)'}
             </button>
+            {!isSubTarget && (
             <button
               type="button"
               className="btn btn-primary"
@@ -12323,6 +12507,7 @@ export default function AdminPage(): React.ReactElement {
                   ? (isDe ? 'Alle haben ihren QR-Code' : 'Everyone has their QR code')
                   : (isDe ? `An ${noCodeCount} Teilnehmer senden` : `Send to ${noCodeCount} participant${noCodeCount === 1 ? '' : 's'}`))}
             </button>
+            )}
             {qrEditDirty && (
               <div style={{ background: '#fff3e0', border: '1px solid #ed8b00', borderRadius: 'var(--dex-radius)', padding: '8px 10px', fontSize: '0.72rem', color: '#7a4a00', lineHeight: 1.5 }}>
                 {isDe
@@ -12357,7 +12542,7 @@ export default function AdminPage(): React.ReactElement {
           <HtmlEditorModal
             open={qrEditOpen}
             onClose={() => { if (!qrEditSaving && !isSendingQR) closeQrMailEditor(); }}
-            title={isDe ? `QR-Mail anpassen: ${selectedEvent.title}` : `Customize QR email: ${selectedEvent.title}`}
+            title={isDe ? `QR-Mail anpassen: ${qrTgt.title}` : `Customize QR email: ${qrTgt.title}`}
             leftPanel={leftPanel}
             value={qrEditBody}
             onChange={setQrEditBody}
