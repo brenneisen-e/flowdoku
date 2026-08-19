@@ -9,7 +9,7 @@
 import * as React from 'react';
 import { deepLinkParams } from '../utils/deepLink';
 
-export type Page = 'landing' | 'start' | 'register' | 'registration' | 'my-events' | 'assistant' | 'create-event' | 'edit-event' | 'settings' | 'profile' | 'admin' | 'admin-hub' | 'role-matrix' | 'participants' | 'flowcharts' | 'check-in' | 'self-checkin-display' | 'help' | 'manual' | 'email-templates' | 'tickets' | 'architecture' | 'stats-archive';
+export type Page = 'landing' | 'start' | 'register' | 'registration' | 'my-events' | 'assistant' | 'create-event' | 'edit-event' | 'settings' | 'profile' | 'admin' | 'admin-hub' | 'role-matrix' | 'participants' | 'flowcharts' | 'check-in' | 'self-checkin-display' | 'help' | 'manual' | 'email-templates' | 'tickets' | 'architecture' | 'stats-archive' | 'intro-onepager';
 
 // v27.12 (Feedback Datenschutz-Review): Beim Seiten-Refresh landete man immer
 // wieder auf der Startseite — die Navigation lebt nur im React-State. Jetzt
@@ -18,7 +18,7 @@ export type Page = 'landing' | 'start' | 'register' | 'registration' | 'my-event
 // Vorrang: steht ein action-Parameter in der URL, wird NICHT restauriert
 // (der Deep-Link-Effekt in DexEventPlatform navigiert ohnehin gleich weiter).
 const NAV_STORAGE_KEY = 'dex-nav-state';
-const ALL_PAGES: Page[] = ['landing', 'start', 'register', 'registration', 'my-events', 'assistant', 'create-event', 'edit-event', 'settings', 'profile', 'admin', 'admin-hub', 'role-matrix', 'participants', 'flowcharts', 'check-in', 'self-checkin-display', 'help', 'manual', 'email-templates', 'tickets', 'architecture', 'stats-archive'];
+const ALL_PAGES: Page[] = ['landing', 'start', 'register', 'registration', 'my-events', 'assistant', 'create-event', 'edit-event', 'settings', 'profile', 'admin', 'admin-hub', 'role-matrix', 'participants', 'flowcharts', 'check-in', 'self-checkin-display', 'help', 'manual', 'email-templates', 'tickets', 'architecture', 'stats-archive', 'intro-onepager'];
 
 function readStoredNav(): { page: Page; eventId: string | null } | null {
   try {

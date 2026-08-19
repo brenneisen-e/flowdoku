@@ -107,6 +107,7 @@ export default function Header(): React.ReactElement {
     'manual': 'manual',
     'email-templates': 'email-templates',
     'stats-archive': 'stats-archive',
+    'intro-onepager': 'intro-onepager',
   };
   // v10.19: Admin-Center hat zwei Sub-Views — die Übersichtsliste aller Events
   // ('admin-center') und die Detail-Ansicht eines konkreten Events
@@ -145,6 +146,7 @@ export default function Header(): React.ReactElement {
       case 'manual': return t('header.manual');
       case 'email-templates': return locale === 'de' ? 'Mail-Vorlagen' : 'Mail templates';
       case 'stats-archive': return locale === 'de' ? 'Statistik-Archiv' : 'Statistics archive';
+      case 'intro-onepager': return locale === 'de' ? 'Einführungs-Onepager' : 'Introduction one-pager';
       default: return '';
     }
   };

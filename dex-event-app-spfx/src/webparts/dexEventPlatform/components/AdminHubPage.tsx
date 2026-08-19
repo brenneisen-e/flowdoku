@@ -14,7 +14,7 @@ import { useEvents } from '../context/EventContext';
 import { useLanguage } from '../context/LanguageContext';
 import { useDialog } from '../context/DialogContext';
 import { useIsMobile } from '../utils/useIsMobile';
-import { Settings, Users, Mail, Book, FileText, Trash2, Columns, BarChart3, Wrench } from './Icons';
+import { Settings, Users, Mail, Book, FileText, Trash2, Columns, BarChart3, Wrench, GraduationCap } from './Icons';
 import { RELEASE_NOTES, RELEASE_BEREICHE } from '../data/releaseNotes';
 import { EventService, PermCleanupReport, OrphanScanResult } from '../services/EventService';
 import Modal from './Modal';
@@ -528,6 +528,8 @@ export default function AdminHubPage(): React.ReactElement {
     { icon: <Mail size={28} />, title: isDe ? 'Mail-Vorlagen' : 'Mail templates', desc: isDe ? 'Globale Standard-Mails (Anmeldung, Warteliste, Abmeldung …) ansehen und bearbeiten — mit Live-Vorschau.' : 'View and edit the global default emails — with live preview.', onClick: () => navigate('email-templates') },
     { icon: <BarChart3 size={28} />, title: isDe ? 'Statistik-Archiv' : 'Statistics archive', desc: isDe ? 'Kennzahlen gelöschter Teilnehmerlisten: welches Event, wann, von wem organisiert, mit welcher Teilnehmerzahl (ohne PII).' : 'KPIs of deleted participant lists: which event, when, organized by whom, with how many participants (no PII).', onClick: () => navigate('stats-archive') },
     { icon: <Book size={28} />, title: isDe ? 'Handbuch' : 'Manual', desc: isDe ? 'Ausführliche Anleitung zu allen Funktionen.' : 'Detailed guide for all features.', onClick: () => navigate('manual') },
+    // v29.24: Onepager für die Einführungsveranstaltung — Zyklus, Einsatzbereich (Venn), Rollen, Kernfunktionen.
+    { icon: <GraduationCap size={28} />, title: isDe ? 'Einführungs-Onepager' : 'Introduction one-pager', desc: isDe ? 'DEX auf einen Blick für die Einführungsveranstaltung: Event-Zyklus, Einsatzbereich, Rollen, Kernfunktionen.' : 'DEX at a glance for the introduction session: event cycle, scope, roles, core functions.', onClick: () => navigate('intro-onepager') },
   ];
 
   const cardStyle: React.CSSProperties = { background: '#fff', border: '1px solid var(--dex-gray-200)', borderRadius: 12, padding: 18, boxShadow: '0 2px 8px rgba(0,0,0,0.05)', transition: 'border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease' };
