@@ -876,6 +876,17 @@
       background: var(--dex-green-dark, #6b9a1e) !important;
       color: #fff !important;
     }
+    /* v29.17: Im Termin-Kalender des Assistenten sind Klicks AKTIONEN
+       (Termin anlegen/entfernen), kein Datums-Pick. Die Nachbarmonats-Tage
+       am Rand des Rasters legten beim Anklicken einen Termin an UND sprangen
+       in den Folgemonat um — beides unerwartet. Sie sind hier unsichtbar und
+       unklickbar; in andere Monate kommt man über die Pfeile. Gilt NUR für
+       .dex-termin-calendar — in normalen Datumsfeldern ist der schnelle
+       Klick auf den Monatsrand ein legitimer Pick. */
+    .dex-termin-calendar .react-datepicker__day--outside-month {
+      visibility: hidden;
+      pointer-events: none;
+    }
     /* Heute UND ausgewählt/keyboard-selected (grüner Kreis): Schrift weiß,
        sonst überschreibt die --today-Regel die weiße Schrift und „heute" wäre
        grün auf grün = unsichtbar. */

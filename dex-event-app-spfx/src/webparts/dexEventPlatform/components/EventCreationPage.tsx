@@ -5088,6 +5088,55 @@ export default function EventCreationPage(): React.ReactElement {
           }
         } catch { /* darf den Save nie stören */ }
 
+        // v29.17: Bild und Dokumente SOFORT nach dem Anlegen des Hauptevents
+        // hochladen — VOR den Sub-Events. Bisher hingen beide am Ende des
+        // Pfads, hinter persistSubEventsForParent und einem getEvents() im
+        // selben try-Block (dessen catch alles schluckte). Bei einem
+        // Kalender-Event mit 20+ Terminen legt persistSubEventsForParent
+        // ebenso viele Subsites an; wenn SharePoint danach drosselt, flog
+        // getEvents() — und das Klammer-Bild wurde still nie hochgeladen.
+        // Das Event-Item existiert hier bereits, mehr braucht der Upload nicht.
+        if (imageFile || documents.length > 0) {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const ctxEarly = (window as any).__dexSpfxContext;
+            if (ctxEarly) {
+              const svcEarly = new EventService(ctxEarly);
+              if (imageFile) {
+                try {
+                  setProgressLabel('Bild wird hochgeladen...');
+                  const compressed = await compressImage(imageFile);
+                  const uploadedUrl = await svcEarly.uploadEventImageAsAttachment(Number(eventId), compressed);
+                  if (uploadedUrl) {
+                    await svcEarly.updateEventImageUrl(Number(eventId), uploadedUrl);
+                    // v28.11: Querformat-Original als zweites Attachment sichern
+                    // (Zuschnitt rund/quadratisch → Event-Liste zeigt Original).
+                    try {
+                      if (imageOrigFile && (imageOrigAspect || 0) >= 1.2 && wizardImgAspect != null && wizardImgAspect < 1.2) {
+                        const origCompressed = await compressImage(imageOrigFile, 1600, 0.85);
+                        const origUrl = await svcEarly.uploadEventOrigImageAsAttachment(Number(eventId), origCompressed);
+                        if (origUrl) await svcEarly.patchEventOverridesKey(Number(eventId), '_imageOrigUrl', origUrl);
+                      }
+                    } catch (origErr) { console.warn('[DEX] Original-Bild speichern fehlgeschlagen:', origErr); }
+                  } else {
+                    setImageUploadError('Bild-Upload fehlgeschlagen.');
+                  }
+                } catch (err) {
+                  console.warn('[DEX] Bild-Upload fehlgeschlagen', err);
+                  setImageUploadError('Bild-Upload fehlgeschlagen.');
+                }
+              }
+              // Dokumente einzeln best-effort — ein defektes Dokument darf
+              // weder die übrigen noch den Rest des Saves mitreißen.
+              for (const doc of documents) {
+                if (!doc.file) continue;
+                try { await svcEarly.uploadEventDocument(Number(eventId), doc.file); }
+                catch (err) { console.warn('[DEX] Dokument-Upload fehlgeschlagen:', doc.file.name, err); }
+              }
+            }
+          } catch (err) { console.warn('[DEX] Upload-Block (früh) fehlgeschlagen:', err); }
+        }
+
         // v11.87: Sub-Events bekommen den Bereich (topEnd..90) gleichmäßig
         // aufgeteilt — pro Sub-Event ein eigener Stage-Slot. persistSubEventsForParent
         // erhält einen Sub-Progress-Callback über ein Window-Event-Bus-ähnliches
@@ -5151,8 +5200,12 @@ export default function EventCreationPage(): React.ReactElement {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         try { delete (window as any).__dexSubEventProgress; } catch { /* */ }
         setProgress(92);
-        setProgressLabel('Dokumente und Bild werden hochgeladen...');
-        // E-Mail an Organisator senden
+        setProgressLabel('Letzte Schritte...');
+        // E-Mail an Organisator senden. Bild und Dokumente sind seit v29.17
+        // bereits VOR den Sub-Events hochgeladen (s.o.) — hier ist nur noch
+        // die Mail übrig, und getEvents() dient allein der Subsite-URL darin.
+        // (Zum refreshEvents gilt weiter v9.41: KEIN Refresh direkt nach
+        // Create — die frische Subsite ist noch nicht API-konsistent.)
         try {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const ctx = (window as any).__dexSpfxContext;
@@ -5162,45 +5215,6 @@ export default function EventCreationPage(): React.ReactElement {
             const allEvents = await svc.getEvents();
             const created = allEvents.find(e => String(e.Id) === String(eventId));
             const subsiteUrl = created?.SubsiteUrl || '';
-            // Dokumente als Attachments an das Event-Item anfügen (kein updateEvent nötig)
-            if (eventId && documents.length > 0) {
-              for (const doc of documents) {
-                if (doc.file) {
-                  await svc.uploadEventDocument(Number(eventId), doc.file);
-                }
-              }
-            }
-            // Event-Bild als Attachment hochladen + URL ins Item schreiben
-            if (eventId && imageFile) {
-              try {
-                setProgressLabel('Bild wird hochgeladen...');
-                const compressed = await compressImage(imageFile);
-                const uploadedUrl = await svc.uploadEventImageAsAttachment(Number(eventId), compressed);
-                if (uploadedUrl) {
-                  await svc.updateEventImageUrl(Number(eventId), uploadedUrl);
-                  // v28.11: Querformat-Original als zweites Attachment sichern
-                  // (Zuschnitt rund/quadratisch → Event-Liste zeigt Original).
-                  try {
-                    if (imageOrigFile && (imageOrigAspect || 0) >= 1.2 && wizardImgAspect != null && wizardImgAspect < 1.2) {
-                      const origCompressed = await compressImage(imageOrigFile, 1600, 0.85);
-                      const origUrl = await svc.uploadEventOrigImageAsAttachment(Number(eventId), origCompressed);
-                      if (origUrl) await svc.patchEventOverridesKey(Number(eventId), '_imageOrigUrl', origUrl);
-                    }
-                  } catch (origErr) { console.warn('[DEX] Original-Bild speichern fehlgeschlagen:', origErr); }
-                  // v9.41: KEIN refreshEvents direkt nach Create. Die Subsite ist
-                  // gerade erst angelegt und die SP-API ist noch nicht konsistent —
-                  // ein Refresh hier kann zu 400/404 auf den Subsite-Listen und im
-                  // schlimmsten Fall zu einem React-Render-Crash führen. Refresh
-                  // wird verschoben auf den Klick 'Events anzeigen' auf der
-                  // Erfolgsseite, dann hat SP genug Zeit zum Propagieren.
-                } else {
-                  setImageUploadError('Bild-Upload fehlgeschlagen.');
-                }
-              } catch (err) {
-                console.warn('[DEX] Bild-Upload fehlgeschlagen', err);
-                setImageUploadError('Bild-Upload fehlgeschlagen.');
-              }
-            }
             // Event-Created Mail an alle Organizer senden.
             // {{Name}} in der Anrede = nur Vorname (nicht voller Name), darum
             // den Organizer-String anhand von ";" in Namen splitten und pro
@@ -6790,8 +6804,31 @@ export default function EventCreationPage(): React.ReactElement {
   const toggleDaySubEvent = (d: Date | null): void => {
     if (!d) return;
     const key = dayKeyOfDate(d);
-    const existingIdx = subEvents.findIndex(se => dayKeyOfSub(se) === key);
-    if (existingIdx < 0) {
+    // v29.17: Die An-/Abwahl-Entscheidung fällt IM Funktions-Updater, auf dem
+    // tatsächlichen State — nicht auf dem `subEvents` aus der Render-Closure.
+    // Bei 20+ Terminen dauert ein Re-Render des Wizards spürbar; wer in der
+    // Zeit erneut klickt, dessen zweiter Klick sah vorher noch den ALTEN
+    // Stand: Ein eben abgewählter Tag galt als „nicht vorhanden" und wurde
+    // wieder angelegt — das Abwählen wirkte „kaputt". Mit dem Updater ist
+    // jeder Klick ein echter Toggle auf dem aktuellen Stand.
+    //
+    // Scope-Korrektur vorab aus der Closure: Steht der Reiter gerade auf dem
+    // Tag, der entfernt wird, zurück auf die Klammer. Im (seltenen) Stale-Fall
+    // unterbleibt nur die Korrektur — scopeSub sichert den Index ohnehin ab.
+    const closureIdx = subEvents.findIndex(se => dayKeyOfSub(se) === key);
+    if (closureIdx >= 0 && activeScopeIdx === closureIdx + 1) setScope(0);
+    setSubEvents(prev => {
+      const existingIdx = prev.findIndex(se => dayKeyOfSub(se) === key);
+      if (existingIdx >= 0) {
+        // v28.96: KEINE Rückfrage je Klick. Im Kalender wird aus- und
+        // abgewählt, oft mehrfach hintereinander — ein Modal bei jedem Klick
+        // macht genau das unbenutzbar. Der Datenverlust-Hinweis steht ohnehin
+        // schon an der richtigen Stelle: beim SPEICHERN listet
+        // handleSubmitInner alle Sub-Events auf, die dabei endgültig gelöscht
+        // würden (toDelete), und fragt einmal nach. Bis dahin ist nichts
+        // passiert.
+        return prev.filter((_, k) => k !== existingIdx);
+      }
       // v28.92: Der Termin bekommt die UHRZEIT des Hauptevents, gelegt auf
       // diesen Tag — läuft das Event von 9 bis 17 Uhr, gilt das auch für den
       // einzelnen Tag. Ein Ganztags-Block (00:00–23:59) würde den Teilnehmern
@@ -6815,18 +6852,8 @@ export default function EventCreationPage(): React.ReactElement {
       const usable = !!startTime && !!endTime && endTime > startTime;
       const start = berlinLocalToUtcIso(`${key}T${usable ? startTime : '00:00'}`);
       const end = berlinLocalToUtcIso(`${key}T${usable ? endTime : '23:59'}`);
-      setSubEvents(prev => prev.concat([makeSubEventDraft({ title: dayLabel(d), startDate: start, endDate: end })]));
-      return;
-    }
-    // v28.96: KEINE Rückfrage je Klick. Im Kalender wird aus- und abgewählt,
-    // oft mehrfach hintereinander — ein Modal bei jedem Klick macht genau das
-    // unbenutzbar. Der Datenverlust-Hinweis steht ohnehin schon an der
-    // richtigen Stelle: beim SPEICHERN listet handleSubmitInner alle
-    // Sub-Events auf, die dabei endgültig gelöscht würden (toDelete), und
-    // fragt einmal nach. Bis dahin ist nichts passiert.
-    const se = subEvents[existingIdx];
-    if (activeScopeIdx === existingIdx + 1) setScope(0);
-    setSubEvents(prev => prev.filter(x => x.id !== se.id));
+      return prev.concat([makeSubEventDraft({ title: dayLabel(d), startDate: start, endDate: end })]);
+    });
   };
 
   /**
@@ -10629,7 +10656,13 @@ export default function EventCreationPage(): React.ReactElement {
                           highlightDates={[{ 'dex-day-picked': marked }]}
                           openToDate={openTo}
                           locale="de"
-                          calendarClassName="dex-datepicker-calendar"
+                          // v29.17: dex-termin-calendar blendet die Nachbarmonats-
+                          // Tage aus (CSS). In diesem Kalender ist ein Klick eine
+                          // AKTION (Termin anlegen/entfernen), kein Datums-Pick —
+                          // der Klick auf den „01.10." unten im September-Raster
+                          // legte den Tag an UND sprang in den Oktober um. Wer
+                          // einen Oktober-Tag will, blättert mit dem Pfeil.
+                          calendarClassName="dex-datepicker-calendar dex-termin-calendar"
                         />
                         <p style={{ fontSize: '0.8rem', color: 'var(--dex-gray-600)', margin: '10px 0 0' }}>
                           {marked.length === 0

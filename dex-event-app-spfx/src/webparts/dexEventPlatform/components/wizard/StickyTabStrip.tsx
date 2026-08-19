@@ -224,6 +224,12 @@ export function StickyTabStrip(props: {
                   maxWidth: 280,
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
+                  // v29.17: NIE mitschrumpfen. In der (frueheren) nowrap-Zeile
+                  // setzte overflow:hidden die min-content-Breite auf ~0 —
+                  // Flexbox quetschte bei 20+ Terminen jeden Reiter auf EINEN
+                  // Buchstaben („D M D. F.“), statt die Zeile scrollen zu
+                  // lassen. Ein Reiter ist so breit wie sein Text, Punkt.
+                  flexShrink: 0,
                   transform: hovered ? 'translateY(-1px)' : 'none',
                   boxShadow: hovered ? '0 -2px 6px rgba(134,188,37,0.20)' : 'none',
                   transition: 'background 0.15s, color 0.15s, border-color 0.15s, transform 0.15s, box-shadow 0.15s',
@@ -317,16 +323,18 @@ export function StickyTabStrip(props: {
                   )}
                 </div>
                 {/* Sub-Events darunter — eingerückt unter einer Klammer-Linie. */}
-                {/* v28.85: Eine Zeile statt Umbruch. Bei vielen Sub-Events
-                    brachen die Reiter in eine zweite Reihe um — die Klammer-
-                    Linie links lief dann ins Leere und die Leiste wirkte
-                    unruhig. Jetzt bleibt es eine Zeile, die bei Bedarf
-                    horizontal scrollt; die scrollbar-gutter-Reserve verhindert,
-                    dass der Inhalt beim Erscheinen der Leiste springt. */}
-                {/* v28.89: Pfeile links/rechts liegen NEBEN der Scroll-Fläche,
-                    nicht darüber — ein überlagerter Pfeil verdeckt sonst genau
-                    den Reiter, den man anklicken will. Sie erscheinen nur,
-                    wenn es in die Richtung überhaupt weitergeht. */}
+                {/* v29.17: Wieder UMBRECHEN statt scrollen — dieselbe
+                    Darstellung wie die Reiter im Organizer Center (Event-
+                    Details), wo genau dieses Layout mit vielen Terminen gut
+                    lesbar ist. Die v28.85-Scroll-Zeile war doppelt gescheitert:
+                    Ein Flexbox-Fehler quetschte die Reiter auf einen
+                    Buchstaben statt zu scrollen (overflow:hidden am Button →
+                    min-content ~0), und selbst korrekt gescrollt blieben von
+                    21 Terminen nur wenige sichtbar. Beim Umbruch tragen die
+                    Klammer-Linie links und die gemeinsame Grundlinie die
+                    Zusammengehörigkeit. Die Pfeil-Knöpfe bleiben im Code und
+                    erscheinen nur, wenn tatsächlich horizontal gescrollt wird
+                    (ovf) — beim Umbruch also nie. */}
                 <div style={{
                   display: 'flex', alignItems: 'stretch', gap: 6, minWidth: 0,
                   marginLeft: 18, paddingLeft: 16, paddingTop: 10, paddingRight: 2,
@@ -338,24 +346,16 @@ export function StickyTabStrip(props: {
                     ref={scrollRef}
                     onKeyDown={onTabKeyDown}
                     style={{
-                      display: 'flex', flexWrap: 'nowrap', gap: 6, alignItems: 'flex-end',
+                      display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'flex-end',
                       flex: 1, minWidth: 0,
-                      overflowX: 'auto', overflowY: 'hidden',
-                      scrollbarWidth: 'thin', paddingBottom: 2,
-                      // Andeutung, dass rechts/links noch etwas liegt — die
-                      // Pfeile allein übersieht man beim Überfliegen.
-                      maskImage: `linear-gradient(to right, ${ovf.left ? 'transparent 0, #000 18px' : '#000 0'}, ${ovf.right ? '#000 calc(100% - 18px), transparent 100%' : '#000 100%'})`,
-                      WebkitMaskImage: `linear-gradient(to right, ${ovf.left ? 'transparent 0, #000 18px' : '#000 0'}, ${ovf.right ? '#000 calc(100% - 18px), transparent 100%' : '#000 100%'})`,
+                      paddingBottom: 2,
                     }}
                   >
                     {props.tabs.slice(1).map((tab, i) => renderTabBtn(tab, i + 1))}
                   </div>
                   {ovf.right && arrowBtn(1)}
-                  {/* v28.89: Standortanzeige. Bei neun Terminen ist „der
-                      wievielte von wie vielen" die Frage, die die gescrollte
-                      Reihe allein nicht beantwortet — ein Dropdown daneben
-                      wäre eine zweite Bedienung für dieselbe Auswahl, diese
-                      Anzeige ist nur Orientierung. */}
+                  {/* v28.89: Standortanzeige „3 / 21" — beim Umbruch weiter
+                      nützlich als Orientierung, welcher Termin gerade offen ist. */}
                   {props.tabs.length - 1 >= 5 && (
                     <span style={{
                       alignSelf: 'center', flexShrink: 0, fontSize: '0.72rem', fontWeight: 700,
