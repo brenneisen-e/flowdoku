@@ -766,6 +766,16 @@ export default function EventCreationPage(): React.ReactElement {
       ...(f.ccOnEmails ? { ccOnEmails: true } : {}),
       // v26.60: abgeschaltete Roommate-Benachrichtigung mit-übernehmen.
       ...(f.notifyRoommate === false ? { notifyRoommate: false } : {}),
+      // v29.20 (Audit A3): withTime (v24.25) und die daterange-Grenzen
+      // (v28.63) fehlten in DIESEM Mapper — serializeCustomFields schreibt
+      // nur, was im Draft steht, also entfernte jeder Edit-Save die
+      // Einstellungen still: „Datum + Uhrzeit" wurde zum reinen Datum, das
+      // buchbare Übernachtungs-Fenster verschwand. Die historische
+      // Drop-Klasse (v11.21/v18.20/v19.20) saß diesmal im Lade-Pfad.
+      ...(f.withTime ? { withTime: true } : {}),
+      ...(f.rangeStart ? { rangeStart: f.rangeStart } : {}),
+      ...(f.rangeEnd ? { rangeEnd: f.rangeEnd } : {}),
+      ...(typeof f.maxNights === 'number' && f.maxNights > 0 ? { maxNights: f.maxNights } : {}),
     })) : []
   );
   const [outlookBody, setOutlookBody] = React.useState(editEvent ? reinsertOrganizerPlaceholder(stripOutlookWrapper(editEvent.outlookBody || ''), editEvent.organizers || []) : '');
@@ -1464,6 +1474,26 @@ export default function EventCreationPage(): React.ReactElement {
         helpText: f.helpText,
         helpTextStyle: f.helpTextStyle,
         showIf: f.showIf,
+        // v29.20 (Audit A3): Dieser Mapper übernahm nur eine Teilmenge der
+        // Feld-Eigenschaften — der nächste Save eines Klammer-Events schrieb
+        // die Sub-Event-CustomFields dann OHNE den Rest zurück (die
+        // v11.21-Drop-Klasse, hier im Lade-Pfad). „Felder vom Hauptevent
+        // kopieren" und der Sub-Feld-Editor setzen all diese Properties.
+        ...(f.onlyForGroup ? { onlyForGroup: f.onlyForGroup } : {}),
+        ...(f.confirmLabel ? { confirmLabel: f.confirmLabel } : {}),
+        ...(f.defaultValue ? { defaultValue: f.defaultValue } : {}),
+        ...(f.optionCategories && f.optionCategories.length > 0 ? { optionCategories: [...f.optionCategories] } : {}),
+        ...(f.prefilterLabel ? { prefilterLabel: f.prefilterLabel } : {}),
+        ...(f.labelEn ? { labelEn: f.labelEn } : {}),
+        ...(f.helpTextEn ? { helpTextEn: f.helpTextEn } : {}),
+        ...(f.confirmLabelEn ? { confirmLabelEn: f.confirmLabelEn } : {}),
+        ...(f.optionsEn && f.optionsEn.length > 0 ? { optionsEn: [...f.optionsEn] } : {}),
+        ...(f.ccOnEmails ? { ccOnEmails: true } : {}),
+        ...(f.notifyRoommate === false ? { notifyRoommate: false } : {}),
+        ...(f.withTime ? { withTime: true } : {}),
+        ...(f.rangeStart ? { rangeStart: f.rangeStart } : {}),
+        ...(f.rangeEnd ? { rangeEnd: f.rangeEnd } : {}),
+        ...(typeof f.maxNights === 'number' && f.maxNights > 0 ? { maxNights: f.maxNights } : {}),
       })),
       // v15.3: pro-Sub-Event Felder aus dem Event-Datenmodell laden. Alle
       // Sub-Events haben jetzt eigene Adresse, Agenda, Transferzeiten,
@@ -1636,6 +1666,18 @@ export default function EventCreationPage(): React.ReactElement {
     );
     if (!ok) return;
     plan.forEach(p => forceOutlookRecreateRef.current.add(p.id));
+    // v29.20 (Audit): wie attemptSubmit VOR dem Save flushen — dieser Pfad
+    // rief handleSubmit direkt, und die Kommunikations-Eingaben des gerade
+    // offenen Reiters lagen dann noch nicht im Draft (CLAUDE.md-Falle):
+    // Der frisch angelegte Outlook-Termin trug den Text von VOR der letzten
+    // Bearbeitung. Ebenso die pendingOutlook*-Reste eines früheren
+    // Modal-Durchlaufs zurücksetzen, die hier sonst ungefragt nachwirkten.
+    flushActiveCommTabToState();
+    pendingOutlookDirtyWriteRef.current = null;
+    pendingOutlookDirtyWriteRefs.current = {};
+    pendingOutlookUpdateForTopRef.current = false;
+    pendingOutlookUpdateForSubEventsRef.current = [];
+    pendingOutlookRecreateForSubEventsRef.current = [];
     setOutlookUpdateBusy(true);
     try {
       await handleSubmit();
@@ -2932,8 +2974,35 @@ export default function EventCreationPage(): React.ReactElement {
         ...(f.externalLinks && f.externalLinks.length > 0 ? { externalLinks: f.externalLinks.map(x => ({ ...x })) } : {}),
         ...(f.ccOnEmails ? { ccOnEmails: true } : {}),
         ...(f.notifyRoommate === false ? { notifyRoommate: false } : {}),
+        // v29.20 (Audit A3): auch hier fehlten Vorauswahl, Vorfilter,
+        // Uhrzeit-Option und die daterange-Grenzen — die Kopie verlor sie.
+        ...(f.defaultValue ? { defaultValue: f.defaultValue } : {}),
+        ...(f.optionCategories && f.optionCategories.length > 0 ? { optionCategories: [...f.optionCategories] } : {}),
+        ...(f.prefilterLabel ? { prefilterLabel: f.prefilterLabel } : {}),
+        ...(f.withTime ? { withTime: true } : {}),
+        ...(f.rangeStart ? { rangeStart: f.rangeStart } : {}),
+        ...(f.rangeEnd ? { rangeEnd: f.rangeEnd } : {}),
+        ...(typeof f.maxNights === 'number' && f.maxNights > 0 ? { maxNights: f.maxNights } : {}),
       })));
+      // v29.20 (Audit): Die EN-Varianten oben nützen nur mit dem Schalter —
+      // serializeCustomFields schreibt sie ausschließlich bei aktivem
+      // bilingualFields. Ohne die Übernahme zeigte der Wizard die EN-Texte
+      // der Vorlage an und der Save warf sie still weg. Ebenso übernimmt die
+      // Kopie jetzt Mail-Sprache und Ausschluss-Liste — beides gehört zur
+      // Konfiguration, die man mit einer Vorlage erwartet.
+      setBilingualFields(!!ev.bilingualFields);
+      setEmailLanguage((ev.emailLanguage || 'DE').toUpperCase() === 'EN' ? 'EN' : 'DE');
+      setExcludedUsers([...(ev.excludedUsers || [])]);
       // Bild: Vorschau sofort, Datei best-effort vom SP-Anhang nachladen.
+      // v29.20 (Audit): Vorher NUR gesetzt, wenn die Vorlage ein Bild hat —
+      // beim Wechsel von Vorlage A (mit Bild) zu Vorlage B (ohne) blieben
+      // imagePreview/imageFile von A stehen, und das neue Event bekam still
+      // das Foto des falschen Events. resetDemoVariantBaseState leerte nur
+      // eventImageUrl. Jetzt wird immer erst geleert.
+      setImagePreview('');
+      setImageFile(null);
+      setImageOrigFile(null);
+      setImageOrigAspect(null);
       if (ev.imageUrl) {
         setImagePreview(ev.imageUrl);
         try {
@@ -3275,8 +3344,12 @@ export default function EventCreationPage(): React.ReactElement {
       const subOutlookSubject = (draft.outlookSubject || '').trim();
       // v28.29: eigenes Bild des Sub-Events gewinnt, sonst erbt es das
       // Kopfbild des Hauptevents (statt still auf den Orb zu fallen).
-      const subEmailLogo = draft.emailLogoBase64 || inheritedEmailLogo;
-      const subOutlookLogo = draft.outlookLogoBase64 || inheritedOutlookLogo;
+      // v29.20 (Audit): auch das EIGENE Sub-Logo verkleinern — der
+      // v28.10-Schutz lief nur ueber die geerbten Parent-Logos. Ein auf dem
+      // Sub-Reiter hochgeladenes unkomprimiertes Foto steckte bis zu dreimal
+      // im Payload und riss das Sub-Event ins SharePoint-2-MB-Limit.
+      const subEmailLogo = (draft.emailLogoBase64 ? await shrinkLogoB64(draft.emailLogoBase64) : '') || inheritedEmailLogo;
+      const subOutlookLogo = (draft.outlookLogoBase64 ? await shrinkLogoB64(draft.outlookLogoBase64) : '') || inheritedOutlookLogo;
       // Outlook-Body wrappen. v26.59 BUG-FIX: Ohne eigenen Text wurde der Body
       // bisher LEER gespeichert („der Flow setzt einen Default" — stimmte
       // nicht, der Flow mappt 1:1) → die Outlook-Einladung der Sub-Events kam
@@ -3393,7 +3466,12 @@ export default function EventCreationPage(): React.ReactElement {
         disableOutlook: !!draft.disableOutlook,
         isFictive: isFictive,
         askSalutation: !!draft.askSalutation,
-        customFields: draft.customFields || [],
+        // v29.20 (Audit): kanonisch serialisieren wie der Update-Zweig —
+        // roh gingen leere Felder und leere Options-Slots (neue Drafts
+        // starten mit ['','']) direkt auf die Anmeldeseite, EN-Varianten
+        // wurden am bilingual-Schalter vorbei geschrieben und Wizard-interne
+        // Properties (visible) landeten im Storage-JSON.
+        customFields: serializeCustomFields(draft.customFields || [], bilingualFields),
         parentEventId: parentEventId,
       };
       if (draft.dbId) {
@@ -3549,6 +3627,14 @@ export default function EventCreationPage(): React.ReactElement {
           // beim Speichern eines bestehenden Sub-Events still verloren
           // (gleiche Bug-Klasse wie v19.32 bei den Mail-Flags).
           'WaitlistEnabled': childPayload.waitlistEnabled,
+          // v29.20 (Audit): Organizer-Aenderungen erreichten bestehende
+          // Sub-Events nie — nur der Create-Pfad schrieb sie (childPayload).
+          // Sub-Event-Mails und Flows lesen die Zeile des Sub-Events und
+          // adressierten nach einem Organizer-Wechsel weiter die alten
+          // Personen. Der Doku-Kommentar oben verspricht die Vererbung
+          // ausdruecklich („Alle Sub-Events erben Metadaten (Organizer, …)").
+          'Organizer': childPayload.organizer,
+          'OrganizerEmail': childPayload.organizerEmail,
           'MandatoryRegistration': childPayload.mandatoryRegistration, // v24.64: Pflicht-Sub-Event
           'LastDeregisterDate': childPayload.lastDeregisterDate || null,
           'LocationAddress': childPayload.locationAddress,
