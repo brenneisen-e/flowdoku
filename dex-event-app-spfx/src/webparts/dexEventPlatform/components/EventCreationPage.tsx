@@ -7301,6 +7301,12 @@ export default function EventCreationPage(): React.ReactElement {
           mainBadge={subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt' : 'Main')}
           klammer={subEventsOnlyMode}
           klammerWord={isDe ? 'Klammerevent' : 'bracket event'}
+          // v29.23: Zähl-Badge rechts in der Klammer-Zeile — ersetzt die frei
+          // schwebende Zahl neben den umbrechenden Reitern. Im Kalender-Modus
+          // sind die Kinder „Termine", sonst gilt die Event-Bezeichnung.
+          countBadge={subCount >= 2 ? `${subCount} ${subEventCalendar
+            ? (isDe ? 'Termine' : 'dates')
+            : (childTermPlural || (isDe ? 'Sub-Events' : 'sub-events'))}` : undefined}
           klammerInfo={
             <InfoTooltip
               placement="bottom"

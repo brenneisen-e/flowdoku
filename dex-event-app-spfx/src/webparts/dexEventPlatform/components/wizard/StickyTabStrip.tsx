@@ -35,6 +35,11 @@ export function StickyTabStrip(props: {
   /** v28.73: Info-Icon (Tooltip) rechts im Klammer-Reiter — erklärt, dass die
    *  Anmeldung über die Sub-Events läuft, mit Quicklink zur Umstellung. */
   klammerInfo?: React.ReactNode;
+  /** v29.23: Fertiger Zähl-Text („21 Termine") für den rechten Rand der
+   *  Klammer-Zeile. Der Aufrufer baut ihn, weil nur er das richtige Wort
+   *  kennt (childTermPlural). Ersetzt die frei schwebende Zahl neben den
+   *  umbrechenden Reitern. */
+  countBadge?: string;
 }): React.ReactElement {
   const phRef = React.useRef<HTMLDivElement | null>(null);
   const [pin, setPin] = React.useState<null | { top: number; left: number; width: number; height: number }>(null);
@@ -316,6 +321,21 @@ export function StickyTabStrip(props: {
                     {props.klammerInfo}
                   </span>
                   <span style={{ flex: 1 }} />
+                  {/* v29.23: Die Zählung sitzt HIER, am rechten Rand der
+                      Klammer-Zeile — als Teil der Zeile, zu der sie gehört.
+                      Vorher stand sie als nackte Zahl rechts neben den
+                      umbrechenden Reitern (Rest der Scroll-Standortanzeige
+                      aus v28.89) und schwebte dort ohne Bezug. */}
+                  {props.countBadge && (
+                    <span style={{
+                      fontSize: '0.7rem', fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
+                      padding: '2px 8px', borderRadius: 10,
+                      background: pActive ? 'rgba(255,255,255,0.22)' : 'rgba(134,188,37,0.14)',
+                      color: pActive ? '#fff' : 'var(--dex-green-dark, #4a7c1f)',
+                    }}>
+                      {props.countBadge}
+                    </span>
+                  )}
                   {dis && props.mainDisabledNote && (
                     <span style={{ fontSize: '0.65rem', fontWeight: 600, padding: '2px 6px', borderRadius: 8, background: 'var(--dex-gray-200, #e0e0e0)', color: 'var(--dex-gray-600)', flexShrink: 0 }}>
                       {props.mainDisabledNote}
@@ -354,16 +374,14 @@ export function StickyTabStrip(props: {
                     {props.tabs.slice(1).map((tab, i) => renderTabBtn(tab, i + 1))}
                   </div>
                   {ovf.right && arrowBtn(1)}
-                  {/* v28.89: Standortanzeige „3 / 21" — beim Umbruch weiter
-                      nützlich als Orientierung, welcher Termin gerade offen ist. */}
-                  {props.tabs.length - 1 >= 5 && (
-                    <span style={{
-                      alignSelf: 'center', flexShrink: 0, fontSize: '0.72rem', fontWeight: 700,
-                      color: 'var(--dex-gray-500)', whiteSpace: 'nowrap', paddingLeft: 2,
-                    }}>
-                      {props.activeIdx > 0 ? `${props.activeIdx} / ${props.tabs.length - 1}` : `${props.tabs.length - 1}`}
-                    </span>
-                  )}
+                  {/* v29.23: Die Standortanzeige „3 / 21" (v28.89) ist hier
+                      raus. Sie stammte aus der Scroll-Zeit der Leiste; seit
+                      dem Umbruch (v29.17) sind alle Reiter sichtbar und der
+                      aktive ist grün — die Position sagt nichts mehr. Und
+                      wenn die Klammer aktiv war, blieb nur die nackte Zahl
+                      übrig, vertikal zentriert neben mehreren Zeilen Chips.
+                      Die Gesamtzahl trägt jetzt das countBadge in der
+                      Klammer-Zeile. */}
                 </div>
               </div>
             );
