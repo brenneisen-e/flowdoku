@@ -45,6 +45,7 @@ const PAGE_CATALOG: PageEntry[] = [
   { page: 'participants', de: 'Teilnehmer-Übersicht', en: 'Participants overview', kw: ['teilnehmer-übersicht', 'participants', 'register', 'cross-event'], gate: 'admin' },
   { page: 'role-matrix', de: 'Rollenmatrix', en: 'Role matrix', kw: ['rollen', 'matrix', 'rollenmatrix', 'rechte', 'berechtigungen', 'permissions'], gate: 'admin' },
   { page: 'stats-archive', de: 'Statistik-Archiv', en: 'Statistics archive', kw: ['statistik', 'archiv', 'statistics', 'archive', 'kpi', 'kennzahlen', 'gelöscht', 'stats'], gate: 'admin' },
+  { page: 'intro-onepager', de: 'Einführungs-Onepager', en: 'Introduction one-pager', kw: ['einführung', 'onepager', 'one-pager', 'einführungsveranstaltung', 'überblick', 'intro', 'introduction', 'schulung', 'venn'], gate: 'admin' },
   { page: 'settings', de: 'Einstellungen', en: 'Settings', kw: ['einstellungen', 'settings', 'rollen verwalten', 'templates', 'logos', 'reseed'], gate: 'admin' },
   { page: 'manual', de: 'Handbuch', en: 'Manual', kw: ['handbuch', 'hilfe', 'manual', 'anleitung', 'help'], gate: 'all' },
   { page: 'profile', de: 'Profil', en: 'Profile', kw: ['profil', 'profile', 'konto', 'account'], gate: 'all' },
