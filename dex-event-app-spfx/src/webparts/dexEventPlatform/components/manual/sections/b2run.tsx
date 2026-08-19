@@ -38,19 +38,19 @@ export function b2runSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Beim Event-Anlegen im Schritt "Kapazität & Sichtbarkeit" (Schritt 5) findest du die Checkbox "Lauf-Event mit getrennten Starter-Kapazitäten". Aktivieren — und die klassische "Max. Teilnehmer"-Eingabe wird ersetzt durch zwei Felder: Durchstarter-Kapazität und Funstarter-Kapazität. Die Summe ist automatisch die Gesamt-Kapazität.'
-                  : 'When creating an event, in the "Capacity & visibility" step (step 5) you find the checkbox "Running event with split starter capacities". Activate it — and the classic "Max participants" input is replaced by two fields: Durchstarter capacity and Funstarter capacity. The sum is automatically the total capacity.'}
+                  ? 'Beim Event-Anlegen im Schritt "Kapazität & Sichtbarkeit" (Schritt 4) findest du die Checkbox "Lauf-Event mit getrennten Starter-Kapazitäten". Aktivieren — und die klassische "Max. Teilnehmer"-Eingabe wird ersetzt durch zwei Felder: Durchstarter-Kapazität und Funstarter-Kapazität. Die Summe ist automatisch die Gesamt-Kapazität.'
+                  : 'When creating an event, in the "Capacity & visibility" step (step 4) you find the checkbox "Running event with split starter capacities". Activate it — and the classic "Max participants" input is replaced by two fields: Durchstarter capacity and Funstarter capacity. The sum is automatically the total capacity.'}
               </>
             ),
             mockup: (
               <AppPreview
-                label={isDe ? 'Wizard Schritt 5: Split-Kapazitäten (echte Ansicht)' : 'Wizard step 5: Split capacities (real view)'}
+                label={isDe ? 'Wizard Schritt 4: Split-Kapazitäten (echte Ansicht)' : 'Wizard step 4: Split capacities (real view)'}
                 role="Organizer"
                 page="edit-event"
                 selectedEventId={DEMO_EVENT_ID}
                 width={1024}
                 device="laptop"
-                initialStep={4}
+                initialStep={3}
               >
                 <Header />
                 <EventCreationPage />
@@ -102,19 +102,19 @@ export function b2runSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Bei B2Run-Events bieten Organizer oft optionale Trainings-Sessions in den Wochen vor dem Lauf an. Die DEX-App löst das über Sub-Events: im Schritt "Sub-Events" (Schritt 3) des Event-Editors kannst du pro Session einen Eintrag mit Titel, Ort, Start/Ende, Anmeldeschluss und Kapazität anlegen. Sub-Events werden als eigenständige DEX_Events-Items mit parentEventId verwaltet — sie haben eine eigene Teilnehmerliste, einen eigenen Outlook-Termin und eigene Mails. Der Teilnehmer meldet sich zuerst für das Haupt-Event an, dann auf dem Success-Screen für beliebige Sessions.'
-                  : 'B2Run organizers often offer optional training sessions in the weeks before the run. The DEX app solves this via sub-events: in the "Sub-events" step (step 3) of the event editor you can add one entry per session with title, location, start/end, registration cutoff and capacity. Sub-events are managed as standalone DEX_Events items with parentEventId — they have their own participant list, their own Outlook appointment and their own emails. The participant first registers for the main event, then on the success screen for any sessions.'}
+                  ? 'Bei B2Run-Events bieten Organizer oft optionale Trainings-Sessions in den Wochen vor dem Lauf an. Die DEX-App löst das über Sub-Events: im Schritt "Grundlagen" (Schritt 1) des Event-Editors kannst du pro Session einen Eintrag mit Titel, Ort, Start/Ende, Anmeldeschluss und Kapazität anlegen. Sub-Events werden als eigenständige DEX_Events-Items mit parentEventId verwaltet — sie haben eine eigene Teilnehmerliste, einen eigenen Outlook-Termin und eigene Mails. Der Teilnehmer meldet sich zuerst für das Haupt-Event an, dann auf dem Success-Screen für beliebige Sessions.'
+                  : 'B2Run organizers often offer optional training sessions in the weeks before the run. The DEX app solves this via sub-events: in the "Basics" step (step 1) of the event editor you can add one entry per session with title, location, start/end, registration cutoff and capacity. Sub-events are managed as standalone DEX_Events items with parentEventId — they have their own participant list, their own Outlook appointment and their own emails. The participant first registers for the main event, then on the success screen for any sessions.'}
               </>
             ),
             mockup: (
               <AppPreview
-                label={isDe ? 'Wizard Schritt 3: Sub-Events (echte Ansicht)' : 'Wizard step 3: Sub-events (real view)'}
+                label={isDe ? 'Wizard Schritt 1: Sub-Events (echte Ansicht)' : 'Wizard step 1: Sub-events (real view)'}
                 role="Organizer"
                 page="edit-event"
                 selectedEventId={DEMO_EVENT_ID}
                 width={1024}
                 device="laptop"
-                initialStep={2}
+                initialStep={0}
               >
                 <Header />
                 <EventCreationPage />
@@ -138,8 +138,8 @@ export function b2runSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Bei aktivierter Split-Kapazität kann der Organizer direkt im Schritt "Kapazität & Sichtbarkeit" (Schritt 5) jedem Starter-Typ einen Startblock zuordnen — z.B. "Durchstarter → Block A", "Funstarter → Block B". Wenn gesetzt, wird das Startblock-Custom-Field bei der Registrierung automatisch anhand des gewählten Starter-Typs gesetzt. Der User muss den Block dann nicht extra auswählen; das b2run_startblock-Feld wird in der Registrierungs-Maske ausgeblendet. Die freien Plätze pro Starter-Typ entsprechen 1:1 den freien Plätzen im zugeordneten Block.'
-                  : 'With split capacity enabled the organizer can map a start block to each starter type directly in the "Capacity & visibility" step (step 5) — e.g. "Durchstarter → Block A", "Funstarter → Block B". If set, the start block custom field is auto-populated at registration based on the chosen starter type. The user does not have to pick the block separately; the b2run_startblock field is hidden in the registration form. Free seats per starter type map 1:1 to free seats in the associated block.'}
+                  ? 'Bei aktivierter Split-Kapazität kann der Organizer direkt im Schritt "Kapazität & Sichtbarkeit" (Schritt 4) jedem Starter-Typ einen Startblock zuordnen — z.B. "Durchstarter → Block A", "Funstarter → Block B". Wenn gesetzt, wird das Startblock-Custom-Field bei der Registrierung automatisch anhand des gewählten Starter-Typs gesetzt. Der User muss den Block dann nicht extra auswählen; das b2run_startblock-Feld wird in der Registrierungs-Maske ausgeblendet. Die freien Plätze pro Starter-Typ entsprechen 1:1 den freien Plätzen im zugeordneten Block.'
+                  : 'With split capacity enabled the organizer can map a start block to each starter type directly in the "Capacity & visibility" step (step 4) — e.g. "Durchstarter → Block A", "Funstarter → Block B". If set, the start block custom field is auto-populated at registration based on the chosen starter type. The user does not have to pick the block separately; the b2run_startblock field is hidden in the registration form. Free seats per starter type map 1:1 to free seats in the associated block.'}
               </>
             ),
           },
@@ -149,8 +149,8 @@ export function b2runSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Ebenfalls im Schritt "Kapazität & Sichtbarkeit" (Schritt 5) findest du die Option "Leistungsnachweis für Durchstarter erforderlich". Wenn aktiviert, muss der User beim Wählen von Durchstarter eine zusätzliche Pflicht-Checkbox bestätigen ("Ich bestätige, dass ein entsprechender Leistungsnachweis vorliegt"). Ohne Bestätigung wird die Anmeldung blockiert. Die Bestätigung landet als b2run_leistungsnachweis-Eintrag in den CustomData der Teilnehmerregistrierung, sodass Organizer später kontrollieren können, wer bestätigt hat.'
-                  : 'Also in the "Capacity & visibility" step (step 5) you find the option "Proof of performance required for Durchstarter". When enabled, the user must tick an additional mandatory checkbox when selecting Durchstarter ("I confirm that a valid proof of performance exists"). Without confirmation, the registration is blocked. The confirmation lands as b2run_leistungsnachweis entry in the CustomData of the participant registration so organizers can later verify who confirmed.'}
+                  ? 'Ebenfalls im Schritt "Kapazität & Sichtbarkeit" (Schritt 4) findest du die Option "Leistungsnachweis für Durchstarter erforderlich". Wenn aktiviert, muss der User beim Wählen von Durchstarter eine zusätzliche Pflicht-Checkbox bestätigen ("Ich bestätige, dass ein entsprechender Leistungsnachweis vorliegt"). Ohne Bestätigung wird die Anmeldung blockiert. Die Bestätigung landet als b2run_leistungsnachweis-Eintrag in den CustomData der Teilnehmerregistrierung, sodass Organizer später kontrollieren können, wer bestätigt hat.'
+                  : 'Also in the "Capacity & visibility" step (step 4) you find the option "Proof of performance required for Durchstarter". When enabled, the user must tick an additional mandatory checkbox when selecting Durchstarter ("I confirm that a valid proof of performance exists"). Without confirmation, the registration is blocked. The confirmation lands as b2run_leistungsnachweis entry in the CustomData of the participant registration so organizers can later verify who confirmed.'}
               </>
             ),
             mockup: <Callout variant="info">{isDe ? 'Typische Anwendung: Organizer vergibt 10 Durchstarter-Plätze an schnelle Läufer. Mit der Leistungsnachweis-Pflicht bestätigt jeder Durchstarter-Anmelder explizit, dass er die Qualifikation hat — dient als Gatekeeping-Mechanismus und rechtliche Absicherung.' : 'Typical use case: organizer allocates 10 Durchstarter slots to fast runners. With the proof requirement, every Durchstarter applicant explicitly confirms having the qualification — acts as gatekeeping mechanism and legal safeguard.'}</Callout>,

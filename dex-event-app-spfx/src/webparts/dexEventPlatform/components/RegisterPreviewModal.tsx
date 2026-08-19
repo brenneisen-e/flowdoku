@@ -85,6 +85,12 @@ export interface RegisterPreviewData {
   splitDescA?: string;
   splitDescB?: string;
   splitSharedWaitlist?: boolean;
+  /** v29.21 (Audit): weitere anmeldeseiten-relevante Einstellungen — die
+   *  Vorschau soll zeigen, was der Teilnehmer bekommt, nicht eine Teilmenge. */
+  splitHelpText?: string;
+  splitSectionTitle?: string;
+  splitDisplayOrderReversed?: boolean;
+  askSalutation?: boolean;
 }
 
 export interface RegisterPreviewModalProps {
@@ -134,6 +140,10 @@ function buildSynthEvent(data: RegisterPreviewData): DeloitteEvent {
     ...(data.splitDescA ? { splitDescA: data.splitDescA } : {}),
     ...(data.splitDescB ? { splitDescB: data.splitDescB } : {}),
     ...(data.splitSharedWaitlist ? { splitSharedWaitlist: true } : {}),
+    ...(data.splitHelpText ? { splitHelpText: data.splitHelpText } : {}),
+    ...(data.splitSectionTitle ? { splitSectionTitle: data.splitSectionTitle } : {}),
+    ...(data.splitDisplayOrderReversed ? { splitDisplayOrderReversed: true } : {}),
+    ...(data.askSalutation ? { askSalutation: true } : {}),
     currentParticipants: 0,
     waitlistCount: 0,
     imageUrl: data.imagePreview || '',

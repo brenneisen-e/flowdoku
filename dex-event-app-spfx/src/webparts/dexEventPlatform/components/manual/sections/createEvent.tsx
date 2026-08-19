@@ -166,7 +166,7 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
                 </ul>
               </>
             ),
-            mockup: wizardPreview(2, isDe ? 'Wizard Schritt 3: Sub-Events (echte Ansicht)' : 'Wizard step 3: Sub-events (real view)'),
+            mockup: wizardPreview(0, isDe ? 'Wizard Schritt 1: Grundlagen — Sub-Events (echte Ansicht)' : 'Wizard step 1: Basics — sub-events (real view)'),
             tip: isDe
               ? 'Sub-Events werden bewusst vor Ort, Kapazität und Feldern konfiguriert: Diese späteren Schritte zeigen pro Sub-Event eigene Tabs, sodass du für jedes Sub-Event eigenen Ort, eigene Kapazität und eigene Felder pflegen kannst — dafür müssen die Sub-Events schon angelegt sein.'
               : 'Sub-events are deliberately configured before location, capacity and fields: those later steps show per-sub-event tabs so you can maintain separate location, capacity and fields for each sub-event — which is why the sub-events must exist first.',
@@ -200,7 +200,7 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
                   : 'If the event has sub-events, the tab bar on top lets you maintain location and programme per sub-event — including a "Copy from main event" button.'}
               </>
             ),
-            mockup: wizardPreview(3, isDe ? 'Wizard Schritt 4: Ort & Programm (echte Ansicht)' : 'Wizard step 4: Location & Programme (real view)'),
+            mockup: wizardPreview(2, isDe ? 'Wizard Schritt 3: Ort & Programm (echte Ansicht)' : 'Wizard step 3: Location & Programme (real view)'),
           },
           {
             number: 5,
@@ -234,7 +234,7 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
                 </ul>
               </>
             ),
-            mockup: wizardPreview(4, isDe ? 'Wizard Schritt 5: Kapazität & Sichtbarkeit (echte Ansicht)' : 'Wizard step 5: Capacity & Visibility (real view)'),
+            mockup: wizardPreview(3, isDe ? 'Wizard Schritt 4: Kapazität & Sichtbarkeit (echte Ansicht)' : 'Wizard step 4: Capacity & Visibility (real view)'),
             tip: isDe
               ? 'Statt viele Personen einzeln einzutragen, gib im Audience-Feld einfach den Namen eines Verteilers ein — z.B. „DE TT DUESSELDORF". Ändert sich der Verteiler in Outlook, nutzt die App beim nächsten Öffnen den aktuellen Stand. Pflichtfelder pro Gruppe (bei geteilter Kapazität) stellst du in Schritt 6 (Felder) über den Selektor „Sichtbar für Teilnehmergruppe" ein.'
               : 'Instead of adding many people individually, just type a distribution group name in the Audience field — e.g. "DE TT DUESSELDORF". If the group changes in Outlook, the app uses the current membership next time it opens. Per-group required fields (with split capacity) are set in step 6 (Fields) via the "Visible for attendee group" selector.',
@@ -275,7 +275,7 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
                 </p>
               </>
             ),
-            mockup: wizardPreview(5, isDe ? 'Wizard Schritt 6: Felder (echte Ansicht)' : 'Wizard step 6: Fields (real view)'),
+            mockup: wizardPreview(4, isDe ? 'Wizard Schritt 5: Felder (echte Ansicht)' : 'Wizard step 5: Fields (real view)'),
             tip: isDe
               ? 'Mit dem „Vorschau"-Button in der Aktionsleiste siehst du jederzeit live, wie das Anmeldeformular für Teilnehmer aussieht — inklusive Sichtbarkeitsbedingungen und i-Tooltips.'
               : 'Use the "Preview" button in the action bar to see live at any time what the attendee\'s registration form looks like — including visibility conditions and i-tooltips.',
@@ -315,7 +315,7 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
                   : 'If the event has sub-events, a tab bar appears on top: each sub-event can have its own mail language, Outlook texts, logos and sending settings — ideal e.g. when one sub-event runs in German and another in English.'}
               </>
             ),
-            mockup: wizardPreview(6, isDe ? 'Wizard Schritt 7: Kommunikation (echte Ansicht)' : 'Wizard step 7: Communication (real view)'),
+            mockup: wizardPreview(5, isDe ? 'Wizard Schritt 6: Kommunikation (echte Ansicht)' : 'Wizard step 6: Communication (real view)'),
           },
           {
             number: 8,
@@ -338,7 +338,7 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
                 </ul>
               </>
             ),
-            mockup: wizardPreview(7, isDe ? 'Wizard Schritt 8: Team-Anmeldung (echte Ansicht)' : 'Wizard step 8: Team Registration (real view)'),
+            mockup: wizardPreview(6, isDe ? 'Wizard Schritt 7: Team-Anmeldung (echte Ansicht)' : 'Wizard step 7: Team Registration (real view)'),
           },
           {
             number: 9,
@@ -355,7 +355,7 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
                   : 'You can also enable "Allow attendee upload": attendees may upload their own file (with a customizable display name such as "Travel-expense receipt" and an optional hint text).'}
               </>
             ),
-            mockup: wizardPreview(8, isDe ? 'Wizard Schritt 9: Dokumente (echte Ansicht)' : 'Wizard step 9: Documents (real view)'),
+            mockup: wizardPreview(7, isDe ? 'Wizard Schritt 8: Dokumente (echte Ansicht)' : 'Wizard step 8: Documents (real view)'),
           },
           {
             number: 10,
@@ -376,7 +376,7 @@ export function createEventSection(locale: 'de' | 'en'): ManualSection {
                 {isDe ? 'Details siehe Kapitel „Quiz / Fun-Zone".' : 'See the "Quiz / Fun Zone" chapter for details.'}
               </>
             ),
-            mockup: wizardPreview(9, isDe ? 'Wizard Schritt 10: Fun-Zone (echte Ansicht)' : 'Wizard step 10: Fun Zone (real view)'),
+            mockup: wizardPreview(8, isDe ? 'Wizard Schritt 9: Fun-Zone (echte Ansicht)' : 'Wizard step 9: Fun Zone (real view)'),
           },
           {
             number: 11,

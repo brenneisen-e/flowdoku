@@ -22,7 +22,10 @@ export function FieldTypeSuggestion(props: {
   if (!label) return null;
   let kind: 'profile' | 'date' | 'person' | null = null;
   if (labelLooksLikeProfile(label)) kind = 'profile';
-  else if (labelLooksLikeDate(label) && field.type !== 'date') kind = 'date';
+  else if (labelLooksLikeDate(label) && field.type !== 'date' && field.type !== 'daterange') kind = 'date';
+  // v29.21 (Audit): 'daterange' matcht die Heuristik (Anreise/Abreise/Check-in)
+  // naturgemaess — der Tipp haette das Feld auf 'date' zurueckgestuft und
+  // damit rangeStart/rangeEnd/maxNights beim Save verworfen.
   else if (allowPerson && labelLooksLikeName(label) && field.type !== 'user' && field.type !== 'roommate') kind = 'person';
   if (!kind) return null;
   const body = kind === 'profile'

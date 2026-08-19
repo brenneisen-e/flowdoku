@@ -372,6 +372,10 @@ export function StickyTabStrip(props: {
             <div
               role="tablist"
               aria-label={props.ariaLabel}
+              // v29.21 (Audit): Pfeiltasten-Navigation auch im flachen Layout —
+              // role="tablist" verspricht sie, bisher hatte sie nur die
+              // Klammer-Variante.
+              onKeyDown={onTabKeyDown}
               style={{
                 display: 'flex', flexWrap: 'wrap', gap: 6, flex: 1,
                 borderBottom: pin ? 'none' : '1px solid var(--dex-gray-200)',

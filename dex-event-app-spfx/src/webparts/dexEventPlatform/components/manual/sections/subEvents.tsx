@@ -19,8 +19,8 @@ export function subEventsSection(locale: 'de' | 'en'): ManualSection {
       : 'Create multiple sessions inside a main event — each with its own date, location, capacity, own registration/cancellation emails and dedicated Outlook calendar entry. Since v6.4 sub-events are standalone DEX_Events items with parentEventId — so participant lists, waitlist, Outlook invites, custom fields and email templates work identically to top-level events (no special logic).',
     visibleFor: ['User', 'Organizer', 'Admin'],
     keywords: isDe
-      ? 'Sub-Event Sub-Events Subevent Sessions Workshop Workshops Side-Event Nebenveranstaltung Programmpunkt Programmbaustein Track Breakout Break-out Session mehrtägig Offsite Networking-Dinner Kick-off Session buchen dazubuchen Session-Auswahl Nur Sessions Haupt-Event Bezeichnung umbenennen parentEventId Schritt 3 Sub-Events nutzen Sub-Event-Filter Auslastung pro Session'
-      : 'sub-event sub-events subevent session sessions workshop workshops side-event side event breakout break-out track programme item building block multi-day offsite networking dinner kick-off session book add-on session selection sessions only main event label rename parentEventId step 3 use sub-events sub-event filter per-session capacity',
+      ? 'Sub-Event Sub-Events Subevent Sessions Workshop Workshops Side-Event Nebenveranstaltung Programmpunkt Programmbaustein Track Breakout Break-out Session mehrtägig Offsite Networking-Dinner Kick-off Session buchen dazubuchen Session-Auswahl Nur Sessions Haupt-Event Bezeichnung umbenennen parentEventId Schritt 1 Sub-Events nutzen Sub-Event-Filter Auslastung pro Session'
+      : 'sub-event sub-events subevent session sessions workshop workshops side-event side event breakout break-out track programme item building block multi-day offsite networking dinner kick-off session book add-on session selection sessions only main event label rename parentEventId step 1 use sub-events sub-event filter per-session capacity',
     perspectives: [
       {
         perspective: 'organizer',
@@ -42,8 +42,8 @@ export function subEventsSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Im Event-Wizard zu Schritt 3 "Sub-Events" wechseln und den Schalter "Sub-Events nutzen?" aktivieren — die gesamte Sub-Event-Konfiguration klappt darunter auf. Pro Session legst du Titel, Beschreibung, Ort, Start-/Endzeit und optional eine Max-Teilnehmerzahl sowie einen Anmeldeschluss fest. Zwei Schalter pro Session steuern, ob eigene Mails bzw. ein eigener Outlook-Termin erzeugt werden.'
-                  : 'In the event wizard, go to step 3 "Sub-events" and flip the "Use sub-events?" toggle — the entire sub-event configuration unfolds below it. For each session define title, description, location, start/end time and optionally a capacity and registration deadline. Two toggles per session control whether dedicated emails and/or a dedicated Outlook calendar entry are created.'}
+                  ? 'Im Event-Wizard in Schritt 1 "Grundlagen" unter "Nutzung von Sub-Events" den Schalter aktivieren — die gesamte Sub-Event-Konfiguration klappt darunter auf. Pro Session legst du Titel, Beschreibung, Ort, Start-/Endzeit und optional eine Max-Teilnehmerzahl sowie einen Anmeldeschluss fest. Zwei Schalter pro Session steuern, ob eigene Mails bzw. ein eigener Outlook-Termin erzeugt werden.'
+                  : 'In the event wizard, in step 1 "Basics" under "Use of sub-events", flip the toggle — the entire sub-event configuration unfolds below it. For each session define title, description, location, start/end time and optionally a capacity and registration deadline. Two toggles per session control whether dedicated emails and/or a dedicated Outlook calendar entry are created.'}
                 <br /><br />
                 <strong>{isDe ? 'Outlook nachträglich aktivieren — ohne Teilnehmer-Verlust (v11.69):' : 'Enabling Outlook after the fact — without losing attendees (v11.69):'}</strong>{' '}
                 {isDe
@@ -59,7 +59,7 @@ export function subEventsSection(locale: 'de' | 'en'): ManualSection {
                 selectedEventId={DEMO_EVENT_ID}
                 width={1024}
                 device="laptop"
-                initialStep={2}
+                initialStep={0}
               >
                 <Header />
                 <EventCreationPage />
