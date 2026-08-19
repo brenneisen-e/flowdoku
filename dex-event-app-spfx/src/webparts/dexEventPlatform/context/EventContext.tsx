@@ -1260,6 +1260,21 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           return !!(ov && ov._subEventsOnlyMode);
         } catch { return false; }
       })(),
+      // v29.25: Selbst-Abmeldung komplett deaktiviert bzw. nach der
+      // Abmeldefrist gesperrt (Piggybacks _noSelfCancel /
+      // _noCancelAfterDeadline). Auswertung in utils/cancelPolicy.
+      noSelfCancel: ((): boolean => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          return !!(ov && ov._noSelfCancel);
+        } catch { return false; }
+      })(),
+      noCancelAfterDeadline: ((): boolean => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          return !!(ov && ov._noCancelAfterDeadline);
+        } catch { return false; }
+      })(),
       // v28.97: Nur EIN Sub-Event waehlbar (Piggyback _subEventSingleChoice).
       subEventSingleChoice: ((): boolean => {
         try {

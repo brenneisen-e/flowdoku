@@ -633,6 +633,14 @@ export default function EventCreationPage(): React.ReactElement {
     editEvent && editEvent.klammerDeadline ? isoToLocal(editEvent.klammerDeadline) : ''
   );
   const [lastDeregisterDate, setLastDeregisterDate] = React.useState(editEvent ? isoToLocal(editEvent.lastDeregisterDate) : '');
+  // v29.25: Selbst-Abmeldung, zweistufig. Stufe 1: „Abmeldung durch User
+  // ermöglichen" (Default ja; bei Nein gibt es keine Abmeldefrist und nur
+  // Organizer/Admins melden ab — Piggyback _noSelfCancel). Stufe 2 (nur bei
+  // Ja mit gesetzter Frist): „auch nach der Abmeldefrist erlauben" (Default
+  // ja = Late-Cancel mit Organizer-Mail; bei Nein Piggyback
+  // _noCancelAfterDeadline).
+  const [userCancelAllowed, setUserCancelAllowed] = React.useState<boolean>(!(editEvent && editEvent.noSelfCancel));
+  const [noCancelAfterDeadline, setNoCancelAfterDeadline] = React.useState<boolean>(!!(editEvent && editEvent.noCancelAfterDeadline));
   // v9.22: Auto-Fill der Deadlines wenn Start-Datum gesetzt wird und die
   // Deadlines noch leer sind. Default-Logik:
   //   - RegistrationDeadline: 7 Tage vor Event-Start
@@ -1027,6 +1035,8 @@ export default function EventCreationPage(): React.ReactElement {
           _noDescription,
           // v28.91: Kalender-Modus der Sub-Events (s. subEventCalendarConfig).
           _subEventCalendar, _subEventSingleChoice,
+          // v29.25: Abmelde-Sperren (s. userCancelAllowed / noCancelAfterDeadline).
+          _noSelfCancel, _noCancelAfterDeadline,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -1040,6 +1050,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _organizerDisplayLarge; void _hiddenOrganizers; void _hideOrgIndividual; void _mainEventLabel;
         void _imageOrigUrl; void _klammerDeadline; void _noDescription;
         void _subEventCalendar; void _subEventSingleChoice;
+        void _noSelfCancel; void _noCancelAfterDeadline;
         void _hotels; void _hotelStays; void _hotelVisible; void _hotelRules;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
@@ -4186,7 +4197,7 @@ export default function EventCreationPage(): React.ReactElement {
             : `The registration deadline (${fmtDt(registrationDeadline)}) is AFTER the event start (${fmtDt(startDate)}). Please set the deadline to a time before the event.`, { variant: 'error' });
           return;
         }
-        if (lastDeregisterDate && new Date(lastDeregisterDate).getTime() > startTs) {
+        if (userCancelAllowed && lastDeregisterDate && new Date(lastDeregisterDate).getTime() > startTs) {
           showAlert(isDe
             ? `Die Abmeldefrist (${fmtDt(lastDeregisterDate)}) liegt NACH dem Event-Beginn (${fmtDt(startDate)}). Bitte setze die Frist auf einen Zeitpunkt vor dem Event.`
             : `The deregistration deadline (${fmtDt(lastDeregisterDate)}) is AFTER the event start (${fmtDt(startDate)}). Please set the deadline to a time before the event.`, { variant: 'error' });
@@ -4286,7 +4297,9 @@ export default function EventCreationPage(): React.ReactElement {
       };
 
       // Optionale Felder - immer senden damit Löschungen wirken
-      updates['LastDeregisterDate'] = deadlineToEndOfDayIso(lastDeregisterDate);
+      // v29.25: Ohne Selbst-Abmeldung gibt es keine Abmeldefrist — ein
+      // gespeicherter Alt-Wert würde auf der Anmeldeseite weiter angezeigt.
+      updates['LastDeregisterDate'] = userCancelAllowed ? deadlineToEndOfDayIso(lastDeregisterDate) : null;
       // Outlook-Body: Variablen werden bereits hier aufgelöst (gleicher Body für alle Teilnehmer).
       const outlookVars: Record<string, string> = {
         EventTitle: title,
@@ -4406,6 +4419,11 @@ export default function EventCreationPage(): React.ReactElement {
       // abgewaehlter Schalter darf keinen Rest im Blob hinterlassen.
       const subEventCalendarConfig = (subEventCalendar && subEventsOptIn) ? { _subEventCalendar: true } : {};
       const subEventSingleChoiceConfig = (subEventSingleChoice && subEventsOptIn) ? { _subEventSingleChoice: true } : {};
+      // v29.25: Abmelde-Sperren — nur setzen, wenn aktiv (ein abgewählter
+      // Schalter darf keinen Rest im Blob hinterlassen). Die Nach-Frist-
+      // Sperre nur, solange die Selbst-Abmeldung überhaupt erlaubt ist.
+      const noSelfCancelConfig = !userCancelAllowed ? { _noSelfCancel: true } : {};
+      const noCancelAfterDeadlineConfig = (userCancelAllowed && noCancelAfterDeadline) ? { _noCancelAfterDeadline: true } : {};
       // v28.11: Bestehende Original-Bild-URL beim Edit-Save WEITERTRAGEN —
       // sonst würde der frisch zusammengebaute Overrides-Blob sie wegwerfen.
       // v28.12: auch bei neuem Bild erstmal mitschreiben; der Post-Save-Code
@@ -4485,7 +4503,7 @@ export default function EventCreationPage(): React.ReactElement {
         organizerDisplayLargeConfig, previewBeforeActiveConfig,
         imageDisplayConfig, hideOrganizerConfig, hiddenOrganizersConfig,
         hideOrgIndividualConfig, headerImageLayoutConfig, noDescriptionConfig,
-        subEventCalendarConfig, subEventSingleChoiceConfig, hotelCarryConfig,
+        subEventCalendarConfig, subEventSingleChoiceConfig, noSelfCancelConfig, noCancelAfterDeadlineConfig, hotelCarryConfig,
       ];
       updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || !!effEmailLogo || !!effOutlookLogo || topPiggybackConfigs.some(o => Object.keys(o).length > 0))
         // v28.2: Object.assign statt Spread-Kette — die Literal-Spreads
@@ -5078,7 +5096,8 @@ export default function EventCreationPage(): React.ReactElement {
         // v22.17: EndDate nie leer lassen (Outlook-Flow-Crash, s.o.) — Fallback Start.
         endDate: endDate ? berlinLocalToUtcIso(endDate) : (startDate ? berlinLocalToUtcIso(startDate) : ''),
         registrationDeadline: deadlineToEndOfDayIso(registrationDeadline) || '',
-        lastDeregisterDate: deadlineToEndOfDayIso(lastDeregisterDate) || '',
+        // v29.25: Ohne Selbst-Abmeldung keine Abmeldefrist (s. Edit-Pfad).
+        lastDeregisterDate: userCancelAllowed ? (deadlineToEndOfDayIso(lastDeregisterDate) || '') : '',
         // v29.19: „Aktiv ab" auch beim ANLEGEN persistieren — gleiche
         // Konvertierung wie der Edit-Pfad. Vorher wurde nur das abhängige
         // _previewBeforeActive-Flag geschrieben, das Datum selbst nicht.
@@ -5236,6 +5255,9 @@ export default function EventCreationPage(): React.ReactElement {
             // v28.91: Kalender-Modus der Sub-Events.
             ((subEventCalendar && subEventsOptIn) ? { _subEventCalendar: true } : {}),
             ((subEventSingleChoice && subEventsOptIn) ? { _subEventSingleChoice: true } : {}),
+            // v29.25: Abmelde-Sperren auch beim Anlegen.
+            (!userCancelAllowed ? { _noSelfCancel: true } : {}),
+            ((userCancelAllowed && noCancelAfterDeadline) ? { _noCancelAfterDeadline: true } : {}),
           ];
           // v29.19: Overrides aus dem Top-Level-Resolver — wie im Edit-Pfad
           // (v14.4). Der rohe State hält beim Speichern von einem Sub-Reiter
@@ -6758,7 +6780,7 @@ export default function EventCreationPage(): React.ReactElement {
         // Fehlermeldung rendert nur im Nicht-Split-Zweig.
         if (!subEventsOnlyMode) {
           if (registrationDeadline && startDate && new Date(registrationDeadline) > new Date(startDate)) errors.push('deadlineAfterStart');
-          if (lastDeregisterDate && startDate && new Date(lastDeregisterDate) > new Date(startDate)) errors.push('deregAfterStart');
+          if (userCancelAllowed && lastDeregisterDate && startDate && new Date(lastDeregisterDate) > new Date(startDate)) errors.push('deregAfterStart');
           if (!useSplitCapacities && !unlimitedParticipants && (maxParticipants === '' || isNaN(Number(maxParticipants)) || Number(maxParticipants) < 0)) errors.push('maxParticipants');
         }
         break;
@@ -12027,8 +12049,8 @@ export default function EventCreationPage(): React.ReactElement {
                   ausgegraut (die Klammer hat keine eigenen Plaetze). */}
               <div className="form-group" style={{ padding: '16px 20px', marginBottom: 12, background: zebraS3Bg(), borderRadius: 8, border: '1px solid var(--dex-gray-100)' }}>
                 {visHeader('vis_fristen', <StepBadge n={(locationFilter && audience) ? 22 : 21} />, <>{isDe ? 'Anmelde- und Abmeldefristen' : 'Registration & cancellation deadlines'}<InfoTooltip text={isDe
-                    ? 'Bis wann können sich Teilnehmer anmelden bzw. fristgerecht abmelden? Die Abmeldefrist ist die kommunizierte Deadline — abmelden geht danach weiterhin bis zum Event-Ende, die Organizer werden dann aber automatisch informiert. Beide Werte werden anhand des Event-Datums automatisch vorgeschlagen, du kannst sie jederzeit überschreiben.'
-                    : 'Until when can attendees register or cancel within the deadline? The cancellation deadline is the communicated cutoff — cancelling remains possible until the event ends, but organizers are then notified automatically. Both values are auto-suggested from the event date and can be overridden at any time.'} /></>)}
+                    ? 'Bis wann können sich Teilnehmer anmelden bzw. fristgerecht abmelden? Die Abmeldefrist ist die kommunizierte Deadline — abmelden geht danach standardmäßig weiterhin bis zum Event-Ende, die Organizer werden dann aber automatisch informiert. Über die Option unter den Fristen lässt sich die Selbst-Abmeldung nach der Frist auch komplett sperren. Beide Werte werden anhand des Event-Datums automatisch vorgeschlagen, du kannst sie jederzeit überschreiben.'
+                    : 'Until when can attendees register or cancel within the deadline? The cancellation deadline is the communicated cutoff — by default cancelling remains possible until the event ends, but organizers are then notified automatically. The option below the deadlines can instead lock self-cancellation completely after the cutoff. Both values are auto-suggested from the event date and can be overridden at any time.'} /></>)}
                 {isVisOpen('vis_fristen') && (<>
               {subEventsOnlyMode && (
                 <WizardHint
@@ -12145,6 +12167,22 @@ export default function EventCreationPage(): React.ReactElement {
                 {/* v28.31: Die Abmeldefrist gehoert bei einer Klammer zu den
                     Sub-Events — hier wäre sie wirkungslos. Nur dieses eine Feld
                     ausgrauen, die Klammer-Anmeldefrist links bleibt bedienbar. */}
+                {/* v29.25: Ohne Selbst-Abmeldung gibt es keine Abmeldefrist —
+                    statt des Datumsfelds steht der Grund. */}
+                {!userCancelAllowed ? (
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">{t('create.lastcancel')}</label>
+                    <div style={{
+                      padding: '10px 12px', borderRadius: 8, fontSize: '0.8rem', lineHeight: 1.5,
+                      background: 'var(--dex-gray-50, #fafafa)', border: '1px dashed var(--dex-gray-300)',
+                      color: 'var(--dex-gray-600)',
+                    }}>
+                      {isDe
+                        ? 'Entfällt — die Abmeldung durch User ist deaktiviert (Option unten). Abmelden können nur Organizer und Admins.'
+                        : 'Not applicable — self-cancellation is disabled (option below). Only organizers and admins can cancel.'}
+                    </div>
+                  </div>
+                ) : (
                 <div className="form-group" style={{ marginBottom: 0, ...(subEventsOnlyMode ? { opacity: 0.55, pointerEvents: 'none' as const, userSelect: 'none' as const } : {}) }}>
                   <label className="form-label">
                     {t('create.lastcancel')}
@@ -12153,6 +12191,7 @@ export default function EventCreationPage(): React.ReactElement {
                         <strong>Letzte Abmeldemöglichkeit</strong> — der Stichtag, den du den Teilnehmern als <strong>verbindliche Abmeldefrist kommunizierst</strong>. Bis dahin gilt eine Abmeldung als unproblematisch.<br /><br />
                         <strong>Auswirkung für Teilnehmer:</strong> Eine Abmeldung bleibt bewusst <strong>bis zum Ende des Events möglich</strong> — wer kurzfristig erkrankt oder verhindert ist, kann sich also weiterhin abmelden. Nach dem Stichtag sieht die Person beim Abmelden einen <strong>deutlichen Hinweis</strong>, dass die Frist abgelaufen ist und die Organizer informiert werden. Erst <strong>nach Event-Ende</strong> ist die Selbst-Abmeldung gesperrt.<br /><br />
                         <strong>Automatismen:</strong> Bei jeder Abmeldung <strong>nach dem Stichtag</strong> bekommen die Organizer automatisch eine <strong>Info-Mail</strong> mit Name + E-Mail der Person — damit Hotel, Catering oder Transfers angepasst werden können. Zusätzliche Abmelde-Benachrichtigungen kannst du in <strong>Schritt 6 (Kommunikation)</strong> konfigurieren.<br /><br />
+                        Mit der Option <strong>unter den Fristen</strong> kannst du die Selbst-Abmeldung nach dem Stichtag stattdessen <strong>komplett sperren</strong>.<br /><br />
                         Vorbefüllt mit <strong>3 Tagen vor Event-Start</strong>.
                       </>
                     ) : (
@@ -12160,6 +12199,7 @@ export default function EventCreationPage(): React.ReactElement {
                         <strong>Last cancellation date</strong> — the cutoff you <strong>communicate to attendees as the binding cancellation deadline</strong>. Up to this date a cancellation is considered routine.<br /><br />
                         <strong>Effect for attendees:</strong> cancelling deliberately stays <strong>possible until the event ends</strong> — anyone who falls ill or is prevented at short notice can still cancel. After the cutoff the person sees a <strong>clear notice</strong> when cancelling that the deadline has passed and the organizers will be informed. Only <strong>after the event has ended</strong> is self-cancellation locked.<br /><br />
                         <strong>Automation:</strong> for every cancellation <strong>after the cutoff</strong> the organizers automatically receive an <strong>info email</strong> with the person’s name + email — so hotel, catering or transfers can be adjusted. Additional cancellation notifications can be configured in <strong>step 6 (Communication)</strong>.<br /><br />
+                        With the option <strong>below the deadlines</strong> you can instead <strong>lock self-cancellation completely</strong> after the cutoff.<br /><br />
                         Pre-filled with <strong>3 days before event start</strong>.
                       </>
                     )} />
@@ -12182,16 +12222,81 @@ export default function EventCreationPage(): React.ReactElement {
                     autoComplete="off"
                   />
                 </div>
+                )}
               </div>
               {/* v28.31: erklärt das ausgegraute Feld, statt es kommentarlos tot
                   aussehen zu lassen. */}
-              {subEventsOnlyMode && (
+              {subEventsOnlyMode && userCancelAllowed && (
                 <p style={{ fontSize: '0.74rem', color: 'var(--dex-gray-500)', marginTop: 8, marginBottom: 0, lineHeight: 1.5 }}>
                   {isDe
                     ? <>Die <strong>Abmeldefrist</strong> ist bei einer Klammer ausgegraut — sie gehört zum einzelnen {childTermSingular || 'Sub-Event'} und wird im jeweiligen Tab gesetzt. Die <strong>Anmeldefrist</strong> links gilt dagegen für das gesamte Event.</>
                     : <>The <strong>cancellation deadline</strong> is greyed out for a bracket — it belongs to the individual {childTermSingular || 'sub-event'} and is set in its tab. The <strong>registration deadline</strong> on the left applies to the entire event.</>}
                 </p>
               )}
+              {/* v29.25: Selbst-Abmeldung, zweistufig. Stufe 1 steht bewusst
+                  DIREKT unter den Fristen und erklärt zuerst den Default —
+                  sonst liest sich die Option, als wäre Abmelden heute schon
+                  eingeschränkt. Stufe 2 erscheint nur, wenn sie überhaupt
+                  greifen kann (Selbst-Abmeldung erlaubt + Frist gesetzt bzw.
+                  Klammer mit Sub-Event-Fristen). Beides event-weit. */}
+              <div style={{
+                marginTop: 12, padding: '12px 14px', borderRadius: 10,
+                border: `1px solid ${!userCancelAllowed ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-gray-200)'}`,
+                background: !userCancelAllowed ? 'rgba(237,139,0,0.06)' : 'var(--dex-gray-50, #fafafa)',
+              }}>
+                <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', margin: 0 }}>
+                  <input
+                    type="checkbox"
+                    checked={userCancelAllowed}
+                    onChange={e => setUserCancelAllowed(e.target.checked)}
+                    style={{ marginTop: 3, width: 16, height: 16, accentColor: 'var(--dex-green, #86bc25)', flexShrink: 0 }}
+                  />
+                  <span style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>
+                    <strong>{isDe ? 'Abmeldung durch User ermöglichen' : 'Allow users to cancel themselves'}</strong>
+                    <span style={{ display: 'block', marginTop: 4, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                      {isDe ? (
+                        <>
+                          <strong>Standard (an):</strong> Teilnehmer können sich selbst abmelden — unter „Meine Events“ und über den Link in der Bestätigungsmail.<br />
+                          <strong>Deaktiviert:</strong> Teilnehmer können sich <strong>gar nicht selbst abmelden</strong>; eine Abmeldefrist entfällt. Abmelden können nur Organizer und Admins über das Organizer Center — dort steht neben den angemeldeten Teilnehmern zusätzlich der <strong>No-Show</strong>-Knopf, um Nicht-Erschienene zu markieren.
+                        </>
+                      ) : (
+                        <>
+                          <strong>Default (on):</strong> attendees can cancel themselves — under “My events” and via the link in the confirmation mail.<br />
+                          <strong>Disabled:</strong> attendees <strong>cannot cancel themselves at all</strong>; there is no cancellation deadline. Only organizers and admins can cancel, via the Organizer Center — which then also shows a <strong>No-Show</strong> button next to registered attendees to mark people who did not appear.
+                        </>
+                      )}
+                    </span>
+                  </span>
+                </label>
+                {userCancelAllowed && (lastDeregisterDate || subEventsOnlyMode) && (
+                  <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer', margin: '12px 0 0', paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
+                    <input
+                      type="checkbox"
+                      checked={!noCancelAfterDeadline}
+                      onChange={e => setNoCancelAfterDeadline(!e.target.checked)}
+                      style={{ marginTop: 3, width: 16, height: 16, accentColor: 'var(--dex-green, #86bc25)', flexShrink: 0 }}
+                    />
+                    <span style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>
+                      <strong>{isDe ? 'Abmeldung auch nach der Abmeldefrist erlauben' : 'Also allow cancelling after the deadline'}</strong>
+                      <span style={{ display: 'block', marginTop: 4, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                        {isDe ? (
+                          <>
+                            <strong>Standard (an):</strong> Teilnehmer können sich auch nach der Abmeldefrist noch abmelden — die Organizer bekommen dann automatisch eine Info-Mail („Verspätete Abmeldung“) mit Name und E-Mail der Person.<br />
+                            <strong>Deaktiviert:</strong> Nach Ablauf der Frist können sich Teilnehmer <strong>nicht mehr selbst abmelden</strong> — abmelden können dann nur noch Organizer und Admins über das Organizer Center, dort ab der Frist ebenfalls mit <strong>No-Show</strong>-Knopf.
+                            {subEventsOnlyMode ? <> Bei einer Klammer greift die Sperre je {childTermSingular || 'Sub-Event'} nach dessen eigener Abmeldefrist.</> : null}
+                          </>
+                        ) : (
+                          <>
+                            <strong>Default (on):</strong> attendees can still cancel after the deadline — the organizers then automatically receive an info email (“late cancellation”) with the person’s name and email.<br />
+                            <strong>Disabled:</strong> once the deadline has passed, attendees <strong>can no longer cancel themselves</strong> — only organizers and admins can cancel, via the Organizer Center, which then also shows the <strong>No-Show</strong> button from the deadline on.
+                            {subEventsOnlyMode ? <> For a bracket the lock applies per {childTermSingular || 'sub-event'} based on its own cancellation deadline.</> : null}
+                          </>
+                        )}
+                      </span>
+                    </span>
+                  </label>
+                )}
+              </div>
               {fieldHasError('deadlineAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: 8, marginBottom: 0 }}>{t('create.error.deadlineAfterStart')}</p>}
               {fieldHasError('deregAfterStart') && <p style={{ color: 'var(--dex-red)', fontSize: '0.8rem', marginTop: 8, marginBottom: 0 }}>{t('create.error.deregAfterStart')}</p>}
               </>)}

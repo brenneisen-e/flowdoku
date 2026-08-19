@@ -21,6 +21,7 @@ import { DeloitteEvent, EventSpecificField, AgendaItem, TransferTime, QuizQuesti
 import { SPRegistration, EventCommRow } from '../services/EventService';
 import { wrapTemplate } from '../services/EmailTemplates';
 import { isEventOver } from '../utils/eventFormat';
+import { selfCancelLocked, selfCancelLockReason } from '../utils/cancelPolicy';
 import { useLanguage } from '../context/LanguageContext';
 // v20.4: moderne Confirm-/Alert-Modals statt window.confirm/alert.
 import { useDialog } from '../context/DialogContext';
@@ -1293,6 +1294,24 @@ export default function MyEventsPage(): React.ReactElement {
       setIsCancelling(false);
       return;
     }
+    // v29.25: Selbst-Abmeldung gesperrt (Organizer-Option) — komplett oder
+    // nach der Frist. Der Guard sitzt in performCancel, damit auch der
+    // Auto-Cancel-Deep-Link aus der Mail dieselbe Antwort bekommt wie der
+    // Knopf.
+    const lockReason = guardEntry ? selfCancelLockReason(guardEntry.event) : null;
+    if (lockReason) {
+      showAlert(lockReason === 'always'
+        ? (isDe
+          ? 'Bei diesem Event ist die Selbst-Abmeldung deaktiviert. Bitte wende dich zum Abmelden direkt an die Organizer.'
+          : 'Self-cancellation is disabled for this event. Please contact the organizers directly to cancel.')
+        : (isDe
+          ? 'Die Abmeldefrist ist abgelaufen und die Organizer haben die Selbst-Abmeldung danach deaktiviert. Bitte wende dich zum Abmelden direkt an die Organizer.'
+          : 'The cancellation deadline has passed and the organizers have disabled self-cancellation after it. Please contact the organizers directly to cancel.'),
+        { variant: 'error' });
+      setCancellingId(null);
+      setIsCancelling(false);
+      return;
+    }
     setCancellingId(eventId);
     setIsCancelling(true);
 
@@ -1314,6 +1333,10 @@ export default function MyEventsPage(): React.ReactElement {
       const activeKids: { id: string; title: string; startDate?: string; location?: string }[] = [];
       for (const ce of kids) {
         try {
+          // v29.25: Sub-Events mit gesperrter Selbst-Abmeldung gar nicht erst
+          // in den Kaskaden-Dialog aufnehmen — der Cancel würde sonst dort
+          // scheitern, wo der User ihn nicht mehr sieht.
+          if (selfCancelLocked(ce, entry?.event)) continue;
           const reg = await getMyRegistration(ce.id);
           if (reg && reg.Status !== 'Abgemeldet') {
             activeKids.push({
@@ -2682,6 +2705,27 @@ export default function MyEventsPage(): React.ReactElement {
                             ? 'Dieses Event liegt in der Vergangenheit — eine Abmeldung ist nicht mehr möglich.'
                             : 'This event is in the past — cancelling is no longer possible.'}
                         </span>
+                      ) : selfCancelLocked(event) ? (
+                        /* v29.25: Selbst-Abmeldung gesperrt (komplett oder
+                           nach der Frist) — statt eines Knopfs, der nur eine
+                           Fehlermeldung produziert, steht hier der Grund und
+                           der Weg (performCancel blockt zusätzlich, auch für
+                           den Auto-Cancel-Deep-Link aus der Mail). */
+                        <span style={{
+                          fontSize: '0.8rem', color: 'var(--dex-orange-dark, #b35a00)',
+                          padding: '8px 12px', borderRadius: 8,
+                          background: 'var(--dex-orange-light, #fff3e0)',
+                          border: '1px solid var(--dex-orange, #ed8b00)',
+                          lineHeight: 1.4,
+                        }}>
+                          {selfCancelLockReason(event) === 'always'
+                            ? (isDe
+                              ? 'Bei diesem Event ist die Selbst-Abmeldung deaktiviert. Bitte wende dich zum Abmelden an die Organizer.'
+                              : 'Self-cancellation is disabled for this event. Please contact the organizers to cancel.')
+                            : (isDe
+                              ? 'Die Abmeldefrist ist abgelaufen — bei diesem Event ist eine Selbst-Abmeldung danach nicht mehr möglich. Bitte wende dich an die Organizer.'
+                              : 'The cancellation deadline has passed — for this event self-cancellation is no longer possible after the deadline. Please contact the organizers.')}
+                        </span>
                       ) : (
                         <>
                       <button
@@ -3865,6 +3909,9 @@ function MyEventSubEvents(props: {
   };
 
   const handleToggle = async (childEventId: string, currentlyRegistered: boolean): Promise<void> => {
+    // v29.25: Backstop zur Button-Sperre — Selbst-Abmeldung nach der Frist
+    // deaktiviert (Organizer-Option auf dem Parent).
+    if (currentlyRegistered && selfCancelLocked(props.childEvents.find(ce => ce.id === childEventId), props.parentEvent)) return;
     // v11.34: Beim Cancel eines Sub-Events fragen, ob die anderen aktiven
     // Sub-Events des gleichen Parents auch abgemeldet werden sollen
     // (Peer-Cancel-Cascade) — gleicher Pattern wie der Parent-Cancel.
@@ -3986,13 +4033,24 @@ function MyEventSubEvents(props: {
   const headerLabel = termPlural || (isDe ? 'Sub-Events' : 'Sub-events');
   // v29.13: „Eine Session", aber „Ein Event" — der Artikel war fest verdrahtet.
   const termArticleDe = /(session|veranstaltung|einheit|runde|reihe|tour|führung|schicht|woche|gruppe|stunde)$/i.test(termSingular) ? 'Eine' : 'Ein';
-  const hintLabel = termSingular
+  // v29.25: Bei aktiver Abmelde-Sperre nicht „jederzeit abmelden" versprechen.
+  const anyCancelLocked = visibleChildren.some(ce => registeredSet.has(ce.id) && selfCancelLocked(ce, props.parentEvent));
+  const lockSuffix = anyCancelLocked
+    ? (props.parentEvent.noSelfCancel
+      ? (isDe
+          ? ' Hinweis: Die Organizer haben die Selbst-Abmeldung deaktiviert — zum Abmelden wende dich bitte an die Organizer.'
+          : ' Note: the organizers have disabled self-cancellation — please contact the organizers to cancel.')
+      : (isDe
+          ? ' Hinweis: Bei Terminen mit abgelaufener Abmeldefrist ist die Selbst-Abmeldung deaktiviert — bitte wende dich dafür an die Organizer.'
+          : ' Note: for dates whose cancellation deadline has passed, self-cancellation is disabled — please contact the organizers.'))
+    : '';
+  const hintLabel = (termSingular
     ? (isDe
         ? `${termArticleDe} ${termSingular} kannst du jederzeit nachträglich an- oder abmelden. Bei jeder Aktion bekommst du eine Bestätigungs-Mail und der Termin wird in Outlook angelegt bzw. zurückgezogen.`
         : `You can register or cancel a ${termSingular} at any time. Every action triggers a confirmation mail and creates or removes the Outlook calendar entry.`)
     : (isDe
         ? 'Sub-Events kannst du jederzeit nachträglich an- oder abmelden. Bei jeder Aktion bekommst du eine Bestätigungs-Mail und der Termin wird in Outlook angelegt bzw. zurückgezogen.'
-        : 'You can register or cancel sub-events at any time. Every action triggers a confirmation mail and creates or removes the Outlook calendar entry.');
+        : 'You can register or cancel sub-events at any time. Every action triggers a confirmation mail and creates or removes the Outlook calendar entry.')) + lockSuffix;
   return (
     <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--dex-gray-200)' }}>
       <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
@@ -4014,7 +4072,12 @@ function MyEventSubEvents(props: {
           const isFull = hasCap && count >= (ce.maxParticipants || 0);
           // v22.22: Vergangene Sessions sind weder an- noch abmeldbar
           // (Abmelde-Sperre für vergangene Events; EventContext blockt zusätzlich).
-          const disabled = isBusy || (deadlinePassed && !isReg) || (isFull && !isReg) || isEventOver(ce);
+          // v29.25: Abmelde-Sperre (Organizer-Option, komplett oder nach der
+          // Frist) — die Flags liegen auf dem Parent, maßgeblich ist die
+          // eigene Sub-Event-Frist.
+          const lockReason = isReg ? selfCancelLockReason(ce, props.parentEvent) : null;
+          const cancelLocked = !!lockReason;
+          const disabled = isBusy || (deadlinePassed && !isReg) || (isFull && !isReg) || isEventOver(ce) || cancelLocked;
           // v11.31: Custom-Field-Antworten gehören INS Sub-Event-Karten-
           // Layout, nicht ausserhalb. Maintainer-Wunsch: Tags zwischen
           // der Datums-/Adress-Zeile und den Action-Buttons (rechts) als
@@ -4080,9 +4143,18 @@ function MyEventSubEvents(props: {
                   className={`btn ${isReg ? 'btn-secondary' : 'btn-primary'}`}
                   style={{ fontSize: '0.75rem', padding: '4px 12px', minWidth: 92 }}
                   disabled={disabled}
+                  title={cancelLocked
+                    ? (lockReason === 'always'
+                      ? (isDe
+                        ? 'Die Organizer haben die Selbst-Abmeldung für dieses Event deaktiviert. Bitte wende dich zum Abmelden an die Organizer.'
+                        : 'The organizers have disabled self-cancellation for this event. Please contact the organizers to cancel.')
+                      : (isDe
+                        ? 'Die Abmeldefrist ist abgelaufen — eine Selbst-Abmeldung ist bei diesem Event danach nicht mehr möglich. Bitte wende dich an die Organizer.'
+                        : 'The cancellation deadline has passed — self-cancellation is no longer possible for this event. Please contact the organizers.'))
+                    : undefined}
                   onClick={() => handleToggle(ce.id, isReg)}
                 >
-                  {isBusy ? '...' : (isReg ? (isDe ? 'Abmelden' : 'Cancel') : (isDe ? 'Anmelden' : 'Register'))}
+                  {isBusy ? '...' : (isReg ? (cancelLocked ? (isDe ? 'Abmeldung gesperrt' : 'Locked') : (isDe ? 'Abmelden' : 'Cancel')) : (isDe ? 'Anmelden' : 'Register'))}
                 </button>
               </div>
             </div>

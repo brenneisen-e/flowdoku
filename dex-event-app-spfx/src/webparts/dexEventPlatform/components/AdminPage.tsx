@@ -25,6 +25,7 @@ import OrganizerList from './OrganizerList';
 import { PersonContactHover } from './PersonContactHover';
 import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
 import { isEventOver } from '../utils/eventFormat';
+import { selfCancelLocked } from '../utils/cancelPolicy';
 import { isDeloitteInternalEmail, isExternalEmail } from '../utils/deloitteDomain';
 // v20.1: Self-Check-in jederzeit aktivierbar (Token-Erzeugung beim Klick).
 // v20.2: + statische Check-in-URL für die QR-Kachel im Event-Detail.
@@ -10809,6 +10810,12 @@ export default function AdminPage(): React.ReactElement {
                   // Anwesenheits-Nachpflege — KEIN „Bearbeiten" mehr, sondern
                   // No-Show / Einchecken / stille Abmeldung (ohne E-Mail).
                   const eventOver = !!selectedEvent && isEventOver(selectedEvent);
+                  // v29.25: Selbst-Abmeldung nach der Frist gesperrt (Organizer-
+                  // Option) — ab da pflegt der Organizer die Anwesenheit, deshalb
+                  // steht neben angemeldeten Teilnehmern zusätzlich „No-Show".
+                  // Flag liegt bei Sub-Events auf dem Parent.
+                  const cancelLockActive = !eventOver && !!selectedEvent
+                    && selfCancelLocked(selectedEvent, selectedEvent.parentEventId ? allEvents.find(pe => pe.id === selectedEvent.parentEventId) : undefined);
                   const doCheckIn = async (): Promise<void> => {
                     if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
                     await eventServiceRef.checkInParticipant(selectedEvent.subsiteUrl, reg.Id);
@@ -10818,6 +10825,23 @@ export default function AdminPage(): React.ReactElement {
                   const doCheckOut = async (): Promise<void> => {
                     if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
                     await eventServiceRef.checkOutParticipant(selectedEvent.subsiteUrl, reg.Id);
+                    const regs = await getAllRegistrations(selectedEvent.id);
+                    setRegistrations(regs);
+                  };
+                  // v29.25: Echter No-Show-Status (wie auf der Check-in-Seite,
+                  // v23.28) — nicht zu verwechseln mit dem „No-Show"-Knopf der
+                  // Nach-Event-Pflege, der nur den Check-in zurücknimmt.
+                  // Ältere Teilnehmerlisten kennen die Choice nicht (HTTP 400).
+                  const doMarkNoShow = async (): Promise<void> => {
+                    if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
+                    const ok = await eventServiceRef.markNoShowParticipant(selectedEvent.subsiteUrl, reg.Id);
+                    if (!ok) {
+                      showAlert(isDe
+                        ? 'No-Show konnte nicht gesetzt werden. Bei Events, die vor v23.28 angelegt wurden, kennt die Teilnehmerliste den Status „No-Show" noch nicht.'
+                        : 'Could not set no-show. For events created before v23.28 the attendee list does not know the “No-Show” status yet.',
+                        { variant: 'error' });
+                      return;
+                    }
                     const regs = await getAllRegistrations(selectedEvent.id);
                     setRegistrations(regs);
                   };
@@ -10869,6 +10893,43 @@ export default function AdminPage(): React.ReactElement {
                           >
                             No-Show
                           </button>
+                        </>
+                      ) : cancelLockActive ? (
+                        <>
+                          {/* v29.25: Abmelde-Sperre aktiv — ab jetzt pflegt der
+                              Organizer die Anwesenheit: Einchecken/Auschecken wie
+                              bisher, daneben der echte No-Show-Status (v23.28,
+                              wie auf der Check-in-Seite). */}
+                          {reg.Status === 'Eingecheckt' ? (
+                            <button className="btn btn-secondary" style={{ fontSize: '0.75rem', padding: '4px 10px' }} onClick={doCheckOut}>
+                              {isDe ? 'Auschecken' : 'Check out'}
+                            </button>
+                          ) : (
+                            <button className="btn btn-primary" style={{ fontSize: '0.75rem', padding: '4px 10px' }} onClick={doCheckIn}>
+                              {isDe ? 'Einchecken' : 'Check in'}
+                            </button>
+                          )}
+                          <button
+                            className="btn btn-secondary"
+                            style={{ fontSize: '0.75rem', padding: '4px 10px', color: 'var(--dex-gray-700, #444)' }}
+                            disabled={reg.Status === 'No-Show' || reg.Status === 'Abgemeldet'}
+                            title={isDe
+                              ? 'Als nicht erschienen markieren. Die Selbst-Abmeldung ist für Teilnehmer aktuell deaktiviert — wer absagt, wird hier abgemeldet oder als No-Show markiert.'
+                              : 'Mark as a no-show. Self-cancellation is currently disabled for attendees — cancel people here or mark them as no-shows.'}
+                            onClick={() => { void doMarkNoShow(); }}
+                          >
+                            No-Show
+                          </button>
+                          {reg.Status === 'No-Show' && (
+                            <button
+                              className="btn btn-secondary"
+                              style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                              title={isDe ? 'No-Show zurücknehmen (Status zurück auf „Angemeldet")' : 'Undo no-show (status back to “registered”)'}
+                              onClick={doCheckOut}
+                            >
+                              {isDe ? 'Zurücksetzen' : 'Reset'}
+                            </button>
+                          )}
                         </>
                       ) : (
                         reg.Status === 'Eingecheckt' ? (

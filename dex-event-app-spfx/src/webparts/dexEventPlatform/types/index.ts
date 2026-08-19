@@ -122,6 +122,21 @@ export interface DeloitteEvent {
   endDate: string;
   registrationDeadline: string;
   lastDeregisterDate: string;
+  /** v29.25: Selbst-Abmeldung KOMPLETT deaktiviert (Piggyback _noSelfCancel,
+   *  event-weit auf dem Haupt-/Klammer-Event; Wizard-Frage „Abmeldung durch
+   *  User ermöglichen?" = Nein). Es gibt dann auch keine Abmeldefrist —
+   *  abmelden können nur Organizer/Admins über das Organizer Center (dort
+   *  mit No-Show-Knopf). Sub-Events erben das Flag vom Parent. */
+  noSelfCancel?: boolean;
+  /** v29.25: Selbst-Abmeldung NACH der Abmeldefrist sperren (Piggyback
+   *  _noCancelAfterDeadline, event-weit auf dem Haupt-/Klammer-Event).
+   *  Default false = Teilnehmer können sich auch nach der Frist abmelden,
+   *  die Organizer bekommen dann die „Verspätete Abmeldung"-Mail. true =
+   *  nach der Frist melden nur noch Organizer/Admins ab (Organizer Center,
+   *  dort dann mit No-Show-Knopf). Sub-Events erben das Flag vom Parent;
+   *  maßgeblich ist die jeweils eigene Frist (Fallback: Parent-Frist) —
+   *  siehe utils/cancelPolicy.selfCancelLocked. */
+  noCancelAfterDeadline?: boolean;
   description: string;
   maxParticipants: number;
   currentParticipants: number;

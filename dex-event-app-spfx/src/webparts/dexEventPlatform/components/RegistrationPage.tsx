@@ -16,6 +16,7 @@ import { isEventVisibleForUser } from './EventListPage';
 import { useCachedImage } from '../utils/imageCache';
 import { useIsMobile } from '../utils/useIsMobile';
 import { isRegistrationFullyClosed } from '../utils/eventFormat';
+import { selfCancelLocked } from '../utils/cancelPolicy';
 import { isDeloitteInternalEmail, isExternalEmail } from '../utils/deloitteDomain';
 import { useLanguage, translations as appTranslations, Locale } from '../context/LanguageContext';
 // v20.4: modernes Alert-Modal statt window.alert.
@@ -2029,6 +2030,8 @@ export default function RegistrationPage(): React.ReactElement {
       // v26.67 (B): mind. eine NEUE Sub-Event-Anmeldung erfolgreich? Gate für
       // die nachgelagerte Schatten-Klammer.
       let anySubRegSuccess = false;
+      // v29.25: Abwahlen, die wegen der Abmelde-Sperre NICHT abgemeldet wurden.
+      const lockedCancelTitles: string[] = [];
       for (const ce of childEvents) {
         const wasReg = sessionMeta[ce.id]?.wasRegistered;
         const isSel = selectedSessions.has(ce.id);
@@ -2061,6 +2064,16 @@ export default function RegistrationPage(): React.ReactElement {
           subOpsDone++;
           setSubmitProgress(50 + Math.floor((subOpsDone / Math.max(subOps, 1)) * 40));
         } else if (!isSel && wasReg && !registerForOther) {
+          // v29.25: Selbst-Abmeldung nach der Frist gesperrt (Organizer-
+          // Option) — das Abwählen darf hier nicht still abmelden. Der
+          // Haken bleibt technisch abgewählt, die Anmeldung besteht weiter;
+          // die betroffenen Termine werden nach dem Absenden benannt.
+          if (selfCancelLocked(ce, event)) {
+            lockedCancelTitles.push(ce.title || (locale === 'de' ? 'Sub-Event' : 'sub-event'));
+            subOpsDone++;
+            setSubmitProgress(50 + Math.floor((subOpsDone / Math.max(subOps, 1)) * 40));
+            continue;
+          }
           setSubmitProgressLabel(locale === 'de'
             ? `${childTermSingular || 'Sub-Event'} „${ce.title || '?'}" wird abgemeldet…`
             : `Cancelling ${childTermSingular || 'sub-event'} „${ce.title || '?'}"…`);
@@ -2073,6 +2086,18 @@ export default function RegistrationPage(): React.ReactElement {
           subOpsDone++;
           setSubmitProgress(50 + Math.floor((subOpsDone / Math.max(subOps, 1)) * 40));
         }
+      }
+      // v29.25: Gesperrte Abmeldungen benennen — sonst sähe das Absenden wie
+      // eine erfolgreiche Abmeldung aus, obwohl die Anmeldung weiter besteht.
+      if (lockedCancelTitles.length > 0) {
+        showAlert((event && event.noSelfCancel)
+          ? (locale === 'de'
+            ? `Nicht abgemeldet: ${lockedCancelTitles.join(', ')}. Die Organizer haben die Selbst-Abmeldung für dieses Event deaktiviert — bitte wende dich zum Abmelden an die Organizer. Deine Anmeldung bleibt bestehen.`
+            : `Not cancelled: ${lockedCancelTitles.join(', ')}. The organizers have disabled self-cancellation for this event — please contact the organizers to cancel. Your registration remains in place.`)
+          : (locale === 'de'
+            ? `Nicht abgemeldet: ${lockedCancelTitles.join(', ')}. Die Abmeldefrist ist abgelaufen und die Organizer haben die Selbst-Abmeldung danach deaktiviert — bitte wende dich zum Abmelden an die Organizer. Deine Anmeldung bleibt bestehen.`
+            : `Not cancelled: ${lockedCancelTitles.join(', ')}. The cancellation deadline has passed and the organizers have disabled self-cancellation after it — please contact the organizers to cancel. Your registration remains in place.`),
+          { variant: 'error' });
       }
       // v26.67 (B) Schritt 3: Schatten-/Klammer-Zeile im subEventsOnly-Modus
       // JETZT anlegen — erst nachdem mind. ein Sub-Event erfolgreich angemeldet
