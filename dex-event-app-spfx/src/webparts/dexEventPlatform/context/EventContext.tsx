@@ -671,6 +671,9 @@ export interface CreateEventInput {
   endDate: string;
   registrationDeadline: string;
   lastDeregisterDate: string;
+  /** v29.19: Auto-Aktivierung (UTC-ISO) — wurde beim Anlegen bisher nicht
+   *  persistiert, obwohl der Wizard das Feld anbietet. */
+  activeFrom?: string;
   maxParticipants: number;
   waitlistEnabled: boolean;
   mandatoryRegistration?: boolean; // v24.64: Pflicht-Sub-Event
@@ -1593,6 +1596,17 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         // mit abfragen (datetime-local statt date).
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         withTime: !!(cf as any).withTime,
+        // v29.20 (Audit A3): Die daterange-Grenzen (v28.63) fehlten in diesem
+        // Mapping komplett — das buchbare Übernachtungs-Fenster und das
+        // Nächte-Limit kamen deshalb bei KEINEM Event auf der Anmeldeseite an,
+        // und der Wizard konnte sie beim Edit nicht laden (→ der nächste Save
+        // entfernte sie endgültig aus dem CustomFields-JSON).
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        rangeStart: (cf as any).rangeStart || undefined,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        rangeEnd: (cf as any).rangeEnd || undefined,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        maxNights: typeof (cf as any).maxNights === 'number' ? (cf as any).maxNights : undefined,
         // externalLinks ebenfalls durchreichen, damit AGB-Links für B2Run-Datenschutz
         // korrekt unter dem Feld angezeigt werden (war bisher nur über den Fallback in
         // RegistrationPage abgesichert).

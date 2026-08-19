@@ -28,8 +28,8 @@ export function quizSection(locale: 'de' | 'en'): ManualSection {
         intro: (
           <>
             {isDe
-              ? 'Das Quiz ist Teil des letzten Wizard-Schritts "Fun-Zone" (Schritt 10). Du kannst beliebig viele Fragen mit je bis zu 4 Antwortoptionen anlegen und eine oder mehrere davon als richtig markieren. Teilnehmer spielen das Quiz auf der Event-Details-Seite — sobald mindestens eine Frage gespeichert ist, erscheint der Start-Button automatisch.'
-              : 'The quiz lives in the final wizard step "Fun-Zone" (step 10). You can add any number of questions, each with up to 4 answer options, and mark one or more as correct. Attendees play the quiz on the event details page — as soon as at least one question is saved, the start button appears automatically.'}
+              ? 'Das Quiz ist Teil des letzten Wizard-Schritts "Fun-Zone" (Schritt 9). Du kannst beliebig viele Fragen mit je bis zu 4 Antwortoptionen anlegen und eine oder mehrere davon als richtig markieren. Teilnehmer spielen das Quiz auf der Event-Details-Seite — sobald mindestens eine Frage gespeichert ist, erscheint der Start-Button automatisch.'
+              : 'The quiz lives in the final wizard step "Fun-Zone" (step 9). You can add any number of questions, each with up to 4 answer options, and mark one or more as correct. Attendees play the quiz on the event details page — as soon as at least one question is saved, the start button appears automatically.'}
           </>
         ),
         steps: [
@@ -39,19 +39,19 @@ export function quizSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Nach den vorherigen Schritten (Grundlagen, Organizer & Team, Sub-Events, Ort & Programm, Kapazität & Sichtbarkeit, Felder, Kommunikation, Team-Anmeldung, Dokumente) erreichst du als letzten Schritt "Fun-Zone" (Schritt 10). Standardmäßig ist noch keine Frage angelegt — das Quiz ist also optional.'
-                  : 'After the previous steps (Basics, Organizers & Team, Sub-events, Location & Programme, Capacity & Visibility, Fields, Communication, Team Registration, Documents) you reach "Fun-Zone" (step 10) as the final step. By default no question is set — the quiz is optional.'}
+                  ? 'Nach den vorherigen Schritten (Grundlagen, Organizer & Team, Sub-Events, Ort & Programm, Kapazität & Sichtbarkeit, Felder, Kommunikation, Team-Anmeldung, Dokumente) erreichst du als letzten Schritt "Fun-Zone" (Schritt 9). Standardmäßig ist noch keine Frage angelegt — das Quiz ist also optional.'
+                  : 'After the previous steps (Basics, Organizers & Team, Sub-events, Location & Programme, Capacity & Visibility, Fields, Communication, Team Registration, Documents) you reach "Fun-Zone" (step 9) as the final step. By default no question is set — the quiz is optional.'}
               </>
             ),
             mockup: (
               <AppPreview
-                label={isDe ? 'Wizard Schritt 10: Fun-Zone (echte Ansicht)' : 'Wizard step 10: Fun-Zone (real view)'}
+                label={isDe ? 'Wizard Schritt 9: Fun-Zone (echte Ansicht)' : 'Wizard step 9: Fun-Zone (real view)'}
                 role="Organizer"
                 page="edit-event"
                 selectedEventId={DEMO_EVENT_ID}
                 width={1024}
                 device="laptop"
-                initialStep={9}
+                initialStep={8}
               >
                 <Header />
                 <EventCreationPage />

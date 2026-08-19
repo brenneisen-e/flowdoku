@@ -263,11 +263,27 @@ function reinsertOrganizerPlaceholder(body: string, organizers: string[]): strin
   if (!body || !organizers || organizers.length === 0) return body;
   if (body.indexOf('{{Organizer}}') >= 0) return body; // schon Platzhalter
   const names = organizers.map(n => (n || '').trim()).filter(Boolean);
-  const full = names.join('; ');
-  if (full && body.indexOf(full) >= 0) return body.split(full).join('{{Organizer}}');
+  // v29.21 (Audit): Der Save backt den Platzhalter über formatOrganizerList
+  // — aus „Nachname, Vorname" (People-Picker-Format der Organizer-Spalte)
+  // wird dort „Vorname Nachname". Genau diese Form steht also im
+  // gespeicherten Body; die rohen Spalten-Namen matchen beim Regelfall mit
+  // Komma NIE, und der v27.3-Mechanismus („Organizer-Wechsel löst beim
+  // nächsten Save neu auf") war wirkungslos. Beide Formen probieren.
+  const flipped = names.map(n => {
+    const c = n.indexOf(',');
+    return c > 0 ? `${n.slice(c + 1).trim()} ${n.slice(0, c).trim()}` : n;
+  });
+  const seenCand: Record<string, boolean> = {};
+  const candidates = [...flipped, ...names].filter(n => (seenCand[n] ? false : (seenCand[n] = true)));
+  for (const joiner of ['; ', ', ']) {
+    const full = candidates.length > 1 ? flipped.join(joiner) : '';
+    if (full && body.indexOf(full) >= 0) return body.split(full).join('{{Organizer}}');
+  }
+  const fullRaw = names.join('; ');
+  if (fullRaw && body.indexOf(fullRaw) >= 0) return body.split(fullRaw).join('{{Organizer}}');
   // Bereits „kaputte"/veraltete Bodies: den ersten enthaltenen Organizer-Namen
   // (längster zuerst, um Teil-Treffer zu vermeiden) auf den Platzhalter mappen.
-  for (const n of [...names].sort((a, b) => b.length - a.length)) {
+  for (const n of [...candidates].sort((a, b) => b.length - a.length)) {
     if (n.length >= 3 && body.indexOf(n) >= 0) return body.split(n).join('{{Organizer}}');
   }
   return body;
@@ -766,6 +782,16 @@ export default function EventCreationPage(): React.ReactElement {
       ...(f.ccOnEmails ? { ccOnEmails: true } : {}),
       // v26.60: abgeschaltete Roommate-Benachrichtigung mit-übernehmen.
       ...(f.notifyRoommate === false ? { notifyRoommate: false } : {}),
+      // v29.20 (Audit A3): withTime (v24.25) und die daterange-Grenzen
+      // (v28.63) fehlten in DIESEM Mapper — serializeCustomFields schreibt
+      // nur, was im Draft steht, also entfernte jeder Edit-Save die
+      // Einstellungen still: „Datum + Uhrzeit" wurde zum reinen Datum, das
+      // buchbare Übernachtungs-Fenster verschwand. Die historische
+      // Drop-Klasse (v11.21/v18.20/v19.20) saß diesmal im Lade-Pfad.
+      ...(f.withTime ? { withTime: true } : {}),
+      ...(f.rangeStart ? { rangeStart: f.rangeStart } : {}),
+      ...(f.rangeEnd ? { rangeEnd: f.rangeEnd } : {}),
+      ...(typeof f.maxNights === 'number' && f.maxNights > 0 ? { maxNights: f.maxNights } : {}),
     })) : []
   );
   const [outlookBody, setOutlookBody] = React.useState(editEvent ? reinsertOrganizerPlaceholder(stripOutlookWrapper(editEvent.outlookBody || ''), editEvent.organizers || []) : '');
@@ -857,8 +883,13 @@ export default function EventCreationPage(): React.ReactElement {
   const [notifyOrgRegisterMode, setNotifyOrgRegisterMode] = React.useState<'never' | 'always' | 'fromDate'>(
     editEvent ? (editEvent.notifyOrgRegisterMode || 'never') : 'never'
   );
+  // v29.19: Wie alle anderen Datumsfelder über isoToLocal laden — der rohe
+  // SP-Wert ist UTC-ISO mit „Z", und berlinLocalToUtcIso beim Save hängt ein
+  // weiteres „Z" an → ungültig → es wurde '' in die Spalte geschrieben. Wer
+  // das Feld beim Edit nicht neu anfasste, verlor sein „BCC ab"-Datum still;
+  // der Modus blieb auf FromDate stehen und die Organizer-Kopie feuerte nie.
   const [notifyOrgRegisterFromDate, setNotifyOrgRegisterFromDate] = React.useState<string>(
-    editEvent ? (editEvent.notifyOrgRegisterFromDate || '') : ''
+    editEvent && editEvent.notifyOrgRegisterFromDate ? isoToLocal(editEvent.notifyOrgRegisterFromDate) : ''
   );
   const [notifyOrgCancelMode, setNotifyOrgCancelMode] = React.useState<'never' | 'always' | 'afterDeadline'>(
     // v10.17+: Default für neue Events ist 'afterDeadline' (Erst nach der
@@ -1459,6 +1490,26 @@ export default function EventCreationPage(): React.ReactElement {
         helpText: f.helpText,
         helpTextStyle: f.helpTextStyle,
         showIf: f.showIf,
+        // v29.20 (Audit A3): Dieser Mapper übernahm nur eine Teilmenge der
+        // Feld-Eigenschaften — der nächste Save eines Klammer-Events schrieb
+        // die Sub-Event-CustomFields dann OHNE den Rest zurück (die
+        // v11.21-Drop-Klasse, hier im Lade-Pfad). „Felder vom Hauptevent
+        // kopieren" und der Sub-Feld-Editor setzen all diese Properties.
+        ...(f.onlyForGroup ? { onlyForGroup: f.onlyForGroup } : {}),
+        ...(f.confirmLabel ? { confirmLabel: f.confirmLabel } : {}),
+        ...(f.defaultValue ? { defaultValue: f.defaultValue } : {}),
+        ...(f.optionCategories && f.optionCategories.length > 0 ? { optionCategories: [...f.optionCategories] } : {}),
+        ...(f.prefilterLabel ? { prefilterLabel: f.prefilterLabel } : {}),
+        ...(f.labelEn ? { labelEn: f.labelEn } : {}),
+        ...(f.helpTextEn ? { helpTextEn: f.helpTextEn } : {}),
+        ...(f.confirmLabelEn ? { confirmLabelEn: f.confirmLabelEn } : {}),
+        ...(f.optionsEn && f.optionsEn.length > 0 ? { optionsEn: [...f.optionsEn] } : {}),
+        ...(f.ccOnEmails ? { ccOnEmails: true } : {}),
+        ...(f.notifyRoommate === false ? { notifyRoommate: false } : {}),
+        ...(f.withTime ? { withTime: true } : {}),
+        ...(f.rangeStart ? { rangeStart: f.rangeStart } : {}),
+        ...(f.rangeEnd ? { rangeEnd: f.rangeEnd } : {}),
+        ...(typeof f.maxNights === 'number' && f.maxNights > 0 ? { maxNights: f.maxNights } : {}),
       })),
       // v15.3: pro-Sub-Event Felder aus dem Event-Datenmodell laden. Alle
       // Sub-Events haben jetzt eigene Adresse, Agenda, Transferzeiten,
@@ -1631,6 +1682,18 @@ export default function EventCreationPage(): React.ReactElement {
     );
     if (!ok) return;
     plan.forEach(p => forceOutlookRecreateRef.current.add(p.id));
+    // v29.20 (Audit): wie attemptSubmit VOR dem Save flushen — dieser Pfad
+    // rief handleSubmit direkt, und die Kommunikations-Eingaben des gerade
+    // offenen Reiters lagen dann noch nicht im Draft (CLAUDE.md-Falle):
+    // Der frisch angelegte Outlook-Termin trug den Text von VOR der letzten
+    // Bearbeitung. Ebenso die pendingOutlook*-Reste eines früheren
+    // Modal-Durchlaufs zurücksetzen, die hier sonst ungefragt nachwirkten.
+    flushActiveCommTabToState();
+    pendingOutlookDirtyWriteRef.current = null;
+    pendingOutlookDirtyWriteRefs.current = {};
+    pendingOutlookUpdateForTopRef.current = false;
+    pendingOutlookUpdateForSubEventsRef.current = [];
+    pendingOutlookRecreateForSubEventsRef.current = [];
     setOutlookUpdateBusy(true);
     try {
       await handleSubmit();
@@ -1999,7 +2062,10 @@ export default function EventCreationPage(): React.ReactElement {
     if (typeof window !== 'undefined') {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const init = (window as any).__dexPreviewInitialStep;
-      if (typeof init === 'number' && init >= 0 && init <= 7) return init;
+      // v29.21 (Audit B5): 9 Schritte, Indizes 0..8 — die alte 7er-Grenze
+      // verwarf Schritt 9 (Fun-Zone); Ticket-/Handbuch-Previews darauf
+      // zeigten stattdessen Grundlagen.
+      if (typeof init === 'number' && init >= 0 && init <= 8) return init;
     }
     return 0;
   });
@@ -2927,8 +2993,35 @@ export default function EventCreationPage(): React.ReactElement {
         ...(f.externalLinks && f.externalLinks.length > 0 ? { externalLinks: f.externalLinks.map(x => ({ ...x })) } : {}),
         ...(f.ccOnEmails ? { ccOnEmails: true } : {}),
         ...(f.notifyRoommate === false ? { notifyRoommate: false } : {}),
+        // v29.20 (Audit A3): auch hier fehlten Vorauswahl, Vorfilter,
+        // Uhrzeit-Option und die daterange-Grenzen — die Kopie verlor sie.
+        ...(f.defaultValue ? { defaultValue: f.defaultValue } : {}),
+        ...(f.optionCategories && f.optionCategories.length > 0 ? { optionCategories: [...f.optionCategories] } : {}),
+        ...(f.prefilterLabel ? { prefilterLabel: f.prefilterLabel } : {}),
+        ...(f.withTime ? { withTime: true } : {}),
+        ...(f.rangeStart ? { rangeStart: f.rangeStart } : {}),
+        ...(f.rangeEnd ? { rangeEnd: f.rangeEnd } : {}),
+        ...(typeof f.maxNights === 'number' && f.maxNights > 0 ? { maxNights: f.maxNights } : {}),
       })));
+      // v29.20 (Audit): Die EN-Varianten oben nützen nur mit dem Schalter —
+      // serializeCustomFields schreibt sie ausschließlich bei aktivem
+      // bilingualFields. Ohne die Übernahme zeigte der Wizard die EN-Texte
+      // der Vorlage an und der Save warf sie still weg. Ebenso übernimmt die
+      // Kopie jetzt Mail-Sprache und Ausschluss-Liste — beides gehört zur
+      // Konfiguration, die man mit einer Vorlage erwartet.
+      setBilingualFields(!!ev.bilingualFields);
+      setEmailLanguage((ev.emailLanguage || 'DE').toUpperCase() === 'EN' ? 'EN' : 'DE');
+      setExcludedUsers([...(ev.excludedUsers || [])]);
       // Bild: Vorschau sofort, Datei best-effort vom SP-Anhang nachladen.
+      // v29.20 (Audit): Vorher NUR gesetzt, wenn die Vorlage ein Bild hat —
+      // beim Wechsel von Vorlage A (mit Bild) zu Vorlage B (ohne) blieben
+      // imagePreview/imageFile von A stehen, und das neue Event bekam still
+      // das Foto des falschen Events. resetDemoVariantBaseState leerte nur
+      // eventImageUrl. Jetzt wird immer erst geleert.
+      setImagePreview('');
+      setImageFile(null);
+      setImageOrigFile(null);
+      setImageOrigAspect(null);
       if (ev.imageUrl) {
         setImagePreview(ev.imageUrl);
         try {
@@ -3042,8 +3135,8 @@ export default function EventCreationPage(): React.ReactElement {
       {
         id: `se-${tDemo}`,
         title: 'Networking-Dinner',
-        startDate: fmtDatetime(dinnerStart),
-        endDate: fmtDatetime(dinnerEnd),
+        startDate: berlinLocalToUtcIso(fmtDatetime(dinnerStart)),
+        endDate: berlinLocalToUtcIso(fmtDatetime(dinnerEnd)),
         registrationDeadline: '',
         location: 'Restaurant Fischmarkt',
         description: 'Optionales Networking-Dinner im Anschluss an die Konferenz.',
@@ -3089,8 +3182,8 @@ export default function EventCreationPage(): React.ReactElement {
       {
         id: `se-${tDemo}`,
         title: 'Vorbereitungs-Briefing (Quizmaster)',
-        startDate: fmtDatetime(briefStart),
-        endDate: fmtDatetime(briefEnd),
+        startDate: berlinLocalToUtcIso(fmtDatetime(briefStart)),
+        endDate: berlinLocalToUtcIso(fmtDatetime(briefEnd)),
         registrationDeadline: '',
         location: 'Heinrich Campus Düsseldorf, 6. Etage, Dachterrasse',
         description: 'Kurzes Briefing für die Quizmaster-Helfer vor dem Event.',
@@ -3203,6 +3296,7 @@ export default function EventCreationPage(): React.ReactElement {
     onStep?: (done: number, total: number, title: string) => void,
   ): Promise<void> => {
     const keptDbIds = new Set<string>();
+    const failedSubTitles: string[] = [];
     const stepTotal = subEventsRef.current.filter(d => !!(d.title || '').trim()).length;
     let stepDone = 0;
     // v11.87: Sub-Event-Progress-Callback aus dem aufrufenden handleSubmit
@@ -3246,7 +3340,19 @@ export default function EventCreationPage(): React.ReactElement {
     // noch nicht propagiert, weil flushActiveCommTabToState() per setState
     // erst async wirkt. Der Ref hält synchron die letzten Tab-Werte.
     for (const draft of subEventsRef.current) {
-      if (!draft.title || !draft.title.trim()) continue; // leere Drafts ignorieren
+      if (!draft.title || !draft.title.trim()) {
+        // v29.19: Leere Drafts werden nicht gespeichert — aber ein BESTEHENDES
+        // Sub-Event (dbId), dessen Titel gerade nur geleert ist, gilt trotzdem
+        // als „behalten". Vorher fiel es in die Lücke zwischen zwei
+        // „behalten"-Definitionen: Der Warn-Dialog in handleSubmitInner zählt
+        // über dbIds (Draft existiert → kein Dialog), die Aufräum-Schleife
+        // unten über keptDbIds (nicht drin → deleteEvent) — das Sub-Event
+        // wurde samt Subsite und Anmeldungen OHNE Rückfrage gelöscht, nur
+        // weil jemand den Titel zum Neutippen geleert und dann gespeichert
+        // hat. Löschen geht weiterhin — über das X an der Karte, mit Dialog.
+        if (draft.dbId) keptDbIds.add(draft.dbId);
+        continue;
+      }
       // v11.57: Pro-Sub-Event Kommunikations-Felder. Wenn der Organizer für
       // den Sub-Event eigene Werte in Step 5 gesetzt hat, verwenden wir die;
       // sonst fallback auf die Top-Level-Werte (Backward-Compat für
@@ -3258,8 +3364,12 @@ export default function EventCreationPage(): React.ReactElement {
       const subOutlookSubject = (draft.outlookSubject || '').trim();
       // v28.29: eigenes Bild des Sub-Events gewinnt, sonst erbt es das
       // Kopfbild des Hauptevents (statt still auf den Orb zu fallen).
-      const subEmailLogo = draft.emailLogoBase64 || inheritedEmailLogo;
-      const subOutlookLogo = draft.outlookLogoBase64 || inheritedOutlookLogo;
+      // v29.20 (Audit): auch das EIGENE Sub-Logo verkleinern — der
+      // v28.10-Schutz lief nur ueber die geerbten Parent-Logos. Ein auf dem
+      // Sub-Reiter hochgeladenes unkomprimiertes Foto steckte bis zu dreimal
+      // im Payload und riss das Sub-Event ins SharePoint-2-MB-Limit.
+      const subEmailLogo = (draft.emailLogoBase64 ? await shrinkLogoB64(draft.emailLogoBase64) : '') || inheritedEmailLogo;
+      const subOutlookLogo = (draft.outlookLogoBase64 ? await shrinkLogoB64(draft.outlookLogoBase64) : '') || inheritedOutlookLogo;
       // Outlook-Body wrappen. v26.59 BUG-FIX: Ohne eigenen Text wurde der Body
       // bisher LEER gespeichert („der Flow setzt einen Default" — stimmte
       // nicht, der Flow mappt 1:1) → die Outlook-Einladung der Sub-Events kam
@@ -3376,7 +3486,12 @@ export default function EventCreationPage(): React.ReactElement {
         disableOutlook: !!draft.disableOutlook,
         isFictive: isFictive,
         askSalutation: !!draft.askSalutation,
-        customFields: draft.customFields || [],
+        // v29.20 (Audit): kanonisch serialisieren wie der Update-Zweig —
+        // roh gingen leere Felder und leere Options-Slots (neue Drafts
+        // starten mit ['','']) direkt auf die Anmeldeseite, EN-Varianten
+        // wurden am bilingual-Schalter vorbei geschrieben und Wizard-interne
+        // Properties (visible) landeten im Storage-JSON.
+        customFields: serializeCustomFields(draft.customFields || [], bilingualFields),
         parentEventId: parentEventId,
       };
       if (draft.dbId) {
@@ -3394,34 +3509,47 @@ export default function EventCreationPage(): React.ReactElement {
           const subsiteUrlForReuse = initialMeta?.subsiteUrl || '';
           const regListNameForReuse = initialMeta?.registrationListName || 'Teilnehmer';
           if (subsiteUrlForReuse && regListNameForReuse) {
-            try {
-              // DEX_Events-Item entfernen — Subsite + Teilnehmerliste
-              // bleiben unangetastet (deleteEventItemOnly ist explizit
-              // non-cascading).
-              await deleteEventItemOnly(draft.dbId);
-            } catch { /* Delete-Fehler: trotzdem versuchen, neu anzulegen */ }
-            // Reuse-Payload: bestehende Subsite + Teilnehmerliste an die
-            // neue DEX_Events-Zeile koppeln. disableOutlook explizit false,
-            // outlookEventId leer, damit der Flow sauber neu schreibt.
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const reusePayload: any = {
-              ...childPayload,
-              disableOutlook: false,
-              outlookEventId: '',
-              existingSubsiteUrl: subsiteUrlForReuse,
-              existingRegistrationListName: regListNameForReuse,
-              onProgress: subOnProgress,
-            };
-            try {
-              const recreatedId = await createEvent(reusePayload);
-              // v27.11: Sub-Event-Bild auch auf dem Recreate-Pfad persistieren.
-              await persistSubEventImage(recreatedId, draft);
-            } catch (err) {
-              console.warn('[DEX][v11.69] Sub-Event-Recreate mit Subsite-Reuse fehlgeschlagen:', draft.dbId, err);
+            // v29.21 (Audit): Den Rückgabewert PRÜFEN — deleteEventItemOnly
+            // wirft nie, es meldet Fehlschlag als false (das catch hier war
+            // toter Code). Schlug der Delete fehl (429/403), existierte die
+            // alte Zeile weiter, createEvent legte eine ZWEITE Zeile auf
+            // dieselbe Subsite, und die Aufräum-Schleife am Ende rief
+            // deleteEvent auf die alte Id — KASKADIEREND: Sie recycelte die
+            // geteilte Subsite mit allen Anmeldungen, auf die die frische
+            // Zeile zeigt. Deshalb: bei Fehlschlag den Recreate für dieses
+            // Sub-Event abbrechen, die dbId als behalten registrieren und in
+            // den normalen Update-Pfad fallen — der Termin fehlt dann
+            // weiterhin, aber es geht nichts verloren.
+            const itemDeleted = await deleteEventItemOnly(draft.dbId).catch(() => false);
+            if (!itemDeleted) {
+              console.warn('[DEX][v29.21] Recreate abgebrochen — deleteEventItemOnly fehlgeschlagen, Sub-Event bleibt unangetastet:', draft.dbId);
+              showAlert(isDe
+                ? `Der Outlook-Termin für „${draft.title || 'Sub-Event'}" konnte nicht neu angelegt werden (SharePoint hat den Austausch des Eintrags abgelehnt). Das Sub-Event und seine Anmeldungen sind unverändert — bitte versuche es später erneut.`
+                : `The Outlook appointment for "${draft.title || 'sub-event'}" could not be recreated (SharePoint rejected replacing the entry). The sub-event and its registrations are untouched — please try again later.`, { variant: 'error' });
+            } else {
+              // Reuse-Payload: bestehende Subsite + Teilnehmerliste an die
+              // neue DEX_Events-Zeile koppeln. disableOutlook explizit false,
+              // outlookEventId leer, damit der Flow sauber neu schreibt.
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const reusePayload: any = {
+                ...childPayload,
+                disableOutlook: false,
+                outlookEventId: '',
+                existingSubsiteUrl: subsiteUrlForReuse,
+                existingRegistrationListName: regListNameForReuse,
+                onProgress: subOnProgress,
+              };
+              try {
+                const recreatedId = await createEvent(reusePayload);
+                // v27.11: Sub-Event-Bild auch auf dem Recreate-Pfad persistieren.
+                await persistSubEventImage(recreatedId, draft);
+              } catch (err) {
+                console.warn('[DEX][v11.69] Sub-Event-Recreate mit Subsite-Reuse fehlgeschlagen:', draft.dbId, err);
+              }
+              // NICHT zu keptDbIds hinzufügen — das alte Item wurde gelöscht
+              // und die neue Zeile hat eine andere ID.
+              continue;
             }
-            // NICHT zu keptDbIds hinzufügen — das alte Item wurde gelöscht
-            // und die neue Zeile hat eine andere ID.
-            continue;
           } else {
             console.warn('[DEX][v11.69] Recreate angefordert aber keine subsiteUrl/registrationListName vorhanden — Sub-Event:', draft.dbId, 'meta:', initialMeta);
             // Fall durch zum normalen Update-Pfad — wenigstens die Felder
@@ -3532,6 +3660,14 @@ export default function EventCreationPage(): React.ReactElement {
           // beim Speichern eines bestehenden Sub-Events still verloren
           // (gleiche Bug-Klasse wie v19.32 bei den Mail-Flags).
           'WaitlistEnabled': childPayload.waitlistEnabled,
+          // v29.20 (Audit): Organizer-Aenderungen erreichten bestehende
+          // Sub-Events nie — nur der Create-Pfad schrieb sie (childPayload).
+          // Sub-Event-Mails und Flows lesen die Zeile des Sub-Events und
+          // adressierten nach einem Organizer-Wechsel weiter die alten
+          // Personen. Der Doku-Kommentar oben verspricht die Vererbung
+          // ausdruecklich („Alle Sub-Events erben Metadaten (Organizer, …)").
+          'Organizer': childPayload.organizer,
+          'OrganizerEmail': childPayload.organizerEmail,
           'MandatoryRegistration': childPayload.mandatoryRegistration, // v24.64: Pflicht-Sub-Event
           'LastDeregisterDate': childPayload.lastDeregisterDate || null,
           'LocationAddress': childPayload.locationAddress,
@@ -3574,11 +3710,17 @@ export default function EventCreationPage(): React.ReactElement {
         }
         // OutlookDirty + Update wird vom Aufrufer (handleSubmit) anhand des
         // jeweiligen Sub-Event-Snapshots gesteuert — siehe pendingSubUpdates.
-        await updateEvent(draft.dbId, subUpdates);
+        // v29.21 (Audit): Ergebnis PRÜFEN — updateEvent wirft nie, es meldet
+        // Fehlschlag als false. Vorher lief der Balken weiter und der Save
+        // endete mit „Änderungen gespeichert!", auch wenn einzelne Sub-Events
+        // (429, zu großer Payload) nie ankamen.
+        const subOk = await updateEvent(draft.dbId, subUpdates);
+        if (!subOk) failedSubTitles.push(shortSubEventTitle(draft.title, title) || draft.title);
         // v27.11: eigenes Sub-Event-Bild persistieren (Upload/Entfernen).
         await persistSubEventImage(draft.dbId, draft);
       } else {
         const newSubId = await createEvent({ ...childPayload, onProgress: subOnProgress });
+        if (!newSubId) failedSubTitles.push(shortSubEventTitle(draft.title, title) || draft.title);
         // v27.11: Bild fürs frisch angelegte Sub-Event hochladen (braucht die
         // neue DEX_Events-Item-Id aus createEvent).
         await persistSubEventImage(newSubId, draft);
@@ -3592,6 +3734,13 @@ export default function EventCreationPage(): React.ReactElement {
       if (!keptDbIds.has(oldId)) {
         try { await deleteEvent(oldId); } catch { /* Delete-Fehler darf Save nicht blockieren */ }
       }
+    }
+    // v29.21 (Audit): gescheiterte Sub-Events benennen statt still erfolgreich
+    // zu wirken — der Organizer entscheidet dann selbst, ob er erneut speichert.
+    if (failedSubTitles.length > 0) {
+      showAlert(isDe
+        ? `${failedSubTitles.length} Sub-Event${failedSubTitles.length === 1 ? '' : 's'} konnte${failedSubTitles.length === 1 ? '' : 'n'} nicht gespeichert werden: ${failedSubTitles.join(', ')}. Die übrigen Änderungen sind gespeichert — bitte speichere erneut, um es nochmal zu versuchen.`
+        : `${failedSubTitles.length} sub-event${failedSubTitles.length === 1 ? '' : 's'} could not be saved: ${failedSubTitles.join(', ')}. All other changes are saved — please save again to retry.`, { variant: 'error' });
     }
   };
 
@@ -3977,7 +4126,7 @@ export default function EventCreationPage(): React.ReactElement {
     if (hasSubs && (effDisableEmails || effDisableOutlook) && !requireSubEventSelection && !mainCommDisabledAck) {
       // eslint-disable-next-line no-alert
       showAlert(isDe
-        ? 'Du hast die Kommunikation für das Hauptevent deaktiviert. Bitte aktiviere in Schritt 7 (Kommunikation, Tab „Haupt-Event") entweder den Toggle „Anmeldung für mindestens ein Sub-Event verpflichtend" ODER bestätige den Ack-Haken — sonst landen Teilnehmer stumm in der Liste.'
+        ? 'Du hast die Kommunikation für das Hauptevent deaktiviert. Bitte aktiviere in Schritt 6 (Kommunikation, Tab „Haupt-Event") entweder den Toggle „Anmeldung für mindestens ein Sub-Event verpflichtend" ODER bestätige den Ack-Haken — sonst landen Teilnehmer stumm in der Liste.'
         : 'You disabled communication for the main event. Please either enable the toggle „Require selecting at least one sub-event" in step 6 OR tick the acknowledgement — otherwise attendees land silently in the list.');
       return;
     }
@@ -4041,7 +4190,14 @@ export default function EventCreationPage(): React.ReactElement {
     // Bestehende URL beibehalten (z.B. bei Edit ohne neues Bild).
     setProgress(5);
     setProgressLabel('Event wird vorbereitet...');
-    const imageUrl = eventImageUrl;
+    // v29.18: Den Anzeige-Cache-Buster (`?v=<timestamp>`, seit v26.17 in
+    // EventContext.buildDisplayImageUrl angehängt) VOR dem Zurückschreiben
+    // strippen. `eventImageUrl` kommt aus `editEvent.imageUrl` und trägt ihn
+    // mit; ohne Strip schrieb jeder Edit-Save die Anzeige-URL in die Spalte,
+    // und der nächste Load hängte ein weiteres `&v=` an — die gespeicherte
+    // URL wuchs mit jedem Speichern. Attachment-URLs haben nie einen eigenen
+    // Query-Teil, das Kappen an `?` ist deshalb verlustfrei.
+    const imageUrl = (eventImageUrl || '').split('?')[0];
     setProgress(15);
 
     if (isEditMode && selectedEventId) {
@@ -4090,7 +4246,11 @@ export default function EventCreationPage(): React.ReactElement {
         // v22.17: EndDate nie leer lassen (Outlook-Flow-Crash, s.o.) — Fallback Start.
         'EndDate': endDate ? berlinLocalToUtcIso(endDate) : (startDate ? berlinLocalToUtcIso(startDate) : null),
         'RegistrationDeadline': deadlineToEndOfDayIso(registrationDeadline),
-        'MaxParticipants': unlimitedParticipants ? 0 : (Number(maxParticipants) || 0),
+        // v29.21 (Audit): bei geteilter Kapazität IMMER 0 (dokumentierte
+        // Invariante) — je nach Klickreihenfolge stand hier sonst mal 0, mal
+        // die Gruppen-Summe, und alles, was MaxParticipants liest, sah zwei
+        // verschiedene Stände für dieselbe Konfiguration.
+        'MaxParticipants': useSplitCapacities ? 0 : (unlimitedParticipants ? 0 : (Number(maxParticipants) || 0)),
         // v20.0 BUG-FIX (Audit): WaitlistEnabled wurde beim Edit nie persistiert —
         // das Umschalten der Warteliste auf einem bestehenden Event ging still
         // verloren (nur der Create-Pfad schrieb das Feld).
@@ -4283,6 +4443,24 @@ export default function EventCreationPage(): React.ReactElement {
       // v28.2: Die frühere ||-Monsterkette überschritt mit dem neuen
       // _subEventsDisabled-Config TypeScripts Union-Komplexitätslimit
       // (TS2590) — jetzt als typisiertes Array + .some().
+      // v29.19: Die Hotel-Planung WEITERTRAGEN — sie wird beim Laden bewusst
+      // aus dem Wizard-State gestrippt (v28.39: „wird nur im Organizer Center
+      // gepflegt"), der Blob hier wird aber komplett FRISCH zusammengebaut.
+      // Ohne diesen Carry-Forward löschte JEDER Wizard-Save eines Events die
+      // gesamte Hotel-Konfiguration (_hotels/_hotelStays/_hotelVisible/
+      // _hotelRules) — Hotels, Zeiträume, Verteil-Regeln, Sichtbarkeit.
+      // Gleiche Mechanik wie imageOrigUrlConfig (v28.11), nur aus dem rohen
+      // Overrides-JSON des editEvent, weil die Werte im State nicht existieren.
+      const hotelCarryConfig = ((): Record<string, unknown> => {
+        try {
+          const raw = JSON.parse(editEvent?.emailTemplateOverrides || '{}') as Record<string, unknown>;
+          const out: Record<string, unknown> = {};
+          for (const k of ['_hotels', '_hotelStays', '_hotelVisible', '_hotelRules']) {
+            if (raw && raw[k] !== undefined) out[k] = raw[k];
+          }
+          return out;
+        } catch { return {}; }
+      })();
       const topPiggybackConfigs: Array<Record<string, unknown>> = [
         b2runExtraConfig, qrScannerConfig, coOrganizerConfig, testTeamConfig,
         splitDispRevConfig, requireSubEventConfig, subEventsOnlyConfig,
@@ -4291,7 +4469,7 @@ export default function EventCreationPage(): React.ReactElement {
         organizerDisplayLargeConfig, previewBeforeActiveConfig,
         imageDisplayConfig, hideOrganizerConfig, hiddenOrganizersConfig,
         hideOrgIndividualConfig, headerImageLayoutConfig, noDescriptionConfig,
-        subEventCalendarConfig, subEventSingleChoiceConfig,
+        subEventCalendarConfig, subEventSingleChoiceConfig, hotelCarryConfig,
       ];
       updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || !!effEmailLogo || !!effOutlookLogo || topPiggybackConfigs.some(o => Object.keys(o).length > 0))
         // v28.2: Object.assign statt Spread-Kette — die Literal-Spreads
@@ -4408,34 +4586,38 @@ export default function EventCreationPage(): React.ReactElement {
       setProgress(40);
       setProgressLabel(isDe ? 'Dokumente werden synchronisiert...' : 'Syncing documents...');
 
-      // Dokument-Sync: entfernte Attachments löschen + neue hochladen.
-      // Wichtig: erst löschen, dann uploaden (SharePoint verbietet Duplikat-Namen).
-      if (selectedEventId) {
+      // v29.21 (Audit): Der Dokument-Sync (Attachments löschen/hochladen)
+      // lief hier VOR dem updateEvent — schlug der Save danach fehl
+      // („Invalid text value", 412), blieb der Wizard mit Fehlermeldung
+      // offen, die Löschungen waren aber schon unwiderruflich draußen.
+      // Der Sync steht jetzt IM Erfolgszweig (s.u., syncEventDocuments) —
+      // dieselbe Regel wie beim Löschkonzept: Erst der prüfbare Schritt,
+      // dann der unumkehrbare.
+      const syncEventDocuments = async (): Promise<void> => {
+        if (!selectedEventId) return;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const ctx = (window as any).__dexSpfxContext;
-        if (ctx) {
-          const svc = new EventService(ctx);
-          // Namen die weiterhin vorhanden sind (als bestehende Attachments, ohne file)
-          const keptOriginalNames = new Set(
-            documents.filter(d => !d.file).map(d => d.name)
-          );
-          // Namen die im initialen Snapshot waren, jetzt aber nicht mehr
-          const toDelete = initialDocumentNames.filter(name => !keptOriginalNames.has(name));
-          for (const fileName of toDelete) {
+        if (!ctx) return;
+        const svc = new EventService(ctx);
+        // Namen die weiterhin vorhanden sind (als bestehende Attachments, ohne file);
+        // erst löschen, dann uploaden (SharePoint verbietet Duplikat-Namen).
+        const keptOriginalNames = new Set(
+          documents.filter(d => !d.file).map(d => d.name)
+        );
+        const toDelete = initialDocumentNames.filter(name => !keptOriginalNames.has(name));
+        for (const fileName of toDelete) {
+          try {
+            await svc.deleteEventDocument(Number(selectedEventId), fileName);
+          } catch { /* einzelner Delete-Fehler darf Save nicht blockieren */ }
+        }
+        for (const doc of documents) {
+          if (doc.file) {
             try {
-              await svc.deleteEventDocument(Number(selectedEventId), fileName);
-            } catch { /* einzelner Delete-Fehler darf Save nicht blockieren */ }
-          }
-          // Neue Dokumente hochladen
-          for (const doc of documents) {
-            if (doc.file) {
-              try {
-                await svc.uploadEventDocument(Number(selectedEventId), doc.file);
-              } catch { /* einzelner Upload-Fehler darf Save nicht blockieren */ }
-            }
+              await svc.uploadEventDocument(Number(selectedEventId), doc.file);
+            } catch { /* einzelner Upload-Fehler darf Save nicht blockieren */ }
           }
         }
-      }
+      };
 
       setProgress(55);
       setProgressLabel(isDe ? 'Event-Daten werden gespeichert...' : 'Saving event data...');
@@ -4464,6 +4646,77 @@ export default function EventCreationPage(): React.ReactElement {
             void notifyAdminsExternalAudienceAccess(title, addedNonDe, `${currentUser.firstName} ${currentUser.surname}`.trim()).catch(() => { /* */ });
           }
         } catch { /* darf den Save nie stören */ }
+
+        try { await syncEventDocuments(); }
+        catch (err) { console.warn('[DEX] Dokument-Sync fehlgeschlagen:', err); }
+        // v29.18: Bild-Upload VOR den Sub-Events — wie im Create-Pfad (v29.17).
+        // Der Block stand bei Fortschritt 90, HINTER persistSubEventsForParent:
+        // Wer im Bearbeiten den Kalender aktiviert und 20+ Tage anklickt, löst
+        // dort ebenso viele Subsite-Anlagen aus; der Upload lief danach in die
+        // gedrosselte SharePoint-Instanz und scheiterte — die Meldung dazu war
+        // eine kleine rote Zeile in Schritt 1, verdeckt vom Fortschritts-
+        // Fenster bei 95 %. „Der Edit-Pfad war abgesichert" stimmte nur
+        // strukturell (eigener try/catch), nicht praktisch: Er hing an
+        // derselben Drossel und scheiterte genauso still.
+        if (imageFile) {
+          try {
+            setProgressLabel(isDe ? 'Bild wird hochgeladen...' : 'Uploading image...');
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const ctx = (window as any).__dexSpfxContext;
+            if (ctx) {
+              const svc = new EventService(ctx);
+              const compressed = await compressImage(imageFile);
+              const uploadedUrl = await svc.uploadEventImageAsAttachment(Number(selectedEventId), compressed);
+              if (uploadedUrl) {
+                await svc.updateEventImageUrl(Number(selectedEventId), uploadedUrl);
+                // v28.11: Querformat-Original als zweites Attachment sichern,
+                // wenn der Zuschnitt es rund/quadratisch gemacht hat — die
+                // Event-Liste zeigt dann das Original. Sonst evtl. vorhandenes
+                // Alt-Original aufräumen. (patchEventOverridesKey liest den
+                // frisch von updateEvent geschriebenen Overrides-Stand und
+                // patcht nur den einen Schlüssel — Reihenfolge passt.)
+                try {
+                  if (imageOrigFile && (imageOrigAspect || 0) >= 1.2 && wizardImgAspect != null && wizardImgAspect < 1.2) {
+                    const origCompressed = await compressImage(imageOrigFile, 1600, 0.85);
+                    const origUrl = await svc.uploadEventOrigImageAsAttachment(Number(selectedEventId), origCompressed);
+                    if (origUrl) await svc.patchEventOverridesKey(Number(selectedEventId), '_imageOrigUrl', origUrl);
+                  } else if (imageOrigFile) {
+                    // v28.12: Nur aufräumen, wenn wir die QUELLE des neuen
+                    // Bilds kennen (frischer Upload/Capture) und sie kein
+                    // Original braucht. Ohne imageOrigFile (Re-Crop eines
+                    // bereits runden Bestands) bleibt ein gespeichertes
+                    // Original unangetastet.
+                    await svc.deleteEventOrigImageAttachment(Number(selectedEventId));
+                    await svc.patchEventOverridesKey(Number(selectedEventId), '_imageOrigUrl', '');
+                  }
+                } catch (origErr) { console.warn('[DEX] Original-Bild speichern fehlgeschlagen:', origErr); }
+                // Events neu laden, damit die UI das frische Bild ohne Hard-Refresh
+                // anzeigt (updateEvent oben hat schon geladen, aber da war
+                // EventImageUrl noch der alte Wert). v29.18: In einem EIGENEN
+                // try — ein Refresh-Fehler ist kein Upload-Fehler; vorher
+                // meldete er „Bild-Upload fehlgeschlagen", obwohl das Bild
+                // längst gespeichert war.
+                try { await refreshEvents(); }
+                catch (rErr) { console.warn('[DEX] Refresh nach Bild-Upload fehlgeschlagen (Bild ist gespeichert):', rErr); }
+              } else {
+                setImageUploadError('Bild-Upload fehlgeschlagen.');
+                showAlert(isDe
+                  ? 'Das Event-Bild konnte nicht hochgeladen werden. Alle übrigen Änderungen werden gespeichert — bitte lade das Bild danach in Schritt 1 erneut hoch.'
+                  : 'The event image could not be uploaded. All other changes are being saved — please upload the image again in step 1 afterwards.', { variant: 'error' });
+              }
+            }
+          } catch (err) {
+            console.warn('[DEX] Bild-Upload fehlgeschlagen', err);
+            setImageUploadError('Bild-Upload fehlgeschlagen.');
+            // v29.18: Sichtbar melden statt nur der roten Zeile in Schritt 1 —
+            // die verdeckt das Fortschritts-Fenster, und der Save endet mit
+            // „Änderungen gespeichert!", obwohl das Bild fehlt.
+            showAlert(isDe
+              ? 'Das Event-Bild konnte nicht hochgeladen werden. Alle übrigen Änderungen werden gespeichert — bitte lade das Bild danach in Schritt 1 erneut hoch.'
+              : 'The event image could not be uploaded. All other changes are being saved — please upload the image again in step 1 afterwards.', { variant: 'error' });
+          }
+        }
+
         setProgress(65);
         setProgressLabel(isDe ? 'Berechtigungen werden gesetzt...' : 'Setting permissions...');
         // v9.35: Berechtigungs-Sync — beim Edit können neue Co-Organizer hinzugekommen
@@ -4624,51 +4877,6 @@ export default function EventCreationPage(): React.ReactElement {
           }
         } catch (err) { console.warn('[DEX] Auto-fix Teilnehmer-Columns fehlgeschlagen:', err); }
 
-        setProgress(90);
-        // Bild als Attachment hochladen (falls neues Bild gewählt wurde)
-        if (imageFile) {
-          try {
-            setProgressLabel(isDe ? 'Bild wird hochgeladen...' : 'Uploading image...');
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const ctx = (window as any).__dexSpfxContext;
-            if (ctx) {
-              const svc = new EventService(ctx);
-              const compressed = await compressImage(imageFile);
-              const uploadedUrl = await svc.uploadEventImageAsAttachment(Number(selectedEventId), compressed);
-              if (uploadedUrl) {
-                await svc.updateEventImageUrl(Number(selectedEventId), uploadedUrl);
-                // v28.11: Querformat-Original als zweites Attachment sichern,
-                // wenn der Zuschnitt es rund/quadratisch gemacht hat — die
-                // Event-Liste zeigt dann das Original. Sonst evtl. vorhandenes
-                // Alt-Original aufräumen.
-                try {
-                  if (imageOrigFile && (imageOrigAspect || 0) >= 1.2 && wizardImgAspect != null && wizardImgAspect < 1.2) {
-                    const origCompressed = await compressImage(imageOrigFile, 1600, 0.85);
-                    const origUrl = await svc.uploadEventOrigImageAsAttachment(Number(selectedEventId), origCompressed);
-                    if (origUrl) await svc.patchEventOverridesKey(Number(selectedEventId), '_imageOrigUrl', origUrl);
-                  } else if (imageOrigFile) {
-                    // v28.12: Nur aufräumen, wenn wir die QUELLE des neuen
-                    // Bilds kennen (frischer Upload/Capture) und sie kein
-                    // Original braucht. Ohne imageOrigFile (Re-Crop eines
-                    // bereits runden Bestands) bleibt ein gespeichertes
-                    // Original unangetastet.
-                    await svc.deleteEventOrigImageAttachment(Number(selectedEventId));
-                    await svc.patchEventOverridesKey(Number(selectedEventId), '_imageOrigUrl', '');
-                  }
-                } catch (origErr) { console.warn('[DEX] Original-Bild speichern fehlgeschlagen:', origErr); }
-                // Events neu laden, damit die UI das frische Bild ohne Hard-Refresh anzeigt
-                // (updateEvent oben hat schon einmal geladen, aber zu dem Zeitpunkt war
-                // EventImageUrl noch der alte Wert)
-                await refreshEvents();
-              } else {
-                setImageUploadError('Bild-Upload fehlgeschlagen.');
-              }
-            }
-          } catch (err) {
-            console.warn('[DEX] Bild-Upload fehlgeschlagen', err);
-            setImageUploadError('Bild-Upload fehlgeschlagen.');
-          }
-        }
         setProgress(95);
         setProgressLabel(isDe ? 'Outlook wird aktualisiert...' : 'Updating Outlook...');
         // v11.63: Outlook-Updates pro Event entscheiden — der Organizer hat
@@ -4851,7 +5059,12 @@ export default function EventCreationPage(): React.ReactElement {
         endDate: endDate ? berlinLocalToUtcIso(endDate) : (startDate ? berlinLocalToUtcIso(startDate) : ''),
         registrationDeadline: deadlineToEndOfDayIso(registrationDeadline) || '',
         lastDeregisterDate: deadlineToEndOfDayIso(lastDeregisterDate) || '',
-        maxParticipants: unlimitedParticipants ? 0 : (Number(maxParticipants) || 0),
+        // v29.19: „Aktiv ab" auch beim ANLEGEN persistieren — gleiche
+        // Konvertierung wie der Edit-Pfad. Vorher wurde nur das abhängige
+        // _previewBeforeActive-Flag geschrieben, das Datum selbst nicht.
+        activeFrom: activeFrom ? new Date(activeFrom).toISOString() : undefined,
+        // v29.21: Split-Invariante (s. Edit-Pfad).
+        maxParticipants: useSplitCapacities ? 0 : (unlimitedParticipants ? 0 : (Number(maxParticipants) || 0)),
         waitlistEnabled,
         eventImageUrl: imageUrl,
         // Sanitize: paart Organizer-Names + -Emails 1:1, droppt unvollständige
@@ -5004,16 +5217,23 @@ export default function EventCreationPage(): React.ReactElement {
             ((subEventCalendar && subEventsOptIn) ? { _subEventCalendar: true } : {}),
             ((subEventSingleChoice && subEventsOptIn) ? { _subEventSingleChoice: true } : {}),
           ];
-          const hasAny = Object.keys(emailTemplateOverrides).length > 0 || !!effEmailLogo || !!effOutlookLogo || createPiggybackConfigs.some(o => Object.keys(o).length > 0);
+          // v29.19: Overrides aus dem Top-Level-Resolver — wie im Edit-Pfad
+          // (v14.4). Der rohe State hält beim Speichern von einem Sub-Reiter
+          // aus die SUB-Werte (switchCommTab-Spiegelung); die landeten hier
+          // als letzter Merge auf dem Hauptevent, während die zuvor gesetzten
+          // Hauptevent-Overrides im Snapshot verloren gingen. Alle übrigen
+          // Kommunikationsfelder gingen längst über topComm — nur diese nicht.
+          const topOverridesCreate = topComm.emailTemplateOverrides || {};
+          const hasAny = Object.keys(topOverridesCreate).length > 0 || !!effEmailLogo || !!effOutlookLogo || createPiggybackConfigs.some(o => Object.keys(o).length > 0);
           return hasAny
             // v28.2: Object.assign statt Spread-Kette (TS2590, s. Edit-Pfad).
-            // Keys disjunkt; emailTemplateOverrides bleibt LETZTER Merge.
+            // Keys disjunkt; topOverridesCreate bleibt LETZTER Merge.
             ? JSON.stringify(Object.assign(
                 {},
                 (effEmailLogo ? { _eventLogo: effEmailLogo } : {}),
                 outlookLogoPiggyback(effEmailLogo, effOutlookLogo),
                 ...createPiggybackConfigs,
-                emailTemplateOverrides,
+                topOverridesCreate,
               ))
             : '';
         })(),
@@ -5120,10 +5340,21 @@ export default function EventCreationPage(): React.ReactElement {
                     } catch (origErr) { console.warn('[DEX] Original-Bild speichern fehlgeschlagen:', origErr); }
                   } else {
                     setImageUploadError('Bild-Upload fehlgeschlagen.');
+                    // v29.19: Sichtbar melden — die rote Zeile in Schritt 1
+                    // ist vom Fortschritts-Fenster verdeckt, und nach dem
+                    // Success-Dispatch verlaesst der Wizard die Seite. Ohne
+                    // Alert ging das Event still ohne Bild live (Paritaet zum
+                    // Edit-Pfad, v29.18).
+                    showAlert(isDe
+                      ? 'Das Event-Bild konnte nicht hochgeladen werden. Das Event wird trotzdem angelegt — bitte lade das Bild danach über Bearbeiten in Schritt 1 erneut hoch.'
+                      : 'The event image could not be uploaded. The event is still being created — please upload the image again via Edit in step 1 afterwards.', { variant: 'error' });
                   }
                 } catch (err) {
                   console.warn('[DEX] Bild-Upload fehlgeschlagen', err);
                   setImageUploadError('Bild-Upload fehlgeschlagen.');
+                  showAlert(isDe
+                    ? 'Das Event-Bild konnte nicht hochgeladen werden. Das Event wird trotzdem angelegt — bitte lade das Bild danach über Bearbeiten in Schritt 1 erneut hoch.'
+                    : 'The event image could not be uploaded. The event is still being created — please upload the image again via Edit in step 1 afterwards.', { variant: 'error' });
                 }
               }
               // Dokumente einzeln best-effort — ein defektes Dokument darf
@@ -5376,8 +5607,18 @@ export default function EventCreationPage(): React.ReactElement {
     // Outlook-Body vergleich anhand des „rohen" Body (ohne Wrapper), da der
     // Wrapper bei jedem Save neu gebaut wird und dadurch immer „änderbar"
     // aussehen würde. Vergleich gegen den initial gestrippten Wert.
-    const initialStripped = stripOutlookWrapper(snap.outlookBody || '');
-    const currentStripped = activeCommTabIdx === 0 ? (outlookBody || '') : stripOutlookWrapper(snap.outlookBody || '');
+    // v29.21 (Audit): denselben Reinsert wie die outlookBody-Hydration
+    // anwenden — sonst enthält der State den Platzhalter, der Snapshot den
+    // gebackenen Namen, und der Vergleich meldete bei JEDEM Save „Termin-Text
+    // geändert" (Dauer-False-Positive des Update-Modals).
+    const initialStripped = reinsertOrganizerPlaceholder(stripOutlookWrapper(snap.outlookBody || ''), editEvent?.organizers || []);
+    // v29.21 (Audit): Auf einem Sub-Tab liegt der AKTUELLE Top-Level-Body im
+    // Top-Level-Slot (resolveTopLevelCommState) — der alte Fallback verglich
+    // den Mount-Snapshot mit sich selbst, eine Hauptevent-Body-Änderung vor
+    // dem Reiterwechsel wurde also nie erkannt: kein Update-Angebot, kein
+    // OutlookDirty, Teilnehmer-Kalender blieben still veraltet. Betreff, Logo
+    // und DisableOutlook daneben machten es längst so.
+    const currentStripped = activeCommTabIdx === 0 ? (outlookBody || '') : (resolveTopLevelCommState().outlookBody || '');
     const currentTopLocation = outlookLocationOverride.trim() || buildOutlookLocation(location, { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity });
     const currentTopSubject = (resolveTopLevelCommState().outlookSubject || '').trim();
     // v19.20: globale Header-Bild-Layout-Änderung (Breite/Innenabstand) erkennen.
@@ -5688,7 +5929,12 @@ export default function EventCreationPage(): React.ReactElement {
   // WICHTIG: Dieser useEffect MUSS vor dem early return (if submitted) stehen,
   // da React die gleiche Anzahl Hooks bei jedem Render erwartet (Rules of Hooks).
   React.useEffect(() => {
-    if (currentStep === 6 && emailTemplates.length === 0) {
+    // v29.21 (Audit B1): Kommunikation ist Index 5 — der alte Vergleich mit 6
+    // (heute Team-Anmeldung) lud die Vorlagen erst EINEN Schritt zu spät;
+    // wer sich neu durchklickte, sah im Kommunikations-Schritt leere
+    // Betreff-/Text-Defaults. >= statt ===, damit auch ein Direktsprung auf
+    // einen späteren Schritt (Kreis-Klick) die Vorlagen nachlädt.
+    if (currentStep >= 5 && emailTemplates.length === 0) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const ctx = (window as any).__dexSpfxContext;
       if (ctx) {
@@ -5734,7 +5980,13 @@ export default function EventCreationPage(): React.ReactElement {
   const renderGlobalScopeBar = (): React.ReactElement | null => {
     if (subEvents.length === 0) return null;
     const named = subEvents.filter(s => (s.title || '').trim());
-    if (named.length === 0) return null;
+    // v29.21 (Audit): Nicht mehr verstecken, wenn ein Sub-Reiter aktiv ist.
+    // Sequenz vorher: „Hinzufügen" (Draft ohne Titel) → „Bearbeiten"
+    // (setScope(1)) → die Leiste war null, die Sub-Event-Liste hängt an
+    // activeScopeIdx === 0 — keine Bedienung mehr, um zurück auf die Klammer
+    // zu kommen. Die Reiter tragen für unbenannte Drafts den Fallback
+    // „Sub-Event ohne Titel".
+    if (named.length === 0 && activeScopeIdx === 0) return null;
     const applies = SCOPE_AWARE_STEPS.indexOf(currentStep) >= 0;
     const scopeIdx = Math.min(activeScopeIdx, subEvents.length);
     const mainLabel = `${subEventsOnlyMode ? (isDe ? 'Klammer' : 'Bracket') : (isDe ? 'Haupt-Event' : 'Main event')}: ${title || (isDe ? 'Ohne Titel' : 'Untitled')}`;
@@ -5814,11 +6066,11 @@ export default function EventCreationPage(): React.ReactElement {
         <div>
           {isDe ? (
             <>
-              Du hast für dieses Event eingestellt, dass sich Teilnehmer <strong>nur für die {termPlural} (Sub-Sections) anmelden</strong> — die Klammer selbst ist <strong>nicht buchbar</strong>, sie fasst die {termPlural} nur zusammen. (Eingestellt in Schritt 4 „Ort &amp; Programm“ unter „Wie sollen sich Teilnehmer anmelden?“ → „Nur für {termPlural}“.) <strong>Entscheidend ist die Sichtbarkeit direkt hier unten</strong> (Standortfilter + Mailverteiler): Sie legt fest, <strong>wer das Event überhaupt sieht und sich für die {termPlural} anmelden kann</strong> — die {termPlural} übernehmen diese Sichtbarkeit standardmäßig. <strong>Plätze und Fristen</strong> stellst du nicht hier auf der Klammer ein, sondern <strong>je {childTermSingular || 'Sub-Event'}-Tab</strong> (wie viele Plätze, bis wann an-/abmelden) — die Kapazitäts- und Fristen-Felder weiter unten sind darum ausgegraut.
+              Du hast für dieses Event eingestellt, dass sich Teilnehmer <strong>nur für die {termPlural} (Sub-Sections) anmelden</strong> — die Klammer selbst ist <strong>nicht buchbar</strong>, sie fasst die {termPlural} nur zusammen. (Eingestellt in Schritt 1 „Grundlagen“ unter „Wie sollen sich Teilnehmer anmelden?“ → „Nur für {termPlural}“.) <strong>Entscheidend ist die Sichtbarkeit direkt hier unten</strong> (Standortfilter + Mailverteiler): Sie legt fest, <strong>wer das Event überhaupt sieht und sich für die {termPlural} anmelden kann</strong> — die {termPlural} übernehmen diese Sichtbarkeit standardmäßig. <strong>Plätze und Fristen</strong> stellst du nicht hier auf der Klammer ein, sondern <strong>je {childTermSingular || 'Sub-Event'}-Tab</strong> (wie viele Plätze, bis wann an-/abmelden) — die Kapazitäts- und Fristen-Felder weiter unten sind darum ausgegraut.
             </>
           ) : (
             <>
-              You configured this event so that participants <strong>register only for the {termPlural} (sub-sections)</strong> — the bracket itself is <strong>not bookable</strong>, it only groups the {termPlural}. (Set in step 2 “Location &amp; Programme” under “How should participants register?” → “Sub-{termPlural} only”.) <strong>The decisive setting is the visibility right below this note</strong> (location filter + mailing lists): it determines <strong>who can see the event at all and register for the {termPlural}</strong> — the {termPlural} inherit this visibility by default. You set <strong>seats and deadlines</strong> not here on the bracket but <strong>per {childTermSingular || 'sub-event'} tab</strong> (how many seats, until when to register/cancel) — which is why the capacity and deadline fields further down are greyed out.
+              You configured this event so that participants <strong>register only for the {termPlural} (sub-sections)</strong> — the bracket itself is <strong>not bookable</strong>, it only groups the {termPlural}. (Set in step 1 “Basics” under “How should participants register?” → “Sub-{termPlural} only”.) <strong>The decisive setting is the visibility right below this note</strong> (location filter + mailing lists): it determines <strong>who can see the event at all and register for the {termPlural}</strong> — the {termPlural} inherit this visibility by default. You set <strong>seats and deadlines</strong> not here on the bracket but <strong>per {childTermSingular || 'sub-event'} tab</strong> (how many seats, until when to register/cancel) — which is why the capacity and deadline fields further down are greyed out.
             </>
           )}
         </div>
@@ -6076,7 +6328,10 @@ export default function EventCreationPage(): React.ReactElement {
   React.useEffect(() => {
     const onTourStep = (e: Event): void => {
       const detail = (e as CustomEvent).detail;
-      if (typeof detail === 'number' && detail >= 0 && detail <= 7) {
+      // v29.21 (Audit B5): 0..8 statt 0..7 — die Tour-Karten der letzten
+      // beiden Schritte wurden sonst verworfen und die Tour blieb auf
+      // „Dokumente" stehen.
+      if (typeof detail === 'number' && detail >= 0 && detail <= 8) {
         setCurrentStep(detail);
         setTriedNext(false);
       }
@@ -6345,21 +6600,31 @@ export default function EventCreationPage(): React.ReactElement {
       'Live-Highscore + Statistik im Admin Center sehen (welche Fragen am häufigsten falsch beantwortet werden)',
     ],
   ];
+  // v29.21 (Audit B5): Die EN-Liste stand noch auf der 10-Schritt-Zählung von
+  // vor v28.87 (alter Grundlagen-Mix, eigener Sub-Events-Schritt) — ab dem
+  // dritten Eintrag zeigte jedes i-Icon die Hints des FALSCHEN Schritts, und
+  // für Schritt 9 gab es gar keinen Eintrag. Jetzt 1:1 parallel zu
+  // STEP_HINTS_DE (9 Einträge).
   const STEP_HINTS_EN: string[][] = [
     [
       'Event title and description — shown on the event list and registration page',
       'Upload an event image (used at the top of the detail page and in emails)',
       'Save as draft — only visible to admins, organizers and the test team',
-      'Pick the organizers — they receive all organizer emails (cancellation/roommate etc.) and see the event in the admin center',
-      'Optional: QR scanner users for check-in on event day (no further editing rights)',
-      'Set location filter and audience — who sees the event in the list',
     ],
     [
-      // v15 Step 2: Sub-Events
-      'Optionally add sub-events (workshops, sessions, program items) — each gets its own registration checkbox in the attendee form',
-      'Pick the term: Sub-Events / Workshops / Sessions / Programmpunkte / Event-Sections / custom',
-      'Registration mode: in addition to the main event OR sub-events only (main-event registration hidden)',
-      'Location, capacity, deadline and fields per sub-event are configured in the following steps (3, 4, 5) via tabs',
+      // Step 2: Organizers & Team
+      'Pick the organizers — they receive all organizer emails and see the event in the admin center; individual ones can be hidden from the registration page',
+      'Choose how organizers appear on the registration form (small/large) — with live preview',
+      'Optional: add an external contact (e.g. a service mailbox)',
+      'Test team: sees the event while it is still a draft',
+      'Check-in team: only operates the check-in tool on event day',
+    ],
+    [
+      // Step 3: Location & Programme (with tabs per sub-event)
+      'Enter venue and address — per sub-event an own location is possible (via tab)',
+      'Set start and end date (with time)',
+      'Maintain a multi-day agenda (drag ordering per day)',
+      'Transfer times — bus / shuttle / train to and from the venue',
     ],
     [
       // v15 Step 4: Capacity & Visibility (with tabs per sub-event)
@@ -6434,9 +6699,11 @@ export default function EventCreationPage(): React.ReactElement {
   // Tooltip-State: welcher Step zeigt gerade seinen Hint-Tooltip an?
   const [hintStepIdx, setHintStepIdx] = React.useState<number | null>(null);
 
-  const getStepErrors = (): string[] => {
+  // v29.21 (Audit B3): parametrisiert — der Kreis-Klick muss auch die
+  // ÜBERSPRUNGENEN Schritte prüfen können, nicht nur den aktuellen.
+  const getStepErrorsFor = (step: number): string[] => {
     const errors: string[] = [];
-    switch (currentStep) {
+    switch (step) {
       case 0:
         // Schritt 1 (Grundlagen): Titel + Datum sind Pflicht. Die Datum-Checks
         // laufen hier, weil die DatePicker schon in Grundlagen stehen.
@@ -6462,15 +6729,24 @@ export default function EventCreationPage(): React.ReactElement {
         break;
       case 3:
         // Schritt 4 (Kapazität & Sichtbarkeit).
-        if (registrationDeadline && startDate && new Date(registrationDeadline) > new Date(startDate)) errors.push('deadlineAfterStart');
-        if (lastDeregisterDate && startDate && new Date(lastDeregisterDate) > new Date(startDate)) errors.push('deregAfterStart');
-        if (!unlimitedParticipants && (maxParticipants === '' || isNaN(Number(maxParticipants)) || Number(maxParticipants) < 0)) errors.push('maxParticipants');
+        // v29.21 (Audit B4): Im „Nur Sub-Events"-Modus sind die geprüften
+        // Felder gar nicht bedienbar — der sichtbare DatePicker editiert die
+        // Klammer-Frist, die Abmeldefrist ist ausgegraut, der Kapazitätsblock
+        // durch die Erklär-Box ersetzt. Die Prüfungen sperrten „Weiter" dann
+        // ohne sichtbaren Grund und ohne Ausweg. Gleiches bei geteilter
+        // Kapazität: maxParticipants ist dort per Konvention 0/leer, die
+        // Fehlermeldung rendert nur im Nicht-Split-Zweig.
+        if (!subEventsOnlyMode) {
+          if (registrationDeadline && startDate && new Date(registrationDeadline) > new Date(startDate)) errors.push('deadlineAfterStart');
+          if (lastDeregisterDate && startDate && new Date(lastDeregisterDate) > new Date(startDate)) errors.push('deregAfterStart');
+          if (!useSplitCapacities && !unlimitedParticipants && (maxParticipants === '' || isNaN(Number(maxParticipants)) || Number(maxParticipants) < 0)) errors.push('maxParticipants');
+        }
         break;
     }
     return errors;
   };
+  const getStepErrors = (): string[] => getStepErrorsFor(currentStep);
 
-  const canProceed = (): boolean => getStepErrors().length === 0;
 
   // v22.62: Klammer-Sichtbarkeit auf alle Sub-Events kopieren.
   const applyParentVisibilityToSubs = (): void => {
@@ -6521,6 +6797,13 @@ export default function EventCreationPage(): React.ReactElement {
             && new Date(se.endDate) <= new Date(se.startDate));
           if (bad >= 0) setScope(bad + 1);
         }
+      }
+      // v29.21 (Audit B4): dieselbe Ebenen-Logik für Schritt 4 — alle dort
+      // geprüften Felder liegen auf der Hauptevent-Ebene (Reiter „Klammer/
+      // Haupt-Event"). Stand der Reiter auf einem Sub-Event, saßen die roten
+      // Markierungen in einem display:none-Block und „Weiter" wirkte tot.
+      if (currentStep === 3 && activeCapacityTabIdx !== 0) {
+        setScope(0);
       }
       return;
     }
@@ -6588,7 +6871,12 @@ export default function EventCreationPage(): React.ReactElement {
   };
 
   const goToSubEventsMode = (): void => {
-    setCurrentStep(2);
+    // v29.21 (Audit B2): Der Anmelde-Modus-Umschalter (#dex-subevents-mode)
+    // liegt seit v28.87 in SCHRITT 1 auf der Klammer-Ebene — der Sprung nach
+    // Schritt 3 landete auf „Ort & Programm" ohne den beworbenen Umschalter
+    // (Element dort display:none, scrollIntoView lief ins Leere).
+    setCurrentStep(0);
+    setScope(0);
     setTriedNext(false);
     window.setTimeout(() => {
       const el = document.getElementById('dex-subevents-mode');
@@ -6976,7 +7264,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <>
                   <strong>Klammerevent</strong> — zu diesem Event selbst meldet sich <strong>niemand</strong> an. Teilnehmer sehen nur die {childTermPlural || 'Sub-Events'} darunter und melden sich <strong>dort</strong> an. Der Eventname ist die Klammer darüber: Er erscheint in der Übersicht und fasst die {childTermPlural || 'Sub-Events'} zusammen.<br /><br />
                   Deshalb gibt es hier keine eigene Teilnehmerzahl und keine eigene Warteliste — beides pflegst du je {childTermSingular || 'Sub-Event'}.<br /><br />
-                  <strong>Du willst, dass man sich auch zum Hauptevent anmelden kann?</strong> Dann stell die Anmeldung in Schritt 3 (&bdquo;{t('create.step.subevents')}&ldquo;) um —{' '}
+                  <strong>Du willst, dass man sich auch zum Hauptevent anmelden kann?</strong> Dann stell die Anmeldung in Schritt 1 (&bdquo;Grundlagen&ldquo;) um —{' '}
                   <button
                     type="button"
                     onClick={() => goToSubEventsMode()}
@@ -6993,7 +7281,7 @@ export default function EventCreationPage(): React.ReactElement {
                 <>
                   <strong>Bracket event</strong> — <strong>nobody</strong> registers for this event itself. Attendees only see the sub-events below and register <strong>there</strong>. The event name is the bracket around them: it appears in the overview and groups the sub-events.<br /><br />
                   That is why there is no capacity and no waitlist at this level — you set both per sub-event.<br /><br />
-                  <strong>Want people to be able to register for the main event too?</strong> Then change the registration mode in step 3 —{' '}
+                  <strong>Want people to be able to register for the main event too?</strong> Then change the registration mode in step 1 —{' '}
                   <button
                     type="button"
                     onClick={() => goToSubEventsMode()}
@@ -7454,7 +7742,23 @@ export default function EventCreationPage(): React.ReactElement {
                 key={idx}
                 className="dex-wizard-step"
                 data-tour={`wizard-step-${idx}`}
-                onClick={() => { if (idx <= currentStep || canProceed()) setCurrentStep(idx); }}
+                onClick={() => {
+                  // v29.21 (Audit B3): Zurück ist immer frei; nach vorn nur,
+                  // wenn ALLE übersprungenen Schritte fehlerfrei sind. Vorher
+                  // prüfte der Klick nur den aktuellen Schritt — ein Sprung
+                  // von Schritt 1 direkt auf 9 umging z.B. die Organizer-
+                  // Pflicht aus Schritt 2, und handleSubmitInner prüft nur den
+                  // Titel: Ein Event ohne Organizer war anlegbar. Bei einem
+                  // Fehler springt der Wizard auf den ersten fehlerhaften
+                  // Schritt, damit die Markierungen sichtbar sind.
+                  if (idx <= currentStep) { setCurrentStep(idx); return; }
+                  setTriedNext(true);
+                  for (let st = currentStep; st < idx; st++) {
+                    if (getStepErrorsFor(st).length > 0) { setCurrentStep(st); return; }
+                  }
+                  setTriedNext(false);
+                  setCurrentStep(idx);
+                }}
                 style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
                   zIndex: 2, cursor: 'pointer',
@@ -8570,7 +8874,7 @@ export default function EventCreationPage(): React.ReactElement {
                     <>
                       <strong>Was du hier einstellst:</strong> die <strong>verantwortlichen Personen</strong> für dieses Event — beliebige Deloitte-User per Graph-Suche. Du selbst bist standardmäßig vorbefüllt, kannst aber Co-Organizer hinzunehmen oder dich selbst rauslöschen.<br /><br />
                       <strong>Anzeige in der App:</strong> Organizer dürfen das Event <strong>bearbeiten, deaktivieren, löschen</strong>, die <strong>Teilnehmerliste</strong> einsehen, <strong>QR-Codes versenden</strong> und <strong>Massenmails</strong> verschicken. Sie tauchen auf der Anmelde-Seite und in Meine Events als <strong>Ansprechpartner</strong> mit Foto + Mail-Adresse auf.<br /><br />
-                      <strong>Automatismen:</strong> Organizer bekommen je nach Einstellung in <strong>Schritt 7 (Kommunikation)</strong> eine BCC-Kopie der Anmelde-/Abmelde-Mails. Late-Cancel- und Roommate-Mails gehen ebenfalls an alle Organizer. Wenn ein Teilnehmer die Outlook-Einladung weiterleitet und der Empfänger nicht angemeldet ist, bekommen die Organizer eine FYI-Mail.<br /><br />
+                      <strong>Automatismen:</strong> Organizer bekommen je nach Einstellung in <strong>Schritt 6 (Kommunikation)</strong> eine BCC-Kopie der Anmelde-/Abmelde-Mails. Late-Cancel- und Roommate-Mails gehen ebenfalls an alle Organizer. Wenn ein Teilnehmer die Outlook-Einladung weiterleitet und der Empfänger nicht angemeldet ist, bekommen die Organizer eine FYI-Mail.<br /><br />
                       <strong>Reihenfolge zählt:</strong> der erste Organizer ist der Haupt-Organizer und wird in Mails als Absender-Name verwendet.
                     </>
                   ) : (
@@ -9748,7 +10052,10 @@ export default function EventCreationPage(): React.ReactElement {
                       <button type="button" className="btn btn-outline" onClick={() => updateSub({
                         agenda: [...seAgenda, {
                           id: `ag-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                          date: se.startDate ? se.startDate.slice(0, 10) : '',
+                          // v29.21 (Audit): Berliner Tag statt UTC-Tag —
+                          // se.startDate ist UTC-ISO; slice(0,10) lieferte bei
+                          // Startzeiten 00:00-01:59 Berlin den VORTAG.
+                          date: se.startDate ? (isoToLocal(se.startDate) || '').slice(0, 10) : '',
                           time: '',
                           endTime: '',
                           icon: 'Calendar',
@@ -9815,7 +10122,10 @@ export default function EventCreationPage(): React.ReactElement {
                           location: '',
                           meetingPoint: '',
                           address: '',
-                          date: se.startDate ? se.startDate.slice(0, 10) : '',
+                          // v29.21 (Audit): Berliner Tag statt UTC-Tag —
+                          // se.startDate ist UTC-ISO; slice(0,10) lieferte bei
+                          // Startzeiten 00:00-01:59 Berlin den VORTAG.
+                          date: se.startDate ? (isoToLocal(se.startDate) || '').slice(0, 10) : '',
                           departureTime: '',
                           arrivalTime: '',
                           description: '',
@@ -9927,7 +10237,7 @@ export default function EventCreationPage(): React.ReactElement {
                     <>
                       <strong>Was du hier einstellst:</strong> den <strong>Programmablauf des Events</strong> als Liste — pro Punkt: Datum, Start- und Endzeit, Titel, optionale Beschreibung und ein Icon (z.B. Kaffee, Vortrag, Pause).<br /><br />
                       <strong>Anzeige in der App:</strong> erscheint als <strong>schöner Timeline-Block</strong> auf der Anmelde-Seite und in Meine Events — Punkte werden automatisch nach Datum + Uhrzeit sortiert. Mehrtägige Events werden tageweise gruppiert.<br /><br />
-                      <strong>Automatismen:</strong> die Agenda landet <strong>nicht</strong> automatisch im Outlook-Termin-Body (dafür gibt es das eigene Feld <strong>Text im Outlook-Termin</strong> in Schritt 7).<br /><br />
+                      <strong>Automatismen:</strong> die Agenda landet <strong>nicht</strong> automatisch im Outlook-Termin-Body (dafür gibt es das eigene Feld <strong>Text im Outlook-Termin</strong> in Schritt 6).<br /><br />
                       <strong>Empfehlung:</strong> hilft Teilnehmern, sich auf den Tag einzustellen — bei Tagungen oder Auswärtsterminen sehr empfohlen, bei kurzen Office-Events optional.
                     </>
                   ) : (
@@ -10344,7 +10654,7 @@ export default function EventCreationPage(): React.ReactElement {
                   <InfoTooltip text={isDe ? (
                     <>
                       <strong>Was du hier einstellst:</strong> ob sich Teilnehmer zusätzlich zum Hauptevent für Sub-Events anmelden können (Standard) oder ob es <strong>überhaupt kein Hauptevent-Anmelden</strong> mehr gibt und die Anmeldung ausschließlich über einzelne Sub-Events läuft.<br /><br />
-                      <strong>Anzeige in der App:</strong> im Modus &bdquo;Nur Sub-Events&ldquo; ist die Anmelde-Checkbox für das Hauptevent im Teilnehmerformular ausgeblendet — der Teilnehmer muss zwingend mindestens einen Sub-Event auswählen. Im Schritt 7 (Kommunikation) wird der Haupt-Event-Tab ausgegraut, weil die Hauptevent-Kommunikation in diesem Modus nicht greift.<br /><br />
+                      <strong>Anzeige in der App:</strong> im Modus &bdquo;Nur Sub-Events&ldquo; ist die Anmelde-Checkbox für das Hauptevent im Teilnehmerformular ausgeblendet — der Teilnehmer muss zwingend mindestens einen Sub-Event auswählen. Im Schritt 6 (Kommunikation) wird der Haupt-Event-Tab ausgegraut, weil die Hauptevent-Kommunikation in diesem Modus nicht greift.<br /><br />
                       <strong>Empfehlung:</strong> nutze &bdquo;Nur Sub-Events&ldquo; für Mehrtages-Programme, in denen jeder Teilnehmer aus einem Pool von Slots wählt und ein Hauptevent-Slot keinen Sinn ergibt.
                     </>
                   ) : (
@@ -11707,7 +12017,7 @@ export default function EventCreationPage(): React.ReactElement {
                       <>
                         <strong>Letzte Abmeldemöglichkeit</strong> — der Stichtag, den du den Teilnehmern als <strong>verbindliche Abmeldefrist kommunizierst</strong>. Bis dahin gilt eine Abmeldung als unproblematisch.<br /><br />
                         <strong>Auswirkung für Teilnehmer:</strong> Eine Abmeldung bleibt bewusst <strong>bis zum Ende des Events möglich</strong> — wer kurzfristig erkrankt oder verhindert ist, kann sich also weiterhin abmelden. Nach dem Stichtag sieht die Person beim Abmelden einen <strong>deutlichen Hinweis</strong>, dass die Frist abgelaufen ist und die Organizer informiert werden. Erst <strong>nach Event-Ende</strong> ist die Selbst-Abmeldung gesperrt.<br /><br />
-                        <strong>Automatismen:</strong> Bei jeder Abmeldung <strong>nach dem Stichtag</strong> bekommen die Organizer automatisch eine <strong>Info-Mail</strong> mit Name + E-Mail der Person — damit Hotel, Catering oder Transfers angepasst werden können. Zusätzliche Abmelde-Benachrichtigungen kannst du in <strong>Schritt 7 (Kommunikation)</strong> konfigurieren.<br /><br />
+                        <strong>Automatismen:</strong> Bei jeder Abmeldung <strong>nach dem Stichtag</strong> bekommen die Organizer automatisch eine <strong>Info-Mail</strong> mit Name + E-Mail der Person — damit Hotel, Catering oder Transfers angepasst werden können. Zusätzliche Abmelde-Benachrichtigungen kannst du in <strong>Schritt 6 (Kommunikation)</strong> konfigurieren.<br /><br />
                         Vorbefüllt mit <strong>3 Tagen vor Event-Start</strong>.
                       </>
                     ) : (
@@ -12100,7 +12410,7 @@ export default function EventCreationPage(): React.ReactElement {
                   )}
 
                   {/* v10.24: Leistungsnachweis-Pflicht-Toggle wurde entfernt.
-                      Stattdessen kann der Organizer in Schritt 6 (Felder) ein
+                      Stattdessen kann der Organizer in Schritt 5 (Felder) ein
                       eigenes Pflichtfeld vom Typ Checkbox anlegen und es über
                       'Sichtbar für Teilnehmergruppe → Nur Gruppe A' gezielt
                       auf eine Split-Gruppe einschränken. Das ersetzt den
@@ -12115,11 +12425,11 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                     {isDe ? (
                       <>
-                        Du möchtest für eine der zwei Gruppen ein zusätzliches Pflichtfeld einblenden — z.B. eine Checkbox &bdquo;Leistungsnachweis vorhanden&ldquo; nur für die Gruppe der schnellen Läufer? Lege das Feld in <strong>Schritt 6 (Felder)</strong> an und stelle dort den Selector <strong>&bdquo;Sichtbar für Teilnehmergruppe&ldquo;</strong> auf <strong>&bdquo;Nur {(splitLabelA || '').trim() || 'Gruppe A'}&ldquo;</strong> bzw. <strong>&bdquo;Nur {(splitLabelB || '').trim() || 'Gruppe B'}&ldquo;</strong>. Das Feld wird dann in der Anmeldung dynamisch ein- oder ausgeblendet, sobald der Teilnehmer eine der zwei Boxen anklickt.
+                        Du möchtest für eine der zwei Gruppen ein zusätzliches Pflichtfeld einblenden — z.B. eine Checkbox &bdquo;Leistungsnachweis vorhanden&ldquo; nur für die Gruppe der schnellen Läufer? Lege das Feld in <strong>Schritt 5 (Felder)</strong> an und stelle dort den Selector <strong>&bdquo;Sichtbar für Teilnehmergruppe&ldquo;</strong> auf <strong>&bdquo;Nur {(splitLabelA || '').trim() || 'Gruppe A'}&ldquo;</strong> bzw. <strong>&bdquo;Nur {(splitLabelB || '').trim() || 'Gruppe B'}&ldquo;</strong>. Das Feld wird dann in der Anmeldung dynamisch ein- oder ausgeblendet, sobald der Teilnehmer eine der zwei Boxen anklickt.
                       </>
                     ) : (
                       <>
-                        Want to show an extra required field only for one of the two groups — e.g. a checkbox &ldquo;Performance proof available&rdquo; just for the fast-runner group? Add the field in <strong>step 6 (Fields)</strong> and set the <strong>&ldquo;Visible for attendee group&rdquo;</strong> selector there to <strong>&ldquo;{(splitLabelA || '').trim() || 'Group A'} only&rdquo;</strong> or <strong>&ldquo;{(splitLabelB || '').trim() || 'Group B'} only&rdquo;</strong>. The field will then be shown or hidden dynamically as the attendee picks one of the two boxes.
+                        Want to show an extra required field only for one of the two groups — e.g. a checkbox &ldquo;Performance proof available&rdquo; just for the fast-runner group? Add the field in <strong>step 5 (Fields)</strong> and set the <strong>&ldquo;Visible for attendee group&rdquo;</strong> selector there to <strong>&ldquo;{(splitLabelA || '').trim() || 'Group A'} only&rdquo;</strong> or <strong>&ldquo;{(splitLabelB || '').trim() || 'Group B'} only&rdquo;</strong>. The field will then be shown or hidden dynamically as the attendee picks one of the two boxes.
                       </>
                     )}
                   </div>
@@ -12770,13 +13080,13 @@ export default function EventCreationPage(): React.ReactElement {
                     <InfoTooltip text={isDe ? (
                     <>
                       <strong>Was du hier einstellst:</strong> die <strong>Startblöcke</strong>, in denen Teilnehmer ihren Lauf starten — z.B. Block A (schnell), Block B (mittel), Block C (Walking). Pro Block ein eigener Eintrag.<br /><br />
-                      <strong>Anzeige in der App:</strong> bei der Anmeldung erscheint ein <strong>Dropdown Startblock</strong>, das diese Liste enthält. Falls du oben in Schritt 3 eine Starter-Typ-Zuordnung gemacht hast, ist das Dropdown automatisch gefüllt und disabled.<br /><br />
+                      <strong>Anzeige in der App:</strong> bei der Anmeldung erscheint ein <strong>Dropdown Startblock</strong>, das diese Liste enthält. Falls du oben in Schritt 4 eine Starter-Typ-Zuordnung gemacht hast, ist das Dropdown automatisch gefüllt und disabled.<br /><br />
                       <strong>Auswirkung für Teilnehmer:</strong> der gewählte Startblock landet in der Bestätigungs-Mail und im Admin Center — wichtig damit ihr beim Veranstalter wisst, in welcher Welle wer startet.
                     </>
                   ) : (
                     <>
                       <strong>What you set here:</strong> the <strong>start blocks</strong> in which attendees begin their run — e.g. block A (fast), block B (medium), block C (walking). One entry per block.<br /><br />
-                      <strong>Shown in the app:</strong> at registration, a <strong>start-block dropdown</strong> appears that contains this list. If you set up a starter-type mapping in step 3 above, the dropdown is auto-filled and disabled.<br /><br />
+                      <strong>Shown in the app:</strong> at registration, a <strong>start-block dropdown</strong> appears that contains this list. If you set up a starter-type mapping in step 4 above, the dropdown is auto-filled and disabled.<br /><br />
                       <strong>Effect for attendees:</strong> the selected start block ends up in the confirmation mail and in the admin center — important so you know which wave each attendee is in when coordinating with the organiser.
                     </>
                   )} />
@@ -13742,14 +14052,14 @@ export default function EventCreationPage(): React.ReactElement {
                                 <strong>Was du hier einstellst:</strong> ob dieses Feld bei der Anmeldung für <strong>alle Teilnehmer</strong> oder nur für eine der zwei Kapazitäts-Gruppen sichtbar ist.<br /><br />
                                 <strong>Beispiel:</strong> bei einem Lauf-Event ist die Pflicht-Checkbox &bdquo;Leistungsnachweis vorhanden&ldquo; nur für die <strong>Durchstarter-Gruppe</strong> sinnvoll, nicht für Funstarter / Walker. Stelle das Feld dann auf <strong>Nur {labelA}</strong> — Funstarter sehen es gar nicht erst.<br /><br />
                                 <strong>Auswirkung in der App:</strong> die Anmelde-Seite blendet das Feld dynamisch ein/aus, sobald der Teilnehmer eine der zwei Boxen wählt. Pflichtfeld-Validierung greift natürlich nur wenn das Feld auch sichtbar ist.<br /><br />
-                                <strong>Vorraussetzung:</strong> in Schritt 5 (Kapazität &amp; Sichtbarkeit) muss der Toggle &bdquo;Geteilte Kapazität&ldquo; aktiv sein. Sonst gibt&apos;s keine Gruppen — dieser Selector ist dann ausgeblendet.
+                                <strong>Vorraussetzung:</strong> in Schritt 4 (Kapazität &amp; Sichtbarkeit) muss der Toggle &bdquo;Geteilte Kapazität&ldquo; aktiv sein. Sonst gibt&apos;s keine Gruppen — dieser Selector ist dann ausgeblendet.
                               </>
                             ) : (
                               <>
                                 <strong>What you set here:</strong> whether this field is visible to <strong>all attendees</strong> or only to one of the two capacity groups during registration.<br /><br />
                                 <strong>Example:</strong> on a running event, a required checkbox &ldquo;Performance proof available&rdquo; only makes sense for the <strong>fast-runner group</strong>, not for fun-runners / walkers. Set the field to <strong>{labelA} only</strong> — fun-runners won&apos;t even see it.<br /><br />
                                 <strong>Effect in the app:</strong> the registration page dynamically shows / hides the field as the attendee picks one of the two boxes. Required-field validation only fires when the field is actually visible.<br /><br />
-                                <strong>Requirement:</strong> the &ldquo;Split capacity&rdquo; toggle in step 3 (Capacity &amp; Visibility) must be active. Otherwise there are no groups — this selector is then hidden.
+                                <strong>Requirement:</strong> the &ldquo;Split capacity&rdquo; toggle in step 4 (Capacity &amp; Visibility) must be active. Otherwise there are no groups — this selector is then hidden.
                               </>
                             )} />
                           </div>
@@ -14291,7 +14601,7 @@ export default function EventCreationPage(): React.ReactElement {
                     title={isDe ? 'Noch keine Sub-Events angelegt' : 'No sub-events yet'}
                   >
                     {isDe
-                      ? 'Sub-Events legst du in Schritt 3 (Sub-Events) an — danach kannst du hier pro Sub-Event eigene Anmelde-Felder definieren.'
+                      ? 'Sub-Events legst du in Schritt 1 (Grundlagen) an — danach kannst du hier pro Sub-Event eigene Anmelde-Felder definieren.'
                       : 'Add sub-events in Step 3 (Sub-events) — then come back here to define per-sub-event registration fields.'}
                   </WizardHint>
                 ) : (
@@ -14878,11 +15188,11 @@ export default function EventCreationPage(): React.ReactElement {
                       {isDe
                         ? <>
                             <strong>Hauptevent-Kommunikation ist in diesem Modus nicht relevant.</strong><br />
-                            Du hast in Schritt 3 (Sub-Events) den Modus <strong>&bdquo;Nur {(childTermPlural || 'Sub-Events').trim() || 'Sub-Events'}&ldquo;</strong> gewählt — Teilnehmer können sich gar nicht fürs Hauptevent anmelden, deshalb gibt es auch keine Bestätigungs-Mails und keinen Outlook-Termin fürs Hauptevent. Wechsle auf den Tab eines Sub-Events, um dort die Kommunikation zu konfigurieren.
+                            Du hast in Schritt 1 (Grundlagen) den Modus <strong>&bdquo;Nur {(childTermPlural || 'Sub-Events').trim() || 'Sub-Events'}&ldquo;</strong> gewählt — Teilnehmer können sich gar nicht fürs Hauptevent anmelden, deshalb gibt es auch keine Bestätigungs-Mails und keinen Outlook-Termin fürs Hauptevent. Wechsle auf den Tab eines Sub-Events, um dort die Kommunikation zu konfigurieren.
                           </>
                         : <>
                             <strong>Main-event communication is not relevant in this mode.</strong><br />
-                            You picked the <strong>&bdquo;{(childTermPlural || 'sub-events').trim() || 'sub-events'} only&ldquo;</strong> mode in step 3 (Sub-events) — attendees cannot register for the main event, so no confirmation emails or Outlook invites are sent for it. Switch to a sub-event tab to configure communication there.
+                            You picked the <strong>&bdquo;{(childTermPlural || 'sub-events').trim() || 'sub-events'} only&ldquo;</strong> mode in step 1 (Basics) — attendees cannot register for the main event, so no confirmation emails or Outlook invites are sent for it. Switch to a sub-event tab to configure communication there.
                           </>}
                     </div>
                   </div>
@@ -15188,8 +15498,8 @@ export default function EventCreationPage(): React.ReactElement {
                     </div>
                     <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', marginTop: 6 }}>
                       {isDe
-                        ? '„Erst nach der letzten Abmeldemöglichkeit" nutzt das in Schritt 5 (Kapazität & Sichtbarkeit) gesetzte Datum „Letzte Abmeldemöglichkeit". Vor diesem Stichtag gelten Abmeldungen als unproblematisch — danach möchtest du als Organizer aber wissen, wer noch abspringt.'
-                        : '„Only after the last cancellation date" uses the date set in step 3 (Capacity & Visibility) under „Last cancellation date". Cancellations before that are considered routine — after that, organizers usually want to know about late drop-outs.'}
+                        ? '„Erst nach der letzten Abmeldemöglichkeit" nutzt das in Schritt 4 (Kapazität & Sichtbarkeit) gesetzte Datum „Letzte Abmeldemöglichkeit". Vor diesem Stichtag gelten Abmeldungen als unproblematisch — danach möchtest du als Organizer aber wissen, wer noch abspringt.'
+                        : '„Only after the last cancellation date" uses the date set in step 4 (Capacity & Visibility) under „Last cancellation date". Cancellations before that are considered routine — after that, organizers usually want to know about late drop-outs.'}
                     </p>
                   </div>
                   </div>
@@ -16519,6 +16829,13 @@ export default function EventCreationPage(): React.ReactElement {
             helpTextEn: f.helpTextEn,
             confirmLabelEn: f.confirmLabelEn,
             optionsEn: f.optionsEn,
+            // v29.21 (Audit): Uhrzeit-Option + Übernachtungs-Fenster an die
+            // Vorschau — sonst zeigte sie einen reinen Datums-Picker bzw.
+            // einen Zeitraum ohne Grenzen, anders als die echte Anmeldeseite.
+            withTime: f.withTime,
+            rangeStart: f.rangeStart,
+            rangeEnd: f.rangeEnd,
+            maxNights: f.maxNights,
           })),
           isFictive,
           // v14.10: Sub-Events + Sub-Only-Mode + Bezeichnungs-Term an die
@@ -16543,6 +16860,18 @@ export default function EventCreationPage(): React.ReactElement {
               helpTextStyle: f.helpTextStyle,
               multi: f.multi,
               showIf: f.showIf,
+              // v29.21 (Audit): wie beim Hauptevent — Vorauswahl, EN-Varianten
+              // und Datums-Optionen fehlten in der Sub-Event-Vorschau.
+              defaultValue: f.type === 'select' && !f.multi ? f.defaultValue : undefined,
+              confirmLabel: f.confirmLabel,
+              labelEn: f.labelEn,
+              helpTextEn: f.helpTextEn,
+              confirmLabelEn: f.confirmLabelEn,
+              optionsEn: f.optionsEn,
+              withTime: f.withTime,
+              rangeStart: f.rangeStart,
+              rangeEnd: f.rangeEnd,
+              maxNights: f.maxNights,
             })),
           })),
           subEventsOnlyMode,
@@ -16559,8 +16888,17 @@ export default function EventCreationPage(): React.ReactElement {
             funstarterCapacity: Number(funstarterCapacity) || 0,
             splitLabelA,
             splitLabelB,
+            splitDescA,
+            splitDescB,
+            splitHelpText,
+            splitSectionTitle,
+            splitDisplayOrderReversed,
             splitSharedWaitlist,
           } : {}),
+          // v29.21 (Audit): Die Vorschau verspricht „1:1 das, was der
+          // Teilnehmer bekommt" — ohne diese Props fehlten Anrede-Dropdown,
+          // Gruppen-Beschreibungen und die gedrehte Gruppen-Reihenfolge.
+          askSalutation,
         }}
       />
 
@@ -16676,7 +17014,7 @@ export default function EventCreationPage(): React.ReactElement {
           ],
         });
         sections.push({
-          title: isDe ? 'Schritt 3 — Sub-Events' : 'Step 3 — Sub-events',
+          title: isDe ? 'Schritt 1 — Sub-Events' : 'Step 1 — Sub-events',
           rows: subEvents.length === 0
             ? [{ label: 'Sub-Events', value: isDe ? 'keine' : 'none', status: 'default' }]
             : [
@@ -16727,7 +17065,7 @@ export default function EventCreationPage(): React.ReactElement {
           ],
         });
         sections.push({
-          title: isDe ? 'Schritt 7 — Team-Anmeldung' : 'Step 6 — Team registration',
+          title: isDe ? 'Schritt 7 — Team-Anmeldung' : 'Step 7 — Team registration',
           rows: [{ label: isDe ? 'Team-Anmeldung' : 'Team registration', value: teamRegistrationEnabled ? (isDe ? `aktiv — Teams à ${teamSize}` : `on — teams of ${teamSize}`) : (isDe ? 'aus' : 'off'), status: teamRegistrationEnabled ? 'ok' : 'default' }],
         });
         sections.push({
@@ -16735,7 +17073,7 @@ export default function EventCreationPage(): React.ReactElement {
           rows: [{ label: isDe ? 'Dokumente' : 'Documents', value: documents.length ? `${documents.length}` : '—', status: documents.length ? 'ok' : 'empty' }],
         });
         sections.push({
-          title: isDe ? 'Schritt 9 — Fun-Zone' : 'Step 8 — Fun zone',
+          title: isDe ? 'Schritt 9 — Fun-Zone' : 'Step 9 — Fun zone',
           rows: [{ label: 'Quiz', value: quiz.length ? `${quiz.length} ${isDe ? 'Fragen' : 'questions'}` : '—', status: quiz.length ? 'ok' : 'empty' }],
         });
         const allRows = sections.reduce((acc, s) => acc + s.rows.length, 0);
@@ -17115,8 +17453,11 @@ export default function EventCreationPage(): React.ReactElement {
             address: { street: addrStreet, houseNo: addrHouseNo, zip: addrZip, city: addrCity },
             agenda: agendaForSummary,
             transfers: transfersForSummary,
-            locationFilter: locationFilter ? locationFilter.split(';').map(s => s.trim()).filter(Boolean) : [],
-            audience: audience ? audience.split(';').map(s => s.trim()).filter(Boolean) : [],
+            // v29.21 (Audit): beide Strings sind im Wizard KOMMA-separiert —
+            // split(';') lieferte immer ein 1-elementiges Array, der Export
+            // meldete bei fuenf Verteilern „1 Eintrag".
+            locationFilter: locationFilter ? locationFilter.split(',').map(s => s.trim()).filter(Boolean) : [],
+            audience: audience ? audience.split(',').map(s => s.trim()).filter(Boolean) : [],
             filterMode,
             excludedUsers,
             registrationDeadline,

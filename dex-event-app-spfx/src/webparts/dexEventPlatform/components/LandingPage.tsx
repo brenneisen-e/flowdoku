@@ -969,9 +969,14 @@ export default function LandingPage(): React.ReactElement {
                 {regList.map(box => {
                   const startTs = new Date(box.startDate).getTime();
                   const diff = startTs - nowTick;
-                  let countdown: string; let urgent = false;
-                  if (diff <= 0) { countdown = isDe ? 'läuft gerade' : 'happening now'; urgent = true; }
-                  else if (diff < 24 * 60 * 60 * 1000) { const h = Math.max(1, Math.ceil(diff / (60 * 60 * 1000))); countdown = isDe ? `noch ${h} ${h === 1 ? 'Stunde' : 'Stunden'}` : `in ${h} ${h === 1 ? 'hour' : 'hours'}`; urgent = true; }
+                  // v29.18: Kein Rot mehr, wenn das Event kurz bevorsteht. Rot
+                  // heißt in der App „Problem/Fehler" — ein Event, auf das man
+                  // sich angemeldet hat und das morgen stattfindet, ist aber
+                  // eine Vorfreude-Information, keine Warnung. Der Countdown
+                  // bleibt grün, egal wie nah der Termin ist.
+                  let countdown: string;
+                  if (diff <= 0) { countdown = isDe ? 'läuft gerade' : 'happening now'; }
+                  else if (diff < 24 * 60 * 60 * 1000) { const h = Math.max(1, Math.ceil(diff / (60 * 60 * 1000))); countdown = isDe ? `noch ${h} ${h === 1 ? 'Stunde' : 'Stunden'}` : `in ${h} ${h === 1 ? 'hour' : 'hours'}`; }
                   else { const d = Math.floor(diff / (24 * 60 * 60 * 1000)); countdown = isDe ? `noch ${d} ${d === 1 ? 'Tag' : 'Tage'}` : `in ${d} ${d === 1 ? 'day' : 'days'}`; }
                   const dateLabel = new Date(box.startDate).toLocaleDateString(isDe ? 'de-DE' : 'en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' });
                   return (
@@ -993,7 +998,7 @@ export default function LandingPage(): React.ReactElement {
                           {dateLabel}{box.location ? ` · ${box.location}` : ''}
                         </span>
                       </span>
-                      <span style={{ flexShrink: 0, fontSize: '0.78rem', fontWeight: 800, padding: '4px 10px', borderRadius: 999, background: urgent ? 'rgba(218,41,28,0.10)' : 'rgba(134,188,37,0.12)', color: urgent ? 'var(--dex-red, #c00)' : 'var(--dex-green-dark, #4a7c1f)' }}>
+                      <span style={{ flexShrink: 0, fontSize: '0.78rem', fontWeight: 800, padding: '4px 10px', borderRadius: 999, background: 'rgba(134,188,37,0.12)', color: 'var(--dex-green-dark, #4a7c1f)' }}>
                         {countdown}
                       </span>
                     </button>
