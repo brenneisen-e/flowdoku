@@ -551,9 +551,16 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
           >
             <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: isMobile ? 'stretch' : 'center', gap: 12, width: '100%', flexDirection: isMobile ? 'column' : 'row' }}>
               <div style={{ flex: '1 1 200px', minWidth: 0, display: 'flex', alignItems: 'center', gap: 16 }}>
-                <CachedBg url={event.imageUrl} style={{
-                  width: 60, height: 40, borderRadius: 'var(--dex-radius)', flexShrink: 0,
-                }} />
+                {/* v29.35: ohne Event-Bild das Mail-Logo zeigen (wie Kachel und
+                    Anmeldeseite) — dann aber contain, sonst schneidet der
+                    60×40-Ausschnitt ein Logo mittendurch. */}
+                <CachedBg
+                  url={event.imageUrl || event.mailImageBase64}
+                  position={event.imageUrl ? undefined : 'center/contain no-repeat'}
+                  style={{
+                    width: 60, height: 40, borderRadius: 'var(--dex-radius)', flexShrink: 0,
+                  }}
+                />
                 <div style={{ minWidth: 0 }}>
                   <h3 style={{ marginBottom: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     {event.title}

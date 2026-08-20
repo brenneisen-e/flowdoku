@@ -81,6 +81,13 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
   // seine URL kann tot sein (fehlgeschlagener Upload, späterer Bildwechsel).
   // Ohne Rückfall blieb die Kachel weiß, obwohl das Event ein Bild hat.
   const cachedImage = useCachedImageWithFallback(event.imageOrigUrl, event.imageUrl);
+  // v29.35: Kein Event-Bild, aber ein Mail-Logo? Dann zeigt die Anmeldeseite
+  // seit v29.13 dieses Logo — die Kachel blieb beim Farbverlauf. Dasselbe
+  // Event hatte damit an einer Stelle ein Foto und an der anderen keins.
+  // Das Logo kommt hier NICHT als Cover-Hintergrund (dafür wurde es v29.13
+  // bewusst ausgelassen: ein Logo zerfällt im Beschnitt), sondern vollständig
+  // über dem Verlauf — der Verlauf bleibt der Rahmen, das Bild bleibt heil.
+  const mailLogoFallback = (!event.imageUrl && event.mailImageBase64) ? event.mailImageBase64 : '';
   // v9.8: B2Run-Events haben maxParticipants=0, weil die Kapazität auf
   // Durchstarter + Funstarter aufgeteilt ist. Die Summe gilt als
   // Gesamtkapazität — sonst zeigt die Karte fälschlich "Unbegrenzt", obwohl
@@ -328,6 +335,19 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
               position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain',
               transform: `scale(${event.imageDisplay.card.zoom})`,
               transformOrigin: 'center center',
+            }}
+          />
+        )}
+        {/* v29.35: Mail-Logo als Rückfall — contain, damit nichts abgeschnitten
+            wird, mit etwas Luft und Platz für den Titel-Streifen unten. */}
+        {mailLogoFallback && (
+          <img
+            src={mailLogoFallback}
+            alt=""
+            style={{
+              position: 'absolute', left: 0, right: 0, top: 0, bottom: 0,
+              width: '100%', height: '100%', objectFit: 'contain',
+              padding: '10px 10px 46px 10px', boxSizing: 'border-box',
             }}
           />
         )}
