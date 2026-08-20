@@ -500,6 +500,35 @@ export default function RegistrationPage(): React.ReactElement {
   // Button gesehen ohne Feedback was gerade passiert.
   const [submitProgress, setSubmitProgress] = React.useState(0);
   const [submitProgressLabel, setSubmitProgressLabel] = React.useState('');
+  // v29.29: Angezeigter Fortschritt. `submitProgress` ist der ZIELWERT, den die
+  // Anmelde-Schritte setzen — er springt naturgemäß (5 → 30 → 50 → 100), weil
+  // dazwischen einzelne, unterschiedlich lange SharePoint-Aufrufe liegen. Der
+  // Balken lief dadurch in drei Sätzen statt gleichmäßig. Der Anzeigewert
+  // nähert sich dem Ziel jetzt in kleinen Schritten und kriecht, solange ein
+  // Schritt dauert, langsam weiter (gedeckelt vor der nächsten Stufe) — so
+  // steht der Balken nie still und überholt den echten Stand auch nicht.
+  const [displayProgress, setDisplayProgress] = React.useState(0);
+  React.useEffect(() => {
+    if (!isSubmitting) { setDisplayProgress(0); return undefined; }
+    let tick = 0;
+    const id = window.setInterval(() => {
+      tick++;
+      setDisplayProgress(prev => {
+        const target = Math.min(100, Math.max(0, submitProgress));
+        // Abschluss: zügig auf 100 aufziehen.
+        if (target >= 100) return Math.min(100, prev + Math.max(1, Math.ceil((100 - prev) / 4)));
+        // Neuer Lauf (Ziel liegt unter der Anzeige): direkt übernehmen.
+        if (prev > target) return target;
+        // Annäherung ans Ziel — je größer der Rückstand, desto größer der Schritt.
+        if (prev < target) return Math.min(target, prev + Math.max(1, Math.ceil((target - prev) / 6)));
+        // Ziel erreicht, der Schritt läuft noch: alle ~0,5 s ein Prozent weiter,
+        // höchstens 8 Punkte über die Stufe und nie über 97 %.
+        const creepCap = Math.min(97, target + 8);
+        return (tick % 8 === 0 && prev < creepCap) ? prev + 1 : prev;
+      });
+    }, 60);
+    return () => window.clearInterval(id);
+  }, [isSubmitting, submitProgress]);
   const [error, setError] = React.useState('');
   const [showErrors, setShowErrors] = React.useState(false);
   // v11.91: showDescription wurde entfernt — Beschreibung ist immer offen.
@@ -3192,14 +3221,16 @@ export default function RegistrationPage(): React.ReactElement {
             </div>
             <div style={{ width: '100%', height: 8, borderRadius: 4, background: 'var(--dex-gray-200)', overflow: 'hidden' }}>
               <div style={{
-                width: `${Math.min(100, Math.max(0, submitProgress))}%`,
+                width: `${Math.min(100, Math.max(0, displayProgress))}%`,
                 height: '100%',
                 background: 'var(--dex-green, #86bc25)',
-                transition: 'width 0.25s ease',
+                // v29.29: kurze Übergangszeit — die Anzeige wird alle 60 ms
+                // nachgezogen, eine lange Transition würde hinterherhinken.
+                transition: 'width 0.15s linear',
               }} />
             </div>
             <div style={{ fontSize: '0.78rem', color: 'var(--dex-gray-500)', fontVariantNumeric: 'tabular-nums' }}>
-              {submitProgress}%
+              {displayProgress}%
             </div>
           </div>
           <style>{`@keyframes dexProgressSlide { 0% { left: -40%; } 100% { left: 100%; } }`}</style>

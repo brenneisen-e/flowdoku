@@ -1058,14 +1058,23 @@ export default function AdminPage(): React.ReactElement {
   // Person aktiv angemeldet ist (Status angemeldet/QR/eingecheckt/Warteliste),
   // je mit Checkbox. `deregModal` hält die betroffene Person + die abmeldbaren
   // Sub-Event-Registrierungen; `deregSelected` die angehakten Sub-Event-IDs.
+  // v29.29: `isParent` markiert die Klammer-Zeile — sie war bisher gar nicht
+  // Teil der Auswahl, dadurch blieb die Person nach dem Abmelden aller
+  // Sub-Events auf der Klammer angemeldet („Teilnehmer (1)").
   const [deregModal, setDeregModal] = React.useState<{
     emailKey: string;
     name: string;
     email: string;
-    items: Array<{ child: DeloitteEvent; reg: SPRegistration }>;
+    items: Array<{ child: DeloitteEvent; reg: SPRegistration; isParent?: boolean }>;
   } | null>(null);
   const [deregSelected, setDeregSelected] = React.useState<Set<string>>(new Set());
   const [deregBusy, setDeregBusy] = React.useState(false);
+  // v29.29: Stille Abmeldung — keine Abmelde-Mail, keine Outlook-Absage.
+  // Der Auslöser dafür ist der Regelfall „Person hat das Unternehmen
+  // verlassen": Das Postfach existiert nicht mehr, die Mail liefe ins Leere
+  // (oder als Bounce zurück an das Sammelpostfach). Vorausgewählt, wenn der
+  // Konto-Check die Adresse als inaktiv gemeldet hat.
+  const [deregSilent, setDeregSilent] = React.useState(false);
   const openEditModal = (reg: SPRegistration): void => {
     setEditError('');
     setEditingReg(reg);
@@ -1611,7 +1620,14 @@ export default function AdminPage(): React.ReactElement {
   const openDeregModal = (row: ConsolidatedRow): void => {
     if (!selectedEvent) return;
     const ACTIVE = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
-    const items: Array<{ child: DeloitteEvent; reg: SPRegistration }> = [];
+    const items: Array<{ child: DeloitteEvent; reg: SPRegistration; isParent?: boolean }> = [];
+    // v29.29: Die Klammer-Zeile ZUERST — sie gehört zur Person genauso wie die
+    // Sub-Events. Ohne sie blieb nach dem Abmelden aller Sub-Events eine
+    // Schatten-Anmeldung auf dem Hauptevent stehen, die die Teilnehmerzahl
+    // weiter mitzählte und in „Meine Events" der Person erschien.
+    const parentReg = registrations.find(r =>
+      (r.ParticipantEmail || '').toLowerCase().trim() === row.emailKey && ACTIVE.indexOf(r.Status) >= 0);
+    if (parentReg) items.push({ child: selectedEvent, reg: parentReg, isParent: true });
     for (const ch of childEventsOf(selectedEvent.id)) {
       const r = row.perChild[ch.id];
       if (r && ACTIVE.indexOf(r.Status) >= 0) items.push({ child: ch, reg: r });
@@ -1622,13 +1638,17 @@ export default function AdminPage(): React.ReactElement {
       email: row.email,
       items,
     });
-    // Default: alle Sub-Events vorausgewählt — der häufigste Fall ist „ganz
-    // abmelden". Der Organizer kann einzelne wieder abwählen.
+    // Default: alles vorausgewählt — der häufigste Fall ist „ganz abmelden".
+    // Der Organizer kann einzelne wieder abwählen.
     setDeregSelected(new Set(items.map(i => i.child.id)));
+    // v29.29: Bei einem als inaktiv gemeldeten Konto (Person hat das
+    // Unternehmen verlassen) ist die stille Abmeldung der Normalfall.
+    setDeregSilent(inactiveAccounts.indexOf(row.emailKey) >= 0);
   };
   const closeDeregModal = (): void => {
     setDeregModal(null);
     setDeregSelected(new Set());
+    setDeregSilent(false);
   };
   // v19.30 — Feature B: Abmeldung pro gewähltem Sub-Event durchführen. Spiegelt
   // exakt die Nebenwirkungen des Einzel-Event-Abmeldens (Abmelde-Mail +
@@ -1641,7 +1661,7 @@ export default function AdminPage(): React.ReactElement {
     const actorName = `${currentUser.firstName || ''} ${currentUser.surname || ''}`.trim() || currentUser.email;
     const actorEmail = currentUser.email;
     const chosen = deregModal.items.filter(i => deregSelected.has(i.child.id));
-    for (const { child, reg } of chosen) {
+    for (const { child, reg, isParent } of chosen) {
       const sub = child.subsiteUrl;
       if (!sub) continue;
       const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
@@ -1657,14 +1677,19 @@ export default function AdminPage(): React.ReactElement {
             targetName: name,
             eventId: child.id,
             eventTitle: child.title,
-            details: { asActor: 'organizer', via: 'consolidatedDeregister' },
+            details: { asActor: 'organizer', via: 'consolidatedDeregister', ...(deregSilent ? { silent: true } : {}), ...(isParent ? { level: 'parent' } : {}) },
           });
         } catch { /* */ }
         // Abmelde-Mail + Outlook 'Ausladen' (event-weite Schalter respektieren).
         // v22.22: Vergangenes Sub-Event → stille Abmeldung (keine Mail, kein
         // Outlook, kein Nachrücken, kein ID-Reorder).
         const childWasOver = isEventOver(child);
-        if (reg.ParticipantEmail && !childWasOver) {
+        // v29.29: `deregSilent` unterdrückt NUR die Benachrichtigung der
+        // ausscheidenden Person (erloschenes Postfach) — Nachrücken und
+        // ID-Reorder laufen weiter, der frei gewordene Platz soll ja an die
+        // Warteliste gehen und die nachrückende Person ihre Mail bekommen.
+        const notifyLeaver = !childWasOver && !deregSilent;
+        if (reg.ParticipantEmail && notifyLeaver) {
           if (!child.disableEmails && !child.disableCancellationEmail) {
             try {
               const emailData = cancellationEmail(name, child.title);
@@ -1697,7 +1722,11 @@ export default function AdminPage(): React.ReactElement {
         // v27.11: Kein automatisches Nachrücken, wenn die Warteliste des
         // Sub-Events abgeschaltet ist (Kill-Switch, s. Einzel-Event-Abmelden).
         // Der ID-Reorder unten läuft weiterhin.
-        if (child.waitlistEnabled !== false) {
+        // v29.29: Auf der KLAMMER nie nachrücken — sie ist keine
+        // Anmeldeeinheit (maxParticipants ist dort 0, die Zeile ist eine
+        // Schattenzeile). Ein Nachrücken dort würde eine fremde Person auf
+        // eine Ebene heben, die niemand bucht.
+        if (!isParent && child.waitlistEnabled !== false) {
         try {
           const promoted = await eventServiceRef.promoteFirstWaitlistItem(
             sub,
@@ -1749,6 +1778,12 @@ export default function AdminPage(): React.ReactElement {
       }
     }
     try { await reloadSubEventRegs(); } catch { /* */ }
+    // v29.29: Auch die Klammer-Teilnehmerliste neu laden — seit die
+    // Hauptevent-Zeile mit abgemeldet werden kann, wäre die Kopfzeile
+    // („Teilnehmer (N)") sonst bis zum nächsten Öffnen veraltet.
+    if (selectedEvent) {
+      try { setRegistrations(await getAllRegistrations(selectedEvent.id)); } catch { /* */ }
+    }
     setDeregBusy(false);
     closeDeregModal();
   };
@@ -13164,13 +13199,13 @@ export default function AdminPage(): React.ReactElement {
               <span style={{ color: 'var(--dex-orange, #ed8b00)', flexShrink: 0, marginTop: 1 }}><AlertCircle size={18} /></span>
               <span>
                 {isDe
-                  ? <>Die ausgewählten Anmeldungen werden <strong>verbindlich abgemeldet</strong>. Pro Sub-Event bekommt die Person (sofern nicht deaktiviert) eine Abmelde-Bestätigung, der Outlook-Termin wird zurückgezogen, frei werdende Plätze rücken nach und die Teilnehmer-IDs werden neu vergeben. Dieser Schritt lässt sich nicht automatisch rückgängig machen.</>
-                  : <>The selected registrations will be <strong>cancelled for good</strong>. For each sub-event the person receives (unless disabled) a cancellation confirmation, the Outlook invite is withdrawn, freed seats are filled from the waitlist and participant IDs are reassigned. This step cannot be undone automatically.</>}
+                  ? <>Die ausgewählten Anmeldungen werden <strong>verbindlich abgemeldet</strong>. Pro Anmeldung bekommt die Person (sofern nicht unten still abgemeldet oder event-weit deaktiviert) eine Abmelde-Bestätigung, der Outlook-Termin wird zurückgezogen, frei werdende Plätze rücken nach und die Teilnehmer-IDs werden neu vergeben. Dieser Schritt lässt sich nicht automatisch rückgängig machen.</>
+                  : <>The selected registrations will be <strong>cancelled for good</strong>. For each registration the person receives (unless cancelled silently below or disabled event-wide) a cancellation confirmation, the Outlook invite is withdrawn, freed seats are filled from the waitlist and participant IDs are reassigned. This step cannot be undone automatically.</>}
               </span>
             </div>
             {deregModal.items.length === 0 ? (
               <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--dex-gray-500)' }}>
-                {isDe ? 'Diese Person ist in keinem Sub-Event aktiv angemeldet.' : 'This person is not actively registered in any sub-event.'}
+                {isDe ? 'Diese Person hat keine aktive Anmeldung mehr — weder auf dem Haupt-Event noch in einem Sub-Event.' : 'This person no longer has an active registration — neither on the main event nor in any sub-event.'}
               </p>
             ) : (
               <>
@@ -13183,10 +13218,10 @@ export default function AdminPage(): React.ReactElement {
                     style={{ accentColor: 'var(--dex-green)' }}
                     disabled={deregBusy}
                   />
-                  {isDe ? 'Alle Sub-Events auswählen' : 'Select all sub-events'}
+                  {isDe ? 'Alle Anmeldungen auswählen' : 'Select all registrations'}
                 </label>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 320, overflowY: 'auto' }}>
-                  {deregModal.items.map(({ child, reg }) => {
+                  {deregModal.items.map(({ child, reg, isParent }) => {
                     const checked = deregSelected.has(child.id);
                     return (
                       <label
@@ -13205,12 +13240,56 @@ export default function AdminPage(): React.ReactElement {
                           style={{ accentColor: 'var(--dex-red, #c00)' }}
                           disabled={deregBusy}
                         />
-                        <span style={{ flex: 1, fontWeight: 500 }}>{shortSubEventTitle(child.title, selectedEvent.title) || child.title}</span>
+                        <span style={{ flex: 1, fontWeight: 500 }}>
+                          {isParent ? child.title : (shortSubEventTitle(child.title, selectedEvent.title) || child.title)}
+                          {/* v29.29: Die Klammer-Zeile ausweisen — sonst liest
+                              sie sich wie ein weiteres Sub-Event. */}
+                          {isParent && (
+                            <span style={{ marginLeft: 8, fontSize: '0.7rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)' }}>
+                              {selectedEvent.subEventsOnlyMode
+                                ? (isDe ? 'KLAMMER' : 'UMBRELLA')
+                                : (isDe ? 'HAUPT-EVENT' : 'MAIN EVENT')}
+                            </span>
+                          )}
+                        </span>
                         <span className={`badge ${reg.Status === 'Eingecheckt' ? 'badge-green' : 'badge-gray'}`}>{translateStatus(reg.Status, isDe)}</span>
                       </label>
                     );
                   })}
                 </div>
+                {/* v29.29: Stille Abmeldung — der Regelfall bei einer Person,
+                    die das Unternehmen verlassen hat: Das Postfach existiert
+                    nicht mehr, Mail und Outlook-Absage laufen ins Leere. Das
+                    Nachrücken von der Warteliste läuft trotzdem. */}
+                <label style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 10, padding: '10px 12px', borderRadius: 8,
+                  border: `1px solid ${deregSilent ? 'var(--dex-orange, #ed8b00)' : 'var(--dex-gray-200)'}`,
+                  background: deregSilent ? 'rgba(237,139,0,0.06)' : 'var(--dex-gray-50)',
+                  cursor: deregBusy ? 'default' : 'pointer',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={deregSilent}
+                    onChange={e => setDeregSilent(e.target.checked)}
+                    style={{ marginTop: 2, accentColor: 'var(--dex-orange, #ed8b00)' }}
+                    disabled={deregBusy}
+                  />
+                  <span style={{ fontSize: '0.84rem', lineHeight: 1.5 }}>
+                    <strong>{isDe ? 'Still abmelden — ohne E-Mail und ohne Outlook-Absage' : 'Cancel silently — no email, no Outlook withdrawal'}</strong>
+                    <span style={{ display: 'block', marginTop: 3, fontSize: '0.78rem', color: 'var(--dex-gray-600)' }}>
+                      {isDe
+                        ? 'Für Personen, die das Unternehmen verlassen haben: Das Postfach existiert nicht mehr, die Abmelde-Mail käme als Unzustellbarkeits-Meldung zurück. Frei werdende Plätze rücken trotzdem nach, und die nachrückende Person bekommt ihre Mail wie immer.'
+                        : 'For people who have left the company: the mailbox no longer exists, so the cancellation email would bounce. Freed seats are still filled from the waitlist, and the promoted person receives their mail as usual.'}
+                    </span>
+                    {inactiveAccounts.indexOf(deregModal.emailKey) >= 0 && (
+                      <span style={{ display: 'block', marginTop: 4, fontSize: '0.76rem', fontWeight: 600, color: 'var(--dex-orange-dark, #b35a00)' }}>
+                        {isDe
+                          ? 'Für diese Adresse wurde kein aktives Deloitte-Konto gefunden — deshalb ist die stille Abmeldung vorausgewählt.'
+                          : 'No active Deloitte account was found for this address — that is why silent cancellation is preselected.'}
+                      </span>
+                    )}
+                  </span>
+                </label>
               </>
             )}
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
