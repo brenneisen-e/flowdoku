@@ -21,7 +21,7 @@ import { isDeloitteInternalEmail, isExternalEmail } from '../utils/deloitteDomai
 import { useLanguage, translations as appTranslations, Locale } from '../context/LanguageContext';
 // v20.4: modernes Alert-Modal statt window.alert.
 import { useDialog } from '../context/DialogContext';
-import { Salutation, EventSpecificField } from '../types';
+import { Salutation, EventSpecificField, DeloitteEvent } from '../types';
 import { Icon } from '@fluentui/react/lib/Icon';
 import { Send, X, Mail } from './Icons';
 import { InfoTooltip } from './InfoTooltip';
@@ -138,6 +138,26 @@ function renderFieldDescHtml(raw: string): string {
   // Zeilenumbrüche erhalten
   html = html.replace(/\n/g, '<br />');
   return html;
+}
+
+// v29.27: Sub-Event-Beschreibungen kommen seit v28.89 aus demselben
+// Rich-Text-Editor wie die Hauptevent-Beschreibung — sie können HTML und
+// HTML-Entities tragen. Die Sub-Event-Karten renderten sie aber als ROHEN
+// Text: ein „&nbsp;" aus dem Editor stand wörtlich auf der Anmeldeseite.
+// Plain-Texte mit Entities werden zuerst dekodiert (BEWUSST ohne &lt;/&gt; —
+// sonst könnte aus escaptem Text nachträglich Markup werden), dann geht
+// alles durch renderFieldDescHtml: echtes HTML wird sanitisiert, reiner
+// Text escaped + Markdown-Subset.
+function subEventDescHtml(raw: string): string {
+  if (!raw) return '';
+  const cleaned = /<[a-z][\s\S]*>/i.test(raw)
+    ? raw
+    : raw
+      .replace(/&nbsp;|&#160;/gi, ' ')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;|&apos;/gi, "'")
+      .replace(/&amp;/gi, '&');
+  return renderFieldDescHtml(cleaned);
 }
 
 /**
@@ -1276,6 +1296,98 @@ export default function RegistrationPage(): React.ReactElement {
   // verloren gehen. { enabled, value } wird beim Klick im Modal gesetzt.
   const delegateChoiceRef = React.useRef<{ enabled: boolean; value: string } | null>(null);
 
+  // v29.27: Sub-Event-Fragen INLINE in der Sub-Event-Karte — nicht mehr im
+  // Bestätigen-Modal. Der Teilnehmer sieht damit direkt an der Kachel, welche
+  // Frage zu welchem Termin gehört (die Hauptevent-Fragen stehen darunter mit
+  // eigener Überschrift). Die Werte hängen live an sessionFieldValues[ce.id];
+  // die Pflicht-Prüfung, die vorher das Modal erzwang, sitzt jetzt im Submit.
+  // Kalender-Modus und der Team-Beitritts-Dialog nutzen weiter das Modal —
+  // dort gibt es keine Karte, die die Felder tragen könnte.
+  const renderSubEventInlineFields = (ce: DeloitteEvent): React.ReactElement | null => {
+    const values = sessionFieldValues[ce.id] || {};
+    const useEnHere = locale === 'en' && !!ce.bilingualFields;
+    const fLabel = (f: EventSpecificField): string =>
+      (useEnHere && f.labelEn && f.labelEn.trim()) ? f.labelEn : f.label;
+    const fHelp = (f: EventSpecificField): string | undefined =>
+      (useEnHere && f.helpTextEn && f.helpTextEn.trim()) ? f.helpTextEn : f.helpText;
+    const fOpt = (f: EventSpecificField, opt: string, idx: number): string =>
+      (useEnHere && f.optionsEn && f.optionsEn[idx] && f.optionsEn[idx].trim()) ? f.optionsEn[idx] : opt;
+    const fields = (ce.eventSpecificFields || [])
+      .filter(f => f && f.label)
+      .filter(f => {
+        if (!f.showIf || !f.showIf.fieldId) return true;
+        const raw = (values[f.showIf.fieldId] || '').trim();
+        if (!raw) return false;
+        const answers = raw.indexOf(' | ') >= 0
+          ? raw.split(' | ').map(s => s.trim()).filter(Boolean)
+          : [raw];
+        return answers.some(a => f.showIf!.values.indexOf(a) >= 0);
+      });
+    if (fields.length === 0) return null;
+    const setValue = (fieldId: string, value: string): void => {
+      setSessionFieldValues(prev => ({ ...prev, [ce.id]: { ...(prev[ce.id] || {}), [fieldId]: value } }));
+    };
+    return (
+      <div style={{ marginTop: 10, marginLeft: 26, padding: '10px 12px', borderRadius: 8, background: '#fff', border: '1px solid var(--dex-gray-200)' }}>
+        <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)', marginBottom: 8 }}>
+          {locale === 'de'
+            ? `Fragen zu diesem ${childTermSingular || 'Sub-Event'}`
+            : `Questions for this ${childTermSingular || 'sub-event'}`}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {fields.map(f => {
+            const val = values[f.id] || '';
+            const missing = showErrors && f.required && (f.type === 'checkbox' ? val !== 'true' : !val.trim());
+            return (
+              <div key={f.id}>
+                <label className="form-label" style={{ display: 'block', fontSize: '0.82rem', marginBottom: 4, ...(missing ? { color: 'var(--dex-red, #c00)' } : {}) }}>
+                  {fLabel(f)}
+                  {f.required && <span style={{ color: 'var(--dex-red, #c00)', marginLeft: 4 }}>*</span>}
+                  {fHelp(f) && <InfoTooltip text={fHelp(f)} />}
+                </label>
+                {f.type === 'select' && f.multi ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {(f.options || []).map((opt, optIdx) => {
+                      const current = val.split(' | ').map(s => s.trim()).filter(Boolean);
+                      const checked = current.indexOf(opt) >= 0;
+                      return (
+                        <label key={opt} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: '0.84rem', cursor: 'pointer' }}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={e => {
+                              const next = e.target.checked ? [...current, opt] : current.filter(x => x !== opt);
+                              setValue(f.id, next.join(' | '));
+                            }}
+                          />
+                          {fOpt(f, opt, optIdx)}
+                        </label>
+                      );
+                    })}
+                  </div>
+                ) : f.type === 'select' ? (
+                  <select className="form-input" value={val} onChange={e => setValue(f.id, e.target.value)} style={{ width: '100%', fontSize: '0.88rem' }}>
+                    <option value="">{locale === 'de' ? '— bitte wählen —' : '— please select —'}</option>
+                    {(f.options || []).map((opt, optIdx) => <option key={opt} value={opt}>{fOpt(f, opt, optIdx)}</option>)}
+                  </select>
+                ) : f.type === 'checkbox' ? (
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.84rem' }}>
+                    <input type="checkbox" checked={val === 'true'} onChange={e => setValue(f.id, e.target.checked ? 'true' : 'false')} />
+                    {locale === 'de' ? 'Ja' : 'Yes'}
+                  </label>
+                ) : f.type === 'number' ? (
+                  <input type="number" className="form-input" value={val} onChange={e => setValue(f.id, e.target.value)} style={{ width: '100%', fontSize: '0.88rem' }} />
+                ) : (
+                  <input type="text" className="form-input" value={val} onChange={e => setValue(f.id, e.target.value)} style={{ width: '100%', fontSize: '0.88rem' }} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   const handleSubmit = async (): Promise<void> => {
     // v17.25: Demo-Showcase-Event — keine echte Anmeldung. Freundlicher
     // Hinweis statt SP-Roundtrip; der Context-Guard würde ohnehin no-oppen.
@@ -1460,6 +1572,32 @@ export default function RegistrationPage(): React.ReactElement {
     // Hauptevent-Pflichtfelder (insb. die pro Absenden neu leere „Bestätigung"-
     // Checkbox) werden in dem Modus IMMER angezeigt und müssen IMMER validiert
     // werden. KEIN `!myParentReg`, KEIN sessionMeta-Abhängigkeit mehr.
+    // v29.27: Pflichtfelder der ausgewählten Sub-Events prüfen — die Fragen
+    // stehen jetzt inline in der Karte, also muss der Submit erzwingen, was
+    // vorher das Bestätigen-Modal erzwungen hat. Bereits bestehende
+    // Anmeldungen (wasRegistered) sind ausgenommen: ihre Antworten liegen in
+    // der Teilnehmer-Zeile und werden hier nicht neu erfasst.
+    {
+      const subMissing: string[] = [];
+      childEvents.forEach(ce => {
+        if (!selectedSessions.has(ce.id)) return;
+        if (sessionMeta[ce.id]?.wasRegistered) return;
+        const values = sessionFieldValues[ce.id] || {};
+        (ce.eventSpecificFields || []).filter(f => f && f.label && f.required && f.type !== 'document').forEach(f => {
+          if (f.showIf && f.showIf.fieldId) {
+            const raw = (values[f.showIf.fieldId] || '').trim();
+            const answers = !raw ? [] : (raw.indexOf(' | ') >= 0 ? raw.split(' | ').map(s => s.trim()).filter(Boolean) : [raw]);
+            if (!answers.some(a => f.showIf!.values.indexOf(a) >= 0)) return;
+          }
+          const filled = f.type === 'checkbox' ? values[f.id] === 'true' : !!(values[f.id] || '').trim();
+          if (!filled) subMissing.push(`${ce.title || (locale === 'de' ? 'Sub-Event' : 'sub-event')}: ${f.label}`);
+        });
+      });
+      if (subMissing.length > 0) {
+        setError(`${t('reg.requiredcustom')}: ${subMissing.join(', ')}`);
+        return;
+      }
+    }
     const willCollectMainFields = willRegisterParent || registerForOther
       || (isSubOnlyModeValidate && selectedSessions.size > 0 && !registerForOther)
       // v18.73: Beim vorgemerkten Team-Beitritt gelten dieselben Pflichtfelder
@@ -3524,22 +3662,13 @@ export default function RegistrationPage(): React.ReactElement {
                             disabled={disabled}
                             onChange={e => {
                               if (e.target.checked) {
-                                // Wenn das Sub-Event eigene Custom-Fields hat:
-                                // erst das Modal öffnen, der User muss die Antworten
-                                // bestätigen. Bei „Bestätigen" landet die Session in
-                                // selectedSessions + die Werte in sessionFieldValues.
-                                // Sub-Events ohne Custom-Fields: direkt selektieren.
-                                const hasCustomFields = (ce.eventSpecificFields || []).length > 0;
-                                if (hasCustomFields) {
-                                  setPendingSubEventModal({
-                                    subEventId: ce.id,
-                                    draftValues: { ...(sessionFieldValues[ce.id] || {}) },
-                                  });
-                                } else {
-                                  const next = new Set(selectedSessions);
-                                  next.add(ce.id);
-                                  setSelectedSessions(next);
-                                }
+                                // v29.27: direkt selektieren — die Fragen des
+                                // Sub-Events erscheinen INLINE in der Karte
+                                // (renderSubEventInlineFields), nicht mehr im
+                                // Bestätigen-Modal. Pflicht prüft der Submit.
+                                const next = new Set(selectedSessions);
+                                next.add(ce.id);
+                                setSelectedSessions(next);
                               } else {
                                 // Uncheck: Session entfernen + gespeicherte Field-Werte
                                 // wegräumen damit beim erneuten Checken ein frisches
@@ -3568,7 +3697,9 @@ export default function RegistrationPage(): React.ReactElement {
                             {ce.description && (
                               // v11.97: gleiche Schriftgröße wie der Titel
                               // (Standard-Body). Vorher 0.78rem klein.
-                              <div style={{ color: 'var(--dex-gray-600)', marginTop: 2 }}>{ce.description}</div>
+                              // v29.27: als sanitisiertes HTML statt rohem Text
+                              // (Rich-Text-Editor-Beschreibungen, s. subEventDescHtml).
+                              <div style={{ color: 'var(--dex-gray-600)', marginTop: 2, wordBreak: 'break-word' }} dangerouslySetInnerHTML={{ __html: subEventDescHtml(ce.description) }} />
                             )}
                             {/* v11.94: Datum + Ort mit Icons (analog zum
                                 Haupt-Event-Header), damit Sub-Events visuell
@@ -3665,6 +3796,11 @@ export default function RegistrationPage(): React.ReactElement {
                             />
                           )}
                         </label>
+                        {/* v29.27: Fragen dieses Sub-Events direkt in der
+                            Karte — BEWUSST außerhalb des <label>, sonst
+                            würde jeder Klick in ein Feld die Checkbox
+                            togglen. */}
+                        {isSel && renderSubEventInlineFields(ce)}
                       </div>
                     );
                   })}
@@ -5115,19 +5251,13 @@ export default function RegistrationPage(): React.ReactElement {
                             disabled={disabled}
                             onChange={e => {
                               if (e.target.checked) {
-                                const hasCustomFields = (ce.eventSpecificFields || []).length > 0;
-                                if (hasCustomFields) {
-                                  setPendingSubEventModal({
-                                    subEventId: ce.id,
-                                    draftValues: { ...(sessionFieldValues[ce.id] || {}) },
-                                  });
-                                } else {
-                                  // v28.97: siehe Kalender — bei „genau eines"
-                                  // ersetzt die neue Wahl die bisherige.
-                                  const next = event.subEventSingleChoice ? new Set<string>() : new Set(selectedSessions);
-                                  next.add(ce.id);
-                                  setSelectedSessions(next);
-                                }
+                                // v29.27: direkt selektieren — Fragen inline in
+                                // der Karte (s. Listen-Pfad oben).
+                                // v28.97: siehe Kalender — bei „genau eines"
+                                // ersetzt die neue Wahl die bisherige.
+                                const next = event.subEventSingleChoice ? new Set<string>() : new Set(selectedSessions);
+                                next.add(ce.id);
+                                setSelectedSessions(next);
                               } else {
                                 const next = new Set(selectedSessions);
                                 next.delete(ce.id);
@@ -5153,7 +5283,9 @@ export default function RegistrationPage(): React.ReactElement {
                             {ce.description && (
                               // v11.97: gleiche Schriftgröße wie der Titel
                               // (Standard-Body). Vorher 0.78rem klein.
-                              <div style={{ color: 'var(--dex-gray-600)', marginTop: 2 }}>{ce.description}</div>
+                              // v29.27: als sanitisiertes HTML statt rohem Text
+                              // (s. subEventDescHtml beim Listen-Pfad oben).
+                              <div style={{ color: 'var(--dex-gray-600)', marginTop: 2, wordBreak: 'break-word' }} dangerouslySetInnerHTML={{ __html: subEventDescHtml(ce.description) }} />
                             )}
                             {/* v11.94: gleiches Icon-Layout wie oben (anderer
                                 Render-Pfad für Team-Modus). */}
@@ -5207,6 +5339,8 @@ export default function RegistrationPage(): React.ReactElement {
                                 Session. */}
                           </div>
                         </label>
+                        {/* v29.27: Fragen inline in der Karte (s. Listen-Pfad). */}
+                        {isSel && renderSubEventInlineFields(ce)}
                       </div>
                     );
                   })}
@@ -5236,6 +5370,16 @@ export default function RegistrationPage(): React.ReactElement {
               // oben innerhalb der Gruppen-Auswahl-Box gerendert und hier
               // ausgefiltert.
               <div className="dex-reg-fields-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              {/* v29.27: Zuordnung klarmachen — die Sub-Event-Fragen stehen
+                  jetzt in den Karten oben, diese hier gehören zum Haupt-Event
+                  (bzw. bei einer Klammer zur Anmeldung insgesamt). */}
+              {childEvents.length > 0 && event.eventSpecificFields.length > 0 && (
+                <div style={{ gridColumn: '1 / -1', fontSize: '0.8rem', fontWeight: 700, color: 'var(--dex-gray-600)', marginBottom: -6 }}>
+                  {event.subEventsOnlyMode
+                    ? (locale === 'de' ? 'Allgemeine Fragen zur Anmeldung' : 'General questions for your registration')
+                    : (locale === 'de' ? 'Fragen zum Haupt-Event' : 'Questions for the main event')}
+                </div>
+              )}
               {(() => {
                 // v26.91: Zuerst die WIRKLICH sichtbaren Felder ermitteln, dann mit
                 // Index rendern — so kann renderRegField pro 2-Spalten-Zeile

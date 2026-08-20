@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v29.26.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v29.27.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -54,11 +54,16 @@ cd dex-event-app-spfx
 rm -rf dist release temp sharepoint/solution/debug
 ./node_modules/.bin/gulp bundle --ship; ./node_modules/.bin/gulp package-solution --ship
 #    kein && — bundle endet wegen Lint-Warnungen mit Exit 1 (s.u.)
-# 5) Paket an DREI Stellen
+# 5) Paket an ZWEI Stellen (seit v29.27 — vorher drei)
 cp sharepoint/solution/dex-event-platform.sppkg ../dist/dex-event-platform.sppkg
-#    ../docs/downloads/dex-event-platform-v<VERSION>.sppkg  (alte Datei per git mv umbenennen)
-# 6) docs/index.html: Version, Download-Link, Tag, „enthält kumulativ"-Absatz
 ```
+
+**`docs/index.html` und `docs/downloads/` sind seit v29.27 EINGEFROREN** —
+nicht mehr pflegen (User-Ansage 20.08.2026: „bitte bau nicht mehr die
+index.html weiter … ich hole mir die aktuelle Version direkt aus dist im
+GitHub-Repo"). Das Paket wird nur noch nach `dist/` kopiert; der
+Kumulativ-Absatz, die Download-Links und die versionierte Kopie unter
+`docs/downloads/` entfallen. `docs/release-notes.md` bleibt Pflicht.
 
 Erwartete Größe: ca. **2,2–2,3 MB**. Deutlich größer heißt: stale Bundles, Schritt 4
 wiederholen. In `release/assets/` darf es nur **eine** `dex-event-platform-web-part_*.js` geben.
