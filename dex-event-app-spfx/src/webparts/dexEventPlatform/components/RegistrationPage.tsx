@@ -1328,7 +1328,7 @@ export default function RegistrationPage(): React.ReactElement {
       setSessionFieldValues(prev => ({ ...prev, [ce.id]: { ...(prev[ce.id] || {}), [fieldId]: value } }));
     };
     return (
-      <div style={{ marginTop: 10, marginLeft: 26, padding: '10px 12px', borderRadius: 8, background: '#fff', border: '1px solid var(--dex-gray-200)' }}>
+      <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, background: '#fff', border: '1px solid var(--dex-gray-200)' }}>
         <div style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--dex-green-dark, #4a7c1f)', marginBottom: 8 }}>
           {locale === 'de'
             ? `Fragen zu diesem ${childTermSingular || 'Sub-Event'}`
@@ -1387,6 +1387,62 @@ export default function RegistrationPage(): React.ReactElement {
       </div>
     );
   };
+
+  // v29.28: Der Hauptevent-Felder-Block als Render-Funktion — er wird an
+  // ZWEI möglichen Orten gebraucht: bei Events MIT Sub-Events direkt unter
+  // der Haupt-Event-Kachel in der Auswahl-Box (dort, wo die Fragen
+  // hingehören — die Sub-Event-Fragen stecken seit v29.27 in deren Karten),
+  // sonst an der bisherigen Stelle unter der Auswahl. Inhalt 1:1 der
+  // bisherige Block (v11.2/v26.91) — als Ganzes gehoben, nicht geschnitten.
+  const renderMainFieldsSection = (): React.ReactElement => (
+    event.eventSpecificFields.length === 0 && !isSplitGroup ? (
+      <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>{t('reg.noadditional')}</p>
+    ) : (
+      // v11.2 / v11.5: Custom-Fields ohne Pro-Gruppe-Constraint im
+      // 2-Spalten-Grid. Group-spezifische Felder werden bereits
+      // oben innerhalb der Gruppen-Auswahl-Box gerendert und hier
+      // ausgefiltert.
+      <div className="dex-reg-fields-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+      {/* v29.27: Zuordnung klarmachen — die Sub-Event-Fragen stehen
+          in den Karten, diese hier gehören zum Haupt-Event (bzw. bei
+          einer Klammer zur Anmeldung insgesamt). */}
+      {childEvents.length > 0 && event.eventSpecificFields.length > 0 && (
+        <div style={{ gridColumn: '1 / -1', fontSize: '0.8rem', fontWeight: 700, color: 'var(--dex-gray-600)', marginBottom: -6 }}>
+          {event.subEventsOnlyMode
+            ? (locale === 'de' ? 'Allgemeine Fragen zur Anmeldung' : 'General questions for your registration')
+            : (locale === 'de' ? 'Fragen zum Haupt-Event' : 'Questions for the main event')}
+        </div>
+      )}
+      {(() => {
+        // v26.91: Zuerst die WIRKLICH sichtbaren Felder ermitteln, dann mit
+        // Index rendern — so kann renderRegField pro 2-Spalten-Zeile
+        // entscheiden, ob es leeren Beschreibungs-Platz reservieren muss.
+        const visibleSpecificFields = event.eventSpecificFields
+          .filter(f => f.id !== 'b2run_mobilnummer' || eventSpecific['b2run_infoservice'] === 'true')
+          .filter(f => !(f.id === 'b2run_startblock' && hasStarterBlockMapping))
+          .filter(f => {
+            if (!f.showIf || !f.showIf.fieldId) return true;
+            const raw = (eventSpecific[f.showIf.fieldId] || '').trim();
+            if (!raw) return false;
+            const answers = raw.indexOf(' | ') >= 0
+              ? raw.split(' | ').map(s => s.trim()).filter(Boolean)
+              : [raw];
+            return answers.some(a => f.showIf!.values.indexOf(a) >= 0);
+          })
+          // v11.5: Group-Spec NICHT hier rendern — die kommen oben
+          // in der Gruppen-Auswahl-Box. Hier nur 'all' / undefined
+          // (oder Events ohne Split-Capacity).
+          .filter(f => {
+            const grp = f.onlyForGroup;
+            if (!grp || grp === 'all') return true;
+            if (!isSplitGroup) return true;
+            return false;
+          });
+        return visibleSpecificFields.map((f, i) => renderRegField(f, undefined, undefined, i, visibleSpecificFields));
+      })()}
+      </div>
+    )
+  );
 
   const handleSubmit = async (): Promise<void> => {
     // v17.25: Demo-Showcase-Event — keine echte Anmeldung. Freundlicher
@@ -3644,7 +3700,12 @@ export default function RegistrationPage(): React.ReactElement {
                     const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
                     const isSessionFull = hasCap && meta.count >= (ce.maxParticipants || 0);
                     const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date());
-                    const disabled = (isSessionFull && !isSel) || (deadlinePassed && !isSel);
+                    // v29.28: Organizer/Admins dürfen — wie beim Haupt-Event
+                    // (parentRegBlocked) und wie der Wizard es ausdrücklich
+                    // verspricht — auch nach der Frist anmelden. Die
+                    // Kapazitäts-Sperre bleibt für alle.
+                    const deadlineLocked = deadlinePassed && !isOrganizer && !isAdmin;
+                    const disabled = (isSessionFull && !isSel) || (deadlineLocked && !isSel);
                     // Erbt vom Haupt-Event wenn gleichzeitig angemeldet wird.
                     const inheritsStarter = isSplitGroup && (willRegisterParent || registerForOther);
                     const sType = sessionStarterType[ce.id] || '';
@@ -3694,6 +3755,22 @@ export default function RegistrationPage(): React.ReactElement {
                                 </span>
                               )}
                             </div>
+                          </div>
+                          {/* v29.28: Thumbnail wandert in die Titelzeile —
+                              der Rest der Karte steht jetzt AUSSERHALB des
+                              <label> linksbündig am Kartenrand. */}
+                          {ce.imageUrl && (
+                            <img
+                              src={ce.imageUrl}
+                              alt=""
+                              style={{ width: 84, height: 60, objectFit: 'cover', borderRadius: 6, flexShrink: 0, background: 'var(--dex-gray-100)' }}
+                            />
+                          )}
+                        </label>
+                        {/* v29.28: Beschreibung, Zeit/Ort, Plätze und Hinweise
+                            linksbündig auf Kartenbreite — vorher rückte die
+                            Checkbox-Spalte des Labels alles ein. */}
+                        <div style={{ marginTop: 4 }}>
                             {ce.description && (
                               // v11.97: gleiche Schriftgröße wie der Titel
                               // (Standard-Body). Vorher 0.78rem klein.
@@ -3743,7 +3820,11 @@ export default function RegistrationPage(): React.ReactElement {
                             </div>
                             {deadlinePassed && !isSel && (
                               <div style={{ fontSize: '0.72rem', color: 'var(--dex-orange)', marginTop: 2 }}>
-                                {t('reg.subevents.deadlinepassed')}
+                                {deadlineLocked
+                                  ? t('reg.subevents.deadlinepassed')
+                                  : (locale === 'de'
+                                    ? 'Anmeldefrist abgelaufen — als Organizer/Admin trotzdem wählbar.'
+                                    : 'Registration deadline passed — still selectable as organizer/admin.')}
                               </div>
                             )}
                             {isSessionFull && !isSel && (
@@ -3783,19 +3864,7 @@ export default function RegistrationPage(): React.ReactElement {
                                 (Sub-Event übernimmt die Gruppen-Wahl des
                                 Parents), nur die explizite UI-Zeile ist
                                 weg. */}
-                          </div>
-                          {/* v27.11: Eigenes Sub-Event-Bild als Thumbnail —
-                              Sub-Events können jetzt (Wizard Schritt 3) ein
-                              eigenes Bild haben. Ohne Bild: kein Thumbnail
-                              (wie bisher). */}
-                          {ce.imageUrl && (
-                            <img
-                              src={ce.imageUrl}
-                              alt=""
-                              style={{ width: 84, height: 60, objectFit: 'cover', borderRadius: 6, flexShrink: 0, background: 'var(--dex-gray-100)' }}
-                            />
-                          )}
-                        </label>
+                        </div>
                         {/* v29.27: Fragen dieses Sub-Events direkt in der
                             Karte — BEWUSST außerhalb des <label>, sonst
                             würde jeder Klick in ein Feld die Checkbox
@@ -5063,6 +5132,16 @@ export default function RegistrationPage(): React.ReactElement {
                   </div>
                 </label>
                 )}
+                {/* v29.28: Die Fragen zum Haupt-Event stehen DIREKT unter
+                    seiner Kachel — dort, wo sie hingehören; die Sub-Event-
+                    Fragen stecken in deren Karten (v29.27). Im Stellvertreter-
+                    Modus (Haupt-Kachel ausgeblendet, Anmeldung fürs Haupt-
+                    Event läuft trotzdem) stehen sie an derselben Stelle über
+                    den Sub-Events. Bei einer Klammer rendert der Block an der
+                    alten Stelle unter der Auswahl (übergreifende Fragen). */}
+                {!event.subEventsOnlyMode && (event.eventSpecificFields.length > 0 || isSplitGroup) && (
+                  <div style={{ margin: '8px 0 4px' }}>{renderMainFieldsSection()}</div>
+                )}
 
                 {/* v28.91: Termin-Kalender statt Liste — nur, wenn der
                     Organizer die Sub-Events ausdrücklich als Termine angelegt
@@ -5169,14 +5248,20 @@ export default function RegistrationPage(): React.ReactElement {
                                 const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
                                 const isFull = hasCap && meta.count >= (ce.maxParticipants || 0);
                                 const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date());
-                                const disabled = (isFull && !isSel) || (deadlinePassed && !isSel);
+                                // v29.28: Frist-Bypass für Organizer/Admins (s. Listen-Pfad).
+                                const deadlineLocked = deadlinePassed && !isOrganizer && !isAdmin;
+                                const disabled = (isFull && !isSel) || (deadlineLocked && !isSel);
                                 const free = hasCap ? Math.max(0, (ce.maxParticipants || 0) - meta.count) : -1;
                                 const title = [
                                   ce.title || '',
                                   hasCap
                                     ? (locale === 'de' ? `${free} von ${ce.maxParticipants} Plätzen frei` : `${free} of ${ce.maxParticipants} seats free`)
                                     : (locale === 'de' ? 'Unbegrenzte Plätze' : 'Unlimited seats'),
-                                  deadlinePassed ? (locale === 'de' ? 'Anmeldefrist abgelaufen' : 'Registration deadline passed') : '',
+                                  deadlinePassed
+                                    ? (deadlineLocked
+                                      ? (locale === 'de' ? 'Anmeldefrist abgelaufen' : 'Registration deadline passed')
+                                      : (locale === 'de' ? 'Anmeldefrist abgelaufen — als Organizer/Admin trotzdem wählbar' : 'Registration deadline passed — still selectable as organizer/admin'))
+                                    : '',
                                   ce.mandatoryRegistration ? (locale === 'de' ? 'Pflichttermin' : 'Mandatory date') : '',
                                 ].filter(Boolean).join(' · ');
                                 return (
@@ -5200,7 +5285,7 @@ export default function RegistrationPage(): React.ReactElement {
                                   >
                                     <span>{dayNum}</span>
                                     <span style={{ fontSize: '0.6rem', fontWeight: 600, opacity: 0.85 }}>
-                                      {deadlinePassed
+                                      {deadlineLocked
                                         ? (locale === 'de' ? 'zu' : 'closed')
                                         : isFull
                                         ? (locale === 'de' ? 'voll' : 'full')
@@ -5236,7 +5321,12 @@ export default function RegistrationPage(): React.ReactElement {
                     const hasCap = typeof ce.maxParticipants === 'number' && ce.maxParticipants > 0;
                     const isSessionFull = hasCap && meta.count >= (ce.maxParticipants || 0);
                     const deadlinePassed = !!(ce.registrationDeadline && new Date(ce.registrationDeadline) < new Date());
-                    const disabled = (isSessionFull && !isSel) || (deadlinePassed && !isSel);
+                    // v29.28: Organizer/Admins dürfen — wie beim Haupt-Event
+                    // (parentRegBlocked) und wie der Wizard es ausdrücklich
+                    // verspricht — auch nach der Frist anmelden. Die
+                    // Kapazitäts-Sperre bleibt für alle.
+                    const deadlineLocked = deadlinePassed && !isOrganizer && !isAdmin;
+                    const disabled = (isSessionFull && !isSel) || (deadlineLocked && !isSel);
 
                     return (
                       <div key={ce.id} style={{
@@ -5280,6 +5370,10 @@ export default function RegistrationPage(): React.ReactElement {
                                 </span>
                               )}
                             </div>
+                          </div>
+                        </label>
+                        {/* v29.28: Karteninhalt linksbündig (s. Listen-Pfad). */}
+                        <div style={{ marginTop: 4 }}>
                             {ce.description && (
                               // v11.97: gleiche Schriftgröße wie der Titel
                               // (Standard-Body). Vorher 0.78rem klein.
@@ -5337,8 +5431,7 @@ export default function RegistrationPage(): React.ReactElement {
                                 Quatsch — die Gruppe gehört zum Teilnehmer
                                 (z.B. „Vormittag/Nachmittag"), nicht zur
                                 Session. */}
-                          </div>
-                        </label>
+                        </div>
                         {/* v29.27: Fragen inline in der Karte (s. Listen-Pfad). */}
                         {isSel && renderSubEventInlineFields(ce)}
                       </div>
@@ -5362,53 +5455,12 @@ export default function RegistrationPage(): React.ReactElement {
                 )}
               </div>
             )}
-            {event.eventSpecificFields.length === 0 && !isSplitGroup ? (
-              <p style={{ color: 'var(--dex-gray-400)', fontStyle: 'italic' }}>{t('reg.noadditional')}</p>
-            ) : (
-              // v11.2 / v11.5: Custom-Fields ohne Pro-Gruppe-Constraint im
-              // 2-Spalten-Grid. Group-spezifische Felder werden bereits
-              // oben innerhalb der Gruppen-Auswahl-Box gerendert und hier
-              // ausgefiltert.
-              <div className="dex-reg-fields-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              {/* v29.27: Zuordnung klarmachen — die Sub-Event-Fragen stehen
-                  jetzt in den Karten oben, diese hier gehören zum Haupt-Event
-                  (bzw. bei einer Klammer zur Anmeldung insgesamt). */}
-              {childEvents.length > 0 && event.eventSpecificFields.length > 0 && (
-                <div style={{ gridColumn: '1 / -1', fontSize: '0.8rem', fontWeight: 700, color: 'var(--dex-gray-600)', marginBottom: -6 }}>
-                  {event.subEventsOnlyMode
-                    ? (locale === 'de' ? 'Allgemeine Fragen zur Anmeldung' : 'General questions for your registration')
-                    : (locale === 'de' ? 'Fragen zum Haupt-Event' : 'Questions for the main event')}
-                </div>
-              )}
-              {(() => {
-                // v26.91: Zuerst die WIRKLICH sichtbaren Felder ermitteln, dann mit
-                // Index rendern — so kann renderRegField pro 2-Spalten-Zeile
-                // entscheiden, ob es leeren Beschreibungs-Platz reservieren muss.
-                const visibleSpecificFields = event.eventSpecificFields
-                  .filter(f => f.id !== 'b2run_mobilnummer' || eventSpecific['b2run_infoservice'] === 'true')
-                  .filter(f => !(f.id === 'b2run_startblock' && hasStarterBlockMapping))
-                  .filter(f => {
-                    if (!f.showIf || !f.showIf.fieldId) return true;
-                    const raw = (eventSpecific[f.showIf.fieldId] || '').trim();
-                    if (!raw) return false;
-                    const answers = raw.indexOf(' | ') >= 0
-                      ? raw.split(' | ').map(s => s.trim()).filter(Boolean)
-                      : [raw];
-                    return answers.some(a => f.showIf!.values.indexOf(a) >= 0);
-                  })
-                  // v11.5: Group-Spec NICHT hier rendern — die kommen oben
-                  // in der Gruppen-Auswahl-Box. Hier nur 'all' / undefined
-                  // (oder Events ohne Split-Capacity).
-                  .filter(f => {
-                    const grp = f.onlyForGroup;
-                    if (!grp || grp === 'all') return true;
-                    if (!isSplitGroup) return true;
-                    return false;
-                  });
-                return visibleSpecificFields.map((f, i) => renderRegField(f, undefined, undefined, i, visibleSpecificFields));
-              })()}
-              </div>
-            )}
+            {/* v29.28: Bei Events MIT Sub-Events rendert der Felder-Block
+                oben in der Auswahl-Box direkt unter der Haupt-Event-Kachel
+                (renderMainFieldsSection) — hier nur noch ohne Sub-Events
+                oder bei einer Klammer (dort gelten die Fragen übergreifend
+                und es gibt keine Haupt-Event-Kachel). */}
+            {(childEvents.length === 0 || !!event.subEventsOnlyMode) && renderMainFieldsSection()}
           </div>
           </CollapsibleSection>
         </div>
