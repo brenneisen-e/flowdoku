@@ -3298,6 +3298,37 @@ export default function EventCreationPage(): React.ReactElement {
   // Läuft NACH createEvent/updateEvent, weil der Attachment-Upload die
   // DEX_Events-Item-Id braucht. Best-effort — ein Bild-Fehler darf den
   // Sub-Event-Save nicht blockieren.
+  /**
+   * v29.32: Das EIGENE Bild eines Sub-Events als Kopfbild für dessen Mails und
+   * Outlook-Termin. Bisher erbte ein Sub-Event ohne eigenes Mail-Logo das Logo
+   * des Hauptevents — bei einer Reihe mit unterschiedlichen Terminen (eigenes
+   * Foto je Termin) kam in der Bestätigung also das falsche Bild an. Reihenfolge
+   * bleibt: eigenes Mail-Logo → eigenes Event-Bild → geerbtes Logo des
+   * Hauptevents. Gleiche Aufbereitung wie „Event-Foto übernehmen" beim
+   * Hauptevent (auf 600 px komprimiert, damit die Zeile nicht ins
+   * SharePoint-2-MB-Limit läuft).
+   *
+   * Der Cache verhindert, dass dasselbe gespeicherte Bild bei einem Save mit
+   * vielen Sub-Events mehrfach geladen und komprimiert wird.
+   */
+  const subPhotoLogoCache = React.useRef<Record<string, string>>({});
+  const subPhotoAsLogo = async (draft: { imageFile?: File | null; imagePreview?: string; imageRemoved?: boolean }): Promise<string> => {
+    try {
+      if (draft.imageRemoved) return '';
+      if (draft.imageFile) return await fileToBase64(await compressImage(draft.imageFile, 600, 0.85, true));
+      const prev = (draft.imagePreview || '').trim();
+      if (!prev) return '';
+      if (prev.indexOf('data:') === 0) return await shrinkLogoB64(prev);
+      const cached = subPhotoLogoCache.current[prev];
+      if (typeof cached === 'string') return cached;
+      const resp = await fetch(prev, { credentials: 'include' });
+      const blob = await resp.blob();
+      const f = new File([blob], 'sub-event-photo.jpg', { type: blob.type || 'image/jpeg' });
+      const b64 = await fileToBase64(await compressImage(f, 600, 0.85, true));
+      subPhotoLogoCache.current[prev] = b64;
+      return b64;
+    } catch { return ''; }
+  };
   const persistSubEventImage = async (subDbId: string | number | null | undefined, draft: { imageFile?: File | null; imageRemoved?: boolean }): Promise<void> => {
     const idNum = Number(subDbId);
     if (!subDbId || !isFinite(idNum) || idNum <= 0) return;
@@ -3402,8 +3433,13 @@ export default function EventCreationPage(): React.ReactElement {
       // v28.10-Schutz lief nur ueber die geerbten Parent-Logos. Ein auf dem
       // Sub-Reiter hochgeladenes unkomprimiertes Foto steckte bis zu dreimal
       // im Payload und riss das Sub-Event ins SharePoint-2-MB-Limit.
-      const subEmailLogo = (draft.emailLogoBase64 ? await shrinkLogoB64(draft.emailLogoBase64) : '') || inheritedEmailLogo;
-      const subOutlookLogo = (draft.outlookLogoBase64 ? await shrinkLogoB64(draft.outlookLogoBase64) : '') || inheritedOutlookLogo;
+      // v29.32: Zwischen eigenem Logo und geerbtem Parent-Logo steht jetzt das
+      // EIGENE Bild des Sub-Events (s. subPhotoAsLogo) — bei Terminreihen mit
+      // Foto je Termin kam sonst überall das Bild des Hauptevents an. Nur
+      // aufgerufen, wenn kein eigenes Logo gesetzt ist (spart Laden/Komprimieren).
+      const subOwnPhotoLogo = draft.emailLogoBase64 ? '' : await subPhotoAsLogo(draft);
+      const subEmailLogo = (draft.emailLogoBase64 ? await shrinkLogoB64(draft.emailLogoBase64) : '') || subOwnPhotoLogo || inheritedEmailLogo;
+      const subOutlookLogo = (draft.outlookLogoBase64 ? await shrinkLogoB64(draft.outlookLogoBase64) : '') || subOwnPhotoLogo || inheritedOutlookLogo;
       // Outlook-Body wrappen. v26.59 BUG-FIX: Ohne eigenen Text wurde der Body
       // bisher LEER gespeichert („der Flow setzt einen Default" — stimmte
       // nicht, der Flow mappt 1:1) → die Outlook-Einladung der Sub-Events kam
@@ -5517,7 +5553,16 @@ export default function EventCreationPage(): React.ReactElement {
               const orgEmail = allOrgEmails[i];
               const orgFullName = orgNames[i] || orgNames[0] || `${currentUser.firstName} ${currentUser.surname}`;
               const orgFirstName = orgFullName.split(/\s+/)[0] || orgFullName;
-              const emailData = eventCreatedEmail(orgFirstName, title, subsiteUrl);
+              // v29.32: Kopfbild-Layout des Events mitgeben — sonst kam die
+              // „Event angelegt"-Mail immer mit dem kleinen zentrierten Bild,
+              // auch bei Events mit Vollbild-Kopf (seit v29.29 der Default).
+              // headerLayoutFor deckelt ohne eigenes Bild weiterhin auf 180 px.
+              const createdMailLayout = headerLayoutFor(effEmailLogo);
+              const emailData = eventCreatedEmail(orgFirstName, title, subsiteUrl, {
+                imageWidth: createdMailLayout.imageWidth,
+                imagePaddingV: createdMailLayout.imagePaddingV,
+                imagePaddingH: createdMailLayout.imagePaddingH,
+              });
               svc.queueEmail(
                 emailData.subject, orgEmail, orgFullName, emailData.body,
                 'EventErstellt', title, String(eventId)
