@@ -97,6 +97,13 @@ Echte Umlaute (ä/ö/ü), keine ue/oe/ae-Umschreibungen. **Ausnahme:** vier Wert
 sind SharePoint-Daten und dürfen nie „korrigiert" werden —
 `Nachruecken`, `OrgNachruecker`, `nachruecker`, `UeberUns`.
 
+**Immer duzen.** Oberfläche, Mails, Release Notes und auch Antworten an
+Nutzer außerhalb der App (Ticket-Antworten, Support-Texte) sprechen die Person
+mit „du" an — nie mit „Sie". Der Code hält das schon durch; die einzigen
+Treffer auf „Sie" sind das Personalpronomen der 3. Person am Satzanfang
+(„… Sie werden bereinigt"). Wer eine Formulierung prüft: `Sie haben/können/
+sind` + `Ihre` sind die Kandidaten, aber nicht jeder Treffer ist eine Anrede.
+
 ## Fallen, die in dieser Codebasis wehtun
 
 **Große JSX-Blöcke nie per Textmarke verschieben.** Ein Versuch, den Innenteil
