@@ -27,6 +27,7 @@ import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
 import { isEventOver } from '../utils/eventFormat';
 import { selfCancelLocked } from '../utils/cancelPolicy';
 import AddParticipantsModal from './admin/AddParticipantsModal';
+import { accountCheckCacheKey, invalidateInactiveAccountCache } from '../utils/accountCheckCache';
 import { isDeloitteInternalEmail, isExternalEmail } from '../utils/deloitteDomain';
 // v20.1: Self-Check-in jederzeit aktivierbar (Token-Erzeugung beim Klick).
 // v20.2: + statische Check-in-URL für die QR-Kachel im Event-Detail.
@@ -227,6 +228,10 @@ export default function AdminPage(): React.ReactElement {
     setAdminToast({ kind: 'cancelling', name });
     const cancelledStarterType = reg.StarterType || '';
     await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id, `${currentUser.firstName} ${currentUser.surname}`.trim(), currentUser.email);
+    // v29.31: Die „Konto inaktiv"-Prüfung ist 24 h gecacht. Ohne Verwerfen
+    // meldete die Sammel-Box auf der Startseite die eben abgemeldete Person
+    // bis zum nächsten Tag weiter als offenen Fall.
+    invalidateInactiveAccountCache([selectedEvent.id, selectedEvent.parentEventId || '']);
     if (reg.ParticipantEmail && !eventWasOver) {
       if (!selectedEvent.disableEmails && !selectedEvent.disableCancellationEmail) {
         const emailData = cancellationEmail(name, selectedEvent.title);
@@ -1778,6 +1783,9 @@ export default function AdminPage(): React.ReactElement {
       }
     }
     try { await reloadSubEventRegs(); } catch { /* */ }
+    // v29.31: Gecachte „Konto inaktiv"-Ergebnisse dieser Event-Familie
+    // verwerfen (s. performStandardCancel).
+    invalidateInactiveAccountCache(chosen.map(c => c.child.id).concat(selectedEvent ? [selectedEvent.id] : []));
     // v29.29: Auch die Klammer-Teilnehmerliste neu laden — seit die
     // Hauptevent-Zeile mit abgemeldet werden kann, wäre die Kopfzeile
     // („Teilnehmer (N)") sonst bis zum nächsten Öffnen veraltet.
@@ -2365,7 +2373,9 @@ export default function AdminPage(): React.ReactElement {
       .filter(Boolean)));
     if (emails.length === 0) return undefined;
     // v26.42: _v2 — alte Caches enthielten Fehlalarme für umbenannte Konten (Heirat).
-    const cacheKey = `dex_acctcheck_v2_${selectedEvent.id}`;
+    // v29.31: Schlüssel zentral (utils/accountCheckCache) — die Startseiten-Box
+    // und die Invalidierung nach einer Abmeldung müssen denselben treffen.
+    const cacheKey = accountCheckCacheKey(selectedEvent.id);
     try {
       const raw = window.localStorage.getItem(cacheKey);
       if (raw) {
