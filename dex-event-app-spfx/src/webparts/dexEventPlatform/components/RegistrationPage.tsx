@@ -13,7 +13,7 @@ import { useRoles } from '../context/RoleContext';
 // v22.10: Sub-Sections nach ihrer EIGENEN Sichtbarkeit filtern (gleiche Logik
 // wie die Event-Liste) — sonst sieht jeder Hauptevent-Teilnehmer alle Sub-Events.
 import { isEventVisibleForUser } from './EventListPage';
-import { useCachedImage } from '../utils/imageCache';
+import { useCachedImage, useCachedImageWithFallback } from '../utils/imageCache';
 import { useIsMobile } from '../utils/useIsMobile';
 import { isRegistrationFullyClosed } from '../utils/eventFormat';
 import { selfCancelLocked } from '../utils/cancelPolicy';
@@ -316,7 +316,9 @@ export default function RegistrationPage(): React.ReactElement {
   const cachedImage = usesMailImage ? heroImgUrl : cachedImage0;
   // v28.11: Vergrößerte Hover-Ansicht des Event-Bilds — zeigt bevorzugt das
   // unbeschnittene Querformat-Original (falls vorhanden), sonst das Event-Bild.
-  const cachedZoomImage0 = useCachedImage(event?.imageOrigUrl || event?.imageUrl);
+  // v29.34: mit Rückfall auf das Event-Bild — die Original-URL kann ins Leere
+  // zeigen (siehe useCachedImageWithFallback), die Lupe blieb dann leer.
+  const cachedZoomImage0 = useCachedImageWithFallback(event?.imageOrigUrl, event?.imageUrl);
   const cachedZoomImage = usesMailImage ? heroImgUrl : cachedZoomImage0;
   // v28.12: Kein Auto-Zoom mehr beim Hover — der Hover zeigt nur ein
   // Lupen-Icon, erst der KLICK darauf öffnet die Großansicht (Lightbox).
