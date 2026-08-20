@@ -13,7 +13,7 @@ import { useRoles } from '../context/RoleContext';
 // v22.10: Sub-Sections nach ihrer EIGENEN Sichtbarkeit filtern (gleiche Logik
 // wie die Event-Liste) — sonst sieht jeder Hauptevent-Teilnehmer alle Sub-Events.
 import { isEventVisibleForUser } from './EventListPage';
-import { useCachedImage } from '../utils/imageCache';
+import { useCachedImage, useCachedImageWithFallback } from '../utils/imageCache';
 import { useIsMobile } from '../utils/useIsMobile';
 import { isRegistrationFullyClosed } from '../utils/eventFormat';
 import { selfCancelLocked } from '../utils/cancelPolicy';
@@ -316,7 +316,9 @@ export default function RegistrationPage(): React.ReactElement {
   const cachedImage = usesMailImage ? heroImgUrl : cachedImage0;
   // v28.11: Vergrößerte Hover-Ansicht des Event-Bilds — zeigt bevorzugt das
   // unbeschnittene Querformat-Original (falls vorhanden), sonst das Event-Bild.
-  const cachedZoomImage0 = useCachedImage(event?.imageOrigUrl || event?.imageUrl);
+  // v29.34: mit Rückfall auf das Event-Bild — die Original-URL kann ins Leere
+  // zeigen (siehe useCachedImageWithFallback), die Lupe blieb dann leer.
+  const cachedZoomImage0 = useCachedImageWithFallback(event?.imageOrigUrl, event?.imageUrl);
   const cachedZoomImage = usesMailImage ? heroImgUrl : cachedZoomImage0;
   // v28.12: Kein Auto-Zoom mehr beim Hover — der Hover zeigt nur ein
   // Lupen-Icon, erst der KLICK darauf öffnet die Großansicht (Lightbox).
@@ -2452,8 +2454,30 @@ export default function RegistrationPage(): React.ReactElement {
     setIsDeclining(true);
     setError('');
     try {
+      // v29.32: Die Absage gilt für das GANZE Event — Klammer/Haupt-Event UND
+      // alle sichtbaren Sub-Events. Vorher landete sie nur in der
+      // Hauptevent-Liste: Im „Nur Sub-Events"-Modus ist das eine Schattenzeile,
+      // und in den Sub-Event-Listen (die der Organizer tatsächlich auswertet)
+      // stand die Person weiter als „hat nicht geantwortet". Eine Auswahl ist
+      // dafür bewusst NICHT nötig — wer absagt, sagt für alles ab.
+      // declineEvent je Ziel macht das Richtige: bestehende Anmeldung →
+      // regulärer Abmelde-Pfad (Platz frei, Mail, Nachrücken), sonst eine
+      // Absage-Zeile.
       const ok = await declineEvent(event.id);
-      if (ok) setDeclined(true);
+      let subFailed = 0;
+      for (const ce of childEvents) {
+        try { if (!(await declineEvent(ce.id))) subFailed++; }
+        catch { subFailed++; }
+      }
+      if (ok && subFailed === 0) setDeclined(true);
+      else if (ok) {
+        // Klammer steht, einzelne Sub-Events nicht — den Teilablauf benennen,
+        // statt eine vollständige Absage zu behaupten.
+        setDeclined(true);
+        setError(locale === 'de'
+          ? `Deine Absage ist erfasst — bei ${subFailed} ${subFailed === 1 ? (childTermSingular || 'Sub-Event') : (childTermPlural || 'Sub-Events')} hat es nicht geklappt. Bitte melde dich bei den Organizern.`
+          : `Your decline was recorded — it failed for ${subFailed} sub-event(s). Please contact the organizers.`);
+      }
       else setError(t('reg.genericerror') || 'Ein Fehler ist aufgetreten. Bitte versuche es erneut.');
     } catch {
       setError(t('reg.genericerror') || 'Ein Fehler ist aufgetreten. Bitte versuche es erneut.');
@@ -5700,8 +5724,12 @@ export default function RegistrationPage(): React.ReactElement {
             onClick={handleDecline}
             disabled={isDeclining || isSubmitting}
             title={locale === 'de'
-              ? 'Melde zurück, dass du nicht teilnehmen wirst (keine Anmeldung).'
-              : 'Let us know you will not attend (no registration).'}
+              ? (childEvents.length > 0
+                ? `Melde zurück, dass du nicht teilnehmen wirst — gilt für das gesamte Event inklusive aller ${childTermPlural || 'Sub-Events'}. Eine Auswahl ist dafür nicht nötig.`
+                : 'Melde zurück, dass du nicht teilnehmen wirst (keine Anmeldung).')
+              : (childEvents.length > 0
+                ? 'Let us know you will not attend — applies to the whole event including all sub-events. No selection needed.'
+                : 'Let us know you will not attend (no registration).')}
             style={{ color: 'var(--dex-gray-700, #444)' }}
           >
             <X size={16} /> {isDeclining

@@ -603,7 +603,8 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
                 {/* v19.15: Aktionen auch in der Listen-Ansicht — vorher nur in den
                     Cards (Overlay). Bei bereits angemeldeten Events „Meine Events"
                     + (für Organizer/Admin) „Für andere Person registrieren", sonst
-                    „Registrieren". stopPropagation, damit der Button nicht den
+                    „Registrierung starten" (v29.33 — der Knopf öffnet nur die
+                    Anmeldeseite). stopPropagation, damit der Button nicht den
                     Zeilen-Klick mit auslöst. */}
                 {(isReg || isWait) ? (
                   <>
@@ -631,7 +632,7 @@ function EventListView({ events, myNumbers, formatDate, currentUserEmailLc }: {
                     style={{ fontSize: '0.78rem', padding: '6px 14px', width: isMobile ? '100%' : undefined }}
                     onClick={(e) => { e.stopPropagation(); navigate('registration', event.id); }}
                   >
-                    {t('reg.register')}
+                    {t('reg.registerstart')}
                   </button>
                 )}
               </div>

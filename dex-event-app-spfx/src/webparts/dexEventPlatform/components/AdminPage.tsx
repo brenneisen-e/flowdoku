@@ -729,6 +729,15 @@ export default function AdminPage(): React.ReactElement {
   const [searchQuery, setSearchQuery] = React.useState('');
   // v29.26: „Teilnehmer hinzufügen"-Dialog (Organizer-Ausnahme-Weg).
   const [addParticipantsOpen, setAddParticipantsOpen] = React.useState(false);
+  // v29.32: Sichtbarkeits-Zeile über der Teilnehmerliste — eingeklappt zeigt
+  // sie, wie viele Personen das Event sehen können; aufgeklappt, woraus sich
+  // das zusammensetzt. `visibilityResolved` hält das Ergebnis einer LIVE-
+  // Auflösung der Verteiler (null = noch nicht ausgeführt; dann gilt die beim
+  // Event-Speichern eingefrorene Liste `audienceResolvedEmails`).
+  const [visibilityOpen, setVisibilityOpen] = React.useState(false);
+  const [visibilityResolved, setVisibilityResolved] = React.useState<string[] | null>(null);
+  const [visibilityBusy, setVisibilityBusy] = React.useState(false);
+  const [pendingCheckBusy, setPendingCheckBusy] = React.useState(false);
   // v26.11: Sprung zur Person in der Teilnehmerliste (aus der „Konto inaktiv"-
   // Hinweisbox) — filtert die Liste auf die Adresse und scrollt sie in den Blick.
   const participantListRef = React.useRef<HTMLDivElement>(null);
@@ -3521,6 +3530,96 @@ export default function AdminPage(): React.ReactElement {
     // auf echte Nutzer-Edits reagiert (nicht auf das initiale Laden).
     window.setTimeout(() => { inviteHydratingRef.current = false; }, 0);
   };
+  /**
+   * v29.32: Verteiler des Events in einzelne Personen auflösen — derselbe Weg
+   * wie beim Einladungsversand (Graph-Gruppenmitglieder, Fallback auf die beim
+   * Event-Speichern eingefrorene Liste). Ausgeschlossene Adressen fliegen raus,
+   * denn wer auf der Ausschluss-Liste steht, sieht das Event nie.
+   *
+   * Wichtig: Ein reiner STANDORT-Filter lässt sich hier nicht abzählen — dafür
+   * müsste man das ganze Verzeichnis lesen. Die Zeile sagt das dann auch, statt
+   * eine Zahl zu erfinden.
+   */
+  const resolveAudienceEmails = async (ev: DeloitteEvent): Promise<string[]> => {
+    const entries = (ev.audienceFilter || []).map(s => (s || '').trim()).filter(Boolean);
+    const excluded = new Set((ev.excludedUsers || []).map(e => (e || '').toLowerCase().trim()).filter(Boolean));
+    const out: string[] = [];
+    const seen = new Set<string>();
+    const push = (e: string): void => {
+      const lc = (e || '').trim().toLowerCase();
+      if (lc && lc.indexOf('@') > 0 && !seen.has(lc) && !excluded.has(lc)) { seen.add(lc); out.push(lc); }
+    };
+    for (const entry of entries) {
+      if (entry.indexOf('@') < 0) continue; // Standort-Pattern — nicht auflösbar
+      try {
+        const grp = await getGroupMembers(entry);
+        if (grp && grp.members && grp.members.length > 0) grp.members.forEach(m => push(m.email));
+        else push(entry);
+      } catch { push(entry); }
+    }
+    if (out.length === 0) (ev.audienceResolvedEmails || []).forEach(push);
+    return out;
+  };
+
+  /**
+   * v29.32: „Wer hat noch nicht geantwortet?" — die aufgelöste Sichtbarkeits-
+   * Liste minus aller Personen, die sich bereits geäußert haben. Als Antwort
+   * zählt JEDE Zeile im Event: Anmeldung, Warteliste, Check-in, Abmeldung und
+   * die proaktive Absage („Ich nehme nicht teil"). Bei einer Klammer zählen
+   * auch die Zeilen der Sub-Events — wer dort gebucht hat, hat geantwortet.
+   *
+   * Das Ergebnis geht in den bestehenden Einladungs-Dialog (Modus „Nachfassen",
+   * Empfängerliste editierbar, Mailtext editierbar). Bewusst KEIN zweiter
+   * Versand-Dialog daneben — der bestehende kann das alles bereits.
+   */
+  const openPendingReminder = async (): Promise<void> => {
+    if (!selectedEvent || pendingCheckBusy) return;
+    setPendingCheckBusy(true);
+    try {
+      const audience = visibilityResolved || await resolveAudienceEmails(selectedEvent);
+      if (!visibilityResolved) setVisibilityResolved(audience);
+      if (audience.length === 0) {
+        showAlert(isDe
+          ? 'Für dieses Event lässt sich keine Personenliste ermitteln. Das passiert, wenn die Sichtbarkeit nur über einen Standortfilter läuft — dort steht keine abzählbare Empfängerliste dahinter. Ergänze in Schritt 3 des Event-Edits einen Mailverteiler oder einzelne Personen, dann kann DEX nachfassen.'
+          : 'No list of people can be determined for this event. That happens when visibility runs via a location filter only — there is no enumerable recipient list behind it. Add a distribution list or individual people in step 3 of the event edit, then DEX can follow up.',
+          { variant: 'info' });
+        return;
+      }
+      // Wer hat schon geantwortet? Alle Zeilen des Events + (bei einer Klammer)
+      // der Sub-Events, unabhängig vom Status.
+      const decided = new Set<string>();
+      registrations.forEach(r => { const e = (r.ParticipantEmail || '').toLowerCase().trim(); if (e) decided.add(e); });
+      Object.keys(subEventRegsByEventId || {}).forEach(k => {
+        (subEventRegsByEventId[k] || []).forEach(r => {
+          const e = (r.ParticipantEmail || '').toLowerCase().trim(); if (e) decided.add(e);
+        });
+      });
+      // Organizer-Team zählt nicht als offener Fall — es organisiert das Event.
+      const team = new Set<string>([
+        ...(selectedEvent.organizerEmails || []),
+        ...(selectedEvent.coOrganizerEmails || []),
+      ].map(e => (e || '').toLowerCase().trim()).filter(Boolean));
+      const pending = audience.filter(e => !decided.has(e) && !team.has(e));
+      if (pending.length === 0) {
+        showAlert(isDe
+          ? `Alle ${audience.length} erreichbaren Personen haben bereits geantwortet — angemeldet, abgemeldet oder abgesagt. Es gibt niemanden zum Erinnern.`
+          : `All ${audience.length} reachable people have already responded — registered, cancelled or declined. There is nobody to remind.`,
+          { variant: 'success' });
+        return;
+      }
+      // Den bestehenden Einladungs-Dialog im Nachfass-Modus öffnen und die
+      // ermittelte Liste als Empfänger vorgeben (dort weiter bearbeitbar).
+      openInviteModal();
+      setInviteTarget('pending');
+      setInviteCustomEmails(pending);
+      setInviteAudienceOpen(true);
+    } catch (err) {
+      showAlert((isDe ? 'Prüfung fehlgeschlagen: ' : 'Check failed: ') + String((err as Error)?.message || err), { variant: 'error' });
+    } finally {
+      setPendingCheckBusy(false);
+    }
+  };
+
   const openInviteModal = (): void => {
     if (!selectedEvent) return;
     applyInviteDraftOrDefaults(selectedEvent);
@@ -9124,6 +9223,132 @@ export default function AdminPage(): React.ReactElement {
             </div>
           );
         })()}
+
+      {/* v29.32: Sichtbarkeits-Zeile — wer kann das Event überhaupt sehen, und
+          wer davon hat noch nicht geantwortet? Steht bewusst DIREKT über der
+          Teilnehmerliste: Die Liste zeigt, wer zugesagt hat; die Frage
+          „und die anderen?" stellt sich genau hier. Eingeklappt nur die Zahl,
+          die Zusammensetzung erst auf Klick. */}
+      {selectedEvent && (() => {
+        const locs = (selectedEvent.locationAudience || []).filter(Boolean);
+        const audEntries = (selectedEvent.audienceFilter || []).map(s => (s || '').trim()).filter(Boolean);
+        const mailable = audEntries.filter(e => e.indexOf('@') > 0);
+        const excludedCount = (selectedEvent.excludedUsers || []).filter(Boolean).length;
+        const frozen = (selectedEvent.audienceResolvedEmails || []).length;
+        const resolvedCount = visibilityResolved ? visibilityResolved.length : frozen;
+        const modeAnd = selectedEvent.filterMode !== 'OR';
+        const openToAll = locs.length === 0 && audEntries.length === 0;
+        // Zahl nur zeigen, wenn sie etwas bedeutet. Ohne Filter sieht das Event
+        // jede:r; bei reinem Standortfilter gibt es keine abzählbare Liste.
+        const countable = mailable.length > 0 && resolvedCount > 0;
+        const summary = openToAll
+          ? (isDe ? 'Ohne Einschränkung — alle Mitarbeitenden sehen dieses Event' : 'No restriction — all employees can see this event')
+          : countable
+            ? (isDe
+              ? `${resolvedCount} ${resolvedCount === 1 ? 'Person' : 'Personen'} erreichbar${locs.length > 0 && modeAnd ? ` · zusätzlich auf ${locs.join(', ')} eingegrenzt` : ''}`
+              : `${resolvedCount} ${resolvedCount === 1 ? 'person' : 'people'} reachable${locs.length > 0 && modeAnd ? ` · additionally limited to ${locs.join(', ')}` : ''}`)
+            : (isDe
+              ? `Sichtbar für: ${locs.length > 0 ? locs.join(', ') : (isDe ? 'ausgewählte Personen' : 'selected people')} — keine abzählbare Personenliste`
+              : `Visible to: ${locs.length > 0 ? locs.join(', ') : 'selected people'} — no enumerable list of people`);
+        const canManageVis = isAdmin || isOrganizerFor(selectedEvent);
+        return (
+          <div className="card" style={{ padding: '12px 16px', marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setVisibilityOpen(v => !v)}
+                style={{
+                  background: 'none', border: 'none', padding: 0, cursor: 'pointer', font: 'inherit',
+                  display: 'inline-flex', alignItems: 'center', gap: 8, color: 'var(--dex-gray-800, #333)',
+                }}
+                aria-expanded={visibilityOpen}
+              >
+                <span style={{ color: 'var(--dex-green-dark, #4a7c1f)', display: 'inline-flex' }}><Users size={16} /></span>
+                <strong style={{ fontSize: '0.9rem' }}>{isDe ? 'Sichtbarkeit' : 'Visibility'}</strong>
+                <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>— {summary}</span>
+                <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{visibilityOpen ? '▾' : '▸'}</span>
+              </button>
+              {canManageVis && !orgPastLock && mailable.length > 0 && (
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ marginLeft: 'auto', fontSize: '0.8rem', padding: '6px 12px' }}
+                  disabled={pendingCheckBusy}
+                  onClick={() => { void openPendingReminder(); }}
+                  title={isDe
+                    ? 'Prüft, wer aus dem Verteiler weder angemeldet noch abgemeldet ist und auch nicht abgesagt hat — und öffnet den Erinnerungs-Dialog mit dieser Liste.'
+                    : 'Checks who from the distribution list has neither registered nor cancelled nor declined — and opens the reminder dialog with that list.'}
+                >
+                  {pendingCheckBusy
+                    ? (isDe ? 'Wird geprüft…' : 'Checking…')
+                    : (isDe ? 'Wer hat noch nicht geantwortet?' : 'Who has not responded yet?')}
+                </button>
+              )}
+            </div>
+            {visibilityOpen && (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--dex-gray-200)', fontSize: '0.82rem', color: 'var(--dex-gray-700)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div>
+                  <strong>{isDe ? 'Standortfilter: ' : 'Location filter: '}</strong>
+                  {locs.length > 0 ? locs.join(', ') : (isDe ? 'keiner' : 'none')}
+                </div>
+                <div>
+                  <strong>{isDe ? 'Verteiler & Personen: ' : 'Distribution lists & people: '}</strong>
+                  {audEntries.length > 0 ? audEntries.join(', ') : (isDe ? 'keine' : 'none')}
+                </div>
+                {locs.length > 0 && audEntries.length > 0 && (
+                  <div style={{ color: 'var(--dex-gray-600)' }}>
+                    {modeAnd
+                      ? (isDe ? 'Verknüpfung: UND — es sehen nur Personen das Event, auf die BEIDES zutrifft.' : 'Combination: AND — only people matching BOTH can see the event.')
+                      : (isDe ? 'Verknüpfung: ODER — es genügt eines von beidem.' : 'Combination: OR — either one is enough.')}
+                  </div>
+                )}
+                {excludedCount > 0 && (
+                  <div>
+                    <strong>{isDe ? 'Ausgeschlossen: ' : 'Excluded: '}</strong>
+                    {excludedCount} {isDe ? (excludedCount === 1 ? 'Person' : 'Personen') : (excludedCount === 1 ? 'person' : 'people')}
+                  </div>
+                )}
+                {mailable.length > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    <span>
+                      <strong>{isDe ? 'Aufgelöste Personen: ' : 'Resolved people: '}</strong>
+                      {resolvedCount}
+                      <span style={{ color: 'var(--dex-gray-500)' }}>
+                        {visibilityResolved
+                          ? (isDe ? ' (gerade ermittelt)' : ' (just resolved)')
+                          : (isDe ? ' (Stand: letztes Speichern des Events)' : ' (as of the last event save)')}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ fontSize: '0.76rem', padding: '3px 10px' }}
+                      disabled={visibilityBusy}
+                      onClick={() => {
+                        void (async () => {
+                          setVisibilityBusy(true);
+                          try { setVisibilityResolved(await resolveAudienceEmails(selectedEvent)); }
+                          catch { /* Anzeige bleibt beim eingefrorenen Stand */ }
+                          finally { setVisibilityBusy(false); }
+                        })();
+                      }}
+                    >
+                      {visibilityBusy ? (isDe ? 'Wird aufgelöst…' : 'Resolving…') : (isDe ? 'Jetzt neu auflösen' : 'Resolve now')}
+                    </button>
+                  </div>
+                )}
+                {locs.length > 0 && mailable.length === 0 && (
+                  <div style={{ color: 'var(--dex-gray-600)' }}>
+                    {isDe
+                      ? 'Hinter einem reinen Standortfilter steht keine abzählbare Empfängerliste — DEX kann hier weder eine Personenzahl nennen noch nachfassen. Ergänze dafür in Schritt 3 des Event-Edits einen Mailverteiler oder einzelne Personen.'
+                      : 'A pure location filter has no enumerable recipient list — DEX can neither give a headcount nor follow up here. Add a distribution list or individual people in step 3 of the event edit.'}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Teilnehmerliste */}
       <div ref={participantListRef} className="card" style={{ padding: 24 }}>

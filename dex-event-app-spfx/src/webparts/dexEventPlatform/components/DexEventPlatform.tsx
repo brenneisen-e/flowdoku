@@ -197,23 +197,36 @@ function AppContent(): React.ReactElement {
   const [bootProgress, setBootProgress] = React.useState<number>(8);
   const bootLoadingRef = React.useRef({ roles: true, events: true });
   bootLoadingRef.current = { roles: isRolesLoading, events: isEventsLoading };
+  // v29.32: Was gerade lädt — der Balken allein erklärt ein längeres Warten nicht.
+  const [bootPhase, setBootPhase] = React.useState<'roles' | 'events' | 'done'>('roles');
   React.useEffect(() => {
     const start = Date.now();
     const id = setInterval(() => {
-      if (!bootLoadingRef.current.roles && !bootLoadingRef.current.events) {
+      const { roles, events } = bootLoadingRef.current;
+      if (!roles && !events) {
+        setBootPhase('done');
         setBootProgress(100);
         clearInterval(id);
         return;
       }
+      setBootPhase(roles ? 'roles' : 'events');
       const elapsed = Date.now() - start;
-      // v7.10/v11.79: Linearer Fortschritt — nach 4 Sekunden bei 100%
-      // (vorher 10 s, war seit dem App-Boot-Speedup auf ~1.6 s zu langsam).
-      // Wenn das Laden früher fertig ist, setzt der Done-Branch oben sofort
-      // auf 100% und stoppt das Intervall. Sollte Roles/Events länger als
-      // 4 s brauchen, friert der Balken bei 99% ein, bis das Done-Signal
-      // kommt — sonst stünde der Balken auf 100%, obwohl die App noch
-      // nicht bereit ist (das wirkt verwirrend / "hängend").
-      const target = Math.min(99, Math.round((elapsed / 4000) * 100));
+      // v7.10/v11.79: Linearer Fortschritt — nach 4 Sekunden bei 100%.
+      //
+      // v29.32: …und genau da lag das „hängt ewig bei 99 %". Der Balken war
+      // rein zeitgesteuert: Nach vier Sekunden stand er auf 99 und wartete
+      // stumm, egal wie weit die App wirklich war. Bei einem langsamen Tenant
+      // (viele Events, kalter Cache) sieht das nach Absturz aus.
+      //
+      // Jetzt begrenzt die tatsächliche Phase den Fortschritt: solange die
+      // Berechtigungen laden höchstens 60 %, danach höchstens 92 % — und wenn
+      // die Events stehen, 100 %. Der Sprung beim Phasenwechsel ist echte
+      // Information; die 92-%-Sperre bleibt bewusst, damit der Balken nicht
+      // 100 % zeigt, während die App noch nicht bedienbar ist. Innerhalb der
+      // Phase kriecht er weiter, damit sichtbar bleibt, dass etwas passiert.
+      const phaseCap = roles ? 60 : 92;
+      const timed = Math.round((elapsed / 4000) * 100);
+      const target = Math.min(phaseCap, Math.max(timed, roles ? 0 : 62));
       setBootProgress(prev => Math.max(prev, target));
     }, 60);
     return () => clearInterval(id);
@@ -657,11 +670,25 @@ function AppContent(): React.ReactElement {
                     borderRadius: 3,
                   }} />
                 </div>
+                {/* v29.32: Links steht, worauf gerade gewartet wird — ein
+                    Balken, der bei einem langsamen Tenant lange fast voll
+                    steht, erklärt sich sonst nicht. */}
                 <div style={{
                   fontSize: '0.78rem', color: 'var(--dex-gray-500)',
-                  textAlign: 'right', fontVariantNumeric: 'tabular-nums',
+                  display: 'flex', justifyContent: 'space-between', gap: 8,
+                  fontVariantNumeric: 'tabular-nums',
                 }}>
-                  {bootProgress} %
+                  {/* Der Loader läuft VOR der Sprachwahl des Nutzers — deshalb
+                      die Browsersprache statt des App-Locales. */}
+                  <span>
+                    {(() => {
+                      const de = typeof navigator !== 'undefined' && (navigator.language || '').toLowerCase().indexOf('de') === 0;
+                      if (bootPhase === 'roles') return de ? 'Berechtigungen werden geprüft…' : 'Checking permissions…';
+                      if (bootPhase === 'events') return de ? 'Events werden geladen…' : 'Loading events…';
+                      return de ? 'Fertig' : 'Done';
+                    })()}
+                  </span>
+                  <span>{bootProgress} %</span>
                 </div>
               </div>
               {/* v11.48/v11.50/v11.55: KPI-Boxen im Boot-Loader.

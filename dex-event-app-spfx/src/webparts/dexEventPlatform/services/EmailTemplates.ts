@@ -662,7 +662,17 @@ export function promotionEmail(recipientName: string, eventTitle: string): { sub
  * nicht mehr verlinkt — der SharePoint-Teilnehmerlisten-Link wurde entfernt
  * (alle Aktionen laufen über die App).
  */
-export function eventCreatedEmail(recipientName: string, eventTitle: string, _subsiteUrl: string): { subject: string; body: string } {
+export function eventCreatedEmail(
+  recipientName: string,
+  eventTitle: string,
+  _subsiteUrl: string,
+  // v29.32: Kopfbild-Layout des Events durchreichen. Ohne diesen Parameter lief
+  // die Mail immer auf den Default (180 px, zentriert) — auch bei Events, die
+  // seit v29.29 auf den Vollbild-Kopf gesetzt sind. Der Aufrufer übergibt das
+  // über headerLayoutFor ermittelte Layout, das ohne eigenes Bild weiterhin auf
+  // 180 px deckelt (sonst füllt der DEX-Orb die halbe Mail).
+  headerOpts?: WrapHeadingOpts,
+): { subject: string; body: string } {
   return {
     subject: `[Deloitte Eventmanager] - Event angelegt`,
     body: wrapTemplate(
@@ -684,7 +694,9 @@ export function eventCreatedEmail(recipientName: string, eventTitle: string, _su
       </ul>
       <p>Viele Gr&uuml;&szlig;e<br>Team DEX App</p>
       <hr style="border:none;border-top:1px solid #e0e0e0;margin:20px 0;">
-      <p style="color:#999;font-size:13px;line-height:1.5;">English: Your event <strong>${eventTitle}</strong> was created successfully. Next steps: (1)&nbsp;finalize it via &bdquo;Edit event&ldquo;, (2)&nbsp;do a test registration &amp; cancellation to check the automatic emails and the Outlook invite, (3)&nbsp;publish it via the status toggle &bdquo;Draft &rarr; Active&ldquo;, (4)&nbsp;optionally send the invitation with the registration link from the app, (5)&nbsp;track registrations in the Organizer Center. Participant list &amp; admin: see the links above.</p>`
+      <p style="color:#999;font-size:13px;line-height:1.5;">English: Your event <strong>${eventTitle}</strong> was created successfully. Next steps: (1)&nbsp;finalize it via &bdquo;Edit event&ldquo;, (2)&nbsp;do a test registration &amp; cancellation to check the automatic emails and the Outlook invite, (3)&nbsp;publish it via the status toggle &bdquo;Draft &rarr; Active&ldquo;, (4)&nbsp;optionally send the invitation with the registration link from the app, (5)&nbsp;track registrations in the Organizer Center. Participant list &amp; admin: see the links above.</p>`,
+      undefined,
+      headerOpts,
     ),
   };
 }

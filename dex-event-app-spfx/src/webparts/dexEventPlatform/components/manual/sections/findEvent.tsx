@@ -30,8 +30,8 @@ export function findEventSection(locale: 'de' | 'en'): ManualSection {
             description: (
               <>
                 {isDe
-                  ? 'Über die Kachel "Registrierung" (bzw. den Navigationspunkt) landest du auf der Event-Übersicht "Deine Events". Dort siehst du alle Events, die für dich sichtbar sind. Oben kannst du zwischen Karten- und Listen-Ansicht umschalten. Klick auf die Event-Karte, die dich interessiert.'
-                  : 'Via the "Registration" tile (or navigation item) you reach the "Your events" overview. There you see every event visible to you. At the top you can switch between card and list view. Click the card you\'re interested in.'}
+                  ? 'Über die Kachel "Aktuelle Events" (bzw. den Navigationspunkt) landest du auf der Event-Übersicht "Deine Events". Dort siehst du alle Events, die für dich sichtbar sind. Oben kannst du zwischen Karten- und Listen-Ansicht umschalten. Klick auf die Event-Karte, die dich interessiert — oder auf "Registrierung starten". Angemeldet bist du damit noch nicht, das passiert erst im nächsten Schritt.'
+                  : 'Via the "Current events" tile (or navigation item) you reach the "Your events" overview. There you see every event visible to you. At the top you can switch between card and list view. Click the card you\'re interested in — or "Start registration". That does not register you yet; that happens in the next step.'}
               </>
             ),
             mockup: (

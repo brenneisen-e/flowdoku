@@ -38,6 +38,17 @@ interface CacheRec {
 const memCache = new Map<string, string>();
 const inflight = new Map<string, Promise<string>>();
 
+// v29.34: URLs, die der Server mit einem HTTP-Fehler beantwortet hat (404/403 —
+// Attachment gelöscht oder nie angekommen). Bewusst NUR bei einer echten
+// Fehlerantwort gefüllt: Ein abgebrochener fetch (Netz, CORS) heißt nicht, dass
+// die Datei fehlt — ein <img> auf dieselbe URL lädt dann oft trotzdem.
+const failedUrls = new Set<string>();
+
+/** v29.34: true, wenn diese URL in dieser Sitzung mit HTTP-Fehler kam. */
+export function imageFailed(url: string | undefined): boolean {
+  return !!url && failedUrls.has(url);
+}
+
 let dbPromise: Promise<IDBDatabase | null> | null = null;
 
 function openDb(): Promise<IDBDatabase | null> {
@@ -140,7 +151,7 @@ export async function getCachedImage(url: string): Promise<string> {
       // das <img> dieselbe URL parallel schon geladen hat (vermeidet Doppel-
       // Download beim ersten Mal).
       const resp = await fetch(url, { credentials: 'include', cache: 'force-cache' });
-      if (!resp.ok) return url;
+      if (!resp.ok) { failedUrls.add(url); return url; }
       const blob = await resp.blob();
       if (blob.size > MAX_BYTES || blob.type.indexOf('image/') !== 0) return url;
       const dataUrl = await blobToDataUrl(blob);
@@ -180,6 +191,37 @@ export function useCachedImage(url: string | undefined): string {
   }, [url]);
 
   return resolved;
+}
+
+/**
+ * v29.34: Wie `useCachedImage`, aber mit zweiter Quelle. Liefert `primary`,
+ * solange die lädt, und schaltet auf `fallback` um, sobald der Server für
+ * `primary` einen HTTP-Fehler meldet.
+ *
+ * Hintergrund: Kachel und Anmeldeseite bevorzugen das unbeschnittene
+ * Querformat-Original (`imageOrigUrl`, Piggyback `_imageOrigUrl`) vor dem
+ * eigentlichen Event-Bild. Diese URL kann ins Leere zeigen — sie wurde bis
+ * v29.33 auch dann geschrieben, wenn der Upload des Originals fehlschlug
+ * (der Service riet die Adresse), und sie überlebt einen späteren Bildwechsel.
+ * Ohne Rückfall blieb die Kachel dann WEISS, während dasselbe Event im
+ * Organizer Center (der `imageUrl` zeigt) ein Bild hatte — genau der Fall, der
+ * wie ein Anzeigefehler aussieht, aber zwei verschiedene Dateien sind.
+ */
+export function useCachedImageWithFallback(primary: string | undefined, fallback: string | undefined): string {
+  const [primaryDead, setPrimaryDead] = React.useState<boolean>(() => imageFailed(primary));
+
+  React.useEffect(() => {
+    let cancelled = false;
+    setPrimaryDead(imageFailed(primary));
+    if (!primary || !fallback || primary === fallback || primary.indexOf('data:') === 0) return undefined;
+    getCachedImage(primary)
+      .then(() => { if (!cancelled && imageFailed(primary)) setPrimaryDead(true); })
+      .catch(() => { /* Netzwerkfehler heißt nicht „Datei weg" — primary bleibt */ });
+    return () => { cancelled = true; };
+  }, [primary, fallback]);
+
+  const effective = (primaryDead ? fallback : primary) || fallback || primary || '';
+  return useCachedImage(effective);
 }
 
 /**

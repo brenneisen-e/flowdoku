@@ -18,7 +18,7 @@ Die drei großen Dateien tragen fast alles: `components/EventCreationPage.tsx`
 `services/EventService.ts` (~12k, SharePoint-Zugriff).
 
 **Branch:** wird pro Sitzung vorgegeben (zuletzt `claude/mach-claude-md-gax5yx`,
-davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v29.31.0**. Nur auf den
+davor `claude/spfx-app-bugfixes-4kui16`) — Stand **v29.34.0**. Nur auf den
 vorgegebenen Branch pushen. Keine PRs ohne ausdrückliche Aufforderung.
 
 ## Erst einrichten, dann bauen
@@ -96,6 +96,13 @@ Versionsmarken wie `// v28.66: …` sind Konvention — beibehalten.
 Echte Umlaute (ä/ö/ü), keine ue/oe/ae-Umschreibungen. **Ausnahme:** vier Werte
 sind SharePoint-Daten und dürfen nie „korrigiert" werden —
 `Nachruecken`, `OrgNachruecker`, `nachruecker`, `UeberUns`.
+
+**Immer duzen.** Oberfläche, Mails, Release Notes und auch Antworten an
+Nutzer außerhalb der App (Ticket-Antworten, Support-Texte) sprechen die Person
+mit „du" an — nie mit „Sie". Der Code hält das schon durch; die einzigen
+Treffer auf „Sie" sind das Personalpronomen der 3. Person am Satzanfang
+(„… Sie werden bereinigt"). Wer eine Formulierung prüft: `Sie haben/können/
+sind` + `Ihre` sind die Kandidaten, aber nicht jeder Treffer ist eine Anrede.
 
 ## Fallen, die in dieser Codebasis wehtun
 

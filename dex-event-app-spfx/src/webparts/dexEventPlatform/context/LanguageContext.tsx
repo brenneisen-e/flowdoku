@@ -41,7 +41,10 @@ export const translations: Record<Locale, Record<string, string>> = {
 
     // Start Page
     'start.title': 'Event Experience Platform',
-    'start.register': 'Registrierung',
+    // v29.33: „Registrierung" klang nach einem abgeschlossenen Vorgang — die
+    // Kachel führt aber nur auf die Event-Übersicht. Der Untertitel sagt
+    // weiterhin, wozu sie da ist.
+    'start.register': 'Aktuelle Events',
     'start.register.desc': 'Für ein Event anmelden',
     'start.myevents': 'Meine Events',
     'start.myevents.desc': 'Anmeldungen verwalten',
@@ -49,7 +52,9 @@ export const translations: Record<Locale, Record<string, string>> = {
     'start.admin.desc': 'Events verwalten',
 
     // Header
-    'header.registration': 'Registrierung | Verfügbare Events an deinem Standort',
+    // v29.33: heißt wie die Kachel, über die man herkommt — zwei Namen für
+    // dieselbe Seite lassen den Weg dahinter suchen.
+    'header.registration': 'Aktuelle Events | Verfügbar an deinem Standort',
     'header.myevents': 'Meine Events',
     'header.createevent': 'Deloitte Event erstellen',
     'header.editevent': 'Event bearbeiten',
@@ -100,6 +105,12 @@ export const translations: Record<Locale, Record<string, string>> = {
     'reg.thirdparty.notinaudience': 'Diese Person gehört nicht zum festgelegten Verteilerkreis dieses Events.',
     'reg.required': 'Bitte ausfüllen',
     'reg.register': 'Registrieren',
+    // v29.33: Der Knopf auf Kachel und Liste öffnet nur die Anmeldeseite — er
+    // meldet niemanden an. „Registrieren" las sich dort wie der Abschluss;
+    // eine Teilnehmerin hielt sich danach für angemeldet und fragte im Ticket
+    // nach der Abmeldung. Deshalb hier ein eigener Text, während der
+    // Absende-Knopf auf der Anmeldeseite „Registrieren" bleibt.
+    'reg.registerstart': 'Registrierung starten',
     'reg.delete': 'Löschen',
     'reg.success': 'Registrierung erfolgreich!',
     'reg.error': 'Registrierung fehlgeschlagen. Möglicherweise bist du bereits angemeldet.',
@@ -488,7 +499,7 @@ export const translations: Record<Locale, Record<string, string>> = {
 
     // Start Page
     'start.title': 'Event Experience Platform',
-    'start.register': 'Registration',
+    'start.register': 'Current events',
     'start.register.desc': 'Register for an event',
     'start.myevents': 'My Events',
     'start.myevents.desc': 'Manage registrations',
@@ -496,7 +507,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'start.admin.desc': 'Manage events',
 
     // Header
-    'header.registration': 'Registration | Available events at your location',
+    'header.registration': 'Current events | Available at your location',
     'header.myevents': 'My Events',
     'header.createevent': 'Deloitte Event Creation',
     'header.editevent': 'Edit Event',
@@ -547,6 +558,7 @@ export const translations: Record<Locale, Record<string, string>> = {
     'reg.thirdparty.notinaudience': 'This person is not part of the defined audience for this event.',
     'reg.required': 'Please fill in',
     'reg.register': 'Register',
+    'reg.registerstart': 'Start registration',
     'reg.delete': 'Delete',
     'reg.success': 'Registration successful!',
     'reg.error': 'Registration failed. You may already be registered.',

@@ -12,7 +12,7 @@ import { useLanguage } from '../context/LanguageContext';
 import { useRoles } from '../context/RoleContext';
 import { useEvents } from '../context/EventContext';
 import { DeloitteEvent } from '../types';
-import { useCachedImage } from '../utils/imageCache';
+import { useCachedImageWithFallback } from '../utils/imageCache';
 import { isRegistrationFullyClosed } from '../utils/eventFormat';
 import OrganizerList from './OrganizerList';
 // v24.91: Portal-Popover (Organizer-Kontakt im „Registration closed"-Overlay)
@@ -77,8 +77,10 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
   // v28.11: Für den Kachel-Hintergrund (cover) das UNBESCHNITTENE Querformat-
   // Original bevorzugen, falls vorhanden — ein Kreis-Zuschnitt wirkt als
   // Kachel-Hintergrund verloren, das Original füllt die Fläche.
-  const tileImageUrl = event.imageOrigUrl || event.imageUrl;
-  const cachedImage = useCachedImage(tileImageUrl);
+  // v29.34: … aber mit Rückfall. Das Original ist ein zweites Attachment, und
+  // seine URL kann tot sein (fehlgeschlagener Upload, späterer Bildwechsel).
+  // Ohne Rückfall blieb die Kachel weiß, obwohl das Event ein Bild hat.
+  const cachedImage = useCachedImageWithFallback(event.imageOrigUrl, event.imageUrl);
   // v9.8: B2Run-Events haben maxParticipants=0, weil die Kapazität auf
   // Durchstarter + Funstarter aufgeteilt ist. Die Summe gilt als
   // Gesamtkapazität — sonst zeigt die Karte fälschlich "Unbegrenzt", obwohl
@@ -385,7 +387,9 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
               navigate('registration', event.id);
             }}
           >
-            {t('reg.register')}
+            {/* v29.33: „Registrierung starten" — der Klick öffnet nur die
+                Anmeldeseite, angemeldet ist man erst nach dem Absenden dort. */}
+            {t('reg.registerstart')}
           </button>
         </div>
       </div>

@@ -10265,13 +10265,16 @@ export class EventService {
         const data = await response.json();
         const relUrl = data.d?.ServerRelativeUrl || data.ServerRelativeUrl || '';
         if (relUrl) return `${window.location.origin}${relUrl}`;
-      } else {
-        console.warn('[DEX] Image attachment upload status:', response.status);
+        // Hochgeladen, aber ohne URL in der Antwort: Pfad ist bekannt und die
+        // Datei liegt dort — hier darf geraten werden.
+        const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
+        return `${window.location.origin}${serverRelUrl}/Lists/DEX_Events/Attachments/${eventId}/${safeName}`;
       }
-
-      // Fallback: URL aus bekanntem Pfad
-      const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
-      return `${window.location.origin}${serverRelUrl}/Lists/DEX_Events/Attachments/${eventId}/${safeName}`;
+      // v29.34: Bei einer FEHLER-Antwort keine URL mehr raten. Die geratene
+      // Adresse zeigte auf eine Datei, die nie ankam — gespeichert wurde sie
+      // trotzdem, und das Bild fehlte danach dauerhaft. Leer heißt hier
+      // „fehlgeschlagen"; die Aufrufer melden das dem Organizer.
+      console.warn('[DEX] Image attachment upload status:', response.status);
     } catch (err) {
       console.warn('[DEX] uploadEventImageAsAttachment error:', err);
     }
@@ -10327,9 +10330,15 @@ export class EventService {
         const data = await response.json();
         const relUrl = data.d?.ServerRelativeUrl || data.ServerRelativeUrl || '';
         if (relUrl) return `${window.location.origin}${relUrl}`;
+        const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
+        return `${window.location.origin}${serverRelUrl}/Lists/DEX_Events/Attachments/${eventId}/${safeName}`;
       }
-      const serverRelUrl = this.context.pageContext.web.serverRelativeUrl;
-      return `${window.location.origin}${serverRelUrl}/Lists/DEX_Events/Attachments/${eventId}/${safeName}`;
+      // v29.34: Bei Fehler-Antwort NICHT raten — die geratene URL landete in
+      // `_imageOrigUrl`, und die Kachel bevorzugt diese Adresse vor dem
+      // Event-Bild. Ergebnis war eine weiße Kachel bei einem Event, das im
+      // Organizer Center sein Bild hatte. Leer lässt den bisherigen Wert
+      // stehen (der Aufrufer patcht nur bei nicht-leerem Ergebnis).
+      console.warn('[DEX] Orig image attachment upload status:', response.status);
     } catch (err) {
       console.warn('[DEX] uploadEventOrigImageAsAttachment error:', err);
     }
