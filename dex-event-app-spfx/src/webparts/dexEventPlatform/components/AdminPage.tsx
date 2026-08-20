@@ -108,6 +108,46 @@ type ConsolidatedRow = {
  *  einzeln eingetragene Personen bleiben sie leer. */
 type AudiencePerson = { email: string; displayName?: string; jobTitle?: string; location?: string };
 
+/**
+ * v29.37: Kopfbild-Layout EINES Events (Piggyback `_headerImageLayout`, im
+ * Wizard eingestellt — seit v29.29 bei neuen Events die volle Mailbreite).
+ * Die Mails aus dem Organizer Center (Einladung/Erinnerung, Massenmail)
+ * starteten fest bei 180/30/30 und ignorierten diese Einstellung: Dasselbe
+ * Event verschickte seine Anmeldebestätigung mit Vollbild-Kopf und die
+ * Erinnerung mit kleinem, zentriertem Bild.
+ *
+ * Hat das Event GAR KEINE Einstellung (Alt-Event, der Schlüssel wird nur bei
+ * Abweichung vom Alt-Default geschrieben), gilt hier die volle Breite — wie
+ * bei neuen Events seit v29.29. Das kleine zentrierte Bild ist die Ausnahme,
+ * nicht der Regelfall; wer es will, stellt es im Mail-Editor um.
+ */
+function eventHeaderImageLayout(overridesJson: string | undefined): { width: number; paddingV: number; paddingH: number } {
+  const fullWidth = { width: 600, paddingV: 0, paddingH: 0 };
+  if (!overridesJson) return fullWidth;
+  try {
+    const il = (JSON.parse(overridesJson) || {})._headerImageLayout;
+    if (!il || typeof il !== 'object') return fullWidth;
+    return {
+      width: typeof il.width === 'number' && il.width > 0 ? il.width : 180,
+      paddingV: typeof il.paddingV === 'number' && il.paddingV >= 0 ? il.paddingV : 30,
+      paddingH: typeof il.paddingH === 'number' && il.paddingH >= 0 ? il.paddingH : 30,
+    };
+  } catch { return fullWidth; }
+}
+
+/**
+ * v29.37: Orb-Schutz wie im Wizard (`headerLayoutFor`, v28.29). Ohne eigenes
+ * Bild setzt der Flow das Standard-DEX-Logo in den Kopf — 600 px breit wäre
+ * das ein bildschirmfüllender, unten abgeschnittener Orb.
+ */
+function headerOptsFor(layout: { width: number; paddingV: number; paddingH: number }, hasOwnImage: boolean): { imageWidth: number; imagePaddingV: number; imagePaddingH: number } {
+  return {
+    imageWidth: hasOwnImage ? layout.width : Math.min(layout.width, 180),
+    imagePaddingV: hasOwnImage ? layout.paddingV : Math.max(layout.paddingV, 20),
+    imagePaddingH: hasOwnImage ? layout.paddingH : Math.max(layout.paddingH, 20),
+  };
+}
+
 export default function AdminPage(): React.ReactElement {
   const isMobile = useIsMobile();
   const { navigate, selectedEventId } = useNavigation();
@@ -3540,6 +3580,8 @@ export default function AdminPage(): React.ReactElement {
     setInviteSubheading(loaded && typeof loaded.subheading === 'string' ? loaded.subheading : def.subheading);
     setInviteBody(loaded && typeof loaded.body === 'string' ? loaded.body : def.body);
     setInviteTarget(loaded && loaded.target === 'audience' ? 'audience' : 'organizer');
+    // v29.37: dito für Einladung und Erinnerung.
+    setInviteImageLayout(eventHeaderImageLayout(ev.emailTemplateOverrides));
     // Hydration-Flag im nächsten Tick freigeben, damit das Auto-Speichern erst
     // auf echte Nutzer-Edits reagiert (nicht auf das initiale Laden).
     window.setTimeout(() => { inviteHydratingRef.current = false; }, 0);
@@ -3714,6 +3756,8 @@ export default function AdminPage(): React.ReactElement {
     setEmailHeading(loaded && typeof loaded.heading === 'string' ? loaded.heading : def.heading);
     setMassmailSubheading(loaded && typeof loaded.subheading === 'string' ? loaded.subheading : '');
     setEmailBody(loaded && typeof loaded.body === 'string' ? loaded.body : def.body);
+    // v29.37: Kopfbild-Größe aus dem Event übernehmen statt fest 180/30/30.
+    setMassmailImageLayout(eventHeaderImageLayout(ev.emailTemplateOverrides));
     window.setTimeout(() => { massmailHydratingRef.current = false; }, 0);
   };
   const openMassmailPicker = (): void => {
@@ -3800,6 +3844,13 @@ export default function AdminPage(): React.ReactElement {
     (inviteHero === 'event' && inviteEventPhotoB64)
       ? wrappedHtml.replace(/\{\{ORB_URL\}\}/g, inviteEventPhotoB64)
       : wrappedHtml;
+  // v29.37: Steht im Kopf ein eigenes Bild? Entweder das eingebackene Event-Foto
+  // oder — wenn {{ORB_URL}} stehen bleibt — das Mail-Logo des Events, das der
+  // Flow einsetzt. Nur dann darf die volle Breite gelten (sonst Orb-Deckel).
+  const massmailHasOwnImage = (massmailHero === 'event' && !!massmailEventPhotoB64) || !!(selectedEvent && selectedEvent.mailImageBase64);
+  const inviteHasOwnImage = (inviteHero === 'event' && !!inviteEventPhotoB64) || !!(selectedEvent && selectedEvent.mailImageBase64);
+  const massmailHeaderOpts = headerOptsFor(massmailImageLayout, massmailHasOwnImage);
+  const inviteHeaderOpts = headerOptsFor(inviteImageLayout, inviteHasOwnImage);
   // Testmail mit dem aktuellen Stand an die Organizer (zur Kontrolle vor dem
   // echten Massenversand). Geht NICHT an die Teilnehmer.
   const sendMassmailTestToOrganizers = async (): Promise<void> => {
@@ -3822,7 +3873,7 @@ export default function AdminPage(): React.ReactElement {
       const resolvedHeading = replacePlaceholders(emailHeading, previewVars);
       const resolvedBody = replacePlaceholders(emailBody, previewVars);
       const resolvedSub = massmailSubheading.trim() ? replacePlaceholders(massmailSubheading, previewVars) : `Event ${selectedEvent.title}`;
-      const fullBody = applyMassmailHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSub, resolvedBody, undefined, { imageWidth: massmailImageLayout.width, imagePaddingV: massmailImageLayout.paddingV, imagePaddingH: massmailImageLayout.paddingH }));
+      const fullBody = applyMassmailHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSub, resolvedBody, undefined, massmailHeaderOpts));
       await eventServiceRef.queueEmail(resolvedSubject, to, 'Organizer (Test)', fullBody, 'Massenmail', selectedEvent.title, selectedEvent.id);
       setMassmailTestMsg(isDe ? `Testmail an die Organizer (${to.split(';').length}) verschickt — bitte Postfach prüfen.` : `Test email sent to the organizers (${to.split(';').length}) — please check the mailbox.`);
     } catch (err) {
@@ -14213,7 +14264,7 @@ export default function AdminPage(): React.ReactElement {
           const resolvedSubheading = massmailSubheading.trim()
             ? replacePlaceholders(massmailSubheading, previewVars)
             : `Event ${selectedEvent.title}`;
-          const fullBody = applyMassmailHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody, undefined, { imageWidth: massmailImageLayout.width, imagePaddingV: massmailImageLayout.paddingV, imagePaddingH: massmailImageLayout.paddingH }));
+          const fullBody = applyMassmailHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody, undefined, massmailHeaderOpts));
           const allEmails = recipients.map(r => r.ParticipantEmail).join(';');
           // v17.10: Organizer immer auf CC (falls nicht ohnehin schon
           // unter den Empfängern). Dedup per lowercase, semicolon-join.
@@ -14528,7 +14579,7 @@ export default function AdminPage(): React.ReactElement {
           const resolvedSubheading = inviteSubheading && inviteSubheading.trim()
             ? replacePlaceholders(inviteSubheading, previewVars)
             : `Event ${selectedEvent.title}`;
-          const fullBody = applyInviteHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody, undefined, { imageWidth: inviteImageLayout.width, imagePaddingV: inviteImageLayout.paddingV, imagePaddingH: inviteImageLayout.paddingH }));
+          const fullBody = applyInviteHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody, undefined, inviteHeaderOpts));
           const ccString = ccEmails.join(';');
           const recipientName = inviteTarget === 'organizer'
             ? myDisplayName
