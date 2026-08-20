@@ -19,6 +19,7 @@ import { useDialog } from '../context/DialogContext';
 import Modal from './Modal';
 import { useIsMobile } from '../utils/useIsMobile';
 import { GraduationCap } from './Icons';
+import { INACTIVE_SUMMARY_CACHE_KEY } from '../utils/accountCheckCache';
 
 export default function LandingPage(): React.ReactElement {
   const { navigate } = useNavigation();
@@ -45,7 +46,7 @@ export default function LandingPage(): React.ReactElement {
   // Organizer überflüssig — sie haben die Funktionen schon. Admins sehen sie
   // bewusst weiter (um die normale User-Ansicht der Landing Page zu prüfen).
   const showOrganizerCta = !canCreateEvents || isAdmin;
-  const { isEventsLoading, getArchivableCount, runArchiveExpired, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getSentInactiveNotices, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, deleteEvent, countExternalRegistrations, refreshEvents } = useEvents();
+  const { isEventsLoading, getArchivableCount, runArchiveExpired, scanInactiveAccounts, notifyOrganizerOfInactive, autoDeregisterInactive, getSentInactiveNotices, getDeletableArchiveCount, runDeleteOldArchive, getParticipantDeletionWarnings, getParticipantDeletionDue, runParticipantDeletion, maybeSendParticipantDeletionWarnings, deleteEvent, countExternalRegistrations, refreshEvents, getAllRegistrations } = useEvents();
   // v26.40: Modal-Hinweis nach automatischer Abmeldung von Ex-Deloitte-Personen.
   const [autoDeregModal, setAutoDeregModal] = React.useState<Array<{ title: string; people: Array<{ email: string; name: string }> }> | null>(null);
   // v24.51: „Organizer benachrichtigen" pro Event (inaktive Konten).
@@ -233,6 +234,32 @@ export default function LandingPage(): React.ReactElement {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // v29.31: Gegenprobe gegen den AKTUELLEN Anmeldestand. Der Scan ist 24 h
+  // gecacht — wer inzwischen abgemeldet wurde, stand hier trotzdem weiter als
+  // offener Fall („steht immer noch, obwohl ich die Person gerade abgemeldet
+  // habe"). Das Verwerfen des Caches nach einer Abmeldung greift nur im
+  // eigenen Browser; deshalb zusätzlich lesen: eine Abfrage je Event, das
+  // überhaupt einen Fund hat — kein erneuter Konten-Check über Graph.
+  const ACTIVE_REG = ['Angemeldet', 'QR versendet', 'Eingecheckt', 'Warteliste'];
+  const filterStillRegistered = React.useCallback(async (items: InactiveItem[]): Promise<InactiveItem[]> => {
+    const out: InactiveItem[] = [];
+    for (const it of items) {
+      try {
+        const regs = await getAllRegistrations(it.eventId);
+        const activeEmails = new Set(regs
+          .filter(r => ACTIVE_REG.indexOf(r.Status) >= 0)
+          .map(r => (r.ParticipantEmail || '').trim().toLowerCase()));
+        const remaining = it.people.filter(p => activeEmails.has((p.email || '').toLowerCase().trim()));
+        if (remaining.length > 0) out.push({ ...it, people: remaining });
+      } catch {
+        // Lesefehler: den gecachten Stand lieber zeigen als still schlucken.
+        out.push(it);
+      }
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // v22.45: Inaktive-Konten-Scan für Organizer/Admins. Gedrosselt 1×/24h via
   // localStorage; Ergebnis sofort aus dem Cache angezeigt, im Hintergrund
   // aktualisiert. Organizer scannen ihre eigenen aktiven Events, Admins alle.
@@ -252,7 +279,9 @@ export default function LandingPage(): React.ReactElement {
       (events || []).find(e => e.id === eventId)?.inactiveHandling === 'autoderegister';
     // v26.42: Cache-Key auf _v2 — alte Scans enthielten Fehlalarme für UMBENANNTE
     // Konten (z.B. Heirat); die neue Alias-Prüfung braucht einen frischen Scan.
-    const CACHE = 'dex_inactivesummary_v2';
+    // v29.31: Schlüssel zentral (utils/accountCheckCache) — nach einer
+    // Abmeldung im Organizer Center wird genau dieser Eintrag verworfen.
+    const CACHE = INACTIVE_SUMMARY_CACHE_KEY;
     // v22.46: Signatur der relevanten Events — ändert sich die Event-Liste
     // (neues Event, Status-Wechsel), wird neu gescannt statt 24h zu warten.
     const sig = relevant.map(e => e.id).sort().join('|');
@@ -269,7 +298,11 @@ export default function LandingPage(): React.ReactElement {
           // wird beim frischen Scan automatisch abgemeldet (nicht hier anzeigen).
           const cached = parsed.items.filter(it => liveIds.has(it.eventId) && !isAutoDereg(it.eventId));
           // v24.59: bereits benachrichtigte Konten gleich ausblenden.
-          filterNotified(cached).then(f => { if (!cancelled) setInactiveSummary(f); }).catch(() => { if (!cancelled) setInactiveSummary(cached); });
+          // v29.31: …und inzwischen abgemeldete Personen (Gegenprobe live).
+          filterNotified(cached)
+            .then(f => filterStillRegistered(f))
+            .then(f => { if (!cancelled) setInactiveSummary(f); })
+            .catch(() => { if (!cancelled) setInactiveSummary(cached); });
           if (Date.now() - parsed.ts < 24 * 60 * 60 * 1000 && parsed.sig === sig) stale = false;
         }
       }
@@ -295,6 +328,8 @@ export default function LandingPage(): React.ReactElement {
           const notifyItems = items.filter(it => !isAutoDereg(it.eventId));
           const filtered = await filterNotified(notifyItems);
           if (!cancelled) setInactiveSummary(filtered);
+          // Der frische Scan liest die Anmeldungen ohnehin selbst — hier ist
+          // keine zweite Gegenprobe nötig (die greift nur beim Cache-Pfad).
         })
         .catch(() => { /* best-effort */ });
     }, 3500); // dem Boot Vorrang geben

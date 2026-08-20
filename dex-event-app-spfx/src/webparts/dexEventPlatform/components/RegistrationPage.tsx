@@ -523,15 +523,25 @@ export default function RegistrationPage(): React.ReactElement {
         if (target >= 100) return Math.min(100, prev + Math.max(1, Math.ceil((100 - prev) / 4)));
         // Annäherung ans Ziel — je größer der Rückstand, desto größer der Schritt.
         if (prev < target) return Math.min(target, prev + Math.max(1, Math.ceil((target - prev) / 6)));
-        // Ziel erreicht, der Schritt läuft noch: alle ~0,5 s ein Prozent weiter,
-        // höchstens 8 Punkte über die Stufe und nie über 97 %.
+        // Ziel erreicht, der Schritt läuft noch: langsam weiterkriechen.
+        //
+        // Die Stufen liegen weit auseinander (30 → 50 → 95): Die Anmeldung des
+        // Haupt-Events ist EIN langer Aufruf ohne Zwischenstand. Ein Deckel von
+        // +8 (erste Fassung) ließ den Balken deshalb bei 38 stehen, bis am Ende
+        // alles auf einmal kam — „38 % und dann direkt auf 100 %". Der Kriech-
+        // Bereich deckt jetzt bis zu 25 Punkte ab und wird dabei immer
+        // langsamer (erst alle ~0,25 s ein Prozent, später über eine Sekunde),
+        // damit er die Lücke füllt, ohne dem echten Stand davonzulaufen.
+        //
         // WICHTIG: Die Anzeige darf hier NICHT wieder auf den Zielwert
         // zurückgezogen werden. Genau das tat eine frühere Fassung („liegt die
         // Anzeige über dem Ziel, übernimm das Ziel") — der Kriech-Schritt ging
         // auf 31, die nächste Runde sprang zurück auf 30, und der Balken
         // flackerte 30/31/30/31. Ein Lauf startet ohnehin bei 0 (Effekt oben).
-        const creepCap = Math.min(97, target + 8);
-        return (tick % 8 === 0 && prev < creepCap) ? prev + 1 : prev;
+        const creepCap = Math.min(95, target + 25);
+        if (prev >= creepCap) return prev;
+        const every = 4 + (prev - target); // je weiter vorgekrochen, desto träger
+        return (tick % Math.max(4, every) === 0) ? prev + 1 : prev;
       });
     }, 60);
     return () => window.clearInterval(id);
