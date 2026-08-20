@@ -58,6 +58,26 @@ export function PersonContactHover(props: PersonContactHoverProps): React.ReactE
   const wrapperRef = React.useRef<HTMLSpanElement>(null);
   const closeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const initials = getInitials(name);
+  // v29.29: Foto erst laden, wenn der Avatar in den sichtbaren Bereich kommt.
+  // Bei einer Teilnehmerliste mit mehreren hundert Zeilen feuerte die Seite
+  // sonst ebenso viele userphoto.aspx-Anfragen auf einmal ab — die Liste
+  // scrollt in einem eigenen Container, sichtbar sind aber immer nur wenige
+  // Zeilen. Bis zum Laden steht der Initialen-Kreis (gleiche Größe, also
+  // kein Springen des Layouts). Vorlauf von 300 px, damit beim Scrollen
+  // nichts nachzieht.
+  const [visible, setVisible] = React.useState(false);
+  React.useEffect(() => {
+    if (visible || !email) return undefined;
+    const el = wrapperRef.current;
+    // Ohne IntersectionObserver (alte Browser) sofort laden — lieber die
+    // Anfragen als gar kein Foto.
+    if (!el || typeof IntersectionObserver === 'undefined') { setVisible(true); return undefined; }
+    const io = new IntersectionObserver(entries => {
+      if (entries.some(e => e.isIntersecting)) { setVisible(true); io.disconnect(); }
+    }, { rootMargin: '300px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [visible, email]);
   const popoverHeight = 200;
   const effectiveSub = subline || fetchedSub || undefined;
 
@@ -110,10 +130,12 @@ export function PersonContactHover(props: PersonContactHoverProps): React.ReactE
       onMouseLeave={scheduleClose}
       onClick={toggleOnTap}
     >
-      {!failed && email ? (
+      {!failed && email && visible ? (
         <img
           src={photoUrl(email, 'L')}
           alt={name}
+          loading="lazy"
+          decoding="async"
           onError={() => setFailed(true)}
           style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', background: 'var(--dex-gray-100)', flexShrink: 0, cursor: 'default' }}
         />

@@ -1073,9 +1073,16 @@ export default function EventCreationPage(): React.ReactElement {
   // Event. Gilt für Mail- UND Outlook-Termin-Kopf. Persistiert als Piggyback
   // `_headerImageLayout` in EmailTemplateOverrides. Default = bisheriges
   // Layout (Breite 180, Innenabstand 30/30).
+  // v29.29: NEUE Events starten mit dem Vollbild-Kopf (Bild über die ganze
+  // Mailbreite) — das ist der Regelfall, das kleine zentrierte Bild war eher
+  // die Ausnahme. Bestehende Events ohne gespeichertes Layout behalten
+  // bewusst 180/30/30: Ihre Mails sähen sonst nach dem nächsten Speichern
+  // ungefragt anders aus.
   const [headerImageLayout, setHeaderImageLayout] = React.useState<{ width: number; paddingV: number; paddingH: number }>(() => {
-    const def = { width: 180, paddingV: 30, paddingH: 30 };
-    if (!editEvent?.emailTemplateOverrides) return def;
+    const legacyDef = { width: 180, paddingV: 30, paddingH: 30 };
+    const fullWidth = { width: 600, paddingV: 0, paddingH: 0 };
+    if (!editEvent) return fullWidth;
+    if (!editEvent.emailTemplateOverrides) return legacyDef;
     try {
       const o = JSON.parse(editEvent.emailTemplateOverrides);
       const il = o._headerImageLayout || {};
@@ -1084,7 +1091,7 @@ export default function EventCreationPage(): React.ReactElement {
         paddingV: typeof il.paddingV === 'number' && il.paddingV >= 0 ? il.paddingV : 30,
         paddingH: typeof il.paddingH === 'number' && il.paddingH >= 0 ? il.paddingH : 30,
       };
-    } catch { return def; }
+    } catch { return legacyDef; }
   });
   // v19.20: Snapshot des initialen Header-Bild-Layouts (Breite/Innenabstand)
   // beim Edit-Mount. Eine reine Layout-Änderung verändert NICHT den rohen
