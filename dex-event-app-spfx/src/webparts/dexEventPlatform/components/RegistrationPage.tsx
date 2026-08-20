@@ -508,8 +508,12 @@ export default function RegistrationPage(): React.ReactElement {
   // Schritt dauert, langsam weiter (gedeckelt vor der nächsten Stufe) — so
   // steht der Balken nie still und überholt den echten Stand auch nicht.
   const [displayProgress, setDisplayProgress] = React.useState(0);
+  // Start und Ende eines Laufs setzen die Anzeige zurück. Das gehört in einen
+  // EIGENEN Effekt: Der Animations-Effekt unten läuft bei jeder Ziel-Änderung
+  // neu an und würde die Anzeige sonst mitten im Lauf auf 0 zurückwerfen.
+  React.useEffect(() => { setDisplayProgress(0); }, [isSubmitting]);
   React.useEffect(() => {
-    if (!isSubmitting) { setDisplayProgress(0); return undefined; }
+    if (!isSubmitting) return undefined;
     let tick = 0;
     const id = window.setInterval(() => {
       tick++;
@@ -517,12 +521,15 @@ export default function RegistrationPage(): React.ReactElement {
         const target = Math.min(100, Math.max(0, submitProgress));
         // Abschluss: zügig auf 100 aufziehen.
         if (target >= 100) return Math.min(100, prev + Math.max(1, Math.ceil((100 - prev) / 4)));
-        // Neuer Lauf (Ziel liegt unter der Anzeige): direkt übernehmen.
-        if (prev > target) return target;
         // Annäherung ans Ziel — je größer der Rückstand, desto größer der Schritt.
         if (prev < target) return Math.min(target, prev + Math.max(1, Math.ceil((target - prev) / 6)));
         // Ziel erreicht, der Schritt läuft noch: alle ~0,5 s ein Prozent weiter,
         // höchstens 8 Punkte über die Stufe und nie über 97 %.
+        // WICHTIG: Die Anzeige darf hier NICHT wieder auf den Zielwert
+        // zurückgezogen werden. Genau das tat eine frühere Fassung („liegt die
+        // Anzeige über dem Ziel, übernimm das Ziel") — der Kriech-Schritt ging
+        // auf 31, die nächste Runde sprang zurück auf 30, und der Balken
+        // flackerte 30/31/30/31. Ein Lauf startet ohnehin bei 0 (Effekt oben).
         const creepCap = Math.min(97, target + 8);
         return (tick % 8 === 0 && prev < creepCap) ? prev + 1 : prev;
       });

@@ -5709,6 +5709,24 @@ export default function AdminPage(): React.ReactElement {
                           </select>
                         );
                       })()}
+                      {/* v29.30: Ist das Konto als inaktiv gemeldet (Person hat
+                          womöglich das Unternehmen verlassen), steht das
+                          Abmelden als eigener Knopf neben dem Klappmenü — der
+                          Hinweis oben fordert genau dazu auf, und im
+                          „Aktionen…"-Menü findet man es erst nach dem Öffnen. */}
+                      {canManage && !orgPastLock && inactiveAccounts.indexOf(row.emailKey) >= 0 && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          onClick={() => openDeregModal(row)}
+                          title={isDe
+                            ? 'Kein aktives Konto — Abmelde-Dialog öffnen (still, inklusive Klammer und aller Sub-Events)'
+                            : 'No active account — open the cancellation dialog (silent, including umbrella and all sub-events)'}
+                          style={{ marginTop: 4, fontSize: '0.72rem', padding: '3px 8px', color: 'var(--dex-red, #c00)', borderColor: 'var(--dex-red, #c00)', display: 'inline-flex', alignItems: 'center', gap: 4 }}
+                        >
+                          <Trash2 size={11} /> {isDe ? 'Abmelden' : 'Deregister'}
+                        </button>
+                      )}
                     </td>
                   </tr>
                   {isExpanded && (
@@ -5951,8 +5969,13 @@ export default function AdminPage(): React.ReactElement {
       {inactiveAccounts.length > 0 && (() => {
         const items = inactiveAccounts.map(email => {
           const reg = registrations.find(r => (r.ParticipantEmail || '').toLowerCase() === email);
-          const name = reg ? ((reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || email)) : email;
-          return { email, name };
+          // v29.30: Bei einer Klammer steht die Person oft NUR in den
+          // Sub-Event-Listen — dann blieb hier nur die nackte Adresse stehen.
+          const cRow = consolidatedRows.find(r => r.emailKey === email);
+          const name = reg
+            ? ((reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : (reg.ParticipantName || email))
+            : (cRow ? (`${cRow.vorname} ${cRow.nachname}`.trim() || email) : email);
+          return { email, name, cRow };
         });
         return (
           <div style={{
@@ -5990,6 +6013,29 @@ export default function AdminPage(): React.ReactElement {
                       <Icon iconName="Search" style={{ fontSize: 11 }} />
                       {isDe ? 'Zur Person springen' : 'Jump to person'}
                     </button>
+                    {/* v29.30: Abmelden DIREKT aus der Box. Der Text darüber
+                        fordert dazu auf („Bitte prüfen und ggf. abmelden"),
+                        führte aber nur zur Zeile — und dort steckt das
+                        Abmelden im generischen „Aktionen…"-Klappmenü, das
+                        man erst öffnen muss. Der Dialog kommt mit still +
+                        Klammer vorausgewählt (v29.29). */}
+                    {isConsolidatedMode && it.cRow && (isAdmin || isOrganizerFor(selectedEvent)) && !orgPastLock && (
+                      <button
+                        type="button"
+                        onClick={() => { if (it.cRow) openDeregModal(it.cRow); }}
+                        title={isDe
+                          ? 'Abmelde-Dialog öffnen — ohne Mail und Outlook-Absage, inklusive Klammer und aller Sub-Events'
+                          : 'Open the cancellation dialog — no mail or Outlook withdrawal, including umbrella and all sub-events'}
+                        style={{
+                          marginLeft: 6, display: 'inline-flex', alignItems: 'center', gap: 4,
+                          background: 'var(--dex-red, #c00)', border: '1px solid var(--dex-red, #c00)', color: '#fff',
+                          borderRadius: 6, padding: '1px 8px', cursor: 'pointer', fontSize: '0.74rem', fontWeight: 600, fontFamily: 'inherit',
+                        }}
+                      >
+                        <Trash2 size={11} />
+                        {isDe ? 'Abmelden' : 'Deregister'}
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>
