@@ -36,7 +36,7 @@ type Gate = 'all' | 'manage' | 'admin';
 
 interface PageEntry { page: Page; de: string; en: string; kw: string[]; gate: Gate }
 const PAGE_CATALOG: PageEntry[] = [
-  { page: 'register', de: 'Events finden / Anmelden', en: 'Find events / Register', kw: ['event', 'events', 'anmelden', 'registrieren', 'finden', 'register'], gate: 'all' },
+  { page: 'register', de: 'Aktuelle Events / Anmelden', en: 'Current events / Register', kw: ['event', 'events', 'aktuelle events', 'anmelden', 'registrieren', 'registrierung', 'finden', 'register'], gate: 'all' },
   { page: 'my-events', de: 'Meine Events', en: 'My Events', kw: ['meine events', 'my events', 'anmeldungen', 'mein qr', 'qr-code'], gate: 'all' },
   { page: 'admin', de: 'Organizer Center', en: 'Organizer Center', kw: ['organizer', 'admin', 'verwalten', 'teilnehmer', 'event verwalten', 'admin center'], gate: 'manage' },
   { page: 'create-event', de: 'Neues Event erstellen', en: 'Create new event', kw: ['neu', 'erstellen', 'anlegen', 'create', 'wizard', 'neues event'], gate: 'manage' },

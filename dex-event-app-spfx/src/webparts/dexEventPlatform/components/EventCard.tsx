@@ -385,7 +385,9 @@ export default function EventCard({ event, index, isRegistered, isWaitlisted, is
               navigate('registration', event.id);
             }}
           >
-            {t('reg.register')}
+            {/* v29.33: „Registrierung starten" — der Klick öffnet nur die
+                Anmeldeseite, angemeldet ist man erst nach dem Absenden dort. */}
+            {t('reg.registerstart')}
           </button>
         </div>
       </div>

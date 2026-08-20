@@ -222,8 +222,8 @@ function RegistrationFlow(): React.ReactElement {
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
       <FlowNode
         type="start"
-        label="User klickt 'Registrieren'"
-        details="Einstieg: der User öffnet ein Event und klickt auf den grünen Register-Button. Events, bei denen der User nicht im Audience-Filter steht oder die Registration-Deadline abgelaufen ist, zeigen statt des Buttons einen Sperr-Banner."
+        label="User klickt 'Registrierung starten'"
+        details="Einstieg: der User öffnet ein Event und klickt auf den grünen Register-Button (seit v29.33 'Registrierung starten' — er öffnet nur das Formular). Events, bei denen der User nicht im Audience-Filter steht oder die Registration-Deadline abgelaufen ist, zeigen statt des Buttons einen Sperr-Banner."
       />
       <Arrow />
       <FlowNode
