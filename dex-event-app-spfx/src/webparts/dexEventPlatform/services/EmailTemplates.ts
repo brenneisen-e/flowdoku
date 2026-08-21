@@ -930,15 +930,42 @@ export function infoEmail(recipientName: string, eventTitle: string, message: st
  * Tags ist, wird er als HTML behandelt; wenn es Plain-Text ist, wird jede Zeile
  * in `<p>`-Tags gewickelt + escaped.
  */
-export function buildOutlookBody(eventTitle: string, bodyText: string, subheading?: string, imgOpts?: { imageWidth?: number; imagePaddingV?: number; imagePaddingH?: number }): string {
-  const inner = stripOutlookWrapper(bodyText || '');
+/**
+ * v29.38: Teilnahme-Block für einen hinterlegten Teams-Link. Bewusst mit
+ * `data-dex-teams` markiert und ohne verschachtelte Tabelle: Der Block ist
+ * reine AUSGABE — er wird beim nächsten Wickeln entfernt und neu erzeugt,
+ * damit er nicht bei jedem Speichern ein weiteres Mal im Termin steht und im
+ * Editor nicht als Text auftaucht, den man versehentlich mitbearbeitet.
+ */
+export function teamsJoinBlockHtml(link: string, isDe = true): string {
+  const url = (link || '').trim();
+  if (!url) return '';
+  const safe = escapeHtml(url);
+  return `<table data-dex-teams="1" role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:24px 0 8px;border-top:1px solid #e0e0e0;"><tr><td style="padding:16px 0 0;font-family:Arial,Helvetica,sans-serif;">`
+    + `<div style="font-size:13px;color:#63666A;margin-bottom:6px;">${isDe ? 'Online teilnehmen' : 'Join online'}</div>`
+    + `<a href="${safe}" style="display:inline-block;background:#86bc25;color:#ffffff;text-decoration:none;font-weight:bold;font-size:14px;padding:10px 18px;border-radius:4px;">${isDe ? 'An Microsoft-Teams-Besprechung teilnehmen' : 'Join the Microsoft Teams meeting'}</a>`
+    + `<div style="font-size:12px;color:#63666A;margin-top:8px;word-break:break-all;">${safe}</div>`
+    + `</td></tr></table>`;
+}
+
+/** v29.38: Bereits eingesetzte Teams-Blöcke entfernen (siehe teamsJoinBlockHtml). */
+export function stripTeamsJoinBlock(html: string): string {
+  if (!html) return '';
+  return html.replace(/<table[^>]*data-dex-teams="1"[\s\S]*?<\/table>/gi, '');
+}
+
+export function buildOutlookBody(eventTitle: string, bodyText: string, subheading?: string, imgOpts?: { imageWidth?: number; imagePaddingV?: number; imagePaddingH?: number }, teamsLink?: string, teamsIsDe = true): string {
+  const inner = stripTeamsJoinBlock(stripOutlookWrapper(bodyText || ''));
   const isHtml = /<[a-z][\s\S]*>/i.test(inner);
   const bodyHtml = inner
     ? (isHtml ? inner : inner.split('\n').map(line => `<p>${escapeHtml(line)}</p>`).join('\n  '))
     : '';
   // v18.73: Header-Bild (Breite + Innenabstand) auch im Outlook-Termin-Body
   // einstellbar — gleiche Logik wie in den Mails.
-  return wrapTemplate(GREEN, eventTitle, subheading || 'Event Details', bodyHtml, undefined, imgOpts);
+  // v29.38: Teams-Link ans Ende des Inhalts, nicht in den Editor-Text — er
+  // gehört zum Termin, nicht zum vom Organizer geschriebenen Absatz.
+  const withTeams = bodyHtml + teamsJoinBlockHtml(teamsLink || '', teamsIsDe);
+  return wrapTemplate(GREEN, eventTitle, subheading || 'Event Details', withTeams, undefined, imgOpts);
 }
 
 /**
