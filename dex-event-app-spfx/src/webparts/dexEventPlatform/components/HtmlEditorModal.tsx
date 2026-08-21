@@ -80,10 +80,6 @@ export interface HtmlEditorModalProps {
   outlookLocationValue?: string;
   onOutlookLocationChange?: (s: string) => void;
   outlookLocationAuto?: string;
-  /** v29.38: Optionaler Teams-Besprechungslink des Organizers. Leer = kein
-   *  Online-Block im Termin. DEX legt selbst keine Teams-Meetings an. */
-  outlookTeamsLink?: string;
-  onOutlookTeamsLinkChange?: (s: string) => void;
   /** v18.46: Standard-Body-Vorlage (HTML mit Platzhaltern) für „Standardtext
    *  laden". Wenn gesetzt, erscheint ein Reset-Button über dem Body-Editor. */
   defaultBodyHtml?: string;
@@ -224,7 +220,6 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     outlookSubheading, onOutlookSubheadingChange,
     outlookSubject, onOutlookSubjectChange,
     outlookDateEditor, outlookLocationValue, onOutlookLocationChange, outlookLocationAuto,
-    outlookTeamsLink, onOutlookTeamsLinkChange,
     defaultBodyHtml,
     previewVars = {}, insertableVars = [],
     previewHtmlVars,
@@ -722,34 +717,6 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
                           placeholder={outlookLocationAuto || 'Ort'}
                           style={{ fontSize: '0.85rem' }}
                         />
-                      </div>
-                    )}
-                    {/* v29.38: Teams-Link. Bewusst ein Eingabefeld und kein
-                        Schalter: DEX kann keine Teams-Besprechung anlegen — der
-                        Organizer erstellt sie in Outlook/Teams und fuegt den
-                        Link hier ein. */}
-                    {onOutlookTeamsLinkChange && (
-                      <div style={{ marginTop: 10 }}>
-                        <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', display: 'block', marginBottom: 4 }}>
-                          Teams-Link <span style={{ color: 'var(--dex-gray-400)', fontWeight: 400 }}>(optional — leer = kein Online-Teilnahme-Block)</span>
-                        </label>
-                        <input
-                          className="form-input"
-                          value={outlookTeamsLink || ''}
-                          onChange={e => onOutlookTeamsLinkChange(e.target.value)}
-                          placeholder="https://teams.microsoft.com/l/meetup-join/..."
-                          style={{ fontSize: '0.85rem' }}
-                        />
-                        <p style={{ fontSize: '0.72rem', color: 'var(--dex-gray-500)', margin: '4px 0 0', lineHeight: 1.45 }}>
-                          Lege die Besprechung in Outlook oder Teams an und kopiere den Teilnahme-Link hierher.
-                          Er erscheint dann im Termin als Knopf &bdquo;An Microsoft-Teams-Besprechung teilnehmen&ldquo; —
-                          auch bei allen Sub-Events dieses Events.
-                          {outlookTeamsLink && outlookTeamsLink.trim() && !/^https?:\/\//i.test(outlookTeamsLink.trim()) && (
-                            <><br /><span style={{ color: 'var(--dex-red, #da291c)', fontWeight: 600 }}>
-                              Das sieht nicht nach einem Link aus — er muss mit https:// beginnen, sonst wird er nicht uebernommen.
-                            </span></>
-                          )}
-                        </p>
                       </div>
                     )}
                   </div>

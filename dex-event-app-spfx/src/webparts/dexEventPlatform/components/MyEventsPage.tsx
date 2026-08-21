@@ -32,6 +32,8 @@ import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
 import { buildDemoShowcaseEvents, buildDemoMyRegistration } from '../services/demoShowcaseEvent';
 import StayRangePicker from './StayRangePicker';
+import { TeamsJoinButton } from './TeamsJoinButton';
+import { eventTeamsLink, locationWithoutTeamsUrl } from '../utils/teamsLink';
 
 // v20.0 (Audit): PdfViewer zieht react-pdf (+pdfjs) ins Bundle — lazy laden,
 // der Viewer wird nur beim Öffnen eines Dokuments gebraucht.
@@ -2100,10 +2102,22 @@ export default function MyEventsPage(): React.ReactElement {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <Icon iconName="MapPin" style={{ fontSize: 14, color: 'var(--dex-gray-500)' }} />
                         <span style={{ fontWeight: 700, color: 'var(--dex-gray-800)' }}>
-                          {[event.location, event.locationAddress && event.locationAddress.city].filter(Boolean).join(', ') || '-'}
+                          {(() => {
+                            // v29.39: Eine Teams-URL im Ort gehört nicht in die
+                            // Ort-Zeile — sie steht daneben als Knopf.
+                            const loc = eventTeamsLink(event) ? locationWithoutTeamsUrl(event.location) : (event.location || '');
+                            return [loc, event.locationAddress && event.locationAddress.city].filter(Boolean).join(', ')
+                              || (eventTeamsLink(event) ? (isDe ? 'Online' : 'Online') : '-');
+                          })()}
                         </span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon iconName="Calendar" style={{ fontSize: 14, color: 'var(--dex-gray-500)' }} /> {formatDateRange(event.startDate, event.endDate)}</div>
+                      {/* v29.39: Teilnahme-Knopf direkt bei den Eckdaten — wer in
+                          „Meine Events" nachsieht, will von dort in die
+                          Besprechung, nicht erst den Kalender suchen. */}
+                      {eventTeamsLink(event) && (
+                        <TeamsJoinButton url={eventTeamsLink(event)} isDe={isDe} variant="link" />
+                      )}
                     </div>
 
                     {/* v27.7: Gruppe (Durchstarter/Funstarter bzw. eigene

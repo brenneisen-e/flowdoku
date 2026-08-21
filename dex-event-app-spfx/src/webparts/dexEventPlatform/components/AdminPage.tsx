@@ -27,6 +27,8 @@ import { downloadSelfCheckInPdf } from '../utils/selfCheckInPdf';
 import { isEventOver } from '../utils/eventFormat';
 import { selfCancelLocked } from '../utils/cancelPolicy';
 import AddParticipantsModal from './admin/AddParticipantsModal';
+import { TeamsJoinButton } from './TeamsJoinButton';
+import { eventTeamsLink, locationWithoutTeamsUrl } from '../utils/teamsLink';
 import { accountCheckCacheKey, invalidateInactiveAccountCache } from '../utils/accountCheckCache';
 import { isDeloitteInternalEmail, isExternalEmail } from '../utils/deloitteDomain';
 // v20.1: Self-Check-in jederzeit aktivierbar (Token-Erzeugung beim Klick).
@@ -6777,10 +6779,29 @@ export default function AdminPage(): React.ReactElement {
                         />
                       </span>
                     </div>
-                    <div style={rowStyle}>
-                      <span style={labelStyle}>{isDe ? 'Ort' : 'Location'}</span>
-                      <span style={valueStyle}>{selectedEvent.location || '-'}</span>
-                    </div>
+                    {/* v29.39: Steht im Ort eine Teams-URL (so haben Organizer
+                        das vor dem Teams-Feld gelöst), lief sie hier als roher
+                        Text aus der Karte und war nicht klickbar. Jetzt zeigt
+                        die Ort-Zeile den Ort ohne die URL, und darunter steht
+                        ein Teilnahme-Knopf. */}
+                    {(() => {
+                      const tLink = eventTeamsLink(selectedEvent);
+                      const locText = tLink ? locationWithoutTeamsUrl(selectedEvent.location) : (selectedEvent.location || '');
+                      return (
+                        <>
+                          <div style={rowStyle}>
+                            <span style={labelStyle}>{isDe ? 'Ort' : 'Location'}</span>
+                            <span style={{ ...valueStyle, wordBreak: 'break-word' }}>{locText || (tLink ? (isDe ? 'Online' : 'Online') : '-')}</span>
+                          </div>
+                          {tLink && (
+                            <div style={rowStyle}>
+                              <span style={labelStyle}>{isDe ? 'Online-Teilnahme' : 'Join online'}</span>
+                              <span style={valueStyle}><TeamsJoinButton url={tLink} isDe={isDe} /></span>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                     <div style={rowStyle}>
                       <span style={labelStyle}>{isDe ? 'Max. Teilnehmer' : 'Max. attendees'}</span>
                       <span style={valueStyle}>{(() => {

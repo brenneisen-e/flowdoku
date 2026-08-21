@@ -10377,6 +10377,49 @@ export default function EventCreationPage(): React.ReactElement {
                 </span>
               </div>
 
+              {/* v29.39: Teams-Link. Steht hier bei Ort und Adresse, weil er
+                  dieselbe Frage beantwortet („wo findet es statt?") — und
+                  bewusst NUR hier: Ein zweites Feld im Outlook-Editor wären
+                  zwei Bedienwege für denselben Wert. */}
+              <div className="form-group" style={{ marginTop: 16 }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {isDe ? 'Teams-Link (optional)' : 'Teams link (optional)'}
+                  <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> den <strong>Teilnahme-Link deiner eigenen Teams-Besprechung</strong>. Lege die Besprechung wie gewohnt in Outlook oder Teams an und kopiere den Link hierher — DEX erzeugt selbst keine Teams-Meetings.<br /><br />
+                      <strong>Anzeige in der App:</strong> im <strong>Outlook-Termin</strong> als Knopf &bdquo;An Microsoft-Teams-Besprechung teilnehmen&ldquo;, im <strong>Organizer Center</strong> und in <strong>Meine Events</strong> als Teilnahme-Knopf.<br /><br />
+                      <strong>Wichtig:</strong> Der Link steht im <strong>Text</strong> des Termins. Outlook kennt den Termin dadurch <strong>nicht</strong> als Online-Besprechung — es gibt also keinen &bdquo;Teilnehmen&ldquo;-Knopf in der Kalenderleiste und keinen Direktaufruf aus Teams heraus. Die Teilnehmer klicken den Link im Termin bzw. in der App.<br /><br />
+                      <strong>Gilt für:</strong> das ganze Event, also auch für die Termine der Sub-Events.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> the <strong>join link of your own Teams meeting</strong>. Create the meeting in Outlook or Teams as usual and paste the link here — DEX does not create Teams meetings itself.<br /><br />
+                      <strong>Shown in the app:</strong> in the <strong>Outlook event</strong> as a &bdquo;Join the Microsoft Teams meeting&ldquo; button, and in the <strong>Organizer Center</strong> and <strong>My Events</strong> as a join button.<br /><br />
+                      <strong>Important:</strong> The link sits in the <strong>body</strong> of the event. Outlook therefore does <strong>not</strong> treat it as an online meeting — there is no &bdquo;Join&ldquo; button in the calendar bar and no direct join from Teams. Attendees click the link in the event or in the app.<br /><br />
+                      <strong>Applies to:</strong> the whole event, including the sub-event calendar entries.
+                    </>
+                  )} />
+                </label>
+                <input
+                  className="form-input"
+                  value={teamsLink}
+                  onChange={e => setTeamsLink(e.target.value)}
+                  placeholder="https://teams.microsoft.com/l/meetup-join/..."
+                />
+                <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                  {isDe
+                    ? 'Der Link erscheint im Outlook-Termin, im Organizer Center und in „Meine Events". Hinweis: Der Termin ist damit für Outlook keine Online-Besprechung — es gibt keinen „Teilnehmen"-Knopf im Kalender und keinen Direktaufruf aus Teams, sondern den Link im Termin.'
+                    : 'The link appears in the Outlook event, in the Organizer Center and in „My Events". Note: Outlook does not treat the event as an online meeting — there is no „Join" button in the calendar and no direct join from Teams, just the link inside the event.'}
+                </span>
+                {teamsLink.trim() && !/^https?:\/\//i.test(teamsLink.trim()) && (
+                  <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-red, #da291c)', fontWeight: 600, marginTop: 4 }}>
+                    {isDe
+                      ? 'Das sieht nicht nach einem Link aus — er muss mit https:// beginnen, sonst wird er nicht übernommen.'
+                      : 'That does not look like a link — it must start with https://, otherwise it is ignored.'}
+                  </span>
+                )}
+              </div>
+
               {/* ===== Agenda Editor ===== */}
               <div className="form-group" style={{ marginTop: 24 }}>
                 <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '1rem', fontWeight: 700 }}>
@@ -17050,10 +17093,6 @@ export default function EventCreationPage(): React.ReactElement {
             outlookLocationValue={isOutlook ? olLocationOverrideVal : undefined}
             onOutlookLocationChange={isOutlook ? setOlLocation : undefined}
             outlookLocationAuto={isOutlook ? outlookLocationAuto : undefined}
-            // v29.38: Teams-Link gilt event-weit (auch für Sub-Event-Termine),
-            // deshalb nur auf der Klammer-Ebene bearbeitbar.
-            outlookTeamsLink={isOutlook ? teamsLink : undefined}
-            onOutlookTeamsLinkChange={(isOutlook && activeCommTabIdx === 0) ? setTeamsLink : undefined}
             previewVars={{
               // v17.5: Im Sub-Event-Kommunikations-Tab den Titel des
               // aktiven Sub-Events einsetzen, sonst den Hauptevent-Titel.
