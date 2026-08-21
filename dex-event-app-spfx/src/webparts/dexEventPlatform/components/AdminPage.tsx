@@ -103,6 +103,51 @@ type ConsolidatedRow = {
   activeCount: number;
 };
 
+/** v29.36: Eine Person aus dem Sichtbarkeits-Kreis eines Events. Name, Position
+ *  und Standort kommen aus derselben Verteiler-Abfrage wie die Adresse — für
+ *  einzeln eingetragene Personen bleiben sie leer. */
+type AudiencePerson = { email: string; displayName?: string; jobTitle?: string; location?: string };
+
+/**
+ * v29.37: Kopfbild-Layout EINES Events (Piggyback `_headerImageLayout`, im
+ * Wizard eingestellt — seit v29.29 bei neuen Events die volle Mailbreite).
+ * Die Mails aus dem Organizer Center (Einladung/Erinnerung, Massenmail)
+ * starteten fest bei 180/30/30 und ignorierten diese Einstellung: Dasselbe
+ * Event verschickte seine Anmeldebestätigung mit Vollbild-Kopf und die
+ * Erinnerung mit kleinem, zentriertem Bild.
+ *
+ * Hat das Event GAR KEINE Einstellung (Alt-Event, der Schlüssel wird nur bei
+ * Abweichung vom Alt-Default geschrieben), gilt hier die volle Breite — wie
+ * bei neuen Events seit v29.29. Das kleine zentrierte Bild ist die Ausnahme,
+ * nicht der Regelfall; wer es will, stellt es im Mail-Editor um.
+ */
+function eventHeaderImageLayout(overridesJson: string | undefined): { width: number; paddingV: number; paddingH: number } {
+  const fullWidth = { width: 600, paddingV: 0, paddingH: 0 };
+  if (!overridesJson) return fullWidth;
+  try {
+    const il = (JSON.parse(overridesJson) || {})._headerImageLayout;
+    if (!il || typeof il !== 'object') return fullWidth;
+    return {
+      width: typeof il.width === 'number' && il.width > 0 ? il.width : 180,
+      paddingV: typeof il.paddingV === 'number' && il.paddingV >= 0 ? il.paddingV : 30,
+      paddingH: typeof il.paddingH === 'number' && il.paddingH >= 0 ? il.paddingH : 30,
+    };
+  } catch { return fullWidth; }
+}
+
+/**
+ * v29.37: Orb-Schutz wie im Wizard (`headerLayoutFor`, v28.29). Ohne eigenes
+ * Bild setzt der Flow das Standard-DEX-Logo in den Kopf — 600 px breit wäre
+ * das ein bildschirmfüllender, unten abgeschnittener Orb.
+ */
+function headerOptsFor(layout: { width: number; paddingV: number; paddingH: number }, hasOwnImage: boolean): { imageWidth: number; imagePaddingV: number; imagePaddingH: number } {
+  return {
+    imageWidth: hasOwnImage ? layout.width : Math.min(layout.width, 180),
+    imagePaddingV: hasOwnImage ? layout.paddingV : Math.max(layout.paddingV, 20),
+    imagePaddingH: hasOwnImage ? layout.paddingH : Math.max(layout.paddingH, 20),
+  };
+}
+
 export default function AdminPage(): React.ReactElement {
   const isMobile = useIsMobile();
   const { navigate, selectedEventId } = useNavigation();
@@ -735,9 +780,18 @@ export default function AdminPage(): React.ReactElement {
   // Auflösung der Verteiler (null = noch nicht ausgeführt; dann gilt die beim
   // Event-Speichern eingefrorene Liste `audienceResolvedEmails`).
   const [visibilityOpen, setVisibilityOpen] = React.useState(false);
-  const [visibilityResolved, setVisibilityResolved] = React.useState<string[] | null>(null);
+  // v29.36: Nicht mehr nur Adressen — der Verteiler-Abruf liefert ohnehin Name,
+  // Position und Standort mit. Die brauchte der Nachfass-Schritt, um Personen
+  // als Personen zu zeigen statt als Adressliste.
+  const [visibilityResolved, setVisibilityResolved] = React.useState<AudiencePerson[] | null>(null);
   const [visibilityBusy, setVisibilityBusy] = React.useState(false);
   const [pendingCheckBusy, setPendingCheckBusy] = React.useState(false);
+  // v29.36: Erster Schritt des Nachfassens — WER fehlt noch. Die Mail kommt
+  // erst danach; vorher sah der Organizer nur einen vorbefüllten Mail-Dialog
+  // und musste den Adressen glauben.
+  const [pendingPeople, setPendingPeople] = React.useState<{ people: AudiencePerson[]; reachable: number } | null>(null);
+  // v29.36: Lange Adresslisten in der Sichtbarkeit erst auf Wunsch ganz zeigen.
+  const [visibilityAllAddresses, setVisibilityAllAddresses] = React.useState(false);
   // v26.11: Sprung zur Person in der Teilnehmerliste (aus der „Konto inaktiv"-
   // Hinweisbox) — filtert die Liste auf die Adresse und scrollt sie in den Blick.
   const participantListRef = React.useRef<HTMLDivElement>(null);
@@ -3526,6 +3580,8 @@ export default function AdminPage(): React.ReactElement {
     setInviteSubheading(loaded && typeof loaded.subheading === 'string' ? loaded.subheading : def.subheading);
     setInviteBody(loaded && typeof loaded.body === 'string' ? loaded.body : def.body);
     setInviteTarget(loaded && loaded.target === 'audience' ? 'audience' : 'organizer');
+    // v29.37: dito für Einladung und Erinnerung.
+    setInviteImageLayout(eventHeaderImageLayout(ev.emailTemplateOverrides));
     // Hydration-Flag im nächsten Tick freigeben, damit das Auto-Speichern erst
     // auf echte Nutzer-Edits reagiert (nicht auf das initiale Laden).
     window.setTimeout(() => { inviteHydratingRef.current = false; }, 0);
@@ -3540,24 +3596,30 @@ export default function AdminPage(): React.ReactElement {
    * müsste man das ganze Verzeichnis lesen. Die Zeile sagt das dann auch, statt
    * eine Zahl zu erfinden.
    */
-  const resolveAudienceEmails = async (ev: DeloitteEvent): Promise<string[]> => {
+  const resolveAudienceEmails = async (ev: DeloitteEvent): Promise<AudiencePerson[]> => {
     const entries = (ev.audienceFilter || []).map(s => (s || '').trim()).filter(Boolean);
     const excluded = new Set((ev.excludedUsers || []).map(e => (e || '').toLowerCase().trim()).filter(Boolean));
-    const out: string[] = [];
+    const out: AudiencePerson[] = [];
     const seen = new Set<string>();
-    const push = (e: string): void => {
+    // v29.36: Name/Position/Standort mitnehmen, wenn die Verteiler-Abfrage sie
+    // liefert — der Nachfass-Schritt zeigt Personen, keine Adressliste.
+    const push = (e: string, extra?: Partial<AudiencePerson>): void => {
       const lc = (e || '').trim().toLowerCase();
-      if (lc && lc.indexOf('@') > 0 && !seen.has(lc) && !excluded.has(lc)) { seen.add(lc); out.push(lc); }
+      if (lc && lc.indexOf('@') > 0 && !seen.has(lc) && !excluded.has(lc)) {
+        seen.add(lc);
+        out.push({ email: lc, displayName: extra?.displayName || '', jobTitle: extra?.jobTitle || '', location: extra?.location || '' });
+      }
     };
     for (const entry of entries) {
       if (entry.indexOf('@') < 0) continue; // Standort-Pattern — nicht auflösbar
       try {
         const grp = await getGroupMembers(entry);
-        if (grp && grp.members && grp.members.length > 0) grp.members.forEach(m => push(m.email));
-        else push(entry);
+        if (grp && grp.members && grp.members.length > 0) {
+          grp.members.forEach(m => push(m.email, { displayName: m.displayName, jobTitle: m.jobTitle, location: m.location }));
+        } else push(entry);
       } catch { push(entry); }
     }
-    if (out.length === 0) (ev.audienceResolvedEmails || []).forEach(push);
+    if (out.length === 0) (ev.audienceResolvedEmails || []).forEach(e => push(e));
     return out;
   };
 
@@ -3580,8 +3642,8 @@ export default function AdminPage(): React.ReactElement {
       if (!visibilityResolved) setVisibilityResolved(audience);
       if (audience.length === 0) {
         showAlert(isDe
-          ? 'Für dieses Event lässt sich keine Personenliste ermitteln. Das passiert, wenn die Sichtbarkeit nur über einen Standortfilter läuft — dort steht keine abzählbare Empfängerliste dahinter. Ergänze in Schritt 3 des Event-Edits einen Mailverteiler oder einzelne Personen, dann kann DEX nachfassen.'
-          : 'No list of people can be determined for this event. That happens when visibility runs via a location filter only — there is no enumerable recipient list behind it. Add a distribution list or individual people in step 3 of the event edit, then DEX can follow up.',
+          ? 'Für dieses Event kennt DEX keine Namen. Das ist so, wenn die Sichtbarkeit nur über den Standort läuft — dahinter steht keine Liste einzelner Personen. Trage in Schritt 3 des Event-Edits zusätzlich einen Mailverteiler oder einzelne Personen ein, dann kann DEX nachfassen.'
+          : 'DEX does not know any names for this event. That is the case when visibility runs via location only — there is no list of individual people behind it. Add a distribution list or individual people in step 3 of the event edit, then DEX can follow up.',
           { variant: 'info' });
         return;
       }
@@ -3599,20 +3661,18 @@ export default function AdminPage(): React.ReactElement {
         ...(selectedEvent.organizerEmails || []),
         ...(selectedEvent.coOrganizerEmails || []),
       ].map(e => (e || '').toLowerCase().trim()).filter(Boolean));
-      const pending = audience.filter(e => !decided.has(e) && !team.has(e));
+      const pending = audience.filter(p => !decided.has(p.email) && !team.has(p.email));
       if (pending.length === 0) {
         showAlert(isDe
-          ? `Alle ${audience.length} erreichbaren Personen haben bereits geantwortet — angemeldet, abgemeldet oder abgesagt. Es gibt niemanden zum Erinnern.`
-          : `All ${audience.length} reachable people have already responded — registered, cancelled or declined. There is nobody to remind.`,
+          ? `Alle ${audience.length} Personen, die das Event sehen können, haben bereits geantwortet — angemeldet, abgemeldet oder abgesagt. Es gibt niemanden zum Erinnern.`
+          : `All ${audience.length} people who can see this event have already responded — registered, cancelled or declined. There is nobody to remind.`,
           { variant: 'success' });
         return;
       }
-      // Den bestehenden Einladungs-Dialog im Nachfass-Modus öffnen und die
-      // ermittelte Liste als Empfänger vorgeben (dort weiter bearbeitbar).
-      openInviteModal();
-      setInviteTarget('pending');
-      setInviteCustomEmails(pending);
-      setInviteAudienceOpen(true);
+      // v29.36: ERST die Übersicht, wer fehlt (Foto, Name, Position) — die Mail
+      // kommt im zweiten Schritt. Vorher landete man direkt im Mail-Dialog und
+      // musste einer Adressliste glauben, ohne zu sehen, wen man da anschreibt.
+      setPendingPeople({ people: pending, reachable: audience.length });
     } catch (err) {
       showAlert((isDe ? 'Prüfung fehlgeschlagen: ' : 'Check failed: ') + String((err as Error)?.message || err), { variant: 'error' });
     } finally {
@@ -3696,6 +3756,8 @@ export default function AdminPage(): React.ReactElement {
     setEmailHeading(loaded && typeof loaded.heading === 'string' ? loaded.heading : def.heading);
     setMassmailSubheading(loaded && typeof loaded.subheading === 'string' ? loaded.subheading : '');
     setEmailBody(loaded && typeof loaded.body === 'string' ? loaded.body : def.body);
+    // v29.37: Kopfbild-Größe aus dem Event übernehmen statt fest 180/30/30.
+    setMassmailImageLayout(eventHeaderImageLayout(ev.emailTemplateOverrides));
     window.setTimeout(() => { massmailHydratingRef.current = false; }, 0);
   };
   const openMassmailPicker = (): void => {
@@ -3782,6 +3844,13 @@ export default function AdminPage(): React.ReactElement {
     (inviteHero === 'event' && inviteEventPhotoB64)
       ? wrappedHtml.replace(/\{\{ORB_URL\}\}/g, inviteEventPhotoB64)
       : wrappedHtml;
+  // v29.37: Steht im Kopf ein eigenes Bild? Entweder das eingebackene Event-Foto
+  // oder — wenn {{ORB_URL}} stehen bleibt — das Mail-Logo des Events, das der
+  // Flow einsetzt. Nur dann darf die volle Breite gelten (sonst Orb-Deckel).
+  const massmailHasOwnImage = (massmailHero === 'event' && !!massmailEventPhotoB64) || !!(selectedEvent && selectedEvent.mailImageBase64);
+  const inviteHasOwnImage = (inviteHero === 'event' && !!inviteEventPhotoB64) || !!(selectedEvent && selectedEvent.mailImageBase64);
+  const massmailHeaderOpts = headerOptsFor(massmailImageLayout, massmailHasOwnImage);
+  const inviteHeaderOpts = headerOptsFor(inviteImageLayout, inviteHasOwnImage);
   // Testmail mit dem aktuellen Stand an die Organizer (zur Kontrolle vor dem
   // echten Massenversand). Geht NICHT an die Teilnehmer.
   const sendMassmailTestToOrganizers = async (): Promise<void> => {
@@ -3804,7 +3873,7 @@ export default function AdminPage(): React.ReactElement {
       const resolvedHeading = replacePlaceholders(emailHeading, previewVars);
       const resolvedBody = replacePlaceholders(emailBody, previewVars);
       const resolvedSub = massmailSubheading.trim() ? replacePlaceholders(massmailSubheading, previewVars) : `Event ${selectedEvent.title}`;
-      const fullBody = applyMassmailHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSub, resolvedBody, undefined, { imageWidth: massmailImageLayout.width, imagePaddingV: massmailImageLayout.paddingV, imagePaddingH: massmailImageLayout.paddingH }));
+      const fullBody = applyMassmailHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSub, resolvedBody, undefined, massmailHeaderOpts));
       await eventServiceRef.queueEmail(resolvedSubject, to, 'Organizer (Test)', fullBody, 'Massenmail', selectedEvent.title, selectedEvent.id);
       setMassmailTestMsg(isDe ? `Testmail an die Organizer (${to.split(';').length}) verschickt — bitte Postfach prüfen.` : `Test email sent to the organizers (${to.split(';').length}) — please check the mailbox.`);
     } catch (err) {
@@ -9245,11 +9314,11 @@ export default function AdminPage(): React.ReactElement {
           ? (isDe ? 'Ohne Einschränkung — alle Mitarbeitenden sehen dieses Event' : 'No restriction — all employees can see this event')
           : countable
             ? (isDe
-              ? `${resolvedCount} ${resolvedCount === 1 ? 'Person' : 'Personen'} erreichbar${locs.length > 0 && modeAnd ? ` · zusätzlich auf ${locs.join(', ')} eingegrenzt` : ''}`
-              : `${resolvedCount} ${resolvedCount === 1 ? 'person' : 'people'} reachable${locs.length > 0 && modeAnd ? ` · additionally limited to ${locs.join(', ')}` : ''}`)
+              ? `${resolvedCount} ${resolvedCount === 1 ? 'Person kann' : 'Personen können'} dieses Event sehen${locs.length > 0 && modeAnd ? ` · davon nur die am Standort ${locs.join(', ')}` : ''}`
+              : `${resolvedCount} ${resolvedCount === 1 ? 'person can' : 'people can'} see this event${locs.length > 0 && modeAnd ? ` · of those only the ones at ${locs.join(', ')}` : ''}`)
             : (isDe
-              ? `Sichtbar für: ${locs.length > 0 ? locs.join(', ') : (isDe ? 'ausgewählte Personen' : 'selected people')} — keine abzählbare Personenliste`
-              : `Visible to: ${locs.length > 0 ? locs.join(', ') : 'selected people'} — no enumerable list of people`);
+              ? `Sichtbar für ${locs.length > 0 ? `alle am Standort ${locs.join(', ')}` : 'ausgewählte Personen'} — wie viele das sind, weiß DEX hier nicht`
+              : `Visible to ${locs.length > 0 ? `everyone at ${locs.join(', ')}` : 'selected people'} — DEX cannot tell how many that is`);
         const canManageVis = isAdmin || isOrganizerFor(selectedEvent);
         return (
           <div className="card" style={{ padding: '12px 16px', marginBottom: 12 }}>
@@ -9268,32 +9337,65 @@ export default function AdminPage(): React.ReactElement {
                 <span style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>— {summary}</span>
                 <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)' }}>{visibilityOpen ? '▾' : '▸'}</span>
               </button>
-              {canManageVis && !orgPastLock && mailable.length > 0 && (
+            </div>
+            {/* v29.36: Der Knopf stand rechts außen am Kartenrand — weit weg von
+                der Zahl, auf die er sich bezieht, und ohne sichtbare Erklärung
+                (sie steckte im title-Tooltip). Jetzt links unter der Zeile, mit
+                dem Satz daneben, der sagt, was passiert. */}
+            {canManageVis && !orgPastLock && mailable.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 8 }}>
                 <button
                   type="button"
                   className="btn btn-secondary"
-                  style={{ marginLeft: 'auto', fontSize: '0.8rem', padding: '6px 12px' }}
+                  style={{ fontSize: '0.8rem', padding: '6px 12px', flexShrink: 0 }}
                   disabled={pendingCheckBusy}
                   onClick={() => { void openPendingReminder(); }}
-                  title={isDe
-                    ? 'Prüft, wer aus dem Verteiler weder angemeldet noch abgemeldet ist und auch nicht abgesagt hat — und öffnet den Erinnerungs-Dialog mit dieser Liste.'
-                    : 'Checks who from the distribution list has neither registered nor cancelled nor declined — and opens the reminder dialog with that list.'}
                 >
                   {pendingCheckBusy
                     ? (isDe ? 'Wird geprüft…' : 'Checking…')
                     : (isDe ? 'Wer hat noch nicht geantwortet?' : 'Who has not responded yet?')}
                 </button>
-              )}
-            </div>
+                <span style={{ fontSize: '0.78rem', color: 'var(--dex-gray-600)', flex: '1 1 260px', minWidth: 0 }}>
+                  {isDe
+                    ? 'Zeigt dir zuerst eine Liste der Personen, die das Event sehen können, sich aber weder angemeldet noch abgemeldet und auch nicht abgesagt haben. Erinnern kannst du sie im Schritt danach.'
+                    : 'First shows you a list of the people who can see this event but have neither registered nor cancelled nor declined. You can remind them in the next step.'}
+                </span>
+              </div>
+            )}
             {visibilityOpen && (
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--dex-gray-200)', fontSize: '0.82rem', color: 'var(--dex-gray-700)', display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <div>
                   <strong>{isDe ? 'Standortfilter: ' : 'Location filter: '}</strong>
                   {locs.length > 0 ? locs.join(', ') : (isDe ? 'keiner' : 'none')}
                 </div>
+                {/* v29.36: 100 Adressen als Fließtext waren nicht lesbar — erst
+                    die ersten zwölf, den Rest auf Klick. */}
                 <div>
-                  <strong>{isDe ? 'Verteiler & Personen: ' : 'Distribution lists & people: '}</strong>
-                  {audEntries.length > 0 ? audEntries.join(', ') : (isDe ? 'keine' : 'none')}
+                  <strong>{isDe ? 'Eingetragen sind: ' : 'Entered here: '}</strong>
+                  {audEntries.length === 0
+                    ? (isDe ? 'keine Verteiler und keine einzelnen Personen' : 'no distribution lists and no individual people')
+                    : (visibilityAllAddresses || audEntries.length <= 12
+                      ? audEntries.join(', ')
+                      : `${audEntries.slice(0, 12).join(', ')} …`)}
+                  {audEntries.length > 12 && (
+                    <button
+                      type="button"
+                      onClick={() => setVisibilityAllAddresses(v => !v)}
+                      style={{
+                        background: 'none', border: 'none', padding: '0 0 0 6px', cursor: 'pointer',
+                        font: 'inherit', color: 'var(--dex-green-dark, #4a7c1f)', textDecoration: 'underline',
+                      }}
+                    >
+                      {visibilityAllAddresses
+                        ? (isDe ? 'weniger anzeigen' : 'show less')
+                        : (isDe ? `alle ${audEntries.length} anzeigen` : `show all ${audEntries.length}`)}
+                    </button>
+                  )}
+                </div>
+                <div style={{ color: 'var(--dex-gray-600)' }}>
+                  {isDe
+                    ? 'Steht dort ein Mailverteiler, zählt DEX dessen Mitglieder einzeln — auch aus Verteilern, die selbst wieder Verteiler enthalten.'
+                    : 'If a distribution list is entered, DEX counts its members individually — including lists nested inside other lists.'}
                 </div>
                 {locs.length > 0 && audEntries.length > 0 && (
                   <div style={{ color: 'var(--dex-gray-600)' }}>
@@ -9310,13 +9412,16 @@ export default function AdminPage(): React.ReactElement {
                 )}
                 {mailable.length > 0 && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                    {/* v29.36: „Aufgelöste Personen" war Fachsprache aus dem
+                        Code — gemeint ist schlicht, wie viele Menschen am Ende
+                        dahinterstehen. */}
                     <span>
-                      <strong>{isDe ? 'Aufgelöste Personen: ' : 'Resolved people: '}</strong>
-                      {resolvedCount}
+                      <strong>{isDe ? 'Ergibt zusammen: ' : 'Adds up to: '}</strong>
+                      {resolvedCount} {isDe ? (resolvedCount === 1 ? 'Person' : 'Personen') : (resolvedCount === 1 ? 'person' : 'people')}
                       <span style={{ color: 'var(--dex-gray-500)' }}>
                         {visibilityResolved
-                          ? (isDe ? ' (gerade ermittelt)' : ' (just resolved)')
-                          : (isDe ? ' (Stand: letztes Speichern des Events)' : ' (as of the last event save)')}
+                          ? (isDe ? ' (gerade nachgezählt)' : ' (just counted)')
+                          : (isDe ? ' (Stand: als das Event zuletzt gespeichert wurde)' : ' (as of the last time the event was saved)')}
                       </span>
                     </span>
                     <button
@@ -9333,15 +9438,15 @@ export default function AdminPage(): React.ReactElement {
                         })();
                       }}
                     >
-                      {visibilityBusy ? (isDe ? 'Wird aufgelöst…' : 'Resolving…') : (isDe ? 'Jetzt neu auflösen' : 'Resolve now')}
+                      {visibilityBusy ? (isDe ? 'Wird gezählt…' : 'Counting…') : (isDe ? 'Jetzt neu nachzählen' : 'Count again now')}
                     </button>
                   </div>
                 )}
                 {locs.length > 0 && mailable.length === 0 && (
                   <div style={{ color: 'var(--dex-gray-600)' }}>
                     {isDe
-                      ? 'Hinter einem reinen Standortfilter steht keine abzählbare Empfängerliste — DEX kann hier weder eine Personenzahl nennen noch nachfassen. Ergänze dafür in Schritt 3 des Event-Edits einen Mailverteiler oder einzelne Personen.'
-                      : 'A pure location filter has no enumerable recipient list — DEX can neither give a headcount nor follow up here. Add a distribution list or individual people in step 3 of the event edit.'}
+                      ? 'Wenn die Sichtbarkeit nur über den Standort läuft, kennt DEX keine Namen dahinter — es gibt dann weder eine Personenzahl noch jemanden, den DEX erinnern könnte. Wenn du das brauchst, trage in Schritt 3 des Event-Edits zusätzlich einen Mailverteiler oder einzelne Personen ein.'
+                      : 'If visibility runs via location only, DEX does not know the names behind it — so there is neither a headcount nor anyone DEX could remind. If you need that, add a distribution list or individual people in step 3 of the event edit.'}
                   </div>
                 )}
               </div>
@@ -9429,6 +9534,81 @@ export default function AdminPage(): React.ReactElement {
             registerForEvent={registerForEvent}
             isDe={isDe}
           />
+        )}
+        {/* v29.36: Schritt 1 des Nachfassens — WER fehlt noch. Personen mit Foto,
+            Name und Position in Zeilen, damit man sieht, wen man anschreibt.
+            Erst der Knopf unten öffnet den Mail-Dialog (Schritt 2). */}
+        {pendingPeople && (
+          <Modal open={true} onClose={() => setPendingPeople(null)} maxWidth={720} padding={0} ariaLabel={isDe ? 'Wer hat noch nicht geantwortet' : 'Who has not responded yet'}>
+            <div style={{ padding: '20px 24px 12px' }}>
+              <h3 style={{ margin: '0 0 6px', fontSize: '1.15rem', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <Users size={18} />
+                {isDe ? 'Noch keine Rückmeldung' : 'No response yet'}
+              </h3>
+              <div style={{ fontSize: '0.85rem', color: 'var(--dex-gray-700)', lineHeight: 1.5 }}>
+                {isDe
+                  ? <>Von <strong>{pendingPeople.reachable}</strong> Personen, die dieses Event sehen können, haben sich <strong>{pendingPeople.people.length}</strong> noch gar nicht geäußert: weder angemeldet noch abgemeldet und auch keine Absage. Das Organizer-Team ist nicht mitgezählt.</>
+                  : <>Of <strong>{pendingPeople.reachable}</strong> people who can see this event, <strong>{pendingPeople.people.length}</strong> have not responded at all: neither registered nor cancelled nor declined. The organizer team is not counted.</>}
+              </div>
+            </div>
+            <div style={{ maxHeight: '48vh', overflowY: 'auto', borderTop: '1px solid var(--dex-gray-200)', borderBottom: '1px solid var(--dex-gray-200)' }}>
+              {pendingPeople.people.map((p, i) => {
+                const nm = (p.displayName || '').trim() || p.email;
+                const sub = [p.jobTitle, p.location].filter(Boolean).join(' · ');
+                return (
+                  <div
+                    key={p.email}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 12, padding: '8px 24px',
+                      background: i % 2 === 0 ? '#fff' : 'var(--dex-gray-50, #fafafa)',
+                    }}
+                  >
+                    <PersonContactHover email={p.email} name={nm} size={34} subline={sub} isDe={isDe} />
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontSize: '0.88rem', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nm}</div>
+                      <div style={{ fontSize: '0.76rem', color: 'var(--dex-gray-600)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {sub ? `${sub} · ${p.email}` : p.email}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{ padding: '14px 24px 20px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+              <button type="button" className="btn btn-secondary" style={{ fontSize: '0.85rem' }} onClick={() => setPendingPeople(null)}>
+                {isDe ? 'Schließen' : 'Close'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ fontSize: '0.85rem' }}
+                onClick={() => {
+                  const list = pendingPeople.people.map(p => p.email).join('; ');
+                  void navigator.clipboard.writeText(list).then(
+                    () => showAlert(isDe ? `${pendingPeople.people.length} Adressen kopiert.` : `${pendingPeople.people.length} addresses copied.`, { variant: 'success' }),
+                    () => showAlert(isDe ? 'Kopieren nicht möglich.' : 'Copying failed.', { variant: 'error' })
+                  );
+                }}
+              >
+                {isDe ? 'Adressen kopieren' : 'Copy addresses'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                style={{ marginLeft: 'auto', fontSize: '0.85rem' }}
+                onClick={() => {
+                  const emails = pendingPeople.people.map(p => p.email);
+                  setPendingPeople(null);
+                  openInviteModal();
+                  setInviteTarget('pending');
+                  setInviteCustomEmails(emails);
+                  setInviteAudienceOpen(true);
+                }}
+              >
+                {isDe ? `Erinnerung schreiben (${pendingPeople.people.length})` : `Write reminder (${pendingPeople.people.length})`}
+              </button>
+            </div>
+          </Modal>
         )}
         {/* v15.14: Legende für die Pastel-Hintergründe — sowohl in der
             Sub-Event-Detail-Ansicht (Parent-CFs + eigene CFs) als auch im
@@ -14084,7 +14264,7 @@ export default function AdminPage(): React.ReactElement {
           const resolvedSubheading = massmailSubheading.trim()
             ? replacePlaceholders(massmailSubheading, previewVars)
             : `Event ${selectedEvent.title}`;
-          const fullBody = applyMassmailHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody, undefined, { imageWidth: massmailImageLayout.width, imagePaddingV: massmailImageLayout.paddingV, imagePaddingH: massmailImageLayout.paddingH }));
+          const fullBody = applyMassmailHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody, undefined, massmailHeaderOpts));
           const allEmails = recipients.map(r => r.ParticipantEmail).join(';');
           // v17.10: Organizer immer auf CC (falls nicht ohnehin schon
           // unter den Empfängern). Dedup per lowercase, semicolon-join.
@@ -14399,7 +14579,7 @@ export default function AdminPage(): React.ReactElement {
           const resolvedSubheading = inviteSubheading && inviteSubheading.trim()
             ? replacePlaceholders(inviteSubheading, previewVars)
             : `Event ${selectedEvent.title}`;
-          const fullBody = applyInviteHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody, undefined, { imageWidth: inviteImageLayout.width, imagePaddingV: inviteImageLayout.paddingV, imagePaddingH: inviteImageLayout.paddingH }));
+          const fullBody = applyInviteHero(wrapTemplate('#86bc25', resolvedHeading, resolvedSubheading, resolvedBody, undefined, inviteHeaderOpts));
           const ccString = ccEmails.join(';');
           const recipientName = inviteTarget === 'organizer'
             ? myDisplayName
