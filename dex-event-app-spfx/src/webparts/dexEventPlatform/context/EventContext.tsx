@@ -1321,6 +1321,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
           return v.indexOf('data:') === 0 ? v : '';
         } catch { return ''; }
       })(),
+      // v29.38: Vom Organizer hinterlegter Teams-Link (Piggyback `_teamsLink`).
+      teamsLink: ((): string => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          const v = (ov && typeof ov._teamsLink === 'string') ? ov._teamsLink.trim() : '';
+          return /^https?:\/\//i.test(v) ? v : '';
+        } catch { return ''; }
+      })(),
       // v28.38: Hotel-Planung (Piggybacks _hotels / _hotelStays / _hotelVisible).
       // Nur Stammdaten und Vorlagen — die Zuordnung pro Person steht in der
       // Teilnehmerliste (Spalten Hotel/HotelFrom/HotelTo).

@@ -248,6 +248,11 @@ export interface DeloitteEvent {
    *  Outlook-Termin zeigen dieses, Anmeldeseite und Kachel das Event-Bild.
    *  Die Anmeldeseite fällt darauf zurück, wenn kein Event-Bild gepflegt ist. */
   mailImageBase64?: string;
+  /** v29.38: Optionaler Teams-Besprechungslink (Piggyback `_teamsLink`). Der
+   *  Organizer hinterlegt ihn selbst — DEX erzeugt keine Teams-Meetings. Der
+   *  Link landet als Teilnahme-Block im Outlook-Termin; der Flow bleibt
+   *  unverändert, weil der Termin-Body ohnehin aus der App kommt. */
+  teamsLink?: string;
   /** v28.38: Hotel-Stammdaten des Events (Piggyback `_hotels`). Klein gehalten —
    *  die Zuordnung pro Person steht in der Teilnehmerliste, nicht hier. */
   hotels?: DexHotel[];

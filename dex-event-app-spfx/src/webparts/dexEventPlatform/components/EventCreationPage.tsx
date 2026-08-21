@@ -639,6 +639,10 @@ export default function EventCreationPage(): React.ReactElement {
   // Ja mit gesetzter Frist): „auch nach der Abmeldefrist erlauben" (Default
   // ja = Late-Cancel mit Organizer-Mail; bei Nein Piggyback
   // _noCancelAfterDeadline).
+  // v29.38: Optionaler Teams-Besprechungslink. DEX legt KEIN Teams-Meeting an —
+  // der Organizer fuegt den Link seiner eigenen Besprechung ein. Er landet als
+  // Teilnahme-Block im Outlook-Termin.
+  const [teamsLink, setTeamsLink] = React.useState<string>(editEvent?.teamsLink || '');
   const [userCancelAllowed, setUserCancelAllowed] = React.useState<boolean>(!(editEvent && editEvent.noSelfCancel));
   const [noCancelAfterDeadline, setNoCancelAfterDeadline] = React.useState<boolean>(!!(editEvent && editEvent.noCancelAfterDeadline));
   // v9.22: Auto-Fill der Deadlines wenn Start-Datum gesetzt wird und die
@@ -1037,6 +1041,8 @@ export default function EventCreationPage(): React.ReactElement {
           _subEventCalendar, _subEventSingleChoice,
           // v29.25: Abmelde-Sperren (s. userCancelAllowed / noCancelAfterDeadline).
           _noSelfCancel, _noCancelAfterDeadline,
+          // v29.38: Teams-Link (s. teamsLinkConfig).
+          _teamsLink,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           ...rest
         } = parsed as Record<string, unknown>;
@@ -1050,7 +1056,7 @@ export default function EventCreationPage(): React.ReactElement {
         void _organizerDisplayLarge; void _hiddenOrganizers; void _hideOrgIndividual; void _mainEventLabel;
         void _imageOrigUrl; void _klammerDeadline; void _noDescription;
         void _subEventCalendar; void _subEventSingleChoice;
-        void _noSelfCancel; void _noCancelAfterDeadline;
+        void _noSelfCancel; void _noCancelAfterDeadline; void _teamsLink;
         void _hotels; void _hotelStays; void _hotelVisible; void _hotelRules;
         return rest as Record<string, EmailOverrideEntry>;
       } catch { return {}; }
@@ -1101,6 +1107,11 @@ export default function EventCreationPage(): React.ReactElement {
   // Größen-/Abstands-Änderung das „Outlook-Termin aktualisieren?"-Modal genauso
   // öffnet wie eine Textänderung. useRef fixiert den Wert beim ersten Render.
   const initialHeaderImageLayoutRef = React.useRef<{ width: number; paddingV: number; paddingH: number }>(headerImageLayout);
+  // v29.38: Gleiche Mechanik für den Teams-Link — er steht nicht im rohen
+  // Termin-Text (er wird erst beim Wrappen angehängt), ändert den Termin aber
+  // sichtbar. Ohne Snapshot bliebe eine reine Link-Änderung für den
+  // Update-Detektor unsichtbar und der Termin behielte den alten Stand.
+  const initialTeamsLinkRef = React.useRef<string>(teamsLink);
   // v18.73: Piggyback-Konfig für den Save (leer wenn alles auf Default steht —
   // dann wird der Key gar nicht geschrieben). Wird in Create- UND Edit-Pfad
   // sowie in die Sub-Event-Overrides gemerged.
@@ -3475,7 +3486,7 @@ export default function EventCreationPage(): React.ReactElement {
         const resolvedSub2 = subOutlookSub ? replacePlaceholders(subOutlookSub, vars) : (draft.location || undefined);
         // v18.73: Sub-Events erben das Header-Bild-Layout des Hauptevents.
         // v28.29: ohne eigenes/geerbtes Bild wird die Breite gekappt (Orb).
-        const wrapped = buildOutlookBody(resolvedHead, resolvedBody, resolvedSub2, headerLayoutFor(subOutlookLogo));
+        const wrapped = buildOutlookBody(resolvedHead, resolvedBody, resolvedSub2, headerLayoutFor(subOutlookLogo), teamsLink.trim(), (subEmailLang || '').toUpperCase() !== 'EN');
         wrappedSubOutlookBody = wrapped.replace(/\{\{ORB_URL\}\}/g, subOutlookLogo || getCachedOrbBase64() || '');
       }
       // Sub-Event-EmailTemplateOverrides: Logo-Piggybacks (Top-Level-Pattern)
@@ -4383,7 +4394,7 @@ export default function EventCreationPage(): React.ReactElement {
       // v27.5: Default-Unter-Überschrift = Ort (nicht Datum).
       const resolvedOlSub = effOutlookSubheading ? replacePlaceholders(effOutlookSubheading, outlookVars) : (location || undefined);
       // v18.73: Header-Bild Größe + Innenabstand (event-weit) in den Outlook-Body.
-      const wrappedOutlook = buildOutlookBody(resolvedOlHeading, resolvedBody, resolvedOlSub, headerLayoutFor(effOutlookLogo));
+      const wrappedOutlook = buildOutlookBody(resolvedOlHeading, resolvedBody, resolvedOlSub, headerLayoutFor(effOutlookLogo), teamsLink.trim(), (emailLanguage || '').toUpperCase() !== 'EN');
       // v11.93: Top-Level-Logo aus dem Resolver — sonst würde beim Speichern
       // aus einem Sub-Tab das falsche Logo aufs Haupt-Event geschrieben.
       updates['OutlookBody'] = wrappedOutlook.replace(/\{\{ORB_URL\}\}/g, effOutlookLogo || getCachedOrbBase64() || '');
@@ -4467,6 +4478,9 @@ export default function EventCreationPage(): React.ReactElement {
       // Sperre nur, solange die Selbst-Abmeldung überhaupt erlaubt ist.
       const noSelfCancelConfig = !userCancelAllowed ? { _noSelfCancel: true } : {};
       const noCancelAfterDeadlineConfig = (userCancelAllowed && noCancelAfterDeadline) ? { _noCancelAfterDeadline: true } : {};
+      // v29.38: Teams-Link nur speichern, wenn er wie ein Link aussieht — ein
+      // halb eingefuegter Text wuerde sonst als toter Knopf im Termin landen.
+      const teamsLinkConfig = /^https?:\/\//i.test(teamsLink.trim()) ? { _teamsLink: teamsLink.trim() } : {};
       // v28.11: Bestehende Original-Bild-URL beim Edit-Save WEITERTRAGEN —
       // sonst würde der frisch zusammengebaute Overrides-Blob sie wegwerfen.
       // v28.12: auch bei neuem Bild erstmal mitschreiben; der Post-Save-Code
@@ -4546,7 +4560,7 @@ export default function EventCreationPage(): React.ReactElement {
         organizerDisplayLargeConfig, previewBeforeActiveConfig,
         imageDisplayConfig, hideOrganizerConfig, hiddenOrganizersConfig,
         hideOrgIndividualConfig, headerImageLayoutConfig, noDescriptionConfig,
-        subEventCalendarConfig, subEventSingleChoiceConfig, noSelfCancelConfig, noCancelAfterDeadlineConfig, hotelCarryConfig,
+        subEventCalendarConfig, subEventSingleChoiceConfig, noSelfCancelConfig, noCancelAfterDeadlineConfig, teamsLinkConfig, hotelCarryConfig,
       ];
       updates['EmailTemplateOverrides'] = (Object.keys(topOverrides).length > 0 || !!effEmailLogo || !!effOutlookLogo || topPiggybackConfigs.some(o => Object.keys(o).length > 0))
         // v28.2: Object.assign statt Spread-Kette — die Literal-Spreads
@@ -5193,7 +5207,7 @@ export default function EventCreationPage(): React.ReactElement {
           // v27.5: Default-Unter-Überschrift = Ort (nicht Datum).
           const resolvedSub = effOutlookSubheading ? replacePlaceholders(effOutlookSubheading, vars) : (location || undefined);
           // v18.73: Header-Bild Größe + Innenabstand (event-weit) in den Outlook-Body.
-          const wrapped = buildOutlookBody(resolvedHeading, resolvedBody, resolvedSub, headerLayoutFor(effOutlookLogo));
+          const wrapped = buildOutlookBody(resolvedHeading, resolvedBody, resolvedSub, headerLayoutFor(effOutlookLogo), teamsLink.trim(), (emailLanguage || '').toUpperCase() !== 'EN');
           // v11.93: Logo aus Top-Level-Resolver, sonst landet beim Speichern
           // aus einem Sub-Tab das Sub-Logo aufs Haupt-Event.
           return wrapped.replace(/\{\{ORB_URL\}\}/g, effOutlookLogo || getCachedOrbBase64() || '');
@@ -5301,6 +5315,8 @@ export default function EventCreationPage(): React.ReactElement {
             // v29.25: Abmelde-Sperren auch beim Anlegen.
             (!userCancelAllowed ? { _noSelfCancel: true } : {}),
             ((userCancelAllowed && noCancelAfterDeadline) ? { _noCancelAfterDeadline: true } : {}),
+            // v29.38: Teams-Link auch beim Anlegen.
+            (/^https?:\/\//i.test(teamsLink.trim()) ? { _teamsLink: teamsLink.trim() } : {}),
           ];
           // v29.19: Overrides aus dem Top-Level-Resolver — wie im Edit-Pfad
           // (v14.4). Der rohe State hält beim Speichern von einem Sub-Reiter
@@ -5737,6 +5753,10 @@ export default function EventCreationPage(): React.ReactElement {
     if (!sameInstant(currentEnd, snap.endDate || '')) topChangedFields.push('endDate');
     if (currentStripped !== initialStripped) topChangedFields.push('outlookBody');
     if (layoutChanged) topChangedFields.push('layout');
+    // v29.38: reine Teams-Link-Änderung ebenfalls als Kopf-/Layout-Änderung
+    // melden (eigener Grund wäre eine weitere Feld-Variante — der Termin-Text
+    // ändert sich hier tatsächlich, deshalb 'outlookBody').
+    if (teamsLink.trim() !== initialTeamsLinkRef.current.trim() && topChangedFields.indexOf('outlookBody') < 0) topChangedFields.push('outlookBody');
     if (topLogoChanged) topChangedFields.push('logo');
     // v22.48: Organizer-Änderung. Der Outlook-Standardtext enthält die
     // Organizer-Namen („wendet euch bitte an …"). Solange der Text NICHT
@@ -5803,6 +5823,10 @@ export default function EventCreationPage(): React.ReactElement {
       // Sub-Event-Outlook-Termine (gleicher Hero-Bild-Kopf) — als eigenes
       // „layout"-Feld werten, damit das Update-Modal sie mit auflistet.
       if (layoutChanged) subChangedFields.push('layout');
+      // v29.38: Der Teams-Link gilt event-weit — er steckt auch in den
+      // Sub-Event-Terminen. Ändert er sich, müssen die genauso aktualisiert
+      // werden, sonst zeigen sie weiter den alten (oder gar keinen) Link.
+      if (teamsLink.trim() !== initialTeamsLinkRef.current.trim() && subChangedFields.indexOf('outlookBody') < 0) subChangedFields.push('outlookBody');
       if (curSubLogo !== initSubLogo) subChangedFields.push('logo');
       // v11.66: Debug-Log für jeden Sub-Event, damit wir in der Browser-
       // Konsole nachvollziehen können, warum das Modal manchmal nicht
@@ -10351,6 +10375,49 @@ export default function EventCreationPage(): React.ReactElement {
                     ? 'Leer lassen = automatisch aus Veranstaltungsort + Adresse. Eingabe überschreibt den Termin-Ort.'
                     : 'Leave empty = automatic from venue + address. Any input overrides the event location.'}
                 </span>
+              </div>
+
+              {/* v29.39: Teams-Link. Steht hier bei Ort und Adresse, weil er
+                  dieselbe Frage beantwortet („wo findet es statt?") — und
+                  bewusst NUR hier: Ein zweites Feld im Outlook-Editor wären
+                  zwei Bedienwege für denselben Wert. */}
+              <div className="form-group" style={{ marginTop: 16 }}>
+                <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  {isDe ? 'Teams-Link (optional)' : 'Teams link (optional)'}
+                  <InfoTooltip text={isDe ? (
+                    <>
+                      <strong>Was du hier einstellst:</strong> den <strong>Teilnahme-Link deiner eigenen Teams-Besprechung</strong>. Lege die Besprechung wie gewohnt in Outlook oder Teams an und kopiere den Link hierher — DEX erzeugt selbst keine Teams-Meetings.<br /><br />
+                      <strong>Anzeige in der App:</strong> im <strong>Outlook-Termin</strong> als Knopf &bdquo;An Microsoft-Teams-Besprechung teilnehmen&ldquo;, im <strong>Organizer Center</strong> und in <strong>Meine Events</strong> als Teilnahme-Knopf.<br /><br />
+                      <strong>Wichtig:</strong> Der Link steht im <strong>Text</strong> des Termins. Outlook kennt den Termin dadurch <strong>nicht</strong> als Online-Besprechung — es gibt also keinen &bdquo;Teilnehmen&ldquo;-Knopf in der Kalenderleiste und keinen Direktaufruf aus Teams heraus. Die Teilnehmer klicken den Link im Termin bzw. in der App.<br /><br />
+                      <strong>Gilt für:</strong> das ganze Event, also auch für die Termine der Sub-Events.
+                    </>
+                  ) : (
+                    <>
+                      <strong>What you set here:</strong> the <strong>join link of your own Teams meeting</strong>. Create the meeting in Outlook or Teams as usual and paste the link here — DEX does not create Teams meetings itself.<br /><br />
+                      <strong>Shown in the app:</strong> in the <strong>Outlook event</strong> as a &bdquo;Join the Microsoft Teams meeting&ldquo; button, and in the <strong>Organizer Center</strong> and <strong>My Events</strong> as a join button.<br /><br />
+                      <strong>Important:</strong> The link sits in the <strong>body</strong> of the event. Outlook therefore does <strong>not</strong> treat it as an online meeting — there is no &bdquo;Join&ldquo; button in the calendar bar and no direct join from Teams. Attendees click the link in the event or in the app.<br /><br />
+                      <strong>Applies to:</strong> the whole event, including the sub-event calendar entries.
+                    </>
+                  )} />
+                </label>
+                <input
+                  className="form-input"
+                  value={teamsLink}
+                  onChange={e => setTeamsLink(e.target.value)}
+                  placeholder="https://teams.microsoft.com/l/meetup-join/..."
+                />
+                <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-gray-500)', marginTop: 4 }}>
+                  {isDe
+                    ? 'Der Link erscheint im Outlook-Termin, im Organizer Center und in „Meine Events". Hinweis: Der Termin ist damit für Outlook keine Online-Besprechung — es gibt keinen „Teilnehmen"-Knopf im Kalender und keinen Direktaufruf aus Teams, sondern den Link im Termin.'
+                    : 'The link appears in the Outlook event, in the Organizer Center and in „My Events". Note: Outlook does not treat the event as an online meeting — there is no „Join" button in the calendar and no direct join from Teams, just the link inside the event.'}
+                </span>
+                {teamsLink.trim() && !/^https?:\/\//i.test(teamsLink.trim()) && (
+                  <span style={{ display: 'block', fontSize: '0.78rem', color: 'var(--dex-red, #da291c)', fontWeight: 600, marginTop: 4 }}>
+                    {isDe
+                      ? 'Das sieht nicht nach einem Link aus — er muss mit https:// beginnen, sonst wird er nicht übernommen.'
+                      : 'That does not look like a link — it must start with https://, otherwise it is ignored.'}
+                  </span>
+                )}
               </div>
 
               {/* ===== Agenda Editor ===== */}
