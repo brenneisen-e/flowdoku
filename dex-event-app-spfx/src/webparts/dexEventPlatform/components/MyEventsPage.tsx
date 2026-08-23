@@ -2346,7 +2346,16 @@ export default function MyEventsPage(): React.ReactElement {
                             <UserFieldPicker
                               value={editData[field.id] || ''}
                               onChange={v => setEditData({ ...editData, [field.id]: v })}
-                              searchUsers={searchUsers}
+                              // v29.40: Nachträglich ergänzte Angaben dürfen die
+                              // Verteiler-Begrenzung des Feldes nicht umgehen —
+                              // sonst wäre der Umweg über „Angaben ergänzen"
+                              // genau das Schlupfloch, das die Option schließt.
+                              searchUsers={field.audienceOnly
+                                ? (async (q: string, intl?: boolean) => {
+                                  const res = await searchUsers(q, intl);
+                                  return res.filter(u => isEventVisibleForUser(event, u.email, u.location || '', [], u.jobTitle || ''));
+                                })
+                                : searchUsers}
                               searchUserByEmail={searchUser}
                               placeholder={locale === 'de' ? 'Name oder E-Mail eingeben…' : 'Type a name or email…'}
                               errorStyle={{}}

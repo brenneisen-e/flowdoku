@@ -2842,6 +2842,23 @@ export default function RegistrationPage(): React.ReactElement {
       })();
     }
   };
+  /**
+   * v29.40: Personensuche, die nur Personen aus dem Verteilerkreis des Events
+   * liefert — für Felder mit `audienceOnly` (typisch: Zimmerpartner). Es ist
+   * dieselbe Prüfung wie beim Anmelden für andere (`isEventVisibleForUser`),
+   * damit Feld und Anmeldung nicht unterschiedlich urteilen.
+   *
+   * Die Treffer liefern Standort und Position mit; ohne diese Angaben kann ein
+   * reiner Standortfilter nicht greifen — dann bleibt die Person draußen, was
+   * die sichere Richtung ist (lieber jemanden zu wenig anbieten als eine
+   * Person, die gar nicht eingeladen ist).
+   */
+  const searchUsersInAudience = React.useCallback(async (q: string, includeIntl?: boolean) => {
+    const res = await searchUsers(q, includeIntl);
+    if (!event) return res;
+    return res.filter(u => isEventVisibleForUser(event, u.email, u.location || '', [], u.jobTitle || ''));
+  }, [searchUsers, event]);
+
   // v11.5: Custom-Field-Renderer extrahiert — wird zweimal verwendet:
   // einmal direkt in der Gruppen-Auswahl-Box für Felder mit
   // onlyForGroup-Constraint, einmal im Eventspez-2-Spalten-Grid für
@@ -3008,13 +3025,20 @@ export default function RegistrationPage(): React.ReactElement {
       <UserFieldPicker
         value={vals[field.id] || ''}
         onChange={v => setVals({ ...vals, [field.id]: v })}
-        searchUsers={searchUsers}
+        // v29.40: Ist das Feld auf den Verteilerkreis begrenzt, findet die
+        // Suche nur Personen, die das Event auch sehen. Der Picker übernimmt
+        // ausschließlich Treffer aus der Liste (kein freier Text), damit
+        // reicht das Filtern der Suche — es gibt keinen Umweg daran vorbei.
+        searchUsers={field.audienceOnly ? searchUsersInAudience : searchUsers}
         searchUserByEmail={searchUser}
         placeholder={tEvent('reg.userfield.placeholder')}
         errorStyle={showErrors && field.required && !vals[field.id]?.trim() ? errorBorder : {}}
         // v26.60: „Person wird benachrichtigt"-Hinweis nur, wenn die
         // Zimmerpartner-Anfrage-Mail nicht abgeschaltet wurde.
-        hint={field.type === 'roommate' && field.notifyRoommate !== false ? tEvent('reg.userfield.notifyhint') : undefined}
+        hint={[
+          field.type === 'roommate' && field.notifyRoommate !== false ? tEvent('reg.userfield.notifyhint') : '',
+          field.audienceOnly ? (locale === 'de' ? 'Auswählbar sind nur Personen, die zu diesem Event eingeladen sind.' : 'Only people invited to this event can be selected.') : '',
+        ].filter(Boolean).join(' ') || undefined}
         forcedIsDe={locale === 'de'}
       />
     ) : field.type === 'checkbox' ? (

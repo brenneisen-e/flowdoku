@@ -250,6 +250,8 @@ function serializeCustomFields(
         // v26.60: Roommate-Benachrichtigung — nur das explizite ABSCHALTEN
         // persistieren (undefined = an, Bestandsverhalten bleibt unverändert).
         ...(f.type === 'roommate' && f.notifyRoommate === false ? { notifyRoommate: false } : {}),
+        // v29.40: Verteiler-Begrenzung des Personen-Feldes mitschreiben.
+        ...((f.type === 'user' || f.type === 'roommate') && f.audienceOnly ? { audienceOnly: true } : {}),
       } as CustomField;
     });
 }
@@ -809,6 +811,8 @@ export default function EventCreationPage(): React.ReactElement {
       ...(f.ccOnEmails ? { ccOnEmails: true } : {}),
       // v26.60: abgeschaltete Roommate-Benachrichtigung mit-übernehmen.
       ...(f.notifyRoommate === false ? { notifyRoommate: false } : {}),
+      // v29.40: Verteiler-Begrenzung des Personen-Feldes mit-übernehmen.
+      ...(f.audienceOnly ? { audienceOnly: true } : {}),
       // v29.20 (Audit A3): withTime (v24.25) und die daterange-Grenzen
       // (v28.63) fehlten in DIESEM Mapper — serializeCustomFields schreibt
       // nur, was im Draft steht, also entfernte jeder Edit-Save die
@@ -1550,6 +1554,7 @@ export default function EventCreationPage(): React.ReactElement {
         ...(f.optionsEn && f.optionsEn.length > 0 ? { optionsEn: [...f.optionsEn] } : {}),
         ...(f.ccOnEmails ? { ccOnEmails: true } : {}),
         ...(f.notifyRoommate === false ? { notifyRoommate: false } : {}),
+        ...(f.audienceOnly ? { audienceOnly: true } : {}),
         ...(f.withTime ? { withTime: true } : {}),
         ...(f.rangeStart ? { rangeStart: f.rangeStart } : {}),
         ...(f.rangeEnd ? { rangeEnd: f.rangeEnd } : {}),
@@ -3038,6 +3043,7 @@ export default function EventCreationPage(): React.ReactElement {
         ...(f.externalLinks && f.externalLinks.length > 0 ? { externalLinks: f.externalLinks.map(x => ({ ...x })) } : {}),
         ...(f.ccOnEmails ? { ccOnEmails: true } : {}),
         ...(f.notifyRoommate === false ? { notifyRoommate: false } : {}),
+        ...(f.audienceOnly ? { audienceOnly: true } : {}),
         // v29.20 (Audit A3): auch hier fehlten Vorauswahl, Vorfilter,
         // Uhrzeit-Option und die daterange-Grenzen — die Kopie verlor sie.
         ...(f.defaultValue ? { defaultValue: f.defaultValue } : {}),
@@ -4930,6 +4936,7 @@ export default function EventCreationPage(): React.ReactElement {
                 // Merge die Property direkt nach dem Speichern wieder.
                 ...((f.type === 'user' || f.type === 'roommate') && f.ccOnEmails ? { ccOnEmails: true } : {}),
                 ...(f.type === 'roommate' && f.notifyRoommate === false ? { notifyRoommate: false } : {}),
+                ...((f.type === 'user' || f.type === 'roommate') && f.audienceOnly ? { audienceOnly: true } : {}),
               }));
             // v11.6 BUG-FIX: vorher wurde hier `isB2runTemplate` (= b2run_*-
             // Custom-Fields vorhanden) als Indikator genutzt. Das war falsch,
@@ -14302,6 +14309,38 @@ export default function EventCreationPage(): React.ReactElement {
                               <strong>What this controls:</strong> whether the person <strong>selected as roommate</strong> receives a dedicated <strong>roommate request email</strong> right after registration.<br /><br />
                               <strong>Independent of the CC toggle:</strong> this notification is a SEPARATE email — the CC toggle below only controls the copy of the registration/cancellation email.<br /><br />
                               <strong>When off:</strong> the selected person receives no automatic email at all; the hint in the registration form is hidden too.
+                            </>
+                          )} />
+                        </span>
+                      </label>
+                    )}
+                    {/* v29.40: Personen-Feld → Suche auf den Verteilerkreis des
+                        Events begrenzen. Anlass: Zimmerpartner liessen sich
+                        ausserhalb des Verteilers auswaehlen. */}
+                    {(field.type === 'user' || field.type === 'roommate') && (
+                      <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={!!field.audienceOnly}
+                          onChange={e => updateCustomField(field.id, { audienceOnly: e.target.checked ? true : undefined })}
+                          style={{ marginTop: 2 }}
+                        />
+                        <span style={{ flex: 1 }}>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 600 }}>
+                            {isDe ? 'Nur Personen zulassen, die dieses Event sehen können' : 'Only allow people who can see this event'}
+                          </span>
+                          <InfoTooltip text={isDe ? (
+                            <>
+                              <strong>Was du hier einstellst:</strong> ob die Personensuche in diesem Feld <strong>nur Personen aus dem Verteilerkreis</strong> des Events findet (Mailverteiler, Standortfilter, abzüglich ausgeschlossener Personen) — dieselbe Prüfung wie beim Anmelden für andere.<br /><br />
+                              <strong>Aus (Standard):</strong> alle Kolleg:innen sind wählbar, auch wenn sie gar nicht eingeladen sind.<br /><br />
+                              <strong>Typischer Fall:</strong> Zimmerpartner. Ohne diese Option lässt sich jemand angeben, der beim Event gar nicht dabei ist.<br /><br />
+                              <strong>Hinweis:</strong> Läuft die Sichtbarkeit deines Events nur über einen Standortfilter, greift die Prüfung genauso — nur über einen reinen &bdquo;alle&ldquo;-Kreis gibt es nichts einzugrenzen.
+                            </>
+                          ) : (
+                            <>
+                              <strong>What this controls:</strong> whether the people search in this field only finds people <strong>within the event audience</strong> (distribution lists, location filter, minus excluded people) — the same check as registering on behalf of someone.<br /><br />
+                              <strong>Off (default):</strong> every colleague can be picked, even if they are not invited at all.<br /><br />
+                              <strong>Typical case:</strong> roommates. Without this option someone can name a person who is not attending.
                             </>
                           )} />
                         </span>

@@ -25,6 +25,9 @@ export interface CustomFieldInput {
   /** v26.60: Nur roommate — false schaltet die separate
    *  „Zimmerpartner-Anfrage"-Mail ab (undefined = an). */
   notifyRoommate?: boolean;
+  /** v29.40: Nur user/roommate — true begrenzt die Personensuche im Feld auf
+   *  den Verteilerkreis des Events (siehe EventSpecificField.audienceOnly). */
+  audienceOnly?: boolean;
   /** v7.11: Bei type=select erlaubt true Mehrfachauswahl (Checkbox-Liste statt
    *  Single-Dropdown). Wert wird " | "-getrennt gespeichert. */
   multi?: boolean;
