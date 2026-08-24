@@ -566,6 +566,13 @@ export interface EventSpecificField {
    *  Anmeldung. Default (undefined) = true (Bestandsverhalten); explizit
    *  false = keine Benachrichtigungs-Mail an den Roommate. */
   notifyRoommate?: boolean;
+  /** v29.40: Nur für People-Picker-Felder (`type === 'user'` / `'roommate'`).
+   *  Wenn true, findet die Personensuche im Feld NUR Personen, die das Event
+   *  auch sehen können (Verteiler/Standort/Ausschlüsse — dieselbe Prüfung wie
+   *  beim Anmelden für andere). Default (undefined) = alle Kolleg:innen, wie
+   *  bisher. Anlass: Zimmerpartner liessen sich ausserhalb des Event-
+   *  Verteilers auswählen (Feedback 21.08.2026). */
+  audienceOnly?: boolean;
   /** Optionale externe Links (AGB, Datenschutz etc.) unter dem Feld */
   externalLinks?: Array<{ label: string; url: string }>;
   /** v7.11: Wenn `type === 'select'` und `multi === true`, wird das Feld als

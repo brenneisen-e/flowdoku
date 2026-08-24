@@ -55,6 +55,8 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
   // Frage (→ Power-User) und Bug-Report (→ DEX-Maintainer Nils + Eike).
   const [askCategory, setAskCategory] = React.useState<'question' | 'bug'>('question');
   const [shots, setShots] = React.useState<ShotRef[]>([]);
+  // v29.40: Hinweis, wenn beim Anhängen etwas aussortiert wurde (kein Bild/zu groß).
+  const [uploadNote, setUploadNote] = React.useState('');
   // v26.10: Index des Screenshots, der gerade groß markiert wird (null = keiner).
   const [annotateIdx, setAnnotateIdx] = React.useState<number | null>(null);
   // v26.10: „DEX selbst nutzen?"-Anfrage-Modal (nur für normale User).
@@ -122,7 +124,7 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
 
   const resetForm = (): void => {
     shots.forEach((s) => { try { URL.revokeObjectURL(s.url); } catch { /* */ } });
-    setQuestions(['']); setShots([]); setHits([]); setDone(false);
+    setQuestions(['']); setShots([]); setHits([]); setDone(false); setUploadNote('');
   };
   const openModal = (): void => { resetForm(); setTab('ask'); setOpen(true); };
   const closeModal = (): void => { if (submitting || capturing) return; setOpen(false); resetForm(); };
@@ -176,6 +178,27 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
       const url = URL.createObjectURL(f);
       setShots((s) => [...s, { file: f, url }]);
     }
+  };
+  // v29.40: Bild vom Gerät anhängen. Der Live-Screenshot erfasst nur, was
+  // GERADE im Portal steht — ein Foto von einer anderen Seite, einer Mail oder
+  // dem Handy ging damit nicht (Feedback 21.08.2026). Beide Wege füllen
+  // dieselbe Liste, das Markieren funktioniert danach genauso.
+  const MAX_SHOT_BYTES = 8 * 1024 * 1024;
+  const addFiles = (files: FileList | null): void => {
+    if (!files || files.length === 0) return;
+    const accepted: Array<{ file: File; url: string }> = [];
+    let skipped = 0;
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      if (f.type.indexOf('image/') !== 0 || f.size > MAX_SHOT_BYTES) { skipped++; continue; }
+      accepted.push({ file: f, url: URL.createObjectURL(f) });
+    }
+    if (accepted.length > 0) setShots((s) => [...s, ...accepted]);
+    setUploadNote(skipped > 0
+      ? (isDe
+        ? `${skipped} Datei(en) übersprungen — es gehen nur Bilder bis 8 MB.`
+        : `${skipped} file(s) skipped — images up to 8 MB only.`)
+      : '');
   };
   const removeShot = (idx: number): void => {
     setShots((s) => { const copy = [...s]; const [rm] = copy.splice(idx, 1); if (rm) { try { URL.revokeObjectURL(rm.url); } catch { /* */ } } return copy; });
@@ -441,8 +464,25 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
                   style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--dex-gray-100,#f5f5f5)', border: '1px solid var(--dex-gray-300,#d1d1d1)', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', fontFamily: 'inherit', color: 'var(--dex-gray-700,#444)' }}>
                   <Icon iconName="Camera" style={{ fontSize: 14 }} /> {isDe ? 'Screenshot des Bildschirms anhängen' : 'Attach a screenshot of the screen'}
                 </button>
+                {/* v29.40: Zweiter Weg — Bild vom Gerät. Als <label> um ein
+                    verstecktes File-Input, damit der Knopf wie der daneben
+                    aussieht (ein nacktes File-Input tut das nie). */}
+                <label
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'var(--dex-gray-100,#f5f5f5)', border: '1px solid var(--dex-gray-300,#d1d1d1)', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', color: 'var(--dex-gray-700,#444)' }}>
+                  <Icon iconName="Photo2" style={{ fontSize: 14 }} /> {isDe ? 'Bild vom Gerät anhängen' : 'Attach an image from your device'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    style={{ display: 'none' }}
+                    onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }}
+                  />
+                </label>
                 <span style={{ fontSize: '0.75rem', color: 'var(--dex-gray-400,#a0a0a0)' }}>{isDe ? 'optional' : 'optional'}</span>
               </div>
+              {uploadNote && (
+                <div style={{ fontSize: '0.74rem', color: 'var(--dex-red, #da291c)', marginTop: 6 }}>{uploadNote}</div>
+              )}
               {shots.length > 0 && (
                 <>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10 }}>
@@ -463,7 +503,7 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
                     ))}
                   </div>
                   <div style={{ fontSize: '0.74rem', color: 'var(--dex-gray-400,#a0a0a0)', marginTop: 6 }}>
-                    {isDe ? 'Tipp: Auf einen Screenshot klicken, um ihn groß anzuzeigen und die gemeinte Stelle zu markieren.' : 'Tip: click a screenshot to enlarge it and mark the relevant area.'}
+                    {isDe ? 'Tipp: Auf ein Bild klicken, um es groß anzuzeigen und die gemeinte Stelle zu markieren.' : 'Tip: click an image to enlarge it and mark the relevant area.'}
                   </div>
                 </>
               )}
