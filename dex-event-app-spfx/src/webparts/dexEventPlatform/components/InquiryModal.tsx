@@ -13,6 +13,30 @@ import Modal from './Modal';
 import LandingInfoModal from './LandingInfoModal';
 import { Info } from './Icons';
 
+/**
+ * v29.45: Was der Organizer für sein Event braucht — ankreuzen statt frei
+ * beschreiben. Das Freitextfeld war die einzige Angabe; wer DEX noch nicht
+ * kennt, weiß dort nicht, wonach zu fragen wäre („Anzahl Teilnehmer, Termin,
+ * gewünschte Funktionen …" nennt keine einzige Funktion). Die Liste sagt
+ * zugleich, was die App überhaupt kann, und wir sehen vor dem ersten Gespräch,
+ * worauf es hinausläuft.
+ *
+ * Bewusst kurz gehalten und in der Sprache der Organizer formuliert — keine
+ * Feature-Namen aus dem Wizard. Das Freitextfeld bleibt für alles andere.
+ */
+const NEED_OPTIONS: Array<{ id: string; de: string; en: string }> = [
+  { id: 'visibility', de: 'Nur für bestimmte Personen sichtbar (Verteiler, Standort)', en: 'Visible only to certain people (distribution list, location)' },
+  { id: 'capacity', de: 'Begrenzte Plätze mit Warteliste und Nachrücken', en: 'Limited seats with waiting list and auto-promotion' },
+  { id: 'fields', de: 'Eigene Fragen im Anmeldeformular (Essen, Größe, Zustimmung …)', en: 'Own questions in the registration form (food, size, consent …)' },
+  { id: 'subevents', de: 'Mehrere Termine oder Sessions zur Auswahl', en: 'Several dates or sessions to choose from' },
+  { id: 'documents', de: 'Dokumente bereitstellen oder von Teilnehmern einfordern', en: 'Share documents or require uploads from attendees' },
+  { id: 'checkin', de: 'Check-in vor Ort mit QR-Code', en: 'On-site check-in with QR code' },
+  { id: 'hotel', de: 'Hotel- und Übernachtungsplanung', en: 'Hotel and accommodation planning' },
+  { id: 'teams', de: 'Anmeldung als Team oder Gruppe', en: 'Registration as a team or group' },
+  { id: 'external', de: 'Gäste von außerhalb Deloitte', en: 'Guests from outside Deloitte' },
+  { id: 'online', de: 'Online- oder Hybrid-Teilnahme (Teams)', en: 'Online or hybrid attendance (Teams)' },
+];
+
 interface InquiryModalProps {
   open: boolean;
   onClose: () => void;
@@ -43,6 +67,10 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
   // das falsche Werkzeug — dann statt eines Formulars der Verweis auf die
   // Event-Management-Seite im DeloitteNet, und der Absende-Knopf bleibt gesperrt.
   const [eventScope, setEventScope] = React.useState<'' | 'internal' | 'external'>('');
+  // v29.45: angekreuzte Bedarfe (Ids aus NEED_OPTIONS).
+  const [needs, setNeeds] = React.useState<string[]>([]);
+  const toggleNeed = (id: string): void =>
+    setNeeds(prev => (prev.indexOf(id) >= 0 ? prev.filter(x => x !== id) : [...prev, id]));
 
   // v23.37: im Organizer-Modus reicht der Name (Nachricht optional, kein
   // Event-Name) — die allgemeine Anfrage braucht Event-Name + Nachricht.
@@ -62,13 +90,24 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
       const res = await requestOrganizerRole(currentUser.email || '', userFullName, userLocation, message.trim());
       ok = res.ok;
     } else {
-      ok = await sendAdminInquiry(userFullName, currentUser.email || '', eventName.trim(), message.trim(), userLocation, userJobTitle);
+      // v29.45: Die Auswahl geht als lesbare Liste mit in die Anfrage — so
+      // steht sie in der Mail an das DEX-Team, ohne dass dort ein neues Feld
+      // ausgewertet werden muss.
+      const needLines = needs
+        .map(id => NEED_OPTIONS.filter(o => o.id === id)[0])
+        .filter(Boolean)
+        .map(o => `• ${isDe ? o.de : o.en}`);
+      const needBlock = needLines.length > 0
+        ? `${isDe ? 'Benötigte Funktionen:' : 'Needed features:'}\n${needLines.join('\n')}\n\n`
+        : '';
+      ok = await sendAdminInquiry(userFullName, currentUser.email || '', eventName.trim(), `${needBlock}${message.trim()}`, userLocation, userJobTitle);
     }
     setSending(false);
     if (ok) {
       setStatus('success');
       setEventName('');
       setMessage('');
+      setNeeds([]);
       setTimeout(() => { onClose(); setStatus(''); }, 1800);
     } else {
       setStatus('error');
@@ -229,10 +268,52 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
             />
           </label>
         )}
+        {/* v29.45: Bedarfs-Checkliste. Steht VOR dem Freitext: erst ankreuzen,
+            was es an Funktionen braucht, dann alles Übrige beschreiben. */}
+        {!organizerMode && eventScope === 'internal' && (
+          <div style={{
+            border: '1px solid var(--dex-gray-200)', borderRadius: 8, padding: '10px 12px',
+            background: 'var(--dex-gray-50, #fafafa)',
+          }}>
+            <div style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--dex-gray-800, #333)' }}>
+              {isDe ? 'Was brauchst du für dein Event?' : 'What do you need for your event?'}
+            </div>
+            <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)', margin: '2px 0 8px' }}>
+              {isDe
+                ? 'Mehrfachauswahl, alles optional — es hilft uns, das Gespräch vorzubereiten. Unsicher? Einfach frei lassen.'
+                : 'Multiple choice, all optional — it helps us prepare. Not sure? Just leave it empty.'}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {NEED_OPTIONS.map(opt => {
+                const checked = needs.indexOf(opt.id) >= 0;
+                return (
+                  <label
+                    key={opt.id}
+                    style={{
+                      display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: '0.82rem',
+                      color: 'var(--dex-gray-700)', cursor: sending ? 'default' : 'pointer',
+                      padding: '3px 4px', borderRadius: 6,
+                      background: checked ? 'rgba(134,188,37,0.10)' : 'transparent',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleNeed(opt.id)}
+                      disabled={sending}
+                      style={{ marginTop: 2, accentColor: 'var(--dex-green, #86bc25)' }}
+                    />
+                    <span>{isDe ? opt.de : opt.en}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.8rem', color: 'var(--dex-gray-600)' }}>
           {organizerMode
             ? (isDe ? 'Warum möchtest du Organizer werden? (optional)' : 'Why do you want to become an organizer? (optional)')
-            : (isDe ? 'Was brauchst du?' : 'What do you need?')}
+            : (isDe ? 'Sonst noch etwas?' : 'Anything else?')}
           <textarea
             className="form-textarea"
             value={message}
@@ -242,8 +323,8 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
             placeholder={organizerMode
               ? (isDe ? 'Optional: kurz, worum es geht …' : 'Optional: briefly what it is about …')
               : (isDe
-                ? 'Kurz beschreiben: Anzahl Teilnehmer, Termin, gewünschte Funktionen...'
-                : 'Briefly describe: number of participants, date, features needed...')}
+                ? 'Anzahl Teilnehmer, Termin, Besonderheiten …'
+                : 'Number of participants, date, anything special …')}
           />
         </label>
         {status === 'success' && (
