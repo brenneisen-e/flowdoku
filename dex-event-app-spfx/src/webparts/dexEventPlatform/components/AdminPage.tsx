@@ -268,6 +268,36 @@ export default function AdminPage(): React.ReactElement {
   // wiederverwenden kann). Enthält KEINEN Confirm — der Aufrufer bestätigt.
   // Spiegelt das bisherige Inline-Verhalten 1:1 (vergangenes Event → still,
   // sonst Abmelde-Mail + Outlook-Ausladen + Nachrücken + ID-Reorder).
+
+  /**
+   * v29.44: Abmelde-Mail bauen — für ALLE Organizer-Wege gleich.
+   *
+   * Vorher nahm das Organizer Center überall `cancellationEmail(...)`, also den
+   * fest eingebauten Standardtext. Der Selbst-Abmelde-Weg des Teilnehmers löst
+   * dagegen seit jeher die gepflegte Vorlage auf (SharePoint-Template +
+   * Event-Override). Dieselbe Abmeldung sah damit unterschiedlich aus, je
+   * nachdem, WER sie ausgelöst hat — und ein Organizer, der den Text seines
+   * Sub-Events angepasst hatte, bekam ihn nie zu sehen.
+   */
+  const buildCancellationMail = async (
+    ev: DeloitteEvent,
+    reg: SPRegistration,
+    fullName: string,
+  ): Promise<{ subject: string; body: string }> => {
+    const fallback = cancellationEmail(fullName, ev.title);
+    if (!eventServiceRef) return fallback;
+    try {
+      const lang = ev.emailLanguage || 'EN';
+      const spTplRaw = await eventServiceRef.getEmailTemplate('Abmeldung', lang).catch(() => null);
+      const spTpl = applyEventTemplateOverride(spTplRaw, ev.emailTemplateOverrides, 'Abmeldung');
+      if (!spTpl) return fallback;
+      return buildEmailFromTemplate(spTpl, {
+        Name: (reg.Vorname || '').trim() || fullName,
+        EventTitle: ev.title,
+        AppUrl: `${eventServiceRef.siteUrl}/SitePages/DEX.aspx?env=WebView`,
+      });
+    } catch { return fallback; }
+  };
   const performStandardCancel = async (reg: SPRegistration): Promise<void> => {
     if (!eventServiceRef || !selectedEvent?.subsiteUrl) return;
     const name = (reg.Vorname && reg.Nachname) ? `${reg.Vorname} ${reg.Nachname}` : reg.ParticipantName;
@@ -281,7 +311,7 @@ export default function AdminPage(): React.ReactElement {
     invalidateInactiveAccountCache([selectedEvent.id, selectedEvent.parentEventId || '']);
     if (reg.ParticipantEmail && !eventWasOver) {
       if (!selectedEvent.disableEmails && !selectedEvent.disableCancellationEmail) {
-        const emailData = cancellationEmail(name, selectedEvent.title);
+        const emailData = await buildCancellationMail(selectedEvent, reg, name);
         eventServiceRef.queueEmail(
           emailData.subject, reg.ParticipantEmail, name, emailData.body,
           'Abmeldung', selectedEvent.title, selectedEvent.id
@@ -1759,10 +1789,24 @@ export default function AdminPage(): React.ReactElement {
         // ID-Reorder laufen weiter, der frei gewordene Platz soll ja an die
         // Warteliste gehen und die nachrückende Person ihre Mail bekommen.
         const notifyLeaver = !childWasOver && !deregSilent;
+        // v29.44: Auf der KLAMMER keine zweite Abmelde-Bestätigung, wenn im
+        // selben Lauf auch Sub-Events abgemeldet werden — dafür ging deren
+        // eigene Mail schon raus. Die Klammer-Zeile ist seit v29.29 Teil des
+        // Dialogs; seither bekam der Teilnehmer zusätzlich eine Mail mit dem
+        // Klammer-Titel, obwohl er sich von einem Termin abgemeldet hat. Im
+        // Modus „nur Sub-Events" ist die Klammer ohnehin nur eine
+        // Schattenzeile — dort nie eine eigene Mail.
+        const skipParentMail = !!isParent && (!!child.subEventsOnlyMode || chosen.some(i => !i.isParent));
         if (reg.ParticipantEmail && notifyLeaver) {
-          if (!child.disableEmails && !child.disableCancellationEmail) {
+          if (!child.disableEmails && !child.disableCancellationEmail && !skipParentMail) {
             try {
-              const emailData = cancellationEmail(name, child.title);
+              // v29.44: die für das Event gepflegte Abmelde-Vorlage nehmen —
+              // vorher IMMER der Code-Standardtext. Deshalb sah die vom
+              // Organizer ausgelöste Abmeldung anders aus als die, die der
+              // Teilnehmer beim Selbst-Abmelden bekommt (dort läuft es seit
+              // jeher über Vorlage + Event-Override). Gleicher Weg wie beim
+              // Nachrücken ein paar Zeilen weiter unten.
+              const emailData = await buildCancellationMail(child, reg, name);
               await eventServiceRef.queueEmail(
                 emailData.subject, reg.ParticipantEmail, name, emailData.body,
                 'Abmeldung', child.title, child.id
@@ -12028,7 +12072,7 @@ export default function AdminPage(): React.ReactElement {
                                 if (!(await confirmDialog(`${name} von der Warteliste entfernen?${eventWasOver ? (isDe ? '\n\nDas Event liegt in der Vergangenheit — es geht keine Abmelde-Mail raus.' : '\n\nThe event is in the past — no cancellation email will be sent.') : ''}`, { danger: true, confirmLabel: isDe ? 'Entfernen' : 'Remove' }))) return;
                                 await eventServiceRef.cancelRegistration(selectedEvent.subsiteUrl, reg.Id, `${currentUser.firstName} ${currentUser.surname}`.trim(), currentUser.email);
                                 if (reg.ParticipantEmail && !selectedEvent.disableEmails && !selectedEvent.disableCancellationEmail && !eventWasOver) {
-                                  const emailData = cancellationEmail(name, selectedEvent.title);
+                                  const emailData = await buildCancellationMail(selectedEvent, reg, name);
                                   eventServiceRef.queueEmail(
                                     emailData.subject, reg.ParticipantEmail, name, emailData.body,
                                     'Abmeldung', selectedEvent.title, selectedEvent.id
