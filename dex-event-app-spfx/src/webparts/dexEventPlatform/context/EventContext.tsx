@@ -373,6 +373,8 @@ interface EventContextType {
   /** Kind-Events eines Parents (Sub-Events / Trainingssessions), sortiert nach StartDate. */
   childEventsOf: (parentEventId: string) => DeloitteEvent[];
   isEventsLoading: boolean;
+  /** v29.47: Dokumente eines Events bei Bedarf nachladen (Boot lädt sie nicht mehr). */
+  ensureEventDocuments: (eventIds: string[]) => Promise<void>;
   createEvent: (event: CreateEventInput) => Promise<number | null>;
   registerForEvent: (eventId: string, customData: Record<string, string>, participantFirstName?: string, participantLastName?: string, participantEmail?: string, preferredStarterType?: string, opts?: { suppressMail?: boolean; suppressOutlook?: boolean; extraCc?: string; proxyConsentConfirmed?: boolean; actorAllowedAsAssistant?: boolean }) => Promise<{ ok: boolean; status: 'Angemeldet' | 'Warteliste'; reason?: string }>;
   /** v11.82: Team-Anmeldung — Lead + N-1 Mitglieder gleichzeitig anmelden.
@@ -868,10 +870,18 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // via Promise.allSettled), statt sie sequentiell hintereinander zu
     // ketten. Spart bei 11 Calls und ca. 6.7 s seriell ca. 4-5 s.
     const ENSURE_FLAG_KEY = 'dex.schema.ensured.v' + APP_VERSION;
+    // v29.47: Zweiter Schlüssel OHNE Version — er sagt nur „diese App lief hier
+    // schon einmal". Das entscheidet, ob die Schema-Pflege den Start blockieren
+    // darf: Beim allerersten Start muss sie es (ohne Listen kein Lesen), nach
+    // einem Update dagegen sind die Listen längst da, und die 22 Prüf-Anfragen
+    // haben den Boot nur ausgebremst. Sie laufen dann NACH dem ersten Bild.
+    const ENSURE_EVER_KEY = 'dex.schema.everEnsured';
     let skipEnsure = false;
+    let everEnsured = false;
     try {
-      if (typeof window !== 'undefined' && window.localStorage.getItem(ENSURE_FLAG_KEY) === '1') {
-        skipEnsure = true;
+      if (typeof window !== 'undefined') {
+        skipEnsure = window.localStorage.getItem(ENSURE_FLAG_KEY) === '1';
+        everEnsured = window.localStorage.getItem(ENSURE_EVER_KEY) === '1';
       }
     } catch { /* localStorage disabled */ }
 
@@ -888,7 +898,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       acc.push({ name, ms: Math.round(performance.now() - t0) });
     };
 
-    if (!skipEnsure) {
+    const runEnsureStage = async (): Promise<void> => {
       // v29.41: Der Start-Balken bekommt echte Abschnitte statt einer reinen
       // Zeitschätzung — diese Stage ist die teuerste und läuft nur beim ersten
       // Boot je Version.
@@ -933,17 +943,35 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       for (const m of parallelMarks) perfMarks.push(m);
       // Erfolg markieren — nächster Boot überspringt die ensure-Calls.
       try {
-        if (typeof window !== 'undefined') window.localStorage.setItem(ENSURE_FLAG_KEY, '1');
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(ENSURE_FLAG_KEY, '1');
+          window.localStorage.setItem(ENSURE_EVER_KEY, '1');
+        }
       } catch { /* localStorage disabled */ }
+    };
+
+    // v29.47: Erstinstallation → blockierend (ohne Listen gibt es nichts zu
+    // lesen). Alle späteren Fälle → nach dem ersten Bild, im Hintergrund.
+    const ensureAfterBoot = !skipEnsure && everEnsured;
+    if (!skipEnsure && !everEnsured) {
+      await runEnsureStage();
     }
 
     // loadLogosAsBase64 ist KEIN ensure-Call — es füllt den In-Memory-Cache
     // mit den Logo-Daten, die für Mail-/Outlook-Templates gebraucht werden.
     // Muss bei jedem Boot laufen.
-    emitBootStage('logos');
-    await stage('loadLogosAsBase64', () => loadLogosAsBase64(props.context.spHttpClient, eventService.siteUrl));
-    await stage('loadEvents (full chain)', () => loadEvents());
+    // v29.47: Die Logos stecken NUR in Mail- und Outlook-Vorlagen — für die
+    // Anzeige braucht sie niemand. Sie blockierten den Start trotzdem, also
+    // laufen sie jetzt nebenher; wer eine Mail baut, liest sie ohnehin aus dem
+    // Cache (und lädt sie im Zweifel selbst nach).
+    void stage('loadLogosAsBase64', () => loadLogosAsBase64(props.context.spHttpClient, eventService.siteUrl));
+    await stage('loadEvents (Anzeige-Kette)', () => loadEvents());
     setIsEventsLoading(false);
+    // Schema-Pflege nach dem ersten Bild — sie sichert nur Spalten und Listen,
+    // die zum Lesen längst existieren.
+    if (ensureAfterBoot) {
+      void runEnsureStage().catch(err => console.warn('[DEX] Schema-Pflege im Hintergrund fehlgeschlagen:', err));
+    }
     const tTotal = Math.round(performance.now() - tBoot);
     const sorted = [...perfMarks].sort((a, b) => b.ms - a.ms);
     if (skipEnsure) {
@@ -958,7 +986,15 @@ export function EventProvider(props: { context: WebPartContext; children: React.
   }
 
   async function loadEvents(): Promise<void> {
-    // v11.74: Sub-Phase-Profiling — getEvents vs. Mapping vs. Counts vs. Attachments.
+    // v29.47 (Performance-Audit): Der Boot hing an den PRO-EVENT-Abfragen.
+    // Bei ~40 Events waren das über 80 Requests — je Event einmal die
+    // Teilnehmerzahl aus der Subsite und einmal die Anhänge —, und ALLE davon
+    // wurden abgewartet, bevor überhaupt etwas auf dem Bildschirm stand.
+    // SharePoint drosselt bei so vielen gleichzeitigen Anfragen zusätzlich, das
+    // war der Unterschied zwischen „zwei Sekunden" und „zehn Sekunden".
+    //
+    // Jetzt gilt: Was zum ANZEIGEN nötig ist, blockiert. Alles andere kommt
+    // danach und aktualisiert die Ansicht nach.
     emitBootStage('events');
     const tGet = performance.now();
     const spEvents = await eventService.getEvents();
@@ -985,32 +1021,90 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     const dMap = Math.round(performance.now() - tMap);
     // eslint-disable-next-line no-console
     console.log(`[DEX][perf][loadEvents] mapSPEventToDeloitteEvent x ${spEvents.length} = ${dMap} ms`);
-    // Teilnehmerzahlen für alle Events mit Subsite laden
-    emitBootStage('counts');
-    const tCnt = performance.now();
-    const withCounts = await loadParticipantCountsForEvents(mapped);
-    const dCnt = Math.round(performance.now() - tCnt);
-    // eslint-disable-next-line no-console
-    console.log(`[DEX][perf][loadEvents] participantCounts = ${dCnt} ms`);
-    // Attachments (Dokumente) für alle Events laden
-    emitBootStage('documents');
-    const tAtt = performance.now();
-    const withDocs = await Promise.all(withCounts.map(async (evt) => {
+
+    // AB HIER ist die App bedienbar: Titel, Zeiten, Sichtbarkeit, Bilder und
+    // die zuletzt gespeicherte Teilnehmerzahl (Spalte CurrentParticipants)
+    // stehen im Mapping. Die Liste geht deshalb sofort raus.
+    setEvents(mapped);
+
+    // Nachlauf, sichtbar nur als Zahlen, die sich still aktualisieren.
+    void (async () => {
       try {
-        const attachments = await eventService.getEventAttachments(Number(evt.id));
-        return { ...evt, documents: attachments };
-      } catch { return evt; }
-    }));
-    const dAtt = Math.round(performance.now() - tAtt);
-    // eslint-disable-next-line no-console
-    console.log(`[DEX][perf][loadEvents] attachments x ${mapped.length} = ${dAtt} ms`);
-    setEvents(withDocs);
+        const tCnt = performance.now();
+        const withCounts = await loadParticipantCountsForEvents(mapped);
+        // eslint-disable-next-line no-console
+        console.log(`[DEX][perf][loadEvents] participantCounts (nachgelagert) = ${Math.round(performance.now() - tCnt)} ms`);
+        setEvents(withCounts);
+      } catch (err) { console.warn('[DEX] Teilnehmerzahlen-Nachlauf fehlgeschlagen:', err); }
+    })();
   }
 
+  /**
+   * v29.47: Anhänge (Dokumente) eines Events bei Bedarf nachladen.
+   *
+   * Vorher lud der Boot die Anhänge ALLER Events — ein Request pro Event, nur
+   * damit sie im Objekt stehen. Gelesen werden sie an genau zwei Stellen:
+   * „Meine Events" (Download-Liste) und der Wizard beim Bearbeiten. Beides
+   * betrifft eine Handvoll Events, nicht alle.
+   *
+   * Mehrfachaufrufe für dasselbe Event sind billig: Was einmal geladen wurde,
+   * wird gemerkt (`documentsLoadedRef`), und parallele Aufrufe teilen sich
+   * dieselbe laufende Abfrage.
+   */
+  const documentsLoadedRef = React.useRef<Set<string>>(new Set());
+  const documentsInflightRef = React.useRef<Map<string, Promise<void>>>(new Map());
+  async function ensureEventDocuments(eventIds: string[]): Promise<void> {
+    const todo = (eventIds || [])
+      .filter(id => !!id && /^\d+$/.test(id))
+      .filter(id => !documentsLoadedRef.current.has(id));
+    if (todo.length === 0) return;
+    await Promise.all(todo.map(async (id) => {
+      const running = documentsInflightRef.current.get(id);
+      if (running) return running;
+      const p = (async () => {
+        try {
+          const attachments = await eventService.getEventAttachments(Number(id));
+          documentsLoadedRef.current.add(id);
+          setEvents(prev => prev.map(e => (e.id === id ? { ...e, documents: attachments } : e)));
+        } catch { /* ohne Dokumente weiterarbeiten — sie sind Beiwerk */ }
+        finally { documentsInflightRef.current.delete(id); }
+      })();
+      documentsInflightRef.current.set(id, p);
+      return p;
+    }));
+  }
+
+
+/**
+ * v29.47: `Promise.all` über eine ganze Eventliste stellt vierzig Anfragen
+ * gleichzeitig — SharePoint drosselt das, und gedrosselte Anfragen sind
+ * langsamer als der Reihe nach gestellte. Diese Variante hält höchstens
+ * `limit` Aufrufe in der Luft und behält die Reihenfolge der Ergebnisse bei.
+ */
+async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i], i);
+    }
+  };
+  const n = Math.max(1, Math.min(limit, items.length));
+  await Promise.all(Array.from({ length: n }, () => worker()));
+  return out;
+}
+
   async function loadParticipantCountsForEvents(evts: DeloitteEvent[]): Promise<DeloitteEvent[]> {
-    const results = await Promise.all(
-      evts.map(async (evt) => {
+    // v29.47: Höchstens sechs Abfragen gleichzeitig. Vorher gingen alle auf
+    // einmal raus — bei vierzig Events drosselt SharePoint, und gedrosselte
+    // Anfragen dauern länger als der Reihe nach gestellte.
+    const results = await mapLimited(evts, 6, async (evt) => {
         if (!evt.subsiteUrl) return evt;
+        // v29.47: Vergangene Events brauchen keine frische Zahl — sie ändert
+        // sich nicht mehr, und die gespeicherte steht bereits im Objekt.
+        if (isEventOver(evt)) return evt;
         try {
           const counts = await eventService.getRegistrationCount(evt.subsiteUrl);
           // v26.63: Frische Zahl best-effort nach DEX_Events.CurrentParticipants
@@ -1024,8 +1118,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
         } catch {
           return evt;
         }
-      })
-    );
+      });
     // v22.74: Klammer-Events („Nur Sub-Events") zeigen in der Listen-Karte die
     // EINDEUTIGE Personenzahl über alle Sub-Events — eine Person, die sich für
     // mehrere Sub-Events anmeldet, zählt EINMAL (nicht die Summe). Der eigene
@@ -5860,7 +5953,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
       value: {
         events: eventsForConsumer,
         topLevelEvents: eventsForConsumer.filter(e => !e.parentEventId),
-        childEventsOf, isEventsLoading,
+        childEventsOf, isEventsLoading, ensureEventDocuments,
         createEvent, registerForEvent, registerTeam,
         getTeamMembers: async (eventId: string, teamId: string): Promise<SPRegistration[]> => {
           const subsiteUrl = subsiteMap.current[eventId];

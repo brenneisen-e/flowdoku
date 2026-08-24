@@ -724,14 +724,18 @@ function AppContent(): React.ReactElement {
                       // „Events werden geladen" stand vorher über allem, was
                       // nach der Rechteprüfung kam (inklusive der langen
                       // Teilnehmerzahlen- und Anhang-Runden).
+                      // v29.47: Die Beschriftungen sagen jetzt, was der
+                      // NUTZER davon hat — „Datenmodell wird geprüft" war die
+                      // Innensicht des Programms und für Teilnehmer nichts als
+                      // ein technisches Rätsel.
                       switch (bootPhase) {
-                        case 'roles': return de ? 'Berechtigungen werden geprüft…' : 'Checking permissions…';
-                        case 'schema': return de ? 'Datenmodell wird geprüft…' : 'Checking data model…';
-                        case 'logos': return de ? 'Vorlagen werden geladen…' : 'Loading templates…';
+                        case 'roles': return de ? 'Deine Events werden gesucht…' : 'Looking up your events…';
+                        case 'schema': return de ? 'Einen Moment noch…' : 'Just a moment…';
+                        case 'logos': return de ? 'Fast fertig…' : 'Almost there…';
                         case 'events': return de ? 'Events werden geladen…' : 'Loading events…';
-                        case 'mapping': return de ? 'Events werden aufbereitet…' : 'Preparing events…';
-                        case 'counts': return de ? 'Teilnehmerzahlen werden gelesen…' : 'Reading attendee counts…';
-                        case 'documents': return de ? 'Dokumente werden geladen…' : 'Loading documents…';
+                        case 'mapping': return de ? 'Events werden vorbereitet…' : 'Preparing events…';
+                        case 'counts': return de ? 'Freie Plätze werden geprüft…' : 'Checking available seats…';
+                        case 'documents': return de ? 'Fast fertig…' : 'Almost there…';
                         default: return de ? 'Fertig' : 'Done';
                       }
                     })()}

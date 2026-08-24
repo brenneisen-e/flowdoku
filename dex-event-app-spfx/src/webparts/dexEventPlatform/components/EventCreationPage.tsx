@@ -338,7 +338,7 @@ async function resolveAudienceMembersToCsv(
 
 export default function EventCreationPage(): React.ReactElement {
   const { goBack, selectedEventId, currentPage, setNavigationGuard, navigate } = useNavigation();
-  const { events, childEventsOf, createEvent, updateEvent, getLastEventUpdateError, deleteEvent, deleteEventItemOnly, refreshEvents, requestCoOrganizerApprovals, notifyNewCoOrganizers, notifyAdminsExternalAudienceAccess } = useEvents();
+  const { events, childEventsOf, ensureEventDocuments, createEvent, updateEvent, getLastEventUpdateError, deleteEvent, deleteEventItemOnly, refreshEvents, requestCoOrganizerApprovals, notifyNewCoOrganizers, notifyAdminsExternalAudienceAccess } = useEvents();
   const { currentUser } = useCurrentUser();
   // searchGroups + searchUsersByLocation werden seit v19.x ausschließlich im
   // ausgelagerten <AudiencePicker> verwendet (eigener useRoles-Hook dort).
@@ -739,6 +739,16 @@ export default function EventCreationPage(): React.ReactElement {
   type ImgView = { zoom: number; posY: number; height?: number };
   const [imageDisplay, setImageDisplay] = React.useState<{ card?: ImgView; hero?: ImgView }>(editEvent && editEvent.imageDisplay ? editEvent.imageDisplay : {});
   const [imageDisplayOpen, setImageDisplayOpen] = React.useState(false);
+
+  // v29.47: Der Boot lädt die Anhänge nicht mehr mit. Beim Bearbeiten braucht
+  // der Wizard sie (Schritt „Dokumente") — hier für das bearbeitete Event
+  // nachholen, damit die Liste nicht fälschlich leer aussieht und ein Save die
+  // bestehenden Dateien nicht als „entfernt" behandelt.
+  React.useEffect(() => {
+    if (editEvent?.id) void ensureEventDocuments([editEvent.id]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editEvent?.id]);
+
   // v28.5: Bild als Banner über den Event-Infos (statt kompakt links) —
   // Organizer-Wahl, sinnvoll für breite Querformat-Fotos. Piggyback _imageBanner.
   const [imageBanner, setImageBanner] = React.useState<boolean>(!!(editEvent && editEvent.imageBanner));

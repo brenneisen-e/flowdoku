@@ -704,7 +704,7 @@ function DocumentsViewer({ documents, t }: { documents: Array<{name: string; url
 
 export default function MyEventsPage(): React.ReactElement {
   const { navigate, selectedEventId, navIntent, clearIntent } = useNavigation();
-  const { topLevelEvents, childEventsOf, isEventsLoading, getMyRegistration, getMyEventNumbers, cancelRegistration, cancelTeamMember, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, registerForEvent, getAllRegistrations, getTeamMembers, addTeamMember, listTeamJoinRequestsForEvent, decideTeamJoinRequest, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, getEventComms } = useEvents();
+  const { topLevelEvents, childEventsOf, isEventsLoading, ensureEventDocuments, getMyRegistration, getMyEventNumbers, cancelRegistration, cancelTeamMember, updateMyRegistration, switchSplitGroup, listMyEventAttachments, uploadMyEventAttachment, deleteMyEventAttachment, uploadFieldDocument, listFieldDocuments, deleteFieldDocument, registerForEvent, getAllRegistrations, getTeamMembers, addTeamMember, listTeamJoinRequestsForEvent, decideTeamJoinRequest, getMyAssistantLinks, requestAssistantChange, resolveAssistantRequest, getEventComms } = useEvents();
   const { currentUser } = useCurrentUser();
   const currentUserEmail = (currentUser?.email || '').toLowerCase();
   // v24.41: Assistenz-Verknüpfungen — INFO-Ansicht für Anmeldungen, die jemand
@@ -930,6 +930,19 @@ export default function MyEventsPage(): React.ReactElement {
   };
 
   const { t, locale } = useLanguage();
+
+  // v29.47: Dokumente werden beim Start nicht mehr für ALLE Events geladen
+  // (das war ein Request je Event und einer der Gründe für den langen Boot).
+  // Hier braucht die Seite sie wirklich — also für die sichtbaren Events
+  // nachholen, sobald sie feststehen. `ensureEventDocuments` merkt sich, was
+  // schon geladen wurde, und bündelt parallele Aufrufe.
+  React.useEffect(() => {
+    const ids = (topLevelEvents || []).map(e => e.id).filter(Boolean);
+    if (ids.length === 0) return;
+    void ensureEventDocuments(ids);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [topLevelEvents.length]);
+
   // v20.4: App-Modals statt nativer Browser-Dialoge.
   const { confirmDialog, showAlert, promptDialog } = useDialog();
   // v20.7: Persönlicher Check-in-QR-Code unter „Meine Events" — gleicher
