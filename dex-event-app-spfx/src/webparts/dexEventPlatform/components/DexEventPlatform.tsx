@@ -16,6 +16,7 @@ import { LanguageProvider } from '../context/LanguageContext';
 // v20.4: Moderne Confirm-/Alert-Modals statt nativer Browser-Dialoge.
 import { DialogProvider } from '../context/DialogContext';
 import { EventProvider, useEvents } from '../context/EventContext';
+import { BOOT_STAGE_EVENT, BootStage, BootStageDetail, lastBootStage } from '../utils/bootProgress';
 import { UserProvider } from '../context/UserContext';
 import { RoleProvider, useRoles } from '../context/RoleContext';
 // v22.21: Geführtes Tutorial (Onboarding-Tour) — Provider + Overlay.
@@ -198,9 +199,34 @@ function AppContent(): React.ReactElement {
   const bootLoadingRef = React.useRef({ roles: true, events: true });
   bootLoadingRef.current = { roles: isRolesLoading, events: isEventsLoading };
   // v29.32: Was gerade lädt — der Balken allein erklärt ein längeres Warten nicht.
-  const [bootPhase, setBootPhase] = React.useState<'roles' | 'events' | 'done'>('roles');
+  // v29.41: …und WIE WEIT es ist. Der Ladepfad meldet seine Abschnitte jetzt
+  // selbst (utils/bootProgress); der Balken kriecht zwischen den Meldungen
+  // asymptotisch auf das Ende des laufenden Abschnitts zu. Vorher war er rein
+  // zeitgesteuert und stand nach vier Sekunden bei 92 %, egal wie weit die App
+  // war — genau die Stelle, an der es „hängt".
+  const [bootPhase, setBootPhase] = React.useState<'roles' | 'events' | 'done' | BootStage>('roles');
+  const stageRef = React.useRef<{ floor: number; target: number }>({ floor: 8, target: 30 });
   React.useEffect(() => {
-    const start = Date.now();
+    const apply = (d: BootStageDetail): void => {
+      // Nie zurückspringen: Ein später gemeldeter Abschnitt zieht die
+      // Untergrenze nach oben, ein früherer lässt sie stehen.
+      stageRef.current = {
+        floor: Math.max(stageRef.current.floor, d.floor),
+        target: Math.max(stageRef.current.target, d.target),
+      };
+      setBootPhase(d.stage);
+      setBootProgress(prev => Math.max(prev, d.floor));
+    };
+    const last = lastBootStage();
+    if (last) apply(last);
+    const onStage = (e: Event): void => {
+      const d = (e as CustomEvent).detail as BootStageDetail | undefined;
+      if (d && typeof d.target === 'number') apply(d);
+    };
+    window.addEventListener(BOOT_STAGE_EVENT, onStage);
+    return () => window.removeEventListener(BOOT_STAGE_EVENT, onStage);
+  }, []);
+  React.useEffect(() => {
     const id = setInterval(() => {
       const { roles, events } = bootLoadingRef.current;
       if (!roles && !events) {
@@ -209,25 +235,17 @@ function AppContent(): React.ReactElement {
         clearInterval(id);
         return;
       }
-      setBootPhase(roles ? 'roles' : 'events');
-      const elapsed = Date.now() - start;
-      // v7.10/v11.79: Linearer Fortschritt — nach 4 Sekunden bei 100%.
-      //
-      // v29.32: …und genau da lag das „hängt ewig bei 99 %". Der Balken war
-      // rein zeitgesteuert: Nach vier Sekunden stand er auf 99 und wartete
-      // stumm, egal wie weit die App wirklich war. Bei einem langsamen Tenant
-      // (viele Events, kalter Cache) sieht das nach Absturz aus.
-      //
-      // Jetzt begrenzt die tatsächliche Phase den Fortschritt: solange die
-      // Berechtigungen laden höchstens 60 %, danach höchstens 92 % — und wenn
-      // die Events stehen, 100 %. Der Sprung beim Phasenwechsel ist echte
-      // Information; die 92-%-Sperre bleibt bewusst, damit der Balken nicht
-      // 100 % zeigt, während die App noch nicht bedienbar ist. Innerhalb der
-      // Phase kriecht er weiter, damit sichtbar bleibt, dass etwas passiert.
-      const phaseCap = roles ? 60 : 92;
-      const timed = Math.round((elapsed / 4000) * 100);
-      const target = Math.min(phaseCap, Math.max(timed, roles ? 0 : 62));
-      setBootProgress(prev => Math.max(prev, target));
+      // Sind die Events durch und fehlen nur noch die Rechte, sagt der Text das
+      // auch — sonst steht dort „Anhänge…", während längst etwas anderes läuft.
+      if (!events && roles) setBootPhase('roles');
+      setBootProgress(prev => {
+        const { target } = stageRef.current;
+        if (prev >= target) return prev;
+        // Ease-out zum Abschnitts-Ende: immer Bewegung, nie ein Sprung, und der
+        // Rest bleibt für die echte Fertig-Meldung.
+        const step = Math.max(0.06, (target - prev) * 0.022);
+        return Math.min(target, prev + step);
+      });
     }, 60);
     return () => clearInterval(id);
   }, []);
@@ -629,6 +647,16 @@ function AppContent(): React.ReactElement {
         style.textContent = '@keyframes dexProgressSlide { 0% { left: -40%; } 100% { left: 100%; } }';
         document.head.appendChild(style);
       }
+      // v29.41: Dezenter Schimmer auf dem gefüllten Teil. Zwischen zwei
+      // Abschnitts-Meldungen bewegt sich der Balken nur noch um Bruchteile
+      // eines Prozents — ohne dieses Lebenszeichen liest sich das als Hänger.
+      // Bewusst schwach (weiß auf Grün, 45 %) und langsam, nicht als Blinken.
+      if (typeof document !== 'undefined' && !document.getElementById('dex-progress-pulse-keyframes')) {
+        const style = document.createElement('style');
+        style.id = 'dex-progress-pulse-keyframes';
+        style.textContent = '@keyframes dexProgressShimmer { 0% { transform: translateX(-120%); } 100% { transform: translateX(320%); } }';
+        document.head.appendChild(style);
+      }
       return (
         <div className="landing" style={{ position: 'relative' }}>
           <div className="landing__hero">
@@ -668,7 +696,16 @@ function AppContent(): React.ReactElement {
                     background: 'var(--dex-green, #86bc25)',
                     transition: 'width 240ms ease-out',
                     borderRadius: 3,
-                  }} />
+                    overflow: 'hidden',
+                  }}>
+                    {bootPhase !== 'done' && (
+                      <div style={{
+                        position: 'absolute', top: 0, bottom: 0, left: 0, width: '35%',
+                        background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.45) 50%, rgba(255,255,255,0) 100%)',
+                        animation: 'dexProgressShimmer 2.1s ease-in-out infinite',
+                      }} />
+                    )}
+                  </div>
                 </div>
                 {/* v29.32: Links steht, worauf gerade gewartet wird — ein
                     Balken, der bei einem langsamen Tenant lange fast voll
@@ -683,12 +720,23 @@ function AppContent(): React.ReactElement {
                   <span>
                     {(() => {
                       const de = typeof navigator !== 'undefined' && (navigator.language || '').toLowerCase().indexOf('de') === 0;
-                      if (bootPhase === 'roles') return de ? 'Berechtigungen werden geprüft…' : 'Checking permissions…';
-                      if (bootPhase === 'events') return de ? 'Events werden geladen…' : 'Loading events…';
-                      return de ? 'Fertig' : 'Done';
+                      // v29.41: Die Abschnitte des Ladepfads beim Namen nennen —
+                      // „Events werden geladen" stand vorher über allem, was
+                      // nach der Rechteprüfung kam (inklusive der langen
+                      // Teilnehmerzahlen- und Anhang-Runden).
+                      switch (bootPhase) {
+                        case 'roles': return de ? 'Berechtigungen werden geprüft…' : 'Checking permissions…';
+                        case 'schema': return de ? 'Datenmodell wird geprüft…' : 'Checking data model…';
+                        case 'logos': return de ? 'Vorlagen werden geladen…' : 'Loading templates…';
+                        case 'events': return de ? 'Events werden geladen…' : 'Loading events…';
+                        case 'mapping': return de ? 'Events werden aufbereitet…' : 'Preparing events…';
+                        case 'counts': return de ? 'Teilnehmerzahlen werden gelesen…' : 'Reading attendee counts…';
+                        case 'documents': return de ? 'Dokumente werden geladen…' : 'Loading documents…';
+                        default: return de ? 'Fertig' : 'Done';
+                      }
                     })()}
                   </span>
-                  <span>{bootProgress} %</span>
+                  <span>{Math.round(bootProgress)} %</span>
                 </div>
               </div>
               {/* v11.48/v11.50/v11.55: KPI-Boxen im Boot-Loader.
