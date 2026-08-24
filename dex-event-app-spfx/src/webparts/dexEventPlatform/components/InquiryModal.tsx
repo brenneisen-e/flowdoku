@@ -12,6 +12,7 @@ import { useLanguage } from '../context/LanguageContext';
 import Modal from './Modal';
 import LandingInfoModal from './LandingInfoModal';
 import { Info } from './Icons';
+import { InfoTooltip } from './InfoTooltip';
 
 /**
  * v29.45: Was der Organizer für sein Event braucht — ankreuzen statt frei
@@ -24,17 +25,89 @@ import { Info } from './Icons';
  * Bewusst kurz gehalten und in der Sprache der Organizer formuliert — keine
  * Feature-Namen aus dem Wizard. Das Freitextfeld bleibt für alles andere.
  */
-const NEED_OPTIONS: Array<{ id: string; de: string; en: string }> = [
-  { id: 'visibility', de: 'Nur für bestimmte Personen sichtbar (Verteiler, Standort)', en: 'Visible only to certain people (distribution list, location)' },
-  { id: 'capacity', de: 'Begrenzte Plätze mit Warteliste und Nachrücken', en: 'Limited seats with waiting list and auto-promotion' },
-  { id: 'fields', de: 'Eigene Fragen im Anmeldeformular (Essen, Größe, Zustimmung …)', en: 'Own questions in the registration form (food, size, consent …)' },
-  { id: 'subevents', de: 'Mehrere Termine oder Sessions zur Auswahl', en: 'Several dates or sessions to choose from' },
-  { id: 'documents', de: 'Dokumente bereitstellen oder von Teilnehmern einfordern', en: 'Share documents or require uploads from attendees' },
-  { id: 'checkin', de: 'Check-in vor Ort mit QR-Code', en: 'On-site check-in with QR code' },
-  { id: 'hotel', de: 'Hotel- und Übernachtungsplanung', en: 'Hotel and accommodation planning' },
-  { id: 'teams', de: 'Anmeldung als Team oder Gruppe', en: 'Registration as a team or group' },
-  { id: 'external', de: 'Gäste von außerhalb Deloitte', en: 'Guests from outside Deloitte' },
-  { id: 'online', de: 'Online- oder Hybrid-Teilnahme (Teams)', en: 'Online or hybrid attendance (Teams)' },
+const NEED_OPTIONS: Array<{ id: string; de: string; en: string; infoDe: string; infoEn: string }> = [
+  {
+    id: 'visibility',
+    de: 'Nur für bestimmte Personen sichtbar (Verteiler, Standort)',
+    en: 'Visible only to certain people (distribution list, location)',
+    infoDe: 'Kann DEX schon: Du hinterlegst Mailverteiler, einzelne Personen und/oder Standorte — nur wer dazu passt, sieht das Event überhaupt. Einzelne Personen lassen sich gezielt ausschließen. Im Organizer Center siehst du jederzeit, wie viele Personen dahinterstehen, und kannst die, die noch nicht geantwortet haben, mit einem Klick erinnern.',
+    infoEn: 'DEX already does this: you add distribution lists, individual people and/or locations — only matching people see the event at all, and individuals can be excluded. The Organizer Center shows how many people that is and lets you remind those who have not responded.',
+  },
+  {
+    id: 'capacity',
+    de: 'Begrenzte Plätze mit Warteliste und Nachrücken',
+    en: 'Limited seats with waiting list and auto-promotion',
+    infoDe: 'Kann DEX schon: Du setzt eine Teilnehmerzahl; ist sie erreicht, landen weitere Anmeldungen automatisch auf der Warteliste — in der Reihenfolge der Anmeldung. Meldet sich jemand ab, rückt die erste Person automatisch nach und bekommt ihre Mail. Freie Plätze kannst du auch selbst per Knopfdruck auffüllen.',
+    infoEn: 'DEX already does this: set a capacity and further registrations go to the waiting list in order of registration. If someone cancels, the first person is promoted automatically and notified. You can also fill open seats manually.',
+  },
+  {
+    id: 'fields',
+    de: 'Eigene Fragen im Anmeldeformular (Essen, Größe, Zustimmung …)',
+    en: 'Own questions in the registration form (food, size, consent …)',
+    infoDe: 'Kann DEX schon: Du baust dir die Fragen selbst — Auswahl, Freitext, Zahl, Datum, Ja/Nein-Haken oder Personensuche, jeweils pflicht oder optional. Pflicht-Haken („Ich bestätige …") blockieren die Anmeldung, solange sie fehlen. Alle Antworten stehen in der Teilnehmerliste und im Excel-Export.',
+    infoEn: 'DEX already does this: build your own questions — choice, free text, number, date, yes/no or people picker, each optional or required. Required consent boxes block submission until ticked. All answers appear in the attendee list and the Excel export.',
+  },
+  {
+    id: 'subevents',
+    de: 'Mehrere Termine oder Sessions zur Auswahl',
+    en: 'Several dates or sessions to choose from',
+    infoDe: 'Kann DEX schon: Ein Event kann mehrere Termine (Sessions, Workshops, Tage) enthalten, aus denen die Teilnehmer wählen — mit eigener Kapazität, eigenen Fragen, eigenen Mails und eigenem Outlook-Termin je Termin. Du siehst eine gemeinsame Teilnehmerliste über alle Termine hinweg.',
+    infoEn: 'DEX already does this: an event can hold several sessions or days to choose from — each with its own capacity, questions, emails and calendar entry — with one combined attendee list across all of them.',
+  },
+  {
+    id: 'documents',
+    de: 'Dokumente bereitstellen oder von Teilnehmern einfordern',
+    en: 'Share documents or require uploads from attendees',
+    infoDe: 'Kann DEX schon: Du hängst Dateien ans Event (Agenda, Anfahrt, Programm) — sie stehen auf der Anmeldeseite und unter „Meine Events". Umgekehrt kannst du einen Upload verlangen (PDF oder Bild, auf Wunsch Pflicht); die Datei hängt an der Teilnehmerzeile und ist im Organizer Center einsehbar.',
+    infoEn: 'DEX already does this: attach files to the event (agenda, directions) — visible on the registration page and in My Events. You can also require an upload (PDF or image, optionally mandatory) that is attached to the attendee row.',
+  },
+  {
+    id: 'checkin',
+    de: 'Check-in vor Ort mit QR-Code',
+    en: 'On-site check-in with QR code',
+    infoDe: 'Kann DEX schon: Jeder Teilnehmer bekommt auf Wunsch einen persönlichen QR-Code per Mail. Vor Ort scannt ihr ihn mit dem Handy — oder die Gäste checken sich über einen Aushang selbst ein. Du siehst live, wer da ist, und kannst auch von Hand ein- und auschecken.',
+    infoEn: 'DEX already does this: attendees receive a personal QR code by email; scan it on site with a phone, or let guests check themselves in. You see live who has arrived and can check people in or out manually.',
+  },
+  {
+    id: 'hotel',
+    de: 'Hotel- und Übernachtungsplanung',
+    en: 'Hotel and accommodation planning',
+    infoDe: 'Kann DEX schon: Hotels mit Kontingenten und Zeiträumen hinterlegen, Teilnehmer automatisch verteilen lassen (auf Wunsch mit Zimmerpartner-Wunsch aus dem Formular) und die Belegung als Liste exportieren.',
+    infoEn: 'DEX already does this: set up hotels with room contingents and stay periods, distribute attendees automatically (optionally honouring roommate wishes from the form) and export the allocation.',
+  },
+  {
+    id: 'teams',
+    de: 'Anmeldung als Team oder Gruppe',
+    en: 'Registration as a team or group',
+    infoDe: 'Kann DEX schon: Teilnehmer melden sich als Team an — mit Teamname, fester Teamgröße und einer Person, die das Team führt. Offene Plätze können sichtbar sein, damit andere dazustoßen; auf Wunsch bestätigt die Team-Leitung neue Mitglieder.',
+    infoEn: 'DEX already does this: attendees can register as a team — team name, fixed size and a lead. Open slots can be visible so others may join, optionally with approval by the team lead.',
+  },
+  {
+    id: 'external',
+    de: 'Gäste von außerhalb Deloitte',
+    en: 'Guests from outside Deloitte',
+    infoDe: 'Teilweise: Externe ohne Deloitte-Konto kannst du über den Organizer eintragen lassen; die Anmeldeseite selbst ist auf Deloitte-Konten ausgelegt. Geht es um eine Veranstaltung, bei der sich überwiegend Externe selbst anmelden, ist das Event-Management-Team der richtige Weg — sprich uns an, wir sagen dir, was passt.',
+    infoEn: 'Partly: guests without a Deloitte account can be added by the organizer; the registration page itself is built for Deloitte accounts. For events where mostly external guests register themselves, the event management team is the better route — talk to us.',
+  },
+  {
+    id: 'online',
+    de: 'Online- oder Hybrid-Teilnahme (Teams)',
+    en: 'Online or hybrid attendance (Teams)',
+    infoDe: 'Kann DEX schon: Du legst die Teams-Besprechung wie gewohnt selbst an und hinterlegst den Teilnahme-Link am Event. Er steht dann im Outlook-Termin der Teilnehmer, im Organizer Center und unter „Meine Events" als Knopf. DEX erzeugt keine Teams-Besprechungen selbst.',
+    infoEn: 'DEX already does this: create the Teams meeting yourself and store the join link with the event. It then appears in the attendees\' calendar entry, in the Organizer Center and in My Events. DEX does not create Teams meetings itself.',
+  },
+];
+
+/**
+ * v29.46: Die zehn Punkte in drei Gruppen — untereinander gelistet lasen sie
+ * sich wie eine Wunschliste ohne Ordnung. Die Gruppen folgen dem, worüber der
+ * Organizer ohnehin nachdenkt: WER darf teilnehmen, WIE läuft die Anmeldung,
+ * was passiert DRUMHERUM.
+ */
+const NEED_GROUPS: Array<{ id: string; de: string; en: string; ids: string[] }> = [
+  { id: 'access', de: 'Wer teilnehmen darf', en: 'Who can attend', ids: ['visibility', 'external'] },
+  { id: 'signup', de: 'Anmeldung', en: 'Registration', ids: ['capacity', 'subevents', 'fields', 'teams'] },
+  { id: 'around', de: 'Rund um das Event', en: 'Around the event', ids: ['documents', 'checkin', 'hotel', 'online'] },
 ];
 
 interface InquiryModalProps {
@@ -69,6 +142,9 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
   const [eventScope, setEventScope] = React.useState<'' | 'internal' | 'external'>('');
   // v29.45: angekreuzte Bedarfe (Ids aus NEED_OPTIONS).
   const [needs, setNeeds] = React.useState<string[]>([]);
+  // v29.46: „Etwas anderes" — die Liste kann nicht alles kennen, und ein
+  // Bedarf, der nicht draufsteht, soll nicht durchs Raster fallen.
+  const [otherNeed, setOtherNeed] = React.useState('');
   const toggleNeed = (id: string): void =>
     setNeeds(prev => (prev.indexOf(id) >= 0 ? prev.filter(x => x !== id) : [...prev, id]));
 
@@ -97,6 +173,9 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
         .map(id => NEED_OPTIONS.filter(o => o.id === id)[0])
         .filter(Boolean)
         .map(o => `• ${isDe ? o.de : o.en}`);
+      if (needs.indexOf('other') >= 0 && otherNeed.trim()) {
+        needLines.push(`• ${isDe ? 'Sonstiges' : 'Other'}: ${otherNeed.trim()}`);
+      }
       const needBlock = needLines.length > 0
         ? `${isDe ? 'Benötigte Funktionen:' : 'Needed features:'}\n${needLines.join('\n')}\n\n`
         : '';
@@ -108,6 +187,7 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
       setEventName('');
       setMessage('');
       setNeeds([]);
+      setOtherNeed('');
       setTimeout(() => { onClose(); setStatus(''); }, 1800);
     } else {
       setStatus('error');
@@ -280,33 +360,85 @@ export default function InquiryModal({ open, onClose, organizerMode }: InquiryMo
             </div>
             <div style={{ fontSize: '0.75rem', color: 'var(--dex-gray-600)', margin: '2px 0 8px' }}>
               {isDe
-                ? 'Mehrfachauswahl, alles optional — es hilft uns, das Gespräch vorzubereiten. Unsicher? Einfach frei lassen.'
-                : 'Multiple choice, all optional — it helps us prepare. Not sure? Just leave it empty.'}
+                ? 'Mehrfachauswahl, alles optional — es hilft uns, das Gespräch vorzubereiten. Das „i" neben jedem Punkt erklärt, was DEX dafür schon mitbringt. Unsicher? Einfach frei lassen.'
+                : 'Multiple choice, all optional — it helps us prepare. The „i" next to each item explains what DEX already offers. Not sure? Just leave it empty.'}
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {NEED_OPTIONS.map(opt => {
-                const checked = needs.indexOf(opt.id) >= 0;
-                return (
-                  <label
-                    key={opt.id}
-                    style={{
-                      display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: '0.82rem',
-                      color: 'var(--dex-gray-700)', cursor: sending ? 'default' : 'pointer',
-                      padding: '3px 4px', borderRadius: 6,
-                      background: checked ? 'rgba(134,188,37,0.10)' : 'transparent',
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => toggleNeed(opt.id)}
-                      disabled={sending}
-                      style={{ marginTop: 2, accentColor: 'var(--dex-green, #86bc25)' }}
-                    />
-                    <span>{isDe ? opt.de : opt.en}</span>
-                  </label>
-                );
-              })}
+            {/* v29.46: gruppiert statt einer langen Liste. */}
+            {NEED_GROUPS.map(group => (
+              <div key={group.id} style={{ marginBottom: 10 }}>
+                <div style={{
+                  fontSize: '0.72rem', fontWeight: 700, letterSpacing: 0.3,
+                  color: 'var(--dex-green-dark, #4a7c1f)', textTransform: 'uppercase',
+                  margin: '0 0 4px',
+                }}>
+                  {isDe ? group.de : group.en}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {group.ids
+                    .map(id => NEED_OPTIONS.filter(o => o.id === id)[0])
+                    .filter(Boolean)
+                    .map(opt => {
+                      const checked = needs.indexOf(opt.id) >= 0;
+                      return (
+                        <label
+                          key={opt.id}
+                          style={{
+                            display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: '0.82rem',
+                            color: 'var(--dex-gray-700)', cursor: sending ? 'default' : 'pointer',
+                            padding: '3px 4px', borderRadius: 6,
+                            background: checked ? 'rgba(134,188,37,0.10)' : 'transparent',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleNeed(opt.id)}
+                            disabled={sending}
+                            style={{ marginTop: 2, accentColor: 'var(--dex-green, #86bc25)' }}
+                          />
+                          <span>
+                            {isDe ? opt.de : opt.en}
+                            {/* v29.46: Was DEX dafür schon mitbringt — die Liste
+                                soll nicht nur abfragen, sondern auch
+                                beantworten, was die App an dieser Stelle kann. */}
+                            <InfoTooltip text={isDe ? opt.infoDe : opt.infoEn} />
+                          </span>
+                        </label>
+                      );
+                    })}
+                </div>
+              </div>
+            ))}
+            {/* v29.46: Auffangbecken für alles, was die Liste nicht kennt. */}
+            <div>
+              <label
+                style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: '0.82rem',
+                  color: 'var(--dex-gray-700)', cursor: sending ? 'default' : 'pointer',
+                  padding: '3px 4px', borderRadius: 6,
+                  background: needs.indexOf('other') >= 0 ? 'rgba(134,188,37,0.10)' : 'transparent',
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={needs.indexOf('other') >= 0}
+                  onChange={() => toggleNeed('other')}
+                  disabled={sending}
+                  style={{ marginTop: 2, accentColor: 'var(--dex-green, #86bc25)' }}
+                />
+                <span>{isDe ? 'Sonstiges — etwas anderes' : 'Other — something else'}</span>
+              </label>
+              {needs.indexOf('other') >= 0 && (
+                <input
+                  type="text"
+                  className="form-input"
+                  value={otherNeed}
+                  onChange={e => setOtherNeed(e.target.value)}
+                  disabled={sending}
+                  placeholder={isDe ? 'Was brauchst du noch?' : 'What else do you need?'}
+                  style={{ marginTop: 4, fontSize: '0.82rem' }}
+                />
+              )}
             </div>
           </div>
         )}
