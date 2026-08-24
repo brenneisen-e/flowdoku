@@ -322,7 +322,7 @@ const PERMISSIONS: PermissionRow[] = [
     description: 'Per Toggle pro Event: jede neue Anmeldung bekommt automatisch ihren QR-Code direkt mit der Bestätigungsmail (statt manuell Massen-Versand). Wird im "QR-Codes versenden"-Modal aktiviert.',
     user: false, assistenz: false, coorganizer: 'Eigene Events ²', testteam: false, checkin: false, organizer: 'Eigene Events ²', admin: true },
   { category: 'Administration', feature: 'Onboarding-Mail an neuen Organizer/Admin senden',
-    description: 'Nach Anlage einer neuen Organizer- oder Admin-Rolle bietet die App an, eine Begrüßungsmail im Deloitte-Layout zu verschicken (Links zur App, zum Handbuch, Kurzanleitung Test-Event). ebrenneisen@deloitte.de und nifelten@deloitte.de stehen automatisch im Cc.',
+    description: 'Nach Anlage einer neuen Organizer- oder Admin-Rolle bietet die App an, eine Begrüßungsmail im Deloitte-Layout zu verschicken (Links zur App, zum Handbuch, Kurzanleitung Test-Event). dex.event@deloitte.de steht automatisch im Cc.',
     user: false, assistenz: false, coorganizer: false, testteam: false, checkin: false, organizer: false, admin: true },
   { category: 'Administration', feature: 'Rollen-Matrix einsehen',
     description: 'Diese Übersichtsseite öffnen.',

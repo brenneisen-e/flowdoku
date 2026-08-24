@@ -52,7 +52,7 @@ export default function QuestionButton(props: { isMobile?: boolean }): React.Rea
   const [myNums, setMyNums] = React.useState<{ registered: number[]; waitlisted: number[] }>({ registered: [], waitlisted: [] });
   const [askWizardStep, setAskWizardStep] = React.useState<number | null>(null);
   // v26.60: Organizer unterscheiden beim Einreichen zwischen inhaltlicher
-  // Frage (→ Power-User) und Bug-Report (→ DEX-Maintainer Nils + Eike).
+  // Frage (→ Power-User) und Bug-Report (→ DEX-Team, dex.event@deloitte.de).
   const [askCategory, setAskCategory] = React.useState<'question' | 'bug'>('question');
   const [shots, setShots] = React.useState<ShotRef[]>([]);
   // v29.40: Hinweis, wenn beim Anhängen etwas aussortiert wurde (kein Bild/zu groß).
