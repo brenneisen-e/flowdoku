@@ -864,7 +864,7 @@ export default function SettingsPage(): React.ReactElement {
             </p>
             <p style={{ margin: '0 0 20px', fontSize: '0.8rem', color: 'var(--dex-gray-500)' }}>
               Empfänger: {onboardingPrompt.email}<br />
-              Cc: ebrenneisen@deloitte.de, nifelten@deloitte.de
+              Cc: dex.event@deloitte.de
             </p>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
               <button

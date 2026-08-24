@@ -29,6 +29,7 @@ import { useRoles } from './RoleContext';
 import { useCurrentUser } from './UserContext';
 import { useEvents } from './EventContext';
 import { useNavigation } from './NavigationContext';
+import { DEX_TEAM_EMAIL } from '../utils/supportContact';
 
 const GREEN = '#86bc25';
 
@@ -355,11 +356,12 @@ export function TicketProvider(props: { context: WebPartContext; children: React
     let toNames: string[] = [];
     let cc = '';
     if (category === 'bug') {
-      // v26.60: Bug-Reports gehen NUR an die DEX-Maintainer (Wunsch: „Bug ist
-      // für Nils und Eike, inhaltliche Fragen für die Power-User") — gleiche
-      // feste Adressen wie die DEX-Anfrage-Mail (sendAdminInquiry).
-      toEmails = ['ebrenneisen@deloitte.de', 'nifelten@deloitte.de'];
-      toNames = ['Eike Brenneisen', 'Nils Felten'];
+      // v26.60: Bug-Reports gehen NUR an das DEX-Team (Wunsch: „Bug ist für
+      // das Team, inhaltliche Fragen für die Power-User") — dieselbe Adresse
+      // wie die DEX-Anfrage-Mail (sendAdminInquiry).
+      // v29.43: Funktionspostfach statt der beiden persönlichen Konten.
+      toEmails = [DEX_TEAM_EMAIL];
+      toNames = ['DEX-Team'];
     } else if (audience === 'PowerUser') {
       const pu = roles.filter(r => r.isPowerUser && r.userEmail);
       if (pu.length > 0) { toEmails = pu.map(r => r.userEmail); toNames = pu.map(r => r.userName || r.userEmail); }

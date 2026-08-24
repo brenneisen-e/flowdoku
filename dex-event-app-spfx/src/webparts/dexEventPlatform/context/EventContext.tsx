@@ -23,6 +23,7 @@ import { RELEASE_NOTES } from '../data/releaseNotes';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
 import { looksLikeClaimName, resolveMyDisplayName, safeDisplayName } from '../utils/displayName';
 import { emitBootStage } from '../utils/bootProgress';
+import { DEX_TEAM_RECIPIENTS } from '../utils/supportContact';
 
 /**
  * Organizer-Namen für Mail-Anreden sauber formatieren:
@@ -4911,7 +4912,9 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     requesterLocation?: string,
     requesterJobTitle?: string
   ): Promise<boolean> {
-    const adminTo = 'ebrenneisen@deloitte.de;nifelten@deloitte.de';
+    // v29.43: Funktionspostfach statt der persönlichen Konten — eine Anfrage
+    // darf nicht an einem Urlaub oder Wechsel hängen bleiben.
+    const adminTo = DEX_TEAM_RECIPIENTS;
     const subject = `DEX-Anfrage: ${eventName || 'Event ohne Titel'} (von ${requesterName || 'unbekannt'})`;
     const escape = (s: string): string => s
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -5056,7 +5059,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     role: 'Organizer' | 'Admin'
   ): Promise<boolean> {
     if (!recipientEmail || !recipientName) return false;
-    const cc = 'ebrenneisen@deloitte.de;nifelten@deloitte.de';
+    const cc = DEX_TEAM_RECIPIENTS;  // v29.43: siehe utils/supportContact
     const { subject, body } = organizerOnboardingEmail(recipientName, role);
     return eventService.queueEmail(
       subject, recipientEmail, recipientName, body, 'Info', 'DEX-Onboarding', '0', cc

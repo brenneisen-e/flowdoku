@@ -7642,7 +7642,8 @@ export default function EventCreationPage(): React.ReactElement {
 
                     <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Kontaktinformationen</h3>
                     <ul style={{ marginTop: 0 }}>
-                      <li>Kontakt: Projektteam — Nils Kilian Felten (<a href="mailto:nifelten@deloitte.de">nifelten@deloitte.de</a>)</li>
+                      {/* v29.43: Funktionspostfach statt persönlichem Konto. */}
+                      <li>Kontakt: DEX-Team (<a href="mailto:dex.event@deloitte.de">dex.event@deloitte.de</a>)</li>
                     </ul>
 
                     <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
@@ -7732,7 +7733,7 @@ export default function EventCreationPage(): React.ReactElement {
 
                     <h3 style={{ fontSize: '1rem', marginTop: 20, marginBottom: 8 }}>Contact</h3>
                     <ul style={{ marginTop: 0 }}>
-                      <li>Contact: project team — Nils Kilian Felten (<a href="mailto:nifelten@deloitte.de">nifelten@deloitte.de</a>)</li>
+                      <li>Contact: DEX team (<a href="mailto:dex.event@deloitte.de">dex.event@deloitte.de</a>)</li>
                     </ul>
 
                     <p style={{ fontSize: '0.82rem', color: 'var(--dex-gray-600)' }}>
