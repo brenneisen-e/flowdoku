@@ -22,6 +22,7 @@ import { APP_VERSION } from '../version';
 import { RELEASE_NOTES } from '../data/releaseNotes';
 import { buildDemoShowcaseEvents, isDemoShowcaseId, buildDemoRegistrations } from '../services/demoShowcaseEvent';
 import { looksLikeClaimName, resolveMyDisplayName, safeDisplayName } from '../utils/displayName';
+import { emitBootStage } from '../utils/bootProgress';
 
 /**
  * Organizer-Namen für Mail-Anreden sauber formatieren:
@@ -887,6 +888,10 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     };
 
     if (!skipEnsure) {
+      // v29.41: Der Start-Balken bekommt echte Abschnitte statt einer reinen
+      // Zeitschätzung — diese Stage ist die teuerste und läuft nur beim ersten
+      // Boot je Version.
+      emitBootStage('schema');
       // Stage 1: DEX_Events anlegen/sichern (Listen-Erstellung muss als erstes;
       // die upgrade*-Calls operieren auf DEX_Events).
       await stage('ensureEventsList', () => eventService.ensureEventsList());
@@ -934,6 +939,7 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // loadLogosAsBase64 ist KEIN ensure-Call — es füllt den In-Memory-Cache
     // mit den Logo-Daten, die für Mail-/Outlook-Templates gebraucht werden.
     // Muss bei jedem Boot laufen.
+    emitBootStage('logos');
     await stage('loadLogosAsBase64', () => loadLogosAsBase64(props.context.spHttpClient, eventService.siteUrl));
     await stage('loadEvents (full chain)', () => loadEvents());
     setIsEventsLoading(false);
@@ -952,11 +958,13 @@ export function EventProvider(props: { context: WebPartContext; children: React.
 
   async function loadEvents(): Promise<void> {
     // v11.74: Sub-Phase-Profiling — getEvents vs. Mapping vs. Counts vs. Attachments.
+    emitBootStage('events');
     const tGet = performance.now();
     const spEvents = await eventService.getEvents();
     const dGet = Math.round(performance.now() - tGet);
     // eslint-disable-next-line no-console
     console.log(`[DEX][perf][loadEvents] getEvents = ${dGet} ms (n=${spEvents.length})`);
+    emitBootStage('mapping');
     const tMap = performance.now();
     // v9.41: jedes Event-Mapping einzeln in try/catch wrappen — wenn EIN
     // Event-Mapping fehlschlägt (z.B. weil eine frisch erstellte Subsite noch
@@ -977,12 +985,14 @@ export function EventProvider(props: { context: WebPartContext; children: React.
     // eslint-disable-next-line no-console
     console.log(`[DEX][perf][loadEvents] mapSPEventToDeloitteEvent x ${spEvents.length} = ${dMap} ms`);
     // Teilnehmerzahlen für alle Events mit Subsite laden
+    emitBootStage('counts');
     const tCnt = performance.now();
     const withCounts = await loadParticipantCountsForEvents(mapped);
     const dCnt = Math.round(performance.now() - tCnt);
     // eslint-disable-next-line no-console
     console.log(`[DEX][perf][loadEvents] participantCounts = ${dCnt} ms`);
     // Attachments (Dokumente) für alle Events laden
+    emitBootStage('documents');
     const tAtt = performance.now();
     const withDocs = await Promise.all(withCounts.map(async (evt) => {
       try {
