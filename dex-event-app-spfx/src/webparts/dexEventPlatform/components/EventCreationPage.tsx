@@ -17,7 +17,7 @@ import { EventService, CustomField } from '../services/EventService';
 // v26.48: zentrale B2Run-Köln-Vorlage (Titel-Erkennung + 7 Meldefelder mit
 // deterministischen IDs für den offiziellen Excel-Export).
 import { isB2RunKoelnTitle, b2runKoelnTemplateFields } from '../data/b2runKoeln';
-import { eventCreatedEmail, buildOutlookBody, stripOutlookWrapper, parseOutlookHeadings, replacePlaceholders, getCachedOrbBase64 } from '../services/EmailTemplates';
+import { eventCreatedEmail, buildOutlookBody, stripOutlookWrapper, parseOutlookHeadings, replacePlaceholders, getCachedOrbBase64, normalizeMadeWithLink } from '../services/EmailTemplates';
 import { exportSummaryAsPdf, exportSummaryAsDoc, SummaryData } from '../services/EventSummaryExport';
 import { EventType, AgendaItem } from '../types';
 import { Trash2, Send, Plus, X, Users, Check } from './Icons';
@@ -3780,7 +3780,9 @@ export default function EventCreationPage(): React.ReactElement {
           'OutlookEnd': (draft.outlookEnd || '') || null,
           'OutlookLocation': (draft.outlookLocation || '') || '',
           'EmailLanguage': childPayload.emailLanguage,
-          'OutlookBody': childPayload.outlookBody,
+          // v29.42: Fußzeilen-Link auch auf dem direkten Sub-Event-Schreibweg
+          // normalisieren (der läuft nicht über EventService.updateEvent).
+          'OutlookBody': normalizeMadeWithLink(childPayload.outlookBody || ''),
           'EmailTemplateOverrides': childPayload.emailTemplateOverrides,
           'EmailImageBase64': subEmailLogo || '',
           'CustomFields': cfJson,

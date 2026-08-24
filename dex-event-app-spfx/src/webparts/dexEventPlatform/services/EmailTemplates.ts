@@ -13,6 +13,26 @@ import { buildHashDeepLink } from '../utils/deepLink';
 const GREEN = '#86bc25';
 const SITE_URL = 'https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform';
 const APP_URL = `${SITE_URL}/SitePages/DEX.aspx?env=WebView`;
+
+/**
+ * v29.42: Die Fußzeile „Made with DEX App" IMMER auf die kanonische App-Adresse
+ * zeigen lassen.
+ *
+ * Der Link im Template hier stimmt — aber Mail-Bodies kommen nicht nur von
+ * hier: gespeicherte Vorlagen aus `DEX_EmailTemplates`, Event-Overrides und
+ * kopierte Events tragen fertig gewickeltes HTML aus älteren App-Ständen mit
+ * sich, inklusive der Fußzeile von damals. Deshalb wird der href beim Ausgeben
+ * neu gesetzt statt darauf zu vertrauen, dass er richtig gespeichert wurde.
+ * Nur der href des Links mit genau diesem Text — der übrige Body bleibt, wie
+ * der Organizer ihn geschrieben hat.
+ */
+export function normalizeMadeWithLink(html: string): string {
+  if (!html || html.indexOf('Made with DEX') < 0) return html || '';
+  return html.replace(
+    /(<a\b[^>]*?)href\s*=\s*("|')[^"']*\2([^>]*>\s*Made with DEX(?:\s+App)?\s*<\/a>)/gi,
+    (_m, pre: string, _q: string, post: string) => `${pre}href="${APP_URL}"${post}`
+  );
+}
 // Gecachtes Logo Base64 aus DEX_EmailTemplates (_Config)
 // ORB/Event-Bild wird NICHT gecacht - der Flow setzt das event-spezifische Bild ein
 let cachedLogoBase64 = '';
@@ -222,7 +242,7 @@ ${buildHeadingsHtml(headingColor, heading, subheading, hSize, opts)}
 <!-- ===== "Made with DEX App" ===== -->
 <tr>
 <td style="padding:0 30px 24px 30px;font-family:Aptos,Arial,Helvetica,sans-serif;font-size:12px;color:#999999;">
-  <a href="https://deudeloitte.sharepoint.com/sites/DOL-c-DE-EventExperiencePlatform/SitePages/DEX.aspx?env=WebView" style="color:${GREEN};text-decoration:none;">Made with DEX App</a>
+  <a href="${APP_URL}" style="color:${GREEN};text-decoration:none;">Made with DEX App</a>
 </td>
 </tr>
 

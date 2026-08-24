@@ -253,6 +253,30 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // v29.42: Auswahl über `selectionchange` am Dokument mitschreiben statt nur
+  // über mouseup/keyup IM Editor.
+  //
+  // Der gemeldete Fall („markieren, Fett klicken — mal geht es, mal nicht"):
+  // Wer beim Markieren mit der Maus über den unteren/rechten Rand des Editors
+  // hinauszieht — bei einer Markierung bis zum Zeilenende der Normalfall —,
+  // lässt die Taste AUSSERHALB los. Das `mouseup` trifft dann document, nicht
+  // den Editor, `savedSelectionRef` behält die vorherige (oft leere) Auswahl,
+  // und der Toolbar-Klick stellt genau die wieder her: Fett landet ins Leere.
+  // `selectionchange` feuert unabhängig davon, wo die Maus losgelassen wird.
+  React.useEffect(() => {
+    if (!open) return undefined;
+    const onSelChange = (): void => {
+      const el = editorRef.current;
+      const sel = window.getSelection();
+      if (!el || !sel || sel.rangeCount === 0) return;
+      if (el.contains(sel.anchorNode) && el.contains(sel.focusNode)) {
+        savedSelectionRef.current = sel.getRangeAt(0).cloneRange();
+      }
+    };
+    document.addEventListener('selectionchange', onSelChange);
+    return () => document.removeEventListener('selectionchange', onSelChange);
+  }, [open]);
+
   if (!open) return null;
 
   const saveSelection = (): void => {
@@ -282,13 +306,24 @@ export const HtmlEditorModal: React.FC<HtmlEditorModalProps> = (props) => {
   const syncSelection = (): void => { saveSelection(); detectFontSize(); };
 
   const restoreSelection = (): void => {
-    const range = savedSelectionRef.current;
-    if (range && editorRef.current) {
-      editorRef.current.focus();
-      const sel = window.getSelection();
-      if (sel) { sel.removeAllRanges(); sel.addRange(range); }
-    } else {
-      editorRef.current?.focus();
+    const el = editorRef.current;
+    if (!el) return;
+    const sel = window.getSelection();
+    // v29.42: Eine LEBENDE Auswahl im Editor schlägt die gespeicherte. Vorher
+    // wurde immer die gespeicherte gesetzt — war die veraltet (siehe
+    // selectionchange oben), überschrieb sie die richtige.
+    const live = (sel && sel.rangeCount > 0 && el.contains(sel.anchorNode) && el.contains(sel.focusNode))
+      ? sel.getRangeAt(0).cloneRange()
+      : null;
+    const range = live || savedSelectionRef.current;
+    // focus() nur, wenn nötig — auf ein bereits fokussiertes Element ist es ein
+    // No-op, auf ein unfokussiertes kann es die Auswahl kollabieren lassen.
+    if (document.activeElement !== el) el.focus();
+    if (range && sel) {
+      // Nach dem Fokuswechsel steht die Auswahl evtl. am Anfang — deshalb in
+      // jedem Fall neu setzen.
+      sel.removeAllRanges();
+      sel.addRange(range);
     }
   };
 

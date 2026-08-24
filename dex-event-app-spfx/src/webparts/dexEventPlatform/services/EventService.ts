@@ -19,7 +19,7 @@
 
 import { WebPartContext } from '@microsoft/sp-webpart-base';
 import { SPHttpClient, SPHttpClientResponse, ISPHttpClientOptions } from '@microsoft/sp-http';
-import { wrapTemplateForStorage, buildEmailFromTemplate } from './EmailTemplates';
+import { wrapTemplateForStorage, buildEmailFromTemplate, normalizeMadeWithLink } from './EmailTemplates';
 // v28.95: Die Mail-Koerper liegen jetzt in ./mailBodies — die Datei begann
 // sonst mit 400 Zeilen HTML, bevor die erste Methode kam.
 import {
@@ -784,7 +784,10 @@ export class EventService {
         'Title': subject,
         'Recipient': recipient,
         'RecipientName': recipientName,
-        'Body': body,
+        // v29.42: Fußzeilen-Link kurz vor dem Versand auf die kanonische
+        // App-Adresse ziehen — gespeicherte Vorlagen und kopierte Events
+        // schleppen die Fußzeile älterer Stände mit.
+        'Body': normalizeMadeWithLink(body),
         'EmailType': emailType,
         'EventTitle': eventTitle,
         'EventId': eventId,
@@ -4697,7 +4700,8 @@ export class EventService {
         'OutlookEventId': event.outlookEventId,
         // outlookBody kommt bereits vollständig gewickelt + mit aufgelösten Variablen
         // aus EventCreationPage — hier nur durchreichen.
-        'OutlookBody': event.outlookBody || '',
+        // v29.42: auch im Termin-Text die Fußzeile auf die kanonische Adresse.
+        'OutlookBody': normalizeMadeWithLink(event.outlookBody || ''),
         'EmailLanguage': event.emailLanguage || 'EN',
         'RegistrationLanguage': event.registrationLanguage || '',
         'EmailTemplateOverrides': event.emailTemplateOverrides || '',
