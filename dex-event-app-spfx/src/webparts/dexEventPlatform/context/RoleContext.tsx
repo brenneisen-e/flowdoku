@@ -178,6 +178,34 @@ export function RoleProvider(props: { context: WebPartContext; children: React.R
   async function addRole(
     userEmail: string, userName: string, role: UserRole, location: string
   ): Promise<boolean> {
+    // v29.63: Kein zweiter Eintrag fuer dieselbe Person. `addRole` hat bisher
+    // bedingungslos eine Zeile in DEX_Roles angelegt — auch wenn es fuer die
+    // Adresse laengst eine gab. Zwei Zeilen sind kein Schoenheitsfehler:
+    // `refreshRoles` bestimmt die Rolle des Users per `find`, nimmt also die
+    // ERSTE Zeile. Eine spaetere Aenderung an der zweiten bleibt damit
+    // wirkungslos, und eine Herabstufung kann von einer alten Zeile
+    // ueberstimmt werden.
+    const mail = (userEmail || '').trim().toLowerCase();
+    const existing = roles.filter(r => (r.userEmail || '').trim().toLowerCase() === mail)[0];
+    if (existing) {
+      // Gleiche Rolle: nichts zu tun, aber die Rechte noch einmal setzen —
+      // sie koennen beim ersten Mal am Throttling gescheitert sein.
+      if (existing.role === role) {
+        try {
+          if (role === 'Admin' || role === 'IT-Admin') {
+            await spService.grantFullControlOnRolesList(userEmail);
+            await spService.grantFullControlOnEventsList(userEmail);
+            await spService.grantOrganizerPermissions(userEmail);
+          } else if (role === 'Organizer') {
+            await spService.grantReadOnRolesList(userEmail);
+            await spService.grantOrganizerPermissions(userEmail);
+          }
+        } catch (err) { console.warn('[DEX] permission re-grant failed (best-effort):', err); }
+        return true;
+      }
+      // Andere Rolle: die bestehende Zeile aendern statt eine zweite anzulegen.
+      return updateRole(existing.id, role);
+    }
     const success = await spService.addRole(userEmail, userName, role, location, currentUserName);
     if (success) {
       try {

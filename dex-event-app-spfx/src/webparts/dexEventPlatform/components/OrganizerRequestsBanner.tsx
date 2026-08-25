@@ -21,11 +21,11 @@ import { Settings, Check, X } from './Icons';
 type Req = { id: number; email: string; name: string; location: string; message: string; created: string };
 
 export default function OrganizerRequestsBanner(): React.ReactElement | null {
-  const { isAdmin, originalIsAdmin, addRole, refreshRoles } = useRoles();
+  const { isAdmin, originalIsAdmin, addRole, refreshRoles, roles } = useRoles();
   const { getOpenOrganizerRequests, markOrganizerRequestDecided, getOrganizerRequestDetails } = useEvents();
   const { locale } = useLanguage();
   const { navigate } = useNavigation();
-  const { showAlert } = useDialog();
+  const { showAlert, confirmDialog } = useDialog();
   const isDe = locale === 'de';
   const adminLike = isAdmin || originalIsAdmin;
 
@@ -96,6 +96,34 @@ export default function OrganizerRequestsBanner(): React.ReactElement | null {
     setBusyId(r.id);
     try {
       if (approve) {
+        // v29.63: Erst prüfen, ob die Person die Rechte längst hat. `addRole`
+        // tut das nicht — es legt eine ZWEITE Zeile in DEX_Roles an, und der
+        // Antragsweg schickte danach die volle Onboarding-Mail (v28.44) an
+        // jemanden, der seit Monaten Organizer ist. Der Admin erfuhr davon
+        // nichts. Auch ein Admin/IT-Admin darf hier nicht auf Organizer
+        // gesetzt werden — das wäre eine Herabstufung durch die Hintertür.
+        const reqMail = (r.email || '').trim().toLowerCase();
+        const existing = roles.filter(x => (x.userEmail || '').trim().toLowerCase() === reqMail)[0];
+        const alreadyEntitled = !!existing
+          && (existing.role === 'Organizer' || existing.role === 'Admin' || existing.role === 'IT-Admin');
+        if (alreadyEntitled) {
+          const roleLabel = existing.role === 'Organizer'
+            ? 'Organizer'
+            : (isDe ? `${existing.role} (schließt Organizer-Rechte ein)` : `${existing.role} (includes organizer rights)`);
+          const proceed = await confirmDialog(
+            isDe
+              ? `${r.name || r.email} hat bereits die Rolle „${roleLabel}" — die Rechte sind also schon da.\n\nEs wird KEINE Rolle angelegt und KEINE Onboarding-Mail verschickt.\n\nDen Antrag jetzt als erledigt abhaken?`
+              : `${r.name || r.email} already holds the role "${roleLabel}" — the rights are already in place.\n\nNo role will be created and NO onboarding email will be sent.\n\nMark the request as done now?`,
+            { confirmLabel: isDe ? 'Als erledigt abhaken' : 'Mark as done' },
+          );
+          if (!proceed) { setBusyId(null); return; }
+          // Antrag schliessen, aber ohne Mail — die Person weiss ja nichts von
+          // einem Wechsel, weil es keinen gab.
+          await markOrganizerRequestDecided(r.id, 'Approved', r.email, r.name || r.email, { suppressMail: true });
+          setRequests(prev => prev.filter(x => x.id !== r.id));
+          setBusyId(null);
+          return;
+        }
         const ok = await addRole(r.email, r.name || r.email, 'Organizer', r.location || '');
         if (!ok) { setBusyId(null); return; }
         await markOrganizerRequestDecided(r.id, 'Approved', r.email, r.name || r.email);
