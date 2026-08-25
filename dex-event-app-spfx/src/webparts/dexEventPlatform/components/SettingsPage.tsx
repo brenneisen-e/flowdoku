@@ -628,6 +628,60 @@ export default function SettingsPage(): React.ReactElement {
               </a>
             </p>
 
+            {/* v29.63: Doppelte Rollen-Eintraege beim Aufruf benennen.
+                `addRole` prueft nicht auf Bestand — jede Zuweisung legt eine
+                neue Zeile in DEX_Roles an. Zwei Zeilen fuer dieselbe Person
+                sind kein Schoenheitsfehler: `refreshRoles` nimmt per `find`
+                die ERSTE, also entscheidet die Reihenfolge in der Liste
+                darueber, welche Rolle gilt — und eine spaetere Herabstufung
+                kann von einer alten Zeile ueberstimmt werden. */}
+            {(() => {
+              const byMail = new Map<string, typeof roles>();
+              for (const r of roles) {
+                const k = (r.userEmail || '').trim().toLowerCase();
+                if (!k) continue;
+                const arr = byMail.get(k) || [];
+                arr.push(r);
+                byMail.set(k, arr);
+              }
+              const dupes = Array.from(byMail.values()).filter(a => a.length > 1);
+              if (dupes.length === 0) return null;
+              return (
+                <div style={{
+                  padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: '0.85rem',
+                  background: 'rgba(237,139,0,0.10)', border: '1px solid var(--dex-orange, #ed8b00)',
+                  color: 'var(--dex-gray-800)',
+                }}>
+                  <strong>
+                    {isDe
+                      ? `${dupes.length} ${dupes.length === 1 ? 'Person hat' : 'Personen haben'} mehrere Rollen-Einträge`
+                      : `${dupes.length} ${dupes.length === 1 ? 'person has' : 'people have'} multiple role entries`}
+                  </strong>
+                  <div style={{ marginTop: 4 }}>
+                    {isDe
+                      ? 'Gültig ist der erste Eintrag der Liste — eine spätere Änderung kann dadurch wirkungslos bleiben. Bitte die überzähligen Zeilen entfernen.'
+                      : 'The first entry in the list wins — a later change can therefore have no effect. Please remove the surplus rows.'}
+                  </div>
+                  <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
+                    {dupes.slice(0, 10).map(a => (
+                      <li key={a[0].userEmail} style={{ marginBottom: 2 }}>
+                        <strong>{a[0].userName || a[0].userEmail}</strong>
+                        {' — '}
+                        {a.map(x => x.role).join(', ')}
+                        {' '}
+                        <span style={{ color: 'var(--dex-gray-500)' }}>({a[0].userEmail})</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {dupes.length > 10 && (
+                    <div style={{ marginTop: 4, color: 'var(--dex-gray-500)' }}>
+                      {isDe ? `… und ${dupes.length - 10} weitere` : `… and ${dupes.length - 10} more`}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             {statusMsg && (
               <div style={{
                 padding: '8px 12px', borderRadius: 8, marginBottom: 16, fontSize: '0.85rem',

@@ -530,7 +530,7 @@ interface EventContextType {
   getOpenOrganizerRequests: () => Promise<Array<{ id: number; email: string; name: string; location: string; message: string; created: string }>>;
   /** v23.37: Antrag entscheiden — Status setzen + Antragsteller informieren.
    *  Die eigentliche Rollenvergabe macht der Aufrufer über useRoles().addRole. */
-  markOrganizerRequestDecided: (id: number, status: 'Approved' | 'Rejected', email: string, name: string) => Promise<boolean>;
+  markOrganizerRequestDecided: (id: number, status: 'Approved' | 'Rejected', email: string, name: string, opts?: { suppressMail?: boolean }) => Promise<boolean>;
   /** v26.58: Einzelnen Antrag inkl. Entscheidungs-Metadaten (Status,
    *  DecidedByEmail, DecidedDate) — für den approveorg-Deep-Link. */
   getOrganizerRequestDetails: (id: number) => Promise<{ id: number; email: string; name: string; status: string; decidedByEmail: string; decidedDate: string } | null>;
@@ -5806,9 +5806,16 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
     } catch { return []; }
   }
 
-  async function markOrganizerRequestDecided(id: number, status: 'Approved' | 'Rejected', email: string, name: string): Promise<boolean> {
+  async function markOrganizerRequestDecided(
+    id: number, status: 'Approved' | 'Rejected', email: string, name: string,
+    opts?: { suppressMail?: boolean },
+  ): Promise<boolean> {
     try {
       const ok = await eventService.updateOrganizerRequestStatus(id, status, currentUserEmail || '');
+      // v29.63: Hatte die Person die Rechte schon, wird der Antrag nur
+      // geschlossen — ohne Mail. Eine Onboarding-Mail fuer etwas, das sich
+      // nicht geaendert hat, verwirrt mehr als sie hilft.
+      if (opts && opts.suppressMail) return ok;
       // Antragsteller informieren (best-effort, EventId='0').
       try {
         const esc = (s: string): string => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
