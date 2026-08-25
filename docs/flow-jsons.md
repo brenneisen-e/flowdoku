@@ -2776,7 +2776,13 @@ In **beiden** Flows dieselbe Ersetzung:
 Hier ist `"@{...}"` richtig — `showAs` ist ein String, kein Boolean (anders als
 `isAllDay`).
 
-**Stand der Action `Create_event_(V4)` NACH allen Änderungen (im Tenant verifiziert 2026-08-25):**
+**Stand der Action `Create_event_(V4)` — VOLLSTÄNDIG, im Tenant verifiziert 2026-08-25.**
+Enthält alle vier Änderungen: `isAllDay` + Ganztags-Zweig in `start`/`end` (v29.52),
+`showAs` aus `ShowAsFree` (v29.54), `requiredAttendees` mit `SkipOrganizerInvite`
+(v29.55) sowie `responseRequested: true` / `sensitivity: "normal"`.
+Der Update-Pfad (`Build_Update_Body`) ist ebenfalls vollständig — dort ist
+`requiredAttendees` bewusst NICHT enthalten: Attendees fasst der PATCH nicht an,
+nachträgliche Änderungen laufen über `Einladen`/`Ausladen` aus der App (v29.56).
 ```json
 {
   "type": "OpenApiConnection",
@@ -2787,7 +2793,7 @@ Hier ist `"@{...}"` richtig — `showAs` ist ein String, kein Boolean (anders al
       "item/start": "@if(equals(coalesce(triggerBody()?['AllDay'], false), true), concat(formatDateTime(convertFromUtc(coalesce(triggerBody()?['OutlookStart'], triggerBody()?['StartDate']), 'W. Europe Standard Time'), 'yyyy-MM-dd'), 'T00:00:00'), convertFromUtc(coalesce(triggerBody()?['OutlookStart'], triggerBody()?['StartDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'))",
       "item/end": "@if(equals(coalesce(triggerBody()?['AllDay'], false), true), concat(formatDateTime(addDays(convertFromUtc(coalesce(triggerBody()?['OutlookEnd'], triggerBody()?['EndDate'], triggerBody()?['StartDate']), 'W. Europe Standard Time'), 1), 'yyyy-MM-dd'), 'T00:00:00'), convertFromUtc(coalesce(triggerBody()?['OutlookEnd'], triggerBody()?['EndDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'))",
       "item/timeZone": "(UTC+01:00) Amsterdam, Berlin, Bern, Rome, Stockholm, Vienna",
-      "item/requiredAttendees": "@last(split(replace(coalesce(triggerBody()?['OrganizerEmail'], ''), '</div>', ''), '\">'))",
+      "item/requiredAttendees": "@if(equals(coalesce(triggerBody()?['SkipOrganizerInvite'], false), true), '', last(split(replace(coalesce(triggerBody()?['OrganizerEmail'], ''), '</div>', ''), '\">')))",
       "item/body": "<p class=\"editor-paragraph\">@{replace(replace(coalesce(triggerBody()?['OutlookBody'], ''), '{{LOGO_URL}}', outputs('Compose_Logo')), '{{ORB_URL}}', outputs('Compose_Image'))}</p>",
       "item/location": "@triggerBody()?['OutlookLocation']",
       "item/isAllDay": "@coalesce(triggerBody()?['AllDay'], false)",

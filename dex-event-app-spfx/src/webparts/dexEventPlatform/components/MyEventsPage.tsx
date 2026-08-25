@@ -35,6 +35,7 @@ import { buildDemoShowcaseEvents, buildDemoMyRegistration } from '../services/de
 import StayRangePicker from './StayRangePickerLazy';
 import { TeamsJoinButton } from './TeamsJoinButton';
 import { eventTeamsLink, locationWithoutTeamsUrl } from '../utils/teamsLink';
+import { formatAllDayPeriod } from '../utils/eventFormat';
 
 // v20.0 (Audit): PdfViewer zieht react-pdf (+pdfjs) ins Bundle — lazy laden,
 // der Viewer wird nur beim Öffnen eines Dokuments gebraucht.
@@ -2139,7 +2140,7 @@ export default function MyEventsPage(): React.ReactElement {
                           })()}
                         </span>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon iconName="Calendar" style={{ fontSize: 14, color: 'var(--dex-gray-500)' }} /> {formatDateRange(event.startDate, event.endDate)}</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}><Icon iconName="Calendar" style={{ fontSize: 14, color: 'var(--dex-gray-500)' }} /> {event.allDay ? formatAllDayPeriod(event.startDate, event.endDate, isDe) : formatDateRange(event.startDate, event.endDate)}</div>
                       {/* v29.39: Teilnahme-Knopf direkt bei den Eckdaten — wer in
                           „Meine Events" nachsieht, will von dort in die
                           Besprechung, nicht erst den Kalender suchen. */}

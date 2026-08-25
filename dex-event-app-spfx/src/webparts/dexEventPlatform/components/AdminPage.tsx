@@ -68,6 +68,7 @@ import { UserFieldPicker } from './UserFieldPicker';
 import { useDialog } from '../context/DialogContext';
 import { shortSubEventTitle } from '../utils/subEventTitle';
 import { formatDate, getStatusColor, localizeStatus, stripHtmlToText, looksEnglishText, translateStatus } from '../utils/eventStatus';
+import { formatAllDayPeriod } from '../utils/eventFormat';
 import { getBlockedInviteRecipients } from '../utils/inviteGuards';
 import { ActionTile, SplitMergeToggle, ActionsCollapsibleCard, ActionsRegistryProvider, ActionsDropdown } from './admin/ActionsMenu';
 
@@ -6806,7 +6807,13 @@ export default function AdminPage(): React.ReactElement {
                   <>
                     <div style={rowStyle}>
                       <span style={labelStyle}>{isDe ? 'Zeitraum' : 'Time period'}</span>
-                      <span style={valueStyle}>{formatDate(selectedEvent.startDate)} - {formatDate(selectedEvent.endDate)}</span>
+                      {/* v29.61: Bei ganztägig nur die Daten — 00:00-23:59 ist
+                          die Speicherform, nicht die Aussage. */}
+                      <span style={valueStyle}>
+                        {selectedEvent.allDay
+                          ? formatAllDayPeriod(selectedEvent.startDate, selectedEvent.endDate, isDe)
+                          : `${formatDate(selectedEvent.startDate)} - ${formatDate(selectedEvent.endDate)}`}
+                      </span>
                     </div>
                     <div style={rowStyle}>
                       <span style={labelStyle}>{isDe ? 'Organizer' : 'Organizer'}</span>

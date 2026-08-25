@@ -103,3 +103,30 @@ export function buildOutlookLocation(
   const cityLine = [addr.zip, addr.city].map(s => (s || '').trim()).filter(Boolean).join(' ');
   return [location, streetLine, cityLine].map(s => (s || '').trim()).filter(Boolean).join(', ');
 }
+
+/**
+ * v29.61 — Zeitraum eines GANZTÄGIGEN Events als Text.
+ *
+ * DEX speichert ganztägig als 00:00–23:59 (der Outlook-Flow rechnet daraus die
+ * echten Ganztags-Grenzen, siehe docs/flow-jsons.md v29.52). Diese Uhrzeiten
+ * anzuzeigen ist irreführend: Der Organizer hat „ganztägig" gewählt und liest
+ * dann „00:00 - 23:59" — das sieht aus, als hätte die Einstellung nicht
+ * gegriffen. Genau so gemeldet worden.
+ *
+ * Liefert deshalb nur die Datumsangaben plus den Zusatz. Ein eintägiger Termin
+ * bekommt nur EIN Datum, nicht zweimal dasselbe.
+ */
+export function formatAllDayPeriod(startIso: string, endIso: string, isDe: boolean): string {
+  if (!startIso) return '';
+  const start = new Date(startIso);
+  if (isNaN(start.getTime())) return '';
+  const end = endIso ? new Date(endIso) : null;
+  const fmt = (d: Date): string => d.toLocaleDateString(isDe ? 'de-DE' : 'en-GB', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  });
+  const suffix = isDe ? ' (ganztägig)' : ' (all day)';
+  if (!end || isNaN(end.getTime()) || start.toDateString() === end.toDateString()) {
+    return fmt(start) + suffix;
+  }
+  return `${fmt(start)} – ${fmt(end)}${suffix}`;
+}

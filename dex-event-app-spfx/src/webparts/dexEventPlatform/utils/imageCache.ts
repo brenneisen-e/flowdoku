@@ -151,7 +151,17 @@ export async function getCachedImage(url: string): Promise<string> {
       // das <img> dieselbe URL parallel schon geladen hat (vermeidet Doppel-
       // Download beim ersten Mal).
       const resp = await fetch(url, { credentials: 'include', cache: 'force-cache' });
-      if (!resp.ok) { failedUrls.add(url); return url; }
+      // v29.62: NUR endgültige Fehler merken. Bis hierher landete JEDE
+      // Fehlerantwort auf der Sperrliste — auch ein 429 (SharePoint drosselt)
+      // oder ein 5xx. Genau die kommen aber gehäuft beim App-Start vor, und
+      // die Sperrliste gilt für die ganze Sitzung: Wer die App öffnet und
+      // sofort ein Event aufruft, sah das Bild dann nicht mehr, bis er neu
+      // lud. 404/403/410 heißen „gibt es nicht (mehr)" — alles andere heißt
+      // „gerade nicht", und das darf kein Dauerzustand werden.
+      if (!resp.ok) {
+        if (resp.status === 404 || resp.status === 403 || resp.status === 410) failedUrls.add(url);
+        return url;
+      }
       const blob = await resp.blob();
       if (blob.size > MAX_BYTES || blob.type.indexOf('image/') !== 0) return url;
       const dataUrl = await blobToDataUrl(blob);
@@ -175,6 +185,14 @@ export async function getCachedImage(url: string): Promise<string> {
  * dasselbe Bild zeigen, ist der Tausch optisch nahtlos. Beim nächsten App-Aufruf
  * liefert der Cache das Bild ohne SharePoint-Roundtrip.
  */
+/**
+ * v29.62: Ein Abruf, der nicht am fehlenden Bild lag (429/5xx/Netz), wird EINMAL
+ * wiederholt. Ohne das bleibt die Kachel bzw. der Kopf der Anmeldeseite bis zum
+ * Neuladen leer, obwohl das Bild existiert — der gemeldete Fall „App geöffnet,
+ * sofort ins Event, kein Bild".
+ */
+const RETRY_MS = 1500;
+
 export function useCachedImage(url: string | undefined): string {
   const initial = url ? (memCache.get(url) || url) : '';
   const [resolved, setResolved] = React.useState<string>(initial);
@@ -184,10 +202,26 @@ export function useCachedImage(url: string | undefined): string {
     if (!url) { setResolved(''); return undefined; }
     const mem = memCache.get(url);
     setResolved(mem || url);
+    let timer: ReturnType<typeof setTimeout> | null = null;
     if (!mem) {
-      getCachedImage(url).then(d => { if (!cancelled && d) setResolved(d); }).catch(() => { /* Original-URL bleibt */ });
+      // v29.62: Zweiter Versuch, wenn der erste nichts Gecachtes brachte und
+      // die URL nicht als endgueltig fehlend gilt. `getCachedImage` liefert bei
+      // einem Fehlschlag die Original-URL zurueck — daran erkennt man ihn.
+      getCachedImage(url)
+        .then(d => {
+          if (cancelled) return;
+          if (d) setResolved(d);
+          if (d === url && !imageFailed(url)) {
+            timer = setTimeout(() => {
+              getCachedImage(url)
+                .then(d2 => { if (!cancelled && d2) setResolved(d2); })
+                .catch(() => { /* Original-URL bleibt stehen */ });
+            }, RETRY_MS);
+          }
+        })
+        .catch(() => { /* Original-URL bleibt */ });
     }
-    return () => { cancelled = true; };
+    return () => { cancelled = true; if (timer) clearTimeout(timer); };
   }, [url]);
 
   return resolved;
