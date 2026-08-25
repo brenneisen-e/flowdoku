@@ -2883,7 +2883,7 @@ mit denselben `if(...)`-Ausdrücken wie oben, nur mit
 geschrieben und vom Flow ignoriert — die Termine bleiben `00:00–23:59` wie
 bisher. Es geht also nichts kaputt, der Haken hat nur noch keine Wirkung.
 
-**Vollständiger Stand `Build_Update_Body` NACH der Änderung** (Compose, Code-View):
+**Vollständiger Stand `Build_Update_Body` — im Tenant verifiziert 2026-08-25** (Compose, Code-View):
 ```json
 {
   "type": "Compose",
@@ -2898,9 +2898,9 @@ bisher. Es geht also nichts kaputt, der Haken hat nur noch keine Wirkung.
       "dateTime": "@{if(equals(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['AllDay'], false), true), concat(formatDateTime(addDays(convertFromUtc(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookEnd'], first(outputs('Get_Event_Details')?['body/value'])?['EndDate'], first(outputs('Get_Event_Details')?['body/value'])?['StartDate']), 'W. Europe Standard Time'), 1), 'yyyy-MM-dd'), 'T00:00:00'), convertFromUtc(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookEnd'], first(outputs('Get_Event_Details')?['body/value'])?['EndDate']), 'W. Europe Standard Time', 'yyyy-MM-ddTHH:mm:ss'))}",
       "timeZone": "W. Europe Standard Time"
     },
-    "showAs": "busy",
-    "responseRequested": false,
-    "sensitivity": "private",
+    "showAs": "@{if(equals(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['ShowAsFree'], false), true), 'free', 'busy')}",
+    "responseRequested": true,
+    "sensitivity": "normal",
     "body": {
       "contentType": "html",
       "content": "@{replace(coalesce(first(outputs('Get_Event_Details')?['body/value'])?['OutlookBody'], ''), '{{ORB_URL}}', coalesce(first(outputs('Get_Event_Details')?['body/value'])?['EmailImageBase64'], ''))}"
@@ -2912,8 +2912,15 @@ bisher. Es geht also nichts kaputt, der Haken hat nur noch keine Wirkung.
 **Achtung `isAllDay` in diesem Compose:** `"@coalesce(...)"` mit **einfachem `@`**
 und OHNE geschweifte Klammern. `"@{...}"` ist String-Interpolation und würde
 `"true"` als Text liefern — Graph erwartet an dieser Stelle einen echten
-Boolean. Bei `start.dateTime`/`end.dateTime` ist `"@{...}"` dagegen richtig,
+Boolean. Bei `start.dateTime`/`end.dateTime`/`showAs` ist `"@{...}"` dagegen richtig,
 das sind Strings.
+
+Der Designer schreibt beim Einfügen über die **Parameters**-Ansicht manchmal
+`"@expr"` zu `"@{expr}"` um. Bei allen anderen Feldern ist das folgenlos, bei
+`isAllDay` nicht: Graph bekäme dann den Text `"true"` statt des Wahrheitswerts
+und lehnt den PATCH mit 400 ab. Nach dem Einfügen deshalb einmal in die
+**Code view** schauen und prüfen, dass dort `"@coalesce(` ohne geschweifte
+Klammern steht. In der Code-Ansicht bleibt das einfache `@` erhalten.
 
 `Get_Event_Details` ist ein `GetItems` **ohne** `$select` (nur `$filter` auf die
 ID) — die neue Spalte `AllDay` kommt also automatisch mit, dort ist nichts
