@@ -939,6 +939,12 @@ export default function EventCreationPage(): React.ReactElement {
   // sind (sonst kippt die Heuristik unten auf 'subevent' zurück und die
   // Custom-Inputs verschwinden bevor der User tippen kann).
   const [customTermMode, setCustomTermMode] = React.useState<boolean>(false);
+  // v29.60: Grammatisches Geschlecht der Bezeichnung. '' = wie bisher raten.
+  // Gebraucht wird der AKKUSATIV („wähle mindestens einen Office-Tag aus"),
+  // und den kann man aus dem Wort nicht ableiten — deshalb gefragt statt geraten.
+  const [childGender, setChildGender] = React.useState<'' | 'm' | 'f' | 'n'>(
+    (editEvent && editEvent.childEventTermGender) || '',
+  );
   const [childTermSingular, setChildTermSingular] = React.useState<string>(
     (editEvent && editEvent.childEventTermSingular) || '',
   );
@@ -4621,7 +4627,7 @@ export default function EventCreationPage(): React.ReactElement {
         return iso ? { _klammerDeadline: iso } : {};
       })();
       const childTermConfig = (childTermSingular.trim() || childTermPlural.trim())
-        ? { _childEventTerm: { singular: childTermSingular.trim(), plural: childTermPlural.trim() } }
+        ? { _childEventTerm: { singular: childTermSingular.trim(), plural: childTermPlural.trim(), ...(childGender ? { gender: childGender } : {}) } }
         : {};
       // v18.9: Organizer-Anzeige ausblenden (Piggyback).
       const hideOrganizerConfig = hideOrganizer ? { _hideOrganizer: true } : {};
@@ -5425,7 +5431,7 @@ export default function EventCreationPage(): React.ReactElement {
             return iso ? { _klammerDeadline: iso } : {};
           })();
           const childTermExtra = (childTermSingular.trim() || childTermPlural.trim())
-            ? { _childEventTerm: { singular: childTermSingular.trim(), plural: childTermPlural.trim() } }
+            ? { _childEventTerm: { singular: childTermSingular.trim(), plural: childTermPlural.trim(), ...(childGender ? { gender: childGender } : {}) } }
             : {};
           // v18.9: Organizer-Anzeige ausblenden (Piggyback).
           const hideOrganizerExtra = hideOrganizer ? { _hideOrganizer: true } : {};
@@ -11236,6 +11242,39 @@ export default function EventCreationPage(): React.ReactElement {
                               style={{ padding: '6px 10px', fontSize: '0.9rem' }}
                             />
                           </div>
+                        </div>
+                      )}
+                      {/* v29.60: Der unbestimmte Artikel wurde bisher aus dem
+                          Wort geraten — und stand im Nominativ. Auf der
+                          Anmeldeseite heisst es aber „wähle mindestens" …,
+                          also Akkusativ: bei maskulinen Begriffen „einen",
+                          nicht „ein". Das laesst sich nicht ableiten,
+                          deshalb wird es hier gefragt. */}
+                      {isDe && (
+                        <div style={{ marginTop: 10, maxWidth: 480 }}>
+                          <label style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', display: 'block', marginBottom: 3 }}>
+                            Artikel (nur für die deutschen Texte)
+                          </label>
+                          <select
+                            className="form-input"
+                            value={childGender}
+                            onChange={e => setChildGender(e.target.value as '' | 'm' | 'f' | 'n')}
+                            style={{ padding: '6px 10px', fontSize: '0.9rem', maxWidth: 280 }}
+                          >
+                            <option value="">Automatisch erkennen</option>
+                            <option value="m">der … (z.B. der Office-Tag)</option>
+                            <option value="f">die … (z.B. die Session)</option>
+                            <option value="n">das … (z.B. das Modul)</option>
+                          </select>
+                          <p style={{ fontSize: '0.75rem', color: 'var(--dex-gray-500)', margin: '4px 0 0' }}>
+                            {(() => {
+                              const term = (childTermSingular || 'Sub-Event').trim() || 'Sub-Event';
+                              const art = childGender === 'm' ? 'einen' : childGender === 'f' ? 'eine' : childGender === 'n' ? 'ein' : '';
+                              return art
+                                ? `Auf der Anmeldeseite steht dann: „Bitte wähle mindestens ${art} ${term} aus."`
+                                : 'Ohne Auswahl rät DEX anhand der Endung — das geht bei ungewöhnlichen Bezeichnungen schief.';
+                            })()}
+                          </p>
                         </div>
                       )}
                     </>

@@ -352,6 +352,14 @@ export interface DeloitteEvent {
    *  EmailTemplateOverrides. */
   childEventTermSingular?: string;
   childEventTermPlural?: string;
+  /** v29.60: Grammatisches Geschlecht der Bezeichnung — 'm' | 'f' | 'n'.
+   *
+   *  Bis hierher wurde es geraten (Suffix-Liste in `childOneDe`), und der
+   *  Artikel stand im NOMINATIV. Beide Sätze, in denen er vorkommt, brauchen
+   *  aber den Akkusativ: „wähle mindestens einen Office-Tag aus" — nicht
+   *  „ein Office-Tag". Raten hilft da nicht weiter, deshalb fragt der
+   *  Assistent es ab. Leer = alte Heuristik (rückwärtskompatibel). */
+  childEventTermGender?: 'm' | 'f' | 'n';
   /** v8.5: Granulare Organizer-Benachrichtigung bei Anmeldungen.
    *  - 'never' (Default): Organizer bekommt nichts mit
    *  - 'always': Organizer wird bei jeder Anmeldung als BCC dazugesetzt

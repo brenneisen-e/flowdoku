@@ -1557,6 +1557,14 @@ async function mapLimited<T, R>(items: T[], limit: number, fn: (item: T, index: 
           return v || undefined;
         } catch { return undefined; }
       })(),
+      // v29.60: Geschlecht der Bezeichnung — fuer den unbestimmten Artikel.
+      childEventTermGender: ((): 'm' | 'f' | 'n' | undefined => {
+        try {
+          const ov = JSON.parse(e.EmailTemplateOverrides || '{}');
+          const v = ov && ov._childEventTerm ? ov._childEventTerm.gender : '';
+          return (v === 'm' || v === 'f' || v === 'n') ? v : undefined;
+        } catch { return undefined; }
+      })(),
       // v22.78: frei benennbarer Team-Begriff + „keine neuen Teams"-Flag
       // (Piggyback im EmailTemplateOverrides-JSON, analog _childEventTerm).
       teamTermSingular: ((): string | undefined => {
