@@ -1382,6 +1382,8 @@ export default function EventCreationPage(): React.ReactElement {
     initialOutlookEventId?: string;
     initialCalendarLink?: string;
     initialTitle?: string;
+    /** v29.52: „Ganztägig" beim Laden — Vergleichswert für den Outlook-Detektor. */
+    initialAllDay?: boolean;
     initialStartDate?: string;
     initialEndDate?: string;
     initialOutlookBody?: string;
@@ -1532,6 +1534,7 @@ export default function EventCreationPage(): React.ReactElement {
       // ist nur CalendarLink gefüllt.
       initialCalendarLink: k.calendarLink || '',
       initialTitle: k.title || '',
+      initialAllDay: !!k.allDay,
       initialStartDate: k.startDate || '',
       initialEndDate: k.endDate || '',
       initialOutlookBody: k.outlookBody || '',
@@ -2036,7 +2039,13 @@ export default function EventCreationPage(): React.ReactElement {
   // Werten verglichen — Änderung löst das Update-Confirm-Modal aus.
   // Im Ref, weil wir das einmal beim Mount fixieren und nicht bei Re-Renders
   // neu setzen wollen.
-  const initialOutlookSnapshot = React.useRef<{ title: string; startDate: string; endDate: string; outlookBody: string; outlookLocation: string; outlookSubject: string; outlookStart: string; outlookEnd: string; organizers: string; outlookLogo: string }>({
+  const initialOutlookSnapshot = React.useRef<{ title: string; startDate: string; endDate: string; outlookBody: string; outlookLocation: string; outlookSubject: string; outlookStart: string; outlookEnd: string; organizers: string; outlookLogo: string; allDay: boolean }>({
+    // v29.52: „Ganztägig" gehört in den Snapshot. Der Haken ändert weder Titel
+    // noch Start/Ende (die stehen ohnehin auf 00:00/23:59) — ohne diesen
+    // Vergleich bliebe er für den Detektor unsichtbar, es würde KEIN
+    // UpdateEvent gequeued, und der bereits verschickte Outlook-Termin bliebe
+    // für immer ein Zeitblock. Der Flow käme nie zum Zug.
+    allDay: !!(editEvent && editEvent.allDay),
     // v28.30: Kopfbild des Outlook-Termins in den Snapshot. Ein Bildwechsel
     // ändert weder den rohen Termin-Text noch das Layout — ohne diesen
     // Vergleich blieb er für den Save-Detektor unsichtbar.
@@ -5825,6 +5834,8 @@ export default function EventCreationPage(): React.ReactElement {
     // v18.44: abweichendes Outlook-Datum (Override) gilt als Termin-Änderung.
     if ((outlookStartOverride || '') !== (snap.outlookStart || '') && topChangedFields.indexOf('startDate') < 0) topChangedFields.push('startDate');
     if ((outlookEndOverride || '') !== (snap.outlookEnd || '') && topChangedFields.indexOf('endDate') < 0) topChangedFields.push('endDate');
+    // v29.52: Umschalten auf/von „ganztägig" ist eine Termin-Änderung.
+    if (!!allDay !== !!snap.allDay && topChangedFields.indexOf('startDate') < 0) topChangedFields.push('startDate');
     // v11.61: Beide Pointer prüfen — DEX_CreateOutlookEvent setzt nur
     // CalendarLink auf Erfolg, OutlookEventId bleibt leer. Wer beides
     // leer hat, hatte nie einen Outlook-Termin.
@@ -5870,6 +5881,8 @@ export default function EventCreationPage(): React.ReactElement {
       // v11.64: auch hier semantischer Vergleich — gleiche Falle wie oben.
       if (!sameInstant(s.startDate || '', initStart)) subChangedFields.push('startDate');
       if (!sameInstant(s.endDate || '', initEnd)) subChangedFields.push('endDate');
+      // v29.52: dasselbe für den Ganztags-Haken je Sub-Event.
+      if (!!s.allDay !== !!s.initialAllDay && subChangedFields.indexOf('startDate') < 0) subChangedFields.push('startDate');
       if (curBodyStripped !== initBodyStripped) subChangedFields.push('outlookBody');
       // v19.20: globale Header-Bild-Layout-Änderung betrifft auch die
       // Sub-Event-Outlook-Termine (gleicher Hero-Bild-Kopf) — als eigenes
