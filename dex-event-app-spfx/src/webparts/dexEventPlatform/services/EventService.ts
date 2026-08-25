@@ -4380,8 +4380,23 @@ export class EventService {
         SPHttpClient.configurations.v1
       );
       if (!response.ok) return [];
-      const data = await response.json();
-      return data.value || [];
+      // v29.51 (Messpunkt): Das ist die EINZIGE blockierende Datenabfrage des
+      // Starts — und EVENT_SELECT holt 79 Spalten, darunter EmailImageBase64
+      // und EmailTemplateOverrides mit eingebetteten Bildern. Ob das ein paar
+      // Kilobyte oder mehrere Megabyte sind, entscheidet über den nächsten
+      // Optimierungsschritt; bisher wurde darüber geraten. `.text()` +
+      // JSON.parse ist genau das, was `.json()` intern auch tut — der Umweg
+      // kostet nichts und liefert die exakte Byte-Zahl.
+      const raw = await response.text();
+      const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : 0;
+      const data = JSON.parse(raw);
+      const parseMs = t0 ? Math.round(performance.now() - t0) : -1;
+      const rows = data.value || [];
+      // eslint-disable-next-line no-console
+      console.log(
+        `[DEX][perf][getEvents] ${rows.length} Events · ${Math.round(raw.length / 1024)} KB JSON · parse ${parseMs} ms`
+      );
+      return rows;
     } catch {
       return [];
     }

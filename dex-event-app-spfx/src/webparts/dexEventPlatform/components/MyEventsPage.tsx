@@ -31,7 +31,8 @@ import { InfoTooltip } from './InfoTooltip';
 import Modal from './Modal';
 import InternationalSearchToggle from './InternationalSearchToggle';
 import { buildDemoShowcaseEvents, buildDemoMyRegistration } from '../services/demoShowcaseEvent';
-import StayRangePicker from './StayRangePicker';
+// v29.51: nachgeladen — zieht react-datepicker + date-fns aus dem Boot-Bundle.
+import StayRangePicker from './StayRangePickerLazy';
 import { TeamsJoinButton } from './TeamsJoinButton';
 import { eventTeamsLink, locationWithoutTeamsUrl } from '../utils/teamsLink';
 

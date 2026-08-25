@@ -18,7 +18,8 @@ import { isEventOver } from '../utils/eventFormat';
 import { CachedImg } from './CachedImage';
 import Modal from './Modal';
 import { Icon } from '@fluentui/react/lib/Icon';
-import StayRangePicker from './StayRangePicker';
+// v29.51: nachgeladen — zieht react-datepicker + date-fns aus dem Boot-Bundle.
+import StayRangePicker from './StayRangePickerLazy';
 
 interface ProxyItem { event: DeloitteEvent; registration: SPRegistration; }
 
